@@ -72,9 +72,8 @@ func TestSchemaHashKeys(t *testing.T) {
 	)
 
 	cfg := SchemaConfig{
-		OriginalTableName: table,
-
 		PeriodicTableConfig: PeriodicTableConfig{
+			OriginalTableName:    table,
 			UsePeriodicTables:    true,
 			TablePrefix:          periodicPrefix,
 			TablePeriod:          2 * 24 * time.Hour,
@@ -285,7 +284,9 @@ func TestSchemaRangeKey(t *testing.T) {
 
 	var (
 		cfg = SchemaConfig{
-			OriginalTableName: table,
+			PeriodicTableConfig: PeriodicTableConfig{
+				OriginalTableName: table,
+			},
 		}
 		hourlyBuckets = v1Schema(cfg)
 		dailyBuckets  = v2Schema(cfg)

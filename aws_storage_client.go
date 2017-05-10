@@ -20,6 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/log"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/common/instrument"
@@ -399,95 +400,6 @@ func (b dynamoDBReadBatch) Value(i int) []byte {
 	return chunkValue.B
 }
 
-type dynamoTableClient struct {
-	DynamoDB dynamodbiface.DynamoDBAPI
-}
-
-// newDynamoTableClient makes a new DynamoTableClient.
-func newDynamoTableClient(cfg DynamoDBConfig) (DynamoTableClient, error) {
-	dynamoDB, err := dynamoClientFromURL(cfg.DynamoDB.URL)
-	if err != nil {
-		return nil, err
-	}
-	return dynamoTableClient{
-		DynamoDB: dynamoDB,
-	}, nil
-}
-
-func (d dynamoTableClient) ListTables(ctx context.Context) ([]string, error) {
-	table := []string{}
-	err := instrument.TimeRequestHistogram(ctx, "DynamoDB.ListTablesPages", dynamoRequestDuration, func(_ context.Context) error {
-		return d.DynamoDB.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
-			for _, s := range resp.TableNames {
-				table = append(table, *s)
-			}
-			return true
-		})
-	})
-	return table, err
-}
-
-func (d dynamoTableClient) CreateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error {
-	return instrument.TimeRequestHistogram(ctx, "DynamoDB.CreateTable", dynamoRequestDuration, func(_ context.Context) error {
-		input := &dynamodb.CreateTableInput{
-			TableName: aws.String(name),
-			AttributeDefinitions: []*dynamodb.AttributeDefinition{
-				{
-					AttributeName: aws.String(hashKey),
-					AttributeType: aws.String(dynamodb.ScalarAttributeTypeS),
-				},
-				{
-					AttributeName: aws.String(rangeKey),
-					AttributeType: aws.String(dynamodb.ScalarAttributeTypeB),
-				},
-			},
-			KeySchema: []*dynamodb.KeySchemaElement{
-				{
-					AttributeName: aws.String(hashKey),
-					KeyType:       aws.String(dynamodb.KeyTypeHash),
-				},
-				{
-					AttributeName: aws.String(rangeKey),
-					KeyType:       aws.String(dynamodb.KeyTypeRange),
-				},
-			},
-			ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-				ReadCapacityUnits:  aws.Int64(readCapacity),
-				WriteCapacityUnits: aws.Int64(writeCapacity),
-			},
-		}
-		_, err := d.DynamoDB.CreateTable(input)
-		return err
-	})
-}
-
-func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (readCapacity, writeCapacity int64, status string, err error) {
-	var out *dynamodb.DescribeTableOutput
-	instrument.TimeRequestHistogram(ctx, "DynamoDB.DescribeTable", dynamoRequestDuration, func(_ context.Context) error {
-		out, err = d.DynamoDB.DescribeTable(&dynamodb.DescribeTableInput{
-			TableName: aws.String(name),
-		})
-		readCapacity = *out.Table.ProvisionedThroughput.ReadCapacityUnits
-		writeCapacity = *out.Table.ProvisionedThroughput.WriteCapacityUnits
-		status = *out.Table.TableStatus
-		return err
-	})
-	return
-}
-
-func (d dynamoTableClient) UpdateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error {
-	return instrument.TimeRequestHistogram(ctx, "DynamoDB.UpdateTable", dynamoRequestDuration, func(_ context.Context) error {
-		_, err := d.DynamoDB.UpdateTable(&dynamodb.UpdateTableInput{
-			TableName: aws.String(name),
-			ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-				ReadCapacityUnits:  aws.Int64(readCapacity),
-				WriteCapacityUnits: aws.Int64(writeCapacity),
-			},
-		})
-		return err
-	})
-}
-
 func nextBackoff(lastBackoff time.Duration) time.Duration {
 	// Based on the "Decorrelated Jitter" approach from https://www.awsarchitectureblog.com/2015/03/backoff.html
 	// sleep = min(cap, random_between(base, sleep * 3))
@@ -537,6 +449,10 @@ func takeReqs(from, to map[string][]*dynamodb.WriteRequest, max int) {
 func dynamoClientFromURL(awsURL *url.URL) (dynamodbiface.DynamoDBAPI, error) {
 	if awsURL == nil {
 		return nil, fmt.Errorf("no URL specified for DynamoDB")
+	}
+	path := strings.TrimPrefix(awsURL.Path, "/")
+	if len(path) > 0 {
+		log.Warnf("Ignoring DynamoDB URL path: %v.", path)
 	}
 	config, err := awsConfigFromURL(awsURL)
 	if err != nil {

@@ -22,7 +22,6 @@ const (
 // SchemaConfig contains the config for our chunk index schemas
 type SchemaConfig struct {
 	PeriodicTableConfig
-	OriginalTableName string
 
 	// After midnight on this day, we start bucketing indexes by day instead of by
 	// hour.  Only the day matters, not the time within the day.
@@ -48,7 +47,6 @@ type SchemaConfig struct {
 func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.PeriodicTableConfig.RegisterFlags(f)
 
-	flag.StringVar(&cfg.OriginalTableName, "dynamodb.original-table-name", "", "The name of the DynamoDB table used before versioned schemas were introduced.")
 	f.Var(&cfg.DailyBucketsFrom, "dynamodb.daily-buckets-from", "The date (in the format YYYY-MM-DD) of the first day for which DynamoDB index buckets should be day-sized vs. hour-sized.")
 	f.Var(&cfg.Base64ValuesFrom, "dynamodb.base64-buckets-from", "The date (in the format YYYY-MM-DD) after which we will stop querying to non-base64 encoded values.")
 	f.Var(&cfg.V4SchemaFrom, "dynamodb.v4-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v4 schema.")

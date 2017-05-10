@@ -23,7 +23,7 @@ const (
 	read          = 100
 )
 
-func TestDynamoTableManager(t *testing.T) {
+func TestTableManager(t *testing.T) {
 	dynamoDB := NewMockStorage()
 
 	cfg := TableManagerConfig{
@@ -43,7 +43,7 @@ func TestDynamoTableManager(t *testing.T) {
 		InactiveWriteThroughput:    inactiveWrite,
 		InactiveReadThroughput:     inactiveRead,
 	}
-	tableManager, err := NewDynamoTableManager(cfg, dynamoDB)
+	tableManager, err := NewTableManager(cfg, dynamoDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestDynamoTableManager(t *testing.T) {
 	)
 }
 
-func expectTables(ctx context.Context, t *testing.T, dynamo DynamoTableClient, expected []tableDescription) {
+func expectTables(ctx context.Context, t *testing.T, dynamo TableClient, expected []tableDescription) {
 	tables, err := dynamo.ListTables(ctx)
 	if err != nil {
 		t.Fatal(err)

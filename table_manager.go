@@ -2,14 +2,14 @@ package chunk
 
 import (
 	"flag"
-	"fmt"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"golang.org/x/net/context"
@@ -42,48 +42,11 @@ func init() {
 	prometheus.MustRegister(tableCapacity)
 }
 
-// DynamoTableClient is a client for telling Dynamo what to do with tables.
-type DynamoTableClient interface {
-	ListTables(ctx context.Context) ([]string, error)
-	CreateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error
-	DescribeTable(ctx context.Context, name string) (readCapacity, writeCapacity int64, status string, err error)
-	UpdateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error
-}
-
-// DynamoTableClientConfig configures the DynamoDB table client.
-type DynamoTableClientConfig struct {
-	DynamoClient string
-	DynamoDBConfig
-}
-
-// RegisterFlags adds the flags required to configure this flag set.
-func (cfg *DynamoTableClientConfig) RegisterFlags(f *flag.FlagSet) {
-	flag.StringVar(&cfg.DynamoClient, "table-manager.dynamo-client", "aws", "Which DynamoDB table client to use (aws, inmemory).")
-	cfg.DynamoDBConfig.RegisterFlags(f)
-}
-
-// NewDynamoTableClient creates a new DynamoTableClient.
-func NewDynamoTableClient(cfg DynamoTableClientConfig) (DynamoTableClient, error) {
-	switch cfg.DynamoClient {
-	case "inmemory":
-		return NewMockStorage(), nil
-	case "aws":
-		path := strings.TrimPrefix(cfg.DynamoDB.URL.Path, "/")
-		if len(path) > 0 {
-			log.Warnf("Ignoring DynamoDB URL path: %v.", path)
-		}
-		return newDynamoTableClient(cfg.DynamoDBConfig)
-	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, inmemory", cfg.DynamoClient)
-	}
-}
-
-// TableManagerConfig is the config for a DynamoTableManager
+// TableManagerConfig is the config for a TableManager
 type TableManagerConfig struct {
 	DynamoDBPollInterval time.Duration
 
 	PeriodicTableConfig
-	OriginalTableName string
 
 	// duration a table will be created before it is needed.
 	CreationGracePeriod        time.Duration
@@ -105,14 +68,13 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.InactiveReadThroughput, "dynamodb.periodic-table.inactive-read-throughput", 300, "DynamoDB periodic tables read throughput for inactive tables")
 
 	cfg.PeriodicTableConfig.RegisterFlags(f)
-	// XXX: Should this be in PeriodicTableConfig?
-	flag.StringVar(&cfg.OriginalTableName, "dynamodb.original-table-name", "", "The name of the DynamoDB table used before versioned schemas were introduced.")
 }
 
 // PeriodicTableConfig for the use of periodic tables (ie, weekly tables).  Can
 // control when to start the periodic tables, how long the period should be,
 // and the prefix to give the tables.
 type PeriodicTableConfig struct {
+	OriginalTableName    string
 	UsePeriodicTables    bool
 	TablePrefix          string
 	TablePeriod          time.Duration
@@ -121,48 +83,49 @@ type PeriodicTableConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *PeriodicTableConfig) RegisterFlags(f *flag.FlagSet) {
+	f.StringVar(&cfg.OriginalTableName, "dynamodb.original-table-name", "", "The name of the DynamoDB table used before versioned schemas were introduced.")
 	f.BoolVar(&cfg.UsePeriodicTables, "dynamodb.use-periodic-tables", true, "Should we use periodic tables.")
 	f.StringVar(&cfg.TablePrefix, "dynamodb.periodic-table.prefix", "cortex_", "DynamoDB table prefix for the periodic tables.")
 	f.DurationVar(&cfg.TablePeriod, "dynamodb.periodic-table.period", 7*24*time.Hour, "DynamoDB periodic tables period.")
 	f.Var(&cfg.PeriodicTableStartAt, "dynamodb.periodic-table.start", "DynamoDB periodic tables start time.")
 }
 
-// DynamoTableManager creates and manages the provisioned throughput on DynamoDB tables
-type DynamoTableManager struct {
-	dynamoDB DynamoTableClient
-	cfg      TableManagerConfig
-	done     chan struct{}
-	wait     sync.WaitGroup
+// TableManager creates and manages the provisioned throughput on DynamoDB tables
+type TableManager struct {
+	client TableClient
+	cfg    TableManagerConfig
+	done   chan struct{}
+	wait   sync.WaitGroup
 }
 
-// NewDynamoTableManager makes a new DynamoTableManager
-func NewDynamoTableManager(cfg TableManagerConfig, dynamoDBClient DynamoTableClient) (*DynamoTableManager, error) {
-	return &DynamoTableManager{
-		cfg:      cfg,
-		dynamoDB: dynamoDBClient,
-		done:     make(chan struct{}),
+// NewTableManager makes a new TableManager
+func NewTableManager(cfg TableManagerConfig, tableClient TableClient) (*TableManager, error) {
+	return &TableManager{
+		cfg:    cfg,
+		client: tableClient,
+		done:   make(chan struct{}),
 	}, nil
 }
 
-// Start the DynamoTableManager
-func (m *DynamoTableManager) Start() {
+// Start the TableManager
+func (m *TableManager) Start() {
 	m.wait.Add(1)
 	go m.loop()
 }
 
-// Stop the DynamoTableManager
-func (m *DynamoTableManager) Stop() {
+// Stop the TableManager
+func (m *TableManager) Stop() {
 	close(m.done)
 	m.wait.Wait()
 }
 
-func (m *DynamoTableManager) loop() {
+func (m *TableManager) loop() {
 	defer m.wait.Done()
 
 	ticker := time.NewTicker(m.cfg.DynamoDBPollInterval)
 	defer ticker.Stop()
 
-	if err := instrument.TimeRequestHistogram(context.Background(), "DynamoTableManager.syncTables", syncTableDuration, func(ctx context.Context) error {
+	if err := instrument.TimeRequestHistogram(context.Background(), "TableManager.syncTables", syncTableDuration, func(ctx context.Context) error {
 		return m.syncTables(ctx)
 	}); err != nil {
 		log.Errorf("Error syncing tables: %v", err)
@@ -171,7 +134,7 @@ func (m *DynamoTableManager) loop() {
 	for {
 		select {
 		case <-ticker.C:
-			if err := instrument.TimeRequestHistogram(context.Background(), "DynamoTableManager.syncTables", syncTableDuration, func(ctx context.Context) error {
+			if err := instrument.TimeRequestHistogram(context.Background(), "TableManager.syncTables", syncTableDuration, func(ctx context.Context) error {
 				return m.syncTables(ctx)
 			}); err != nil {
 				log.Errorf("Error syncing tables: %v", err)
@@ -182,7 +145,7 @@ func (m *DynamoTableManager) loop() {
 	}
 }
 
-func (m *DynamoTableManager) syncTables(ctx context.Context) error {
+func (m *TableManager) syncTables(ctx context.Context) error {
 	expected := m.calculateExpectedTables()
 	log.Infof("Expecting %d tables", len(expected))
 
@@ -210,7 +173,7 @@ func (a byName) Len() int           { return len(a) }
 func (a byName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byName) Less(i, j int) bool { return a[i].name < a[j].name }
 
-func (m *DynamoTableManager) calculateExpectedTables() []tableDescription {
+func (m *TableManager) calculateExpectedTables() []tableDescription {
 	if !m.cfg.UsePeriodicTables {
 		return []tableDescription{
 			{
@@ -269,8 +232,8 @@ func (m *DynamoTableManager) calculateExpectedTables() []tableDescription {
 }
 
 // partitionTables works out tables that need to be created vs tables that need to be updated
-func (m *DynamoTableManager) partitionTables(ctx context.Context, descriptions []tableDescription) ([]tableDescription, []tableDescription, error) {
-	existingTables, err := m.dynamoDB.ListTables(ctx)
+func (m *TableManager) partitionTables(ctx context.Context, descriptions []tableDescription) ([]tableDescription, []tableDescription, error) {
+	existingTables, err := m.client.ListTables(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -300,10 +263,10 @@ func (m *DynamoTableManager) partitionTables(ctx context.Context, descriptions [
 	return toCreate, toCheckThroughput, nil
 }
 
-func (m *DynamoTableManager) createTables(ctx context.Context, descriptions []tableDescription) error {
+func (m *TableManager) createTables(ctx context.Context, descriptions []tableDescription) error {
 	for _, desc := range descriptions {
 		log.Infof("Creating table %s", desc.name)
-		err := m.dynamoDB.CreateTable(ctx, desc.name, desc.provisionedRead, desc.provisionedWrite)
+		err := m.client.CreateTable(ctx, desc.name, desc.provisionedRead, desc.provisionedWrite)
 		if err != nil {
 			return err
 		}
@@ -311,10 +274,10 @@ func (m *DynamoTableManager) createTables(ctx context.Context, descriptions []ta
 	return nil
 }
 
-func (m *DynamoTableManager) updateTables(ctx context.Context, descriptions []tableDescription) error {
+func (m *TableManager) updateTables(ctx context.Context, descriptions []tableDescription) error {
 	for _, desc := range descriptions {
 		log.Infof("Checking provisioned throughput on table %s", desc.name)
-		readCapacity, writeCapacity, status, err := m.dynamoDB.DescribeTable(ctx, desc.name)
+		readCapacity, writeCapacity, status, err := m.client.DescribeTable(ctx, desc.name)
 		if err != nil {
 			return err
 		}
@@ -333,10 +296,107 @@ func (m *DynamoTableManager) updateTables(ctx context.Context, descriptions []ta
 		}
 
 		log.Infof("  Updating provisioned throughput on table %s to read = %d, write = %d", desc.name, desc.provisionedRead, desc.provisionedWrite)
-		err = m.dynamoDB.UpdateTable(ctx, desc.name, desc.provisionedRead, desc.provisionedWrite)
+		err = m.client.UpdateTable(ctx, desc.name, desc.provisionedRead, desc.provisionedWrite)
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// TableClient is a client for telling Dynamo what to do with tables.
+type TableClient interface {
+	ListTables(ctx context.Context) ([]string, error)
+	CreateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error
+	DescribeTable(ctx context.Context, name string) (readCapacity, writeCapacity int64, status string, err error)
+	UpdateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error
+}
+
+type dynamoTableClient struct {
+	DynamoDB dynamodbiface.DynamoDBAPI
+}
+
+// NewDynamoDBTableClient makes a new DynamoTableClient.
+func NewDynamoDBTableClient(cfg DynamoDBConfig) (TableClient, error) {
+	dynamoDB, err := dynamoClientFromURL(cfg.DynamoDB.URL)
+	if err != nil {
+		return nil, err
+	}
+	return dynamoTableClient{
+		DynamoDB: dynamoDB,
+	}, nil
+}
+
+func (d dynamoTableClient) ListTables(ctx context.Context) ([]string, error) {
+	table := []string{}
+	err := instrument.TimeRequestHistogram(ctx, "DynamoDB.ListTablesPages", dynamoRequestDuration, func(_ context.Context) error {
+		return d.DynamoDB.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
+			for _, s := range resp.TableNames {
+				table = append(table, *s)
+			}
+			return true
+		})
+	})
+	return table, err
+}
+
+func (d dynamoTableClient) CreateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error {
+	return instrument.TimeRequestHistogram(ctx, "DynamoDB.CreateTable", dynamoRequestDuration, func(_ context.Context) error {
+		input := &dynamodb.CreateTableInput{
+			TableName: aws.String(name),
+			AttributeDefinitions: []*dynamodb.AttributeDefinition{
+				{
+					AttributeName: aws.String(hashKey),
+					AttributeType: aws.String(dynamodb.ScalarAttributeTypeS),
+				},
+				{
+					AttributeName: aws.String(rangeKey),
+					AttributeType: aws.String(dynamodb.ScalarAttributeTypeB),
+				},
+			},
+			KeySchema: []*dynamodb.KeySchemaElement{
+				{
+					AttributeName: aws.String(hashKey),
+					KeyType:       aws.String(dynamodb.KeyTypeHash),
+				},
+				{
+					AttributeName: aws.String(rangeKey),
+					KeyType:       aws.String(dynamodb.KeyTypeRange),
+				},
+			},
+			ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
+				ReadCapacityUnits:  aws.Int64(readCapacity),
+				WriteCapacityUnits: aws.Int64(writeCapacity),
+			},
+		}
+		_, err := d.DynamoDB.CreateTable(input)
+		return err
+	})
+}
+
+func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (readCapacity, writeCapacity int64, status string, err error) {
+	var out *dynamodb.DescribeTableOutput
+	instrument.TimeRequestHistogram(ctx, "DynamoDB.DescribeTable", dynamoRequestDuration, func(_ context.Context) error {
+		out, err = d.DynamoDB.DescribeTable(&dynamodb.DescribeTableInput{
+			TableName: aws.String(name),
+		})
+		readCapacity = *out.Table.ProvisionedThroughput.ReadCapacityUnits
+		writeCapacity = *out.Table.ProvisionedThroughput.WriteCapacityUnits
+		status = *out.Table.TableStatus
+		return err
+	})
+	return
+}
+
+func (d dynamoTableClient) UpdateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error {
+	return instrument.TimeRequestHistogram(ctx, "DynamoDB.UpdateTable", dynamoRequestDuration, func(_ context.Context) error {
+		_, err := d.DynamoDB.UpdateTable(&dynamodb.UpdateTableInput{
+			TableName: aws.String(name),
+			ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
+				ReadCapacityUnits:  aws.Int64(readCapacity),
+				WriteCapacityUnits: aws.Int64(writeCapacity),
+			},
+		})
+		return err
+	})
 }
