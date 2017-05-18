@@ -31,6 +31,11 @@ func dummyChunkFor(metric model.Metric) Chunk {
 		now.Add(-time.Hour),
 		now,
 	)
+	// Force checksum calculation.
+	_, err := chunk.encode()
+	if err != nil {
+		panic(err)
+	}
 	return chunk
 }
 

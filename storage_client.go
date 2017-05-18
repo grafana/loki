@@ -19,8 +19,8 @@ type StorageClient interface {
 	QueryPages(ctx context.Context, query IndexQuery, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error
 
 	// For storing and retrieving chunks.
-	PutChunk(ctx context.Context, key string, data []byte) error
-	GetChunk(ctx context.Context, key string) ([]byte, error)
+	PutChunks(ctx context.Context, chunks []Chunk) error
+	GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error)
 }
 
 // WriteBatch represents a batch of writes.

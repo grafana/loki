@@ -125,12 +125,6 @@ func TestChunkStore(t *testing.T) {
 				chunks, err := store.Get(ctx, now.Add(-time.Hour), now, tc.matchers...)
 				require.NoError(t, err)
 
-				// Zero out the checksums, as the inputs above didn't have the checksums calculated
-				for i := range chunks {
-					chunks[i].Checksum = 0
-					chunks[i].ChecksumSet = false
-				}
-
 				if !reflect.DeepEqual(tc.expect, chunks) {
 					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, chunks))
 				}
@@ -257,12 +251,6 @@ func TestChunkStoreMetricNames(t *testing.T) {
 
 				chunks, err := store.Get(ctx, now.Add(-time.Hour), now, tc.matchers...)
 				require.NoError(t, err)
-
-				// Zero out the checksums, as the inputs above didn't have the checksums calculated
-				for i := range chunks {
-					chunks[i].Checksum = 0
-					chunks[i].ChecksumSet = false
-				}
 
 				if !reflect.DeepEqual(tc.expect, chunks) {
 					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, chunks))

@@ -97,56 +97,12 @@ func (c *Store) Put(ctx context.Context, chunks []Chunk) error {
 		return err
 	}
 
-	// Encode the chunk first - checksum is calculated as a side effect.
-	bufs := [][]byte{}
-	keys := []string{}
-	for i := range chunks {
-		encoded, err := chunks[i].encode()
-		if err != nil {
-			return err
-		}
-		bufs = append(bufs, encoded)
-		keys = append(keys, chunks[i].externalKey())
-	}
-
-	err = c.putChunks(ctx, keys, bufs)
+	err = c.storage.PutChunks(ctx, chunks)
 	if err != nil {
 		return err
 	}
 
 	return c.updateIndex(ctx, userID, chunks)
-}
-
-// putChunks writes a collection of chunks to S3 in parallel.
-func (c *Store) putChunks(ctx context.Context, keys []string, bufs [][]byte) error {
-	incomingErrors := make(chan error)
-	for i := range bufs {
-		go func(i int) {
-			incomingErrors <- c.putChunk(ctx, keys[i], bufs[i])
-		}(i)
-	}
-
-	var lastErr error
-	for range keys {
-		err := <-incomingErrors
-		if err != nil {
-			lastErr = err
-		}
-	}
-	return lastErr
-}
-
-// putChunk puts a chunk into S3.
-func (c *Store) putChunk(ctx context.Context, key string, buf []byte) error {
-	err := c.storage.PutChunk(ctx, key, buf)
-	if err != nil {
-		return err
-	}
-
-	if err := c.cache.StoreChunk(ctx, key, buf); err != nil {
-		log.Warnf("Could not store %v in chunk cache: %v", key, err)
-	}
-	return nil
 }
 
 func (c *Store) updateIndex(ctx context.Context, userID string, chunks []Chunk) error {
@@ -223,7 +179,7 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 		log.Warnf("Error fetching from cache: %v", err)
 	}
 
-	fromS3, err := c.fetchChunkData(ctx, missing)
+	fromS3, err := c.storage.GetChunks(ctx, missing)
 	if err != nil {
 		return nil, promql.ErrStorage(err)
 	}
@@ -478,40 +434,6 @@ func (c *Store) convertIndexEntriesToChunks(ctx context.Context, entries []Index
 	// Return chunks sorted and deduped because they will be merged with other sets
 	sort.Sort(chunkSet)
 	return unique(chunkSet), nil
-}
-
-func (c *Store) fetchChunkData(ctx context.Context, chunkSet []Chunk) ([]Chunk, error) {
-	incomingChunks := make(chan Chunk)
-	incomingErrors := make(chan error)
-	for _, chunk := range chunkSet {
-		go func(chunk Chunk) {
-			buf, err := c.storage.GetChunk(ctx, chunk.externalKey())
-			if err != nil {
-				incomingErrors <- err
-				return
-			}
-			if err := chunk.decode(buf); err != nil {
-				incomingErrors <- err
-				return
-			}
-			incomingChunks <- chunk
-		}(chunk)
-	}
-
-	chunks := []Chunk{}
-	errors := []error{}
-	for i := 0; i < len(chunkSet); i++ {
-		select {
-		case chunk := <-incomingChunks:
-			chunks = append(chunks, chunk)
-		case err := <-incomingErrors:
-			errors = append(errors, err)
-		}
-	}
-	if len(errors) > 0 {
-		return nil, errors[0]
-	}
-	return chunks, nil
 }
 
 func (c *Store) writeBackCache(_ context.Context, chunks []Chunk) error {

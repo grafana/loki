@@ -13,14 +13,15 @@ import (
 )
 
 const (
-	tablePrefix   = "cortex_"
-	tablePeriod   = 7 * 24 * time.Hour
-	gracePeriod   = 15 * time.Minute
-	maxChunkAge   = 12 * time.Hour
-	inactiveWrite = 1
-	inactiveRead  = 2
-	write         = 200
-	read          = 100
+	tablePrefix      = "cortex_"
+	chunkTablePrefix = "chunks_"
+	tablePeriod      = 7 * 24 * time.Hour
+	gracePeriod      = 15 * time.Minute
+	maxChunkAge      = 12 * time.Hour
+	inactiveWrite    = 1
+	inactiveRead     = 2
+	write            = 200
+	read             = 100
 )
 
 func TestTableManager(t *testing.T) {
@@ -28,20 +29,28 @@ func TestTableManager(t *testing.T) {
 
 	cfg := TableManagerConfig{
 		PeriodicTableConfig: PeriodicTableConfig{
-			UsePeriodicTables: true,
-			TablePrefix:       tablePrefix,
-			TablePeriod:       tablePeriod,
-			PeriodicTableStartAt: util.DayValue{
-				Time: model.TimeFromUnix(0),
-			},
+			UsePeriodicTables:    true,
+			TablePrefix:          tablePrefix,
+			TablePeriod:          tablePeriod,
+			PeriodicTableStartAt: util.NewDayValue(model.TimeFromUnix(0)),
 		},
 
-		CreationGracePeriod:        gracePeriod,
-		MaxChunkAge:                maxChunkAge,
-		ProvisionedWriteThroughput: write,
-		ProvisionedReadThroughput:  read,
-		InactiveWriteThroughput:    inactiveWrite,
-		InactiveReadThroughput:     inactiveRead,
+		PeriodicChunkTableConfig: PeriodicChunkTableConfig{
+			ChunkTablePrefix: chunkTablePrefix,
+			ChunkTablePeriod: tablePeriod,
+			ChunkTableFrom:   util.NewDayValue(model.TimeFromUnix(0)),
+		},
+
+		CreationGracePeriod:                  gracePeriod,
+		MaxChunkAge:                          maxChunkAge,
+		ProvisionedWriteThroughput:           write,
+		ProvisionedReadThroughput:            read,
+		InactiveWriteThroughput:              inactiveWrite,
+		InactiveReadThroughput:               inactiveRead,
+		ChunkTableProvisionedWriteThroughput: write,
+		ChunkTableProvisionedReadThroughput:  read,
+		ChunkTableInactiveWriteThroughput:    inactiveWrite,
+		ChunkTableInactiveReadThroughput:     inactiveRead,
 	}
 	tableManager, err := NewTableManager(cfg, dynamoDB)
 	if err != nil {
@@ -66,6 +75,7 @@ func TestTableManager(t *testing.T) {
 		[]tableDescription{
 			{name: "", provisionedRead: read, provisionedWrite: write},
 			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
+			{name: chunkTablePrefix + "0", provisionedRead: read, provisionedWrite: write},
 		},
 	)
 
@@ -76,6 +86,7 @@ func TestTableManager(t *testing.T) {
 		[]tableDescription{
 			{name: "", provisionedRead: read, provisionedWrite: write},
 			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
+			{name: chunkTablePrefix + "0", provisionedRead: read, provisionedWrite: write},
 		},
 	)
 
@@ -86,6 +97,7 @@ func TestTableManager(t *testing.T) {
 		[]tableDescription{
 			{name: "", provisionedRead: read, provisionedWrite: write},
 			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
+			{name: chunkTablePrefix + "0", provisionedRead: read, provisionedWrite: write},
 		},
 	)
 
@@ -96,6 +108,7 @@ func TestTableManager(t *testing.T) {
 		[]tableDescription{
 			{name: "", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
 			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
+			{name: chunkTablePrefix + "0", provisionedRead: read, provisionedWrite: write},
 		},
 	)
 
@@ -107,6 +120,8 @@ func TestTableManager(t *testing.T) {
 			{name: "", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
 			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
 			{name: tablePrefix + "1", provisionedRead: read, provisionedWrite: write},
+			{name: chunkTablePrefix + "0", provisionedRead: read, provisionedWrite: write},
+			{name: chunkTablePrefix + "1", provisionedRead: read, provisionedWrite: write},
 		},
 	)
 
@@ -118,6 +133,8 @@ func TestTableManager(t *testing.T) {
 			{name: "", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
 			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
 			{name: tablePrefix + "1", provisionedRead: read, provisionedWrite: write},
+			{name: chunkTablePrefix + "0", provisionedRead: read, provisionedWrite: write},
+			{name: chunkTablePrefix + "1", provisionedRead: read, provisionedWrite: write},
 		},
 	)
 
@@ -129,6 +146,8 @@ func TestTableManager(t *testing.T) {
 			{name: "", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
 			{name: tablePrefix + "0", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
 			{name: tablePrefix + "1", provisionedRead: read, provisionedWrite: write},
+			{name: chunkTablePrefix + "0", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
+			{name: chunkTablePrefix + "1", provisionedRead: read, provisionedWrite: write},
 		},
 	)
 
@@ -140,6 +159,8 @@ func TestTableManager(t *testing.T) {
 			{name: "", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
 			{name: tablePrefix + "0", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
 			{name: tablePrefix + "1", provisionedRead: read, provisionedWrite: write},
+			{name: chunkTablePrefix + "0", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
+			{name: chunkTablePrefix + "1", provisionedRead: read, provisionedWrite: write},
 		},
 	)
 }

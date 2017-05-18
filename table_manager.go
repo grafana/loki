@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
+	"github.com/prometheus/common/model"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/common/instrument"
@@ -47,6 +48,7 @@ type TableManagerConfig struct {
 	DynamoDBPollInterval time.Duration
 
 	PeriodicTableConfig
+	PeriodicChunkTableConfig
 
 	// duration a table will be created before it is needed.
 	CreationGracePeriod        time.Duration
@@ -55,6 +57,11 @@ type TableManagerConfig struct {
 	ProvisionedReadThroughput  int64
 	InactiveWriteThroughput    int64
 	InactiveReadThroughput     int64
+
+	ChunkTableProvisionedWriteThroughput int64
+	ChunkTableProvisionedReadThroughput  int64
+	ChunkTableInactiveWriteThroughput    int64
+	ChunkTableInactiveReadThroughput     int64
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -66,8 +73,13 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.ProvisionedReadThroughput, "dynamodb.periodic-table.read-throughput", 300, "DynamoDB periodic tables read throughput")
 	f.Int64Var(&cfg.InactiveWriteThroughput, "dynamodb.periodic-table.inactive-write-throughput", 1, "DynamoDB periodic tables write throughput for inactive tables.")
 	f.Int64Var(&cfg.InactiveReadThroughput, "dynamodb.periodic-table.inactive-read-throughput", 300, "DynamoDB periodic tables read throughput for inactive tables")
+	f.Int64Var(&cfg.ChunkTableProvisionedWriteThroughput, "dynamodb.chunk-table.write-throughput", 3000, "DynamoDB chunk tables write throughput")
+	f.Int64Var(&cfg.ChunkTableProvisionedReadThroughput, "dynamodb.chunk-table.read-throughput", 300, "DynamoDB chunk tables read throughput")
+	f.Int64Var(&cfg.ChunkTableInactiveWriteThroughput, "dynamodb.chunk-table.inactive-write-throughput", 1, "DynamoDB chunk tables write throughput for inactive tables.")
+	f.Int64Var(&cfg.ChunkTableInactiveReadThroughput, "dynamodb.chunk-table.inactive-read-throughput", 300, "DynamoDB chunk tables read throughput for inactive tables")
 
 	cfg.PeriodicTableConfig.RegisterFlags(f)
+	cfg.PeriodicChunkTableConfig.RegisterFlags(f)
 }
 
 // PeriodicTableConfig for the use of periodic tables (ie, weekly tables).  Can
@@ -88,6 +100,20 @@ func (cfg *PeriodicTableConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.TablePrefix, "dynamodb.periodic-table.prefix", "cortex_", "DynamoDB table prefix for the periodic tables.")
 	f.DurationVar(&cfg.TablePeriod, "dynamodb.periodic-table.period", 7*24*time.Hour, "DynamoDB periodic tables period.")
 	f.Var(&cfg.PeriodicTableStartAt, "dynamodb.periodic-table.start", "DynamoDB periodic tables start time.")
+}
+
+// PeriodicChunkTableConfig contains the various parameters for the chunk table.
+type PeriodicChunkTableConfig struct {
+	ChunkTableFrom   util.DayValue
+	ChunkTablePrefix string
+	ChunkTablePeriod time.Duration
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *PeriodicChunkTableConfig) RegisterFlags(f *flag.FlagSet) {
+	f.Var(&cfg.ChunkTableFrom, "dynamodb.chunk-table.from", "Date after which to write chunks to DynamoDB.")
+	f.StringVar(&cfg.ChunkTablePrefix, "dynamodb.chunk-table.prefix", "cortex_chunks_", "DynamoDB table prefix for period chunk tables.")
+	f.DurationVar(&cfg.ChunkTablePeriod, "dynamodb.chunk-table.period", 7*24*time.Hour, "DynamoDB chunk tables period.")
 }
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
@@ -147,7 +173,7 @@ func (m *TableManager) loop() {
 
 func (m *TableManager) syncTables(ctx context.Context) error {
 	expected := m.calculateExpectedTables()
-	log.Infof("Expecting %d tables", len(expected))
+	log.Infof("Expecting %d tables: %+v", len(expected), expected)
 
 	toCreate, toCheckThroughput, err := m.partitionTables(ctx, expected)
 	if err != nil {
@@ -174,60 +200,83 @@ func (a byName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byName) Less(i, j int) bool { return a[i].name < a[j].name }
 
 func (m *TableManager) calculateExpectedTables() []tableDescription {
-	if !m.cfg.UsePeriodicTables {
-		return []tableDescription{
-			{
-				name:             m.cfg.OriginalTableName,
-				provisionedRead:  m.cfg.ProvisionedReadThroughput,
-				provisionedWrite: m.cfg.ProvisionedWriteThroughput,
-			},
-		}
-	}
-
 	result := []tableDescription{}
 
-	var (
-		tablePeriodSecs = int64(m.cfg.TablePeriod / time.Second)
-		gracePeriodSecs = int64(m.cfg.CreationGracePeriod / time.Second)
-		maxChunkAgeSecs = int64(m.cfg.MaxChunkAge / time.Second)
-		firstTable      = m.cfg.PeriodicTableStartAt.Unix() / tablePeriodSecs
-		lastTable       = (mtime.Now().Unix() + gracePeriodSecs) / tablePeriodSecs
-		now             = mtime.Now().Unix()
-	)
-
 	// Add the legacy table
-	{
-		legacyTable := tableDescription{
-			name:             m.cfg.OriginalTableName,
-			provisionedRead:  m.cfg.InactiveReadThroughput,
-			provisionedWrite: m.cfg.InactiveWriteThroughput,
-		}
+	legacyTable := tableDescription{
+		name:             m.cfg.OriginalTableName,
+		provisionedRead:  m.cfg.InactiveReadThroughput,
+		provisionedWrite: m.cfg.InactiveWriteThroughput,
+	}
 
+	if m.cfg.UsePeriodicTables {
 		// if we are before the switch to periodic table, we need to give this table write throughput
+		var (
+			tablePeriodSecs = int64(m.cfg.TablePeriod / time.Second)
+			gracePeriodSecs = int64(m.cfg.CreationGracePeriod / time.Second)
+			maxChunkAgeSecs = int64(m.cfg.MaxChunkAge / time.Second)
+			firstTable      = m.cfg.PeriodicTableStartAt.Unix() / tablePeriodSecs
+			now             = mtime.Now().Unix()
+		)
+
 		if now < (firstTable*tablePeriodSecs)+gracePeriodSecs+maxChunkAgeSecs {
 			legacyTable.provisionedRead = m.cfg.ProvisionedReadThroughput
 			legacyTable.provisionedWrite = m.cfg.ProvisionedWriteThroughput
 		}
-		result = append(result, legacyTable)
+	}
+	result = append(result, legacyTable)
+
+	if m.cfg.UsePeriodicTables {
+		result = append(result, periodicTables(
+			m.cfg.TablePrefix, m.cfg.PeriodicTableStartAt.Time, m.cfg.TablePeriod,
+			m.cfg.CreationGracePeriod, m.cfg.MaxChunkAge,
+			m.cfg.ProvisionedReadThroughput, m.cfg.ProvisionedWriteThroughput,
+			m.cfg.InactiveReadThroughput, m.cfg.InactiveWriteThroughput,
+		)...)
 	}
 
-	for i := firstTable; i <= lastTable; i++ {
-		table := tableDescription{
-			// Name construction needs to be consistent with chunk_store.bigBuckets
-			name:             m.cfg.TablePrefix + strconv.Itoa(int(i)),
-			provisionedRead:  m.cfg.InactiveReadThroughput,
-			provisionedWrite: m.cfg.InactiveWriteThroughput,
-		}
-
-		// if now is within table [start - grace, end + grace), then we need some write throughput
-		if (i*tablePeriodSecs)-gracePeriodSecs <= now && now < (i*tablePeriodSecs)+tablePeriodSecs+gracePeriodSecs+maxChunkAgeSecs {
-			table.provisionedRead = m.cfg.ProvisionedReadThroughput
-			table.provisionedWrite = m.cfg.ProvisionedWriteThroughput
-		}
-		result = append(result, table)
+	if m.cfg.ChunkTableFrom.IsSet() {
+		result = append(result, periodicTables(
+			m.cfg.ChunkTablePrefix, m.cfg.ChunkTableFrom.Time, m.cfg.ChunkTablePeriod,
+			m.cfg.CreationGracePeriod, m.cfg.MaxChunkAge,
+			m.cfg.ChunkTableProvisionedReadThroughput, m.cfg.ChunkTableProvisionedWriteThroughput,
+			m.cfg.ChunkTableInactiveReadThroughput, m.cfg.ChunkTableInactiveWriteThroughput,
+		)...)
 	}
 
 	sort.Sort(byName(result))
+	return result
+}
+
+func periodicTables(
+	prefix string, start model.Time, period, beginGrace, endGrace time.Duration,
+	activeRead, activeWrite, inactiveRead, inactiveWrite int64,
+) []tableDescription {
+	var (
+		periodSecs     = int64(period / time.Second)
+		beginGraceSecs = int64(beginGrace / time.Second)
+		endGraceSecs   = int64(endGrace / time.Second)
+		firstTable     = start.Unix() / periodSecs
+		lastTable      = (mtime.Now().Unix() + beginGraceSecs) / periodSecs
+		now            = mtime.Now().Unix()
+		result         = []tableDescription{}
+	)
+	for i := firstTable; i <= lastTable; i++ {
+		table := tableDescription{
+			// Name construction needs to be consistent with chunk_store.bigBuckets
+			name:             prefix + strconv.Itoa(int(i)),
+			provisionedRead:  inactiveRead,
+			provisionedWrite: inactiveWrite,
+		}
+
+		// if now is within table [start - grace, end + grace), then we need some write throughput
+		if (i*periodSecs)-beginGraceSecs <= now && now < (i*periodSecs)+periodSecs+endGraceSecs {
+			table.provisionedRead = activeRead
+			table.provisionedWrite = activeWrite
+		}
+		result = append(result, table)
+	}
+	log.Infof("periodicTables: %+v", result)
 	return result
 }
 

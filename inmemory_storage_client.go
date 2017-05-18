@@ -229,26 +229,39 @@ func (m *MockStorage) QueryPages(_ context.Context, query IndexQuery, callback f
 	return nil
 }
 
-// PutChunk implements S3Client.
-func (m *MockStorage) PutChunk(_ context.Context, key string, buf []byte) error {
+// PutChunks implements StorageClient.
+func (m *MockStorage) PutChunks(_ context.Context, chunks []Chunk) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	m.objects[key] = buf
+	for i := range chunks {
+		buf, err := chunks[i].encode()
+		if err != nil {
+			return err
+		}
+		m.objects[chunks[i].externalKey()] = buf
+	}
 	return nil
 }
 
-// GetChunk implements S3Client.
-func (m *MockStorage) GetChunk(_ context.Context, key string) ([]byte, error) {
+// GetChunks implements StorageClient.
+func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
-	buf, ok := m.objects[key]
-	if !ok {
-		return nil, fmt.Errorf("%v not found", key)
+	result := []Chunk{}
+	for _, chunk := range chunkSet {
+		key := chunk.externalKey()
+		buf, ok := m.objects[key]
+		if !ok {
+			return nil, fmt.Errorf("%v not found", key)
+		}
+		if err := chunk.decode(buf); err != nil {
+			return nil, err
+		}
+		result = append(result, chunk)
 	}
-
-	return buf, nil
+	return result, nil
 }
 
 type mockWriteBatch []struct {
