@@ -683,8 +683,11 @@ func (b dynamoDBReadRequest) Add(tableName, hashValue string, rangeValue []byte)
 	requests, ok := b[tableName]
 	if !ok {
 		requests = &dynamodb.KeysAndAttributes{
-			AttributesToGet: []*string{aws.String(valueKey)},
-			ConsistentRead:  aws.Bool(true),
+			AttributesToGet: []*string{
+				aws.String(hashKey),
+				aws.String(valueKey),
+			},
+			ConsistentRead: aws.Bool(true),
 		}
 		b[tableName] = requests
 	}
@@ -707,8 +710,11 @@ func (b dynamoDBReadRequest) TakeReqs(from dynamoDBReadRequest, max int) {
 			if taken > 0 {
 				if _, ok := b[tableName]; !ok {
 					b[tableName] = &dynamodb.KeysAndAttributes{
-						AttributesToGet: []*string{aws.String(valueKey)},
-						ConsistentRead:  aws.Bool(true),
+						AttributesToGet: []*string{
+							aws.String(hashKey),
+							aws.String(valueKey),
+						},
+						ConsistentRead: aws.Bool(true),
 					}
 				}
 

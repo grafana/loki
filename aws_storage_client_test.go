@@ -154,7 +154,12 @@ func (m *mockDynamoDBClient) BatchGetItemWithContext(_ aws.Context, input *dynam
 				return &dynamodb.BatchGetItemOutput{}, fmt.Errorf("Couldn't find ite,")
 			}
 
-			resp.Responses[tableName] = append(resp.Responses[tableName], items[i])
+			// Only return AttributesToGet!
+			item := map[string]*dynamodb.AttributeValue{}
+			for _, key := range readRequests.AttributesToGet {
+				item[*key] = items[i][*key]
+			}
+			resp.Responses[tableName] = append(resp.Responses[tableName], item)
 		}
 	}
 	return resp, nil
