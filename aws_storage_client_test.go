@@ -74,7 +74,7 @@ func (m *mockDynamoDBClient) BatchWriteItemWithContext(_ aws.Context, input *dyn
 
 	if m.provisionedErr > 0 {
 		m.provisionedErr--
-		return resp, awserr.New(provisionedThroughputExceededException, "", nil)
+		return resp, awserr.New(dynamodb.ErrCodeProvisionedThroughputExceededException, "", nil)
 	}
 
 	for tableName, writeRequests := range input.RequestItems {
@@ -124,7 +124,7 @@ func (m *mockDynamoDBClient) BatchGetItemWithContext(_ aws.Context, input *dynam
 
 	if m.provisionedErr > 0 {
 		m.provisionedErr--
-		return resp, awserr.New(provisionedThroughputExceededException, "", nil)
+		return resp, awserr.New(dynamodb.ErrCodeProvisionedThroughputExceededException, "", nil)
 	}
 
 	for tableName, readRequests := range input.RequestItems {

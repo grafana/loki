@@ -39,8 +39,6 @@ const (
 	errorReasonLabel = "error"
 	otherError       = "other"
 
-	provisionedThroughputExceededException = "ProvisionedThroughputExceededException"
-
 	// Backoff for dynamoDB requests, to match AWS lib - see:
 	// https://github.com/aws/aws-sdk-go/blob/master/service/dynamodb/customizations.go
 	minBackoff = 50 * time.Millisecond
@@ -197,7 +195,7 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 
 		// If we get provisionedThroughputExceededException, then no items were processed,
 		// so back off and retry all.
-		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
+		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
 			unprocessed.TakeReqs(reqs, -1)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
@@ -275,7 +273,7 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 		if err != nil {
 			recordDynamoError(*input.TableName, err)
 
-			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
+			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
 				time.Sleep(backoff)
 				backoff = nextBackoff(backoff)
 				continue
@@ -471,7 +469,7 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 
 			// If we get provisionedThroughputExceededException, then no items were processed,
 			// so back off and retry all.
-			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == provisionedThroughputExceededException {
+			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
 				unprocessed.TakeReqs(requests, -1)
 				time.Sleep(backoff)
 				backoff = nextBackoff(backoff)
