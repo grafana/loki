@@ -51,48 +51,52 @@ func (m *MockStorage) ListTables(_ context.Context) ([]string, error) {
 }
 
 // CreateTable implements StorageClient.
-func (m *MockStorage) CreateTable(_ context.Context, name string, read, write int64) error {
+func (m *MockStorage) CreateTable(_ context.Context, desc TableDesc) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	if _, ok := m.tables[name]; ok {
+	if _, ok := m.tables[desc.Name]; ok {
 		return fmt.Errorf("table already exists")
 	}
 
-	m.tables[name] = &mockTable{
+	m.tables[desc.Name] = &mockTable{
 		items: map[string][]mockItem{},
-		write: write,
-		read:  read,
+		write: desc.ProvisionedWrite,
+		read:  desc.ProvisionedRead,
 	}
 
 	return nil
 }
 
 // DescribeTable implements StorageClient.
-func (m *MockStorage) DescribeTable(_ context.Context, name string) (readCapacity, writeCapacity int64, status string, err error) {
+func (m *MockStorage) DescribeTable(_ context.Context, name string) (desc TableDesc, status string, err error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
 	table, ok := m.tables[name]
 	if !ok {
-		return 0, 0, "", fmt.Errorf("not found")
+		return TableDesc{}, "", fmt.Errorf("not found")
 	}
 
-	return table.read, table.write, dynamodb.TableStatusActive, nil
+	return TableDesc{
+		Name:             name,
+		ProvisionedRead:  table.read,
+		ProvisionedWrite: table.write,
+	}, dynamodb.TableStatusActive, nil
 }
 
 // UpdateTable implements StorageClient.
-func (m *MockStorage) UpdateTable(_ context.Context, name string, readCapacity, writeCapacity int64) error {
+func (m *MockStorage) UpdateTable(_ context.Context, desc TableDesc) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	table, ok := m.tables[name]
+	table, ok := m.tables[desc.Name]
 	if !ok {
 		return fmt.Errorf("not found")
 	}
 
-	table.read = readCapacity
-	table.write = writeCapacity
+	table.read = desc.ProvisionedRead
+	table.write = desc.ProvisionedWrite
 
 	return nil
 }

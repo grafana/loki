@@ -2,14 +2,15 @@ package chunk
 
 import (
 	"flag"
+	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
@@ -62,6 +63,66 @@ type TableManagerConfig struct {
 	ChunkTableProvisionedReadThroughput  int64
 	ChunkTableInactiveWriteThroughput    int64
 	ChunkTableInactiveReadThroughput     int64
+
+	TableTags Tags
+}
+
+// Tags is a string-string map that implements flag.Value.
+type Tags map[string]string
+
+// String implements flag.Value
+func (ts Tags) String() string {
+	if ts == nil {
+		return ""
+	}
+
+	return fmt.Sprintf("%v", map[string]string(ts))
+}
+
+// Set implements flag.Value
+func (ts *Tags) Set(s string) error {
+	if ts == nil {
+		*ts = map[string]string{}
+	}
+
+	parts := strings.SplitN(s, "=", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("tag must of the format key=value")
+	}
+	(*ts)[parts[0]] = parts[1]
+	return nil
+}
+
+// Equals returns true is other matches ts.
+func (ts Tags) Equals(other Tags) bool {
+	if len(ts) != len(other) {
+		return false
+	}
+
+	for k, v1 := range ts {
+		v2, ok := other[k]
+		if !ok || v1 != v2 {
+			return false
+		}
+	}
+
+	return true
+}
+
+// AWSTags converts ts into a []*dynamodb.Tag.
+func (ts Tags) AWSTags() []*dynamodb.Tag {
+	if ts == nil {
+		return nil
+	}
+
+	var result []*dynamodb.Tag
+	for k, v := range ts {
+		result = append(result, &dynamodb.Tag{
+			Key:   aws.String(k),
+			Value: aws.String(v),
+		})
+	}
+	return result
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -69,14 +130,15 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
 	f.DurationVar(&cfg.CreationGracePeriod, "dynamodb.periodic-table.grace-period", 10*time.Minute, "DynamoDB periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age time before flushing.")
-	f.Int64Var(&cfg.ProvisionedWriteThroughput, "dynamodb.periodic-table.write-throughput", 3000, "DynamoDB periodic tables write throughput")
-	f.Int64Var(&cfg.ProvisionedReadThroughput, "dynamodb.periodic-table.read-throughput", 300, "DynamoDB periodic tables read throughput")
+	f.Int64Var(&cfg.ProvisionedWriteThroughput, "dynamodb.periodic-table.write-throughput", 3000, "DynamoDB periodic tables write throughput.")
+	f.Int64Var(&cfg.ProvisionedReadThroughput, "dynamodb.periodic-table.read-throughput", 300, "DynamoDB periodic tables read throughput.")
 	f.Int64Var(&cfg.InactiveWriteThroughput, "dynamodb.periodic-table.inactive-write-throughput", 1, "DynamoDB periodic tables write throughput for inactive tables.")
-	f.Int64Var(&cfg.InactiveReadThroughput, "dynamodb.periodic-table.inactive-read-throughput", 300, "DynamoDB periodic tables read throughput for inactive tables")
-	f.Int64Var(&cfg.ChunkTableProvisionedWriteThroughput, "dynamodb.chunk-table.write-throughput", 3000, "DynamoDB chunk tables write throughput")
-	f.Int64Var(&cfg.ChunkTableProvisionedReadThroughput, "dynamodb.chunk-table.read-throughput", 300, "DynamoDB chunk tables read throughput")
+	f.Int64Var(&cfg.InactiveReadThroughput, "dynamodb.periodic-table.inactive-read-throughput", 300, "DynamoDB periodic tables read throughput for inactive tables.")
+	f.Int64Var(&cfg.ChunkTableProvisionedWriteThroughput, "dynamodb.chunk-table.write-throughput", 3000, "DynamoDB chunk tables write throughput.")
+	f.Int64Var(&cfg.ChunkTableProvisionedReadThroughput, "dynamodb.chunk-table.read-throughput", 300, "DynamoDB chunk tables read throughput.")
 	f.Int64Var(&cfg.ChunkTableInactiveWriteThroughput, "dynamodb.chunk-table.inactive-write-throughput", 1, "DynamoDB chunk tables write throughput for inactive tables.")
-	f.Int64Var(&cfg.ChunkTableInactiveReadThroughput, "dynamodb.chunk-table.inactive-read-throughput", 300, "DynamoDB chunk tables read throughput for inactive tables")
+	f.Int64Var(&cfg.ChunkTableInactiveReadThroughput, "dynamodb.chunk-table.inactive-read-throughput", 300, "DynamoDB chunk tables read throughput for inactive tables.")
+	f.Var(&cfg.TableTags, "dynamodb.table.tag", "Tag (of the form key=value) to be added to all tables under management.")
 
 	cfg.PeriodicTableConfig.RegisterFlags(f)
 	cfg.PeriodicChunkTableConfig.RegisterFlags(f)
@@ -187,26 +249,15 @@ func (m *TableManager) syncTables(ctx context.Context) error {
 	return m.updateTables(ctx, toCheckThroughput)
 }
 
-type tableDescription struct {
-	name             string
-	provisionedRead  int64
-	provisionedWrite int64
-}
-
-type byName []tableDescription
-
-func (a byName) Len() int           { return len(a) }
-func (a byName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a byName) Less(i, j int) bool { return a[i].name < a[j].name }
-
-func (m *TableManager) calculateExpectedTables() []tableDescription {
-	result := []tableDescription{}
+func (m *TableManager) calculateExpectedTables() []TableDesc {
+	result := []TableDesc{}
 
 	// Add the legacy table
-	legacyTable := tableDescription{
-		name:             m.cfg.OriginalTableName,
-		provisionedRead:  m.cfg.InactiveReadThroughput,
-		provisionedWrite: m.cfg.InactiveWriteThroughput,
+	legacyTable := TableDesc{
+		Name:             m.cfg.OriginalTableName,
+		ProvisionedRead:  m.cfg.InactiveReadThroughput,
+		ProvisionedWrite: m.cfg.InactiveWriteThroughput,
+		Tags:             m.cfg.TableTags,
 	}
 
 	if m.cfg.UsePeriodicTables {
@@ -220,14 +271,14 @@ func (m *TableManager) calculateExpectedTables() []tableDescription {
 		)
 
 		if now < (firstTable*tablePeriodSecs)+gracePeriodSecs+maxChunkAgeSecs {
-			legacyTable.provisionedRead = m.cfg.ProvisionedReadThroughput
-			legacyTable.provisionedWrite = m.cfg.ProvisionedWriteThroughput
+			legacyTable.ProvisionedRead = m.cfg.ProvisionedReadThroughput
+			legacyTable.ProvisionedWrite = m.cfg.ProvisionedWriteThroughput
 		}
 	}
 	result = append(result, legacyTable)
 
 	if m.cfg.UsePeriodicTables {
-		result = append(result, periodicTables(
+		result = append(result, m.periodicTables(
 			m.cfg.TablePrefix, m.cfg.PeriodicTableStartAt.Time, m.cfg.TablePeriod,
 			m.cfg.CreationGracePeriod, m.cfg.MaxChunkAge,
 			m.cfg.ProvisionedReadThroughput, m.cfg.ProvisionedWriteThroughput,
@@ -236,7 +287,7 @@ func (m *TableManager) calculateExpectedTables() []tableDescription {
 	}
 
 	if m.cfg.ChunkTableFrom.IsSet() {
-		result = append(result, periodicTables(
+		result = append(result, m.periodicTables(
 			m.cfg.ChunkTablePrefix, m.cfg.ChunkTableFrom.Time, m.cfg.ChunkTablePeriod,
 			m.cfg.CreationGracePeriod, m.cfg.MaxChunkAge,
 			m.cfg.ChunkTableProvisionedReadThroughput, m.cfg.ChunkTableProvisionedWriteThroughput,
@@ -248,10 +299,10 @@ func (m *TableManager) calculateExpectedTables() []tableDescription {
 	return result
 }
 
-func periodicTables(
+func (m *TableManager) periodicTables(
 	prefix string, start model.Time, period, beginGrace, endGrace time.Duration,
 	activeRead, activeWrite, inactiveRead, inactiveWrite int64,
-) []tableDescription {
+) []TableDesc {
 	var (
 		periodSecs     = int64(period / time.Second)
 		beginGraceSecs = int64(beginGrace / time.Second)
@@ -259,20 +310,21 @@ func periodicTables(
 		firstTable     = start.Unix() / periodSecs
 		lastTable      = (mtime.Now().Unix() + beginGraceSecs) / periodSecs
 		now            = mtime.Now().Unix()
-		result         = []tableDescription{}
+		result         = []TableDesc{}
 	)
 	for i := firstTable; i <= lastTable; i++ {
-		table := tableDescription{
+		table := TableDesc{
 			// Name construction needs to be consistent with chunk_store.bigBuckets
-			name:             prefix + strconv.Itoa(int(i)),
-			provisionedRead:  inactiveRead,
-			provisionedWrite: inactiveWrite,
+			Name:             prefix + strconv.Itoa(int(i)),
+			ProvisionedRead:  inactiveRead,
+			ProvisionedWrite: inactiveWrite,
+			Tags:             m.cfg.TableTags,
 		}
 
 		// if now is within table [start - grace, end + grace), then we need some write throughput
 		if (i*periodSecs)-beginGraceSecs <= now && now < (i*periodSecs)+periodSecs+endGraceSecs {
-			table.provisionedRead = activeRead
-			table.provisionedWrite = activeWrite
+			table.ProvisionedRead = activeRead
+			table.ProvisionedWrite = activeWrite
 		}
 		result = append(result, table)
 	}
@@ -281,26 +333,26 @@ func periodicTables(
 }
 
 // partitionTables works out tables that need to be created vs tables that need to be updated
-func (m *TableManager) partitionTables(ctx context.Context, descriptions []tableDescription) ([]tableDescription, []tableDescription, error) {
+func (m *TableManager) partitionTables(ctx context.Context, descriptions []TableDesc) ([]TableDesc, []TableDesc, error) {
 	existingTables, err := m.client.ListTables(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 	sort.Strings(existingTables)
 
-	toCreate, toCheckThroughput := []tableDescription{}, []tableDescription{}
+	toCreate, toCheck := []TableDesc{}, []TableDesc{}
 	i, j := 0, 0
 	for i < len(descriptions) && j < len(existingTables) {
-		if descriptions[i].name < existingTables[j] {
+		if descriptions[i].Name < existingTables[j] {
 			// Table descriptions[i] doesn't exist
 			toCreate = append(toCreate, descriptions[i])
 			i++
-		} else if descriptions[i].name > existingTables[j] {
+		} else if descriptions[i].Name > existingTables[j] {
 			// existingTables[j].name isn't in descriptions, can ignore
 			j++
 		} else {
 			// Table exists, need to check it has correct throughput
-			toCheckThroughput = append(toCheckThroughput, descriptions[i])
+			toCheck = append(toCheck, descriptions[i])
 			i++
 			j++
 		}
@@ -309,13 +361,13 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []table
 		toCreate = append(toCreate, descriptions[i])
 	}
 
-	return toCreate, toCheckThroughput, nil
+	return toCreate, toCheck, nil
 }
 
-func (m *TableManager) createTables(ctx context.Context, descriptions []tableDescription) error {
+func (m *TableManager) createTables(ctx context.Context, descriptions []TableDesc) error {
 	for _, desc := range descriptions {
-		log.Infof("Creating table %s", desc.name)
-		err := m.client.CreateTable(ctx, desc.name, desc.provisionedRead, desc.provisionedWrite)
+		log.Infof("Creating table %s", desc.Name)
+		err := m.client.CreateTable(ctx, desc)
 		if err != nil {
 			return err
 		}
@@ -323,129 +375,32 @@ func (m *TableManager) createTables(ctx context.Context, descriptions []tableDes
 	return nil
 }
 
-func (m *TableManager) updateTables(ctx context.Context, descriptions []tableDescription) error {
+func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDesc) error {
 	for _, desc := range descriptions {
-		log.Infof("Checking provisioned throughput on table %s", desc.name)
-		readCapacity, writeCapacity, status, err := m.client.DescribeTable(ctx, desc.name)
+		log.Infof("Checking provisioned throughput on table %s", desc.Name)
+		current, status, err := m.client.DescribeTable(ctx, desc.Name)
 		if err != nil {
 			return err
 		}
 
 		if status != dynamodb.TableStatusActive {
-			log.Infof("Skipping update on  table %s, not yet ACTIVE (%s)", desc.name, status)
+			log.Infof("Skipping update on  table %s, not yet ACTIVE (%s)", desc.Name, status)
 			continue
 		}
 
-		tableCapacity.WithLabelValues(readLabel, desc.name).Set(float64(readCapacity))
-		tableCapacity.WithLabelValues(writeLabel, desc.name).Set(float64(writeCapacity))
+		tableCapacity.WithLabelValues(readLabel, desc.Name).Set(float64(current.ProvisionedRead))
+		tableCapacity.WithLabelValues(writeLabel, desc.Name).Set(float64(current.ProvisionedWrite))
 
-		if readCapacity == desc.provisionedRead && writeCapacity == desc.provisionedWrite {
-			log.Infof("  Provisioned throughput: read = %d, write = %d, skipping.", readCapacity, writeCapacity)
+		if desc.Equals(current) {
+			log.Infof("  Provisioned throughput: read = %d, write = %d, skipping.", current.ProvisionedRead, current.ProvisionedWrite)
 			continue
 		}
 
-		log.Infof("  Updating provisioned throughput on table %s to read = %d, write = %d", desc.name, desc.provisionedRead, desc.provisionedWrite)
-		err = m.client.UpdateTable(ctx, desc.name, desc.provisionedRead, desc.provisionedWrite)
+		log.Infof("  Updating provisioned throughput on table %s to read = %d, write = %d", desc.Name, desc.ProvisionedRead, desc.ProvisionedWrite)
+		err = m.client.UpdateTable(ctx, desc)
 		if err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-// TableClient is a client for telling Dynamo what to do with tables.
-type TableClient interface {
-	ListTables(ctx context.Context) ([]string, error)
-	CreateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error
-	DescribeTable(ctx context.Context, name string) (readCapacity, writeCapacity int64, status string, err error)
-	UpdateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error
-}
-
-type dynamoTableClient struct {
-	DynamoDB dynamodbiface.DynamoDBAPI
-}
-
-// NewDynamoDBTableClient makes a new DynamoTableClient.
-func NewDynamoDBTableClient(cfg DynamoDBConfig) (TableClient, error) {
-	dynamoDB, err := dynamoClientFromURL(cfg.DynamoDB.URL)
-	if err != nil {
-		return nil, err
-	}
-	return dynamoTableClient{
-		DynamoDB: dynamoDB,
-	}, nil
-}
-
-func (d dynamoTableClient) ListTables(ctx context.Context) ([]string, error) {
-	table := []string{}
-	err := instrument.TimeRequestHistogram(ctx, "DynamoDB.ListTablesPages", dynamoRequestDuration, func(_ context.Context) error {
-		return d.DynamoDB.ListTablesPages(&dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
-			for _, s := range resp.TableNames {
-				table = append(table, *s)
-			}
-			return true
-		})
-	})
-	return table, err
-}
-
-func (d dynamoTableClient) CreateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error {
-	return instrument.TimeRequestHistogram(ctx, "DynamoDB.CreateTable", dynamoRequestDuration, func(_ context.Context) error {
-		input := &dynamodb.CreateTableInput{
-			TableName: aws.String(name),
-			AttributeDefinitions: []*dynamodb.AttributeDefinition{
-				{
-					AttributeName: aws.String(hashKey),
-					AttributeType: aws.String(dynamodb.ScalarAttributeTypeS),
-				},
-				{
-					AttributeName: aws.String(rangeKey),
-					AttributeType: aws.String(dynamodb.ScalarAttributeTypeB),
-				},
-			},
-			KeySchema: []*dynamodb.KeySchemaElement{
-				{
-					AttributeName: aws.String(hashKey),
-					KeyType:       aws.String(dynamodb.KeyTypeHash),
-				},
-				{
-					AttributeName: aws.String(rangeKey),
-					KeyType:       aws.String(dynamodb.KeyTypeRange),
-				},
-			},
-			ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-				ReadCapacityUnits:  aws.Int64(readCapacity),
-				WriteCapacityUnits: aws.Int64(writeCapacity),
-			},
-		}
-		_, err := d.DynamoDB.CreateTable(input)
-		return err
-	})
-}
-
-func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (readCapacity, writeCapacity int64, status string, err error) {
-	var out *dynamodb.DescribeTableOutput
-	instrument.TimeRequestHistogram(ctx, "DynamoDB.DescribeTable", dynamoRequestDuration, func(_ context.Context) error {
-		out, err = d.DynamoDB.DescribeTable(&dynamodb.DescribeTableInput{
-			TableName: aws.String(name),
-		})
-		readCapacity = *out.Table.ProvisionedThroughput.ReadCapacityUnits
-		writeCapacity = *out.Table.ProvisionedThroughput.WriteCapacityUnits
-		status = *out.Table.TableStatus
-		return err
-	})
-	return
-}
-
-func (d dynamoTableClient) UpdateTable(ctx context.Context, name string, readCapacity, writeCapacity int64) error {
-	return instrument.TimeRequestHistogram(ctx, "DynamoDB.UpdateTable", dynamoRequestDuration, func(_ context.Context) error {
-		_, err := d.DynamoDB.UpdateTable(&dynamodb.UpdateTableInput{
-			TableName: aws.String(name),
-			ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-				ReadCapacityUnits:  aws.Int64(readCapacity),
-				WriteCapacityUnits: aws.Int64(writeCapacity),
-			},
-		})
-		return err
-	})
 }

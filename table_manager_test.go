@@ -25,7 +25,10 @@ const (
 )
 
 func TestTableManager(t *testing.T) {
-	dynamoDB := NewMockStorage()
+	dynamoDB := newMockDynamoDB(0, 0)
+	client := dynamoTableClient{
+		DynamoDB: dynamoDB,
+	}
 
 	cfg := TableManagerConfig{
 		PeriodicTableConfig: PeriodicTableConfig{
@@ -52,19 +55,19 @@ func TestTableManager(t *testing.T) {
 		ChunkTableInactiveWriteThroughput:    inactiveWrite,
 		ChunkTableInactiveReadThroughput:     inactiveRead,
 	}
-	tableManager, err := NewTableManager(cfg, dynamoDB)
+	tableManager, err := NewTableManager(cfg, client)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	test := func(name string, tm time.Time, expected []tableDescription) {
+	test := func(name string, tm time.Time, expected []TableDesc) {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
 			mtime.NowForce(tm)
 			if err := tableManager.syncTables(ctx); err != nil {
 				t.Fatal(err)
 			}
-			expectTables(ctx, t, dynamoDB, expected)
+			expectTables(ctx, t, client, expected)
 		})
 	}
 
@@ -72,10 +75,10 @@ func TestTableManager(t *testing.T) {
 	test(
 		"Initial test",
 		time.Unix(0, 0),
-		[]tableDescription{
-			{name: "", provisionedRead: read, provisionedWrite: write},
-			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
-			{name: chunkTablePrefix + "0", provisionedRead: read, provisionedWrite: write},
+		[]TableDesc{
+			{Name: "", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)
 
@@ -83,10 +86,10 @@ func TestTableManager(t *testing.T) {
 	test(
 		"Nothing changed",
 		time.Unix(0, 0),
-		[]tableDescription{
-			{name: "", provisionedRead: read, provisionedWrite: write},
-			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
-			{name: chunkTablePrefix + "0", provisionedRead: read, provisionedWrite: write},
+		[]TableDesc{
+			{Name: "", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)
 
@@ -94,10 +97,10 @@ func TestTableManager(t *testing.T) {
 	test(
 		"Move forward by grace period",
 		time.Unix(0, 0).Add(gracePeriod),
-		[]tableDescription{
-			{name: "", provisionedRead: read, provisionedWrite: write},
-			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
-			{name: chunkTablePrefix + "0", provisionedRead: read, provisionedWrite: write},
+		[]TableDesc{
+			{Name: "", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)
 
@@ -105,10 +108,10 @@ func TestTableManager(t *testing.T) {
 	test(
 		"Move forward by max chunk age + grace period",
 		time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
-		[]tableDescription{
-			{name: "", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
-			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
-			{name: chunkTablePrefix + "0", provisionedRead: read, provisionedWrite: write},
+		[]TableDesc{
+			{Name: "", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)
 
@@ -116,12 +119,12 @@ func TestTableManager(t *testing.T) {
 	test(
 		"Move forward by table period - grace period",
 		time.Unix(0, 0).Add(tablePeriod).Add(-gracePeriod),
-		[]tableDescription{
-			{name: "", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
-			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
-			{name: tablePrefix + "1", provisionedRead: read, provisionedWrite: write},
-			{name: chunkTablePrefix + "0", provisionedRead: read, provisionedWrite: write},
-			{name: chunkTablePrefix + "1", provisionedRead: read, provisionedWrite: write},
+		[]TableDesc{
+			{Name: "", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)
 
@@ -129,12 +132,12 @@ func TestTableManager(t *testing.T) {
 	test(
 		"Move forward by table period + grace period",
 		time.Unix(0, 0).Add(tablePeriod).Add(gracePeriod),
-		[]tableDescription{
-			{name: "", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
-			{name: tablePrefix + "0", provisionedRead: read, provisionedWrite: write},
-			{name: tablePrefix + "1", provisionedRead: read, provisionedWrite: write},
-			{name: chunkTablePrefix + "0", provisionedRead: read, provisionedWrite: write},
-			{name: chunkTablePrefix + "1", provisionedRead: read, provisionedWrite: write},
+		[]TableDesc{
+			{Name: "", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)
 
@@ -142,12 +145,12 @@ func TestTableManager(t *testing.T) {
 	test(
 		"Move forward by table period + max chunk age + grace period",
 		time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
-		[]tableDescription{
-			{name: "", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
-			{name: tablePrefix + "0", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
-			{name: tablePrefix + "1", provisionedRead: read, provisionedWrite: write},
-			{name: chunkTablePrefix + "0", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
-			{name: chunkTablePrefix + "1", provisionedRead: read, provisionedWrite: write},
+		[]TableDesc{
+			{Name: "", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: chunkTablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)
 
@@ -155,17 +158,74 @@ func TestTableManager(t *testing.T) {
 	test(
 		"Nothing changed",
 		time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
-		[]tableDescription{
-			{name: "", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
-			{name: tablePrefix + "0", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
-			{name: tablePrefix + "1", provisionedRead: read, provisionedWrite: write},
-			{name: chunkTablePrefix + "0", provisionedRead: inactiveRead, provisionedWrite: inactiveWrite},
-			{name: chunkTablePrefix + "1", provisionedRead: read, provisionedWrite: write},
+		[]TableDesc{
+			{Name: "", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: chunkTablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)
 }
 
-func expectTables(ctx context.Context, t *testing.T, dynamo TableClient, expected []tableDescription) {
+func TestTableManagerTags(t *testing.T) {
+	dynamoDB := newMockDynamoDB(0, 0)
+	client := dynamoTableClient{
+		DynamoDB: dynamoDB,
+	}
+
+	test := func(tableManager *TableManager, name string, tm time.Time, expected []TableDesc) {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			mtime.NowForce(tm)
+			if err := tableManager.syncTables(ctx); err != nil {
+				t.Fatal(err)
+			}
+			expectTables(ctx, t, client, expected)
+		})
+	}
+
+	// Check at time zero, we have the base table with no tags.
+	{
+		tableManager, err := NewTableManager(TableManagerConfig{}, client)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		test(
+			tableManager,
+			"Initial test",
+			time.Unix(0, 0),
+			[]TableDesc{
+				{Name: ""},
+			},
+		)
+	}
+
+	// Check after restarting table manager we get some tags.
+	{
+		cfg := TableManagerConfig{
+			TableTags: Tags{
+				"foo": "bar",
+			},
+		}
+		tableManager, err := NewTableManager(cfg, client)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		test(
+			tableManager,
+			"Tagged test",
+			time.Unix(0, 0),
+			[]TableDesc{
+				{Name: "", Tags: Tags{"foo": "bar"}},
+			},
+		)
+	}
+}
+
+func expectTables(ctx context.Context, t *testing.T, dynamo TableClient, expected []TableDesc) {
 	tables, err := dynamo.ListTables(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -178,22 +238,18 @@ func expectTables(ctx context.Context, t *testing.T, dynamo TableClient, expecte
 	sort.Strings(tables)
 	sort.Sort(byName(expected))
 
-	for i, desc := range expected {
-		if tables[i] != desc.name {
-			t.Fatalf("Expected '%s', found '%s'", desc.name, tables[i])
+	for i, expect := range expected {
+		if tables[i] != expect.Name {
+			t.Fatalf("Expected '%s', found '%s'", expect.Name, tables[i])
 		}
 
-		read, write, _, err := dynamo.DescribeTable(ctx, desc.name)
+		desc, _, err := dynamo.DescribeTable(ctx, expect.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if read != desc.provisionedRead {
-			t.Fatalf("Expected '%d', found '%d' for table '%s'", desc.provisionedRead, read, desc.name)
-		}
-
-		if write != desc.provisionedWrite {
-			t.Fatalf("Expected '%d', found '%d' for table '%s'", desc.provisionedWrite, write, desc.name)
+		if !desc.Equals(expect) {
+			t.Fatalf("Expected '%v', found '%v' for table '%s'", expect, desc, desc.Name)
 		}
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -28,6 +29,8 @@ import (
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
+const arnPrefix = "arn:"
+
 type mockDynamoDBClient struct {
 	dynamodbiface.DynamoDBAPI
 
@@ -40,6 +43,7 @@ type mockDynamoDBClient struct {
 type mockDynamoDBTable struct {
 	items       map[string][]mockDynamoDBItem
 	read, write int64
+	tags        []*dynamodb.Tag
 }
 
 type mockDynamoDBItem map[string]*dynamodb.AttributeValue
@@ -238,68 +242,121 @@ func (m *dynamoDBMockRequest) HasNextPage() bool {
 	return false
 }
 
-type mockDynamoDBTableClient struct {
-	*mockDynamoDBClient
-}
-
-func (m *mockDynamoDBTableClient) ListTables(_ context.Context) ([]string, error) {
+func (m *mockDynamoDBClient) ListTablesPagesWithContext(_ aws.Context, input *dynamodb.ListTablesInput, fn func(*dynamodb.ListTablesOutput, bool) bool, _ ...request.Option) error {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
-	var tableNames []string
+	var tableNames []*string
 	for tableName := range m.tables {
 		func(tableName string) {
-			tableNames = append(tableNames, tableName)
+			tableNames = append(tableNames, &tableName)
 		}(tableName)
 	}
-	return tableNames, nil
+	fn(&dynamodb.ListTablesOutput{
+		TableNames: tableNames,
+	}, true)
+
+	return nil
 }
 
 // CreateTable implements StorageClient.
-func (m *mockDynamoDBTableClient) CreateTable(_ context.Context, name string, read, write int64) error {
+func (m *mockDynamoDBClient) CreateTableWithContext(_ aws.Context, input *dynamodb.CreateTableInput, _ ...request.Option) (*dynamodb.CreateTableOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	if _, ok := m.tables[name]; ok {
-		return fmt.Errorf("table already exists")
+	if _, ok := m.tables[*input.TableName]; ok {
+		return nil, fmt.Errorf("table already exists")
 	}
 
-	m.tables[name] = &mockDynamoDBTable{
+	m.tables[*input.TableName] = &mockDynamoDBTable{
 		items: map[string][]mockDynamoDBItem{},
-		write: write,
-		read:  read,
+		write: *input.ProvisionedThroughput.WriteCapacityUnits,
+		read:  *input.ProvisionedThroughput.ReadCapacityUnits,
 	}
 
-	return nil
+	return &dynamodb.CreateTableOutput{
+		TableDescription: &dynamodb.TableDescription{
+			TableArn: aws.String(arnPrefix + *input.TableName),
+		},
+	}, nil
 }
 
 // DescribeTable implements StorageClient.
-func (m *mockDynamoDBTableClient) DescribeTable(_ context.Context, name string) (readCapacity, writeCapacity int64, status string, err error) {
+func (m *mockDynamoDBClient) DescribeTableWithContext(_ aws.Context, input *dynamodb.DescribeTableInput, _ ...request.Option) (*dynamodb.DescribeTableOutput, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
-	table, ok := m.tables[name]
+	table, ok := m.tables[*input.TableName]
 	if !ok {
-		return 0, 0, "", fmt.Errorf("not found")
+		return nil, fmt.Errorf("not found")
 	}
 
-	return table.read, table.write, dynamodb.TableStatusActive, nil
+	return &dynamodb.DescribeTableOutput{
+		Table: &dynamodb.TableDescription{
+			TableName:   input.TableName,
+			TableStatus: aws.String(dynamodb.TableStatusActive),
+			ProvisionedThroughput: &dynamodb.ProvisionedThroughputDescription{
+				ReadCapacityUnits:  aws.Int64(table.read),
+				WriteCapacityUnits: aws.Int64(table.write),
+			},
+			TableArn: aws.String(arnPrefix + *input.TableName),
+		},
+	}, nil
 }
 
 // UpdateTable implements StorageClient.
-func (m *mockDynamoDBTableClient) UpdateTable(_ context.Context, name string, readCapacity, writeCapacity int64) error {
+func (m *mockDynamoDBClient) UpdateTableWithContext(_ aws.Context, input *dynamodb.UpdateTableInput, _ ...request.Option) (*dynamodb.UpdateTableOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	table, ok := m.tables[name]
+	table, ok := m.tables[*input.TableName]
 	if !ok {
-		return fmt.Errorf("not found")
+		return nil, fmt.Errorf("not found")
 	}
 
-	table.read = readCapacity
-	table.write = writeCapacity
+	table.read = *input.ProvisionedThroughput.ReadCapacityUnits
+	table.write = *input.ProvisionedThroughput.WriteCapacityUnits
 
-	return nil
+	return &dynamodb.UpdateTableOutput{
+		TableDescription: &dynamodb.TableDescription{
+			TableArn: aws.String(arnPrefix + *input.TableName),
+		},
+	}, nil
+}
+
+func (m *mockDynamoDBClient) TagResourceWithContext(_ aws.Context, input *dynamodb.TagResourceInput, _ ...request.Option) (*dynamodb.TagResourceOutput, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	if !strings.HasPrefix(*input.ResourceArn, arnPrefix) {
+		return nil, fmt.Errorf("not an arn: %v", *input.ResourceArn)
+	}
+
+	table, ok := m.tables[strings.TrimPrefix(*input.ResourceArn, arnPrefix)]
+	if !ok {
+		return nil, fmt.Errorf("not found")
+	}
+
+	table.tags = input.Tags
+	return &dynamodb.TagResourceOutput{}, nil
+}
+
+func (m *mockDynamoDBClient) ListTagsOfResourceWithContext(_ aws.Context, input *dynamodb.ListTagsOfResourceInput, _ ...request.Option) (*dynamodb.ListTagsOfResourceOutput, error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	if !strings.HasPrefix(*input.ResourceArn, arnPrefix) {
+		return nil, fmt.Errorf("not an arn: %v", *input.ResourceArn)
+	}
+
+	table, ok := m.tables[strings.TrimPrefix(*input.ResourceArn, arnPrefix)]
+	if !ok {
+		return nil, fmt.Errorf("not found")
+	}
+
+	return &dynamodb.ListTagsOfResourceOutput{
+		Tags: table.tags,
+	}, nil
 }
 
 type mockS3 struct {
@@ -396,9 +453,12 @@ func TestAWSStorageClientChunks(t *testing.T) {
 			ChunkTablePeriod: 1 * time.Minute,
 			ChunkTablePrefix: "chunks",
 		}
-		tableManager, err := NewTableManager(TableManagerConfig{
-			PeriodicChunkTableConfig: periodicChunkTableConfig,
-		}, &mockDynamoDBTableClient{dynamoDB})
+		tableManager, err := NewTableManager(
+			TableManagerConfig{
+				PeriodicChunkTableConfig: periodicChunkTableConfig,
+			},
+			&dynamoTableClient{dynamoDB},
+		)
 		require.NoError(t, err)
 		err = tableManager.syncTables(context.Background())
 		require.NoError(t, err)
