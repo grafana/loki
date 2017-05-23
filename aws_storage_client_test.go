@@ -457,7 +457,9 @@ func TestAWSStorageClientChunks(t *testing.T) {
 			TableManagerConfig{
 				PeriodicChunkTableConfig: periodicChunkTableConfig,
 			},
-			&dynamoTableClient{dynamoDB},
+			&dynamoTableClient{
+				DynamoDB: dynamoDB,
+			},
 		)
 		require.NoError(t, err)
 		err = tableManager.syncTables(context.Background())

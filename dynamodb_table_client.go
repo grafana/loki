@@ -10,12 +10,14 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/prometheus/common/log"
 	"golang.org/x/net/context"
+	"golang.org/x/time/rate"
 
 	"github.com/weaveworks/common/instrument"
 )
 
 type dynamoTableClient struct {
 	DynamoDB dynamodbiface.DynamoDBAPI
+	limiter  *rate.Limiter
 }
 
 // NewDynamoDBTableClient makes a new DynamoTableClient.
@@ -26,13 +28,18 @@ func NewDynamoDBTableClient(cfg DynamoDBConfig) (TableClient, error) {
 	}
 	return dynamoTableClient{
 		DynamoDB: dynamoDB,
+		limiter:  rate.NewLimiter(rate.Limit(cfg.APILimit), 1),
 	}, nil
 }
 
-func backoffAndRetry(fn func() error) error {
+func (d dynamoTableClient) backoffAndRetry(ctx context.Context, fn func(context.Context) error) error {
+	if d.limiter != nil { // Tests will have a nil limiter.
+		d.limiter.Wait(ctx)
+	}
+
 	backoff, numRetries := minBackoff, 10
 	for i := 0; i < numRetries; i++ {
-		if err := fn(); err != nil {
+		if err := fn(ctx); err != nil {
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "ThrottlingException" {
 				log.Errorf("Got error %v on try %d, backing off and retrying.", err, i)
 				time.Sleep(backoff)
@@ -49,7 +56,7 @@ func backoffAndRetry(fn func() error) error {
 
 func (d dynamoTableClient) ListTables(ctx context.Context) ([]string, error) {
 	table := []string{}
-	err := backoffAndRetry(func() error {
+	err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "DynamoDB.ListTablesPages", dynamoRequestDuration, func(ctx context.Context) error {
 			return d.DynamoDB.ListTablesPagesWithContext(ctx, &dynamodb.ListTablesInput{}, func(resp *dynamodb.ListTablesOutput, _ bool) bool {
 				for _, s := range resp.TableNames {
@@ -64,7 +71,7 @@ func (d dynamoTableClient) ListTables(ctx context.Context) ([]string, error) {
 
 func (d dynamoTableClient) CreateTable(ctx context.Context, desc TableDesc) error {
 	var tableARN *string
-	if err := backoffAndRetry(func() error {
+	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "DynamoDB.CreateTable", dynamoRequestDuration, func(ctx context.Context) error {
 			input := &dynamodb.CreateTableInput{
 				TableName: aws.String(desc.Name),
@@ -104,7 +111,7 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc TableDesc) erro
 		return err
 	}
 
-	return backoffAndRetry(func() error {
+	return d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "DynamoDB.TagResource", dynamoRequestDuration, func(ctx context.Context) error {
 			_, err := d.DynamoDB.TagResourceWithContext(ctx, &dynamodb.TagResourceInput{
 				ResourceArn: tableARN,
@@ -117,7 +124,7 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc TableDesc) erro
 
 func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc TableDesc, status string, err error) {
 	var tableARN *string
-	err = backoffAndRetry(func() error {
+	err = d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "DynamoDB.DescribeTable", dynamoRequestDuration, func(ctx context.Context) error {
 			out, err := d.DynamoDB.DescribeTableWithContext(ctx, &dynamodb.DescribeTableInput{
 				TableName: aws.String(name),
@@ -134,7 +141,7 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 		return
 	}
 
-	err = backoffAndRetry(func() error {
+	err = d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "DynamoDB.ListTagsOfResource", dynamoRequestDuration, func(ctx context.Context) error {
 			out, err := d.DynamoDB.ListTagsOfResourceWithContext(ctx, &dynamodb.ListTagsOfResourceInput{
 				ResourceArn: tableARN,
@@ -151,7 +158,7 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 
 func (d dynamoTableClient) UpdateTable(ctx context.Context, desc TableDesc) error {
 	var tableARN *string
-	if err := backoffAndRetry(func() error {
+	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "DynamoDB.UpdateTable", dynamoRequestDuration, func(ctx context.Context) error {
 			out, err := d.DynamoDB.UpdateTableWithContext(ctx, &dynamodb.UpdateTableInput{
 				TableName: aws.String(desc.Name),
@@ -170,7 +177,7 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, desc TableDesc) erro
 		return err
 	}
 
-	return backoffAndRetry(func() error {
+	return d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "DynamoDB.TagResource", dynamoRequestDuration, func(ctx context.Context) error {
 			_, err := d.DynamoDB.TagResourceWithContext(ctx, &dynamodb.TagResourceInput{
 				ResourceArn: tableARN,

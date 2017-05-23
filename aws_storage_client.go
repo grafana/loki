@@ -88,12 +88,14 @@ func init() {
 // DynamoDBConfig specifies config for a DynamoDB database.
 type DynamoDBConfig struct {
 	DynamoDB util.URLValue
+	APILimit float64
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.DynamoDB, "dynamodb.url", "DynamoDB endpoint URL with escaped Key and Secret encoded. "+
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<table-name> to use a mock in-memory implementation.")
+	f.Float64Var(&cfg.APILimit, "dynamodb.api-limit", 2.0, "DynamoDB table management requests per second limit.")
 }
 
 // AWSStorageConfig specifies config for storing data on AWS.
