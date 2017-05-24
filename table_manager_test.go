@@ -204,11 +204,8 @@ func TestTableManagerTags(t *testing.T) {
 
 	// Check after restarting table manager we get some tags.
 	{
-		cfg := TableManagerConfig{
-			TableTags: Tags{
-				"foo": "bar",
-			},
-		}
+		cfg := TableManagerConfig{}
+		cfg.TableTags.Set("foo=bar")
 		tableManager, err := NewTableManager(cfg, client)
 		if err != nil {
 			t.Fatal(err)

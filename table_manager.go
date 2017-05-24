@@ -81,7 +81,7 @@ func (ts Tags) String() string {
 
 // Set implements flag.Value
 func (ts *Tags) Set(s string) error {
-	if ts == nil {
+	if *ts == nil {
 		*ts = map[string]string{}
 	}
 
