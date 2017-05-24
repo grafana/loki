@@ -376,28 +376,28 @@ func (m *TableManager) createTables(ctx context.Context, descriptions []TableDes
 }
 
 func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDesc) error {
-	for _, desc := range descriptions {
-		log.Infof("Checking provisioned throughput on table %s", desc.Name)
-		current, status, err := m.client.DescribeTable(ctx, desc.Name)
+	for _, expected := range descriptions {
+		log.Infof("Checking provisioned throughput on table %s", expected.Name)
+		current, status, err := m.client.DescribeTable(ctx, expected.Name)
 		if err != nil {
 			return err
 		}
 
 		if status != dynamodb.TableStatusActive {
-			log.Infof("Skipping update on  table %s, not yet ACTIVE (%s)", desc.Name, status)
+			log.Infof("Skipping update on  table %s, not yet ACTIVE (%s)", expected.Name, status)
 			continue
 		}
 
-		tableCapacity.WithLabelValues(readLabel, desc.Name).Set(float64(current.ProvisionedRead))
-		tableCapacity.WithLabelValues(writeLabel, desc.Name).Set(float64(current.ProvisionedWrite))
+		tableCapacity.WithLabelValues(readLabel, expected.Name).Set(float64(current.ProvisionedRead))
+		tableCapacity.WithLabelValues(writeLabel, expected.Name).Set(float64(current.ProvisionedWrite))
 
-		if desc.Equals(current) {
+		if expected.Equals(current) {
 			log.Infof("  Provisioned throughput: read = %d, write = %d, skipping.", current.ProvisionedRead, current.ProvisionedWrite)
 			continue
 		}
 
-		log.Infof("  Updating provisioned throughput on table %s to read = %d, write = %d", desc.Name, desc.ProvisionedRead, desc.ProvisionedWrite)
-		err = m.client.UpdateTable(ctx, desc)
+		log.Infof("  Updating provisioned throughput on table %s to read = %d, write = %d", expected.Name, expected.ProvisionedRead, expected.ProvisionedWrite)
+		err = m.client.UpdateTable(ctx, current, expected)
 		if err != nil {
 			return err
 		}

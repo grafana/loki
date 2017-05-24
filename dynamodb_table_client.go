@@ -156,34 +156,51 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 	return
 }
 
-func (d dynamoTableClient) UpdateTable(ctx context.Context, desc TableDesc) error {
-	var tableARN *string
-	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
-		return instrument.TimeRequestHistogram(ctx, "DynamoDB.UpdateTable", dynamoRequestDuration, func(ctx context.Context) error {
-			out, err := d.DynamoDB.UpdateTableWithContext(ctx, &dynamodb.UpdateTableInput{
-				TableName: aws.String(desc.Name),
-				ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
-					ReadCapacityUnits:  aws.Int64(desc.ProvisionedRead),
-					WriteCapacityUnits: aws.Int64(desc.ProvisionedWrite),
-				},
-			})
-			if err != nil {
+func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected TableDesc) error {
+
+	if current.ProvisionedRead != expected.ProvisionedRead || current.ProvisionedWrite != expected.ProvisionedWrite {
+		if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
+			return instrument.TimeRequestHistogram(ctx, "DynamoDB.UpdateTable", dynamoRequestDuration, func(ctx context.Context) error {
+				_, err := d.DynamoDB.UpdateTableWithContext(ctx, &dynamodb.UpdateTableInput{
+					TableName: aws.String(expected.Name),
+					ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
+						ReadCapacityUnits:  aws.Int64(expected.ProvisionedRead),
+						WriteCapacityUnits: aws.Int64(expected.ProvisionedWrite),
+					},
+				})
 				return err
-			}
-			tableARN = out.TableDescription.TableArn
-			return nil
-		})
-	}); err != nil {
-		return err
+			})
+		}); err != nil {
+			return err
+		}
 	}
 
-	return d.backoffAndRetry(ctx, func(ctx context.Context) error {
-		return instrument.TimeRequestHistogram(ctx, "DynamoDB.TagResource", dynamoRequestDuration, func(ctx context.Context) error {
-			_, err := d.DynamoDB.TagResourceWithContext(ctx, &dynamodb.TagResourceInput{
-				ResourceArn: tableARN,
-				Tags:        desc.Tags.AWSTags(),
+	if !current.Tags.Equals(expected.Tags) {
+		var tableARN *string
+		if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
+			return instrument.TimeRequestHistogram(ctx, "DynamoDB.DescribeTable", dynamoRequestDuration, func(ctx context.Context) error {
+				out, err := d.DynamoDB.DescribeTableWithContext(ctx, &dynamodb.DescribeTableInput{
+					TableName: aws.String(expected.Name),
+				})
+				if err != nil {
+					return err
+				}
+				tableARN = out.Table.TableArn
+				return nil
 			})
+		}); err != nil {
 			return err
+		}
+
+		return d.backoffAndRetry(ctx, func(ctx context.Context) error {
+			return instrument.TimeRequestHistogram(ctx, "DynamoDB.TagResource", dynamoRequestDuration, func(ctx context.Context) error {
+				_, err := d.DynamoDB.TagResourceWithContext(ctx, &dynamodb.TagResourceInput{
+					ResourceArn: tableARN,
+					Tags:        expected.Tags.AWSTags(),
+				})
+				return err
+			})
 		})
-	})
+	}
+	return nil
 }

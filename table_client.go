@@ -7,7 +7,7 @@ type TableClient interface {
 	ListTables(ctx context.Context) ([]string, error)
 	CreateTable(ctx context.Context, desc TableDesc) error
 	DescribeTable(ctx context.Context, name string) (desc TableDesc, status string, err error)
-	UpdateTable(ctx context.Context, desc TableDesc) error
+	UpdateTable(ctx context.Context, current, expected TableDesc) error
 }
 
 // TableDesc describes a table.

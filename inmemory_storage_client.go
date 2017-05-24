@@ -86,7 +86,7 @@ func (m *MockStorage) DescribeTable(_ context.Context, name string) (desc TableD
 }
 
 // UpdateTable implements StorageClient.
-func (m *MockStorage) UpdateTable(_ context.Context, desc TableDesc) error {
+func (m *MockStorage) UpdateTable(_ context.Context, _, desc TableDesc) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
