@@ -328,6 +328,10 @@ func (m *mockDynamoDBClient) TagResourceWithContext(_ aws.Context, input *dynamo
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
+	if len(input.Tags) == 0 {
+		return nil, fmt.Errorf("tags are required")
+	}
+
 	if !strings.HasPrefix(*input.ResourceArn, arnPrefix) {
 		return nil, fmt.Errorf("not an arn: %v", *input.ResourceArn)
 	}

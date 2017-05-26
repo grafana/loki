@@ -111,15 +111,19 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc TableDesc) erro
 		return err
 	}
 
-	return d.backoffAndRetry(ctx, func(ctx context.Context) error {
-		return instrument.TimeRequestHistogram(ctx, "DynamoDB.TagResource", dynamoRequestDuration, func(ctx context.Context) error {
-			_, err := d.DynamoDB.TagResourceWithContext(ctx, &dynamodb.TagResourceInput{
-				ResourceArn: tableARN,
-				Tags:        desc.Tags.AWSTags(),
+	tags := desc.Tags.AWSTags()
+	if len(tags) > 0 {
+		return d.backoffAndRetry(ctx, func(ctx context.Context) error {
+			return instrument.TimeRequestHistogram(ctx, "DynamoDB.TagResource", dynamoRequestDuration, func(ctx context.Context) error {
+				_, err := d.DynamoDB.TagResourceWithContext(ctx, &dynamodb.TagResourceInput{
+					ResourceArn: tableARN,
+					Tags:        tags,
+				})
+				return err
 			})
-			return err
 		})
-	})
+	}
+	return nil
 }
 
 func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc TableDesc, status string, err error) {
