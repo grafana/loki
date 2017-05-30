@@ -32,7 +32,7 @@ func newTestChunkStore(t *testing.T, cfg StoreConfig) *Store {
 }
 
 func TestChunkStore(t *testing.T) {
-	ctx := user.Inject(context.Background(), userID)
+	ctx := user.InjectUserID(context.Background(), userID)
 	now := model.Now()
 	chunk1 := dummyChunkFor(model.Metric{
 		model.MetricNameLabel: "foo",
@@ -135,7 +135,7 @@ func TestChunkStore(t *testing.T) {
 
 // TestChunkStoreMetricNames tests no metric name queries supported from v7Schema
 func TestChunkStoreMetricNames(t *testing.T) {
-	ctx := user.Inject(context.Background(), userID)
+	ctx := user.InjectUserID(context.Background(), userID)
 	now := model.Now()
 
 	foo1Chunk1 := dummyChunkFor(model.Metric{
@@ -269,7 +269,7 @@ func mustNewLabelMatcher(matchType metric.MatchType, name model.LabelName, value
 }
 
 func TestChunkStoreRandom(t *testing.T) {
-	ctx := user.Inject(context.Background(), userID)
+	ctx := user.InjectUserID(context.Background(), userID)
 	schemas := []struct {
 		name  string
 		fn    func(cfg SchemaConfig) Schema
@@ -350,7 +350,7 @@ func TestChunkStoreRandom(t *testing.T) {
 
 func TestChunkStoreLeastRead(t *testing.T) {
 	// Test we don't read too much from the index
-	ctx := user.Inject(context.Background(), userID)
+	ctx := user.InjectUserID(context.Background(), userID)
 	store := newTestChunkStore(t, StoreConfig{
 		schemaFactory: v6Schema,
 	})

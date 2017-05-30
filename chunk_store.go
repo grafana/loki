@@ -92,7 +92,7 @@ func (c *Store) Stop() {
 
 // Put implements ChunkStore
 func (c *Store) Put(ctx context.Context, chunks []Chunk) error {
-	userID, err := user.Extract(ctx)
+	userID, err := user.ExtractUserID(ctx)
 	if err != nil {
 		return err
 	}
@@ -218,7 +218,7 @@ func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.
 		return c.lookupChunksByMetricName(ctx, from, through, matchers, metricNameMatcher.Value)
 	}
 
-	userID, err := user.Extract(ctx)
+	userID, err := user.ExtractUserID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +275,7 @@ func (c *Store) lookupChunksByMatchers(ctx context.Context, from, through model.
 }
 
 func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*metric.LabelMatcher, metricName model.LabelValue) ([]Chunk, error) {
-	userID, err := user.Extract(ctx)
+	userID, err := user.ExtractUserID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -397,7 +397,7 @@ func (c *Store) lookupEntriesByQuery(ctx context.Context, query IndexQuery) ([]I
 }
 
 func (c *Store) convertIndexEntriesToChunks(ctx context.Context, entries []IndexEntry, matcher *metric.LabelMatcher) (ByKey, error) {
-	userID, err := user.Extract(ctx)
+	userID, err := user.ExtractUserID(ctx)
 	if err != nil {
 		return nil, err
 	}
