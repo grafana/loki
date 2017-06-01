@@ -8,11 +8,11 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
-	"github.com/prometheus/common/log"
 	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
 
 	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 type dynamoTableClient struct {
@@ -41,7 +41,7 @@ func (d dynamoTableClient) backoffAndRetry(ctx context.Context, fn func(context.
 	for i := 0; i < numRetries; i++ {
 		if err := fn(ctx); err != nil {
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "ThrottlingException" {
-				log.Errorf("Got error %v on try %d, backing off and retrying.", err, i)
+				util.WithContext(ctx).Errorf("Got error %v on try %d, backing off and retrying.", err, i)
 				time.Sleep(backoff)
 				backoff = nextBackoff(backoff)
 				continue

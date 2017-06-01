@@ -10,6 +10,8 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/weaveworks/common/instrument"
 	"golang.org/x/net/context"
+
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 var (
@@ -161,7 +163,7 @@ func (c *Cache) FetchChunkData(ctx context.Context, chunks []Chunk) (found []Chu
 
 		if err := chunks[i].decode(item.Value); err != nil {
 			memcacheCorrupt.Inc()
-			log.Errorf("Failed to decode chunk from cache: %v", err)
+			util.WithContext(ctx).Errorf("Failed to decode chunk from cache: %v", err)
 			missing = append(missing, chunks[i])
 			continue
 		}

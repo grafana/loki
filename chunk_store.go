@@ -7,7 +7,6 @@ import (
 	"sort"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/metric"
@@ -152,6 +151,7 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 
 // Get implements ChunkStore
 func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers ...*metric.LabelMatcher) ([]Chunk, error) {
+	logger := util.WithContext(ctx)
 	if through < from {
 		return nil, fmt.Errorf("invalid query, through < from (%d < %d)", through, from)
 	}
@@ -176,7 +176,7 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	// Now fetch the actual chunk data from Memcache / S3
 	fromCache, missing, err := c.cache.FetchChunkData(ctx, filtered)
 	if err != nil {
-		log.Warnf("Error fetching from cache: %v", err)
+		logger.Warnf("Error fetching from cache: %v", err)
 	}
 
 	fromS3, err := c.storage.GetChunks(ctx, missing)
@@ -185,7 +185,7 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	}
 
 	if err = c.writeBackCache(ctx, fromS3); err != nil {
-		log.Warnf("Could not store chunks in chunk cache: %v", err)
+		logger.Warnf("Could not store chunks in chunk cache: %v", err)
 	}
 
 	// TODO instead of doing this sort, propagate an index and assign chunks
@@ -389,7 +389,7 @@ func (c *Store) lookupEntriesByQuery(ctx context.Context, query IndexQuery) ([]I
 		}
 		return !lastPage
 	}); err != nil {
-		log.Errorf("Error querying storage: %v", err)
+		util.WithContext(ctx).Errorf("Error querying storage: %v", err)
 		return nil, err
 	}
 
@@ -425,7 +425,7 @@ func (c *Store) convertIndexEntriesToChunks(ctx context.Context, entries []Index
 		}
 
 		if matcher != nil && !matcher.Match(labelValue) {
-			log.Debug("Dropping chunk for non-matching metric ", chunk.Metric)
+			util.WithContext(ctx).Debug("Dropping chunk for non-matching metric ", chunk.Metric)
 			continue
 		}
 		chunkSet = append(chunkSet, chunk)
