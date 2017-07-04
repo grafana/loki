@@ -72,12 +72,12 @@ func TestSchemaHashKeys(t *testing.T) {
 	)
 
 	cfg := SchemaConfig{
-		PeriodicTableConfig: PeriodicTableConfig{
-			OriginalTableName:    table,
-			UsePeriodicTables:    true,
-			TablePrefix:          periodicPrefix,
-			TablePeriod:          2 * 24 * time.Hour,
-			PeriodicTableStartAt: util.NewDayValue(model.TimeFromUnix(5 * 24 * 60 * 60)),
+		OriginalTableName: table,
+		UsePeriodicTables: true,
+		IndexTables: periodicTableConfig{
+			Prefix: periodicPrefix,
+			Period: 2 * 24 * time.Hour,
+			From:   util.NewDayValue(model.TimeFromUnix(5 * 24 * 60 * 60)),
 		},
 	}
 	compositeSchema := func(dailyBucketsFrom model.Time) Schema {
@@ -284,9 +284,7 @@ func TestSchemaRangeKey(t *testing.T) {
 
 	var (
 		cfg = SchemaConfig{
-			PeriodicTableConfig: PeriodicTableConfig{
-				OriginalTableName: table,
-			},
+			OriginalTableName: table,
 		}
 		hourlyBuckets = v1Schema(cfg)
 		dailyBuckets  = v2Schema(cfg)

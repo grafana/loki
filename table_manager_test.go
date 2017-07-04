@@ -30,30 +30,30 @@ func TestTableManager(t *testing.T) {
 		DynamoDB: dynamoDB,
 	}
 
-	cfg := TableManagerConfig{
-		PeriodicTableConfig: PeriodicTableConfig{
-			UsePeriodicTables:    true,
-			TablePrefix:          tablePrefix,
-			TablePeriod:          tablePeriod,
-			PeriodicTableStartAt: util.NewDayValue(model.TimeFromUnix(0)),
+	cfg := SchemaConfig{
+		UsePeriodicTables: true,
+		IndexTables: periodicTableConfig{
+			Prefix: tablePrefix,
+			Period: tablePeriod,
+			From:   util.NewDayValue(model.TimeFromUnix(0)),
+			ProvisionedWriteThroughput: write,
+			ProvisionedReadThroughput:  read,
+			InactiveWriteThroughput:    inactiveWrite,
+			InactiveReadThroughput:     inactiveRead,
 		},
 
-		PeriodicChunkTableConfig: PeriodicChunkTableConfig{
-			ChunkTablePrefix: chunkTablePrefix,
-			ChunkTablePeriod: tablePeriod,
-			ChunkTableFrom:   util.NewDayValue(model.TimeFromUnix(0)),
+		ChunkTables: periodicTableConfig{
+			Prefix: chunkTablePrefix,
+			Period: tablePeriod,
+			From:   util.NewDayValue(model.TimeFromUnix(0)),
+			ProvisionedWriteThroughput: write,
+			ProvisionedReadThroughput:  read,
+			InactiveWriteThroughput:    inactiveWrite,
+			InactiveReadThroughput:     inactiveRead,
 		},
 
-		CreationGracePeriod:                  gracePeriod,
-		MaxChunkAge:                          maxChunkAge,
-		ProvisionedWriteThroughput:           write,
-		ProvisionedReadThroughput:            read,
-		InactiveWriteThroughput:              inactiveWrite,
-		InactiveReadThroughput:               inactiveRead,
-		ChunkTableProvisionedWriteThroughput: write,
-		ChunkTableProvisionedReadThroughput:  read,
-		ChunkTableInactiveWriteThroughput:    inactiveWrite,
-		ChunkTableInactiveReadThroughput:     inactiveRead,
+		CreationGracePeriod: gracePeriod,
+		MaxChunkAge:         maxChunkAge,
 	}
 	tableManager, err := NewTableManager(cfg, client)
 	if err != nil {
@@ -187,7 +187,7 @@ func TestTableManagerTags(t *testing.T) {
 
 	// Check at time zero, we have the base table with no tags.
 	{
-		tableManager, err := NewTableManager(TableManagerConfig{}, client)
+		tableManager, err := NewTableManager(SchemaConfig{}, client)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -204,8 +204,8 @@ func TestTableManagerTags(t *testing.T) {
 
 	// Check after restarting table manager we get some tags.
 	{
-		cfg := TableManagerConfig{}
-		cfg.TableTags.Set("foo=bar")
+		cfg := SchemaConfig{}
+		cfg.IndexTables.Tags.Set("foo=bar")
 		tableManager, err := NewTableManager(cfg, client)
 		if err != nil {
 			t.Fatal(err)

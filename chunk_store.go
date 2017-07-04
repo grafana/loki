@@ -41,7 +41,6 @@ func init() {
 
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
-	SchemaConfig
 	CacheConfig
 
 	// For injecting different schemas in tests.
@@ -50,7 +49,6 @@ type StoreConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.SchemaConfig.RegisterFlags(f)
 	cfg.CacheConfig.RegisterFlags(f)
 }
 
@@ -64,13 +62,13 @@ type Store struct {
 }
 
 // NewStore makes a new ChunkStore
-func NewStore(cfg StoreConfig, storage StorageClient) (*Store, error) {
+func NewStore(cfg StoreConfig, schemaCfg SchemaConfig, storage StorageClient) (*Store, error) {
 	var schema Schema
 	var err error
 	if cfg.schemaFactory == nil {
-		schema, err = newCompositeSchema(cfg.SchemaConfig)
+		schema, err = newCompositeSchema(schemaCfg)
 	} else {
-		schema = cfg.schemaFactory(cfg.SchemaConfig)
+		schema = cfg.schemaFactory(schemaCfg)
 	}
 	if err != nil {
 		return nil, err

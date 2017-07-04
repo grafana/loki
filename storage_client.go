@@ -48,7 +48,7 @@ func (cfg *StorageClientConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewStorageClient makes a storage client based on the configuration.
-func NewStorageClient(cfg StorageClientConfig) (StorageClient, error) {
+func NewStorageClient(cfg StorageClientConfig, schemaCfg SchemaConfig) (StorageClient, error) {
 	switch cfg.StorageClient {
 	case "inmemory":
 		return NewMockStorage(), nil
@@ -57,7 +57,7 @@ func NewStorageClient(cfg StorageClientConfig) (StorageClient, error) {
 		if len(path) > 0 {
 			log.Warnf("Ignoring DynamoDB URL path: %v.", path)
 		}
-		return NewAWSStorageClient(cfg.AWSStorageConfig)
+		return NewAWSStorageClient(cfg.AWSStorageConfig, schemaCfg)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, inmemory", cfg.StorageClient)
 	}

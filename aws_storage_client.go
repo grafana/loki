@@ -101,22 +101,21 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 // AWSStorageConfig specifies config for storing data on AWS.
 type AWSStorageConfig struct {
 	DynamoDBConfig
-	PeriodicChunkTableConfig
-
 	S3 util.URLValue
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *AWSStorageConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.DynamoDBConfig.RegisterFlags(f)
-	cfg.PeriodicChunkTableConfig.RegisterFlags(f)
 
 	f.Var(&cfg.S3, "s3.url", "S3 endpoint URL with escaped Key and Secret encoded. "+
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<bucket-name> to use a mock in-memory implementation.")
 }
 
 type awsStorageClient struct {
-	cfg        AWSStorageConfig
+	cfg       AWSStorageConfig
+	schemaCfg SchemaConfig
+
 	DynamoDB   dynamodbiface.DynamoDBAPI
 	S3         s3iface.S3API
 	bucketName string
@@ -127,7 +126,7 @@ type awsStorageClient struct {
 }
 
 // NewAWSStorageClient makes a new AWS-backed StorageClient.
-func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, error) {
+func NewAWSStorageClient(cfg AWSStorageConfig, schemaCfg SchemaConfig) (StorageClient, error) {
 	dynamoDB, err := dynamoClientFromURL(cfg.DynamoDB.URL)
 	if err != nil {
 		return nil, err
@@ -145,6 +144,7 @@ func NewAWSStorageClient(cfg AWSStorageConfig) (StorageClient, error) {
 
 	storageClient := awsStorageClient{
 		cfg:        cfg,
+		schemaCfg:  schemaCfg,
 		DynamoDB:   dynamoDB,
 		S3:         s3Client,
 		bucketName: bucketName,
@@ -347,7 +347,7 @@ func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chun
 	)
 
 	for _, chunk := range chunks {
-		if !a.cfg.ChunkTableFrom.IsSet() || chunk.From.Before(a.cfg.ChunkTableFrom.Time) {
+		if !a.schemaCfg.ChunkTables.From.IsSet() || chunk.From.Before(a.schemaCfg.ChunkTables.From.Time) {
 			s3Chunks = append(s3Chunks, chunk)
 		} else {
 			dynamoDBChunks = append(dynamoDBChunks, chunk)
@@ -547,7 +547,7 @@ func (a awsStorageClient) PutChunks(ctx context.Context, chunks []Chunk) error {
 		}
 		key := chunks[i].externalKey()
 
-		if !a.cfg.ChunkTableFrom.IsSet() || chunks[i].From.Before(a.cfg.ChunkTableFrom.Time) {
+		if !a.schemaCfg.ChunkTables.From.IsSet() || chunks[i].From.Before(a.schemaCfg.ChunkTables.From.Time) {
 			s3ChunkKeys = append(s3ChunkKeys, key)
 			s3ChunkBufs = append(s3ChunkBufs, buf)
 		} else {
@@ -570,10 +570,10 @@ func (a awsStorageClient) PutChunks(ctx context.Context, chunks []Chunk) error {
 
 func (a awsStorageClient) chunkTableFor(t model.Time) string {
 	var (
-		periodSecs = int64(a.cfg.ChunkTablePeriod / time.Second)
+		periodSecs = int64(a.schemaCfg.ChunkTables.Period / time.Second)
 		table      = t.Unix() / periodSecs
 	)
-	return a.cfg.ChunkTablePrefix + strconv.Itoa(int(table))
+	return a.schemaCfg.ChunkTables.Prefix + strconv.Itoa(int(table))
 }
 
 func (a awsStorageClient) putS3Chunks(ctx context.Context, keys []string, bufs [][]byte) error {

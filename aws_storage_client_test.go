@@ -452,15 +452,15 @@ func TestAWSStorageClientChunks(t *testing.T) {
 
 	t.Run("DynamoDB chunks", func(t *testing.T) {
 		dynamoDB := newMockDynamoDB(0, 0)
-		periodicChunkTableConfig := PeriodicChunkTableConfig{
-			ChunkTableFrom:   util.NewDayValue(model.Now()),
-			ChunkTablePeriod: 1 * time.Minute,
-			ChunkTablePrefix: "chunks",
+		schemaConfig := SchemaConfig{
+			ChunkTables: periodicTableConfig{
+				From:   util.NewDayValue(model.Now()),
+				Period: 1 * time.Minute,
+				Prefix: "chunks",
+			},
 		}
 		tableManager, err := NewTableManager(
-			TableManagerConfig{
-				PeriodicChunkTableConfig: periodicChunkTableConfig,
-			},
+			schemaConfig,
 			&dynamoTableClient{
 				DynamoDB: dynamoDB,
 			},
@@ -472,9 +472,7 @@ func TestAWSStorageClientChunks(t *testing.T) {
 		client := awsStorageClient{
 			DynamoDB:       dynamoDB,
 			queryRequestFn: dynamoDB.queryRequest,
-			cfg: AWSStorageConfig{
-				PeriodicChunkTableConfig: periodicChunkTableConfig,
-			},
+			schemaCfg:      schemaConfig,
 		}
 
 		testStorageClientChunks(t, client)

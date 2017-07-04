@@ -16,9 +16,7 @@ func TestHourlyBuckets(t *testing.T) {
 		tableName  = "table"
 	)
 	var cfg = SchemaConfig{
-		PeriodicTableConfig: PeriodicTableConfig{
-			OriginalTableName: tableName,
-		},
+		OriginalTableName: tableName,
 	}
 
 	type args struct {
@@ -104,9 +102,7 @@ func TestDailyBuckets(t *testing.T) {
 		tableName  = "table"
 	)
 	var cfg = SchemaConfig{
-		PeriodicTableConfig: PeriodicTableConfig{
-			OriginalTableName: tableName,
-		},
+		OriginalTableName: tableName,
 	}
 
 	type args struct {
