@@ -161,6 +161,8 @@ func (cfg *periodicTableConfig) RegisterFlags(argPrefix, tablePrefix string, f *
 	f.Int64Var(&cfg.InactiveWriteThroughput, argPrefix+".inactive-write-throughput", 1, "DynamoDB chunk tables write throughput for inactive tables.")
 	f.Int64Var(&cfg.InactiveReadThroughput, argPrefix+".inactive-read-throughput", 300, "DynamoDB chunk tables read throughput for inactive tables.")
 	f.Var(&cfg.Tags, argPrefix+".tag", "Tag (of the form key=value) to be added to all tables under management.")
+
+	f.Var(&cfg.From, argPrefix+".start", fmt.Sprintf("Deprecated: use '%s.from'.", argPrefix))
 }
 
 func (cfg *periodicTableConfig) periodicTables(beginGrace, endGrace time.Duration) []TableDesc {
