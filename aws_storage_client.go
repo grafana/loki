@@ -167,14 +167,15 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 		reqs.TakeReqs(unprocessed, dynamoDBMaxWriteBatchSize)
 		reqs.TakeReqs(outstanding, dynamoDBMaxWriteBatchSize)
 		var resp *dynamodb.BatchWriteItemOutput
+		var request *request.Request
 
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, func(ctx context.Context) error {
-			var err error
-			resp, err = a.DynamoDB.BatchWriteItemWithContext(ctx, &dynamodb.BatchWriteItemInput{
+			request, resp = a.DynamoDB.BatchWriteItemRequest(&dynamodb.BatchWriteItemInput{
 				RequestItems:           reqs,
 				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 			})
-			return err
+			request.SetContext(ctx)
+			return request.Send()
 		})
 		for _, cc := range resp.ConsumedCapacity {
 			dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchWriteItem", *cc.TableName).
@@ -197,7 +198,7 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 
 		// If we get provisionedThroughputExceededException, then no items were processed,
 		// so back off and retry all.
-		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
+		if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || *request.Retryable) {
 			unprocessed.TakeReqs(reqs, -1)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
@@ -275,7 +276,7 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 		if err != nil {
 			recordDynamoError(*input.TableName, err, "DynamoDB.QueryPages")
 
-			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
+			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || page.Retryable()) {
 				time.Sleep(backoff)
 				backoff = nextBackoff(backoff)
 				continue
@@ -304,6 +305,7 @@ type dynamoDBRequest interface {
 	Data() interface{}
 	Error() error
 	HasNextPage() bool
+	Retryable() bool
 }
 
 func (a awsStorageClient) queryRequest(ctx context.Context, input *dynamodb.QueryInput) dynamoDBRequest {
@@ -338,6 +340,10 @@ func (a dynamoDBRequestAdapter) Error() error {
 
 func (a dynamoDBRequestAdapter) HasNextPage() bool {
 	return a.request.HasNextPage()
+}
+
+func (a dynamoDBRequestAdapter) Retryable() bool {
+	return *a.request.Retryable
 }
 
 func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
@@ -449,14 +455,15 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 		requests.TakeReqs(unprocessed, dynamoDBMaxReadBatchSize)
 		requests.TakeReqs(outstanding, dynamoDBMaxReadBatchSize)
 
+		var request *request.Request
 		var response *dynamodb.BatchGetItemOutput
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchGetItemPages", dynamoRequestDuration, func(ctx context.Context) error {
-			var err error
-			response, err = a.DynamoDB.BatchGetItemWithContext(ctx, &dynamodb.BatchGetItemInput{
+			request, response = a.DynamoDB.BatchGetItemRequest(&dynamodb.BatchGetItemInput{
 				RequestItems:           requests,
 				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 			})
-			return err
+			request.SetContext(ctx)
+			return request.Send()
 		})
 
 		for _, cc := range response.ConsumedCapacity {
@@ -471,7 +478,7 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 
 			// If we get provisionedThroughputExceededException, then no items were processed,
 			// so back off and retry all.
-			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
+			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || *request.Retryable) {
 				unprocessed.TakeReqs(requests, -1)
 				time.Sleep(backoff)
 				backoff = nextBackoff(backoff)
