@@ -200,7 +200,7 @@ func (cfg *periodicTableConfig) periodicTables(beginGrace, endGrace time.Duratio
 			Name:             cfg.Prefix + strconv.Itoa(int(i)),
 			ProvisionedRead:  cfg.InactiveReadThroughput,
 			ProvisionedWrite: cfg.InactiveWriteThroughput,
-			Tags:             tags,
+			Tags:             cfg.GetTags(),
 		}
 
 		// if now is within table [start - grace, end + grace), then we need some write throughput
@@ -211,6 +211,21 @@ func (cfg *periodicTableConfig) periodicTables(beginGrace, endGrace time.Duratio
 		result = append(result, table)
 	}
 	return result
+}
+
+// GetTags returns tags for the table. Exists to provide backwards
+// compatibility for the command-line.
+func (cfg *periodicTableConfig) GetTags() Tags {
+	tags := Tags(map[string]string{})
+	for k, v := range cfg.Tags {
+		tags[k] = v
+	}
+	if cfg.globalTags != nil {
+		for k, v := range *cfg.globalTags {
+			tags[k] = v
+		}
+	}
+	return tags
 }
 
 // compositeSchema is a Schema which delegates to various schemas depending
