@@ -64,7 +64,7 @@ func (m *mockDynamoDBClient) createTable(name string) {
 	}
 }
 
-func (m *mockDynamoDBClient) BatchWriteItemWithContext(_ aws.Context, input *dynamodb.BatchWriteItemInput, _ ...request.Option) (*dynamodb.BatchWriteItemOutput, error) {
+func (m *mockDynamoDBClient) batchWriteItemRequest(_ context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -74,13 +74,19 @@ func (m *mockDynamoDBClient) BatchWriteItemWithContext(_ aws.Context, input *dyn
 
 	if m.provisionedErr > 0 {
 		m.provisionedErr--
-		return resp, awserr.New(dynamodb.ErrCodeProvisionedThroughputExceededException, "", nil)
+		return &dynamoDBMockRequest{
+			result: resp,
+			err:    awserr.New(dynamodb.ErrCodeProvisionedThroughputExceededException, "", nil),
+		}
 	}
 
 	for tableName, writeRequests := range input.RequestItems {
 		table, ok := m.tables[tableName]
 		if !ok {
-			return &dynamodb.BatchWriteItemOutput{}, fmt.Errorf("table not found: %s", tableName)
+			return &dynamoDBMockRequest{
+				result: &dynamodb.BatchWriteItemOutput{},
+				err:    fmt.Errorf("table not found: %s", tableName),
+			}
 		}
 
 		for _, writeRequest := range writeRequests {
@@ -103,17 +109,20 @@ func (m *mockDynamoDBClient) BatchWriteItemWithContext(_ aws.Context, input *dyn
 				items = append(items, nil)
 				copy(items[i+1:], items[i:])
 			} else {
-				return &dynamodb.BatchWriteItemOutput{}, fmt.Errorf("Duplicate entry")
+				return &dynamoDBMockRequest{
+					result: &dynamodb.BatchWriteItemOutput{},
+					err:    fmt.Errorf("Duplicate entry"),
+				}
 			}
 			items[i] = writeRequest.PutRequest.Item
 
 			table.items[hashValue] = items
 		}
 	}
-	return resp, nil
+	return &dynamoDBMockRequest{result: resp}
 }
 
-func (m *mockDynamoDBClient) BatchGetItemWithContext(_ aws.Context, input *dynamodb.BatchGetItemInput, _ ...request.Option) (*dynamodb.BatchGetItemOutput, error) {
+func (m *mockDynamoDBClient) batchGetItemRequest(_ context.Context, input *dynamodb.BatchGetItemInput) dynamoDBRequest {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -124,13 +133,19 @@ func (m *mockDynamoDBClient) BatchGetItemWithContext(_ aws.Context, input *dynam
 
 	if m.provisionedErr > 0 {
 		m.provisionedErr--
-		return resp, awserr.New(dynamodb.ErrCodeProvisionedThroughputExceededException, "", nil)
+		return &dynamoDBMockRequest{
+			result: resp,
+			err:    awserr.New(dynamodb.ErrCodeProvisionedThroughputExceededException, "", nil),
+		}
 	}
 
 	for tableName, readRequests := range input.RequestItems {
 		table, ok := m.tables[tableName]
 		if !ok {
-			return &dynamodb.BatchGetItemOutput{}, fmt.Errorf("table not found")
+			return &dynamoDBMockRequest{
+				result: &dynamodb.BatchGetItemOutput{},
+				err:    fmt.Errorf("table not found"),
+			}
 		}
 
 		unprocessed := &dynamodb.KeysAndAttributes{
@@ -155,7 +170,10 @@ func (m *mockDynamoDBClient) BatchGetItemWithContext(_ aws.Context, input *dynam
 				return bytes.Compare(items[i][rangeKey].B, rangeValue) >= 0
 			})
 			if i >= len(items) || !bytes.Equal(items[i][rangeKey].B, rangeValue) {
-				return &dynamodb.BatchGetItemOutput{}, fmt.Errorf("Couldn't find ite,")
+				return &dynamoDBMockRequest{
+					result: &dynamodb.BatchGetItemOutput{},
+					err:    fmt.Errorf("Couldn't find item"),
+				}
 			}
 
 			// Only return AttributesToGet!
@@ -166,7 +184,9 @@ func (m *mockDynamoDBClient) BatchGetItemWithContext(_ aws.Context, input *dynam
 			resp.Responses[tableName] = append(resp.Responses[tableName], item)
 		}
 	}
-	return resp, nil
+	return &dynamoDBMockRequest{
+		result: resp,
+	}
 }
 
 func (m *mockDynamoDBClient) queryRequest(_ context.Context, input *dynamodb.QueryInput) dynamoDBRequest {
@@ -223,22 +243,26 @@ func (m *mockDynamoDBClient) queryRequest(_ context.Context, input *dynamodb.Que
 }
 
 type dynamoDBMockRequest struct {
-	result *dynamodb.QueryOutput
+	result interface{}
+	err    error
 }
 
 func (m *dynamoDBMockRequest) NextPage() dynamoDBRequest {
 	return m
 }
 func (m *dynamoDBMockRequest) Send() error {
-	return nil
+	return m.err
 }
 func (m *dynamoDBMockRequest) Data() interface{} {
 	return m.result
 }
 func (m *dynamoDBMockRequest) Error() error {
-	return nil
+	return m.err
 }
 func (m *dynamoDBMockRequest) HasNextPage() bool {
+	return false
+}
+func (m *dynamoDBMockRequest) Retryable() bool {
 	return false
 }
 
@@ -403,16 +427,18 @@ func (m *mockS3) GetObjectWithContext(_ aws.Context, req *s3.GetObjectInput, _ .
 }
 
 func TestAWSStorageClient(t *testing.T) {
-	dynamoDB := newMockDynamoDB(0, 0)
+	mockDB := newMockDynamoDB(0, 0)
 	client := awsStorageClient{
-		DynamoDB:       dynamoDB,
-		queryRequestFn: dynamoDB.queryRequest,
+		DynamoDB:                mockDB,
+		queryRequestFn:          mockDB.queryRequest,
+		batchGetItemRequestFn:   mockDB.batchGetItemRequest,
+		batchWriteItemRequestFn: mockDB.batchWriteItemRequest,
 	}
 	batch := client.NewWriteBatch()
 	for i := 0; i < 30; i++ {
 		batch.Add("table", fmt.Sprintf("hash%d", i), []byte(fmt.Sprintf("range%d", i)), nil)
 	}
-	dynamoDB.createTable("table")
+	mockDB.createTable("table")
 
 	err := client.BatchWrite(context.Background(), batch)
 	require.NoError(t, err)
@@ -442,9 +468,11 @@ func TestAWSStorageClientChunks(t *testing.T) {
 	t.Run("S3 chunks", func(t *testing.T) {
 		dynamoDB := newMockDynamoDB(0, 0)
 		client := awsStorageClient{
-			DynamoDB:       dynamoDB,
-			S3:             newMockS3(),
-			queryRequestFn: dynamoDB.queryRequest,
+			DynamoDB:                dynamoDB,
+			S3:                      newMockS3(),
+			queryRequestFn:          dynamoDB.queryRequest,
+			batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
+			batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
 		}
 
 		testStorageClientChunks(t, client)
@@ -470,9 +498,11 @@ func TestAWSStorageClientChunks(t *testing.T) {
 		require.NoError(t, err)
 
 		client := awsStorageClient{
-			DynamoDB:       dynamoDB,
-			queryRequestFn: dynamoDB.queryRequest,
-			schemaCfg:      schemaConfig,
+			DynamoDB:                dynamoDB,
+			schemaCfg:               schemaConfig,
+			queryRequestFn:          dynamoDB.queryRequest,
+			batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
+			batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
 		}
 
 		testStorageClientChunks(t, client)
@@ -621,8 +651,10 @@ func TestAWSStorageClientQueryPages(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dynamoDB := newMockDynamoDB(0, 0)
 			client := awsStorageClient{
-				DynamoDB:       dynamoDB,
-				queryRequestFn: dynamoDB.queryRequest,
+				DynamoDB:                dynamoDB,
+				queryRequestFn:          dynamoDB.queryRequest,
+				batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
+				batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
 			}
 
 			batch := client.NewWriteBatch()

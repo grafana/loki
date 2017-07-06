@@ -120,9 +120,11 @@ type awsStorageClient struct {
 	S3         s3iface.S3API
 	bucketName string
 
-	// queryRequestFn exists for mocking, so we don't have to write a whole load
+	// These functions exists for mocking, so we don't have to write a whole load
 	// of boilerplate.
-	queryRequestFn func(ctx context.Context, input *dynamodb.QueryInput) dynamoDBRequest
+	queryRequestFn          func(ctx context.Context, input *dynamodb.QueryInput) dynamoDBRequest
+	batchGetItemRequestFn   func(ctx context.Context, input *dynamodb.BatchGetItemInput) dynamoDBRequest
+	batchWriteItemRequestFn func(ctx context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest
 }
 
 // NewAWSStorageClient makes a new AWS-backed StorageClient.
@@ -150,6 +152,8 @@ func NewAWSStorageClient(cfg AWSStorageConfig, schemaCfg SchemaConfig) (StorageC
 		bucketName: bucketName,
 	}
 	storageClient.queryRequestFn = storageClient.queryRequest
+	storageClient.batchGetItemRequestFn = storageClient.batchGetItemRequest
+	storageClient.batchWriteItemRequestFn = storageClient.batchWriteItemRequest
 	return storageClient, nil
 }
 
@@ -166,16 +170,16 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 		reqs := dynamoDBWriteBatch{}
 		reqs.TakeReqs(unprocessed, dynamoDBMaxWriteBatchSize)
 		reqs.TakeReqs(outstanding, dynamoDBMaxWriteBatchSize)
-		var resp *dynamodb.BatchWriteItemOutput
+		request := a.batchWriteItemRequestFn(ctx, &dynamodb.BatchWriteItemInput{
+			RequestItems:           reqs,
+			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+		})
 
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, func(ctx context.Context) error {
-			var err error
-			resp, err = a.DynamoDB.BatchWriteItemWithContext(ctx, &dynamodb.BatchWriteItemInput{
-				RequestItems:           reqs,
-				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
-			})
-			return err
+			return request.Send()
 		})
+		resp := request.Data().(*dynamodb.BatchWriteItemOutput)
+
 		for _, cc := range resp.ConsumedCapacity {
 			dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchWriteItem", *cc.TableName).
 				Add(float64(*cc.CapacityUnits))
@@ -197,7 +201,7 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 
 		// If we get provisionedThroughputExceededException, then no items were processed,
 		// so back off and retry all.
-		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
+		if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
 			unprocessed.TakeReqs(reqs, -1)
 			time.Sleep(backoff)
 			backoff = nextBackoff(backoff)
@@ -275,7 +279,7 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 		if err != nil {
 			recordDynamoError(*input.TableName, err, "DynamoDB.QueryPages")
 
-			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
+			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || page.Retryable()) {
 				time.Sleep(backoff)
 				backoff = nextBackoff(backoff)
 				continue
@@ -304,10 +308,23 @@ type dynamoDBRequest interface {
 	Data() interface{}
 	Error() error
 	HasNextPage() bool
+	Retryable() bool
 }
 
 func (a awsStorageClient) queryRequest(ctx context.Context, input *dynamodb.QueryInput) dynamoDBRequest {
 	req, _ := a.DynamoDB.QueryRequest(input)
+	req.SetContext(ctx)
+	return dynamoDBRequestAdapter{req}
+}
+
+func (a awsStorageClient) batchGetItemRequest(ctx context.Context, input *dynamodb.BatchGetItemInput) dynamoDBRequest {
+	req, _ := a.DynamoDB.BatchGetItemRequest(input)
+	req.SetContext(ctx)
+	return dynamoDBRequestAdapter{req}
+}
+
+func (a awsStorageClient) batchWriteItemRequest(ctx context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest {
+	req, _ := a.DynamoDB.BatchWriteItemRequest(input)
 	req.SetContext(ctx)
 	return dynamoDBRequestAdapter{req}
 }
@@ -338,6 +355,10 @@ func (a dynamoDBRequestAdapter) Error() error {
 
 func (a dynamoDBRequestAdapter) HasNextPage() bool {
 	return a.request.HasNextPage()
+}
+
+func (a dynamoDBRequestAdapter) Retryable() bool {
+	return *a.request.Retryable
 }
 
 func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
@@ -449,15 +470,14 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 		requests.TakeReqs(unprocessed, dynamoDBMaxReadBatchSize)
 		requests.TakeReqs(outstanding, dynamoDBMaxReadBatchSize)
 
-		var response *dynamodb.BatchGetItemOutput
-		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchGetItemPages", dynamoRequestDuration, func(ctx context.Context) error {
-			var err error
-			response, err = a.DynamoDB.BatchGetItemWithContext(ctx, &dynamodb.BatchGetItemInput{
-				RequestItems:           requests,
-				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
-			})
-			return err
+		request := a.batchGetItemRequestFn(ctx, &dynamodb.BatchGetItemInput{
+			RequestItems:           requests,
+			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 		})
+		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchGetItemPages", dynamoRequestDuration, func(ctx context.Context) error {
+			return request.Send()
+		})
+		response := request.Data().(*dynamodb.BatchGetItemOutput)
 
 		for _, cc := range response.ConsumedCapacity {
 			dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchGetItemPages", *cc.TableName).
@@ -471,7 +491,7 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 
 			// If we get provisionedThroughputExceededException, then no items were processed,
 			// so back off and retry all.
-			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException {
+			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
 				unprocessed.TakeReqs(requests, -1)
 				time.Sleep(backoff)
 				backoff = nextBackoff(backoff)
