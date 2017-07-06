@@ -43,6 +43,9 @@ type SchemaConfig struct {
 	UsePeriodicTables bool
 	IndexTables       periodicTableConfig
 	ChunkTables       periodicTableConfig
+
+	// Deprecated configuration for setting tags on all tables.
+	Tags Tags
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -61,8 +64,12 @@ func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.OriginalTableName, "dynamodb.original-table-name", "cortex", "The name of the DynamoDB table used before versioned schemas were introduced.")
 	f.BoolVar(&cfg.UsePeriodicTables, "dynamodb.use-periodic-tables", false, "Should we use periodic tables.")
 
+	f.Var(&cfg.Tags, "dynamodb.table.tag", "Deprecated. Set tags on tables individually.")
+
 	cfg.IndexTables.RegisterFlags("dynamodb.periodic-table", "cortex_", f)
+	cfg.IndexTables.globalTags = &cfg.Tags
 	cfg.ChunkTables.RegisterFlags("dynamodb.chunk-table", "cortex_chunks_", f)
+	cfg.ChunkTables.globalTags = &cfg.Tags
 }
 
 func (cfg *SchemaConfig) tableForBucket(bucketStart int64) string {
@@ -150,6 +157,9 @@ type periodicTableConfig struct {
 	InactiveWriteThroughput    int64
 	InactiveReadThroughput     int64
 	Tags                       Tags
+	// Temporarily in place to support tags set on all tables, as means of
+	// smoothing transition to per-table tags.
+	globalTags *Tags
 }
 
 func (cfg *periodicTableConfig) RegisterFlags(argPrefix, tablePrefix string, f *flag.FlagSet) {
@@ -176,12 +186,21 @@ func (cfg *periodicTableConfig) periodicTables(beginGrace, endGrace time.Duratio
 		result         = []TableDesc{}
 	)
 	for i := firstTable; i <= lastTable; i++ {
+		tags := Tags(map[string]string{})
+		for k, v := range cfg.Tags {
+			tags[k] = v
+		}
+		if cfg.globalTags != nil {
+			for k, v := range *cfg.globalTags {
+				tags[k] = v
+			}
+		}
 		table := TableDesc{
 			// Name construction needs to be consistent with chunk_store.bigBuckets
 			Name:             cfg.Prefix + strconv.Itoa(int(i)),
 			ProvisionedRead:  cfg.InactiveReadThroughput,
 			ProvisionedWrite: cfg.InactiveWriteThroughput,
-			Tags:             cfg.Tags,
+			Tags:             tags,
 		}
 
 		// if now is within table [start - grace, end + grace), then we need some write throughput
