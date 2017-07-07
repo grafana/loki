@@ -99,6 +99,7 @@ func (c *Store) Put(ctx context.Context, chunks []Chunk) error {
 		return err
 	}
 
+	c.writeBackCache(ctx, chunks)
 	return c.updateIndex(ctx, userID, chunks)
 }
 
