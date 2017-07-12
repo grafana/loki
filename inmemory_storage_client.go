@@ -139,9 +139,10 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 			items = append(items, mockItem{})
 			copy(items[i+1:], items[i:])
 		} else {
-			// Return error if duplicate write and not metric name entry
+			// Return error if duplicate write and not metric name entry or series entry
 			itemComponents := decodeRangeKey(items[i].rangeValue)
-			if !bytes.Equal(itemComponents[3], metricNameRangeKeyV1) {
+			if !bytes.Equal(itemComponents[3], metricNameRangeKeyV1) &&
+				!bytes.Equal(itemComponents[3], seriesRangeKeyV1) {
 				return fmt.Errorf("Dupe write")
 			}
 		}

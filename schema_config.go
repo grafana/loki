@@ -30,6 +30,7 @@ type SchemaConfig struct {
 	V5SchemaFrom     util.DayValue
 	V6SchemaFrom     util.DayValue
 	V7SchemaFrom     util.DayValue
+	V8SchemaFrom     util.DayValue
 
 	// Period with which the table manager will poll for tables.
 	DynamoDBPollInterval time.Duration
@@ -56,6 +57,7 @@ func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.V5SchemaFrom, "dynamodb.v5-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v5 schema.")
 	f.Var(&cfg.V6SchemaFrom, "dynamodb.v6-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v6 schema.")
 	f.Var(&cfg.V7SchemaFrom, "dynamodb.v7-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v7 schema.")
+	f.Var(&cfg.V8SchemaFrom, "dynamodb.v8-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v8 schema.")
 
 	f.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
 	f.DurationVar(&cfg.CreationGracePeriod, "dynamodb.periodic-table.grace-period", 10*time.Minute, "DynamoDB periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
@@ -272,6 +274,10 @@ func newCompositeSchema(cfg SchemaConfig) (Schema, error) {
 
 	if cfg.V7SchemaFrom.IsSet() {
 		schemas = append(schemas, compositeSchemaEntry{cfg.V7SchemaFrom.Time, v7Schema(cfg)})
+	}
+
+	if cfg.V8SchemaFrom.IsSet() {
+		schemas = append(schemas, compositeSchemaEntry{cfg.V8SchemaFrom.Time, v8Schema(cfg)})
 	}
 
 	if !sort.IsSorted(byStart(schemas)) {

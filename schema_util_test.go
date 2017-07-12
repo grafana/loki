@@ -2,6 +2,8 @@ package chunk
 
 import (
 	"bytes"
+	"encoding/binary"
+	"encoding/json"
 	"math"
 	"math/rand"
 	"testing"
@@ -10,6 +12,43 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMetricSeriesID(t *testing.T) {
+	for _, c := range []struct {
+		metric   model.Metric
+		expected string
+	}{
+		{
+			model.Metric{model.MetricNameLabel: "foo"},
+			"LCa0a2j/xo/5m0U8HTBBNBNCLXBkg7+g+YpeiGJm564",
+		},
+		{
+			model.Metric{
+				model.MetricNameLabel: "foo",
+				"bar":  "baz",
+				"toms": "code",
+				"flip": "flop",
+			},
+			"KrbXMezYneba+o7wfEdtzOdAWhbfWcDrlVfs1uOCX3M",
+		},
+		{
+			model.Metric{
+				"flip": "flop",
+				"bar":  "baz",
+				model.MetricNameLabel: "foo",
+				"toms":                "code",
+			},
+			"KrbXMezYneba+o7wfEdtzOdAWhbfWcDrlVfs1uOCX3M",
+		},
+		{
+			model.Metric{},
+			"RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o",
+		},
+	} {
+		seriesID := metricSeriesID(c.metric)
+		assert.Equal(t, c.expected, seriesID)
+	}
+}
 
 func TestSchemaTimeEncoding(t *testing.T) {
 	assert.Equal(t, uint32(0), decodeTime(encodeTime(0)), "0")
@@ -81,5 +120,30 @@ func TestParseMetricNameRangeValue(t *testing.T) {
 		metricName, err := parseMetricNameRangeValue(c.encoded, []byte(c.value))
 		require.NoError(t, err)
 		assert.Equal(t, model.LabelValue(c.expMetricName), metricName)
+	}
+}
+
+func TestParseSeriesRangeValue(t *testing.T) {
+	metric := model.Metric{
+		model.MetricNameLabel: "foo",
+		"bar": "bary",
+		"baz": "bazy",
+	}
+
+	fingerprintBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(fingerprintBytes, uint64(metric.Fingerprint()))
+	metricBytes, err := json.Marshal(metric)
+	require.NoError(t, err)
+
+	for _, c := range []struct {
+		encoded   []byte
+		value     []byte
+		expMetric model.Metric
+	}{
+		{encodeRangeKey(fingerprintBytes, nil, nil, seriesRangeKeyV1), metricBytes, metric},
+	} {
+		metric, err := parseSeriesRangeValue(c.encoded, c.value)
+		require.NoError(t, err)
+		assert.Equal(t, c.expMetric, metric)
 	}
 }

@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"crypto/sha1"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -17,6 +18,7 @@ var (
 	chunkTimeRangeKeyV4  = []byte{'4'}
 	chunkTimeRangeKeyV5  = []byte{'5'}
 	metricNameRangeKeyV1 = []byte{'6'}
+	seriesRangeKeyV1     = []byte{'7'}
 )
 
 // Errors
@@ -129,6 +131,14 @@ func v7Schema(cfg SchemaConfig) Schema {
 	return schema{
 		cfg.dailyBuckets,
 		v7Entries{},
+	}
+}
+
+// v8 schema is an extension of v6, with support for a labelset/series index
+func v8Schema(cfg SchemaConfig) Schema {
+	return schema{
+		cfg.dailyBuckets,
+		v8Entries{},
 	}
 }
 
@@ -500,7 +510,7 @@ func (v6Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName model.
 	}, nil
 }
 
-// v7Entries supports queries with no metric name
+// v7Entries is a deprecated scherma initially used to support queries with no metric name. Use v8Entries instead.
 type v7Entries struct {
 	v6Entries
 }
@@ -529,6 +539,39 @@ func (entries v7Entries) GetWriteEntries(bucket Bucket, metricName model.LabelVa
 }
 
 func (v7Entries) GetReadQueries(bucket Bucket) ([]IndexQuery, error) {
+	// Replaced with v8Schema series index
+	return nil, ErrNoMetricNameNotSupported
+}
+
+// v8Entries supports queries with no metric name by using a series index.
+type v8Entries struct {
+	v6Entries
+}
+
+func (entries v8Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
+	indexEntries, err := entries.v6Entries.GetWriteEntries(bucket, metricName, labels, chunkID)
+	if err != nil {
+		return nil, err
+	}
+
+	seriesID := metricSeriesID(labels)
+	seriesBytes, err := json.Marshal(labels)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add IndexEntry for series with userID:bigBucket HashValue
+	indexEntries = append(indexEntries, IndexEntry{
+		TableName:  bucket.tableName,
+		HashValue:  bucket.hashKey,
+		RangeValue: encodeRangeKey([]byte(seriesID), nil, nil, seriesRangeKeyV1),
+		Value:      seriesBytes,
+	})
+
+	return indexEntries, nil
+}
+
+func (v8Entries) GetReadQueries(bucket Bucket) ([]IndexQuery, error) {
 	return []IndexQuery{
 		{
 			TableName: bucket.tableName,
