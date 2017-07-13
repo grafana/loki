@@ -68,6 +68,14 @@ var (
 		Name:      "dynamo_failures_total",
 		Help:      "The total number of errors while storing chunks to the chunk store.",
 	}, []string{tableNameLabel, errorReasonLabel, "operation"})
+	dynamoQueryPagesCount = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "dynamo_query_pages_count",
+		Help:      "Number of pages per query.",
+		// Most queries will have one page, however this may increase with fuzzy
+		// metric names.
+		Buckets: prometheus.ExponentialBuckets(1, 4, 6),
+	})
 	s3RequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "s3_request_duration_seconds",
@@ -80,6 +88,7 @@ func init() {
 	prometheus.MustRegister(dynamoRequestDuration)
 	prometheus.MustRegister(dynamoConsumedCapacity)
 	prometheus.MustRegister(dynamoFailures)
+	prometheus.MustRegister(dynamoQueryPagesCount)
 	prometheus.MustRegister(s3RequestDuration)
 }
 
@@ -264,7 +273,12 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 
 	request := a.queryRequestFn(ctx, input)
 	backoff := minBackoff
+	pageCount := 0
+	defer func() {
+		dynamoQueryPagesCount.Observe(float64(pageCount))
+	}()
 	for page := request; page != nil; page = page.NextPage() {
+		pageCount++
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
 			return page.Send()
 		})
