@@ -141,7 +141,7 @@ func (c *Cache) FetchChunkData(ctx context.Context, chunks []Chunk) (found []Chu
 
 	keys := make([]string, 0, len(chunks))
 	for _, chunk := range chunks {
-		keys = append(keys, chunk.externalKey())
+		keys = append(keys, chunk.ExternalKey())
 	}
 
 	var items map[string]*memcache.Item
@@ -161,7 +161,7 @@ func (c *Cache) FetchChunkData(ctx context.Context, chunks []Chunk) (found []Chu
 			continue
 		}
 
-		if err := chunks[i].decode(item.Value); err != nil {
+		if err := chunks[i].Decode(item.Value); err != nil {
 			memcacheCorrupt.Inc()
 			util.WithContext(ctx).Errorf("Failed to decode chunk from cache: %v", err)
 			missing = append(missing, chunks[i])

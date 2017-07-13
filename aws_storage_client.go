@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -22,7 +21,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
-	"github.com/prometheus/common/model"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/common/instrument"
@@ -57,7 +55,7 @@ var (
 		Help:      "Time spent doing DynamoDB requests.",
 
 		// DynamoDB latency seems to range from a few ms to a few sec and is
-		// important.  So use 8 buckets from 64us to 8s.
+		// important.  So use 8 buckets from 128us to 2s.
 		Buckets: prometheus.ExponentialBuckets(0.000128, 4, 8),
 	}, []string{"operation", "status_code"})
 	dynamoConsumedCapacity = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -430,7 +428,7 @@ func (a awsStorageClient) getS3Chunk(ctx context.Context, chunk Chunk) (Chunk, e
 		var err error
 		resp, err = a.S3.GetObjectWithContext(ctx, &s3.GetObjectInput{
 			Bucket: aws.String(a.bucketName),
-			Key:    aws.String(chunk.externalKey()),
+			Key:    aws.String(chunk.ExternalKey()),
 		})
 		return err
 	})
@@ -442,7 +440,7 @@ func (a awsStorageClient) getS3Chunk(ctx context.Context, chunk Chunk) (Chunk, e
 	if err != nil {
 		return Chunk{}, err
 	}
-	if err := chunk.decode(buf); err != nil {
+	if err := chunk.Decode(buf); err != nil {
 		return Chunk{}, err
 	}
 	return chunk, nil
@@ -456,9 +454,9 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 	outstanding := dynamoDBReadRequest{}
 	chunksByKey := map[string]Chunk{}
 	for _, chunk := range chunks {
-		key := chunk.externalKey()
+		key := chunk.ExternalKey()
 		chunksByKey[key] = chunk
-		tableName := a.chunkTableFor(chunk.From)
+		tableName := a.schemaCfg.ChunkTables.TableFor(chunk.From)
 		outstanding.Add(tableName, key, placeholder)
 	}
 
@@ -542,7 +540,7 @@ func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map
 				return nil, fmt.Errorf("Got response from DynamoDB with no value: %+v", item)
 			}
 
-			if err := chunk.decode(buf.B); err != nil {
+			if err := chunk.Decode(buf.B); err != nil {
 				return nil, err
 			}
 
@@ -561,17 +559,17 @@ func (a awsStorageClient) PutChunks(ctx context.Context, chunks []Chunk) error {
 
 	for i := range chunks {
 		// Encode the chunk first - checksum is calculated as a side effect.
-		buf, err := chunks[i].encode()
+		buf, err := chunks[i].Encode()
 		if err != nil {
 			return err
 		}
-		key := chunks[i].externalKey()
+		key := chunks[i].ExternalKey()
 
 		if !a.schemaCfg.ChunkTables.From.IsSet() || chunks[i].From.Before(a.schemaCfg.ChunkTables.From.Time) {
 			s3ChunkKeys = append(s3ChunkKeys, key)
 			s3ChunkBufs = append(s3ChunkBufs, buf)
 		} else {
-			table := a.chunkTableFor(chunks[i].From)
+			table := a.schemaCfg.ChunkTables.TableFor(chunks[i].From)
 			dynamoDBWrites.Add(table, key, placeholder, buf)
 		}
 	}
@@ -586,14 +584,6 @@ func (a awsStorageClient) PutChunks(ctx context.Context, chunks []Chunk) error {
 	}
 
 	return a.BatchWrite(ctx, dynamoDBWrites)
-}
-
-func (a awsStorageClient) chunkTableFor(t model.Time) string {
-	var (
-		periodSecs = int64(a.schemaCfg.ChunkTables.Period / time.Second)
-		table      = t.Unix() / periodSecs
-	)
-	return a.schemaCfg.ChunkTables.Prefix + strconv.Itoa(int(table))
 }
 
 func (a awsStorageClient) putS3Chunks(ctx context.Context, keys []string, bufs [][]byte) error {

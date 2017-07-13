@@ -5,7 +5,7 @@ type ByKey []Chunk
 
 func (cs ByKey) Len() int           { return len(cs) }
 func (cs ByKey) Swap(i, j int)      { cs[i], cs[j] = cs[j], cs[i] }
-func (cs ByKey) Less(i, j int) bool { return cs[i].externalKey() < cs[j].externalKey() }
+func (cs ByKey) Less(i, j int) bool { return cs[i].ExternalKey() < cs[j].ExternalKey() }
 
 // unique will remove duplicates from the input.
 // list must be sorted.
@@ -18,7 +18,7 @@ func unique(cs ByKey) ByKey {
 	result[0] = cs[0]
 	i, j := 0, 1
 	for j < len(cs) {
-		if result[i].externalKey() == cs[j].externalKey() {
+		if result[i].ExternalKey() == cs[j].ExternalKey() {
 			j++
 			continue
 		}
@@ -35,10 +35,10 @@ func merge(a, b ByKey) ByKey {
 	result := make(ByKey, 0, len(a)+len(b))
 	i, j := 0, 0
 	for i < len(a) && j < len(b) {
-		if a[i].externalKey() < b[j].externalKey() {
+		if a[i].ExternalKey() < b[j].ExternalKey() {
 			result = append(result, a[i])
 			i++
-		} else if a[i].externalKey() > b[j].externalKey() {
+		} else if a[i].ExternalKey() > b[j].ExternalKey() {
 			result = append(result, b[j])
 			j++
 		} else {
@@ -92,11 +92,11 @@ func nWayIntersect(sets []ByKey) ByKey {
 			result      = []Chunk{}
 		)
 		for i < len(left) && j < len(right) {
-			if left[i].externalKey() == right[j].externalKey() {
+			if left[i].ExternalKey() == right[j].ExternalKey() {
 				result = append(result, left[i])
 			}
 
-			if left[i].externalKey() < right[j].externalKey() {
+			if left[i].ExternalKey() < right[j].ExternalKey() {
 				i++
 			} else {
 				j++

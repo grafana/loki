@@ -1,0 +1,13 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["factory.go"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/chunk:go_default_library",
+        "//pkg/chunk/gcp:go_default_library",
+        "//vendor/github.com/prometheus/common/log:go_default_library",
+        "//vendor/golang.org/x/net/context:go_default_library",
+    ],
+)

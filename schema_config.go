@@ -230,6 +230,14 @@ func (cfg *periodicTableConfig) GetTags() Tags {
 	return tags
 }
 
+func (cfg *periodicTableConfig) TableFor(t model.Time) string {
+	var (
+		periodSecs = int64(cfg.Period / time.Second)
+		table      = t.Unix() / periodSecs
+	)
+	return cfg.Prefix + strconv.Itoa(int(table))
+}
+
 // compositeSchema is a Schema which delegates to various schemas depending
 // on when they were activated.
 type compositeSchema struct {

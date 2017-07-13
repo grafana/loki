@@ -125,7 +125,7 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 			return nil, err
 		}
 
-		entries, err := c.schema.GetWriteEntries(chunk.From, chunk.Through, userID, metricName, chunk.Metric, chunk.externalKey())
+		entries, err := c.schema.GetWriteEntries(chunk.From, chunk.Through, userID, metricName, chunk.Metric, chunk.ExternalKey())
 		if err != nil {
 			return nil, err
 		}
@@ -196,18 +196,18 @@ func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 		logger.Warnf("Error fetching from cache: %v", err)
 	}
 
-	fromS3, err := c.storage.GetChunks(ctx, missing)
+	fromStorage, err := c.storage.GetChunks(ctx, missing)
 	if err != nil {
 		return nil, promql.ErrStorage(err)
 	}
 
-	if err = c.writeBackCache(ctx, fromS3); err != nil {
+	if err = c.writeBackCache(ctx, fromStorage); err != nil {
 		logger.Warnf("Could not store chunks in chunk cache: %v", err)
 	}
 
 	// TODO instead of doing this sort, propagate an index and assign chunks
 	// into the result based on that index.
-	allChunks := append(fromCache, fromS3...)
+	allChunks := append(fromCache, fromStorage...)
 	sort.Sort(ByKey(allChunks))
 
 	// Filter out chunks
@@ -219,7 +219,6 @@ outer:
 				continue outer
 			}
 		}
-
 		filteredChunks = append(filteredChunks, chunk)
 	}
 
@@ -439,11 +438,11 @@ func (c *Store) convertIndexEntriesToChunks(ctx context.Context, entries []Index
 
 func (c *Store) writeBackCache(_ context.Context, chunks []Chunk) error {
 	for i := range chunks {
-		encoded, err := chunks[i].encode()
+		encoded, err := chunks[i].Encode()
 		if err != nil {
 			return err
 		}
-		c.cache.BackgroundWrite(chunks[i].externalKey(), encoded)
+		c.cache.BackgroundWrite(chunks[i].ExternalKey(), encoded)
 	}
 	return nil
 }

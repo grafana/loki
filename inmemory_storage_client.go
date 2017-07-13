@@ -241,11 +241,11 @@ func (m *MockStorage) PutChunks(_ context.Context, chunks []Chunk) error {
 	defer m.mtx.Unlock()
 
 	for i := range chunks {
-		buf, err := chunks[i].encode()
+		buf, err := chunks[i].Encode()
 		if err != nil {
 			return err
 		}
-		m.objects[chunks[i].externalKey()] = buf
+		m.objects[chunks[i].ExternalKey()] = buf
 	}
 	return nil
 }
@@ -257,12 +257,12 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 
 	result := []Chunk{}
 	for _, chunk := range chunkSet {
-		key := chunk.externalKey()
+		key := chunk.ExternalKey()
 		buf, ok := m.objects[key]
 		if !ok {
 			return nil, fmt.Errorf("%v not found", key)
 		}
-		if err := chunk.decode(buf); err != nil {
+		if err := chunk.Decode(buf); err != nil {
 			return nil, err
 		}
 		result = append(result, chunk)

@@ -10,6 +10,7 @@ import (
 
 	"fmt"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 )
 
@@ -131,7 +132,7 @@ func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (string, model.La
 
 	switch {
 	case len(components) < 3:
-		return "", "", false, fmt.Errorf("invalid chunk time range value: %x", rangeValue)
+		return "", "", false, errors.Errorf("invalid chunk time range value: %x", rangeValue)
 
 	// v1 & v2 schema had three components - label name, label value and chunk ID.
 	// No version number.

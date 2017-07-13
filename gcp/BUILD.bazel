@@ -1,0 +1,17 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "storage_client.go",
+        "table_client.go",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/chunk:go_default_library",
+        "//vendor/cloud.google.com/go/bigtable:go_default_library",
+        "//vendor/github.com/aws/aws-sdk-go/service/dynamodb:go_default_library",
+        "//vendor/golang.org/x/net/context:go_default_library",
+        "//vendor/google.golang.org/grpc/status:go_default_library",
+    ],
+)

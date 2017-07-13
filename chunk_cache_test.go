@@ -74,10 +74,10 @@ func TestChunkCache(t *testing.T) {
 			ts.Add(chunkLen),
 		)
 
-		buf, err := chunk.encode()
+		buf, err := chunk.Encode()
 		require.NoError(t, err)
 
-		key := chunk.externalKey()
+		key := chunk.ExternalKey()
 		err = c.StoreChunk(context.Background(), key, buf)
 		require.NoError(t, err)
 

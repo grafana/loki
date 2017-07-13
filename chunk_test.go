@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local"
 	"github.com/prometheus/prometheus/storage/local/chunk"
@@ -34,7 +35,7 @@ func dummyChunkFor(metric model.Metric) Chunk {
 		now,
 	)
 	// Force checksum calculation.
-	_, err := chunk.encode()
+	_, err := chunk.Encode()
 	if err != nil {
 		panic(err)
 	}
@@ -79,18 +80,18 @@ func TestChunkCodec(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			buf, err := c.chunk.encode()
+			buf, err := c.chunk.Encode()
 			require.NoError(t, err)
 
-			have, err := parseExternalKey(userID, c.chunk.externalKey())
+			have, err := parseExternalKey(userID, c.chunk.ExternalKey())
 			require.NoError(t, err)
 
 			if c.f != nil {
 				c.f(&have, buf)
 			}
 
-			err = have.decode(buf)
-			require.Equal(t, err, c.err)
+			err = have.Decode(buf)
+			require.Equal(t, c.err, errors.Cause(err))
 
 			if c.err == nil {
 				require.Equal(t, have, c.chunk)
@@ -124,7 +125,7 @@ func TestParseExternalKey(t *testing.T) {
 		{key: "invalidUserID/2:270d8f00:270d8f00:f84c5745", chunk: Chunk{}, err: ErrWrongMetadata},
 	} {
 		chunk, err := parseExternalKey(userID, c.key)
-		require.Equal(t, c.err, err)
+		require.Equal(t, c.err, errors.Cause(err))
 		require.Equal(t, c.chunk, chunk)
 	}
 }

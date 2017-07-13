@@ -11,19 +11,20 @@ import (
 	"strings"
 
 	"github.com/golang/snappy"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/local"
 	prom_chunk "github.com/prometheus/prometheus/storage/local/chunk"
 
-	"github.com/weaveworks/common/errors"
+	errs "github.com/weaveworks/common/errors"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // Errors that decode can return
 const (
-	ErrInvalidChunkID  = errors.Error("invalid chunk ID")
-	ErrInvalidChecksum = errors.Error("invalid chunk checksum")
-	ErrWrongMetadata   = errors.Error("wrong chunk metadata")
+	ErrInvalidChunkID  = errs.Error("invalid chunk ID")
+	ErrInvalidChecksum = errs.Error("invalid chunk checksum")
+	ErrWrongMetadata   = errs.Error("wrong chunk metadata")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
@@ -91,7 +92,7 @@ func parseExternalKey(userID, externalKey string) (Chunk, error) {
 		return Chunk{}, err
 	}
 	if chunk.UserID != userID {
-		return Chunk{}, ErrWrongMetadata
+		return Chunk{}, errors.WithStack(ErrWrongMetadata)
 	}
 	return chunk, nil
 }
@@ -99,7 +100,7 @@ func parseExternalKey(userID, externalKey string) (Chunk, error) {
 func parseLegacyChunkID(userID, key string) (Chunk, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 3 {
-		return Chunk{}, ErrInvalidChunkID
+		return Chunk{}, errors.WithStack(ErrInvalidChunkID)
 	}
 	fingerprint, err := strconv.ParseUint(parts[0], 10, 64)
 	if err != nil {
@@ -124,12 +125,12 @@ func parseLegacyChunkID(userID, key string) (Chunk, error) {
 func parseNewExternalKey(key string) (Chunk, error) {
 	parts := strings.Split(key, "/")
 	if len(parts) != 2 {
-		return Chunk{}, ErrInvalidChunkID
+		return Chunk{}, errors.WithStack(ErrInvalidChunkID)
 	}
 	userID := parts[0]
 	hexParts := strings.Split(parts[1], ":")
 	if len(hexParts) != 4 {
-		return Chunk{}, ErrInvalidChunkID
+		return Chunk{}, errors.WithStack(ErrInvalidChunkID)
 	}
 	fingerprint, err := strconv.ParseUint(hexParts[0], 16, 64)
 	if err != nil {
@@ -157,9 +158,9 @@ func parseNewExternalKey(key string) (Chunk, error) {
 	}, nil
 }
 
-// externalKey returns the key you can use to fetch this chunk from external
+// ExternalKey returns the key you can use to fetch this chunk from external
 // storage. For newer chunks, this key includes a checksum.
-func (c *Chunk) externalKey() string {
+func (c *Chunk) ExternalKey() string {
 	// Some chunks have a checksum stored in dynamodb, some do not.  We must
 	// generate keys appropriately.
 	if c.ChecksumSet {
@@ -172,8 +173,8 @@ func (c *Chunk) externalKey() string {
 	return fmt.Sprintf("%s/%d:%d:%d", c.UserID, uint64(c.Fingerprint), int64(c.From), int64(c.Through))
 }
 
-// encode writes the chunk out to a big write buffer, then calculates the checksum.
-func (c *Chunk) encode() ([]byte, error) {
+// Encode writes the chunk out to a big write buffer, then calculates the checksum.
+func (c *Chunk) Encode() ([]byte, error) {
 	var buf bytes.Buffer
 
 	// Write 4 empty bytes first - we will come back and put the len in here.
@@ -210,9 +211,9 @@ func (c *Chunk) encode() ([]byte, error) {
 	return output, nil
 }
 
-// decode the chunk from the given buffer, and confirm the chunk is the one we
+// Decode the chunk from the given buffer, and confirm the chunk is the one we
 // expected.
-func (c *Chunk) decode(input []byte) error {
+func (c *Chunk) Decode(input []byte) error {
 	// Legacy chunks were written with metadata in the index.
 	if c.metadataInIndex {
 		var err error
@@ -226,7 +227,7 @@ func (c *Chunk) decode(input []byte) error {
 	// First, calculate the checksum of the chunk and confirm it matches
 	// what we expected.
 	if c.ChecksumSet && c.Checksum != crc32.Checksum(input, castagnoliTable) {
-		return ErrInvalidChecksum
+		return errors.WithStack(ErrInvalidChecksum)
 	}
 
 	// Now unmarshal the chunk metadata.
@@ -249,8 +250,8 @@ func (c *Chunk) decode(input []byte) error {
 	// we don't write the checksum to s3, so we have to copy the checksum in.
 	if c.ChecksumSet {
 		tempMetadata.Checksum, tempMetadata.ChecksumSet = c.Checksum, c.ChecksumSet
-		if c.externalKey() != tempMetadata.externalKey() {
-			return ErrWrongMetadata
+		if c.ExternalKey() != tempMetadata.ExternalKey() {
+			return errors.WithStack(ErrWrongMetadata)
 		}
 	}
 	*c = tempMetadata

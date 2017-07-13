@@ -522,9 +522,9 @@ func testStorageClientChunks(t *testing.T, client StorageClient) {
 				"index":               model.LabelValue(strconv.Itoa(i*batchSize + j)),
 			})
 			chunks = append(chunks, chunk)
-			_, err := chunk.encode() // Need to encode it, side effect calculates crc
+			_, err := chunk.Encode() // Need to encode it, side effect calculates crc
 			require.NoError(t, err)
-			written = append(written, chunk.externalKey())
+			written = append(written, chunk.ExternalKey())
 		}
 		err := client.PutChunks(context.Background(), chunks)
 		require.NoError(t, err)
@@ -547,7 +547,7 @@ func testStorageClientChunks(t *testing.T, client StorageClient) {
 		sort.Sort(ByKey(chunksWeGot))
 		require.Equal(t, len(chunksToGet), len(chunksWeGot))
 		for j := 0; j < len(chunksWeGot); j++ {
-			require.Equal(t, chunksToGet[i].externalKey(), chunksWeGot[i].externalKey())
+			require.Equal(t, chunksToGet[i].ExternalKey(), chunksWeGot[i].ExternalKey())
 		}
 	}
 }
