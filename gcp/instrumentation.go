@@ -17,9 +17,9 @@ import (
 var bigtableRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Namespace: "cortex",
 	Name:      "bigtable_request_duration_seconds",
-	Help:      "Time spent doing BigTable requests.",
+	Help:      "Time spent doing Bigtable requests.",
 
-	// BigTable latency seems to range from a few ms to a few sec and is
+	// Bigtable latency seems to range from a few ms to a few sec and is
 	// important.  So use 8 buckets from 128us to 2s.
 	Buckets: prometheus.ExponentialBuckets(0.000128, 4, 8),
 }, []string{"operation", "status_code"})

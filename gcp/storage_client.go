@@ -24,8 +24,8 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.project, "bigtable.project", "", "BigTable project ID.")
-	f.StringVar(&cfg.instance, "bigtable.instance", "", "BigTable instance ID.")
+	f.StringVar(&cfg.project, "bigtable.project", "", "Bigtable project ID.")
+	f.StringVar(&cfg.instance, "bigtable.instance", "", "Bigtable instance ID.")
 }
 
 // storageClient implements chunk.storageClient for GCP.
@@ -116,7 +116,7 @@ func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, 
 	}
 
 	return table.ReadRows(ctx, rowRange, func(r bigtable.Row) bool {
-		// BigTable doesn't know when to stop, as we're reading "until the end of the
+		// Bigtable doesn't know when to stop, as we're reading "until the end of the
 		// row" in DynamoDB.  So we need to check the prefix of the row is still correct.
 		if !strings.HasPrefix(r.Key(), query.HashValue+separator) {
 			return false
@@ -125,7 +125,7 @@ func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, 
 	}, bigtable.RowFilter(bigtable.FamilyFilter(columnFamily)))
 }
 
-// bigtableReadBatch represents a batch of rows read from BigTable.  As the
+// bigtableReadBatch represents a batch of rows read from Bigtable.  As the
 // bigtable interface gives us rows one-by-one, a batch always only contains
 // a single row.
 type bigtableReadBatch bigtable.Row
