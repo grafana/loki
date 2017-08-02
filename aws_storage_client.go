@@ -486,7 +486,7 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 	result := []Chunk{}
 	unprocessed := dynamoDBReadRequest{}
 	backoff, numRetries := minBackoff, 0
-	for outstanding.Len()+unprocessed.Len() > 0 {
+	for outstanding.Len()+unprocessed.Len() > 0 && numRetries < maxRetries {
 		requests := dynamoDBReadRequest{}
 		requests.TakeReqs(unprocessed, dynamoDBMaxReadBatchSize)
 		requests.TakeReqs(outstanding, dynamoDBMaxReadBatchSize)
@@ -540,6 +540,10 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 
 		backoff = minBackoff
 		numRetries = 0
+	}
+
+	if valuesLeft := outstanding.Len() + unprocessed.Len(); valuesLeft > 0 {
+		return nil, fmt.Errorf("failed to query chunks after %d retries, %d values remaining", numRetries, valuesLeft)
 	}
 	return result, nil
 }

@@ -478,35 +478,45 @@ func TestAWSStorageClientChunks(t *testing.T) {
 		testStorageClientChunks(t, client)
 	})
 
-	t.Run("DynamoDB chunks", func(t *testing.T) {
-		dynamoDB := newMockDynamoDB(0, 0)
-		schemaConfig := SchemaConfig{
-			ChunkTables: periodicTableConfig{
-				From:   util.NewDayValue(model.Now()),
-				Period: 1 * time.Minute,
-				Prefix: "chunks",
-			},
-		}
-		tableManager, err := NewTableManager(
-			schemaConfig,
-			&dynamoTableClient{
-				DynamoDB: dynamoDB,
-			},
-		)
-		require.NoError(t, err)
-		err = tableManager.syncTables(context.Background())
-		require.NoError(t, err)
+	tests := []struct {
+		name           string
+		provisionedErr int
+	}{
+		{"DynamoDB chunks", 0},
+		{"DynamoDB chunks retry logic", 2},
+	}
 
-		client := awsStorageClient{
-			DynamoDB:                dynamoDB,
-			schemaCfg:               schemaConfig,
-			queryRequestFn:          dynamoDB.queryRequest,
-			batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
-			batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dynamoDB := newMockDynamoDB(0, tt.provisionedErr)
+			schemaConfig := SchemaConfig{
+				ChunkTables: periodicTableConfig{
+					From:   util.NewDayValue(model.Now()),
+					Period: 1 * time.Minute,
+					Prefix: "chunks",
+				},
+			}
+			tableManager, err := NewTableManager(
+				schemaConfig,
+				&dynamoTableClient{
+					DynamoDB: dynamoDB,
+				},
+			)
+			require.NoError(t, err)
+			err = tableManager.syncTables(context.Background())
+			require.NoError(t, err)
 
-		testStorageClientChunks(t, client)
-	})
+			client := awsStorageClient{
+				DynamoDB:                dynamoDB,
+				schemaCfg:               schemaConfig,
+				queryRequestFn:          dynamoDB.queryRequest,
+				batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
+				batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
+			}
+
+			testStorageClientChunks(t, client)
+		})
+	}
 }
 
 func testStorageClientChunks(t *testing.T, client StorageClient) {
