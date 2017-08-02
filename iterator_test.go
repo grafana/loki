@@ -3,6 +3,7 @@ package chunk
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/storage/metric"
@@ -106,7 +107,7 @@ func TestLazySeriesIterator_RangeValues(t *testing.T) {
 		}{
 			{
 				iterator:        iterator,
-				interval:        metric.Interval{OldestInclusive: now, NewestInclusive: now},
+				interval:        metric.Interval{OldestInclusive: now.Add(-time.Minute), NewestInclusive: now.Add(time.Minute)},
 				expectedSamples: dummySamples,
 			},
 		} {
