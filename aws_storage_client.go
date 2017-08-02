@@ -272,13 +272,32 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 	}
 
 	request := a.queryRequestFn(ctx, input)
-	backoff := minBackoff
 	pageCount := 0
 	defer func() {
 		dynamoQueryPagesCount.Observe(float64(pageCount))
 	}()
+
 	for page := request; page != nil; page = page.NextPage() {
 		pageCount++
+
+		response, err := a.queryPage(ctx, input, page)
+		if err != nil {
+			return err
+		}
+
+		if getNextPage := callback(response, !page.HasNextPage()); !getNextPage {
+			if err != nil {
+				return fmt.Errorf("QueryPages error: table=%v, err=%v", *input.TableName, page.Error())
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
+func (a awsStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput, page dynamoDBRequest) (dynamoDBReadResponse, error) {
+	backoff := minBackoff
+	for i := 0; i < maxRetries; i++ {
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
 			return page.Send()
 		})
@@ -290,28 +309,18 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 
 		if err != nil {
 			recordDynamoError(*input.TableName, err, "DynamoDB.QueryPages")
-
 			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || page.Retryable()) {
 				time.Sleep(backoff)
 				backoff = nextBackoff(backoff)
 				continue
 			}
-
-			return fmt.Errorf("QueryPages error: table=%v, err=%v", *input.TableName, err)
+			return nil, fmt.Errorf("QueryPage error: table=%v, err=%v", *input.TableName, err)
 		}
 
 		queryOutput := page.Data().(*dynamodb.QueryOutput)
-		if getNextPage := callback(dynamoDBReadResponse(queryOutput.Items), !page.HasNextPage()); !getNextPage {
-			if err != nil {
-				return fmt.Errorf("QueryPages error: table=%v, err=%v", *input.TableName, page.Error())
-			}
-			return nil
-		}
-
-		backoff = minBackoff
+		return dynamoDBReadResponse(queryOutput.Items), nil
 	}
-
-	return nil
+	return nil, fmt.Errorf("QueryPage error: maxRetries exceeded for table %v", *input.TableName)
 }
 
 type dynamoDBRequest interface {

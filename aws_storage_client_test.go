@@ -605,9 +605,10 @@ func TestAWSStorageClientQueryPages(t *testing.T) {
 	}
 
 	tests := []struct {
-		name  string
-		query IndexQuery
-		want  []IndexEntry
+		name           string
+		query          IndexQuery
+		provisionedErr int
+		want           []IndexEntry
 	}{
 		{
 			"check HashValue only",
@@ -615,6 +616,7 @@ func TestAWSStorageClientQueryPages(t *testing.T) {
 				TableName: "table",
 				HashValue: "flip",
 			},
+			0,
 			[]IndexEntry{entries[5], entries[6], entries[7]},
 		},
 		{
@@ -624,6 +626,7 @@ func TestAWSStorageClientQueryPages(t *testing.T) {
 				HashValue:       "foo",
 				RangeValueStart: []byte("bar:2"),
 			},
+			0,
 			[]IndexEntry{entries[1], entries[2], entries[3], entries[4]},
 		},
 		{
@@ -633,6 +636,7 @@ func TestAWSStorageClientQueryPages(t *testing.T) {
 				HashValue:        "foo",
 				RangeValuePrefix: []byte("baz:"),
 			},
+			0,
 			[]IndexEntry{entries[3], entries[4]},
 		},
 		{
@@ -643,13 +647,25 @@ func TestAWSStorageClientQueryPages(t *testing.T) {
 				RangeValuePrefix: []byte("bar"),
 				ValueEqual:       []byte("20"),
 			},
+			0,
+			[]IndexEntry{entries[1]},
+		},
+		{
+			"check retry logic",
+			IndexQuery{
+				TableName:        "table",
+				HashValue:        "foo",
+				RangeValuePrefix: []byte("bar"),
+				ValueEqual:       []byte("20"),
+			},
+			2,
 			[]IndexEntry{entries[1]},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dynamoDB := newMockDynamoDB(0, 0)
+			dynamoDB := newMockDynamoDB(0, tt.provisionedErr)
 			client := awsStorageClient{
 				DynamoDB:                dynamoDB,
 				queryRequestFn:          dynamoDB.queryRequest,
