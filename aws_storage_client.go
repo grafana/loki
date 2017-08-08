@@ -76,6 +76,12 @@ var (
 		// metric names.
 		Buckets: prometheus.ExponentialBuckets(1, 4, 6),
 	})
+	dynamoQueryRetryCount = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "dynamo_query_retry_count",
+		Help:      "Number of retries per DynamoDB operation.",
+		Buckets:   []float64{0, 1, 2, 3, 5, 10, 15, 20},
+	}, []string{"operation"})
 	s3RequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "s3_request_duration_seconds",
@@ -89,6 +95,7 @@ func init() {
 	prometheus.MustRegister(dynamoConsumedCapacity)
 	prometheus.MustRegister(dynamoFailures)
 	prometheus.MustRegister(dynamoQueryPagesCount)
+	prometheus.MustRegister(dynamoQueryRetryCount)
 	prometheus.MustRegister(s3RequestDuration)
 }
 
@@ -172,7 +179,12 @@ func (a awsStorageClient) NewWriteBatch() WriteBatch {
 func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) error {
 	outstanding := input.(dynamoDBWriteBatch)
 	unprocessed := dynamoDBWriteBatch{}
+
 	backoff, numRetries := minBackoff, 0
+	defer func() {
+		dynamoQueryRetryCount.WithLabelValues("BatchWrite").Observe(float64(numRetries))
+	}()
+
 	for outstanding.Len()+unprocessed.Len() > 0 && numRetries < maxRetries {
 		reqs := dynamoDBWriteBatch{}
 		reqs.TakeReqs(unprocessed, dynamoDBMaxWriteBatchSize)
@@ -297,7 +309,12 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 
 func (a awsStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput, page dynamoDBRequest) (dynamoDBReadResponse, error) {
 	backoff := minBackoff
-	for i := 0; i < maxRetries; i++ {
+	numRetries := 0
+	defer func() {
+		dynamoQueryRetryCount.WithLabelValues("queryPage").Observe(float64(numRetries))
+	}()
+
+	for ; numRetries < maxRetries; numRetries++ {
 		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
 			return page.Send()
 		})
@@ -486,6 +503,10 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 	result := []Chunk{}
 	unprocessed := dynamoDBReadRequest{}
 	backoff, numRetries := minBackoff, 0
+	defer func() {
+		dynamoQueryRetryCount.WithLabelValues("getDynamoDBChunks").Observe(float64(numRetries))
+	}()
+
 	for outstanding.Len()+unprocessed.Len() > 0 && numRetries < maxRetries {
 		requests := dynamoDBReadRequest{}
 		requests.TakeReqs(unprocessed, dynamoDBMaxReadBatchSize)
