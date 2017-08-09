@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"net"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -830,7 +832,25 @@ func awsConfigFromURL(awsURL *url.URL) (*aws.Config, error) {
 	creds := credentials.NewStaticCredentials(awsURL.User.Username(), password, "")
 	config := aws.NewConfig().
 		WithCredentials(creds).
-		WithMaxRetries(0) // We do our own retries, so we can monitor them
+		WithMaxRetries(0). // We do our own retries, so we can monitor them
+		// Use a custom http.Client with the golang defaults but also specifying
+		// MaxIdleConnsPerHost because of a bug in golang https://github.com/golang/go/issues/13801
+		// where MaxIdleConnsPerHost does not work as expected.
+		WithHTTPClient(&http.Client{
+			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
+				DialContext: (&net.Dialer{
+					Timeout:   30 * time.Second,
+					KeepAlive: 30 * time.Second,
+					DualStack: true,
+				}).DialContext,
+				MaxIdleConns:          100,
+				IdleConnTimeout:       90 * time.Second,
+				MaxIdleConnsPerHost:   100,
+				TLSHandshakeTimeout:   3 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+			},
+		})
 	if strings.Contains(awsURL.Host, ".") {
 		return config.WithEndpoint(fmt.Sprintf("http://%s", awsURL.Host)).WithRegion("dummy"), nil
 	}
