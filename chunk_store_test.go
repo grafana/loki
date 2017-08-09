@@ -165,12 +165,30 @@ func TestChunkStore_Get_concrete(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				iterators, err := store.Get(ctx, now.Add(-time.Hour), now, tc.matchers...)
+				// Query with ordinary time-range
+				iterators1, err := store.Get(ctx, now.Add(-time.Hour), now, tc.matchers...)
 				require.NoError(t, err)
 
-				sort.Sort(ByFingerprint(iterators))
-				if !reflect.DeepEqual(tc.expect, iterators) {
-					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, iterators))
+				sort.Sort(ByFingerprint(iterators1))
+				if !reflect.DeepEqual(tc.expect, iterators1) {
+					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, iterators1))
+				}
+
+				// Pushing end of time-range into future should yield exact same resultset
+				iterators2, err := store.Get(ctx, now.Add(-time.Hour), now.Add(time.Hour*24*30), tc.matchers...)
+				require.NoError(t, err)
+
+				sort.Sort(ByFingerprint(iterators2))
+				if !reflect.DeepEqual(tc.expect, iterators2) {
+					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, iterators2))
+				}
+
+				// Query with both begin & end of time-range in future should yield empty resultset
+				iterators3, err := store.Get(ctx, now.Add(time.Hour), now.Add(time.Hour*2), tc.matchers...)
+				require.NoError(t, err)
+				if len(iterators3) != 0 {
+					t.Fatalf("%s: future query should yield empty resultset ... actually got %v chunks: %#v",
+						tc.query, len(iterators3), iterators3)
 				}
 			})
 		}

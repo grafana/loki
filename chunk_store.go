@@ -155,6 +155,19 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 		return nil, fmt.Errorf("invalid query, through < from (%d < %d)", through, from)
 	}
 
+	now := model.Now()
+	if from.After(now) {
+		// time-span start is in future ... regard as legal
+		util.WithContext(ctx).Debugf("Whole timerange %v..%v in future (now=%v) yield empty resultset", through, from, now)
+		return []local.SeriesIterator{}, nil
+	}
+
+	if through.After(now) {
+		// time-span end is in future ... regard as legal
+		util.WithContext(ctx).Debugf("Adjusting end timerange=%v from future to now=%v", through, now)
+		through = now // Avoid processing future part - otherwise some schemas could fail with eg non-existent table gripes
+	}
+
 	// Fetch metric name chunks if the matcher is of type equal,
 	metricNameMatcher, matchers, ok := util.ExtractMetricNameMatcherFromMatchers(allMatchers)
 	if ok && metricNameMatcher.Type == metric.Equal {
