@@ -180,7 +180,7 @@ func (cfg *periodicTableConfig) RegisterFlags(argPrefix, tablePrefix string, f *
 	f.Int64Var(&cfg.InactiveReadThroughput, argPrefix+".inactive-read-throughput", 300, "DynamoDB table read throughput for inactive tables.")
 	f.Var(&cfg.From, argPrefix+".start", fmt.Sprintf("Deprecated: use '%s.from'.", argPrefix))
 
-	cfg.WriteScale.RegisterFlags(argPrefix+".write-scale", f)
+	cfg.WriteScale.RegisterFlags(argPrefix+".write-throughput.scale", f)
 }
 
 type autoScalingConfig struct {
