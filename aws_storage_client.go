@@ -14,6 +14,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -103,8 +104,9 @@ func init() {
 
 // DynamoDBConfig specifies config for a DynamoDB database.
 type DynamoDBConfig struct {
-	DynamoDB util.URLValue
-	APILimit float64
+	DynamoDB               util.URLValue
+	APILimit               float64
+	ApplicationAutoScaling util.URLValue
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -112,6 +114,7 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.DynamoDB, "dynamodb.url", "DynamoDB endpoint URL with escaped Key and Secret encoded. "+
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<table-name> to use a mock in-memory implementation.")
 	f.Float64Var(&cfg.APILimit, "dynamodb.api-limit", 2.0, "DynamoDB table management requests per second limit.")
+	f.Var(&cfg.ApplicationAutoScaling, "applicationautoscaling.url", "ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.")
 }
 
 // AWSStorageConfig specifies config for storing data on AWS.
@@ -806,6 +809,15 @@ func recordDynamoError(tableName string, err error, operation string) {
 
 // dynamoClientFromURL creates a new DynamoDB client from a URL.
 func dynamoClientFromURL(awsURL *url.URL) (dynamodbiface.DynamoDBAPI, error) {
+	dynamoDBSession, err := awsSessionFromURL(awsURL)
+	if err != nil {
+		return nil, err
+	}
+	return dynamodb.New(dynamoDBSession), nil
+}
+
+// awsSessionFromURL creates a new aws session from a URL.
+func awsSessionFromURL(awsURL *url.URL) (client.ConfigProvider, error) {
 	if awsURL == nil {
 		return nil, fmt.Errorf("no URL specified for DynamoDB")
 	}
@@ -817,7 +829,7 @@ func dynamoClientFromURL(awsURL *url.URL) (dynamodbiface.DynamoDBAPI, error) {
 	if err != nil {
 		return nil, err
 	}
-	return dynamodb.New(session.New(config)), nil
+	return session.New(config), nil
 }
 
 // awsConfigFromURL returns AWS config from given URL. It expects escaped AWS Access key ID & Secret Access Key to be

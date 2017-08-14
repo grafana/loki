@@ -27,6 +27,8 @@ go_library(
         "//vendor/github.com/aws/aws-sdk-go/aws/credentials:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/request:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/aws/session:go_default_library",
+        "//vendor/github.com/aws/aws-sdk-go/service/applicationautoscaling:go_default_library",
+        "//vendor/github.com/aws/aws-sdk-go/service/applicationautoscaling/applicationautoscalingiface:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/service/dynamodb:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface:go_default_library",
         "//vendor/github.com/aws/aws-sdk-go/service/s3:go_default_library",

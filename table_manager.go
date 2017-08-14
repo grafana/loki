@@ -182,6 +182,7 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 
 	if m.cfg.UsePeriodicTables {
 		// if we are before the switch to periodic table, we need to give this table write throughput
+
 		var (
 			tablePeriodSecs = int64(m.cfg.IndexTables.Period / time.Second)
 			gracePeriodSecs = int64(m.cfg.CreationGracePeriod / time.Second)
@@ -193,6 +194,10 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 		if now < (firstTable*tablePeriodSecs)+gracePeriodSecs+maxChunkAgeSecs {
 			legacyTable.ProvisionedRead = m.cfg.IndexTables.ProvisionedReadThroughput
 			legacyTable.ProvisionedWrite = m.cfg.IndexTables.ProvisionedWriteThroughput
+
+			if m.cfg.IndexTables.WriteScale.Enabled {
+				legacyTable.WriteScale = m.cfg.IndexTables.WriteScale
+			}
 		}
 	}
 	result = append(result, legacyTable)

@@ -16,15 +16,21 @@ type TableDesc struct {
 	ProvisionedRead  int64
 	ProvisionedWrite int64
 	Tags             Tags
+	WriteScale       autoScalingConfig
 }
 
 // Equals returns true if other matches desc.
 func (desc TableDesc) Equals(other TableDesc) bool {
+	if desc.WriteScale != other.WriteScale {
+		return false
+	}
+
 	if desc.ProvisionedRead != other.ProvisionedRead {
 		return false
 	}
 
-	if desc.ProvisionedWrite != other.ProvisionedWrite {
+	// Only check provisioned write if auto scaling is disabled
+	if !desc.WriteScale.Enabled && desc.ProvisionedWrite != other.ProvisionedWrite {
 		return false
 	}
 
