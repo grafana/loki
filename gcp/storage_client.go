@@ -2,18 +2,22 @@ package gcp
 
 import (
 	"flag"
+	"fmt"
 	"strings"
 
 	"cloud.google.com/go/bigtable"
 	"golang.org/x/net/context"
 
+	"github.com/pkg/errors"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 const (
 	columnFamily = "f"
 	column       = "c"
 	separator    = "\000"
+	maxRowReads  = 100
 )
 
 // Config for a StorageClient
@@ -115,7 +119,7 @@ func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, 
 		rowRange = bigtable.PrefixRange(query.HashValue + separator)
 	}
 
-	return table.ReadRows(ctx, rowRange, func(r bigtable.Row) bool {
+	err := table.ReadRows(ctx, rowRange, func(r bigtable.Row) bool {
 		// Bigtable doesn't know when to stop, as we're reading "until the end of the
 		// row" in DynamoDB.  So we need to check the prefix of the row is still correct.
 		if !strings.HasPrefix(r.Key(), query.HashValue+separator) {
@@ -123,6 +127,10 @@ func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, 
 		}
 		return callback(bigtableReadBatch(r), false)
 	}, bigtable.RowFilter(bigtable.FamilyFilter(columnFamily)))
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
 }
 
 // bigtableReadBatch represents a batch of rows read from Bigtable.  As the
@@ -189,38 +197,63 @@ func (s *storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 }
 
 func (s *storageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
-	chunks := map[string][]chunk.Chunk{}
+	chunks := map[string]map[string]chunk.Chunk{}
 	keys := map[string]bigtable.RowList{}
-	for _, chunk := range input {
-		tableName := s.schemaCfg.ChunkTables.TableFor(chunk.From)
-		keys[tableName] = append(keys[tableName], chunk.ExternalKey())
-		chunks[tableName] = append(chunks[tableName], chunk)
+	for _, c := range input {
+		tableName := s.schemaCfg.ChunkTables.TableFor(c.From)
+		key := c.ExternalKey()
+		keys[tableName] = append(keys[tableName], key)
+		if _, ok := chunks[tableName]; !ok {
+			chunks[tableName] = map[string]chunk.Chunk{}
+		}
+		chunks[tableName][key] = c
+	}
+
+	outs := make(chan chunk.Chunk, len(input))
+	errs := make(chan error, len(input))
+
+	for tableName := range keys {
+		var (
+			table  = s.client.Open(tableName)
+			keys   = keys[tableName]
+			chunks = chunks[tableName]
+		)
+
+		for i := 0; i < len(keys); i += maxRowReads {
+			page := keys[i:util.Min(i+maxRowReads, len(keys))]
+			go func(page bigtable.RowList) {
+				// rows are returned in key order, not order in row list
+				if err := table.ReadRows(ctx, page, func(row bigtable.Row) bool {
+					chunk, ok := chunks[row.Key()]
+					if !ok {
+						errs <- fmt.Errorf("Got row for unknown chunk: %s", row.Key())
+						return false
+					}
+
+					err := chunk.Decode(row[columnFamily][0].Value)
+					if err != nil {
+						errs <- err
+						return false
+					}
+
+					outs <- chunk
+					return true
+				}); err != nil {
+					errs <- errors.WithStack(err)
+				}
+			}(page)
+		}
 	}
 
 	output := make([]chunk.Chunk, 0, len(input))
-	for tableName := range keys {
-		var (
-			i             = 0
-			processingErr error
-			table         = s.client.Open(tableName)
-			keys          = keys[tableName]
-			chunks        = chunks[tableName]
-		)
-		// rows are returned in order
-		if err := table.ReadRows(ctx, keys, func(row bigtable.Row) bool {
-			chunk := chunks[i]
-			i++
-			processingErr = chunk.Decode(row[columnFamily][0].Value)
-			if processingErr == nil {
-				output = append(output, chunk)
-			}
-			return processingErr == nil
-		}); err != nil {
+	for i := 0; i < len(input); i++ {
+		select {
+		case c := <-outs:
+			output = append(output, c)
+		case err := <-errs:
 			return nil, err
 		}
-		if processingErr != nil {
-			return nil, processingErr
-		}
 	}
+
 	return output, nil
 }

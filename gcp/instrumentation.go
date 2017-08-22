@@ -12,6 +12,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 var bigtableRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -71,6 +72,21 @@ type instrumentedClientStream struct {
 	grpc.ClientStream
 }
 
+func (s *instrumentedClientStream) SendMsg(m interface{}) error {
+	err := s.ClientStream.SendMsg(m)
+	if err == nil {
+		return err
+	}
+
+	if err == io.EOF {
+		bigtableRequestDuration.WithLabelValues(s.method, instrument.ErrorCode(nil)).Observe(time.Now().Sub(s.start).Seconds())
+	} else {
+		bigtableRequestDuration.WithLabelValues(s.method, instrument.ErrorCode(err)).Observe(time.Now().Sub(s.start).Seconds())
+	}
+
+	return err
+}
+
 func (s *instrumentedClientStream) RecvMsg(m interface{}) error {
 	err := s.ClientStream.RecvMsg(m)
 	if err == nil {
@@ -84,4 +100,12 @@ func (s *instrumentedClientStream) RecvMsg(m interface{}) error {
 	}
 
 	return err
+}
+
+func (s *instrumentedClientStream) Header() (metadata.MD, error) {
+	md, err := s.ClientStream.Header()
+	if err != nil {
+		bigtableRequestDuration.WithLabelValues(s.method, instrument.ErrorCode(err)).Observe(time.Now().Sub(s.start).Seconds())
+	}
+	return md, err
 }

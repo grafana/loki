@@ -52,6 +52,7 @@ func init() {
 	prometheus.MustRegister(memcacheRequests)
 	prometheus.MustRegister(memcacheHits)
 	prometheus.MustRegister(memcacheCorrupt)
+	prometheus.MustRegister(memcacheDroppedWriteBack)
 	prometheus.MustRegister(memcacheRequestDuration)
 }
 
