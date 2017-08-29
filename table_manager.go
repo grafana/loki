@@ -278,11 +278,11 @@ func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDes
 		tableCapacity.WithLabelValues(writeLabel, expected.Name).Set(float64(current.ProvisionedWrite))
 
 		if expected.Equals(current) {
-			log.Infof("  Provisioned throughput: read = %d, write = %d, skipping.", current.ProvisionedRead, current.ProvisionedWrite)
+			log.Infof("  Provisioned throughput on table %s: read = %d, write = %d, skipping.", current.Name, current.ProvisionedRead, current.ProvisionedWrite)
 			continue
 		}
 
-		log.Infof("  Updating provisioned throughput on table %s to read = %d, write = %d", expected.Name, expected.ProvisionedRead, expected.ProvisionedWrite)
+		log.Infof("  Updating provisioned throughput on table %s from read = %d, write = %d to read = %d, write = %d", expected.Name, current.ProvisionedRead, current.ProvisionedWrite, expected.ProvisionedRead, expected.ProvisionedWrite)
 		err = m.client.UpdateTable(ctx, current, expected)
 		if err != nil {
 			return err
