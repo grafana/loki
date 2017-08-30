@@ -319,8 +319,9 @@ func (a awsStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryIn
 		dynamoQueryRetryCount.WithLabelValues("queryPage").Observe(float64(numRetries))
 	}()
 
+	var err error
 	for ; numRetries < maxRetries; numRetries++ {
-		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
+		err = instrument.TimeRequestHistogram(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
 			return page.Send()
 		})
 
@@ -332,6 +333,9 @@ func (a awsStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryIn
 		if err != nil {
 			recordDynamoError(*input.TableName, err, "DynamoDB.QueryPages")
 			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || page.Retryable()) {
+				if awsErr.Code() != dynamodb.ErrCodeProvisionedThroughputExceededException {
+					log.Warnf("DynamoDB error retry=%d, table=%v, err=%v", numRetries, *input.TableName, err)
+				}
 				time.Sleep(backoff)
 				backoff = nextBackoff(backoff)
 				continue
@@ -342,7 +346,7 @@ func (a awsStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryIn
 		queryOutput := page.Data().(*dynamodb.QueryOutput)
 		return dynamoDBReadResponse(queryOutput.Items), nil
 	}
-	return nil, fmt.Errorf("QueryPage error: maxRetries exceeded for table %v", *input.TableName)
+	return nil, fmt.Errorf("QueryPage error: maxRetries exceeded for table %v, last error %v", *input.TableName, err)
 }
 
 type dynamoDBRequest interface {
