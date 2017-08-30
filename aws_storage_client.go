@@ -83,7 +83,7 @@ var (
 		Namespace: "cortex",
 		Name:      "dynamo_query_retry_count",
 		Help:      "Number of retries per DynamoDB operation.",
-		Buckets:   []float64{0, 1, 2, 3, 5, 10, 15, 20},
+		Buckets:   prometheus.LinearBuckets(0, 1, 21),
 	}, []string{"operation"})
 	s3RequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
