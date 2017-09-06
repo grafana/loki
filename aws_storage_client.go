@@ -393,6 +393,9 @@ func (a dynamoDBRequestAdapter) Data() interface{} {
 }
 
 func (a dynamoDBRequestAdapter) Send() error {
+	// Clear error in case we are retrying the same operation - if we
+	// don't do this then the same error will come back again immediately
+	a.request.Error = nil
 	return a.request.Send()
 }
 
