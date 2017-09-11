@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = ["factory.go"],
+    importpath = "github.com/weaveworks/cortex/pkg/chunk/storage",
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/chunk:go_default_library",
