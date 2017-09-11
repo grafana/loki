@@ -161,7 +161,9 @@ type periodicTableConfig struct {
 	InactiveWriteThroughput    int64
 	InactiveReadThroughput     int64
 
-	WriteScale autoScalingConfig
+	WriteScale              autoScalingConfig
+	InactiveWriteScale      autoScalingConfig
+	InactiveWriteScaleLastN int64
 
 	// Temporarily in place to support tags set on all tables, as means of
 	// smoothing transition to per-table tags.
@@ -181,6 +183,8 @@ func (cfg *periodicTableConfig) RegisterFlags(argPrefix, tablePrefix string, f *
 	f.Var(&cfg.From, argPrefix+".start", fmt.Sprintf("Deprecated: use '%s.from'.", argPrefix))
 
 	cfg.WriteScale.RegisterFlags(argPrefix+".write-throughput.scale", f)
+	cfg.InactiveWriteScale.RegisterFlags(argPrefix+".inactive-write-throughput.scale", f)
+	f.Int64Var(&cfg.InactiveWriteScaleLastN, argPrefix+".inactive-write-throughput.scale-last-n", 4, "Number of last inactive tables to enable write autoscale.")
 }
 
 type autoScalingConfig struct {
@@ -229,6 +233,11 @@ func (cfg *periodicTableConfig) periodicTables(beginGrace, endGrace time.Duratio
 			ProvisionedRead:  cfg.InactiveReadThroughput,
 			ProvisionedWrite: cfg.InactiveWriteThroughput,
 			Tags:             cfg.GetTags(),
+		}
+
+		// Autoscale last N tables (excluding lastTable which is active).
+		if cfg.InactiveWriteScale.Enabled && i >= (lastTable-cfg.InactiveWriteScaleLastN) && i < lastTable {
+			table.WriteScale = cfg.InactiveWriteScale
 		}
 
 		// if now is within table [start - grace, end + grace), then we need some write throughput

@@ -595,6 +595,251 @@ func TestTableManagerAutoScaling(t *testing.T) {
 	}
 }
 
+func TestTableManagerInactiveAutoScaling(t *testing.T) {
+	dynamoDB := newMockDynamoDB(0, 0)
+	applicationAutoScaling := newMockApplicationAutoScaling()
+	client := dynamoTableClient{
+		DynamoDB:               dynamoDB,
+		ApplicationAutoScaling: applicationAutoScaling,
+	}
+
+	test := func(tableManager *TableManager, name string, tm time.Time, expected []TableDesc) {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			mtime.NowForce(tm)
+			if err := tableManager.syncTables(ctx); err != nil {
+				t.Fatal(err)
+			}
+			expectTables(ctx, t, client, expected)
+		})
+	}
+
+	cfg := SchemaConfig{
+		UsePeriodicTables: true,
+		IndexTables: periodicTableConfig{
+			Prefix: tablePrefix,
+			Period: tablePeriod,
+			From:   util.NewDayValue(model.TimeFromUnix(0)),
+			ProvisionedWriteThroughput: write,
+			ProvisionedReadThroughput:  read,
+			InactiveWriteThroughput:    inactiveWrite,
+			InactiveReadThroughput:     inactiveRead,
+			InactiveWriteScale: autoScalingConfig{
+				Enabled:     true,
+				MinCapacity: 10,
+				MaxCapacity: 20,
+				OutCooldown: 100,
+				InCooldown:  100,
+				TargetValue: 80.0,
+			},
+			InactiveWriteScaleLastN: 2,
+		},
+
+		ChunkTables: periodicTableConfig{
+			Prefix: chunkTablePrefix,
+			Period: tablePeriod,
+			From:   util.NewDayValue(model.TimeFromUnix(0)),
+			ProvisionedWriteThroughput: write,
+			ProvisionedReadThroughput:  read,
+			InactiveWriteThroughput:    inactiveWrite,
+			InactiveReadThroughput:     inactiveRead,
+			InactiveWriteScale: autoScalingConfig{
+				Enabled:     true,
+				MinCapacity: 10,
+				MaxCapacity: 20,
+				OutCooldown: 100,
+				InCooldown:  100,
+				TargetValue: 80.0,
+			},
+			InactiveWriteScaleLastN: 2,
+		},
+
+		CreationGracePeriod: gracePeriod,
+		MaxChunkAge:         maxChunkAge,
+	}
+
+	// Check legacy and latest tables do not autoscale with inactive autoscale enabled.
+	{
+		tableManager, err := NewTableManager(cfg, client)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		test(
+			tableManager,
+			"Legacy and latest tables",
+			time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
+			[]TableDesc{
+				{
+					Name:             "",
+					ProvisionedRead:  inactiveRead,
+					ProvisionedWrite: inactiveWrite,
+				},
+				{
+					Name:             tablePrefix + "0",
+					ProvisionedRead:  read,
+					ProvisionedWrite: write,
+				},
+				{
+					Name:             chunkTablePrefix + "0",
+					ProvisionedRead:  read,
+					ProvisionedWrite: write,
+				},
+			},
+		)
+	}
+
+	// Check inactive tables are autoscaled even if there are less than the limit.
+	{
+		tableManager, err := NewTableManager(cfg, client)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		test(
+			tableManager,
+			"1 week of inactive tables with latest",
+			time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
+			[]TableDesc{
+				{
+					Name:             "",
+					ProvisionedRead:  inactiveRead,
+					ProvisionedWrite: inactiveWrite,
+				},
+				{
+					Name:             tablePrefix + "0",
+					ProvisionedRead:  inactiveRead,
+					ProvisionedWrite: inactiveWrite,
+					WriteScale: autoScalingConfig{
+						Enabled:     true,
+						MinCapacity: 10,
+						MaxCapacity: 20,
+						OutCooldown: 100,
+						InCooldown:  100,
+						TargetValue: 80.0,
+					},
+				},
+				{
+					Name:             chunkTablePrefix + "0",
+					ProvisionedRead:  inactiveRead,
+					ProvisionedWrite: inactiveWrite,
+					WriteScale: autoScalingConfig{
+						Enabled:     true,
+						MinCapacity: 10,
+						MaxCapacity: 20,
+						OutCooldown: 100,
+						InCooldown:  100,
+						TargetValue: 80.0,
+					},
+				},
+				{
+					Name:             tablePrefix + "1",
+					ProvisionedRead:  read,
+					ProvisionedWrite: write,
+				},
+				{
+					Name:             chunkTablePrefix + "1",
+					ProvisionedRead:  read,
+					ProvisionedWrite: write,
+				},
+			},
+		)
+	}
+
+	// Check inactive tables past the limit do not autoscale but the latest N do.
+	{
+		tableManager, err := NewTableManager(cfg, client)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		test(
+			tableManager,
+			"3 weeks of inactive tables with latest",
+			time.Unix(0, 0).Add(tablePeriod*3).Add(maxChunkAge).Add(gracePeriod),
+			[]TableDesc{
+				{
+					Name:             "",
+					ProvisionedRead:  inactiveRead,
+					ProvisionedWrite: inactiveWrite,
+				},
+				{
+					Name:             tablePrefix + "0",
+					ProvisionedRead:  inactiveRead,
+					ProvisionedWrite: inactiveWrite,
+				},
+				{
+					Name:             chunkTablePrefix + "0",
+					ProvisionedRead:  inactiveRead,
+					ProvisionedWrite: inactiveWrite,
+				},
+				{
+					Name:             tablePrefix + "1",
+					ProvisionedRead:  inactiveRead,
+					ProvisionedWrite: inactiveWrite,
+					WriteScale: autoScalingConfig{
+						Enabled:     true,
+						MinCapacity: 10,
+						MaxCapacity: 20,
+						OutCooldown: 100,
+						InCooldown:  100,
+						TargetValue: 80.0,
+					},
+				},
+				{
+					Name:             chunkTablePrefix + "1",
+					ProvisionedRead:  inactiveRead,
+					ProvisionedWrite: inactiveWrite,
+					WriteScale: autoScalingConfig{
+						Enabled:     true,
+						MinCapacity: 10,
+						MaxCapacity: 20,
+						OutCooldown: 100,
+						InCooldown:  100,
+						TargetValue: 80.0,
+					},
+				},
+				{
+					Name:             tablePrefix + "2",
+					ProvisionedRead:  inactiveRead,
+					ProvisionedWrite: inactiveWrite,
+					WriteScale: autoScalingConfig{
+						Enabled:     true,
+						MinCapacity: 10,
+						MaxCapacity: 20,
+						OutCooldown: 100,
+						InCooldown:  100,
+						TargetValue: 80.0,
+					},
+				},
+				{
+					Name:             chunkTablePrefix + "2",
+					ProvisionedRead:  inactiveRead,
+					ProvisionedWrite: inactiveWrite,
+					WriteScale: autoScalingConfig{
+						Enabled:     true,
+						MinCapacity: 10,
+						MaxCapacity: 20,
+						OutCooldown: 100,
+						InCooldown:  100,
+						TargetValue: 80.0,
+					},
+				},
+				{
+					Name:             tablePrefix + "3",
+					ProvisionedRead:  read,
+					ProvisionedWrite: write,
+				},
+				{
+					Name:             chunkTablePrefix + "3",
+					ProvisionedRead:  read,
+					ProvisionedWrite: write,
+				},
+			},
+		)
+	}
+}
+
 func expectTables(ctx context.Context, t *testing.T, dynamo TableClient, expected []TableDesc) {
 	tables, err := dynamo.ListTables(ctx)
 	if err != nil {
