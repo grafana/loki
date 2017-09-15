@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
-	"net"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -15,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/client"
-	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -26,6 +23,7 @@ import (
 	"github.com/prometheus/common/log"
 	"golang.org/x/net/context"
 
+	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/cortex/pkg/util"
 )
@@ -156,10 +154,11 @@ func NewAWSStorageClient(cfg AWSStorageConfig, schemaCfg SchemaConfig) (StorageC
 	if cfg.S3.URL == nil {
 		return nil, fmt.Errorf("no URL specified for S3")
 	}
-	s3Config, err := awsConfigFromURL(cfg.S3.URL)
+	s3Config, err := awscommon.ConfigFromURL(cfg.S3.URL)
 	if err != nil {
 		return nil, err
 	}
+	s3Config = s3Config.WithMaxRetries(0) // We do our own retries, so we can monitor them
 	s3Client := s3.New(session.New(s3Config))
 	bucketName := strings.TrimPrefix(cfg.S3.URL.Path, "/")
 
@@ -832,48 +831,10 @@ func awsSessionFromURL(awsURL *url.URL) (client.ConfigProvider, error) {
 	if len(path) > 0 {
 		log.Warnf("Ignoring DynamoDB URL path: %v.", path)
 	}
-	config, err := awsConfigFromURL(awsURL)
+	config, err := awscommon.ConfigFromURL(awsURL)
 	if err != nil {
 		return nil, err
 	}
+	config = config.WithMaxRetries(0) // We do our own retries, so we can monitor them
 	return session.New(config), nil
-}
-
-// awsConfigFromURL returns AWS config from given URL. It expects escaped AWS Access key ID & Secret Access Key to be
-// encoded in the URL. It also expects region specified as a host (letting AWS generate full endpoint) or fully valid
-// endpoint with dummy region assumed (e.g for URLs to emulated services).
-func awsConfigFromURL(awsURL *url.URL) (*aws.Config, error) {
-	if awsURL.User == nil {
-		return nil, fmt.Errorf("must specify escaped Access Key & Secret Access in URL")
-	}
-
-	password, _ := awsURL.User.Password()
-	creds := credentials.NewStaticCredentials(awsURL.User.Username(), password, "")
-	config := aws.NewConfig().
-		WithCredentials(creds).
-		WithMaxRetries(0). // We do our own retries, so we can monitor them
-		// Use a custom http.Client with the golang defaults but also specifying
-		// MaxIdleConnsPerHost because of a bug in golang https://github.com/golang/go/issues/13801
-		// where MaxIdleConnsPerHost does not work as expected.
-		WithHTTPClient(&http.Client{
-			Transport: &http.Transport{
-				Proxy: http.ProxyFromEnvironment,
-				DialContext: (&net.Dialer{
-					Timeout:   30 * time.Second,
-					KeepAlive: 30 * time.Second,
-					DualStack: true,
-				}).DialContext,
-				MaxIdleConns:          100,
-				IdleConnTimeout:       90 * time.Second,
-				MaxIdleConnsPerHost:   100,
-				TLSHandshakeTimeout:   3 * time.Second,
-				ExpectContinueTimeout: 1 * time.Second,
-			},
-		})
-	if strings.Contains(awsURL.Host, ".") {
-		return config.WithEndpoint(fmt.Sprintf("http://%s", awsURL.Host)).WithRegion("dummy"), nil
-	}
-
-	// Let AWS generate default endpoint based on region passed as a host in URL.
-	return config.WithRegion(awsURL.Host), nil
 }
