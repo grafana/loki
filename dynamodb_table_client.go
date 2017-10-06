@@ -329,7 +329,7 @@ func (d dynamoTableClient) enableAutoScaling(ctx context.Context, desc TableDesc
 	}
 
 	// Puts or updates a scaling policy
-	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
+	return d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.PutScalingPolicy", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
 			input := &applicationautoscaling.PutScalingPolicyInput{
 				PolicyName:        aws.String(autoScalingPolicyNamePrefix + desc.Name),
@@ -347,15 +347,9 @@ func (d dynamoTableClient) enableAutoScaling(ctx context.Context, desc TableDesc
 				},
 			}
 			_, err := d.ApplicationAutoScaling.PutScalingPolicy(input)
-			if err != nil {
-				return err
-			}
-			return nil
+			return err
 		})
-	}); err != nil {
-		return err
-	}
-	return nil
+	})
 }
 
 func (d dynamoTableClient) disableAutoScaling(ctx context.Context, desc TableDesc) error {
@@ -368,17 +362,14 @@ func (d dynamoTableClient) disableAutoScaling(ctx context.Context, desc TableDes
 				ServiceNamespace:  aws.String("dynamodb"),
 			}
 			_, err := d.ApplicationAutoScaling.DeregisterScalableTarget(input)
-			if err != nil {
-				return err
-			}
-			return nil
+			return err
 		})
 	}); err != nil {
 		return err
 	}
 
 	// Delete scaling policy
-	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
+	return d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.DeleteScalingPolicy", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
 			input := &applicationautoscaling.DeleteScalingPolicyInput{
 				PolicyName:        aws.String(autoScalingPolicyNamePrefix + desc.Name),
@@ -387,13 +378,7 @@ func (d dynamoTableClient) disableAutoScaling(ctx context.Context, desc TableDes
 				ServiceNamespace:  aws.String("dynamodb"),
 			}
 			_, err := d.ApplicationAutoScaling.DeleteScalingPolicy(input)
-			if err != nil {
-				return err
-			}
-			return nil
+			return err
 		})
-	}); err != nil {
-		return err
-	}
-	return nil
+	})
 }
