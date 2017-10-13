@@ -490,7 +490,7 @@ func TestAWSStorageClientChunks(t *testing.T) {
 			schemaConfig := SchemaConfig{
 				ChunkTables: periodicTableConfig{
 					From:   util.NewDayValue(model.Now()),
-					Period: 1 * time.Minute,
+					Period: 10 * time.Minute,
 					Prefix: "chunks",
 				},
 			}
