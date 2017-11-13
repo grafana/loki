@@ -1,11 +1,11 @@
 package gcp
 
 import (
+	"context"
 	"strings"
 
 	"cloud.google.com/go/bigtable"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc/status"
 
 	"github.com/weaveworks/cortex/pkg/chunk"

@@ -1,6 +1,7 @@
 package chunk
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
-	"golang.org/x/net/context"
 
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/mtime"

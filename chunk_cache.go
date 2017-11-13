@@ -1,6 +1,7 @@
 package chunk
 
 import (
+	"context"
 	"flag"
 	"sync"
 	"time"
@@ -9,7 +10,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/weaveworks/common/instrument"
-	"golang.org/x/net/context"
 
 	"github.com/weaveworks/cortex/pkg/util"
 )

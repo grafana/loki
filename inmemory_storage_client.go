@@ -2,13 +2,13 @@ package chunk
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"sort"
 	"sync"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/weaveworks/cortex/pkg/util"
-	"golang.org/x/net/context"
 )
 
 // MockStorage is a fake in-memory StorageClient.

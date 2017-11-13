@@ -13,8 +13,7 @@ import (
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/local"
-	prom_chunk "github.com/prometheus/prometheus/storage/local/chunk"
+	prom_chunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 
 	errs "github.com/weaveworks/common/errors"
 	"github.com/weaveworks/cortex/pkg/util"
@@ -280,7 +279,7 @@ func (c *Chunk) Decode(input []byte) error {
 	})
 }
 
-func chunksToIterators(chunks []Chunk) ([]local.SeriesIterator, error) {
+func chunksToMatrix(chunks []Chunk) (model.Matrix, error) {
 	// Group chunks by series, sort and dedupe samples.
 	sampleStreams := map[model.Fingerprint]*model.SampleStream{}
 	for _, c := range chunks {
@@ -301,12 +300,15 @@ func chunksToIterators(chunks []Chunk) ([]local.SeriesIterator, error) {
 		ss.Values = util.MergeSampleSets(ss.Values, samples)
 	}
 
-	iterators := make([]local.SeriesIterator, 0, len(sampleStreams))
+	matrix := make(model.Matrix, 0, len(sampleStreams))
 	for _, ss := range sampleStreams {
-		iterators = append(iterators, util.NewSampleStreamIterator(ss))
+		matrix = append(matrix, &model.SampleStream{
+			Metric: ss.Metric,
+			Values: ss.Values,
+		})
 	}
 
-	return iterators, nil
+	return matrix, nil
 }
 
 // Samples returns all SamplePairs for the chunk.

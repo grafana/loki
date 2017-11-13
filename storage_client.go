@@ -1,6 +1,6 @@
 package chunk
 
-import "golang.org/x/net/context"
+import "context"
 
 // StorageClient is a client for the persistent storage for Cortex. (e.g. DynamoDB + S3).
 type StorageClient interface {

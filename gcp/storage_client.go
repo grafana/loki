@@ -1,12 +1,12 @@
 package gcp
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"strings"
 
 	"cloud.google.com/go/bigtable"
-	"golang.org/x/net/context"
 
 	"github.com/pkg/errors"
 	"github.com/weaveworks/cortex/pkg/chunk"

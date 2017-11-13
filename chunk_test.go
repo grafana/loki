@@ -2,14 +2,14 @@ package chunk
 
 import (
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/storage/local"
-	"github.com/prometheus/prometheus/storage/local/chunk"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -130,7 +130,7 @@ func TestParseExternalKey(t *testing.T) {
 	}
 }
 
-func TestChunksToIterators(t *testing.T) {
+func TestChunksToMatrix(t *testing.T) {
 	// Create 2 chunks which have the same metric
 	metric := model.Metric{
 		model.MetricNameLabel: "foo",
@@ -144,10 +144,10 @@ func TestChunksToIterators(t *testing.T) {
 	chunk2Samples, err := chunk2.Samples()
 	require.NoError(t, err)
 
-	iterator1 := util.NewSampleStreamIterator(&model.SampleStream{
+	ss1 := &model.SampleStream{
 		Metric: chunk1.Metric,
 		Values: util.MergeSampleSets(chunk1Samples, chunk2Samples),
-	})
+	}
 
 	// Create another chunk with a different metric
 	otherMetric := model.Metric{
@@ -159,32 +159,35 @@ func TestChunksToIterators(t *testing.T) {
 	chunk3Samples, err := chunk3.Samples()
 	require.NoError(t, err)
 
-	iterator2 := util.NewSampleStreamIterator(&model.SampleStream{
+	ss2 := &model.SampleStream{
 		Metric: chunk3.Metric,
 		Values: chunk3Samples,
-	})
+	}
 
 	for _, c := range []struct {
-		chunks            []Chunk
-		expectedIterators []local.SeriesIterator
+		chunks         []Chunk
+		expectedMatrix model.Matrix
 	}{
 		{
-			chunks:            []Chunk{},
-			expectedIterators: []local.SeriesIterator{},
+			chunks:         []Chunk{},
+			expectedMatrix: model.Matrix{},
 		}, {
 			chunks: []Chunk{
 				chunk1,
 				chunk2,
 				chunk3,
 			},
-			expectedIterators: []local.SeriesIterator{
-				iterator1,
-				iterator2,
+			expectedMatrix: model.Matrix{
+				ss1,
+				ss2,
 			},
 		},
 	} {
-		iterators, err := chunksToIterators(c.chunks)
+		matrix, err := chunksToMatrix(c.chunks)
 		require.NoError(t, err)
-		require.Equal(t, c.expectedIterators, iterators)
+
+		sort.Sort(matrix)
+		sort.Sort(c.expectedMatrix)
+		require.Equal(t, c.expectedMatrix, matrix)
 	}
 }

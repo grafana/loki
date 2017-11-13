@@ -1,12 +1,12 @@
 package storage
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"strings"
 
 	"github.com/prometheus/common/log"
-	"golang.org/x/net/context"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/gcp"

@@ -1,6 +1,7 @@
 package chunk
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
 
 	"github.com/weaveworks/common/instrument"

@@ -23,7 +23,7 @@ var (
 
 // Errors
 var (
-	ErrNoMetricNameNotSupported = errors.New("metric name required for pre-v7 schemas")
+	ErrNoMetricNameNotSupported = errors.New("metric name required for pre-v8 schemas")
 )
 
 // Schema interface defines methods to calculate the hash and range keys needed

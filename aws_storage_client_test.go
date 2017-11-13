@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -22,7 +23,6 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/context"
 
 	"github.com/weaveworks/cortex/pkg/util"
 )

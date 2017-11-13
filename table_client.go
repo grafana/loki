@@ -1,6 +1,6 @@
 package chunk
 
-import "golang.org/x/net/context"
+import "context"
 
 // TableClient is a client for telling Dynamo what to do with tables.
 type TableClient interface {

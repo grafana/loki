@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -21,7 +22,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
-	"golang.org/x/net/context"
 
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
