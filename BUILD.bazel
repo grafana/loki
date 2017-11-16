@@ -83,6 +83,7 @@ go_test(
         "//vendor/github.com/prometheus/common/log:go_default_library",
         "//vendor/github.com/prometheus/common/model:go_default_library",
         "//vendor/github.com/prometheus/prometheus/pkg/labels:go_default_library",
+        "//vendor/github.com/prometheus/prometheus/promql:go_default_library",
         "//vendor/github.com/stretchr/testify/assert:go_default_library",
         "//vendor/github.com/stretchr/testify/require:go_default_library",
         "//vendor/github.com/weaveworks/common/mtime:go_default_library",
