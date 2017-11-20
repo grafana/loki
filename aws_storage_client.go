@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	ot "github.com/opentracing/opentracing-go"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/client"
@@ -248,6 +250,9 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 }
 
 func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
+	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{"tableName", query.TableName}, ot.Tag{"hashValue", query.HashValue})
+	defer sp.Finish()
+
 	input := &dynamodb.QueryInput{
 		TableName: aws.String(query.TableName),
 		KeyConditions: map[string]*dynamodb.Condition{
@@ -411,6 +416,9 @@ func (a dynamoDBRequestAdapter) Retryable() bool {
 }
 
 func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
+	sp, ctx := ot.StartSpanFromContext(ctx, "GetChunks")
+	defer sp.Finish()
+
 	var (
 		s3Chunks       []Chunk
 		dynamoDBChunks []Chunk
@@ -502,6 +510,8 @@ func (a awsStorageClient) getS3Chunk(ctx context.Context, chunk Chunk) (Chunk, e
 var placeholder = []byte{'c'}
 
 func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
+	sp, ctx := ot.StartSpanFromContext(ctx, "getDynamoDBChunks", ot.Tag{"numChunks", len(chunks)})
+	defer sp.Finish()
 	outstanding := dynamoDBReadRequest{}
 	chunksByKey := map[string]Chunk{}
 	for _, chunk := range chunks {
