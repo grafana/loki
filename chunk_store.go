@@ -209,12 +209,14 @@ func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 	}
 
 	fromStorage, err := c.storage.GetChunks(ctx, missing)
-	if err != nil {
-		return nil, promql.ErrStorage(err)
+
+	// Always cache any chunks we did get
+	if cacheErr := c.writeBackCache(ctx, fromStorage); cacheErr != nil {
+		logger.Warnf("Could not store chunks in chunk cache: %v", cacheErr)
 	}
 
-	if err = c.writeBackCache(ctx, fromStorage); err != nil {
-		logger.Warnf("Could not store chunks in chunk cache: %v", err)
+	if err != nil {
+		return nil, promql.ErrStorage(err)
 	}
 
 	// TODO instead of doing this sort, propagate an index and assign chunks

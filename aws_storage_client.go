@@ -440,15 +440,13 @@ func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chun
 	var err error
 	s3Chunks, err = a.getS3Chunks(ctx, s3Chunks)
 	if err != nil {
-		return nil, err
+		return s3Chunks, err
 	}
 
 	dynamoDBChunks, err = a.getDynamoDBChunks(ctx, dynamoDBChunks)
-	if err != nil {
-		return nil, err
-	}
 
-	return append(dynamoDBChunks, s3Chunks...), nil
+	// Return any chunks we did receive: a partial result may be useful
+	return append(dynamoDBChunks, s3Chunks...), err
 }
 
 func (a awsStorageClient) getS3Chunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
@@ -476,7 +474,8 @@ func (a awsStorageClient) getS3Chunks(ctx context.Context, chunks []Chunk) ([]Ch
 		}
 	}
 	if len(errors) > 0 {
-		return nil, errors[0]
+		// Return any chunks we did receive: a partial result may be useful
+		return result, errors[0]
 	}
 	return result, nil
 }
@@ -585,7 +584,8 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 	}
 
 	if valuesLeft := outstanding.Len() + unprocessed.Len(); valuesLeft > 0 {
-		return nil, fmt.Errorf("failed to query chunks after %d retries, %d values remaining", numRetries, valuesLeft)
+		// Return the chunks we did fetch, because partial results may be useful
+		return result, fmt.Errorf("failed to query chunks after %d retries, %d values remaining", numRetries, valuesLeft)
 	}
 	return result, nil
 }
