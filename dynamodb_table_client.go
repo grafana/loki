@@ -3,7 +3,6 @@ package chunk
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -66,13 +65,12 @@ func (d dynamoTableClient) backoffAndRetry(ctx context.Context, fn func(context.
 		d.limiter.Wait(ctx)
 	}
 
-	backoff, numRetries := minBackoff, 10
-	for i := 0; i < numRetries; i++ {
+	backoff := resetBackoff()
+	for !backoff.finished() {
 		if err := fn(ctx); err != nil {
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "ThrottlingException" {
-				util.WithContext(ctx).Errorf("Got error %v on try %d, backing off and retrying.", err, i)
-				time.Sleep(backoff)
-				backoff = nextBackoff(backoff)
+				util.WithContext(ctx).Errorf("Got error %v on try %d, backing off and retrying.", err, backoff.numRetries)
+				backoff.backoff()
 				continue
 			} else {
 				return err
@@ -80,7 +78,7 @@ func (d dynamoTableClient) backoffAndRetry(ctx context.Context, fn func(context.
 		}
 		return nil
 	}
-	return fmt.Errorf("retried %d times, failing", numRetries)
+	return fmt.Errorf("retried %d times, failing", backoff.numRetries)
 }
 
 func (d dynamoTableClient) ListTables(ctx context.Context) ([]string, error) {
