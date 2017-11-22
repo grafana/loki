@@ -479,9 +479,11 @@ func TestAWSStorageClientChunks(t *testing.T) {
 	tests := []struct {
 		name           string
 		provisionedErr int
+		gangSize       int
 	}{
-		{"DynamoDB chunks", 0},
-		{"DynamoDB chunks retry logic", 2},
+		{"DynamoDB chunks", 0, 10},
+		{"DynamoDB chunks with parallel fetch disabled", 0, 0},
+		{"DynamoDB chunks retry logic", 2, 10},
 	}
 
 	for _, tt := range tests {
@@ -505,6 +507,9 @@ func TestAWSStorageClientChunks(t *testing.T) {
 			require.NoError(t, err)
 
 			client := awsStorageClient{
+				cfg: AWSStorageConfig{
+					DynamoDBConfig: DynamoDBConfig{DynamoDBChunkGangSize: tt.gangSize},
+				},
 				DynamoDB:                dynamoDB,
 				schemaCfg:               schemaConfig,
 				queryRequestFn:          dynamoDB.queryRequest,
