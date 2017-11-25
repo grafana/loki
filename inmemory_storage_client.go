@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -127,7 +128,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 		}
 		seenWrites[key] = true
 
-		util.WithContext(ctx).Debugf("Write %s/%x", req.hashValue, req.rangeValue)
+		level.Debug(util.WithContext(ctx, util.Logger)).Log("msg", "write", "hash", req.hashValue, "range", req.rangeValue)
 
 		items := table.items[req.hashValue]
 
@@ -158,7 +159,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 
 // QueryPages implements StorageClient.
 func (m *MockStorage) QueryPages(ctx context.Context, query IndexQuery, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
-	logger := util.WithContext(ctx)
+	logger := util.WithContext(ctx, util.Logger)
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -173,7 +174,7 @@ func (m *MockStorage) QueryPages(ctx context.Context, query IndexQuery, callback
 	}
 
 	if query.RangeValuePrefix != nil {
-		logger.Debugf("Lookup prefix %s/%x (%d)", query.HashValue, query.RangeValuePrefix, len(items))
+		level.Debug(util.WithContext(ctx, logger)).Log("msg", "lookup prefix", "hash", query.HashValue, "range_prefix", query.RangeValuePrefix, "num_items", len(items))
 
 		// the smallest index i in [0, n) at which f(i) is true
 		i := sort.Search(len(items), func(i int) bool {
@@ -189,33 +190,33 @@ func (m *MockStorage) QueryPages(ctx context.Context, query IndexQuery, callback
 			return !bytes.HasPrefix(items[i+j].rangeValue, query.RangeValuePrefix)
 		})
 
-		logger.Debugf("  found range [%d:%d)", i, i+j)
+		level.Debug(util.WithContext(ctx, logger)).Log("msg", "found range", "from_inclusive", i, "to_exclusive", i+j)
 		if i > len(items) || j == 0 {
 			return nil
 		}
 		items = items[i : i+j]
 
 	} else if query.RangeValueStart != nil {
-		logger.Debugf("Lookup range %s/%x -> ... (%d)", query.HashValue, query.RangeValueStart, len(items))
+		level.Debug(util.WithContext(ctx, logger)).Log("msg", "lookup range", "hash", query.HashValue, "range_start", query.RangeValueStart, "num_items", len(items))
 
 		// the smallest index i in [0, n) at which f(i) is true
 		i := sort.Search(len(items), func(i int) bool {
 			return bytes.Compare(items[i].rangeValue, query.RangeValueStart) >= 0
 		})
 
-		logger.Debugf("  found range [%d)", i)
+		level.Debug(util.WithContext(ctx, logger)).Log("msg", "found range [%d)", "index", i)
 		if i > len(items) {
 			return nil
 		}
 		items = items[i:]
 
 	} else {
-		logger.Debugf("Lookup %s/* (%d)", query.HashValue, len(items))
+		level.Debug(util.WithContext(ctx, logger)).Log("msg", "lookup", "hash", query.HashValue, "num_items", len(items))
 	}
 
 	// Filters
 	if query.ValueEqual != nil {
-		logger.Debugf("Filter Value EQ = %s", query.ValueEqual)
+		level.Debug(util.WithContext(ctx, logger)).Log("msg", "filter by equality", "value_equal", query.ValueEqual)
 
 		filtered := make([]mockItem, 0)
 		for _, v := range items {

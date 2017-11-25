@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -193,7 +192,7 @@ func TestChunkStore_Get(t *testing.T) {
 	} {
 		for _, schema := range schemas {
 			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
-				log.Infoln("========= Running query", tc.query, "with schema", schema.name)
+				t.Log("========= Running query", tc.query, "with schema", schema.name)
 				store := newTestChunkStore(t, StoreConfig{
 					schemaFactory: schema.fn,
 				})
@@ -330,7 +329,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 	} {
 		for _, schema := range schemas {
 			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
-				log.Infoln("========= Running query", tc.query, "with schema", schema.name)
+				t.Log("========= Running query", tc.query, "with schema", schema.name)
 				store := newTestChunkStore(t, StoreConfig{
 					schemaFactory: schema.fn,
 				})
@@ -468,7 +467,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 			ts,
 			ts.Add(chunkLen*time.Second),
 		)
-		log.Infof("Loop %d", i)
+		t.Logf("Loop %d", i)
 		err := store.Put(ctx, []Chunk{chunk})
 		require.NoError(t, err)
 	}

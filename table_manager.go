@@ -10,11 +10,12 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/mtime"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 const (
@@ -136,7 +137,7 @@ func (m *TableManager) loop() {
 	if err := instrument.TimeRequestHistogram(context.Background(), "TableManager.syncTables", syncTableDuration, func(ctx context.Context) error {
 		return m.syncTables(ctx)
 	}); err != nil {
-		log.Errorf("Error syncing tables: %v", err)
+		level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
 	}
 
 	for {
@@ -145,7 +146,7 @@ func (m *TableManager) loop() {
 			if err := instrument.TimeRequestHistogram(context.Background(), "TableManager.syncTables", syncTableDuration, func(ctx context.Context) error {
 				return m.syncTables(ctx)
 			}); err != nil {
-				log.Errorf("Error syncing tables: %v", err)
+				level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
 			}
 		case <-m.done:
 			return
@@ -155,7 +156,7 @@ func (m *TableManager) loop() {
 
 func (m *TableManager) syncTables(ctx context.Context) error {
 	expected := m.calculateExpectedTables()
-	log.Infof("Expecting %d tables: %+v", len(expected), expected)
+	level.Info(util.Logger).Log("msg", "synching tables", "num_expected_tables", len(expected), "expected_tables", expected)
 
 	toCreate, toCheckThroughput, err := m.partitionTables(ctx, expected)
 	if err != nil {
@@ -252,7 +253,7 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []Table
 
 func (m *TableManager) createTables(ctx context.Context, descriptions []TableDesc) error {
 	for _, desc := range descriptions {
-		log.Infof("Creating table %s", desc.Name)
+		level.Info(util.Logger).Log("msg", "creating table", "table", desc.Name)
 		err := m.client.CreateTable(ctx, desc)
 		if err != nil {
 			return err
@@ -263,14 +264,14 @@ func (m *TableManager) createTables(ctx context.Context, descriptions []TableDes
 
 func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDesc) error {
 	for _, expected := range descriptions {
-		log.Infof("Checking provisioned throughput on table %s", expected.Name)
+		level.Info(util.Logger).Log("msg", "checking provisioned throughput on table", "table", expected.Name)
 		current, status, err := m.client.DescribeTable(ctx, expected.Name)
 		if err != nil {
 			return err
 		}
 
 		if status != dynamodb.TableStatusActive {
-			log.Infof("Skipping update on  table %s, not yet ACTIVE (%s)", expected.Name, status)
+			level.Info(util.Logger).Log("msg", "skipping update on table, not yet ACTIVE", "table", expected.Name, "status", status)
 			continue
 		}
 
@@ -278,11 +279,11 @@ func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDes
 		tableCapacity.WithLabelValues(writeLabel, expected.Name).Set(float64(current.ProvisionedWrite))
 
 		if expected.Equals(current) {
-			log.Infof("  Provisioned throughput on table %s: read = %d, write = %d, skipping.", current.Name, current.ProvisionedRead, current.ProvisionedWrite)
+			level.Info(util.Logger).Log("msg", "provisioned throughput on table, skipping", "table", current.Name, "read", current.ProvisionedRead, "write", current.ProvisionedWrite)
 			continue
 		}
 
-		log.Infof("  Updating provisioned throughput on table %s from read = %d, write = %d to read = %d, write = %d", expected.Name, current.ProvisionedRead, current.ProvisionedWrite, expected.ProvisionedRead, expected.ProvisionedWrite)
+		level.Info(util.Logger).Log("msg", "updating provisioned throughput on table", "table", expected.Name, "old_read", current.ProvisionedRead, "old_write", current.ProvisionedWrite, "new_read", expected.ProvisionedRead, "old_read", expected.ProvisionedWrite)
 		err = m.client.UpdateTable(ctx, current, expected)
 		if err != nil {
 			return err

@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/applicationautoscaling/applicationautoscalingiface"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/time/rate"
 
@@ -69,7 +70,7 @@ func (d dynamoTableClient) backoffAndRetry(ctx context.Context, fn func(context.
 	for !backoff.finished() {
 		if err := fn(ctx); err != nil {
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "ThrottlingException" {
-				util.WithContext(ctx).Errorf("Got error %v on try %d, backing off and retrying.", err, backoff.numRetries)
+				level.Warn(util.WithContext(ctx, util.Logger)).Log("msg", "got error, backing off and retrying", "err", err, "retry", backoff.numRetries)
 				backoff.backoff()
 				continue
 			} else {

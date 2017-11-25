@@ -20,7 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
-	"github.com/prometheus/common/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
@@ -227,7 +227,7 @@ func (m *mockDynamoDBClient) queryRequest(_ context.Context, input *dynamodb.Que
 						continue
 					}
 				} else {
-					log.Warnf("Unsupported FilterExpression: %s", *input.FilterExpression)
+					level.Warn(util.Logger).Log("msg", "unsupported FilterExpression", "expression", *input.FilterExpression)
 				}
 			}
 		}

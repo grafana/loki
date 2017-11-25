@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -21,7 +22,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
@@ -330,7 +330,7 @@ func (a awsStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryIn
 			recordDynamoError(*input.TableName, err, "DynamoDB.QueryPages")
 			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || page.Retryable()) {
 				if awsErr.Code() != dynamodb.ErrCodeProvisionedThroughputExceededException {
-					log.Warnf("DynamoDB error retry=%d, table=%v, err=%v", backoff.numRetries, *input.TableName, err)
+					level.Warn(util.Logger).Log("msg", "DynamoDB error", "retry", backoff.numRetries, "table", *input.TableName, "err", err)
 				}
 				backoff.backoff()
 				continue
@@ -854,7 +854,7 @@ func awsSessionFromURL(awsURL *url.URL) (client.ConfigProvider, error) {
 	}
 	path := strings.TrimPrefix(awsURL.Path, "/")
 	if len(path) > 0 {
-		log.Warnf("Ignoring DynamoDB URL path: %v.", path)
+		level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 	}
 	config, err := awscommon.ConfigFromURL(awsURL)
 	if err != nil {

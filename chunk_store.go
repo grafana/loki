@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -157,13 +158,13 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	now := model.Now()
 	if from.After(now) {
 		// time-span start is in future ... regard as legal
-		util.WithContext(ctx).Debugf("Whole timerange %v..%v in future (now=%v) yield empty resultset", through, from, now)
+		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
 		return nil, nil
 	}
 
 	if through.After(now) {
 		// time-span end is in future ... regard as legal
-		util.WithContext(ctx).Debugf("Adjusting end timerange=%v from future to now=%v", through, now)
+		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "adjusting end timerange from future to now", "old_through", through, "new_through", now)
 		through = now // Avoid processing future part - otherwise some schemas could fail with eg non-existent table gripes
 	}
 
@@ -186,7 +187,7 @@ func (c *Store) getMetricNameMatrix(ctx context.Context, from, through model.Tim
 }
 
 func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricName string) ([]Chunk, error) {
-	logger := util.WithContext(ctx)
+	logger := util.WithContext(ctx, util.Logger)
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
 	chunks, err := c.lookupChunksByMetricName(ctx, from, through, matchers, metricName)
 	if err != nil {
@@ -205,14 +206,14 @@ func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 	// Now fetch the actual chunk data from Memcache / S3
 	fromCache, missing, err := c.cache.FetchChunkData(ctx, filtered)
 	if err != nil {
-		logger.Warnf("Error fetching from cache: %v", err)
+		level.Warn(logger).Log("msg", "error fetching from cache", "err", err)
 	}
 
 	fromStorage, err := c.storage.GetChunks(ctx, missing)
 
 	// Always cache any chunks we did get
 	if cacheErr := c.writeBackCache(ctx, fromStorage); cacheErr != nil {
-		logger.Warnf("Could not store chunks in chunk cache: %v", cacheErr)
+		level.Warn(logger).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
 
 	if err != nil {
@@ -418,7 +419,7 @@ func (c *Store) lookupEntriesByQuery(ctx context.Context, query IndexQuery) ([]I
 		}
 		return !lastPage
 	}); err != nil {
-		util.WithContext(ctx).Errorf("Error querying storage: %v", err)
+		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error querying storage", "err", err)
 		return nil, err
 	}
 
@@ -454,7 +455,7 @@ func (c *Store) convertIndexEntriesToChunks(ctx context.Context, entries []Index
 		}
 
 		if matcher != nil && !matcher.Matches(string(labelValue)) {
-			util.WithContext(ctx).Debug("Dropping chunk for non-matching metric ", chunk.Metric)
+			level.Debug(util.WithContext(ctx, util.Logger)).Log("msg", "dropping chunk for non-matching metric", "metric", chunk.Metric)
 			continue
 		}
 		chunkSet = append(chunkSet, chunk)

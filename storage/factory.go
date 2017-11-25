@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/prometheus/common/log"
-
+	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/gcp"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // Config chooses which storage client to use.
@@ -34,7 +34,7 @@ func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageCl
 	case "aws":
 		path := strings.TrimPrefix(cfg.DynamoDB.URL.Path, "/")
 		if len(path) > 0 {
-			log.Warnf("Ignoring DynamoDB URL path: %v.", path)
+			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
 		return chunk.NewAWSStorageClient(cfg.AWSStorageConfig, schemaCfg)
 	case "gcp":
@@ -52,7 +52,7 @@ func NewTableClient(cfg Config) (chunk.TableClient, error) {
 	case "aws":
 		path := strings.TrimPrefix(cfg.DynamoDB.URL.Path, "/")
 		if len(path) > 0 {
-			log.Warnf("Ignoring DynamoDB URL path: %v.", path)
+			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
 		return chunk.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig)
 	case "gcp":

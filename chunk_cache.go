@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/log"
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/weaveworks/cortex/pkg/util"
@@ -164,7 +164,7 @@ func (c *Cache) FetchChunkData(ctx context.Context, chunks []Chunk) (found []Chu
 
 		if err := chunks[i].Decode(item.Value); err != nil {
 			memcacheCorrupt.Inc()
-			util.WithContext(ctx).Errorf("Failed to decode chunk from cache: %v", err)
+			level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "failed to decode chunk from cache", "err", err)
 			missing = append(missing, chunks[i])
 			continue
 		}
@@ -213,7 +213,7 @@ func (c *Cache) writeBackLoop() {
 		case bgWrite := <-c.bgWrites:
 			err := c.StoreChunk(context.Background(), bgWrite.key, bgWrite.buf)
 			if err != nil {
-				log.Errorf("Error writing to memcache: %v", err)
+				level.Error(util.Logger).Log("msg", "error writing to memcache", "err", err)
 			}
 		case <-c.quit:
 			return

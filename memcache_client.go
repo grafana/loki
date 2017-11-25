@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/prometheus/common/log"
+	"github.com/go-kit/kit/log/level"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // MemcacheClient is a memcache client that gets its server list from SRV
@@ -56,7 +57,7 @@ func NewMemcacheClient(cfg MemcacheConfig) *MemcacheClient {
 	}
 	err := newClient.updateMemcacheServers()
 	if err != nil {
-		log.Errorf("Error setting memcache servers to '%v': %v", cfg.Host, err)
+		level.Error(util.Logger).Log("msg", "error setting memcache servers to host", "host", cfg.Host, "err", err)
 	}
 
 	newClient.wait.Add(1)
@@ -79,7 +80,7 @@ func (c *MemcacheClient) updateLoop(updateInterval time.Duration) error {
 		case <-ticker.C:
 			err = c.updateMemcacheServers()
 			if err != nil {
-				log.Warnf("Error updating memcache servers: %v", err)
+				level.Warn(util.Logger).Log("msg", "error updating memcache servers", "err", err)
 			}
 		case <-c.quit:
 			ticker.Stop()
