@@ -66,12 +66,12 @@ func (d dynamoTableClient) backoffAndRetry(ctx context.Context, fn func(context.
 		d.limiter.Wait(ctx)
 	}
 
-	backoff := resetBackoff()
-	for !backoff.finished() {
+	backoff := util.NewBackoff(backoffConfig, ctx.Done())
+	for backoff.Ongoing() {
 		if err := fn(ctx); err != nil {
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "ThrottlingException" {
-				level.Warn(util.WithContext(ctx, util.Logger)).Log("msg", "got error, backing off and retrying", "err", err, "retry", backoff.numRetries)
-				backoff.backoff()
+				level.Warn(util.WithContext(ctx, util.Logger)).Log("msg", "got error, backing off and retrying", "err", err, "retry", backoff.NumRetries())
+				backoff.Wait()
 				continue
 			} else {
 				return err
@@ -79,7 +79,7 @@ func (d dynamoTableClient) backoffAndRetry(ctx context.Context, fn func(context.
 		}
 		return nil
 	}
-	return fmt.Errorf("retried %d times, failing", backoff.numRetries)
+	return fmt.Errorf("retried %d times, failing", backoff.NumRetries())
 }
 
 func (d dynamoTableClient) ListTables(ctx context.Context) ([]string, error) {

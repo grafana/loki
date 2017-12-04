@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
@@ -42,6 +43,14 @@ const (
 	dynamoDBMaxWriteBatchSize = 25
 	dynamoDBMaxReadBatchSize  = 100
 )
+
+var backoffConfig = util.BackoffConfig{
+	// Backoff for dynamoDB requests, to match AWS lib - see:
+	// https://github.com/aws/aws-sdk-go/blob/master/service/dynamodb/customizations.go
+	MinBackoff: 50 * time.Millisecond,
+	MaxBackoff: 50 * time.Second,
+	MaxRetries: 20,
+}
 
 var (
 	dynamoRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -182,12 +191,12 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 	outstanding := input.(dynamoDBWriteBatch)
 	unprocessed := dynamoDBWriteBatch{}
 
-	backoff := resetBackoff()
+	backoff := util.NewBackoff(backoffConfig, ctx.Done())
 	defer func() {
-		dynamoQueryRetryCount.WithLabelValues("BatchWrite").Observe(float64(backoff.numRetries))
+		dynamoQueryRetryCount.WithLabelValues("BatchWrite").Observe(float64(backoff.NumRetries()))
 	}()
 
-	for outstanding.Len()+unprocessed.Len() > 0 && !backoff.finished() {
+	for outstanding.Len()+unprocessed.Len() > 0 && backoff.Ongoing() {
 		requests := dynamoDBWriteBatch{}
 		requests.TakeReqs(outstanding, dynamoDBMaxWriteBatchSize)
 		requests.TakeReqs(unprocessed, dynamoDBMaxWriteBatchSize)
@@ -216,7 +225,7 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 			// so back off and retry all.
 			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
 				unprocessed.TakeReqs(requests, -1)
-				backoff.backoff()
+				backoff.Wait()
 				continue
 			}
 
@@ -229,15 +238,15 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 			unprocessed.TakeReqs(unprocessedItems, -1)
 			// I am unclear why we don't count here; perhaps the idea is
 			// that while we are making _some_ progress we should carry on.
-			backoff.backoffWithoutCounting()
+			backoff.WaitWithoutCounting()
 			continue
 		}
 
-		backoff = resetBackoff()
+		backoff.Reset()
 	}
 
 	if valuesLeft := outstanding.Len() + unprocessed.Len(); valuesLeft > 0 {
-		return fmt.Errorf("failed to write chunk after %d retries, %d values remaining", backoff.numRetries, valuesLeft)
+		return fmt.Errorf("failed to write chunk after %d retries, %d values remaining", backoff.NumRetries(), valuesLeft)
 	}
 	return nil
 }
@@ -310,13 +319,13 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 }
 
 func (a awsStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput, page dynamoDBRequest) (dynamoDBReadResponse, error) {
-	backoff := resetBackoff()
+	backoff := util.NewBackoff(backoffConfig, ctx.Done())
 	defer func() {
-		dynamoQueryRetryCount.WithLabelValues("queryPage").Observe(float64(backoff.numRetries))
+		dynamoQueryRetryCount.WithLabelValues("queryPage").Observe(float64(backoff.NumRetries()))
 	}()
 
 	var err error
-	for !backoff.finished() {
+	for backoff.Ongoing() {
 		err = instrument.TimeRequestHistogram(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
 			return page.Send()
 		})
@@ -330,9 +339,9 @@ func (a awsStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryIn
 			recordDynamoError(*input.TableName, err, "DynamoDB.QueryPages")
 			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || page.Retryable()) {
 				if awsErr.Code() != dynamodb.ErrCodeProvisionedThroughputExceededException {
-					level.Warn(util.Logger).Log("msg", "DynamoDB error", "retry", backoff.numRetries, "table", *input.TableName, "err", err)
+					level.Warn(util.Logger).Log("msg", "DynamoDB error", "retry", backoff.NumRetries(), "table", *input.TableName, "err", err)
 				}
-				backoff.backoff()
+				backoff.Wait()
 				continue
 			}
 			return nil, fmt.Errorf("QueryPage error: table=%v, err=%v", *input.TableName, err)
@@ -548,12 +557,12 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 
 	result := []Chunk{}
 	unprocessed := dynamoDBReadRequest{}
-	backoff := resetBackoff()
+	backoff := util.NewBackoff(backoffConfig, ctx.Done())
 	defer func() {
-		dynamoQueryRetryCount.WithLabelValues("getDynamoDBChunks").Observe(float64(backoff.numRetries))
+		dynamoQueryRetryCount.WithLabelValues("getDynamoDBChunks").Observe(float64(backoff.NumRetries()))
 	}()
 
-	for outstanding.Len()+unprocessed.Len() > 0 && !backoff.finished() {
+	for outstanding.Len()+unprocessed.Len() > 0 && backoff.Ongoing() {
 		requests := dynamoDBReadRequest{}
 		requests.TakeReqs(outstanding, dynamoDBMaxReadBatchSize)
 		requests.TakeReqs(unprocessed, dynamoDBMaxReadBatchSize)
@@ -582,7 +591,7 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 			// so back off and retry all.
 			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
 				unprocessed.TakeReqs(requests, -1)
-				backoff.backoff()
+				backoff.Wait()
 				continue
 			}
 
@@ -601,16 +610,16 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 			unprocessed.TakeReqs(unprocessedKeys, -1)
 			// I am unclear why we don't count here; perhaps the idea is
 			// that while we are making _some_ progress we should carry on.
-			backoff.backoffWithoutCounting()
+			backoff.WaitWithoutCounting()
 			continue
 		}
 
-		backoff = resetBackoff()
+		backoff.Reset()
 	}
 
 	if valuesLeft := outstanding.Len() + unprocessed.Len(); valuesLeft > 0 {
 		// Return the chunks we did fetch, because partial results may be useful
-		return result, fmt.Errorf("failed to query chunks after %d retries, %d values remaining", backoff.numRetries, valuesLeft)
+		return result, fmt.Errorf("failed to query chunks after %d retries, %d values remaining", backoff.NumRetries(), valuesLeft)
 	}
 	return result, nil
 }
