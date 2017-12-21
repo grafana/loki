@@ -191,7 +191,7 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 	outstanding := input.(dynamoDBWriteBatch)
 	unprocessed := dynamoDBWriteBatch{}
 
-	backoff := util.NewBackoff(backoffConfig, ctx.Done())
+	backoff := util.NewBackoff(ctx, backoffConfig)
 	defer func() {
 		dynamoQueryRetryCount.WithLabelValues("BatchWrite").Observe(float64(backoff.NumRetries()))
 	}()
@@ -246,9 +246,9 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 	}
 
 	if valuesLeft := outstanding.Len() + unprocessed.Len(); valuesLeft > 0 {
-		return fmt.Errorf("failed to write chunk after %d retries, %d values remaining", backoff.NumRetries(), valuesLeft)
+		return fmt.Errorf("failed to write chunk, %d values remaining: %s", valuesLeft, backoff.Err())
 	}
-	return nil
+	return backoff.Err()
 }
 
 func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
@@ -319,7 +319,7 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 }
 
 func (a awsStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput, page dynamoDBRequest) (dynamoDBReadResponse, error) {
-	backoff := util.NewBackoff(backoffConfig, ctx.Done())
+	backoff := util.NewBackoff(ctx, backoffConfig)
 	defer func() {
 		dynamoQueryRetryCount.WithLabelValues("queryPage").Observe(float64(backoff.NumRetries()))
 	}()
@@ -350,7 +350,7 @@ func (a awsStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryIn
 		queryOutput := page.Data().(*dynamodb.QueryOutput)
 		return dynamoDBReadResponse(queryOutput.Items), nil
 	}
-	return nil, fmt.Errorf("QueryPage error: maxRetries exceeded for table %v, last error %v", *input.TableName, err)
+	return nil, fmt.Errorf("QueryPage error: %s for table %v, last error %v", backoff.Err(), *input.TableName, err)
 }
 
 type dynamoDBRequest interface {
@@ -557,7 +557,7 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 
 	result := []Chunk{}
 	unprocessed := dynamoDBReadRequest{}
-	backoff := util.NewBackoff(backoffConfig, ctx.Done())
+	backoff := util.NewBackoff(ctx, backoffConfig)
 	defer func() {
 		dynamoQueryRetryCount.WithLabelValues("getDynamoDBChunks").Observe(float64(backoff.NumRetries()))
 	}()
@@ -619,7 +619,7 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 
 	if valuesLeft := outstanding.Len() + unprocessed.Len(); valuesLeft > 0 {
 		// Return the chunks we did fetch, because partial results may be useful
-		return result, fmt.Errorf("failed to query chunks after %d retries, %d values remaining", backoff.NumRetries(), valuesLeft)
+		return result, fmt.Errorf("failed to query chunks, %d values remaining: %s", valuesLeft, backoff.Err())
 	}
 	return result, nil
 }
