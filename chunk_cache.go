@@ -155,6 +155,7 @@ func (c *Cache) FetchChunkData(ctx context.Context, chunks []Chunk) (found []Chu
 		return nil, chunks, err
 	}
 
+	decodeContext := NewDecodeContext()
 	for i, externalKey := range keys {
 		item, ok := items[externalKey]
 		if !ok {
@@ -162,7 +163,7 @@ func (c *Cache) FetchChunkData(ctx context.Context, chunks []Chunk) (found []Chu
 			continue
 		}
 
-		if err := chunks[i].Decode(item.Value); err != nil {
+		if err := chunks[i].Decode(decodeContext, item.Value); err != nil {
 			memcacheCorrupt.Inc()
 			level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "failed to decode chunk from cache", "err", err)
 			missing = append(missing, chunks[i])

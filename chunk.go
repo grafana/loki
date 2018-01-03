@@ -210,9 +210,21 @@ func (c *Chunk) Encode() ([]byte, error) {
 	return output, nil
 }
 
+// DecodeContext holds data that can be re-used between decodes of different chunks
+type DecodeContext struct {
+	reader *snappy.Reader
+}
+
+// NewDecodeContext creates a new, blank, DecodeContext
+func NewDecodeContext() *DecodeContext {
+	return &DecodeContext{
+		reader: snappy.NewReader(nil),
+	}
+}
+
 // Decode the chunk from the given buffer, and confirm the chunk is the one we
 // expected.
-func (c *Chunk) Decode(input []byte) error {
+func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	// Legacy chunks were written with metadata in the index.
 	if c.metadataInIndex {
 		var err error
@@ -236,10 +248,11 @@ func (c *Chunk) Decode(input []byte) error {
 		return err
 	}
 	var tempMetadata Chunk
-	err := json.NewDecoder(snappy.NewReader(&io.LimitedReader{
+	decodeContext.reader.Reset(&io.LimitedReader{
 		N: int64(metadataLen),
 		R: r,
-	})).Decode(&tempMetadata)
+	})
+	err := json.NewDecoder(decodeContext.reader).Decode(&tempMetadata)
 	if err != nil {
 		return err
 	}

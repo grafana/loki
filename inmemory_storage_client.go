@@ -256,6 +256,7 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
+	decodeContext := NewDecodeContext()
 	result := []Chunk{}
 	for _, chunk := range chunkSet {
 		key := chunk.ExternalKey()
@@ -263,7 +264,7 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 		if !ok {
 			return nil, fmt.Errorf("%v not found", key)
 		}
-		if err := chunk.Decode(buf); err != nil {
+		if err := chunk.Decode(decodeContext, buf); err != nil {
 			return nil, err
 		}
 		result = append(result, chunk)

@@ -222,6 +222,7 @@ func (s *storageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]c
 		for i := 0; i < len(keys); i += maxRowReads {
 			page := keys[i:util.Min(i+maxRowReads, len(keys))]
 			go func(page bigtable.RowList) {
+				decodeContext := chunk.NewDecodeContext()
 				// rows are returned in key order, not order in row list
 				if err := table.ReadRows(ctx, page, func(row bigtable.Row) bool {
 					chunk, ok := chunks[row.Key()]
@@ -230,7 +231,7 @@ func (s *storageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]c
 						return false
 					}
 
-					err := chunk.Decode(row[columnFamily][0].Value)
+					err := chunk.Decode(decodeContext, row[columnFamily][0].Value)
 					if err != nil {
 						errs <- err
 						return false
