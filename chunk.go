@@ -290,9 +290,8 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 		return err
 	}
 
-	// Flag indicates if metadata was written to index, and if false implies
-	// we should read a header of the chunk containing the metadata.  Exists
-	// for backwards compatibility with older chunks, which did not have header.
+	// Older chunks always used DoubleDelta and did not write Encoding
+	// to JSON, so override if it has the zero value (Delta)
 	if c.Encoding == prom_chunk.Delta {
 		c.Encoding = prom_chunk.DoubleDelta
 	}
