@@ -5,7 +5,21 @@ type ByKey []Chunk
 
 func (cs ByKey) Len() int           { return len(cs) }
 func (cs ByKey) Swap(i, j int)      { cs[i], cs[j] = cs[j], cs[i] }
-func (cs ByKey) Less(i, j int) bool { return cs[i].ExternalKey() < cs[j].ExternalKey() }
+func (cs ByKey) Less(i, j int) bool { return lessByKey(cs[i], cs[j]) }
+
+// This comparison uses all the same information as Chunk.ExternalKey()
+func lessByKey(a, b Chunk) bool {
+	return a.UserID < b.UserID ||
+		(a.UserID == b.UserID && (a.Fingerprint < b.Fingerprint ||
+			(a.Fingerprint == b.Fingerprint && (a.From < b.From ||
+				(a.From == b.From && (a.Through < b.Through ||
+					(a.Through == b.Through && a.Checksum < b.Checksum)))))))
+}
+
+func equalByKey(a, b Chunk) bool {
+	return a.UserID == b.UserID && a.Fingerprint == b.Fingerprint &&
+		a.From == b.From && a.Through == b.Through && a.Checksum == b.Checksum
+}
 
 // unique will remove duplicates from the input.
 // list must be sorted.
@@ -18,7 +32,7 @@ func unique(cs ByKey) ByKey {
 	result[0] = cs[0]
 	i, j := 0, 1
 	for j < len(cs) {
-		if result[i].ExternalKey() == cs[j].ExternalKey() {
+		if equalByKey(result[i], cs[j]) {
 			j++
 			continue
 		}
@@ -35,10 +49,10 @@ func merge(a, b ByKey) ByKey {
 	result := make(ByKey, 0, len(a)+len(b))
 	i, j := 0, 0
 	for i < len(a) && j < len(b) {
-		if a[i].ExternalKey() < b[j].ExternalKey() {
+		if lessByKey(a[i], b[j]) {
 			result = append(result, a[i])
 			i++
-		} else if a[i].ExternalKey() > b[j].ExternalKey() {
+		} else if lessByKey(b[j], a[i]) {
 			result = append(result, b[j])
 			j++
 		} else {
@@ -92,11 +106,11 @@ func nWayIntersect(sets []ByKey) ByKey {
 			result      = []Chunk{}
 		)
 		for i < len(left) && j < len(right) {
-			if left[i].ExternalKey() == right[j].ExternalKey() {
+			if equalByKey(left[i], right[j]) {
 				result = append(result, left[i])
 			}
 
-			if left[i].ExternalKey() < right[j].ExternalKey() {
+			if lessByKey(left[i], right[j]) {
 				i++
 			} else {
 				j++

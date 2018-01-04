@@ -239,9 +239,18 @@ func benchmarkDecode(b *testing.B, batchSize int) {
 
 	for i := 0; i < b.N; i++ {
 		decodeContext := NewDecodeContext()
+		b.StopTimer()
 		chunks := make([]Chunk, batchSize)
+		// Copy across the metadata so the check works out ok
 		for j := 0; j < batchSize; j++ {
-			chunks[j].Decode(decodeContext, buf)
+			chunks[j] = chunk
+			chunks[j].Metric = nil
+			chunks[j].Data = nil
+		}
+		b.StartTimer()
+		for j := 0; j < batchSize; j++ {
+			err := chunks[j].Decode(decodeContext, buf)
+			require.NoError(b, err)
 		}
 	}
 }
