@@ -212,14 +212,29 @@ func (c *Chunk) Encode() ([]byte, error) {
 
 // DecodeContext holds data that can be re-used between decodes of different chunks
 type DecodeContext struct {
-	reader *snappy.Reader
+	reader  *snappy.Reader
+	metrics map[model.Fingerprint]model.Metric
 }
 
 // NewDecodeContext creates a new, blank, DecodeContext
 func NewDecodeContext() *DecodeContext {
 	return &DecodeContext{
-		reader: snappy.NewReader(nil),
+		reader:  snappy.NewReader(nil),
+		metrics: make(map[model.Fingerprint]model.Metric),
 	}
+}
+
+// If we have decoded a chunk with the same fingerprint before, re-use its Metric, otherwise parse it
+func (dc *DecodeContext) metric(fingerprint model.Fingerprint, buf []byte) (model.Metric, error) {
+	metric, found := dc.metrics[fingerprint]
+	if !found {
+		err := json.NewDecoder(bytes.NewReader(buf)).Decode(&metric)
+		if err != nil {
+			return nil, errors.Wrap(err, "while parsing chunk metric")
+		}
+		dc.metrics[fingerprint] = metric
+	}
+	return metric, nil
 }
 
 // Decode the chunk from the given buffer, and confirm the chunk is the one we
@@ -247,7 +262,10 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	if err := binary.Read(r, binary.BigEndian, &metadataLen); err != nil {
 		return err
 	}
-	var tempMetadata Chunk
+	var tempMetadata struct {
+		Chunk
+		RawMetric json.RawMessage `json:"metric"` // Override to defer parsing
+	}
 	decodeContext.reader.Reset(&io.LimitedReader{
 		N: int64(metadataLen),
 		R: r,
@@ -266,7 +284,11 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 			return errors.WithStack(ErrWrongMetadata)
 		}
 	}
-	*c = tempMetadata
+	*c = tempMetadata.Chunk
+	c.Metric, err = decodeContext.metric(tempMetadata.Fingerprint, tempMetadata.RawMetric)
+	if err != nil {
+		return err
+	}
 
 	// Flag indicates if metadata was written to index, and if false implies
 	// we should read a header of the chunk containing the metadata.  Exists
