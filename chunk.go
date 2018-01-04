@@ -280,7 +280,7 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	// we don't write the checksum to s3, so we have to copy the checksum in.
 	if c.ChecksumSet {
 		tempMetadata.Checksum, tempMetadata.ChecksumSet = c.Checksum, c.ChecksumSet
-		if !equalByKey(*c, tempMetadata) {
+		if !equalByKey(*c, tempMetadata.Chunk) {
 			return errors.WithStack(ErrWrongMetadata)
 		}
 	}
