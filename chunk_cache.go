@@ -8,6 +8,8 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/go-kit/kit/log/level"
+	ot "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 
@@ -134,6 +136,10 @@ func memcacheStatusCode(err error) string {
 
 // FetchChunkData gets chunks from the chunk cache.
 func (c *Cache) FetchChunkData(ctx context.Context, chunks []Chunk) (found []Chunk, missing []Chunk, err error) {
+	sp, ctx := ot.StartSpanFromContext(ctx, "FetchChunkData")
+	defer sp.Finish()
+	sp.LogFields(otlog.Int("chunks requested", len(chunks)))
+
 	if c.memcache == nil {
 		return nil, chunks, nil
 	}
@@ -155,6 +161,7 @@ func (c *Cache) FetchChunkData(ctx context.Context, chunks []Chunk) (found []Chu
 		return nil, chunks, err
 	}
 
+	sp.LogFields(otlog.Int("chunks returned", len(items)))
 	decodeContext := NewDecodeContext()
 	for i, externalKey := range keys {
 		item, ok := items[externalKey]
@@ -172,6 +179,7 @@ func (c *Cache) FetchChunkData(ctx context.Context, chunks []Chunk) (found []Chu
 
 		found = append(found, chunks[i])
 	}
+	sp.LogFields(otlog.Int("chunks found", len(found)), otlog.Int("chunks missing", len(missing)))
 
 	memcacheHits.Add(float64(len(found)))
 	return found, missing, nil

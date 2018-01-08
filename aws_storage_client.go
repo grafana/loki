@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -423,6 +424,7 @@ type chunksPlusError struct {
 func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
 	sp, ctx := ot.StartSpanFromContext(ctx, "GetChunks")
 	defer sp.Finish()
+	sp.LogFields(otlog.Int("chunks requested", len(chunks)))
 
 	var (
 		s3Chunks       []Chunk
@@ -473,7 +475,9 @@ func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chun
 			finalChunks = append(finalChunks, in.chunks...)
 		}
 	}
+	sp.LogFields(otlog.Int("chunks fetched", len(finalChunks)))
 	if err != nil {
+		sp.LogFields(otlog.String("error", err.Error()))
 		return nil, err
 	}
 

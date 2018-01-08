@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,8 @@ import (
 	"strings"
 
 	"github.com/golang/snappy"
+	ot "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	prom_chunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
@@ -313,7 +316,11 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	})
 }
 
-func chunksToMatrix(chunks []Chunk) (model.Matrix, error) {
+func chunksToMatrix(ctx context.Context, chunks []Chunk) (model.Matrix, error) {
+	sp, ctx := ot.StartSpanFromContext(ctx, "chunksToMatrix")
+	defer sp.Finish()
+	sp.LogFields(otlog.Int("chunks", len(chunks)))
+
 	// Group chunks by series, sort and dedupe samples.
 	sampleStreams := map[model.Fingerprint]*model.SampleStream{}
 	for _, c := range chunks {
@@ -332,6 +339,7 @@ func chunksToMatrix(chunks []Chunk) (model.Matrix, error) {
 
 		ss.Values = util.MergeSampleSets(ss.Values, samples)
 	}
+	sp.LogFields(otlog.Int("sample streams", len(sampleStreams)))
 
 	matrix := make(model.Matrix, 0, len(sampleStreams))
 	for _, ss := range sampleStreams {

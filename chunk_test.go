@@ -1,6 +1,7 @@
 package chunk
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"testing"
@@ -184,7 +185,7 @@ func TestChunksToMatrix(t *testing.T) {
 			},
 		},
 	} {
-		matrix, err := chunksToMatrix(c.chunks)
+		matrix, err := chunksToMatrix(context.Background(), c.chunks)
 		require.NoError(t, err)
 
 		sort.Sort(matrix)
