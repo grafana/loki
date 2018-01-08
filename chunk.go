@@ -317,13 +317,12 @@ func chunksToMatrix(chunks []Chunk) (model.Matrix, error) {
 	// Group chunks by series, sort and dedupe samples.
 	sampleStreams := map[model.Fingerprint]*model.SampleStream{}
 	for _, c := range chunks {
-		fp := c.Metric.Fingerprint()
-		ss, ok := sampleStreams[fp]
+		ss, ok := sampleStreams[c.Fingerprint]
 		if !ok {
 			ss = &model.SampleStream{
 				Metric: c.Metric,
 			}
-			sampleStreams[fp] = ss
+			sampleStreams[c.Fingerprint] = ss
 		}
 
 		samples, err := c.Samples()
