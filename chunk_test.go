@@ -140,10 +140,10 @@ func TestChunksToMatrix(t *testing.T) {
 		"toms": "code",
 	}
 	chunk1 := dummyChunkFor(metric)
-	chunk1Samples, err := chunk1.Samples()
+	chunk1Samples, err := chunk1.Samples(chunk1.From, chunk1.Through)
 	require.NoError(t, err)
 	chunk2 := dummyChunkFor(metric)
-	chunk2Samples, err := chunk2.Samples()
+	chunk2Samples, err := chunk2.Samples(chunk2.From, chunk2.Through)
 	require.NoError(t, err)
 
 	ss1 := &model.SampleStream{
@@ -158,7 +158,7 @@ func TestChunksToMatrix(t *testing.T) {
 		"toms": "code",
 	}
 	chunk3 := dummyChunkFor(otherMetric)
-	chunk3Samples, err := chunk3.Samples()
+	chunk3Samples, err := chunk3.Samples(chunk3.From, chunk3.Through)
 	require.NoError(t, err)
 
 	ss2 := &model.SampleStream{
@@ -185,7 +185,7 @@ func TestChunksToMatrix(t *testing.T) {
 			},
 		},
 	} {
-		matrix, err := chunksToMatrix(context.Background(), c.chunks)
+		matrix, err := chunksToMatrix(context.Background(), c.chunks, chunk1.From, chunk3.Through)
 		require.NoError(t, err)
 
 		sort.Sort(matrix)

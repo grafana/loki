@@ -17,6 +17,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	prom_chunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
+	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 
 	errs "github.com/weaveworks/common/errors"
 	"github.com/weaveworks/cortex/pkg/util"
@@ -316,7 +317,7 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	})
 }
 
-func chunksToMatrix(ctx context.Context, chunks []Chunk) (model.Matrix, error) {
+func chunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Time) (model.Matrix, error) {
 	sp, ctx := ot.StartSpanFromContext(ctx, "chunksToMatrix")
 	defer sp.Finish()
 	sp.LogFields(otlog.Int("chunks", len(chunks)))
@@ -332,7 +333,7 @@ func chunksToMatrix(ctx context.Context, chunks []Chunk) (model.Matrix, error) {
 			sampleStreams[c.Fingerprint] = ss
 		}
 
-		samples, err := c.Samples()
+		samples, err := c.Samples(from, through)
 		if err != nil {
 			return nil, err
 		}
@@ -353,13 +354,8 @@ func chunksToMatrix(ctx context.Context, chunks []Chunk) (model.Matrix, error) {
 }
 
 // Samples returns all SamplePairs for the chunk.
-func (c *Chunk) Samples() ([]model.SamplePair, error) {
+func (c *Chunk) Samples(from, through model.Time) ([]model.SamplePair, error) {
 	it := c.Data.NewIterator()
-	// TODO(juliusv): Pre-allocate this with the right length again once we
-	// add a method upstream to get the number of samples in a chunk.
-	var samples []model.SamplePair
-	for it.Scan() {
-		samples = append(samples, it.Value())
-	}
-	return samples, nil
+	interval := metric.Interval{OldestInclusive: from, NewestInclusive: through}
+	return prom_chunk.RangeValues(it, interval)
 }

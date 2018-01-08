@@ -183,7 +183,7 @@ func (c *Store) getMetricNameMatrix(ctx context.Context, from, through model.Tim
 	if err != nil {
 		return nil, err
 	}
-	return chunksToMatrix(ctx, chunks)
+	return chunksToMatrix(ctx, chunks, from, through)
 }
 
 func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricName string) ([]Chunk, error) {
@@ -301,7 +301,7 @@ outer:
 			}
 		}
 	}
-	return chunksToMatrix(ctx, chunks)
+	return chunksToMatrix(ctx, chunks, from, through)
 }
 
 func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*labels.Matcher, metricName string) ([]Chunk, error) {
