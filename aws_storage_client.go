@@ -48,7 +48,7 @@ const (
 var backoffConfig = util.BackoffConfig{
 	// Backoff for dynamoDB requests, to match AWS lib - see:
 	// https://github.com/aws/aws-sdk-go/blob/master/service/dynamodb/customizations.go
-	MinBackoff: 50 * time.Millisecond,
+	MinBackoff: 100 * time.Millisecond,
 	MaxBackoff: 50 * time.Second,
 	MaxRetries: 20,
 }
