@@ -109,7 +109,8 @@ type DynamoDBConfig struct {
 	DynamoDB               util.URLValue
 	APILimit               float64
 	ApplicationAutoScaling util.URLValue
-	DynamoDBChunkGangSize  int
+	ChunkGangSize          int
+	ChunkGetMaxParallelism int
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -118,7 +119,8 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<table-name> to use a mock in-memory implementation.")
 	f.Float64Var(&cfg.APILimit, "dynamodb.api-limit", 2.0, "DynamoDB table management requests per second limit.")
 	f.Var(&cfg.ApplicationAutoScaling, "applicationautoscaling.url", "ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.")
-	f.IntVar(&cfg.DynamoDBChunkGangSize, "dynamodb.chunk.gang.size", 10, "Number of chunks to group together to parallelise fetches (zero to disable)")
+	f.IntVar(&cfg.ChunkGangSize, "dynamodb.chunk.gang.size", 10, "Number of chunks to group together to parallelise fetches (zero to disable)")
+	f.IntVar(&cfg.ChunkGetMaxParallelism, "dynamodb.chunk.get.max.parallelism", 32, "Max number of chunk-get operations to start in parallel")
 }
 
 // AWSStorageConfig specifies config for storing data on AWS.
@@ -450,9 +452,13 @@ func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chun
 		return s3Chunks, err
 	}
 
-	gangSize := a.cfg.DynamoDBChunkGangSize * dynamoDBMaxReadBatchSize
+	gangSize := a.cfg.ChunkGangSize * dynamoDBMaxReadBatchSize
 	if gangSize == 0 { // zero means turn feature off
 		gangSize = len(dynamoDBChunks)
+	} else {
+		if len(dynamoDBChunks)/gangSize > a.cfg.ChunkGetMaxParallelism {
+			gangSize = len(dynamoDBChunks)/a.cfg.ChunkGetMaxParallelism + 1
+		}
 	}
 
 	results := make(chan chunksPlusError)
