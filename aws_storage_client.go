@@ -255,7 +255,7 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 }
 
 func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
-	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{"tableName", query.TableName}, ot.Tag{"hashValue", query.HashValue})
+	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
 	defer sp.Finish()
 
 	input := &dynamodb.QueryInput{
@@ -555,7 +555,7 @@ var placeholder = []byte{'c'}
 // Structure is identical to BatchWrite(), but operating on different datatypes
 // so cannot share implementation.  If you fix a bug here fix it there too.
 func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
-	sp, ctx := ot.StartSpanFromContext(ctx, "getDynamoDBChunks", ot.Tag{"numChunks", len(chunks)})
+	sp, ctx := ot.StartSpanFromContext(ctx, "getDynamoDBChunks", ot.Tag{Key: "numChunks", Value: len(chunks)})
 	defer sp.Finish()
 	outstanding := dynamoDBReadRequest{}
 	chunksByKey := map[string]Chunk{}
