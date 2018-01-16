@@ -102,7 +102,8 @@ func TestNWayIntersect(t *testing.T) {
 }
 
 func BenchmarkByKeyLess(b *testing.B) {
-	a := ByKey{dummyChunk(), dummyChunk()}
+	now := model.Now()
+	a := ByKey{dummyChunk(now), dummyChunk(now)}
 
 	b.ResetTimer()
 
@@ -118,10 +119,7 @@ func BenchmarkByKeySort10000(b *testing.B) { benchmarkByKeySort(b, 10000) }
 func benchmarkByKeySort(b *testing.B, batchSize int) {
 	chunks := []Chunk{}
 	for i := 0; i < batchSize; i++ {
-		chunk := dummyChunk()
-		// Tweak the dummy data slightly so the chunks are more likely to be different
-		// this makes the checksum wrong but we don't look at it
-		chunk.From += model.Time(rand.Intn(batchSize))
+		chunk := dummyChunk(model.Now() + model.Time(rand.Intn(batchSize)))
 		chunks = append(chunks, chunk)
 	}
 

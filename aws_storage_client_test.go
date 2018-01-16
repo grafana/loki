@@ -531,7 +531,7 @@ func testStorageClientChunks(t *testing.T, client StorageClient) {
 	for i := 0; i < 50; i++ {
 		chunks := []Chunk{}
 		for j := 0; j < batchSize; j++ {
-			chunk := dummyChunkFor(model.Metric{
+			chunk := dummyChunkFor(model.Now(), model.Metric{
 				model.MetricNameLabel: "foo",
 				"index":               model.LabelValue(strconv.Itoa(i*batchSize + j)),
 			})
