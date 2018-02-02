@@ -10,6 +10,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/golang/snappy"
 	ot "github.com/opentracing/opentracing-go"
@@ -176,6 +177,10 @@ func (c *Chunk) ExternalKey() string {
 	return fmt.Sprintf("%s/%d:%d:%d", c.UserID, uint64(c.Fingerprint), int64(c.From), int64(c.Through))
 }
 
+var writerPool = sync.Pool{
+	New: func() interface{} { return snappy.NewWriter(nil) },
+}
+
 // Encode writes the chunk out to a big write buffer, then calculates the checksum.
 func (c *Chunk) Encode() ([]byte, error) {
 	var buf bytes.Buffer
@@ -187,7 +192,10 @@ func (c *Chunk) Encode() ([]byte, error) {
 	}
 
 	// Encode chunk metadata into snappy-compressed buffer
-	if err := json.NewEncoder(snappy.NewWriter(&buf)).Encode(c); err != nil {
+	writer := writerPool.Get().(*snappy.Writer)
+	defer writerPool.Put(writer)
+	writer.Reset(&buf)
+	if err := json.NewEncoder(writer).Encode(c); err != nil {
 		return nil, err
 	}
 
