@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"cloud.google.com/go/bigtable"
+	ot "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 
 	"github.com/pkg/errors"
 	"github.com/weaveworks/cortex/pkg/chunk"
@@ -108,6 +110,9 @@ func (s *storageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 }
 
 func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch, lastPage bool) (shouldContinue bool)) error {
+	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
+	defer sp.Finish()
+
 	table := s.client.Open(query.TableName)
 
 	var rowRange bigtable.RowRange
@@ -128,6 +133,7 @@ func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, 
 		return callback(bigtableReadBatch(r), false)
 	}, bigtable.RowFilter(bigtable.FamilyFilter(columnFamily)))
 	if err != nil {
+		sp.LogFields(otlog.String("error", err.Error()))
 		return errors.WithStack(err)
 	}
 	return nil
