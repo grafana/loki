@@ -119,17 +119,12 @@ func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, 
 	if len(query.RangeValuePrefix) > 0 {
 		rowRange = bigtable.PrefixRange(query.HashValue + separator + string(query.RangeValuePrefix))
 	} else if len(query.RangeValueStart) > 0 {
-		rowRange = bigtable.InfiniteRange(query.HashValue + separator + string(query.RangeValueStart))
+		rowRange = bigtable.NewRange(query.HashValue+separator+string(query.RangeValueStart), query.HashValue+separator+string('\xff'))
 	} else {
 		rowRange = bigtable.PrefixRange(query.HashValue + separator)
 	}
 
 	err := table.ReadRows(ctx, rowRange, func(r bigtable.Row) bool {
-		// Bigtable doesn't know when to stop, as we're reading "until the end of the
-		// row" in DynamoDB.  So we need to check the prefix of the row is still correct.
-		if !strings.HasPrefix(r.Key(), query.HashValue+separator) {
-			return false
-		}
 		return callback(bigtableReadBatch(r), false)
 	}, bigtable.RowFilter(bigtable.FamilyFilter(columnFamily)))
 	if err != nil {
