@@ -39,6 +39,7 @@ var (
 
 func init() {
 	prometheus.MustRegister(tableCapacity)
+	prometheus.MustRegister(syncTableDuration)
 }
 
 // Tags is a string-string map that implements flag.Value.
