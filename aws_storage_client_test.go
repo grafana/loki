@@ -499,6 +499,7 @@ func TestAWSStorageClientChunks(t *testing.T) {
 			}
 			tableManager, err := NewTableManager(
 				schemaConfig,
+				maxChunkAge,
 				&dynamoTableClient{
 					DynamoDB: dynamoDB,
 				},

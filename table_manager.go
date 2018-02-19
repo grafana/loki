@@ -102,18 +102,20 @@ func (ts Tags) AWSTags() []*dynamodb.Tag {
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
 type TableManager struct {
-	client TableClient
-	cfg    SchemaConfig
-	done   chan struct{}
-	wait   sync.WaitGroup
+	client      TableClient
+	cfg         SchemaConfig
+	maxChunkAge time.Duration
+	done        chan struct{}
+	wait        sync.WaitGroup
 }
 
 // NewTableManager makes a new TableManager
-func NewTableManager(cfg SchemaConfig, tableClient TableClient) (*TableManager, error) {
+func NewTableManager(cfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient) (*TableManager, error) {
 	return &TableManager{
-		cfg:    cfg,
-		client: tableClient,
-		done:   make(chan struct{}),
+		cfg:         cfg,
+		maxChunkAge: maxChunkAge,
+		client:      tableClient,
+		done:        make(chan struct{}),
 	}, nil
 }
 
@@ -188,7 +190,7 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 		var (
 			tablePeriodSecs = int64(m.cfg.IndexTables.Period / time.Second)
 			gracePeriodSecs = int64(m.cfg.CreationGracePeriod / time.Second)
-			maxChunkAgeSecs = int64(m.cfg.MaxChunkAge / time.Second)
+			maxChunkAgeSecs = int64(m.maxChunkAge / time.Second)
 			firstTable      = m.cfg.IndexTables.From.Unix() / tablePeriodSecs
 			now             = mtime.Now().Unix()
 		)
@@ -206,13 +208,13 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 
 	if m.cfg.UsePeriodicTables {
 		result = append(result, m.cfg.IndexTables.periodicTables(
-			m.cfg.CreationGracePeriod, m.cfg.MaxChunkAge,
+			m.cfg.CreationGracePeriod, m.maxChunkAge,
 		)...)
 	}
 
 	if m.cfg.ChunkTables.From.IsSet() {
 		result = append(result, m.cfg.ChunkTables.periodicTables(
-			m.cfg.CreationGracePeriod, m.cfg.MaxChunkAge,
+			m.cfg.CreationGracePeriod, m.maxChunkAge,
 		)...)
 	}
 

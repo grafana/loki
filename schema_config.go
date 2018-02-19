@@ -37,7 +37,6 @@ type SchemaConfig struct {
 
 	// duration a table will be created before it is needed.
 	CreationGracePeriod time.Duration
-	MaxChunkAge         time.Duration
 
 	// Config for the index & chunk tables.
 	OriginalTableName string
