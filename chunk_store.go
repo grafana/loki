@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/weaveworks/common/user"
+	"github.com/weaveworks/cortex/pkg/chunk/cache"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -33,16 +34,22 @@ var (
 		},
 		HashBuckets: 1024,
 	})
+	cacheCorrupt = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "cache_corrupt_chunks_total",
+		Help:      "Total count of corrupt chunks found in cache.",
+	})
 )
 
 func init() {
 	prometheus.MustRegister(indexEntriesPerChunk)
 	prometheus.MustRegister(rowWrites)
+	prometheus.MustRegister(cacheCorrupt)
 }
 
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
-	CacheConfig
+	CacheConfig cache.Config
 
 	// For injecting different schemas in tests.
 	schemaFactory func(cfg SchemaConfig) Schema
@@ -58,7 +65,7 @@ type Store struct {
 	cfg StoreConfig
 
 	storage StorageClient
-	cache   *Cache
+	cache   cache.Cache
 	schema  Schema
 }
 
@@ -75,11 +82,16 @@ func NewStore(cfg StoreConfig, schemaCfg SchemaConfig, storage StorageClient) (*
 		return nil, err
 	}
 
+	cache, err := cache.New(cfg.CacheConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Store{
 		cfg:     cfg,
 		storage: storage,
 		schema:  schema,
-		cache:   NewCache(cfg.CacheConfig),
+		cache:   cache,
 	}, nil
 }
 
@@ -196,15 +208,22 @@ func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 
 	// Filter out chunks that are not in the selected time range.
 	filtered := make([]Chunk, 0, len(chunks))
+	keys := make([]string, 0, len(chunks))
 	for _, chunk := range chunks {
 		if chunk.Through < from || through < chunk.From {
 			continue
 		}
 		filtered = append(filtered, chunk)
+		keys = append(keys, chunk.ExternalKey())
 	}
 
 	// Now fetch the actual chunk data from Memcache / S3
-	fromCache, missing, err := c.cache.FetchChunkData(ctx, filtered)
+	cacheHits, cacheBufs, _, err := c.cache.FetchChunkData(ctx, keys)
+	if err != nil {
+		level.Warn(logger).Log("msg", "error fetching from cache", "err", err)
+	}
+
+	fromCache, missing, err := ProcessCacheResponse(filtered, cacheHits, cacheBufs)
 	if err != nil {
 		level.Warn(logger).Log("msg", "error fetching from cache", "err", err)
 	}
@@ -238,6 +257,41 @@ outer:
 	}
 
 	return filteredChunks, nil
+}
+
+// ProcessCacheResponse decodes the chunks coming back from the cache, separating
+// hits and misses.
+func ProcessCacheResponse(chunks []Chunk, keys []string, bufs [][]byte) (found []Chunk, missing []Chunk, err error) {
+	decodeContext := NewDecodeContext()
+
+	i, j := 0, 0
+	for i < len(chunks) && j < len(keys) {
+		chunkKey := chunks[i].ExternalKey()
+
+		if chunkKey < keys[j] {
+			missing = append(missing, chunks[i])
+			i++
+		} else if chunkKey > keys[j] {
+			level.Debug(util.Logger).Log("msg", "got chunk from cache we didn't ask for")
+			j++
+		} else {
+			chunk := chunks[i]
+			err = chunk.Decode(decodeContext, bufs[j])
+			if err != nil {
+				cacheCorrupt.Inc()
+				return
+			}
+			found = append(found, chunk)
+			i++
+			j++
+		}
+	}
+
+	for ; i < len(chunks); i++ {
+		missing = append(missing, chunks[i])
+	}
+
+	return
 }
 
 func (c *Store) getSeriesMatrix(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricNameMatcher *labels.Matcher) (model.Matrix, error) {
@@ -466,13 +520,15 @@ func (c *Store) convertIndexEntriesToChunks(ctx context.Context, entries []Index
 	return unique(chunkSet), nil
 }
 
-func (c *Store) writeBackCache(_ context.Context, chunks []Chunk) error {
+func (c *Store) writeBackCache(ctx context.Context, chunks []Chunk) error {
 	for i := range chunks {
 		encoded, err := chunks[i].Encode()
 		if err != nil {
 			return err
 		}
-		c.cache.BackgroundWrite(chunks[i].ExternalKey(), encoded)
+		if err := c.cache.StoreChunk(ctx, chunks[i].ExternalKey(), encoded); err != nil {
+			return err
+		}
 	}
 	return nil
 }

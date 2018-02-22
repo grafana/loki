@@ -1,4 +1,4 @@
-package chunk
+package cache
 
 import (
 	"flag"
@@ -13,9 +13,15 @@ import (
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
-// MemcacheClient is a memcache client that gets its server list from SRV
+// MemcachedClient interface exists for mocking memcacheClient.
+type MemcachedClient interface {
+	GetMulti(keys []string) (map[string]*memcache.Item, error)
+	Set(item *memcache.Item) error
+}
+
+// memcachedClient is a memcache client that gets its server list from SRV
 // records, and periodically updates that ServerList.
-type MemcacheClient struct {
+type memcachedClient struct {
 	*memcache.Client
 	serverList *memcache.ServerList
 	hostname   string
@@ -25,8 +31,8 @@ type MemcacheClient struct {
 	wait sync.WaitGroup
 }
 
-// MemcacheConfig defines how a MemcacheClient should be constructed.
-type MemcacheConfig struct {
+// MemcachedClientConfig defines how a MemcachedClient should be constructed.
+type MemcachedClientConfig struct {
 	Host           string
 	Service        string
 	Timeout        time.Duration
@@ -34,21 +40,21 @@ type MemcacheConfig struct {
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
-func (cfg *MemcacheConfig) RegisterFlags(f *flag.FlagSet) {
+func (cfg *MemcachedClientConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Host, "memcached.hostname", "", "Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.")
 	f.StringVar(&cfg.Service, "memcached.service", "memcached", "SRV service used to discover memcache servers.")
 	f.DurationVar(&cfg.Timeout, "memcached.timeout", 100*time.Millisecond, "Maximum time to wait before giving up on memcached requests.")
 	f.DurationVar(&cfg.UpdateInterval, "memcached.update-interval", 1*time.Minute, "Period with which to poll DNS for memcache servers.")
 }
 
-// NewMemcacheClient creates a new MemcacheClient that gets its server list
+// newMemcachedClient creates a new MemcacheClient that gets its server list
 // from SRV and updates the server list on a regular basis.
-func NewMemcacheClient(cfg MemcacheConfig) *MemcacheClient {
+func newMemcachedClient(cfg MemcachedClientConfig) *memcachedClient {
 	var servers memcache.ServerList
 	client := memcache.NewFromSelector(&servers)
 	client.Timeout = cfg.Timeout
 
-	newClient := &MemcacheClient{
+	newClient := &memcachedClient{
 		Client:     client,
 		serverList: &servers,
 		hostname:   cfg.Host,
@@ -66,12 +72,12 @@ func NewMemcacheClient(cfg MemcacheConfig) *MemcacheClient {
 }
 
 // Stop the memcache client.
-func (c *MemcacheClient) Stop() {
+func (c *memcachedClient) Stop() {
 	close(c.quit)
 	c.wait.Wait()
 }
 
-func (c *MemcacheClient) updateLoop(updateInterval time.Duration) error {
+func (c *memcachedClient) updateLoop(updateInterval time.Duration) error {
 	defer c.wait.Done()
 	ticker := time.NewTicker(updateInterval)
 	var err error
@@ -90,7 +96,7 @@ func (c *MemcacheClient) updateLoop(updateInterval time.Duration) error {
 
 // updateMemcacheServers sets a memcache server list from SRV records. SRV
 // priority & weight are ignored.
-func (c *MemcacheClient) updateMemcacheServers() error {
+func (c *memcachedClient) updateMemcacheServers() error {
 	_, addrs, err := net.LookupSRV(c.service, "tcp", c.hostname)
 	if err != nil {
 		return err
