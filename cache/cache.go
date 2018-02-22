@@ -26,6 +26,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableDiskcache, "cache.enable-diskcache", false, "Enable on-disk cache")
 
+	cfg.background.RegisterFlags(f)
 	cfg.memcache.RegisterFlags(f)
 	cfg.memcacheClient.RegisterFlags(f)
 	cfg.diskcache.RegisterFlags(f)
