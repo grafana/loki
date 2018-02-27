@@ -85,7 +85,7 @@ func TestChunkCodec(t *testing.T) {
 			buf, err := c.chunk.Encode()
 			require.NoError(t, err)
 
-			have, err := parseExternalKey(userID, c.chunk.ExternalKey())
+			have, err := ParseExternalKey(userID, c.chunk.ExternalKey())
 			require.NoError(t, err)
 
 			if c.f != nil {
@@ -126,7 +126,7 @@ func TestParseExternalKey(t *testing.T) {
 
 		{key: "invalidUserID/2:270d8f00:270d8f00:f84c5745", chunk: Chunk{}, err: ErrWrongMetadata},
 	} {
-		chunk, err := parseExternalKey(userID, c.key)
+		chunk, err := ParseExternalKey(userID, c.key)
 		require.Equal(t, c.err, errors.Cause(err))
 		require.Equal(t, c.chunk, chunk)
 	}

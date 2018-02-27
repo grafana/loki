@@ -16,7 +16,7 @@ type TableDesc struct {
 	ProvisionedRead  int64
 	ProvisionedWrite int64
 	Tags             Tags
-	WriteScale       autoScalingConfig
+	WriteScale       AutoScalingConfig
 }
 
 // Equals returns true if other matches desc.

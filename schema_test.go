@@ -75,7 +75,7 @@ func TestSchemaHashKeys(t *testing.T) {
 	cfg := SchemaConfig{
 		OriginalTableName: table,
 		UsePeriodicTables: true,
-		IndexTables: periodicTableConfig{
+		IndexTables: PeriodicTableConfig{
 			Prefix: periodicPrefix,
 			Period: 2 * 24 * time.Hour,
 			From:   util.NewDayValue(model.TimeFromUnix(5 * 24 * 60 * 60)),

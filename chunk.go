@@ -74,7 +74,7 @@ func NewChunk(userID string, fp model.Fingerprint, metric model.Metric, c prom_c
 	}
 }
 
-// parseExternalKey is used to construct a partially-populated chunk from the
+// ParseExternalKey is used to construct a partially-populated chunk from the
 // key in DynamoDB.  This chunk can then be used to calculate the key needed
 // to fetch the Chunk data from Memcache/S3, and then fully populate the chunk
 // with decode().
@@ -87,7 +87,7 @@ func NewChunk(userID string, fp model.Fingerprint, metric model.Metric, c prom_c
 // Post-checksums, externals keys become the same across DynamoDB, Memcache
 // and S3.  Numbers become hex encoded.  Keys look like:
 // `<user id>/<fingerprint>:<start time>:<end time>:<checksum>`.
-func parseExternalKey(userID, externalKey string) (Chunk, error) {
+func ParseExternalKey(userID, externalKey string) (Chunk, error) {
 	if !strings.Contains(externalKey, "/") {
 		return parseLegacyChunkID(userID, externalKey)
 	}

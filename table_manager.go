@@ -27,7 +27,7 @@ var (
 	syncTableDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "dynamo_sync_tables_seconds",
-		Help:      "Time spent doing syncTables.",
+		Help:      "Time spent doing SyncTables.",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"operation", "status_code"})
 	tableCapacity = prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -137,8 +137,8 @@ func (m *TableManager) loop() {
 	ticker := time.NewTicker(m.cfg.DynamoDBPollInterval)
 	defer ticker.Stop()
 
-	if err := instrument.TimeRequestHistogram(context.Background(), "TableManager.syncTables", syncTableDuration, func(ctx context.Context) error {
-		return m.syncTables(ctx)
+	if err := instrument.TimeRequestHistogram(context.Background(), "TableManager.SyncTables", syncTableDuration, func(ctx context.Context) error {
+		return m.SyncTables(ctx)
 	}); err != nil {
 		level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
 	}
@@ -146,8 +146,8 @@ func (m *TableManager) loop() {
 	for {
 		select {
 		case <-ticker.C:
-			if err := instrument.TimeRequestHistogram(context.Background(), "TableManager.syncTables", syncTableDuration, func(ctx context.Context) error {
-				return m.syncTables(ctx)
+			if err := instrument.TimeRequestHistogram(context.Background(), "TableManager.SyncTables", syncTableDuration, func(ctx context.Context) error {
+				return m.SyncTables(ctx)
 			}); err != nil {
 				level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
 			}
@@ -157,7 +157,9 @@ func (m *TableManager) loop() {
 	}
 }
 
-func (m *TableManager) syncTables(ctx context.Context) error {
+// SyncTables will calculate the tables expected to exist, create those that do
+// not and update those that need it.  It is exposed for testing.
+func (m *TableManager) SyncTables(ctx context.Context) error {
 	expected := m.calculateExpectedTables()
 	level.Info(util.Logger).Log("msg", "synching tables", "num_expected_tables", len(expected), "expected_tables", expected)
 
@@ -292,5 +294,38 @@ func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDes
 			return err
 		}
 	}
+	return nil
+}
+
+// ExpectTables compares existing tables to an expected set of tables.  Exposed
+// for testing,
+func ExpectTables(ctx context.Context, client TableClient, expected []TableDesc) error {
+	tables, err := client.ListTables(ctx)
+	if err != nil {
+		return err
+	}
+
+	if len(expected) != len(tables) {
+		return fmt.Errorf("Unexpected number of tables: %v != %v", expected, tables)
+	}
+
+	sort.Strings(tables)
+	sort.Sort(byName(expected))
+
+	for i, expect := range expected {
+		if tables[i] != expect.Name {
+			return fmt.Errorf("Expected '%s', found '%s'", expect.Name, tables[i])
+		}
+
+		desc, _, err := client.DescribeTable(ctx, expect.Name)
+		if err != nil {
+			return err
+		}
+
+		if !desc.Equals(expect) {
+			return fmt.Errorf("Expected '%v', found '%v' for table '%s'", expect, desc, desc.Name)
+		}
+	}
+
 	return nil
 }

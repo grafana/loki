@@ -1,4 +1,4 @@
-package chunk
+package aws
 
 import (
 	"context"
@@ -15,6 +15,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -39,7 +40,7 @@ type dynamoTableClient struct {
 }
 
 // NewDynamoDBTableClient makes a new DynamoTableClient.
-func NewDynamoDBTableClient(cfg DynamoDBConfig) (TableClient, error) {
+func NewDynamoDBTableClient(cfg DynamoDBConfig) (chunk.TableClient, error) {
 	dynamoDB, err := dynamoClientFromURL(cfg.DynamoDB.URL)
 	if err != nil {
 		return nil, err
@@ -97,7 +98,7 @@ func (d dynamoTableClient) ListTables(ctx context.Context) ([]string, error) {
 	return table, err
 }
 
-func (d dynamoTableClient) CreateTable(ctx context.Context, desc TableDesc) error {
+func (d dynamoTableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) error {
 	var tableARN *string
 	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "DynamoDB.CreateTable", dynamoRequestDuration, func(ctx context.Context) error {
@@ -161,7 +162,7 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc TableDesc) erro
 	return nil
 }
 
-func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc TableDesc, status string, err error) {
+func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, status string, err error) {
 	var tableARN *string
 	err = d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "DynamoDB.DescribeTable", dynamoRequestDuration, func(ctx context.Context) error {
@@ -241,7 +242,7 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 	return
 }
 
-func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected TableDesc) error {
+func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected chunk.TableDesc) error {
 	var err error
 	if !current.WriteScale.Enabled {
 		if expected.WriteScale.Enabled {
@@ -305,7 +306,7 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected Ta
 	return nil
 }
 
-func (d dynamoTableClient) enableAutoScaling(ctx context.Context, desc TableDesc) error {
+func (d dynamoTableClient) enableAutoScaling(ctx context.Context, desc chunk.TableDesc) error {
 	// Registers or updates a scalable target
 	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.RegisterScalableTarget", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
@@ -351,7 +352,7 @@ func (d dynamoTableClient) enableAutoScaling(ctx context.Context, desc TableDesc
 	})
 }
 
-func (d dynamoTableClient) disableAutoScaling(ctx context.Context, desc TableDesc) error {
+func (d dynamoTableClient) disableAutoScaling(ctx context.Context, desc chunk.TableDesc) error {
 	// Deregister scalable target
 	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
 		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.DeregisterScalableTarget", applicationAutoScalingRequestDuration, func(ctx context.Context) error {

@@ -1,4 +1,4 @@
-package chunk
+package aws
 
 import (
 	"bytes"
@@ -27,6 +27,7 @@ import (
 
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -123,23 +124,23 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ChunkGetMaxParallelism, "dynamodb.chunk.get.max.parallelism", 32, "Max number of chunk-get operations to start in parallel")
 }
 
-// AWSStorageConfig specifies config for storing data on AWS.
-type AWSStorageConfig struct {
+// StorageConfig specifies config for storing data on AWS.
+type StorageConfig struct {
 	DynamoDBConfig
 	S3 util.URLValue
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
-func (cfg *AWSStorageConfig) RegisterFlags(f *flag.FlagSet) {
+func (cfg *StorageConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.DynamoDBConfig.RegisterFlags(f)
 
 	f.Var(&cfg.S3, "s3.url", "S3 endpoint URL with escaped Key and Secret encoded. "+
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<bucket-name> to use a mock in-memory implementation.")
 }
 
-type awsStorageClient struct {
-	cfg       AWSStorageConfig
-	schemaCfg SchemaConfig
+type storageClient struct {
+	cfg       StorageConfig
+	schemaCfg chunk.SchemaConfig
 
 	DynamoDB   dynamodbiface.DynamoDBAPI
 	S3         s3iface.S3API
@@ -152,8 +153,8 @@ type awsStorageClient struct {
 	batchWriteItemRequestFn func(ctx context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest
 }
 
-// NewAWSStorageClient makes a new AWS-backed StorageClient.
-func NewAWSStorageClient(cfg AWSStorageConfig, schemaCfg SchemaConfig) (StorageClient, error) {
+// NewStorageClient makes a new AWS-backed StorageClient.
+func NewStorageClient(cfg StorageConfig, schemaCfg chunk.SchemaConfig) (chunk.StorageClient, error) {
 	dynamoDB, err := dynamoClientFromURL(cfg.DynamoDB.URL)
 	if err != nil {
 		return nil, err
@@ -170,27 +171,27 @@ func NewAWSStorageClient(cfg AWSStorageConfig, schemaCfg SchemaConfig) (StorageC
 	s3Client := s3.New(session.New(s3Config))
 	bucketName := strings.TrimPrefix(cfg.S3.URL.Path, "/")
 
-	storageClient := awsStorageClient{
+	client := storageClient{
 		cfg:        cfg,
 		schemaCfg:  schemaCfg,
 		DynamoDB:   dynamoDB,
 		S3:         s3Client,
 		bucketName: bucketName,
 	}
-	storageClient.queryRequestFn = storageClient.queryRequest
-	storageClient.batchGetItemRequestFn = storageClient.batchGetItemRequest
-	storageClient.batchWriteItemRequestFn = storageClient.batchWriteItemRequest
-	return storageClient, nil
+	client.queryRequestFn = client.queryRequest
+	client.batchGetItemRequestFn = client.batchGetItemRequest
+	client.batchWriteItemRequestFn = client.batchWriteItemRequest
+	return client, nil
 }
 
-func (a awsStorageClient) NewWriteBatch() WriteBatch {
+func (a storageClient) NewWriteBatch() chunk.WriteBatch {
 	return dynamoDBWriteBatch(map[string][]*dynamodb.WriteRequest{})
 }
 
 // BatchWrite writes requests to the underlying storage, handling retries and backoff.
 // Structure is identical to getDynamoDBChunks(), but operating on different datatypes
 // so cannot share implementation.  If you fix a bug here fix it there too.
-func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) error {
+func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) error {
 	outstanding := input.(dynamoDBWriteBatch)
 	unprocessed := dynamoDBWriteBatch{}
 
@@ -254,7 +255,7 @@ func (a awsStorageClient) BatchWrite(ctx context.Context, input WriteBatch) erro
 	return backoff.Err()
 }
 
-func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
+func (a storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch, lastPage bool) (shouldContinue bool)) error {
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
 	defer sp.Finish()
 
@@ -321,7 +322,7 @@ func (a awsStorageClient) QueryPages(ctx context.Context, query IndexQuery, call
 	return nil
 }
 
-func (a awsStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput, page dynamoDBRequest) (dynamoDBReadResponse, error) {
+func (a storageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput, page dynamoDBRequest) (dynamoDBReadResponse, error) {
 	backoff := util.NewBackoff(ctx, backoffConfig)
 	defer func() {
 		dynamoQueryRetryCount.WithLabelValues("queryPage").Observe(float64(backoff.NumRetries()))
@@ -365,19 +366,19 @@ type dynamoDBRequest interface {
 	Retryable() bool
 }
 
-func (a awsStorageClient) queryRequest(ctx context.Context, input *dynamodb.QueryInput) dynamoDBRequest {
+func (a storageClient) queryRequest(ctx context.Context, input *dynamodb.QueryInput) dynamoDBRequest {
 	req, _ := a.DynamoDB.QueryRequest(input)
 	req.SetContext(ctx)
 	return dynamoDBRequestAdapter{req}
 }
 
-func (a awsStorageClient) batchGetItemRequest(ctx context.Context, input *dynamodb.BatchGetItemInput) dynamoDBRequest {
+func (a storageClient) batchGetItemRequest(ctx context.Context, input *dynamodb.BatchGetItemInput) dynamoDBRequest {
 	req, _ := a.DynamoDB.BatchGetItemRequest(input)
 	req.SetContext(ctx)
 	return dynamoDBRequestAdapter{req}
 }
 
-func (a awsStorageClient) batchWriteItemRequest(ctx context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest {
+func (a storageClient) batchWriteItemRequest(ctx context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest {
 	req, _ := a.DynamoDB.BatchWriteItemRequest(input)
 	req.SetContext(ctx)
 	return dynamoDBRequestAdapter{req}
@@ -419,18 +420,18 @@ func (a dynamoDBRequestAdapter) Retryable() bool {
 }
 
 type chunksPlusError struct {
-	chunks []Chunk
+	chunks []chunk.Chunk
 	err    error
 }
 
-func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
+func (a storageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	sp, ctx := ot.StartSpanFromContext(ctx, "GetChunks")
 	defer sp.Finish()
 	sp.LogFields(otlog.Int("chunks requested", len(chunks)))
 
 	var (
-		s3Chunks       []Chunk
-		dynamoDBChunks []Chunk
+		s3Chunks       []chunk.Chunk
+		dynamoDBChunks []chunk.Chunk
 	)
 
 	for _, chunk := range chunks {
@@ -491,21 +492,21 @@ func (a awsStorageClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chun
 	return finalChunks, err
 }
 
-func (a awsStorageClient) getS3Chunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
-	incomingChunks := make(chan Chunk)
+func (a storageClient) getS3Chunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+	incomingChunks := make(chan chunk.Chunk)
 	incomingErrors := make(chan error)
-	for _, chunk := range chunks {
-		go func(chunk Chunk) {
-			chunk, err := a.getS3Chunk(ctx, chunk)
+	for _, c := range chunks {
+		go func(c chunk.Chunk) {
+			c, err := a.getS3Chunk(ctx, c)
 			if err != nil {
 				incomingErrors <- err
 				return
 			}
-			incomingChunks <- chunk
-		}(chunk)
+			incomingChunks <- c
+		}(c)
 	}
 
-	result := []Chunk{}
+	result := []chunk.Chunk{}
 	errors := []error{}
 	for i := 0; i < len(chunks); i++ {
 		select {
@@ -522,29 +523,29 @@ func (a awsStorageClient) getS3Chunks(ctx context.Context, chunks []Chunk) ([]Ch
 	return result, nil
 }
 
-func (a awsStorageClient) getS3Chunk(ctx context.Context, chunk Chunk) (Chunk, error) {
+func (a storageClient) getS3Chunk(ctx context.Context, c chunk.Chunk) (chunk.Chunk, error) {
 	var resp *s3.GetObjectOutput
 	err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(ctx context.Context) error {
 		var err error
 		resp, err = a.S3.GetObjectWithContext(ctx, &s3.GetObjectInput{
 			Bucket: aws.String(a.bucketName),
-			Key:    aws.String(chunk.ExternalKey()),
+			Key:    aws.String(c.ExternalKey()),
 		})
 		return err
 	})
 	if err != nil {
-		return Chunk{}, err
+		return chunk.Chunk{}, err
 	}
 	defer resp.Body.Close()
 	buf, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return Chunk{}, err
+		return chunk.Chunk{}, err
 	}
-	decodeContext := NewDecodeContext()
-	if err := chunk.Decode(decodeContext, buf); err != nil {
-		return Chunk{}, err
+	decodeContext := chunk.NewDecodeContext()
+	if err := c.Decode(decodeContext, buf); err != nil {
+		return chunk.Chunk{}, err
 	}
-	return chunk, nil
+	return c, nil
 }
 
 // As we're re-using the DynamoDB schema from the index for the chunk tables,
@@ -554,11 +555,11 @@ var placeholder = []byte{'c'}
 // Fetch a set of chunks from DynamoDB, handling retries and backoff.
 // Structure is identical to BatchWrite(), but operating on different datatypes
 // so cannot share implementation.  If you fix a bug here fix it there too.
-func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
+func (a storageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	sp, ctx := ot.StartSpanFromContext(ctx, "getDynamoDBChunks", ot.Tag{Key: "numChunks", Value: len(chunks)})
 	defer sp.Finish()
 	outstanding := dynamoDBReadRequest{}
-	chunksByKey := map[string]Chunk{}
+	chunksByKey := map[string]chunk.Chunk{}
 	for _, chunk := range chunks {
 		key := chunk.ExternalKey()
 		chunksByKey[key] = chunk
@@ -566,7 +567,7 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 		outstanding.Add(tableName, key, placeholder)
 	}
 
-	result := []Chunk{}
+	result := []chunk.Chunk{}
 	unprocessed := dynamoDBReadRequest{}
 	backoff := util.NewBackoff(ctx, backoffConfig)
 	defer func() {
@@ -635,9 +636,9 @@ func (a awsStorageClient) getDynamoDBChunks(ctx context.Context, chunks []Chunk)
 	return result, nil
 }
 
-func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map[string]Chunk) ([]Chunk, error) {
-	result := []Chunk{}
-	decodeContext := NewDecodeContext()
+func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map[string]chunk.Chunk) ([]chunk.Chunk, error) {
+	result := []chunk.Chunk{}
+	decodeContext := chunk.NewDecodeContext()
 	for _, items := range response.Responses {
 		for _, item := range items {
 			key, ok := item[hashKey]
@@ -665,7 +666,7 @@ func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map
 	return result, nil
 }
 
-func (a awsStorageClient) PutChunks(ctx context.Context, chunks []Chunk) error {
+func (a storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	var (
 		s3ChunkKeys    []string
 		s3ChunkBufs    [][]byte
@@ -701,7 +702,7 @@ func (a awsStorageClient) PutChunks(ctx context.Context, chunks []Chunk) error {
 	return a.BatchWrite(ctx, dynamoDBWrites)
 }
 
-func (a awsStorageClient) putS3Chunks(ctx context.Context, keys []string, bufs [][]byte) error {
+func (a storageClient) putS3Chunks(ctx context.Context, keys []string, bufs [][]byte) error {
 	incomingErrors := make(chan error)
 	for i := range bufs {
 		go func(i int) {
@@ -719,7 +720,7 @@ func (a awsStorageClient) putS3Chunks(ctx context.Context, keys []string, bufs [
 	return lastErr
 }
 
-func (a awsStorageClient) putS3Chunk(ctx context.Context, key string, buf []byte) error {
+func (a storageClient) putS3Chunk(ctx context.Context, key string, buf []byte) error {
 	return instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(ctx context.Context) error {
 		_, err := a.S3.PutObjectWithContext(ctx, &s3.PutObjectInput{
 			Body:   bytes.NewReader(buf),

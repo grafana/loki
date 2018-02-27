@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/chunk/aws"
 	"github.com/weaveworks/cortex/pkg/chunk/cassandra"
 	"github.com/weaveworks/cortex/pkg/chunk/gcp"
 	"github.com/weaveworks/cortex/pkg/util"
@@ -15,8 +16,8 @@ import (
 
 // Config chooses which storage client to use.
 type Config struct {
-	StorageClient string
-	chunk.AWSStorageConfig
+	StorageClient          string
+	AWSStorageConfig       aws.StorageConfig
 	GCPStorageConfig       gcp.Config
 	CassandraStorageConfig cassandra.Config
 }
@@ -35,11 +36,11 @@ func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageCl
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
 	case "aws":
-		path := strings.TrimPrefix(cfg.DynamoDB.URL.Path, "/")
+		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
 		if len(path) > 0 {
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
-		return chunk.NewAWSStorageClient(cfg.AWSStorageConfig, schemaCfg)
+		return aws.NewStorageClient(cfg.AWSStorageConfig, schemaCfg)
 	case "gcp":
 		return gcp.NewStorageClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "cassandra":
@@ -55,11 +56,11 @@ func NewTableClient(cfg Config) (chunk.TableClient, error) {
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
 	case "aws":
-		path := strings.TrimPrefix(cfg.DynamoDB.URL.Path, "/")
+		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
 		if len(path) > 0 {
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
-		return chunk.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig)
+		return aws.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig)
 	case "gcp":
 		return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
 	case "cassandra":

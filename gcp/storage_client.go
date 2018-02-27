@@ -224,24 +224,35 @@ func (s *storageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]c
 			page := keys[i:util.Min(i+maxRowReads, len(keys))]
 			go func(page bigtable.RowList) {
 				decodeContext := chunk.NewDecodeContext()
+
+				var processingErr error
+				var recievedChunks = 0
+
 				// rows are returned in key order, not order in row list
-				if err := table.ReadRows(ctx, page, func(row bigtable.Row) bool {
+				err := table.ReadRows(ctx, page, func(row bigtable.Row) bool {
 					chunk, ok := chunks[row.Key()]
 					if !ok {
-						errs <- fmt.Errorf("Got row for unknown chunk: %s", row.Key())
+						processingErr = errors.WithStack(fmt.Errorf("Got row for unknown chunk: %s", row.Key()))
 						return false
 					}
 
 					err := chunk.Decode(decodeContext, row[columnFamily][0].Value)
 					if err != nil {
-						errs <- err
+						processingErr = err
 						return false
 					}
 
+					recievedChunks++
 					outs <- chunk
 					return true
-				}); err != nil {
+				})
+
+				if processingErr != nil {
+					errs <- processingErr
+				} else if err != nil {
 					errs <- errors.WithStack(err)
+				} else if recievedChunks < len(page) {
+					errs <- errors.WithStack(fmt.Errorf("Asked for %d chunks for BigTable, received %d", len(page), recievedChunks))
 				}
 			}(page)
 		}
@@ -254,6 +265,8 @@ func (s *storageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]c
 			output = append(output, c)
 		case err := <-errs:
 			return nil, err
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
 	}
 

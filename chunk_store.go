@@ -494,7 +494,7 @@ func (c *Store) convertIndexEntriesToChunks(ctx context.Context, entries []Index
 			return nil, err
 		}
 
-		chunk, err := parseExternalKey(userID, chunkKey)
+		chunk, err := ParseExternalKey(userID, chunkKey)
 		if err != nil {
 			return nil, err
 		}

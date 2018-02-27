@@ -27,3 +27,10 @@ type ReadBatch interface {
 	RangeValue(index int) []byte
 	Value(index int) []byte
 }
+
+// Fixture type for per-backend testing.
+type Fixture interface {
+	Name() string
+	Clients() (StorageClient, TableClient, SchemaConfig, error)
+	Teardown() error
+}
