@@ -198,6 +198,10 @@ func (s *storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 }
 
 func (s *storageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
+	sp, ctx := ot.StartSpanFromContext(ctx, "GetChunks")
+	defer sp.Finish()
+	sp.LogFields(otlog.Int("chunks requested", len(input)))
+
 	chunks := map[string]map[string]chunk.Chunk{}
 	keys := map[string]bigtable.RowList{}
 	for _, c := range input {
