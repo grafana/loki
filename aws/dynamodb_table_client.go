@@ -33,6 +33,10 @@ var applicationAutoScalingRequestDuration = prometheus.NewHistogramVec(prometheu
 	Buckets: prometheus.ExponentialBuckets(0.000128, 4, 8),
 }, []string{"operation", "status_code"})
 
+func init() {
+	prometheus.MustRegister(applicationAutoScalingRequestDuration)
+}
+
 type dynamoTableClient struct {
 	DynamoDB               dynamodbiface.DynamoDBAPI
 	ApplicationAutoScaling applicationautoscalingiface.ApplicationAutoScalingAPI
