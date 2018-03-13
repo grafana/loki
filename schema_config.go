@@ -32,6 +32,9 @@ type SchemaConfig struct {
 	V7SchemaFrom     util.DayValue
 	V8SchemaFrom     util.DayValue
 
+	// Master 'off-switch' for table capacity updates, e.g. when troubleshooting
+	ThroughputUpdatesDisabled bool
+
 	// Period with which the table manager will poll for tables.
 	DynamoDBPollInterval time.Duration
 
@@ -58,6 +61,7 @@ func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.V7SchemaFrom, "dynamodb.v7-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v7 schema.")
 	f.Var(&cfg.V8SchemaFrom, "dynamodb.v8-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v8 schema.")
 
+	f.BoolVar(&cfg.ThroughputUpdatesDisabled, "table-manager.throughput-updates-disabled", false, "If true, disable all changes to DB capacity")
 	f.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
 	f.DurationVar(&cfg.CreationGracePeriod, "dynamodb.periodic-table.grace-period", 10*time.Minute, "DynamoDB periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
 
