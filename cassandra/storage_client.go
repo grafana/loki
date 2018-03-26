@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gocql/gocql"
@@ -17,7 +18,7 @@ const (
 
 // Config for a StorageClient
 type Config struct {
-	address           string
+	addresses         string
 	keyspace          string
 	consistency       string
 	replicationFactor int
@@ -25,7 +26,7 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.address, "cassandra.address", "", "Address of Cassandra instances.")
+	f.StringVar(&cfg.addresses, "cassandra.addresses", "", "Comma-separated addresses of Cassandra instances.")
 	f.StringVar(&cfg.keyspace, "cassandra.keyspace", "", "Keyspace to use in Cassandra.")
 	f.StringVar(&cfg.consistency, "cassandra.consistency", "QUORUM", "Consistency level for Cassandra.")
 	f.IntVar(&cfg.replicationFactor, "cassandra.replication-factor", 1, "Replication factor to use in Cassandra.")
@@ -41,7 +42,7 @@ func (cfg *Config) session() (*gocql.Session, error) {
 		return nil, err
 	}
 
-	cluster := gocql.NewCluster(cfg.address)
+	cluster := gocql.NewCluster(strings.Split(cfg.addresses, ",")...)
 	cluster.Keyspace = cfg.keyspace
 	cluster.Consistency = consistency
 	cluster.BatchObserver = observer{}
@@ -52,7 +53,7 @@ func (cfg *Config) session() (*gocql.Session, error) {
 
 // createKeyspace will create the desired keyspace if it doesn't exist.
 func (cfg *Config) createKeyspace() error {
-	cluster := gocql.NewCluster(cfg.address)
+	cluster := gocql.NewCluster(strings.Split(cfg.addresses, ",")...)
 	cluster.Keyspace = "system"
 	cluster.Timeout = 20 * time.Second
 	session, err := cluster.CreateSession()
