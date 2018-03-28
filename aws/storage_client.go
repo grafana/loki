@@ -188,6 +188,24 @@ func (a storageClient) NewWriteBatch() chunk.WriteBatch {
 	return dynamoDBWriteBatch(map[string][]*dynamodb.WriteRequest{})
 }
 
+func logRetry(unprocessed dynamoDBWriteBatch) {
+	for table, reqs := range unprocessed {
+		for _, req := range reqs {
+			item := req.PutRequest.Item
+			var hash, rnge string
+			if hashAttr, ok := item[hashKey]; ok {
+				if hashAttr.S != nil {
+					hash = *hashAttr.S
+				}
+			}
+			if rangeAttr, ok := item[rangeKey]; ok {
+				rnge = string(rangeAttr.B)
+			}
+			util.Event().Log("msg", "store retry", "table", table, "hashKey", hash, "rangeKey", rnge)
+		}
+	}
+}
+
 // BatchWrite writes requests to the underlying storage, handling retries and backoff.
 // Structure is identical to getDynamoDBChunks(), but operating on different datatypes
 // so cannot share implementation.  If you fix a bug here fix it there too.
@@ -228,6 +246,7 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 			// If we get provisionedThroughputExceededException, then no items were processed,
 			// so back off and retry all.
 			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
+				logRetry(requests)
 				unprocessed.TakeReqs(requests, -1)
 				backoff.Wait()
 				continue
@@ -239,6 +258,7 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 
 		// If there are unprocessed items, backoff and retry those items.
 		if unprocessedItems := resp.UnprocessedItems; unprocessedItems != nil && dynamoDBWriteBatch(unprocessedItems).Len() > 0 {
+			logRetry(dynamoDBWriteBatch(unprocessedItems))
 			unprocessed.TakeReqs(unprocessedItems, -1)
 			// I am unclear why we don't count here; perhaps the idea is
 			// that while we are making _some_ progress we should carry on.
@@ -250,9 +270,6 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 	}
 
 	if valuesLeft := outstanding.Len() + unprocessed.Len(); valuesLeft > 0 {
-		if valuesLeft < 4 { // protect against logging lots of data
-			level.Info(util.Logger).Log("msg", "DynamoDB BatchWrite values left", "count", valuesLeft, "outstanding", outstanding, "unprocessed", unprocessed)
-		}
 		return fmt.Errorf("failed to write chunk, %d values remaining: %s", valuesLeft, backoff.Err())
 	}
 	return backoff.Err()
@@ -798,30 +815,6 @@ func (b dynamoDBWriteBatch) TakeReqs(from dynamoDBWriteBatch, max int) {
 			}
 		}
 	}
-}
-
-func (b dynamoDBWriteBatch) String() string {
-	buf := &bytes.Buffer{}
-	for table, reqs := range b {
-		for _, req := range reqs {
-			item := req.PutRequest.Item
-			hash := ""
-			if hashAttr, ok := item[hashKey]; ok {
-				if hashAttr.S != nil {
-					hash = *hashAttr.S
-				}
-			}
-			var rnge, value []byte
-			if rangeAttr, ok := item[rangeKey]; ok {
-				rnge = rangeAttr.B
-			}
-			if valueAttr, ok := item[valueKey]; ok {
-				value = valueAttr.B
-			}
-			fmt.Fprintf(buf, "%s: %s,%.32s,%.32s; ", table, hash, rnge, value)
-		}
-	}
-	return buf.String()
 }
 
 // map key is table name
