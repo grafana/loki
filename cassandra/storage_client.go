@@ -102,7 +102,7 @@ type writeBatch struct {
 
 func (s *storageClient) NewWriteBatch() chunk.WriteBatch {
 	return writeBatch{
-		b: gocql.NewBatch(gocql.UnloggedBatch),
+		b: s.session.NewBatch(gocql.UnloggedBatch),
 	}
 }
 
