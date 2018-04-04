@@ -466,7 +466,7 @@ func (c *Store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery
 func (c *Store) lookupEntriesByQuery(ctx context.Context, query IndexQuery) ([]IndexEntry, error) {
 	var entries []IndexEntry
 
-	if err := c.storage.QueryPages(ctx, query, func(resp ReadBatch, lastPage bool) (shouldContinue bool) {
+	if err := c.storage.QueryPages(ctx, query, func(resp ReadBatch) (shouldContinue bool) {
 		for i := 0; i < resp.Len(); i++ {
 			entries = append(entries, IndexEntry{
 				TableName:  query.TableName,
@@ -475,7 +475,7 @@ func (c *Store) lookupEntriesByQuery(ctx context.Context, query IndexQuery) ([]I
 				Value:      resp.Value(i),
 			})
 		}
-		return !lastPage
+		return true
 	}); err != nil {
 		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error querying storage", "err", err)
 		return nil, err

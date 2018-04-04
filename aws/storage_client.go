@@ -275,7 +275,7 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 	return backoff.Err()
 }
 
-func (a storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch, lastPage bool) (shouldContinue bool)) error {
+func (a storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
 	defer sp.Finish()
 
@@ -332,10 +332,13 @@ func (a storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, c
 			return err
 		}
 
-		if getNextPage := callback(response, !page.HasNextPage()); !getNextPage {
+		if !callback(response) {
 			if err != nil {
 				return fmt.Errorf("QueryPages error: table=%v, err=%v", *input.TableName, page.Error())
 			}
+			return nil
+		}
+		if !page.HasNextPage() {
 			return nil
 		}
 	}

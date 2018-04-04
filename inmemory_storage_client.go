@@ -158,7 +158,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 }
 
 // QueryPages implements StorageClient.
-func (m *MockStorage) QueryPages(ctx context.Context, query IndexQuery, callback func(result ReadBatch, lastPage bool) (shouldContinue bool)) error {
+func (m *MockStorage) QueryPages(ctx context.Context, query IndexQuery, callback func(result ReadBatch) (shouldContinue bool)) error {
 	logger := util.WithContext(ctx, util.Logger)
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
@@ -232,7 +232,7 @@ func (m *MockStorage) QueryPages(ctx context.Context, query IndexQuery, callback
 		result = append(result, item)
 	}
 
-	callback(result, true)
+	callback(result)
 	return nil
 }
 

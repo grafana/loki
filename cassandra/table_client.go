@@ -6,6 +6,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/gocql/gocql"
+	"github.com/pkg/errors"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
 )
@@ -19,7 +20,7 @@ type tableClient struct {
 func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) {
 	session, err := cfg.session()
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return &tableClient{
 		cfg:     cfg,
@@ -30,7 +31,7 @@ func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) 
 func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 	md, err := c.session.KeyspaceMetadata(c.cfg.keyspace)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	result := []string{}
 	for name := range md.Tables {
@@ -40,13 +41,14 @@ func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 }
 
 func (c *tableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) error {
-	return c.session.Query(fmt.Sprintf(`
+	err := c.session.Query(fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS %s (
 			hash text,
 			range blob,
 			value blob,
 			PRIMARY KEY (hash, range)
 		)`, desc.Name)).WithContext(ctx).Exec()
+	return errors.WithStack(err)
 }
 
 func (c *tableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, status string, err error) {
