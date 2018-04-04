@@ -59,6 +59,9 @@ type Chunk struct {
 	// This flag is used for very old chunks, where the metadata is read out
 	// of the index.
 	metadataInIndex bool
+
+	// The encoded version of the chunk, held so we don't need to re-encode it
+	encoded []byte
 }
 
 // NewChunk creates a new chunk
@@ -183,6 +186,10 @@ var writerPool = sync.Pool{
 
 // Encode writes the chunk out to a big write buffer, then calculates the checksum.
 func (c *Chunk) Encode() ([]byte, error) {
+	if c.encoded != nil {
+		return c.encoded, nil
+	}
+
 	var buf bytes.Buffer
 
 	// Write 4 empty bytes first - we will come back and put the len in here.
@@ -216,10 +223,10 @@ func (c *Chunk) Encode() ([]byte, error) {
 	}
 
 	// Now work out the checksum
-	output := buf.Bytes()
+	c.encoded = buf.Bytes()
 	c.ChecksumSet = true
-	c.Checksum = crc32.Checksum(output, castagnoliTable)
-	return output, nil
+	c.Checksum = crc32.Checksum(c.encoded, castagnoliTable)
+	return c.encoded, nil
 }
 
 // DecodeContext holds data that can be re-used between decodes of different chunks
@@ -259,6 +266,7 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 		if err != nil {
 			return err
 		}
+		c.encoded = input
 		return c.Data.UnmarshalFromBuf(input)
 	}
 
@@ -319,6 +327,7 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 		return err
 	}
 
+	c.encoded = input
 	return c.Data.Unmarshal(&io.LimitedReader{
 		N: int64(dataLen),
 		R: r,

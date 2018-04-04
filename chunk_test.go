@@ -82,12 +82,14 @@ func TestChunkCodec(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			buf, err := c.chunk.Encode()
+			encoded, err := c.chunk.Encode()
 			require.NoError(t, err)
 
 			have, err := ParseExternalKey(userID, c.chunk.ExternalKey())
 			require.NoError(t, err)
 
+			buf := make([]byte, len(encoded))
+			copy(buf, encoded)
 			if c.f != nil {
 				c.f(&have, buf)
 			}
@@ -224,6 +226,7 @@ func BenchmarkEncode(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
+		chunk.encoded = nil
 		chunk.Encode()
 	}
 }
