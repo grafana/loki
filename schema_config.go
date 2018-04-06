@@ -241,11 +241,6 @@ func (cfg *PeriodicTableConfig) periodicTables(beginGrace, endGrace time.Duratio
 			Tags:             cfg.GetTags(),
 		}
 
-		// Autoscale last N tables (excluding lastTable which is active).
-		if cfg.InactiveWriteScale.Enabled && i >= (lastTable-cfg.InactiveWriteScaleLastN) && i < lastTable {
-			table.WriteScale = cfg.InactiveWriteScale
-		}
-
 		// if now is within table [start - grace, end + grace), then we need some write throughput
 		if (i*periodSecs)-beginGraceSecs <= now && now < (i*periodSecs)+periodSecs+endGraceSecs {
 			table.ProvisionedRead = cfg.ProvisionedReadThroughput
@@ -254,7 +249,11 @@ func (cfg *PeriodicTableConfig) periodicTables(beginGrace, endGrace time.Duratio
 			if cfg.WriteScale.Enabled {
 				table.WriteScale = cfg.WriteScale
 			}
+		} else if cfg.InactiveWriteScale.Enabled && i >= (lastTable-cfg.InactiveWriteScaleLastN) {
+			// Autoscale last N tables
+			table.WriteScale = cfg.InactiveWriteScale
 		}
+
 		result = append(result, table)
 	}
 	return result

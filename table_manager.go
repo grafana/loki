@@ -292,7 +292,7 @@ func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDes
 			continue
 		}
 
-		level.Info(util.Logger).Log("msg", "updating provisioned throughput on table", "table", expected.Name, "old_read", current.ProvisionedRead, "old_write", current.ProvisionedWrite, "new_read", expected.ProvisionedRead, "old_read", expected.ProvisionedWrite)
+		level.Info(util.Logger).Log("msg", "updating provisioned throughput on table", "table", expected.Name, "old_read", current.ProvisionedRead, "old_write", current.ProvisionedWrite, "new_read", expected.ProvisionedRead, "new_write", expected.ProvisionedWrite)
 		err = m.client.UpdateTable(ctx, current, expected)
 		if err != nil {
 			return err
