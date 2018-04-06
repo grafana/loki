@@ -4,15 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"hash/crc32"
-	"io"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/golang/snappy"
+	jsoniter "github.com/json-iterator/go"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
@@ -29,6 +28,7 @@ const (
 	ErrInvalidChunkID  = errs.Error("invalid chunk ID")
 	ErrInvalidChecksum = errs.Error("invalid chunk checksum")
 	ErrWrongMetadata   = errs.Error("wrong chunk metadata")
+	ErrMetadataLength  = errs.Error("chunk metadata wrong length")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
@@ -181,7 +181,7 @@ func (c *Chunk) ExternalKey() string {
 }
 
 var writerPool = sync.Pool{
-	New: func() interface{} { return snappy.NewWriter(nil) },
+	New: func() interface{} { return snappy.NewBufferedWriter(nil) },
 }
 
 // Encode writes the chunk out to a big write buffer, then calculates the checksum.
@@ -202,11 +202,14 @@ func (c *Chunk) Encode() ([]byte, error) {
 	writer := writerPool.Get().(*snappy.Writer)
 	defer writerPool.Put(writer)
 	writer.Reset(&buf)
+	json := jsoniter.ConfigFastest
 	if err := json.NewEncoder(writer).Encode(c); err != nil {
 		return nil, err
 	}
+	writer.Close()
 
 	// Write the metadata length back at the start of the buffer.
+	// (note this length includes the 4 bytes for the length itself)
 	binary.BigEndian.PutUint32(metadataLenBytes[:], uint32(buf.Len()))
 	copy(buf.Bytes(), metadataLenBytes[:])
 
@@ -231,29 +234,14 @@ func (c *Chunk) Encode() ([]byte, error) {
 
 // DecodeContext holds data that can be re-used between decodes of different chunks
 type DecodeContext struct {
-	reader  *snappy.Reader
-	metrics map[model.Fingerprint]model.Metric
+	reader *snappy.Reader
 }
 
 // NewDecodeContext creates a new, blank, DecodeContext
 func NewDecodeContext() *DecodeContext {
 	return &DecodeContext{
-		reader:  snappy.NewReader(nil),
-		metrics: make(map[model.Fingerprint]model.Metric),
+		reader: snappy.NewReader(nil),
 	}
-}
-
-// If we have decoded a chunk with the same fingerprint before, re-use its Metric, otherwise parse it
-func (dc *DecodeContext) metric(fingerprint model.Fingerprint, buf []byte) (model.Metric, error) {
-	metric, found := dc.metrics[fingerprint]
-	if !found {
-		err := json.NewDecoder(bytes.NewReader(buf)).Decode(&metric)
-		if err != nil {
-			return nil, errors.Wrap(err, "while parsing chunk metric")
-		}
-		dc.metrics[fingerprint] = metric
-	}
-	return metric, nil
 }
 
 // Decode the chunk from the given buffer, and confirm the chunk is the one we
@@ -282,17 +270,15 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	if err := binary.Read(r, binary.BigEndian, &metadataLen); err != nil {
 		return err
 	}
-	var tempMetadata struct {
-		Chunk
-		RawMetric json.RawMessage `json:"metric"` // Override to defer parsing
-	}
-	decodeContext.reader.Reset(&io.LimitedReader{
-		N: int64(metadataLen),
-		R: r,
-	})
+	var tempMetadata Chunk
+	decodeContext.reader.Reset(r)
+	json := jsoniter.ConfigFastest
 	err := json.NewDecoder(decodeContext.reader).Decode(&tempMetadata)
 	if err != nil {
 		return err
+	}
+	if len(input)-r.Len() != int(metadataLen) {
+		return ErrMetadataLength
 	}
 
 	// Next, confirm the chunks matches what we expected.  Easiest way to do this
@@ -300,15 +286,11 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	// we don't write the checksum to s3, so we have to copy the checksum in.
 	if c.ChecksumSet {
 		tempMetadata.Checksum, tempMetadata.ChecksumSet = c.Checksum, c.ChecksumSet
-		if !equalByKey(*c, tempMetadata.Chunk) {
+		if !equalByKey(*c, tempMetadata) {
 			return errors.WithStack(ErrWrongMetadata)
 		}
 	}
-	*c = tempMetadata.Chunk
-	c.Metric, err = decodeContext.metric(tempMetadata.Fingerprint, tempMetadata.RawMetric)
-	if err != nil {
-		return err
-	}
+	*c = tempMetadata
 
 	// Older chunks always used DoubleDelta and did not write Encoding
 	// to JSON, so override if it has the zero value (Delta)
@@ -328,10 +310,8 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	}
 
 	c.encoded = input
-	return c.Data.Unmarshal(&io.LimitedReader{
-		N: int64(dataLen),
-		R: r,
-	})
+	remainingData := input[len(input)-r.Len():]
+	return c.Data.UnmarshalFromBuf(remainingData[:int(dataLen)])
 }
 
 func chunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Time) (model.Matrix, error) {
