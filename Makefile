@@ -113,6 +113,11 @@ shell: build-image/$(UPTODATE)
 
 endif
 
+push-images:
+	for image_name in $(IMAGE_NAMES); do \
+		docker push $$image_name:$(IMAGE_TAG); \
+	done
+
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
 	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS) .cache
