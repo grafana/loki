@@ -2,6 +2,18 @@
 
 
 [[projects]]
+  name = "github.com/Shopify/sarama"
+  packages = ["."]
+  revision = "f7be6aa2bc7b2e38edf816b08b582782194a1c02"
+  version = "v1.16.0"
+
+[[projects]]
+  name = "github.com/apache/thrift"
+  packages = ["lib/go/thrift"]
+  revision = "327ebb6c2b6df8bf075da02ef45a2a034e9b79ba"
+  version = "0.11.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/beorn7/perks"
   packages = ["quantile"]
@@ -18,6 +30,30 @@
   packages = ["."]
   revision = "5c37fe3735342a2e0d01c87a907579987c8936cc"
   version = "v1.0.0"
+
+[[projects]]
+  name = "github.com/davecgh/go-spew"
+  packages = ["spew"]
+  revision = "346938d642f2ec3594ed81d874461961cd0faa76"
+  version = "v1.1.0"
+
+[[projects]]
+  name = "github.com/eapache/go-resiliency"
+  packages = ["breaker"]
+  revision = "ea41b0fad31007accc7f806884dcdf3da98b79ce"
+  version = "v1.1.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/eapache/go-xerial-snappy"
+  packages = ["."]
+  revision = "bb955e01b9346ac19dc29eb16586c90ded99a98c"
+
+[[projects]]
+  name = "github.com/eapache/queue"
+  packages = ["."]
+  revision = "44cc805cf13205b55f69e14bcb69867d1ae92f98"
+  version = "v1.1.0"
 
 [[projects]]
   name = "github.com/fluent/fluent-logger-golang"
@@ -65,6 +101,7 @@
     "ptypes",
     "ptypes/any",
     "ptypes/duration",
+    "ptypes/empty",
     "ptypes/timestamp"
   ]
   revision = "925541529c1fa6821df4e44ce2723319eb2be768"
@@ -155,6 +192,18 @@
   version = "v0.3.0"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/opentracing-contrib/go-observer"
+  packages = ["."]
+  revision = "a52f2342449246d5bcc273e65cbdcfa5f7d6c63c"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/opentracing-contrib/go-stdlib"
+  packages = ["nethttp"]
+  revision = "36723135187404d2f4002f4f189938565e64cc5c"
+
+[[projects]]
   name = "github.com/opentracing/opentracing-go"
   packages = [
     ".",
@@ -165,10 +214,35 @@
   version = "v1.0.2"
 
 [[projects]]
+  name = "github.com/openzipkin/zipkin-go-opentracing"
+  packages = [
+    ".",
+    "flag",
+    "thrift/gen-go/scribe",
+    "thrift/gen-go/zipkincore",
+    "types",
+    "wire"
+  ]
+  revision = "4c9fbcbd6d73a644fd17214fe475296780c68fb5"
+  version = "v0.3.3"
+
+[[projects]]
   name = "github.com/philhofer/fwd"
   packages = ["."]
   revision = "bb6d471dc95d4fe11e432687f8b70ff496cf3136"
   version = "v1.0.0"
+
+[[projects]]
+  name = "github.com/pierrec/lz4"
+  packages = ["."]
+  revision = "2fcda4cb7018ce05a25959d2fe08c83e3329f169"
+  version = "v1.1"
+
+[[projects]]
+  name = "github.com/pierrec/xxHash"
+  packages = ["xxHash32"]
+  revision = "f051bb7f1d1aaf1b5a665d74fb6b0217712c69f7"
+  version = "v0.1.1"
 
 [[projects]]
   name = "github.com/pkg/errors"
@@ -241,6 +315,17 @@
   revision = "def6e5a57439cffe7b44a619c05bce4ac513a63e"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/rcrowley/go-metrics"
+  packages = ["."]
+  revision = "d932a24a8ccb8fcadc993e5c6c58f93dac168294"
+
+[[projects]]
+  name = "github.com/sercand/kuberesolver"
+  packages = ["."]
+  revision = "aa801ca262949d887bbe0bae3f6f731ac82c26f6"
+
+[[projects]]
   name = "github.com/sirupsen/logrus"
   packages = ["."]
   revision = "c155da19408a8799da419ed3eeb0cb5db0ad5dbc"
@@ -254,6 +339,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/weaveworks-experiments/loki"
+  packages = ["pkg/client"]
+  revision = "80bb2c795b3f88e2d2ce5dad6b26bd790806f2c8"
+
+[[projects]]
+  branch = "master"
   name = "github.com/weaveworks/billing-client"
   packages = ["."]
   revision = "967593a9e8c8c62d1a9a3fbf34b120aa48581d0e"
@@ -264,9 +355,12 @@
   packages = [
     "errors",
     "httpgrpc",
+    "httpgrpc/server",
     "instrument",
     "logging",
     "middleware",
+    "server",
+    "signals",
     "user"
   ]
   revision = "ebab3a78900a09cebce8d0b37f2a69d474796bf4"
@@ -279,7 +373,8 @@
     "pkg/ingester/client",
     "pkg/prom1/storage/metric",
     "pkg/ring",
-    "pkg/util"
+    "pkg/util",
+    "pkg/util/wire"
   ]
   revision = "189025f74e60a8a53940ff098ec73eb8268eb82c"
   source = "github.com/tomwilkie/cortex"
@@ -393,6 +488,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "f507e61940941f1d84caef431c22e590e4c334b8c63384a7f502e88763b834d5"
+  inputs-digest = "3e3b00e44c091332ddc2822d7dd4eb4c42fdeb8c056edcb82c0a3bdb5d0ed59e"
   solver-name = "gps-cdcl"
   solver-version = 1

@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package server;
+
+option go_package = "github.com/weaveworks/common/server";
+
+import "google/protobuf/empty.proto";
+
+service FakeServer {
+    rpc Succeed(google.protobuf.Empty) returns (google.protobuf.Empty) {};
+    rpc FailWithError(google.protobuf.Empty) returns (google.protobuf.Empty) {};
+    rpc FailWithHTTPError(FailWithHTTPErrorRequest) returns (google.protobuf.Empty) {};
+}
+
+message FailWithHTTPErrorRequest {
+  int32 Code = 1;
+}

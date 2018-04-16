@@ -24,10 +24,16 @@
 #   go-tests = true
 #   unused-packages = true
 
+required = ["github.com/weaveworks/cortex/pkg/util/wire"]
+
 [[constraint]]
   name = "github.com/weaveworks/cortex"
   branch = "factorings"
   source = "github.com/tomwilkie/cortex"
+
+[[override]]
+  name = "github.com/sercand/kuberesolver"
+  revision = "aa801ca262949d887bbe0bae3f6f731ac82c26f6"
 
 [prune]
   go-tests = true
