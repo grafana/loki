@@ -80,27 +80,11 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 $(EXES) $(PROTO_GOS) lint test shell: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
-	$(SUDO) time docker run $(RM) $(TTY) -i \
-		-v $(shell pwd)/.cache:/go/cache \
-		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/grafana/logish \
-		$(IMAGE_PREFIX)build-image $@;
-
-configs-integration-test: build-image/$(UPTODATE)
-	@mkdir -p $(shell pwd)/.pkg
-	@mkdir -p $(shell pwd)/.cache
-	DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
 	$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/grafana/logish \
-		-v $(shell pwd)/cmd/configs/migrations:/migrations \
-		--workdir /go/src/github.com/grafana/logish \
-		--link "$$DB_CONTAINER":configs-db.cortex.local \
-		$(IMAGE_PREFIX)build-image $@; \
-	status=$$?; \
-	test -n "$(CIRCLECI)" || docker rm -f "$$DB_CONTAINER"; \
-	exit $$status
+		$(IMAGE_PREFIX)build-image $@;
 
 else
 
@@ -126,9 +110,6 @@ test: build-image/$(UPTODATE)
 
 shell: build-image/$(UPTODATE)
 	bash
-
-configs-integration-test:
-	/bin/bash -c "go test -tags 'netgo integration' -timeout 30s ./pkg/configs/... ./pkg/ruler/..."
 
 endif
 
