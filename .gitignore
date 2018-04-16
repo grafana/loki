@@ -3,3 +3,4 @@
 .pkg
 .cache
 cmd/distributor/distributor
+cmd/ingester/ingester

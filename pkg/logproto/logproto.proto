@@ -3,6 +3,7 @@ syntax = "proto3";
 package logproto;
 
 import "google/protobuf/timestamp.proto";
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "google.golang.org/grpc/health/grpc_health_v1/health.proto";
 
 service Aggregator {
@@ -19,10 +20,10 @@ message WriteResponse {
 
 message Stream {
   string labels = 1;
-  repeated Entry entries = 2;
+  repeated Entry entries = 2 [(gogoproto.nullable) = false];
 }
 
 message Entry {
-  google.protobuf.Timestamp timestamp = 1;
+  google.protobuf.Timestamp timestamp = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   string line = 2;
 }
