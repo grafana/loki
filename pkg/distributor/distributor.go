@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"context"
+	"flag"
 	"hash/fnv"
 	"sync/atomic"
 
@@ -26,21 +27,32 @@ var (
 		Buckets:   []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1},
 	}, []string{"method", "status_code"})
 	ingesterAppends = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
+		Namespace: "logish",
 		Name:      "distributor_ingester_appends_total",
 		Help:      "The total number of batch appends sent to ingesters.",
 	}, []string{"ingester"})
 	ingesterAppendFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
+		Namespace: "logish",
 		Name:      "distributor_ingester_append_failures_total",
 		Help:      "The total number of failed batch appends sent to ingesters.",
 	}, []string{"ingester"})
 )
 
+func init() {
+	prometheus.MustRegister(sendDuration)
+	prometheus.MustRegister(ingesterAppends)
+	prometheus.MustRegister(ingesterAppendFailures)
+}
+
 // Config for a Distributor.
 type Config struct {
 	cortex.Config
 	ClientConfig client.Config
+}
+
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.Config.RegisterFlags(f)
+	cfg.ClientConfig.RegisterFlags(f)
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -63,6 +75,7 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 	}, nil
 }
 
+// TODO taken from Cortex, see if we can refactor out an usable interface.
 type streamTracker struct {
 	stream      *logproto.Stream
 	minSuccess  int
@@ -71,6 +84,7 @@ type streamTracker struct {
 	failed      int32
 }
 
+// TODO taken from Cortex, see if we can refactor out an usable interface.
 type pushTracker struct {
 	samplesPending int32
 	samplesFailed  int32
@@ -79,7 +93,7 @@ type pushTracker struct {
 }
 
 // Push a set of streams.
-func (d *Distributor) Push(ctx context.Context, req *logproto.WriteRequest) (*logproto.WriteResponse, error) {
+func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -96,7 +110,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.WriteRequest) (*lo
 	}
 
 	if len(streams) == 0 {
-		return &logproto.WriteResponse{}, nil
+		return &logproto.PushResponse{}, nil
 	}
 
 	replicationSets, err := d.ring.BatchGet(keys, ring.Write)
@@ -134,10 +148,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.WriteRequest) (*lo
 	case err := <-pushTracker.err:
 		return nil, err
 	case <-pushTracker.done:
-		return &logproto.WriteResponse{}, nil
+		return &logproto.PushResponse{}, nil
 	}
 }
 
+// TODO taken from Cortex, see if we can refactor out an usable interface.
 func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDesc, streamTrackers []*streamTracker, pushTracker *pushTracker) {
 	err := d.sendSamplesErr(ctx, ingester, streamTrackers)
 
@@ -169,13 +184,14 @@ func (d *Distributor) sendSamples(ctx context.Context, ingester *ring.IngesterDe
 	}
 }
 
+// TODO taken from Cortex, see if we can refactor out an usable interface.
 func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.IngesterDesc, streams []*streamTracker) error {
 	c, err := d.pool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
 	}
 
-	req := &logproto.WriteRequest{
+	req := &logproto.PushRequest{
 		Streams: make([]*logproto.Stream, 0, len(streams)),
 	}
 	for i, s := range streams {
@@ -183,7 +199,7 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.Ingeste
 	}
 
 	err = instrument.TimeRequestHistogram(ctx, "Distributor.sendSamples", sendDuration, func(ctx context.Context) error {
-		_, err := c.(logproto.AggregatorClient).Push(ctx, req)
+		_, err := c.(logproto.PusherClient).Push(ctx, req)
 		return err
 	})
 	ingesterAppends.WithLabelValues(ingester.Addr).Inc()

@@ -45,6 +45,6 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	logproto.RegisterAggregatorServer(server.GRPC, distributor)
+	logproto.RegisterPusherServer(server.GRPC, distributor)
 	server.Run()
 }

@@ -10,8 +10,8 @@ import (
 	"github.com/weaveworks/cortex/pkg/util"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/logish/pkg/ingester"
 	"github.com/grafana/logish/pkg/logproto"
+	"github.com/grafana/logish/pkg/querier"
 )
 
 func main() {
@@ -22,10 +22,10 @@ func main() {
 				middleware.ServerUserHeaderInterceptor,
 			},
 		}
-		ringConfig     ring.Config
-		ingesterConfig ingester.Config
+		ringConfig    ring.Config
+		querierConfig querier.Config
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &ingesterConfig)
+	util.RegisterFlags(&serverConfig, &ringConfig, &querierConfig)
 	flag.Parse()
 
 	r, err := ring.New(ringConfig)
@@ -34,9 +34,9 @@ func main() {
 	}
 	defer r.Stop()
 
-	ingester, err := ingester.New(ingesterConfig, r)
+	querier, err := querier.New(querierConfig, r)
 	if err != nil {
-		log.Fatalf("Error initializing ingester: %v", err)
+		log.Fatalf("Error initializing querier: %v", err)
 	}
 
 	server, err := server.New(serverConfig)
@@ -45,6 +45,6 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	logproto.RegisterPusherServer(server.GRPC, ingester)
+	logproto.RegisterQuerierServer(server.GRPC, querier)
 	server.Run()
 }

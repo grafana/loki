@@ -1,6 +1,7 @@
 package client
 
 import (
+	"flag"
 	"io"
 
 	"github.com/grafana/logish/pkg/logproto"
@@ -14,6 +15,10 @@ import (
 
 type Config struct {
 	MaxRecvMsgSize int
+}
+
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.IntVar(&cfg.MaxRecvMsgSize, "ingester.client.max-recv-message-size", 64*1024*1024, "Maximum message size, in bytes, this client will receive.")
 }
 
 func New(cfg Config, addr string) (grpc_health_v1.HealthClient, error) {
@@ -36,7 +41,7 @@ func New(cfg Config, addr string) (grpc_health_v1.HealthClient, error) {
 		grpc_health_v1.HealthClient
 		io.Closer
 	}{
-		HealthClient: logproto.NewAggregatorClient(conn),
+		HealthClient: logproto.NewPusherClient(conn),
 		Closer:       conn,
 	}, nil
 }

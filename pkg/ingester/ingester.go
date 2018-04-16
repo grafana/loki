@@ -34,7 +34,7 @@ func New(cfg Config, r ring.ReadRing) (*Ingester, error) {
 	}, nil
 }
 
-func (i *Ingester) Push(ctx context.Context, req *logproto.WriteRequest) (*logproto.WriteResponse, error) {
+func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	instanceID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -42,7 +42,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.WriteRequest) (*logpr
 
 	instance := i.getOrCreateInstance(instanceID)
 	err = instance.Push(ctx, req)
-	return &logproto.WriteResponse{}, err
+	return &logproto.PushResponse{}, err
 }
 
 func (i *Ingester) getOrCreateInstance(instanceID string) *instance {

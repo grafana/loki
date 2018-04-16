@@ -18,7 +18,7 @@ func newInstance() *instance {
 	}
 }
 
-func (i *instance) Push(ctx context.Context, req *logproto.WriteRequest) error {
+func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	i.streamsMtx.Lock()
 	defer i.streamsMtx.Unlock()
 
