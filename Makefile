@@ -115,7 +115,9 @@ endif
 
 push-images:
 	for image_name in $(IMAGE_NAMES); do \
-		docker push $$image_name:$(IMAGE_TAG); \
+		if ! echo $$image_name | grep build; then \
+			docker push $$image_name:$(IMAGE_TAG); \
+		fi \
 	done
 
 clean:
