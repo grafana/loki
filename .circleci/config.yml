@@ -2,10 +2,15 @@ version: 2
 jobs:
   build:
     docker:
-      - image: circleci/golang:1.10.1-stretch
+      - image: gcr.io/metrictank-gcr/logish-build-image:master-01fd5c6-WIP
+        auth:
+          username: _json_key
+          password: $GCR_CREDS
 
     working_directory: /go/src/github.com/grafana/logish
     steps:
       - checkout
       - setup_remote_docker
-      - run: make
+      - run: |
+          touch build-image/.uptodate &&
+          make BUILD_IN_CONTAINER=false SUDO=

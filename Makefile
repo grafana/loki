@@ -3,7 +3,7 @@
 
 # Boiler plate for bulding Docker containers.
 # All this must go at top of file I'm afraid.
-IMAGE_PREFIX ?= quay.io/grafana/logish-
+IMAGE_PREFIX ?= gcr.io/metrictank-gcr/logish-
 IMAGE_TAG := $(shell ./tools/image-tag)
 UPTODATE := .uptodate
 
