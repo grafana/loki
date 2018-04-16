@@ -4,7 +4,7 @@ jobs:
     docker:
       - image: circleci/golang:1.10.1-stretch
 
-    working_directory: /go/src/github.com/{{ORG_NAME}}/{{REPO_NAME}}
+    working_directory: /go/src/github.com/grafana/logish
     steps:
       - checkout
       - setup_remote_docker
