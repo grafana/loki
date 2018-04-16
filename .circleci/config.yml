@@ -2,7 +2,7 @@ version: 2
 jobs:
   build:
     docker:
-      - image:  circleci/buildpack-deps:16.04-curl-dind
+      - image: circleci/golang:1.10.1-stretch
 
     working_directory: /go/src/github.com/{{ORG_NAME}}/{{REPO_NAME}}
     steps:
