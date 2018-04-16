@@ -41,6 +41,7 @@ type dynamoTableClient struct {
 	DynamoDB               dynamodbiface.DynamoDBAPI
 	ApplicationAutoScaling applicationautoscalingiface.ApplicationAutoScalingAPI
 	limiter                *rate.Limiter
+	backoffConfig          util.BackoffConfig
 }
 
 // NewDynamoDBTableClient makes a new DynamoTableClient.
@@ -63,6 +64,7 @@ func NewDynamoDBTableClient(cfg DynamoDBConfig) (chunk.TableClient, error) {
 		DynamoDB:               dynamoDB,
 		ApplicationAutoScaling: applicationAutoScaling,
 		limiter:                rate.NewLimiter(rate.Limit(cfg.APILimit), 1),
+		backoffConfig:          cfg.backoffConfig,
 	}, nil
 }
 
@@ -71,7 +73,7 @@ func (d dynamoTableClient) backoffAndRetry(ctx context.Context, fn func(context.
 		d.limiter.Wait(ctx)
 	}
 
-	backoff := util.NewBackoff(ctx, backoffConfig)
+	backoff := util.NewBackoff(ctx, d.backoffConfig)
 	for backoff.Ongoing() {
 		if err := fn(ctx); err != nil {
 			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "ThrottlingException" {

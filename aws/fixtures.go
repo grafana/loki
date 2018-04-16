@@ -70,7 +70,15 @@ func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) chunk.Fixture
 			}
 			storage := &storageClient{
 				cfg: StorageConfig{
-					DynamoDBConfig: DynamoDBConfig{ChunkGangSize: gangsize, ChunkGetMaxParallelism: maxParallelism},
+					DynamoDBConfig: DynamoDBConfig{
+						ChunkGangSize:          gangsize,
+						ChunkGetMaxParallelism: maxParallelism,
+						backoffConfig: util.BackoffConfig{
+							MinBackoff: 1 * time.Millisecond,
+							MaxBackoff: 5 * time.Millisecond,
+							MaxRetries: 20,
+						},
+					},
 				},
 				DynamoDB:                dynamoDB,
 				S3:                      newMockS3(),

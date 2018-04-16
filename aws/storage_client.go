@@ -46,14 +46,6 @@ const (
 	dynamoDBMaxReadBatchSize  = 100
 )
 
-var backoffConfig = util.BackoffConfig{
-	// Backoff for dynamoDB requests, to match AWS lib - see:
-	// https://github.com/aws/aws-sdk-go/blob/master/service/dynamodb/customizations.go
-	MinBackoff: 100 * time.Millisecond,
-	MaxBackoff: 50 * time.Second,
-	MaxRetries: 20,
-}
-
 var (
 	dynamoRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
@@ -112,6 +104,7 @@ type DynamoDBConfig struct {
 	ApplicationAutoScaling util.URLValue
 	ChunkGangSize          int
 	ChunkGetMaxParallelism int
+	backoffConfig          util.BackoffConfig
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -122,6 +115,9 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.ApplicationAutoScaling, "applicationautoscaling.url", "ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.")
 	f.IntVar(&cfg.ChunkGangSize, "dynamodb.chunk.gang.size", 10, "Number of chunks to group together to parallelise fetches (zero to disable)")
 	f.IntVar(&cfg.ChunkGetMaxParallelism, "dynamodb.chunk.get.max.parallelism", 32, "Max number of chunk-get operations to start in parallel")
+	f.DurationVar(&cfg.backoffConfig.MinBackoff, "dynamodb.min-backoff", 100*time.Millisecond, "Minimum backoff time")
+	f.DurationVar(&cfg.backoffConfig.MaxBackoff, "dynamodb.max-backoff", 50*time.Second, "Maximum backoff time")
+	f.IntVar(&cfg.backoffConfig.MaxRetries, "dynamodb.max-retries", 20, "Maximum number of times to retry an operation")
 }
 
 // StorageConfig specifies config for storing data on AWS.
@@ -213,7 +209,7 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 	outstanding := input.(dynamoDBWriteBatch)
 	unprocessed := dynamoDBWriteBatch{}
 
-	backoff := util.NewBackoff(ctx, backoffConfig)
+	backoff := util.NewBackoff(ctx, a.cfg.backoffConfig)
 	defer func() {
 		dynamoQueryRetryCount.WithLabelValues("BatchWrite").Observe(float64(backoff.NumRetries()))
 	}()
@@ -346,7 +342,7 @@ func (a storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, c
 }
 
 func (a storageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput, page dynamoDBRequest) (dynamoDBReadResponse, error) {
-	backoff := util.NewBackoff(ctx, backoffConfig)
+	backoff := util.NewBackoff(ctx, a.cfg.backoffConfig)
 	defer func() {
 		dynamoQueryRetryCount.WithLabelValues("queryPage").Observe(float64(backoff.NumRetries()))
 	}()
@@ -501,14 +497,12 @@ func (a storageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]c
 		in := <-results
 		if in.err != nil {
 			err = in.err // TODO: cancel other sub-queries at this point
-		} else {
-			finalChunks = append(finalChunks, in.chunks...)
 		}
+		finalChunks = append(finalChunks, in.chunks...)
 	}
 	sp.LogFields(otlog.Int("chunks fetched", len(finalChunks)))
 	if err != nil {
 		sp.LogFields(otlog.String("error", err.Error()))
-		return nil, err
 	}
 
 	// Return any chunks we did receive: a partial result may be useful
@@ -592,7 +586,7 @@ func (a storageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chu
 
 	result := []chunk.Chunk{}
 	unprocessed := dynamoDBReadRequest{}
-	backoff := util.NewBackoff(ctx, backoffConfig)
+	backoff := util.NewBackoff(ctx, a.cfg.backoffConfig)
 	defer func() {
 		dynamoQueryRetryCount.WithLabelValues("getDynamoDBChunks").Observe(float64(backoff.NumRetries()))
 	}()
