@@ -20,4 +20,5 @@ RUN go get -tags netgo \
 		github.com/gogo/protobuf/gogoproto && \
 	rm -rf /go/pkg /go/src
 COPY build.sh /
+ENV GOCACHE=/go/cache
 ENTRYPOINT ["/build.sh"]

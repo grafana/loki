@@ -1,3 +1,5 @@
 .uptodate
 *.pb.go
 .pkg
+.cache
+cmd/distributor/distributor

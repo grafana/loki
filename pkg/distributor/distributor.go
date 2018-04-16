@@ -199,3 +199,8 @@ func tokenFor(userID, labels string) uint32 {
 	h.Write([]byte(labels))
 	return h.Sum32()
 }
+
+// Check implements the grpc healthcheck
+func (*Distributor) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+}

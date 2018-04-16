@@ -16,8 +16,12 @@ UPTODATE := .uptodate
 	$(SUDO) docker tag $(IMAGE_PREFIX)$(shell basename $(@D)) $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)
 	touch $@
 
+# We don't want find to scan inside a bunch of directories, to accelerate the
+# 'make: Entering directory '/go/src/github.com/weaveworks/cortex' phase.
+DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
+
 # Get a list of directories containing Dockerfiles
-DOCKERFILES := $(shell find . -name tools -prune -o -name vendor -prune -o -type f -name 'Dockerfile' -print)
+DOCKERFILES := $(shell find . $(DONT_FIND) -type f -name 'Dockerfile' -print)
 UPTODATE_FILES := $(patsubst %/Dockerfile,%/$(UPTODATE),$(DOCKERFILES))
 DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,$(shell basename $(dir))))
@@ -26,14 +30,14 @@ images:
 	@echo > /dev/null
 
 # Generating proto code is automated.
-PROTO_DEFS := $(shell find . -name tools -prune -o -name vendor -prune -o -type f -name '*.proto' -print)
+PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
 PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS)) vendor/github.com/weaveworks/cortex/pkg/ring/ring.pb.go vendor/github.com/weaveworks/cortex/pkg/ingester/client/cortex.pb.go
 
 # Building binaries is now automated.  The convention is to build a binary
 # for every directory with main.go in it, in the ./cmd directory.
-MAIN_GO := $(shell find . -name tools -prune -o -name vendor -prune -o -type f -name 'main.go' -print)
+MAIN_GO := $(shell find . $(DONT_FIND) -type f -name 'main.go' -print)
 EXES := $(foreach exe, $(patsubst ./cmd/%/main.go, %, $(MAIN_GO)), ./cmd/$(exe)/$(exe))
-GO_FILES := $(shell find . -name tools -prune -o -name vendor -prune -o -name cmd -prune -o -type f -name '*.go' -print)
+GO_FILES := $(shell find . $(DONT_FIND) -name cmd -prune -o -type f -name '*.go' -print)
 define dep_exe
 $(1): $(dir $(1))/main.go $(GO_FILES) $(PROTO_GOS)
 $(dir $(1))$(UPTODATE): $(1)
@@ -75,15 +79,19 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 
 $(EXES) $(PROTO_GOS) lint test shell: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
+	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) time docker run $(RM) $(TTY) -i \
+		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/grafana/logish \
 		$(IMAGE_PREFIX)build-image $@;
 
 configs-integration-test: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
+	@mkdir -p $(shell pwd)/.cache
 	DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6)"; \
 	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/grafana/logish \
 		-v $(shell pwd)/cmd/configs/migrations:/migrations \
@@ -126,5 +134,5 @@ endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS)
+	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS) .cache
 	go clean ./...
