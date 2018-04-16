@@ -25,7 +25,7 @@ func main() {
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
 	)
-	util.RegisterFlags(&distributorConfig)
+	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig)
 	flag.Parse()
 
 	r, err := ring.New(ringConfig)
