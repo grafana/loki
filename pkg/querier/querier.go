@@ -13,6 +13,8 @@ import (
 	"github.com/grafana/logish/pkg/logproto"
 )
 
+const queryBatchSize = 128
+
 type Config struct {
 	RemoteTimeout time.Duration
 	ClientConfig  client.Config
@@ -42,28 +44,62 @@ func New(cfg Config, ring ring.ReadRing) (*Querier, error) {
 }
 
 func (q *Querier) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
-
-	return q.forAllIngesters(func(client logproto.QuerierClient) error {
-		_, err := client.Query(queryServer.Context(), req)
-		if err != nil {
-			return err
-		}
-
-		// TODO: a heap to in-order merge and dedupe results
-
-		return nil
+	clients, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
+		return client.Query(queryServer.Context(), req)
 	})
-}
-
-// forAllIngesters runs f, in parallel, for all ingesters
-// TODO taken from Cortex, see if we can refactor out an usable interface.
-func (q *Querier) forAllIngesters(f func(logproto.QuerierClient) error) error {
-	replicationSet, err := q.ring.GetAll()
 	if err != nil {
 		return err
 	}
 
-	errs := make(chan error)
+	iterators := make([]EntryIterator, len(clients))
+	for i := range clients {
+		iterators[i] = newQueryClientIterator(clients[i].(logproto.Querier_QueryClient))
+	}
+	i := newHeapIterator(iterators)
+	defer i.Close()
+
+	streams := map[string]*logproto.Stream{}
+	respSize := 0
+
+	for i.Next() {
+		labels, entry := i.Labels(), i.Entry()
+		stream, ok := streams[labels]
+		if !ok {
+			stream = &logproto.Stream{
+				Labels: labels,
+			}
+			streams[labels] = stream
+		}
+		stream.Entries = append(stream.Entries, entry)
+		respSize++
+
+		if respSize > queryBatchSize {
+			queryResp := logproto.QueryResponse{
+				Streams: make([]*logproto.Stream, len(streams)),
+			}
+			for _, stream := range streams {
+				queryResp.Streams = append(queryResp.Streams, stream)
+			}
+			if err := queryServer.Send(&queryResp); err != nil {
+				return err
+			}
+			streams = map[string]*logproto.Stream{}
+			respSize = 0
+		}
+	}
+
+	return i.Error()
+}
+
+// forAllIngesters runs f, in parallel, for all ingesters
+// TODO taken from Cortex, see if we can refactor out an usable interface.
+func (q *Querier) forAllIngesters(f func(logproto.QuerierClient) (interface{}, error)) ([]interface{}, error) {
+	replicationSet, err := q.ring.GetAll()
+	if err != nil {
+		return nil, err
+	}
+
+	resps, errs := make(chan interface{}), make(chan error)
 	for _, ingester := range replicationSet.Ingesters {
 		go func(ingester *ring.IngesterDesc) {
 			client, err := q.pool.GetClientFor(ingester.Addr)
@@ -72,27 +108,31 @@ func (q *Querier) forAllIngesters(f func(logproto.QuerierClient) error) error {
 				return
 			}
 
-			errs <- f(client.(logproto.QuerierClient))
+			resp, err := f(client.(logproto.QuerierClient))
+			if err != nil {
+				errs <- err
+			} else {
+				resps <- resp
+			}
 		}(ingester)
 	}
 
 	var lastErr error
-	numErrs := 0
+	result, numErrs := []interface{}{}, 0
 	for range replicationSet.Ingesters {
 		select {
-		case err := <-errs:
-			if err != nil {
-				lastErr = err
-				numErrs++
-			}
+		case resp := <-resps:
+			result = append(result, resp)
+		case lastErr = <-errs:
+			numErrs++
 		}
 	}
 
 	if numErrs > replicationSet.MaxErrors {
-		return lastErr
+		return nil, lastErr
 	}
 
-	return nil
+	return result, nil
 }
 
 // Check implements the grpc healthcheck
