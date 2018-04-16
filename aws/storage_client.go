@@ -252,14 +252,10 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 			return err
 		}
 
-		// If there are unprocessed items, backoff and retry those items.
+		// If there are unprocessed items, retry those items.
 		if unprocessedItems := resp.UnprocessedItems; unprocessedItems != nil && dynamoDBWriteBatch(unprocessedItems).Len() > 0 {
 			logRetry(dynamoDBWriteBatch(unprocessedItems))
 			unprocessed.TakeReqs(unprocessedItems, -1)
-			// I am unclear why we don't count here; perhaps the idea is
-			// that while we are making _some_ progress we should carry on.
-			backoff.WaitWithoutCounting()
-			continue
 		}
 
 		backoff.Reset()
@@ -634,13 +630,9 @@ func (a storageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chu
 		}
 		result = append(result, processedChunks...)
 
-		// If there are unprocessed items, backoff and retry those items.
+		// If there are unprocessed items, retry those items.
 		if unprocessedKeys := response.UnprocessedKeys; unprocessedKeys != nil && dynamoDBReadRequest(unprocessedKeys).Len() > 0 {
 			unprocessed.TakeReqs(unprocessedKeys, -1)
-			// I am unclear why we don't count here; perhaps the idea is
-			// that while we are making _some_ progress we should carry on.
-			backoff.WaitWithoutCounting()
-			continue
 		}
 
 		backoff.Reset()
