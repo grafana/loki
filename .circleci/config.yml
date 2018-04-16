@@ -1,0 +1,11 @@
+version: 2
+jobs:
+  build:
+    docker:
+      - image:  circleci/buildpack-deps:16.04-curl-dind
+
+    working_directory: /go/src/github.com/{{ORG_NAME}}/{{REPO_NAME}}
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run: make
