@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/grafana/logish/pkg/logproto"
+	"github.com/grafana/logish/pkg/querier"
 )
 
 const tmpMaxChunks = 3
@@ -36,5 +37,52 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry) error {
 	if len(s.chunks) > tmpMaxChunks {
 		s.chunks = s.chunks[:tmpMaxChunks]
 	}
+	return nil
+}
+
+func (s *stream) Iterator(labels string) querier.EntryIterator {
+	iterators := make([]querier.EntryIterator, len(s.chunks))
+	for i, c := range s.chunks {
+		iterators[i] = c.Iterator()
+	}
+	return &nonOverlappingIterator{
+		labels:    labels,
+		iterators: iterators,
+	}
+}
+
+type nonOverlappingIterator struct {
+	labels    string
+	i         int
+	iterators []querier.EntryIterator
+	curr      querier.EntryIterator
+}
+
+func (i *nonOverlappingIterator) Next() bool {
+	for i.curr == nil || !i.curr.Next() {
+		if i.i >= len(i.iterators) {
+			return false
+		}
+
+		i.curr = i.iterators[i.i]
+		i.i++
+	}
+
+	return true
+}
+
+func (i *nonOverlappingIterator) Entry() logproto.Entry {
+	return i.curr.Entry()
+}
+
+func (i *nonOverlappingIterator) Labels() string {
+	return i.labels
+}
+
+func (i *nonOverlappingIterator) Error() error {
+	return nil
+}
+
+func (i *nonOverlappingIterator) Close() error {
 	return nil
 }

@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"github.com/grafana/logish/pkg/logproto"
+	"github.com/grafana/logish/pkg/querier"
 	"github.com/pkg/errors"
 )
 
@@ -17,6 +18,7 @@ var (
 type Chunk interface {
 	SpaceFor(*logproto.Entry) bool
 	Push(*logproto.Entry) error
+	Iterator() querier.EntryIterator
 }
 
 func newChunk() Chunk {
@@ -24,7 +26,7 @@ func newChunk() Chunk {
 }
 
 type dumbChunk struct {
-	entries []*logproto.Entry
+	entries []logproto.Entry
 }
 
 func (c *dumbChunk) SpaceFor(_ *logproto.Entry) bool {
@@ -40,6 +42,39 @@ func (c *dumbChunk) Push(entry *logproto.Entry) error {
 		return ErrOutOfOrder
 	}
 
-	c.entries = append(c.entries, entry)
+	c.entries = append(c.entries, *entry)
+	return nil
+}
+
+func (c *dumbChunk) Iterator() querier.EntryIterator {
+	// Take a copy of the entries to avoid locking
+	return &dumbChunkIterator{
+		i:       -1,
+		entries: c.entries,
+	}
+}
+
+type dumbChunkIterator struct {
+	i       int
+	entries []logproto.Entry
+}
+
+func (i *dumbChunkIterator) Next() bool {
+	return i.i < len(i.entries)
+}
+
+func (i *dumbChunkIterator) Entry() logproto.Entry {
+	return i.entries[i.i]
+}
+
+func (i *dumbChunkIterator) Labels() string {
+	return ""
+}
+
+func (i *dumbChunkIterator) Error() error {
+	return nil
+}
+
+func (i *dumbChunkIterator) Close() error {
 	return nil
 }
