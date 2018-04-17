@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"net/http"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/weaveworks/common/middleware"
@@ -10,7 +11,6 @@ import (
 	"github.com/weaveworks/cortex/pkg/util"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/logish/pkg/logproto"
 	"github.com/grafana/logish/pkg/querier"
 )
 
@@ -45,6 +45,6 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	logproto.RegisterQuerierServer(server.GRPC, querier)
+	server.HTTP.Handle("/api/query", http.HandlerFunc(querier.QueryHandler))
 	server.Run()
 }

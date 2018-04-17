@@ -11,6 +11,8 @@ import (
 	"github.com/grafana/logish/pkg/querier"
 )
 
+const queryBatchSize = 128
+
 var (
 	ErrStreamMissing = errors.New("Stream missing")
 )
@@ -76,5 +78,22 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	iterator := querier.NewHeapIterator(iterators)
 	defer iterator.Close()
 
-	return querier.SendBatches(iterator, queryServer)
+	return sendBatches(iterator, queryServer)
+}
+
+func sendBatches(i querier.EntryIterator, queryServer logproto.Querier_QueryServer) error {
+	for {
+		batch, err := querier.ReadBatch(i, queryBatchSize)
+		if err != nil {
+			return err
+		}
+
+		if len(batch.Streams) == 0 {
+			return nil
+		}
+
+		if err := queryServer.Send(batch); err != nil {
+			return err
+		}
+	}
 }
