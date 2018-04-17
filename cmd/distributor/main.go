@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"net/http"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/weaveworks/common/middleware"
@@ -11,7 +12,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/grafana/logish/pkg/distributor"
-	"github.com/grafana/logish/pkg/logproto"
 )
 
 func main() {
@@ -45,6 +45,6 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	logproto.RegisterPusherServer(server.GRPC, distributor)
+	server.HTTP.Handle("/api/push", http.HandlerFunc(distributor.PushHandler))
 	server.Run()
 }

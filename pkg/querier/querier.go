@@ -13,8 +13,6 @@ import (
 	"github.com/grafana/logish/pkg/logproto"
 )
 
-const queryBatchSize = 128
-
 type Config struct {
 	RemoteTimeout time.Duration
 	ClientConfig  client.Config
@@ -41,24 +39,6 @@ func New(cfg Config, ring ring.ReadRing) (*Querier, error) {
 		ring: ring,
 		pool: cortex_client.NewIngesterPool(factory, cfg.RemoteTimeout),
 	}, nil
-}
-
-func (q *Querier) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
-	clients, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
-		return client.Query(queryServer.Context(), req)
-	})
-	if err != nil {
-		return err
-	}
-
-	iterators := make([]EntryIterator, len(clients))
-	for i := range clients {
-		iterators[i] = newQueryClientIterator(clients[i].(logproto.Querier_QueryClient))
-	}
-	i := NewHeapIterator(iterators)
-	defer i.Close()
-
-	return SendBatches(i, queryServer)
 }
 
 // forAllIngesters runs f, in parallel, for all ingesters
@@ -113,38 +93,4 @@ func (*Querier) Check(ctx context.Context, req *grpc_health_v1.HealthCheckReques
 type iteratorBatcher struct {
 	iterator    EntryIterator
 	queryServer logproto.Querier_QueryServer
-}
-
-func SendBatches(i EntryIterator, queryServer logproto.Querier_QueryServer) error {
-	streams := map[string]*logproto.Stream{}
-	respSize := 0
-
-	for i.Next() {
-		labels, entry := i.Labels(), i.Entry()
-		stream, ok := streams[labels]
-		if !ok {
-			stream = &logproto.Stream{
-				Labels: labels,
-			}
-			streams[labels] = stream
-		}
-		stream.Entries = append(stream.Entries, entry)
-		respSize++
-
-		if respSize > queryBatchSize {
-			queryResp := logproto.QueryResponse{
-				Streams: make([]*logproto.Stream, len(streams)),
-			}
-			for _, stream := range streams {
-				queryResp.Streams = append(queryResp.Streams, stream)
-			}
-			if err := queryServer.Send(&queryResp); err != nil {
-				return err
-			}
-			streams = map[string]*logproto.Stream{}
-			respSize = 0
-		}
-	}
-
-	return i.Error()
 }
