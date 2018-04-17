@@ -1,9 +1,10 @@
 package ingester
 
 import (
+	"github.com/pkg/errors"
+
 	"github.com/grafana/logish/pkg/logproto"
 	"github.com/grafana/logish/pkg/querier"
-	"github.com/pkg/errors"
 )
 
 const (
