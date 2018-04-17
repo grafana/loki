@@ -32,6 +32,7 @@ func newStreamIterator(stream *logproto.Stream) EntryIterator {
 }
 
 func (i *streamIterator) Next() bool {
+	i.i++
 	return i.i < len(i.entries)
 }
 
