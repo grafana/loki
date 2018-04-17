@@ -3,8 +3,10 @@
 !vendor/**/*.pb.go
 vendor/github.com/weaveworks/cortex/pkg/ingester/client/cortex.pb.go
 vendor/github.com/weaveworks/cortex/pkg/ring/ring.pb.go
+pkg/parser/labels.go
 .pkg
 .cache
 cmd/distributor/distributor
 cmd/ingester/ingester
 cmd/querier/querier
+*.output

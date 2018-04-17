@@ -31,7 +31,13 @@ images:
 
 # Generating proto code is automated.
 PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
-PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS)) vendor/github.com/weaveworks/cortex/pkg/ring/ring.pb.go vendor/github.com/weaveworks/cortex/pkg/ingester/client/cortex.pb.go
+PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS)) \
+	vendor/github.com/weaveworks/cortex/pkg/ring/ring.pb.go \
+	vendor/github.com/weaveworks/cortex/pkg/ingester/client/cortex.pb.go
+
+# Generating yacc code is automated.
+YACC_DEFS := $(shell find . $(DONT_FIND) -type f -name *.y -print)
+YACC_GOS := $(patsubst %.y,%.go,$(YACC_DEFS))
 
 # Building binaries is now automated.  The convention is to build a binary
 # for every directory with main.go in it, in the ./cmd directory.
@@ -39,16 +45,19 @@ MAIN_GO := $(shell find . $(DONT_FIND) -type f -name 'main.go' -print)
 EXES := $(foreach exe, $(patsubst ./cmd/%/main.go, %, $(MAIN_GO)), ./cmd/$(exe)/$(exe))
 GO_FILES := $(shell find . $(DONT_FIND) -name cmd -prune -o -type f -name '*.go' -print)
 define dep_exe
-$(1): $(dir $(1))/main.go $(GO_FILES) $(PROTO_GOS)
+$(1): $(dir $(1))/main.go $(GO_FILES) $(PROTO_GOS) $(YACC_GOS)
 $(dir $(1))$(UPTODATE): $(1)
 endef
 $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 
-# Manually declared dependancies And what goes into each exe
+# Manually declared dependancies and what goes into each exe
 pkg/logproto/logproto.pb.go: pkg/logproto/logproto.proto
 vendor/github.com/weaveworks/cortex/pkg/ring/ring.pb.go: vendor/github.com/weaveworks/cortex/pkg/ring/ring.proto
+pkg/parser/labels.go: pkg/parser/labels.y
+pkg/parser/matchers.go: pkg/parser/matchers.y
 all: $(UPTODATE_FILES)
-test: $(PROTO_GOS)
+test: $(PROTO_GOS) $(YACC_GOS)
+yacc: $(YACC_GOS)
 protos: $(PROTO_GOS)
 
 # And now what goes into each image
@@ -77,7 +86,7 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) $(PROTO_GOS) lint test shell: build-image/$(UPTODATE)
+$(EXES) $(PROTO_GOS) $(YACC_GOS) lint test shell: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) docker run $(RM) $(TTY) -i \
@@ -102,6 +111,9 @@ $(EXES): build-image/$(UPTODATE)
 		;;					\
 	esac
 
+%.go: %.y
+	goyacc -p $(basename $(notdir $<)) -o $@ $<
+
 lint: build-image/$(UPTODATE)
 	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .
 
@@ -122,5 +134,5 @@ push-images:
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS) .cache
+	rm -rf $(UPTODATE_FILES) $(EXES) $(PROTO_GOS) $(YACC_GOS) .cache
 	go clean ./...

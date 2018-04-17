@@ -17,7 +17,8 @@ RUN go get -tags netgo \
 		github.com/jteeuwen/go-bindata/go-bindata \
 		github.com/golang/protobuf/protoc-gen-go \
 		github.com/gogo/protobuf/protoc-gen-gogoslick \
-		github.com/gogo/protobuf/gogoproto && \
+		github.com/gogo/protobuf/gogoproto \
+		golang.org/x/tools/cmd/goyacc && \
 	rm -rf /go/pkg /go/src
 COPY build.sh /
 ENV GOCACHE=/go/cache
