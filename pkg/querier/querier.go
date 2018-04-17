@@ -55,40 +55,10 @@ func (q *Querier) Query(req *logproto.QueryRequest, queryServer logproto.Querier
 	for i := range clients {
 		iterators[i] = newQueryClientIterator(clients[i].(logproto.Querier_QueryClient))
 	}
-	i := newHeapIterator(iterators)
+	i := NewHeapIterator(iterators)
 	defer i.Close()
 
-	streams := map[string]*logproto.Stream{}
-	respSize := 0
-
-	for i.Next() {
-		labels, entry := i.Labels(), i.Entry()
-		stream, ok := streams[labels]
-		if !ok {
-			stream = &logproto.Stream{
-				Labels: labels,
-			}
-			streams[labels] = stream
-		}
-		stream.Entries = append(stream.Entries, entry)
-		respSize++
-
-		if respSize > queryBatchSize {
-			queryResp := logproto.QueryResponse{
-				Streams: make([]*logproto.Stream, len(streams)),
-			}
-			for _, stream := range streams {
-				queryResp.Streams = append(queryResp.Streams, stream)
-			}
-			if err := queryServer.Send(&queryResp); err != nil {
-				return err
-			}
-			streams = map[string]*logproto.Stream{}
-			respSize = 0
-		}
-	}
-
-	return i.Error()
+	return SendBatches(i, queryServer)
 }
 
 // forAllIngesters runs f, in parallel, for all ingesters
@@ -138,4 +108,43 @@ func (q *Querier) forAllIngesters(f func(logproto.QuerierClient) (interface{}, e
 // Check implements the grpc healthcheck
 func (*Querier) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+}
+
+type iteratorBatcher struct {
+	iterator    EntryIterator
+	queryServer logproto.Querier_QueryServer
+}
+
+func SendBatches(i EntryIterator, queryServer logproto.Querier_QueryServer) error {
+	streams := map[string]*logproto.Stream{}
+	respSize := 0
+
+	for i.Next() {
+		labels, entry := i.Labels(), i.Entry()
+		stream, ok := streams[labels]
+		if !ok {
+			stream = &logproto.Stream{
+				Labels: labels,
+			}
+			streams[labels] = stream
+		}
+		stream.Entries = append(stream.Entries, entry)
+		respSize++
+
+		if respSize > queryBatchSize {
+			queryResp := logproto.QueryResponse{
+				Streams: make([]*logproto.Stream, len(streams)),
+			}
+			for _, stream := range streams {
+				queryResp.Streams = append(queryResp.Streams, stream)
+			}
+			if err := queryServer.Send(&queryResp); err != nil {
+				return err
+			}
+			streams = map[string]*logproto.Stream{}
+			respSize = 0
+		}
+	}
+
+	return i.Error()
 }

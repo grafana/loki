@@ -77,7 +77,7 @@ type heapIterator struct {
 	curr      EntryIterator
 }
 
-func newHeapIterator(is []EntryIterator) EntryIterator {
+func NewHeapIterator(is []EntryIterator) EntryIterator {
 	result := &heapIterator{
 		iterators: make(iteratorHeap, 0, len(is)),
 	}
@@ -137,7 +137,7 @@ func queryResponseIterator(resp *logproto.QueryResponse) EntryIterator {
 	for i := range resp.Streams {
 		is = append(is, newStreamIterator(resp.Streams[i]))
 	}
-	return newHeapIterator(is)
+	return NewHeapIterator(is)
 }
 
 type queryClientIterator struct {

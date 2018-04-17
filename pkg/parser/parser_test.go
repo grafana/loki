@@ -21,6 +21,7 @@ func TestLex(t *testing.T) {
 		{`{ foo !~ "bar" }`, []int{MATCHERS, OPEN_BRACE, IDENTIFIER, NRE, STRING, CLOSE_BRACE}},
 		{`{ foo = "bar", bar != "baz" }`, []int{MATCHERS, OPEN_BRACE, IDENTIFIER, EQ, STRING,
 			COMMA, IDENTIFIER, NEQ, STRING, CLOSE_BRACE}},
+		{`{ foo = "ba\"r" }`, []int{MATCHERS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE}},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			actual := []int{}

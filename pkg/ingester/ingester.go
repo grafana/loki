@@ -63,6 +63,16 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	return inst
 }
 
+func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
+	instanceID, err := user.ExtractOrgID(queryServer.Context())
+	if err != nil {
+		return err
+	}
+
+	instance := i.getOrCreateInstance(instanceID)
+	return instance.Query(req, queryServer)
+}
+
 func (*Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }

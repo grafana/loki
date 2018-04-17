@@ -3,6 +3,8 @@ package ingester
 import (
 	"context"
 
+	"github.com/prometheus/prometheus/pkg/labels"
+
 	"github.com/grafana/logish/pkg/logproto"
 	"github.com/grafana/logish/pkg/querier"
 )
@@ -13,10 +15,13 @@ type stream struct {
 	// Newest chunk at chunks[0].
 	// Not thread-safe; assume accesses to this are locked by caller.
 	chunks []Chunk
+	labels labels.Labels
 }
 
-func newStream() *stream {
-	return &stream{}
+func newStream(labels labels.Labels) *stream {
+	return &stream{
+		labels: labels,
+	}
 }
 
 func (s *stream) Push(ctx context.Context, entries []logproto.Entry) error {
@@ -40,13 +45,13 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry) error {
 	return nil
 }
 
-func (s *stream) Iterator(labels string) querier.EntryIterator {
+func (s *stream) Iterator() querier.EntryIterator {
 	iterators := make([]querier.EntryIterator, len(s.chunks))
 	for i, c := range s.chunks {
 		iterators[i] = c.Iterator()
 	}
 	return &nonOverlappingIterator{
-		labels:    labels,
+		labels:    s.labels.String(),
 		iterators: iterators,
 	}
 }
