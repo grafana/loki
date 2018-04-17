@@ -10,7 +10,24 @@ import (
 )
 
 func Matchers(input string) ([]*labels.Matcher, error) {
+	l, err := parse(MATCHERS, input)
+	if err != nil {
+		return nil, err
+	}
+	return l.matcher, nil
+}
+
+func Labels(input string) (labels.Labels, error) {
+	l, err := parse(LABELS, input)
+	if err != nil {
+		return nil, err
+	}
+	return l.labels, nil
+}
+
+func parse(thing int, input string) (*lexer, error) {
 	l := lexer{
+		thing: thing,
 		Scanner: scanner.Scanner{
 			Mode: scanner.SkipComments | scanner.ScanStrings | scanner.ScanInts,
 		},
@@ -21,7 +38,7 @@ func Matchers(input string) ([]*labels.Matcher, error) {
 	if e != 0 {
 		return nil, l.err
 	}
-	return l.matcher, nil
+	return &l, nil
 }
 
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
@@ -44,13 +61,24 @@ var tokens = map[string]int{
 }
 
 type lexer struct {
+	// What type of thing are we parsing?
+	thing int
+	sent  bool
+
+	// Output
 	labels  labels.Labels
 	matcher []*labels.Matcher
+
 	scanner.Scanner
 	err error
 }
 
 func (l *lexer) Lex(lval *labelsSymType) int {
+	if !l.sent {
+		l.sent = true
+		return l.thing
+	}
+
 	r := l.Scan()
 	var err error
 	switch r {
