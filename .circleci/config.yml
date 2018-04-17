@@ -1,5 +1,35 @@
 version: 2
+
+workflows:
+  version: 2
+  test-build-deploy:
+    jobs:
+    - test
+    - build
+    - deploy:
+        requires:
+        - build
+        - test
+
 jobs:
+  test:
+    docker:
+      - image: gcr.io/metrictank-gcr/logish-build-image:master-017c0b4
+        auth:
+          username: _json_key
+          password: $GCR_CREDS
+
+    working_directory: /go/src/github.com/grafana/logish
+    steps:
+      - checkout
+
+      - run:
+          name: Build Images
+          command: |
+            # skip building the build image again
+            touch build-image/.uptodate &&
+            make BUILD_IN_CONTAINER=false test
+
   build:
     docker:
       - image: gcr.io/metrictank-gcr/logish-build-image:master-017c0b4
@@ -27,6 +57,27 @@ jobs:
             # skip building the build image again
             touch build-image/.uptodate &&
             make BUILD_IN_CONTAINER=false
+
+  deploy:
+    docker:
+      - image: gcr.io/metrictank-gcr/logish-build-image:master-017c0b4
+        auth:
+          username: _json_key
+          password: $GCR_CREDS
+
+    working_directory: /go/src/github.com/grafana/logish
+    steps:
+      - checkout
+      - setup_remote_docker
+
+      - run:
+          name: Install Docker client
+          command: |
+            set -x
+            VER="17.03.0-ce"
+            curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
+            tar -xz -C /tmp -f /tmp/docker-$VER.tgz
+            mv /tmp/docker/* /usr/bin
 
       - run:
           name: Push Images

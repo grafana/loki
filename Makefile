@@ -118,7 +118,7 @@ lint: build-image/$(UPTODATE)
 	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .
 
 test: build-image/$(UPTODATE)
-	./tools/test -netgo
+	go test ./...
 
 shell: build-image/$(UPTODATE)
 	bash
