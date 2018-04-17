@@ -118,12 +118,28 @@ lint: build-image/$(UPTODATE)
 	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .
 
 test: build-image/$(UPTODATE)
-	./tools/test -netgo
+	go test ./...
 
 shell: build-image/$(UPTODATE)
 	bash
 
 endif
+
+save-images:
+	@mkdir -p images
+	for image_name in $(IMAGE_NAMES); do \
+		if ! echo $$image_name | grep build; then \
+			docker save $$image_name:$(IMAGE_TAG) -o images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
+		fi \
+	done
+
+load-images:
+	@mkdir -p images
+	for image_name in $(IMAGE_NAMES); do \
+		if ! echo $$image_name | grep build; then \
+			docker load -i images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
+		fi \
+	done
 
 push-images:
 	for image_name in $(IMAGE_NAMES); do \
