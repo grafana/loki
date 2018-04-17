@@ -2,7 +2,7 @@ version: 2
 jobs:
   build:
     docker:
-      - image: gcr.io/metrictank-gcr/logish-build-image:master-01fd5c6-WIP
+      - image: gcr.io/metrictank-gcr/logish-build-image:master-017c0b4
         auth:
           username: _json_key
           password: $GCR_CREDS
