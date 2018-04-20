@@ -139,7 +139,9 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc chunk.TableDesc
 			if err != nil {
 				return err
 			}
-			tableARN = output.TableDescription.TableArn
+			if output.TableDescription != nil {
+				tableARN = output.TableDescription.TableArn
+			}
 			return nil
 		})
 	}); err != nil {
@@ -175,11 +177,24 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 			out, err := d.DynamoDB.DescribeTableWithContext(ctx, &dynamodb.DescribeTableInput{
 				TableName: aws.String(name),
 			})
+			if err != nil {
+				return err
+			}
 			desc.Name = name
-			desc.ProvisionedRead = *out.Table.ProvisionedThroughput.ReadCapacityUnits
-			desc.ProvisionedWrite = *out.Table.ProvisionedThroughput.WriteCapacityUnits
-			status = *out.Table.TableStatus
-			tableARN = out.Table.TableArn
+			if out.Table != nil {
+				if provision := out.Table.ProvisionedThroughput; provision != nil {
+					if provision.ReadCapacityUnits != nil {
+						desc.ProvisionedRead = *provision.ReadCapacityUnits
+					}
+					if provision.WriteCapacityUnits != nil {
+						desc.ProvisionedWrite = *provision.WriteCapacityUnits
+					}
+				}
+				if out.Table.TableStatus != nil {
+					status = *out.Table.TableStatus
+				}
+				tableARN = out.Table.TableArn
+			}
 			return err
 		})
 	})
@@ -192,6 +207,9 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 			out, err := d.DynamoDB.ListTagsOfResourceWithContext(ctx, &dynamodb.ListTagsOfResourceInput{
 				ResourceArn: tableARN,
 			})
+			if err != nil {
+				return err
+			}
 			desc.Tags = make(map[string]string, len(out.Tags))
 			for _, tag := range out.Tags {
 				desc.Tags[*tag.Key] = *tag.Value
@@ -208,14 +226,25 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 					ScalableDimension: aws.String("dynamodb:table:WriteCapacityUnits"),
 					ServiceNamespace:  aws.String("dynamodb"),
 				})
+				if err != nil {
+					return err
+				}
 				switch l := len(out.ScalableTargets); l {
 				case 0:
 					return err
 				case 1:
 					desc.WriteScale.Enabled = true
-					desc.WriteScale.RoleARN = *out.ScalableTargets[0].RoleARN
-					desc.WriteScale.MinCapacity = *out.ScalableTargets[0].MinCapacity
-					desc.WriteScale.MaxCapacity = *out.ScalableTargets[0].MaxCapacity
+					if target := out.ScalableTargets[0]; target != nil {
+						if target.RoleARN != nil {
+							desc.WriteScale.RoleARN = *target.RoleARN
+						}
+						if target.MinCapacity != nil {
+							desc.WriteScale.MinCapacity = *target.MinCapacity
+						}
+						if target.MaxCapacity != nil {
+							desc.WriteScale.MaxCapacity = *target.MaxCapacity
+						}
+					}
 					return err
 				default:
 					return fmt.Errorf("more than one scalable target found for DynamoDB table")
@@ -231,13 +260,25 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 					ScalableDimension: aws.String("dynamodb:table:WriteCapacityUnits"),
 					ServiceNamespace:  aws.String("dynamodb"),
 				})
+				if err != nil {
+					return err
+				}
 				switch l := len(out.ScalingPolicies); l {
 				case 0:
 					return err
 				case 1:
-					desc.WriteScale.InCooldown = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.ScaleInCooldown
-					desc.WriteScale.OutCooldown = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.ScaleOutCooldown
-					desc.WriteScale.TargetValue = *out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.TargetValue
+					config := out.ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration
+					if config != nil {
+						if config.ScaleInCooldown != nil {
+							desc.WriteScale.InCooldown = *config.ScaleInCooldown
+						}
+						if config.ScaleOutCooldown != nil {
+							desc.WriteScale.OutCooldown = *config.ScaleOutCooldown
+						}
+						if config.TargetValue != nil {
+							desc.WriteScale.TargetValue = *config.TargetValue
+						}
+					}
 					return err
 				default:
 					return fmt.Errorf("more than one scaling policy found for DynamoDB table")
@@ -292,7 +333,9 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected ch
 				if err != nil {
 					return err
 				}
-				tableARN = out.Table.TableArn
+				if out.Table != nil {
+					tableARN = out.Table.TableArn
+				}
 				return nil
 			})
 		}); err != nil {
