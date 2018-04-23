@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"net/http"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/weaveworks/common/middleware"
@@ -46,5 +47,6 @@ func main() {
 	defer server.Shutdown()
 
 	logproto.RegisterPusherServer(server.GRPC, ingester)
+	server.HTTP.Path("/ready").Handler(http.HandlerFunc(ingester.ReadinessHandler))
 	server.Run()
 }

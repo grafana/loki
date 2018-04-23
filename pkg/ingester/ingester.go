@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"flag"
+	"net/http"
 	"sync"
 
 	"github.com/weaveworks/common/user"
@@ -103,4 +104,15 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 func (*Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+}
+
+// ReadinessHandler is used to indicate to k8s when the ingesters are ready for
+// the addition removal of another ingester. Returns 204 when the ingester is
+// ready, 500 otherwise.
+func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
+	if i.lifecycler.IsReady() {
+		w.WriteHeader(http.StatusNoContent)
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 }
