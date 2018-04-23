@@ -23,7 +23,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 type Ingester struct {
 	cfg Config
-	r   ring.ReadRing
 
 	instancesMtx sync.RWMutex
 	instances    map[string]*instance
@@ -31,10 +30,9 @@ type Ingester struct {
 	lifecycler *ring.Lifecycler
 }
 
-func New(cfg Config, r ring.ReadRing) (*Ingester, error) {
+func New(cfg Config) (*Ingester, error) {
 	i := &Ingester{
 		cfg:       cfg,
-		r:         r,
 		instances: map[string]*instance{},
 	}
 

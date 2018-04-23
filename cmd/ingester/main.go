@@ -29,13 +29,7 @@ func main() {
 	util.RegisterFlags(&serverConfig, &ringConfig, &ingesterConfig)
 	flag.Parse()
 
-	r, err := ring.New(ringConfig)
-	if err != nil {
-		log.Fatalf("Error initializing ring: %v", err)
-	}
-	defer r.Stop()
-
-	ingester, err := ingester.New(ingesterConfig, r)
+	ingester, err := ingester.New(ingesterConfig)
 	if err != nil {
 		log.Fatalf("Error initializing ingester: %v", err)
 	}
