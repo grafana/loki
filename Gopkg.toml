@@ -29,7 +29,7 @@ required = ["github.com/weaveworks/cortex/pkg/util/wire"]
 [[constraint]]
   name = "github.com/weaveworks/cortex"
   branch = "factorings"
-  source = "github.com/tomwilkie/cortex"
+  source = "github.com/grafana/cortex"
 
 [[override]]
   name = "github.com/sercand/kuberesolver"

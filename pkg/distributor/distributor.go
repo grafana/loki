@@ -48,18 +48,20 @@ func init() {
 type Config struct {
 	cortex.Config
 	ClientConfig client.Config
+	PoolConfig   cortex_client.PoolConfig
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Config.RegisterFlags(f)
 	cfg.ClientConfig.RegisterFlags(f)
+	cfg.PoolConfig.RegisterFlags(f)
 }
 
 // Distributor coordinates replicates and distribution of log streams.
 type Distributor struct {
 	cfg  Config
 	ring ring.ReadRing
-	pool *cortex_client.IngesterPool
+	pool *cortex_client.Pool
 }
 
 // New a distributor creates.
@@ -67,11 +69,12 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
 		return client.New(cfg.ClientConfig, addr)
 	}
+	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
 	return &Distributor{
 		cfg:  cfg,
 		ring: ring,
-		pool: cortex_client.NewIngesterPool(factory, cfg.RemoteTimeout),
+		pool: cortex_client.NewPool(cfg.PoolConfig, ring, factory),
 	}, nil
 }
 

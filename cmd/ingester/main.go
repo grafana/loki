@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"net/http"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/weaveworks/common/middleware"
@@ -28,13 +29,7 @@ func main() {
 	util.RegisterFlags(&serverConfig, &ringConfig, &ingesterConfig)
 	flag.Parse()
 
-	r, err := ring.New(ringConfig)
-	if err != nil {
-		log.Fatalf("Error initializing ring: %v", err)
-	}
-	defer r.Stop()
-
-	ingester, err := ingester.New(ingesterConfig, r)
+	ingester, err := ingester.New(ingesterConfig)
 	if err != nil {
 		log.Fatalf("Error initializing ingester: %v", err)
 	}
@@ -46,5 +41,6 @@ func main() {
 	defer server.Shutdown()
 
 	logproto.RegisterPusherServer(server.GRPC, ingester)
+	server.HTTP.Path("/ready").Handler(http.HandlerFunc(ingester.ReadinessHandler))
 	server.Run()
 }

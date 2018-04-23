@@ -1,6 +1,7 @@
 package client
 
 import (
+	"flag"
 	fmt "fmt"
 	io "io"
 	"sync"
@@ -8,70 +9,118 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/user"
+	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
 	context "golang.org/x/net/context"
 	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
-// Factory defines the signature for an ingester client factory
+// Factory defines the signature for an ingester client factory.
 type Factory func(addr string) (grpc_health_v1.HealthClient, error)
 
-// IngesterPool holds a cache of ingester clients
-type IngesterPool struct {
-	sync.RWMutex
-	clients map[string]grpc_health_v1.HealthClient
-
-	ingesterClientFactory Factory
-	ingesterClientConfig  Config
-	healthCheckTimeout    time.Duration
+// PoolConfig is config for creating a Pool.
+type PoolConfig struct {
+	ClientCleanupPeriod  time.Duration
+	HealthCheckIngesters bool
+	RemoteTimeout        time.Duration
 }
 
-// NewIngesterPool creates a new cache
-func NewIngesterPool(factory Factory, healthCheckTimeout time.Duration) *IngesterPool {
-	return &IngesterPool{
-		clients:               map[string]grpc_health_v1.HealthClient{},
-		ingesterClientFactory: factory,
-		healthCheckTimeout:    healthCheckTimeout,
+// RegisterFlags adds the flags required to config this to the given FlagSet.
+func (cfg *PoolConfig) RegisterFlags(f *flag.FlagSet) {
+	flag.DurationVar(&cfg.ClientCleanupPeriod, "distributor.client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
+	flag.BoolVar(&cfg.HealthCheckIngesters, "distributor.health-check-ingesters", false, "Run a health check on each ingester client during periodic cleanup.")
+}
+
+// Pool holds a cache of grpc_health_v1 clients.
+type Pool struct {
+	cfg     PoolConfig
+	ring    ring.ReadRing
+	factory Factory
+
+	quit chan struct{}
+	done sync.WaitGroup
+
+	sync.RWMutex
+	clients map[string]grpc_health_v1.HealthClient
+}
+
+// NewPool creates a new Pool.
+func NewPool(cfg PoolConfig, ring ring.ReadRing, factory Factory) *Pool {
+	p := &Pool{
+		cfg:     cfg,
+		ring:    ring,
+		factory: factory,
+
+		quit:    make(chan struct{}),
+		clients: map[string]grpc_health_v1.HealthClient{},
+	}
+	p.done.Add(1)
+	go p.loop()
+	return p
+}
+
+func (p *Pool) loop() {
+	defer p.done.Done()
+
+	cleanupClients := time.NewTicker(p.cfg.ClientCleanupPeriod)
+	defer cleanupClients.Stop()
+
+	for {
+		select {
+		case <-cleanupClients.C:
+			p.removeStaleIngesterClients()
+			if p.cfg.HealthCheckIngesters {
+				p.cleanUnhealthy()
+			}
+		case <-p.quit:
+			return
+		}
 	}
 }
 
-func (pool *IngesterPool) fromCache(addr string) (grpc_health_v1.HealthClient, bool) {
-	pool.RLock()
-	defer pool.RUnlock()
-	client, ok := pool.clients[addr]
+// Stop the pool's background cleanup goroutine.
+func (p *Pool) Stop() {
+	close(p.quit)
+	p.done.Wait()
+}
+
+func (p *Pool) fromCache(addr string) (grpc_health_v1.HealthClient, bool) {
+	p.RLock()
+	defer p.RUnlock()
+	client, ok := p.clients[addr]
 	return client, ok
 }
 
 // GetClientFor gets the client for the specified address. If it does not exist it will make a new client
 // at that address
-func (pool *IngesterPool) GetClientFor(addr string) (grpc_health_v1.HealthClient, error) {
-	client, ok := pool.fromCache(addr)
+func (p *Pool) GetClientFor(addr string) (grpc_health_v1.HealthClient, error) {
+	client, ok := p.fromCache(addr)
 	if ok {
 		return client, nil
 	}
 
-	pool.Lock()
-	defer pool.Unlock()
-	client, ok = pool.clients[addr]
+	p.Lock()
+	defer p.Unlock()
+	client, ok = p.clients[addr]
 	if ok {
 		return client, nil
 	}
 
-	client, err := pool.ingesterClientFactory(addr)
+	client, err := p.factory(addr)
 	if err != nil {
 		return nil, err
 	}
-	pool.clients[addr] = client
+	p.clients[addr] = client
 	return client, nil
 }
 
 // RemoveClientFor removes the client with the specified address
-func (pool *IngesterPool) RemoveClientFor(addr string) {
-	pool.Lock()
-	defer pool.Unlock()
-	client, ok := pool.clients[addr]
+func (p *Pool) RemoveClientFor(addr string) {
+	p.Lock()
+	defer p.Unlock()
+	client, ok := p.clients[addr]
 	if ok {
-		delete(pool.clients, addr)
+		delete(p.clients, addr)
 		// Close in the background since this operation may take awhile and we have a mutex
 		go func(addr string, closer io.Closer) {
 			if err := closer.Close(); err != nil {
@@ -82,33 +131,54 @@ func (pool *IngesterPool) RemoveClientFor(addr string) {
 }
 
 // RegisteredAddresses returns all the addresses that a client is cached for
-func (pool *IngesterPool) RegisteredAddresses() []string {
+func (p *Pool) RegisteredAddresses() []string {
 	result := []string{}
-	pool.RLock()
-	defer pool.RUnlock()
-	for addr := range pool.clients {
+	p.RLock()
+	defer p.RUnlock()
+	for addr := range p.clients {
 		result = append(result, addr)
 	}
 	return result
 }
 
 // Count returns how many clients are in the cache
-func (pool *IngesterPool) Count() int {
-	pool.RLock()
-	defer pool.RUnlock()
-	return len(pool.clients)
+func (p *Pool) Count() int {
+	p.RLock()
+	defer p.RUnlock()
+	return len(p.clients)
 }
 
-// CleanUnhealthy loops through all ingesters and deletes any that fails a healtcheck.
-func (pool *IngesterPool) CleanUnhealthy() {
-	for _, addr := range pool.RegisteredAddresses() {
-		client, ok := pool.fromCache(addr)
+func (p *Pool) removeStaleIngesterClients() {
+	ingesters := map[string]struct{}{}
+	replicationSet, err := p.ring.GetAll()
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error removing stale ingester clients", "err", err)
+		return
+	}
+
+	for _, ing := range replicationSet.Ingesters {
+		ingesters[ing.Addr] = struct{}{}
+	}
+
+	for _, addr := range p.RegisteredAddresses() {
+		if _, ok := ingesters[addr]; ok {
+			continue
+		}
+		level.Info(util.Logger).Log("msg", "removing stale ingester client", "addr", addr)
+		p.RemoveClientFor(addr)
+	}
+}
+
+// cleanUnhealthy loops through all ingesters and deletes any that fails a healtcheck.
+func (p *Pool) cleanUnhealthy() {
+	for _, addr := range p.RegisteredAddresses() {
+		client, ok := p.fromCache(addr)
 		// not ok means someone removed a client between the start of this loop and now
 		if ok {
-			err := healthCheck(client, pool.healthCheckTimeout)
+			err := healthCheck(client, p.cfg.RemoteTimeout)
 			if err != nil {
 				level.Warn(util.Logger).Log("msg", "removing ingester failing healtcheck", "addr", addr, "reason", err)
-				pool.RemoveClientFor(addr)
+				p.RemoveClientFor(addr)
 			}
 		}
 	}
