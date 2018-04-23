@@ -13,9 +13,11 @@ import (
 )
 
 type Config struct {
+	LifecyclerConfig ring.LifecyclerConfig
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.LifecyclerConfig.RegisterFlags(f)
 }
 
 type Ingester struct {
@@ -24,14 +26,40 @@ type Ingester struct {
 
 	instancesMtx sync.RWMutex
 	instances    map[string]*instance
+
+	lifecycler *ring.Lifecycler
 }
 
 func New(cfg Config, r ring.ReadRing) (*Ingester, error) {
-	return &Ingester{
+	i := &Ingester{
 		cfg:       cfg,
 		r:         r,
 		instances: map[string]*instance{},
-	}, nil
+	}
+
+	var err error
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i)
+	if err != nil {
+		return nil, err
+	}
+
+	return i, nil
+}
+
+func (i *Ingester) Shutdown() {
+	i.lifecycler.Shutdown()
+}
+
+func (i *Ingester) StopIncomingRequests() {
+
+}
+
+func (i *Ingester) Flush() {
+
+}
+
+func (i *Ingester) Transfer() error {
+	return nil
 }
 
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
