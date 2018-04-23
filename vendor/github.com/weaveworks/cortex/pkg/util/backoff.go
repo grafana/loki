@@ -63,12 +63,6 @@ func (b *Backoff) NumRetries() int {
 // Returns immediately if Context is terminated
 func (b *Backoff) Wait() {
 	b.numRetries++
-	b.WaitWithoutCounting()
-}
-
-// WaitWithoutCounting sleeps for the backoff time then increases backoff time
-// Returns immediately if Context is terminated
-func (b *Backoff) WaitWithoutCounting() {
 	// Based on the "Full Jitter" approach from https://www.awsarchitectureblog.com/2015/03/backoff.html
 	// sleep = random_between(0, min(cap, base * 2 ** attempt))
 	if b.Ongoing() {

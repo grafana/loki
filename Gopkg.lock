@@ -391,8 +391,8 @@
     "pkg/util",
     "pkg/util/wire"
   ]
-  revision = "189025f74e60a8a53940ff098ec73eb8268eb82c"
-  source = "github.com/tomwilkie/cortex"
+  revision = "8125ff559d5a568973733b9956008e80f06df6d1"
+  source = "github.com/grafana/cortex"
 
 [[projects]]
   name = "github.com/weaveworks/promrus"
@@ -503,6 +503,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "f593643ce3f7f637256de3ee9255c536ebdf4650d47c99939f0eed37e46e2bcb"
+  inputs-digest = "7aea5cd8d3b43581f477cdcc3019f65b225382e45446529ca5df531f6b475e8e"
   solver-name = "gps-cdcl"
   solver-version = 1

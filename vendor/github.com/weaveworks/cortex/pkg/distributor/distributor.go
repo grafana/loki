@@ -13,7 +13,6 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -47,9 +46,7 @@ type Distributor struct {
 	cfg          Config
 	ring         ring.ReadRing
 	clientsMtx   sync.RWMutex
-	ingesterPool *ingester_client.IngesterPool
-	quit         chan struct{}
-	done         chan struct{}
+	ingesterPool *ingester_client.Pool
 
 	billingClient *billing.Client
 
@@ -72,12 +69,11 @@ type Config struct {
 	EnableBilling        bool
 	BillingConfig        billing.Config
 	IngesterClientConfig ingester_client.Config
+	PoolConfig           ingester_client.PoolConfig
 
-	RemoteTimeout        time.Duration
-	ClientCleanupPeriod  time.Duration
-	IngestionRateLimit   float64
-	IngestionBurstSize   int
-	HealthCheckIngesters bool
+	RemoteTimeout      time.Duration
+	IngestionRateLimit float64
+	IngestionBurstSize int
 
 	// for testing
 	ingesterClientFactory func(addr string, cfg ingester_client.Config) (client.IngesterClient, error)
@@ -85,14 +81,14 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	flag.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	cfg.BillingConfig.RegisterFlags(f)
 	cfg.IngesterClientConfig.RegisterFlags(f)
+	cfg.PoolConfig.RegisterFlags(f)
+
+	flag.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	flag.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
-	flag.DurationVar(&cfg.ClientCleanupPeriod, "distributor.client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
 	flag.Float64Var(&cfg.IngestionRateLimit, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	flag.IntVar(&cfg.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
-	flag.BoolVar(&cfg.HealthCheckIngesters, "distributor.health-check-ingesters", false, "Run a health check on each ingester client during periodic cleanup.")
 }
 
 // New constructs a new Distributor
@@ -110,6 +106,7 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 		}
 	}
 
+	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
 		return cfg.ingesterClientFactory(addr, cfg.IngesterClientConfig)
 	}
@@ -117,9 +114,7 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 	d := &Distributor{
 		cfg:            cfg,
 		ring:           ring,
-		ingesterPool:   ingester_client.NewIngesterPool(factory, cfg.RemoteTimeout),
-		quit:           make(chan struct{}),
-		done:           make(chan struct{}),
+		ingesterPool:   ingester_client.NewPool(cfg.PoolConfig, ring, factory),
 		billingClient:  billingClient,
 		ingestLimiters: map[string]*rate.Limiter{},
 		queryDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -160,52 +155,12 @@ func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
 			Help:      "The total number of failed queries sent to ingesters.",
 		}, []string{"ingester"}),
 	}
-	go d.Run()
 	return d, nil
-}
-
-// Run starts the distributor's maintenance loop.
-func (d *Distributor) Run() {
-	cleanupClients := time.NewTicker(d.cfg.ClientCleanupPeriod)
-	for {
-		select {
-		case <-cleanupClients.C:
-			d.removeStaleIngesterClients()
-			if d.cfg.HealthCheckIngesters {
-				d.ingesterPool.CleanUnhealthy()
-			}
-		case <-d.quit:
-			close(d.done)
-			return
-		}
-	}
 }
 
 // Stop stops the distributor's maintenance loop.
 func (d *Distributor) Stop() {
-	close(d.quit)
-	<-d.done
-}
-
-func (d *Distributor) removeStaleIngesterClients() {
-	ingesters := map[string]struct{}{}
-	replicationSet, err := d.ring.GetAll()
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error removing stale ingester clients", "err", err)
-		return
-	}
-
-	for _, ing := range replicationSet.Ingesters {
-		ingesters[ing.Addr] = struct{}{}
-	}
-
-	for _, addr := range d.ingesterPool.RegisteredAddresses() {
-		if _, ok := ingesters[addr]; ok {
-			continue
-		}
-		level.Info(util.Logger).Log("msg", "removing stale ingester client", "addr", addr)
-		d.ingesterPool.RemoveClientFor(addr)
-	}
+	d.ingesterPool.Stop()
 }
 
 func tokenForLabels(userID string, labels []client.LabelPair) (uint32, error) {

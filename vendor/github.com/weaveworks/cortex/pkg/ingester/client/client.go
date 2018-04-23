@@ -14,7 +14,6 @@ import (
 type closableIngesterClient struct {
 	IngesterClient
 	conn *grpc.ClientConn
-	cfg  Config
 }
 
 // MakeIngesterClient makes a new IngesterClient
