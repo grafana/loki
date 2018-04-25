@@ -825,7 +825,6 @@ func (b dynamoDBReadRequest) Add(tableName, hashValue string, rangeValue []byte)
 				aws.String(hashKey),
 				aws.String(valueKey),
 			},
-			ConsistentRead: aws.Bool(true),
 		}
 		b[tableName] = requests
 	}
@@ -852,7 +851,6 @@ func (b dynamoDBReadRequest) TakeReqs(from dynamoDBReadRequest, max int) {
 							aws.String(hashKey),
 							aws.String(valueKey),
 						},
-						ConsistentRead: aws.Bool(true),
 					}
 				}
 
