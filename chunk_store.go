@@ -188,7 +188,7 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 		return nil, nil
 	}
 
-	if through.After(now) {
+	if through.After(now.Add(5 * time.Minute)) {
 		// time-span end is in future ... regard as legal
 		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "adjusting end timerange from future to now", "old_through", through, "new_through", now)
 		through = now // Avoid processing future part - otherwise some schemas could fail with eg non-existent table gripes
