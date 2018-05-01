@@ -27,6 +27,7 @@ import (
 
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/util"
 )
@@ -184,7 +185,8 @@ func (a storageClient) NewWriteBatch() chunk.WriteBatch {
 	return dynamoDBWriteBatch(map[string][]*dynamodb.WriteRequest{})
 }
 
-func logRetry(unprocessed dynamoDBWriteBatch) {
+func logRetry(ctx context.Context, unprocessed dynamoDBWriteBatch) {
+	userID, _ := user.ExtractOrgID(ctx)
 	for table, reqs := range unprocessed {
 		for _, req := range reqs {
 			item := req.PutRequest.Item
@@ -197,7 +199,7 @@ func logRetry(unprocessed dynamoDBWriteBatch) {
 			if rangeAttr, ok := item[rangeKey]; ok {
 				rnge = string(rangeAttr.B)
 			}
-			util.Event().Log("msg", "store retry", "table", table, "hashKey", hash, "rangeKey", rnge)
+			util.Event().Log("msg", "store retry", "table", table, "userID", userID, "hashKey", hash, "rangeKey", rnge)
 		}
 	}
 }
@@ -242,7 +244,7 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 			// If we get provisionedThroughputExceededException, then no items were processed,
 			// so back off and retry all.
 			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
-				logRetry(requests)
+				logRetry(ctx, requests)
 				unprocessed.TakeReqs(requests, -1)
 				backoff.Wait()
 				continue
@@ -254,7 +256,7 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 
 		// If there are unprocessed items, retry those items.
 		if unprocessedItems := resp.UnprocessedItems; unprocessedItems != nil && dynamoDBWriteBatch(unprocessedItems).Len() > 0 {
-			logRetry(dynamoDBWriteBatch(unprocessedItems))
+			logRetry(ctx, dynamoDBWriteBatch(unprocessedItems))
 			unprocessed.TakeReqs(unprocessedItems, -1)
 		}
 
