@@ -6,6 +6,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/chunk/testutils"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -27,7 +28,7 @@ func (f fixture) Teardown() error {
 }
 
 // Fixtures for testing the various configuration of AWS storage.
-var Fixtures = []chunk.Fixture{
+var Fixtures = []testutils.Fixture{
 	fixture{
 		name: "S3 chunks",
 		clients: func() (chunk.StorageClient, chunk.TableClient, chunk.SchemaConfig, error) {
@@ -52,7 +53,7 @@ var Fixtures = []chunk.Fixture{
 	dynamoDBFixture(2, 10, 20),
 }
 
-func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) chunk.Fixture {
+func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) testutils.Fixture {
 	return fixture{
 		name: fmt.Sprintf("DynamoDB chunks provisionedErr=%d, ChunkGangSize=%d, ChunkGetMaxParallelism=%d",
 			provisionedErr, gangsize, maxParallelism),

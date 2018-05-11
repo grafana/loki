@@ -7,6 +7,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/chunk/testutils"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -35,7 +36,7 @@ func (f fixture) Teardown() error {
 }
 
 // Fixtures for unit testing Cassandra integration.
-func Fixtures() ([]chunk.Fixture, error) {
+func Fixtures() ([]testutils.Fixture, error) {
 	addresses := os.Getenv("CASSANDRA_TEST_ADDRESSES")
 	if addresses == "" {
 		return nil, nil
@@ -69,7 +70,7 @@ func Fixtures() ([]chunk.Fixture, error) {
 		return nil, err
 	}
 
-	return []chunk.Fixture{
+	return []testutils.Fixture{
 		fixture{
 			name:          "Cassandra",
 			storageClient: storageClient,

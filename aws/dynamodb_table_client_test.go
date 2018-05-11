@@ -41,6 +41,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
 			mtime.NowForce(tm)
+			defer mtime.NowReset()
 			if err := tableManager.SyncTables(ctx); err != nil {
 				t.Fatal(err)
 			}
@@ -322,6 +323,7 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
 			mtime.NowForce(tm)
+			defer mtime.NowReset()
 			if err := tableManager.SyncTables(ctx); err != nil {
 				t.Fatal(err)
 			}

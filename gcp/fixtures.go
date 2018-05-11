@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/chunk/testutils"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -75,7 +76,7 @@ func (f *fixture) Teardown() error {
 }
 
 // Fixtures for unit testing GCP storage.
-var Fixtures = []chunk.Fixture{
+var Fixtures = []testutils.Fixture{
 	&fixture{
 		name: "GCP",
 	},
