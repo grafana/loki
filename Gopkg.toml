@@ -35,6 +35,30 @@ required = ["github.com/weaveworks/cortex/pkg/util/wire"]
   name = "github.com/sercand/kuberesolver"
   revision = "aa801ca262949d887bbe0bae3f6f731ac82c26f6"
 
+[[constraint]]
+  name = "gopkg.in/fsnotify.v1"
+  source = "https://github.com/fsnotify/fsnotify.git"
+
+[[override]]
+  name = "k8s.io/client-go"
+  revision = "3627aeb7d4f6ade38f995d2c923e459146493c7e"
+
+[[override]]
+  name = "k8s.io/apimachinery"
+  revision = "75b8dd260ef0469d96d578705a87cffd0e09dab8"
+
+[[override]]
+  name = "github.com/ugorji/go"
+  revision = "708a42d246822952f38190a8d8c4e6b16a0e600c"
+
+[[override]]
+  name = "github.com/Azure/azure-sdk-for-go"
+  revision = "bd73d950fa4440dae889bd9917bff7cef539f86e"
+
+[[override]]
+  name = "github.com/Azure/go-autorest"
+  revision = "8a25372bbfec739b8719a9e3987400d15ef9e179"
+
 [prune]
   go-tests = true
   unused-packages = true

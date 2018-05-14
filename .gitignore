@@ -9,5 +9,6 @@ pkg/parser/labels.go
 cmd/distributor/distributor
 cmd/ingester/ingester
 cmd/querier/querier
+cmd/promtail/promtail
 *.output
-images/
+/images/
