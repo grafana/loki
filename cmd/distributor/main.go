@@ -3,19 +3,25 @@ package main
 import (
 	"flag"
 	"net/http"
+	"os"
 
+	"github.com/prometheus/common/promlog"
 	log "github.com/sirupsen/logrus"
+	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+
 	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/logish/pkg/distributor"
+	"github.com/grafana/logish/pkg/flagext"
 )
 
 func main() {
 	var (
+		flagset      = flag.NewFlagSet("", flag.ExitOnError)
 		serverConfig = server.Config{
 			MetricsNamespace: "logish",
 			GRPCMiddleware: []grpc.UnaryServerInterceptor{
@@ -24,9 +30,14 @@ func main() {
 		}
 		ringConfig        ring.Config
 		distributorConfig distributor.Config
+		logLevel          = promlog.AllowedLevel{}
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig)
-	flag.Parse()
+	flagext.Var(flagset, &logLevel, "log.level", "info", "")
+	flagext.RegisterConfigs(flagset, &serverConfig, &ringConfig, &distributorConfig)
+	flagset.Parse(os.Args[1:])
+
+	logging.Setup(logLevel.String())
+	util.InitLogger(logLevel)
 
 	r, err := ring.New(ringConfig)
 	if err != nil {
@@ -45,6 +56,6 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	server.HTTP.Handle("/api/push", http.HandlerFunc(distributor.PushHandler))
+	server.HTTP.Handle("/api/prom/push", http.HandlerFunc(distributor.PushHandler))
 	server.Run()
 }
