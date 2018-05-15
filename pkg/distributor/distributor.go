@@ -5,12 +5,12 @@ import (
 	"flag"
 	"hash/fnv"
 	"sync/atomic"
+	"time"
 
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
-	cortex "github.com/weaveworks/cortex/pkg/distributor"
 	cortex_client "github.com/weaveworks/cortex/pkg/ingester/client"
 	"github.com/weaveworks/cortex/pkg/ring"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -46,15 +46,16 @@ func init() {
 
 // Config for a Distributor.
 type Config struct {
-	cortex.Config
-	ClientConfig client.Config
-	PoolConfig   cortex_client.PoolConfig
+	RemoteTimeout time.Duration
+	ClientConfig  client.Config
+	PoolConfig    cortex_client.PoolConfig
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.Config.RegisterFlags(f)
 	cfg.ClientConfig.RegisterFlags(f)
 	cfg.PoolConfig.RegisterFlags(f)
+
+	f.DurationVar(&cfg.RemoteTimeout, "ingester.remote-timeout", 10*time.Second, "")
 }
 
 // Distributor coordinates replicates and distribution of log streams.

@@ -7,7 +7,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/cortex/pkg/ring"
 	"github.com/weaveworks/cortex/pkg/util"
 	"google.golang.org/grpc"
 
@@ -23,12 +22,12 @@ func main() {
 				middleware.ServerUserHeaderInterceptor,
 			},
 		}
-		ringConfig     ring.Config
 		ingesterConfig ingester.Config
 	)
-	util.RegisterFlags(&serverConfig, &ringConfig, &ingesterConfig)
+	util.RegisterFlags(&serverConfig, &ingesterConfig)
 	flag.Parse()
 
+	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
 	ingester, err := ingester.New(ingesterConfig)
 	if err != nil {
 		log.Fatalf("Error initializing ingester: %v", err)

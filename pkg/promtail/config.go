@@ -12,7 +12,7 @@ import (
 )
 
 type Config struct {
-	ScrapeConfig []ScrapeConfig `yaml:"scrape_config,omitempty"`
+	ScrapeConfig []ScrapeConfig `yaml:"scrape_configs,omitempty"`
 
 	// Catches all undefined fields and must be empty after parsing.
 	XXX map[string]interface{} `yaml:",inline"`
