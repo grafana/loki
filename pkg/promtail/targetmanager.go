@@ -30,6 +30,15 @@ type TargetManager struct {
 	quit context.CancelFunc
 }
 
+func hostname() (string, error) {
+	hostname := os.Getenv("HOSTNAME")
+	if hostname != "" {
+		return hostname, nil
+	}
+
+	return os.Hostname()
+}
+
 func NewTargetManager(
 	logger log.Logger,
 	scrapeConfig []ScrapeConfig,
@@ -43,7 +52,7 @@ func NewTargetManager(
 		quit:    quit,
 	}
 
-	hostname, err := os.Hostname()
+	hostname, err := hostname()
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +78,6 @@ func NewTargetManager(
 
 func (tm *TargetManager) run() {
 	for targetGoups := range tm.manager.SyncCh() {
-		//map[string][]*targetgroup.Group
 		for jobName, groups := range targetGoups {
 			tm.syncers[jobName].Sync(groups)
 		}
@@ -106,6 +114,7 @@ func (s *syncer) Sync(groups []*targetgroup.Group) {
 
 			host, ok := labels[hostLabel]
 			if ok && string(host) != s.hostname {
+				level.Debug(s.log).Log("msg", "ignoring target, wrong host", "labels", labels.String(), "hostname", s.hostname)
 				continue
 			}
 
@@ -124,6 +133,7 @@ func (s *syncer) Sync(groups []*targetgroup.Group) {
 			key := labels.String()
 			targets[key] = struct{}{}
 			if _, ok := s.targets[key]; ok {
+				level.Debug(s.log).Log("msg", "ignoring target, already exists", "labels", labels.String())
 				continue
 			}
 
