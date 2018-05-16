@@ -75,7 +75,7 @@ func ReadBatch(i EntryIterator, size int) (*logproto.QueryResponse, error) {
 	}
 
 	result := logproto.QueryResponse{
-		Streams: make([]*logproto.Stream, len(streams)),
+		Streams: make([]*logproto.Stream, 0, len(streams)),
 	}
 	for _, stream := range streams {
 		result.Streams = append(result.Streams, stream)
