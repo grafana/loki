@@ -196,7 +196,7 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester *ring.Ingeste
 	}
 
 	req := &logproto.PushRequest{
-		Streams: make([]*logproto.Stream, 0, len(streams)),
+		Streams: make([]*logproto.Stream, len(streams)),
 	}
 	for i, s := range streams {
 		req.Streams[i] = s.stream
