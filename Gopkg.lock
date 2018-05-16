@@ -39,18 +39,6 @@
   revision = "de5bf2ad457846296e2031421a34e2568e304e35"
 
 [[projects]]
-  name = "github.com/Shopify/sarama"
-  packages = ["."]
-  revision = "f7be6aa2bc7b2e38edf816b08b582782194a1c02"
-  version = "v1.16.0"
-
-[[projects]]
-  name = "github.com/apache/thrift"
-  packages = ["lib/go/thrift"]
-  revision = "327ebb6c2b6df8bf075da02ef45a2a034e9b79ba"
-  version = "0.11.0"
-
-[[projects]]
   name = "github.com/aws/aws-sdk-go"
   packages = [
     "aws",
@@ -122,24 +110,6 @@
   ]
   revision = "48294d928ced5dd9b378f7fd7c6f5da3ff3f2c89"
   version = "v2.6.2"
-
-[[projects]]
-  name = "github.com/eapache/go-resiliency"
-  packages = ["breaker"]
-  revision = "ea41b0fad31007accc7f806884dcdf3da98b79ce"
-  version = "v1.1.0"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/eapache/go-xerial-snappy"
-  packages = ["."]
-  revision = "bb955e01b9346ac19dc29eb16586c90ded99a98c"
-
-[[projects]]
-  name = "github.com/eapache/queue"
-  packages = ["."]
-  revision = "44cc805cf13205b55f69e14bcb69867d1ae92f98"
-  version = "v1.1.0"
 
 [[projects]]
   name = "github.com/emicklei/go-restful"
@@ -286,7 +256,7 @@
   branch = "master"
   name = "github.com/grpc-ecosystem/grpc-opentracing"
   packages = ["go/otgrpc"]
-  revision = "0e7658f8ee99ee5aa683e2a032b8880091b7a055"
+  revision = "8e809c8a86450a29b90dcc9efbf062d0fe6d9746"
 
 [[projects]]
   name = "github.com/hashicorp/consul"
@@ -383,12 +353,6 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/opentracing-contrib/go-observer"
-  packages = ["."]
-  revision = "a52f2342449246d5bcc273e65cbdcfa5f7d6c63c"
-
-[[projects]]
-  branch = "master"
   name = "github.com/opentracing-contrib/go-stdlib"
   packages = ["nethttp"]
   revision = "36723135187404d2f4002f4f189938565e64cc5c"
@@ -402,31 +366,6 @@
   ]
   revision = "1949ddbfd147afd4d964a9f00b24eb291e0e7c38"
   version = "v1.0.2"
-
-[[projects]]
-  name = "github.com/openzipkin/zipkin-go-opentracing"
-  packages = [
-    ".",
-    "flag",
-    "thrift/gen-go/scribe",
-    "thrift/gen-go/zipkincore",
-    "types",
-    "wire"
-  ]
-  revision = "4c9fbcbd6d73a644fd17214fe475296780c68fb5"
-  version = "v0.3.3"
-
-[[projects]]
-  name = "github.com/pierrec/lz4"
-  packages = ["."]
-  revision = "2fcda4cb7018ce05a25959d2fe08c83e3329f169"
-  version = "v1.1"
-
-[[projects]]
-  name = "github.com/pierrec/xxHash"
-  packages = ["xxHash32"]
-  revision = "f051bb7f1d1aaf1b5a665d74fb6b0217712c69f7"
-  version = "v0.1.1"
 
 [[projects]]
   name = "github.com/pkg/errors"
@@ -504,12 +443,6 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/rcrowley/go-metrics"
-  packages = ["."]
-  revision = "d932a24a8ccb8fcadc993e5c6c58f93dac168294"
-
-[[projects]]
-  branch = "master"
   name = "github.com/samuel/go-zookeeper"
   packages = ["zk"]
   revision = "c4fab1ac1bec58281ad0667dc3f0907a9476ac47"
@@ -546,13 +479,7 @@
   revision = "708a42d246822952f38190a8d8c4e6b16a0e600c"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/weaveworks-experiments/loki"
-  packages = ["pkg/client"]
-  revision = "80bb2c795b3f88e2d2ce5dad6b26bd790806f2c8"
-
-[[projects]]
-  branch = "master"
+  branch = "stream-middleware"
   name = "github.com/weaveworks/common"
   packages = [
     "errors",
@@ -565,7 +492,8 @@
     "signals",
     "user"
   ]
-  revision = "ebab3a78900a09cebce8d0b37f2a69d474796bf4"
+  revision = "59cfd4d5230f01812158ad90a64257d1c9b43bed"
+  source = "github.com/tomwilkie/weaveworks-common"
 
 [[projects]]
   branch = "factorings"
@@ -886,6 +814,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "409d8970a073ff200484a0122c71861f933cb397866c4b2e3cc0c88329688ff5"
+  inputs-digest = "f2dd40edc3d19bf19d5233c8cf72ca403c7f3c9dbd63c63807ca438885f46c87"
   solver-name = "gps-cdcl"
   solver-version = 1

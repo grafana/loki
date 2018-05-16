@@ -18,22 +18,12 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"github.com/weaveworks-experiments/loki/pkg/client"
 	"github.com/weaveworks/common/httpgrpc"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/signals"
 )
-
-func init() {
-	tracer, err := loki.NewTracer()
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create tracer: %v", err))
-	} else {
-		opentracing.InitGlobalTracer(tracer)
-	}
-}
 
 // Config for a Server
 type Config struct {
@@ -49,9 +39,10 @@ type Config struct {
 	HTTPServerWriteTimeout        time.Duration
 	HTTPServerIdleTimeout         time.Duration
 
-	GRPCOptions    []grpc.ServerOption
-	GRPCMiddleware []grpc.UnaryServerInterceptor
-	HTTPMiddleware []middleware.Interface
+	GRPCOptions          []grpc.ServerOption
+	GRPCMiddleware       []grpc.UnaryServerInterceptor
+	GRPCStreamMiddleware []grpc.StreamServerInterceptor
+	HTTPMiddleware       []middleware.Interface
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -106,13 +97,24 @@ func New(cfg Config) (*Server, error) {
 	serverLog := middleware.GRPCServerLog{WithRequest: !cfg.ExcludeRequestInLog}
 	grpcMiddleware := []grpc.UnaryServerInterceptor{
 		serverLog.UnaryServerInterceptor,
-		middleware.ServerInstrumentInterceptor(requestDuration),
+		middleware.UnaryServerInstrumentInterceptor(requestDuration),
 		otgrpc.OpenTracingServerInterceptor(opentracing.GlobalTracer()),
 	}
 	grpcMiddleware = append(grpcMiddleware, cfg.GRPCMiddleware...)
+
+	grpcStreamMiddleware := []grpc.StreamServerInterceptor{
+		serverLog.StreamServerInterceptor,
+		middleware.StreamServerInstrumentInterceptor(requestDuration),
+		otgrpc.OpenTracingStreamServerInterceptor(opentracing.GlobalTracer()),
+	}
+	grpcStreamMiddleware = append(grpcStreamMiddleware, cfg.GRPCStreamMiddleware...)
+
 	grpcOptions := []grpc.ServerOption{
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
 			grpcMiddleware...,
+		)),
+		grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
+			grpcStreamMiddleware...,
 		)),
 	}
 	grpcOptions = append(grpcOptions, cfg.GRPCOptions...)
@@ -156,7 +158,6 @@ func New(cfg Config) (*Server, error) {
 // RegisterInstrumentation on the given router.
 func RegisterInstrumentation(router *mux.Router) {
 	router.Handle("/metrics", prometheus.Handler())
-	router.Handle("/traces", loki.Handler())
 	router.PathPrefix("/debug/pprof").Handler(http.DefaultServeMux)
 }
 

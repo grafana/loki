@@ -26,8 +26,13 @@
 
 [[constraint]]
   name = "github.com/weaveworks/cortex"
-  branch = "factorings"
   source = "github.com/grafana/cortex"
+  branch = "factorings"
+
+[[constraint]]
+  name = "github.com/weaveworks/common"
+  source = "github.com/tomwilkie/weaveworks-common"
+  branch = "stream-middleware"
 
 [[override]]
   name = "github.com/sercand/kuberesolver"
@@ -36,6 +41,8 @@
 [[constraint]]
   name = "gopkg.in/fsnotify.v1"
   source = "https://github.com/fsnotify/fsnotify.git"
+
+# For Prometheus
 
 [[override]]
   name = "k8s.io/client-go"
