@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/opentracing-contrib/go-stdlib/nethttp"
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/promlog"
 	log "github.com/sirupsen/logrus"
 	"github.com/weaveworks/common/logging"
@@ -55,6 +57,14 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	server.HTTP.Handle("/api/prom/query", http.HandlerFunc(querier.QueryHandler))
+	operationNameFunc := nethttp.OperationNameFunc(func(r *http.Request) string {
+		return r.URL.RequestURI()
+	})
+	server.HTTP.Handle("/api/prom/query", middleware.Merge(
+		middleware.Func(func(handler http.Handler) http.Handler {
+			return nethttp.Middleware(opentracing.GlobalTracer(), handler, operationNameFunc)
+		}),
+		middleware.AuthenticateUser,
+	).Wrap(http.HandlerFunc(querier.QueryHandler)))
 	server.Run()
 }
