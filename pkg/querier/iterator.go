@@ -121,7 +121,10 @@ func (i *heapIterator) Labels() string {
 }
 
 func (i *heapIterator) Error() error {
-	return i.curr.Error()
+	if i.curr != nil {
+		return i.curr.Error()
+	}
+	return nil
 }
 
 func (i *heapIterator) Close() error {

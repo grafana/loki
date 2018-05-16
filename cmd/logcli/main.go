@@ -1,7 +1,7 @@
 package main
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,7 +9,6 @@ import (
 	"os"
 
 	"github.com/grafana/logish/pkg/logproto"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 var defaultAddr = "https://log-us.grafana.net/api/prom/query"
@@ -41,9 +40,8 @@ func main() {
 	defer resp.Body.Close()
 
 	var queryResponse logproto.QueryResponse
-	if bs, err := util.ParseProtoReader(context.Background(), resp.Body, &queryResponse, util.RawSnappy); err != nil {
-		log.Printf("Error decoding response: %v", err)
-		log.Fatal(string(bs))
+	if err := json.NewDecoder(resp.Body).Decode(&queryResponse); err != nil {
+		log.Fatalf("Error decoding response: %v", err)
 	}
 
 	fmt.Println(queryResponse.String())
