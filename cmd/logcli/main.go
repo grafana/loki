@@ -28,7 +28,7 @@ func main() {
 	username := os.Getenv("GRAFANA_USERNAME")
 	password := os.Getenv("GRAFANA_PASSWORD")
 
-	req, err := http.NewRequest("GET", addr+"?"+url.QueryEscape(query), nil)
+	req, err := http.NewRequest("GET", addr+"?query="+url.QueryEscape(query), nil)
 	if err != nil {
 		log.Fatalf("Error creating request: %v", err)
 	}

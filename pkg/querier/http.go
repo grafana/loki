@@ -14,10 +14,10 @@ const (
 )
 
 func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
-	query := r.FormValue("query")
-
+	params := r.URL.Query()
+	query := params.Get("query")
 	limit := defaultQueryLimit
-	if limitStr := r.FormValue("limit"); limitStr != "" {
+	if limitStr := params.Get("limit"); limitStr != "" {
 		var err error
 		limit, err = strconv.Atoi(limitStr)
 		if err != nil {
