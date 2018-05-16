@@ -152,12 +152,6 @@
   version = "v1.2"
 
 [[projects]]
-  name = "github.com/fluent/fluent-logger-golang"
-  packages = ["fluent"]
-  revision = "8bbc2356beaf021b04c9bd5cdc76ea5a7ccb40ec"
-  version = "v1.3.0"
-
-[[projects]]
   name = "github.com/ghodss/yaml"
   packages = ["."]
   revision = "0ca9ea5df5451ffdf184b4428c902747c2c11cd7"
@@ -389,18 +383,6 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/nightlyone/lockfile"
-  packages = ["."]
-  revision = "6a197d5ea61168f2ac821de2b7f011b250904900"
-
-[[projects]]
-  name = "github.com/oklog/ulid"
-  packages = ["."]
-  revision = "d311cb43c92434ec4072dfbbda3400741d0a6337"
-  version = "v0.3.0"
-
-[[projects]]
-  branch = "master"
   name = "github.com/opentracing-contrib/go-observer"
   packages = ["."]
   revision = "a52f2342449246d5bcc273e65cbdcfa5f7d6c63c"
@@ -433,12 +415,6 @@
   ]
   revision = "4c9fbcbd6d73a644fd17214fe475296780c68fb5"
   version = "v0.3.3"
-
-[[projects]]
-  name = "github.com/philhofer/fwd"
-  packages = ["."]
-  revision = "bb6d471dc95d4fe11e432687f8b70ff496cf3136"
-  version = "v1.0.0"
 
 [[projects]]
   name = "github.com/pierrec/lz4"
@@ -519,33 +495,12 @@
     "discovery/triton",
     "discovery/zookeeper",
     "pkg/labels",
-    "pkg/textparse",
-    "pkg/timestamp",
-    "pkg/value",
-    "promql",
     "relabel",
-    "storage",
-    "storage/tsdb",
     "util/httputil",
-    "util/stats",
     "util/strutil",
-    "util/testutil",
     "util/treecache"
   ]
   revision = "e7584ee34560040c30c373fedba040b079dcac8c"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/prometheus/tsdb"
-  packages = [
-    ".",
-    "chunkenc",
-    "chunks",
-    "fileutil",
-    "index",
-    "labels"
-  ]
-  revision = "def6e5a57439cffe7b44a619c05bce4ac513a63e"
 
 [[projects]]
   branch = "master"
@@ -586,12 +541,6 @@
   version = "v1.2.1"
 
 [[projects]]
-  name = "github.com/tinylib/msgp"
-  packages = ["msgp"]
-  revision = "b2b6a672cf1e5b90748f79b8b81fc8c5cf0571a1"
-  version = "1.0.2"
-
-[[projects]]
   name = "github.com/ugorji/go"
   packages = ["codec"]
   revision = "708a42d246822952f38190a8d8c4e6b16a0e600c"
@@ -601,12 +550,6 @@
   name = "github.com/weaveworks-experiments/loki"
   packages = ["pkg/client"]
   revision = "80bb2c795b3f88e2d2ce5dad6b26bd790806f2c8"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/weaveworks/billing-client"
-  packages = ["."]
-  revision = "967593a9e8c8c62d1a9a3fbf34b120aa48581d0e"
 
 [[projects]]
   branch = "master"
@@ -628,14 +571,13 @@
   branch = "factorings"
   name = "github.com/weaveworks/cortex"
   packages = [
-    "pkg/distributor",
     "pkg/ingester/client",
     "pkg/prom1/storage/metric",
     "pkg/ring",
     "pkg/util",
     "pkg/util/wire"
   ]
-  revision = "8125ff559d5a568973733b9956008e80f06df6d1"
+  revision = "a7ae1856c854235e65a7ce4cdb20a87cd8bb8b90"
   source = "github.com/grafana/cortex"
 
 [[projects]]
@@ -688,12 +630,6 @@
 
 [[projects]]
   branch = "master"
-  name = "golang.org/x/sync"
-  packages = ["errgroup"]
-  revision = "1d60e4601c6fd243af51cc01ddf169918a5407ca"
-
-[[projects]]
-  branch = "master"
   name = "golang.org/x/sys"
   packages = [
     "unix",
@@ -722,12 +658,6 @@
   ]
   revision = "f21a4dfb5e38f5895301dc265a8def02365cc3d0"
   version = "v0.3.0"
-
-[[projects]]
-  branch = "master"
-  name = "golang.org/x/time"
-  packages = ["rate"]
-  revision = "fbb02b2291d28baffd63558aa44b4b56f178d650"
 
 [[projects]]
   branch = "master"
@@ -956,6 +886,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "fcb37a3c4494bfced1301e631252679131369fb830106defab3cc156c1e6fc69"
+  inputs-digest = "409d8970a073ff200484a0122c71861f933cb397866c4b2e3cc0c88329688ff5"
   solver-name = "gps-cdcl"
   solver-version = 1
