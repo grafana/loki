@@ -10,7 +10,7 @@ import (
 
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	var req logproto.PushRequest
-	if _, err := util.ParseProtoRequest(r.Context(), r, &req, util.RawSnappy); err != nil {
+	if _, err := util.ParseProtoReader(r.Context(), r.Body, &req, util.RawSnappy); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

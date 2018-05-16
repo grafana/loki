@@ -15,9 +15,9 @@ const (
 
 func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
 	query := r.FormValue("query")
-	limitStr := r.FormValue("limit")
+
 	limit := defaultQueryLimit
-	if limitStr != "" {
+	if limitStr := r.FormValue("limit"); limitStr != "" {
 		var err error
 		limit, err = strconv.Atoi(limitStr)
 		if err != nil {
