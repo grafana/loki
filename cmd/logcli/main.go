@@ -41,7 +41,7 @@ func main() {
 	defer resp.Body.Close()
 
 	var queryResponse logproto.QueryResponse
-	if bs, err := util.ParseProtoRequest(context.Background(), resp.Body, &queryResponse, util.RawSnappy); err != nil {
+	if bs, err := util.ParseProtoReader(context.Background(), resp.Body, &queryResponse, util.RawSnappy); err != nil {
 		log.Printf("Error decoding response: %v", err)
 		log.Fatal(string(bs))
 	}
