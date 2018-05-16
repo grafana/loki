@@ -26,6 +26,9 @@ func main() {
 			GRPCMiddleware: []grpc.UnaryServerInterceptor{
 				middleware.ServerUserHeaderInterceptor,
 			},
+			GRPCStreamMiddleware: []grpc.StreamServerInterceptor{
+				middleware.StreamServerUserHeaderInterceptor,
+			},
 		}
 		ingesterConfig ingester.Config
 		logLevel       = promlog.AllowedLevel{}
@@ -50,6 +53,7 @@ func main() {
 	defer server.Shutdown()
 
 	logproto.RegisterPusherServer(server.GRPC, ingester)
+	logproto.RegisterQuerierServer(server.GRPC, ingester)
 	server.HTTP.Path("/ready").Handler(http.HandlerFunc(ingester.ReadinessHandler))
 	server.Run()
 }

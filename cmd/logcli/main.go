@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -38,6 +39,11 @@ func main() {
 		log.Fatalf("Error doing request: %v", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode/100 != 2 {
+		buf, err := ioutil.ReadAll(resp.Body)
+		log.Fatalf("Error response from server: %s (%v)", string(buf), err)
+	}
 
 	var queryResponse logproto.QueryResponse
 	if err := json.NewDecoder(resp.Body).Decode(&queryResponse); err != nil {
