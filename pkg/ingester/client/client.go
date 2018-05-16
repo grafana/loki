@@ -38,10 +38,10 @@ func New(cfg Config, addr string) (grpc_health_v1.HealthClient, error) {
 		return nil, err
 	}
 	return struct {
-		grpc_health_v1.HealthClient
+		logproto.PusherClient
 		io.Closer
 	}{
-		HealthClient: logproto.NewPusherClient(conn),
+		PusherClient: logproto.NewPusherClient(conn),
 		Closer:       conn,
 	}, nil
 }
