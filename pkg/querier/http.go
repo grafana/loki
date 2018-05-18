@@ -1,32 +1,72 @@
 package querier
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/grafana/logish/pkg/logproto"
 )
 
 const (
 	defaultQueryLimit = 100
+	defaulSince       = 1 * time.Hour
 )
+
+func intParam(values url.Values, name string, def int) (int, error) {
+	value := values.Get("limit")
+	if value == "" {
+		return def, nil
+	}
+
+	return strconv.Atoi(value)
+}
+
+func unixTimeParam(values url.Values, name string, def time.Time) (time.Time, error) {
+	value := values.Get("limit")
+	if value == "" {
+		return def, nil
+	}
+
+	secs, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	return time.Unix(secs, 0), nil
+}
 
 func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
 	params := r.URL.Query()
 	query := params.Get("query")
-	limit := defaultQueryLimit
-	if limitStr := params.Get("limit"); limitStr != "" {
-		var err error
-		limit, err = strconv.Atoi(limitStr)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+	limit, err := intParam(params, "limit", defaultQueryLimit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	result, err := q.Query(r.Context(), query, limit)
+	now := time.Now()
+	start, err := unixTimeParam(params, "start", now.Add(-defaulSince))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	end, err := unixTimeParam(params, "end", now)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	request := logproto.QueryRequest{
+		Query: query,
+		Limit: uint32(limit),
+		Start: start,
+		End:   end,
+	}
+	result, err := q.Query(r.Context(), &request)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -36,49 +76,4 @@ func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-}
-
-func (q *Querier) Query(ctx context.Context, query string, limit int) (*logproto.QueryResponse, error) {
-	req := &logproto.QueryRequest{
-		Query: query,
-	}
-	clients, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
-		return client.Query(ctx, req)
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	iterators := make([]EntryIterator, len(clients))
-	for i := range clients {
-		iterators[i] = newQueryClientIterator(clients[i].(logproto.Querier_QueryClient))
-	}
-	iterator := NewHeapIterator(iterators)
-	defer iterator.Close()
-
-	return ReadBatch(iterator, limit)
-}
-
-func ReadBatch(i EntryIterator, size int) (*logproto.QueryResponse, error) {
-	streams := map[string]*logproto.Stream{}
-
-	for respSize := 0; respSize < size && i.Next(); respSize++ {
-		labels, entry := i.Labels(), i.Entry()
-		stream, ok := streams[labels]
-		if !ok {
-			stream = &logproto.Stream{
-				Labels: labels,
-			}
-			streams[labels] = stream
-		}
-		stream.Entries = append(stream.Entries, entry)
-	}
-
-	result := logproto.QueryResponse{
-		Streams: make([]*logproto.Stream, 0, len(streams)),
-	}
-	for _, stream := range streams {
-		result.Streams = append(result.Streams, stream)
-	}
-	return &result, i.Error()
 }

@@ -89,6 +89,48 @@ func (q *Querier) forAllIngesters(f func(logproto.QuerierClient) (interface{}, e
 	return result, nil
 }
 
+func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logproto.QueryResponse, error) {
+	clients, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
+		return client.Query(ctx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	iterators := make([]EntryIterator, len(clients))
+	for i := range clients {
+		iterators[i] = newQueryClientIterator(clients[i].(logproto.Querier_QueryClient))
+	}
+	iterator := NewHeapIterator(iterators)
+	defer iterator.Close()
+
+	return ReadBatch(iterator, req.Limit)
+}
+
+func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, error) {
+	streams := map[string]*logproto.Stream{}
+
+	for respSize := uint32(0); respSize < size && i.Next(); respSize++ {
+		labels, entry := i.Labels(), i.Entry()
+		stream, ok := streams[labels]
+		if !ok {
+			stream = &logproto.Stream{
+				Labels: labels,
+			}
+			streams[labels] = stream
+		}
+		stream.Entries = append(stream.Entries, entry)
+	}
+
+	result := logproto.QueryResponse{
+		Streams: make([]*logproto.Stream, 0, len(streams)),
+	}
+	for _, stream := range streams {
+		result.Streams = append(result.Streams, stream)
+	}
+	return &result, i.Error()
+}
+
 // Check implements the grpc healthcheck
 func (*Querier) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
