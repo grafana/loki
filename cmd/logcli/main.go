@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -22,20 +23,31 @@ import (
 var defaultAddr = "https://log-us.grafana.net/api/prom/query"
 
 func main() {
-	if len(os.Args) != 2 {
-		log.Fatalf("usage: %s foo=bar,baz=blip", os.Args[0])
+	var (
+		limit = flag.Int("limit", 30, "Limit on number of entries to print")
+		since = flag.Duration("since", 1*time.Hour, "Lookback window")
+	)
+
+	flag.Parse()
+	args := flag.Args()
+	if len(args) != 1 {
+		log.Fatalf("usage: %s '{foo=\"bar\",baz=\"blip\"}''", os.Args[0])
 	}
 
-	query := os.Args[1]
+	query := args[0]
 	addr := os.Getenv("GRAFANA_ADDR")
 	if addr == "" {
 		addr = defaultAddr
 	}
 
+	end := time.Now()
+	start := end.Add(-*since)
 	username := os.Getenv("GRAFANA_USERNAME")
 	password := os.Getenv("GRAFANA_PASSWORD")
+	url := fmt.Sprintf("%s?query=%s&limit=%d&start=%d&end=%d",
+		addr, url.QueryEscape(query), *limit, start.Unix(), end.Unix())
 
-	req, err := http.NewRequest("GET", addr+"?query="+url.QueryEscape(query), nil)
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Fatalf("Error creating request: %v", err)
 	}
