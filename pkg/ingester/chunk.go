@@ -52,10 +52,12 @@ func (c *dumbChunk) Size() int {
 	return len(c.entries)
 }
 
+// Returns an iterator that goes from _most_ recent to _least_ recent (ie,
+// backwards).
 func (c *dumbChunk) Iterator() querier.EntryIterator {
 	// Take a copy of the entries to avoid locking
 	return &dumbChunkIterator{
-		i:       -1,
+		i:       len(c.entries),
 		entries: c.entries,
 	}
 }
@@ -66,8 +68,8 @@ type dumbChunkIterator struct {
 }
 
 func (i *dumbChunkIterator) Next() bool {
-	i.i++
-	return i.i < len(i.entries)
+	i.i--
+	return i.i >= 0
 }
 
 func (i *dumbChunkIterator) Entry() logproto.Entry {
@@ -75,7 +77,7 @@ func (i *dumbChunkIterator) Entry() logproto.Entry {
 }
 
 func (i *dumbChunkIterator) Labels() string {
-	return ""
+	panic("Labels() called on chunk iterator")
 }
 
 func (i *dumbChunkIterator) Error() error {

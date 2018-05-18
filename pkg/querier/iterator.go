@@ -57,7 +57,7 @@ type iteratorHeap []EntryIterator
 
 func (h iteratorHeap) Len() int { return len(h) }
 func (h iteratorHeap) Less(i, j int) bool {
-	return h[i].Entry().Timestamp.Before(h[j].Entry().Timestamp)
+	return h[i].Entry().Timestamp.After(h[j].Entry().Timestamp)
 }
 func (h iteratorHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
 
