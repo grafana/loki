@@ -24,6 +24,9 @@ message PushResponse {
 
 message QueryRequest {
   string query = 1;
+  uint32 limit = 2;
+  google.protobuf.Timestamp start = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp end = 4 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
 }
 
 message QueryResponse {

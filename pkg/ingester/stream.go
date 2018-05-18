@@ -45,6 +45,8 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry) error {
 	return nil
 }
 
+// Returns an iterator that goes from _most_ recent to _least_ recent (ie,
+// backwards).
 func (s *stream) Iterator() querier.EntryIterator {
 	iterators := make([]querier.EntryIterator, len(s.chunks))
 	for i, c := range s.chunks {
