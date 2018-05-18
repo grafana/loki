@@ -20,6 +20,7 @@ type Chunk interface {
 	SpaceFor(*logproto.Entry) bool
 	Push(*logproto.Entry) error
 	Iterator() querier.EntryIterator
+	Size() int
 }
 
 func newChunk() Chunk {
@@ -31,7 +32,7 @@ type dumbChunk struct {
 }
 
 func (c *dumbChunk) SpaceFor(_ *logproto.Entry) bool {
-	return len(c.entries) == tmpNumEntries
+	return len(c.entries) < tmpNumEntries
 }
 
 func (c *dumbChunk) Push(entry *logproto.Entry) error {
@@ -45,6 +46,10 @@ func (c *dumbChunk) Push(entry *logproto.Entry) error {
 
 	c.entries = append(c.entries, *entry)
 	return nil
+}
+
+func (c *dumbChunk) Size() int {
+	return len(c.entries)
 }
 
 func (c *dumbChunk) Iterator() querier.EntryIterator {
