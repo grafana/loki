@@ -151,8 +151,8 @@ func (i *heapIterator) Close() error {
 	return nil
 }
 
-func queryResponseIterator(resp *logproto.QueryResponse) EntryIterator {
-	is := make([]EntryIterator, len(resp.Streams))
+func NewQueryResponseIterator(resp *logproto.QueryResponse) EntryIterator {
+	is := make([]EntryIterator, 0, len(resp.Streams))
 	for i := range resp.Streams {
 		is = append(is, newStreamIterator(resp.Streams[i]))
 	}
@@ -181,7 +181,7 @@ func (i *queryClientIterator) Next() bool {
 			return false
 		}
 
-		i.curr = queryResponseIterator(batch)
+		i.curr = NewQueryResponseIterator(batch)
 	}
 
 	return true

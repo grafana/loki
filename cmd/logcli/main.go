@@ -8,8 +8,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
+	"time"
+
+	"github.com/fatih/color"
 
 	"github.com/grafana/logish/pkg/logproto"
+	"github.com/grafana/logish/pkg/querier"
 )
 
 var defaultAddr = "https://log-us.grafana.net/api/prom/query"
@@ -50,5 +55,16 @@ func main() {
 		log.Fatalf("Error decoding response: %v", err)
 	}
 
-	fmt.Println(queryResponse.String())
+	iter := querier.NewQueryResponseIterator(&queryResponse)
+	for iter.Next() {
+		fmt.Println(
+			color.BlueString(iter.Entry().Timestamp.Format(time.RFC822)),
+			color.RedString(iter.Labels()),
+			strings.TrimSpace(iter.Entry().Line),
+		)
+	}
+
+	if err := iter.Error(); err != nil {
+		log.Fatalf("Error from iterator: %v", err)
+	}
 }
