@@ -33,3 +33,16 @@ func (s GRPCServerLog) UnaryServerInterceptor(ctx context.Context, req interface
 	}
 	return resp, err
 }
+
+// StreamServerInterceptor returns an interceptor that logs gRPC requests
+func (s GRPCServerLog) StreamServerInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	begin := time.Now()
+	err := handler(srv, ss)
+	entry := logging.With(ss.Context()).WithFields(log.Fields{"method": info.FullMethod, "duration": time.Since(begin)})
+	if err != nil {
+		entry.WithError(err).Warn(gRPC)
+	} else {
+		entry.Debugf("%s (success)", gRPC)
+	}
+	return err
+}

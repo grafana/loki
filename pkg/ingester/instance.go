@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"log"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -64,6 +65,7 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	// TODO: lock smell
 	i.streamsMtx.Lock()
 	ids := i.index.lookup(matchers)
+	log.Printf("matchers: %+v, ids: %+v", matchers, ids)
 	iterators := make([]querier.EntryIterator, len(ids))
 	for j := range ids {
 		stream, ok := i.streams[ids[j]]

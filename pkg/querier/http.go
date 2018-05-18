@@ -14,10 +14,10 @@ const (
 )
 
 func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
-	query := r.FormValue("query")
-	limitStr := r.FormValue("limit")
+	params := r.URL.Query()
+	query := params.Get("query")
 	limit := defaultQueryLimit
-	if limitStr != "" {
+	if limitStr := params.Get("limit"); limitStr != "" {
 		var err error
 		limit, err = strconv.Atoi(limitStr)
 		if err != nil {
@@ -75,7 +75,7 @@ func ReadBatch(i EntryIterator, size int) (*logproto.QueryResponse, error) {
 	}
 
 	result := logproto.QueryResponse{
-		Streams: make([]*logproto.Stream, len(streams)),
+		Streams: make([]*logproto.Stream, 0, len(streams)),
 	}
 	for _, stream := range streams {
 		result.Streams = append(result.Streams, stream)

@@ -137,7 +137,6 @@ type tailer struct {
 	target *Target
 	path   string
 	tail   *tail.Tail
-	quit   chan struct{}
 }
 
 func newTailer(target *Target, dir, name string) (*tailer, error) {
@@ -157,7 +156,6 @@ func newTailer(target *Target, dir, name string) (*tailer, error) {
 		target: target,
 		path:   path,
 		tail:   tail,
-		quit:   make(chan struct{}),
 	}
 	go tailer.run()
 	return tailer, nil
@@ -165,17 +163,16 @@ func newTailer(target *Target, dir, name string) (*tailer, error) {
 
 func (t *tailer) run() {
 	defer func() {
-		t.tail.Stop()
 		log.Infof("Stopping tailing file: %s", t.path)
 	}()
 
 	log.Infof("Tailing file: %s", t.path)
 	positionSyncPeriod := t.target.positions.cfg.SyncPeriod
 	positionWait := time.NewTimer(positionSyncPeriod)
+	defer positionWait.Stop()
+
 	for {
 		select {
-		case <-t.quit:
-			return
 
 		case <-positionWait.C:
 			pos, err := t.tail.Tell()
@@ -185,7 +182,11 @@ func (t *tailer) run() {
 			}
 			t.target.positions.Put(t.path, pos)
 
-		case line := <-t.tail.Lines:
+		case line, ok := <-t.tail.Lines:
+			if !ok {
+				return
+			}
+
 			if line.Err != nil {
 				log.Errorf("error reading line: %v", line.Err)
 			}
@@ -198,5 +199,5 @@ func (t *tailer) run() {
 }
 
 func (t *tailer) stop() {
-	close(t.quit)
+	t.tail.Stop()
 }

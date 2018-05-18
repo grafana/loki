@@ -61,6 +61,7 @@ type dumbChunkIterator struct {
 }
 
 func (i *dumbChunkIterator) Next() bool {
+	i.i++
 	return i.i < len(i.entries)
 }
 

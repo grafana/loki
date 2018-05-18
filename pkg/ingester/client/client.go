@@ -28,6 +28,10 @@ func New(cfg Config, addr string) (grpc_health_v1.HealthClient, error) {
 			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 			middleware.ClientUserHeaderInterceptor,
 		)),
+		grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(
+			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
+			middleware.StreamClientUserHeaderInterceptor,
+		)),
 		grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(cfg.MaxRecvMsgSize),
 			grpc.UseCompressor("gzip"),
@@ -38,10 +42,12 @@ func New(cfg Config, addr string) (grpc_health_v1.HealthClient, error) {
 		return nil, err
 	}
 	return struct {
-		grpc_health_v1.HealthClient
+		logproto.PusherClient
+		logproto.QuerierClient
 		io.Closer
 	}{
-		HealthClient: logproto.NewPusherClient(conn),
-		Closer:       conn,
+		PusherClient:  logproto.NewPusherClient(conn),
+		QuerierClient: logproto.NewQuerierClient(conn),
+		Closer:        conn,
 	}, nil
 }

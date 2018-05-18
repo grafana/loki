@@ -67,5 +67,6 @@ func main() {
 		}),
 		middleware.AuthenticateUser,
 	).Wrap(http.HandlerFunc(distributor.PushHandler)))
+	server.HTTP.Handle("/ring", r)
 	server.Run()
 }

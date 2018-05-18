@@ -2,6 +2,7 @@ package querier
 
 import (
 	"container/heap"
+	"fmt"
 	"io"
 
 	"github.com/grafana/logish/pkg/logproto"
@@ -76,6 +77,7 @@ func (h *iteratorHeap) Pop() interface{} {
 type heapIterator struct {
 	iterators iteratorHeap
 	curr      EntryIterator
+	errs      []error
 }
 
 func NewHeapIterator(is []EntryIterator) EntryIterator {
@@ -88,6 +90,7 @@ func NewHeapIterator(is []EntryIterator) EntryIterator {
 		if i.Next() {
 			result.iterators = append(result.iterators, i)
 		} else {
+			result.recordError(i)
 			i.Close()
 		}
 	}
@@ -95,11 +98,19 @@ func NewHeapIterator(is []EntryIterator) EntryIterator {
 	return result
 }
 
+func (i *heapIterator) recordError(ei EntryIterator) {
+	err := ei.Error()
+	if err != nil {
+		i.errs = append(i.errs, err)
+	}
+}
+
 func (i *heapIterator) Next() bool {
 	if i.curr != nil {
 		if i.curr.Next() {
 			heap.Push(&i.iterators, i.curr)
 		} else {
+			i.recordError(i.curr)
 			i.curr.Close()
 		}
 	}
@@ -121,7 +132,14 @@ func (i *heapIterator) Labels() string {
 }
 
 func (i *heapIterator) Error() error {
-	return i.curr.Error()
+	switch len(i.errs) {
+	case 0:
+		return nil
+	case 1:
+		return i.errs[0]
+	default:
+		return fmt.Errorf("Multiple errors: %+v", i.errs)
+	}
 }
 
 func (i *heapIterator) Close() error {
@@ -133,8 +151,8 @@ func (i *heapIterator) Close() error {
 	return nil
 }
 
-func queryResponseIterator(resp *logproto.QueryResponse) EntryIterator {
-	is := make([]EntryIterator, len(resp.Streams))
+func NewQueryResponseIterator(resp *logproto.QueryResponse) EntryIterator {
+	is := make([]EntryIterator, 0, len(resp.Streams))
 	for i := range resp.Streams {
 		is = append(is, newStreamIterator(resp.Streams[i]))
 	}
@@ -163,7 +181,7 @@ func (i *queryClientIterator) Next() bool {
 			return false
 		}
 
-		i.curr = queryResponseIterator(batch)
+		i.curr = NewQueryResponseIterator(batch)
 	}
 
 	return true

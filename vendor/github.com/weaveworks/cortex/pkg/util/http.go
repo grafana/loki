@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 
@@ -54,17 +55,17 @@ func CompressionTypeFor(version string) CompressionType {
 	return FramedSnappy
 }
 
-// ParseProtoRequest parses a proto from the body of an HTTP request.
-func ParseProtoRequest(ctx context.Context, r *http.Request, req proto.Message, compression CompressionType) ([]byte, error) {
+// ParseProtoReader parses a compressed proto from an io.Reader.
+func ParseProtoReader(ctx context.Context, reader io.Reader, req proto.Message, compression CompressionType) ([]byte, error) {
 	var body []byte
 	var err error
 	switch compression {
 	case NoCompression:
-		body, err = ioutil.ReadAll(r.Body)
+		body, err = ioutil.ReadAll(reader)
 	case FramedSnappy:
-		body, err = ioutil.ReadAll(snappy.NewReader(r.Body))
+		body, err = ioutil.ReadAll(snappy.NewReader(reader))
 	case RawSnappy:
-		body, err = ioutil.ReadAll(r.Body)
+		body, err = ioutil.ReadAll(reader)
 		if err == nil {
 			body, err = snappy.Decode(nil, body)
 		}

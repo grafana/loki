@@ -13,7 +13,6 @@ service Pusher {
 
 service Querier {
   rpc Query(QueryRequest) returns (stream QueryResponse) {};
-  rpc Check(grpc.health.v1.HealthCheckRequest) returns (grpc.health.v1.HealthCheckResponse);
 }
 
 message PushRequest {
