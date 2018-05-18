@@ -93,14 +93,25 @@ func main() {
 		fmt.Println("Common labels:", color.RedString(commonLabels.String()))
 	}
 
+	maxLabelsLen := 0
+	for _, ls := range lss {
+		ls = subtract(commonLabels, ls)
+		len := len(ls.String())
+		if maxLabelsLen < len {
+			maxLabelsLen = len
+		}
+	}
+
 	iter := querier.NewQueryResponseIterator(&queryResponse)
 	for iter.Next() {
 		ls := labelsCache[iter.Labels()]
 		ls = subtract(commonLabels, ls)
+		labels := ls.String()
+		labels += strings.Repeat(" ", maxLabelsLen-len(labels))
 
 		fmt.Println(
-			color.BlueString(iter.Entry().Timestamp.Format(time.RFC822)),
-			color.RedString(ls.String()),
+			color.BlueString(iter.Entry().Timestamp.Format(time.RFC3339)),
+			color.RedString(labels),
 			strings.TrimSpace(iter.Entry().Line),
 		)
 	}
