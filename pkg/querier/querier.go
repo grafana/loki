@@ -104,13 +104,14 @@ func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logpr
 	iterator := NewHeapIterator(iterators)
 	defer iterator.Close()
 
-	return ReadBatch(iterator, req.Limit)
+	resp, _, err := ReadBatch(iterator, req.Limit)
+	return resp, err
 }
 
-func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, error) {
+func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, error) {
 	streams := map[string]*logproto.Stream{}
-
-	for respSize := uint32(0); respSize < size && i.Next(); respSize++ {
+	respSize := uint32(0)
+	for ; respSize < size && i.Next(); respSize++ {
 		labels, entry := i.Labels(), i.Entry()
 		stream, ok := streams[labels]
 		if !ok {
@@ -128,7 +129,7 @@ func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, error) {
 	for _, stream := range streams {
 		result.Streams = append(result.Streams, stream)
 	}
-	return &result, i.Error()
+	return &result, respSize, i.Error()
 }
 
 // Check implements the grpc healthcheck

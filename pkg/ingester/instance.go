@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/logish/pkg/logproto"
 	"github.com/grafana/logish/pkg/parser"
 	"github.com/grafana/logish/pkg/querier"
+	"github.com/grafana/logish/pkg/util"
 )
 
 const queryBatchSize = 128
@@ -80,15 +81,17 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	iterator := querier.NewHeapIterator(iterators)
 	defer iterator.Close()
 
-	return sendBatches(iterator, queryServer)
+	return sendBatches(iterator, queryServer, req.Limit)
 }
 
-func sendBatches(i querier.EntryIterator, queryServer logproto.Querier_QueryServer) error {
-	for {
-		batch, err := querier.ReadBatch(i, queryBatchSize)
+func sendBatches(i querier.EntryIterator, queryServer logproto.Querier_QueryServer, limit uint32) error {
+	sent := uint32(0)
+	for sent < limit {
+		batch, batchSize, err := querier.ReadBatch(i, util.MinUint32(queryBatchSize, limit-sent))
 		if err != nil {
 			return err
 		}
+		sent += batchSize
 
 		if len(batch.Streams) == 0 {
 			return nil
@@ -98,4 +101,5 @@ func sendBatches(i querier.EntryIterator, queryServer logproto.Querier_QueryServ
 			return err
 		}
 	}
+	return nil
 }
