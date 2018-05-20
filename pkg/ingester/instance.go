@@ -58,6 +58,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 }
 
 func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
+	log.Println(req)
 	matchers, err := parser.Matchers(req.Query)
 	if err != nil {
 		return err

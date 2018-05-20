@@ -73,7 +73,7 @@ func (c *dumbChunk) Iterator(from, through time.Time, direction logproto.Directi
 	j := sort.Search(len(c.entries), func(j int) bool {
 		return !through.After(c.entries[j].Timestamp)
 	})
-	log.Println("from", from, "through", through, "i", i, "j", j, "entried", len(c.entries))
+	log.Println("from", from, "through", through, "i", i, "j", j, "entries", len(c.entries))
 
 	start := -1
 	if direction == logproto.BACKWARD {

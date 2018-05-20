@@ -54,7 +54,7 @@ func main() {
 		directionStr = "forward"
 	}
 	url := fmt.Sprintf("%s?query=%s&limit=%d&start=%d&end=%d&direction=%s&regexp=%s",
-		addr, url.QueryEscape(query), *limit, start.Unix(), end.Unix(), directionStr, regexp)
+		addr, url.QueryEscape(query), *limit, start.Unix(), end.Unix(), directionStr, url.QueryEscape(regexp))
 	fmt.Println(url)
 
 	req, err := http.NewRequest("GET", url, nil)
