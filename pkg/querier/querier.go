@@ -99,9 +99,9 @@ func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logpr
 
 	iterators := make([]EntryIterator, len(clients))
 	for i := range clients {
-		iterators[i] = newQueryClientIterator(clients[i].(logproto.Querier_QueryClient))
+		iterators[i] = newQueryClientIterator(clients[i].(logproto.Querier_QueryClient), req.Direction)
 	}
-	iterator := NewHeapIterator(iterators)
+	iterator := NewHeapIterator(iterators, req.Direction)
 	defer iterator.Close()
 
 	resp, _, err := ReadBatch(iterator, req.Limit)

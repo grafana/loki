@@ -2,9 +2,11 @@ package querier
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grafana/logish/pkg/logproto"
@@ -16,7 +18,7 @@ const (
 )
 
 func intParam(values url.Values, name string, def int) (int, error) {
-	value := values.Get("limit")
+	value := values.Get(name)
 	if value == "" {
 		return def, nil
 	}
@@ -25,7 +27,7 @@ func intParam(values url.Values, name string, def int) (int, error) {
 }
 
 func unixTimeParam(values url.Values, name string, def time.Time) (time.Time, error) {
-	value := values.Get("limit")
+	value := values.Get(name)
 	if value == "" {
 		return def, nil
 	}
@@ -36,6 +38,19 @@ func unixTimeParam(values url.Values, name string, def time.Time) (time.Time, er
 	}
 
 	return time.Unix(secs, 0), nil
+}
+
+func directionParam(values url.Values, name string, def logproto.Direction) (logproto.Direction, error) {
+	value := values.Get(name)
+	if value == "" {
+		return def, nil
+	}
+
+	d, ok := logproto.Direction_value[strings.ToUpper(value)]
+	if !ok {
+		return logproto.FORWARD, fmt.Errorf("invalid direction '%s'", value)
+	}
+	return logproto.Direction(d), nil
 }
 
 func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
@@ -60,12 +75,20 @@ func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	request := logproto.QueryRequest{
-		Query: query,
-		Limit: uint32(limit),
-		Start: start,
-		End:   end,
+	direction, err := directionParam(params, "direction", logproto.BACKWARD)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
+
+	request := logproto.QueryRequest{
+		Query:     query,
+		Limit:     uint32(limit),
+		Start:     start,
+		End:       end,
+		Direction: direction,
+	}
+	fmt.Println(request)
 	result, err := q.Query(r.Context(), &request)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

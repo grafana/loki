@@ -74,11 +74,11 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			i.streamsMtx.Unlock()
 			return ErrStreamMissing
 		}
-		iterators[j] = stream.Iterator()
+		iterators[j] = stream.Iterator(req.Start, req.End, req.Direction)
 	}
 	i.streamsMtx.Unlock()
 
-	iterator := querier.NewHeapIterator(iterators)
+	iterator := querier.NewHeapIterator(iterators, req.Direction)
 	defer iterator.Close()
 
 	return sendBatches(iterator, queryServer, req.Limit)

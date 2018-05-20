@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"time"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 
@@ -47,11 +48,19 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry) error {
 
 // Returns an iterator that goes from _most_ recent to _least_ recent (ie,
 // backwards).
-func (s *stream) Iterator() querier.EntryIterator {
+func (s *stream) Iterator(from, through time.Time, direction logproto.Direction) querier.EntryIterator {
 	iterators := make([]querier.EntryIterator, len(s.chunks))
 	for i, c := range s.chunks {
-		iterators[i] = c.Iterator()
+		switch direction {
+		case logproto.FORWARD:
+			iterators[len(s.chunks)-i-1] = c.Iterator(from, through, direction)
+		case logproto.BACKWARD:
+			iterators[i] = c.Iterator(from, through, direction)
+		default:
+			panic(direction)
+		}
 	}
+
 	return &nonOverlappingIterator{
 		labels:    s.labels.String(),
 		iterators: iterators,
