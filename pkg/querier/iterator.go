@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"fmt"
 	"io"
+	"regexp"
 
 	"github.com/grafana/logish/pkg/logproto"
 )
@@ -55,10 +56,7 @@ func (i *streamIterator) Close() error {
 
 type iteratorHeap []EntryIterator
 
-func (h iteratorHeap) Len() int { return len(h) }
-func (h iteratorHeap) Less(i, j int) bool {
-	return h[i].Entry().Timestamp.After(h[j].Entry().Timestamp)
-}
+func (h iteratorHeap) Len() int      { return len(h) }
 func (h iteratorHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
 
 func (h *iteratorHeap) Push(x interface{}) {
@@ -73,28 +71,50 @@ func (h *iteratorHeap) Pop() interface{} {
 	return x
 }
 
-// heapIterator iterates over a heap of iterators.
-type heapIterator struct {
-	iterators iteratorHeap
-	curr      EntryIterator
-	errs      []error
+type iteratorMinHeap struct {
+	iteratorHeap
 }
 
-func NewHeapIterator(is []EntryIterator) EntryIterator {
-	result := &heapIterator{
-		iterators: make(iteratorHeap, 0, len(is)),
-	}
+func (h iteratorMinHeap) Less(i, j int) bool {
+	return h.iteratorHeap[i].Entry().Timestamp.Before(h.iteratorHeap[j].Entry().Timestamp)
+}
 
+type iteratorMaxHeap struct {
+	iteratorHeap
+}
+
+func (h iteratorMaxHeap) Less(i, j int) bool {
+	return h.iteratorHeap[i].Entry().Timestamp.After(h.iteratorHeap[j].Entry().Timestamp)
+}
+
+// heapIterator iterates over a heap of iterators.
+type heapIterator struct {
+	heap heap.Interface
+	curr EntryIterator
+	errs []error
+}
+
+func NewHeapIterator(is []EntryIterator, direction logproto.Direction) EntryIterator {
+	result := &heapIterator{}
+	iterators := make(iteratorHeap, 0, len(is))
 	// pre-next each iterator, drop empty.
 	for _, i := range is {
 		if i.Next() {
-			result.iterators = append(result.iterators, i)
+			iterators = append(iterators, i)
 		} else {
 			result.recordError(i)
 			i.Close()
 		}
 	}
 
+	switch direction {
+	case logproto.BACKWARD:
+		result.heap = &iteratorMaxHeap{iterators}
+	case logproto.FORWARD:
+		result.heap = &iteratorMinHeap{iterators}
+	default:
+		panic("bad direction")
+	}
 	return result
 }
 
@@ -108,18 +128,18 @@ func (i *heapIterator) recordError(ei EntryIterator) {
 func (i *heapIterator) Next() bool {
 	if i.curr != nil {
 		if i.curr.Next() {
-			heap.Push(&i.iterators, i.curr)
+			heap.Push(i.heap, i.curr)
 		} else {
 			i.recordError(i.curr)
 			i.curr.Close()
 		}
 	}
 
-	if len(i.iterators) == 0 {
+	if i.heap.Len() == 0 {
 		return false
 	}
 
-	i.curr = heap.Pop(&i.iterators).(EntryIterator)
+	i.curr = heap.Pop(i.heap).(EntryIterator)
 	return true
 }
 
@@ -143,31 +163,33 @@ func (i *heapIterator) Error() error {
 }
 
 func (i *heapIterator) Close() error {
-	for _, i := range i.iterators {
-		if err := i.Close(); err != nil {
+	for i.heap.Len() > 0 {
+		if err := i.heap.Pop().(EntryIterator).Close(); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func NewQueryResponseIterator(resp *logproto.QueryResponse) EntryIterator {
+func NewQueryResponseIterator(resp *logproto.QueryResponse, direction logproto.Direction) EntryIterator {
 	is := make([]EntryIterator, 0, len(resp.Streams))
 	for i := range resp.Streams {
 		is = append(is, newStreamIterator(resp.Streams[i]))
 	}
-	return NewHeapIterator(is)
+	return NewHeapIterator(is, direction)
 }
 
 type queryClientIterator struct {
-	client logproto.Querier_QueryClient
-	err    error
-	curr   EntryIterator
+	client    logproto.Querier_QueryClient
+	direction logproto.Direction
+	err       error
+	curr      EntryIterator
 }
 
-func newQueryClientIterator(client logproto.Querier_QueryClient) EntryIterator {
+func newQueryClientIterator(client logproto.Querier_QueryClient, direction logproto.Direction) EntryIterator {
 	return &queryClientIterator{
-		client: client,
+		client:    client,
+		direction: direction,
 	}
 }
 
@@ -181,7 +203,7 @@ func (i *queryClientIterator) Next() bool {
 			return false
 		}
 
-		i.curr = NewQueryResponseIterator(batch)
+		i.curr = NewQueryResponseIterator(batch, i.direction)
 	}
 
 	return true
@@ -201,4 +223,29 @@ func (i *queryClientIterator) Error() error {
 
 func (i *queryClientIterator) Close() error {
 	return i.client.CloseSend()
+}
+
+type regexpFilter struct {
+	re *regexp.Regexp
+	EntryIterator
+}
+
+func NewRegexpFilter(r string, i EntryIterator) (EntryIterator, error) {
+	re, err := regexp.Compile(r)
+	if err != nil {
+		return nil, err
+	}
+	return &regexpFilter{
+		re:            re,
+		EntryIterator: i,
+	}, nil
+}
+
+func (i *regexpFilter) Next() bool {
+	for i.EntryIterator.Next() {
+		if i.re.MatchString(i.Entry().Line) {
+			return true
+		}
+	}
+	return false
 }

@@ -27,6 +27,13 @@ message QueryRequest {
   uint32 limit = 2;
   google.protobuf.Timestamp start = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   google.protobuf.Timestamp end = 4 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  Direction direction = 5;
+  string regex = 6;
+}
+
+enum Direction {
+  FORWARD = 0;
+  BACKWARD = 1;
 }
 
 message QueryResponse {

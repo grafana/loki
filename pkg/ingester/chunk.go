@@ -1,6 +1,10 @@
 package ingester
 
 import (
+	"log"
+	"sort"
+	"time"
+
 	"github.com/pkg/errors"
 
 	"github.com/grafana/logish/pkg/logproto"
@@ -17,9 +21,10 @@ var (
 )
 
 type Chunk interface {
+	Bounds() (time.Time, time.Time)
 	SpaceFor(*logproto.Entry) bool
 	Push(*logproto.Entry) error
-	Iterator() querier.EntryIterator
+	Iterator(from, through time.Time, direction logproto.Direction) querier.EntryIterator
 	Size() int
 }
 
@@ -29,6 +34,13 @@ func newChunk() Chunk {
 
 type dumbChunk struct {
 	entries []logproto.Entry
+}
+
+func (c *dumbChunk) Bounds() (time.Time, time.Time) {
+	if len(c.entries) == 0 {
+		return time.Time{}, time.Time{}
+	}
+	return c.entries[0].Timestamp, c.entries[len(c.entries)-1].Timestamp
 }
 
 func (c *dumbChunk) SpaceFor(_ *logproto.Entry) bool {
@@ -54,22 +66,45 @@ func (c *dumbChunk) Size() int {
 
 // Returns an iterator that goes from _most_ recent to _least_ recent (ie,
 // backwards).
-func (c *dumbChunk) Iterator() querier.EntryIterator {
+func (c *dumbChunk) Iterator(from, through time.Time, direction logproto.Direction) querier.EntryIterator {
+	i := sort.Search(len(c.entries), func(i int) bool {
+		return from.Before(c.entries[i].Timestamp)
+	})
+	j := sort.Search(len(c.entries), func(j int) bool {
+		return !through.After(c.entries[j].Timestamp)
+	})
+	log.Println("from", from, "through", through, "i", i, "j", j, "entries", len(c.entries))
+
+	start := -1
+	if direction == logproto.BACKWARD {
+		start = j - i
+	}
+
 	// Take a copy of the entries to avoid locking
 	return &dumbChunkIterator{
-		i:       len(c.entries),
-		entries: c.entries,
+		direction: direction,
+		i:         start,
+		entries:   c.entries[i:j],
 	}
 }
 
 type dumbChunkIterator struct {
-	i       int
-	entries []logproto.Entry
+	direction logproto.Direction
+	i         int
+	entries   []logproto.Entry
 }
 
 func (i *dumbChunkIterator) Next() bool {
-	i.i--
-	return i.i >= 0
+	switch i.direction {
+	case logproto.BACKWARD:
+		i.i--
+		return i.i >= 0
+	case logproto.FORWARD:
+		i.i++
+		return i.i < len(i.entries)
+	default:
+		panic(i.direction)
+	}
 }
 
 func (i *dumbChunkIterator) Entry() logproto.Entry {

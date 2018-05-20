@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/logish/pkg/logproto"
 	"github.com/grafana/logish/pkg/parser"
 	"github.com/grafana/logish/pkg/querier"
+	"github.com/grafana/logish/pkg/util"
 )
 
 const queryBatchSize = 128
@@ -57,6 +58,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 }
 
 func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
+	log.Println(req)
 	matchers, err := parser.Matchers(req.Query)
 	if err != nil {
 		return err
@@ -73,22 +75,32 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			i.streamsMtx.Unlock()
 			return ErrStreamMissing
 		}
-		iterators[j] = stream.Iterator()
+		iterators[j] = stream.Iterator(req.Start, req.End, req.Direction)
 	}
 	i.streamsMtx.Unlock()
 
-	iterator := querier.NewHeapIterator(iterators)
+	iterator := querier.NewHeapIterator(iterators, req.Direction)
 	defer iterator.Close()
 
-	return sendBatches(iterator, queryServer)
-}
-
-func sendBatches(i querier.EntryIterator, queryServer logproto.Querier_QueryServer) error {
-	for {
-		batch, err := querier.ReadBatch(i, queryBatchSize)
+	if req.Regex != "" {
+		var err error
+		iterator, err = querier.NewRegexpFilter(req.Regex, iterator)
 		if err != nil {
 			return err
 		}
+	}
+
+	return sendBatches(iterator, queryServer, req.Limit)
+}
+
+func sendBatches(i querier.EntryIterator, queryServer logproto.Querier_QueryServer, limit uint32) error {
+	sent := uint32(0)
+	for sent < limit {
+		batch, batchSize, err := querier.ReadBatch(i, util.MinUint32(queryBatchSize, limit-sent))
+		if err != nil {
+			return err
+		}
+		sent += batchSize
 
 		if len(batch.Streams) == 0 {
 			return nil
@@ -98,4 +110,5 @@ func sendBatches(i querier.EntryIterator, queryServer logproto.Querier_QueryServ
 			return err
 		}
 	}
+	return nil
 }

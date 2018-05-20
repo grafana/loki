@@ -24,17 +24,22 @@ var defaultAddr = "https://log-us.grafana.net/api/prom/query"
 
 func main() {
 	var (
-		limit = flag.Int("limit", 30, "Limit on number of entries to print")
-		since = flag.Duration("since", 1*time.Hour, "Lookback window")
+		limit   = flag.Int("limit", 30, "Limit on number of entries to print.")
+		since   = flag.Duration("since", 1*time.Hour, "Lookback window.")
+		forward = flag.Bool("forward", false, "Scan forwards through logs.")
 	)
 
 	flag.Parse()
 	args := flag.Args()
-	if len(args) != 1 {
+	if len(args) < 1 || len(args) > 2 {
 		log.Fatalf("usage: %s '{foo=\"bar\",baz=\"blip\"}''", os.Args[0])
 	}
 
 	query := args[0]
+	regexp := ""
+	if len(args) > 1 {
+		regexp = args[1]
+	}
 	addr := os.Getenv("GRAFANA_ADDR")
 	if addr == "" {
 		addr = defaultAddr
@@ -44,8 +49,13 @@ func main() {
 	start := end.Add(-*since)
 	username := os.Getenv("GRAFANA_USERNAME")
 	password := os.Getenv("GRAFANA_PASSWORD")
-	url := fmt.Sprintf("%s?query=%s&limit=%d&start=%d&end=%d",
-		addr, url.QueryEscape(query), *limit, start.Unix(), end.Unix())
+	directionStr := "backward"
+	if *forward {
+		directionStr = "forward"
+	}
+	url := fmt.Sprintf("%s?query=%s&limit=%d&start=%d&end=%d&direction=%s&regexp=%s",
+		addr, url.QueryEscape(query), *limit, start.Unix(), end.Unix(), directionStr, url.QueryEscape(regexp))
+	fmt.Println(url)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -102,7 +112,11 @@ func main() {
 		}
 	}
 
-	iter := querier.NewQueryResponseIterator(&queryResponse)
+	d := logproto.BACKWARD
+	if *forward {
+		d = logproto.FORWARD
+	}
+	iter := querier.NewQueryResponseIterator(&queryResponse, d)
 	for iter.Next() {
 		ls := labelsCache[iter.Labels()]
 		ls = subtract(commonLabels, ls)
