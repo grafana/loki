@@ -31,11 +31,15 @@ func main() {
 
 	flag.Parse()
 	args := flag.Args()
-	if len(args) != 1 {
+	if len(args) < 1 || len(args) > 2 {
 		log.Fatalf("usage: %s '{foo=\"bar\",baz=\"blip\"}''", os.Args[0])
 	}
 
 	query := args[0]
+	regexp := ""
+	if len(args) > 1 {
+		regexp = args[1]
+	}
 	addr := os.Getenv("GRAFANA_ADDR")
 	if addr == "" {
 		addr = defaultAddr
@@ -49,8 +53,8 @@ func main() {
 	if *forward {
 		directionStr = "forward"
 	}
-	url := fmt.Sprintf("%s?query=%s&limit=%d&start=%d&end=%d&direction=%s",
-		addr, url.QueryEscape(query), *limit, start.Unix(), end.Unix(), directionStr)
+	url := fmt.Sprintf("%s?query=%s&limit=%d&start=%d&end=%d&direction=%s&regexp=%s",
+		addr, url.QueryEscape(query), *limit, start.Unix(), end.Unix(), directionStr, regexp)
 	fmt.Println(url)
 
 	req, err := http.NewRequest("GET", url, nil)

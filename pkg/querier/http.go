@@ -87,6 +87,7 @@ func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
 		Start:     start,
 		End:       end,
 		Direction: direction,
+		Regex:     params.Get("regexp"),
 	}
 	fmt.Println(request)
 	result, err := q.Query(r.Context(), &request)

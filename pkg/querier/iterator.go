@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"fmt"
 	"io"
+	"regexp"
 
 	"github.com/grafana/logish/pkg/logproto"
 )
@@ -222,4 +223,29 @@ func (i *queryClientIterator) Error() error {
 
 func (i *queryClientIterator) Close() error {
 	return i.client.CloseSend()
+}
+
+type regexpFilter struct {
+	re *regexp.Regexp
+	EntryIterator
+}
+
+func NewRegexpFilter(r string, i EntryIterator) (EntryIterator, error) {
+	re, err := regexp.Compile(r)
+	if err != nil {
+		return nil, err
+	}
+	return &regexpFilter{
+		re:            re,
+		EntryIterator: i,
+	}, nil
+}
+
+func (i *regexpFilter) Next() bool {
+	for i.EntryIterator.Next() {
+		if i.re.MatchString(i.Entry().Line) {
+			return true
+		}
+	}
+	return false
 }

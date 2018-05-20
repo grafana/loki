@@ -81,6 +81,14 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	iterator := querier.NewHeapIterator(iterators, req.Direction)
 	defer iterator.Close()
 
+	if req.Regex != "" {
+		var err error
+		iterator, err = querier.NewRegexpFilter(req.Regex, iterator)
+		if err != nil {
+			return err
+		}
+	}
+
 	return sendBatches(iterator, queryServer, req.Limit)
 }
 
