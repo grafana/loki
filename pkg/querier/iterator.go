@@ -56,9 +56,9 @@ func (i *streamIterator) Close() error {
 
 type iteratorHeap []EntryIterator
 
-func (h iteratorHeap) Len() int      { return len(h) }
-func (h iteratorHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
-
+func (h iteratorHeap) Len() int            { return len(h) }
+func (h iteratorHeap) Swap(i, j int)       { h[i], h[j] = h[j], h[i] }
+func (h iteratorHeap) Peek() EntryIterator { return h[0] }
 func (h *iteratorHeap) Push(x interface{}) {
 	*h = append(*h, x.(EntryIterator))
 }
@@ -89,7 +89,10 @@ func (h iteratorMaxHeap) Less(i, j int) bool {
 
 // heapIterator iterates over a heap of iterators.
 type heapIterator struct {
-	heap heap.Interface
+	heap interface {
+		heap.Interface
+		Peek() EntryIterator
+	}
 	curr EntryIterator
 	errs []error
 }
@@ -140,6 +143,16 @@ func (i *heapIterator) Next() bool {
 	}
 
 	i.curr = heap.Pop(i.heap).(EntryIterator)
+
+	// keep popping entries off if they match, to dedupe
+	for i.heap.Len() > 0 {
+		curr := i.curr.Entry()
+		next := i.heap.Peek().Entry()
+		if !curr.Equal(next) {
+			break
+		}
+	}
+
 	return true
 }
 

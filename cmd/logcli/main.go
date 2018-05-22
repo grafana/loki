@@ -55,7 +55,7 @@ func main() {
 	}
 	url := fmt.Sprintf("%s?query=%s&limit=%d&start=%d&end=%d&direction=%s&regexp=%s",
 		addr, url.QueryEscape(query), *limit, start.Unix(), end.Unix(), directionStr, url.QueryEscape(regexp))
-	fmt.Println(url)
+	//fmt.Println(url)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
