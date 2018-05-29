@@ -93,9 +93,18 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	return sendBatches(iterator, queryServer, req.Limit)
 }
 
+func isDone(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
+}
+
 func sendBatches(i querier.EntryIterator, queryServer logproto.Querier_QueryServer, limit uint32) error {
 	sent := uint32(0)
-	for sent < limit {
+	for sent < limit && !isDone(queryServer.Context()) {
 		batch, batchSize, err := querier.ReadBatch(i, util.MinUint32(queryBatchSize, limit-sent))
 		if err != nil {
 			return err
@@ -106,6 +115,7 @@ func sendBatches(i querier.EntryIterator, queryServer logproto.Querier_QueryServ
 			return nil
 		}
 
+		log.Println("sendBatch", batchSize)
 		if err := queryServer.Send(batch); err != nil {
 			return err
 		}
