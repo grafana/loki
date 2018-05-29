@@ -68,12 +68,16 @@ func (c *dumbChunk) Size() int {
 // backwards).
 func (c *dumbChunk) Iterator(from, through time.Time, direction logproto.Direction) querier.EntryIterator {
 	i := sort.Search(len(c.entries), func(i int) bool {
-		return from.Before(c.entries[i].Timestamp)
+		return !from.After(c.entries[i].Timestamp)
 	})
 	j := sort.Search(len(c.entries), func(j int) bool {
 		return !through.After(c.entries[j].Timestamp)
 	})
 	log.Println("from", from, "through", through, "i", i, "j", j, "entries", len(c.entries))
+
+	if from == through {
+		return nil
+	}
 
 	start := -1
 	if direction == logproto.BACKWARD {

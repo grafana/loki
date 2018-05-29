@@ -3,6 +3,7 @@ package querier
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -89,7 +90,8 @@ func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
 		Direction: direction,
 		Regex:     params.Get("regexp"),
 	}
-	fmt.Println(request)
+
+	log.Printf("Query request: %+v", request)
 	result, err := q.Query(r.Context(), &request)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
