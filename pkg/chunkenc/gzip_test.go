@@ -9,9 +9,6 @@ import (
 func TestGZIPBlock(t *testing.T) {
 	b := NewMemChunk(EncGZIP)
 
-	app, err := b.Appender()
-	require.NoError(t, err)
-
 	cases := []struct {
 		ts  int64
 		str string
@@ -48,7 +45,7 @@ func TestGZIPBlock(t *testing.T) {
 		},
 		{
 			ts:  8,
-			str: "hello, world8!",
+			str: "hello, worl\nd8!",
 		},
 		{
 			ts:  9,
@@ -57,11 +54,9 @@ func TestGZIPBlock(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		require.NoError(t, app.Append(c.ts, c.str))
+		require.NoError(t, b.Append(c.ts, c.str))
 		if c.cut {
 			require.NoError(t, b.app.cut())
-			app, err = b.Appender()
-			require.NoError(t, err)
 		}
 	}
 

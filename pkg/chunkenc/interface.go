@@ -24,16 +24,12 @@ func (e Encoding) String() string {
 type Chunk interface {
 	Bytes() []byte
 	Encoding() Encoding
-	Appender() (Appender, error)
 	Iterator() Iterator
 	NumSamples() int
 
-	Close() error
-}
-
-// Appender is used to add samples to the chunk.
-type Appender interface {
+	SpaceFor(int64, string) bool
 	Append(int64, string) error
+
 	Close() error
 }
 

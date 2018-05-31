@@ -17,6 +17,8 @@ import (
 type MemChunk struct {
 	// The number of uncompressed bytes per block.
 	blockSize int
+	// The max number of blocks in a chunk.
+	maxBlocks int
 
 	// The finished blocks.
 	blocks     []block
@@ -108,11 +110,6 @@ func (c *MemChunk) Encoding() Encoding {
 	return c.encoding
 }
 
-// Appender implements Chunk.
-func (c *MemChunk) Appender() (Appender, error) {
-	return c.app, nil
-}
-
 // NumSamples implements Chunk.
 func (c *MemChunk) NumSamples() int {
 	c.Lock()
@@ -126,6 +123,16 @@ func (c *MemChunk) NumSamples() int {
 	ne += c.memBlock.numEntries
 
 	return ne
+}
+
+// SpaceFor implements Chunk.
+func (c *MemChunk) SpaceFor(ts int64, log string) bool {
+	return len(c.blocks) < 10
+}
+
+// Append implements Chunk.
+func (c *MemChunk) Append(ts int64, log string) error {
+	return c.app.Append(ts, log)
 }
 
 // Close implements Chunk.
@@ -160,13 +167,20 @@ func newMemAppender(chunk *MemChunk) *memAppender {
 }
 
 func (a *memAppender) Append(t int64, s string) error {
+	const sep = "\xff" // Not unicode.
+
 	if t < a.block.maxt {
 		return errors.New("out of order sample")
 	}
 
-	_, err := a.writer.Write([]byte(s + "\n"))
+	n := binary.PutVarint(a.encBuf, t)
+	_, err := a.writer.Write(a.encBuf[:n])
 	if err != nil {
-		return errors.Wrap(err, "appending line")
+		return errors.Wrap(err, "appending entry")
+	}
+	_, err = a.writer.Write([]byte(s + sep))
+	if err != nil {
+		return errors.Wrap(err, "appending entry")
 	}
 	a.block.ts = append(a.block.ts, t)
 	a.block.size += len(s)
@@ -326,8 +340,8 @@ func newBlockIterator(b block, cr func(io.Reader) (CompressionReader, error)) (I
 		return nil, err
 	}
 
-	s := bufio.NewScanner(r)
-	return newScanIterator(s, b.ts), nil
+	s := bufio.NewReader(r)
+	return newScanIterator(s), nil
 }
 
 type listIterator struct {
@@ -360,16 +374,16 @@ func (li *listIterator) Err() error {
 }
 
 type scanIterator struct {
-	s  *bufio.Scanner
-	ts []int64
+	s *bufio.Reader
 
-	curT int64
+	curBytes []byte
+
+	err error
 }
 
-func newScanIterator(s *bufio.Scanner, ts []int64) *scanIterator {
+func newScanIterator(s *bufio.Reader) *scanIterator {
 	return &scanIterator{
-		s:  s,
-		ts: ts,
+		s: s,
 	}
 }
 
@@ -378,21 +392,39 @@ func (si *scanIterator) Seek(int64) bool {
 }
 
 func (si *scanIterator) Next() bool {
-	ok := si.s.Scan()
-	if ok {
-		si.curT = si.ts[0]
-		si.ts = si.ts[1:]
+	var err error
+	si.curBytes, err = si.s.ReadBytes('\xFF')
+
+	if err == nil {
+		return true
 	}
 
-	return ok
+	if err != io.EOF {
+		si.err = err
+		return false
+	}
+
+	if len(si.curBytes) == 0 {
+		return false
+	}
+
+	return true
 }
 
 func (si *scanIterator) At() (int64, string) {
-	return si.curT, si.s.Text()
+	b := si.curBytes[:]
+	ts, n := binary.Varint(b)
+	if n <= 0 {
+		si.err = errors.New("error decoding timestamp")
+		return 0, ""
+	}
+
+	b = b[n : len(b)-1] // To remove trailing delim
+	return ts, string(b)
 }
 
 func (si *scanIterator) Err() error {
-	return si.s.Err()
+	return si.err
 }
 
 type noopFlushingWriter struct {

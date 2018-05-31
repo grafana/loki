@@ -15,11 +15,13 @@ const (
 	tmpNumEntries = 1024
 )
 
+// Errors returned by the chunk interface.
 var (
 	ErrChunkFull  = errors.New("Chunk full")
 	ErrOutOfOrder = errors.New("Entry out of order")
 )
 
+// Chunk is the interface for the compressed logs chunk format.
 type Chunk interface {
 	Bounds() (time.Time, time.Time)
 	SpaceFor(*logproto.Entry) bool
