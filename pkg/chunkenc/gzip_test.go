@@ -1,6 +1,9 @@
 package chunkenc
 
 import (
+	"bytes"
+	"fmt"
+	"io/ioutil"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -71,4 +74,38 @@ func TestGZIPBlock(t *testing.T) {
 
 	require.NoError(t, it.Err())
 	require.Equal(t, len(cases), idx)
+}
+
+func TestGZIPCompression(t *testing.T) {
+	b, err := ioutil.ReadFile("NASA_access_log_Aug95")
+	require.NoError(t, err)
+
+	lines := bytes.Split(b, []byte("\n"))
+	fmt.Println(len(lines))
+
+	for _, blockSize := range []int{4 * 1024, 8 * 1024, 16 * 1024, 32 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024} {
+		testName := fmt.Sprintf("%d", blockSize/1024)
+		t.Run(testName, func(t *testing.T) {
+			chk := NewMemChunk(EncGZIP)
+			chk.blockSize = blockSize
+
+			for i, l := range lines {
+				require.NoError(t, chk.Append(int64(i), string(l)))
+			}
+
+			fmt.Println(float64(len(b))/(1024*1024), float64(len(chk.Bytes()))/(1024*1024), float64(len(chk.Bytes())/len(chk.blocks)))
+
+			it := chk.Iterator()
+			require.NoError(t, err)
+
+			for i, l := range lines {
+				require.True(t, it.Next())
+
+				ts, str := it.At()
+				require.NoError(t, it.Err())
+				require.Equal(t, int64(i), ts)
+				require.Equal(t, string(l), str)
+			}
+		})
+	}
 }

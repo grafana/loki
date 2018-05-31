@@ -167,8 +167,6 @@ func newMemAppender(chunk *MemChunk) *memAppender {
 }
 
 func (a *memAppender) Append(t int64, s string) error {
-	const sep = "\xff" // Not unicode.
-
 	if t < a.block.maxt {
 		return errors.New("out of order sample")
 	}
@@ -178,11 +176,17 @@ func (a *memAppender) Append(t int64, s string) error {
 	if err != nil {
 		return errors.Wrap(err, "appending entry")
 	}
-	_, err = a.writer.Write([]byte(s + sep))
+
+	n = binary.PutUvarint(a.encBuf, uint64(len(s)))
+	_, err = a.writer.Write(a.encBuf[:n])
 	if err != nil {
 		return errors.Wrap(err, "appending entry")
 	}
-	a.block.ts = append(a.block.ts, t)
+
+	_, err = a.writer.Write([]byte(s))
+	if err != nil {
+		return errors.Wrap(err, "appending entry")
+	}
 	a.block.size += len(s)
 
 	a.block.entries = append(a.block.entries, entry{t, s})
@@ -203,6 +207,10 @@ func (a *memAppender) Append(t int64, s string) error {
 
 // cut a new block and add it to finished blocks.
 func (a *memAppender) cut() error {
+	if len(a.block.entries) == 0 {
+		return nil
+	}
+
 	a.chunk.Lock()
 	defer a.chunk.Unlock()
 
@@ -214,12 +222,9 @@ func (a *memAppender) cut() error {
 
 	b := make([]byte, len(a.block.b))
 	copy(b, a.block.b)
-	ts := make([]int64, len(a.block.ts))
-	copy(ts, a.block.ts)
 
 	a.chunk.blocks = append(a.chunk.blocks, block{
 		b:          b,
-		ts:         ts,
 		numEntries: a.block.numEntries,
 		mint:       a.block.mint,
 		maxt:       a.block.maxt,
@@ -311,6 +316,7 @@ func (gi *memIterator) Next() bool {
 	gi.it, err = newBlockIterator(gi.blocks[0], gi.cr)
 	if err != nil {
 		gi.err = err
+		return false
 	}
 	gi.blocks = gi.blocks[1:]
 
@@ -322,7 +328,11 @@ func (gi *memIterator) At() (int64, string) {
 }
 
 func (gi *memIterator) Err() error {
-	return gi.err
+	if gi.err != nil {
+		return gi.err
+	}
+
+	return gi.it.Err()
 }
 
 func newBlockIterator(b block, cr func(io.Reader) (CompressionReader, error)) (Iterator, error) {
@@ -335,6 +345,10 @@ func newBlockIterator(b block, cr func(io.Reader) (CompressionReader, error)) (I
 		}, nil
 	}
 
+	if len(b.b) == 0 {
+		return emptyIterator, nil
+	}
+
 	r, err := cr(bytes.NewBuffer(b.b))
 	if err != nil {
 		return nil, err
@@ -343,6 +357,8 @@ func newBlockIterator(b block, cr func(io.Reader) (CompressionReader, error)) (I
 	s := bufio.NewReader(r)
 	return newScanIterator(s), nil
 }
+
+var emptyIterator = &listIterator{}
 
 type listIterator struct {
 	entries []entry
@@ -376,14 +392,20 @@ func (li *listIterator) Err() error {
 type scanIterator struct {
 	s *bufio.Reader
 
-	curBytes []byte
+	curT   int64
+	curLog string
 
 	err error
+
+	buf    []byte // The buffer a single entry.
+	decBuf []byte // The buffer for decoding the lengths.
 }
 
 func newScanIterator(s *bufio.Reader) *scanIterator {
 	return &scanIterator{
-		s: s,
+		s:      s,
+		buf:    make([]byte, 1024),
+		decBuf: make([]byte, binary.MaxVarintLen64),
 	}
 }
 
@@ -392,35 +414,49 @@ func (si *scanIterator) Seek(int64) bool {
 }
 
 func (si *scanIterator) Next() bool {
-	var err error
-	si.curBytes, err = si.s.ReadBytes('\xFF')
+	ts, err := binary.ReadVarint(si.s)
+	if err != nil {
+		if err != io.EOF {
+			si.err = err
+		}
 
-	if err == nil {
-		return true
+		return false
 	}
 
-	if err != io.EOF {
+	l, err := binary.ReadUvarint(si.s)
+	if err != nil {
+		if err != io.EOF {
+			si.err = err
+
+			return false
+		}
+	}
+
+	for len(si.buf) < int(l) {
+		si.buf = append(si.buf, make([]byte, 1024)...)
+	}
+
+	n, err := si.s.Read(si.buf[:l])
+	if err != nil && err != io.EOF {
 		si.err = err
 		return false
 	}
-
-	if len(si.curBytes) == 0 {
-		return false
+	if n < int(l) {
+		n, err = si.s.Read(si.buf[n:l])
+		if err != nil {
+			si.err = err
+			return false
+		}
 	}
+
+	si.curT = ts
+	si.curLog = string(si.buf[:l])
 
 	return true
 }
 
 func (si *scanIterator) At() (int64, string) {
-	b := si.curBytes[:]
-	ts, n := binary.Varint(b)
-	if n <= 0 {
-		si.err = errors.New("error decoding timestamp")
-		return 0, ""
-	}
-
-	b = b[n : len(b)-1] // To remove trailing delim
-	return ts, string(b)
+	return si.curT, si.curLog
 }
 
 func (si *scanIterator) Err() error {
