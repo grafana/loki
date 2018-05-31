@@ -19,10 +19,17 @@ const (
 
 // Config for a StorageClient
 type Config struct {
-	addresses         string
-	keyspace          string
-	consistency       string
-	replicationFactor int
+	addresses                string
+	keyspace                 string
+	consistency              string
+	replicationFactor        int
+	disableInitialHostLookup bool
+	ssl                      bool
+	hostVerification         bool
+	caPath                   string
+	auth                     bool
+	username                 string
+	password                 string
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -31,6 +38,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.keyspace, "cassandra.keyspace", "", "Keyspace to use in Cassandra.")
 	f.StringVar(&cfg.consistency, "cassandra.consistency", "QUORUM", "Consistency level for Cassandra.")
 	f.IntVar(&cfg.replicationFactor, "cassandra.replication-factor", 1, "Replication factor to use in Cassandra.")
+	f.BoolVar(&cfg.disableInitialHostLookup, "cassandra.disable-initial-host-lookup", false, "Instruct the cassandra driver to not attempt to get host info from the system.peers table.")
+	f.BoolVar(&cfg.ssl, "cassandra.ssl", false, "Use SSL when connecting to cassandra instances.")
+	f.BoolVar(&cfg.hostVerification, "cassandra.host-verification", true, "Require SSL certificate validation.")
+	f.StringVar(&cfg.caPath, "cassandra.ca-path", "", "Path to certificate file to verify the peer.")
+	f.BoolVar(&cfg.auth, "cassandra.auth", false, "Enable password authentication when connecting to cassandra.")
+	f.StringVar(&cfg.username, "cassandra.username", "", "Username to use when connecting to cassandra.")
+	f.StringVar(&cfg.password, "cassandra.password", "", "Password to use when connecting to cassandra.")
 }
 
 func (cfg *Config) session() (*gocql.Session, error) {
@@ -49,7 +63,27 @@ func (cfg *Config) session() (*gocql.Session, error) {
 	cluster.BatchObserver = observer{}
 	cluster.QueryObserver = observer{}
 
+	cfg.setClusterConfig(cluster)
+
 	return cluster.CreateSession()
+}
+
+// apply config settings to a cassandra ClusterConfig
+func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) {
+	cluster.DisableInitialHostLookup = cfg.disableInitialHostLookup
+
+	if cfg.ssl {
+		cluster.SslOpts = &gocql.SslOptions{
+			CaPath:                 cfg.caPath,
+			EnableHostVerification: cfg.hostVerification,
+		}
+	}
+	if cfg.auth {
+		cluster.Authenticator = gocql.PasswordAuthenticator{
+			Username: cfg.username,
+			Password: cfg.password,
+		}
+	}
 }
 
 // createKeyspace will create the desired keyspace if it doesn't exist.
@@ -57,6 +91,9 @@ func (cfg *Config) createKeyspace() error {
 	cluster := gocql.NewCluster(strings.Split(cfg.addresses, ",")...)
 	cluster.Keyspace = "system"
 	cluster.Timeout = 20 * time.Second
+
+	cfg.setClusterConfig(cluster)
+
 	session, err := cluster.CreateSession()
 	if err != nil {
 		return errors.WithStack(err)
