@@ -126,7 +126,7 @@ func v6Schema(cfg SchemaConfig) Schema {
 	}
 }
 
-// v7 schema is an extension of v6, with support for queries with no metric names
+// DEPRECATED: v7 schema is an extension of v6, with support for queries with no metric names, but is broken
 func v7Schema(cfg SchemaConfig) Schema {
 	return schema{
 		cfg.dailyBuckets,
@@ -134,7 +134,7 @@ func v7Schema(cfg SchemaConfig) Schema {
 	}
 }
 
-// v8 schema is an extension of v6, with support for a labelset/series index
+// DEPRECATED: v8 schema is an extension of v6, with support for a labelset/series index, but is too slow in practice
 func v8Schema(cfg SchemaConfig) Schema {
 	return schema{
 		cfg.dailyBuckets,
