@@ -78,7 +78,9 @@ func TestGZIPBlock(t *testing.T) {
 
 func TestGZIPCompression(t *testing.T) {
 	b, err := ioutil.ReadFile("NASA_access_log_Aug95")
-	require.NoError(t, err)
+	if err != nil {
+		t.SkipNow()
+	}
 
 	lines := bytes.Split(b, []byte("\n"))
 	fmt.Println(len(lines))
@@ -93,19 +95,47 @@ func TestGZIPCompression(t *testing.T) {
 				require.NoError(t, chk.Append(int64(i), string(l)))
 			}
 
-			fmt.Println(float64(len(b))/(1024*1024), float64(len(chk.Bytes()))/(1024*1024), float64(len(chk.Bytes())/len(chk.blocks)))
+			b2, err := chk.Bytes()
+			require.NoError(t, err)
+			fmt.Println(float64(len(b))/(1024*1024), float64(len(b2))/(1024*1024), float64(len(b2))/float64(len(chk.blocks)))
 
 			it := chk.Iterator()
-			require.NoError(t, err)
 
 			for i, l := range lines {
 				require.True(t, it.Next())
 
 				ts, str := it.At()
-				require.NoError(t, it.Err())
 				require.Equal(t, int64(i), ts)
 				require.Equal(t, string(l), str)
 			}
+			require.NoError(t, it.Err())
 		})
 	}
+}
+
+func TestGZIPSerialisation(t *testing.T) {
+	chk := NewMemChunk(EncGZIP)
+
+	numSamples := 500000
+
+	for i := 0; i < numSamples; i++ {
+		require.NoError(t, chk.Append(int64(i), string(i)))
+	}
+
+	byt, err := chk.Bytes()
+	require.NoError(t, err)
+
+	bc, err := NewByteChunk(byt)
+	require.NoError(t, err)
+
+	it := bc.Iterator()
+	for i := 0; i < numSamples; i++ {
+		require.True(t, it.Next())
+
+		ts, str := it.At()
+		require.Equal(t, int64(i), ts)
+		require.Equal(t, string(i), str)
+	}
+
+	require.NoError(t, it.Err())
 }

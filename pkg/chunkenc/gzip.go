@@ -13,6 +13,16 @@ import (
 	"github.com/pkg/errors"
 )
 
+var (
+	magicNumber = uint32(0x12EE56A)
+
+	chunkFormatV1 = byte(1)
+
+	errInvalidSize     = fmt.Errorf("invalid size")
+	errInvalidFlag     = fmt.Errorf("invalid flag")
+	errInvalidChecksum = fmt.Errorf("invalid checksum")
+)
+
 // MemChunk implements compressed log chunks.
 type MemChunk struct {
 	// The number of uncompressed bytes per block.
@@ -46,6 +56,8 @@ type block struct {
 	size       int // size of uncompressed bytes.
 
 	mint, maxt int64
+
+	offset int // The offset of the block in the chunk.
 }
 
 type entry struct {
@@ -56,7 +68,7 @@ type entry struct {
 // NewMemChunk returns a new in-mem chunk.
 func NewMemChunk(enc Encoding) *MemChunk {
 	c := &MemChunk{
-		blockSize: 5 * 1024 * 1024, // The blockSize in bytes.
+		blockSize: 256 * 1024, // The blockSize in bytes.
 		blocks:    []block{},
 
 		memBlock: &block{
@@ -81,7 +93,7 @@ func NewMemChunk(enc Encoding) *MemChunk {
 }
 
 // Bytes implements Chunk.
-func (c *MemChunk) Bytes() []byte {
+func (c *MemChunk) Bytes() ([]byte, error) {
 	if c.app != nil {
 		// When generating the bytes, we need to flush the data held in-buffer.
 		c.app.cut()
@@ -90,19 +102,86 @@ func (c *MemChunk) Bytes() []byte {
 	c.Lock()
 	defer c.Unlock()
 
-	l := 0
-	for _, b := range c.blocks {
-		l += len(b.b)
+	buf := bytes.NewBuffer(nil)
+	encBuf := [binary.MaxVarintLen64]byte{}
+	offset := 0
+
+	// Write the magicNumber.
+	binary.BigEndian.PutUint32(encBuf[:], uint32(magicNumber))
+	n, err := buf.Write(encBuf[:4])
+	if err != nil {
+		return buf.Bytes(), errors.Wrap(err, "write magic number")
+	}
+	offset += n
+
+	// Write the version.
+	n, err = buf.Write([]byte{chunkFormatV1})
+	if err != nil {
+		return buf.Bytes(), errors.Wrap(err, "write version")
+	}
+	offset += n
+
+	// Write Blocks.
+	for i, b := range c.blocks {
+		c.blocks[i].offset = offset
+
+		n, err = buf.Write(b.b)
+		if err != nil {
+			return buf.Bytes(), errors.Wrap(err, "write block")
+		}
+		offset += n
 	}
 
-	totBytes := make([]byte, l)
-	off := 0
+	metasOffset := offset
+	// Write the number of blocks.
+	n = binary.PutUvarint(encBuf[:], uint64(len(c.blocks)))
+	n, err = buf.Write(encBuf[:n])
+	if err != nil {
+		return buf.Bytes(), errors.Wrap(err, "write #blocks")
+	}
+	offset += n
+
+	// Write BlockMetas.
 	for _, b := range c.blocks {
-		n := copy(totBytes[off:], b.b)
-		off += n
+		n = binary.PutUvarint(encBuf[:], uint64(b.numEntries))
+		n, err = buf.Write(encBuf[:n])
+		if err != nil {
+			return buf.Bytes(), errors.Wrap(err, "write blockMeta #entries")
+		}
+
+		n = binary.PutVarint(encBuf[:], b.mint)
+		n, err = buf.Write(encBuf[:n])
+		if err != nil {
+			return buf.Bytes(), errors.Wrap(err, "write blockMeta mint")
+		}
+
+		n = binary.PutVarint(encBuf[:], b.maxt)
+		n, err = buf.Write(encBuf[:n])
+		if err != nil {
+			return buf.Bytes(), errors.Wrap(err, "write blockMeta maxt")
+		}
+
+		n = binary.PutUvarint(encBuf[:], uint64(b.offset))
+		n, err = buf.Write(encBuf[:n])
+		if err != nil {
+			return buf.Bytes(), errors.Wrap(err, "write blockMeta offset")
+		}
+
+		n = binary.PutUvarint(encBuf[:], uint64(len(b.b)))
+		n, err = buf.Write(encBuf[:n])
+		if err != nil {
+			return buf.Bytes(), errors.Wrap(err, "write blockMeta len")
+		}
 	}
 
-	return totBytes[:off]
+	// Write the metasOffset.
+	binary.BigEndian.PutUint64(encBuf[:], uint64(metasOffset))
+	n, err = buf.Write(encBuf[:8])
+	if err != nil {
+		return buf.Bytes(), errors.Wrap(err, "write metasOffset")
+	}
+
+	return buf.Bytes(), nil
 }
 
 // Encoding implements Chunk.
@@ -270,7 +349,65 @@ func (a *memAppender) Close() error {
 // Iterator implements Chunk.
 // TODO: Recheck this.
 func (c *MemChunk) Iterator() Iterator {
-	return newMemIterator(append(c.blocks, *c.memBlock), c.cr)
+	blocks := c.blocks
+	if c.memBlock != nil {
+		blocks = append(blocks, *c.memBlock)
+	}
+	return newMemIterator(blocks, c.cr)
+}
+
+// NewByteChunk returns a MemChunk on the passed bytes.
+func NewByteChunk(b []byte) (*MemChunk, error) {
+	bc := &MemChunk{
+		cr: func(r io.Reader) (CompressionReader, error) { return gzip.NewReader(r) },
+	}
+
+	// Verify the meta.
+	if len(b) < 5 {
+		return nil, errors.Wrap(errInvalidSize, "chunk header")
+	}
+	if m := binary.BigEndian.Uint32(b[0:4]); m != magicNumber {
+		return nil, errors.Errorf("invalid magic number %x", m)
+	}
+
+	version := int(b[4])
+	if version != 1 {
+		return nil, errors.Errorf("invalid version %d", version)
+	}
+
+	metasOffset := binary.BigEndian.Uint64(b[len(b)-8:])
+	mb := b[metasOffset:]
+	// Read the number of blocks.
+	num, n := binary.Uvarint(mb)
+	mb = mb[n:]
+
+	for i := uint64(0); i < num; i++ {
+		blk := block{}
+		// Read #entries.
+		entries, n := binary.Uvarint(mb)
+		mb = mb[n:]
+		blk.numEntries = int(entries)
+
+		// Read mint, maxt.
+		ts, n := binary.Varint(mb)
+		mb = mb[n:]
+		blk.mint = ts
+		ts, n = binary.Varint(mb)
+		mb = mb[n:]
+		blk.maxt = ts
+
+		// Read offset and length.
+		l, n := binary.Uvarint(mb)
+		mb = mb[n:]
+		blk.offset = int(l)
+		l, n = binary.Uvarint(mb)
+		blk.b = b[blk.offset : blk.offset+int(l)]
+		mb = mb[n:]
+
+		bc.blocks = append(bc.blocks, blk)
+	}
+
+	return bc, nil
 }
 
 type memIterator struct {
