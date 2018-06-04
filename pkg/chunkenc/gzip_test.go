@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestGZIPBlock(t *testing.T) {
-	b := NewMemChunk(EncGZIP)
+	chk := NewMemChunk(EncGZIP)
 
 	cases := []struct {
 		ts  int64
@@ -57,13 +58,13 @@ func TestGZIPBlock(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		require.NoError(t, b.Append(c.ts, c.str))
+		require.NoError(t, chk.Append(c.ts, c.str))
 		if c.cut {
-			require.NoError(t, b.app.cut())
+			require.NoError(t, chk.app.cut())
 		}
 	}
 
-	it := b.Iterator()
+	it := chk.Iterator(0, math.MaxInt64)
 	idx := 0
 	for it.Next() {
 		ts, str := it.At()
@@ -99,7 +100,7 @@ func TestGZIPCompression(t *testing.T) {
 			require.NoError(t, err)
 			fmt.Println(float64(len(b))/(1024*1024), float64(len(b2))/(1024*1024), float64(len(b2))/float64(len(chk.blocks)))
 
-			it := chk.Iterator()
+			it := chk.Iterator(0, math.MaxInt64)
 
 			for i, l := range lines {
 				require.True(t, it.Next())
@@ -128,7 +129,7 @@ func TestGZIPSerialisation(t *testing.T) {
 	bc, err := NewByteChunk(byt)
 	require.NoError(t, err)
 
-	it := bc.Iterator()
+	it := bc.Iterator(0, math.MaxInt64)
 	for i := 0; i < numSamples; i++ {
 		require.True(t, it.Next())
 

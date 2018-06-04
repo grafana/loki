@@ -24,7 +24,8 @@ func (e Encoding) String() string {
 type Chunk interface {
 	Bytes() []byte
 	Encoding() Encoding
-	Iterator() Iterator
+	Iterator(from, to int64) Iterator
+	Bounds() (from, to int64)
 	NumSamples() int
 
 	SpaceFor(int64, string) bool

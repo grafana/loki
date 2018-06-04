@@ -346,14 +346,41 @@ func (a *memAppender) Close() error {
 	return nil
 }
 
+// Bounds implements Chunk.
+func (c *MemChunk) Bounds() (from, to int64) {
+	if len(c.blocks) > 0 {
+		from = c.blocks[0].mint
+		to = c.blocks[len(c.blocks)-1].maxt
+	}
+
+	if c.memBlock != nil {
+		if from > c.memBlock.mint {
+			from = c.memBlock.mint
+		}
+
+		if to < c.memBlock.maxt {
+			to = c.memBlock.maxt
+		}
+	}
+
+	return
+}
+
 // Iterator implements Chunk.
-// TODO: Recheck this.
-func (c *MemChunk) Iterator() Iterator {
+func (c *MemChunk) Iterator(from, to int64) Iterator {
 	blocks := c.blocks
 	if c.memBlock != nil {
 		blocks = append(blocks, *c.memBlock)
 	}
-	return newMemIterator(blocks, c.cr)
+
+	filteredBlocks := make([]block, 0, len(blocks))
+	for _, b := range blocks {
+		if to > b.mint && b.maxt > from {
+			filteredBlocks = append(filteredBlocks, b)
+		}
+	}
+
+	return newMemIterator(filteredBlocks, c.cr)
 }
 
 // NewByteChunk returns a MemChunk on the passed bytes.
@@ -476,7 +503,8 @@ func newBlockIterator(b block, cr func(io.Reader) (CompressionReader, error)) (I
 	if len(b.entries) > 0 {
 		// This means the block is an in-mem block and we can use the entries.
 
-		// TODO: Race!!!
+		// TODO: Race!!! The entries struct could completely change. Not sure a
+		// copy is warranted for every query.
 		return &listIterator{
 			entries: b.entries[:],
 		}, nil
