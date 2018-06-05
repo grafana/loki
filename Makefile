@@ -125,6 +125,9 @@ shell: build-image/$(UPTODATE)
 
 endif
 
+images:
+	echo $(IMAGE_NAMES)
+
 save-images:
 	@mkdir -p images
 	for image_name in $(IMAGE_NAMES); do \
