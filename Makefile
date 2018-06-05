@@ -26,7 +26,7 @@ UPTODATE_FILES := $(patsubst %/Dockerfile,%/$(UPTODATE),$(DOCKERFILES))
 DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,$(shell basename $(dir))))
 images:
-	$(info $(IMAGE_NAMES))
+	$(info $(patsubst %,%:$(IMAGE_TAG),$(IMAGE_NAMES)))
 	@echo > /dev/null
 
 # Generating proto code is automated.
@@ -124,9 +124,6 @@ shell: build-image/$(UPTODATE)
 	bash
 
 endif
-
-images:
-	echo $(IMAGE_NAMES)
 
 save-images:
 	@mkdir -p images
