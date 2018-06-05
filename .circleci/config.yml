@@ -86,7 +86,6 @@ jobs:
     <<: *defaults
     steps:
       - run: |
-          images=$(make images)
           curl -s --header "Content-Type: application/json" \
             --data "{\"build_parameters\": {\"CIRCLE_JOB\": \"deploy\", \"IMAGE_NAMES\": \"$(make images-names)\"}}" \
             --request POST \
