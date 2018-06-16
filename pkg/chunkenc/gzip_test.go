@@ -78,6 +78,10 @@ func TestGZIPBlock(t *testing.T) {
 }
 
 func TestGZIPCompression(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	b, err := ioutil.ReadFile("NASA_access_log_Aug95")
 	if err != nil {
 		t.SkipNow()

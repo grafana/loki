@@ -1,5 +1,7 @@
 package chunkenc
 
+import "io"
+
 // Encoding is the identifier for a chunk encoding.
 type Encoding uint8
 
@@ -21,6 +23,10 @@ func (e Encoding) String() string {
 }
 
 // Chunk holds a sequence of sample pairs that can be iterated over and appended to.
+// The functions here are not safe to execute concurrently.
+// But once you get the iterator, it can be safely iterated over concurrently while
+// appending to the chunk. i.e, only the creation of Iterator is not safe, not it's
+// usage.
 type Chunk interface {
 	Bytes() []byte
 	Encoding() Encoding
@@ -48,6 +54,7 @@ type CompressionWriter interface {
 	Write(p []byte) (int, error)
 	Close() error
 	Flush() error
+	Reset(w io.Writer)
 }
 
 // CompressionReader reads the compressed data.

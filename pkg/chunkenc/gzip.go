@@ -46,8 +46,7 @@ type MemChunk struct {
 
 type block struct {
 	// This is compressed bytes.
-	b  []byte
-	ts []int64
+	b []byte
 
 	// This is the list of raw entries.
 	// This is cleared in finished blocks.
@@ -299,11 +298,8 @@ func (a *memAppender) cut() error {
 	}
 	a.block.b = a.buffer.Bytes()
 
-	b := make([]byte, len(a.block.b))
-	copy(b, a.block.b)
-
 	a.chunk.blocks = append(a.chunk.blocks, block{
-		b:          b,
+		b:          a.block.b[:],
 		numEntries: a.block.numEntries,
 		mint:       a.block.mint,
 		maxt:       a.block.maxt,
@@ -312,14 +308,13 @@ func (a *memAppender) cut() error {
 
 	// Reset the block.
 	a.block.entries = a.block.entries[:0]
-	a.block.b = a.block.b[:0]
-	a.block.ts = a.block.ts[:0]
+	a.block.b = make([]byte, 0, len(a.block.b)) // TODO(goutham): Use pool.
 	a.block.mint = a.block.maxt
 	a.block.numEntries = 0
 	a.block.size = 0
 
 	a.buffer = bytes.NewBuffer(a.block.b)
-	a.writer = a.chunk.cw(a.buffer)
+	a.writer.Reset(a.buffer)
 
 	return nil
 }
@@ -503,10 +498,15 @@ func newBlockIterator(b block, cr func(io.Reader) (CompressionReader, error)) (I
 	if len(b.entries) > 0 {
 		// This means the block is an in-mem block and we can use the entries.
 
-		// TODO: Race!!! The entries struct could completely change. Not sure a
-		// copy is warranted for every query.
+		// We are doing a copy everytime, this is because b.entries could change completely,
+		// the alternate would be that we allocate a new b.entries everytime we cut a block,
+		// but the tradeoff is that queries to near-realtime data would be much lower than
+		// cutting of blocks.
+		entries := make([]entry, len(b.entries))
+		copy(entries, b.entries)
+
 		return &listIterator{
-			entries: b.entries[:],
+			entries: entries,
 		}, nil
 	}
 
