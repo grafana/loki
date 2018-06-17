@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"sync"
 
 	"github.com/pkg/errors"
 )
@@ -31,8 +30,7 @@ type MemChunk struct {
 	maxBlocks int
 
 	// The finished blocks.
-	blocks     []block
-	sync.Mutex // Acquire the lock before modifying blocks.
+	blocks []block
 
 	// Current in-mem block being appended to.
 	memBlock *block
@@ -152,9 +150,6 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 		c.app.cut()
 	}
 
-	c.Lock()
-	defer c.Unlock()
-
 	buf := bytes.NewBuffer(nil)
 	encBuf := [binary.MaxVarintLen64]byte{}
 	offset := 0
@@ -244,9 +239,6 @@ func (c *MemChunk) Encoding() Encoding {
 
 // NumSamples implements Chunk.
 func (c *MemChunk) NumSamples() int {
-	c.Lock()
-	defer c.Unlock()
-
 	ne := 0
 	for _, blk := range c.blocks {
 		ne += blk.numEntries
@@ -343,9 +335,6 @@ func (a *memAppender) cut() error {
 		return nil
 	}
 
-	a.chunk.Lock()
-	defer a.chunk.Unlock()
-
 	err := a.writer.Close()
 	if err != nil {
 		return errors.Wrap(err, "closing writer")
@@ -374,9 +363,6 @@ func (a *memAppender) cut() error {
 }
 
 func (a *memAppender) Close() error {
-	a.chunk.Lock()
-	defer a.chunk.Unlock()
-
 	a.writer.Close()
 
 	a.block.entries = nil
