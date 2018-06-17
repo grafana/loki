@@ -6,6 +6,8 @@ import (
 	"compress/gzip"
 	"encoding/binary"
 	"fmt"
+	"hash"
+	"hash/crc32"
 	"io"
 	"math"
 
@@ -21,6 +23,21 @@ var (
 	errInvalidFlag     = fmt.Errorf("invalid flag")
 	errInvalidChecksum = fmt.Errorf("invalid checksum")
 )
+
+// The table gets initialized with sync.Once but may still cause a race
+// with any other use of the crc32 package anywhere. Thus we initialize it
+// before.
+var castagnoliTable *crc32.Table
+
+func init() {
+	castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
+}
+
+// newCRC32 initializes a CRC32 hash with a preconfigured polynomial, so the
+// polynomial may be easily changed in one location at a later time, if necessary.
+func newCRC32() hash.Hash32 {
+	return crc32.New(castagnoliTable)
+}
 
 // MemChunk implements compressed log chunks.
 type MemChunk struct {
@@ -135,6 +152,13 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 		blk.offset = int(l)
 		l, n = binary.Uvarint(mb)
 		blk.b = b[blk.offset : blk.offset+int(l)]
+
+		// Verify checksums.
+		expCRC := binary.BigEndian.Uint32(b[blk.offset+int(l):])
+		if expCRC != crc32.Checksum(blk.b, castagnoliTable) {
+			return bc, errInvalidChecksum
+		}
+
 		mb = mb[n:]
 
 		bc.blocks = append(bc.blocks, blk)
@@ -149,6 +173,7 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 		// When generating the bytes, we need to flush the data held in-buffer.
 		c.app.cut()
 	}
+	crc32Hash := newCRC32()
 
 	buf := bytes.NewBuffer(nil)
 	encBuf := [binary.MaxVarintLen64]byte{}
@@ -172,6 +197,13 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 	// Write Blocks.
 	for i, b := range c.blocks {
 		c.blocks[i].offset = offset
+
+		crc32Hash.Reset()
+		_, err := crc32Hash.Write(b.b)
+		if err != nil {
+			panic(err) // crc32 doesn't error.
+		}
+		b.b = crc32Hash.Sum(b.b)
 
 		n, err = buf.Write(b.b)
 		if err != nil {
