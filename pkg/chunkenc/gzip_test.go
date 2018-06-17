@@ -64,7 +64,8 @@ func TestGZIPBlock(t *testing.T) {
 		}
 	}
 
-	it := chk.Iterator(0, math.MaxInt64)
+	it, err := chk.Iterator(0, math.MaxInt64)
+	require.NoError(t, err)
 	idx := 0
 	for it.Next() {
 		ts, str := it.At()
@@ -75,6 +76,21 @@ func TestGZIPBlock(t *testing.T) {
 
 	require.NoError(t, it.Err())
 	require.Equal(t, len(cases), idx)
+
+	t.Run("bounded-iteration", func(t *testing.T) {
+		it, err := chk.Iterator(3, 7)
+		require.NoError(t, err)
+
+		idx := 2
+		for it.Next() {
+			ts, str := it.At()
+			require.Equal(t, cases[idx].ts, ts)
+			require.Equal(t, cases[idx].str, str)
+			idx++
+		}
+		require.NoError(t, it.Err())
+		require.Equal(t, 7, idx)
+	})
 }
 
 func TestGZIPCompression(t *testing.T) {
@@ -104,7 +120,8 @@ func TestGZIPCompression(t *testing.T) {
 			require.NoError(t, err)
 			fmt.Println(float64(len(b))/(1024*1024), float64(len(b2))/(1024*1024), float64(len(b2))/float64(len(chk.blocks)))
 
-			it := chk.Iterator(0, math.MaxInt64)
+			it, err := chk.Iterator(0, math.MaxInt64)
+			require.NoError(t, err)
 
 			for i, l := range lines {
 				require.True(t, it.Next())
@@ -133,7 +150,8 @@ func TestGZIPSerialisation(t *testing.T) {
 	bc, err := NewByteChunk(byt)
 	require.NoError(t, err)
 
-	it := bc.Iterator(0, math.MaxInt64)
+	it, err := bc.Iterator(0, math.MaxInt64)
+	require.NoError(t, err)
 	for i := 0; i < numSamples; i++ {
 		require.True(t, it.Next())
 

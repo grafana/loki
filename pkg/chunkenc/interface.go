@@ -30,7 +30,7 @@ func (e Encoding) String() string {
 type Chunk interface {
 	Bytes() []byte
 	Encoding() Encoding
-	Iterator(from, to int64) Iterator
+	Iterator(from, to int64) (Iterator, error)
 	Bounds() (from, to int64)
 	NumSamples() int
 
@@ -60,4 +60,5 @@ type CompressionWriter interface {
 // CompressionReader reads the compressed data.
 type CompressionReader interface {
 	Read(p []byte) (int, error)
+	Reset(r io.Reader) error
 }

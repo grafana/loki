@@ -91,6 +91,60 @@ func NewMemChunk(enc Encoding) *MemChunk {
 	return c
 }
 
+// NewByteChunk returns a MemChunk on the passed bytes.
+func NewByteChunk(b []byte) (*MemChunk, error) {
+	bc := &MemChunk{
+		cr: func(r io.Reader) (CompressionReader, error) { return gzip.NewReader(r) },
+	}
+
+	// Verify the meta.
+	if len(b) < 5 {
+		return nil, errors.Wrap(errInvalidSize, "chunk header")
+	}
+	if m := binary.BigEndian.Uint32(b[0:4]); m != magicNumber {
+		return nil, errors.Errorf("invalid magic number %x", m)
+	}
+
+	version := int(b[4])
+	if version != 1 {
+		return nil, errors.Errorf("invalid version %d", version)
+	}
+
+	metasOffset := binary.BigEndian.Uint64(b[len(b)-8:])
+	mb := b[metasOffset:]
+	// Read the number of blocks.
+	num, n := binary.Uvarint(mb)
+	mb = mb[n:]
+
+	for i := uint64(0); i < num; i++ {
+		blk := block{}
+		// Read #entries.
+		entries, n := binary.Uvarint(mb)
+		mb = mb[n:]
+		blk.numEntries = int(entries)
+
+		// Read mint, maxt.
+		ts, n := binary.Varint(mb)
+		mb = mb[n:]
+		blk.mint = ts
+		ts, n = binary.Varint(mb)
+		mb = mb[n:]
+		blk.maxt = ts
+
+		// Read offset and length.
+		l, n := binary.Uvarint(mb)
+		mb = mb[n:]
+		blk.offset = int(l)
+		l, n = binary.Uvarint(mb)
+		blk.b = b[blk.offset : blk.offset+int(l)]
+		mb = mb[n:]
+
+		bc.blocks = append(bc.blocks, blk)
+	}
+
+	return bc, nil
+}
+
 // Bytes implements Chunk.
 func (c *MemChunk) Bytes() ([]byte, error) {
 	if c.app != nil {
@@ -362,108 +416,68 @@ func (c *MemChunk) Bounds() (from, to int64) {
 }
 
 // Iterator implements Chunk.
-func (c *MemChunk) Iterator(from, to int64) Iterator {
+func (c *MemChunk) Iterator(mint, maxt int64) (Iterator, error) {
 	blocks := c.blocks
-	if c.memBlock != nil {
+	if c.memBlock != nil && len(c.memBlock.entries) > 0 {
 		blocks = append(blocks, *c.memBlock)
 	}
 
 	filteredBlocks := make([]block, 0, len(blocks))
 	for _, b := range blocks {
-		if to > b.mint && b.maxt > from {
+		if maxt > b.mint && b.maxt > mint {
 			filteredBlocks = append(filteredBlocks, b)
 		}
 	}
 
-	return newMemIterator(filteredBlocks, c.cr)
+	return newChainedIterator(filteredBlocks, mint, maxt, c.cr)
 }
 
-// NewByteChunk returns a MemChunk on the passed bytes.
-func NewByteChunk(b []byte) (*MemChunk, error) {
-	bc := &MemChunk{
-		cr: func(r io.Reader) (CompressionReader, error) { return gzip.NewReader(r) },
-	}
-
-	// Verify the meta.
-	if len(b) < 5 {
-		return nil, errors.Wrap(errInvalidSize, "chunk header")
-	}
-	if m := binary.BigEndian.Uint32(b[0:4]); m != magicNumber {
-		return nil, errors.Errorf("invalid magic number %x", m)
-	}
-
-	version := int(b[4])
-	if version != 1 {
-		return nil, errors.Errorf("invalid version %d", version)
-	}
-
-	metasOffset := binary.BigEndian.Uint64(b[len(b)-8:])
-	mb := b[metasOffset:]
-	// Read the number of blocks.
-	num, n := binary.Uvarint(mb)
-	mb = mb[n:]
-
-	for i := uint64(0); i < num; i++ {
-		blk := block{}
-		// Read #entries.
-		entries, n := binary.Uvarint(mb)
-		mb = mb[n:]
-		blk.numEntries = int(entries)
-
-		// Read mint, maxt.
-		ts, n := binary.Varint(mb)
-		mb = mb[n:]
-		blk.mint = ts
-		ts, n = binary.Varint(mb)
-		mb = mb[n:]
-		blk.maxt = ts
-
-		// Read offset and length.
-		l, n := binary.Uvarint(mb)
-		mb = mb[n:]
-		blk.offset = int(l)
-		l, n = binary.Uvarint(mb)
-		blk.b = b[blk.offset : blk.offset+int(l)]
-		mb = mb[n:]
-
-		bc.blocks = append(bc.blocks, blk)
-	}
-
-	return bc, nil
-}
-
-type memIterator struct {
+// chainedIterator chains several blocks together for iterating.
+type chainedIterator struct {
 	blocks []block
 
 	it  Iterator
 	cur entry
+	cr  func(io.Reader) (CompressionReader, error)
 
-	cr func(io.Reader) (CompressionReader, error)
+	mint, maxt int64
 
 	err error
 }
 
-func newMemIterator(blocks []block, cr func(io.Reader) (CompressionReader, error)) *memIterator {
+func newChainedIterator(blocks []block, mint, maxt int64, cr func(io.Reader) (CompressionReader, error)) (*chainedIterator, error) {
 	// TODO: Handle nil blocks.
 	it, err := newBlockIterator(blocks[0], cr)
 	if err != nil {
-		fmt.Println("err", err)
+		return nil, err
 	}
-	return &memIterator{
+
+	return &chainedIterator{
 		blocks: blocks[1:],
 		it:     it,
 
+		mint: mint,
+		maxt: maxt,
+
 		cr: cr,
-	}
+	}, nil
 }
 
-func (gi *memIterator) Seek(int64) bool {
+func (gi *chainedIterator) Seek(int64) bool {
 	return false
 }
 
-func (gi *memIterator) Next() bool {
-	if gi.it.Next() {
+func (gi *chainedIterator) Next() bool {
+	for gi.it.Next() {
 		gi.cur.t, gi.cur.s = gi.it.At()
+		if gi.cur.t < gi.mint {
+			continue
+		}
+
+		if gi.cur.t > gi.maxt {
+			return false
+		}
+
 		return true
 	}
 
@@ -482,11 +496,11 @@ func (gi *memIterator) Next() bool {
 	return gi.Next()
 }
 
-func (gi *memIterator) At() (int64, string) {
+func (gi *chainedIterator) At() (int64, string) {
 	return gi.cur.t, gi.cur.s
 }
 
-func (gi *memIterator) Err() error {
+func (gi *chainedIterator) Err() error {
 	if gi.err != nil {
 		return gi.err
 	}
@@ -520,7 +534,7 @@ func newBlockIterator(b block, cr func(io.Reader) (CompressionReader, error)) (I
 	}
 
 	s := bufio.NewReader(r)
-	return newScanIterator(s), nil
+	return newBufferedIterator(s), nil
 }
 
 var emptyIterator = &listIterator{}
@@ -554,7 +568,7 @@ func (li *listIterator) Err() error {
 	return nil
 }
 
-type scanIterator struct {
+type bufferedReader struct {
 	s *bufio.Reader
 
 	curT   int64
@@ -566,19 +580,19 @@ type scanIterator struct {
 	decBuf []byte // The buffer for decoding the lengths.
 }
 
-func newScanIterator(s *bufio.Reader) *scanIterator {
-	return &scanIterator{
+func newBufferedIterator(s *bufio.Reader) *bufferedReader {
+	return &bufferedReader{
 		s:      s,
 		buf:    make([]byte, 1024),
 		decBuf: make([]byte, binary.MaxVarintLen64),
 	}
 }
 
-func (si *scanIterator) Seek(int64) bool {
+func (si *bufferedReader) Seek(int64) bool {
 	return false
 }
 
-func (si *scanIterator) Next() bool {
+func (si *bufferedReader) Next() bool {
 	ts, err := binary.ReadVarint(si.s)
 	if err != nil {
 		if err != io.EOF {
@@ -620,11 +634,11 @@ func (si *scanIterator) Next() bool {
 	return true
 }
 
-func (si *scanIterator) At() (int64, string) {
+func (si *bufferedReader) At() (int64, string) {
 	return si.curT, si.curLog
 }
 
-func (si *scanIterator) Err() error {
+func (si *bufferedReader) Err() error {
 	return si.err
 }
 
