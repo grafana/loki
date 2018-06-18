@@ -45,6 +45,7 @@ const (
 	// See http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html.
 	dynamoDBMaxWriteBatchSize = 25
 	dynamoDBMaxReadBatchSize  = 100
+	validationException       = "ValidationException"
 )
 
 var (
@@ -247,6 +248,12 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 				logRetry(ctx, requests)
 				unprocessed.TakeReqs(requests, -1)
 				backoff.Wait()
+				continue
+			} else if ok && awsErr.Code() == validationException {
+				// this write will never work, so the only option is to drop the offending items and continue.
+				// TODO: add more debug options for capturing data/telemetry about the offending items?
+				level.Warn(util.Logger).Log("Data lost while flushing to Dynamo: %v", awsErr)
+				level.Debug(util.Logger).Log("Dropped request details: \n%v", requests)
 				continue
 			}
 
@@ -619,6 +626,12 @@ func (a storageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chu
 			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
 				unprocessed.TakeReqs(requests, -1)
 				backoff.Wait()
+				continue
+			} else if ok && awsErr.Code() == validationException {
+				// this read will never work, so the only option is to drop the offending request and continue.
+				// TODO: add more debug options for capturing data/telemetry about the offending items?
+				level.Warn(util.Logger).Log("Error while fetching data from Dynamo: %v", awsErr)
+				level.Debug(util.Logger).Log("Dropped request details: \n%v", requests)
 				continue
 			}
 
