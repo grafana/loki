@@ -91,6 +91,12 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	return sendBatches(iterator, queryServer, req.Limit)
 }
 
+func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+	return &logproto.LabelResponse{
+		Values: i.index.lookupLabelValues(req.Name),
+	}, nil
+}
+
 func isDone(ctx context.Context) bool {
 	select {
 	case <-ctx.Done():

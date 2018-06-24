@@ -13,6 +13,7 @@ service Pusher {
 
 service Querier {
   rpc Query(QueryRequest) returns (stream QueryResponse) {};
+  rpc Label(LabelRequest) returns (LabelResponse) {};
 }
 
 message PushRequest {
@@ -38,6 +39,14 @@ enum Direction {
 
 message QueryResponse {
   repeated Stream streams = 1;
+}
+
+message LabelRequest {
+  string name = 1;
+}
+
+message LabelResponse {
+  repeated string values = 1;
 }
 
 message Stream {

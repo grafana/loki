@@ -22,11 +22,20 @@ import (
 
 func main() {
 	var (
-		flagset      = flag.NewFlagSet("", flag.ExitOnError)
+		flagset           = flag.NewFlagSet("", flag.ExitOnError)
+		operationNameFunc = nethttp.OperationNameFunc(func(r *http.Request) string {
+			return r.URL.RequestURI()
+		})
 		serverConfig = server.Config{
 			MetricsNamespace: "logish",
 			GRPCMiddleware: []grpc.UnaryServerInterceptor{
 				middleware.ServerUserHeaderInterceptor,
+			},
+			HTTPMiddleware: []middleware.Interface{
+				middleware.Func(func(handler http.Handler) http.Handler {
+					return nethttp.Middleware(opentracing.GlobalTracer(), handler, operationNameFunc)
+				}),
+				middleware.AuthenticateUser,
 			},
 		}
 		ringConfig    ring.Config
@@ -57,14 +66,7 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	operationNameFunc := nethttp.OperationNameFunc(func(r *http.Request) string {
-		return r.URL.RequestURI()
-	})
-	server.HTTP.Handle("/api/prom/query", middleware.Merge(
-		middleware.Func(func(handler http.Handler) http.Handler {
-			return nethttp.Middleware(opentracing.GlobalTracer(), handler, operationNameFunc)
-		}),
-		middleware.AuthenticateUser,
-	).Wrap(http.HandlerFunc(querier.QueryHandler)))
+	server.HTTP.Handle("/api/prom/query", http.HandlerFunc(querier.QueryHandler))
+	server.HTTP.Handle("/api/prom/label/{name}/values", http.HandlerFunc(querier.LabelHandler))
 	server.Run()
 }
