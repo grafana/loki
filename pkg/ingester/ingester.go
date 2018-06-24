@@ -100,6 +100,16 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	return instance.Query(req, queryServer)
 }
 
+func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+	instanceID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	instance := i.getOrCreateInstance(instanceID)
+	return instance.Label(ctx, req)
+}
+
 func (*Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
