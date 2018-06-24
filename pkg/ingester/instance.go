@@ -58,7 +58,6 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 }
 
 func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
-	log.Println(req)
 	matchers, err := parser.Matchers(req.Query)
 	if err != nil {
 		return err
@@ -67,7 +66,6 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	// TODO: lock smell
 	i.streamsMtx.Lock()
 	ids := i.index.lookup(matchers)
-	log.Printf("matchers: %+v, ids: %+v", matchers, ids)
 	iterators := make([]querier.EntryIterator, len(ids))
 	for j := range ids {
 		stream, ok := i.streams[ids[j]]

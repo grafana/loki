@@ -145,10 +145,12 @@ func (i *heapIterator) Next() bool {
 	i.curr = heap.Pop(i.heap).(EntryIterator)
 
 	// keep popping entries off if they match, to dedupe
+	curr := i.curr.Entry()
 	for i.heap.Len() > 0 {
-		curr := i.curr.Entry()
 		next := i.heap.Peek().Entry()
-		if !curr.Equal(next) {
+		if curr.Equal(next) {
+			i.heap.Pop()
+		} else {
 			break
 		}
 	}
