@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"log"
+	"sort"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -92,8 +93,10 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 }
 
 func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+	labels := i.index.lookupLabelValues(req.Name)
+	sort.Strings(labels)
 	return &logproto.LabelResponse{
-		Values: i.index.lookupLabelValues(req.Name),
+		Values: labels,
 	}, nil
 }
 

@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -14,70 +13,63 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/prometheus/prometheus/pkg/labels"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/grafana/logish/pkg/logproto"
 	"github.com/grafana/logish/pkg/parser"
 	"github.com/grafana/logish/pkg/querier"
 )
 
-var defaultAddr = "https://log-us.grafana.net/api/prom/query"
+var (
+	app      = kingpin.New("logcpi", "A command-line for logish.")
+	addr     = app.Flag("addr", "Server address.").Default("https://log-us.grafana.net").Envar("GRAFANA_ADDR").String()
+	username = app.Flag("username", "Username for HTTP basic auth.").Default("").Envar("GRAFANA_USERNAME").String()
+	password = app.Flag("password", "Password for HTTP basic auth.").Default("").Envar("GRAFANA_PASSWORD").String()
+
+	queryCmd  = app.Command("query", "Run a LogQL query.")
+	queryStr  = queryCmd.Arg("query", "eg '{foo=\"bar\",baz=\"blip\"}'").Required().String()
+	regexpStr = queryCmd.Arg("regex", "").String()
+	limit     = queryCmd.Flag("limit", "Limit on number of entries to print.").Default("30").Int()
+	since     = queryCmd.Flag("since", "Lookback window.").Default("1h").Duration()
+	forward   = queryCmd.Flag("forward", "Scan forwards through logs.").Default("false").Bool()
+
+	labelsCmd = app.Command("labels", "Find values for a given label.")
+	labelName = labelsCmd.Arg("label", "The name of the label.").Required().String()
+)
 
 func main() {
-	var (
-		limit   = flag.Int("limit", 30, "Limit on number of entries to print.")
-		since   = flag.Duration("since", 1*time.Hour, "Lookback window.")
-		forward = flag.Bool("forward", false, "Scan forwards through logs.")
-	)
+	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
 
-	flag.Parse()
-	args := flag.Args()
-	if len(args) < 1 || len(args) > 2 {
-		log.Fatalf("usage: %s '{foo=\"bar\",baz=\"blip\"}''", os.Args[0])
-	}
+	case queryCmd.FullCommand():
+		query()
 
-	query := args[0]
-	regexp := ""
-	if len(args) > 1 {
-		regexp = args[1]
+	case labelsCmd.FullCommand():
+		label()
 	}
-	addr := os.Getenv("GRAFANA_ADDR")
-	if addr == "" {
-		addr = defaultAddr
-	}
+}
 
+func label() {
+	path := fmt.Sprintf("/api/prom/label/%s/values", *labelName)
+	var labelResponse logproto.LabelResponse
+	doRequest(path, &labelResponse)
+	for _, value := range labelResponse.Values {
+		fmt.Println(value)
+	}
+}
+
+func query() {
 	end := time.Now()
 	start := end.Add(-*since)
-	username := os.Getenv("GRAFANA_USERNAME")
-	password := os.Getenv("GRAFANA_PASSWORD")
+
 	directionStr := "backward"
 	if *forward {
 		directionStr = "forward"
 	}
-	url := fmt.Sprintf("%s?query=%s&limit=%d&start=%d&end=%d&direction=%s&regexp=%s",
-		addr, url.QueryEscape(query), *limit, start.Unix(), end.Unix(), directionStr, url.QueryEscape(regexp))
-	//fmt.Println(url)
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		log.Fatalf("Error creating request: %v", err)
-	}
-	req.SetBasicAuth(username, password)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Fatalf("Error doing request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode/100 != 2 {
-		buf, err := ioutil.ReadAll(resp.Body)
-		log.Fatalf("Error response from server: %s (%v)", string(buf), err)
-	}
-
+	path := fmt.Sprintf("/api/prom/query?query=%s&limit=%d&start=%d&end=%d&direction=%s&regexp=%s",
+		url.QueryEscape(*queryStr), *limit, start.Unix(), end.Unix(), directionStr, url.QueryEscape(*regexpStr))
 	var queryResponse logproto.QueryResponse
-	if err := json.NewDecoder(resp.Body).Decode(&queryResponse); err != nil {
-		log.Fatalf("Error decoding response: %v", err)
-	}
+	doRequest(path, &queryResponse)
 
 	if len(queryResponse.Streams) == 0 {
 		return
@@ -132,6 +124,32 @@ func main() {
 
 	if err := iter.Error(); err != nil {
 		log.Fatalf("Error from iterator: %v", err)
+	}
+}
+
+func doRequest(path string, out interface{}) {
+	url := *addr + path
+	fmt.Println(url)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Fatalf("Error creating request: %v", err)
+	}
+	req.SetBasicAuth(*username, *password)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Fatalf("Error doing request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode/100 != 2 {
+		buf, err := ioutil.ReadAll(resp.Body)
+		log.Fatalf("Error response from server: %s (%v)", string(buf), err)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		log.Fatalf("Error decoding response: %v", err)
 	}
 }
 
