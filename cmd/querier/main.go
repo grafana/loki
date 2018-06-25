@@ -31,12 +31,6 @@ func main() {
 			GRPCMiddleware: []grpc.UnaryServerInterceptor{
 				middleware.ServerUserHeaderInterceptor,
 			},
-			HTTPMiddleware: []middleware.Interface{
-				middleware.Func(func(handler http.Handler) http.Handler {
-					return nethttp.Middleware(opentracing.GlobalTracer(), handler, operationNameFunc)
-				}),
-				middleware.AuthenticateUser,
-			},
 		}
 		ringConfig    ring.Config
 		querierConfig querier.Config
@@ -66,7 +60,14 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	server.HTTP.Handle("/api/prom/query", http.HandlerFunc(querier.QueryHandler))
-	server.HTTP.Handle("/api/prom/label/{name}/values", http.HandlerFunc(querier.LabelHandler))
+	httpMiddleware := middleware.Merge(
+		middleware.Func(func(handler http.Handler) http.Handler {
+			return nethttp.Middleware(opentracing.GlobalTracer(), handler, operationNameFunc)
+		}),
+		middleware.AuthenticateUser,
+	)
+
+	server.HTTP.Handle("/api/prom/query", httpMiddleware.Wrap(http.HandlerFunc(querier.QueryHandler)))
+	server.HTTP.Handle("/api/prom/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(querier.LabelHandler)))
 	server.Run()
 }
