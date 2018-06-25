@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/logish/pkg/ingester/client"
+	"github.com/grafana/logish/pkg/iter"
 	"github.com/grafana/logish/pkg/logproto"
 )
 
@@ -97,11 +98,11 @@ func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logpr
 		return nil, err
 	}
 
-	iterators := make([]EntryIterator, len(clients))
+	iterators := make([]iter.EntryIterator, len(clients))
 	for i := range clients {
-		iterators[i] = newQueryClientIterator(clients[i].(logproto.Querier_QueryClient), req.Direction)
+		iterators[i] = iter.NewQueryClientIterator(clients[i].(logproto.Querier_QueryClient), req.Direction)
 	}
-	iterator := NewHeapIterator(iterators, req.Direction)
+	iterator := iter.NewHeapIterator(iterators, req.Direction)
 	defer iterator.Close()
 
 	resp, _, err := ReadBatch(iterator, req.Limit)
@@ -126,7 +127,7 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 	}, nil
 }
 
-func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, error) {
+func ReadBatch(i iter.EntryIterator, size uint32) (*logproto.QueryResponse, uint32, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
 	for ; respSize < size && i.Next(); respSize++ {
@@ -156,7 +157,7 @@ func (*Querier) Check(ctx context.Context, req *grpc_health_v1.HealthCheckReques
 }
 
 type iteratorBatcher struct {
-	iterator    EntryIterator
+	iterator    iter.EntryIterator
 	queryServer logproto.Querier_QueryServer
 }
 

@@ -1,4 +1,4 @@
-package querier
+package iter
 
 import (
 	"container/heap"
@@ -201,7 +201,7 @@ type queryClientIterator struct {
 	curr      EntryIterator
 }
 
-func newQueryClientIterator(client logproto.Querier_QueryClient, direction logproto.Direction) EntryIterator {
+func NewQueryClientIterator(client logproto.Querier_QueryClient, direction logproto.Direction) EntryIterator {
 	return &queryClientIterator{
 		client:    client,
 		direction: direction,

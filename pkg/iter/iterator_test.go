@@ -1,4 +1,4 @@
-package querier
+package iter
 
 import (
 	"testing"

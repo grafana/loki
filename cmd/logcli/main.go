@@ -15,9 +15,9 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
+	"github.com/grafana/logish/pkg/iter"
 	"github.com/grafana/logish/pkg/logproto"
 	"github.com/grafana/logish/pkg/parser"
-	"github.com/grafana/logish/pkg/querier"
 )
 
 var (
@@ -108,7 +108,7 @@ func query() {
 	if *forward {
 		d = logproto.FORWARD
 	}
-	iter := querier.NewQueryResponseIterator(&queryResponse, d)
+	iter := iter.NewQueryResponseIterator(&queryResponse, d)
 	for iter.Next() {
 		ls := labelsCache[iter.Labels()]
 		ls = subtract(commonLabels, ls)

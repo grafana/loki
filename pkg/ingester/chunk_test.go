@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/logish/pkg/iter"
 	"github.com/grafana/logish/pkg/logproto"
-	"github.com/grafana/logish/pkg/querier"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func testIteratorForward(t *testing.T, iter querier.EntryIterator, from, through int64) {
+func testIteratorForward(t *testing.T, iter iter.EntryIterator, from, through int64) {
 	i := from
 	for iter.Next() {
 		entry := iter.Entry()
@@ -24,7 +24,7 @@ func testIteratorForward(t *testing.T, iter querier.EntryIterator, from, through
 	assert.NoError(t, iter.Error())
 }
 
-func testIteratorBackward(t *testing.T, iter querier.EntryIterator, from, through int64) {
+func testIteratorBackward(t *testing.T, iter iter.EntryIterator, from, through int64) {
 	i := through - 1
 	for iter.Next() {
 		entry := iter.Entry()
