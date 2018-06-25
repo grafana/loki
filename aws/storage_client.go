@@ -68,6 +68,11 @@ var (
 		Name:      "dynamo_failures_total",
 		Help:      "The total number of errors while storing chunks to the chunk store.",
 	}, []string{tableNameLabel, errorReasonLabel, "operation"})
+	dynamoDroppedRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "dynamo_dropped_requests_total",
+		Help:      "The total number of requests which were dropped due to errors encountered from dynamo.",
+	}, []string{tableNameLabel, errorReasonLabel, "operation"})
 	dynamoQueryPagesCount = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "dynamo_query_pages_count",
@@ -97,6 +102,7 @@ func init() {
 	prometheus.MustRegister(dynamoQueryPagesCount)
 	prometheus.MustRegister(dynamoQueryRetryCount)
 	prometheus.MustRegister(s3RequestDuration)
+	prometheus.MustRegister(dynamoDroppedRequests)
 }
 
 // DynamoDBConfig specifies config for a DynamoDB database.
@@ -251,9 +257,13 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 				continue
 			} else if ok && awsErr.Code() == validationException {
 				// this write will never work, so the only option is to drop the offending items and continue.
-				// TODO: add more debug options for capturing data/telemetry about the offending items?
 				level.Warn(util.Logger).Log("Data lost while flushing to Dynamo: %v", awsErr)
 				level.Debug(util.Logger).Log("Dropped request details: \n%v", requests)
+				// recording the drop counter separately from recordDynamoError(), as the error code alone may not provide enough context
+				// to determine if a request was dropped (or not)
+				for tableName := range requests {
+					dynamoDroppedRequests.WithLabelValues(tableName, validationException, "DynamoDB.BatchWriteItem").Inc()
+				}
 				continue
 			}
 
@@ -629,9 +639,13 @@ func (a storageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chu
 				continue
 			} else if ok && awsErr.Code() == validationException {
 				// this read will never work, so the only option is to drop the offending request and continue.
-				// TODO: add more debug options for capturing data/telemetry about the offending items?
 				level.Warn(util.Logger).Log("Error while fetching data from Dynamo: %v", awsErr)
 				level.Debug(util.Logger).Log("Dropped request details: \n%v", requests)
+				// recording the drop counter separately from recordDynamoError(), as the error code alone may not provide enough context
+				// to determine if a request was dropped (or not)
+				for tableName := range requests {
+					dynamoDroppedRequests.WithLabelValues(tableName, validationException, "DynamoDB.BatchGetItemPages").Inc()
+				}
 				continue
 			}
 
