@@ -74,7 +74,12 @@ Args:
 
 ## API
 
+*nb* Authentication is out of scope for this project.  You are expected to run an
+authenticating reverse proxy in front of our services, such as an Nginx with basic
+auth or a OAuth2 proxy.
+
 There are 4 API endpoints:
+
 - `POST /api/prom/push`
 
   For sending log entries, expects a snappy compresses proto in the HTTP Body.
