@@ -50,7 +50,7 @@ func main() {
 
 func label() {
 	var path string
-	if labelName != nil {
+	if len(*labelName) > 0 {
 		path = fmt.Sprintf("/api/prom/label/%s/values", url.PathEscape(*labelName))
 	} else {
 		path = "/api/prom/label"
