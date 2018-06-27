@@ -126,46 +126,44 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 		cr: func(r io.Reader) (CompressionReader, error) { return gzip.NewReader(r) },
 	}
 
-	// Verify the meta.
-	if len(b) < 5 {
-		return nil, errors.Wrap(errInvalidSize, "chunk header")
-	}
-	if m := binary.BigEndian.Uint32(b[0:4]); m != magicNumber {
+	db := decbuf{b: b}
+
+	// Verify the header.
+	if m := db.be32(); m != magicNumber {
 		return nil, errors.Errorf("invalid magic number %x", m)
 	}
-
-	version := int(b[4])
-	if version != 1 {
+	if version := db.byte(); version != 1 {
 		return nil, errors.Errorf("invalid version %d", version)
+	}
+	if db.err() != nil {
+		return nil, errors.Wrap(db.err(), "verifying header")
 	}
 
 	metasOffset := binary.BigEndian.Uint64(b[len(b)-8:])
-	mb := b[metasOffset:]
-	// Read the number of blocks.
-	num, n := binary.Uvarint(mb)
-	mb = mb[n:]
+	mb := b[metasOffset : len(b)-(8+4)] // storing the metasOffset + checksum of meta
+	db = decbuf{b: mb}
 
-	for i := uint64(0); i < num; i++ {
+	expCRC := binary.BigEndian.Uint32(b[len(b)-(8+4):])
+	if expCRC != db.crc32() {
+		return nil, errInvalidChecksum
+	}
+
+	// Read the number of blocks.
+	num := db.uvarint()
+
+	for i := 0; i < num; i++ {
 		blk := block{}
 		// Read #entries.
-		entries, n := binary.Uvarint(mb)
-		mb = mb[n:]
-		blk.numEntries = int(entries)
+		blk.numEntries = db.uvarint()
 
 		// Read mint, maxt.
-		ts, n := binary.Varint(mb)
-		mb = mb[n:]
-		blk.mint = ts
-		ts, n = binary.Varint(mb)
-		mb = mb[n:]
-		blk.maxt = ts
+		blk.mint = db.varint64()
+		blk.maxt = db.varint64()
 
 		// Read offset and length.
-		l, n := binary.Uvarint(mb)
-		mb = mb[n:]
-		blk.offset = int(l)
-		l, n = binary.Uvarint(mb)
-		blk.b = b[blk.offset : blk.offset+int(l)]
+		blk.offset = db.uvarint()
+		l := db.uvarint()
+		blk.b = b[blk.offset : blk.offset+l]
 
 		// Verify checksums.
 		expCRC := binary.BigEndian.Uint32(b[blk.offset+int(l):])
@@ -173,9 +171,11 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 			return bc, errInvalidChecksum
 		}
 
-		mb = mb[n:]
-
 		bc.blocks = append(bc.blocks, blk)
+
+		if db.err() != nil {
+			return nil, errors.Wrap(db.err(), "decoding block meta")
+		}
 	}
 
 	return bc, nil
@@ -190,21 +190,17 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 	crc32Hash := newCRC32()
 
 	buf := bytes.NewBuffer(nil)
-	encBuf := [binary.MaxVarintLen64]byte{}
 	offset := 0
 
-	// Write the magicNumber.
-	binary.BigEndian.PutUint32(encBuf[:], uint32(magicNumber))
-	n, err := buf.Write(encBuf[:4])
-	if err != nil {
-		return buf.Bytes(), errors.Wrap(err, "write magic number")
-	}
-	offset += n
+	eb := encbuf{b: make([]byte, 0, 1<<10)}
 
-	// Write the version.
-	n, err = buf.Write([]byte{chunkFormatV1})
+	// Write the header (magicNum + version).
+	eb.putBE32(magicNumber)
+	eb.putByte(chunkFormatV1)
+
+	n, err := buf.Write(eb.get())
 	if err != nil {
-		return buf.Bytes(), errors.Wrap(err, "write version")
+		return buf.Bytes(), errors.Wrap(err, "write blockMeta #entries")
 	}
 	offset += n
 
@@ -212,14 +208,11 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 	for i, b := range c.blocks {
 		c.blocks[i].offset = offset
 
-		crc32Hash.Reset()
-		_, err := crc32Hash.Write(b.b)
-		if err != nil {
-			panic(err) // crc32 doesn't error.
-		}
-		b.b = crc32Hash.Sum(b.b)
+		eb.reset()
+		eb.putBytes(b.b)
+		eb.putHash(crc32Hash)
 
-		n, err = buf.Write(b.b)
+		n, err := buf.Write(eb.get())
 		if err != nil {
 			return buf.Bytes(), errors.Wrap(err, "write block")
 		}
@@ -228,49 +221,28 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 
 	metasOffset := offset
 	// Write the number of blocks.
-	n = binary.PutUvarint(encBuf[:], uint64(len(c.blocks)))
-	n, err = buf.Write(encBuf[:n])
-	if err != nil {
-		return buf.Bytes(), errors.Wrap(err, "write #blocks")
-	}
-	offset += n
+	eb.reset()
+	eb.putUvarint(len(c.blocks))
 
 	// Write BlockMetas.
 	for _, b := range c.blocks {
-		n = binary.PutUvarint(encBuf[:], uint64(b.numEntries))
-		n, err = buf.Write(encBuf[:n])
-		if err != nil {
-			return buf.Bytes(), errors.Wrap(err, "write blockMeta #entries")
-		}
+		eb.putUvarint(b.numEntries)
+		eb.putVarint64(b.mint)
+		eb.putVarint64(b.maxt)
+		eb.putUvarint(b.offset)
+		eb.putUvarint(len(b.b))
+	}
+	eb.putHash(crc32Hash)
 
-		n = binary.PutVarint(encBuf[:], b.mint)
-		n, err = buf.Write(encBuf[:n])
-		if err != nil {
-			return buf.Bytes(), errors.Wrap(err, "write blockMeta mint")
-		}
-
-		n = binary.PutVarint(encBuf[:], b.maxt)
-		n, err = buf.Write(encBuf[:n])
-		if err != nil {
-			return buf.Bytes(), errors.Wrap(err, "write blockMeta maxt")
-		}
-
-		n = binary.PutUvarint(encBuf[:], uint64(b.offset))
-		n, err = buf.Write(encBuf[:n])
-		if err != nil {
-			return buf.Bytes(), errors.Wrap(err, "write blockMeta offset")
-		}
-
-		n = binary.PutUvarint(encBuf[:], uint64(len(b.b)))
-		n, err = buf.Write(encBuf[:n])
-		if err != nil {
-			return buf.Bytes(), errors.Wrap(err, "write blockMeta len")
-		}
+	n, err = buf.Write(eb.get())
+	if err != nil {
+		return buf.Bytes(), errors.Wrap(err, "write block metas")
 	}
 
 	// Write the metasOffset.
-	binary.BigEndian.PutUint64(encBuf[:], uint64(metasOffset))
-	n, err = buf.Write(encBuf[:8])
+	eb.reset()
+	eb.putBE64int(metasOffset)
+	n, err = buf.Write(eb.get())
 	if err != nil {
 		return buf.Bytes(), errors.Wrap(err, "write metasOffset")
 	}
