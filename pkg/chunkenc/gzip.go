@@ -50,7 +50,7 @@ type MemChunk struct {
 	blocks []block
 
 	// Current in-mem block being appended to.
-	memBlock *block
+	memBlock *headBlock
 
 	app *memAppender
 
@@ -61,6 +61,18 @@ type MemChunk struct {
 
 type block struct {
 	// This is compressed bytes.
+	b          []byte
+	numEntries int
+
+	mint, maxt int64
+
+	offset int // The offset of the block in the chunk.
+}
+
+// This block holds the un-compressed entries. Once it has enough data, this is
+// emptied into a block with only compressed entries.
+type headBlock struct {
+	// This is compressed bytes.
 	b []byte
 
 	// This is the list of raw entries.
@@ -70,8 +82,10 @@ type block struct {
 	size       int // size of uncompressed bytes.
 
 	mint, maxt int64
+}
 
-	offset int // The offset of the block in the chunk.
+func (hb *headBlock) isEmpty() bool {
+	return hb == nil || len(hb.entries) == 0
 }
 
 type entry struct {
@@ -85,7 +99,7 @@ func NewMemChunk(enc Encoding) *MemChunk {
 		blockSize: 256 * 1024, // The blockSize in bytes.
 		blocks:    []block{},
 
-		memBlock: &block{
+		memBlock: &headBlock{
 			mint: math.MaxInt64,
 			maxt: math.MinInt64,
 		},
@@ -299,7 +313,7 @@ func (c *MemChunk) Close() error {
 
 type memAppender struct {
 	// chunk's in-mem block.
-	block *block
+	block *headBlock
 
 	chunk *MemChunk
 
@@ -363,7 +377,7 @@ func (a *memAppender) Append(t int64, s string) error {
 
 // cut a new block and add it to finished blocks.
 func (a *memAppender) cut() error {
-	if len(a.block.entries) == 0 {
+	if a.block.isEmpty() {
 		return nil
 	}
 
@@ -378,7 +392,6 @@ func (a *memAppender) cut() error {
 		numEntries: a.block.numEntries,
 		mint:       a.block.mint,
 		maxt:       a.block.maxt,
-		size:       a.block.size,
 	})
 
 	// Reset the block.
@@ -395,22 +408,7 @@ func (a *memAppender) cut() error {
 }
 
 func (a *memAppender) Close() error {
-	a.writer.Close()
-
-	a.block.entries = nil
-	a.block.b = a.buffer.Bytes()
-
-	b := make([]byte, len(a.block.b))
-	copy(b, a.block.b)
-	a.chunk.blocks = append(a.chunk.blocks, block{
-		b:          b,
-		numEntries: a.block.numEntries,
-		mint:       a.block.mint,
-		maxt:       a.block.maxt,
-		size:       a.block.size,
-	})
-
-	return nil
+	return a.cut()
 }
 
 // Bounds implements Chunk.
@@ -435,113 +433,25 @@ func (c *MemChunk) Bounds() (from, to int64) {
 
 // Iterator implements Chunk.
 func (c *MemChunk) Iterator(mint, maxt int64) (Iterator, error) {
-	blocks := c.blocks
-	if c.memBlock != nil && len(c.memBlock.entries) > 0 {
-		blocks = append(blocks, *c.memBlock)
-	}
+	its := make([]Iterator, 0, len(c.blocks))
 
-	filteredBlocks := make([]block, 0, len(blocks))
-	for _, b := range blocks {
+	for _, b := range c.blocks {
 		if maxt > b.mint && b.maxt > mint {
-			filteredBlocks = append(filteredBlocks, b)
+			it, err := b.iterator(c.cr)
+			if err != nil {
+				return nil, err
+			}
+
+			its = append(its, it)
 		}
 	}
 
-	return newChainedIterator(filteredBlocks, mint, maxt, c.cr)
+	its = append(its, c.memBlock.iterator(mint, maxt))
+
+	return newChainedIterator(its, mint, maxt), nil
 }
 
-// chainedIterator chains several blocks together for iterating.
-type chainedIterator struct {
-	blocks []block
-
-	it  Iterator
-	cur entry
-	cr  func(io.Reader) (CompressionReader, error)
-
-	mint, maxt int64
-
-	err error
-}
-
-func newChainedIterator(blocks []block, mint, maxt int64, cr func(io.Reader) (CompressionReader, error)) (*chainedIterator, error) {
-	// TODO: Handle nil blocks.
-	it, err := newBlockIterator(blocks[0], cr)
-	if err != nil {
-		return nil, err
-	}
-
-	return &chainedIterator{
-		blocks: blocks[1:],
-		it:     it,
-
-		mint: mint,
-		maxt: maxt,
-
-		cr: cr,
-	}, nil
-}
-
-func (gi *chainedIterator) Seek(int64) bool {
-	return false
-}
-
-func (gi *chainedIterator) Next() bool {
-	for gi.it.Next() {
-		gi.cur.t, gi.cur.s = gi.it.At()
-		if gi.cur.t < gi.mint {
-			continue
-		}
-
-		if gi.cur.t > gi.maxt {
-			return false
-		}
-
-		return true
-	}
-
-	if len(gi.blocks) == 0 {
-		return false
-	}
-
-	var err error
-	gi.it, err = newBlockIterator(gi.blocks[0], gi.cr)
-	if err != nil {
-		gi.err = err
-		return false
-	}
-	gi.blocks = gi.blocks[1:]
-
-	return gi.Next()
-}
-
-func (gi *chainedIterator) At() (int64, string) {
-	return gi.cur.t, gi.cur.s
-}
-
-func (gi *chainedIterator) Err() error {
-	if gi.err != nil {
-		return gi.err
-	}
-
-	return gi.it.Err()
-}
-
-func newBlockIterator(b block, cr func(io.Reader) (CompressionReader, error)) (Iterator, error) {
-	if len(b.entries) > 0 {
-		// This means the block is an in-mem block and we can use the entries.
-
-		// We are doing a copy everytime, this is because b.entries could change completely,
-		// the alternate would be that we allocate a new b.entries everytime we cut a block,
-		// but the tradeoff is that queries to near-realtime data would be much lower than
-		// cutting of blocks.
-		entries := make([]entry, len(b.entries))
-		copy(entries, b.entries)
-
-		return &listIterator{
-			entries: entries,
-		}, nil
-	}
-
+func (b block) iterator(cr func(io.Reader) (CompressionReader, error)) (Iterator, error) {
 	if len(b.b) == 0 {
 		return emptyIterator, nil
 	}
@@ -555,12 +465,93 @@ func newBlockIterator(b block, cr func(io.Reader) (CompressionReader, error)) (I
 	return newBufferedIterator(s), nil
 }
 
+func (hb *headBlock) iterator(mint, maxt int64) Iterator {
+	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
+		return emptyIterator
+	}
+
+	// We are doing a copy everytime, this is because b.entries could change completely,
+	// the alternate would be that we allocate a new b.entries everytime we cut a block,
+	// but the tradeoff is that queries to near-realtime data would be much lower than
+	// cutting of blocks.
+
+	entries := make([]entry, len(hb.entries))
+	copy(entries, hb.entries)
+
+	return &listIterator{
+		entries: entries,
+	}
+
+}
+
 var emptyIterator = &listIterator{}
 
 type listIterator struct {
 	entries []entry
 
 	cur entry
+}
+
+// chainedIterator chains several blocks together for iterating.
+type chainedIterator struct {
+	its []Iterator
+
+	curIt Iterator
+	cur   entry
+
+	mint, maxt int64
+
+	err error
+}
+
+func newChainedIterator(its []Iterator, mint, maxt int64) *chainedIterator {
+	return &chainedIterator{
+		its:   its[1:],
+		curIt: its[0],
+
+		mint: mint,
+		maxt: maxt,
+	}
+}
+
+func (gi *chainedIterator) Seek(int64) bool {
+	return false
+}
+
+func (gi *chainedIterator) Next() bool {
+	for gi.curIt.Next() {
+		gi.cur.t, gi.cur.s = gi.curIt.At()
+		if gi.cur.t < gi.mint {
+			continue
+		}
+
+		if gi.cur.t > gi.maxt {
+			return false
+		}
+
+		return true
+	}
+
+	if len(gi.its) == 0 {
+		return false
+	}
+
+	gi.curIt = gi.its[0]
+	gi.its = gi.its[1:]
+
+	return gi.Next()
+}
+
+func (gi *chainedIterator) At() (int64, string) {
+	return gi.cur.t, gi.cur.s
+}
+
+func (gi *chainedIterator) Err() error {
+	if gi.err != nil {
+		return gi.err
+	}
+
+	return gi.curIt.Err()
 }
 
 func (li *listIterator) Seek(int64) bool {
