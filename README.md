@@ -31,7 +31,7 @@ the requests are printed to help with integration work.
 
 ```
 $ logcli help
-usage: logcpi [<flags>] <command> [<args> ...]
+usage: logcli [<flags>] <command> [<args> ...]
 
 A command-line for logish.
 
@@ -53,7 +53,7 @@ Commands:
     Find values for a given label.
 
 $ logcli help query
-usage: logcpi query [<flags>] <query> [<regex>]
+usage: logcli query [<flags>] <query> [<regex>]
 
 Run a LogQL query.
 
