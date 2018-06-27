@@ -94,7 +94,12 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 }
 
 func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
-	labels := i.index.lookupLabelValues(req.Name)
+	var labels []string
+	if req.Values {
+		labels = i.index.lookupLabelValues(req.Name)
+	} else {
+		labels = i.index.labelNames()
+	}
 	sort.Strings(labels)
 	return &logproto.LabelResponse{
 		Values: labels,

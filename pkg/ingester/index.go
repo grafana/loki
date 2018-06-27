@@ -71,6 +71,17 @@ func (i *invertedIndex) lookup(matchers []*labels.Matcher) []string {
 	return intersection
 }
 
+func (i *invertedIndex) labelNames() []string {
+	i.mtx.RLock()
+	defer i.mtx.RUnlock()
+
+	res := make([]string, 0, len(i.idx))
+	for name := range i.idx {
+		res = append(res, name)
+	}
+	return res
+}
+
 func (i *invertedIndex) lookupLabelValues(name string) []string {
 	i.mtx.RLock()
 	defer i.mtx.RUnlock()

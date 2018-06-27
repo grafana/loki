@@ -68,6 +68,7 @@ func main() {
 	)
 
 	server.HTTP.Handle("/api/prom/query", httpMiddleware.Wrap(http.HandlerFunc(querier.QueryHandler)))
+	server.HTTP.Handle("/api/prom/label", httpMiddleware.Wrap(http.HandlerFunc(querier.LabelHandler)))
 	server.HTTP.Handle("/api/prom/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(querier.LabelHandler)))
 	server.Run()
 }

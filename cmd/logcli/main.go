@@ -34,7 +34,7 @@ var (
 	forward   = queryCmd.Flag("forward", "Scan forwards through logs.").Default("false").Bool()
 
 	labelsCmd = app.Command("labels", "Find values for a given label.")
-	labelName = labelsCmd.Arg("label", "The name of the label.").Required().String()
+	labelName = labelsCmd.Arg("label", "The name of the label.").String()
 )
 
 func main() {
@@ -49,7 +49,12 @@ func main() {
 }
 
 func label() {
-	path := fmt.Sprintf("/api/prom/label/%s/values", *labelName)
+	var path string
+	if labelName != nil {
+		path = fmt.Sprintf("/api/prom/label/%s/values", url.PathEscape(*labelName))
+	} else {
+		path = "/api/prom/label"
+	}
 	var labelResponse logproto.LabelResponse
 	doRequest(path, &labelResponse)
 	for _, value := range labelResponse.Values {

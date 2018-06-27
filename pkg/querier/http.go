@@ -106,8 +106,10 @@ func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
+	name, ok := mux.Vars(r)["name"]
 	req := &logproto.LabelRequest{
-		Name: mux.Vars(r)["name"],
+		Values: !ok,
+		Name:   name,
 	}
 	resp, err := q.Label(r.Context(), req)
 	if err != nil {
