@@ -76,9 +76,11 @@ Args:
 
 There are 4 API endpoints:
 - `POST /api/prom/push`
+
   For sending log entries, expects a snappy compresses proto in the HTTP Body.
 
 - `GET /api/prom/query`
+
   For doing queries, accepts the following paramters in the query-string:
   - `query`: a logQL query
   - `limit`: max number of entries to return
@@ -86,7 +88,8 @@ There are 4 API endpoints:
   - `end`: the end time for the query, as a Unix epoch (seconds since 1970)
   - `direction`: `forward` or `backward`, useful when specifying a limit
   - `regexp`: a regex to filter the returned results, will eventually be rolled into the query language
-  Response looks like this:
+
+  Responses looks like this:
   ```
   {
     "streams": [
@@ -106,8 +109,10 @@ There are 4 API endpoints:
   ```
 
 - `GET /api/prom/label`
+
   For retrieving the names of the labels one can query on.
-  Response looks like this:
+
+  Responses looks like this:
   ```
   {
     "values": [
@@ -120,7 +125,8 @@ There are 4 API endpoints:
 
 - `GET /api/prom/label/<name>/values`
   For retrieving the label values one can query on.
-  Response looks like this:
+
+  Responses looks like this:
   ```
   {
     "values": [
