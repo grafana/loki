@@ -27,12 +27,12 @@ func newStream(labels labels.Labels) *stream {
 
 func (s *stream) Push(ctx context.Context, entries []logproto.Entry) error {
 	if len(s.chunks) == 0 {
-		s.chunks = append(s.chunks, newChunk())
+		s.chunks = append(s.chunks, newCompressedChunk())
 	}
 
 	for i := range entries {
 		if !s.chunks[0].SpaceFor(&entries[i]) {
-			s.chunks = append([]Chunk{newChunk()}, s.chunks...)
+			s.chunks = append([]Chunk{newCompressedChunk()}, s.chunks...)
 		}
 		if err := s.chunks[0].Push(&entries[i]); err != nil {
 			return err

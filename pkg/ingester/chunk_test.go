@@ -36,33 +36,43 @@ func testIteratorBackward(t *testing.T, iter iter.EntryIterator, from, through i
 	assert.NoError(t, iter.Error())
 }
 
+type chunkType struct {
+	name       string
+	chunkMaker func() Chunk
+}
+
 func TestIterator(t *testing.T) {
-	chunk := newChunk()
-	const entries = 100
+	chunks := []chunkType{{"dumbChunk", newChunk}, {"compressedChunk", newCompressedChunk}}
+	for _, c := range chunks {
+		t.Run(fmt.Sprintf("%s", c.name), func(t *testing.T) {
+			chunk := c.chunkMaker()
+			const entries = 100
 
-	for i := int64(0); i < entries; i++ {
-		err := chunk.Push(&logproto.Entry{
-			Timestamp: time.Unix(i, 0),
-			Line:      fmt.Sprintf("line %d", i),
+			for i := int64(0); i < entries; i++ {
+				err := chunk.Push(&logproto.Entry{
+					Timestamp: time.Unix(i, 0),
+					Line:      fmt.Sprintf("line %d", i),
+				})
+				require.NoError(t, err)
+			}
+
+			for i := 0; i < entries; i++ {
+				from := rand.Intn(entries - 1)
+				len := rand.Intn(entries-from) + 1
+				iter := chunk.Iterator(time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.FORWARD)
+				require.NotNil(t, iter)
+				testIteratorForward(t, iter, int64(from), int64(from+len))
+				iter.Close()
+			}
+
+			for i := 0; i < entries; i++ {
+				from := rand.Intn(entries - 1)
+				len := rand.Intn(entries-from) + 1
+				iter := chunk.Iterator(time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.BACKWARD)
+				require.NotNil(t, iter)
+				testIteratorBackward(t, iter, int64(from), int64(from+len))
+				iter.Close()
+			}
 		})
-		require.NoError(t, err)
-	}
-
-	for i := 0; i < entries; i++ {
-		from := rand.Intn(entries - 1)
-		len := rand.Intn(entries-from) + 1
-		iter := chunk.Iterator(time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.FORWARD)
-		require.NotNil(t, iter)
-		testIteratorForward(t, iter, int64(from), int64(from+len))
-		iter.Close()
-	}
-
-	for i := 0; i < entries; i++ {
-		from := rand.Intn(entries - 1)
-		len := rand.Intn(entries-from) + 1
-		iter := chunk.Iterator(time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.BACKWARD)
-		require.NotNil(t, iter)
-		testIteratorBackward(t, iter, int64(from), int64(from+len))
-		iter.Close()
 	}
 }

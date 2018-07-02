@@ -18,7 +18,6 @@ var (
 
 	chunkFormatV1 = byte(1)
 
-	// The errors on read.
 	ErrInvalidSize     = errors.New("invalid size")
 	ErrInvalidFlag     = errors.New("invalid flag")
 	ErrInvalidChecksum = errors.New("invalid checksum")
@@ -498,7 +497,7 @@ func (gi *chainedIterator) Next() bool {
 			continue
 		}
 
-		if gi.cur.t > gi.maxt {
+		if gi.cur.t >= gi.maxt {
 			return false
 		}
 

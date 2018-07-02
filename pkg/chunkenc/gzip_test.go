@@ -86,10 +86,11 @@ func TestGZIPBlock(t *testing.T) {
 			ts, str := it.At()
 			require.Equal(t, cases[idx].ts, ts)
 			require.Equal(t, cases[idx].str, str)
+			fmt.Println(ts)
 			idx++
 		}
 		require.NoError(t, it.Err())
-		require.Equal(t, 7, idx)
+		require.Equal(t, 6, idx) // It's [ ).
 	})
 }
 
