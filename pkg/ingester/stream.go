@@ -6,8 +6,8 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 
+	"github.com/grafana/logish/pkg/iter"
 	"github.com/grafana/logish/pkg/logproto"
-	"github.com/grafana/logish/pkg/querier"
 )
 
 const tmpMaxChunks = 3
@@ -46,18 +46,19 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry) error {
 	return nil
 }
 
-// Returns an iterator that goes from _most_ recent to _least_ recent (ie,
-// backwards).
-func (s *stream) Iterator(from, through time.Time, direction logproto.Direction) querier.EntryIterator {
-	iterators := make([]querier.EntryIterator, len(s.chunks))
-	for i, c := range s.chunks {
-		switch direction {
-		case logproto.FORWARD:
-			iterators[len(s.chunks)-i-1] = c.Iterator(from, through, direction)
-		case logproto.BACKWARD:
-			iterators[i] = c.Iterator(from, through, direction)
-		default:
-			panic(direction)
+// Returns an iterator.
+func (s *stream) Iterator(from, through time.Time, direction logproto.Direction) iter.EntryIterator {
+	iterators := make([]iter.EntryIterator, 0, len(s.chunks))
+	for _, c := range s.chunks {
+		iter := c.Iterator(from, through, direction)
+		if iter != nil {
+			iterators = append(iterators, iter)
+		}
+	}
+
+	if direction == logproto.FORWARD {
+		for left, right := 0, len(iterators)-1; left < right; left, right = left+1, right-1 {
+			iterators[left], iterators[right] = iterators[right], iterators[left]
 		}
 	}
 
@@ -70,8 +71,8 @@ func (s *stream) Iterator(from, through time.Time, direction logproto.Direction)
 type nonOverlappingIterator struct {
 	labels    string
 	i         int
-	iterators []querier.EntryIterator
-	curr      querier.EntryIterator
+	iterators []iter.EntryIterator
+	curr      iter.EntryIterator
 }
 
 func (i *nonOverlappingIterator) Next() bool {

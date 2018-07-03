@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/logish/pkg/ingester/client"
+	"github.com/grafana/logish/pkg/iter"
 	"github.com/grafana/logish/pkg/logproto"
 )
 
@@ -97,18 +98,36 @@ func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logpr
 		return nil, err
 	}
 
-	iterators := make([]EntryIterator, len(clients))
+	iterators := make([]iter.EntryIterator, len(clients))
 	for i := range clients {
-		iterators[i] = newQueryClientIterator(clients[i].(logproto.Querier_QueryClient), req.Direction)
+		iterators[i] = iter.NewQueryClientIterator(clients[i].(logproto.Querier_QueryClient), req.Direction)
 	}
-	iterator := NewHeapIterator(iterators, req.Direction)
+	iterator := iter.NewHeapIterator(iterators, req.Direction)
 	defer iterator.Close()
 
 	resp, _, err := ReadBatch(iterator, req.Limit)
 	return resp, err
 }
 
-func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, error) {
+func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+	resps, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
+		return client.Label(ctx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([][]string, 0, len(resps))
+	for _, resp := range resps {
+		results = append(results, resp.(*logproto.LabelResponse).Values)
+	}
+
+	return &logproto.LabelResponse{
+		Values: mergeLists(results...),
+	}, nil
+}
+
+func ReadBatch(i iter.EntryIterator, size uint32) (*logproto.QueryResponse, uint32, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
 	for ; respSize < size && i.Next(); respSize++ {
@@ -138,6 +157,45 @@ func (*Querier) Check(ctx context.Context, req *grpc_health_v1.HealthCheckReques
 }
 
 type iteratorBatcher struct {
-	iterator    EntryIterator
+	iterator    iter.EntryIterator
 	queryServer logproto.Querier_QueryServer
+}
+
+func mergeLists(ss ...[]string) []string {
+	switch len(ss) {
+	case 0:
+		return nil
+	case 1:
+		return ss[0]
+	case 2:
+		return mergePair(ss[0], ss[1])
+	default:
+		n := len(ss) / 2
+		return mergePair(mergeLists(ss[:n]...), mergeLists(ss[n:]...))
+	}
+}
+
+func mergePair(s1, s2 []string) []string {
+	i, j := 0, 0
+	result := make([]string, 0, len(s1)+len(s2))
+	for i < len(s1) && j < len(s2) {
+		if s1[i] < s2[j] {
+			result = append(result, s1[i])
+			i++
+		} else if s1[i] > s2[j] {
+			result = append(result, s2[j])
+			j++
+		} else {
+			result = append(result, s1[i])
+			i++
+			j++
+		}
+	}
+	for ; i < len(s1); i++ {
+		result = append(result, s1[i])
+	}
+	for ; j < len(s2); j++ {
+		result = append(result, s2[j])
+	}
+	return result
 }

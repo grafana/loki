@@ -7,10 +7,23 @@ import (
 	"time"
 
 	"github.com/hpcloud/tail"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	log "github.com/sirupsen/logrus"
 	fsnotify "gopkg.in/fsnotify.v1"
 )
+
+var (
+	readBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "promtail",
+		Name:      "read_bytes_total",
+		Help:      "Number of bytes read.",
+	}, []string{"path"})
+)
+
+func init() {
+	prometheus.MustRegister(readBytes)
+}
 
 type Target struct {
 	labels    model.LabelSet
@@ -191,6 +204,7 @@ func (t *tailer) run() {
 				log.Errorf("error reading line: %v", line.Err)
 			}
 
+			readBytes.WithLabelValues(t.path).Add(float64(len(line.Text)))
 			if err := t.target.handleLine(line.Time, line.Text); err != nil {
 				log.Infof("error handling line: %v", err)
 			}

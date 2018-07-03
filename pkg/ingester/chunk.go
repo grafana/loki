@@ -7,8 +7,8 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/grafana/logish/pkg/iter"
 	"github.com/grafana/logish/pkg/logproto"
-	"github.com/grafana/logish/pkg/querier"
 )
 
 const (
@@ -26,7 +26,7 @@ type Chunk interface {
 	Bounds() (time.Time, time.Time)
 	SpaceFor(*logproto.Entry) bool
 	Push(*logproto.Entry) error
-	Iterator(from, through time.Time, direction logproto.Direction) querier.EntryIterator
+	Iterator(from, through time.Time, direction logproto.Direction) iter.EntryIterator
 	Size() int
 }
 
@@ -68,14 +68,18 @@ func (c *dumbChunk) Size() int {
 
 // Returns an iterator that goes from _most_ recent to _least_ recent (ie,
 // backwards).
-func (c *dumbChunk) Iterator(from, through time.Time, direction logproto.Direction) querier.EntryIterator {
+func (c *dumbChunk) Iterator(from, through time.Time, direction logproto.Direction) iter.EntryIterator {
 	i := sort.Search(len(c.entries), func(i int) bool {
-		return from.Before(c.entries[i].Timestamp)
+		return !from.After(c.entries[i].Timestamp)
 	})
 	j := sort.Search(len(c.entries), func(j int) bool {
 		return !through.After(c.entries[j].Timestamp)
 	})
 	log.Println("from", from, "through", through, "i", i, "j", j, "entries", len(c.entries))
+
+	if from == through {
+		return nil
+	}
 
 	start := -1
 	if direction == logproto.BACKWARD {

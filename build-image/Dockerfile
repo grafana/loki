@@ -8,6 +8,11 @@ RUN curl -fsSLo shfmt https://github.com/mvdan/sh/releases/download/v1.3.0/shfmt
 	echo "b1925c2c405458811f0c227266402cf1868b4de529f114722c2e3a5af4ac7bb2  shfmt" | sha256sum -c && \
 	chmod +x shfmt && \
 	mv shfmt /usr/bin
+ENV VER="17.03.0-ce"
+RUN curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz && \
+    tar -xz -C /tmp -f /tmp/docker-$VER.tgz && \
+    mv /tmp/docker/* /usr/bin && \
+		rm /tmp/docker-$VER.tgz
 RUN go get -tags netgo \
 		github.com/fzipp/gocyclo \
 		github.com/golang/lint/golint \

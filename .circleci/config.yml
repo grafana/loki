@@ -6,20 +6,29 @@ workflows:
     jobs:
     - test
     - build
-    - deploy:
+    - publish:
         requires:
         - test
         - build
+    - deploy:
+        requires:
+        - publish
+        filters:
+          branches:
+            only: master
+
+# https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
+defaults: &defaults
+  docker:
+    - image: gcr.io/metrictank-gcr/logish-build-image:master-b5b6999
+      auth:
+        username: _json_key
+        password: $GCR_CREDS
+  working_directory: /go/src/github.com/grafana/logish
 
 jobs:
   test:
-    docker:
-      - image: gcr.io/metrictank-gcr/logish-build-image:master-017c0b4
-        auth:
-          username: _json_key
-          password: $GCR_CREDS
-
-    working_directory: /go/src/github.com/grafana/logish
+    <<: *defaults
     steps:
       - checkout
 
@@ -30,25 +39,10 @@ jobs:
             make BUILD_IN_CONTAINER=false test
 
   build:
-    docker:
-      - image: gcr.io/metrictank-gcr/logish-build-image:master-017c0b4
-        auth:
-          username: _json_key
-          password: $GCR_CREDS
-
-    working_directory: /go/src/github.com/grafana/logish
+    <<: *defaults
     steps:
       - checkout
       - setup_remote_docker
-
-      - run:
-          name: Install Docker client
-          command: |
-            set -x
-            VER="17.03.0-ce"
-            curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
-            tar -xz -C /tmp -f /tmp/docker-$VER.tgz
-            mv /tmp/docker/* /usr/bin
 
       - run:
           name: Build Images
@@ -67,26 +61,11 @@ jobs:
           paths:
           - images/
 
-  deploy:
-    docker:
-      - image: gcr.io/metrictank-gcr/logish-build-image:master-017c0b4
-        auth:
-          username: _json_key
-          password: $GCR_CREDS
-
-    working_directory: /go/src/github.com/grafana/logish
+  publish:
+    <<: *defaults
     steps:
       - checkout
       - setup_remote_docker
-
-      - run:
-          name: Install Docker client
-          command: |
-            set -x
-            VER="17.03.0-ce"
-            curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
-            tar -xz -C /tmp -f /tmp/docker-$VER.tgz
-            mv /tmp/docker/* /usr/bin
 
       - restore_cache:
           key: v1-logish-{{ .Branch }}-{{ .Revision }}
@@ -102,3 +81,14 @@ jobs:
           command: |
             docker login -u _json_key -p "$GCR_CREDS" https://gcr.io &&
             make push-images
+
+  deploy:
+    <<: *defaults
+    steps:
+      - checkout
+
+      - run: |
+          curl -s --header "Content-Type: application/json" \
+            --data "{\"build_parameters\": {\"CIRCLE_JOB\": \"deploy\", \"IMAGE_NAMES\": \"$(make images)\"}}" \
+            --request POST \
+            https://circleci.com/api/v1.1/project/github/raintank/deployment_tools/tree/master?circle-token=$CIRCLE_TOKEN

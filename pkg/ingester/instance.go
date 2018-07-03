@@ -3,10 +3,12 @@ package ingester
 import (
 	"context"
 	"log"
+	"sort"
 	"sync"
 
 	"github.com/pkg/errors"
 
+	"github.com/grafana/logish/pkg/iter"
 	"github.com/grafana/logish/pkg/logproto"
 	"github.com/grafana/logish/pkg/parser"
 	"github.com/grafana/logish/pkg/querier"
@@ -58,7 +60,6 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 }
 
 func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
-	log.Println(req)
 	matchers, err := parser.Matchers(req.Query)
 	if err != nil {
 		return err
@@ -67,8 +68,7 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	// TODO: lock smell
 	i.streamsMtx.Lock()
 	ids := i.index.lookup(matchers)
-	log.Printf("matchers: %+v, ids: %+v", matchers, ids)
-	iterators := make([]querier.EntryIterator, len(ids))
+	iterators := make([]iter.EntryIterator, len(ids))
 	for j := range ids {
 		stream, ok := i.streams[ids[j]]
 		if !ok {
@@ -79,12 +79,12 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	}
 	i.streamsMtx.Unlock()
 
-	iterator := querier.NewHeapIterator(iterators, req.Direction)
+	iterator := iter.NewHeapIterator(iterators, req.Direction)
 	defer iterator.Close()
 
 	if req.Regex != "" {
 		var err error
-		iterator, err = querier.NewRegexpFilter(req.Regex, iterator)
+		iterator, err = iter.NewRegexpFilter(req.Regex, iterator)
 		if err != nil {
 			return err
 		}
@@ -93,9 +93,31 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	return sendBatches(iterator, queryServer, req.Limit)
 }
 
-func sendBatches(i querier.EntryIterator, queryServer logproto.Querier_QueryServer, limit uint32) error {
+func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+	var labels []string
+	if req.Values {
+		labels = i.index.lookupLabelValues(req.Name)
+	} else {
+		labels = i.index.labelNames()
+	}
+	sort.Strings(labels)
+	return &logproto.LabelResponse{
+		Values: labels,
+	}, nil
+}
+
+func isDone(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
+}
+
+func sendBatches(i iter.EntryIterator, queryServer logproto.Querier_QueryServer, limit uint32) error {
 	sent := uint32(0)
-	for sent < limit {
+	for sent < limit && !isDone(queryServer.Context()) {
 		batch, batchSize, err := querier.ReadBatch(i, util.MinUint32(queryBatchSize, limit-sent))
 		if err != nil {
 			return err
@@ -106,6 +128,7 @@ func sendBatches(i querier.EntryIterator, queryServer logproto.Querier_QueryServ
 			return nil
 		}
 
+		log.Println("sendBatch", batchSize)
 		if err := queryServer.Send(batch); err != nil {
 			return err
 		}

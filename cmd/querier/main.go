@@ -22,7 +22,10 @@ import (
 
 func main() {
 	var (
-		flagset      = flag.NewFlagSet("", flag.ExitOnError)
+		flagset           = flag.NewFlagSet("", flag.ExitOnError)
+		operationNameFunc = nethttp.OperationNameFunc(func(r *http.Request) string {
+			return r.URL.RequestURI()
+		})
 		serverConfig = server.Config{
 			MetricsNamespace: "logish",
 			GRPCMiddleware: []grpc.UnaryServerInterceptor{
@@ -57,14 +60,15 @@ func main() {
 	}
 	defer server.Shutdown()
 
-	operationNameFunc := nethttp.OperationNameFunc(func(r *http.Request) string {
-		return r.URL.RequestURI()
-	})
-	server.HTTP.Handle("/api/prom/query", middleware.Merge(
+	httpMiddleware := middleware.Merge(
 		middleware.Func(func(handler http.Handler) http.Handler {
 			return nethttp.Middleware(opentracing.GlobalTracer(), handler, operationNameFunc)
 		}),
 		middleware.AuthenticateUser,
-	).Wrap(http.HandlerFunc(querier.QueryHandler)))
+	)
+
+	server.HTTP.Handle("/api/prom/query", httpMiddleware.Wrap(http.HandlerFunc(querier.QueryHandler)))
+	server.HTTP.Handle("/api/prom/label", httpMiddleware.Wrap(http.HandlerFunc(querier.LabelHandler)))
+	server.HTTP.Handle("/api/prom/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(querier.LabelHandler)))
 	server.Run()
 }

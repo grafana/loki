@@ -34,6 +34,11 @@ var (
 	}, []string{"status_code"})
 )
 
+func init() {
+	prometheus.MustRegister(sentBytes)
+	prometheus.MustRegister(requestDuration)
+}
+
 type ClientConfig struct {
 	URL       flagext.URL
 	BatchWait time.Duration

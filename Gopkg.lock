@@ -39,6 +39,21 @@
   revision = "de5bf2ad457846296e2031421a34e2568e304e35"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/alecthomas/template"
+  packages = [
+    ".",
+    "parse"
+  ]
+  revision = "a0175ee3bccc567396460bf5acd36800cb10c49c"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/alecthomas/units"
+  packages = ["."]
+  revision = "2efee857e7cfd4f3d0138cc3cbb1b4966962b93a"
+
+[[projects]]
   name = "github.com/aws/aws-sdk-go"
   packages = [
     "aws",
@@ -672,6 +687,12 @@
   version = "v1.11.3"
 
 [[projects]]
+  name = "gopkg.in/alecthomas/kingpin.v2"
+  packages = ["."]
+  revision = "947dcec5ba9c011838740e680966fd7087a71d0d"
+  version = "v2.2.6"
+
+[[projects]]
   name = "gopkg.in/fsnotify.v1"
   packages = ["."]
   revision = "c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9"
@@ -832,6 +853,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "fbeade10a57bc52ffd7c522a42cacecfd50c2dc83a05473018d9ff046bc5a3e3"
+  inputs-digest = "24cb0eac691a33163e360eb2cbec6f776bf8035f24f5b667a1a38021f98a27e8"
   solver-name = "gps-cdcl"
   solver-version = 1

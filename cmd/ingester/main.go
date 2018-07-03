@@ -45,6 +45,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error initializing ingester: %v", err)
 	}
+	defer ingester.Shutdown()
 
 	server, err := server.New(serverConfig)
 	if err != nil {
