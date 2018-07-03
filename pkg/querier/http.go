@@ -28,18 +28,18 @@ func intParam(values url.Values, name string, def int) (int, error) {
 	return strconv.Atoi(value)
 }
 
-func unixTimeParam(values url.Values, name string, def time.Time) (time.Time, error) {
+func unixNanoTimeParam(values url.Values, name string, def time.Time) (time.Time, error) {
 	value := values.Get(name)
 	if value == "" {
 		return def, nil
 	}
 
-	secs, err := strconv.ParseInt(value, 10, 64)
+	nanos, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
 		return time.Time{}, err
 	}
 
-	return time.Unix(secs, 0), nil
+	return time.Unix(0, nanos), nil
 }
 
 func directionParam(values url.Values, name string, def logproto.Direction) (logproto.Direction, error) {
@@ -65,13 +65,13 @@ func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	start, err := unixTimeParam(params, "start", now.Add(-defaulSince))
+	start, err := unixNanoTimeParam(params, "start", now.Add(-defaulSince))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	end, err := unixTimeParam(params, "end", now)
+	end, err := unixNanoTimeParam(params, "end", now)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
