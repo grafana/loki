@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/binary"
-	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -19,9 +18,11 @@ var (
 
 	chunkFormatV1 = byte(1)
 
-	errInvalidSize     = fmt.Errorf("invalid size")
-	errInvalidFlag     = fmt.Errorf("invalid flag")
-	errInvalidChecksum = fmt.Errorf("invalid checksum")
+	// The errors on read.
+	ErrInvalidSize     = errors.New("invalid size")
+	ErrInvalidFlag     = errors.New("invalid flag")
+	ErrInvalidChecksum = errors.New("invalid checksum")
+	ErrOutOfOrder      = errors.New("out of order sample")
 )
 
 // The table gets initialized with sync.Once but may still cause a race
@@ -145,7 +146,7 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 
 	expCRC := binary.BigEndian.Uint32(b[len(b)-(8+4):])
 	if expCRC != db.crc32() {
-		return nil, errInvalidChecksum
+		return nil, ErrInvalidChecksum
 	}
 
 	// Read the number of blocks.
@@ -168,7 +169,7 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 		// Verify checksums.
 		expCRC := binary.BigEndian.Uint32(b[blk.offset+int(l):])
 		if expCRC != crc32.Checksum(blk.b, castagnoliTable) {
-			return bc, errInvalidChecksum
+			return bc, ErrInvalidChecksum
 		}
 
 		bc.blocks = append(bc.blocks, blk)
@@ -310,7 +311,7 @@ func newMemAppender(chunk *MemChunk) *memAppender {
 
 func (a *memAppender) Append(t int64, s string) error {
 	if t < a.block.maxt {
-		return errors.New("out of order sample")
+		return ErrOutOfOrder
 	}
 
 	n := binary.PutVarint(a.encBuf, t)

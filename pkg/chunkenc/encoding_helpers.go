@@ -89,7 +89,7 @@ func (d *decbuf) uvarintStr() string {
 		return ""
 	}
 	if len(d.b) < int(l) {
-		d.e = errInvalidSize
+		d.e = ErrInvalidSize
 		return ""
 	}
 	s := string(d.b[:l])
@@ -103,7 +103,7 @@ func (d *decbuf) varint64() int64 {
 	}
 	x, n := binary.Varint(d.b)
 	if n < 1 {
-		d.e = errInvalidSize
+		d.e = ErrInvalidSize
 		return 0
 	}
 	d.b = d.b[n:]
@@ -116,7 +116,7 @@ func (d *decbuf) uvarint64() uint64 {
 	}
 	x, n := binary.Uvarint(d.b)
 	if n < 1 {
-		d.e = errInvalidSize
+		d.e = ErrInvalidSize
 		return 0
 	}
 	d.b = d.b[n:]
@@ -128,7 +128,7 @@ func (d *decbuf) be64() uint64 {
 		return 0
 	}
 	if len(d.b) < 4 {
-		d.e = errInvalidSize
+		d.e = ErrInvalidSize
 		return 0
 	}
 	x := binary.BigEndian.Uint64(d.b)
@@ -141,7 +141,7 @@ func (d *decbuf) be32() uint32 {
 		return 0
 	}
 	if len(d.b) < 4 {
-		d.e = errInvalidSize
+		d.e = ErrInvalidSize
 		return 0
 	}
 	x := binary.BigEndian.Uint32(d.b)
@@ -154,7 +154,7 @@ func (d *decbuf) byte() byte {
 		return 0
 	}
 	if len(d.b) < 1 {
-		d.e = errInvalidSize
+		d.e = ErrInvalidSize
 		return 0
 	}
 	x := d.b[0]
@@ -167,7 +167,7 @@ func (d *decbuf) decbuf(l int) decbuf {
 		return decbuf{e: d.e}
 	}
 	if l > len(d.b) {
-		return decbuf{e: errInvalidSize}
+		return decbuf{e: ErrInvalidSize}
 	}
 	r := decbuf{b: d.b[:l]}
 	d.b = d.b[l:]
