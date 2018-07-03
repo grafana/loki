@@ -18,7 +18,7 @@ var (
 		Namespace: "promtail",
 		Name:      "read_bytes_total",
 		Help:      "Number of bytes read.",
-	}, []string{})
+	}, []string{"path"})
 )
 
 func init() {
