@@ -4,11 +4,40 @@ import (
 	"context"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/logish/pkg/iter"
 	"github.com/grafana/logish/pkg/logproto"
 )
+
+var (
+	chunksCreatedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "logish",
+		Name:      "ingester_chunks_created_total",
+		Help:      "The total number of chunks created in the ingester.",
+	})
+	chunksFlushedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "logish",
+		Name:      "ingester_chunks_flushed_total",
+		Help:      "The total number of chunks flushed by the ingester.",
+	})
+
+	samplesPerChunk = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "logish",
+		Subsystem: "ingester",
+		Name:      "samples_per_chunk",
+		Help:      "The number of samples in a chunk.",
+
+		Buckets: prometheus.ExponentialBuckets(512, 2, 8),
+	})
+)
+
+func init() {
+	prometheus.MustRegister(chunksCreatedTotal)
+	prometheus.MustRegister(chunksFlushedTotal)
+	prometheus.MustRegister(samplesPerChunk)
+}
 
 const tmpMaxChunks = 3
 
@@ -28,11 +57,14 @@ func newStream(labels labels.Labels) *stream {
 func (s *stream) Push(ctx context.Context, entries []logproto.Entry) error {
 	if len(s.chunks) == 0 {
 		s.chunks = append(s.chunks, newCompressedChunk())
+		chunksCreatedTotal.Inc()
 	}
 
 	for i := range entries {
 		if !s.chunks[0].SpaceFor(&entries[i]) {
+			samplesPerChunk.Observe(float64(s.chunks[0].Size()))
 			s.chunks = append([]Chunk{newCompressedChunk()}, s.chunks...)
+			chunksCreatedTotal.Inc()
 		}
 		if err := s.chunks[0].Push(&entries[i]); err != nil {
 			return err
@@ -41,6 +73,7 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry) error {
 
 	// Temp; until we implement flushing, only keep N chunks in memory.
 	if len(s.chunks) > tmpMaxChunks {
+		chunksFlushedTotal.Add(float64(len(s.chunks) - tmpMaxChunks))
 		s.chunks = s.chunks[:tmpMaxChunks]
 	}
 	return nil

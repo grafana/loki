@@ -84,7 +84,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance()
+		inst = newInstance(instanceID)
 		i.instances[instanceID] = inst
 	}
 	return inst
