@@ -84,14 +84,10 @@ type headBlock struct {
 }
 
 func (hb *headBlock) isEmpty() bool {
-	return hb == nil || len(hb.entries) == 0
+	return len(hb.entries) == 0
 }
 
 func (hb *headBlock) append(ts int64, line string) error {
-	if hb == nil {
-		hb = &headBlock{}
-	}
-
 	if !hb.isEmpty() && hb.maxt >= ts {
 		return ErrOutOfOrder
 	}
