@@ -99,43 +99,38 @@ type heapIterator struct {
 
 func NewHeapIterator(is []EntryIterator, direction logproto.Direction) EntryIterator {
 	result := &heapIterator{}
-	iterators := make(iteratorHeap, 0, len(is))
-	// pre-next each iterator, drop empty.
-	for _, i := range is {
-		if i.Next() {
-			iterators = append(iterators, i)
-		} else {
-			result.recordError(i)
-			i.Close()
-		}
-	}
-
 	switch direction {
 	case logproto.BACKWARD:
-		result.heap = &iteratorMaxHeap{iterators}
+		result.heap = &iteratorMaxHeap{}
 	case logproto.FORWARD:
-		result.heap = &iteratorMinHeap{iterators}
+		result.heap = &iteratorMinHeap{}
 	default:
 		panic("bad direction")
 	}
+
+	// pre-next each iterator, drop empty.
+	for _, i := range is {
+		result.requeue(i)
+	}
+
 	return result
 }
 
-func (i *heapIterator) recordError(ei EntryIterator) {
-	err := ei.Error()
-	if err != nil {
+func (i *heapIterator) requeue(ei EntryIterator) {
+	if ei.Next() {
+		heap.Push(i.heap, ei)
+		return
+	}
+
+	if err := ei.Error(); err != nil {
 		i.errs = append(i.errs, err)
 	}
+	ei.Close()
 }
 
 func (i *heapIterator) Next() bool {
 	if i.curr != nil {
-		if i.curr.Next() {
-			heap.Push(i.heap, i.curr)
-		} else {
-			i.recordError(i.curr)
-			i.curr.Close()
-		}
+		i.requeue(i.curr)
 	}
 
 	if i.heap.Len() == 0 {
@@ -143,16 +138,18 @@ func (i *heapIterator) Next() bool {
 	}
 
 	i.curr = heap.Pop(i.heap).(EntryIterator)
+	currEntry := i.curr.Entry()
 
 	// keep popping entries off if they match, to dedupe
-	curr := i.curr.Entry()
 	for i.heap.Len() > 0 {
-		next := i.heap.Peek().Entry()
-		if curr.Equal(next) {
-			i.heap.Pop()
-		} else {
+		next := i.heap.Peek()
+		nextEntry := next.Entry()
+		if !currEntry.Equal(nextEntry) {
 			break
 		}
+
+		next = heap.Pop(i.heap).(EntryIterator)
+		i.requeue(next)
 	}
 
 	return true
