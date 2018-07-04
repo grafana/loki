@@ -34,6 +34,9 @@ func (t *tailIterator) Next() bool {
 			return false
 		}
 
+		// We store the through time such that if we don't see any entries, we will
+		// still make forward progress. This is overwritten by any entries we might
+		// see to ensure pagination works.
 		t.from = through
 		t.EntryIterator = iter.NewQueryResponseIterator(resp, logproto.FORWARD)
 	}
