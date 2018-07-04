@@ -1,6 +1,10 @@
 package chunkenc
 
-import "io"
+import (
+	"io"
+
+	"github.com/grafana/logish/pkg/iter"
+)
 
 // Encoding is the identifier for a chunk encoding.
 type Encoding uint8
@@ -30,7 +34,7 @@ func (e Encoding) String() string {
 type Chunk interface {
 	Bytes() []byte
 	Encoding() Encoding
-	Iterator(from, to int64) (Iterator, error)
+	Iterator(from, to int64) (iter.EntryIterator, error)
 	Bounds() (from, to int64)
 	NumSamples() int
 
@@ -38,15 +42,6 @@ type Chunk interface {
 	Append(int64, string) error
 
 	Close() error
-}
-
-// Iterator is the sample iterator that can only stream forward.
-type Iterator interface {
-	Seek(int64) bool
-	At() (int64, string)
-	Next() bool
-
-	Err() error
 }
 
 // CompressionWriter is the writer that compresses the data passed to it.

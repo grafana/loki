@@ -9,6 +9,11 @@ import (
 	"hash/crc32"
 	"io"
 	"math"
+	"time"
+
+	"github.com/grafana/logish/pkg/logproto"
+
+	"github.com/grafana/logish/pkg/iter"
 
 	"github.com/pkg/errors"
 )
@@ -51,9 +56,7 @@ type MemChunk struct {
 	blocks []block
 
 	// Current in-mem block being appended to.
-	memBlock *headBlock
-
-	app *memAppender
+	head *headBlock
 
 	encoding Encoding
 	cw       func(w io.Writer) CompressionWriter
@@ -73,20 +76,34 @@ type block struct {
 // This block holds the un-compressed entries. Once it has enough data, this is
 // emptied into a block with only compressed entries.
 type headBlock struct {
-	// This is compressed bytes.
-	b []byte
-
 	// This is the list of raw entries.
-	// This is cleared in finished blocks.
-	entries    []entry
-	numEntries int
-	size       int // size of uncompressed bytes.
+	entries []entry
+	size    int // size of uncompressed bytes.
 
 	mint, maxt int64
 }
 
 func (hb *headBlock) isEmpty() bool {
 	return hb == nil || len(hb.entries) == 0
+}
+
+func (hb *headBlock) append(ts int64, line string) error {
+	if hb == nil {
+		hb = &headBlock{}
+	}
+
+	if !hb.isEmpty() && hb.maxt >= ts {
+		return ErrOutOfOrder
+	}
+
+	hb.entries = append(hb.entries, entry{ts, line})
+	if hb.mint == 0 || hb.mint > ts {
+		hb.mint = ts
+	}
+	hb.maxt = ts
+	hb.size += len(line)
+
+	return nil
 }
 
 type entry struct {
@@ -100,7 +117,7 @@ func NewMemChunk(enc Encoding) *MemChunk {
 		blockSize: 256 * 1024, // The blockSize in bytes.
 		blocks:    []block{},
 
-		memBlock: &headBlock{
+		head: &headBlock{
 			mint: math.MaxInt64,
 			maxt: math.MinInt64,
 		},
@@ -115,8 +132,6 @@ func NewMemChunk(enc Encoding) *MemChunk {
 	default:
 		panic("unknown encoding")
 	}
-
-	c.app = newMemAppender(c)
 
 	return c
 }
@@ -184,9 +199,9 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 
 // Bytes implements Chunk.
 func (c *MemChunk) Bytes() ([]byte, error) {
-	if c.app != nil {
+	if c.head != nil {
 		// When generating the bytes, we need to flush the data held in-buffer.
-		c.app.cut()
+		c.cut()
 	}
 	crc32Hash := newCRC32()
 
@@ -263,7 +278,9 @@ func (c *MemChunk) NumSamples() int {
 		ne += blk.numEntries
 	}
 
-	ne += c.memBlock.numEntries
+	if !c.head.isEmpty() {
+		ne += len(c.head.entries)
+	}
 
 	return ne
 }
@@ -274,114 +291,57 @@ func (c *MemChunk) SpaceFor(ts int64, log string) bool {
 }
 
 // Append implements Chunk.
-func (c *MemChunk) Append(ts int64, log string) error {
-	return c.app.Append(ts, log)
+func (c *MemChunk) Append(ts int64, line string) error {
+	return c.head.append(ts, line)
 }
 
 // Close implements Chunk.
 // TODO: Fix this to check edge cases.
 func (c *MemChunk) Close() error {
-	return c.app.Close()
-}
-
-type memAppender struct {
-	// chunk's in-mem block.
-	block *headBlock
-
-	chunk *MemChunk
-
-	writer CompressionWriter
-	buffer *bytes.Buffer
-
-	encBuf []byte
-}
-
-func newMemAppender(chunk *MemChunk) *memAppender {
-	buf := bytes.NewBuffer(chunk.memBlock.b)
-	return &memAppender{
-		block: chunk.memBlock,
-		chunk: chunk,
-
-		buffer: buf,
-		writer: chunk.cw(buf),
-
-		encBuf: make([]byte, binary.MaxVarintLen64),
-	}
-}
-
-func (a *memAppender) Append(t int64, s string) error {
-	if t < a.block.maxt {
-		return ErrOutOfOrder
-	}
-
-	n := binary.PutVarint(a.encBuf, t)
-	_, err := a.writer.Write(a.encBuf[:n])
-	if err != nil {
-		return errors.Wrap(err, "appending entry")
-	}
-
-	n = binary.PutUvarint(a.encBuf, uint64(len(s)))
-	_, err = a.writer.Write(a.encBuf[:n])
-	if err != nil {
-		return errors.Wrap(err, "appending entry")
-	}
-
-	_, err = a.writer.Write([]byte(s))
-	if err != nil {
-		return errors.Wrap(err, "appending entry")
-	}
-	a.block.size += len(s)
-
-	a.block.entries = append(a.block.entries, entry{t, s})
-
-	if a.block.mint > t {
-		a.block.mint = t
-	}
-	a.block.maxt = t
-
-	a.block.numEntries++
-
-	if a.block.size > a.chunk.blockSize {
-		return a.cut()
-	}
-
-	return nil
+	return c.cut()
 }
 
 // cut a new block and add it to finished blocks.
-func (a *memAppender) cut() error {
-	if a.block.isEmpty() {
+func (c *MemChunk) cut() error {
+	if c.head.isEmpty() {
 		return nil
 	}
 
-	err := a.writer.Close()
-	if err != nil {
-		return errors.Wrap(err, "closing writer")
-	}
-	a.block.b = a.buffer.Bytes()
+	buf := bytes.NewBuffer(make([]byte, 0, 1<<15)) // 32K. Pool it later.
+	encBuf := make([]byte, binary.MaxVarintLen64)
+	compressedWriter := c.cw(buf)
+	for _, logEntry := range c.head.entries {
+		n := binary.PutVarint(encBuf, logEntry.t)
+		_, err := compressedWriter.Write(encBuf[:n])
+		if err != nil {
+			return errors.Wrap(err, "appending entry")
+		}
 
-	a.chunk.blocks = append(a.chunk.blocks, block{
-		b:          a.block.b[:],
-		numEntries: a.block.numEntries,
-		mint:       a.block.mint,
-		maxt:       a.block.maxt,
+		n = binary.PutUvarint(encBuf, uint64(len(logEntry.s)))
+		_, err = compressedWriter.Write(encBuf[:n])
+		if err != nil {
+			return errors.Wrap(err, "appending entry")
+		}
+		_, err = compressedWriter.Write([]byte(logEntry.s))
+		if err != nil {
+			return errors.Wrap(err, "appending entry")
+		}
+	}
+	if err := compressedWriter.Close(); err != nil {
+		return errors.Wrap(err, "flushing pending compress buffer")
+	}
+
+	c.blocks = append(c.blocks, block{
+		b:          buf.Bytes(),
+		numEntries: len(c.head.entries),
+		mint:       c.head.mint,
+		maxt:       c.head.maxt,
 	})
 
-	// Reset the block.
-	a.block.entries = a.block.entries[:0]
-	a.block.b = make([]byte, 0, len(a.block.b)) // TODO(goutham): Use pool.
-	a.block.mint = a.block.maxt
-	a.block.numEntries = 0
-	a.block.size = 0
-
-	a.buffer = bytes.NewBuffer(a.block.b)
-	a.writer.Reset(a.buffer)
+	c.head.entries = c.head.entries[:0]
+	c.head.mint = 0 // Will be set on first append.
 
 	return nil
-}
-
-func (a *memAppender) Close() error {
-	return a.cut()
 }
 
 // Bounds implements Chunk.
@@ -391,13 +351,13 @@ func (c *MemChunk) Bounds() (from, to int64) {
 		to = c.blocks[len(c.blocks)-1].maxt
 	}
 
-	if c.memBlock != nil {
-		if from > c.memBlock.mint {
-			from = c.memBlock.mint
+	if !c.head.isEmpty() {
+		if from > c.head.mint {
+			from = c.head.mint
 		}
 
-		if to < c.memBlock.maxt {
-			to = c.memBlock.maxt
+		if to < c.head.maxt {
+			to = c.head.maxt
 		}
 	}
 
@@ -405,8 +365,8 @@ func (c *MemChunk) Bounds() (from, to int64) {
 }
 
 // Iterator implements Chunk.
-func (c *MemChunk) Iterator(mint, maxt int64) (Iterator, error) {
-	its := make([]Iterator, 0, len(c.blocks))
+func (c *MemChunk) Iterator(mint, maxt int64) (iter.EntryIterator, error) {
+	its := make([]iter.EntryIterator, 0, len(c.blocks))
 
 	for _, b := range c.blocks {
 		if maxt > b.mint && b.maxt > mint {
@@ -419,12 +379,15 @@ func (c *MemChunk) Iterator(mint, maxt int64) (Iterator, error) {
 		}
 	}
 
-	its = append(its, c.memBlock.iterator(mint, maxt))
-
-	return newChainedIterator(its, mint, maxt), nil
+	its = append(its, c.head.iterator(mint, maxt))
+	return iter.NewTimeRangedIterator(
+		iter.NewNonOverlappingIterator(its, ""),
+		time.Unix(0, mint),
+		time.Unix(0, maxt),
+	), nil
 }
 
-func (b block) iterator(cr func(io.Reader) (CompressionReader, error)) (Iterator, error) {
+func (b block) iterator(cr func(io.Reader) (CompressionReader, error)) (iter.EntryIterator, error) {
 	if len(b.b) == 0 {
 		return emptyIterator, nil
 	}
@@ -438,7 +401,7 @@ func (b block) iterator(cr func(io.Reader) (CompressionReader, error)) (Iterator
 	return newBufferedIterator(s), nil
 }
 
-func (hb *headBlock) iterator(mint, maxt int64) Iterator {
+func (hb *headBlock) iterator(mint, maxt int64) iter.EntryIterator {
 	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return emptyIterator
 	}
@@ -454,7 +417,6 @@ func (hb *headBlock) iterator(mint, maxt int64) Iterator {
 	return &listIterator{
 		entries: entries,
 	}
-
 }
 
 var emptyIterator = &listIterator{}
@@ -463,68 +425,6 @@ type listIterator struct {
 	entries []entry
 
 	cur entry
-}
-
-// chainedIterator chains several blocks together for iterating.
-type chainedIterator struct {
-	its []Iterator
-
-	curIt Iterator
-	cur   entry
-
-	mint, maxt int64
-
-	err error
-}
-
-func newChainedIterator(its []Iterator, mint, maxt int64) *chainedIterator {
-	return &chainedIterator{
-		its:   its[1:],
-		curIt: its[0],
-
-		mint: mint,
-		maxt: maxt,
-	}
-}
-
-func (gi *chainedIterator) Seek(int64) bool {
-	return false
-}
-
-func (gi *chainedIterator) Next() bool {
-	for gi.curIt.Next() {
-		gi.cur.t, gi.cur.s = gi.curIt.At()
-		if gi.cur.t < gi.mint {
-			continue
-		}
-
-		if gi.cur.t > gi.maxt {
-			return false
-		}
-
-		return true
-	}
-
-	if len(gi.its) == 0 {
-		return false
-	}
-
-	gi.curIt = gi.its[0]
-	gi.its = gi.its[1:]
-
-	return gi.Next()
-}
-
-func (gi *chainedIterator) At() (int64, string) {
-	return gi.cur.t, gi.cur.s
-}
-
-func (gi *chainedIterator) Err() error {
-	if gi.err != nil {
-		return gi.err
-	}
-
-	return gi.curIt.Err()
 }
 
 func (li *listIterator) Seek(int64) bool {
@@ -542,15 +442,15 @@ func (li *listIterator) Next() bool {
 	return false
 }
 
-func (li *listIterator) At() (int64, string) {
-	return li.cur.t, li.cur.s
+func (li *listIterator) Entry() logproto.Entry {
+	return logproto.Entry{time.Unix(0, li.cur.t), li.cur.s}
 }
 
-func (li *listIterator) Err() error {
-	return nil
-}
+func (li *listIterator) Error() error   { return nil }
+func (li *listIterator) Close() error   { return nil }
+func (li *listIterator) Labels() string { return "" }
 
-type bufferedReader struct {
+type bufferedIterator struct {
 	s *bufio.Reader
 
 	curT   int64
@@ -562,25 +462,24 @@ type bufferedReader struct {
 	decBuf []byte // The buffer for decoding the lengths.
 }
 
-func newBufferedIterator(s *bufio.Reader) *bufferedReader {
-	return &bufferedReader{
+func newBufferedIterator(s *bufio.Reader) *bufferedIterator {
+	return &bufferedIterator{
 		s:      s,
 		buf:    make([]byte, 1024),
 		decBuf: make([]byte, binary.MaxVarintLen64),
 	}
 }
 
-func (si *bufferedReader) Seek(int64) bool {
+func (si *bufferedIterator) Seek(int64) bool {
 	return false
 }
 
-func (si *bufferedReader) Next() bool {
+func (si *bufferedIterator) Next() bool {
 	ts, err := binary.ReadVarint(si.s)
 	if err != nil {
 		if err != io.EOF {
 			si.err = err
 		}
-
 		return false
 	}
 
@@ -616,13 +515,13 @@ func (si *bufferedReader) Next() bool {
 	return true
 }
 
-func (si *bufferedReader) At() (int64, string) {
-	return si.curT, si.curLog
+func (si *bufferedIterator) Entry() logproto.Entry {
+	return logproto.Entry{time.Unix(0, si.curT), si.curLog}
 }
 
-func (si *bufferedReader) Err() error {
-	return si.err
-}
+func (si *bufferedIterator) Error() error   { return si.err }
+func (si *bufferedIterator) Close() error   { return si.err }
+func (si *bufferedIterator) Labels() string { return "" }
 
 type noopFlushingWriter struct {
 	io.WriteCloser

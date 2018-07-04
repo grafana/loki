@@ -62,44 +62,5 @@ func (s *stream) Iterator(from, through time.Time, direction logproto.Direction)
 		}
 	}
 
-	return &nonOverlappingIterator{
-		labels:    s.labels.String(),
-		iterators: iterators,
-	}
-}
-
-type nonOverlappingIterator struct {
-	labels    string
-	i         int
-	iterators []iter.EntryIterator
-	curr      iter.EntryIterator
-}
-
-func (i *nonOverlappingIterator) Next() bool {
-	for i.curr == nil || !i.curr.Next() {
-		if i.i >= len(i.iterators) {
-			return false
-		}
-
-		i.curr = i.iterators[i.i]
-		i.i++
-	}
-
-	return true
-}
-
-func (i *nonOverlappingIterator) Entry() logproto.Entry {
-	return i.curr.Entry()
-}
-
-func (i *nonOverlappingIterator) Labels() string {
-	return i.labels
-}
-
-func (i *nonOverlappingIterator) Error() error {
-	return nil
-}
-
-func (i *nonOverlappingIterator) Close() error {
-	return nil
+	return iter.NewNonOverlappingIterator(iterators, s.labels.String())
 }

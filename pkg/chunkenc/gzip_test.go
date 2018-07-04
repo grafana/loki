@@ -60,21 +60,22 @@ func TestGZIPBlock(t *testing.T) {
 	for _, c := range cases {
 		require.NoError(t, chk.Append(c.ts, c.str))
 		if c.cut {
-			require.NoError(t, chk.app.cut())
+			require.NoError(t, chk.cut())
 		}
 	}
 
 	it, err := chk.Iterator(0, math.MaxInt64)
 	require.NoError(t, err)
+
 	idx := 0
 	for it.Next() {
-		ts, str := it.At()
-		require.Equal(t, cases[idx].ts, ts)
-		require.Equal(t, cases[idx].str, str)
+		e := it.Entry()
+		require.Equal(t, cases[idx].ts, e.Timestamp.UnixNano())
+		require.Equal(t, cases[idx].str, e.Line)
 		idx++
 	}
 
-	require.NoError(t, it.Err())
+	require.NoError(t, it.Error())
 	require.Equal(t, len(cases), idx)
 
 	t.Run("bounded-iteration", func(t *testing.T) {
@@ -83,12 +84,12 @@ func TestGZIPBlock(t *testing.T) {
 
 		idx := 2
 		for it.Next() {
-			ts, str := it.At()
-			require.Equal(t, cases[idx].ts, ts)
-			require.Equal(t, cases[idx].str, str)
+			e := it.Entry()
+			require.Equal(t, cases[idx].ts, e.Timestamp.UnixNano())
+			require.Equal(t, cases[idx].str, e.Line)
 			idx++
 		}
-		require.NoError(t, it.Err())
+		require.NoError(t, it.Error())
 		require.Equal(t, 7, idx)
 	})
 }
@@ -126,11 +127,11 @@ func TestGZIPCompression(t *testing.T) {
 			for i, l := range lines {
 				require.True(t, it.Next())
 
-				ts, str := it.At()
-				require.Equal(t, int64(i), ts)
-				require.Equal(t, string(l), str)
+				e := it.Entry()
+				require.Equal(t, int64(i), e.Timestamp.UnixNano())
+				require.Equal(t, string(l), e.Line)
 			}
-			require.NoError(t, it.Err())
+			require.NoError(t, it.Error())
 		})
 	}
 }
@@ -155,10 +156,10 @@ func TestGZIPSerialisation(t *testing.T) {
 	for i := 0; i < numSamples; i++ {
 		require.True(t, it.Next())
 
-		ts, str := it.At()
-		require.Equal(t, int64(i), ts)
-		require.Equal(t, string(i), str)
+		e := it.Entry()
+		require.Equal(t, int64(i), e.Timestamp.UnixNano())
+		require.Equal(t, string(i), e.Line)
 	}
 
-	require.NoError(t, it.Err())
+	require.NoError(t, it.Error())
 }

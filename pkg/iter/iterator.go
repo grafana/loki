@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"time"
 
 	"github.com/grafana/logish/pkg/logproto"
 )
@@ -260,4 +261,78 @@ func (i *regexpFilter) Next() bool {
 		}
 	}
 	return false
+}
+
+type nonOverlappingIterator struct {
+	labels    string
+	i         int
+	iterators []EntryIterator
+	curr      EntryIterator
+}
+
+// NewNonOverlappingIterator gives a chained iterator over the iterators.
+func NewNonOverlappingIterator(iterators []EntryIterator, labels string) EntryIterator {
+	return &nonOverlappingIterator{
+		labels:    labels,
+		iterators: iterators,
+	}
+}
+
+func (i *nonOverlappingIterator) Next() bool {
+	for i.curr == nil || !i.curr.Next() {
+		if i.i >= len(i.iterators) {
+			return false
+		}
+
+		i.curr = i.iterators[i.i]
+		i.i++
+	}
+
+	return true
+}
+
+func (i *nonOverlappingIterator) Entry() logproto.Entry {
+	fmt.Println(i.curr.Entry().Timestamp.UnixNano())
+	return i.curr.Entry()
+}
+
+func (i *nonOverlappingIterator) Labels() string {
+	return i.labels
+}
+
+func (i *nonOverlappingIterator) Error() error {
+	return nil
+}
+
+func (i *nonOverlappingIterator) Close() error {
+	return nil
+}
+
+type timeRangedIterator struct {
+	EntryIterator
+	mint, maxt time.Time
+}
+
+func NewTimeRangedIterator(it EntryIterator, mint, maxt time.Time) EntryIterator {
+	return &timeRangedIterator{
+		EntryIterator: it,
+		mint:          mint,
+		maxt:          maxt,
+	}
+}
+
+func (i *timeRangedIterator) Next() bool {
+	ok := i.EntryIterator.Next()
+
+	ts := i.EntryIterator.Entry().Timestamp
+	for ok && i.mint.After(ts) {
+		ok = i.EntryIterator.Next()
+		ts = i.EntryIterator.Entry().Timestamp
+	}
+
+	if ok && i.maxt.Before(ts) {
+		ok = false
+	}
+
+	return ok
 }
