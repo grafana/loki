@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/logish/pkg/chunkenc"
 	"github.com/grafana/logish/pkg/iter"
 	"github.com/grafana/logish/pkg/logproto"
 	"github.com/stretchr/testify/assert"
@@ -37,32 +38,42 @@ func testIteratorBackward(t *testing.T, iter iter.EntryIterator, from, through i
 }
 
 func TestIterator(t *testing.T) {
-	chunk := newChunk()
 	const entries = 100
 
-	for i := int64(0); i < entries; i++ {
-		err := chunk.Push(&logproto.Entry{
-			Timestamp: time.Unix(i, 0),
-			Line:      fmt.Sprintf("line %d", i),
+	for _, chk := range []struct {
+		name string
+		new  func() Chunk
+	}{
+		{"dumbChunk", newChunk},
+		{"gzipChunk", func() Chunk { return chunkenc.NewMemChunk(chunkenc.EncGZIP) }},
+	} {
+		t.Run(chk.name, func(t *testing.T) {
+			chunk := chk.new()
+			for i := int64(0); i < entries; i++ {
+				err := chunk.Append(&logproto.Entry{
+					Timestamp: time.Unix(i, 0),
+					Line:      fmt.Sprintf("line %d", i),
+				})
+				require.NoError(t, err)
+			}
+
+			for i := 0; i < entries; i++ {
+				from := rand.Intn(entries - 1)
+				len := rand.Intn(entries-from) + 1
+				iter, err := chunk.Iterator(time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.FORWARD)
+				require.NoError(t, err)
+				testIteratorForward(t, iter, int64(from), int64(from+len))
+				iter.Close()
+			}
+
+			for i := 0; i < entries; i++ {
+				from := rand.Intn(entries - 1)
+				len := rand.Intn(entries-from) + 1
+				iter, err := chunk.Iterator(time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.BACKWARD)
+				require.NoError(t, err)
+				testIteratorBackward(t, iter, int64(from), int64(from+len))
+				iter.Close()
+			}
 		})
-		require.NoError(t, err)
-	}
-
-	for i := 0; i < entries; i++ {
-		from := rand.Intn(entries - 1)
-		len := rand.Intn(entries-from) + 1
-		iter := chunk.Iterator(time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.FORWARD)
-		require.NotNil(t, iter)
-		testIteratorForward(t, iter, int64(from), int64(from+len))
-		iter.Close()
-	}
-
-	for i := 0; i < entries; i++ {
-		from := rand.Intn(entries - 1)
-		len := rand.Intn(entries-from) + 1
-		iter := chunk.Iterator(time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.BACKWARD)
-		require.NotNil(t, iter)
-		testIteratorBackward(t, iter, int64(from), int64(from+len))
-		iter.Close()
 	}
 }

@@ -292,7 +292,6 @@ func (i *nonOverlappingIterator) Next() bool {
 }
 
 func (i *nonOverlappingIterator) Entry() logproto.Entry {
-	fmt.Println(i.curr.Entry().Timestamp.UnixNano())
 	return i.curr.Entry()
 }
 
@@ -330,9 +329,46 @@ func (i *timeRangedIterator) Next() bool {
 		ts = i.EntryIterator.Entry().Timestamp
 	}
 
-	if ok && i.maxt.Before(ts) {
+	if ok && (i.maxt.Before(ts) || i.maxt.Equal(ts)) { // The maxt is exclusive.
 		ok = false
 	}
 
 	return ok
+}
+
+type entryIteratorBackward struct {
+	cur     logproto.Entry
+	entries []logproto.Entry
+}
+
+func NewEntryIteratorBackward(it EntryIterator) (EntryIterator, error) {
+	entries := make([]logproto.Entry, 0, 128)
+	for it.Next() {
+		entries = append(entries, it.Entry())
+	}
+
+	return &entryIteratorBackward{entries: entries}, it.Error()
+}
+
+func (i *entryIteratorBackward) Next() bool {
+	if len(i.entries) == 0 {
+		return false
+	}
+
+	i.cur = i.entries[len(i.entries)-1]
+	i.entries = i.entries[:len(i.entries)-1]
+
+	return true
+}
+
+func (i *entryIteratorBackward) Entry() logproto.Entry {
+	return i.cur
+}
+
+func (i *entryIteratorBackward) Close() error { return nil }
+
+func (i *entryIteratorBackward) Error() error { return nil }
+
+func (i *entryIteratorBackward) Labels() string {
+	return ""
 }

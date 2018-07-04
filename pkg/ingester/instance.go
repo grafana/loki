@@ -75,7 +75,10 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			i.streamsMtx.Unlock()
 			return ErrStreamMissing
 		}
-		iterators[j] = stream.Iterator(req.Start, req.End, req.Direction)
+		iterators[j], err = stream.Iterator(req.Start, req.End, req.Direction)
+		if err != nil {
+			return err
+		}
 	}
 	i.streamsMtx.Unlock()
 

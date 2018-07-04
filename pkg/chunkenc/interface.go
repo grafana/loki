@@ -2,8 +2,6 @@ package chunkenc
 
 import (
 	"io"
-
-	"github.com/grafana/logish/pkg/iter"
 )
 
 // Encoding is the identifier for a chunk encoding.
@@ -24,24 +22,6 @@ func (e Encoding) String() string {
 	default:
 		return "unknown"
 	}
-}
-
-// Chunk holds a sequence of sample pairs that can be iterated over and appended to.
-// The functions here are not safe to execute concurrently.
-// But once you get the iterator, it can be safely iterated over concurrently while
-// appending to the chunk. i.e, only the creation of Iterator is not safe, not it's
-// usage.
-type Chunk interface {
-	Bytes() []byte
-	Encoding() Encoding
-	Iterator(from, to int64) (iter.EntryIterator, error)
-	Bounds() (from, to int64)
-	NumSamples() int
-
-	SpaceFor(int64, string) bool
-	Append(int64, string) error
-
-	Close() error
 }
 
 // CompressionWriter is the writer that compresses the data passed to it.

@@ -272,7 +272,7 @@ func (c *MemChunk) Encoding() Encoding {
 }
 
 // NumSamples implements Chunk.
-func (c *MemChunk) NumSamples() int {
+func (c *MemChunk) Size() int {
 	ne := 0
 	for _, blk := range c.blocks {
 		ne += blk.numEntries
@@ -286,13 +286,13 @@ func (c *MemChunk) NumSamples() int {
 }
 
 // SpaceFor implements Chunk.
-func (c *MemChunk) SpaceFor(ts int64, log string) bool {
+func (c *MemChunk) SpaceFor(*logproto.Entry) bool {
 	return len(c.blocks) < 10
 }
 
 // Append implements Chunk.
-func (c *MemChunk) Append(ts int64, line string) error {
-	return c.head.append(ts, line)
+func (c *MemChunk) Append(entry *logproto.Entry) error {
+	return c.head.append(entry.Timestamp.UnixNano(), entry.Line)
 }
 
 // Close implements Chunk.
@@ -345,7 +345,8 @@ func (c *MemChunk) cut() error {
 }
 
 // Bounds implements Chunk.
-func (c *MemChunk) Bounds() (from, to int64) {
+func (c *MemChunk) Bounds() (fromT, toT time.Time) {
+	var from, to int64
 	if len(c.blocks) > 0 {
 		from = c.blocks[0].mint
 		to = c.blocks[len(c.blocks)-1].maxt
@@ -361,11 +362,12 @@ func (c *MemChunk) Bounds() (from, to int64) {
 		}
 	}
 
-	return
+	return time.Unix(0, from), time.Unix(0, to)
 }
 
 // Iterator implements Chunk.
-func (c *MemChunk) Iterator(mint, maxt int64) (iter.EntryIterator, error) {
+func (c *MemChunk) Iterator(mintT, maxtT time.Time, direction logproto.Direction) (iter.EntryIterator, error) {
+	mint, maxt := mintT.UnixNano(), maxtT.UnixNano()
 	its := make([]iter.EntryIterator, 0, len(c.blocks))
 
 	for _, b := range c.blocks {
@@ -380,11 +382,18 @@ func (c *MemChunk) Iterator(mint, maxt int64) (iter.EntryIterator, error) {
 	}
 
 	its = append(its, c.head.iterator(mint, maxt))
-	return iter.NewTimeRangedIterator(
+
+	iterForward := iter.NewTimeRangedIterator(
 		iter.NewNonOverlappingIterator(its, ""),
 		time.Unix(0, mint),
 		time.Unix(0, maxt),
-	), nil
+	)
+
+	if direction == logproto.FORWARD {
+		return iterForward, nil
+	}
+
+	return iter.NewEntryIteratorBackward(iterForward)
 }
 
 func (b block) iterator(cr func(io.Reader) (CompressionReader, error)) (iter.EntryIterator, error) {

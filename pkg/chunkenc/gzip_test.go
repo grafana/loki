@@ -6,6 +6,9 @@ import (
 	"io/ioutil"
 	"math"
 	"testing"
+	"time"
+
+	"github.com/grafana/logish/pkg/logproto"
 
 	"github.com/stretchr/testify/require"
 )
@@ -58,13 +61,13 @@ func TestGZIPBlock(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		require.NoError(t, chk.Append(c.ts, c.str))
+		require.NoError(t, chk.Append(logprotoEntry(c.ts, c.str)))
 		if c.cut {
 			require.NoError(t, chk.cut())
 		}
 	}
 
-	it, err := chk.Iterator(0, math.MaxInt64)
+	it, err := chk.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD)
 	require.NoError(t, err)
 
 	idx := 0
@@ -79,7 +82,7 @@ func TestGZIPBlock(t *testing.T) {
 	require.Equal(t, len(cases), idx)
 
 	t.Run("bounded-iteration", func(t *testing.T) {
-		it, err := chk.Iterator(3, 7)
+		it, err := chk.Iterator(time.Unix(0, 3), time.Unix(0, 7), logproto.FORWARD)
 		require.NoError(t, err)
 
 		idx := 2
@@ -90,7 +93,7 @@ func TestGZIPBlock(t *testing.T) {
 			idx++
 		}
 		require.NoError(t, it.Error())
-		require.Equal(t, 7, idx)
+		require.Equal(t, 6, idx)
 	})
 }
 
@@ -114,14 +117,14 @@ func TestGZIPCompression(t *testing.T) {
 			chk.blockSize = blockSize
 
 			for i, l := range lines {
-				require.NoError(t, chk.Append(int64(i), string(l)))
+				require.NoError(t, chk.Append(logprotoEntry(int64(i), string(l))))
 			}
 
 			b2, err := chk.Bytes()
 			require.NoError(t, err)
 			fmt.Println(float64(len(b))/(1024*1024), float64(len(b2))/(1024*1024), float64(len(b2))/float64(len(chk.blocks)))
 
-			it, err := chk.Iterator(0, math.MaxInt64)
+			it, err := chk.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD)
 			require.NoError(t, err)
 
 			for i, l := range lines {
@@ -142,7 +145,7 @@ func TestGZIPSerialisation(t *testing.T) {
 	numSamples := 500000
 
 	for i := 0; i < numSamples; i++ {
-		require.NoError(t, chk.Append(int64(i), string(i)))
+		require.NoError(t, chk.Append(logprotoEntry(int64(i), string(i))))
 	}
 
 	byt, err := chk.Bytes()
@@ -151,7 +154,7 @@ func TestGZIPSerialisation(t *testing.T) {
 	bc, err := NewByteChunk(byt)
 	require.NoError(t, err)
 
-	it, err := bc.Iterator(0, math.MaxInt64)
+	it, err := bc.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD)
 	require.NoError(t, err)
 	for i := 0; i < numSamples; i++ {
 		require.True(t, it.Next())
@@ -162,4 +165,11 @@ func TestGZIPSerialisation(t *testing.T) {
 	}
 
 	require.NoError(t, it.Error())
+}
+
+func logprotoEntry(ts int64, line string) *logproto.Entry {
+	return &logproto.Entry{
+		Timestamp: time.Unix(0, ts),
+		Line:      line,
+	}
 }

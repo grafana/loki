@@ -34,7 +34,7 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry) error {
 		if !s.chunks[0].SpaceFor(&entries[i]) {
 			s.chunks = append([]Chunk{newChunk()}, s.chunks...)
 		}
-		if err := s.chunks[0].Push(&entries[i]); err != nil {
+		if err := s.chunks[0].Append(&entries[i]); err != nil {
 			return err
 		}
 	}
@@ -47,10 +47,13 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry) error {
 }
 
 // Returns an iterator.
-func (s *stream) Iterator(from, through time.Time, direction logproto.Direction) iter.EntryIterator {
+func (s *stream) Iterator(from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error) {
 	iterators := make([]iter.EntryIterator, 0, len(s.chunks))
 	for _, c := range s.chunks {
-		iter := c.Iterator(from, through, direction)
+		iter, err := c.Iterator(from, through, direction)
+		if err != nil {
+			return nil, err
+		}
 		if iter != nil {
 			iterators = append(iterators, iter)
 		}
@@ -62,5 +65,5 @@ func (s *stream) Iterator(from, through time.Time, direction logproto.Direction)
 		}
 	}
 
-	return iter.NewNonOverlappingIterator(iterators, s.labels.String())
+	return iter.NewNonOverlappingIterator(iterators, s.labels.String()), nil
 }
