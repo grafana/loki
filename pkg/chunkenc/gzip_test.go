@@ -165,6 +165,11 @@ func TestGZIPSerialisation(t *testing.T) {
 	}
 
 	require.NoError(t, it.Error())
+
+	byt2, err := chk.Bytes()
+	require.NoError(t, err)
+
+	require.True(t, bytes.Equal(byt, byt2))
 }
 
 func logprotoEntry(ts int64, line string) *logproto.Entry {

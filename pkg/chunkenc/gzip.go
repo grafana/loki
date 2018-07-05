@@ -106,6 +106,34 @@ func (hb *headBlock) append(ts int64, line string) error {
 	return nil
 }
 
+func (hb *headBlock) serialise(cw func(w io.Writer) CompressionWriter) ([]byte, error) {
+	buf := bytes.NewBuffer(make([]byte, 0, 1<<15)) // 32K. Pool it later.
+	encBuf := make([]byte, binary.MaxVarintLen64)
+	compressedWriter := cw(buf)
+	for _, logEntry := range hb.entries {
+		n := binary.PutVarint(encBuf, logEntry.t)
+		_, err := compressedWriter.Write(encBuf[:n])
+		if err != nil {
+			return nil, errors.Wrap(err, "appending entry")
+		}
+
+		n = binary.PutUvarint(encBuf, uint64(len(logEntry.s)))
+		_, err = compressedWriter.Write(encBuf[:n])
+		if err != nil {
+			return nil, errors.Wrap(err, "appending entry")
+		}
+		_, err = compressedWriter.Write([]byte(logEntry.s))
+		if err != nil {
+			return nil, errors.Wrap(err, "appending entry")
+		}
+	}
+	if err := compressedWriter.Close(); err != nil {
+		return nil, errors.Wrap(err, "flushing pending compress buffer")
+	}
+
+	return buf.Bytes(), nil
+}
+
 type entry struct {
 	t int64
 	s string
@@ -145,14 +173,15 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 	db := decbuf{b: b}
 
 	// Verify the header.
-	if m := db.be32(); m != magicNumber {
-		return nil, errors.Errorf("invalid magic number %x", m)
-	}
-	if version := db.byte(); version != 1 {
-		return nil, errors.Errorf("invalid version %d", version)
-	}
+	m, version := db.be32(), db.byte()
 	if db.err() != nil {
 		return nil, errors.Wrap(db.err(), "verifying header")
+	}
+	if m != magicNumber {
+		return nil, errors.Errorf("invalid magic number %x", m)
+	}
+	if version != 1 {
+		return nil, errors.Errorf("invalid version %d", version)
 	}
 
 	metasOffset := binary.BigEndian.Uint64(b[len(b)-8:])
@@ -307,32 +336,13 @@ func (c *MemChunk) cut() error {
 		return nil
 	}
 
-	buf := bytes.NewBuffer(make([]byte, 0, 1<<15)) // 32K. Pool it later.
-	encBuf := make([]byte, binary.MaxVarintLen64)
-	compressedWriter := c.cw(buf)
-	for _, logEntry := range c.head.entries {
-		n := binary.PutVarint(encBuf, logEntry.t)
-		_, err := compressedWriter.Write(encBuf[:n])
-		if err != nil {
-			return errors.Wrap(err, "appending entry")
-		}
-
-		n = binary.PutUvarint(encBuf, uint64(len(logEntry.s)))
-		_, err = compressedWriter.Write(encBuf[:n])
-		if err != nil {
-			return errors.Wrap(err, "appending entry")
-		}
-		_, err = compressedWriter.Write([]byte(logEntry.s))
-		if err != nil {
-			return errors.Wrap(err, "appending entry")
-		}
-	}
-	if err := compressedWriter.Close(); err != nil {
-		return errors.Wrap(err, "flushing pending compress buffer")
+	b, err := c.head.serialise(c.cw)
+	if err != nil {
+		return err
 	}
 
 	c.blocks = append(c.blocks, block{
-		b:          buf.Bytes(),
+		b:          b,
 		numEntries: len(c.head.entries),
 		mint:       c.head.mint,
 		maxt:       c.head.maxt,

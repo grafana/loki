@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"hash"
 	"hash/crc32"
-	"unsafe"
 )
 
 // enbuf is a helper type to populate a byte slice with various types.
@@ -49,8 +48,7 @@ func (e *encbuf) putVarint64(x int64) {
 
 // putVarintStr writes a string to the buffer prefixed by its varint length (in bytes!).
 func (e *encbuf) putUvarintStr(s string) {
-	b := *(*[]byte)(unsafe.Pointer(&s))
-	e.putUvarint(len(b))
+	e.putUvarint(len(s))
 	e.putString(s)
 }
 
