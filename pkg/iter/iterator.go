@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"time"
 
 	"github.com/grafana/logish/pkg/logproto"
 )
@@ -260,4 +261,114 @@ func (i *regexpFilter) Next() bool {
 		}
 	}
 	return false
+}
+
+type nonOverlappingIterator struct {
+	labels    string
+	i         int
+	iterators []EntryIterator
+	curr      EntryIterator
+}
+
+// NewNonOverlappingIterator gives a chained iterator over the iterators.
+func NewNonOverlappingIterator(iterators []EntryIterator, labels string) EntryIterator {
+	return &nonOverlappingIterator{
+		labels:    labels,
+		iterators: iterators,
+	}
+}
+
+func (i *nonOverlappingIterator) Next() bool {
+	for i.curr == nil || !i.curr.Next() {
+		if i.i >= len(i.iterators) {
+			return false
+		}
+
+		i.curr = i.iterators[i.i]
+		i.i++
+	}
+
+	return true
+}
+
+func (i *nonOverlappingIterator) Entry() logproto.Entry {
+	return i.curr.Entry()
+}
+
+func (i *nonOverlappingIterator) Labels() string {
+	return i.labels
+}
+
+func (i *nonOverlappingIterator) Error() error {
+	return nil
+}
+
+func (i *nonOverlappingIterator) Close() error {
+	return nil
+}
+
+type timeRangedIterator struct {
+	EntryIterator
+	mint, maxt time.Time
+}
+
+func NewTimeRangedIterator(it EntryIterator, mint, maxt time.Time) EntryIterator {
+	return &timeRangedIterator{
+		EntryIterator: it,
+		mint:          mint,
+		maxt:          maxt,
+	}
+}
+
+func (i *timeRangedIterator) Next() bool {
+	ok := i.EntryIterator.Next()
+
+	ts := i.EntryIterator.Entry().Timestamp
+	for ok && i.mint.After(ts) {
+		ok = i.EntryIterator.Next()
+		ts = i.EntryIterator.Entry().Timestamp
+	}
+
+	if ok && (i.maxt.Before(ts) || i.maxt.Equal(ts)) { // The maxt is exclusive.
+		ok = false
+	}
+
+	return ok
+}
+
+type entryIteratorBackward struct {
+	cur     logproto.Entry
+	entries []logproto.Entry
+}
+
+func NewEntryIteratorBackward(it EntryIterator) (EntryIterator, error) {
+	entries := make([]logproto.Entry, 0, 128)
+	for it.Next() {
+		entries = append(entries, it.Entry())
+	}
+
+	return &entryIteratorBackward{entries: entries}, it.Error()
+}
+
+func (i *entryIteratorBackward) Next() bool {
+	if len(i.entries) == 0 {
+		return false
+	}
+
+	i.cur = i.entries[len(i.entries)-1]
+	i.entries = i.entries[:len(i.entries)-1]
+
+	return true
+}
+
+func (i *entryIteratorBackward) Entry() logproto.Entry {
+	return i.cur
+}
+
+func (i *entryIteratorBackward) Close() error { return nil }
+
+func (i *entryIteratorBackward) Error() error { return nil }
+
+func (i *entryIteratorBackward) Labels() string {
+	return ""
 }

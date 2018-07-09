@@ -4,11 +4,41 @@ import (
 	"context"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 
+	"github.com/grafana/logish/pkg/chunkenc"
 	"github.com/grafana/logish/pkg/iter"
 	"github.com/grafana/logish/pkg/logproto"
 )
+
+var (
+	chunksCreatedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "logish",
+		Name:      "ingester_chunks_created_total",
+		Help:      "The total number of chunks created in the ingester.",
+	})
+	chunksFlushedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "logish",
+		Name:      "ingester_chunks_flushed_total",
+		Help:      "The total number of chunks flushed by the ingester.",
+	})
+
+	samplesPerChunk = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "logish",
+		Subsystem: "ingester",
+		Name:      "samples_per_chunk",
+		Help:      "The number of samples in a chunk.",
+
+		Buckets: prometheus.LinearBuckets(4096, 2048, 6),
+	})
+)
+
+func init() {
+	prometheus.MustRegister(chunksCreatedTotal)
+	prometheus.MustRegister(chunksFlushedTotal)
+	prometheus.MustRegister(samplesPerChunk)
+}
 
 const tmpMaxChunks = 3
 
@@ -27,30 +57,37 @@ func newStream(labels labels.Labels) *stream {
 
 func (s *stream) Push(ctx context.Context, entries []logproto.Entry) error {
 	if len(s.chunks) == 0 {
-		s.chunks = append(s.chunks, newChunk())
+		s.chunks = append(s.chunks, chunkenc.NewMemChunk(chunkenc.EncGZIP))
+		chunksCreatedTotal.Inc()
 	}
 
 	for i := range entries {
 		if !s.chunks[0].SpaceFor(&entries[i]) {
-			s.chunks = append([]Chunk{newChunk()}, s.chunks...)
+			samplesPerChunk.Observe(float64(s.chunks[0].Size()))
+			s.chunks = append([]Chunk{chunkenc.NewMemChunk(chunkenc.EncGZIP)}, s.chunks...)
+			chunksCreatedTotal.Inc()
 		}
-		if err := s.chunks[0].Push(&entries[i]); err != nil {
+		if err := s.chunks[0].Append(&entries[i]); err != nil {
 			return err
 		}
 	}
 
 	// Temp; until we implement flushing, only keep N chunks in memory.
 	if len(s.chunks) > tmpMaxChunks {
+		chunksFlushedTotal.Add(float64(len(s.chunks) - tmpMaxChunks))
 		s.chunks = s.chunks[:tmpMaxChunks]
 	}
 	return nil
 }
 
 // Returns an iterator.
-func (s *stream) Iterator(from, through time.Time, direction logproto.Direction) iter.EntryIterator {
+func (s *stream) Iterator(from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error) {
 	iterators := make([]iter.EntryIterator, 0, len(s.chunks))
 	for _, c := range s.chunks {
-		iter := c.Iterator(from, through, direction)
+		iter, err := c.Iterator(from, through, direction)
+		if err != nil {
+			return nil, err
+		}
 		if iter != nil {
 			iterators = append(iterators, iter)
 		}
@@ -62,44 +99,5 @@ func (s *stream) Iterator(from, through time.Time, direction logproto.Direction)
 		}
 	}
 
-	return &nonOverlappingIterator{
-		labels:    s.labels.String(),
-		iterators: iterators,
-	}
-}
-
-type nonOverlappingIterator struct {
-	labels    string
-	i         int
-	iterators []iter.EntryIterator
-	curr      iter.EntryIterator
-}
-
-func (i *nonOverlappingIterator) Next() bool {
-	for i.curr == nil || !i.curr.Next() {
-		if i.i >= len(i.iterators) {
-			return false
-		}
-
-		i.curr = i.iterators[i.i]
-		i.i++
-	}
-
-	return true
-}
-
-func (i *nonOverlappingIterator) Entry() logproto.Entry {
-	return i.curr.Entry()
-}
-
-func (i *nonOverlappingIterator) Labels() string {
-	return i.labels
-}
-
-func (i *nonOverlappingIterator) Error() error {
-	return nil
-}
-
-func (i *nonOverlappingIterator) Close() error {
-	return nil
+	return iter.NewNonOverlappingIterator(iterators, s.labels.String()), nil
 }

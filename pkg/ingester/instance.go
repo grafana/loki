@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/logish/pkg/iter"
 	"github.com/grafana/logish/pkg/logproto"
@@ -21,16 +22,38 @@ var (
 	ErrStreamMissing = errors.New("Stream missing")
 )
 
+var (
+	streamsCreatedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "logish",
+		Name:      "ingester_streams_created_total",
+		Help:      "The total number of streams created in the ingester.",
+	}, []string{"org"})
+	streamsRemovedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "logish",
+		Name:      "ingester_streams_removed_total",
+		Help:      "The total number of streams removed by the ingester.",
+	}, []string{"org"})
+)
+
+func init() {
+	prometheus.MustRegister(streamsCreatedTotal)
+	prometheus.MustRegister(streamsRemovedTotal)
+}
+
 type instance struct {
 	streamsMtx sync.Mutex
 	streams    map[string]*stream
 	index      *invertedIndex
+
+	instanceID string
 }
 
-func newInstance() *instance {
+func newInstance(instanceID string) *instance {
+	streamsCreatedTotal.WithLabelValues(instanceID).Inc()
 	return &instance{
-		streams: map[string]*stream{},
-		index:   newInvertedIndex(),
+		streams:    map[string]*stream{},
+		index:      newInvertedIndex(),
+		instanceID: instanceID,
 	}
 }
 
@@ -75,7 +98,10 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			i.streamsMtx.Unlock()
 			return ErrStreamMissing
 		}
-		iterators[j] = stream.Iterator(req.Start, req.End, req.Direction)
+		iterators[j], err = stream.Iterator(req.Start, req.End, req.Direction)
+		if err != nil {
+			return err
+		}
 	}
 	i.streamsMtx.Unlock()
 

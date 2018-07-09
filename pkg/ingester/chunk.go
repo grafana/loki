@@ -15,16 +15,18 @@ const (
 	tmpNumEntries = 1024
 )
 
+// Errors returned by the chunk interface.
 var (
 	ErrChunkFull  = errors.New("Chunk full")
 	ErrOutOfOrder = errors.New("Entry out of order")
 )
 
+// Chunk is the interface for the compressed logs chunk format.
 type Chunk interface {
 	Bounds() (time.Time, time.Time)
 	SpaceFor(*logproto.Entry) bool
-	Push(*logproto.Entry) error
-	Iterator(from, through time.Time, direction logproto.Direction) iter.EntryIterator
+	Append(*logproto.Entry) error
+	Iterator(from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error)
 	Size() int
 }
 
@@ -47,7 +49,7 @@ func (c *dumbChunk) SpaceFor(_ *logproto.Entry) bool {
 	return len(c.entries) < tmpNumEntries
 }
 
-func (c *dumbChunk) Push(entry *logproto.Entry) error {
+func (c *dumbChunk) Append(entry *logproto.Entry) error {
 	if len(c.entries) == tmpNumEntries {
 		return ErrChunkFull
 	}
@@ -66,7 +68,7 @@ func (c *dumbChunk) Size() int {
 
 // Returns an iterator that goes from _most_ recent to _least_ recent (ie,
 // backwards).
-func (c *dumbChunk) Iterator(from, through time.Time, direction logproto.Direction) iter.EntryIterator {
+func (c *dumbChunk) Iterator(from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error) {
 	i := sort.Search(len(c.entries), func(i int) bool {
 		return !from.After(c.entries[i].Timestamp)
 	})
@@ -76,7 +78,7 @@ func (c *dumbChunk) Iterator(from, through time.Time, direction logproto.Directi
 	log.Println("from", from, "through", through, "i", i, "j", j, "entries", len(c.entries))
 
 	if from == through {
-		return nil
+		return nil, nil
 	}
 
 	start := -1
@@ -89,7 +91,7 @@ func (c *dumbChunk) Iterator(from, through time.Time, direction logproto.Directi
 		direction: direction,
 		i:         start,
 		entries:   c.entries[i:j],
-	}
+	}, nil
 }
 
 type dumbChunkIterator struct {
