@@ -163,7 +163,8 @@ func NewMemChunk(enc Encoding) *MemChunk {
 // NewByteChunk returns a MemChunk on the passed bytes.
 func NewByteChunk(b []byte) (*MemChunk, error) {
 	bc := &MemChunk{
-		cr: func(r io.Reader) (CompressionReader, error) { return gzip.NewReader(r) },
+		cr:   func(r io.Reader) (CompressionReader, error) { return gzip.NewReader(r) },
+		head: &headBlock{}, // Dummy, empty headblock.
 	}
 
 	db := decbuf{b: b}
