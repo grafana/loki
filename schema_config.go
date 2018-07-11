@@ -30,6 +30,7 @@ type SchemaConfig struct {
 	V6SchemaFrom     util.DayValue
 	V7SchemaFrom     util.DayValue
 	V8SchemaFrom     util.DayValue
+	V9SchemaFrom     util.DayValue
 
 	// Master 'off-switch' for table capacity updates, e.g. when troubleshooting
 	ThroughputUpdatesDisabled bool
@@ -59,6 +60,7 @@ func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.V6SchemaFrom, "dynamodb.v6-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v6 schema.")
 	f.Var(&cfg.V7SchemaFrom, "dynamodb.v7-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v7 schema (Deprecated).")
 	f.Var(&cfg.V8SchemaFrom, "dynamodb.v8-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v8 schema (Deprecated).")
+	f.Var(&cfg.V9SchemaFrom, "dynamodb.v9-schema-from", "The data (in the format YYYY-MM-DD) after which we enable v9 schema (Series indexing).")
 
 	f.BoolVar(&cfg.ThroughputUpdatesDisabled, "table-manager.throughput-updates-disabled", false, "If true, disable all changes to DB capacity")
 	f.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")

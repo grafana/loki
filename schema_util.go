@@ -19,6 +19,11 @@ func metricSeriesID(m model.Metric) string {
 	return string(encodeBase64Bytes(h[:]))
 }
 
+func sha256bytes(s string) []byte {
+	h := sha256.Sum256([]byte(s))
+	return encodeBase64Bytes(h[:])
+}
+
 func encodeRangeKey(ss ...[]byte) []byte {
 	length := 0
 	for _, s := range ss {
@@ -127,45 +132,70 @@ func parseSeriesRangeValue(rangeValue []byte, value []byte) (model.Metric, error
 
 // parseChunkTimeRangeValue returns the chunkKey, labelValue and metadataInIndex
 // for chunk time range values.
-func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (string, model.LabelValue, bool, error) {
+func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (
+	chunkID string, labelValue model.LabelValue, metadataInIndex bool,
+	isSeriesID bool, err error,
+) {
 	components := decodeRangeKey(rangeValue)
 
 	switch {
 	case len(components) < 3:
-		return "", "", false, errors.Errorf("invalid chunk time range value: %x", rangeValue)
+		err = errors.Errorf("invalid chunk time range value: %x", rangeValue)
+		return
 
 	// v1 & v2 schema had three components - label name, label value and chunk ID.
 	// No version number.
 	case len(components) == 3:
-		return string(components[2]), model.LabelValue(components[1]), true, nil
+		chunkID = string(components[2])
+		labelValue = model.LabelValue(components[1])
+		metadataInIndex = true
+		return
 
 	// v3 schema had four components - label name, label value, chunk ID and version.
 	// "version" is 1 and label value is base64 encoded.
 	case bytes.Equal(components[3], chunkTimeRangeKeyV1):
-		labelValue, err := decodeBase64Value(components[1])
-		return string(components[2]), labelValue, false, err
+		chunkID = string(components[2])
+		labelValue, err = decodeBase64Value(components[1])
+		return
 
 	// v4 schema wrote v3 range keys and a new range key - version 2,
 	// with four components - <empty>, <empty>, chunk ID and version.
 	case bytes.Equal(components[3], chunkTimeRangeKeyV2):
-		return string(components[2]), model.LabelValue(""), false, nil
+		chunkID = string(components[2])
+		return
 
 	// v5 schema version 3 range key is chunk end time, <empty>, chunk ID, version
 	case bytes.Equal(components[3], chunkTimeRangeKeyV3):
-		return string(components[2]), model.LabelValue(""), false, nil
+		chunkID = string(components[2])
+		return
 
 	// v5 schema version 4 range key is chunk end time, label value, chunk ID, version
 	case bytes.Equal(components[3], chunkTimeRangeKeyV4):
-		labelValue, err := decodeBase64Value(components[1])
-		return string(components[2]), labelValue, false, err
+		chunkID = string(components[2])
+		labelValue, err = decodeBase64Value(components[1])
+		return
 
 	// v6 schema added version 5 range keys, which have the label value written in
 	// to the value, not the range key. So they are [chunk end time, <empty>, chunk ID, version].
 	case bytes.Equal(components[3], chunkTimeRangeKeyV5):
-		labelValue := model.LabelValue(value)
-		return string(components[2]), labelValue, false, nil
+		chunkID = string(components[2])
+		labelValue = model.LabelValue(value)
+		return
+
+	// v9 schema actually return series IDs
+	case bytes.Equal(components[3], seriesRangeKeyV1):
+		chunkID = string(components[0])
+		isSeriesID = true
+		return
+
+	case bytes.Equal(components[3], labelSeriesRangeKeyV1):
+		chunkID = string(components[1])
+		labelValue = model.LabelValue(value)
+		isSeriesID = true
+		return
 
 	default:
-		return "", model.LabelValue(""), false, fmt.Errorf("unrecognised chunkTimeRangeKey version: '%v'", string(components[3]))
+		err = fmt.Errorf("unrecognised chunkTimeRangeKey version: '%v'", string(components[3]))
+		return
 	}
 }

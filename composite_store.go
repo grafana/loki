@@ -102,6 +102,14 @@ func NewStore(cfg StoreConfig, schemaCfg SchemaConfig, storage StorageClient) (S
 		stores = append(stores, compositeStoreEntry{schemaCfg.V8SchemaFrom.Time, store})
 	}
 
+	if schemaCfg.V9SchemaFrom.IsSet() {
+		store, err := newSeriesStore(cfg, v9Schema(schemaCfg), storage)
+		if err != nil {
+			return nil, err
+		}
+		stores = append(stores, compositeStoreEntry{schemaCfg.V9SchemaFrom.Time, store})
+	}
+
 	if !sort.IsSorted(byStart(stores)) {
 		return nil, fmt.Errorf("schemas not in time-sorted order")
 	}
