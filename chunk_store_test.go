@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
-	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/cortex/pkg/util/extract"
 	"golang.org/x/net/context"
 
 	"github.com/weaveworks/common/test"
@@ -211,7 +211,7 @@ func TestChunkStore_Get(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				metricNameMatcher, _, ok := util.ExtractMetricNameMatcherFromMatchers(matchers)
+				metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
 				if schema.requireMetricName && (!ok || metricNameMatcher.Type != labels.MatchEqual) {
 					return
 				}

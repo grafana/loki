@@ -19,6 +19,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk/cache"
 	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/cortex/pkg/util/extract"
 )
 
 var (
@@ -137,7 +138,7 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 
 	writeReqs := c.storage.NewWriteBatch()
 	for _, chunk := range chunks {
-		metricName, err := util.ExtractMetricNameFromMetric(chunk.Metric)
+		metricName, err := extract.MetricNameFromMetric(chunk.Metric)
 		if err != nil {
 			return nil, err
 		}
@@ -195,7 +196,7 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	}
 
 	// Fetch metric name chunks if the matcher is of type equal,
-	metricNameMatcher, matchers, ok := util.ExtractMetricNameMatcherFromMatchers(allMatchers)
+	metricNameMatcher, matchers, ok := extract.MetricNameMatcherFromMatchers(allMatchers)
 	if ok && metricNameMatcher.Type == labels.MatchEqual {
 		sp.SetTag("metric", metricNameMatcher.Value)
 		return c.getMetricNameMatrix(ctx, from, through, matchers, metricNameMatcher.Value)

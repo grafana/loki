@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/weaveworks/cortex/pkg/util/extract"
 )
 
 var (
@@ -521,7 +521,7 @@ func (entries v7Entries) GetWriteEntries(bucket Bucket, metricName model.LabelVa
 		return nil, err
 	}
 
-	metricName, err = util.ExtractMetricNameFromMetric(labels)
+	metricName, err = extract.MetricNameFromMetric(labels)
 	if err != nil {
 		return nil, err
 	}
