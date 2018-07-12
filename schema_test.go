@@ -17,24 +17,6 @@ import (
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
-type mockSchema int
-
-func (mockSchema) GetWriteEntries(from, through model.Time, userID string, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
-	return nil, nil
-}
-func (mockSchema) GetReadQueries(from, through model.Time, userID string) ([]IndexQuery, error) {
-	return nil, nil
-}
-func (mockSchema) GetReadQueriesForMetric(from, through model.Time, userID string, metricName model.LabelValue) ([]IndexQuery, error) {
-	return nil, nil
-}
-func (mockSchema) GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName) ([]IndexQuery, error) {
-	return nil, nil
-}
-func (mockSchema) GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexQuery, error) {
-	return nil, nil
-}
-
 type ByHashRangeKey []IndexEntry
 
 func (a ByHashRangeKey) Len() int      { return len(a) }
@@ -81,15 +63,6 @@ func TestSchemaHashKeys(t *testing.T) {
 			From:   util.NewDayValue(model.TimeFromUnix(5 * 24 * 60 * 60)),
 		},
 	}
-	compositeSchema := func(dailyBucketsFrom model.Time) Schema {
-		cfgCp := cfg
-		cfgCp.DailyBucketsFrom = util.NewDayValue(dailyBucketsFrom)
-		schema, err := newCompositeSchema(cfgCp)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return schema
-	}
 	hourlyBuckets := v1Schema(cfg)
 	dailyBuckets := v3Schema(cfg)
 	labelBuckets := v4Schema(cfg)
@@ -132,83 +105,6 @@ func TestSchemaHashKeys(t *testing.T) {
 			mergeResults(
 				mkResult(table, "userid:d%d:foo", 0, 3),
 				mkResult(table, "userid:d%d:foo:bar", 0, 3),
-			),
-		},
-
-		// Buckets are by hour until we reach the `dailyBucketsFrom`, after which they are by day.
-		{
-			compositeSchema(model.TimeFromUnix(0).Add(1 * 24 * time.Hour)),
-			0, (3 * 24 * 60 * 60) - 1, "foo",
-			mergeResults(
-				mkResult(table, "userid:%d:foo", 0, 1*24),
-				mkResult(table, "userid:d%d:foo", 1, 3),
-			),
-		},
-
-		// Only the day part of `dailyBucketsFrom` matters, not the time part.
-		{
-			compositeSchema(model.TimeFromUnix(0).Add(2*24*time.Hour) - 1),
-			0, (3 * 24 * 60 * 60) - 1, "foo",
-			mergeResults(
-				mkResult(table, "userid:%d:foo", 0, 1*24),
-				mkResult(table, "userid:d%d:foo", 1, 3),
-			),
-		},
-
-		// Moving dailyBucketsFrom to the previous day compared to the above makes 24 1-hour buckets disappear.
-		{
-			compositeSchema(model.TimeFromUnix(0).Add(1*24*time.Hour) - 1),
-			0, (3 * 24 * 60 * 60) - 1, "foo",
-			mkResult(table, "userid:d%d:foo", 0, 3),
-		},
-
-		// If `dailyBucketsFrom` is after the interval, everything will be bucketed by hour.
-		{
-			compositeSchema(model.TimeFromUnix(0).Add(99 * 24 * time.Hour)),
-			0, (2 * 24 * 60 * 60) - 1, "foo",
-			mkResult(table, "userid:%d:foo", 0, 2*24),
-		},
-
-		// Should only return daily buckets when dailyBucketsFrom is before the interval.
-		{
-			compositeSchema(model.TimeFromUnix(0)),
-			1 * 24 * 60 * 60, (3 * 24 * 60 * 60) - 1, "foo",
-			mkResult(table, "userid:d%d:foo", 1, 3),
-		},
-
-		// Basic weekly- ables.
-		{
-			compositeSchema(model.TimeFromUnix(0)),
-			5 * 24 * 60 * 60, (10 * 24 * 60 * 60) - 1, "foo",
-			mergeResults(
-				mkResult(periodicPrefix+"2", "userid:d%d:foo", 5, 6),
-				mkResult(periodicPrefix+"3", "userid:d%d:foo", 6, 8),
-				mkResult(periodicPrefix+"4", "userid:d%d:foo", 8, 10),
-			),
-		},
-
-		// Daily buckets + weekly tables.
-		{
-			compositeSchema(model.TimeFromUnix(0)),
-			0, (10 * 24 * 60 * 60) - 1, "foo",
-			mergeResults(
-				mkResult(table, "userid:d%d:foo", 0, 5),
-				mkResult(periodicPrefix+"2", "userid:d%d:foo", 5, 6),
-				mkResult(periodicPrefix+"3", "userid:d%d:foo", 6, 8),
-				mkResult(periodicPrefix+"4", "userid:d%d:foo", 8, 10),
-			),
-		},
-
-		// Houly Buckets, then daily buckets, then weekly tables.
-		{
-			compositeSchema(model.TimeFromUnix(2 * 24 * 60 * 60)),
-			0, (10 * 24 * 60 * 60) - 1, "foo",
-			mergeResults(
-				mkResult(table, "userid:%d:foo", 0, 2*24),
-				mkResult(table, "userid:d%d:foo", 2, 5),
-				mkResult(periodicPrefix+"2", "userid:d%d:foo", 5, 6),
-				mkResult(periodicPrefix+"3", "userid:d%d:foo", 6, 8),
-				mkResult(periodicPrefix+"4", "userid:d%d:foo", 8, 10),
 			),
 		},
 	} {
