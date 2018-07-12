@@ -244,6 +244,7 @@ func (c *Store) getMetricNameMatrix(ctx context.Context, from, through model.Tim
 
 func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricName string) ([]Chunk, error) {
 	log, ctx := newSpanLogger(ctx, "ChunkStore.getMetricNameChunks")
+	defer log.Finish()
 	level.Debug(log).Log("from", from, "through", through, "metricName", metricName, "matchers", len(allMatchers))
 
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
@@ -411,6 +412,7 @@ outer:
 
 func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*labels.Matcher, metricName string) ([]Chunk, error) {
 	log, ctx := newSpanLogger(ctx, "ChunkStore.lookupChunksByMetricName")
+	defer log.Finish()
 
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
