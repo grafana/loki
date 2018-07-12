@@ -314,6 +314,11 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	return c.Data.UnmarshalFromBuf(remainingData[:int(dataLen)])
 }
 
+func equalByKey(a, b Chunk) bool {
+	return a.UserID == b.UserID && a.Fingerprint == b.Fingerprint &&
+		a.From == b.From && a.Through == b.Through && a.Checksum == b.Checksum
+}
+
 func chunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Time) (model.Matrix, error) {
 	sp, ctx := ot.StartSpanFromContext(ctx, "chunksToMatrix")
 	defer sp.Finish()

@@ -2,12 +2,12 @@ package chunk
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"sort"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -54,7 +54,9 @@ func init() {
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
 	CacheConfig cache.Config
-	MinChunkAge time.Duration
+
+	MinChunkAge     time.Duration
+	QueryChunkLimit int
 
 	// For injecting different schemas in tests.
 	schemaFactory func(cfg SchemaConfig) Schema
@@ -63,7 +65,8 @@ type StoreConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlags(f)
-	f.DurationVar(&cfg.MinChunkAge, "store.min-chunk-age", 0, "minimum time between chunk update and being saved to the store")
+	f.DurationVar(&cfg.MinChunkAge, "store.min-chunk-age", 0, "Minimum time between chunk update and being saved to the store.")
+	f.IntVar(&cfg.QueryChunkLimit, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 }
 
 // Store implements Store
@@ -167,20 +170,45 @@ func (c *Store) calculateDynamoWrites(userID string, chunks []Chunk) (WriteBatch
 	return writeReqs, nil
 }
 
+// spanLogger unifies tracing and logging, to reduce repetition.
+type spanLogger struct {
+	log.Logger
+	ot.Span
+}
+
+func newSpanLogger(ctx context.Context, method string) (*spanLogger, context.Context) {
+	span, ctx := ot.StartSpanFromContext(ctx, "ChunkStore.Get")
+	return &spanLogger{
+		Logger: log.With(util.WithContext(ctx, util.Logger), "method", method),
+		Span:   span,
+	}, ctx
+}
+
+func (s *spanLogger) Log(kvps ...interface{}) error {
+	s.Logger.Log(kvps...)
+	fields, err := otlog.InterleavedKVToFields(kvps...)
+	if err != nil {
+		return err
+	}
+	s.Span.LogFields(fields...)
+	return nil
+}
+
 // Get implements ChunkStore
 func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) (model.Matrix, error) {
-	sp, ctx := ot.StartSpanFromContext(ctx, "ChunkStore.Get")
-	defer sp.Finish()
+	log, ctx := newSpanLogger(ctx, "ChunkStore.Get")
+	defer log.Span.Finish()
+
+	now := model.Now()
+	level.Debug(log).Log("from", from, "through", through, "now", now, "matchers", len(allMatchers))
 
 	if through < from {
 		return nil, fmt.Errorf("invalid query, through < from (%d < %d)", through, from)
 	}
 
-	now := model.Now()
-	sp.LogFields(otlog.String("from", from.String()), otlog.String("through", through.String()), otlog.String("now", now.String()))
 	if from.After(now) {
 		// time-span start is in future ... regard as legal
-		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
+		level.Error(log).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
 		return nil, nil
 	}
 
@@ -191,14 +219,14 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 
 	if through.After(now.Add(5 * time.Minute)) {
 		// time-span end is in future ... regard as legal
-		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "adjusting end timerange from future to now", "old_through", through, "new_through", now)
+		level.Error(log).Log("msg", "adjusting end timerange from future to now", "old_through", through, "new_through", now)
 		through = now // Avoid processing future part - otherwise some schemas could fail with eg non-existent table gripes
 	}
 
 	// Fetch metric name chunks if the matcher is of type equal,
 	metricNameMatcher, matchers, ok := extract.MetricNameMatcherFromMatchers(allMatchers)
 	if ok && metricNameMatcher.Type == labels.MatchEqual {
-		sp.SetTag("metric", metricNameMatcher.Value)
+		log.Span.SetTag("metric", metricNameMatcher.Value)
 		return c.getMetricNameMatrix(ctx, from, through, matchers, metricNameMatcher.Value)
 	}
 
@@ -215,12 +243,15 @@ func (c *Store) getMetricNameMatrix(ctx context.Context, from, through model.Tim
 }
 
 func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricName string) ([]Chunk, error) {
-	logger := util.WithContext(ctx, util.Logger)
+	log, ctx := newSpanLogger(ctx, "ChunkStore.getMetricNameChunks")
+	level.Debug(log).Log("from", from, "through", through, "metricName", metricName, "matchers", len(allMatchers))
+
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
 	chunks, err := c.lookupChunksByMetricName(ctx, from, through, matchers, metricName)
 	if err != nil {
 		return nil, err
 	}
+	level.Debug(log).Log("Chunks in index", len(chunks))
 
 	// Filter out chunks that are not in the selected time range.
 	filtered := make([]Chunk, 0, len(chunks))
@@ -232,33 +263,37 @@ func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 		filtered = append(filtered, chunk)
 		keys = append(keys, chunk.ExternalKey())
 	}
+	level.Debug(log).Log("Chunks post filtering", len(chunks))
+
+	if len(filtered) > c.cfg.QueryChunkLimit {
+		err := fmt.Errorf("Query %v fetched too many chunks (%d > %d)", allMatchers, len(filtered), c.cfg.QueryChunkLimit)
+		level.Error(log).Log("err", err)
+		return nil, err
+	}
 
 	// Now fetch the actual chunk data from Memcache / S3
 	cacheHits, cacheBufs, _, err := c.cache.FetchChunkData(ctx, keys)
 	if err != nil {
-		level.Warn(logger).Log("msg", "error fetching from cache", "err", err)
+		level.Warn(log).Log("msg", "error fetching from cache", "err", err)
 	}
 
 	fromCache, missing, err := ProcessCacheResponse(filtered, cacheHits, cacheBufs)
 	if err != nil {
-		level.Warn(logger).Log("msg", "error fetching from cache", "err", err)
+		level.Warn(log).Log("msg", "error fetching from cache", "err", err)
 	}
 
 	fromStorage, err := c.storage.GetChunks(ctx, missing)
 
 	// Always cache any chunks we did get
 	if cacheErr := c.writeBackCache(ctx, fromStorage); cacheErr != nil {
-		level.Warn(logger).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
+		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
 
 	if err != nil {
 		return nil, promql.ErrStorage(err)
 	}
 
-	// TODO instead of doing this sort, propagate an index and assign chunks
-	// into the result based on that index.
 	allChunks := append(fromCache, fromStorage...)
-	sort.Sort(ByKey(allChunks))
 
 	// Filter out chunks
 	filteredChunks := make([]Chunk, 0, len(allChunks))
@@ -375,6 +410,8 @@ outer:
 }
 
 func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*labels.Matcher, metricName string) ([]Chunk, error) {
+	log, ctx := newSpanLogger(ctx, "ChunkStore.lookupChunksByMetricName")
+
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -386,17 +423,25 @@ func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through mode
 		if err != nil {
 			return nil, err
 		}
+		level.Debug(log).Log("queries", len(queries))
 
 		entries, err := c.lookupEntriesByQueries(ctx, queries)
 		if err != nil {
 			return nil, err
 		}
+		level.Debug(log).Log("entries", len(entries))
 
-		return c.convertIndexEntriesToChunks(ctx, entries, nil)
+		chunkIDs, err := c.parseIndexEntries(ctx, entries, nil)
+		if err != nil {
+			return nil, err
+		}
+		level.Debug(log).Log("chunkIDs", len(chunkIDs))
+
+		return c.convertChunkIDsToChunks(ctx, chunkIDs)
 	}
 
 	// Otherwise get chunks which include other matchers
-	incomingChunkSets := make(chan ByKey)
+	incomingChunkIDs := make(chan []string)
 	incomingErrors := make(chan error)
 	for _, matcher := range matchers {
 		go func(matcher *labels.Matcher) {
@@ -412,6 +457,7 @@ func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through mode
 				incomingErrors <- err
 				return
 			}
+			level.Debug(log).Log("matcher", matcher, "queries", len(queries))
 
 			// Lookup IndexEntry's
 			entries, err := c.lookupEntriesByQueries(ctx, queries)
@@ -419,31 +465,42 @@ func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through mode
 				incomingErrors <- err
 				return
 			}
+			level.Debug(log).Log("matcher", matcher, "entries", len(entries))
 
-			// Convert IndexEntry's into chunks
-			chunks, err := c.convertIndexEntriesToChunks(ctx, entries, matcher)
+			// Convert IndexEntry's to chunk IDs, filter out non-matchers at the same time.
+			chunkIDs, err := c.parseIndexEntries(ctx, entries, matcher)
 			if err != nil {
 				incomingErrors <- err
-			} else {
-				incomingChunkSets <- chunks
+				return
 			}
+			level.Debug(log).Log("matcher", matcher, "chunkIDs", len(chunkIDs))
+			incomingChunkIDs <- chunkIDs
 		}(matcher)
 	}
 
 	// Receive chunkSets from all matchers
-	var chunkSets []ByKey
+	var chunkIDs []string
 	var lastErr error
 	for i := 0; i < len(matchers); i++ {
 		select {
-		case incoming := <-incomingChunkSets:
-			chunkSets = append(chunkSets, incoming)
+		case incoming := <-incomingChunkIDs:
+			if chunkIDs == nil {
+				chunkIDs = incoming
+			} else {
+				chunkIDs = intersectStrings(chunkIDs, incoming)
+			}
 		case err := <-incomingErrors:
 			lastErr = err
 		}
 	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
 
-	// Merge chunkSets in order because we wish to keep label series together consecutively
-	return nWayIntersect(chunkSets), lastErr
+	level.Debug(log).Log("msg", "post intersection", "entries", len(chunkIDs))
+
+	// Convert IndexEntry's into chunks
+	return c.convertChunkIDsToChunks(ctx, chunkIDs)
 }
 
 func (c *Store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
@@ -496,44 +553,44 @@ func (c *Store) lookupEntriesByQuery(ctx context.Context, query IndexQuery) ([]I
 	return entries, nil
 }
 
-func (c *Store) convertIndexEntriesToChunks(ctx context.Context, entries []IndexEntry, matcher *labels.Matcher) (ByKey, error) {
+func (c *Store) parseIndexEntries(ctx context.Context, entries []IndexEntry, matcher *labels.Matcher) ([]string, error) {
+	result := make([]string, 0, len(entries))
+
+	for _, entry := range entries {
+		chunkKey, labelValue, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+		if err != nil {
+			return nil, err
+		}
+
+		if matcher != nil && !matcher.Matches(string(labelValue)) {
+			level.Debug(util.WithContext(ctx, util.Logger)).Log("msg", "dropping chunk for non-matching label", "label", labelValue)
+			continue
+		}
+		result = append(result, chunkKey)
+	}
+
+	// Return ids sorted and deduped because they will be merged with other sets.
+	sort.Strings(result)
+	result = uniqueStrings(result)
+	return result, nil
+}
+
+func (c *Store) convertChunkIDsToChunks(ctx context.Context, chunkIDs []string) ([]Chunk, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var chunkSet ByKey
-
-	for _, entry := range entries {
-		chunkKey, labelValue, metadataInIndex, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+	chunkSet := make([]Chunk, 0, len(chunkIDs))
+	for _, chunkID := range chunkIDs {
+		chunk, err := ParseExternalKey(userID, chunkID)
 		if err != nil {
 			return nil, err
-		}
-
-		chunk, err := ParseExternalKey(userID, chunkKey)
-		if err != nil {
-			return nil, err
-		}
-
-		// This can be removed in Dev 2017, 13 months after the last chunks
-		// was written with metadata in the index.
-		if metadataInIndex && entry.Value != nil {
-			if err := json.Unmarshal(entry.Value, &chunk); err != nil {
-				return nil, err
-			}
-			chunk.metadataInIndex = true
-		}
-
-		if matcher != nil && !matcher.Matches(string(labelValue)) {
-			level.Debug(util.WithContext(ctx, util.Logger)).Log("msg", "dropping chunk for non-matching metric", "metric", chunk.Metric)
-			continue
 		}
 		chunkSet = append(chunkSet, chunk)
 	}
 
-	// Return chunks sorted and deduped because they will be merged with other sets
-	sort.Sort(chunkSet)
-	return unique(chunkSet), nil
+	return chunkSet, nil
 }
 
 func (c *Store) writeBackCache(ctx context.Context, chunks []Chunk) error {

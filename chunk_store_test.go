@@ -194,7 +194,8 @@ func TestChunkStore_Get(t *testing.T) {
 			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
 				t.Log("========= Running query", tc.query, "with schema", schema.name)
 				store := newTestChunkStore(t, StoreConfig{
-					schemaFactory: schema.fn,
+					schemaFactory:   schema.fn,
+					QueryChunkLimit: 2e6,
 				})
 
 				if err := store.Put(ctx, []Chunk{
@@ -333,7 +334,8 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
 				t.Log("========= Running query", tc.query, "with schema", schema.name)
 				store := newTestChunkStore(t, StoreConfig{
-					schemaFactory: schema.fn,
+					schemaFactory:   schema.fn,
+					QueryChunkLimit: 2e6,
 				})
 
 				if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {
@@ -378,7 +380,8 @@ func TestChunkStoreRandom(t *testing.T) {
 
 	for i := range schemas {
 		schemas[i].store = newTestChunkStore(t, StoreConfig{
-			schemaFactory: schemas[i].fn,
+			schemaFactory:   schemas[i].fn,
+			QueryChunkLimit: 2e6,
 		})
 	}
 
@@ -447,7 +450,8 @@ func TestChunkStoreLeastRead(t *testing.T) {
 	// Test we don't read too much from the index
 	ctx := user.InjectOrgID(context.Background(), userID)
 	store := newTestChunkStore(t, StoreConfig{
-		schemaFactory: v6Schema,
+		schemaFactory:   v6Schema,
+		QueryChunkLimit: 2e6,
 	})
 
 	// Put 24 chunks 1hr chunks in the store

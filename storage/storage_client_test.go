@@ -49,8 +49,8 @@ func TestChunksBasic(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, len(chunksToGet), len(chunksWeGot))
 
-			sort.Sort(chunk.ByKey(chunksToGet))
-			sort.Sort(chunk.ByKey(chunksWeGot))
+			sort.Sort(ByKey(chunksToGet))
+			sort.Sort(ByKey(chunksWeGot))
 			for j := 0; j < len(chunksWeGot); j++ {
 				require.Equal(t, chunksToGet[i].ExternalKey(), chunksWeGot[i].ExternalKey(), strconv.Itoa(i))
 			}
