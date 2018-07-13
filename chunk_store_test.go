@@ -218,7 +218,10 @@ func TestChunkStore_Get(t *testing.T) {
 				}
 
 				// Query with ordinary time-range
-				matrix1, err := store.Get(ctx, now.Add(-time.Hour), now, matchers...)
+				chunks1, err := store.Get(ctx, now.Add(-time.Hour), now, matchers...)
+				require.NoError(t, err)
+
+				matrix1, err := ChunksToMatrix(ctx, chunks1, now.Add(-time.Hour), now)
 				require.NoError(t, err)
 
 				sort.Sort(ByFingerprint(matrix1))
@@ -229,7 +232,10 @@ func TestChunkStore_Get(t *testing.T) {
 				}
 
 				// Pushing end of time-range into future should yield exact same resultset
-				matrix2, err := store.Get(ctx, now.Add(-time.Hour), now.Add(time.Hour*24*30), matchers...)
+				chunks2, err := store.Get(ctx, now.Add(-time.Hour), now.Add(time.Hour*24*30), matchers...)
+				require.NoError(t, err)
+
+				matrix2, err := ChunksToMatrix(ctx, chunks2, now.Add(-time.Hour), now)
 				require.NoError(t, err)
 
 				sort.Sort(ByFingerprint(matrix2))

@@ -195,7 +195,7 @@ func (s *spanLogger) Log(kvps ...interface{}) error {
 }
 
 // Get implements ChunkStore
-func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) (model.Matrix, error) {
+func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([]Chunk, error) {
 	log, ctx := newSpanLogger(ctx, "ChunkStore.Get")
 	defer log.Span.Finish()
 
@@ -227,19 +227,11 @@ func (c *Store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	metricNameMatcher, matchers, ok := extract.MetricNameMatcherFromMatchers(allMatchers)
 	if ok && metricNameMatcher.Type == labels.MatchEqual {
 		log.Span.SetTag("metric", metricNameMatcher.Value)
-		return c.getMetricNameMatrix(ctx, from, through, matchers, metricNameMatcher.Value)
+		return c.getMetricNameChunks(ctx, from, through, matchers, metricNameMatcher.Value)
 	}
 
 	// Otherwise we consult the metric name index first and then create queries for each matching metric name.
-	return c.getSeriesMatrix(ctx, from, through, matchers, metricNameMatcher)
-}
-
-func (c *Store) getMetricNameMatrix(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricName string) (model.Matrix, error) {
-	chunks, err := c.getMetricNameChunks(ctx, from, through, allMatchers, metricName)
-	if err != nil {
-		return nil, err
-	}
-	return chunksToMatrix(ctx, chunks, from, through)
+	return c.getSeriesChunks(ctx, from, through, matchers, metricNameMatcher)
 }
 
 func (c *Store) getMetricNameChunks(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricName string) ([]Chunk, error) {
@@ -346,7 +338,7 @@ func ProcessCacheResponse(chunks []Chunk, keys []string, bufs [][]byte) (found [
 	return
 }
 
-func (c *Store) getSeriesMatrix(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricNameMatcher *labels.Matcher) (model.Matrix, error) {
+func (c *Store) getSeriesChunks(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricNameMatcher *labels.Matcher) ([]Chunk, error) {
 	// Get all series from the index
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -407,7 +399,7 @@ outer:
 			}
 		}
 	}
-	return chunksToMatrix(ctx, chunks, from, through)
+	return chunks, nil
 }
 
 func (c *Store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*labels.Matcher, metricName string) ([]Chunk, error) {

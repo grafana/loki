@@ -188,7 +188,7 @@ func TestChunksToMatrix(t *testing.T) {
 			},
 		},
 	} {
-		matrix, err := chunksToMatrix(context.Background(), c.chunks, chunk1.From, chunk3.Through)
+		matrix, err := ChunksToMatrix(context.Background(), c.chunks, chunk1.From, chunk3.Through)
 		require.NoError(t, err)
 
 		sort.Sort(matrix)
