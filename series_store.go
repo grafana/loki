@@ -2,7 +2,9 @@ package chunk
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
@@ -13,9 +15,14 @@ import (
 	"github.com/weaveworks/cortex/pkg/util/extract"
 )
 
+var (
+	errCardinalityExceeded = errors.New("cardinality limit exceeded")
+)
+
 // seriesStore implements Store
 type seriesStore struct {
 	store
+	cardinalityCache *fifoCache
 }
 
 func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient) (Store, error) {
@@ -31,6 +38,7 @@ func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient) (Stor
 			schema:       schema,
 			chunkFetcher: fetcher,
 		},
+		cardinalityCache: newFifoCache(cfg.CardinalityCacheSize),
 	}, nil
 }
 
@@ -49,7 +57,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	}
 
 	// Ensure this query includes a metric name.
-	metricNameMatcher, matchers, ok := extract.MetricNameMatcherFromMatchers(allMatchers)
+	metricNameMatcher, allMatchers, ok := extract.MetricNameMatcherFromMatchers(allMatchers)
 	if !ok || metricNameMatcher.Type != labels.MatchEqual {
 		return nil, fmt.Errorf("query must contain metric name")
 	}
@@ -57,7 +65,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 
 	// Fetch the series IDs from the index, based on non-empty matchers from
 	// the query.
-	filters, matchers := util.SplitFiltersAndMatchers(matchers)
+	_, matchers := util.SplitFiltersAndMatchers(allMatchers)
 	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, metricNameMatcher.Value, matchers)
 	if err != nil {
 		return nil, err
@@ -94,7 +102,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	}
 
 	// Filter out chunks based on the empty matchers in the query.
-	filteredChunks := filterChunksByMatchers(allChunks, filters)
+	filteredChunks := filterChunksByMatchers(allChunks, allMatchers)
 	return filteredChunks, nil
 }
 
@@ -124,6 +132,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	// Receive chunkSets from all matchers
 	var ids []string
 	var lastErr error
+	var cardinalityExceededErrors int
 	for i := 0; i < len(matchers); i++ {
 		select {
 		case incoming := <-incomingIDs:
@@ -133,10 +142,16 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 				ids = intersectStrings(ids, incoming)
 			}
 		case err := <-incomingErrors:
-			lastErr = err
+			if err == errCardinalityExceeded {
+				cardinalityExceededErrors++
+			} else {
+				lastErr = err
+			}
 		}
 	}
-	if lastErr != nil {
+	if cardinalityExceededErrors == len(matchers) {
+		return nil, errCardinalityExceeded
+	} else if lastErr != nil {
 		return nil, lastErr
 	}
 
@@ -166,11 +181,31 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	}
 	level.Debug(log).Log("queries", len(queries))
 
+	for _, query := range queries {
+		value, updated, ok := c.cardinalityCache.get(query.HashValue)
+		if !ok {
+			continue
+		}
+		entryAge := time.Now().Sub(updated)
+		cardinality := value.(int)
+		if entryAge < c.cfg.CardinalityCacheValidity && cardinality > c.cfg.CardinalityLimit {
+			return nil, errCardinalityExceeded
+		}
+	}
+
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
 	if err != nil {
 		return nil, err
 	}
 	level.Debug(log).Log("entries", len(entries))
+
+	// TODO This is not correct, will overcount for queries > 24hrs
+	for _, query := range queries {
+		c.cardinalityCache.put(query.HashValue, len(entries))
+	}
+	if len(entries) > c.cfg.CardinalityLimit {
+		return nil, errCardinalityExceeded
+	}
 
 	ids, err := c.parseIndexEntries(ctx, entries, matcher)
 	if err != nil {

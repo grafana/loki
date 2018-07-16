@@ -52,8 +52,11 @@ func init() {
 type StoreConfig struct {
 	CacheConfig cache.Config
 
-	MinChunkAge     time.Duration
-	QueryChunkLimit int
+	MinChunkAge              time.Duration
+	QueryChunkLimit          int
+	CardinalityCacheSize     int
+	CardinalityCacheValidity time.Duration
+	CardinalityLimit         int
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -61,6 +64,9 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlags(f)
 	f.DurationVar(&cfg.MinChunkAge, "store.min-chunk-age", 0, "Minimum time between chunk update and being saved to the store.")
 	f.IntVar(&cfg.QueryChunkLimit, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
+	f.IntVar(&cfg.CardinalityCacheSize, "store.cardinality-cache-size", 0, "Size of in-memory cardinality cache, 0 to disable.")
+	f.DurationVar(&cfg.CardinalityCacheValidity, "store.cardinality-cache-validity", 1*time.Hour, "Period for which entries in the cardinality cache are valid.")
+	f.IntVar(&cfg.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 }
 
 // store implements Store
