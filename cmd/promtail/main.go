@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/promlog"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/grafana/logish/pkg/flagext"
 	"github.com/grafana/logish/pkg/promtail"
+	"github.com/grafana/logish/pkg/promtail/targets/file"
 )
 
 func main() {
@@ -50,10 +50,7 @@ func main() {
 		return
 	}
 
-	newTargetFunc := func(path string, labels model.LabelSet) (*promtail.Target, error) {
-		return promtail.NewTarget(client, positions, path, labels)
-	}
-	tm, err := promtail.NewTargetManager(util.Logger, cfg.ScrapeConfig, newTargetFunc)
+	tm, err := file.NewTargetManager(util.Logger, cfg.ScrapeConfig, client, positions)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "Failed to make target manager", "error", err)
 		return

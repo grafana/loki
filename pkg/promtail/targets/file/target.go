@@ -1,4 +1,4 @@
-package promtail
+package file
 
 import (
 	"encoding/json"
@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/grafana/logish/pkg/promtail"
 	"github.com/hpcloud/tail"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -25,10 +26,10 @@ func init() {
 	prometheus.MustRegister(readBytes)
 }
 
-type Target struct {
+type FileTarget struct {
 	labels    model.LabelSet
-	client    *Client
-	positions *Positions
+	client    *promtail.Client
+	positions *promtail.Positions
 
 	watcher *fsnotify.Watcher
 	path    string
@@ -37,8 +38,8 @@ type Target struct {
 	tails map[string]*tailer
 }
 
-func NewTarget(c *Client, positions *Positions, path string, labels model.LabelSet) (*Target, error) {
-	log.Info("newTarget", labels)
+func NewFileTarget(c *promtail.Client, positions *promtail.Positions, path string, labels model.LabelSet) (*FileTarget, error) {
+	log.Info("new file target", labels)
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -50,7 +51,7 @@ func NewTarget(c *Client, positions *Positions, path string, labels model.LabelS
 		return nil, err
 	}
 
-	t := &Target{
+	t := &FileTarget{
 		labels:    labels,
 		watcher:   watcher,
 		path:      path,
@@ -83,11 +84,13 @@ func NewTarget(c *Client, positions *Positions, path string, labels model.LabelS
 	return t, nil
 }
 
-func (t *Target) Stop() {
+func (t *FileTarget) Stop() error {
 	close(t.quit)
+
+	return nil
 }
 
-func (t *Target) run() {
+func (t *FileTarget) run() {
 	defer func() {
 		t.watcher.Close()
 		for _, v := range t.tails {
@@ -132,7 +135,7 @@ func (t *Target) run() {
 	}
 }
 
-func (t *Target) handleLine(_ time.Time, line string) error {
+func (t *FileTarget) handleLine(_ time.Time, line string) error {
 	// Hard code to deal with docker-style json for now; eventually we'll use
 	// relabelling.
 	var entry struct {
@@ -147,12 +150,12 @@ func (t *Target) handleLine(_ time.Time, line string) error {
 }
 
 type tailer struct {
-	target *Target
+	target *FileTarget
 	path   string
 	tail   *tail.Tail
 }
 
-func newTailer(target *Target, dir, name string) (*tailer, error) {
+func newTailer(target *FileTarget, dir, name string) (*tailer, error) {
 	path := filepath.Join(dir, name)
 	tail, err := tail.TailFile(path, tail.Config{
 		Follow: true,
@@ -180,7 +183,7 @@ func (t *tailer) run() {
 	}()
 
 	log.Infof("Tailing file: %s", t.path)
-	positionSyncPeriod := t.target.positions.cfg.SyncPeriod
+	positionSyncPeriod := t.target.positions.SyncPeriod()
 	positionWait := time.NewTimer(positionSyncPeriod)
 	defer positionWait.Stop()
 

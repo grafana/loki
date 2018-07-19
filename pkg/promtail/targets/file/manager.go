@@ -1,4 +1,4 @@
-package promtail
+package file
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/common/model"
+	"github.com/grafana/logish/pkg/promtail"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
@@ -20,11 +20,11 @@ const (
 	hostLabel = "__host__"
 )
 
-type NewTargetFunc func(path string, labels model.LabelSet) (*Target, error)
-
 type TargetManager struct {
 	syncers map[string]*syncer
 	manager *discovery.Manager
+
+	client *promtail.Client
 
 	log  log.Logger
 	quit context.CancelFunc
@@ -41,8 +41,9 @@ func hostname() (string, error) {
 
 func NewTargetManager(
 	logger log.Logger,
-	scrapeConfig []ScrapeConfig,
-	fn NewTargetFunc,
+	scrapeConfig []promtail.ScrapeConfig,
+	client *promtail.Client,
+	positions *promtail.Positions,
 ) (*TargetManager, error) {
 	ctx, quit := context.WithCancel(context.Background())
 	tm := &TargetManager{
@@ -62,9 +63,10 @@ func NewTargetManager(
 	for _, cfg := range scrapeConfig {
 		s := &syncer{
 			log:           logger,
-			newTarget:     fn,
+			client:        client,
+			positions:     positions,
 			relabelConfig: cfg.RelabelConfigs,
-			targets:       map[string]*Target{},
+			targets:       map[string]*FileTarget{},
 			hostname:      hostname,
 		}
 		tm.syncers[cfg.JobName] = s
@@ -93,9 +95,11 @@ func (tm *TargetManager) Stop() {
 }
 
 type syncer struct {
-	log           log.Logger
-	newTarget     NewTargetFunc
-	targets       map[string]*Target
+	log       log.Logger
+	client    *promtail.Client
+	positions *promtail.Positions
+
+	targets       map[string]*FileTarget
 	relabelConfig []*config.RelabelConfig
 	hostname      string
 }
@@ -138,7 +142,7 @@ func (s *syncer) Sync(groups []*targetgroup.Group) {
 			}
 
 			level.Info(s.log).Log("msg", "Adding target", "key", key)
-			t, err := s.newTarget(string(path), labels)
+			t, err := NewFileTarget(s.client, s.positions, string(path), labels)
 			if err != nil {
 				level.Error(s.log).Log("msg", "Failed to create target", "key", key, "error", err)
 				continue

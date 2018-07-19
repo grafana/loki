@@ -65,6 +65,8 @@ func (p *Positions) Get(path string) int64 {
 	return p.positions[path]
 }
 
+func (p *Positions) SyncPeriod() time.Duration { return p.cfg.SyncPeriod }
+
 func (p *Positions) run() {
 	defer p.save()
 

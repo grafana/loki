@@ -95,7 +95,9 @@ func (c *Client) run() {
 					log.Errorf("Error sending batch: %v", err)
 				}
 				batch = map[model.Fingerprint]*logproto.Stream{}
+				batchSize = 0
 			}
+			batchSize += len(e.Line)
 
 			fp := e.labels.FastFingerprint()
 			stream, ok := batch[fp]
