@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"strings"
+	"time"
 
 	yaml "gopkg.in/yaml.v2"
 
@@ -48,6 +49,7 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 type ScrapeConfig struct {
 	JobName                string                           `yaml:"job_name,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
+	JournalConfig          *JournalTargetConfig             `yaml:"journal,omitempty"`
 	RelabelConfigs         []*config.RelabelConfig          `yaml:"relabel_configs,omitempty"`
 
 	// Catches all undefined fields and must be empty after parsing.
@@ -68,6 +70,12 @@ func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return fmt.Errorf("job_name is empty")
 	}
 	return nil
+}
+
+type JournalTargetConfig struct {
+	Since   time.Duration     `yaml:"since,omitempty"`
+	Matches map[string]string `yaml:"matches,omitempty"`
+	Path    string            `yaml:"path"`
 }
 
 func checkOverflow(m map[string]interface{}, ctx string) error {

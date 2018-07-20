@@ -86,12 +86,14 @@ func (tm *TargetManager) run() {
 	}
 }
 
-func (tm *TargetManager) Stop() {
+func (tm *TargetManager) Stop() error {
 	tm.quit()
 
 	for _, s := range tm.syncers {
 		s.stop()
 	}
+
+	return nil
 }
 
 type syncer struct {

@@ -459,7 +459,7 @@ func (li *listIterator) Next() bool {
 }
 
 func (li *listIterator) Entry() logproto.Entry {
-	return logproto.Entry{time.Unix(0, li.cur.t), li.cur.s}
+	return logproto.Entry{Timestamp: time.Unix(0, li.cur.t), Line: li.cur.s}
 }
 
 func (li *listIterator) Error() error   { return nil }
@@ -532,7 +532,7 @@ func (si *bufferedIterator) Next() bool {
 }
 
 func (si *bufferedIterator) Entry() logproto.Entry {
-	return logproto.Entry{time.Unix(0, si.curT), si.curLog}
+	return logproto.Entry{Timestamp: time.Unix(0, si.curT), Line: si.curLog}
 }
 
 func (si *bufferedIterator) Error() error   { return si.err }

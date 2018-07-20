@@ -1,7 +1,7 @@
-# Protocol Buffers for Go with Gadgets
+# Go support for Protocol Buffers - Google's data interchange format
 #
-# Copyright (c) 2016, The GoGo Authors. All rights reserved.
-# http://github.com/gogo/protobuf
+# Copyright 2015 The Go Authors.  All rights reserved.
+# https://github.com/golang/protobuf
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -13,6 +13,9 @@
 # copyright notice, this list of conditions and the following disclaimer
 # in the documentation and/or other materials provided with the
 # distribution.
+#     * Neither the name of Google Inc. nor the names of its
+# contributors may be used to endorse or promote products derived from
+# this software without specific prior written permission.
 #
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 # "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -27,13 +30,4 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 regenerate:
-	go install github.com/gogo/protobuf/protoc-gen-gogotypes
-	go install github.com/gogo/protobuf/protoc-min-version
-
-	protoc-min-version --version="3.0.0" --gogotypes_out=. -I=../protobuf/google/protobuf ../protobuf/google/protobuf/any.proto
-	protoc-min-version --version="3.0.0" --gogotypes_out=. -I=../protobuf/google/protobuf ../protobuf/google/protobuf/empty.proto
-	protoc-min-version --version="3.0.0" --gogotypes_out=. -I=../protobuf/google/protobuf ../protobuf/google/protobuf/timestamp.proto
-	protoc-min-version --version="3.0.0" --gogotypes_out=. -I=../protobuf/google/protobuf ../protobuf/google/protobuf/duration.proto
-	protoc-min-version --version="3.0.0" --gogotypes_out=. -I=../protobuf/google/protobuf ../protobuf/google/protobuf/struct.proto
-	protoc-min-version --version="3.0.0" --gogotypes_out=. -I=../protobuf/google/protobuf ../protobuf/google/protobuf/wrappers.proto
-	protoc-min-version --version="3.0.0" --gogotypes_out=. -I=../protobuf/google/protobuf ../protobuf/google/protobuf/field_mask.proto
+	protoc-min-version --version="3.0.0" --gogo_out=Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,Mgoogle/protobuf/duration.proto=github.com/gogo/protobuf/types,Mgoogle/protobuf/timestamp.proto=github.com/gogo/protobuf/types,Mgoogle/protobuf/wrappers.proto=github.com/gogo/protobuf/types,Mgoogle/protobuf/struct.proto=github.com/gogo/protobuf/types:. *.proto -I . -I ../../ -I ../../protobuf/

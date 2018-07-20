@@ -12,7 +12,7 @@ import (
 
 	"github.com/grafana/logish/pkg/flagext"
 	"github.com/grafana/logish/pkg/promtail"
-	"github.com/grafana/logish/pkg/promtail/targets/file"
+	"github.com/grafana/logish/pkg/promtail/targets"
 )
 
 func main() {
@@ -50,9 +50,9 @@ func main() {
 		return
 	}
 
-	tm, err := file.NewTargetManager(util.Logger, cfg.ScrapeConfig, client, positions)
+	tm, err := targets.NewTargetManager(cfg.ScrapeConfig, client, positions)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "Failed to make target manager", "error", err)
+		level.Error(util.Logger).Log("msg", "Failed to start target manager", "error", err)
 		return
 	}
 	defer tm.Stop()
