@@ -49,7 +49,7 @@ type spanLogger struct {
 }
 
 func newSpanLogger(ctx context.Context, method string, kvps ...interface{}) (*spanLogger, context.Context) {
-	span, ctx := ot.StartSpanFromContext(ctx, "ChunkStore.Get")
+	span, ctx := ot.StartSpanFromContext(ctx, method)
 	logger := &spanLogger{
 		Logger: log.With(util.WithContext(ctx, util.Logger), "method", method),
 		Span:   span,
@@ -94,7 +94,7 @@ func (c *chunkFetcher) Stop() {
 }
 
 func (c *chunkFetcher) fetchChunks(ctx context.Context, chunks []Chunk, keys []string) ([]Chunk, error) {
-	log, ctx := newSpanLogger(ctx, "ChunkStore.getMetricNameChunks")
+	log, ctx := newSpanLogger(ctx, "ChunkStore.fetchChunks")
 	defer log.Span.Finish()
 
 	// Now fetch the actual chunk data from Memcache / S3

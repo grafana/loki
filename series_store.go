@@ -108,7 +108,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 
 func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from, through model.Time, metricName string, matchers []*labels.Matcher) ([]string, error) {
 	log, ctx := newSpanLogger(ctx, "ChunkStore.lookupSeriesByMetricNameMatchers", "metricName", metricName, "matchers", len(matchers))
-	log.Finish()
+	defer log.Span.Finish()
 
 	// Just get series for metric if there are no matchers
 	if len(matchers) == 0 {
@@ -218,6 +218,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 
 func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through model.Time, seriesIDs []string) ([]string, error) {
 	log, ctx := newSpanLogger(ctx, "ChunkStore.lookupChunksBySeries")
+	defer log.Span.Finish()
 
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
