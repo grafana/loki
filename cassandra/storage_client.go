@@ -20,6 +20,7 @@ const (
 // Config for a StorageClient
 type Config struct {
 	addresses                string
+	port                     int
 	keyspace                 string
 	consistency              string
 	replicationFactor        int
@@ -34,7 +35,8 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.addresses, "cassandra.addresses", "", "Comma-separated addresses of Cassandra instances.")
+	f.StringVar(&cfg.addresses, "cassandra.addresses", "", "Comma-separated hostnames or ips of Cassandra instances.")
+	f.IntVar(&cfg.port, "cassandra.port", 9042, "Port that Cassandra is running on")
 	f.StringVar(&cfg.keyspace, "cassandra.keyspace", "", "Keyspace to use in Cassandra.")
 	f.StringVar(&cfg.consistency, "cassandra.consistency", "QUORUM", "Consistency level for Cassandra.")
 	f.IntVar(&cfg.replicationFactor, "cassandra.replication-factor", 1, "Replication factor to use in Cassandra.")
@@ -58,6 +60,7 @@ func (cfg *Config) session() (*gocql.Session, error) {
 	}
 
 	cluster := gocql.NewCluster(strings.Split(cfg.addresses, ",")...)
+	cluster.Port = cfg.port
 	cluster.Keyspace = cfg.keyspace
 	cluster.Consistency = consistency
 	cluster.BatchObserver = observer{}
@@ -89,6 +92,7 @@ func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) {
 // createKeyspace will create the desired keyspace if it doesn't exist.
 func (cfg *Config) createKeyspace() error {
 	cluster := gocql.NewCluster(strings.Split(cfg.addresses, ",")...)
+	cluster.Port = cfg.port
 	cluster.Keyspace = "system"
 	cluster.Timeout = 20 * time.Second
 
