@@ -7,7 +7,6 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/cortex/pkg/util"
 )
@@ -70,20 +69,20 @@ func (m *MockStorage) CreateTable(_ context.Context, desc TableDesc) error {
 }
 
 // DescribeTable implements StorageClient.
-func (m *MockStorage) DescribeTable(_ context.Context, name string) (desc TableDesc, status string, err error) {
+func (m *MockStorage) DescribeTable(_ context.Context, name string) (desc TableDesc, isActive bool, err error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
 	table, ok := m.tables[name]
 	if !ok {
-		return TableDesc{}, "", fmt.Errorf("not found")
+		return TableDesc{}, false, fmt.Errorf("not found")
 	}
 
 	return TableDesc{
 		Name:             name,
 		ProvisionedRead:  table.read,
 		ProvisionedWrite: table.write,
-	}, dynamodb.TableStatusActive, nil
+	}, true, nil
 }
 
 // UpdateTable implements StorageClient.

@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -29,65 +30,102 @@ const (
 	read             = 100
 )
 
+func fixtureWriteScale() chunk.AutoScalingConfig {
+	return chunk.AutoScalingConfig{
+		Enabled:     true,
+		MinCapacity: 100,
+		MaxCapacity: 250,
+		OutCooldown: 100,
+		InCooldown:  100,
+		TargetValue: 80.0,
+	}
+}
+
+func fixturePeriodicTableConfig(prefix string, inactLastN int64, writeScale, inactWriteScale chunk.AutoScalingConfig) chunk.PeriodicTableConfig {
+	return chunk.PeriodicTableConfig{
+		Prefix: prefix,
+		Period: tablePeriod,
+		From:   util.NewDayValue(model.TimeFromUnix(0)),
+		ProvisionedWriteThroughput: write,
+		ProvisionedReadThroughput:  read,
+		InactiveWriteThroughput:    inactiveWrite,
+		InactiveReadThroughput:     inactiveRead,
+		WriteScale:                 writeScale,
+		InactiveWriteScale:         inactWriteScale,
+		InactiveWriteScaleLastN:    inactLastN,
+	}
+}
+
+func baseTable(name string, provisionedRead, provisionedWrite int64) []chunk.TableDesc {
+	return []chunk.TableDesc{
+		{
+			Name:             name,
+			ProvisionedRead:  provisionedRead,
+			ProvisionedWrite: provisionedWrite,
+		},
+	}
+}
+
+func staticTable(i int, indexRead, indexWrite, chunkRead, chunkWrite int64) []chunk.TableDesc {
+	return []chunk.TableDesc{
+		{
+			Name:             tablePrefix + fmt.Sprint(i),
+			ProvisionedRead:  indexRead,
+			ProvisionedWrite: indexWrite,
+		},
+		{
+			Name:             chunkTablePrefix + fmt.Sprint(i),
+			ProvisionedRead:  chunkRead,
+			ProvisionedWrite: chunkWrite,
+		},
+	}
+}
+
+func autoScaledTable(i int, provisionedRead, provisionedWrite int64, indexOutCooldown int64, chunkTarget float64) []chunk.TableDesc {
+	chunkASC, indexASC := fixtureWriteScale(), fixtureWriteScale()
+	indexASC.OutCooldown = indexOutCooldown
+	chunkASC.TargetValue = chunkTarget
+	return []chunk.TableDesc{
+		{
+			Name:             tablePrefix + fmt.Sprint(i),
+			ProvisionedRead:  provisionedRead,
+			ProvisionedWrite: provisionedWrite,
+			WriteScale:       indexASC,
+		},
+		{
+			Name:             chunkTablePrefix + fmt.Sprint(i),
+			ProvisionedRead:  provisionedRead,
+			ProvisionedWrite: provisionedWrite,
+			WriteScale:       chunkASC,
+		},
+	}
+}
+
+func test(t *testing.T, client dynamoTableClient, tableManager *chunk.TableManager, name string, tm time.Time, expected []chunk.TableDesc) {
+	t.Run(name, func(t *testing.T) {
+		ctx := context.Background()
+		mtime.NowForce(tm)
+		defer mtime.NowReset()
+		if err := tableManager.SyncTables(ctx); err != nil {
+			t.Fatal(err)
+		}
+		err := chunk.ExpectTables(ctx, client, expected)
+		require.NoError(t, err)
+	})
+}
+
 func TestTableManagerAutoScaling(t *testing.T) {
 	dynamoDB := newMockDynamoDB(0, 0)
 	applicationAutoScaling := newMockApplicationAutoScaling()
 	client := dynamoTableClient{
-		DynamoDB:               dynamoDB,
-		ApplicationAutoScaling: applicationAutoScaling,
-	}
-
-	test := func(tableManager *chunk.TableManager, name string, tm time.Time, expected []chunk.TableDesc) {
-		t.Run(name, func(t *testing.T) {
-			ctx := context.Background()
-			mtime.NowForce(tm)
-			defer mtime.NowReset()
-			if err := tableManager.SyncTables(ctx); err != nil {
-				t.Fatal(err)
-			}
-			err := chunk.ExpectTables(ctx, client, expected)
-			require.NoError(t, err)
-		})
+		DynamoDB:  dynamoDB,
+		autoscale: &awsAutoscale{ApplicationAutoScaling: applicationAutoScaling},
 	}
 
 	cfg := chunk.SchemaConfig{
-		UsePeriodicTables: true,
-		IndexTables: chunk.PeriodicTableConfig{
-			Prefix: tablePrefix,
-			Period: tablePeriod,
-			From:   util.NewDayValue(model.TimeFromUnix(0)),
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
-			WriteScale: chunk.AutoScalingConfig{
-				Enabled:     true,
-				MinCapacity: 10,
-				MaxCapacity: 20,
-				OutCooldown: 100,
-				InCooldown:  100,
-				TargetValue: 80.0,
-			},
-		},
-
-		ChunkTables: chunk.PeriodicTableConfig{
-			Prefix: chunkTablePrefix,
-			Period: tablePeriod,
-			From:   util.NewDayValue(model.TimeFromUnix(0)),
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
-			WriteScale: chunk.AutoScalingConfig{
-				Enabled:     true,
-				MinCapacity: 10,
-				MaxCapacity: 20,
-				OutCooldown: 100,
-				InCooldown:  100,
-				TargetValue: 80.0,
-			},
-		},
-
+		UsePeriodicTables:   true,
+		IndexTables:         fixturePeriodicTableConfig(tablePrefix, 0, fixtureWriteScale(), chunk.AutoScalingConfig{}),
+		ChunkTables:         fixturePeriodicTableConfig(chunkTablePrefix, 0, fixtureWriteScale(), chunk.AutoScalingConfig{}),
 		CreationGracePeriod: gracePeriod,
 	}
 
@@ -98,43 +136,12 @@ func TestTableManagerAutoScaling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		test(
+		test(t, client,
 			tableManager,
 			"Create tables",
 			time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
-			[]chunk.TableDesc{
-				{
-					Name:             "",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-				},
-				{
-					Name:             tablePrefix + "0",
-					ProvisionedRead:  read,
-					ProvisionedWrite: write,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled:     true,
-						MinCapacity: 10,
-						MaxCapacity: 20,
-						OutCooldown: 100,
-						InCooldown:  100,
-						TargetValue: 80.0,
-					},
-				},
-				{
-					Name:             chunkTablePrefix + "0",
-					ProvisionedRead:  read,
-					ProvisionedWrite: write,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled:     true,
-						MinCapacity: 10,
-						MaxCapacity: 20,
-						OutCooldown: 100,
-						InCooldown:  100,
-						TargetValue: 80.0,
-					},
-				},
-			},
+			append(baseTable("", inactiveRead, inactiveWrite),
+				autoScaledTable(0, read, write, 100, 80)...),
 		)
 	}
 
@@ -148,43 +155,12 @@ func TestTableManagerAutoScaling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		test(
+		test(t, client,
 			tableManager,
 			"Update tables with new settings",
 			time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
-			[]chunk.TableDesc{
-				{
-					Name:             "",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-				},
-				{
-					Name:             tablePrefix + "0",
-					ProvisionedRead:  read,
-					ProvisionedWrite: write,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled:     true,
-						MinCapacity: 10,
-						MaxCapacity: 20,
-						OutCooldown: 200,
-						InCooldown:  100,
-						TargetValue: 80.0,
-					},
-				},
-				{
-					Name:             chunkTablePrefix + "0",
-					ProvisionedRead:  read,
-					ProvisionedWrite: write,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled:     true,
-						MinCapacity: 10,
-						MaxCapacity: 20,
-						OutCooldown: 100,
-						InCooldown:  100,
-						TargetValue: 90.0,
-					},
-				},
-			},
+			append(baseTable("", inactiveRead, inactiveWrite),
+				autoScaledTable(0, read, write, 200, 90)...),
 		)
 	}
 
@@ -198,59 +174,13 @@ func TestTableManagerAutoScaling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		test(
+		test(t, client,
 			tableManager,
 			"Update tables with new settings",
 			time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
-			[]chunk.TableDesc{
-				{
-					Name:             "",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-				},
-				{
-					Name:             tablePrefix + "0",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled: false,
-					},
-				},
-				{
-					Name:             chunkTablePrefix + "0",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled: false,
-					},
-				},
-				{
-					Name:             tablePrefix + "1",
-					ProvisionedRead:  read,
-					ProvisionedWrite: write,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled:     true,
-						MinCapacity: 10,
-						MaxCapacity: 20,
-						OutCooldown: 200,
-						InCooldown:  100,
-						TargetValue: 80.0,
-					},
-				},
-				{
-					Name:             chunkTablePrefix + "1",
-					ProvisionedRead:  read,
-					ProvisionedWrite: write,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled:     true,
-						MinCapacity: 10,
-						MaxCapacity: 20,
-						OutCooldown: 100,
-						InCooldown:  100,
-						TargetValue: 90.0,
-					},
-				},
-			},
+			append(append(baseTable("", inactiveRead, inactiveWrite),
+				staticTable(0, inactiveRead, inactiveWrite, inactiveRead, inactiveWrite)...),
+				autoScaledTable(1, read, write, 200, 90)...),
 		)
 	}
 
@@ -264,49 +194,13 @@ func TestTableManagerAutoScaling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		test(
+		test(t, client,
 			tableManager,
 			"Update tables with new settings",
 			time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
-			[]chunk.TableDesc{
-				{
-					Name:             "",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-				},
-				{
-					Name:             tablePrefix + "0",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled: false,
-					},
-				},
-				{
-					Name:             chunkTablePrefix + "0",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled: false,
-					},
-				},
-				{
-					Name:             tablePrefix + "1",
-					ProvisionedRead:  read,
-					ProvisionedWrite: write,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled: false,
-					},
-				},
-				{
-					Name:             chunkTablePrefix + "1",
-					ProvisionedRead:  read,
-					ProvisionedWrite: write,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled: false,
-					},
-				},
-			},
+			append(append(baseTable("", inactiveRead, inactiveWrite),
+				staticTable(0, inactiveRead, inactiveWrite, inactiveRead, inactiveWrite)...),
+				staticTable(1, read, write, read, write)...),
 		)
 	}
 }
@@ -315,63 +209,14 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 	dynamoDB := newMockDynamoDB(0, 0)
 	applicationAutoScaling := newMockApplicationAutoScaling()
 	client := dynamoTableClient{
-		DynamoDB:               dynamoDB,
-		ApplicationAutoScaling: applicationAutoScaling,
-	}
-
-	test := func(tableManager *chunk.TableManager, name string, tm time.Time, expected []chunk.TableDesc) {
-		t.Run(name, func(t *testing.T) {
-			ctx := context.Background()
-			mtime.NowForce(tm)
-			defer mtime.NowReset()
-			if err := tableManager.SyncTables(ctx); err != nil {
-				t.Fatal(err)
-			}
-			err := chunk.ExpectTables(ctx, client, expected)
-			require.NoError(t, err)
-		})
+		DynamoDB:  dynamoDB,
+		autoscale: &awsAutoscale{ApplicationAutoScaling: applicationAutoScaling},
 	}
 
 	cfg := chunk.SchemaConfig{
-		UsePeriodicTables: true,
-		IndexTables: chunk.PeriodicTableConfig{
-			Prefix: tablePrefix,
-			Period: tablePeriod,
-			From:   util.NewDayValue(model.TimeFromUnix(0)),
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
-			InactiveWriteScale: chunk.AutoScalingConfig{
-				Enabled:     true,
-				MinCapacity: 10,
-				MaxCapacity: 20,
-				OutCooldown: 100,
-				InCooldown:  100,
-				TargetValue: 80.0,
-			},
-			InactiveWriteScaleLastN: 2,
-		},
-
-		ChunkTables: chunk.PeriodicTableConfig{
-			Prefix: chunkTablePrefix,
-			Period: tablePeriod,
-			From:   util.NewDayValue(model.TimeFromUnix(0)),
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
-			InactiveWriteScale: chunk.AutoScalingConfig{
-				Enabled:     true,
-				MinCapacity: 10,
-				MaxCapacity: 20,
-				OutCooldown: 100,
-				InCooldown:  100,
-				TargetValue: 80.0,
-			},
-			InactiveWriteScaleLastN: 2,
-		},
-
+		UsePeriodicTables:   true,
+		IndexTables:         fixturePeriodicTableConfig(tablePrefix, 2, chunk.AutoScalingConfig{}, fixtureWriteScale()),
+		ChunkTables:         fixturePeriodicTableConfig(chunkTablePrefix, 2, chunk.AutoScalingConfig{}, fixtureWriteScale()),
 		CreationGracePeriod: gracePeriod,
 	}
 
@@ -382,27 +227,12 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		test(
+		test(t, client,
 			tableManager,
 			"Legacy and latest tables",
 			time.Unix(0, 0).Add(maxChunkAge).Add(gracePeriod),
-			[]chunk.TableDesc{
-				{
-					Name:             "",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-				},
-				{
-					Name:             tablePrefix + "0",
-					ProvisionedRead:  read,
-					ProvisionedWrite: write,
-				},
-				{
-					Name:             chunkTablePrefix + "0",
-					ProvisionedRead:  read,
-					ProvisionedWrite: write,
-				},
-			},
+			append(baseTable("", inactiveRead, inactiveWrite),
+				staticTable(0, read, write, read, write)...),
 		)
 	}
 
@@ -413,53 +243,13 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		test(
+		test(t, client,
 			tableManager,
 			"1 week of inactive tables with latest",
 			time.Unix(0, 0).Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
-			[]chunk.TableDesc{
-				{
-					Name:             "",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-				},
-				{
-					Name:             tablePrefix + "0",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled:     true,
-						MinCapacity: 10,
-						MaxCapacity: 20,
-						OutCooldown: 100,
-						InCooldown:  100,
-						TargetValue: 80.0,
-					},
-				},
-				{
-					Name:             chunkTablePrefix + "0",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled:     true,
-						MinCapacity: 10,
-						MaxCapacity: 20,
-						OutCooldown: 100,
-						InCooldown:  100,
-						TargetValue: 80.0,
-					},
-				},
-				{
-					Name:             tablePrefix + "1",
-					ProvisionedRead:  read,
-					ProvisionedWrite: write,
-				},
-				{
-					Name:             chunkTablePrefix + "1",
-					ProvisionedRead:  read,
-					ProvisionedWrite: write,
-				},
-			},
+			append(append(baseTable("", inactiveRead, inactiveWrite),
+				autoScaledTable(0, inactiveRead, inactiveWrite, 100, 80)...),
+				staticTable(1, read, write, read, write)...),
 		)
 	}
 
@@ -470,89 +260,15 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		test(
+		test(t, client,
 			tableManager,
 			"3 weeks of inactive tables with latest",
 			time.Unix(0, 0).Add(tablePeriod*3).Add(maxChunkAge).Add(gracePeriod),
-			[]chunk.TableDesc{
-				{
-					Name:             "",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-				},
-				{
-					Name:             tablePrefix + "0",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-				},
-				{
-					Name:             chunkTablePrefix + "0",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-				},
-				{
-					Name:             tablePrefix + "1",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled:     true,
-						MinCapacity: 10,
-						MaxCapacity: 20,
-						OutCooldown: 100,
-						InCooldown:  100,
-						TargetValue: 80.0,
-					},
-				},
-				{
-					Name:             chunkTablePrefix + "1",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled:     true,
-						MinCapacity: 10,
-						MaxCapacity: 20,
-						OutCooldown: 100,
-						InCooldown:  100,
-						TargetValue: 80.0,
-					},
-				},
-				{
-					Name:             tablePrefix + "2",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled:     true,
-						MinCapacity: 10,
-						MaxCapacity: 20,
-						OutCooldown: 100,
-						InCooldown:  100,
-						TargetValue: 80.0,
-					},
-				},
-				{
-					Name:             chunkTablePrefix + "2",
-					ProvisionedRead:  inactiveRead,
-					ProvisionedWrite: inactiveWrite,
-					WriteScale: chunk.AutoScalingConfig{
-						Enabled:     true,
-						MinCapacity: 10,
-						MaxCapacity: 20,
-						OutCooldown: 100,
-						InCooldown:  100,
-						TargetValue: 80.0,
-					},
-				},
-				{
-					Name:             tablePrefix + "3",
-					ProvisionedRead:  read,
-					ProvisionedWrite: write,
-				},
-				{
-					Name:             chunkTablePrefix + "3",
-					ProvisionedRead:  read,
-					ProvisionedWrite: write,
-				},
-			},
+			append(append(append(append(baseTable("", inactiveRead, inactiveWrite),
+				staticTable(0, inactiveRead, inactiveWrite, inactiveRead, inactiveWrite)...),
+				autoScaledTable(1, inactiveRead, inactiveWrite, 100, 80)...),
+				autoScaledTable(2, inactiveRead, inactiveWrite, 100, 80)...),
+				staticTable(3, read, write, read, write)...),
 		)
 	}
 }

@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -82,22 +80,6 @@ func (ts Tags) Equals(other Tags) bool {
 	}
 
 	return true
-}
-
-// AWSTags converts ts into a []*dynamodb.Tag.
-func (ts Tags) AWSTags() []*dynamodb.Tag {
-	if ts == nil {
-		return nil
-	}
-
-	var result []*dynamodb.Tag
-	for k, v := range ts {
-		result = append(result, &dynamodb.Tag{
-			Key:   aws.String(k),
-			Value: aws.String(v),
-		})
-	}
-	return result
 }
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
@@ -269,8 +251,8 @@ func (m *TableManager) createTables(ctx context.Context, descriptions []TableDes
 
 func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDesc) error {
 	for _, expected := range descriptions {
-		level.Info(util.Logger).Log("msg", "checking provisioned throughput on table", "table", expected.Name)
-		current, status, err := m.client.DescribeTable(ctx, expected.Name)
+		level.Debug(util.Logger).Log("msg", "checking provisioned throughput on table", "table", expected.Name)
+		current, isActive, err := m.client.DescribeTable(ctx, expected.Name)
 		if err != nil {
 			return err
 		}
@@ -282,8 +264,8 @@ func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDes
 			continue
 		}
 
-		if status != dynamodb.TableStatusActive {
-			level.Info(util.Logger).Log("msg", "skipping update on table, not yet ACTIVE", "table", expected.Name, "status", status)
+		if !isActive {
+			level.Info(util.Logger).Log("msg", "skipping update on table, not yet ACTIVE", "table", expected.Name)
 			continue
 		}
 
@@ -292,7 +274,6 @@ func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDes
 			continue
 		}
 
-		level.Info(util.Logger).Log("msg", "updating provisioned throughput on table", "table", expected.Name, "old_read", current.ProvisionedRead, "old_write", current.ProvisionedWrite, "new_read", expected.ProvisionedRead, "new_write", expected.ProvisionedWrite)
 		err = m.client.UpdateTable(ctx, current, expected)
 		if err != nil {
 			return err

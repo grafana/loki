@@ -110,6 +110,7 @@ type DynamoDBConfig struct {
 	DynamoDB               util.URLValue
 	APILimit               float64
 	ApplicationAutoScaling util.URLValue
+	Metrics                MetricsAutoScalingConfig
 	ChunkGangSize          int
 	ChunkGetMaxParallelism int
 	backoffConfig          util.BackoffConfig
@@ -126,6 +127,7 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.backoffConfig.MinBackoff, "dynamodb.min-backoff", 100*time.Millisecond, "Minimum backoff time")
 	f.DurationVar(&cfg.backoffConfig.MaxBackoff, "dynamodb.max-backoff", 50*time.Second, "Maximum backoff time")
 	f.IntVar(&cfg.backoffConfig.MaxRetries, "dynamodb.max-retries", 20, "Maximum number of times to retry an operation")
+	cfg.Metrics.RegisterFlags(f)
 }
 
 // StorageConfig specifies config for storing data on AWS.

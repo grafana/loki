@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
 
@@ -51,10 +50,10 @@ func (c *tableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) err
 	return errors.WithStack(err)
 }
 
-func (c *tableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, status string, err error) {
+func (c *tableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, isActive bool, err error) {
 	return chunk.TableDesc{
 		Name: name,
-	}, dynamodb.TableStatusActive, nil
+	}, true, nil
 }
 
 func (c *tableClient) UpdateTable(ctx context.Context, current, expected chunk.TableDesc) error {

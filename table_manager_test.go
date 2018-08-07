@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/mtime"
@@ -60,11 +59,11 @@ func (m *mockTableClient) CreateTable(_ context.Context, desc TableDesc) error {
 	return nil
 }
 
-func (m *mockTableClient) DescribeTable(_ context.Context, name string) (desc TableDesc, status string, err error) {
+func (m *mockTableClient) DescribeTable(_ context.Context, name string) (desc TableDesc, isActive bool, err error) {
 	m.Lock()
 	defer m.Unlock()
 
-	return m.tables[name], dynamodb.TableStatusActive, nil
+	return m.tables[name], true, nil
 }
 
 func (m *mockTableClient) UpdateTable(_ context.Context, current, expected TableDesc) error {

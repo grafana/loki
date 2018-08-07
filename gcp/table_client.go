@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"cloud.google.com/go/bigtable"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"google.golang.org/grpc/status"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
@@ -75,10 +74,10 @@ func alreadyExistsError(err error) bool {
 	return ok && strings.Contains(serr.Message(), "already exists")
 }
 
-func (c *tableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, status string, err error) {
+func (c *tableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, isActive bool, err error) {
 	return chunk.TableDesc{
 		Name: name,
-	}, dynamodb.TableStatusActive, nil
+	}, true, nil
 }
 
 func (c *tableClient) UpdateTable(ctx context.Context, current, expected chunk.TableDesc) error {
