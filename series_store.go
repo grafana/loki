@@ -79,13 +79,6 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	}
 	level.Debug(log).Log("Chunk IDs", len(chunkIDs))
 
-	// Protect ourselves against OOMing.
-	if len(chunkIDs) > c.cfg.QueryChunkLimit {
-		err := fmt.Errorf("Query %v fetched too many chunks (%d > %d)", allMatchers, len(chunkIDs), c.cfg.QueryChunkLimit)
-		level.Error(log).Log("err", err)
-		return nil, err
-	}
-
 	// Filter out chunks that are not in the selected time range.
 	chunks, err := c.convertChunkIDsToChunks(ctx, chunkIDs)
 	if err != nil {
@@ -93,6 +86,13 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	}
 	filtered, keys := filterChunksByTime(from, through, chunks)
 	level.Debug(log).Log("Chunks post filtering", len(chunks))
+
+	// Protect ourselves against OOMing.
+	if len(chunkIDs) > c.cfg.QueryChunkLimit {
+		err := fmt.Errorf("Query %v fetched too many chunks (%d > %d)", allMatchers, len(chunkIDs), c.cfg.QueryChunkLimit)
+		level.Error(log).Log("err", err)
+		return nil, err
+	}
 
 	// Now fetch the actual chunk data from Memcache / S3
 	allChunks, err := c.fetchChunks(ctx, filtered, keys)
