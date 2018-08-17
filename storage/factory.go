@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/aws"
 	"github.com/weaveworks/cortex/pkg/chunk/cassandra"
@@ -31,7 +33,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewStorageClient makes a storage client based on the configuration.
-func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageClient, error) {
+func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig, bigtableColumnKey bool) (chunk.StorageClient, error) {
 	switch cfg.StorageClient {
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
@@ -42,7 +44,7 @@ func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageCl
 		}
 		return aws.NewStorageClient(cfg.AWSStorageConfig, schemaCfg)
 	case "gcp":
-		return gcp.NewStorageClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
+		return gcp.NewStorageClient(context.Background(), cfg.GCPStorageConfig, schemaCfg, bigtableColumnKey)
 	case "cassandra":
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	default:
@@ -68,4 +70,25 @@ func NewTableClient(cfg Config) (chunk.TableClient, error) {
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, inmemory", cfg.StorageClient)
 	}
+}
+
+// Opts returns the StorageOpts for the given configuration.
+func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) {
+	opts := []chunk.StorageOpt{}
+	client, err := NewStorageClient(cfg, schemaCfg, false)
+	if err != nil {
+		return nil, errors.Wrap(err, "error creating storage client")
+	}
+
+	opts = append(opts, chunk.StorageOpt{From: model.Time(0), Client: client})
+	if schemaCfg.BigtableColumnKeyFrom.IsSet() {
+		client, err = NewStorageClient(cfg, schemaCfg, true)
+		if err != nil {
+			return nil, errors.Wrap(err, "error creating storage client")
+		}
+
+		opts = append(opts, chunk.StorageOpt{From: schemaCfg.BigtableColumnKeyFrom.Time, Client: client})
+	}
+
+	return opts, nil
 }

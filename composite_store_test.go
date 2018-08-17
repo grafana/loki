@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
 )
 
@@ -168,4 +169,159 @@ func TestCompositeStore(t *testing.T) {
 			}
 		})
 	}
+}
+
+type dummyStoreAndClient struct {
+	client        StorageClient
+	schemaVersion int
+}
+
+func (dummyStoreAndClient) Put(ctx context.Context, chunks []Chunk) error { return nil }
+func (dummyStoreAndClient) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
+	return nil
+}
+func (dummyStoreAndClient) Get(tx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error) {
+	return nil, nil
+}
+func (dummyStoreAndClient) Stop() {}
+
+func (dummyStoreAndClient) NewWriteBatch() WriteBatch                    { return nil }
+func (dummyStoreAndClient) BatchWrite(context.Context, WriteBatch) error { return nil }
+func (dummyStoreAndClient) QueryPages(ctx context.Context, query IndexQuery, callback func(result ReadBatch) (shouldContinue bool)) error {
+	return nil
+}
+func (dummyStoreAndClient) PutChunks(ctx context.Context, chunks []Chunk) error { return nil }
+func (dummyStoreAndClient) GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error) {
+	return nil, nil
+}
+
+func TestNewStoreTimeConvergence(t *testing.T) {
+	oldClient, newClient := dummyStoreAndClient{schemaVersion: -1}, dummyStoreAndClient{schemaVersion: -2} // Just to make sure they are not equal.
+
+	type expectation struct {
+		time          int64
+		schemaVersion int
+		client        dummyStoreAndClient
+	}
+
+	testcases := []struct {
+		schemaTimes  []int64
+		storageTimes []int64
+
+		exp []expectation
+	}{
+		{
+			schemaTimes:  []int64{0, 10, 20},
+			storageTimes: []int64{0},
+
+			exp: []expectation{
+				{
+					time:          0,
+					schemaVersion: 0,
+					client:        oldClient,
+				},
+				{
+					time:          10,
+					schemaVersion: 1,
+					client:        oldClient,
+				},
+				{
+					time:          20,
+					schemaVersion: 2,
+					client:        oldClient,
+				},
+			},
+		},
+		{
+			schemaTimes:  []int64{0, 10, 20, 40},
+			storageTimes: []int64{0, 30},
+
+			exp: []expectation{
+				{
+					time:          0,
+					schemaVersion: 0,
+					client:        oldClient,
+				},
+				{
+					time:          10,
+					schemaVersion: 1,
+					client:        oldClient,
+				},
+				{
+					time:          20,
+					schemaVersion: 2,
+					client:        oldClient,
+				},
+				{
+					time:          30,
+					schemaVersion: 2,
+					client:        newClient,
+				},
+				{
+					time:          40,
+					schemaVersion: 3,
+					client:        newClient,
+				},
+			},
+		},
+		{
+			schemaTimes:  []int64{0, 10, 20, 40},
+			storageTimes: []int64{0, 20},
+
+			exp: []expectation{
+				{
+					time:          0,
+					schemaVersion: 0,
+					client:        oldClient,
+				},
+				{
+					time:          10,
+					schemaVersion: 1,
+					client:        oldClient,
+				},
+				{
+					time:          20,
+					schemaVersion: 2,
+					client:        newClient,
+				},
+				{
+					time:          40,
+					schemaVersion: 3,
+					client:        newClient,
+				},
+			},
+		},
+	}
+
+	for _, testcase := range testcases {
+		storageOpts := []StorageOpt{{model.TimeFromUnix(testcase.storageTimes[0]), oldClient}}
+		if len(testcase.storageTimes) > 1 {
+			storageOpts = append(storageOpts, StorageOpt{model.TimeFromUnix(testcase.storageTimes[1]), newClient})
+		}
+
+		schemaOpts := make([]SchemaOpt, 0, len(testcase.schemaTimes))
+		for i, schemaTime := range testcase.schemaTimes {
+			store := dummyStoreAndClient{schemaVersion: i}
+
+			schemaOpts = append(schemaOpts, SchemaOpt{
+				model.TimeFromUnix(schemaTime),
+				func(storage StorageClient) (Store, error) {
+					store.client = storage
+					return store, nil
+				},
+			})
+		}
+
+		store, err := NewStore(StoreConfig{}, SchemaConfig{}, schemaOpts, storageOpts)
+		require.NoError(t, err)
+		cs := store.(compositeStore)
+		require.Equal(t, len(testcase.exp), len(cs.stores))
+
+		for i, store := range cs.stores {
+			require.Equal(t, model.TimeFromUnix(testcase.exp[i].time), store.start)
+			require.Equal(t, testcase.exp[i].schemaVersion, store.Store.(dummyStoreAndClient).schemaVersion)
+			require.Equal(t, testcase.exp[i].client, store.Store.(dummyStoreAndClient).client)
+		}
+	}
+
 }

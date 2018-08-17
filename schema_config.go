@@ -23,14 +23,15 @@ const (
 type SchemaConfig struct {
 	// After midnight on this day, we start bucketing indexes by day instead of by
 	// hour.  Only the day matters, not the time within the day.
-	DailyBucketsFrom util.DayValue
-	Base64ValuesFrom util.DayValue
-	V4SchemaFrom     util.DayValue
-	V5SchemaFrom     util.DayValue
-	V6SchemaFrom     util.DayValue
-	V7SchemaFrom     util.DayValue
-	V8SchemaFrom     util.DayValue
-	V9SchemaFrom     util.DayValue
+	DailyBucketsFrom      util.DayValue
+	Base64ValuesFrom      util.DayValue
+	V4SchemaFrom          util.DayValue
+	V5SchemaFrom          util.DayValue
+	V6SchemaFrom          util.DayValue
+	V7SchemaFrom          util.DayValue
+	V8SchemaFrom          util.DayValue
+	V9SchemaFrom          util.DayValue
+	BigtableColumnKeyFrom util.DayValue
 
 	// Master 'off-switch' for table capacity updates, e.g. when troubleshooting
 	ThroughputUpdatesDisabled bool
@@ -61,6 +62,7 @@ func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.V7SchemaFrom, "dynamodb.v7-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v7 schema (Deprecated).")
 	f.Var(&cfg.V8SchemaFrom, "dynamodb.v8-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v8 schema (Deprecated).")
 	f.Var(&cfg.V9SchemaFrom, "dynamodb.v9-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v9 schema (Series indexing).")
+	f.Var(&cfg.BigtableColumnKeyFrom, "bigtable.column-key-from", "The date (in the format YYYY-MM-DD) after which we use bigtable column keys.")
 
 	f.BoolVar(&cfg.ThroughputUpdatesDisabled, "table-manager.throughput-updates-disabled", false, "If true, disable all changes to DB capacity")
 	f.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")

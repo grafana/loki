@@ -28,8 +28,6 @@ const (
 type Config struct {
 	project  string
 	instance string
-
-	ColumnKey bool
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -39,8 +37,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewStorageClient returns a new StorageClient.
-func NewStorageClient(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageClient, error) {
-	if cfg.ColumnKey {
+func NewStorageClient(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig, bigtableColumnKey bool) (chunk.StorageClient, error) {
+	if bigtableColumnKey {
 		return NewStorageClientColumnKey(ctx, cfg, schemaCfg)
 	}
 	return NewStorageClientV1(ctx, cfg, schemaCfg)
