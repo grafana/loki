@@ -129,61 +129,58 @@ type StorageOpt struct {
 	Client StorageClient
 }
 
+func latest(a, b model.Time) model.Time {
+	if a.Before(b) {
+		return b
+	}
+	return a
+}
+
 // NewStore creates a new Store which delegates to different stores depending
 // on time.
 func NewStore(cfg StoreConfig, schemaCfg SchemaConfig, schemaOpts []SchemaOpt, storageOpts []StorageOpt) (Store, error) {
 	stores := []compositeStoreEntry{}
-	from := schemaOpts[0].From
+	add := func(i, j int) error {
+		schemaOpt := schemaOpts[i]
+		storageOpt := storageOpts[j]
+		store, err := schemaOpt.NewStore(storageOpt.Client)
+		stores = append(stores, compositeStoreEntry{latest(schemaOpt.From, storageOpt.From), store})
+		return err
+	}
 
 	i, j := 0, 0
 	for i+1 < len(schemaOpts) && j+1 < len(storageOpts) {
-		currSchema := schemaOpts[i]
-		currStorage := storageOpts[j]
-
-		nextSchema := schemaOpts[i+1]
-		nextStorage := storageOpts[j+1]
-
-		store, err := currSchema.NewStore(currStorage.Client)
-		if err != nil {
+		if err := add(i, j); err != nil {
 			return nil, err
 		}
-		stores = append(stores, compositeStoreEntry{from, store})
 
-		if nextSchema.From.Before(nextStorage.From) {
-			from = nextSchema.From
+		// Increment the interval that finished first.
+		nextSchemaOpt := schemaOpts[i+1]
+		nextStorageOpt := storageOpts[j+1]
+		if nextSchemaOpt.From.Before(nextStorageOpt.From) {
 			i++
-		} else if nextSchema.From.After(nextStorage.From) {
-			from = nextStorage.From
+		} else if nextSchemaOpt.From.After(nextStorageOpt.From) {
 			j++
 		} else {
-			from = nextSchema.From
 			i++
 			j++
 		}
 	}
 
-	// Now cover the remaining schemas and storages.
-	for i < len(schemaOpts) && j < len(storageOpts) {
-		store, err := schemaOpts[i].NewStore(storageOpts[j].Client)
-		if err != nil {
+	for ; i+1 < len(schemaOpts); i++ {
+		if err := add(i, j); err != nil {
 			return nil, err
 		}
-		stores = append(stores, compositeStoreEntry{from, store})
+	}
 
-		// No more storageOpts.
-		if j+1 == len(storageOpts) {
-			i++
-			if i < len(schemaOpts) {
-				from = schemaOpts[i].From
-			}
-			continue
+	for ; j+1 < len(storageOpts); j++ {
+		if err := add(i, j); err != nil {
+			return nil, err
 		}
+	}
 
-		// No more schemaOpts. No comparison as we'll enter this after the exit of previous loop.
-		j++
-		if j < len(storageOpts) {
-			from = storageOpts[j].From
-		}
+	if err := add(i, j); err != nil {
+		return nil, err
 	}
 
 	return compositeStore{stores}, nil
