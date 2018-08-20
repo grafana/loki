@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"context"
+	"sync"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -14,6 +15,8 @@ import (
 	"github.com/weaveworks/cortex/pkg/chunk/cache"
 	"github.com/weaveworks/cortex/pkg/util"
 )
+
+const chunkDecodeParallelism = 16
 
 func filterChunksByTime(from, through model.Time, chunks []Chunk) ([]Chunk, []string) {
 	filtered := make([]Chunk, 0, len(chunks))
@@ -75,6 +78,19 @@ func (s *spanLogger) Log(kvps ...interface{}) error {
 type chunkFetcher struct {
 	storage StorageClient
 	cache   cache.Cache
+
+	wait           sync.WaitGroup
+	decodeRequests chan decodeRequest
+}
+
+type decodeRequest struct {
+	chunk     Chunk
+	buf       []byte
+	responses chan decodeResponse
+}
+type decodeResponse struct {
+	chunk Chunk
+	err   error
 }
 
 func newChunkFetcher(cfg cache.Config, storage StorageClient) (*chunkFetcher, error) {
@@ -83,14 +99,38 @@ func newChunkFetcher(cfg cache.Config, storage StorageClient) (*chunkFetcher, er
 		return nil, err
 	}
 
-	return &chunkFetcher{
+	c := &chunkFetcher{
 		storage: storage,
 		cache:   cache,
-	}, nil
+	}
+
+	c.wait.Add(chunkDecodeParallelism)
+	for i := 0; i < chunkDecodeParallelism; i++ {
+		go c.worker()
+	}
+
+	return c, nil
 }
 
 func (c *chunkFetcher) Stop() {
+	close(c.decodeRequests)
+	c.wait.Wait()
 	c.cache.Stop()
+}
+
+func (c *chunkFetcher) worker() {
+	defer c.wait.Done()
+	decodeContext := NewDecodeContext()
+	for req := range c.decodeRequests {
+		err := req.chunk.Decode(decodeContext, req.buf)
+		if err != nil {
+			cacheCorrupt.Inc()
+		}
+		req.responses <- decodeResponse{
+			chunk: req.chunk,
+			err:   err,
+		}
+	}
 }
 
 func (c *chunkFetcher) fetchChunks(ctx context.Context, chunks []Chunk, keys []string) ([]Chunk, error) {
@@ -103,7 +143,7 @@ func (c *chunkFetcher) fetchChunks(ctx context.Context, chunks []Chunk, keys []s
 		level.Warn(log).Log("msg", "error fetching from cache", "err", err)
 	}
 
-	fromCache, missing, err := ProcessCacheResponse(chunks, cacheHits, cacheBufs)
+	fromCache, missing, err := c.processCacheResponse(chunks, cacheHits, cacheBufs)
 	if err != nil {
 		level.Warn(log).Log("msg", "error fetching from cache", "err", err)
 	}
@@ -138,8 +178,12 @@ func (c *chunkFetcher) writeBackCache(ctx context.Context, chunks []Chunk) error
 
 // ProcessCacheResponse decodes the chunks coming back from the cache, separating
 // hits and misses.
-func ProcessCacheResponse(chunks []Chunk, keys []string, bufs [][]byte) (found []Chunk, missing []Chunk, err error) {
-	decodeContext := NewDecodeContext()
+func (c *chunkFetcher) processCacheResponse(chunks []Chunk, keys []string, bufs [][]byte) ([]Chunk, []Chunk, error) {
+	var (
+		requests  = make([]decodeRequest, 0, len(keys))
+		responses = make(chan decodeResponse)
+		missing   []Chunk
+	)
 
 	i, j := 0, 0
 	for i < len(chunks) && j < len(keys) {
@@ -149,24 +193,40 @@ func ProcessCacheResponse(chunks []Chunk, keys []string, bufs [][]byte) (found [
 			missing = append(missing, chunks[i])
 			i++
 		} else if chunkKey > keys[j] {
-			level.Debug(util.Logger).Log("msg", "got chunk from cache we didn't ask for")
+			level.Error(util.Logger).Log("msg", "got chunk from cache we didn't ask for")
 			j++
 		} else {
-			chunk := chunks[i]
-			err = chunk.Decode(decodeContext, bufs[j])
-			if err != nil {
-				cacheCorrupt.Inc()
-				return
-			}
-			found = append(found, chunk)
+			requests = append(requests, decodeRequest{
+				chunk: chunks[i],
+				buf:   bufs[j],
+			})
 			i++
 			j++
 		}
 	}
-
 	for ; i < len(chunks); i++ {
 		missing = append(missing, chunks[i])
 	}
 
-	return
+	go func() {
+		for _, request := range requests {
+			c.decodeRequests <- request
+		}
+	}()
+
+	var (
+		err   error
+		found []Chunk
+	)
+	for i := 0; i < len(requests); i++ {
+		response := <-responses
+
+		// Don't exit early, as we don't want to block the workers.
+		if response.err != nil {
+			err = response.err
+		} else {
+			found = append(found, response.chunk)
+		}
+	}
+	return found, missing, err
 }

@@ -15,11 +15,10 @@ import (
 	prom_chunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
 
+const userID = "1"
+
 func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
-	const (
-		userID   = "1"
-		chunkLen = 13 * 3600 // in seconds
-	)
+	const chunkLen = 13 * 3600 // in seconds
 
 	// put 100 chunks from 0 to 99
 	keys := []string{}
@@ -67,10 +66,11 @@ func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []ch
 		require.Len(t, bufs, 1)
 		require.Len(t, missingKeys, 0)
 
-		foundChunks, missing, err := chunk.ProcessCacheResponse([]chunk.Chunk{chunks[index]}, found, bufs)
+		c, err := chunk.ParseExternalKey(userID, found[0])
 		require.NoError(t, err)
-		require.Empty(t, missing)
-		require.Equal(t, chunks[index], foundChunks[0])
+		err = c.Decode(chunk.NewDecodeContext(), bufs[0])
+		require.NoError(t, err)
+		require.Equal(t, c, chunks[index])
 	}
 }
 
@@ -82,10 +82,15 @@ func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []
 	require.Len(t, bufs, len(keys))
 	require.Len(t, missingKeys, 0)
 
-	foundChunks, missing, err := chunk.ProcessCacheResponse(chunks, found, bufs)
-	require.NoError(t, err)
-	require.Empty(t, missing)
-	require.Equal(t, chunks, foundChunks)
+	result := []chunk.Chunk{}
+	for i := range found {
+		c, err := chunk.ParseExternalKey(userID, found[i])
+		require.NoError(t, err)
+		err = c.Decode(chunk.NewDecodeContext(), bufs[i])
+		require.NoError(t, err)
+		result = append(result, c)
+	}
+	require.Equal(t, chunks, result)
 }
 
 func testCacheMiss(t *testing.T, cache cache.Cache) {

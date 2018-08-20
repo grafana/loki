@@ -461,9 +461,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 		}
 
 		chunks, err := store.Get(ctx, startTime, endTime, matchers...)
-		if err != nil {
-			t.Fatal(t, err)
-		}
+		require.NoError(t, err)
 
 		// We need to check that each chunk is in the time range
 		for _, chunk := range chunks {
