@@ -100,8 +100,9 @@ func newChunkFetcher(cfg cache.Config, storage StorageClient) (*chunkFetcher, er
 	}
 
 	c := &chunkFetcher{
-		storage: storage,
-		cache:   cache,
+		storage:        storage,
+		cache:          cache,
+		decodeRequests: make(chan decodeRequest),
 	}
 
 	c.wait.Add(chunkDecodeParallelism)

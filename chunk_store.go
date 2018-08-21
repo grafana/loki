@@ -94,7 +94,7 @@ func newStore(cfg StoreConfig, schema Schema, storage StorageClient) (Store, err
 
 // Stop any background goroutines (ie in the cache.)
 func (c *store) Stop() {
-	c.cache.Stop()
+	c.chunkFetcher.Stop()
 }
 
 // Put implements ChunkStore
