@@ -20,6 +20,7 @@ type storageClientTest func(*testing.T, chunk.StorageClient)
 
 func forAllFixtures(t *testing.T, storageClientTest storageClientTest) {
 	fixtures := append(aws.Fixtures, gcp.Fixtures...)
+	fixtures = append(fixtures, Fixtures...)
 
 	cassandraFixtures, err := cassandra.Fixtures()
 	require.NoError(t, err)

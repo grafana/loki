@@ -80,7 +80,7 @@ func queryKey(q chunk.IndexQuery) string {
 }
 
 func filterBatchByQuery(query chunk.IndexQuery, batches []chunk.ReadBatch) readBatch {
-	var filter func([]byte, []byte) bool
+	filter := func([]byte, []byte) bool { return true }
 
 	if len(query.RangeValuePrefix) != 0 {
 		filter = func(rangeValue []byte, value []byte) bool {

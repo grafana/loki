@@ -104,10 +104,10 @@ func TestQueryPages(t *testing.T) {
 		require.NoError(t, err)
 
 		tests := []struct {
-			name           string
-			query          chunk.IndexQuery
-			provisionedErr int
-			want           []chunk.IndexEntry
+			name   string
+			query  chunk.IndexQuery
+			repeat bool
+			want   []chunk.IndexEntry
 		}{
 			{
 				"check HashValue only",
@@ -115,7 +115,7 @@ func TestQueryPages(t *testing.T) {
 					TableName: tableName,
 					HashValue: "flip",
 				},
-				0,
+				false,
 				[]chunk.IndexEntry{entries[5], entries[6], entries[7]},
 			},
 			{
@@ -125,7 +125,7 @@ func TestQueryPages(t *testing.T) {
 					HashValue:       "foo",
 					RangeValueStart: []byte("bar:2"),
 				},
-				0,
+				false,
 				[]chunk.IndexEntry{entries[1], entries[2], entries[3], entries[4]},
 			},
 			{
@@ -135,7 +135,7 @@ func TestQueryPages(t *testing.T) {
 					HashValue:        "foo",
 					RangeValuePrefix: []byte("baz:"),
 				},
-				0,
+				false,
 				[]chunk.IndexEntry{entries[3], entries[4]},
 			},
 			{
@@ -146,7 +146,7 @@ func TestQueryPages(t *testing.T) {
 					RangeValuePrefix: []byte("bar"),
 					ValueEqual:       []byte("20"),
 				},
-				0,
+				false,
 				[]chunk.IndexEntry{entries[1]},
 			},
 			{
@@ -157,27 +157,36 @@ func TestQueryPages(t *testing.T) {
 					RangeValuePrefix: []byte("bar"),
 					ValueEqual:       []byte("20"),
 				},
-				2,
+				true,
 				[]chunk.IndexEntry{entries[1]},
 			},
 		}
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				var have []chunk.IndexEntry
-				err = client.QueryPages(context.Background(), tt.query, func(read chunk.ReadBatch) bool {
-					for i := 0; i < read.Len(); i++ {
-						have = append(have, chunk.IndexEntry{
-							TableName:  tt.query.TableName,
-							HashValue:  tt.query.HashValue,
-							RangeValue: read.RangeValue(i),
-							Value:      read.Value(i),
-						})
+				run := true
+				for run {
+					var have []chunk.IndexEntry
+					err = client.QueryPages(context.Background(), tt.query, func(read chunk.ReadBatch) bool {
+						for i := 0; i < read.Len(); i++ {
+							have = append(have, chunk.IndexEntry{
+								TableName:  tt.query.TableName,
+								HashValue:  tt.query.HashValue,
+								RangeValue: read.RangeValue(i),
+								Value:      read.Value(i),
+							})
+						}
+						return true
+					})
+					require.NoError(t, err)
+					require.Equal(t, tt.want, have)
+
+					if tt.repeat {
+						tt.repeat = false
+					} else {
+						run = false
 					}
-					return true
-				})
-				require.NoError(t, err)
-				require.Equal(t, tt.want, have)
+				}
 			})
 		}
 	})
