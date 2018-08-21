@@ -5,9 +5,9 @@ import (
 	"time"
 )
 
-// fifoCache is a simple string -> interface{} cache which uses a fifo slide to
+// FifoCache is a simple string -> interface{} cache which uses a fifo slide to
 // manage evictions.  O(1) inserts and updates, O(1) gets.
-type fifoCache struct {
+type FifoCache struct {
 	lock    sync.RWMutex
 	size    int
 	entries []cacheEntry
@@ -24,15 +24,17 @@ type cacheEntry struct {
 	prev, next int
 }
 
-func newFifoCache(size int) *fifoCache {
-	return &fifoCache{
+// NewFifoCache returns a new initialised FifoCache of size.
+func NewFifoCache(size int) *FifoCache {
+	return &FifoCache{
 		size:    size,
 		entries: make([]cacheEntry, 0, size),
 		index:   make(map[string]int, size),
 	}
 }
 
-func (c *fifoCache) put(key string, value interface{}) {
+// Put stores the value against the key.
+func (c *FifoCache) Put(key string, value interface{}) {
 	if c.size == 0 {
 		return
 	}
@@ -95,7 +97,8 @@ func (c *fifoCache) put(key string, value interface{}) {
 	c.index[key] = index
 }
 
-func (c *fifoCache) get(key string) (value interface{}, updated time.Time, ok bool) {
+// Get returns the stored value against the key and when the key was last updated.
+func (c *FifoCache) Get(key string) (value interface{}, updated time.Time, ok bool) {
 	if c.size == 0 {
 		return
 	}

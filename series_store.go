@@ -22,7 +22,7 @@ var (
 // seriesStore implements Store
 type seriesStore struct {
 	store
-	cardinalityCache *fifoCache
+	cardinalityCache *FifoCache
 }
 
 func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient) (Store, error) {
@@ -38,7 +38,7 @@ func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient) (Stor
 			schema:       schema,
 			chunkFetcher: fetcher,
 		},
-		cardinalityCache: newFifoCache(cfg.CardinalityCacheSize),
+		cardinalityCache: NewFifoCache(cfg.CardinalityCacheSize),
 	}, nil
 }
 
@@ -182,7 +182,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	level.Debug(log).Log("queries", len(queries))
 
 	for _, query := range queries {
-		value, updated, ok := c.cardinalityCache.get(query.HashValue)
+		value, updated, ok := c.cardinalityCache.Get(query.HashValue)
 		if !ok {
 			continue
 		}
@@ -201,7 +201,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 
 	// TODO This is not correct, will overcount for queries > 24hrs
 	for _, query := range queries {
-		c.cardinalityCache.put(query.HashValue, len(entries))
+		c.cardinalityCache.Put(query.HashValue, len(entries))
 	}
 	if len(entries) > c.cfg.CardinalityLimit {
 		return nil, errCardinalityExceeded
