@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"testing"
 
@@ -93,6 +94,26 @@ func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []
 	require.Equal(t, chunks, result)
 }
 
+func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []chunk.Chunk) {
+	fetcher, err := chunk.NewChunkFetcher(cache.Config{
+		Cache: c,
+	}, nil)
+	require.NoError(t, err)
+	defer fetcher.Stop()
+
+	found, err := fetcher.FetchChunks(context.Background(), chunks, keys)
+	require.NoError(t, err)
+	sort.Sort(byExternalKey(found))
+	sort.Sort(byExternalKey(chunks))
+	require.Equal(t, chunks, found)
+}
+
+type byExternalKey []chunk.Chunk
+
+func (a byExternalKey) Len() int           { return len(a) }
+func (a byExternalKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byExternalKey) Less(i, j int) bool { return a[i].ExternalKey() < a[j].ExternalKey() }
+
 func testCacheMiss(t *testing.T, cache cache.Cache) {
 	for i := 0; i < 100; i++ {
 		key := strconv.Itoa(rand.Int())
@@ -106,9 +127,18 @@ func testCacheMiss(t *testing.T, cache cache.Cache) {
 
 func testCache(t *testing.T, cache cache.Cache) {
 	keys, chunks := fillCache(t, cache)
-	testCacheSingle(t, cache, keys, chunks)
-	testCacheMultiple(t, cache, keys, chunks)
-	testCacheMiss(t, cache)
+	t.Run("Single", func(t *testing.T) {
+		testCacheSingle(t, cache, keys, chunks)
+	})
+	t.Run("Multiple", func(t *testing.T) {
+		testCacheMultiple(t, cache, keys, chunks)
+	})
+	t.Run("Miss", func(t *testing.T) {
+		testCacheMiss(t, cache)
+	})
+	t.Run("Fetcher", func(t *testing.T) {
+		testChunkFetcher(t, cache, keys, chunks)
+	})
 }
 
 func TestMemcache(t *testing.T) {

@@ -26,17 +26,17 @@ type seriesStore struct {
 }
 
 func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient) (Store, error) {
-	fetcher, err := newChunkFetcher(cfg.CacheConfig, storage)
+	fetcher, err := NewChunkFetcher(cfg.CacheConfig, storage)
 	if err != nil {
 		return nil, err
 	}
 
 	return &seriesStore{
 		store: store{
-			cfg:          cfg,
-			storage:      storage,
-			schema:       schema,
-			chunkFetcher: fetcher,
+			cfg:     cfg,
+			storage: storage,
+			schema:  schema,
+			Fetcher: fetcher,
 		},
 		cardinalityCache: newFifoCache(cfg.CardinalityCacheSize),
 	}, nil
@@ -95,7 +95,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	}
 
 	// Now fetch the actual chunk data from Memcache / S3
-	allChunks, err := c.fetchChunks(ctx, filtered, keys)
+	allChunks, err := c.FetchChunks(ctx, filtered, keys)
 	if err != nil {
 		level.Error(log).Log("err", err)
 		return nil, err

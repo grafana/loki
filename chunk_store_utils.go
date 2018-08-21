@@ -73,9 +73,10 @@ func (s *spanLogger) Log(kvps ...interface{}) error {
 	return nil
 }
 
-// chunkFetcher deals with fetching chunk contents from the cache/store,
-// and writing back any misses to the cache.
-type chunkFetcher struct {
+// Fetcher deals with fetching chunk contents from the cache/store,
+// and writing back any misses to the cache.  Also responsible for decoding
+// chunks from the cache, in parallel.
+type Fetcher struct {
 	storage StorageClient
 	cache   cache.Cache
 
@@ -93,13 +94,14 @@ type decodeResponse struct {
 	err   error
 }
 
-func newChunkFetcher(cfg cache.Config, storage StorageClient) (*chunkFetcher, error) {
+// NewChunkFetcher makes a new ChunkFetcher.
+func NewChunkFetcher(cfg cache.Config, storage StorageClient) (*Fetcher, error) {
 	cache, err := cache.New(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	c := &chunkFetcher{
+	c := &Fetcher{
 		storage:        storage,
 		cache:          cache,
 		decodeRequests: make(chan decodeRequest),
@@ -113,13 +115,14 @@ func newChunkFetcher(cfg cache.Config, storage StorageClient) (*chunkFetcher, er
 	return c, nil
 }
 
-func (c *chunkFetcher) Stop() {
+// Stop the ChunkFetcher.
+func (c *Fetcher) Stop() {
 	close(c.decodeRequests)
 	c.wait.Wait()
 	c.cache.Stop()
 }
 
-func (c *chunkFetcher) worker() {
+func (c *Fetcher) worker() {
 	defer c.wait.Done()
 	decodeContext := NewDecodeContext()
 	for req := range c.decodeRequests {
@@ -134,7 +137,8 @@ func (c *chunkFetcher) worker() {
 	}
 }
 
-func (c *chunkFetcher) fetchChunks(ctx context.Context, chunks []Chunk, keys []string) ([]Chunk, error) {
+// FetchChunks fetchers a set of chunks from cache and store.
+func (c *Fetcher) FetchChunks(ctx context.Context, chunks []Chunk, keys []string) ([]Chunk, error) {
 	log, ctx := newSpanLogger(ctx, "ChunkStore.fetchChunks")
 	defer log.Span.Finish()
 
@@ -149,7 +153,10 @@ func (c *chunkFetcher) fetchChunks(ctx context.Context, chunks []Chunk, keys []s
 		level.Warn(log).Log("msg", "error fetching from cache", "err", err)
 	}
 
-	fromStorage, err := c.storage.GetChunks(ctx, missing)
+	var fromStorage []Chunk
+	if len(missing) > 0 {
+		fromStorage, err = c.storage.GetChunks(ctx, missing)
+	}
 
 	// Always cache any chunks we did get
 	if cacheErr := c.writeBackCache(ctx, fromStorage); cacheErr != nil {
@@ -164,7 +171,7 @@ func (c *chunkFetcher) fetchChunks(ctx context.Context, chunks []Chunk, keys []s
 	return allChunks, nil
 }
 
-func (c *chunkFetcher) writeBackCache(ctx context.Context, chunks []Chunk) error {
+func (c *Fetcher) writeBackCache(ctx context.Context, chunks []Chunk) error {
 	for i := range chunks {
 		encoded, err := chunks[i].Encode()
 		if err != nil {
@@ -179,7 +186,7 @@ func (c *chunkFetcher) writeBackCache(ctx context.Context, chunks []Chunk) error
 
 // ProcessCacheResponse decodes the chunks coming back from the cache, separating
 // hits and misses.
-func (c *chunkFetcher) processCacheResponse(chunks []Chunk, keys []string, bufs [][]byte) ([]Chunk, []Chunk, error) {
+func (c *Fetcher) processCacheResponse(chunks []Chunk, keys []string, bufs [][]byte) ([]Chunk, []Chunk, error) {
 	var (
 		requests  = make([]decodeRequest, 0, len(keys))
 		responses = make(chan decodeResponse)
@@ -198,8 +205,9 @@ func (c *chunkFetcher) processCacheResponse(chunks []Chunk, keys []string, bufs 
 			j++
 		} else {
 			requests = append(requests, decodeRequest{
-				chunk: chunks[i],
-				buf:   bufs[j],
+				chunk:     chunks[i],
+				buf:       bufs[j],
+				responses: responses,
 			})
 			i++
 			j++
