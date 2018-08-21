@@ -165,6 +165,8 @@ func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.Wri
 }
 
 func (s *storageClientColumnKey) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+	const null = string('\xff')
+
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
 	defer sp.Finish()
 
@@ -175,9 +177,9 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, query chunk.Ind
 	}
 
 	if len(query.RangeValuePrefix) > 0 {
-		rOpts = append(rOpts, bigtable.RowFilter(bigtable.ColumnFilter(string(query.RangeValuePrefix)+".*"))) // TODO: Check again and anchor.
+		rOpts = append(rOpts, bigtable.RowFilter(bigtable.ColumnRangeFilter(columnFamily, string(query.RangeValuePrefix), string(query.RangeValuePrefix)+null)))
 	} else if len(query.RangeValueStart) > 0 {
-		rOpts = append(rOpts, bigtable.RowFilter(bigtable.ColumnRangeFilter(columnFamily, string(query.RangeValueStart), "")))
+		rOpts = append(rOpts, bigtable.RowFilter(bigtable.ColumnRangeFilter(columnFamily, string(query.RangeValueStart), null)))
 	}
 	hashValue := hashKey(query.HashValue)
 
@@ -344,6 +346,8 @@ func (s *storageClientColumnKey) GetChunks(ctx context.Context, input []chunk.Ch
 }
 
 func (s *storageClientV1) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+	const null = string('\xff')
+
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
 	defer sp.Finish()
 
@@ -364,7 +368,7 @@ func (s *storageClientV1) QueryPages(ctx context.Context, query chunk.IndexQuery
 	if len(query.RangeValuePrefix) > 0 {
 		rowRange = bigtable.PrefixRange(query.HashValue + separator + string(query.RangeValuePrefix))
 	} else if len(query.RangeValueStart) > 0 {
-		rowRange = bigtable.NewRange(query.HashValue+separator+string(query.RangeValueStart), query.HashValue+separator+string('\xff'))
+		rowRange = bigtable.NewRange(query.HashValue+separator+string(query.RangeValueStart), query.HashValue+separator+null)
 	} else {
 		rowRange = bigtable.PrefixRange(query.HashValue + separator)
 	}
