@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
@@ -38,7 +37,7 @@ func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient) (Stor
 			schema:       schema,
 			chunkFetcher: fetcher,
 		},
-		cardinalityCache: NewFifoCache(cfg.CardinalityCacheSize),
+		cardinalityCache: NewFifoCache("cardinality", cfg.CardinalityCacheSize, cfg.CardinalityCacheValidity),
 	}, nil
 }
 
@@ -182,13 +181,12 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	level.Debug(log).Log("queries", len(queries))
 
 	for _, query := range queries {
-		value, updated, ok := c.cardinalityCache.Get(query.HashValue)
+		value, ok := c.cardinalityCache.Get(query.HashValue)
 		if !ok {
 			continue
 		}
-		entryAge := time.Now().Sub(updated)
 		cardinality := value.(int)
-		if entryAge < c.cfg.CardinalityCacheValidity && cardinality > c.cfg.CardinalityLimit {
+		if cardinality > c.cfg.CardinalityLimit {
 			return nil, errCardinalityExceeded
 		}
 	}

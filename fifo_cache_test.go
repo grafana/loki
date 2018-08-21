@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -12,7 +13,7 @@ const size = 10
 const overwrite = 5
 
 func TestFifoCache(t *testing.T) {
-	c := NewFifoCache(size)
+	c := NewFifoCache("test", size, 1*time.Minute)
 
 	// Check put / get works
 	for i := 0; i < size; i++ {
@@ -23,7 +24,7 @@ func TestFifoCache(t *testing.T) {
 	require.Len(t, c.entries, size)
 
 	for i := 0; i < size; i++ {
-		value, _, ok := c.Get(strconv.Itoa(i))
+		value, ok := c.Get(strconv.Itoa(i))
 		require.True(t, ok)
 		require.Equal(t, i, value.(int))
 	}
@@ -37,11 +38,11 @@ func TestFifoCache(t *testing.T) {
 	require.Len(t, c.entries, size)
 
 	for i := 0; i < size-overwrite; i++ {
-		_, _, ok := c.Get(strconv.Itoa(i))
+		_, ok := c.Get(strconv.Itoa(i))
 		require.False(t, ok)
 	}
 	for i := size; i < size+overwrite; i++ {
-		value, _, ok := c.Get(strconv.Itoa(i))
+		value, ok := c.Get(strconv.Itoa(i))
 		require.True(t, ok)
 		require.Equal(t, i, value.(int))
 	}
@@ -55,10 +56,25 @@ func TestFifoCache(t *testing.T) {
 	require.Len(t, c.entries, size)
 
 	for i := size; i < size+overwrite; i++ {
-		value, _, ok := c.Get(strconv.Itoa(i))
+		value, ok := c.Get(strconv.Itoa(i))
 		require.True(t, ok)
 		require.Equal(t, i*2, value.(int))
 	}
+}
+
+func TestFifoCacheExpiry(t *testing.T) {
+	c := NewFifoCache("test", size, 5*time.Millisecond)
+
+	c.Put("0", 0)
+
+	value, ok := c.Get("0")
+	require.True(t, ok)
+	require.Equal(t, 0, value.(int))
+
+	// Expire the entry.
+	time.Sleep(5 * time.Millisecond)
+	_, ok = c.Get(strconv.Itoa(0))
+	require.False(t, ok)
 }
 
 func (c *FifoCache) print() {
