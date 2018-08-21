@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/cortex/pkg/chunk"
@@ -20,6 +21,9 @@ type Config struct {
 	AWSStorageConfig       aws.StorageConfig
 	GCPStorageConfig       gcp.Config
 	CassandraStorageConfig cassandra.Config
+
+	IndexCacheSize     int
+	IndexCacheValidity time.Duration
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -28,26 +32,32 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.AWSStorageConfig.RegisterFlags(f)
 	cfg.GCPStorageConfig.RegisterFlags(f)
 	cfg.CassandraStorageConfig.RegisterFlags(f)
+
+	f.IntVar(&cfg.IndexCacheSize, "store.index-cache-size", 0, "Size of in-memory index cache, 0 to disable.")
+	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 15*time.Minute, "Period for which entries in the index cache are valid.")
 }
 
 // NewStorageClient makes a storage client based on the configuration.
-func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageClient, error) {
+func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (client chunk.StorageClient, err error) {
 	switch cfg.StorageClient {
 	case "inmemory":
-		return chunk.NewMockStorage(), nil
+		client, err = chunk.NewMockStorage(), nil
 	case "aws":
 		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
 		if len(path) > 0 {
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
-		return aws.NewStorageClient(cfg.AWSStorageConfig, schemaCfg)
+		client, err = aws.NewStorageClient(cfg.AWSStorageConfig, schemaCfg)
 	case "gcp":
-		return gcp.NewStorageClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
+		client, err = gcp.NewStorageClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "cassandra":
-		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
+		client, err = cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, cassandra, inmemory", cfg.StorageClient)
+		client, err = nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, cassandra, inmemory", cfg.StorageClient)
 	}
+
+	client = newCachingStorageClient(client, cfg.IndexCacheSize, cfg.IndexCacheValidity)
+	return
 }
 
 // NewTableClient makes a new table client based on the configuration.
