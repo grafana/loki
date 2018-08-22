@@ -70,14 +70,14 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("Series IDs", len(seriesIDs))
+	level.Debug(log).Log("series-ids", len(seriesIDs))
 
 	// Lookup the series in the index to get the chunks.
 	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, seriesIDs)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("Chunk IDs", len(chunkIDs))
+	level.Debug(log).Log("chunk-ids", len(chunkIDs))
 
 	// Filter out chunks that are not in the selected time range.
 	chunks, err := c.convertChunkIDsToChunks(ctx, chunkIDs)
@@ -85,7 +85,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 		return nil, err
 	}
 	filtered, keys := filterChunksByTime(from, through, chunks)
-	level.Debug(log).Log("Chunks post filtering", len(chunks))
+	level.Debug(log).Log("chunks-post-filtering", len(chunks))
 
 	// Protect ourselves against OOMing.
 	if len(chunkIDs) > c.cfg.QueryChunkLimit {
