@@ -181,7 +181,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	level.Debug(log).Log("queries", len(queries))
 
 	for _, query := range queries {
-		value, ok := c.cardinalityCache.Get(query.HashValue)
+		value, ok := c.cardinalityCache.Get(ctx, query.HashValue)
 		if !ok {
 			continue
 		}
@@ -199,7 +199,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 
 	// TODO This is not correct, will overcount for queries > 24hrs
 	for _, query := range queries {
-		c.cardinalityCache.Put(query.HashValue, len(entries))
+		c.cardinalityCache.Put(ctx, query.HashValue, len(entries))
 	}
 	if len(entries) > c.cfg.CardinalityLimit {
 		return nil, errCardinalityExceeded

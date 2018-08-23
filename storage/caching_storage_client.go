@@ -28,7 +28,7 @@ func newCachingStorageClient(client chunk.StorageClient, size int, validity time
 }
 
 func (s *cachingStorageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
-	value, ok := s.cache.Get(queryKey(query))
+	value, ok := s.cache.Get(ctx, queryKey(query))
 	if ok {
 		batches := value.([]chunk.ReadBatch)
 		filteredBatch := filterBatchByQuery(query, batches)
@@ -51,7 +51,7 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, query chunk.Index
 	filteredBatch := filterBatchByQuery(query, batches)
 	callback(filteredBatch)
 
-	s.cache.Put(queryKey(query), batches)
+	s.cache.Put(ctx, queryKey(query), batches)
 
 	return nil
 }

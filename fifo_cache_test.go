@@ -1,6 +1,7 @@
 package chunk
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
@@ -14,49 +15,50 @@ const overwrite = 5
 
 func TestFifoCache(t *testing.T) {
 	c := NewFifoCache("test", size, 1*time.Minute)
+	ctx := context.Background()
 
 	// Check put / get works
 	for i := 0; i < size; i++ {
-		c.Put(strconv.Itoa(i), i)
+		c.Put(ctx, strconv.Itoa(i), i)
 		//c.print()
 	}
 	require.Len(t, c.index, size)
 	require.Len(t, c.entries, size)
 
 	for i := 0; i < size; i++ {
-		value, ok := c.Get(strconv.Itoa(i))
+		value, ok := c.Get(ctx, strconv.Itoa(i))
 		require.True(t, ok)
 		require.Equal(t, i, value.(int))
 	}
 
 	// Check evictions
 	for i := size; i < size+overwrite; i++ {
-		c.Put(strconv.Itoa(i), i)
+		c.Put(ctx, strconv.Itoa(i), i)
 		//c.print()
 	}
 	require.Len(t, c.index, size)
 	require.Len(t, c.entries, size)
 
 	for i := 0; i < size-overwrite; i++ {
-		_, ok := c.Get(strconv.Itoa(i))
+		_, ok := c.Get(ctx, strconv.Itoa(i))
 		require.False(t, ok)
 	}
 	for i := size; i < size+overwrite; i++ {
-		value, ok := c.Get(strconv.Itoa(i))
+		value, ok := c.Get(ctx, strconv.Itoa(i))
 		require.True(t, ok)
 		require.Equal(t, i, value.(int))
 	}
 
 	// Check updates work
 	for i := size; i < size+overwrite; i++ {
-		c.Put(strconv.Itoa(i), i*2)
+		c.Put(ctx, strconv.Itoa(i), i*2)
 		//c.print()
 	}
 	require.Len(t, c.index, size)
 	require.Len(t, c.entries, size)
 
 	for i := size; i < size+overwrite; i++ {
-		value, ok := c.Get(strconv.Itoa(i))
+		value, ok := c.Get(ctx, strconv.Itoa(i))
 		require.True(t, ok)
 		require.Equal(t, i*2, value.(int))
 	}
@@ -64,16 +66,17 @@ func TestFifoCache(t *testing.T) {
 
 func TestFifoCacheExpiry(t *testing.T) {
 	c := NewFifoCache("test", size, 5*time.Millisecond)
+	ctx := context.Background()
 
-	c.Put("0", 0)
+	c.Put(ctx, "0", 0)
 
-	value, ok := c.Get("0")
+	value, ok := c.Get(ctx, "0")
 	require.True(t, ok)
 	require.Equal(t, 0, value.(int))
 
 	// Expire the entry.
 	time.Sleep(5 * time.Millisecond)
-	_, ok = c.Get(strconv.Itoa(0))
+	_, ok = c.Get(ctx, strconv.Itoa(0))
 	require.False(t, ok)
 }
 
