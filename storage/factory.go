@@ -34,7 +34,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.CassandraStorageConfig.RegisterFlags(f)
 
 	f.IntVar(&cfg.IndexCacheSize, "store.index-cache-size", 0, "Size of in-memory index cache, 0 to disable.")
-	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 15*time.Minute, "Period for which entries in the index cache are valid.")
+	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Period for which entries in the index cache are valid. Should be no higher than -ingester.max-chunk-idle.")
 }
 
 // NewStorageClient makes a storage client based on the configuration.
