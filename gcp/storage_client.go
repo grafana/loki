@@ -5,7 +5,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"hash/fnv"
 	"strings"
 
 	"cloud.google.com/go/bigtable"
@@ -75,8 +74,6 @@ func newStorageClientV1(cfg Config, client *bigtable.Client, schemaCfg chunk.Sch
 			schemaCfg: schemaCfg,
 			client:    client,
 			keysFn: func(hashValue string, rangeValue []byte) (string, string) {
-				// TODO the hashValue should actually be hashed - but I have data written in
-				// this format, so we need to do a proper migration.
 				rowKey := hashValue + separator + string(rangeValue)
 				return rowKey, column
 			},
@@ -100,8 +97,9 @@ func newStorageClientColumnKey(cfg Config, client *bigtable.Client, schemaCfg ch
 		schemaCfg: schemaCfg,
 		client:    client,
 		keysFn: func(hashValue string, rangeValue []byte) (string, string) {
-			// We are hashing the hash value to improve distribution of keys.
-			return hashKey(hashValue), string(rangeValue)
+			// We could hash the row key for better distribution but we decided against it
+			// because that would make migrations very, very hard.
+			return hashValue, string(rangeValue)
 		},
 	}
 }
@@ -181,9 +179,8 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, query chunk.Ind
 	} else if len(query.RangeValueStart) > 0 {
 		rOpts = append(rOpts, bigtable.RowFilter(bigtable.ColumnRangeFilter(columnFamily, string(query.RangeValueStart), null)))
 	}
-	hashValue := hashKey(query.HashValue)
 
-	r, err := table.ReadRow(ctx, hashValue, rOpts...)
+	r, err := table.ReadRow(ctx, query.HashValue, rOpts...)
 	if err != nil {
 		sp.LogFields(otlog.String("error", err.Error()))
 		return errors.WithStack(err)
@@ -412,11 +409,4 @@ func (b bigtableReadBatchV1) Value(index int) []byte {
 		panic("bad response from bigtable")
 	}
 	return cf[0].Value
-}
-
-func hashKey(key string) string {
-	hasher := fnv.New64a()
-	hasher.Write([]byte(key))
-	hashedKey := string(hasher.Sum(nil))
-	return hashedKey + key // For maintaining uniqueness.
 }
