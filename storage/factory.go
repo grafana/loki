@@ -53,7 +53,7 @@ func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (client chunk.St
 	case "cassandra":
 		client, err = cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	default:
-		client, err = nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, cassandra, inmemory", cfg.StorageClient)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, cassandra, inmemory", cfg.StorageClient)
 	}
 
 	client = newCachingStorageClient(client, cfg.IndexCacheSize, cfg.IndexCacheValidity)
