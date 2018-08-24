@@ -37,8 +37,6 @@ var schemas = []struct {
 	{"v4 schema", v4Schema, newStore, true},
 	{"v5 schema", v5Schema, newStore, true},
 	{"v6 schema", v6Schema, newStore, true},
-	{"v7 schema", v7Schema, newStore, true},
-	{"v8 schema", v8Schema, newStore, false},
 	{"v9 schema", v9Schema, newSeriesStore, true},
 }
 

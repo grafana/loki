@@ -2,9 +2,7 @@ package chunk
 
 import (
 	"bytes"
-	"crypto/sha1"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"sort"
@@ -195,19 +193,12 @@ func TestSchemaRangeKey(t *testing.T) {
 		labelBuckets  = v4Schema(cfg)
 		tsRangeKeys   = v5Schema(cfg)
 		v6RangeKeys   = v6Schema(cfg)
-		v7RangeKeys   = v7Schema(cfg)
-		v8RangeKeys   = v8Schema(cfg)
 		metric        = model.Metric{
 			model.MetricNameLabel: metricName,
 			"bar": "bary",
 			"baz": "bazy",
 		}
-		fooSha1Hash = sha1.Sum([]byte("foo"))
 	)
-
-	seriesID := metricSeriesID(metric)
-	metricBytes, err := json.Marshal(metric)
-	require.NoError(t, err)
 
 	mkEntries := func(hashKey string, callback func(labelName model.LabelName, labelValue model.LabelValue) ([]byte, []byte)) []IndexEntry {
 		result := []IndexEntry{}
@@ -293,62 +284,6 @@ func TestSchemaRangeKey(t *testing.T) {
 		{
 			v6RangeKeys,
 			[]IndexEntry{
-				{
-					TableName:  table,
-					HashValue:  "userid:d0:foo",
-					RangeValue: []byte("0036ee7f\x00\x00chunkID\x003\x00"),
-				},
-				{
-					TableName:  table,
-					HashValue:  "userid:d0:foo:bar",
-					RangeValue: []byte("0036ee7f\x00\x00chunkID\x005\x00"),
-					Value:      []byte("bary"),
-				},
-				{
-					TableName:  table,
-					HashValue:  "userid:d0:foo:baz",
-					RangeValue: []byte("0036ee7f\x00\x00chunkID\x005\x00"),
-					Value:      []byte("bazy"),
-				},
-			},
-		},
-		{
-			v7RangeKeys,
-			[]IndexEntry{
-				{
-					TableName:  table,
-					HashValue:  "userid:d0",
-					RangeValue: append(encodeBase64Bytes(fooSha1Hash[:]), []byte("\x00\x00\x006\x00")...),
-					Value:      []byte("foo"),
-				},
-				{
-					TableName:  table,
-					HashValue:  "userid:d0:foo",
-					RangeValue: []byte("0036ee7f\x00\x00chunkID\x003\x00"),
-				},
-				{
-					TableName:  table,
-					HashValue:  "userid:d0:foo:bar",
-					RangeValue: []byte("0036ee7f\x00\x00chunkID\x005\x00"),
-					Value:      []byte("bary"),
-				},
-				{
-					TableName:  table,
-					HashValue:  "userid:d0:foo:baz",
-					RangeValue: []byte("0036ee7f\x00\x00chunkID\x005\x00"),
-					Value:      []byte("bazy"),
-				},
-			},
-		},
-		{
-			v8RangeKeys,
-			[]IndexEntry{
-				{
-					TableName:  table,
-					HashValue:  "userid:d0",
-					RangeValue: append([]byte(seriesID), []byte("\x00\x00\x007\x00")...),
-					Value:      metricBytes,
-				},
 				{
 					TableName:  table,
 					HashValue:  "userid:d0:foo",

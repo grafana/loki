@@ -93,24 +93,6 @@ func SchemaOpts(cfg StoreConfig, schemaCfg SchemaConfig) []SchemaOpt {
 		})
 	}
 
-	if schemaCfg.V7SchemaFrom.IsSet() {
-		opts = append(opts, SchemaOpt{
-			From: schemaCfg.V7SchemaFrom.Time,
-			NewStore: func(storage StorageClient) (Store, error) {
-				return newStore(cfg, v7Schema(schemaCfg), storage)
-			},
-		})
-	}
-
-	if schemaCfg.V8SchemaFrom.IsSet() {
-		opts = append(opts, SchemaOpt{
-			From: schemaCfg.V8SchemaFrom.Time,
-			NewStore: func(storage StorageClient) (Store, error) {
-				return newStore(cfg, v8Schema(schemaCfg), storage)
-			},
-		})
-	}
-
 	if schemaCfg.V9SchemaFrom.IsSet() {
 		opts = append(opts, SchemaOpt{
 			From: schemaCfg.V9SchemaFrom.Time,

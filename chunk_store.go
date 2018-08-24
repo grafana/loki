@@ -178,13 +178,12 @@ func (c *store) Get(ctx context.Context, from, through model.Time, allMatchers .
 
 	// Fetch metric name chunks if the matcher is of type equal,
 	metricNameMatcher, matchers, ok := extract.MetricNameMatcherFromMatchers(allMatchers)
-	if ok && metricNameMatcher.Type == labels.MatchEqual {
-		log.Span.SetTag("metric", metricNameMatcher.Value)
-		return c.getMetricNameChunks(ctx, from, through, matchers, metricNameMatcher.Value)
+	if !ok && metricNameMatcher.Type != labels.MatchEqual {
+		return nil, fmt.Errorf("query must contain metric name")
 	}
 
-	// Otherwise we consult the metric name index first and then create queries for each matching metric name.
-	return c.getSeriesChunks(ctx, from, through, matchers, metricNameMatcher)
+	log.Span.SetTag("metric", metricNameMatcher.Value)
+	return c.getMetricNameChunks(ctx, from, through, matchers, metricNameMatcher.Value)
 }
 
 func (c *store) validateQuery(ctx context.Context, from model.Time, through *model.Time) (shortcut bool, err error) {
@@ -251,70 +250,6 @@ func (c *store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 	// Filter out chunks based on the empty matchers in the query.
 	filteredChunks := filterChunksByMatchers(allChunks, filters)
 	return filteredChunks, nil
-}
-
-func (c *store) getSeriesChunks(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricNameMatcher *labels.Matcher) ([]Chunk, error) {
-	// Get all series from the index
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-	seriesQueries, err := c.schema.GetReadQueries(from, through, userID)
-	if err != nil {
-		return nil, err
-	}
-	seriesEntries, err := c.lookupEntriesByQueries(ctx, seriesQueries)
-	if err != nil {
-		return nil, err
-	}
-
-	chunks := make([]Chunk, 0, len(seriesEntries))
-outer:
-	for _, seriesEntry := range seriesEntries {
-		metric, err := parseSeriesRangeValue(seriesEntry.RangeValue, seriesEntry.Value)
-		if err != nil {
-			return nil, err
-		}
-
-		// Apply metric name matcher
-		if metricNameMatcher != nil && !metricNameMatcher.Matches(string(metric[model.LabelName(metricNameMatcher.Name)])) {
-			continue outer
-		}
-
-		// Apply matchers
-		for _, matcher := range allMatchers {
-			if !matcher.Matches(string(metric[model.LabelName(matcher.Name)])) {
-				continue outer
-			}
-		}
-
-		var matchers []*labels.Matcher
-		for labelName, labelValue := range metric {
-			if labelName == "__name__" {
-				continue
-			}
-
-			matcher, err := labels.NewMatcher(labels.MatchEqual, string(labelName), string(labelValue))
-			if err != nil {
-				return nil, err
-			}
-			matchers = append(matchers, matcher)
-		}
-
-		cs, err := c.getMetricNameChunks(ctx, from, through, matchers, string(metric[model.MetricNameLabel]))
-		if err != nil {
-			return nil, err
-		}
-
-		for _, chunk := range cs {
-			// getMetricNameChunks() may have selected too many metrics - metrics that match all matchers,
-			// but also have additional labels. We don't want to return those.
-			if chunk.Metric.Equal(metric) {
-				chunks = append(chunks, chunk)
-			}
-		}
-	}
-	return chunks, nil
 }
 
 func (c *store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*labels.Matcher, metricName string) ([]Chunk, error) {

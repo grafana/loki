@@ -28,8 +28,6 @@ type SchemaConfig struct {
 	V4SchemaFrom          util.DayValue
 	V5SchemaFrom          util.DayValue
 	V6SchemaFrom          util.DayValue
-	V7SchemaFrom          util.DayValue
-	V8SchemaFrom          util.DayValue
 	V9SchemaFrom          util.DayValue
 	BigtableColumnKeyFrom util.DayValue
 
@@ -59,8 +57,6 @@ func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.V4SchemaFrom, "dynamodb.v4-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v4 schema.")
 	f.Var(&cfg.V5SchemaFrom, "dynamodb.v5-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v5 schema.")
 	f.Var(&cfg.V6SchemaFrom, "dynamodb.v6-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v6 schema.")
-	f.Var(&cfg.V7SchemaFrom, "dynamodb.v7-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v7 schema (Deprecated).")
-	f.Var(&cfg.V8SchemaFrom, "dynamodb.v8-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v8 schema (Deprecated).")
 	f.Var(&cfg.V9SchemaFrom, "dynamodb.v9-schema-from", "The date (in the format YYYY-MM-DD) after which we enable v9 schema (Series indexing).")
 	f.Var(&cfg.BigtableColumnKeyFrom, "bigtable.column-key-from", "The date (in the format YYYY-MM-DD) after which we use bigtable column keys.")
 

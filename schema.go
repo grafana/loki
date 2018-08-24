@@ -1,14 +1,11 @@
 package chunk
 
 import (
-	"crypto/sha1"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/cortex/pkg/util/extract"
 )
 
 var (
@@ -22,11 +19,9 @@ var (
 	// For v9 schema
 	seriesRangeKeyV1      = []byte{'7'}
 	labelSeriesRangeKeyV1 = []byte{'8'}
-)
 
-// Errors
-var (
-	ErrNoMetricNameNotSupported = errors.New("metric name required for pre-v8 schemas")
+	// ErrNotSupported when a schema doesn't support that particular lookup.
+	ErrNotSupported = errors.New("not supported")
 )
 
 // Schema interface defines methods to calculate the hash and range keys needed
@@ -36,7 +31,6 @@ type Schema interface {
 	GetWriteEntries(from, through model.Time, userID string, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error)
 
 	// When doing a read, use these methods to return the list of entries you should query
-	GetReadQueries(from, through model.Time, userID string) ([]IndexQuery, error)
 	GetReadQueriesForMetric(from, through model.Time, userID string, metricName model.LabelValue) ([]IndexQuery, error)
 	GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName) ([]IndexQuery, error)
 	GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexQuery, error)
@@ -132,22 +126,6 @@ func v6Schema(cfg SchemaConfig) Schema {
 	}
 }
 
-// DEPRECATED: v7 schema is an extension of v6, with support for queries with no metric names, but is broken
-func v7Schema(cfg SchemaConfig) Schema {
-	return schema{
-		cfg.dailyBuckets,
-		v7Entries{},
-	}
-}
-
-// DEPRECATED: v8 schema is an extension of v6, with support for a labelset/series index, but is too slow in practice
-func v8Schema(cfg SchemaConfig) Schema {
-	return schema{
-		cfg.dailyBuckets,
-		v8Entries{},
-	}
-}
-
 // v9 schema index series, not chunks.
 func v9Schema(cfg SchemaConfig) Schema {
 	return schema{
@@ -167,20 +145,6 @@ func (s schema) GetWriteEntries(from, through model.Time, userID string, metricN
 
 	for _, bucket := range s.buckets(from, through, userID) {
 		entries, err := s.entries.GetWriteEntries(bucket, metricName, labels, chunkID)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, entries...)
-	}
-	return result, nil
-}
-
-func (s schema) GetReadQueries(from, through model.Time, userID string) ([]IndexQuery, error) {
-	var result []IndexQuery
-
-	buckets := s.buckets(from, through, userID)
-	for _, bucket := range buckets {
-		entries, err := s.entries.GetReadQueries(bucket)
 		if err != nil {
 			return nil, err
 		}
@@ -247,7 +211,6 @@ func (s schema) GetChunksForSeries(from, through model.Time, userID string, seri
 
 type entries interface {
 	GetWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error)
-	GetReadQueries(bucket Bucket) ([]IndexQuery, error)
 	GetReadMetricQueries(bucket Bucket, metricName model.LabelValue) ([]IndexQuery, error)
 	GetReadMetricLabelQueries(bucket Bucket, metricName model.LabelValue, labelName model.LabelName) ([]IndexQuery, error)
 	GetReadMetricLabelValueQueries(bucket Bucket, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexQuery, error)
@@ -273,10 +236,6 @@ func (originalEntries) GetWriteEntries(bucket Bucket, metricName model.LabelValu
 		})
 	}
 	return result, nil
-}
-
-func (originalEntries) GetReadQueries(_ Bucket) ([]IndexQuery, error) {
-	return nil, ErrNoMetricNameNotSupported
 }
 
 func (originalEntries) GetReadMetricQueries(bucket Bucket, metricName model.LabelValue) ([]IndexQuery, error) {
@@ -313,7 +272,7 @@ func (originalEntries) GetReadMetricLabelValueQueries(bucket Bucket, metricName 
 }
 
 func (originalEntries) GetChunksForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
-	return nil, ErrNoMetricNameNotSupported
+	return nil, ErrNotSupported
 }
 
 type base64Entries struct {
@@ -336,10 +295,6 @@ func (base64Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue,
 		})
 	}
 	return result, nil
-}
-
-func (base64Entries) GetReadQueries(_ Bucket) ([]IndexQuery, error) {
-	return nil, ErrNoMetricNameNotSupported
 }
 
 func (base64Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexQuery, error) {
@@ -380,10 +335,6 @@ func (labelNameInHashKeyEntries) GetWriteEntries(bucket Bucket, metricName model
 	return entries, nil
 }
 
-func (labelNameInHashKeyEntries) GetReadQueries(_ Bucket) ([]IndexQuery, error) {
-	return nil, ErrNoMetricNameNotSupported
-}
-
 func (labelNameInHashKeyEntries) GetReadMetricQueries(bucket Bucket, metricName model.LabelValue) ([]IndexQuery, error) {
 	return []IndexQuery{
 		{
@@ -414,7 +365,7 @@ func (labelNameInHashKeyEntries) GetReadMetricLabelValueQueries(bucket Bucket, m
 }
 
 func (labelNameInHashKeyEntries) GetChunksForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
-	return nil, ErrNoMetricNameNotSupported
+	return nil, ErrNotSupported
 }
 
 // v5Entries includes chunk end time in range key - see #298.
@@ -447,10 +398,6 @@ func (v5Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, lab
 	return entries, nil
 }
 
-func (v5Entries) GetReadQueries(_ Bucket) ([]IndexQuery, error) {
-	return nil, ErrNoMetricNameNotSupported
-}
-
 func (v5Entries) GetReadMetricQueries(bucket Bucket, metricName model.LabelValue) ([]IndexQuery, error) {
 	return []IndexQuery{
 		{
@@ -479,7 +426,7 @@ func (v5Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName model.
 }
 
 func (v5Entries) GetChunksForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
-	return nil, ErrNoMetricNameNotSupported
+	return nil, ErrNotSupported
 }
 
 // v6Entries fixes issues with v5 time encoding being wrong (see #337), and
@@ -511,10 +458,6 @@ func (v6Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, lab
 	}
 
 	return entries, nil
-}
-
-func (v6Entries) GetReadQueries(bucket Bucket) ([]IndexQuery, error) {
-	return nil, ErrNoMetricNameNotSupported
 }
 
 func (v6Entries) GetReadMetricQueries(bucket Bucket, metricName model.LabelValue) ([]IndexQuery, error) {
@@ -552,77 +495,7 @@ func (v6Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName model.
 }
 
 func (v6Entries) GetChunksForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
-	return nil, ErrNoMetricNameNotSupported
-}
-
-// v7Entries is a deprecated scherma initially used to support queries with no metric name. Use v8Entries instead.
-type v7Entries struct {
-	v6Entries
-}
-
-func (entries v7Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
-	indexEntries, err := entries.v6Entries.GetWriteEntries(bucket, metricName, labels, chunkID)
-	if err != nil {
-		return nil, err
-	}
-
-	metricName, err = extract.MetricNameFromMetric(labels)
-	if err != nil {
-		return nil, err
-	}
-	metricNameHashBytes := sha1.Sum([]byte(metricName))
-
-	// Add IndexEntry for metric name with userID:bigBucket HashValue
-	indexEntries = append(indexEntries, IndexEntry{
-		TableName:  bucket.tableName,
-		HashValue:  bucket.hashKey,
-		RangeValue: encodeRangeKey(encodeBase64Bytes(metricNameHashBytes[:]), nil, nil, metricNameRangeKeyV1),
-		Value:      []byte(metricName),
-	})
-
-	return indexEntries, nil
-}
-
-func (v7Entries) GetReadQueries(bucket Bucket) ([]IndexQuery, error) {
-	// Replaced with v8Schema series index
-	return nil, ErrNoMetricNameNotSupported
-}
-
-// v8Entries supports queries with no metric name by using a series index.
-type v8Entries struct {
-	v6Entries
-}
-
-func (entries v8Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
-	indexEntries, err := entries.v6Entries.GetWriteEntries(bucket, metricName, labels, chunkID)
-	if err != nil {
-		return nil, err
-	}
-
-	seriesID := metricSeriesID(labels)
-	seriesBytes, err := json.Marshal(labels)
-	if err != nil {
-		return nil, err
-	}
-
-	// Add IndexEntry for series with userID:bigBucket HashValue
-	indexEntries = append(indexEntries, IndexEntry{
-		TableName:  bucket.tableName,
-		HashValue:  bucket.hashKey,
-		RangeValue: encodeRangeKey([]byte(seriesID), nil, nil, seriesRangeKeyV1),
-		Value:      seriesBytes,
-	})
-
-	return indexEntries, nil
-}
-
-func (v8Entries) GetReadQueries(bucket Bucket) ([]IndexQuery, error) {
-	return []IndexQuery{
-		{
-			TableName: bucket.tableName,
-			HashValue: bucket.hashKey,
-		},
-	}, nil
+	return nil, ErrNotSupported
 }
 
 // v9Entries adds a layer of indirection between labels -> series -> chunks.
@@ -664,10 +537,6 @@ func (v9Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, lab
 	}
 
 	return entries, nil
-}
-
-func (v9Entries) GetReadQueries(bucket Bucket) ([]IndexQuery, error) {
-	return nil, ErrNoMetricNameNotSupported
 }
 
 func (v9Entries) GetReadMetricQueries(bucket Bucket, metricName model.LabelValue) ([]IndexQuery, error) {
