@@ -188,7 +188,8 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, query chunk.Ind
 
 	val, ok := r[columnFamily]
 	if !ok {
-		panic("bad response from bigtable, columnFamily missing")
+		// There are no matching rows.
+		return nil
 	}
 
 	if query.ValueEqual != nil {
