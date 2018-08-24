@@ -201,7 +201,7 @@ func (c *Fetcher) processCacheResponse(chunks []Chunk, keys []string, bufs [][]b
 			missing = append(missing, chunks[i])
 			i++
 		} else if chunkKey > keys[j] {
-			level.Error(util.Logger).Log("msg", "got chunk from cache we didn't ask for")
+			level.Warn(util.Logger).Log("msg", "got chunk from cache we didn't ask for")
 			j++
 		} else {
 			requests = append(requests, decodeRequest{
