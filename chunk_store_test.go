@@ -207,6 +207,7 @@ func TestChunkStore_Get(t *testing.T) {
 			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
 				t.Log("========= Running query", tc.query, "with schema", schema.name)
 				store := newTestChunkStore(t, schema.schemaFn, schema.storeFn)
+				defer store.Stop()
 
 				if err := store.Put(ctx, []Chunk{
 					fooChunk1,
@@ -324,6 +325,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
 				t.Log("========= Running query", tc.query, "with schema", schema.name)
 				store := newTestChunkStore(t, schema.schemaFn, schema.storeFn)
+				defer store.Stop()
 
 				if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {
 					t.Fatal(err)
@@ -359,6 +361,7 @@ func TestChunkStoreRandom(t *testing.T) {
 	for _, schema := range schemas {
 		t.Run(schema.name, func(t *testing.T) {
 			store := newTestChunkStore(t, schema.schemaFn, schema.storeFn)
+			defer store.Stop()
 
 			// put 100 chunks from 0 to 99
 			const chunkLen = 13 * 3600 // in seconds
@@ -422,6 +425,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 	// Test we don't read too much from the index
 	ctx := user.InjectOrgID(context.Background(), userID)
 	store := newTestChunkStore(t, v6Schema, newStore)
+	defer store.Stop()
 
 	// Put 24 chunks 1hr chunks in the store
 	const chunkLen = 60 // in seconds
@@ -461,9 +465,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 		}
 
 		chunks, err := store.Get(ctx, startTime, endTime, matchers...)
-		if err != nil {
-			t.Fatal(t, err)
-		}
+		require.NoError(t, err)
 
 		// We need to check that each chunk is in the time range
 		for _, chunk := range chunks {
