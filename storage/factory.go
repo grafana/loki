@@ -54,7 +54,7 @@ func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) 
 		memcache := cache.Instrument("memcache-index", cache.NewMemcached(cache.MemcachedConfig{
 			Expiration: cfg.IndexCacheValidity,
 		}, client))
-		caches = append(caches, cache.NewBackground(cache.BackgroundConfig{
+		caches = append(caches, cache.NewBackground("memcache-index", cache.BackgroundConfig{
 			WriteBackGoroutines: 10,
 			WriteBackBuffer:     100,
 		}, memcache))

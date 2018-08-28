@@ -13,16 +13,44 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/tsdb/fileutil"
 	"golang.org/x/sys/unix"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
+var (
+	bucketsTotal = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "diskcache_buckets_total",
+		Help:      "Total count of buckets in the cache.",
+	})
+	bucketsInitialized = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "diskcache_added_new_total",
+		Help:      "total number of entries added to the cache",
+	})
+	collisionsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "diskcache_evicted_total",
+		Help:      "total number entries evicted from the cache",
+	})
+
+	globalCache *Diskcache
+	once        sync.Once
+)
+
 // TODO: in the future we could cuckoo hash or linear probe.
 
-// Buckets contain key (~50), chunks (1024) and their metadata (~100)
-const bucketSize = 2048
+const (
+	// Buckets contain chunks (1024) and their metadata (~100)
+	bucketSize = 2048
+
+	// Total number of mutexes shared by the disk cache index
+	numMutexes = 1000
+)
 
 // DiskcacheConfig for the Disk cache.
 type DiskcacheConfig struct {
@@ -38,14 +66,23 @@ func (cfg *DiskcacheConfig) RegisterFlags(f *flag.FlagSet) {
 
 // Diskcache is an on-disk chunk cache.
 type Diskcache struct {
-	mtx     sync.RWMutex
-	f       *os.File
-	buckets uint32
-	buf     []byte
+	f            *os.File
+	buckets      uint32
+	buf          []byte
+	entries      []string
+	entryMutexes []sync.RWMutex
 }
 
 // NewDiskcache creates a new on-disk cache.
 func NewDiskcache(cfg DiskcacheConfig) (*Diskcache, error) {
+	var err error
+	once.Do(func() {
+		globalCache, err = newDiskcache(cfg)
+	})
+	return globalCache, err
+}
+
+func newDiskcache(cfg DiskcacheConfig) (*Diskcache, error) {
 	f, err := os.OpenFile(cfg.Path, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, errors.Wrap(err, "open")
@@ -66,12 +103,15 @@ func NewDiskcache(cfg DiskcacheConfig) (*Diskcache, error) {
 		return nil, err
 	}
 
-	buckets := len(buf) / bucketSize
+	buckets := uint32(len(buf) / bucketSize)
+	bucketsTotal.Set(float64(buckets)) // Report the number of buckets in the diskcache as a metric
 
 	return &Diskcache{
-		f:       f,
-		buf:     buf,
-		buckets: uint32(buckets),
+		f:            f,
+		buckets:      buckets,
+		buf:          buf,
+		entries:      make([]string, buckets),
+		entryMutexes: make([]sync.RWMutex, numMutexes),
 	}, nil
 }
 
@@ -98,18 +138,16 @@ func (d *Diskcache) Fetch(ctx context.Context, keys []string) (found []string, b
 }
 
 func (d *Diskcache) fetch(key string) ([]byte, bool) {
-	d.mtx.RLock()
-	defer d.mtx.RUnlock()
-
 	bucket := hash(key) % d.buckets
-	buf := d.buf[bucket*bucketSize : (bucket+1)*bucketSize]
-
-	existingKey, n, ok := get(buf, 0)
-	if !ok || string(existingKey) != key {
+	shard := bucket % numMutexes // Get the index of the mutex associated with this bucket
+	d.entryMutexes[shard].RLock()
+	defer d.entryMutexes[shard].RUnlock()
+	if d.entries[bucket] != key {
 		return nil, false
 	}
 
-	existingValue, _, ok := get(buf, n)
+	buf := d.buf[bucket*bucketSize : (bucket+1)*bucketSize]
+	existingValue, _, ok := get(buf, 0)
 	if !ok {
 		return nil, false
 	}
@@ -121,31 +159,42 @@ func (d *Diskcache) fetch(key string) ([]byte, bool) {
 
 // Store puts a chunk into the cache.
 func (d *Diskcache) Store(ctx context.Context, keys []string, bufs [][]byte) {
-	sp := opentracing.SpanFromContext(ctx)
-
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-
 	for i := range keys {
-		bucket := hash(keys[i]) % d.buckets
-		buf := d.buf[bucket*bucketSize : (bucket+1)*bucketSize]
-
-		n, err := put([]byte(keys[i]), buf, 0)
-		if err != nil {
-			sp.LogFields(otlog.Error(err))
-			level.Error(util.Logger).Log("msg", "failed to put key to diskcache", "err", err)
-			continue
-		}
-
-		_, err = put(bufs[i], buf, n)
-		if err != nil {
-			sp.LogFields(otlog.Error(err))
-			level.Error(util.Logger).Log("msg", "failed to put value to diskcache", "err", err)
-			continue
-		}
+		d.store(ctx, keys[i], bufs[i])
 	}
 }
 
+func (d *Diskcache) store(ctx context.Context, key string, value []byte) {
+	sp := opentracing.SpanFromContext(ctx)
+
+	bucket := hash(key) % d.buckets
+	shard := bucket % numMutexes // Get the index of the mutex associated with this bucket
+	d.entryMutexes[shard].Lock()
+	defer d.entryMutexes[shard].Unlock()
+	if d.entries[bucket] == key { // If chunk is already cached return nil
+		return
+	}
+
+	if d.entries[bucket] == "" {
+		bucketsInitialized.Inc()
+	} else {
+		collisionsTotal.Inc()
+	}
+
+	buf := d.buf[bucket*bucketSize : (bucket+1)*bucketSize]
+	_, err := put(value, buf, 0)
+	if err != nil {
+		d.entries[bucket] = ""
+		sp.LogFields(otlog.Error(err))
+		level.Error(util.Logger).Log("msg", "failed to put key to diskcache", "err", err)
+		return
+	}
+
+	d.entries[bucket] = key
+}
+
+// put places a value in the buffer in the following format
+// |u int64 <length of key> | key | uint64 <length of value> | value |
 func put(value []byte, buf []byte, n int) (int, error) {
 	if len(value)+n+4 > len(buf) {
 		return 0, errors.Wrap(fmt.Errorf("value too big: %d > %d", len(value), len(buf)), "put")
