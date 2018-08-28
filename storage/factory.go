@@ -41,7 +41,7 @@ func Clients(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, erro
 	}
 
 	opts = append(opts, chunk.StorageOpt{From: model.Time(0), Client: client})
-	if schemaCfg.BigtableColumnKeyFrom.IsSet() {
+	if cfg.StorageClient == "gcp" && schemaCfg.BigtableColumnKeyFrom.IsSet() {
 		client, err = gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating storage client")
