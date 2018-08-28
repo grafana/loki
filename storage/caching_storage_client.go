@@ -7,11 +7,12 @@ import (
 	"time"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/chunk/cache"
 )
 
 type cachingStorageClient struct {
 	chunk.StorageClient
-	cache    *chunk.FifoCache
+	cache    *cache.FifoCache
 	validity time.Duration
 }
 
@@ -22,8 +23,7 @@ func newCachingStorageClient(client chunk.StorageClient, size int, validity time
 
 	return &cachingStorageClient{
 		StorageClient: client,
-		cache:         chunk.NewFifoCache("index", size, validity),
-		validity:      validity,
+		cache:         cache.NewFifoCache("index", size, validity),
 	}
 }
 
