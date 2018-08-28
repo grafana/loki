@@ -20,6 +20,9 @@ type Config struct {
 	memcache       MemcachedConfig
 	memcacheClient MemcachedClientConfig
 	diskcache      DiskcacheConfig
+
+	// For tests to inject specific implementations.
+	Cache Cache
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -34,6 +37,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // New creates a new Cache using Config.
 func New(cfg Config) (Cache, error) {
+	if cfg.Cache != nil {
+		return cfg.Cache, nil
+	}
+
 	caches := []Cache{}
 
 	if cfg.EnableDiskcache {

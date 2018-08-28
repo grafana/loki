@@ -75,26 +75,26 @@ type store struct {
 
 	storage StorageClient
 	schema  Schema
-	*chunkFetcher
+	*Fetcher
 }
 
 func newStore(cfg StoreConfig, schema Schema, storage StorageClient) (Store, error) {
-	fetcher, err := newChunkFetcher(cfg.CacheConfig, storage)
+	fetcher, err := NewChunkFetcher(cfg.CacheConfig, storage)
 	if err != nil {
 		return nil, err
 	}
 
 	return &store{
-		cfg:          cfg,
-		storage:      storage,
-		schema:       schema,
-		chunkFetcher: fetcher,
+		cfg:     cfg,
+		storage: storage,
+		schema:  schema,
+		Fetcher: fetcher,
 	}, nil
 }
 
 // Stop any background goroutines (ie in the cache.)
 func (c *store) Stop() {
-	c.cache.Stop()
+	c.Fetcher.Stop()
 }
 
 // Put implements ChunkStore
@@ -243,7 +243,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 	}
 
 	// Now fetch the actual chunk data from Memcache / S3
-	allChunks, err := c.fetchChunks(ctx, filtered, keys)
+	allChunks, err := c.FetchChunks(ctx, filtered, keys)
 	if err != nil {
 		return nil, promql.ErrStorage(err)
 	}

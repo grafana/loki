@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"testing"
 
@@ -15,11 +16,10 @@ import (
 	prom_chunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
 
+const userID = "1"
+
 func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
-	const (
-		userID   = "1"
-		chunkLen = 13 * 3600 // in seconds
-	)
+	const chunkLen = 13 * 3600 // in seconds
 
 	// put 100 chunks from 0 to 99
 	keys := []string{}
@@ -67,10 +67,11 @@ func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []ch
 		require.Len(t, bufs, 1)
 		require.Len(t, missingKeys, 0)
 
-		foundChunks, missing, err := chunk.ProcessCacheResponse([]chunk.Chunk{chunks[index]}, found, bufs)
+		c, err := chunk.ParseExternalKey(userID, found[0])
 		require.NoError(t, err)
-		require.Empty(t, missing)
-		require.Equal(t, chunks[index], foundChunks[0])
+		err = c.Decode(chunk.NewDecodeContext(), bufs[0])
+		require.NoError(t, err)
+		require.Equal(t, c, chunks[index])
 	}
 }
 
@@ -82,11 +83,36 @@ func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []
 	require.Len(t, bufs, len(keys))
 	require.Len(t, missingKeys, 0)
 
-	foundChunks, missing, err := chunk.ProcessCacheResponse(chunks, found, bufs)
-	require.NoError(t, err)
-	require.Empty(t, missing)
-	require.Equal(t, chunks, foundChunks)
+	result := []chunk.Chunk{}
+	for i := range found {
+		c, err := chunk.ParseExternalKey(userID, found[i])
+		require.NoError(t, err)
+		err = c.Decode(chunk.NewDecodeContext(), bufs[i])
+		require.NoError(t, err)
+		result = append(result, c)
+	}
+	require.Equal(t, chunks, result)
 }
+
+func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []chunk.Chunk) {
+	fetcher, err := chunk.NewChunkFetcher(cache.Config{
+		Cache: c,
+	}, nil)
+	require.NoError(t, err)
+	defer fetcher.Stop()
+
+	found, err := fetcher.FetchChunks(context.Background(), chunks, keys)
+	require.NoError(t, err)
+	sort.Sort(byExternalKey(found))
+	sort.Sort(byExternalKey(chunks))
+	require.Equal(t, chunks, found)
+}
+
+type byExternalKey []chunk.Chunk
+
+func (a byExternalKey) Len() int           { return len(a) }
+func (a byExternalKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byExternalKey) Less(i, j int) bool { return a[i].ExternalKey() < a[j].ExternalKey() }
 
 func testCacheMiss(t *testing.T, cache cache.Cache) {
 	for i := 0; i < 100; i++ {
@@ -101,9 +127,18 @@ func testCacheMiss(t *testing.T, cache cache.Cache) {
 
 func testCache(t *testing.T, cache cache.Cache) {
 	keys, chunks := fillCache(t, cache)
-	testCacheSingle(t, cache, keys, chunks)
-	testCacheMultiple(t, cache, keys, chunks)
-	testCacheMiss(t, cache)
+	t.Run("Single", func(t *testing.T) {
+		testCacheSingle(t, cache, keys, chunks)
+	})
+	t.Run("Multiple", func(t *testing.T) {
+		testCacheMultiple(t, cache, keys, chunks)
+	})
+	t.Run("Miss", func(t *testing.T) {
+		testCacheMiss(t, cache)
+	})
+	t.Run("Fetcher", func(t *testing.T) {
+		testChunkFetcher(t, cache, keys, chunks)
+	})
 }
 
 func TestMemcache(t *testing.T) {

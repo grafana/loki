@@ -4,41 +4,71 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/weaveworks/common/user"
+	"github.com/weaveworks/cortex/pkg/chunk/cache"
 	"github.com/weaveworks/cortex/pkg/util"
 	"github.com/weaveworks/cortex/pkg/util/extract"
 )
 
 var (
 	errCardinalityExceeded = errors.New("cardinality limit exceeded")
+
+	indexLookupsPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "chunk_store_index_lookups_per_query",
+		Help:      "Distribution of #index lookups per query.",
+		Buckets:   prometheus.DefBuckets,
+	})
+	preIntersectionPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "chunk_store_series_pre_intersection_per_query",
+		Help:      "Distribution of #series (pre intersection) per query.",
+		// A reasonable upper bound is around 100k - 10*(8^8) = 167k.
+		Buckets: prometheus.ExponentialBuckets(10, 8, 8),
+	})
+	postIntersectionPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "chunk_store_series_post_intersection_per_query",
+		Help:      "Distribution of #series (post intersection) per query.",
+		// A reasonable upper bound is around 100k - 10*(8^8) = 167k.
+		Buckets: prometheus.ExponentialBuckets(10, 8, 8),
+	})
+	chunksPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "chunk_store_chunks_per_query",
+		Help:      "Distribution of #chunks per query.",
+		// For v. high cardinality could go upto 1m chunks per query - 10*(8^9) = 1.3m.
+		Buckets: prometheus.ExponentialBuckets(10, 8, 9),
+	})
 )
 
 // seriesStore implements Store
 type seriesStore struct {
 	store
-	cardinalityCache *fifoCache
+	cardinalityCache *cache.FifoCache
 }
 
 func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient) (Store, error) {
-	fetcher, err := newChunkFetcher(cfg.CacheConfig, storage)
+	fetcher, err := NewChunkFetcher(cfg.CacheConfig, storage)
 	if err != nil {
 		return nil, err
 	}
 
 	return &seriesStore{
 		store: store{
-			cfg:          cfg,
-			storage:      storage,
-			schema:       schema,
-			chunkFetcher: fetcher,
+			cfg:     cfg,
+			storage: storage,
+			schema:  schema,
+			Fetcher: fetcher,
 		},
-		cardinalityCache: newFifoCache(cfg.CardinalityCacheSize),
+		cardinalityCache: cache.NewFifoCache("cardinality", cfg.CardinalityCacheSize, cfg.CardinalityCacheValidity),
 	}, nil
 }
 
@@ -70,14 +100,14 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("Series IDs", len(seriesIDs))
+	level.Debug(log).Log("series-ids", len(seriesIDs))
 
 	// Lookup the series in the index to get the chunks.
 	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, seriesIDs)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("Chunk IDs", len(chunkIDs))
+	level.Debug(log).Log("chunk-ids", len(chunkIDs))
 
 	// Filter out chunks that are not in the selected time range.
 	chunks, err := c.convertChunkIDsToChunks(ctx, chunkIDs)
@@ -85,7 +115,8 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 		return nil, err
 	}
 	filtered, keys := filterChunksByTime(from, through, chunks)
-	level.Debug(log).Log("Chunks post filtering", len(chunks))
+	level.Debug(log).Log("chunks-post-filtering", len(chunks))
+	chunksPerQuery.Observe(float64(len(filtered)))
 
 	// Protect ourselves against OOMing.
 	if len(chunkIDs) > c.cfg.QueryChunkLimit {
@@ -95,7 +126,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	}
 
 	// Now fetch the actual chunk data from Memcache / S3
-	allChunks, err := c.fetchChunks(ctx, filtered, keys)
+	allChunks, err := c.FetchChunks(ctx, filtered, keys)
 	if err != nil {
 		level.Error(log).Log("err", err)
 		return nil, err
@@ -112,12 +143,19 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 
 	// Just get series for metric if there are no matchers
 	if len(matchers) == 0 {
-		return c.lookupSeriesByMetricNameMatcher(ctx, from, through, metricName, nil)
+		indexLookupsPerQuery.Observe(1)
+		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, metricName, nil)
+		if err != nil {
+			preIntersectionPerQuery.Observe(float64(len(series)))
+			postIntersectionPerQuery.Observe(float64(len(series)))
+		}
+		return series, err
 	}
 
 	// Otherwise get series which include other matchers
 	incomingIDs := make(chan []string)
 	incomingErrors := make(chan error)
+	indexLookupsPerQuery.Observe(float64(len(matchers)))
 	for _, matcher := range matchers {
 		go func(matcher *labels.Matcher) {
 			ids, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, metricName, matcher)
@@ -129,13 +167,15 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 		}(matcher)
 	}
 
-	// Receive chunkSets from all matchers
+	// Receive series IDs from all matchers, intersect as we go.
 	var ids []string
+	var preIntersectionCount int
 	var lastErr error
 	var cardinalityExceededErrors int
 	for i := 0; i < len(matchers); i++ {
 		select {
 		case incoming := <-incomingIDs:
+			preIntersectionCount += len(incoming)
 			if ids == nil {
 				ids = incoming
 			} else {
@@ -154,6 +194,8 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	} else if lastErr != nil {
 		return nil, lastErr
 	}
+	preIntersectionPerQuery.Observe(float64(preIntersectionCount))
+	postIntersectionPerQuery.Observe(float64(len(ids)))
 
 	level.Debug(log).Log("msg", "post intersection", "ids", len(ids))
 	return ids, nil
@@ -182,13 +224,12 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	level.Debug(log).Log("queries", len(queries))
 
 	for _, query := range queries {
-		value, updated, ok := c.cardinalityCache.get(query.HashValue)
+		value, ok := c.cardinalityCache.Get(ctx, query.HashValue)
 		if !ok {
 			continue
 		}
-		entryAge := time.Now().Sub(updated)
 		cardinality := value.(int)
-		if entryAge < c.cfg.CardinalityCacheValidity && cardinality > c.cfg.CardinalityLimit {
+		if cardinality > c.cfg.CardinalityLimit {
 			return nil, errCardinalityExceeded
 		}
 	}
@@ -201,7 +242,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 
 	// TODO This is not correct, will overcount for queries > 24hrs
 	for _, query := range queries {
-		c.cardinalityCache.put(query.HashValue, len(entries))
+		c.cardinalityCache.Put(ctx, query.HashValue, len(entries))
 	}
 	if len(entries) > c.cfg.CardinalityLimit {
 		return nil, errCardinalityExceeded
