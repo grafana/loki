@@ -29,6 +29,7 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	chunk_util "github.com/weaveworks/cortex/pkg/chunk/util"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -288,7 +289,11 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 	return backoff.Err()
 }
 
-func (a storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (s storageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
+	return chunk_util.DoParallelQueries(ctx, s.query, queries, callback)
+}
+
+func (a storageClient) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
 	defer sp.Finish()
 

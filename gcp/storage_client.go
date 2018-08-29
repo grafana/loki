@@ -13,6 +13,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	chunk_util "github.com/weaveworks/cortex/pkg/chunk/util"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -162,7 +163,88 @@ func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.Wri
 	return nil
 }
 
-func (s *storageClientColumnKey) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
+	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages")
+	defer sp.Finish()
+
+	// A limitation of this approach is that this only fetches whole rows; but
+	// whatever, we filter them in the cache on the client.  But for unit tests to
+	// pass, we must do this.
+	callback = chunk_util.QueryFilter(callback)
+
+	type tableQuery struct {
+		name    string
+		queries map[string]chunk.IndexQuery
+		rows    bigtable.RowList
+	}
+
+	tableQueries := map[string]tableQuery{}
+	for _, query := range queries {
+		tq, ok := tableQueries[query.TableName]
+		if !ok {
+			tq = tableQuery{
+				name:    query.TableName,
+				queries: map[string]chunk.IndexQuery{},
+			}
+		}
+		tq.queries[query.HashValue] = query
+		tq.rows = append(tq.rows, query.HashValue)
+		tableQueries[query.TableName] = tq
+	}
+
+	errs := make(chan error)
+
+	for _, tq := range tableQueries {
+
+		table := s.client.Open(tq.name)
+		for i := 0; i < len(tq.rows); i += maxRowReads {
+
+			page := tq.rows[i:util.Min(i+maxRowReads, len(tq.rows))]
+			go func(page bigtable.RowList, tq tableQuery) {
+				var processingErr error
+				// rows are returned in key order, not order in row list
+				err := table.ReadRows(ctx, page, func(row bigtable.Row) bool {
+
+					query, ok := tq.queries[row.Key()]
+					if !ok {
+						processingErr = errors.WithStack(fmt.Errorf("Got row for unknown chunk: %s", row.Key()))
+						return false
+					}
+
+					val, ok := row[columnFamily]
+					if !ok {
+						// There are no matching rows.
+						return true
+					}
+
+					return callback(query, bigtableReadBatchColumnKey{
+						items:        val,
+						columnPrefix: columnFamily + ":",
+					})
+				})
+
+				if processingErr != nil {
+					errs <- processingErr
+				} else {
+					errs <- err
+				}
+			}(page, tq)
+		}
+	}
+
+	var lastErr error
+	for _, tq := range tableQueries {
+		for i := 0; i < len(tq.rows); i += maxRowReads {
+			err := <-errs
+			if err != nil {
+				lastErr = err
+			}
+		}
+	}
+	return lastErr
+}
+
+func (s *storageClientColumnKey) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
 	const null = string('\xff')
 
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
@@ -343,7 +425,11 @@ func (s *storageClientColumnKey) GetChunks(ctx context.Context, input []chunk.Ch
 	return output, nil
 }
 
-func (s *storageClientV1) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *storageClientV1) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
+	return chunk_util.DoParallelQueries(ctx, s.query, queries, callback)
+}
+
+func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
 	const null = string('\xff')
 
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
