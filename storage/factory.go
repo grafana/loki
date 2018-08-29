@@ -39,8 +39,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Period for which entries in the index cache are valid. Should be no higher than -ingester.max-chunk-idle.")
 }
 
-// Clients makes the storage clients based on the configuration.
-func Clients(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) {
+// Opts makes the storage clients based on the configuration.
+func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) {
 	opts := []chunk.StorageOpt{}
 	client, err := newStorageClient(cfg, schemaCfg)
 	if err != nil {
@@ -54,7 +54,10 @@ func Clients(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, erro
 			return nil, errors.Wrap(err, "error creating storage client")
 		}
 
-		opts = append(opts, chunk.StorageOpt{From: schemaCfg.BigtableColumnKeyFrom.Time, Client: client})
+		opts = append(opts, chunk.StorageOpt{
+			From:   schemaCfg.BigtableColumnKeyFrom.Time,
+			Client: newCachingStorageClient(client, cfg.IndexCacheSize, cfg.IndexCacheValidity),
+		})
 	}
 
 	return opts, nil

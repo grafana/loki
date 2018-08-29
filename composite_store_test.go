@@ -316,7 +316,7 @@ func TestNewStoreTimeConvergence(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			store, err := NewStore(StoreConfig{}, SchemaConfig{}, testcase.schemaOpts, testcase.storageOpts)
+			store, err := newCompositeStore(StoreConfig{}, SchemaConfig{}, testcase.schemaOpts, testcase.storageOpts)
 			require.NoError(t, err)
 			cs := store.(compositeStore)
 			require.Equal(t, len(testcase.expected), len(cs.stores))

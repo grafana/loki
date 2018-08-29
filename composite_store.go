@@ -138,7 +138,13 @@ func latest(a, b model.Time) model.Time {
 
 // NewStore creates a new Store which delegates to different stores depending
 // on time.
-func NewStore(cfg StoreConfig, schemaCfg SchemaConfig, schemaOpts []SchemaOpt, storageOpts []StorageOpt) (Store, error) {
+func NewStore(cfg StoreConfig, schemaCfg SchemaConfig, storageOpts []StorageOpt) (Store, error) {
+	schemaOpts := SchemaOpts(cfg, schemaCfg)
+
+	return newCompositeStore(cfg, schemaCfg, schemaOpts, storageOpts)
+}
+
+func newCompositeStore(cfg StoreConfig, schemaCfg SchemaConfig, schemaOpts []SchemaOpt, storageOpts []StorageOpt) (Store, error) {
 	stores := []compositeStoreEntry{}
 	add := func(i, j int) error {
 		schemaOpt := schemaOpts[i]
