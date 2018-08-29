@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
@@ -48,8 +49,11 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 		}
 	}
 
+	var resultsMtx sync.Mutex
 	results := map[string][]chunk.ReadBatch{}
 	err := s.StorageClient.QueryPages(ctx, cacheableMissed, func(cacheableQuery chunk.IndexQuery, r chunk.ReadBatch) bool {
+		resultsMtx.Lock()
+		defer resultsMtx.Unlock()
 		key := queryKey(cacheableQuery)
 		results[key] = append(results[key], r)
 		return true
@@ -58,6 +62,8 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 		return err
 	}
 
+	resultsMtx.Lock()
+	defer resultsMtx.Unlock()
 	for key, batches := range results {
 		query := missed[key]
 		for _, batch := range batches {
