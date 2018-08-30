@@ -39,37 +39,39 @@ func DoParallelQueries(
 	return lastErr
 }
 
+// Callback from an IndexQuery.
 type Callback func(chunk.IndexQuery, chunk.ReadBatch) bool
 
-type readBatch []cell
-
-func (b readBatch) Len() int                { return len(b) }
-func (b readBatch) RangeValue(i int) []byte { return b[i].column }
-func (b readBatch) Value(i int) []byte      { return b[i].value }
-
-type cell struct {
-	column []byte
-	value  []byte
+type filteringBatch struct {
+	query chunk.IndexQuery
+	chunk.ReadBatch
 }
 
+func (f *filteringBatch) Next() bool {
+	for f.ReadBatch.Next() {
+		rangeValue, value := f.ReadBatch.RangeValue(), f.ReadBatch.Value()
+
+		if len(f.query.RangeValuePrefix) != 0 && !strings.HasPrefix(string(rangeValue), string(f.query.RangeValuePrefix)) {
+			continue
+		}
+		if len(f.query.RangeValueStart) != 0 && string(rangeValue) < string(f.query.RangeValueStart) {
+			continue
+		}
+		if len(f.query.ValueEqual) != 0 && !bytes.Equal(value, f.query.ValueEqual) {
+			continue
+		}
+
+		return true
+	}
+
+	return false
+}
+
+// QueryFilter wraps a callback to ensure the results are filtered correctly;
+// useful for the cache and BigTable backend, which only ever fetches the whole
+// row.
 func QueryFilter(callback Callback) Callback {
 	return func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
-		finalBatch := make(readBatch, 0, batch.Len())
-		for i := 0; i < batch.Len(); i++ {
-			rangeValue, value := batch.RangeValue(i), batch.Value(i)
-
-			if len(query.RangeValuePrefix) != 0 && !strings.HasPrefix(string(rangeValue), string(query.RangeValuePrefix)) {
-				continue
-			}
-			if len(query.RangeValueStart) != 0 && string(rangeValue) < string(query.RangeValueStart) {
-				continue
-			}
-			if len(query.ValueEqual) != 0 && !bytes.Equal(value, query.ValueEqual) {
-				continue
-			}
-
-			finalBatch = append(finalBatch, cell{column: rangeValue, value: value})
-		}
-		return callback(query, finalBatch)
+		return callback(query, &filteringBatch{query, batch})
 	}
 }

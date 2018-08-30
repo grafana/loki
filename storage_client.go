@@ -23,7 +23,7 @@ type WriteBatch interface {
 
 // ReadBatch represents the results of a QueryPages.
 type ReadBatch interface {
-	Len() int
-	RangeValue(index int) []byte
-	Value(index int) []byte
+	Next() bool
+	RangeValue() []byte
+	Value() []byte
 }

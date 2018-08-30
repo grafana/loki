@@ -210,7 +210,7 @@ func (s *storageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 	defer iter.Close()
 	scanner := iter.Scanner()
 	for scanner.Next() {
-		var b readBatch
+		b := &readBatch{}
 		if err := scanner.Scan(&b.rangeValue, &b.value); err != nil {
 			return errors.WithStack(err)
 		}
@@ -223,27 +223,26 @@ func (s *storageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 
 // readBatch represents a batch of rows read from Cassandra.
 type readBatch struct {
+	consumed   bool
 	rangeValue []byte
 	value      []byte
 }
 
 // Len implements chunk.ReadBatch; in Cassandra we 'stream' results back
 // one-by-one, so this always returns 1.
-func (readBatch) Len() int {
-	return 1
+func (b *readBatch) Next() bool {
+	if b.consumed {
+		return false
+	}
+	b.consumed = true
+	return true
 }
 
-func (b readBatch) RangeValue(index int) []byte {
-	if index != 0 {
-		panic("index != 0")
-	}
+func (b *readBatch) RangeValue() []byte {
 	return b.rangeValue
 }
 
-func (b readBatch) Value(index int) []byte {
-	if index != 0 {
-		panic("index != 0")
-	}
+func (b *readBatch) Value() []byte {
 	return b.value
 }
 
