@@ -5,8 +5,6 @@ import (
 	"sync"
 	"time"
 
-	ot "github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -132,9 +130,6 @@ func (c *FifoCache) Stop() error {
 
 // Put stores the value against the key.
 func (c *FifoCache) Put(ctx context.Context, key string, value interface{}) {
-	span, ctx := ot.StartSpanFromContext(ctx, c.name+"-cache-put")
-	defer span.Finish()
-
 	c.entriesAdded.Inc()
 	if c.size == 0 {
 		return
@@ -202,9 +197,6 @@ func (c *FifoCache) Put(ctx context.Context, key string, value interface{}) {
 
 // Get returns the stored value against the key and when the key was last updated.
 func (c *FifoCache) Get(ctx context.Context, key string) (interface{}, bool) {
-	span, ctx := ot.StartSpanFromContext(ctx, c.name+"-cache-get")
-	defer span.Finish()
-
 	c.totalGets.Inc()
 	if c.size == 0 {
 		return nil, false
@@ -217,17 +209,15 @@ func (c *FifoCache) Get(ctx context.Context, key string) (interface{}, bool) {
 	if ok {
 		updated := c.entries[index].updated
 		if time.Now().Sub(updated) < c.validity {
-			span.LogFields(otlog.Bool("hit", true))
+
 			return c.entries[index].value, true
 		}
 
 		c.totalMisses.Inc()
 		c.staleGets.Inc()
-		span.LogFields(otlog.Bool("hit", false), otlog.Bool("stale", true))
 		return nil, false
 	}
 
-	span.LogFields(otlog.Bool("hit", false), otlog.Bool("stale", false))
 	c.totalMisses.Inc()
 	return nil, false
 }

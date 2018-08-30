@@ -8,9 +8,10 @@ import (
 	"time"
 
 	proto "github.com/golang/protobuf/proto"
+	ot "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/cache"
 	chunk_util "github.com/weaveworks/cortex/pkg/chunk/util"
@@ -118,6 +119,7 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 	cacheableMissed := []chunk.IndexQuery{}
 	missed := map[string]chunk.IndexQuery{}
 
+	span, ctx := ot.StartSpanFromContext(ctx, "Index cache lookups")
 	for _, query := range queries {
 		key := queryKey(query)
 		batch, ok, err := s.cache.Fetch(ctx, key)
@@ -139,6 +141,8 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 	if len(cacheableMissed) == 0 {
 		return nil
 	}
+	span.LogFields(otlog.Int("queries", len(queries)), otlog.Int("hits", len(queries)-len(missed)), otlog.Int("misses", len(missed)))
+	span.Finish()
 
 	var resultsMtx sync.Mutex
 	results := map[string]ReadBatch{}
