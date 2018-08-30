@@ -30,22 +30,22 @@ var (
 		Namespace: "cortex",
 		Name:      "chunk_store_series_pre_intersection_per_query",
 		Help:      "Distribution of #series (pre intersection) per query.",
-		// A reasonable upper bound is around 100k - 10*(8^8) = 167k.
-		Buckets: prometheus.ExponentialBuckets(10, 8, 8),
+		// A reasonable upper bound is around 100k - 10*(8^5) = 327k.
+		Buckets: prometheus.ExponentialBuckets(10, 8, 5),
 	})
 	postIntersectionPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "chunk_store_series_post_intersection_per_query",
 		Help:      "Distribution of #series (post intersection) per query.",
-		// A reasonable upper bound is around 100k - 10*(8^8) = 167k.
-		Buckets: prometheus.ExponentialBuckets(10, 8, 8),
+		// A reasonable upper bound is around 100k - 10*(8^5) = 327k.
+		Buckets: prometheus.ExponentialBuckets(10, 8, 5),
 	})
 	chunksPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "chunk_store_chunks_per_query",
 		Help:      "Distribution of #chunks per query.",
-		// For v. high cardinality could go upto 1m chunks per query - 10*(8^9) = 1.3m.
-		Buckets: prometheus.ExponentialBuckets(10, 8, 9),
+		// For 100k series for 7 week, could be 1.2m - 10*(8^6) = 2.6m.
+		Buckets: prometheus.ExponentialBuckets(10, 8, 6),
 	})
 )
 
