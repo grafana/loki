@@ -243,8 +243,7 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []chunk
 						return true
 					}
 
-					return callback(query, &bigtableReadBatchColumnKey{
-						i:     -1,
+					return callback(query, &columnKeyBatch{
 						items: val,
 					})
 				})
@@ -310,30 +309,40 @@ func (s *storageClientColumnKey) query(ctx context.Context, query chunk.IndexQue
 
 		val = filteredItems
 	}
-	callback(&bigtableReadBatchColumnKey{
-		i:     -1,
+	callback(&columnKeyBatch{
 		items: val,
 	})
 	return nil
 }
 
-// bigtableReadBatchColumnKey represents a batch of values read from Bigtable.
-type bigtableReadBatchColumnKey struct {
-	i     int
+// columnKeyBatch represents a batch of values read from Bigtable.
+type columnKeyBatch struct {
 	items []bigtable.ReadItem
 }
 
-func (b *bigtableReadBatchColumnKey) Next() bool {
-	b.i++
-	return b.i < len(b.items)
+func (c *columnKeyBatch) Iterator() chunk.ReadBatchIterator {
+	return &columnKeyIterator{
+		i:              -1,
+		columnKeyBatch: c,
+	}
 }
 
-func (b *bigtableReadBatchColumnKey) RangeValue() []byte {
-	return []byte(strings.TrimPrefix(b.items[b.i].Column, columnPrefix))
+type columnKeyIterator struct {
+	i int
+	*columnKeyBatch
 }
 
-func (b *bigtableReadBatchColumnKey) Value() []byte {
-	return b.items[b.i].Value
+func (c *columnKeyIterator) Next() bool {
+	c.i++
+	return c.i < len(c.items)
+}
+
+func (c *columnKeyIterator) RangeValue() []byte {
+	return []byte(strings.TrimPrefix(c.items[c.i].Column, columnPrefix))
+}
+
+func (c *columnKeyIterator) Value() []byte {
+	return c.items[c.i].Value
 }
 
 func (s *storageClientColumnKey) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
@@ -484,7 +493,7 @@ func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, cal
 
 	err := table.ReadRows(ctx, rowRange, func(r bigtable.Row) bool {
 		if query.ValueEqual == nil || bytes.Equal(r[columnFamily][0].Value, query.ValueEqual) {
-			return callback(&bigtableReadBatchV1{
+			return callback(&rowBatch{
 				row: r,
 			})
 		}
@@ -498,15 +507,25 @@ func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, cal
 	return nil
 }
 
-// bigtableReadBatchV1 represents a batch of rows read from Bigtable.  As the
+// rowBatch represents a batch of rows read from Bigtable.  As the
 // bigtable interface gives us rows one-by-one, a batch always only contains
 // a single row.
-type bigtableReadBatchV1 struct {
-	consumed bool
-	row      bigtable.Row
+type rowBatch struct {
+	row bigtable.Row
 }
 
-func (b *bigtableReadBatchV1) Next() bool {
+func (b *rowBatch) Iterator() chunk.ReadBatchIterator {
+	return &rowBatchIterator{
+		rowBatch: b,
+	}
+}
+
+type rowBatchIterator struct {
+	consumed bool
+	*rowBatch
+}
+
+func (b *rowBatchIterator) Next() bool {
 	if b.consumed {
 		return false
 	}
@@ -514,13 +533,13 @@ func (b *bigtableReadBatchV1) Next() bool {
 	return true
 }
 
-func (b *bigtableReadBatchV1) RangeValue() []byte {
+func (b *rowBatchIterator) RangeValue() []byte {
 	// String before the first separator is the hashkey
 	parts := strings.SplitN(b.row.Key(), separator, 2)
 	return []byte(parts[1])
 }
 
-func (b *bigtableReadBatchV1) Value() []byte {
+func (b *rowBatchIterator) Value() []byte {
 	cf, ok := b.row[columnFamily]
 	if !ok || len(cf) != 1 {
 		panic("bad response from bigtable")

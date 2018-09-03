@@ -254,9 +254,7 @@ func (m *MockStorage) query(ctx context.Context, query IndexQuery, callback func
 		items = filtered
 	}
 
-	result := mockReadBatch{
-		index: -1,
-	}
+	result := mockReadBatch{}
 	for _, item := range items {
 		result.items = append(result.items, item)
 	}
@@ -316,19 +314,30 @@ func (b *mockWriteBatch) Add(tableName, hashValue string, rangeValue []byte, val
 }
 
 type mockReadBatch struct {
-	index int
 	items []mockItem
 }
 
-func (b *mockReadBatch) Next() bool {
+func (b *mockReadBatch) Iterator() ReadBatchIterator {
+	return &mockReadBatchIter{
+		index:         -1,
+		mockReadBatch: b,
+	}
+}
+
+type mockReadBatchIter struct {
+	index int
+	*mockReadBatch
+}
+
+func (b *mockReadBatchIter) Next() bool {
 	b.index++
 	return b.index < len(b.items)
 }
 
-func (b *mockReadBatch) RangeValue() []byte {
+func (b *mockReadBatchIter) RangeValue() []byte {
 	return b.items[b.index].rangeValue
 }
 
-func (b *mockReadBatch) Value() []byte {
+func (b *mockReadBatchIter) Value() []byte {
 	return b.items[b.index].value
 }

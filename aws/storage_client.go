@@ -407,7 +407,6 @@ func (a storageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput
 
 		queryOutput := page.Data().(*dynamodb.QueryOutput)
 		return &dynamoDBReadResponse{
-			i:     -1,
 			items: queryOutput.Items,
 		}, nil
 	}
@@ -794,20 +793,31 @@ func (a storageClient) putS3Chunk(ctx context.Context, key string, buf []byte) e
 
 // Slice of values returned; map key is attribute name
 type dynamoDBReadResponse struct {
-	i     int
 	items []map[string]*dynamodb.AttributeValue
 }
 
-func (b *dynamoDBReadResponse) Next() bool {
+func (b *dynamoDBReadResponse) Iterator() chunk.ReadBatchIterator {
+	return &dynamoDBReadResponseIterator{
+		i:                    -1,
+		dynamoDBReadResponse: b,
+	}
+}
+
+type dynamoDBReadResponseIterator struct {
+	i int
+	*dynamoDBReadResponse
+}
+
+func (b *dynamoDBReadResponseIterator) Next() bool {
 	b.i++
 	return b.i < len(b.items)
 }
 
-func (b *dynamoDBReadResponse) RangeValue() []byte {
+func (b *dynamoDBReadResponseIterator) RangeValue() []byte {
 	return b.items[b.i][rangeKey].B
 }
 
-func (b *dynamoDBReadResponse) Value() []byte {
+func (b *dynamoDBReadResponseIterator) Value() []byte {
 	chunkValue, ok := b.items[b.i][valueKey]
 	if !ok {
 		return nil

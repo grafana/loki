@@ -29,9 +29,10 @@ func TestIndexBasic(t *testing.T) {
 			}
 			var have []chunk.IndexEntry
 			err := client.QueryPages(context.Background(), entries, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
-				for read.Next() {
+				iter := read.Iterator()
+				for iter.Next() {
 					have = append(have, chunk.IndexEntry{
-						RangeValue: read.RangeValue(),
+						RangeValue: iter.RangeValue(),
 					})
 				}
 				return true
@@ -170,12 +171,13 @@ func TestQueryPages(t *testing.T) {
 				for run {
 					var have []chunk.IndexEntry
 					err = client.QueryPages(context.Background(), []chunk.IndexQuery{tt.query}, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
-						for read.Next() {
+						iter := read.Iterator()
+						for iter.Next() {
 							have = append(have, chunk.IndexEntry{
 								TableName:  tt.query.TableName,
 								HashValue:  tt.query.HashValue,
-								RangeValue: read.RangeValue(),
-								Value:      read.Value(),
+								RangeValue: iter.RangeValue(),
+								Value:      iter.Value(),
 							})
 						}
 						return true

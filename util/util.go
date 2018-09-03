@@ -3,7 +3,6 @@ package util
 import (
 	"bytes"
 	"context"
-	"strings"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
 )
@@ -47,14 +46,26 @@ type filteringBatch struct {
 	chunk.ReadBatch
 }
 
-func (f *filteringBatch) Next() bool {
-	for f.ReadBatch.Next() {
-		rangeValue, value := f.ReadBatch.RangeValue(), f.ReadBatch.Value()
+func (f filteringBatch) Iterator() chunk.ReadBatchIterator {
+	return &filteringBatchIter{
+		query:             f.query,
+		ReadBatchIterator: f.ReadBatch.Iterator(),
+	}
+}
 
-		if len(f.query.RangeValuePrefix) != 0 && !strings.HasPrefix(string(rangeValue), string(f.query.RangeValuePrefix)) {
+type filteringBatchIter struct {
+	query chunk.IndexQuery
+	chunk.ReadBatchIterator
+}
+
+func (f *filteringBatchIter) Next() bool {
+	for f.ReadBatchIterator.Next() {
+		rangeValue, value := f.ReadBatchIterator.RangeValue(), f.ReadBatchIterator.Value()
+
+		if len(f.query.RangeValuePrefix) != 0 && !bytes.HasPrefix(rangeValue, f.query.RangeValuePrefix) {
 			continue
 		}
-		if len(f.query.RangeValueStart) != 0 && string(rangeValue) < string(f.query.RangeValueStart) {
+		if len(f.query.RangeValueStart) != 0 && bytes.Compare(f.query.RangeValueStart, rangeValue) > 0 {
 			continue
 		}
 		if len(f.query.ValueEqual) != 0 && !bytes.Equal(value, f.query.ValueEqual) {

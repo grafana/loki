@@ -23,6 +23,11 @@ type WriteBatch interface {
 
 // ReadBatch represents the results of a QueryPages.
 type ReadBatch interface {
+	Iterator() ReadBatchIterator
+}
+
+// ReadBatchIterator is an iterator over a ReadBatch.
+type ReadBatchIterator interface {
 	Next() bool
 	RangeValue() []byte
 	Value() []byte

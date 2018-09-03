@@ -241,9 +241,18 @@ type readBatch struct {
 	value      []byte
 }
 
-// Len implements chunk.ReadBatch; in Cassandra we 'stream' results back
-// one-by-one, so this always returns 1.
-func (b *readBatch) Next() bool {
+func (r *readBatch) Iterator() chunk.ReadBatchIterator {
+	return &readBatchIter{
+		readBatch: r,
+	}
+}
+
+type readBatchIter struct {
+	consumed bool
+	*readBatch
+}
+
+func (b *readBatchIter) Next() bool {
 	if b.consumed {
 		return false
 	}
@@ -251,11 +260,11 @@ func (b *readBatch) Next() bool {
 	return true
 }
 
-func (b *readBatch) RangeValue() []byte {
+func (b *readBatchIter) RangeValue() []byte {
 	return b.rangeValue
 }
 
-func (b *readBatch) Value() []byte {
+func (b *readBatchIter) Value() []byte {
 	return b.value
 }
 

@@ -349,12 +349,13 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, from, through mode
 func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
 	var entries []IndexEntry
 	err := c.storage.QueryPages(ctx, queries, func(query IndexQuery, resp ReadBatch) bool {
-		for resp.Next() {
+		iter := resp.Iterator()
+		for iter.Next() {
 			entries = append(entries, IndexEntry{
 				TableName:  query.TableName,
 				HashValue:  query.HashValue,
-				RangeValue: resp.RangeValue(),
-				Value:      resp.Value(),
+				RangeValue: iter.RangeValue(),
+				Value:      iter.Value(),
 			})
 		}
 		return true
