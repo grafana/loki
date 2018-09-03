@@ -424,6 +424,9 @@ func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery
 		}
 		return true
 	})
+	if err != nil {
+		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error querying storage", "err", err)
+	}
 	return entries, err
 }
 

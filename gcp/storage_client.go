@@ -19,6 +19,7 @@ import (
 
 const (
 	columnFamily = "f"
+	columnPrefix = columnFamily + ":"
 	column       = "c"
 	separator    = "\000"
 	maxRowReads  = 100
@@ -218,9 +219,8 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []chunk
 					}
 
 					return callback(query, &bigtableReadBatchColumnKey{
-						i:            -1,
-						items:        val,
-						columnPrefix: columnFamily + ":",
+						i:     -1,
+						items: val,
 					})
 				})
 
@@ -286,18 +286,16 @@ func (s *storageClientColumnKey) query(ctx context.Context, query chunk.IndexQue
 		val = filteredItems
 	}
 	callback(&bigtableReadBatchColumnKey{
-		i:            -1,
-		items:        val,
-		columnPrefix: columnFamily + ":",
+		i:     -1,
+		items: val,
 	})
 	return nil
 }
 
 // bigtableReadBatchColumnKey represents a batch of values read from Bigtable.
 type bigtableReadBatchColumnKey struct {
-	i            int
-	items        []bigtable.ReadItem
-	columnPrefix string
+	i     int
+	items []bigtable.ReadItem
 }
 
 func (b *bigtableReadBatchColumnKey) Next() bool {
@@ -306,7 +304,7 @@ func (b *bigtableReadBatchColumnKey) Next() bool {
 }
 
 func (b *bigtableReadBatchColumnKey) RangeValue() []byte {
-	return []byte(strings.TrimPrefix(b.items[b.i].Column, b.columnPrefix))
+	return []byte(strings.TrimPrefix(b.items[b.i].Column, columnPrefix))
 }
 
 func (b *bigtableReadBatchColumnKey) Value() []byte {
