@@ -1,11 +1,8 @@
 package storage
 
 import (
-	"bytes"
 	"context"
-	"encoding/hex"
-	"hash/fnv"
-	"strings"
+	"sync"
 	"time"
 
 	proto "github.com/golang/protobuf/proto"
@@ -14,6 +11,7 @@ import (
 
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/cache"
+	chunk_util "github.com/weaveworks/cortex/pkg/chunk/util"
 )
 
 var (
@@ -104,102 +102,53 @@ func newCachingStorageClient(client chunk.StorageClient, cache cache.Cache, vali
 	}
 }
 
-func (s *cachingStorageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
-	value, ok, err := s.cache.Fetch(ctx, queryKey(query))
-	if err != nil {
-		cacheCorruptErrs.Inc()
+func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+	// We cache the entire row, so filter client side.
+	callback = chunk_util.QueryFilter(callback)
+	cacheableMissed := []chunk.IndexQuery{}
+	missed := map[string]chunk.IndexQuery{}
+
+	for _, query := range queries {
+		value, ok := s.cache.Get(ctx, queryKey(query))
+		if !ok {
+			cacheableMissed = append(cacheableMissed, chunk.IndexQuery{
+				TableName: query.TableName,
+				HashValue: query.HashValue,
+			})
+			missed[queryKey(query)] = query
+			continue
+		}
+
+		for _, batch := range value.([]chunk.ReadBatch) {
+			callback(query, batch)
+		}
 	}
 
-	if ok && err == nil {
-		filteredBatch, _ := filterBatchByQuery(query, []chunk.ReadBatch{value})
-		callback(filteredBatch)
-
-		return nil
-	}
-
-	batches := []chunk.ReadBatch{}
-	cacheableQuery := chunk.IndexQuery{
-		TableName: query.TableName,
-		HashValue: query.HashValue,
-	} // Just reads the entire row and caches it.
-
-	expiryTime := time.Now().Add(s.validity)
-	err = s.StorageClient.QueryPages(ctx, cacheableQuery, copyingCallback(&batches))
+	var resultsMtx sync.Mutex
+	results := map[string][]chunk.ReadBatch{}
+	err := s.StorageClient.QueryPages(ctx, cacheableMissed, func(cacheableQuery chunk.IndexQuery, r chunk.ReadBatch) bool {
+		resultsMtx.Lock()
+		defer resultsMtx.Unlock()
+		key := queryKey(cacheableQuery)
+		results[key] = append(results[key], r)
+		return true
+	})
 	if err != nil {
 		return err
 	}
 
-	filteredBatch, totalBatches := filterBatchByQuery(query, batches)
-	callback(filteredBatch)
-
-	totalBatches.Key = queryKey(query)
-	totalBatches.Expiry = expiryTime.UnixNano()
-
-	s.cache.Store(ctx, totalBatches.Key, totalBatches)
-	return nil
-}
-
-// Len implements chunk.ReadBatch.
-func (b ReadBatch) Len() int { return len(b.Entries) }
-
-// RangeValue implements chunk.ReadBatch.
-func (b ReadBatch) RangeValue(i int) []byte { return b.Entries[i].Column }
-
-// Value implements chunk.ReadBatch.
-func (b ReadBatch) Value(i int) []byte { return b.Entries[i].Value }
-
-func copyingCallback(readBatches *[]chunk.ReadBatch) func(chunk.ReadBatch) bool {
-	return func(result chunk.ReadBatch) bool {
-		*readBatches = append(*readBatches, result)
-		return true
+	resultsMtx.Lock()
+	defer resultsMtx.Unlock()
+	for key, batches := range results {
+		query := missed[key]
+		for _, batch := range batches {
+			callback(query, batch)
+		}
 	}
+	return nil
 }
 
 func queryKey(q chunk.IndexQuery) string {
 	const sep = "\xff"
 	return q.TableName + sep + q.HashValue
-}
-
-func filterBatchByQuery(query chunk.IndexQuery, batches []chunk.ReadBatch) (filteredBatch, totalBatch ReadBatch) {
-	filter := func([]byte, []byte) bool { return true }
-
-	if len(query.RangeValuePrefix) != 0 {
-		filter = func(rangeValue []byte, value []byte) bool {
-			return strings.HasPrefix(string(rangeValue), string(query.RangeValuePrefix))
-		}
-	}
-	if len(query.RangeValueStart) != 0 {
-		filter = func(rangeValue []byte, value []byte) bool {
-			return string(rangeValue) >= string(query.RangeValueStart)
-		}
-	}
-	if len(query.ValueEqual) != 0 {
-		// This is on top of the existing filters.
-		existingFilter := filter
-		filter = func(rangeValue []byte, value []byte) bool {
-			return existingFilter(rangeValue, value) && bytes.Equal(value, query.ValueEqual)
-		}
-	}
-
-	filteredBatch.Entries = make([]*Entry, 0, len(batches)) // On the higher side for most queries. On the lower side for column key schema.
-	totalBatch.Entries = make([]*Entry, 0, len(batches))
-	for _, batch := range batches {
-		for i := 0; i < batch.Len(); i++ {
-			totalBatch.Entries = append(totalBatch.Entries, &Entry{Column: batch.RangeValue(i), Value: batch.Value(i)})
-
-			if filter(batch.RangeValue(i), batch.Value(i)) {
-				filteredBatch.Entries = append(filteredBatch.Entries, &Entry{Column: batch.RangeValue(i), Value: batch.Value(i)})
-			}
-		}
-	}
-
-	return
-}
-
-func hashKey(key string) string {
-	hasher := fnv.New64a()
-	hasher.Write([]byte(key)) // This'll never error.
-
-	// Hex because memcache errors for the bytes produced by the hash.
-	return hex.EncodeToString(hasher.Sum(nil))
 }

@@ -14,11 +14,13 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/weaveworks/cortex/pkg/chunk"
+	chunk_util "github.com/weaveworks/cortex/pkg/chunk/util"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
 const (
 	columnFamily = "f"
+	columnPrefix = columnFamily + ":"
 	column       = "c"
 	separator    = "\000"
 	maxRowReads  = 100
@@ -187,7 +189,88 @@ func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.Wri
 	return nil
 }
 
-func (s *storageClientColumnKey) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
+	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages")
+	defer sp.Finish()
+
+	// A limitation of this approach is that this only fetches whole rows; but
+	// whatever, we filter them in the cache on the client.  But for unit tests to
+	// pass, we must do this.
+	callback = chunk_util.QueryFilter(callback)
+
+	type tableQuery struct {
+		name    string
+		queries map[string]chunk.IndexQuery
+		rows    bigtable.RowList
+	}
+
+	tableQueries := map[string]tableQuery{}
+	for _, query := range queries {
+		tq, ok := tableQueries[query.TableName]
+		if !ok {
+			tq = tableQuery{
+				name:    query.TableName,
+				queries: map[string]chunk.IndexQuery{},
+			}
+		}
+		tq.queries[query.HashValue] = query
+		tq.rows = append(tq.rows, query.HashValue)
+		tableQueries[query.TableName] = tq
+	}
+
+	errs := make(chan error)
+
+	for _, tq := range tableQueries {
+
+		table := s.client.Open(tq.name)
+		for i := 0; i < len(tq.rows); i += maxRowReads {
+
+			page := tq.rows[i:util.Min(i+maxRowReads, len(tq.rows))]
+			go func(page bigtable.RowList, tq tableQuery) {
+				var processingErr error
+				// rows are returned in key order, not order in row list
+				err := table.ReadRows(ctx, page, func(row bigtable.Row) bool {
+
+					query, ok := tq.queries[row.Key()]
+					if !ok {
+						processingErr = errors.WithStack(fmt.Errorf("Got row for unknown chunk: %s", row.Key()))
+						return false
+					}
+
+					val, ok := row[columnFamily]
+					if !ok {
+						// There are no matching rows.
+						return true
+					}
+
+					return callback(query, &bigtableReadBatchColumnKey{
+						i:     -1,
+						items: val,
+					})
+				})
+
+				if processingErr != nil {
+					errs <- processingErr
+				} else {
+					errs <- err
+				}
+			}(page, tq)
+		}
+	}
+
+	var lastErr error
+	for _, tq := range tableQueries {
+		for i := 0; i < len(tq.rows); i += maxRowReads {
+			err := <-errs
+			if err != nil {
+				lastErr = err
+			}
+		}
+	}
+	return lastErr
+}
+
+func (s *storageClientColumnKey) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
 	const null = string('\xff')
 
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
@@ -227,31 +310,30 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, query chunk.Ind
 
 		val = filteredItems
 	}
-	callback(bigtableReadBatchColumnKey{
-		items:        val,
-		columnPrefix: columnFamily + ":",
+	callback(&bigtableReadBatchColumnKey{
+		i:     -1,
+		items: val,
 	})
 	return nil
 }
 
 // bigtableReadBatchColumnKey represents a batch of values read from Bigtable.
 type bigtableReadBatchColumnKey struct {
-	items        []bigtable.ReadItem
-	columnPrefix string
+	i     int
+	items []bigtable.ReadItem
 }
 
-func (b bigtableReadBatchColumnKey) Len() int {
-	return len(b.items)
+func (b *bigtableReadBatchColumnKey) Next() bool {
+	b.i++
+	return b.i < len(b.items)
 }
 
-func (b bigtableReadBatchColumnKey) RangeValue(index int) []byte {
-	return []byte(
-		strings.TrimPrefix(b.items[index].Column, b.columnPrefix),
-	)
+func (b *bigtableReadBatchColumnKey) RangeValue() []byte {
+	return []byte(strings.TrimPrefix(b.items[b.i].Column, columnPrefix))
 }
 
-func (b bigtableReadBatchColumnKey) Value(index int) []byte {
-	return b.items[index].Value
+func (b *bigtableReadBatchColumnKey) Value() []byte {
+	return b.items[b.i].Value
 }
 
 func (s *storageClientColumnKey) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
@@ -368,7 +450,11 @@ func (s *storageClientColumnKey) GetChunks(ctx context.Context, input []chunk.Ch
 	return output, nil
 }
 
-func (s *storageClientV1) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *storageClientV1) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
+	return chunk_util.DoParallelQueries(ctx, s.query, queries, callback)
+}
+
+func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
 	const null = string('\xff')
 
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
@@ -398,7 +484,9 @@ func (s *storageClientV1) QueryPages(ctx context.Context, query chunk.IndexQuery
 
 	err := table.ReadRows(ctx, rowRange, func(r bigtable.Row) bool {
 		if query.ValueEqual == nil || bytes.Equal(r[columnFamily][0].Value, query.ValueEqual) {
-			return callback(bigtableReadBatchV1(r))
+			return callback(&bigtableReadBatchV1{
+				row: r,
+			})
 		}
 
 		return true
@@ -413,24 +501,27 @@ func (s *storageClientV1) QueryPages(ctx context.Context, query chunk.IndexQuery
 // bigtableReadBatchV1 represents a batch of rows read from Bigtable.  As the
 // bigtable interface gives us rows one-by-one, a batch always only contains
 // a single row.
-type bigtableReadBatchV1 bigtable.Row
-
-func (bigtableReadBatchV1) Len() int {
-	return 1
+type bigtableReadBatchV1 struct {
+	consumed bool
+	row      bigtable.Row
 }
-func (b bigtableReadBatchV1) RangeValue(index int) []byte {
-	if index != 0 {
-		panic("index != 0")
+
+func (b *bigtableReadBatchV1) Next() bool {
+	if b.consumed {
+		return false
 	}
+	b.consumed = true
+	return true
+}
+
+func (b *bigtableReadBatchV1) RangeValue() []byte {
 	// String before the first separator is the hashkey
-	parts := strings.SplitN(bigtable.Row(b).Key(), separator, 2)
+	parts := strings.SplitN(b.row.Key(), separator, 2)
 	return []byte(parts[1])
 }
-func (b bigtableReadBatchV1) Value(index int) []byte {
-	if index != 0 {
-		panic("index != 0")
-	}
-	cf, ok := b[columnFamily]
+
+func (b *bigtableReadBatchV1) Value() []byte {
+	cf, ok := b.row[columnFamily]
 	if !ok || len(cf) != 1 {
 		panic("bad response from bigtable")
 	}
