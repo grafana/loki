@@ -68,6 +68,9 @@ func newStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (client chunk.St
 	case "inmemory":
 		client, err = chunk.NewMockStorage(), nil
 	case "aws":
+		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
+			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
+		}
 		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
 		if len(path) > 0 {
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
