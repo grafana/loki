@@ -21,17 +21,15 @@ func TestIndexBasic(t *testing.T) {
 
 		// Make sure we get back the correct entries by hash value.
 		for i := 0; i < 30; i++ {
-			entries := []chunk.IndexQuery{
-				{
-					TableName: tableName,
-					HashValue: fmt.Sprintf("hash%d", i),
-				},
+			entry := chunk.IndexQuery{
+				TableName: tableName,
+				HashValue: fmt.Sprintf("hash%d", i),
 			}
 			var have []chunk.IndexEntry
-			err := client.QueryPages(context.Background(), entries, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
-				for read.Next() {
+			err := client.QueryPages(context.Background(), entry, func(read chunk.ReadBatch) bool {
+				for j := 0; j < read.Len(); j++ {
 					have = append(have, chunk.IndexEntry{
-						RangeValue: read.RangeValue(),
+						RangeValue: read.RangeValue(j),
 					})
 				}
 				return true
@@ -169,13 +167,13 @@ func TestQueryPages(t *testing.T) {
 				run := true
 				for run {
 					var have []chunk.IndexEntry
-					err = client.QueryPages(context.Background(), []chunk.IndexQuery{tt.query}, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
-						for read.Next() {
+					err = client.QueryPages(context.Background(), tt.query, func(read chunk.ReadBatch) bool {
+						for i := 0; i < read.Len(); i++ {
 							have = append(have, chunk.IndexEntry{
 								TableName:  tt.query.TableName,
 								HashValue:  tt.query.HashValue,
-								RangeValue: read.RangeValue(),
-								Value:      read.Value(),
+								RangeValue: read.RangeValue(i),
+								Value:      read.Value(i),
 							})
 						}
 						return true

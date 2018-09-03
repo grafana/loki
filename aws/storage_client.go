@@ -29,7 +29,6 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 	"github.com/weaveworks/cortex/pkg/chunk"
-	chunk_util "github.com/weaveworks/cortex/pkg/chunk/util"
 	"github.com/weaveworks/cortex/pkg/util"
 )
 
@@ -289,11 +288,7 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 	return backoff.Err()
 }
 
-func (a storageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
-	return chunk_util.DoParallelQueries(ctx, a.query, queries, callback)
-}
-
-func (a storageClient) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (a storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
 	defer sp.Finish()
 
@@ -363,7 +358,7 @@ func (a storageClient) query(ctx context.Context, query chunk.IndexQuery, callba
 	return nil
 }
 
-func (a storageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput, page dynamoDBRequest) (*dynamoDBReadResponse, error) {
+func (a storageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput, page dynamoDBRequest) (dynamoDBReadResponse, error) {
 	backoff := util.NewBackoff(ctx, a.cfg.backoffConfig)
 	defer func() {
 		dynamoQueryRetryCount.WithLabelValues("queryPage").Observe(float64(backoff.NumRetries()))
@@ -393,10 +388,7 @@ func (a storageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput
 		}
 
 		queryOutput := page.Data().(*dynamodb.QueryOutput)
-		return &dynamoDBReadResponse{
-			i:     -1,
-			items: queryOutput.Items,
-		}, nil
+		return dynamoDBReadResponse(queryOutput.Items), nil
 	}
 	return nil, fmt.Errorf("QueryPage error: %s for table %v, last error %v", backoff.Err(), *input.TableName, err)
 }
@@ -780,22 +772,18 @@ func (a storageClient) putS3Chunk(ctx context.Context, key string, buf []byte) e
 }
 
 // Slice of values returned; map key is attribute name
-type dynamoDBReadResponse struct {
-	i     int
-	items []map[string]*dynamodb.AttributeValue
+type dynamoDBReadResponse []map[string]*dynamodb.AttributeValue
+
+func (b dynamoDBReadResponse) Len() int {
+	return len(b)
 }
 
-func (b *dynamoDBReadResponse) Next() bool {
-	b.i++
-	return b.i < len(b.items)
+func (b dynamoDBReadResponse) RangeValue(i int) []byte {
+	return b[i][rangeKey].B
 }
 
-func (b *dynamoDBReadResponse) RangeValue() []byte {
-	return b.items[b.i][rangeKey].B
-}
-
-func (b *dynamoDBReadResponse) Value() []byte {
-	chunkValue, ok := b.items[b.i][valueKey]
+func (b dynamoDBReadResponse) Value(i int) []byte {
+	chunkValue, ok := b[i][valueKey]
 	if !ok {
 		return nil
 	}

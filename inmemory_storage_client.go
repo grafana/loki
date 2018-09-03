@@ -158,25 +158,12 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 }
 
 // QueryPages implements StorageClient.
-func (m *MockStorage) QueryPages(ctx context.Context, queries []IndexQuery, callback func(IndexQuery, ReadBatch) (shouldContinue bool)) error {
-	m.mtx.RLock()
-	defer m.mtx.RUnlock()
-
-	for _, query := range queries {
-		err := m.query(ctx, query, func(b ReadBatch) bool {
-			return callback(query, b)
-		})
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *MockStorage) query(ctx context.Context, query IndexQuery, callback func(ReadBatch) (shouldContinue bool)) error {
+func (m *MockStorage) QueryPages(ctx context.Context, query IndexQuery, callback func(result ReadBatch) (shouldContinue bool)) error {
 	logger := util.WithContext(ctx, util.Logger)
 	level.Debug(logger).Log("msg", "QueryPages", "query", query.HashValue)
+
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 
 	table, ok := m.tables[query.TableName]
 	if !ok {
@@ -243,14 +230,12 @@ func (m *MockStorage) query(ctx context.Context, query IndexQuery, callback func
 		items = filtered
 	}
 
-	result := mockReadBatch{
-		index: -1,
-	}
+	result := mockReadBatch{}
 	for _, item := range items {
-		result.items = append(result.items, item)
+		result = append(result, item)
 	}
 
-	callback(&result)
+	callback(result)
 	return nil
 }
 
@@ -304,20 +289,16 @@ func (b *mockWriteBatch) Add(tableName, hashValue string, rangeValue []byte, val
 	}{tableName, hashValue, rangeValue, value})
 }
 
-type mockReadBatch struct {
-	index int
-	items []mockItem
+type mockReadBatch []mockItem
+
+func (b mockReadBatch) Len() int {
+	return len(b)
 }
 
-func (b *mockReadBatch) Next() bool {
-	b.index++
-	return b.index < len(b.items)
+func (b mockReadBatch) RangeValue(i int) []byte {
+	return b[i].rangeValue
 }
 
-func (b *mockReadBatch) RangeValue() []byte {
-	return b.items[b.index].rangeValue
-}
-
-func (b *mockReadBatch) Value() []byte {
-	return b.items[b.index].value
+func (b mockReadBatch) Value(i int) []byte {
+	return b[i].value
 }
