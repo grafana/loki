@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/weaveworks/cortex/pkg/chunk/util"
 )
 
 const (
@@ -172,7 +173,11 @@ func (s *storageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	return nil
 }
 
-func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *storageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
+	return util.DoParallelQueries(ctx, s.query, queries, callback)
+}
+
+func (s *storageClient) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
 	var q *gocql.Query
 
 	switch {
@@ -205,7 +210,7 @@ func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, 
 	defer iter.Close()
 	scanner := iter.Scanner()
 	for scanner.Next() {
-		var b readBatch
+		b := &readBatch{}
 		if err := scanner.Scan(&b.rangeValue, &b.value); err != nil {
 			return errors.WithStack(err)
 		}
@@ -218,27 +223,26 @@ func (s *storageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, 
 
 // readBatch represents a batch of rows read from Cassandra.
 type readBatch struct {
+	consumed   bool
 	rangeValue []byte
 	value      []byte
 }
 
 // Len implements chunk.ReadBatch; in Cassandra we 'stream' results back
 // one-by-one, so this always returns 1.
-func (readBatch) Len() int {
-	return 1
+func (b *readBatch) Next() bool {
+	if b.consumed {
+		return false
+	}
+	b.consumed = true
+	return true
 }
 
-func (b readBatch) RangeValue(index int) []byte {
-	if index != 0 {
-		panic("index != 0")
-	}
+func (b *readBatch) RangeValue() []byte {
 	return b.rangeValue
 }
 
-func (b readBatch) Value(index int) []byte {
-	if index != 0 {
-		panic("index != 0")
-	}
+func (b *readBatch) Value() []byte {
 	return b.value
 }
 

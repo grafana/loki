@@ -1,13 +1,13 @@
 package storage
 
 import (
-	"bytes"
 	"context"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/cache"
+	chunk_util "github.com/weaveworks/cortex/pkg/chunk/util"
 )
 
 type cachingStorageClient struct {
@@ -27,87 +27,53 @@ func newCachingStorageClient(client chunk.StorageClient, size int, validity time
 	}
 }
 
-func (s *cachingStorageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
-	value, ok := s.cache.Get(ctx, queryKey(query))
-	if ok {
-		batches := value.([]chunk.ReadBatch)
-		filteredBatch := filterBatchByQuery(query, batches)
-		callback(filteredBatch)
+func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+	// We cache the entire row, so filter client side.
+	callback = chunk_util.QueryFilter(callback)
+	cacheableMissed := []chunk.IndexQuery{}
+	missed := map[string]chunk.IndexQuery{}
 
-		return nil
+	for _, query := range queries {
+		value, ok := s.cache.Get(ctx, queryKey(query))
+		if !ok {
+			cacheableMissed = append(cacheableMissed, chunk.IndexQuery{
+				TableName: query.TableName,
+				HashValue: query.HashValue,
+			})
+			missed[queryKey(query)] = query
+			continue
+		}
+
+		for _, batch := range value.([]chunk.ReadBatch) {
+			callback(query, batch)
+		}
 	}
 
-	batches := []chunk.ReadBatch{}
-	cacheableQuery := chunk.IndexQuery{
-		TableName: query.TableName,
-		HashValue: query.HashValue,
-	} // Just reads the entire row and caches it.
-
-	err := s.StorageClient.QueryPages(ctx, cacheableQuery, copyingCallback(&batches))
+	var resultsMtx sync.Mutex
+	results := map[string][]chunk.ReadBatch{}
+	err := s.StorageClient.QueryPages(ctx, cacheableMissed, func(cacheableQuery chunk.IndexQuery, r chunk.ReadBatch) bool {
+		resultsMtx.Lock()
+		defer resultsMtx.Unlock()
+		key := queryKey(cacheableQuery)
+		results[key] = append(results[key], r)
+		return true
+	})
 	if err != nil {
 		return err
 	}
 
-	filteredBatch := filterBatchByQuery(query, batches)
-	callback(filteredBatch)
-
-	s.cache.Put(ctx, queryKey(query), batches)
-
-	return nil
-}
-
-type readBatch []cell
-
-func (b readBatch) Len() int                { return len(b) }
-func (b readBatch) RangeValue(i int) []byte { return b[i].column }
-func (b readBatch) Value(i int) []byte      { return b[i].value }
-
-type cell struct {
-	column []byte
-	value  []byte
-}
-
-func copyingCallback(readBatches *[]chunk.ReadBatch) func(chunk.ReadBatch) bool {
-	return func(result chunk.ReadBatch) bool {
-		*readBatches = append(*readBatches, result)
-		return true
+	resultsMtx.Lock()
+	defer resultsMtx.Unlock()
+	for key, batches := range results {
+		query := missed[key]
+		for _, batch := range batches {
+			callback(query, batch)
+		}
 	}
+	return nil
 }
 
 func queryKey(q chunk.IndexQuery) string {
 	const sep = "\xff"
 	return q.TableName + sep + q.HashValue
-}
-
-func filterBatchByQuery(query chunk.IndexQuery, batches []chunk.ReadBatch) readBatch {
-	filter := func([]byte, []byte) bool { return true }
-
-	if len(query.RangeValuePrefix) != 0 {
-		filter = func(rangeValue []byte, value []byte) bool {
-			return strings.HasPrefix(string(rangeValue), string(query.RangeValuePrefix))
-		}
-	}
-	if len(query.RangeValueStart) != 0 {
-		filter = func(rangeValue []byte, value []byte) bool {
-			return string(rangeValue) >= string(query.RangeValueStart)
-		}
-	}
-	if len(query.ValueEqual) != 0 {
-		// This is on top of the existing filters.
-		existingFilter := filter
-		filter = func(rangeValue []byte, value []byte) bool {
-			return existingFilter(rangeValue, value) && bytes.Equal(value, query.ValueEqual)
-		}
-	}
-
-	finalBatch := make(readBatch, 0, len(batches)) // On the higher side for most queries. On the lower side for column key schema.
-	for _, batch := range batches {
-		for i := 0; i < batch.Len(); i++ {
-			if filter(batch.RangeValue(i), batch.Value(i)) {
-				finalBatch = append(finalBatch, cell{column: batch.RangeValue(i), value: batch.Value(i)})
-			}
-		}
-	}
-
-	return finalBatch
 }
