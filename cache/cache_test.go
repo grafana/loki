@@ -35,7 +35,7 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
 			model.Fingerprint(1),
 			model.Metric{
 				model.MetricNameLabel: "foo",
-				"bar": "baz",
+				"bar":                 "baz",
 			},
 			promChunk[0],
 			ts,
@@ -142,8 +142,18 @@ func testCache(t *testing.T, cache cache.Cache) {
 }
 
 func TestMemcache(t *testing.T) {
-	cache := cache.NewMemcached(cache.MemcachedConfig{}, newMockMemcache())
-	testCache(t, cache)
+	t.Run("Unbatched", func(t *testing.T) {
+		cache := cache.NewMemcached(cache.MemcachedConfig{}, newMockMemcache())
+		testCache(t, cache)
+	})
+
+	t.Run("Batched", func(t *testing.T) {
+		cache := cache.NewMemcached(cache.MemcachedConfig{
+			BatchSize:   10,
+			Parallelism: 3,
+		}, newMockMemcache())
+		testCache(t, cache)
+	})
 }
 
 func TestDiskcache(t *testing.T) {
