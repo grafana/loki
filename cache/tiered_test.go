@@ -12,7 +12,7 @@ func TestTieredSimple(t *testing.T) {
 	for i := 1; i < 10; i++ {
 		caches := []cache.Cache{}
 		for j := 0; j <= i; j++ {
-			caches = append(caches, newMockCache())
+			caches = append(caches, cache.NewMockCache())
 		}
 		cache := cache.NewTiered(caches)
 		testCache(t, cache)
@@ -20,7 +20,7 @@ func TestTieredSimple(t *testing.T) {
 }
 
 func TestTiered(t *testing.T) {
-	level1, level2 := newMockCache(), newMockCache()
+	level1, level2 := cache.NewMockCache(), cache.NewMockCache()
 	cache := cache.NewTiered([]cache.Cache{level1, level2})
 
 	level1.Store(context.Background(), []string{"key1"}, [][]byte{[]byte("hello")})
