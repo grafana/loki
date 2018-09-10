@@ -24,6 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
@@ -157,6 +158,18 @@ type storageClient struct {
 	queryRequestFn          func(ctx context.Context, input *dynamodb.QueryInput) dynamoDBRequest
 	batchGetItemRequestFn   func(ctx context.Context, input *dynamodb.BatchGetItemInput) dynamoDBRequest
 	batchWriteItemRequestFn func(ctx context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest
+}
+
+// Opts returns the chunk.StorageOpt's for the config.
+func Opts(cfg StorageConfig, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) {
+	client, err := NewStorageClient(cfg, schemaCfg)
+	if err != nil {
+		return nil, err
+	}
+	return []chunk.StorageOpt{{
+		From:   model.Time(0),
+		Client: client,
+	}}, err
 }
 
 // NewStorageClient makes a new AWS-backed StorageClient.

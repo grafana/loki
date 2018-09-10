@@ -1,0 +1,15 @@
+syntax = "proto3";
+package storage;
+
+message Entry {
+    bytes Column = 1;
+    bytes Value = 2;
+}
+
+message ReadBatch {
+    repeated Entry entries = 1;
+    string key = 2;
+
+	// The time at which the key expires.
+    int64 expiry = 3;
+}

@@ -101,6 +101,35 @@ func NewFifoCache(name string, size int, validity time.Duration) *FifoCache {
 	}
 }
 
+// Store implements Cache.
+func (c *FifoCache) Store(ctx context.Context, key string, buf []byte) error {
+	c.Put(ctx, key, buf)
+
+	return nil
+}
+
+// Fetch implements Cache.
+func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+	found, missing, bufs = make([]string, 0, len(keys)), make([]string, 0, len(keys)), make([][]byte, 0, len(keys))
+	for _, key := range keys {
+		val, ok := c.Get(ctx, key)
+		if !ok {
+			missing = append(missing, key)
+			continue
+		}
+
+		found = append(found, key)
+		bufs = append(bufs, val.([]byte))
+	}
+
+	return
+}
+
+// Stop implements Cache.
+func (c *FifoCache) Stop() error {
+	return nil
+}
+
 // Put stores the value against the key.
 func (c *FifoCache) Put(ctx context.Context, key string, value interface{}) {
 	span, ctx := ot.StartSpanFromContext(ctx, c.name+"-cache-put")

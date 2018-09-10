@@ -41,15 +41,28 @@ type MemcachedClientConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *MemcachedClientConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.Host, "memcached.hostname", "", "Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.")
-	f.StringVar(&cfg.Service, "memcached.service", "memcached", "SRV service used to discover memcache servers.")
-	f.DurationVar(&cfg.Timeout, "memcached.timeout", 100*time.Millisecond, "Maximum time to wait before giving up on memcached requests.")
-	f.DurationVar(&cfg.UpdateInterval, "memcached.update-interval", 1*time.Minute, "Period with which to poll DNS for memcache servers.")
+	cfg.registerFlagsWithPrefix("", f)
 }
 
-// newMemcachedClient creates a new MemcacheClient that gets its server list
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
+func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.registerFlagsWithPrefix(prefix, f)
+}
+
+func (cfg *MemcachedClientConfig) registerFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	if prefix != "" {
+		prefix = prefix + "."
+	}
+
+	f.StringVar(&cfg.Host, prefix+"memcached.hostname", "", "Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.")
+	f.StringVar(&cfg.Service, prefix+"memcached.service", "memcached", "SRV service used to discover memcache servers.")
+	f.DurationVar(&cfg.Timeout, prefix+"memcached.timeout", 100*time.Millisecond, "Maximum time to wait before giving up on memcached requests.")
+	f.DurationVar(&cfg.UpdateInterval, prefix+"memcached.update-interval", 1*time.Minute, "Period with which to poll DNS for memcache servers.")
+}
+
+// NewMemcachedClient creates a new MemcacheClient that gets its server list
 // from SRV and updates the server list on a regular basis.
-func newMemcachedClient(cfg MemcachedClientConfig) *memcachedClient {
+func NewMemcachedClient(cfg MemcachedClientConfig) MemcachedClient {
 	var servers memcache.ServerList
 	client := memcache.NewFromSelector(&servers)
 	client.Timeout = cfg.Timeout

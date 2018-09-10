@@ -143,7 +143,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []Chunk, keys []string
 	defer log.Span.Finish()
 
 	// Now fetch the actual chunk data from Memcache / S3
-	cacheHits, cacheBufs, _, err := c.cache.FetchChunkData(ctx, keys)
+	cacheHits, cacheBufs, _, err := c.cache.Fetch(ctx, keys)
 	if err != nil {
 		level.Warn(log).Log("msg", "error fetching from cache", "err", err)
 	}
@@ -177,7 +177,7 @@ func (c *Fetcher) writeBackCache(ctx context.Context, chunks []Chunk) error {
 		if err != nil {
 			return err
 		}
-		if err := c.cache.StoreChunk(ctx, chunks[i].ExternalKey(), encoded); err != nil {
+		if err := c.cache.Store(ctx, chunks[i].ExternalKey(), encoded); err != nil {
 			return err
 		}
 	}

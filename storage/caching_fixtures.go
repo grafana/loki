@@ -3,6 +3,7 @@ package storage
 import (
 	"time"
 
+	"github.com/weaveworks/cortex/pkg/chunk/cache"
 	"github.com/weaveworks/cortex/pkg/chunk/gcp"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
@@ -16,7 +17,7 @@ type fixture struct {
 func (f fixture) Name() string { return "caching-store" }
 func (f fixture) Clients() (chunk.StorageClient, chunk.TableClient, chunk.SchemaConfig, error) {
 	storageClient, tableClient, schemaConfig, err := f.fixture.Clients()
-	client := newCachingStorageClient(storageClient, 500, 5*time.Minute)
+	client := newCachingStorageClient(storageClient, cache.NewFifoCache("index-fifo", 500, 5*time.Minute), 5*time.Minute)
 	return client, tableClient, schemaConfig, err
 }
 func (f fixture) Teardown() error { return f.fixture.Teardown() }

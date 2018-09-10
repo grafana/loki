@@ -7,8 +7,8 @@ import (
 
 // Cache byte arrays by key.
 type Cache interface {
-	StoreChunk(ctx context.Context, key string, buf []byte) error
-	FetchChunkData(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error)
+	Store(ctx context.Context, key string, buf []byte) error
+	Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error)
 	Stop() error
 }
 
@@ -48,18 +48,18 @@ func New(cfg Config) (Cache, error) {
 		if err != nil {
 			return nil, err
 		}
-		caches = append(caches, instrument("diskcache", cache))
+		caches = append(caches, Instrument("diskcache", cache))
 	}
 
 	if cfg.memcacheClient.Host != "" {
-		client := newMemcachedClient(cfg.memcacheClient)
+		client := NewMemcachedClient(cfg.memcacheClient)
 		cache := NewMemcached(cfg.memcache, client)
-		caches = append(caches, instrument("memcache", cache))
+		caches = append(caches, Instrument("memcache", cache))
 	}
 
-	var cache Cache = tiered(caches)
+	cache := NewTiered(caches)
 	if len(caches) > 1 {
-		cache = instrument("tiered", cache)
+		cache = Instrument("tiered", cache)
 	}
 
 	cache = NewBackground(cfg.background, cache)

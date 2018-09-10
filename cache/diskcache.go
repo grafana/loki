@@ -78,8 +78,8 @@ func (d *Diskcache) Stop() error {
 	return d.f.Close()
 }
 
-// FetchChunkData get chunks from the cache.
-func (d *Diskcache) FetchChunkData(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
+// Fetch get chunks from the cache.
+func (d *Diskcache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
 	for _, key := range keys {
 		buf, ok := d.fetch(key)
 		if ok {
@@ -114,8 +114,8 @@ func (d *Diskcache) fetch(key string) ([]byte, bool) {
 	return result, true
 }
 
-// StoreChunk puts a chunk into the cache.
-func (d *Diskcache) StoreChunk(ctx context.Context, key string, value []byte) error {
+// Store puts a chunk into the cache.
+func (d *Diskcache) Store(ctx context.Context, key string, value []byte) error {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 

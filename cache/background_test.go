@@ -13,14 +13,14 @@ type mockCache struct {
 	cache map[string][]byte
 }
 
-func (m *mockCache) StoreChunk(_ context.Context, key string, buf []byte) error {
+func (m *mockCache) Store(_ context.Context, key string, buf []byte) error {
 	m.Lock()
 	defer m.Unlock()
 	m.cache[key] = buf
 	return nil
 }
 
-func (m *mockCache) FetchChunkData(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+func (m *mockCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
 	m.Lock()
 	defer m.Unlock()
 	for _, key := range keys {

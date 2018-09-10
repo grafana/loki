@@ -9,6 +9,7 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 
 	"github.com/weaveworks/cortex/pkg/chunk"
 )
@@ -119,6 +120,18 @@ type storageClient struct {
 	cfg       Config
 	schemaCfg chunk.SchemaConfig
 	session   *gocql.Session
+}
+
+// Opts returns the chunk.StorageOpt's for the config.
+func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) {
+	client, err := NewStorageClient(cfg, schemaCfg)
+	if err != nil {
+		return nil, err
+	}
+	return []chunk.StorageOpt{{
+		From:   model.Time(0),
+		Client: client,
+	}}, err
 }
 
 // NewStorageClient returns a new StorageClient.

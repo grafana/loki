@@ -23,13 +23,13 @@ func TestTiered(t *testing.T) {
 	level1, level2 := newMockCache(), newMockCache()
 	cache := cache.NewTiered([]cache.Cache{level1, level2})
 
-	err := level1.StoreChunk(context.Background(), "key1", []byte("hello"))
+	err := level1.Store(context.Background(), "key1", []byte("hello"))
 	require.NoError(t, err)
 
-	err = level2.StoreChunk(context.Background(), "key2", []byte("world"))
+	err = level2.Store(context.Background(), "key2", []byte("world"))
 	require.NoError(t, err)
 
-	keys, bufs, missing, err := cache.FetchChunkData(context.Background(), []string{"key1", "key2", "key3"})
+	keys, bufs, missing, err := cache.Fetch(context.Background(), []string{"key1", "key2", "key3"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"key1", "key2"}, keys)
 	require.Equal(t, [][]byte{[]byte("hello"), []byte("world")}, bufs)

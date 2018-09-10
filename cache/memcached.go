@@ -63,8 +63,8 @@ func memcacheStatusCode(err error) string {
 	}
 }
 
-// FetchChunkData gets chunks from the chunk cache.
-func (c *Memcached) FetchChunkData(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
+// Fetch gets keys from the cache.
+func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
 	var items map[string]*memcache.Item
 	err = instr.TimeRequestHistogramStatus(ctx, "Memcache.Get", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
 		var err error
@@ -86,8 +86,8 @@ func (c *Memcached) FetchChunkData(ctx context.Context, keys []string) (found []
 	return
 }
 
-// StoreChunk serializes and stores a chunk in the chunk cache.
-func (c *Memcached) StoreChunk(ctx context.Context, key string, buf []byte) error {
+// Store stores the key in the cache.
+func (c *Memcached) Store(ctx context.Context, key string, buf []byte) error {
 	return instr.TimeRequestHistogramStatus(ctx, "Memcache.Put", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
 		item := memcache.Item{
 			Key:        key,

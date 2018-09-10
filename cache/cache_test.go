@@ -46,7 +46,7 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
 		require.NoError(t, err)
 
 		key := c.ExternalKey()
-		err = cache.StoreChunk(context.Background(), key, buf)
+		err = cache.Store(context.Background(), key, buf)
 		require.NoError(t, err)
 
 		keys = append(keys, key)
@@ -61,7 +61,7 @@ func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []ch
 		index := rand.Intn(len(keys))
 		key := keys[index]
 
-		found, bufs, missingKeys, err := cache.FetchChunkData(context.Background(), []string{key})
+		found, bufs, missingKeys, err := cache.Fetch(context.Background(), []string{key})
 		require.NoError(t, err)
 		require.Len(t, found, 1)
 		require.Len(t, bufs, 1)
@@ -77,7 +77,7 @@ func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []ch
 
 func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []chunk.Chunk) {
 	// test getting them all
-	found, bufs, missingKeys, err := cache.FetchChunkData(context.Background(), keys)
+	found, bufs, missingKeys, err := cache.Fetch(context.Background(), keys)
 	require.NoError(t, err)
 	require.Len(t, found, len(keys))
 	require.Len(t, bufs, len(keys))
@@ -117,7 +117,7 @@ func (a byExternalKey) Less(i, j int) bool { return a[i].ExternalKey() < a[j].Ex
 func testCacheMiss(t *testing.T, cache cache.Cache) {
 	for i := 0; i < 100; i++ {
 		key := strconv.Itoa(rand.Int())
-		found, bufs, missing, err := cache.FetchChunkData(context.Background(), []string{key})
+		found, bufs, missing, err := cache.Fetch(context.Background(), []string{key})
 		require.NoError(t, err)
 		require.Empty(t, found)
 		require.Empty(t, bufs)

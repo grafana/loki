@@ -77,8 +77,8 @@ func (c *backgroundCache) Stop() error {
 	return c.Cache.Stop()
 }
 
-// StoreChunk writes chunks for the cache in the background.
-func (c *backgroundCache) StoreChunk(ctx context.Context, key string, buf []byte) error {
+// Store writes keys for the cache in the background.
+func (c *backgroundCache) Store(ctx context.Context, key string, buf []byte) error {
 	bgWrite := backgroundWrite{
 		key: key,
 		buf: buf,
@@ -102,7 +102,7 @@ func (c *backgroundCache) writeBackLoop() {
 				return
 			}
 			queueLength.Dec()
-			err := c.Cache.StoreChunk(context.Background(), bgWrite.key, bgWrite.buf)
+			err := c.Cache.Store(context.Background(), bgWrite.key, bgWrite.buf)
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "error writing to memcache", "err", err)
 			}
