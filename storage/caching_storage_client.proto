@@ -1,15 +1,21 @@
 syntax = "proto3";
+
 package storage;
 
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
 message Entry {
-    bytes Column = 1;
-    bytes Value = 2;
+    bytes Column = 1 [(gogoproto.customtype) = "github.com/weaveworks/cortex/pkg/util/wire.Bytes", (gogoproto.nullable) = false];
+    bytes Value = 2 [(gogoproto.customtype) = "github.com/weaveworks/cortex/pkg/util/wire.Bytes", (gogoproto.nullable) = false];
 }
 
 message ReadBatch {
-    repeated Entry entries = 1;
+    repeated Entry entries = 1 [(gogoproto.nullable) = false];
     string key = 2;
 
-	// The time at which the key expires.
+    // The time at which the key expires.
     int64 expiry = 3;
 }

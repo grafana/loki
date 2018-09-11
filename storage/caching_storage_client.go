@@ -86,6 +86,14 @@ func (c *indexCache) Fetch(ctx context.Context, key string) (ReadBatch, bool, er
 	return ReadBatch{}, false, nil
 }
 
+func hashKey(key string) string {
+	hasher := fnv.New64a()
+	hasher.Write([]byte(key)) // This'll never error.
+
+	// Hex because memcache errors for the bytes produced by the hash.
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
 type cachingStorageClient struct {
 	chunk.StorageClient
 	cache    IndexCache
@@ -147,7 +155,7 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 			}
 		}
 		for iter := r.Iterator(); iter.Next(); {
-			existing.Entries = append(existing.Entries, &Entry{Column: iter.RangeValue(), Value: iter.Value()})
+			existing.Entries = append(existing.Entries, Entry{Column: iter.RangeValue(), Value: iter.Value()})
 		}
 		results[key] = existing
 		return true
@@ -199,12 +207,4 @@ func (b *readBatchIterator) Value() []byte {
 func queryKey(q chunk.IndexQuery) string {
 	const sep = "\xff"
 	return q.TableName + sep + q.HashValue
-}
-
-func hashKey(key string) string {
-	hasher := fnv.New64a()
-	hasher.Write([]byte(key)) // This'll never error.
-
-	// Hex because memcache errors for the bytes produced by the hash.
-	return hex.EncodeToString(hasher.Sum(nil))
 }
