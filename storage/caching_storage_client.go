@@ -174,13 +174,12 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 	return nil
 }
 
-// Iter implements chunk.ReadBatch.
+// Iterator implements chunk.ReadBatch.
 func (b ReadBatch) Iterator() chunk.ReadBatchIterator {
 	return &readBatchIterator{
 		index:     -1,
 		readBatch: b,
 	}
-	return nil
 }
 
 type readBatchIterator struct {

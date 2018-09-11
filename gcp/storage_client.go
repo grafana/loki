@@ -219,18 +219,15 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []chunk
 	}
 
 	errs := make(chan error)
-
 	for _, tq := range tableQueries {
-
 		table := s.client.Open(tq.name)
-		for i := 0; i < len(tq.rows); i += maxRowReads {
 
+		for i := 0; i < len(tq.rows); i += maxRowReads {
 			page := tq.rows[i:util.Min(i+maxRowReads, len(tq.rows))]
 			go func(page bigtable.RowList, tq tableQuery) {
 				var processingErr error
 				// rows are returned in key order, not order in row list
 				err := table.ReadRows(ctx, page, func(row bigtable.Row) bool {
-
 					query, ok := tq.queries[row.Key()]
 					if !ok {
 						processingErr = errors.WithStack(fmt.Errorf("Got row for unknown chunk: %s", row.Key()))
