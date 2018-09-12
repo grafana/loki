@@ -143,8 +143,10 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 	})
 
 	if err != nil {
+		missed = keys
 		return
 	}
+
 	for _, key := range keys {
 		item, ok := items[key]
 		if ok {
@@ -189,11 +191,8 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 	close(resultsCh)
 
 	for _, result := range results {
-		// TODO(gouthamve): One call may fail while everything else succeeds. Put the
-		// failed call keys in missed then.
 		if result.err != nil {
 			err = result.err
-			continue
 		}
 
 		found = append(found, result.found...)
