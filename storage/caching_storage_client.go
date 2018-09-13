@@ -7,14 +7,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	proto "github.com/golang/protobuf/proto"
-	ot "github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/cache"
 	chunk_util "github.com/weaveworks/cortex/pkg/chunk/util"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 var (
@@ -43,7 +43,7 @@ var (
 // IndexCache describes the cache for the Index.
 type IndexCache interface {
 	Store(ctx context.Context, key string, val ReadBatch)
-	Fetch(ctx context.Context, key string) (val ReadBatch, ok bool, err error)
+	Fetch(ctx context.Context, keys []string) (batches []ReadBatch, misses []string)
 	Stop() error
 }
 
@@ -65,26 +65,69 @@ func (c *indexCache) Store(ctx context.Context, key string, val ReadBatch) {
 	return
 }
 
-func (c *indexCache) Fetch(ctx context.Context, key string) (ReadBatch, bool, error) {
+func (c *indexCache) Fetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {
 	cacheGets.Inc()
 
-	found, valBytes, _, err := c.Cache.Fetch(ctx, []string{hashKey(key)})
-	if len(found) != 1 || err != nil {
-		return ReadBatch{}, false, err
+	// Build a map from hash -> key; NB there can be collisions here; we'll fetch
+	// the last hash.
+	hashedKeys := make(map[string]string, len(keys))
+	for _, key := range keys {
+		hashedKeys[hashKey(key)] = key
 	}
 
-	var rb ReadBatch
-	if err := proto.Unmarshal(valBytes[0], &rb); err != nil {
-		return rb, false, err
+	// Build a list of hashes; could be less than keys due to collisions.
+	hashes := make([]string, 0, len(keys))
+	for hash := range hashedKeys {
+		hashes = append(hashes, hash)
 	}
 
-	// Make sure the hash(key) is not a collision by looking at the key in the value.
-	if key == rb.Key && time.Now().Before(time.Unix(0, rb.Expiry)) {
+	// Look up the hashes in a single batch.  If we get an error, we just "miss" all
+	// of the keys.  Eventually I want to push all the errors to the leafs of the cache
+	// tree, to the caches only return found & missed.
+	foundHashes, bufs, _, err := c.Cache.Fetch(ctx, hashes)
+	if err != nil {
+		level.Warn(util.Logger).Log("msg", "error fetching index entries", "err", err)
+		return nil, keys
+	}
+
+	// Reverse the hash, unmarshal the index entries, check we got what we expected
+	// and that its still valid.
+	batches = make([]ReadBatch, 0, len(foundHashes))
+	for j, foundHash := range foundHashes {
+		key := hashedKeys[foundHash]
+		var readBatch ReadBatch
+
+		if err := proto.Unmarshal(bufs[j], &readBatch); err != nil {
+			level.Warn(util.Logger).Log("msg", "error unmarshalling index entry from cache", "err", err)
+			cacheCorruptErrs.Inc()
+			continue
+		}
+
+		// Make sure the hash(key) is not a collision in the cache by looking at the
+		// key in the value.
+		if key != readBatch.Key || time.Now().After(time.Unix(0, readBatch.Expiry)) {
+			cacheCorruptErrs.Inc()
+			continue
+		}
+
 		cacheHits.Inc()
-		return rb, true, nil
+		batches = append(batches, readBatch)
 	}
 
-	return ReadBatch{}, false, nil
+	// Finally work out what we're missing.
+	misses := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		misses[key] = struct{}{}
+	}
+	for i := range batches {
+		delete(misses, batches[i].Key)
+	}
+	missed = make([]string, 0, len(misses))
+	for miss := range misses {
+		missed = append(missed, miss)
+	}
+
+	return batches, missed
 }
 
 func hashKey(key string) string {
@@ -116,33 +159,37 @@ func newCachingStorageClient(client chunk.StorageClient, cache cache.Cache, vali
 func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	// We cache the entire row, so filter client side.
 	callback = chunk_util.QueryFilter(callback)
-	cacheableMissed := []chunk.IndexQuery{}
-	missed := map[string]chunk.IndexQuery{}
 
-	span, ctx := ot.StartSpanFromContext(ctx, "Index cache lookups")
+	// Build list of keys to lookup in the cache.
+	keys := make([]string, 0, len(queries))
+	queriesByKey := make(map[string]chunk.IndexQuery, len(queries))
 	for _, query := range queries {
 		key := queryKey(query)
-		batch, ok, err := s.cache.Fetch(ctx, key)
-		if err != nil {
-			cacheCorruptErrs.Inc()
-		} else if ok {
-			callback(query, batch)
-			continue
-		}
+		keys = append(keys, key)
+		queriesByKey[key] = query
+	}
 
-		// Just reads the entire row and caches it; filter client side.
+	batches, misses := s.cache.Fetch(ctx, keys)
+	for _, batch := range batches {
+		query := queriesByKey[batch.Key]
+		callback(query, batch)
+	}
+
+	if len(misses) == 0 {
+		return nil
+	}
+
+	// Build list of cachable queries for the queries that missed the cache.
+	cacheableMissed := []chunk.IndexQuery{}
+	missed := map[string]chunk.IndexQuery{}
+	for _, key := range misses {
+		query := queriesByKey[key]
 		cacheableMissed = append(cacheableMissed, chunk.IndexQuery{
 			TableName: query.TableName,
 			HashValue: query.HashValue,
 		})
 		missed[key] = query
 	}
-
-	if len(cacheableMissed) == 0 {
-		return nil
-	}
-	span.LogFields(otlog.Int("queries", len(queries)), otlog.Int("hits", len(queries)-len(missed)), otlog.Int("misses", len(missed)))
-	span.Finish()
 
 	var resultsMtx sync.Mutex
 	results := map[string]ReadBatch{}

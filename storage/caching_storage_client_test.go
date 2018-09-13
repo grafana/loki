@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/cache"
@@ -16,21 +17,29 @@ type mockStore struct {
 }
 
 func (m *mockStore) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
-	m.queries++
 	for _, query := range queries {
-		callback(query, mockReadBatch{})
+		m.queries++
+		callback(query, mockReadBatch{
+			rangeValue: []byte(query.HashValue),
+			value:      []byte(query.HashValue),
+		})
 	}
 	return nil
 }
 
-type mockReadBatch struct{}
+type mockReadBatch struct {
+	rangeValue, value []byte
+}
 
-func (mockReadBatch) Iterator() chunk.ReadBatchIterator {
-	return &mockReadBatchIterator{}
+func (m mockReadBatch) Iterator() chunk.ReadBatchIterator {
+	return &mockReadBatchIterator{
+		mockReadBatch: m,
+	}
 }
 
 type mockReadBatchIterator struct {
 	consumed bool
+	mockReadBatch
 }
 
 func (m *mockReadBatchIterator) Next() bool {
@@ -41,18 +50,18 @@ func (m *mockReadBatchIterator) Next() bool {
 	return true
 }
 
-func (mockReadBatchIterator) RangeValue() []byte {
-	return []byte("foo")
+func (m *mockReadBatchIterator) RangeValue() []byte {
+	return m.mockReadBatch.rangeValue
 }
 
-func (mockReadBatchIterator) Value() []byte {
-	return []byte("bar")
+func (m *mockReadBatchIterator) Value() []byte {
+	return m.mockReadBatch.value
 }
 
-func TestCachingStorageClient(t *testing.T) {
-	mock := &mockStore{}
+func TestCachingStorageClientBasic(t *testing.T) {
+	store := &mockStore{}
 	cache := cache.NewFifoCache("test", 10, 10*time.Second)
-	client := newCachingStorageClient(mock, cache, 1*time.Second)
+	client := newCachingStorageClient(store, cache, 1*time.Second)
 	queries := []chunk.IndexQuery{{
 		TableName: "table",
 		HashValue: "baz",
@@ -61,12 +70,49 @@ func TestCachingStorageClient(t *testing.T) {
 		return true
 	})
 	require.NoError(t, err)
-	require.EqualValues(t, 1, mock.queries)
+	assert.EqualValues(t, 1, store.queries)
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
 	err = client.QueryPages(context.Background(), queries, func(_ chunk.IndexQuery, _ chunk.ReadBatch) bool {
 		return true
 	})
 	require.NoError(t, err)
-	require.EqualValues(t, 1, mock.queries)
+	assert.EqualValues(t, 1, store.queries)
+}
+
+func TestCachingStorageClient(t *testing.T) {
+	store := &mockStore{}
+	cache := cache.NewFifoCache("test", 10, 10*time.Second)
+	client := newCachingStorageClient(store, cache, 1*time.Second)
+	queries := []chunk.IndexQuery{
+		{TableName: "table", HashValue: "foo"},
+		{TableName: "table", HashValue: "bar"},
+		{TableName: "table", HashValue: "baz"},
+	}
+	results := 0
+	err := client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+		iter := batch.Iterator()
+		for iter.Next() {
+			assert.Equal(t, query.HashValue, string(iter.RangeValue()))
+			results++
+		}
+		return true
+	})
+	require.NoError(t, err)
+	assert.EqualValues(t, len(queries), store.queries)
+	assert.EqualValues(t, len(queries), results)
+
+	// If we do the query to the cache again, the underlying store shouldn't see it.
+	results = 0
+	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+		iter := batch.Iterator()
+		for iter.Next() {
+			assert.Equal(t, query.HashValue, string(iter.RangeValue()))
+			results++
+		}
+		return true
+	})
+	require.NoError(t, err)
+	assert.EqualValues(t, len(queries), store.queries)
+	assert.EqualValues(t, len(queries), results)
 }
