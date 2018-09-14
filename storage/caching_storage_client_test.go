@@ -14,52 +14,26 @@ import (
 type mockStore struct {
 	chunk.StorageClient
 	queries int
+	results ReadBatch
 }
 
 func (m *mockStore) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	for _, query := range queries {
 		m.queries++
-		callback(query, mockReadBatch{
-			rangeValue: []byte(query.HashValue),
-			value:      []byte(query.HashValue),
-		})
+		callback(query, m.results)
 	}
 	return nil
 }
 
-type mockReadBatch struct {
-	rangeValue, value []byte
-}
-
-func (m mockReadBatch) Iterator() chunk.ReadBatchIterator {
-	return &mockReadBatchIterator{
-		mockReadBatch: m,
-	}
-}
-
-type mockReadBatchIterator struct {
-	consumed bool
-	mockReadBatch
-}
-
-func (m *mockReadBatchIterator) Next() bool {
-	if m.consumed {
-		return false
-	}
-	m.consumed = true
-	return true
-}
-
-func (m *mockReadBatchIterator) RangeValue() []byte {
-	return m.mockReadBatch.rangeValue
-}
-
-func (m *mockReadBatchIterator) Value() []byte {
-	return m.mockReadBatch.value
-}
-
 func TestCachingStorageClientBasic(t *testing.T) {
-	store := &mockStore{}
+	store := &mockStore{
+		results: ReadBatch{
+			Entries: []Entry{{
+				Column: []byte("foo"),
+				Value:  []byte("bar"),
+			}},
+		},
+	}
 	cache := cache.NewFifoCache("test", 10, 10*time.Second)
 	client := newCachingStorageClient(store, cache, 1*time.Second)
 	queries := []chunk.IndexQuery{{
@@ -81,7 +55,14 @@ func TestCachingStorageClientBasic(t *testing.T) {
 }
 
 func TestCachingStorageClient(t *testing.T) {
-	store := &mockStore{}
+	store := &mockStore{
+		results: ReadBatch{
+			Entries: []Entry{{
+				Column: []byte("foo"),
+				Value:  []byte("bar"),
+			}},
+		},
+	}
 	cache := cache.NewFifoCache("test", 10, 10*time.Second)
 	client := newCachingStorageClient(store, cache, 1*time.Second)
 	queries := []chunk.IndexQuery{
@@ -93,7 +74,6 @@ func TestCachingStorageClient(t *testing.T) {
 	err := client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
-			assert.Equal(t, query.HashValue, string(iter.RangeValue()))
 			results++
 		}
 		return true
@@ -107,7 +87,6 @@ func TestCachingStorageClient(t *testing.T) {
 	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
-			assert.Equal(t, query.HashValue, string(iter.RangeValue()))
 			results++
 		}
 		return true
@@ -115,4 +94,60 @@ func TestCachingStorageClient(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, len(queries), store.queries)
 	assert.EqualValues(t, len(queries), results)
+}
+
+func TestCachingStorageClientCollision(t *testing.T) {
+	// These two queries should result in one query to the cache & index, but
+	// two results, as we cache entire rows.
+	store := &mockStore{
+		results: ReadBatch{
+			Entries: []Entry{
+				{
+					Column: []byte("bar"),
+					Value:  []byte("bar"),
+				},
+				{
+					Column: []byte("baz"),
+					Value:  []byte("baz"),
+				},
+			},
+		},
+	}
+	cache := cache.NewFifoCache("test", 10, 10*time.Second)
+	client := newCachingStorageClient(store, cache, 1*time.Second)
+	queries := []chunk.IndexQuery{
+		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar")},
+		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("baz")},
+	}
+
+	var results ReadBatch
+	err := client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+		iter := batch.Iterator()
+		for iter.Next() {
+			results.Entries = append(results.Entries, Entry{
+				Column: iter.RangeValue(),
+				Value:  iter.Value(),
+			})
+		}
+		return true
+	})
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, store.queries)
+	assert.EqualValues(t, store.results, results)
+
+	// If we do the query to the cache again, the underlying store shouldn't see it.
+	results = ReadBatch{}
+	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+		iter := batch.Iterator()
+		for iter.Next() {
+			results.Entries = append(results.Entries, Entry{
+				Column: iter.RangeValue(),
+				Value:  iter.Value(),
+			})
+		}
+		return true
+	})
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, store.queries)
+	assert.EqualValues(t, store.results, results)
 }
