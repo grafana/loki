@@ -162,17 +162,19 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 
 	// Build list of keys to lookup in the cache.
 	keys := make([]string, 0, len(queries))
-	queriesByKey := make(map[string]chunk.IndexQuery, len(queries))
+	queriesByKey := make(map[string][]chunk.IndexQuery, len(queries))
 	for _, query := range queries {
 		key := queryKey(query)
 		keys = append(keys, key)
-		queriesByKey[key] = query
+		queriesByKey[key] = append(queriesByKey[key], query)
 	}
 
 	batches, misses := s.cache.Fetch(ctx, keys)
 	for _, batch := range batches {
-		query := queriesByKey[batch.Key]
-		callback(query, batch)
+		queries := queriesByKey[batch.Key]
+		for _, query := range queries {
+			callback(query, batch)
+		}
 	}
 
 	if len(misses) == 0 {
@@ -181,14 +183,13 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 
 	// Build list of cachable queries for the queries that missed the cache.
 	cacheableMissed := []chunk.IndexQuery{}
-	missed := map[string]chunk.IndexQuery{}
 	for _, key := range misses {
-		query := queriesByKey[key]
+		// Only need to consider one of the queries as they have the same table & hash.
+		queries := queriesByKey[key]
 		cacheableMissed = append(cacheableMissed, chunk.IndexQuery{
-			TableName: query.TableName,
-			HashValue: query.HashValue,
+			TableName: queries[0].TableName,
+			HashValue: queries[0].HashValue,
 		})
-		missed[key] = query
 	}
 
 	var resultsMtx sync.Mutex
@@ -218,9 +219,11 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 	resultsMtx.Lock()
 	defer resultsMtx.Unlock()
 	for key, batch := range results {
-		query := missed[key]
-		callback(query, batch)
-		s.cache.Store(ctx, queryKey(query), batch)
+		queries := queriesByKey[key]
+		for _, query := range queries {
+			callback(query, batch)
+		}
+		s.cache.Store(ctx, key, batch)
 	}
 	return nil
 }
