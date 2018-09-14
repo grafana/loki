@@ -169,12 +169,25 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 }
 
 // QueryPages implements StorageClient.
-func (m *MockStorage) QueryPages(ctx context.Context, query IndexQuery, callback func(result ReadBatch) (shouldContinue bool)) error {
-	logger := util.WithContext(ctx, util.Logger)
-	level.Debug(logger).Log("msg", "QueryPages", "query", query.HashValue)
-
+func (m *MockStorage) QueryPages(ctx context.Context, queries []IndexQuery, callback func(IndexQuery, ReadBatch) (shouldContinue bool)) error {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
+
+	for _, query := range queries {
+		err := m.query(ctx, query, func(b ReadBatch) bool {
+			return callback(query, b)
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m *MockStorage) query(ctx context.Context, query IndexQuery, callback func(ReadBatch) (shouldContinue bool)) error {
+	logger := util.WithContext(ctx, util.Logger)
+	level.Debug(logger).Log("msg", "QueryPages", "query", query.HashValue)
 
 	table, ok := m.tables[query.TableName]
 	if !ok {
@@ -243,10 +256,10 @@ func (m *MockStorage) QueryPages(ctx context.Context, query IndexQuery, callback
 
 	result := mockReadBatch{}
 	for _, item := range items {
-		result = append(result, item)
+		result.items = append(result.items, item)
 	}
 
-	callback(result)
+	callback(&result)
 	return nil
 }
 
@@ -300,16 +313,31 @@ func (b *mockWriteBatch) Add(tableName, hashValue string, rangeValue []byte, val
 	}{tableName, hashValue, rangeValue, value})
 }
 
-type mockReadBatch []mockItem
-
-func (b mockReadBatch) Len() int {
-	return len(b)
+type mockReadBatch struct {
+	items []mockItem
 }
 
-func (b mockReadBatch) RangeValue(i int) []byte {
-	return b[i].rangeValue
+func (b *mockReadBatch) Iterator() ReadBatchIterator {
+	return &mockReadBatchIter{
+		index:         -1,
+		mockReadBatch: b,
+	}
 }
 
-func (b mockReadBatch) Value(i int) []byte {
-	return b[i].value
+type mockReadBatchIter struct {
+	index int
+	*mockReadBatch
+}
+
+func (b *mockReadBatchIter) Next() bool {
+	b.index++
+	return b.index < len(b.items)
+}
+
+func (b *mockReadBatchIter) RangeValue() []byte {
+	return b.items[b.index].rangeValue
+}
+
+func (b *mockReadBatchIter) Value() []byte {
+	return b.items[b.index].value
 }

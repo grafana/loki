@@ -1,19 +1,20 @@
 package storage
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"hash/fnv"
-	"strings"
+	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"github.com/weaveworks/cortex/pkg/chunk"
 	"github.com/weaveworks/cortex/pkg/chunk/cache"
+	chunk_util "github.com/weaveworks/cortex/pkg/chunk/util"
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 var (
@@ -42,7 +43,7 @@ var (
 // IndexCache describes the cache for the Index.
 type IndexCache interface {
 	Store(ctx context.Context, key string, val ReadBatch)
-	Fetch(ctx context.Context, key string) (val ReadBatch, ok bool, err error)
+	Fetch(ctx context.Context, keys []string) (batches []ReadBatch, misses []string)
 	Stop() error
 }
 
@@ -64,26 +65,77 @@ func (c *indexCache) Store(ctx context.Context, key string, val ReadBatch) {
 	return
 }
 
-func (c *indexCache) Fetch(ctx context.Context, key string) (ReadBatch, bool, error) {
+func (c *indexCache) Fetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {
 	cacheGets.Inc()
 
-	found, valBytes, _, err := c.Cache.Fetch(ctx, []string{hashKey(key)})
-	if len(found) != 1 || err != nil {
-		return ReadBatch{}, false, err
+	// Build a map from hash -> key; NB there can be collisions here; we'll fetch
+	// the last hash.
+	hashedKeys := make(map[string]string, len(keys))
+	for _, key := range keys {
+		hashedKeys[hashKey(key)] = key
 	}
 
-	var rb ReadBatch
-	if err := proto.Unmarshal(valBytes[0], &rb); err != nil {
-		return rb, false, err
+	// Build a list of hashes; could be less than keys due to collisions.
+	hashes := make([]string, 0, len(keys))
+	for hash := range hashedKeys {
+		hashes = append(hashes, hash)
 	}
 
-	// Make sure the hash(key) is not a collision by looking at the key in the value.
-	if key == rb.Key && time.Now().Before(time.Unix(0, rb.Expiry)) {
+	// Look up the hashes in a single batch.  If we get an error, we just "miss" all
+	// of the keys.  Eventually I want to push all the errors to the leafs of the cache
+	// tree, to the caches only return found & missed.
+	foundHashes, bufs, _, err := c.Cache.Fetch(ctx, hashes)
+	if err != nil {
+		level.Warn(util.Logger).Log("msg", "error fetching index entries", "err", err)
+		return nil, keys
+	}
+
+	// Reverse the hash, unmarshal the index entries, check we got what we expected
+	// and that its still valid.
+	batches = make([]ReadBatch, 0, len(foundHashes))
+	for j, foundHash := range foundHashes {
+		key := hashedKeys[foundHash]
+		var readBatch ReadBatch
+
+		if err := proto.Unmarshal(bufs[j], &readBatch); err != nil {
+			level.Warn(util.Logger).Log("msg", "error unmarshalling index entry from cache", "err", err)
+			cacheCorruptErrs.Inc()
+			continue
+		}
+
+		// Make sure the hash(key) is not a collision in the cache by looking at the
+		// key in the value.
+		if key != readBatch.Key || time.Now().After(time.Unix(0, readBatch.Expiry)) {
+			cacheCorruptErrs.Inc()
+			continue
+		}
+
 		cacheHits.Inc()
-		return rb, true, nil
+		batches = append(batches, readBatch)
 	}
 
-	return ReadBatch{}, false, nil
+	// Finally work out what we're missing.
+	misses := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		misses[key] = struct{}{}
+	}
+	for i := range batches {
+		delete(misses, batches[i].Key)
+	}
+	missed = make([]string, 0, len(misses))
+	for miss := range misses {
+		missed = append(missed, miss)
+	}
+
+	return batches, missed
+}
+
+func hashKey(key string) string {
+	hasher := fnv.New64a()
+	hasher.Write([]byte(key)) // This'll never error.
+
+	// Hex because memcache errors for the bytes produced by the hash.
+	return hex.EncodeToString(hasher.Sum(nil))
 }
 
 type cachingStorageClient struct {
@@ -104,102 +156,108 @@ func newCachingStorageClient(client chunk.StorageClient, cache cache.Cache, vali
 	}
 }
 
-func (s *cachingStorageClient) QueryPages(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
-	value, ok, err := s.cache.Fetch(ctx, queryKey(query))
-	if err != nil {
-		cacheCorruptErrs.Inc()
+func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+	// We cache the entire row, so filter client side.
+	callback = chunk_util.QueryFilter(callback)
+
+	// Build list of keys to lookup in the cache.
+	keys := make([]string, 0, len(queries))
+	queriesByKey := make(map[string][]chunk.IndexQuery, len(queries))
+	for _, query := range queries {
+		key := queryKey(query)
+		keys = append(keys, key)
+		queriesByKey[key] = append(queriesByKey[key], query)
 	}
 
-	if ok && err == nil {
-		filteredBatch, _ := filterBatchByQuery(query, []chunk.ReadBatch{value})
-		callback(filteredBatch)
+	batches, misses := s.cache.Fetch(ctx, keys)
+	for _, batch := range batches {
+		queries := queriesByKey[batch.Key]
+		for _, query := range queries {
+			callback(query, batch)
+		}
+	}
 
+	if len(misses) == 0 {
 		return nil
 	}
 
-	batches := []chunk.ReadBatch{}
-	cacheableQuery := chunk.IndexQuery{
-		TableName: query.TableName,
-		HashValue: query.HashValue,
-	} // Just reads the entire row and caches it.
+	// Build list of cachable queries for the queries that missed the cache.
+	cacheableMissed := []chunk.IndexQuery{}
+	for _, key := range misses {
+		// Only need to consider one of the queries as they have the same table & hash.
+		queries := queriesByKey[key]
+		cacheableMissed = append(cacheableMissed, chunk.IndexQuery{
+			TableName: queries[0].TableName,
+			HashValue: queries[0].HashValue,
+		})
+	}
 
+	var resultsMtx sync.Mutex
+	results := map[string]ReadBatch{}
 	expiryTime := time.Now().Add(s.validity)
-	err = s.StorageClient.QueryPages(ctx, cacheableQuery, copyingCallback(&batches))
+	err := s.StorageClient.QueryPages(ctx, cacheableMissed, func(cacheableQuery chunk.IndexQuery, r chunk.ReadBatch) bool {
+		resultsMtx.Lock()
+		defer resultsMtx.Unlock()
+		key := queryKey(cacheableQuery)
+		existing, ok := results[key]
+		if !ok {
+			existing = ReadBatch{
+				Key:    key,
+				Expiry: expiryTime.UnixNano(),
+			}
+		}
+		for iter := r.Iterator(); iter.Next(); {
+			existing.Entries = append(existing.Entries, Entry{Column: iter.RangeValue(), Value: iter.Value()})
+		}
+		results[key] = existing
+		return true
+	})
 	if err != nil {
 		return err
 	}
 
-	filteredBatch, totalBatches := filterBatchByQuery(query, batches)
-	callback(filteredBatch)
-
-	totalBatches.Key = queryKey(query)
-	totalBatches.Expiry = expiryTime.UnixNano()
-
-	s.cache.Store(ctx, totalBatches.Key, totalBatches)
+	resultsMtx.Lock()
+	defer resultsMtx.Unlock()
+	for key, batch := range results {
+		queries := queriesByKey[key]
+		for _, query := range queries {
+			callback(query, batch)
+		}
+		s.cache.Store(ctx, key, batch)
+	}
 	return nil
 }
 
-// Len implements chunk.ReadBatch.
-func (b ReadBatch) Len() int { return len(b.Entries) }
-
-// RangeValue implements chunk.ReadBatch.
-func (b ReadBatch) RangeValue(i int) []byte { return b.Entries[i].Column }
-
-// Value implements chunk.ReadBatch.
-func (b ReadBatch) Value(i int) []byte { return b.Entries[i].Value }
-
-func copyingCallback(readBatches *[]chunk.ReadBatch) func(chunk.ReadBatch) bool {
-	return func(result chunk.ReadBatch) bool {
-		*readBatches = append(*readBatches, result)
-		return true
+// Iterator implements chunk.ReadBatch.
+func (b ReadBatch) Iterator() chunk.ReadBatchIterator {
+	return &readBatchIterator{
+		index:     -1,
+		readBatch: b,
 	}
+}
+
+type readBatchIterator struct {
+	index     int
+	readBatch ReadBatch
+}
+
+// Len implements chunk.ReadBatchIterator.
+func (b *readBatchIterator) Next() bool {
+	b.index++
+	return b.index < len(b.readBatch.Entries)
+}
+
+// RangeValue implements chunk.ReadBatchIterator.
+func (b *readBatchIterator) RangeValue() []byte {
+	return b.readBatch.Entries[b.index].Column
+}
+
+// Value implements chunk.ReadBatchIterator.
+func (b *readBatchIterator) Value() []byte {
+	return b.readBatch.Entries[b.index].Value
 }
 
 func queryKey(q chunk.IndexQuery) string {
 	const sep = "\xff"
 	return q.TableName + sep + q.HashValue
-}
-
-func filterBatchByQuery(query chunk.IndexQuery, batches []chunk.ReadBatch) (filteredBatch, totalBatch ReadBatch) {
-	filter := func([]byte, []byte) bool { return true }
-
-	if len(query.RangeValuePrefix) != 0 {
-		filter = func(rangeValue []byte, value []byte) bool {
-			return strings.HasPrefix(string(rangeValue), string(query.RangeValuePrefix))
-		}
-	}
-	if len(query.RangeValueStart) != 0 {
-		filter = func(rangeValue []byte, value []byte) bool {
-			return string(rangeValue) >= string(query.RangeValueStart)
-		}
-	}
-	if len(query.ValueEqual) != 0 {
-		// This is on top of the existing filters.
-		existingFilter := filter
-		filter = func(rangeValue []byte, value []byte) bool {
-			return existingFilter(rangeValue, value) && bytes.Equal(value, query.ValueEqual)
-		}
-	}
-
-	filteredBatch.Entries = make([]*Entry, 0, len(batches)) // On the higher side for most queries. On the lower side for column key schema.
-	totalBatch.Entries = make([]*Entry, 0, len(batches))
-	for _, batch := range batches {
-		for i := 0; i < batch.Len(); i++ {
-			totalBatch.Entries = append(totalBatch.Entries, &Entry{Column: batch.RangeValue(i), Value: batch.Value(i)})
-
-			if filter(batch.RangeValue(i), batch.Value(i)) {
-				filteredBatch.Entries = append(filteredBatch.Entries, &Entry{Column: batch.RangeValue(i), Value: batch.Value(i)})
-			}
-		}
-	}
-
-	return
-}
-
-func hashKey(key string) string {
-	hasher := fnv.New64a()
-	hasher.Write([]byte(key)) // This'll never error.
-
-	// Hex because memcache errors for the bytes produced by the hash.
-	return hex.EncodeToString(hasher.Sum(nil))
 }

@@ -347,53 +347,23 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, from, through mode
 }
 
 func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
-	incomingEntries := make(chan []IndexEntry)
-	incomingErrors := make(chan error)
-	for _, query := range queries {
-		go func(query IndexQuery) {
-			entries, err := c.lookupEntriesByQuery(ctx, query)
-			if err != nil {
-				incomingErrors <- err
-			} else {
-				incomingEntries <- entries
-			}
-		}(query)
-	}
-
-	// Combine the results into one slice
 	var entries []IndexEntry
-	var lastErr error
-	for i := 0; i < len(queries); i++ {
-		select {
-		case incoming := <-incomingEntries:
-			entries = append(entries, incoming...)
-		case err := <-incomingErrors:
-			lastErr = err
-		}
-	}
-
-	return entries, lastErr
-}
-
-func (c *store) lookupEntriesByQuery(ctx context.Context, query IndexQuery) ([]IndexEntry, error) {
-	var entries []IndexEntry
-
-	if err := c.storage.QueryPages(ctx, query, func(resp ReadBatch) (shouldContinue bool) {
-		for i := 0; i < resp.Len(); i++ {
+	err := c.storage.QueryPages(ctx, queries, func(query IndexQuery, resp ReadBatch) bool {
+		iter := resp.Iterator()
+		for iter.Next() {
 			entries = append(entries, IndexEntry{
 				TableName:  query.TableName,
 				HashValue:  query.HashValue,
-				RangeValue: resp.RangeValue(i),
-				Value:      resp.Value(i),
+				RangeValue: iter.RangeValue(),
+				Value:      iter.Value(),
 			})
 		}
 		return true
-	}); err != nil {
+	})
+	if err != nil {
 		level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "error querying storage", "err", err)
-		return nil, err
 	}
-
-	return entries, nil
+	return entries, err
 }
 
 func (c *store) parseIndexEntries(ctx context.Context, entries []IndexEntry, matcher *labels.Matcher) ([]string, error) {
