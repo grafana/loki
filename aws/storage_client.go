@@ -273,8 +273,8 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 				continue
 			} else if ok && awsErr.Code() == validationException {
 				// this write will never work, so the only option is to drop the offending items and continue.
-				level.Warn(util.Logger).Log("Data lost while flushing to Dynamo: %v", awsErr)
-				level.Debug(util.Logger).Log("Dropped request details: \n%v", requests)
+				level.Warn(util.Logger).Log("msg", "Data lost while flushing to Dynamo", "err", awsErr)
+				level.Debug(util.Logger).Log("msg", "Dropped request details", "requests", requests)
 				// recording the drop counter separately from recordDynamoError(), as the error code alone may not provide enough context
 				// to determine if a request was dropped (or not)
 				for tableName := range requests {
@@ -661,8 +661,8 @@ func (a storageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chu
 				continue
 			} else if ok && awsErr.Code() == validationException {
 				// this read will never work, so the only option is to drop the offending request and continue.
-				level.Warn(util.Logger).Log("Error while fetching data from Dynamo: %v", awsErr)
-				level.Debug(util.Logger).Log("Dropped request details: \n%v", requests)
+				level.Warn(util.Logger).Log("msg", "Error while fetching data from Dynamo", "err", awsErr)
+				level.Debug(util.Logger).Log("msg", "Dropped request details", "requests", requests)
 				// recording the drop counter separately from recordDynamoError(), as the error code alone may not provide enough context
 				// to determine if a request was dropped (or not)
 				for tableName := range requests {
