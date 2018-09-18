@@ -42,7 +42,7 @@ var (
 
 // IndexCache describes the cache for the Index.
 type IndexCache interface {
-	Store(ctx context.Context, key string, val ReadBatch)
+	Store(ctx context.Context, keys []string, batches []ReadBatch)
 	Fetch(ctx context.Context, keys []string) (batches []ReadBatch, misses []string)
 	Stop() error
 }
@@ -51,17 +51,25 @@ type indexCache struct {
 	cache.Cache
 }
 
-func (c *indexCache) Store(ctx context.Context, key string, val ReadBatch) {
-	cachePuts.Inc()
-	out, err := proto.Marshal(&val)
-	if err != nil {
-		cacheEncodeErrs.Inc()
-		return
-	}
+func (c *indexCache) Store(ctx context.Context, keys []string, batches []ReadBatch) {
+	cachePuts.Add(float64(len(keys)))
 
 	// We're doing the hashing to handle unicode and key len properly.
 	// Memcache fails for unicode keys and keys longer than 250 Bytes.
-	c.Cache.Store(ctx, []string{hashKey(key)}, [][]byte{out})
+	hashed := make([]string, 0, len(keys))
+	bufs := make([][]byte, 0, len(batches))
+	for i := range keys {
+		hashed = append(hashed, hashKey(keys[i]))
+		out, err := proto.Marshal(&batches[i])
+		if err != nil {
+			level.Warn(util.Logger).Log("msg", "error marshaling ReadBatch", "err", err)
+			cacheEncodeErrs.Inc()
+			return
+		}
+		bufs = append(bufs, out)
+	}
+
+	c.Cache.Store(ctx, hashed, bufs)
 	return
 }
 
@@ -212,14 +220,21 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 		return err
 	}
 
-	resultsMtx.Lock()
-	defer resultsMtx.Unlock()
-	for key, batch := range results {
-		queries := queriesByKey[key]
-		for _, query := range queries {
-			callback(query, batch)
+	{
+		resultsMtx.Lock()
+		defer resultsMtx.Unlock()
+		keys := make([]string, 0, len(results))
+		batches := make([]ReadBatch, 0, len(results))
+		for key, batch := range results {
+			keys = append(keys, key)
+			batches = append(batches, batch)
+
+			queries := queriesByKey[key]
+			for _, query := range queries {
+				callback(query, batch)
+			}
 		}
-		s.cache.Store(ctx, key, batch)
+		s.cache.Store(ctx, keys, batches)
 	}
 	return nil
 }
