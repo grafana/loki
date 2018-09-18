@@ -5,9 +5,9 @@ import (
 	"flag"
 	"sync"
 
-	"github.com/go-kit/kit/log/level"
+	opentracing "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 var (
@@ -49,8 +49,8 @@ type backgroundCache struct {
 }
 
 type backgroundWrite struct {
-	key string
-	buf []byte
+	keys []string
+	bufs [][]byte
 }
 
 // NewBackground returns a new Cache that does stores on background goroutines.
@@ -78,18 +78,19 @@ func (c *backgroundCache) Stop() error {
 }
 
 // Store writes keys for the cache in the background.
-func (c *backgroundCache) Store(ctx context.Context, key string, buf []byte) error {
+func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
 	bgWrite := backgroundWrite{
-		key: key,
-		buf: buf,
+		keys: keys,
+		bufs: bufs,
 	}
 	select {
 	case c.bgWrites <- bgWrite:
-		queueLength.Inc()
+		queueLength.Add(float64(len(keys)))
 	default:
-		droppedWriteBack.Inc()
+		sp := opentracing.SpanFromContext(ctx)
+		sp.LogFields(otlog.Int("dropped", len(keys)))
+		droppedWriteBack.Add(float64(len(keys)))
 	}
-	return nil
 }
 
 func (c *backgroundCache) writeBackLoop() {
@@ -101,11 +102,9 @@ func (c *backgroundCache) writeBackLoop() {
 			if !ok {
 				return
 			}
-			queueLength.Dec()
-			err := c.Cache.Store(context.Background(), bgWrite.key, bgWrite.buf)
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "error writing to memcache", "err", err)
-			}
+			queueLength.Sub(float64(len(bgWrite.keys)))
+			c.Cache.Store(context.Background(), bgWrite.keys, bgWrite.bufs)
+
 		case <-c.quit:
 			return
 		}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -72,7 +73,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient) *Memcached {
 				res := &result{
 					batchID: input.batchID,
 				}
-				res.found, res.bufs, res.missed, res.err = c.fetch(input.ctx, input.keys)
+				res.found, res.bufs, res.missed = c.fetch(input.ctx, input.keys)
 				input.resultCh <- res
 			}
 
@@ -94,7 +95,6 @@ type result struct {
 	found   []string
 	bufs    [][]byte
 	missed  []string
-	err     error
 	batchID int // For ordering results.
 }
 
@@ -113,37 +113,38 @@ func memcacheStatusCode(err error) string {
 }
 
 // Fetch gets keys from the cache. The keys that are found must be in the order of the keys requested.
-func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
-	err = instr.TimeRequestHistogramStatus(ctx, "Memcache.Get", memcacheRequestDuration, memcacheStatusCode, func(ctx context.Context) error {
-		sp := opentracing.SpanFromContext(ctx)
-		sp.LogFields(otlog.Int("keys requested", len(keys)))
-		defer func() {
-			sp.LogFields(otlog.Int("keys found", len(found)), otlog.Int("keys missing", len(missed)))
-		}()
-
-		var err error
+func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
+	instr.TimeRequestHistogramStatus(ctx, "Memcache.Get", memcacheRequestDuration, memcacheStatusCode, func(ctx context.Context) error {
 		if c.cfg.BatchSize == 0 {
-			found, bufs, missed, err = c.fetch(ctx, keys)
-			return err
+			found, bufs, missed = c.fetch(ctx, keys)
+			return nil
 		}
 
-		found, bufs, missed, err = c.fetchKeysBatched(ctx, keys)
-		return err
+		found, bufs, missed = c.fetchKeysBatched(ctx, keys)
+		return nil
 	})
-
 	return
 }
 
-func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
+func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
 	var items map[string]*memcache.Item
-	err = UntracedCollectedRequest(ctx, "Memcache.GetMulti", instr.NewHistogramCollector(memcacheRequestDuration), memcacheStatusCode, func(_ context.Context) error {
+	err := instr.TimeRequestHistogramStatus(ctx, "Memcache.GetMulti", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
+		sp := opentracing.SpanFromContext(ctx)
+		sp.LogFields(otlog.Int("keys requested", len(keys)))
+
 		var err error
 		items, err = c.memcache.GetMulti(keys)
+
+		sp.LogFields(otlog.Int("keys found", len(items)))
+		if err != nil {
+			sp.LogFields(otlog.Error(err))
+		}
 		return err
 	})
 
 	if err != nil {
 		missed = keys
+		level.Error(util.Logger).Log("msg", "Failed to get keys from memcached", "err", err)
 		return
 	}
 
@@ -159,7 +160,7 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 	return
 }
 
-func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
+func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
 	resultsCh := make(chan *result)
 	batchSize := c.cfg.BatchSize
 
@@ -191,10 +192,6 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 	close(resultsCh)
 
 	for _, result := range results {
-		if result.err != nil {
-			err = result.err
-		}
-
 		found = append(found, result.found...)
 		bufs = append(bufs, result.bufs...)
 		missed = append(missed, result.missed...)
@@ -204,15 +201,22 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 }
 
 // Store stores the key in the cache.
-func (c *Memcached) Store(ctx context.Context, key string, buf []byte) error {
-	return instr.TimeRequestHistogramStatus(ctx, "Memcache.Put", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
-		item := memcache.Item{
-			Key:        key,
-			Value:      buf,
-			Expiration: int32(c.cfg.Expiration.Seconds()),
+func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) {
+	for i := range keys {
+		err := instr.TimeRequestHistogramStatus(ctx, "Memcache.Put", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
+			item := memcache.Item{
+				Key:        keys[i],
+				Value:      bufs[i],
+				Expiration: int32(c.cfg.Expiration.Seconds()),
+			}
+			return c.memcache.Set(&item)
+		})
+		if err != nil {
+			sp := opentracing.SpanFromContext(ctx)
+			sp.LogFields(otlog.Error(err))
+			level.Error(util.Logger).Log("msg", "failed to put to diskcache", "err", err)
 		}
-		return c.memcache.Set(&item)
-	})
+	}
 }
 
 // Stop does nothing.

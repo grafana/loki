@@ -45,13 +45,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) {
 	var caches []cache.Cache
 	if cfg.IndexCacheSize > 0 {
-		fifocache := cache.MetricsInstrument("fifo-index", cache.NewFifoCache("index", cfg.IndexCacheSize, cfg.IndexCacheValidity))
+		fifocache := cache.Instrument("fifo-index", cache.NewFifoCache("index", cfg.IndexCacheSize, cfg.IndexCacheValidity))
 		caches = append(caches, fifocache)
 	}
 
 	if cfg.memcacheClient.Host != "" {
 		client := cache.NewMemcachedClient(cfg.memcacheClient)
-		memcache := cache.MetricsInstrument("memcache-index", cache.NewMemcached(cache.MemcachedConfig{
+		memcache := cache.Instrument("memcache-index", cache.NewMemcached(cache.MemcachedConfig{
 			Expiration: cfg.IndexCacheValidity,
 		}, client))
 		caches = append(caches, cache.NewBackground(cache.BackgroundConfig{

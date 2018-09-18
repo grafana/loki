@@ -143,10 +143,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []Chunk, keys []string
 	defer log.Span.Finish()
 
 	// Now fetch the actual chunk data from Memcache / S3
-	cacheHits, cacheBufs, _, err := c.cache.Fetch(ctx, keys)
-	if err != nil {
-		level.Warn(log).Log("msg", "error fetching from cache", "err", err)
-	}
+	cacheHits, cacheBufs, _ := c.cache.Fetch(ctx, keys)
 
 	fromCache, missing, err := c.processCacheResponse(chunks, cacheHits, cacheBufs)
 	if err != nil {
@@ -172,15 +169,20 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []Chunk, keys []string
 }
 
 func (c *Fetcher) writeBackCache(ctx context.Context, chunks []Chunk) error {
+	keys := make([]string, 0, len(chunks))
+	bufs := make([][]byte, 0, len(chunks))
 	for i := range chunks {
 		encoded, err := chunks[i].Encode()
+		// TODO don't fail, just log and conitnue?
 		if err != nil {
 			return err
 		}
-		if err := c.cache.Store(ctx, chunks[i].ExternalKey(), encoded); err != nil {
-			return err
-		}
+
+		keys = append(keys, chunks[i].ExternalKey())
+		bufs = append(bufs, encoded)
 	}
+
+	c.cache.Store(ctx, keys, bufs)
 	return nil
 }
 

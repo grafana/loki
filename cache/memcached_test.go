@@ -34,19 +34,23 @@ func testMemcache(t *testing.T, memcache *cache.Memcached) {
 	numKeys := 1000
 
 	ctx := context.Background()
+	keysIncMissing := make([]string, 0, numKeys)
 	keys := make([]string, 0, numKeys)
+	bufs := make([][]byte, 0, numKeys)
+
 	// Insert 1000 keys skipping all multiples of 5.
 	for i := 0; i < numKeys; i++ {
-		keys = append(keys, string(i))
+		keysIncMissing = append(keysIncMissing, string(i))
 		if i%5 == 0 {
 			continue
 		}
 
-		require.NoError(t, memcache.Store(ctx, string(i), []byte(string(i))))
+		keys = append(keys, string(i))
+		bufs = append(bufs, []byte(string(i)))
 	}
+	memcache.Store(ctx, keys, bufs)
 
-	found, bufs, missing, err := memcache.Fetch(ctx, keys)
-	require.NoError(t, err)
+	found, bufs, missing := memcache.Fetch(ctx, keysIncMissing)
 	for i := 0; i < numKeys; i++ {
 		if i%5 == 0 {
 			require.Equal(t, string(i), missing[0])
@@ -105,19 +109,22 @@ func testMemcacheFailing(t *testing.T, memcache *cache.Memcached) {
 	numKeys := 1000
 
 	ctx := context.Background()
+	keysIncMissing := make([]string, 0, numKeys)
 	keys := make([]string, 0, numKeys)
+	bufs := make([][]byte, 0, numKeys)
 	// Insert 1000 keys skipping all multiples of 5.
 	for i := 0; i < numKeys; i++ {
-		keys = append(keys, string(i))
+		keysIncMissing = append(keysIncMissing, string(i))
 		if i%5 == 0 {
 			continue
 		}
-
-		require.NoError(t, memcache.Store(ctx, string(i), []byte(string(i))))
+		keys = append(keys, string(i))
+		bufs = append(bufs, []byte(string(i)))
 	}
+	memcache.Store(ctx, keys, bufs)
 
 	for i := 0; i < 10; i++ {
-		found, bufs, missing, _ := memcache.Fetch(ctx, keys)
+		found, bufs, missing := memcache.Fetch(ctx, keysIncMissing)
 
 		require.Equal(t, len(found), len(bufs))
 		for i := range found {

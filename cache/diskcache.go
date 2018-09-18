@@ -9,9 +9,14 @@ import (
 	"os"
 	"sync"
 
+	"github.com/go-kit/kit/log/level"
+	opentracing "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/tsdb/fileutil"
 	"golang.org/x/sys/unix"
+
+	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // TODO: in the future we could cuckoo hash or linear probe.
@@ -79,7 +84,7 @@ func (d *Diskcache) Stop() error {
 }
 
 // Fetch get chunks from the cache.
-func (d *Diskcache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
+func (d *Diskcache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
 	for _, key := range keys {
 		buf, ok := d.fetch(key)
 		if ok {
@@ -115,24 +120,30 @@ func (d *Diskcache) fetch(key string) ([]byte, bool) {
 }
 
 // Store puts a chunk into the cache.
-func (d *Diskcache) Store(ctx context.Context, key string, value []byte) error {
+func (d *Diskcache) Store(ctx context.Context, keys []string, bufs [][]byte) {
+	sp := opentracing.SpanFromContext(ctx)
+
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
-	bucket := hash(key) % d.buckets
-	buf := d.buf[bucket*bucketSize : (bucket+1)*bucketSize]
+	for i := range keys {
+		bucket := hash(keys[i]) % d.buckets
+		buf := d.buf[bucket*bucketSize : (bucket+1)*bucketSize]
 
-	n, err := put([]byte(key), buf, 0)
-	if err != nil {
-		return err
+		n, err := put([]byte(keys[i]), buf, 0)
+		if err != nil {
+			sp.LogFields(otlog.Error(err))
+			level.Error(util.Logger).Log("msg", "failed to put key to diskcache", "err", err)
+			continue
+		}
+
+		_, err = put(bufs[i], buf, n)
+		if err != nil {
+			sp.LogFields(otlog.Error(err))
+			level.Error(util.Logger).Log("msg", "failed to put value to diskcache", "err", err)
+			continue
+		}
 	}
-
-	_, err = put(value, buf, n)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func put(value []byte, buf []byte, n int) (int, error) {
