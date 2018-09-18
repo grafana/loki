@@ -18,10 +18,13 @@ func TestFifoCache(t *testing.T) {
 	ctx := context.Background()
 
 	// Check put / get works
+	keys := []string{}
+	values := []interface{}{}
 	for i := 0; i < size; i++ {
-		c.Put(ctx, strconv.Itoa(i), i)
-		//c.print()
+		keys = append(keys, strconv.Itoa(i))
+		values = append(values, i)
 	}
+	c.Put(ctx, keys, values)
 	require.Len(t, c.index, size)
 	require.Len(t, c.entries, size)
 
@@ -32,10 +35,13 @@ func TestFifoCache(t *testing.T) {
 	}
 
 	// Check evictions
+	keys = []string{}
+	values = []interface{}{}
 	for i := size; i < size+overwrite; i++ {
-		c.Put(ctx, strconv.Itoa(i), i)
-		//c.print()
+		keys = append(keys, strconv.Itoa(i))
+		values = append(values, i)
 	}
+	c.Put(ctx, keys, values)
 	require.Len(t, c.index, size)
 	require.Len(t, c.entries, size)
 
@@ -50,10 +56,13 @@ func TestFifoCache(t *testing.T) {
 	}
 
 	// Check updates work
+	keys = []string{}
+	values = []interface{}{}
 	for i := size; i < size+overwrite; i++ {
-		c.Put(ctx, strconv.Itoa(i), i*2)
-		//c.print()
+		keys = append(keys, strconv.Itoa(i))
+		values = append(values, i*2)
 	}
+	c.Put(ctx, keys, values)
 	require.Len(t, c.index, size)
 	require.Len(t, c.entries, size)
 
@@ -68,7 +77,7 @@ func TestFifoCacheExpiry(t *testing.T) {
 	c := NewFifoCache("test", size, 5*time.Millisecond)
 	ctx := context.Background()
 
-	c.Put(ctx, "0", 0)
+	c.Put(ctx, []string{"0"}, []interface{}{0})
 
 	value, ok := c.Get(ctx, "0")
 	require.True(t, ok)

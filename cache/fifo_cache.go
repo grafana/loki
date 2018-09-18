@@ -99,15 +99,8 @@ func NewFifoCache(name string, size int, validity time.Duration) *FifoCache {
 	}
 }
 
-// Store implements Cache.
-func (c *FifoCache) Store(ctx context.Context, key string, buf []byte) error {
-	c.Put(ctx, key, buf)
-
-	return nil
-}
-
 // Fetch implements Cache.
-func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string) {
 	found, missing, bufs = make([]string, 0, len(keys)), make([]string, 0, len(keys)), make([][]byte, 0, len(keys))
 	for _, key := range keys {
 		val, ok := c.Get(ctx, key)
@@ -123,13 +116,22 @@ func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, b
 	return
 }
 
+// Store implements Cache.
+func (c *FifoCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
+	values := make([]interface{}, 0, len(bufs))
+	for _, buf := range bufs {
+		values = append(values, buf)
+	}
+	c.Put(ctx, keys, values)
+}
+
 // Stop implements Cache.
 func (c *FifoCache) Stop() error {
 	return nil
 }
 
 // Put stores the value against the key.
-func (c *FifoCache) Put(ctx context.Context, key string, value interface{}) {
+func (c *FifoCache) Put(ctx context.Context, keys []string, values []interface{}) {
 	c.entriesAdded.Inc()
 	if c.size == 0 {
 		return
@@ -138,6 +140,12 @@ func (c *FifoCache) Put(ctx context.Context, key string, value interface{}) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	for i := range keys {
+		c.put(ctx, keys[i], values[i])
+	}
+}
+
+func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 	// See if we already have the entry
 	index, ok := c.index[key]
 	if ok {

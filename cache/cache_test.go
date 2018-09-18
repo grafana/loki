@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -162,5 +163,10 @@ func TestDiskcache(t *testing.T) {
 		Size: 100 * 1024 * 1024,
 	})
 	require.NoError(t, err)
+	testCache(t, cache)
+}
+
+func TestFifoCache(t *testing.T) {
+	cache := cache.NewFifoCache("test", 1e3, 1*time.Hour)
 	testCache(t, cache)
 }

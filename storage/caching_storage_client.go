@@ -61,7 +61,7 @@ func (c *indexCache) Store(ctx context.Context, key string, val ReadBatch) {
 
 	// We're doing the hashing to handle unicode and key len properly.
 	// Memcache fails for unicode keys and keys longer than 250 Bytes.
-	c.Cache.Store(ctx, hashKey(key), out)
+	c.Cache.Store(ctx, []string{hashKey(key)}, [][]byte{out})
 	return
 }
 
@@ -84,11 +84,7 @@ func (c *indexCache) Fetch(ctx context.Context, keys []string) (batches []ReadBa
 	// Look up the hashes in a single batch.  If we get an error, we just "miss" all
 	// of the keys.  Eventually I want to push all the errors to the leafs of the cache
 	// tree, to the caches only return found & missed.
-	foundHashes, bufs, _, err := c.Cache.Fetch(ctx, hashes)
-	if err != nil {
-		level.Warn(util.Logger).Log("msg", "error fetching index entries", "err", err)
-		return nil, keys
-	}
+	foundHashes, bufs, _ := c.Cache.Fetch(ctx, hashes)
 
 	// Reverse the hash, unmarshal the index entries, check we got what we expected
 	// and that its still valid.
