@@ -34,7 +34,7 @@ func TestCachingStorageClientBasic(t *testing.T) {
 			}},
 		},
 	}
-	cache := cache.NewFifoCache("test", 10, 10*time.Second)
+	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{10, 10 * time.Second})
 	client := newCachingStorageClient(store, cache, 1*time.Second)
 	queries := []chunk.IndexQuery{{
 		TableName: "table",
@@ -63,7 +63,7 @@ func TestCachingStorageClient(t *testing.T) {
 			}},
 		},
 	}
-	cache := cache.NewFifoCache("test", 10, 10*time.Second)
+	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{10, 10 * time.Second})
 	client := newCachingStorageClient(store, cache, 1*time.Second)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo"},
@@ -113,7 +113,7 @@ func TestCachingStorageClientCollision(t *testing.T) {
 			},
 		},
 	}
-	cache := cache.NewFifoCache("test", 10, 10*time.Second)
+	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{10, 10 * time.Second})
 	client := newCachingStorageClient(store, cache, 1*time.Second)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar")},

@@ -17,6 +17,8 @@ type MockStorage struct {
 	mtx     sync.RWMutex
 	tables  map[string]*mockTable
 	objects map[string][]byte
+
+	numWrites int
 }
 
 type mockTable struct {
@@ -124,6 +126,8 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 
 	mockBatch := *batch.(*mockWriteBatch)
 	seenWrites := map[string]bool{}
+
+	m.numWrites += len(mockBatch)
 
 	for _, req := range mockBatch {
 		table, ok := m.tables[req.tableName]

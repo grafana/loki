@@ -41,15 +41,11 @@ type MemcachedClientConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *MemcachedClientConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.registerFlagsWithPrefix("", f)
+	cfg.RegisterFlagsWithPrefix("", f)
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	cfg.registerFlagsWithPrefix(prefix, f)
-}
-
-func (cfg *MemcachedClientConfig) registerFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	if prefix != "" {
 		prefix = prefix + "."
 	}

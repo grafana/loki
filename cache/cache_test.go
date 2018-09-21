@@ -167,7 +167,7 @@ func TestDiskcache(t *testing.T) {
 }
 
 func TestFifoCache(t *testing.T) {
-	cache := cache.NewFifoCache("test", 1e3, 1*time.Hour)
+	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{1e3, 1 * time.Hour})
 	testCache(t, cache)
 }
 

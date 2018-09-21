@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"flag"
 	"sync"
 	"time"
 
@@ -53,6 +54,18 @@ var (
 	}, []string{"cache"})
 )
 
+// FifoCacheConfig holds config for the FifoCache.
+type FifoCacheConfig struct {
+	Size     int
+	Validity time.Duration
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *FifoCacheConfig) RegisterFlags(f *flag.FlagSet) {
+	f.IntVar(&cfg.Size, "fifocache.size", 0, "The number of entries to cache.")
+	f.DurationVar(&cfg.Validity, "fifocache.duration", 0, "The expiry duration for the cache.")
+}
+
 // FifoCache is a simple string -> interface{} cache which uses a fifo slide to
 // manage evictions.  O(1) inserts and updates, O(1) gets.
 type FifoCache struct {
@@ -82,12 +95,12 @@ type cacheEntry struct {
 }
 
 // NewFifoCache returns a new initialised FifoCache of size.
-func NewFifoCache(name string, size int, validity time.Duration) *FifoCache {
+func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
 	return &FifoCache{
-		size:     size,
-		validity: validity,
-		entries:  make([]cacheEntry, 0, size),
-		index:    make(map[string]int, size),
+		size:     cfg.Size,
+		validity: cfg.Validity,
+		entries:  make([]cacheEntry, 0, cfg.Size),
+		index:    make(map[string]int, cfg.Size),
 
 		name:            name,
 		entriesAdded:    cacheEntriesAdded.WithLabelValues(name),
@@ -216,8 +229,7 @@ func (c *FifoCache) Get(ctx context.Context, key string) (interface{}, bool) {
 	index, ok := c.index[key]
 	if ok {
 		updated := c.entries[index].updated
-		if time.Now().Sub(updated) < c.validity {
-
+		if c.validity == 0 || time.Now().Sub(updated) < c.validity {
 			return c.entries[index].value, true
 		}
 

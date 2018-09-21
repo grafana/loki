@@ -2,10 +2,10 @@ package chunk
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -61,14 +61,20 @@ func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient) (Stor
 		return nil, err
 	}
 
+	entryCache, err := cache.New(cfg.EntryCache)
+	if err != nil {
+		return nil, err
+	}
+
 	return &seriesStore{
 		store: store{
-			cfg:     cfg,
-			storage: storage,
-			schema:  schema,
-			Fetcher: fetcher,
+			cfg:        cfg,
+			storage:    storage,
+			schema:     schema,
+			Fetcher:    fetcher,
+			entryCache: entryCache,
 		},
-		cardinalityCache: cache.NewFifoCache("cardinality", cfg.CardinalityCacheSize, cfg.CardinalityCacheValidity),
+		cardinalityCache: cache.NewFifoCache("cardinality", cache.FifoCacheConfig{cfg.CardinalityCacheSize, cfg.CardinalityCacheValidity}),
 	}, nil
 }
 
@@ -290,4 +296,92 @@ func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through mo
 
 	result, err := c.parseIndexEntries(ctx, entries, nil)
 	return result, err
+}
+
+// Put implements ChunkStore
+func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
+	for _, chunk := range chunks {
+		if err := c.PutOne(ctx, chunk.From, chunk.Through, chunk); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// PutOne implements ChunkStore
+func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Horribly, PutChunks mutates the chunk by setting its checksum.  By putting
+	// the chunk in a slice we are in fact passing by reference, so below we
+	// need to make sure we pick the chunk back out the slice.
+	chunks := []Chunk{chunk}
+
+	err = c.storage.PutChunks(ctx, chunks)
+	if err != nil {
+		return err
+	}
+
+	c.writeBackCache(ctx, chunks)
+
+	writeReqs, _, keysToCache, err := c.calculateIndexEntries(userID, from, through, chunks[0])
+	if err != nil {
+		return err
+	}
+
+	if err := c.storage.BatchWrite(ctx, writeReqs); err != nil {
+		return err
+	}
+
+	bufs := make([][]byte, len(keysToCache))
+	c.entryCache.Store(ctx, keysToCache, bufs)
+	return nil
+}
+
+// calculateIndexEntries creates a set of batched WriteRequests for all the chunks it is given.
+func (c *seriesStore) calculateIndexEntries(userID string, from, through model.Time, chunk Chunk) (WriteBatch, []IndexEntry, []string, error) {
+	seenIndexEntries := map[string]struct{}{}
+	entries := []IndexEntry{}
+	keysToCache := []string{}
+
+	metricName, err := extract.MetricNameFromMetric(chunk.Metric)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	keys := c.schema.GetLabelEntryCacheKey(from, through, userID, chunk.Metric)
+	_, _, missing := c.entryCache.Fetch(context.Background(), keys)
+	if len(missing) != 0 {
+		labelEntries, err := c.schema.GetLabelWriteEntries(from, through, userID, metricName, chunk.Metric, chunk.ExternalKey())
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		entries = append(entries, labelEntries...)
+		keysToCache = missing
+	}
+
+	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, userID, metricName, chunk.Metric, chunk.ExternalKey())
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	entries = append(entries, chunkEntries...)
+
+	indexEntriesPerChunk.Observe(float64(len(entries)))
+
+	// Remove duplicate entries based on tableName:hashValue:rangeValue
+	result := c.storage.NewWriteBatch()
+	for _, entry := range entries {
+		key := fmt.Sprintf("%s:%s:%x", entry.TableName, entry.HashValue, entry.RangeValue)
+		if _, ok := seenIndexEntries[key]; !ok {
+			seenIndexEntries[key] = struct{}{}
+			rowWrites.Observe(entry.HashValue, 1)
+			result.Add(entry.TableName, entry.HashValue, entry.RangeValue, entry.Value)
+		}
+	}
+
+	return result, entries, keysToCache, nil
 }
