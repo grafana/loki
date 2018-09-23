@@ -79,7 +79,7 @@ func (f *filteringBatchIter) Next() bool {
 }
 
 // QueryFilter wraps a callback to ensure the results are filtered correctly;
-// useful for the cache and BigTable backend, which only ever fetches the whole
+// useful for the cache and Bigtable backend, which only ever fetches the whole
 // row.
 func QueryFilter(callback Callback) Callback {
 	return func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {

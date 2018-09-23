@@ -435,7 +435,7 @@ func (s *storageClientColumnKey) GetChunks(ctx context.Context, input []chunk.Ch
 				} else if err != nil {
 					errs <- errors.WithStack(err)
 				} else if recievedChunks < len(page) {
-					errs <- errors.WithStack(fmt.Errorf("Asked for %d chunks for BigTable, received %d", len(page), recievedChunks))
+					errs <- errors.WithStack(fmt.Errorf("Asked for %d chunks for Bigtable, received %d", len(page), recievedChunks))
 				}
 			}(page)
 		}
@@ -470,7 +470,7 @@ func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, cal
 
 	var rowRange bigtable.RowRange
 
-	/* BigTable only seems to support regex match on cell values, so doing it
+	/* Bigtable only seems to support regex match on cell values, so doing it
 	   client side for now
 	readOpts := []bigtable.ReadOption{
 		bigtable.RowFilter(bigtable.FamilyFilter(columnFamily)),
