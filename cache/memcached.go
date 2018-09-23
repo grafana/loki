@@ -128,7 +128,7 @@ func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, b
 
 func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
 	var items map[string]*memcache.Item
-	err := instr.TimeRequestHistogramStatus(ctx, "Memcache.GetMulti", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
+	instr.TimeRequestHistogramStatus(ctx, "Memcache.GetMulti", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
 		sp := opentracing.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys requested", len(keys)))
 
@@ -136,17 +136,14 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 		items, err = c.memcache.GetMulti(keys)
 
 		sp.LogFields(otlog.Int("keys found", len(items)))
+
+		// Memcached returns partial results even on error.
 		if err != nil {
 			sp.LogFields(otlog.Error(err))
+			level.Error(util.Logger).Log("msg", "Failed to get keys from memcached", "err", err)
 		}
 		return err
 	})
-
-	if err != nil {
-		missed = keys
-		level.Error(util.Logger).Log("msg", "Failed to get keys from memcached", "err", err)
-		return
-	}
 
 	for _, key := range keys {
 		item, ok := items[key]
