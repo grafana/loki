@@ -25,13 +25,16 @@ import (
 
 // Errors that decode can return
 const (
-	ErrInvalidChunkID  = errs.Error("invalid chunk ID")
 	ErrInvalidChecksum = errs.Error("invalid chunk checksum")
 	ErrWrongMetadata   = errs.Error("wrong chunk metadata")
 	ErrMetadataLength  = errs.Error("chunk metadata wrong length")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
+
+func errInvalidChunkID(s string) error {
+	return errors.Errorf("invalid chunk ID %q", s)
+}
 
 // Chunk contains encoded timeseries data
 type Chunk struct {
@@ -107,7 +110,7 @@ func ParseExternalKey(userID, externalKey string) (Chunk, error) {
 func parseLegacyChunkID(userID, key string) (Chunk, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) != 3 {
-		return Chunk{}, errors.WithStack(ErrInvalidChunkID)
+		return Chunk{}, errInvalidChunkID(key)
 	}
 	fingerprint, err := strconv.ParseUint(parts[0], 10, 64)
 	if err != nil {
@@ -132,12 +135,12 @@ func parseLegacyChunkID(userID, key string) (Chunk, error) {
 func parseNewExternalKey(key string) (Chunk, error) {
 	parts := strings.Split(key, "/")
 	if len(parts) != 2 {
-		return Chunk{}, errors.WithStack(ErrInvalidChunkID)
+		return Chunk{}, errInvalidChunkID(key)
 	}
 	userID := parts[0]
 	hexParts := strings.Split(parts[1], ":")
 	if len(hexParts) != 4 {
-		return Chunk{}, errors.WithStack(ErrInvalidChunkID)
+		return Chunk{}, errInvalidChunkID(key)
 	}
 	fingerprint, err := strconv.ParseUint(hexParts[0], 16, 64)
 	if err != nil {
