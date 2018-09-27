@@ -109,11 +109,11 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	}
 	level.Debug(log).Log("chunk-ids", len(chunkIDs))
 
-	// Filter out chunks that are not in the selected time range.
 	chunks, err := c.convertChunkIDsToChunks(ctx, chunkIDs)
 	if err != nil {
 		return nil, err
 	}
+	// Filter out chunks that are not in the selected time range.
 	filtered, keys := filterChunksByTime(from, through, chunks)
 	level.Debug(log).Log("chunks-post-filtering", len(chunks))
 	chunksPerQuery.Observe(float64(len(filtered)))
