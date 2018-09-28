@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -347,9 +348,11 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, from, through mode
 }
 
 func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
+	var lock sync.Mutex
 	var entries []IndexEntry
 	err := c.storage.QueryPages(ctx, queries, func(query IndexQuery, resp ReadBatch) bool {
 		iter := resp.Iterator()
+		lock.Lock()
 		for iter.Next() {
 			entries = append(entries, IndexEntry{
 				TableName:  query.TableName,
@@ -358,6 +361,7 @@ func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery
 				Value:      iter.Value(),
 			})
 		}
+		lock.Unlock()
 		return true
 	})
 	if err != nil {
