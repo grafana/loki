@@ -170,3 +170,8 @@ func TestFifoCache(t *testing.T) {
 	cache := cache.NewFifoCache("test", 1e3, 1*time.Hour)
 	testCache(t, cache)
 }
+
+func TestSnappyCache(t *testing.T) {
+	cache := cache.NewSnappy(cache.NewMockCache())
+	testCache(t, cache)
+}
