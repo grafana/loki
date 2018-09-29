@@ -241,15 +241,6 @@ func (c doubleDeltaEncodedChunk) MarshalToBuf(buf []byte) error {
 	return nil
 }
 
-// Unmarshal implements chunk.
-func (c *doubleDeltaEncodedChunk) Unmarshal(r io.Reader) error {
-	*c = (*c)[:cap(*c)]
-	if _, err := io.ReadFull(r, *c); err != nil {
-		return err
-	}
-	return c.setLen()
-}
-
 // UnmarshalFromBuf implements chunk.
 func (c *doubleDeltaEncodedChunk) UnmarshalFromBuf(buf []byte) error {
 	*c = (*c)[:cap(*c)]

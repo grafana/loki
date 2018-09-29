@@ -286,26 +286,21 @@ func (c *varbitChunk) Slice(_, _ model.Time) Chunk {
 
 // Marshal implements chunk.
 func (c varbitChunk) Marshal(w io.Writer) error {
-	n, err := w.Write(c)
+	size := c.MarshalLen()
+	n, err := w.Write(c[:size])
 	if err != nil {
 		return err
 	}
-	if n != cap(c) {
-		return fmt.Errorf("wanted to write %d bytes, wrote %d", cap(c), n)
+	if n != size {
+		return fmt.Errorf("wanted to write %d bytes, wrote %d", size, n)
 	}
 	return nil
 }
 
-// Unmarshal implements chunk.
-func (c varbitChunk) Unmarshal(r io.Reader) error {
-	_, err := io.ReadFull(r, c)
-	return err
-}
-
 // UnmarshalFromBuf implements chunk.
 func (c varbitChunk) UnmarshalFromBuf(buf []byte) error {
-	if copied := copy(c, buf); copied != cap(c) {
-		return fmt.Errorf("insufficient bytes copied from buffer during unmarshaling, want %d, got %d", cap(c), copied)
+	if copied := copy(c, buf); copied != cap(c) && copied != c.MarshalLen() {
+		return fmt.Errorf("incorrect byte count copied from buffer during unmarshaling, want %d or %d, got %d", c.MarshalLen(), ChunkLen, copied)
 	}
 	return nil
 }
@@ -317,6 +312,19 @@ func (c varbitChunk) Encoding() Encoding { return Varbit }
 func (c varbitChunk) Utilization() float64 {
 	// 15 bytes is the length of the chunk footer.
 	return math.Min(float64(c.nextSampleOffset()/8+15)/float64(cap(c)), 1)
+}
+
+// MarshalLen implements chunk.
+func (c varbitChunk) MarshalLen() int {
+	bits := c.nextSampleOffset()
+	if bits < varbitThirdSampleBitOffset {
+		bits = varbitThirdSampleBitOffset
+	}
+	bytes := int(bits)/8 + 1
+	if bytes > len(c) {
+		bytes = len(c)
+	}
+	return bytes
 }
 
 // Len implements chunk.  Runs in O(n).

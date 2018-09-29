@@ -86,7 +86,6 @@ type Chunk interface {
 	Add(sample model.SamplePair) ([]Chunk, error)
 	NewIterator() Iterator
 	Marshal(io.Writer) error
-	Unmarshal(io.Reader) error
 	UnmarshalFromBuf([]byte) error
 	Encoding() Encoding
 	Utilization() float64
