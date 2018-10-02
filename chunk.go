@@ -28,6 +28,7 @@ const (
 	ErrInvalidChecksum = errs.Error("invalid chunk checksum")
 	ErrWrongMetadata   = errs.Error("wrong chunk metadata")
 	ErrMetadataLength  = errs.Error("chunk metadata wrong length")
+	ErrDataLength      = errs.Error("chunk data wrong length")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
@@ -318,6 +319,10 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 
 	c.encoded = input
 	remainingData := input[len(input)-r.Len():]
+	if int(dataLen) > len(remainingData) {
+		return ErrDataLength
+	}
+
 	return c.Data.UnmarshalFromBuf(remainingData[:int(dataLen)])
 }
 
