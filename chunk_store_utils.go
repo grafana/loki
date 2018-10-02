@@ -12,8 +12,8 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 
-	"github.com/weaveworks/cortex/pkg/chunk/cache"
-	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const chunkDecodeParallelism = 16

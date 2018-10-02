@@ -5,14 +5,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/chunk/cache"
-	chunk_util "github.com/weaveworks/cortex/pkg/chunk/util"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 var (

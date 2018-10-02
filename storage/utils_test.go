@@ -3,12 +3,12 @@ package storage
 import (
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/aws"
+	"github.com/cortexproject/cortex/pkg/chunk/cassandra"
+	"github.com/cortexproject/cortex/pkg/chunk/gcp"
+	"github.com/cortexproject/cortex/pkg/chunk/testutils"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/chunk/aws"
-	"github.com/weaveworks/cortex/pkg/chunk/cassandra"
-	"github.com/weaveworks/cortex/pkg/chunk/gcp"
-	"github.com/weaveworks/cortex/pkg/chunk/testutils"
 )
 
 const (

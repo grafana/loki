@@ -5,10 +5,10 @@ import (
 	"flag"
 	"os"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/testutils"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/chunk/testutils"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // GOCQL doesn't provide nice mocks, so we use a real Cassandra instance.

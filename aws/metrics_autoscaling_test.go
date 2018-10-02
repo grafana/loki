@@ -10,7 +10,7 @@ import (
 	promV1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 
-	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 func TestTableManagerMetricsAutoScaling(t *testing.T) {

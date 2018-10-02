@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/testutils"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/chunk/testutils"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 type fixture struct {

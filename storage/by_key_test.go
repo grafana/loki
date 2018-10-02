@@ -1,7 +1,7 @@
 package storage
 
 import (
-	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 // ByKey allow you to sort chunks by ID

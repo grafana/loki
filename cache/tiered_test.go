@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/cortex/pkg/chunk/cache"
 )
 
 func TestTieredSimple(t *testing.T) {

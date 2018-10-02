@@ -10,9 +10,9 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"golang.org/x/time/rate"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // Pluggable auto-scaler implementation

@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	prom_chunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/chunk/cache"
-	prom_chunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 )
 
 const userID = "1"

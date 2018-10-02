@@ -11,10 +11,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/chunk/cache"
-	"github.com/weaveworks/cortex/pkg/util"
-	"github.com/weaveworks/cortex/pkg/util/extract"
 )
 
 var (

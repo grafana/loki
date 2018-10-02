@@ -16,7 +16,7 @@ import (
 	"github.com/prometheus/tsdb/fileutil"
 	"golang.org/x/sys/unix"
 
-	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // TODO: in the future we could cuckoo hash or linear probe.

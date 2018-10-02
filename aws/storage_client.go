@@ -26,12 +26,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/cortexproject/cortex/pkg/util"
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	chunk_util "github.com/weaveworks/cortex/pkg/chunk/util"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 const (

@@ -7,7 +7,7 @@ import (
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
 
-	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 type tableClient struct {
