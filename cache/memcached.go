@@ -41,9 +41,18 @@ type MemcachedConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *MemcachedConfig) RegisterFlags(f *flag.FlagSet) {
-	f.DurationVar(&cfg.Expiration, "memcached.expiration", 0, "How long keys stay in the memcache.")
-	f.IntVar(&cfg.BatchSize, "memcached.batchsize", 0, "How many keys to fetch in each batch.")
-	f.IntVar(&cfg.Parallelism, "memcached.parallelism", 100, "Maximum active requests to memcache.")
+	cfg.RegisterFlagsWithPrefix("", "", f)
+}
+
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
+func (cfg *MemcachedConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
+	if prefix != "" {
+		prefix += "."
+	}
+
+	f.DurationVar(&cfg.Expiration, prefix+"memcached.expiration", 0, description+"How long keys stay in the memcache.")
+	f.IntVar(&cfg.BatchSize, prefix+"memcached.batchsize", 0, description+"How many keys to fetch in each batch.")
+	f.IntVar(&cfg.Parallelism, prefix+"memcached.parallelism", 100, description+"Maximum active requests to memcache.")
 }
 
 // Memcached type caches chunks in memcached

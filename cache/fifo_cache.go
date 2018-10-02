@@ -62,8 +62,17 @@ type FifoCacheConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *FifoCacheConfig) RegisterFlags(f *flag.FlagSet) {
-	f.IntVar(&cfg.Size, "fifocache.size", 0, "The number of entries to cache.")
-	f.DurationVar(&cfg.Validity, "fifocache.duration", 0, "The expiry duration for the cache.")
+	cfg.RegisterFlagsWithPrefix("", "", f)
+}
+
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
+func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
+	if prefix != "" {
+		prefix += "."
+	}
+
+	f.IntVar(&cfg.Size, prefix+"fifocache.size", 0, description+"The number of entries to cache.")
+	f.DurationVar(&cfg.Validity, prefix+"fifocache.duration", 0, description+"The expiry duration for the cache.")
 }
 
 // FifoCache is a simple string -> interface{} cache which uses a fifo slide to

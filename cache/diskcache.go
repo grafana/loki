@@ -32,8 +32,17 @@ type DiskcacheConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *DiskcacheConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.Path, "diskcache.path", "/var/run/chunks", "Path to file used to cache chunks.")
-	f.IntVar(&cfg.Size, "diskcache.size", 1024*1024*1024, "Size of file (bytes)")
+	cfg.RegisterFlagsWithPrefix("", "", f)
+}
+
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
+func (cfg *DiskcacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
+	if prefix != "" {
+		prefix += "."
+	}
+
+	f.StringVar(&cfg.Path, prefix+"diskcache.path", "/var/run/chunks", description+"Path to file used to cache chunks.")
+	f.IntVar(&cfg.Size, prefix+"diskcache.size", 1024*1024*1024, description+"Size of file (bytes)")
 }
 
 // Diskcache is an on-disk chunk cache.

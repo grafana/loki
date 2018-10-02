@@ -64,7 +64,8 @@ type StoreConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlags(f)
-	cfg.EntryCache.RegisterFlags(f)
+
+	cfg.EntryCache.RegisterFlagsWithPrefix("store.index-cache-write", "Cache config for index entry writing. ", f)
 
 	f.DurationVar(&cfg.MinChunkAge, "store.min-chunk-age", 0, "Minimum time between chunk update and being saved to the store.")
 	f.IntVar(&cfg.QueryChunkLimit, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")

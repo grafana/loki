@@ -34,15 +34,26 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.EnableDiskcache, "cache.enable-diskcache", false, "Enable on-disk cache")
-	f.BoolVar(&cfg.EnableFifoCache, "cache.enable-fifocache", false, "Enable in-mem cache")
-	f.DurationVar(&cfg.DefaultValidity, "cache.default-validity", 0, "The default validity of entries for caches unless overridden.")
+	cfg.RegisterFlagsWithPrefix("", "", f)
+}
 
-	cfg.background.RegisterFlags(f)
-	cfg.memcache.RegisterFlags(f)
-	cfg.memcacheClient.RegisterFlags(f)
-	cfg.diskcache.RegisterFlags(f)
-	cfg.fifocache.RegisterFlags(f)
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f *flag.FlagSet) {
+	cfg.background.RegisterFlagsWithPrefix(prefix, description, f)
+	cfg.memcache.RegisterFlagsWithPrefix(prefix, description, f)
+	cfg.memcacheClient.RegisterFlagsWithPrefix(prefix, description, f)
+	cfg.diskcache.RegisterFlagsWithPrefix(prefix, description, f)
+	cfg.fifocache.RegisterFlagsWithPrefix(prefix, description, f)
+
+	if prefix != "" {
+		prefix += "."
+	}
+
+	f.BoolVar(&cfg.EnableDiskcache, prefix+"cache.enable-diskcache", false, description+"Enable on-disk cache.")
+	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"Enable in-memory cache.")
+	f.DurationVar(&cfg.DefaultValidity, prefix+"cache.default-validity", 0, description+"The default validity of entries for caches unless overridden.")
+
+	cfg.prefix = prefix
 }
 
 // New creates a new Cache using Config.

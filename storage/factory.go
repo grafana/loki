@@ -39,11 +39,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.CassandraStorageConfig.RegisterFlags(f)
 
 	// Deprecated flags!!
-	f.IntVar(&cfg.IndexCacheSize, "store.index-cache-size", 0, "Size of in-memory index cache, 0 to disable. DEPRECATED: Use -store.index-cache-read.*")
-	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Period for which entries in the index cache are valid. Should be no higher than -ingester.max-chunk-idle.  DEPRECATED: Use -store.index-cache-read.*")
-	cfg.memcacheClient.RegisterFlagsWithPrefix("index", f)
+	f.IntVar(&cfg.IndexCacheSize, "store.index-cache-size", 0, "Deprecated: Use -store.index-cache-read.*; Size of in-memory index cache, 0 to disable.")
+	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Deprecated: Use -store.index-cache-read.*; Period for which entries in the index cache are valid. Should be no higher than -ingester.max-chunk-idle.")
+	cfg.memcacheClient.RegisterFlagsWithPrefix("index", "Deprecated: Use -store.index-cache-read.*;", f)
 
-	cfg.indexCache.RegisterFlags(f)
+	cfg.indexCache.RegisterFlagsWithPrefix("store.index-cache-read", "Cache config for index entry reading. ", f)
 }
 
 // Opts makes the storage clients based on the configuration.
