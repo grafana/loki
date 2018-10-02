@@ -17,6 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/weaveworks/common/user"
 )
 
@@ -165,7 +166,7 @@ func (c *store) calculateIndexEntries(userID string, from, through model.Time, c
 
 // Get implements Store
 func (c *store) Get(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([]Chunk, error) {
-	log, ctx := newSpanLogger(ctx, "ChunkStore.Get")
+	log, ctx := spanlogger.New(ctx, "ChunkStore.Get")
 	defer log.Span.Finish()
 	level.Debug(log).Log("from", from, "through", through, "matchers", len(allMatchers))
 
@@ -188,7 +189,7 @@ func (c *store) Get(ctx context.Context, from, through model.Time, allMatchers .
 }
 
 func (c *store) validateQuery(ctx context.Context, from model.Time, through *model.Time) (shortcut bool, err error) {
-	log, ctx := newSpanLogger(ctx, "store.validateQuery")
+	log, ctx := spanlogger.New(ctx, "store.validateQuery")
 	defer log.Span.Finish()
 
 	now := model.Now()
@@ -221,7 +222,7 @@ func (c *store) validateQuery(ctx context.Context, from model.Time, through *mod
 }
 
 func (c *store) getMetricNameChunks(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricName string) ([]Chunk, error) {
-	log, ctx := newSpanLogger(ctx, "ChunkStore.getMetricNameChunks")
+	log, ctx := spanlogger.New(ctx, "ChunkStore.getMetricNameChunks")
 	defer log.Finish()
 	level.Debug(log).Log("from", from, "through", through, "metricName", metricName, "matchers", len(allMatchers))
 
@@ -254,7 +255,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 }
 
 func (c *store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*labels.Matcher, metricName string) ([]Chunk, error) {
-	log, ctx := newSpanLogger(ctx, "ChunkStore.lookupChunksByMetricName")
+	log, ctx := spanlogger.New(ctx, "ChunkStore.lookupChunksByMetricName")
 	defer log.Finish()
 
 	userID, err := user.ExtractOrgID(ctx)
