@@ -83,7 +83,9 @@ func New(cfg Config) (Cache, error) {
 		if err != nil {
 			return nil, err
 		}
-		caches = append(caches, Instrument(cfg.prefix+"diskcache", cache))
+
+		cacheName := cfg.prefix + "diskcache"
+		caches = append(caches, NewBackground(cacheName, cfg.background, Instrument(cacheName, cache)))
 	}
 
 	if cfg.memcacheClient.Host != "" {
@@ -93,14 +95,14 @@ func New(cfg Config) (Cache, error) {
 
 		client := NewMemcachedClient(cfg.memcacheClient)
 		cache := NewMemcached(cfg.memcache, client)
-		caches = append(caches, Instrument(cfg.prefix+"memcache", cache))
+
+		cacheName := cfg.prefix + "memcache"
+		caches = append(caches, NewBackground(cacheName, cfg.background, Instrument(cacheName, cache)))
 	}
 
 	cache := NewTiered(caches)
 	if len(caches) > 1 {
 		cache = Instrument(cfg.prefix+"tiered", cache)
 	}
-
-	cache = NewBackground(cfg.background, cache)
 	return cache, nil
 }

@@ -11,10 +11,11 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/chunk/cache"
-	"github.com/weaveworks/cortex/pkg/util"
-	"github.com/weaveworks/cortex/pkg/util/extract"
 )
 
 var (
@@ -80,7 +81,7 @@ func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient) (Stor
 
 // Get implements Store
 func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([]Chunk, error) {
-	log, ctx := newSpanLogger(ctx, "SeriesStore.Get")
+	log, ctx := spanlogger.New(ctx, "SeriesStore.Get")
 	defer log.Span.Finish()
 	level.Debug(log).Log("from", from, "through", through, "matchers", len(allMatchers))
 
@@ -144,7 +145,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 }
 
 func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from, through model.Time, metricName string, matchers []*labels.Matcher) ([]string, error) {
-	log, ctx := newSpanLogger(ctx, "SeriesStore.lookupSeriesByMetricNameMatchers", "metricName", metricName, "matchers", len(matchers))
+	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupSeriesByMetricNameMatchers", "metricName", metricName, "matchers", len(matchers))
 	defer log.Span.Finish()
 
 	// Just get series for metric if there are no matchers
@@ -208,7 +209,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 }
 
 func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, metricName string, matcher *labels.Matcher) ([]string, error) {
-	log, ctx := newSpanLogger(ctx, "SeriesStore.lookupSeriesByMetricNameMatcher", "metricName", metricName, "matcher", matcher)
+	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupSeriesByMetricNameMatcher", "metricName", metricName, "matcher", matcher)
 	defer log.Span.Finish()
 
 	userID, err := user.ExtractOrgID(ctx)
@@ -269,7 +270,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 }
 
 func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through model.Time, seriesIDs []string) ([]string, error) {
-	log, ctx := newSpanLogger(ctx, "SeriesStore.lookupChunksBySeries")
+	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupChunksBySeries")
 	defer log.Span.Finish()
 
 	userID, err := user.ExtractOrgID(ctx)

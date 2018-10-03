@@ -8,25 +8,21 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 var (
-	droppedWriteBack = prometheus.NewCounter(prometheus.CounterOpts{
+	droppedWriteBack = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "cache_dropped_background_writes_total",
 		Help:      "Total count of dropped write backs to cache.",
-	})
-	queueLength = prometheus.NewGauge(prometheus.GaugeOpts{
+	}, []string{"name"})
+	queueLength = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "cache_background_queue_length",
 		Help:      "Length of the cache background write queue.",
-	})
+	}, []string{"name"})
 )
-
-func init() {
-	prometheus.MustRegister(droppedWriteBack)
-	prometheus.MustRegister(queueLength)
-}
 
 // BackgroundConfig is config for a Background Cache.
 type BackgroundConfig struct {
@@ -55,6 +51,10 @@ type backgroundCache struct {
 	wg       sync.WaitGroup
 	quit     chan struct{}
 	bgWrites chan backgroundWrite
+	name     string
+
+	droppedWriteBack prometheus.Counter
+	queueLength      prometheus.Gauge
 }
 
 type backgroundWrite struct {
@@ -63,11 +63,14 @@ type backgroundWrite struct {
 }
 
 // NewBackground returns a new Cache that does stores on background goroutines.
-func NewBackground(cfg BackgroundConfig, cache Cache) Cache {
+func NewBackground(name string, cfg BackgroundConfig, cache Cache) Cache {
 	c := &backgroundCache{
-		Cache:    cache,
-		quit:     make(chan struct{}),
-		bgWrites: make(chan backgroundWrite, cfg.WriteBackBuffer),
+		Cache:            cache,
+		quit:             make(chan struct{}),
+		bgWrites:         make(chan backgroundWrite, cfg.WriteBackBuffer),
+		name:             name,
+		droppedWriteBack: droppedWriteBack.WithLabelValues(name),
+		queueLength:      queueLength.WithLabelValues(name),
 	}
 
 	c.wg.Add(cfg.WriteBackGoroutines)
@@ -94,11 +97,11 @@ func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byt
 	}
 	select {
 	case c.bgWrites <- bgWrite:
-		queueLength.Add(float64(len(keys)))
+		c.queueLength.Add(float64(len(keys)))
 	default:
 		sp := opentracing.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("dropped", len(keys)))
-		droppedWriteBack.Add(float64(len(keys)))
+		c.droppedWriteBack.Add(float64(len(keys)))
 	}
 }
 
@@ -111,7 +114,7 @@ func (c *backgroundCache) writeBackLoop() {
 			if !ok {
 				return
 			}
-			queueLength.Sub(float64(len(bgWrite.keys)))
+			c.queueLength.Sub(float64(len(bgWrite.keys)))
 			c.Cache.Store(context.Background(), bgWrite.keys, bgWrite.bufs)
 
 		case <-c.quit:

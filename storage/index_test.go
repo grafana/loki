@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/cortex/pkg/chunk"
 )
 
 func TestIndexBasic(t *testing.T) {

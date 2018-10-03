@@ -12,10 +12,10 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	chunk_util "github.com/weaveworks/cortex/pkg/chunk/util"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 const (

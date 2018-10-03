@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 
-	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 // DoSingleQuery is the interface for indexes that don't support batching yet.

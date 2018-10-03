@@ -7,14 +7,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/aws"
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/chunk/cassandra"
+	"github.com/cortexproject/cortex/pkg/chunk/gcp"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/weaveworks/cortex/pkg/chunk"
-	"github.com/weaveworks/cortex/pkg/chunk/aws"
-	"github.com/weaveworks/cortex/pkg/chunk/cache"
-	"github.com/weaveworks/cortex/pkg/chunk/cassandra"
-	"github.com/weaveworks/cortex/pkg/chunk/gcp"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // Config chooses which storage client to use.
@@ -62,7 +62,7 @@ func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) 
 		memcache := cache.Instrument("memcache-index", cache.NewMemcached(cache.MemcachedConfig{
 			Expiration: cfg.IndexCacheValidity,
 		}, client))
-		caches = append(caches, cache.NewBackground(cache.BackgroundConfig{
+		caches = append(caches, cache.NewBackground("memcache-index", cache.BackgroundConfig{
 			WriteBackGoroutines: 10,
 			WriteBackBuffer:     100,
 		}, memcache))

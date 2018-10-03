@@ -9,7 +9,7 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 
-	"github.com/weaveworks/cortex/pkg/util/middleware"
+	"github.com/cortexproject/cortex/pkg/util/middleware"
 )
 
 var bigtableRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{

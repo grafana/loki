@@ -5,10 +5,10 @@ import (
 	"strconv"
 	"time"
 
+	promchunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/prometheus/common/model"
-	promchunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
 
-	"github.com/weaveworks/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 const (

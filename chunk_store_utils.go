@@ -4,16 +4,14 @@ import (
 	"context"
 	"sync"
 
-	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	ot "github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 
-	"github.com/weaveworks/cortex/pkg/chunk/cache"
-	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 const chunkDecodeParallelism = 16
@@ -43,34 +41,6 @@ outer:
 		filteredChunks = append(filteredChunks, chunk)
 	}
 	return filteredChunks
-}
-
-// spanLogger unifies tracing and logging, to reduce repetition.
-type spanLogger struct {
-	log.Logger
-	ot.Span
-}
-
-func newSpanLogger(ctx context.Context, method string, kvps ...interface{}) (*spanLogger, context.Context) {
-	span, ctx := ot.StartSpanFromContext(ctx, method)
-	logger := &spanLogger{
-		Logger: log.With(util.WithContext(ctx, util.Logger), "method", method),
-		Span:   span,
-	}
-	if len(kvps) > 0 {
-		logger.Log(kvps...)
-	}
-	return logger, ctx
-}
-
-func (s *spanLogger) Log(kvps ...interface{}) error {
-	s.Logger.Log(kvps...)
-	fields, err := otlog.InterleavedKVToFields(kvps...)
-	if err != nil {
-		return err
-	}
-	s.Span.LogFields(fields...)
-	return nil
 }
 
 // Fetcher deals with fetching chunk contents from the cache/store,
@@ -139,7 +109,7 @@ func (c *Fetcher) worker() {
 
 // FetchChunks fetchers a set of chunks from cache and store.
 func (c *Fetcher) FetchChunks(ctx context.Context, chunks []Chunk, keys []string) ([]Chunk, error) {
-	log, ctx := newSpanLogger(ctx, "ChunkStore.fetchChunks")
+	log, ctx := spanlogger.New(ctx, "ChunkStore.fetchChunks")
 	defer log.Span.Finish()
 
 	// Now fetch the actual chunk data from Memcache / S3

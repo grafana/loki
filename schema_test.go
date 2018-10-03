@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 type ByHashRangeKey []IndexEntry

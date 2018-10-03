@@ -10,17 +10,17 @@ import (
 	"strings"
 	"sync"
 
+	prom_chunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/golang/snappy"
 	jsoniter "github.com/json-iterator/go"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	prom_chunk "github.com/weaveworks/cortex/pkg/prom1/storage/local/chunk"
-	"github.com/weaveworks/cortex/pkg/prom1/storage/metric"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	errs "github.com/weaveworks/common/errors"
-	"github.com/weaveworks/cortex/pkg/util"
 )
 
 // Errors that decode can return

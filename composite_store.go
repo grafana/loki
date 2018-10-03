@@ -6,6 +6,8 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 )
 
 // Store for chunks.
@@ -121,6 +123,12 @@ func latest(a, b model.Time) model.Time {
 // NewStore creates a new Store which delegates to different stores depending
 // on time.
 func NewStore(cfg StoreConfig, schemaCfg SchemaConfig, storageOpts []StorageOpt) (Store, error) {
+	cache, err := cache.New(cfg.CacheConfig)
+	if err != nil {
+		return nil, err
+	}
+	cfg.CacheConfig.Cache = cache
+
 	schemaOpts := SchemaOpts(cfg, schemaCfg)
 
 	return newCompositeStore(cfg, schemaCfg, schemaOpts, storageOpts)

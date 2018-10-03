@@ -3,11 +3,11 @@ package cache_test
 import (
 	"testing"
 
-	"github.com/weaveworks/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 )
 
 func TestBackground(t *testing.T) {
-	c := cache.NewBackground(cache.BackgroundConfig{
+	c := cache.NewBackground("mock", cache.BackgroundConfig{
 		WriteBackGoroutines: 1,
 		WriteBackBuffer:     100,
 	}, cache.NewMockCache())
