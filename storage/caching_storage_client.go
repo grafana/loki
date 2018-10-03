@@ -38,114 +38,20 @@ var (
 	})
 )
 
-// IndexCache describes the cache for the Index.
-type IndexCache interface {
-	Store(ctx context.Context, keys []string, batches []ReadBatch)
-	Fetch(ctx context.Context, keys []string) (batches []ReadBatch, misses []string)
-	Stop() error
-}
-
-type indexCache struct {
-	cache.Cache
-}
-
-func (c *indexCache) Store(ctx context.Context, keys []string, batches []ReadBatch) {
-	cachePuts.Add(float64(len(keys)))
-
-	// We're doing the hashing to handle unicode and key len properly.
-	// Memcache fails for unicode keys and keys longer than 250 Bytes.
-	hashed := make([]string, 0, len(keys))
-	bufs := make([][]byte, 0, len(batches))
-	for i := range keys {
-		hashed = append(hashed, cache.HashKey(keys[i]))
-		out, err := proto.Marshal(&batches[i])
-		if err != nil {
-			level.Warn(util.Logger).Log("msg", "error marshaling ReadBatch", "err", err)
-			cacheEncodeErrs.Inc()
-			return
-		}
-		bufs = append(bufs, out)
-	}
-
-	c.Cache.Store(ctx, hashed, bufs)
-	return
-}
-
-func (c *indexCache) Fetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {
-	cacheGets.Inc()
-
-	// Build a map from hash -> key; NB there can be collisions here; we'll fetch
-	// the last hash.
-	hashedKeys := make(map[string]string, len(keys))
-	for _, key := range keys {
-		hashedKeys[cache.HashKey(key)] = key
-	}
-
-	// Build a list of hashes; could be less than keys due to collisions.
-	hashes := make([]string, 0, len(keys))
-	for hash := range hashedKeys {
-		hashes = append(hashes, hash)
-	}
-
-	// Look up the hashes in a single batch.  If we get an error, we just "miss" all
-	// of the keys.  Eventually I want to push all the errors to the leafs of the cache
-	// tree, to the caches only return found & missed.
-	foundHashes, bufs, _ := c.Cache.Fetch(ctx, hashes)
-
-	// Reverse the hash, unmarshal the index entries, check we got what we expected
-	// and that its still valid.
-	batches = make([]ReadBatch, 0, len(foundHashes))
-	for j, foundHash := range foundHashes {
-		key := hashedKeys[foundHash]
-		var readBatch ReadBatch
-
-		if err := proto.Unmarshal(bufs[j], &readBatch); err != nil {
-			level.Warn(util.Logger).Log("msg", "error unmarshalling index entry from cache", "err", err)
-			cacheCorruptErrs.Inc()
-			continue
-		}
-
-		// Make sure the hash(key) is not a collision in the cache by looking at the
-		// key in the value.
-		if key != readBatch.Key || time.Now().After(time.Unix(0, readBatch.Expiry)) {
-			cacheCorruptErrs.Inc()
-			continue
-		}
-
-		cacheHits.Inc()
-		batches = append(batches, readBatch)
-	}
-
-	// Finally work out what we're missing.
-	misses := make(map[string]struct{}, len(keys))
-	for _, key := range keys {
-		misses[key] = struct{}{}
-	}
-	for i := range batches {
-		delete(misses, batches[i].Key)
-	}
-	missed = make([]string, 0, len(misses))
-	for miss := range misses {
-		missed = append(missed, miss)
-	}
-
-	return batches, missed
-}
-
 type cachingStorageClient struct {
 	chunk.StorageClient
-	cache    IndexCache
+	cache    cache.Cache
 	validity time.Duration
 }
 
-func newCachingStorageClient(client chunk.StorageClient, cache cache.Cache, validity time.Duration) chunk.StorageClient {
-	if cache == nil {
+func newCachingStorageClient(client chunk.StorageClient, c cache.Cache, validity time.Duration) chunk.StorageClient {
+	if c == nil {
 		return client
 	}
 
 	return &cachingStorageClient{
 		StorageClient: client,
-		cache:         &indexCache{cache},
+		cache:         cache.NewSnappy(c),
 		validity:      validity,
 	}
 }
@@ -163,7 +69,7 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 		queriesByKey[key] = append(queriesByKey[key], query)
 	}
 
-	batches, misses := s.cache.Fetch(ctx, keys)
+	batches, misses := s.cacheFetch(ctx, keys)
 	for _, batch := range batches {
 		queries := queriesByKey[batch.Key]
 		for _, query := range queries {
@@ -224,7 +130,7 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 				callback(query, batch)
 			}
 		}
-		s.cache.Store(ctx, keys, batches)
+		s.cacheStore(ctx, keys, batches)
 	}
 	return nil
 }
@@ -261,4 +167,87 @@ func (b *readBatchIterator) Value() []byte {
 func queryKey(q chunk.IndexQuery) string {
 	const sep = "\xff"
 	return q.TableName + sep + q.HashValue
+}
+
+func (s *cachingStorageClient) cacheStore(ctx context.Context, keys []string, batches []ReadBatch) {
+	cachePuts.Add(float64(len(keys)))
+
+	// We're doing the hashing to handle unicode and key len properly.
+	// Memcache fails for unicode keys and keys longer than 250 Bytes.
+	hashed := make([]string, 0, len(keys))
+	bufs := make([][]byte, 0, len(batches))
+	for i := range keys {
+		hashed = append(hashed, cache.HashKey(keys[i]))
+		out, err := proto.Marshal(&batches[i])
+		if err != nil {
+			level.Warn(util.Logger).Log("msg", "error marshaling ReadBatch", "err", err)
+			cacheEncodeErrs.Inc()
+			return
+		}
+		bufs = append(bufs, out)
+	}
+
+	s.cache.Store(ctx, hashed, bufs)
+	return
+}
+
+func (s *cachingStorageClient) cacheFetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {
+	cacheGets.Inc()
+
+	// Build a map from hash -> key; NB there can be collisions here; we'll fetch
+	// the last hash.
+	hashedKeys := make(map[string]string, len(keys))
+	for _, key := range keys {
+		hashedKeys[cache.HashKey(key)] = key
+	}
+
+	// Build a list of hashes; could be less than keys due to collisions.
+	hashes := make([]string, 0, len(keys))
+	for hash := range hashedKeys {
+		hashes = append(hashes, hash)
+	}
+
+	// Look up the hashes in a single batch.  If we get an error, we just "miss" all
+	// of the keys.  Eventually I want to push all the errors to the leafs of the cache
+	// tree, to the caches only return found & missed.
+	foundHashes, bufs, _ := s.cache.Fetch(ctx, hashes)
+
+	// Reverse the hash, unmarshal the index entries, check we got what we expected
+	// and that its still valid.
+	batches = make([]ReadBatch, 0, len(foundHashes))
+	for j, foundHash := range foundHashes {
+		key := hashedKeys[foundHash]
+		var readBatch ReadBatch
+
+		if err := proto.Unmarshal(bufs[j], &readBatch); err != nil {
+			level.Warn(util.Logger).Log("msg", "error unmarshalling index entry from cache", "err", err)
+			cacheCorruptErrs.Inc()
+			continue
+		}
+
+		// Make sure the hash(key) is not a collision in the cache by looking at the
+		// key in the value.
+		if key != readBatch.Key || time.Now().After(time.Unix(0, readBatch.Expiry)) {
+			cacheCorruptErrs.Inc()
+			continue
+		}
+
+		cacheHits.Inc()
+		batches = append(batches, readBatch)
+	}
+
+	// Finally work out what we're missing.
+	misses := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		misses[key] = struct{}{}
+	}
+	for i := range batches {
+		delete(misses, batches[i].Key)
+	}
+	missed = make([]string, 0, len(misses))
+	for miss := range misses {
+		missed = append(missed, miss)
+	}
+
+	return batches, missed
 }
