@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -11,12 +12,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -59,7 +62,7 @@ type seriesStore struct {
 	writeDedupeCache cache.Cache
 }
 
-func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient) (Store, error) {
+func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient, limits *validation.Overrides) (Store, error) {
 	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, storage)
 	if err != nil {
 		return nil, err
@@ -75,6 +78,7 @@ func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient) (Stor
 			cfg:     cfg,
 			storage: storage,
 			schema:  schema,
+			limits:  limits,
 			Fetcher: fetcher,
 		},
 		cardinalityCache: cache.NewFifoCache("cardinality", cache.FifoCacheConfig{
@@ -90,6 +94,11 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	log, ctx := spanlogger.New(ctx, "SeriesStore.Get")
 	defer log.Span.Finish()
 	level.Debug(log).Log("from", from, "through", through, "matchers", len(allMatchers))
+
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	// Validate the query is within reasonable bounds.
 	metricName, matchers, shortcut, err := c.validateQuery(ctx, from, &through, allMatchers)
@@ -129,8 +138,9 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	chunksPerQuery.Observe(float64(len(filtered)))
 
 	// Protect ourselves against OOMing.
-	if len(chunkIDs) > c.cfg.QueryChunkLimit {
-		err := fmt.Errorf("Query %v fetched too many chunks (%d > %d)", allMatchers, len(chunkIDs), c.cfg.QueryChunkLimit)
+	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
+	if maxChunksPerQuery > 0 && len(chunkIDs) > maxChunksPerQuery {
+		err := httpgrpc.Errorf(http.StatusBadRequest, "Query %v fetched too many chunks (%d > %d)", allMatchers, len(chunkIDs), maxChunksPerQuery)
 		level.Error(log).Log("err", err)
 		return nil, err
 	}

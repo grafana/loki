@@ -19,12 +19,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/test"
 	"github.com/weaveworks/common/user"
 )
 
 type schemaFactory func(cfg SchemaConfig) Schema
-type storeFactory func(StoreConfig, Schema, StorageClient) (Store, error)
+type storeFactory func(StoreConfig, Schema, StorageClient, *validation.Overrides) (Store, error)
 type configFactory func() (StoreConfig, SchemaConfig)
 
 var schemas = []struct {
@@ -82,8 +83,6 @@ func newTestChunkStore(t *testing.T, schemaFactory schemaFactory, storeFactory s
 		schemaCfg SchemaConfig
 	)
 	util.DefaultValues(&storeCfg, &schemaCfg)
-	storeCfg.QueryLengthLimit = 30 * 24 * time.Hour
-
 	return newTestChunkStoreConfig(t, storeCfg, schemaCfg, schemaFactory, storeFactory)
 }
 
@@ -95,7 +94,13 @@ func newTestChunkStoreConfig(t *testing.T, storeCfg StoreConfig, schemaCfg Schem
 	err = tableManager.SyncTables(context.Background())
 	require.NoError(t, err)
 
-	store, err := storeFactory(storeCfg, schemaFactory(schemaCfg), storage)
+	var limits validation.Limits
+	util.DefaultValues(&storeCfg, &schemaCfg, &limits)
+	limits.MaxQueryLength = 30 * 24 * time.Hour
+	overrides, err := validation.NewOverrides(limits)
+	require.NoError(t, err)
+
+	store, err := storeFactory(storeCfg, schemaFactory(schemaCfg), storage, overrides)
 	require.NoError(t, err)
 	return store
 }
@@ -131,25 +136,25 @@ func TestChunkStore_Get(t *testing.T) {
 
 	fooMetric1 := model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":                 "baz",
-		"toms":                "code",
-		"flip":                "flop",
+		"bar":  "baz",
+		"toms": "code",
+		"flip": "flop",
 	}
 	fooMetric2 := model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":                 "beep",
-		"toms":                "code",
+		"bar":  "beep",
+		"toms": "code",
 	}
 
 	// barMetric1 is a subset of barMetric2 to test over-matching bug.
 	barMetric1 := model.Metric{
 		model.MetricNameLabel: "bar",
-		"bar":                 "baz",
+		"bar": "baz",
 	}
 	barMetric2 := model.Metric{
 		model.MetricNameLabel: "bar",
-		"bar":                 "baz",
-		"toms":                "code",
+		"bar":  "baz",
+		"toms": "code",
 	}
 
 	fooChunk1 := dummyChunkFor(now, fooMetric1)
@@ -281,7 +286,7 @@ func TestChunkStore_Get(t *testing.T) {
 					}
 
 					// Pushing end of time-range into future should yield exact same resultset
-					chunks2, err := store.Get(ctx, now.Add(-time.Hour), now.Add(time.Hour*24*30), matchers...)
+					chunks2, err := store.Get(ctx, now.Add(-time.Hour), now.Add(time.Hour*24*10), matchers...)
 					require.NoError(t, err)
 
 					matrix2, err := ChunksToMatrix(ctx, chunks2, now.Add(-time.Hour), now)
@@ -311,14 +316,14 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 	now := model.Now()
 	chunk1 := dummyChunkFor(now, model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":                 "baz",
-		"toms":                "code",
-		"flip":                "flop",
+		"bar":  "baz",
+		"toms": "code",
+		"flip": "flop",
 	})
 	chunk2 := dummyChunkFor(now, model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":                 "beep",
-		"toms":                "code",
+		"bar":  "beep",
+		"toms": "code",
 	})
 
 	for _, tc := range []struct {
@@ -420,7 +425,7 @@ func TestChunkStoreRandom(t *testing.T) {
 					model.Fingerprint(1),
 					model.Metric{
 						model.MetricNameLabel: "foo",
-						"bar":                 "baz",
+						"bar": "baz",
 					},
 					chunks[0],
 					ts,
@@ -484,7 +489,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 			model.Fingerprint(1),
 			model.Metric{
 				model.MetricNameLabel: "foo",
-				"bar":                 "baz",
+				"bar": "baz",
 			},
 			chunks[0],
 			ts,
@@ -528,12 +533,10 @@ func TestChunkStoreLeastRead(t *testing.T) {
 
 func TestIndexCachingWorks(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
-	now := model.Now()
 	metric := model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":                 "baz",
+		"bar": "baz",
 	}
-
 	storeMaker := stores[1]
 	storeCfg, schemaCfg := storeMaker.configFn()
 
@@ -542,14 +545,13 @@ func TestIndexCachingWorks(t *testing.T) {
 
 	storage := store.(*seriesStore).storage.(*MockStorage)
 
-	fooChunk1 := dummyChunkFor(now, metric)
-	fooChunk2 := dummyChunkFor(now.Add(1*time.Millisecond), metric)
-
+	fooChunk1 := dummyChunkFor(model.Time(0).Add(15*time.Second), metric)
 	err := store.Put(ctx, []Chunk{fooChunk1})
 	require.NoError(t, err)
 	n := storage.numWrites
 
 	// Only one extra entry for the new chunk of same series.
+	fooChunk2 := dummyChunkFor(model.Time(0).Add(30*time.Second), metric)
 	err = store.Put(ctx, []Chunk{fooChunk2})
 	require.NoError(t, err)
 	require.Equal(t, n+1, storage.numWrites)

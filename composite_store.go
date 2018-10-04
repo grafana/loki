@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // Store for chunks.
@@ -42,11 +43,11 @@ type SchemaOpt struct {
 }
 
 // SchemaOpts returns the schemas and the times when they activate.
-func SchemaOpts(cfg StoreConfig, schemaCfg SchemaConfig) []SchemaOpt {
+func SchemaOpts(cfg StoreConfig, schemaCfg SchemaConfig, limits *validation.Overrides) []SchemaOpt {
 	opts := []SchemaOpt{{
 		From: 0,
 		NewStore: func(storage StorageClient) (Store, error) {
-			return newStore(cfg, v1Schema(schemaCfg), storage)
+			return newStore(cfg, v1Schema(schemaCfg), storage, limits)
 		},
 	}}
 
@@ -54,7 +55,7 @@ func SchemaOpts(cfg StoreConfig, schemaCfg SchemaConfig) []SchemaOpt {
 		opts = append(opts, SchemaOpt{
 			From: schemaCfg.DailyBucketsFrom.Time,
 			NewStore: func(storage StorageClient) (Store, error) {
-				return newStore(cfg, v2Schema(schemaCfg), storage)
+				return newStore(cfg, v2Schema(schemaCfg), storage, limits)
 			},
 		})
 	}
@@ -63,7 +64,7 @@ func SchemaOpts(cfg StoreConfig, schemaCfg SchemaConfig) []SchemaOpt {
 		opts = append(opts, SchemaOpt{
 			From: schemaCfg.Base64ValuesFrom.Time,
 			NewStore: func(storage StorageClient) (Store, error) {
-				return newStore(cfg, v3Schema(schemaCfg), storage)
+				return newStore(cfg, v3Schema(schemaCfg), storage, limits)
 			},
 		})
 	}
@@ -72,7 +73,7 @@ func SchemaOpts(cfg StoreConfig, schemaCfg SchemaConfig) []SchemaOpt {
 		opts = append(opts, SchemaOpt{
 			From: schemaCfg.V4SchemaFrom.Time,
 			NewStore: func(storage StorageClient) (Store, error) {
-				return newStore(cfg, v4Schema(schemaCfg), storage)
+				return newStore(cfg, v4Schema(schemaCfg), storage, limits)
 			},
 		})
 	}
@@ -81,7 +82,7 @@ func SchemaOpts(cfg StoreConfig, schemaCfg SchemaConfig) []SchemaOpt {
 		opts = append(opts, SchemaOpt{
 			From: schemaCfg.V5SchemaFrom.Time,
 			NewStore: func(storage StorageClient) (Store, error) {
-				return newStore(cfg, v5Schema(schemaCfg), storage)
+				return newStore(cfg, v5Schema(schemaCfg), storage, limits)
 			},
 		})
 	}
@@ -90,7 +91,7 @@ func SchemaOpts(cfg StoreConfig, schemaCfg SchemaConfig) []SchemaOpt {
 		opts = append(opts, SchemaOpt{
 			From: schemaCfg.V6SchemaFrom.Time,
 			NewStore: func(storage StorageClient) (Store, error) {
-				return newStore(cfg, v6Schema(schemaCfg), storage)
+				return newStore(cfg, v6Schema(schemaCfg), storage, limits)
 			},
 		})
 	}
@@ -99,7 +100,7 @@ func SchemaOpts(cfg StoreConfig, schemaCfg SchemaConfig) []SchemaOpt {
 		opts = append(opts, SchemaOpt{
 			From: schemaCfg.V9SchemaFrom.Time,
 			NewStore: func(storage StorageClient) (Store, error) {
-				return newSeriesStore(cfg, v9Schema(schemaCfg), storage)
+				return newSeriesStore(cfg, v9Schema(schemaCfg), storage, limits)
 			},
 		})
 	}
@@ -122,14 +123,14 @@ func latest(a, b model.Time) model.Time {
 
 // NewStore creates a new Store which delegates to different stores depending
 // on time.
-func NewStore(cfg StoreConfig, schemaCfg SchemaConfig, storageOpts []StorageOpt) (Store, error) {
+func NewStore(cfg StoreConfig, schemaCfg SchemaConfig, storageOpts []StorageOpt, limits *validation.Overrides) (Store, error) {
 	cache, err := cache.New(cfg.ChunkCacheConfig)
 	if err != nil {
 		return nil, err
 	}
 	cfg.ChunkCacheConfig.Cache = cache
 
-	schemaOpts := SchemaOpts(cfg, schemaCfg)
+	schemaOpts := SchemaOpts(cfg, schemaCfg, limits)
 
 	return newCompositeStore(cfg, schemaCfg, schemaOpts, storageOpts)
 }
