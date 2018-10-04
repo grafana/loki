@@ -17,7 +17,10 @@ type fixture struct {
 func (f fixture) Name() string { return "caching-store" }
 func (f fixture) Clients() (chunk.StorageClient, chunk.TableClient, chunk.SchemaConfig, error) {
 	storageClient, tableClient, schemaConfig, err := f.fixture.Clients()
-	client := newCachingStorageClient(storageClient, cache.NewFifoCache("index-fifo", cache.FifoCacheConfig{500, 5 * time.Minute}), 5*time.Minute)
+	client := newCachingStorageClient(storageClient, cache.NewFifoCache("index-fifo", cache.FifoCacheConfig{
+		Size:     500,
+		Validity: 5 * time.Minute,
+	}), 5*time.Minute)
 	return client, tableClient, schemaConfig, err
 }
 func (f fixture) Teardown() error { return f.fixture.Teardown() }

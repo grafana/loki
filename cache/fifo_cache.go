@@ -60,17 +60,8 @@ type FifoCacheConfig struct {
 	Validity time.Duration
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet
-func (cfg *FifoCacheConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix("", "", f)
-}
-
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
-	if prefix != "" {
-		prefix += "."
-	}
-
 	f.IntVar(&cfg.Size, prefix+"fifocache.size", 0, description+"The number of entries to cache.")
 	f.DurationVar(&cfg.Validity, prefix+"fifocache.duration", 0, description+"The expiry duration for the cache.")
 }

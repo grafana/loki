@@ -14,7 +14,7 @@ const size = 10
 const overwrite = 5
 
 func TestFifoCache(t *testing.T) {
-	c := NewFifoCache("test", FifoCacheConfig{size, 1 * time.Minute})
+	c := NewFifoCache("test", FifoCacheConfig{Size: size, Validity: 1 * time.Minute})
 	ctx := context.Background()
 
 	// Check put / get works
@@ -74,7 +74,7 @@ func TestFifoCache(t *testing.T) {
 }
 
 func TestFifoCacheExpiry(t *testing.T) {
-	c := NewFifoCache("test", FifoCacheConfig{size, 5 * time.Millisecond})
+	c := NewFifoCache("test", FifoCacheConfig{Size: size, Validity: 5 * time.Millisecond})
 	ctx := context.Background()
 
 	c.Put(ctx, []string{"0"}, []interface{}{0})

@@ -28,7 +28,7 @@ type Config struct {
 	IndexCacheValidity time.Duration
 	memcacheClient     cache.MemcachedClientConfig
 
-	indexCache cache.Config
+	indexQueriesCacheConfig cache.Config
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -41,9 +41,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	// Deprecated flags!!
 	f.IntVar(&cfg.IndexCacheSize, "store.index-cache-size", 0, "Deprecated: Use -store.index-cache-read.*; Size of in-memory index cache, 0 to disable.")
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Deprecated: Use -store.index-cache-read.*; Period for which entries in the index cache are valid. Should be no higher than -ingester.max-chunk-idle.")
-	cfg.memcacheClient.RegisterFlagsWithPrefix("index", "Deprecated: Use -store.index-cache-read.*;", f)
+	cfg.memcacheClient.RegisterFlagsWithPrefix("index.", "Deprecated: Use -store.index-cache-read.*;", f)
 
-	cfg.indexCache.RegisterFlagsWithPrefix("store.index-cache-read", "Cache config for index entry reading. ", f)
+	cfg.indexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
 }
 
 // Opts makes the storage clients based on the configuration.
@@ -54,7 +54,7 @@ func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) 
 	// Building up from deprecated flags.
 	var caches []cache.Cache
 	if cfg.IndexCacheSize > 0 {
-		fifocache := cache.Instrument("fifo-index", cache.NewFifoCache("index", cache.FifoCacheConfig{cfg.IndexCacheSize, cfg.IndexCacheValidity}))
+		fifocache := cache.Instrument("fifo-index", cache.NewFifoCache("index", cache.FifoCacheConfig{Size: cfg.IndexCacheSize, Validity: cfg.IndexCacheValidity}))
 		caches = append(caches, fifocache)
 	}
 	if cfg.memcacheClient.Host != "" {
@@ -70,8 +70,9 @@ func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) 
 
 	if len(caches) > 0 {
 		tieredCache = cache.NewTiered(caches)
+		cfg.indexQueriesCacheConfig.DefaultValidity = cfg.IndexCacheValidity
 	} else {
-		tieredCache, err = cache.New(cfg.indexCache)
+		tieredCache, err = cache.New(cfg.indexQueriesCacheConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -83,7 +84,7 @@ func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) 
 	}
 
 	for i := range opts {
-		opts[i].Client = newCachingStorageClient(opts[i].Client, tieredCache, cfg.indexCache.DefaultValidity)
+		opts[i].Client = newCachingStorageClient(opts[i].Client, tieredCache, cfg.indexQueriesCacheConfig.DefaultValidity)
 	}
 
 	return opts, nil

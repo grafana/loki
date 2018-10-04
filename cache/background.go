@@ -30,17 +30,8 @@ type BackgroundConfig struct {
 	WriteBackBuffer     int
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet.
-func (cfg *BackgroundConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix("", "", f)
-}
-
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *BackgroundConfig) RegisterFlagsWithPrefix(prefix string, description string, f *flag.FlagSet) {
-	if prefix != "" {
-		prefix = prefix + "."
-	}
-
 	f.IntVar(&cfg.WriteBackGoroutines, prefix+"memcache.write-back-goroutines", 10, description+"How many goroutines to use to write back to memcache.")
 	f.IntVar(&cfg.WriteBackBuffer, prefix+"memcache.write-back-buffer", 10000, description+"How many chunks to buffer for background write back.")
 }

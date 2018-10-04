@@ -26,15 +26,11 @@ type Config struct {
 	diskcache      DiskcacheConfig
 	fifocache      FifoCacheConfig
 
+	// This is to name the cache metrics properly.
 	prefix string
 
 	// For tests to inject specific implementations.
 	Cache Cache
-}
-
-// RegisterFlags adds the flags required to config this to the given FlagSet.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix("", "", f)
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -45,13 +41,9 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	cfg.diskcache.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.fifocache.RegisterFlagsWithPrefix(prefix, description, f)
 
-	if prefix != "" {
-		prefix += "."
-	}
-
 	f.BoolVar(&cfg.EnableDiskcache, prefix+"cache.enable-diskcache", false, description+"Enable on-disk cache.")
 	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"Enable in-memory cache.")
-	f.DurationVar(&cfg.DefaultValidity, prefix+"cache.default-validity", 0, description+"The default validity of entries for caches unless overridden.")
+	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", 0, description+"The default validity of entries for caches unless overridden.")
 
 	cfg.prefix = prefix
 }
@@ -65,16 +57,11 @@ func New(cfg Config) (Cache, error) {
 	caches := []Cache{}
 
 	if cfg.EnableFifoCache {
-		prefix := ""
-		if cfg.prefix != "" {
-			prefix = cfg.prefix
-		}
-
 		if cfg.fifocache.Validity == 0 && cfg.DefaultValidity != 0 {
 			cfg.fifocache.Validity = cfg.DefaultValidity
 		}
 
-		cache := NewFifoCache(prefix, cfg.fifocache)
+		cache := NewFifoCache(cfg.prefix+"fifocache", cfg.fifocache)
 		caches = append(caches, Instrument(cfg.prefix+"fifocache", cache))
 	}
 

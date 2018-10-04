@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 
 	"github.com/go-kit/kit/log/level"
@@ -54,28 +55,33 @@ var (
 type seriesStore struct {
 	store
 	cardinalityCache *cache.FifoCache
+
+	writeDedupeCache cache.Cache
 }
 
 func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient) (Store, error) {
-	fetcher, err := NewChunkFetcher(cfg.CacheConfig, storage)
+	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, storage)
 	if err != nil {
 		return nil, err
 	}
 
-	entryCache, err := cache.New(cfg.EntryCache)
+	writeDedupeCache, err := cache.New(cfg.WriteDedupeCacheConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	return &seriesStore{
 		store: store{
-			cfg:        cfg,
-			storage:    storage,
-			schema:     schema,
-			Fetcher:    fetcher,
-			entryCache: entryCache,
+			cfg:     cfg,
+			storage: storage,
+			schema:  schema,
+			Fetcher: fetcher,
 		},
-		cardinalityCache: cache.NewFifoCache("cardinality", cache.FifoCacheConfig{cfg.CardinalityCacheSize, cfg.CardinalityCacheValidity}),
+		cardinalityCache: cache.NewFifoCache("cardinality", cache.FifoCacheConfig{
+			Size:     cfg.CardinalityCacheSize,
+			Validity: cfg.CardinalityCacheValidity,
+		}),
+		writeDedupeCache: writeDedupeCache,
 	}, nil
 }
 
@@ -328,7 +334,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 
 	c.writeBackCache(ctx, chunks)
 
-	writeReqs, _, keysToCache, err := c.calculateIndexEntries(userID, from, through, chunks[0])
+	writeReqs, keysToCache, err := c.calculateIndexEntries(userID, from, through, chunks[0])
 	if err != nil {
 		return err
 	}
@@ -338,27 +344,35 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 	}
 
 	bufs := make([][]byte, len(keysToCache))
-	c.entryCache.Store(ctx, keysToCache, bufs)
+	c.writeDedupeCache.Store(ctx, keysToCache, bufs)
 	return nil
 }
 
 // calculateIndexEntries creates a set of batched WriteRequests for all the chunks it is given.
-func (c *seriesStore) calculateIndexEntries(userID string, from, through model.Time, chunk Chunk) (WriteBatch, []IndexEntry, []string, error) {
+func (c *seriesStore) calculateIndexEntries(userID string, from, through model.Time, chunk Chunk) (WriteBatch, []string, error) {
 	seenIndexEntries := map[string]struct{}{}
 	entries := []IndexEntry{}
 	keysToCache := []string{}
 
 	metricName, err := extract.MetricNameFromMetric(chunk.Metric)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
-	keys := c.schema.GetLabelEntryCacheKey(from, through, userID, chunk.Metric)
-	_, _, missing := c.entryCache.Fetch(context.Background(), keys)
+	keys := c.schema.GetLabelEntryCacheKeys(from, through, userID, chunk.Metric)
+
+	cacheKeys := make([]string, 0, len(keys)) // Keys which translate to the strings stored in the cache.
+	for _, key := range keys {
+		// This is just encoding to remove invalid characters so that we can put them in memcache.
+		// We're not hashing them as the length of the key is well within memcache bounds. tableName + userid + day + 32Byte(seriesID)
+		cacheKeys = append(cacheKeys, hex.EncodeToString([]byte(key)))
+	}
+
+	_, _, missing := c.writeDedupeCache.Fetch(context.Background(), cacheKeys)
 	if len(missing) != 0 {
 		labelEntries, err := c.schema.GetLabelWriteEntries(from, through, userID, metricName, chunk.Metric, chunk.ExternalKey())
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 
 		entries = append(entries, labelEntries...)
@@ -367,7 +381,7 @@ func (c *seriesStore) calculateIndexEntries(userID string, from, through model.T
 
 	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, userID, metricName, chunk.Metric, chunk.ExternalKey())
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	entries = append(entries, chunkEntries...)
 
@@ -384,5 +398,5 @@ func (c *seriesStore) calculateIndexEntries(userID string, from, through model.T
 		}
 	}
 
-	return result, entries, keysToCache, nil
+	return result, keysToCache, nil
 }

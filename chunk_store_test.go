@@ -66,7 +66,7 @@ var stores = []struct {
 			)
 			util.DefaultValues(&storeCfg, &schemaCfg)
 
-			storeCfg.EntryCache.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
+			storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
 				Size: 500,
 			})
 
