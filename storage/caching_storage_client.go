@@ -180,7 +180,7 @@ func (s *cachingStorageClient) cacheStore(ctx context.Context, keys []string, ba
 		hashed = append(hashed, cache.HashKey(keys[i]))
 		out, err := proto.Marshal(&batches[i])
 		if err != nil {
-			level.Warn(util.Logger).Log("msg", "error marshaling ReadBatch", "err", err)
+			level.Warn(util.Logger).Log("msg", "error marshalling ReadBatch", "err", err)
 			cacheEncodeErrs.Inc()
 			return
 		}
