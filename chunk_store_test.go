@@ -82,6 +82,7 @@ func newTestChunkStore(t *testing.T, schemaFactory schemaFactory, storeFactory s
 		schemaCfg SchemaConfig
 	)
 	util.DefaultValues(&storeCfg, &schemaCfg)
+	storeCfg.QueryLengthLimit = 30 * 24 * time.Hour
 
 	return newTestChunkStoreConfig(t, storeCfg, schemaCfg, schemaFactory, storeFactory)
 }
@@ -130,25 +131,25 @@ func TestChunkStore_Get(t *testing.T) {
 
 	fooMetric1 := model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "baz",
-		"toms": "code",
-		"flip": "flop",
+		"bar":                 "baz",
+		"toms":                "code",
+		"flip":                "flop",
 	}
 	fooMetric2 := model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "beep",
-		"toms": "code",
+		"bar":                 "beep",
+		"toms":                "code",
 	}
 
 	// barMetric1 is a subset of barMetric2 to test over-matching bug.
 	barMetric1 := model.Metric{
 		model.MetricNameLabel: "bar",
-		"bar": "baz",
+		"bar":                 "baz",
 	}
 	barMetric2 := model.Metric{
 		model.MetricNameLabel: "bar",
-		"bar":  "baz",
-		"toms": "code",
+		"bar":                 "baz",
+		"toms":                "code",
 	}
 
 	fooChunk1 := dummyChunkFor(now, fooMetric1)
@@ -310,14 +311,14 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 	now := model.Now()
 	chunk1 := dummyChunkFor(now, model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "baz",
-		"toms": "code",
-		"flip": "flop",
+		"bar":                 "baz",
+		"toms":                "code",
+		"flip":                "flop",
 	})
 	chunk2 := dummyChunkFor(now, model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "beep",
-		"toms": "code",
+		"bar":                 "beep",
+		"toms":                "code",
 	})
 
 	for _, tc := range []struct {
@@ -407,7 +408,7 @@ func TestChunkStoreRandom(t *testing.T) {
 			defer store.Stop()
 
 			// put 100 chunks from 0 to 99
-			const chunkLen = 13 * 3600 // in seconds
+			const chunkLen = 2 * 3600 // in seconds
 			for i := 0; i < 100; i++ {
 				ts := model.TimeFromUnix(int64(i * chunkLen))
 				chunks, _ := chunk.New().Add(model.SamplePair{
@@ -419,7 +420,7 @@ func TestChunkStoreRandom(t *testing.T) {
 					model.Fingerprint(1),
 					model.Metric{
 						model.MetricNameLabel: "foo",
-						"bar": "baz",
+						"bar":                 "baz",
 					},
 					chunks[0],
 					ts,
@@ -483,7 +484,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 			model.Fingerprint(1),
 			model.Metric{
 				model.MetricNameLabel: "foo",
-				"bar": "baz",
+				"bar":                 "baz",
 			},
 			chunks[0],
 			ts,
@@ -530,7 +531,7 @@ func TestIndexCachingWorks(t *testing.T) {
 	now := model.Now()
 	metric := model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar": "baz",
+		"bar":                 "baz",
 	}
 
 	storeMaker := stores[1]
@@ -552,4 +553,52 @@ func TestIndexCachingWorks(t *testing.T) {
 	err = store.Put(ctx, []Chunk{fooChunk2})
 	require.NoError(t, err)
 	require.Equal(t, n+1, storage.numWrites)
+}
+
+func TestChunkStoreError(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+	for _, tc := range []struct {
+		query         string
+		from, through model.Time
+		err           string
+	}{
+		{
+			query:   "foo",
+			from:    model.Time(0).Add(31 * 24 * time.Hour),
+			through: model.Time(0),
+			err:     "rpc error: code = Code(400) desc = invalid query, through < from (0 < 2678400)",
+		},
+		{
+			query:   "foo",
+			from:    model.Time(0),
+			through: model.Time(0).Add(31 * 24 * time.Hour),
+			err:     "rpc error: code = Code(400) desc = invalid query, length > limit (744h0m0s > 720h0m0s)",
+		},
+		{
+			query:   "{foo=\"bar\"}",
+			from:    model.Time(0),
+			through: model.Time(0).Add(1 * time.Hour),
+			err:     "rpc error: code = Code(400) desc = query must contain metric name",
+		},
+		{
+			query:   "{__name__=~\"bar\"}",
+			from:    model.Time(0),
+			through: model.Time(0).Add(1 * time.Hour),
+			err:     "rpc error: code = Code(400) desc = query must contain metric name",
+		},
+	} {
+		for _, schema := range schemas {
+			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
+				store := newTestChunkStore(t, schema.schemaFn, schema.storeFn)
+				defer store.Stop()
+
+				matchers, err := promql.ParseMetricSelector(tc.query)
+				require.NoError(t, err)
+
+				// Query with ordinary time-range
+				_, err = store.Get(ctx, tc.from, tc.through, matchers...)
+				require.EqualError(t, err, tc.err)
+			})
+		}
+	}
 }

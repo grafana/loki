@@ -11,12 +11,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/weaveworks/common/user"
 )
 
 var (
@@ -92,24 +92,19 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	level.Debug(log).Log("from", from, "through", through, "matchers", len(allMatchers))
 
 	// Validate the query is within reasonable bounds.
-	shortcut, err := c.validateQuery(ctx, from, &through)
+	metricName, matchers, shortcut, err := c.validateQuery(ctx, from, &through, allMatchers)
 	if err != nil {
 		return nil, err
 	} else if shortcut {
 		return nil, nil
 	}
 
-	// Ensure this query includes a metric name.
-	metricNameMatcher, allMatchers, ok := extract.MetricNameMatcherFromMatchers(allMatchers)
-	if !ok || metricNameMatcher.Type != labels.MatchEqual {
-		return nil, fmt.Errorf("query must contain metric name")
-	}
-	level.Debug(log).Log("metric", metricNameMatcher.Value)
+	level.Debug(log).Log("metric", metricName)
 
 	// Fetch the series IDs from the index, based on non-empty matchers from
 	// the query.
-	_, matchers := util.SplitFiltersAndMatchers(allMatchers)
-	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, metricNameMatcher.Value, matchers)
+	_, matchers = util.SplitFiltersAndMatchers(matchers)
+	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, metricName, matchers)
 	if err != nil {
 		return nil, err
 	}
@@ -118,12 +113,14 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	// Lookup the series in the index to get the chunks.
 	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, seriesIDs)
 	if err != nil {
+		level.Error(log).Log("msg", "lookupChunksBySeries", "err", err)
 		return nil, err
 	}
 	level.Debug(log).Log("chunk-ids", len(chunkIDs))
 
 	chunks, err := c.convertChunkIDsToChunks(ctx, chunkIDs)
 	if err != nil {
+		level.Error(log).Log("err", "convertChunkIDsToChunks", "err", err)
 		return nil, err
 	}
 	// Filter out chunks that are not in the selected time range.
@@ -141,7 +138,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	// Now fetch the actual chunk data from Memcache / S3
 	allChunks, err := c.FetchChunks(ctx, filtered, keys)
 	if err != nil {
-		level.Error(log).Log("err", err)
+		level.Error(log).Log("msg", "FetchChunks", "err", err)
 		return nil, err
 	}
 
