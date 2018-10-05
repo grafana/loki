@@ -37,13 +37,15 @@ var Fixtures = []testutils.Fixture{
 			table := &dynamoTableClient{
 				DynamoDB: dynamoDB,
 			}
-			storage := &storageClient{
-				DynamoDB:                dynamoDB,
-				S3:                      newMockS3(),
-				queryRequestFn:          dynamoDB.queryRequest,
-				batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
-				batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
-				schemaCfg:               schemaConfig,
+			storage := &s3storageClient{
+				S3: newMockS3(),
+				storageClient: storageClient{
+					DynamoDB:                dynamoDB,
+					queryRequestFn:          dynamoDB.queryRequest,
+					batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
+					batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
+					schemaCfg:               schemaConfig,
+				},
 			}
 			return storage, table, schemaConfig, nil
 		},
@@ -70,19 +72,16 @@ func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) testutils.Fix
 				DynamoDB: dynamoDB,
 			}
 			storage := &storageClient{
-				cfg: StorageConfig{
-					DynamoDBConfig: DynamoDBConfig{
-						ChunkGangSize:          gangsize,
-						ChunkGetMaxParallelism: maxParallelism,
-						backoffConfig: util.BackoffConfig{
-							MinBackoff: 1 * time.Millisecond,
-							MaxBackoff: 5 * time.Millisecond,
-							MaxRetries: 20,
-						},
+				cfg: DynamoDBConfig{
+					ChunkGangSize:          gangsize,
+					ChunkGetMaxParallelism: maxParallelism,
+					backoffConfig: util.BackoffConfig{
+						MinBackoff: 1 * time.Millisecond,
+						MaxBackoff: 5 * time.Millisecond,
+						MaxRetries: 20,
 					},
 				},
 				DynamoDB:                dynamoDB,
-				S3:                      newMockS3(),
 				queryRequestFn:          dynamoDB.queryRequest,
 				batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
 				batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,

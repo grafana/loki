@@ -1,11 +1,9 @@
 package aws
 
 import (
-	"bytes"
 	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	"strings"
 	"time"
@@ -21,8 +19,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
@@ -89,12 +85,6 @@ var (
 		Help:      "Number of retries per DynamoDB operation.",
 		Buckets:   prometheus.LinearBuckets(0, 1, 21),
 	}, []string{"operation"})
-	s3RequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "s3_request_duration_seconds",
-		Help:      "Time spent doing S3 requests.",
-		Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},
-	}, []string{"operation", "status_code"})
 )
 
 func init() {
@@ -103,7 +93,6 @@ func init() {
 	prometheus.MustRegister(dynamoFailures)
 	prometheus.MustRegister(dynamoQueryPagesCount)
 	prometheus.MustRegister(dynamoQueryRetryCount)
-	prometheus.MustRegister(s3RequestDuration)
 	prometheus.MustRegister(dynamoDroppedRequests)
 }
 
@@ -147,12 +136,10 @@ func (cfg *StorageConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 type storageClient struct {
-	cfg       StorageConfig
+	cfg       DynamoDBConfig
 	schemaCfg chunk.SchemaConfig
 
-	DynamoDB   dynamodbiface.DynamoDBAPI
-	S3         s3iface.S3API
-	bucketName string
+	DynamoDB dynamodbiface.DynamoDBAPI
 
 	// These functions exists for mocking, so we don't have to write a whole load
 	// of boilerplate.
@@ -163,40 +150,39 @@ type storageClient struct {
 
 // Opts returns the chunk.StorageOpt's for the config.
 func Opts(cfg StorageConfig, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) {
-	client, err := NewStorageClient(cfg, schemaCfg)
+	client, err := NewS3StorageClient(cfg, schemaCfg)
 	if err != nil {
 		return nil, err
 	}
-	return []chunk.StorageOpt{{
-		From:   model.Time(0),
-		Client: client,
-	}}, err
+
+	opts := []chunk.StorageOpt{}
+	opts = append(opts, chunk.StorageOpt{From: model.Time(0), Client: client})
+	if schemaCfg.ChunkTables.From.IsSet() {
+		client, err = NewStorageClient(cfg.DynamoDBConfig, schemaCfg)
+		if err != nil {
+			return nil, err
+		}
+
+		opts = append(opts, chunk.StorageOpt{
+			From:   schemaCfg.ChunkTables.From.Time,
+			Client: client,
+		})
+	}
+
+	return opts, nil
 }
 
 // NewStorageClient makes a new AWS-backed StorageClient.
-func NewStorageClient(cfg StorageConfig, schemaCfg chunk.SchemaConfig) (chunk.StorageClient, error) {
+func NewStorageClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (chunk.StorageClient, error) {
 	dynamoDB, err := dynamoClientFromURL(cfg.DynamoDB.URL)
 	if err != nil {
 		return nil, err
 	}
 
-	if cfg.S3.URL == nil {
-		return nil, fmt.Errorf("no URL specified for S3")
-	}
-	s3Config, err := awscommon.ConfigFromURL(cfg.S3.URL)
-	if err != nil {
-		return nil, err
-	}
-	s3Config = s3Config.WithMaxRetries(0) // We do our own retries, so we can monitor them
-	s3Client := s3.New(session.New(s3Config))
-	bucketName := strings.TrimPrefix(cfg.S3.URL.Path, "/")
-
 	client := storageClient{
-		cfg:        cfg,
-		schemaCfg:  schemaCfg,
-		DynamoDB:   dynamoDB,
-		S3:         s3Client,
-		bucketName: bucketName,
+		cfg:       cfg,
+		schemaCfg: schemaCfg,
+		DynamoDB:  dynamoDB,
 	}
 	client.queryRequestFn = client.queryRequest
 	client.batchGetItemRequestFn = client.batchGetItemRequest
@@ -482,33 +468,12 @@ type chunksPlusError struct {
 }
 
 func (a storageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	sp, ctx := ot.StartSpanFromContext(ctx, "GetChunks")
+	sp, ctx := ot.StartSpanFromContext(ctx, "GetChunks.DynamoDB")
 	defer sp.Finish()
 	sp.LogFields(otlog.Int("chunks requested", len(chunks)))
 
-	var (
-		s3Chunks       []chunk.Chunk
-		dynamoDBChunks []chunk.Chunk
-	)
-
-	for _, chunk := range chunks {
-		if !a.schemaCfg.ChunkTables.From.IsSet() || chunk.From.Before(a.schemaCfg.ChunkTables.From.Time) {
-			s3Chunks = append(s3Chunks, chunk)
-		} else {
-			dynamoDBChunks = append(dynamoDBChunks, chunk)
-		}
-	}
-
-	// Get chunks from S3, then get chunks from DynamoDB.  I don't expect us to be
-	// doing both simultaneously except for when we migrate, when it will only
-	// occur for a couple or hours. So I didn't think it is worth the extra code
-	// to parallelise.
-
+	dynamoDBChunks := chunks
 	var err error
-	s3Chunks, err = a.getS3Chunks(ctx, s3Chunks)
-	if err != nil {
-		return s3Chunks, err
-	}
 
 	gangSize := a.cfg.ChunkGangSize * dynamoDBMaxReadBatchSize
 	if gangSize == 0 { // zero means turn feature off
@@ -530,7 +495,7 @@ func (a storageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]c
 			results <- chunksPlusError{outChunks, err}
 		}(i)
 	}
-	finalChunks := s3Chunks
+	finalChunks := []chunk.Chunk{}
 	for i := 0; i < len(dynamoDBChunks); i += gangSize {
 		in := <-results
 		if in.err != nil {
@@ -545,62 +510,6 @@ func (a storageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]c
 
 	// Return any chunks we did receive: a partial result may be useful
 	return finalChunks, err
-}
-
-func (a storageClient) getS3Chunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	incomingChunks := make(chan chunk.Chunk)
-	incomingErrors := make(chan error)
-	for _, c := range chunks {
-		go func(c chunk.Chunk) {
-			c, err := a.getS3Chunk(ctx, c)
-			if err != nil {
-				incomingErrors <- err
-				return
-			}
-			incomingChunks <- c
-		}(c)
-	}
-
-	result := []chunk.Chunk{}
-	errors := []error{}
-	for i := 0; i < len(chunks); i++ {
-		select {
-		case chunk := <-incomingChunks:
-			result = append(result, chunk)
-		case err := <-incomingErrors:
-			errors = append(errors, err)
-		}
-	}
-	if len(errors) > 0 {
-		// Return any chunks we did receive: a partial result may be useful
-		return result, errors[0]
-	}
-	return result, nil
-}
-
-func (a storageClient) getS3Chunk(ctx context.Context, c chunk.Chunk) (chunk.Chunk, error) {
-	var resp *s3.GetObjectOutput
-	err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(ctx context.Context) error {
-		var err error
-		resp, err = a.S3.GetObjectWithContext(ctx, &s3.GetObjectInput{
-			Bucket: aws.String(a.bucketName),
-			Key:    aws.String(c.ExternalKey()),
-		})
-		return err
-	})
-	if err != nil {
-		return chunk.Chunk{}, err
-	}
-	defer resp.Body.Close()
-	buf, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return chunk.Chunk{}, err
-	}
-	decodeContext := chunk.NewDecodeContext()
-	if err := c.Decode(decodeContext, buf); err != nil {
-		return chunk.Chunk{}, err
-	}
-	return c, nil
 }
 
 // As we're re-using the DynamoDB schema from the index for the chunk tables,
@@ -730,8 +639,6 @@ func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map
 
 func (a storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	var (
-		s3ChunkKeys    []string
-		s3ChunkBufs    [][]byte
 		dynamoDBWrites = dynamoDBWriteBatch{}
 	)
 
@@ -743,54 +650,11 @@ func (a storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) erro
 		}
 		key := chunks[i].ExternalKey()
 
-		if !a.schemaCfg.ChunkTables.From.IsSet() || chunks[i].From.Before(a.schemaCfg.ChunkTables.From.Time) {
-			s3ChunkKeys = append(s3ChunkKeys, key)
-			s3ChunkBufs = append(s3ChunkBufs, buf)
-		} else {
-			table := a.schemaCfg.ChunkTables.TableFor(chunks[i].From)
-			dynamoDBWrites.Add(table, key, placeholder, buf)
-		}
-	}
-
-	// Put chunks to S3, then put chunks to DynamoDB.  I don't expect us to be
-	// doing both simultaneously except for when we migrate, when it will only
-	// occur for a couple or hours. So I didn't think it is worth the extra code
-	// to parallelise.
-
-	if err := a.putS3Chunks(ctx, s3ChunkKeys, s3ChunkBufs); err != nil {
-		return err
+		table := a.schemaCfg.ChunkTables.TableFor(chunks[i].From)
+		dynamoDBWrites.Add(table, key, placeholder, buf)
 	}
 
 	return a.BatchWrite(ctx, dynamoDBWrites)
-}
-
-func (a storageClient) putS3Chunks(ctx context.Context, keys []string, bufs [][]byte) error {
-	incomingErrors := make(chan error)
-	for i := range bufs {
-		go func(i int) {
-			incomingErrors <- a.putS3Chunk(ctx, keys[i], bufs[i])
-		}(i)
-	}
-
-	var lastErr error
-	for range keys {
-		err := <-incomingErrors
-		if err != nil {
-			lastErr = err
-		}
-	}
-	return lastErr
-}
-
-func (a storageClient) putS3Chunk(ctx context.Context, key string, buf []byte) error {
-	return instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(ctx context.Context) error {
-		_, err := a.S3.PutObjectWithContext(ctx, &s3.PutObjectInput{
-			Body:   bytes.NewReader(buf),
-			Bucket: aws.String(a.bucketName),
-			Key:    aws.String(key),
-		})
-		return err
-	})
 }
 
 // Slice of values returned; map key is attribute name
