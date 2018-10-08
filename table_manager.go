@@ -165,7 +165,7 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 		Name:             m.cfg.OriginalTableName,
 		ProvisionedRead:  m.cfg.IndexTables.InactiveReadThroughput,
 		ProvisionedWrite: m.cfg.IndexTables.InactiveWriteThroughput,
-		Tags:             m.cfg.IndexTables.GetTags(),
+		Tags:             m.cfg.IndexTables.Tags,
 	}
 
 	if m.cfg.UsePeriodicTables {
