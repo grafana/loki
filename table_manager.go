@@ -308,7 +308,7 @@ func ExpectTables(ctx context.Context, client TableClient, expected []TableDesc)
 		}
 
 		if !desc.Equals(expect) {
-			return fmt.Errorf("Expected '%v', found '%v' for table '%s'", expect, desc, desc.Name)
+			return fmt.Errorf("Expected '%#v', found '%#v' for table '%s'", expect, desc, desc.Name)
 		}
 	}
 
