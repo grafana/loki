@@ -82,7 +82,13 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 	}
 
 	// Build list of cachable queries for the queries that missed the cache.
-	cacheableMissed := []chunk.IndexQuery{}
+	var (
+		resultsMtx      sync.Mutex
+		results         = make(map[string]ReadBatch, len(misses))
+		cacheableMissed = make([]chunk.IndexQuery, 0, len(misses))
+		expiryTime      = time.Now().Add(s.validity)
+	)
+
 	for _, key := range misses {
 		// Only need to consider one of the queries as they have the same table & hash.
 		queries := queriesByKey[key]
@@ -90,22 +96,17 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 			TableName: queries[0].TableName,
 			HashValue: queries[0].HashValue,
 		})
+		results[key] = ReadBatch{
+			Key:    key,
+			Expiry: expiryTime.UnixNano(),
+		}
 	}
 
-	var resultsMtx sync.Mutex
-	results := map[string]ReadBatch{}
-	expiryTime := time.Now().Add(s.validity)
 	err := s.StorageClient.QueryPages(ctx, cacheableMissed, func(cacheableQuery chunk.IndexQuery, r chunk.ReadBatch) bool {
 		resultsMtx.Lock()
 		defer resultsMtx.Unlock()
 		key := queryKey(cacheableQuery)
-		existing, ok := results[key]
-		if !ok {
-			existing = ReadBatch{
-				Key:    key,
-				Expiry: expiryTime.UnixNano(),
-			}
-		}
+		existing := results[key]
 		for iter := r.Iterator(); iter.Next(); {
 			existing.Entries = append(existing.Entries, Entry{Column: iter.RangeValue(), Value: iter.Value()})
 		}
