@@ -31,7 +31,7 @@ func TestChunksBasic(t *testing.T) {
 		}
 
 		// Get a few batches of chunks.
-		for i := 0; i < 50; i++ {
+		for batch := 0; batch < 50; batch++ {
 			keysToGet := map[string]struct{}{}
 			chunksToGet := []chunk.Chunk{}
 			for len(chunksToGet) < batchSize {
@@ -51,7 +51,7 @@ func TestChunksBasic(t *testing.T) {
 
 			sort.Sort(ByKey(chunksToGet))
 			sort.Sort(ByKey(chunksWeGot))
-			for j := 0; j < len(chunksWeGot); j++ {
+			for i := 0; i < len(chunksWeGot); i++ {
 				require.Equal(t, chunksToGet[i].ExternalKey(), chunksWeGot[i].ExternalKey(), strconv.Itoa(i))
 			}
 		}
