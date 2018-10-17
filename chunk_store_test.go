@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
 
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
@@ -24,6 +25,7 @@ import (
 
 type schemaFactory func(cfg SchemaConfig) Schema
 type storeFactory func(StoreConfig, Schema, StorageClient) (Store, error)
+type configFactory func() (StoreConfig, SchemaConfig)
 
 var schemas = []struct {
 	name              string
@@ -40,6 +42,39 @@ var schemas = []struct {
 	{"v9 schema", v9Schema, newSeriesStore, true},
 }
 
+var stores = []struct {
+	name     string
+	configFn configFactory
+}{
+	{
+		name: "store",
+		configFn: func() (StoreConfig, SchemaConfig) {
+			var (
+				storeCfg  StoreConfig
+				schemaCfg SchemaConfig
+			)
+			util.DefaultValues(&storeCfg, &schemaCfg)
+			return storeCfg, schemaCfg
+		},
+	},
+	{
+		name: "cached_store",
+		configFn: func() (StoreConfig, SchemaConfig) {
+			var (
+				storeCfg  StoreConfig
+				schemaCfg SchemaConfig
+			)
+			util.DefaultValues(&storeCfg, &schemaCfg)
+
+			storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
+				Size: 500,
+			})
+
+			return storeCfg, schemaCfg
+		},
+	},
+}
+
 // newTestStore creates a new Store for testing.
 func newTestChunkStore(t *testing.T, schemaFactory schemaFactory, storeFactory storeFactory) Store {
 	var (
@@ -48,6 +83,10 @@ func newTestChunkStore(t *testing.T, schemaFactory schemaFactory, storeFactory s
 	)
 	util.DefaultValues(&storeCfg, &schemaCfg)
 
+	return newTestChunkStoreConfig(t, storeCfg, schemaCfg, schemaFactory, storeFactory)
+}
+
+func newTestChunkStoreConfig(t *testing.T, storeCfg StoreConfig, schemaCfg SchemaConfig, schemaFactory schemaFactory, storeFactory storeFactory) Store {
 	storage := NewMockStorage()
 	tableManager, err := NewTableManager(schemaCfg, maxChunkAge, storage)
 	require.NoError(t, err)
@@ -202,62 +241,65 @@ func TestChunkStore_Get(t *testing.T) {
 		},
 	} {
 		for _, schema := range schemas {
-			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
-				t.Log("========= Running query", tc.query, "with schema", schema.name)
-				store := newTestChunkStore(t, schema.schemaFn, schema.storeFn)
-				defer store.Stop()
+			for _, storeCase := range stores {
+				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema.name, storeCase.name), func(t *testing.T) {
+					t.Log("========= Running query", tc.query, "with schema", schema.name)
+					storeCfg, schemaCfg := storeCase.configFn()
+					store := newTestChunkStoreConfig(t, storeCfg, schemaCfg, schema.schemaFn, schema.storeFn)
+					defer store.Stop()
 
-				if err := store.Put(ctx, []Chunk{
-					fooChunk1,
-					fooChunk2,
-					barChunk1,
-					barChunk2,
-				}); err != nil {
-					t.Fatal(err)
-				}
+					if err := store.Put(ctx, []Chunk{
+						fooChunk1,
+						fooChunk2,
+						barChunk1,
+						barChunk2,
+					}); err != nil {
+						t.Fatal(err)
+					}
 
-				matchers, err := promql.ParseMetricSelector(tc.query)
-				if err != nil {
-					t.Fatal(err)
-				}
+					matchers, err := promql.ParseMetricSelector(tc.query)
+					if err != nil {
+						t.Fatal(err)
+					}
 
-				metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
-				if schema.requireMetricName && (!ok || metricNameMatcher.Type != labels.MatchEqual) {
-					return
-				}
+					metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
+					if schema.requireMetricName && (!ok || metricNameMatcher.Type != labels.MatchEqual) {
+						return
+					}
 
-				// Query with ordinary time-range
-				chunks1, err := store.Get(ctx, now.Add(-time.Hour), now, matchers...)
-				require.NoError(t, err)
+					// Query with ordinary time-range
+					chunks1, err := store.Get(ctx, now.Add(-time.Hour), now, matchers...)
+					require.NoError(t, err)
 
-				matrix1, err := ChunksToMatrix(ctx, chunks1, now.Add(-time.Hour), now)
-				require.NoError(t, err)
+					matrix1, err := ChunksToMatrix(ctx, chunks1, now.Add(-time.Hour), now)
+					require.NoError(t, err)
 
-				sort.Sort(ByFingerprint(matrix1))
-				if !reflect.DeepEqual(tc.expect, matrix1) {
-					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, matrix1))
-				}
+					sort.Sort(ByFingerprint(matrix1))
+					if !reflect.DeepEqual(tc.expect, matrix1) {
+						t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, matrix1))
+					}
 
-				// Pushing end of time-range into future should yield exact same resultset
-				chunks2, err := store.Get(ctx, now.Add(-time.Hour), now.Add(time.Hour*24*30), matchers...)
-				require.NoError(t, err)
+					// Pushing end of time-range into future should yield exact same resultset
+					chunks2, err := store.Get(ctx, now.Add(-time.Hour), now.Add(time.Hour*24*30), matchers...)
+					require.NoError(t, err)
 
-				matrix2, err := ChunksToMatrix(ctx, chunks2, now.Add(-time.Hour), now)
-				require.NoError(t, err)
+					matrix2, err := ChunksToMatrix(ctx, chunks2, now.Add(-time.Hour), now)
+					require.NoError(t, err)
 
-				sort.Sort(ByFingerprint(matrix2))
-				if !reflect.DeepEqual(tc.expect, matrix2) {
-					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, matrix2))
-				}
+					sort.Sort(ByFingerprint(matrix2))
+					if !reflect.DeepEqual(tc.expect, matrix2) {
+						t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, matrix2))
+					}
 
-				// Query with both begin & end of time-range in future should yield empty resultset
-				matrix3, err := store.Get(ctx, now.Add(time.Hour), now.Add(time.Hour*2), matchers...)
-				require.NoError(t, err)
-				if len(matrix3) != 0 {
-					t.Fatalf("%s: future query should yield empty resultset ... actually got %v chunks: %#v",
-						tc.query, len(matrix3), matrix3)
-				}
-			})
+					// Query with both begin & end of time-range in future should yield empty resultset
+					matrix3, err := store.Get(ctx, now.Add(time.Hour), now.Add(time.Hour*2), matchers...)
+					require.NoError(t, err)
+					if len(matrix3) != 0 {
+						t.Fatalf("%s: future query should yield empty resultset ... actually got %v chunks: %#v",
+							tc.query, len(matrix3), matrix3)
+					}
+				})
+			}
 		}
 	}
 }
@@ -320,27 +362,30 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 		},
 	} {
 		for _, schema := range schemas {
-			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
-				t.Log("========= Running query", tc.query, "with schema", schema.name)
-				store := newTestChunkStore(t, schema.schemaFn, schema.storeFn)
-				defer store.Stop()
+			for _, storeCase := range stores {
+				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema.name, storeCase.name), func(t *testing.T) {
+					t.Log("========= Running query", tc.query, "with schema", schema.name)
+					storeCfg, schemaCfg := storeCase.configFn()
+					store := newTestChunkStoreConfig(t, storeCfg, schemaCfg, schema.schemaFn, schema.storeFn)
+					defer store.Stop()
 
-				if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {
-					t.Fatal(err)
-				}
+					if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {
+						t.Fatal(err)
+					}
 
-				matchers, err := promql.ParseMetricSelector(tc.query)
-				if err != nil {
-					t.Fatal(err)
-				}
+					matchers, err := promql.ParseMetricSelector(tc.query)
+					if err != nil {
+						t.Fatal(err)
+					}
 
-				chunks, err := store.Get(ctx, now.Add(-time.Hour), now, matchers...)
-				require.NoError(t, err)
+					chunks, err := store.Get(ctx, now.Add(-time.Hour), now, matchers...)
+					require.NoError(t, err)
 
-				if !reflect.DeepEqual(tc.expect, chunks) {
-					t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, chunks))
-				}
-			})
+					if !reflect.DeepEqual(tc.expect, chunks) {
+						t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, chunks))
+					}
+				})
+			}
 		}
 	}
 }
@@ -478,4 +523,33 @@ func TestChunkStoreLeastRead(t *testing.T) {
 		numChunks := 24 - (start / chunkLen) + 1
 		assert.Equal(t, int(numChunks), len(chunks))
 	}
+}
+
+func TestIndexCachingWorks(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+	now := model.Now()
+	metric := model.Metric{
+		model.MetricNameLabel: "foo",
+		"bar": "baz",
+	}
+
+	storeMaker := stores[1]
+	storeCfg, schemaCfg := storeMaker.configFn()
+
+	store := newTestChunkStoreConfig(t, storeCfg, schemaCfg, v9Schema, newSeriesStore)
+	defer store.Stop()
+
+	storage := store.(*seriesStore).storage.(*MockStorage)
+
+	fooChunk1 := dummyChunkFor(now, metric)
+	fooChunk2 := dummyChunkFor(now.Add(1*time.Millisecond), metric)
+
+	err := store.Put(ctx, []Chunk{fooChunk1})
+	require.NoError(t, err)
+	n := storage.numWrites
+
+	// Only one extra entry for the new chunk of same series.
+	err = store.Put(ctx, []Chunk{fooChunk2})
+	require.NoError(t, err)
+	require.Equal(t, n+1, storage.numWrites)
 }

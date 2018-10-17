@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -22,7 +23,7 @@ import (
 )
 
 var (
-	indexEntriesPerChunk = prometheus.NewHistogram(prometheus.HistogramOpts{
+	indexEntriesPerChunk = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "chunk_store_index_entries_per_chunk",
 		Help:      "Number of entries written to storage per chunk.",
@@ -37,7 +38,7 @@ var (
 		},
 		HashBuckets: 1024,
 	})
-	cacheCorrupt = prometheus.NewCounter(prometheus.CounterOpts{
+	cacheCorrupt = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "cache_corrupt_chunks_total",
 		Help:      "Total count of corrupt chunks found in cache.",
@@ -45,25 +46,28 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(indexEntriesPerChunk)
 	prometheus.MustRegister(rowWrites)
-	prometheus.MustRegister(cacheCorrupt)
 }
 
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
-	CacheConfig cache.Config
+	ChunkCacheConfig cache.Config
 
 	MinChunkAge              time.Duration
 	QueryChunkLimit          int
 	CardinalityCacheSize     int
 	CardinalityCacheValidity time.Duration
 	CardinalityLimit         int
+
+	WriteDedupeCacheConfig cache.Config
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.CacheConfig.RegisterFlags(f)
+	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("", "Cache config for chunks. ", f)
+
+	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
+
 	f.DurationVar(&cfg.MinChunkAge, "store.min-chunk-age", 0, "Minimum time between chunk update and being saved to the store.")
 	f.IntVar(&cfg.QueryChunkLimit, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 	f.IntVar(&cfg.CardinalityCacheSize, "store.cardinality-cache-size", 0, "Size of in-memory cardinality cache, 0 to disable.")
@@ -81,7 +85,7 @@ type store struct {
 }
 
 func newStore(cfg StoreConfig, schema Schema, storage StorageClient) (Store, error) {
-	fetcher, err := NewChunkFetcher(cfg.CacheConfig, storage)
+	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, storage)
 	if err != nil {
 		return nil, err
 	}

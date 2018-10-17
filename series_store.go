@@ -2,10 +2,11 @@ package chunk
 
 import (
 	"context"
-	"errors"
+	"encoding/hex"
 	"fmt"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -54,10 +55,17 @@ var (
 type seriesStore struct {
 	store
 	cardinalityCache *cache.FifoCache
+
+	writeDedupeCache cache.Cache
 }
 
 func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient) (Store, error) {
-	fetcher, err := NewChunkFetcher(cfg.CacheConfig, storage)
+	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, storage)
+	if err != nil {
+		return nil, err
+	}
+
+	writeDedupeCache, err := cache.New(cfg.WriteDedupeCacheConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +77,11 @@ func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient) (Stor
 			schema:  schema,
 			Fetcher: fetcher,
 		},
-		cardinalityCache: cache.NewFifoCache("cardinality", cfg.CardinalityCacheSize, cfg.CardinalityCacheValidity),
+		cardinalityCache: cache.NewFifoCache("cardinality", cache.FifoCacheConfig{
+			Size:     cfg.CardinalityCacheSize,
+			Validity: cfg.CardinalityCacheValidity,
+		}),
+		writeDedupeCache: writeDedupeCache,
 	}, nil
 }
 
@@ -291,4 +303,100 @@ func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through mo
 
 	result, err := c.parseIndexEntries(ctx, entries, nil)
 	return result, err
+}
+
+// Put implements ChunkStore
+func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
+	for _, chunk := range chunks {
+		if err := c.PutOne(ctx, chunk.From, chunk.Through, chunk); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// PutOne implements ChunkStore
+func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Horribly, PutChunks mutates the chunk by setting its checksum.  By putting
+	// the chunk in a slice we are in fact passing by reference, so below we
+	// need to make sure we pick the chunk back out the slice.
+	chunks := []Chunk{chunk}
+
+	err = c.storage.PutChunks(ctx, chunks)
+	if err != nil {
+		return err
+	}
+
+	c.writeBackCache(ctx, chunks)
+
+	writeReqs, keysToCache, err := c.calculateIndexEntries(userID, from, through, chunks[0])
+	if err != nil {
+		return err
+	}
+
+	if err := c.storage.BatchWrite(ctx, writeReqs); err != nil {
+		return err
+	}
+
+	bufs := make([][]byte, len(keysToCache))
+	c.writeDedupeCache.Store(ctx, keysToCache, bufs)
+	return nil
+}
+
+// calculateIndexEntries creates a set of batched WriteRequests for all the chunks it is given.
+func (c *seriesStore) calculateIndexEntries(userID string, from, through model.Time, chunk Chunk) (WriteBatch, []string, error) {
+	seenIndexEntries := map[string]struct{}{}
+	entries := []IndexEntry{}
+	keysToCache := []string{}
+
+	metricName, err := extract.MetricNameFromMetric(chunk.Metric)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	keys := c.schema.GetLabelEntryCacheKeys(from, through, userID, chunk.Metric)
+
+	cacheKeys := make([]string, 0, len(keys)) // Keys which translate to the strings stored in the cache.
+	for _, key := range keys {
+		// This is just encoding to remove invalid characters so that we can put them in memcache.
+		// We're not hashing them as the length of the key is well within memcache bounds. tableName + userid + day + 32Byte(seriesID)
+		cacheKeys = append(cacheKeys, hex.EncodeToString([]byte(key)))
+	}
+
+	_, _, missing := c.writeDedupeCache.Fetch(context.Background(), cacheKeys)
+	if len(missing) != 0 {
+		labelEntries, err := c.schema.GetLabelWriteEntries(from, through, userID, metricName, chunk.Metric, chunk.ExternalKey())
+		if err != nil {
+			return nil, nil, err
+		}
+
+		entries = append(entries, labelEntries...)
+		keysToCache = missing
+	}
+
+	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, userID, metricName, chunk.Metric, chunk.ExternalKey())
+	if err != nil {
+		return nil, nil, err
+	}
+	entries = append(entries, chunkEntries...)
+
+	indexEntriesPerChunk.Observe(float64(len(entries)))
+
+	// Remove duplicate entries based on tableName:hashValue:rangeValue
+	result := c.storage.NewWriteBatch()
+	for _, entry := range entries {
+		key := fmt.Sprintf("%s:%s:%x", entry.TableName, entry.HashValue, entry.RangeValue)
+		if _, ok := seenIndexEntries[key]; !ok {
+			seenIndexEntries[key] = struct{}{}
+			rowWrites.Observe(entry.HashValue, 1)
+			result.Add(entry.TableName, entry.HashValue, entry.RangeValue, entry.Value)
+		}
+	}
+
+	return result, keysToCache, nil
 }

@@ -39,25 +39,12 @@ type MemcachedClientConfig struct {
 	UpdateInterval time.Duration
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet
-func (cfg *MemcachedClientConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.registerFlagsWithPrefix("", f)
-}
-
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
-func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	cfg.registerFlagsWithPrefix(prefix, f)
-}
-
-func (cfg *MemcachedClientConfig) registerFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	if prefix != "" {
-		prefix = prefix + "."
-	}
-
-	f.StringVar(&cfg.Host, prefix+"memcached.hostname", "", "Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.")
-	f.StringVar(&cfg.Service, prefix+"memcached.service", "memcached", "SRV service used to discover memcache servers.")
-	f.DurationVar(&cfg.Timeout, prefix+"memcached.timeout", 100*time.Millisecond, "Maximum time to wait before giving up on memcached requests.")
-	f.DurationVar(&cfg.UpdateInterval, prefix+"memcached.update-interval", 1*time.Minute, "Period with which to poll DNS for memcache servers.")
+func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
+	f.StringVar(&cfg.Host, prefix+"memcached.hostname", "", description+"Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.")
+	f.StringVar(&cfg.Service, prefix+"memcached.service", "memcached", description+"SRV service used to discover memcache servers.")
+	f.DurationVar(&cfg.Timeout, prefix+"memcached.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on memcached requests.")
+	f.DurationVar(&cfg.UpdateInterval, prefix+"memcached.update-interval", 1*time.Minute, description+"Period with which to poll DNS for memcache servers.")
 }
 
 // NewMemcachedClient creates a new MemcacheClient that gets its server list
