@@ -96,6 +96,27 @@ func TestCachingStorageClient(t *testing.T) {
 	assert.EqualValues(t, len(queries), results)
 }
 
+func TestCachingStorageClientEmptyResponse(t *testing.T) {
+	store := &mockStore{}
+	cache := cache.NewFifoCache("test", 10, 10*time.Second)
+	client := newCachingStorageClient(store, cache, 1*time.Second)
+	queries := []chunk.IndexQuery{{TableName: "table", HashValue: "foo"}}
+	err := client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+		assert.False(t, batch.Iterator().Next())
+		return true
+	})
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, store.queries)
+
+	// If we do the query to the cache again, the underlying store shouldn't see it.
+	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+		assert.False(t, batch.Iterator().Next())
+		return true
+	})
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, store.queries)
+}
+
 func TestCachingStorageClientCollision(t *testing.T) {
 	// These two queries should result in one query to the cache & index, but
 	// two results, as we cache entire rows.
