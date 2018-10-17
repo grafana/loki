@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/instrument"
@@ -184,6 +185,9 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 	result := []TableDesc{}
 
 	for i, config := range m.schemaCfg.Configs {
+		if config.From.Time().After(mtime.Now()) {
+			continue
+		}
 		if config.IndexTables.Period == 0 { // non-periodic table
 			table := TableDesc{
 				Name:             config.IndexTables.Prefix,
@@ -213,12 +217,20 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 			}
 			result = append(result, table)
 		} else {
+			endTime := mtime.Now().Add(m.cfg.CreationGracePeriod)
+			if i+1 < len(m.schemaCfg.Configs) {
+				nextFrom := m.schemaCfg.Configs[i+1].From.Time()
+				if endTime.After(nextFrom) {
+					endTime = nextFrom
+				}
+			}
+			endModelTime := model.TimeFromUnix(endTime.Unix())
 			result = append(result, config.IndexTables.periodicTables(
-				config.From, m.cfg.CreationGracePeriod, m.maxChunkAge,
+				config.From, endModelTime, m.cfg.CreationGracePeriod, m.maxChunkAge,
 			)...)
 			if config.ChunkTables.Prefix != "" {
 				result = append(result, config.ChunkTables.periodicTables(
-					config.From, m.cfg.CreationGracePeriod, m.maxChunkAge,
+					config.From, endModelTime, m.cfg.CreationGracePeriod, m.maxChunkAge,
 				)...)
 			}
 		}

@@ -353,16 +353,20 @@ func (cfg *AutoScalingConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 	f.Float64Var(&cfg.TargetValue, argPrefix+".target-value", 80, "DynamoDB target ratio of consumed capacity to provisioned capacity.")
 }
 
-func (cfg *PeriodicTableConfig) periodicTables(from model.Time, beginGrace, endGrace time.Duration) []TableDesc {
+func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, beginGrace, endGrace time.Duration) []TableDesc {
 	var (
 		periodSecs     = int64(cfg.Period / time.Second)
 		beginGraceSecs = int64(beginGrace / time.Second)
 		endGraceSecs   = int64(endGrace / time.Second)
 		firstTable     = from.Unix() / periodSecs
-		lastTable      = (mtime.Now().Unix() + beginGraceSecs) / periodSecs
+		lastTable      = through.Unix() / periodSecs
 		now            = mtime.Now().Unix()
 		result         = []TableDesc{}
 	)
+	// If through ends on 00:00 of the day, don't include the upcoming day
+	if through.Unix()%secondsInDay == 0 {
+		lastTable--
+	}
 	for i := firstTable; i <= lastTable; i++ {
 		table := TableDesc{
 			// Name construction needs to be consistent with chunk_store.bigBuckets
