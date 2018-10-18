@@ -98,7 +98,7 @@ func TestCachingStorageClient(t *testing.T) {
 
 func TestCachingStorageClientEmptyResponse(t *testing.T) {
 	store := &mockStore{}
-	cache := cache.NewFifoCache("test", 10, 10*time.Second)
+	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
 	client := newCachingStorageClient(store, cache, 1*time.Second)
 	queries := []chunk.IndexQuery{{TableName: "table", HashValue: "foo"}}
 	err := client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
