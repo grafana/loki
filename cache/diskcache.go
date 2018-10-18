@@ -170,8 +170,6 @@ func (d *Diskcache) Store(ctx context.Context, keys []string, bufs [][]byte) {
 }
 
 func (d *Diskcache) store(ctx context.Context, key string, value []byte) {
-	sp := opentracing.SpanFromContext(ctx)
-
 	bucket := hash(key) % d.buckets
 	shard := bucket % numMutexes // Get the index of the mutex associated with this bucket
 	d.entryMutexes[shard].Lock()
@@ -190,8 +188,12 @@ func (d *Diskcache) store(ctx context.Context, key string, value []byte) {
 	_, err := put(value, buf, 0)
 	if err != nil {
 		d.entries[bucket] = ""
-		sp.LogFields(otlog.Error(err))
 		level.Error(util.Logger).Log("msg", "failed to put key to diskcache", "err", err)
+
+		sp := opentracing.SpanFromContext(ctx)
+		if sp != nil {
+			sp.LogFields(otlog.Error(err))
+		}
 		return
 	}
 

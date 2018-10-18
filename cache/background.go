@@ -90,9 +90,11 @@ func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byt
 	case c.bgWrites <- bgWrite:
 		c.queueLength.Add(float64(len(keys)))
 	default:
-		sp := opentracing.SpanFromContext(ctx)
-		sp.LogFields(otlog.Int("dropped", len(keys)))
 		c.droppedWriteBack.Add(float64(len(keys)))
+		sp := opentracing.SpanFromContext(ctx)
+		if sp != nil {
+			sp.LogFields(otlog.Int("dropped", len(keys)))
+		}
 	}
 }
 

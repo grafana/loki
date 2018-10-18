@@ -211,8 +211,6 @@ func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) {
 			return c.memcache.Set(&item)
 		})
 		if err != nil {
-			sp := opentracing.SpanFromContext(ctx)
-			sp.LogFields(otlog.Error(err))
 			level.Error(util.Logger).Log("msg", "failed to put to memcached", "err", err)
 		}
 	}
