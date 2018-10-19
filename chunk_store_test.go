@@ -24,23 +24,19 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-type schemaFactory func(cfg SchemaConfig) Schema
-type storeFactory func(StoreConfig, Schema, StorageClient, *validation.Overrides) (Store, error)
-type configFactory func() (StoreConfig, SchemaConfig)
+type configFactory func() StoreConfig
 
 var schemas = []struct {
 	name              string
-	schemaFn          schemaFactory
-	storeFn           storeFactory
 	requireMetricName bool
 }{
-	{"v1 schema", v1Schema, newStore, true},
-	{"v2 schema", v2Schema, newStore, true},
-	{"v3 schema", v3Schema, newStore, true},
-	{"v4 schema", v4Schema, newStore, true},
-	{"v5 schema", v5Schema, newStore, true},
-	{"v6 schema", v6Schema, newStore, true},
-	{"v9 schema", v9Schema, newSeriesStore, true},
+	{"v1", true},
+	{"v2", true},
+	{"v3", true},
+	{"v4", true},
+	{"v5", true},
+	{"v6", true},
+	{"v9", true},
 }
 
 var stores = []struct {
@@ -49,58 +45,61 @@ var stores = []struct {
 }{
 	{
 		name: "store",
-		configFn: func() (StoreConfig, SchemaConfig) {
+		configFn: func() StoreConfig {
 			var (
-				storeCfg  StoreConfig
-				schemaCfg SchemaConfig
+				storeCfg StoreConfig
 			)
-			util.DefaultValues(&storeCfg, &schemaCfg)
-			return storeCfg, schemaCfg
+			util.DefaultValues(&storeCfg)
+			return storeCfg
 		},
 	},
 	{
 		name: "cached_store",
-		configFn: func() (StoreConfig, SchemaConfig) {
+		configFn: func() StoreConfig {
 			var (
-				storeCfg  StoreConfig
-				schemaCfg SchemaConfig
+				storeCfg StoreConfig
 			)
-			util.DefaultValues(&storeCfg, &schemaCfg)
+			util.DefaultValues(&storeCfg)
 
 			storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
 				Size: 500,
 			})
 
-			return storeCfg, schemaCfg
+			return storeCfg
 		},
 	},
 }
 
 // newTestStore creates a new Store for testing.
-func newTestChunkStore(t *testing.T, schemaFactory schemaFactory, storeFactory storeFactory) Store {
+func newTestChunkStore(t *testing.T, schemaName string) Store {
 	var (
-		storeCfg  StoreConfig
-		schemaCfg SchemaConfig
+		storeCfg StoreConfig
 	)
-	util.DefaultValues(&storeCfg, &schemaCfg)
-	return newTestChunkStoreConfig(t, storeCfg, schemaCfg, schemaFactory, storeFactory)
+	util.DefaultValues(&storeCfg)
+	return newTestChunkStoreConfig(t, schemaName, storeCfg)
 }
 
-func newTestChunkStoreConfig(t *testing.T, storeCfg StoreConfig, schemaCfg SchemaConfig, schemaFactory schemaFactory, storeFactory storeFactory) Store {
+func newTestChunkStoreConfig(t *testing.T, schemaName string, storeCfg StoreConfig) Store {
+	var (
+		tbmConfig TableManagerConfig
+		schemaCfg = DefaultSchemaConfig("", schemaName, 0)
+	)
+	util.DefaultValues(&tbmConfig)
 	storage := NewMockStorage()
-	tableManager, err := NewTableManager(schemaCfg, maxChunkAge, storage)
+	tableManager, err := NewTableManager(tbmConfig, schemaCfg, maxChunkAge, storage)
 	require.NoError(t, err)
 
 	err = tableManager.SyncTables(context.Background())
 	require.NoError(t, err)
 
 	var limits validation.Limits
-	util.DefaultValues(&storeCfg, &schemaCfg, &limits)
+	util.DefaultValues(&limits)
 	limits.MaxQueryLength = 30 * 24 * time.Hour
 	overrides, err := validation.NewOverrides(limits)
 	require.NoError(t, err)
 
-	store, err := storeFactory(storeCfg, schemaFactory(schemaCfg), storage, overrides)
+	store := NewCompositeStore()
+	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], storage, overrides)
 	require.NoError(t, err)
 	return store
 }
@@ -250,8 +249,8 @@ func TestChunkStore_Get(t *testing.T) {
 			for _, storeCase := range stores {
 				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema.name, storeCase.name), func(t *testing.T) {
 					t.Log("========= Running query", tc.query, "with schema", schema.name)
-					storeCfg, schemaCfg := storeCase.configFn()
-					store := newTestChunkStoreConfig(t, storeCfg, schemaCfg, schema.schemaFn, schema.storeFn)
+					storeCfg := storeCase.configFn()
+					store := newTestChunkStoreConfig(t, schema.name, storeCfg)
 					defer store.Stop()
 
 					if err := store.Put(ctx, []Chunk{
@@ -371,8 +370,8 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 			for _, storeCase := range stores {
 				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema.name, storeCase.name), func(t *testing.T) {
 					t.Log("========= Running query", tc.query, "with schema", schema.name)
-					storeCfg, schemaCfg := storeCase.configFn()
-					store := newTestChunkStoreConfig(t, storeCfg, schemaCfg, schema.schemaFn, schema.storeFn)
+					storeCfg := storeCase.configFn()
+					store := newTestChunkStoreConfig(t, schema.name, storeCfg)
 					defer store.Stop()
 
 					if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {
@@ -409,7 +408,7 @@ func TestChunkStoreRandom(t *testing.T) {
 
 	for _, schema := range schemas {
 		t.Run(schema.name, func(t *testing.T) {
-			store := newTestChunkStore(t, schema.schemaFn, schema.storeFn)
+			store := newTestChunkStore(t, schema.name)
 			defer store.Stop()
 
 			// put 100 chunks from 0 to 99
@@ -473,7 +472,7 @@ func TestChunkStoreRandom(t *testing.T) {
 func TestChunkStoreLeastRead(t *testing.T) {
 	// Test we don't read too much from the index
 	ctx := user.InjectOrgID(context.Background(), userID)
-	store := newTestChunkStore(t, v6Schema, newStore)
+	store := newTestChunkStore(t, "v6")
 	defer store.Stop()
 
 	// Put 24 chunks 1hr chunks in the store
@@ -538,12 +537,12 @@ func TestIndexCachingWorks(t *testing.T) {
 		"bar": "baz",
 	}
 	storeMaker := stores[1]
-	storeCfg, schemaCfg := storeMaker.configFn()
+	storeCfg := storeMaker.configFn()
 
-	store := newTestChunkStoreConfig(t, storeCfg, schemaCfg, v9Schema, newSeriesStore)
+	store := newTestChunkStoreConfig(t, "v9", storeCfg)
 	defer store.Stop()
 
-	storage := store.(*seriesStore).storage.(*MockStorage)
+	storage := store.(CompositeStore).stores[0].Store.(*seriesStore).storage.(*MockStorage)
 
 	fooChunk1 := dummyChunkFor(model.Time(0).Add(15*time.Second), metric)
 	err := store.Put(ctx, []Chunk{fooChunk1})
@@ -591,7 +590,7 @@ func TestChunkStoreError(t *testing.T) {
 	} {
 		for _, schema := range schemas {
 			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
-				store := newTestChunkStore(t, schema.schemaFn, schema.storeFn)
+				store := newTestChunkStore(t, schema.name)
 				defer store.Stop()
 
 				matchers, err := promql.ParseMetricSelector(tc.query)

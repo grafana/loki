@@ -1,6 +1,10 @@
 package chunk
 
-import "github.com/prometheus/common/model"
+import (
+	"time"
+
+	"github.com/prometheus/common/model"
+)
 
 // BenchmarkMetric is a real example from Kubernetes' embedded cAdvisor metrics, lightly obfuscated
 var BenchmarkMetric = model.Metric{
@@ -21,4 +25,23 @@ var BenchmarkMetric = model.Metric{
 	"name":                   "k8s_some-name_some-other-name-5j8s8_kube-system_6e91c467-e4c5-11e7-ace3-0a97ed59c75e_0",
 	"namespace":              "kube-system",
 	"pod_name":               "some-other-name-5j8s8",
+}
+
+// DefaultSchemaConfig creates a simple schema config for testing
+func DefaultSchemaConfig(store, schema string, from model.Time) SchemaConfig {
+	return SchemaConfig{
+		Configs: []PeriodConfig{{
+			Store:  store,
+			Schema: schema,
+			From:   from,
+			ChunkTables: PeriodicTableConfig{
+				Prefix: "cortex",
+				Period: 7 * 24 * time.Hour,
+			},
+			IndexTables: PeriodicTableConfig{
+				Prefix: "cortex_chunks",
+				Period: 7 * 24 * time.Hour,
+			},
+		}},
+	}
 }

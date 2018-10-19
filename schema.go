@@ -72,73 +72,6 @@ type IndexEntry struct {
 	Value []byte
 }
 
-// v1Schema was:
-// - hash key: <userid>:<hour bucket>:<metric name>
-// - range key: <label name>\0<label value>\0<chunk name>
-func v1Schema(cfg SchemaConfig) Schema {
-	return schema{
-		cfg.hourlyBuckets,
-		originalEntries{},
-	}
-}
-
-// v2Schema went to daily buckets in the hash key
-// - hash key: <userid>:d<day bucket>:<metric name>
-func v2Schema(cfg SchemaConfig) Schema {
-	return schema{
-		cfg.dailyBuckets,
-		originalEntries{},
-	}
-}
-
-// v3Schema went to base64 encoded label values & a version ID
-// - range key: <label name>\0<base64(label value)>\0<chunk name>\0<version 1>
-func v3Schema(cfg SchemaConfig) Schema {
-	return schema{
-		cfg.dailyBuckets,
-		base64Entries{originalEntries{}},
-	}
-}
-
-// v4 schema went to two schemas in one:
-// 1) - hash key: <userid>:<hour bucket>:<metric name>:<label name>
-//    - range key: \0<base64(label value)>\0<chunk name>\0<version 2>
-// 2) - hash key: <userid>:<hour bucket>:<metric name>
-//    - range key: \0\0<chunk name>\0<version 3>
-func v4Schema(cfg SchemaConfig) Schema {
-	return schema{
-		cfg.dailyBuckets,
-		labelNameInHashKeyEntries{},
-	}
-}
-
-// v5 schema is an extension of v4, with the chunk end time in the
-// range key to improve query latency.  However, it did it wrong
-// so the chunk end times are ignored.
-func v5Schema(cfg SchemaConfig) Schema {
-	return schema{
-		cfg.dailyBuckets,
-		v5Entries{},
-	}
-}
-
-// v6 schema is an extension of v5, with correct chunk end times, and
-// the label value moved out of the range key.
-func v6Schema(cfg SchemaConfig) Schema {
-	return schema{
-		cfg.dailyBuckets,
-		v6Entries{},
-	}
-}
-
-// v9 schema index series, not chunks.
-func v9Schema(cfg SchemaConfig) Schema {
-	return schema{
-		cfg.dailyBuckets,
-		v9Entries{},
-	}
-}
-
 // schema implements Schema given a bucketing function and and set of range key callbacks
 type schema struct {
 	buckets func(from, through model.Time, userID string) []Bucket
@@ -270,6 +203,10 @@ type entries interface {
 	GetChunksForSeries(bucket Bucket, seriesID []byte) ([]IndexQuery, error)
 }
 
+// original entries:
+// - hash key: <userid>:<bucket>:<metric name>
+// - range key: <label name>\0<label value>\0<chunk name>
+
 type originalEntries struct{}
 
 func (originalEntries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
@@ -335,6 +272,9 @@ func (originalEntries) GetChunksForSeries(_ Bucket, _ []byte) ([]IndexQuery, err
 	return nil, ErrNotSupported
 }
 
+// v3Schema went to base64 encoded label values & a version ID
+// - range key: <label name>\0<base64(label value)>\0<chunk name>\0<version 1>
+
 type base64Entries struct {
 	originalEntries
 }
@@ -375,6 +315,11 @@ func (base64Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName mo
 	}, nil
 }
 
+// v4 schema went to two schemas in one:
+// 1) - hash key: <userid>:<hour bucket>:<metric name>:<label name>
+//    - range key: \0<base64(label value)>\0<chunk name>\0<version 2>
+// 2) - hash key: <userid>:<hour bucket>:<metric name>
+//    - range key: \0\0<chunk name>\0<version 3>
 type labelNameInHashKeyEntries struct{}
 
 func (labelNameInHashKeyEntries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
@@ -442,7 +387,9 @@ func (labelNameInHashKeyEntries) GetChunksForSeries(_ Bucket, _ []byte) ([]Index
 	return nil, ErrNotSupported
 }
 
-// v5Entries includes chunk end time in range key - see #298.
+// v5 schema is an extension of v4, with the chunk end time in the
+// range key to improve query latency.  However, it did it wrong
+// so the chunk end times are ignored.
 type v5Entries struct{}
 
 func (v5Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {

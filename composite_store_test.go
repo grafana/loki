@@ -4,13 +4,10 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strconv"
 	"testing"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
 )
 
@@ -168,163 +165,6 @@ func TestCompositeStore(t *testing.T) {
 			tc.cs.forStores(model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through), collect(&have))
 			if !reflect.DeepEqual(tc.want, have) {
 				t.Fatalf("wrong stores - %s", test.Diff(tc.want, have))
-			}
-		})
-	}
-}
-
-type dummy struct {
-	version int
-
-	// Include nil-implementations of these interfaces so I don't have to stub out
-	// the methods.
-	StorageClient
-	Store
-}
-
-func dummySchema(from model.Time, version int) SchemaOpt {
-	return SchemaOpt{
-		From: from,
-		NewStore: func(s StorageClient) (Store, error) {
-			return dummy{
-				version:       version,
-				StorageClient: s,
-			}, nil
-		},
-	}
-}
-
-func TestNewStoreTimeConvergence(t *testing.T) {
-	oldClient := dummy{version: -1}
-	newClient := dummy{version: -2}
-	newerClient := dummy{version: -3}
-
-	type expectation struct {
-		time   model.Time
-		schema int
-		client StorageClient
-	}
-
-	for i, testcase := range []struct {
-		schemaOpts  []SchemaOpt
-		storageOpts []StorageOpt
-
-		expected []expectation
-	}{
-		{
-			schemaOpts: []SchemaOpt{
-				dummySchema(0, 1),
-			},
-			storageOpts: []StorageOpt{
-				{0, oldClient},
-			},
-			expected: []expectation{
-				{0, 1, oldClient},
-			},
-		},
-		{
-			schemaOpts: []SchemaOpt{
-				dummySchema(0, 1),
-				dummySchema(10, 2),
-			},
-			storageOpts: []StorageOpt{
-				{0, oldClient},
-			},
-			expected: []expectation{
-				{0, 1, oldClient},
-				{10, 2, oldClient},
-			},
-		},
-		{
-			schemaOpts: []SchemaOpt{
-				dummySchema(0, 1),
-			},
-			storageOpts: []StorageOpt{
-				{0, oldClient},
-				{10, newClient},
-			},
-			expected: []expectation{
-				{0, 1, oldClient},
-				{10, 1, newClient},
-			},
-		},
-		{
-			schemaOpts: []SchemaOpt{
-				dummySchema(0, 1),
-				dummySchema(10, 2),
-			},
-			storageOpts: []StorageOpt{
-				{0, oldClient},
-				{10, newClient},
-			},
-			expected: []expectation{
-				{0, 1, oldClient},
-				{10, 2, newClient},
-			},
-		},
-		{
-			schemaOpts: []SchemaOpt{
-				dummySchema(0, 1),
-				dummySchema(20, 2),
-			},
-			storageOpts: []StorageOpt{
-				{0, oldClient},
-				{10, newClient},
-				{30, newerClient},
-			},
-			expected: []expectation{
-				{0, 1, oldClient},
-				{10, 1, newClient},
-				{20, 2, newClient},
-				{30, 2, newerClient},
-			},
-		},
-		{
-			schemaOpts: []SchemaOpt{
-				dummySchema(0, 1),
-				dummySchema(10, 2),
-				dummySchema(30, 3),
-			},
-			storageOpts: []StorageOpt{
-				{0, oldClient},
-				{20, newClient},
-			},
-			expected: []expectation{
-				{0, 1, oldClient},
-				{10, 2, oldClient},
-				{20, 2, newClient},
-				{30, 3, newClient},
-			},
-		},
-		{
-			schemaOpts: []SchemaOpt{
-				dummySchema(0, 1),
-				dummySchema(10, 2),
-				dummySchema(20, 3),
-				dummySchema(40, 4),
-			},
-			storageOpts: []StorageOpt{
-				{0, oldClient},
-				{20, newClient},
-			},
-			expected: []expectation{
-				{0, 1, oldClient},
-				{10, 2, oldClient},
-				{20, 3, newClient},
-				{40, 4, newClient},
-			},
-		},
-	} {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			store, err := newCompositeStore(StoreConfig{}, SchemaConfig{}, testcase.schemaOpts, testcase.storageOpts)
-			require.NoError(t, err)
-			cs := store.(compositeStore)
-			require.Equal(t, len(testcase.expected), len(cs.stores))
-
-			for i, store := range cs.stores {
-				assert.Equal(t, testcase.expected[i].time, store.start, "%d", i)
-				assert.Equal(t, testcase.expected[i].schema, store.Store.(dummy).version, "%d", i)
-				assert.Equal(t, testcase.expected[i].client, store.Store.(dummy).StorageClient, "%d", i)
 			}
 		})
 	}

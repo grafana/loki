@@ -7,9 +7,7 @@ import (
 	"reflect"
 	"sort"
 	"testing"
-	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
@@ -34,6 +32,15 @@ func mergeResults(rss ...[]IndexEntry) []IndexEntry {
 	return results
 }
 
+const table = "table"
+
+func makeSchema(schemaName string) Schema {
+	return PeriodConfig{
+		Schema:      schemaName,
+		IndexTables: PeriodicTableConfig{Prefix: table},
+	}.createSchema()
+}
+
 func TestSchemaHashKeys(t *testing.T) {
 	mkResult := func(tableName, fmtStr string, from, through int) []IndexEntry {
 		want := []IndexEntry{}
@@ -48,22 +55,12 @@ func TestSchemaHashKeys(t *testing.T) {
 
 	const (
 		userID         = "userid"
-		table          = "table"
 		periodicPrefix = "periodicPrefix"
 	)
 
-	cfg := SchemaConfig{
-		OriginalTableName: table,
-		UsePeriodicTables: true,
-		IndexTables: PeriodicTableConfig{
-			Prefix: periodicPrefix,
-			Period: 2 * 24 * time.Hour,
-			From:   util.NewDayValue(model.TimeFromUnix(5 * 24 * 60 * 60)),
-		},
-	}
-	hourlyBuckets := v1Schema(cfg)
-	dailyBuckets := v3Schema(cfg)
-	labelBuckets := v4Schema(cfg)
+	hourlyBuckets := makeSchema("v1")
+	dailyBuckets := makeSchema("v3")
+	labelBuckets := makeSchema("v4")
 	metric := model.Metric{
 		model.MetricNameLabel: "foo",
 		"bar": "baz",
@@ -178,21 +175,17 @@ func parseRangeValueType(rangeValue []byte) (int, error) {
 func TestSchemaRangeKey(t *testing.T) {
 	const (
 		userID     = "userid"
-		table      = "table"
 		metricName = "foo"
 		chunkID    = "chunkID"
 	)
 
 	var (
-		cfg = SchemaConfig{
-			OriginalTableName: table,
-		}
-		hourlyBuckets = v1Schema(cfg)
-		dailyBuckets  = v2Schema(cfg)
-		base64Keys    = v3Schema(cfg)
-		labelBuckets  = v4Schema(cfg)
-		tsRangeKeys   = v5Schema(cfg)
-		v6RangeKeys   = v6Schema(cfg)
+		hourlyBuckets = makeSchema("v1")
+		dailyBuckets  = makeSchema("v2")
+		base64Keys    = makeSchema("v3")
+		labelBuckets  = makeSchema("v4")
+		tsRangeKeys   = makeSchema("v5")
+		v6RangeKeys   = makeSchema("v6")
 		metric        = model.Metric{
 			model.MetricNameLabel: metricName,
 			"bar": "bary",

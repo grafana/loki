@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"sort"
 	"strings"
@@ -38,6 +39,26 @@ var (
 func init() {
 	prometheus.MustRegister(tableCapacity)
 	prometheus.MustRegister(syncTableDuration)
+}
+
+// TableManagerConfig holds config for a TableManager
+type TableManagerConfig struct {
+	// Master 'off-switch' for table capacity updates, e.g. when troubleshooting
+	ThroughputUpdatesDisabled bool
+
+	// Period with which the table manager will poll for tables.
+	DynamoDBPollInterval time.Duration
+
+	// duration a table will be created before it is needed.
+	CreationGracePeriod time.Duration
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet.
+func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.ThroughputUpdatesDisabled, "table-manager.throughput-updates-disabled", false, "If true, disable all changes to DB capacity")
+	f.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
+	f.DurationVar(&cfg.CreationGracePeriod, "dynamodb.periodic-table.grace-period", 10*time.Minute, "DynamoDB periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
+
 }
 
 // Tags is a string-string map that implements flag.Value.
@@ -85,16 +106,18 @@ func (ts Tags) Equals(other Tags) bool {
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
 type TableManager struct {
 	client      TableClient
-	cfg         SchemaConfig
+	cfg         TableManagerConfig
+	schemaCfg   SchemaConfig
 	maxChunkAge time.Duration
 	done        chan struct{}
 	wait        sync.WaitGroup
 }
 
 // NewTableManager makes a new TableManager
-func NewTableManager(cfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient) (*TableManager, error) {
+func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient) (*TableManager, error) {
 	return &TableManager{
 		cfg:         cfg,
+		schemaCfg:   schemaCfg,
 		maxChunkAge: maxChunkAge,
 		client:      tableClient,
 		done:        make(chan struct{}),
@@ -160,46 +183,45 @@ func (m *TableManager) SyncTables(ctx context.Context) error {
 func (m *TableManager) calculateExpectedTables() []TableDesc {
 	result := []TableDesc{}
 
-	// Add the legacy table
-	legacyTable := TableDesc{
-		Name:             m.cfg.OriginalTableName,
-		ProvisionedRead:  m.cfg.IndexTables.InactiveReadThroughput,
-		ProvisionedWrite: m.cfg.IndexTables.InactiveWriteThroughput,
-		Tags:             m.cfg.IndexTables.Tags,
-	}
+	for i, config := range m.schemaCfg.Configs {
+		if config.IndexTables.Period == 0 { // non-periodic table
+			table := TableDesc{
+				Name:             config.IndexTables.Prefix,
+				ProvisionedRead:  config.IndexTables.InactiveReadThroughput,
+				ProvisionedWrite: config.IndexTables.InactiveWriteThroughput,
+				Tags:             config.IndexTables.Tags,
+			}
+			isActive := true
+			if i+1 < len(m.schemaCfg.Configs) {
+				var (
+					endTime         = m.schemaCfg.Configs[i+1].From.Unix()
+					gracePeriodSecs = int64(m.cfg.CreationGracePeriod / time.Second)
+					maxChunkAgeSecs = int64(m.maxChunkAge / time.Second)
+					now             = mtime.Now().Unix()
+				)
+				if now >= endTime+gracePeriodSecs+maxChunkAgeSecs {
+					isActive = false
+				}
+			}
+			if isActive {
+				table.ProvisionedRead = config.IndexTables.ProvisionedReadThroughput
+				table.ProvisionedWrite = config.IndexTables.ProvisionedWriteThroughput
 
-	if m.cfg.UsePeriodicTables {
-		// if we are before the switch to periodic table, we need to give this table write throughput
-
-		var (
-			tablePeriodSecs = int64(m.cfg.IndexTables.Period / time.Second)
-			gracePeriodSecs = int64(m.cfg.CreationGracePeriod / time.Second)
-			maxChunkAgeSecs = int64(m.maxChunkAge / time.Second)
-			firstTable      = m.cfg.IndexTables.From.Unix() / tablePeriodSecs
-			now             = mtime.Now().Unix()
-		)
-
-		if now < (firstTable*tablePeriodSecs)+gracePeriodSecs+maxChunkAgeSecs {
-			legacyTable.ProvisionedRead = m.cfg.IndexTables.ProvisionedReadThroughput
-			legacyTable.ProvisionedWrite = m.cfg.IndexTables.ProvisionedWriteThroughput
-
-			if m.cfg.IndexTables.WriteScale.Enabled {
-				legacyTable.WriteScale = m.cfg.IndexTables.WriteScale
+				if config.IndexTables.WriteScale.Enabled {
+					table.WriteScale = config.IndexTables.WriteScale
+				}
+			}
+			result = append(result, table)
+		} else {
+			result = append(result, config.IndexTables.periodicTables(
+				config.From, m.cfg.CreationGracePeriod, m.maxChunkAge,
+			)...)
+			if config.ChunkTables.Prefix != "" {
+				result = append(result, config.ChunkTables.periodicTables(
+					config.From, m.cfg.CreationGracePeriod, m.maxChunkAge,
+				)...)
 			}
 		}
-	}
-	result = append(result, legacyTable)
-
-	if m.cfg.UsePeriodicTables {
-		result = append(result, m.cfg.IndexTables.periodicTables(
-			m.cfg.CreationGracePeriod, m.maxChunkAge,
-		)...)
-	}
-
-	if m.cfg.ChunkTables.From.IsSet() {
-		result = append(result, m.cfg.ChunkTables.periodicTables(
-			m.cfg.CreationGracePeriod, m.maxChunkAge,
-		)...)
 	}
 
 	sort.Sort(byName(result))

@@ -6,11 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/mtime"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -104,33 +101,45 @@ func TestTableManager(t *testing.T) {
 	client := newMockTableClient()
 
 	cfg := SchemaConfig{
-		UsePeriodicTables: true,
-		IndexTables: PeriodicTableConfig{
-			Prefix: tablePrefix,
-			Period: tablePeriod,
-			From:   util.NewDayValue(model.TimeFromUnix(0)),
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
-			WriteScale:                 activeScalingConfig,
-			InactiveWriteScale:         inactiveScalingConfig,
-			InactiveWriteScaleLastN:    autoScaleLastN,
-		},
+		Configs: []PeriodConfig{
+			{
+				IndexTables: PeriodicTableConfig{
+					ProvisionedWriteThroughput: write,
+					ProvisionedReadThroughput:  read,
+					InactiveWriteThroughput:    inactiveWrite,
+					InactiveReadThroughput:     inactiveRead,
+					WriteScale:                 activeScalingConfig,
+					InactiveWriteScale:         inactiveScalingConfig,
+				},
+			},
+			{
+				IndexTables: PeriodicTableConfig{
+					Prefix: tablePrefix,
+					Period: tablePeriod,
+					ProvisionedWriteThroughput: write,
+					ProvisionedReadThroughput:  read,
+					InactiveWriteThroughput:    inactiveWrite,
+					InactiveReadThroughput:     inactiveRead,
+					WriteScale:                 activeScalingConfig,
+					InactiveWriteScale:         inactiveScalingConfig,
+					InactiveWriteScaleLastN:    autoScaleLastN,
+				},
 
-		ChunkTables: PeriodicTableConfig{
-			Prefix: chunkTablePrefix,
-			Period: tablePeriod,
-			From:   util.NewDayValue(model.TimeFromUnix(0)),
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
+				ChunkTables: PeriodicTableConfig{
+					Prefix: chunkTablePrefix,
+					Period: tablePeriod,
+					ProvisionedWriteThroughput: write,
+					ProvisionedReadThroughput:  read,
+					InactiveWriteThroughput:    inactiveWrite,
+					InactiveReadThroughput:     inactiveRead,
+				},
+			},
 		},
-
+	}
+	tbmConfig := TableManagerConfig{
 		CreationGracePeriod: gracePeriod,
 	}
-	tableManager, err := NewTableManager(cfg, maxChunkAge, client)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,32 +246,43 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 	client := newMockTableClient()
 
 	cfg := SchemaConfig{
-		UsePeriodicTables: true,
-		IndexTables: PeriodicTableConfig{
-			Prefix: tablePrefix,
-			Period: tablePeriod,
-			From:   util.NewDayValue(model.TimeFromUnix(0)),
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
-			InactiveWriteScale:         inactiveScalingConfig,
-			InactiveWriteScaleLastN:    autoScaleLastN,
-		},
+		Configs: []PeriodConfig{
+			{
+				IndexTables: PeriodicTableConfig{
+					ProvisionedWriteThroughput: write,
+					ProvisionedReadThroughput:  read,
+					InactiveWriteThroughput:    inactiveWrite,
+					InactiveReadThroughput:     inactiveRead,
+					InactiveWriteScale:         inactiveScalingConfig,
+				},
+			},
+			{
+				IndexTables: PeriodicTableConfig{
+					Prefix: tablePrefix,
+					Period: tablePeriod,
+					ProvisionedWriteThroughput: write,
+					ProvisionedReadThroughput:  read,
+					InactiveWriteThroughput:    inactiveWrite,
+					InactiveReadThroughput:     inactiveRead,
+					InactiveWriteScale:         inactiveScalingConfig,
+					InactiveWriteScaleLastN:    autoScaleLastN,
+				},
 
-		ChunkTables: PeriodicTableConfig{
-			Prefix: chunkTablePrefix,
-			Period: tablePeriod,
-			From:   util.NewDayValue(model.TimeFromUnix(0)),
-			ProvisionedWriteThroughput: write,
-			ProvisionedReadThroughput:  read,
-			InactiveWriteThroughput:    inactiveWrite,
-			InactiveReadThroughput:     inactiveRead,
+				ChunkTables: PeriodicTableConfig{
+					Prefix: chunkTablePrefix,
+					Period: tablePeriod,
+					ProvisionedWriteThroughput: write,
+					ProvisionedReadThroughput:  read,
+					InactiveWriteThroughput:    inactiveWrite,
+					InactiveReadThroughput:     inactiveRead,
+				},
+			},
 		},
-
+	}
+	tbmConfig := TableManagerConfig{
 		CreationGracePeriod: gracePeriod,
 	}
-	tableManager, err := NewTableManager(cfg, maxChunkAge, client)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +343,12 @@ func TestTableManagerTags(t *testing.T) {
 
 	// Check at time zero, we have the base table with no tags.
 	{
-		tableManager, err := NewTableManager(SchemaConfig{}, maxChunkAge, client)
+		cfg := SchemaConfig{
+			Configs: []PeriodConfig{{
+				IndexTables: PeriodicTableConfig{},
+			}},
+		}
+		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -340,9 +365,14 @@ func TestTableManagerTags(t *testing.T) {
 
 	// Check after restarting table manager we get some tags.
 	{
-		cfg := SchemaConfig{}
-		cfg.IndexTables.Tags.Set("foo=bar")
-		tableManager, err := NewTableManager(cfg, maxChunkAge, client)
+		cfg := SchemaConfig{
+			Configs: []PeriodConfig{{
+				IndexTables: PeriodicTableConfig{
+					Tags: Tags{"foo": "bar"},
+				},
+			}},
+		}
+		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client)
 		if err != nil {
 			t.Fatal(err)
 		}

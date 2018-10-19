@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -24,12 +25,14 @@ type Fixture interface {
 
 // Setup a fixture with initial tables
 func Setup(fixture Fixture, tableName string) (chunk.StorageClient, error) {
+	var tbmConfig chunk.TableManagerConfig
+	util.DefaultValues(&tbmConfig)
 	storageClient, tableClient, schemaConfig, err := fixture.Clients()
 	if err != nil {
 		return nil, err
 	}
 
-	tableManager, err := chunk.NewTableManager(schemaConfig, 12*time.Hour, tableClient)
+	tableManager, err := chunk.NewTableManager(tbmConfig, schemaConfig, 12*time.Hour, tableClient)
 	if err != nil {
 		return nil, err
 	}

@@ -9,7 +9,6 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
@@ -123,18 +122,6 @@ type storageClient struct {
 	cfg       Config
 	schemaCfg chunk.SchemaConfig
 	session   *gocql.Session
-}
-
-// Opts returns the chunk.StorageOpt's for the config.
-func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) {
-	client, err := NewStorageClient(cfg, schemaCfg)
-	if err != nil {
-		return nil, err
-	}
-	return []chunk.StorageOpt{{
-		From:   model.Time(0),
-		Client: client,
-	}}, err
 }
 
 // NewStorageClient returns a new StorageClient.
@@ -278,7 +265,7 @@ func (s *storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 			return errors.WithStack(err)
 		}
 		key := chunks[i].ExternalKey()
-		tableName := s.schemaCfg.ChunkTables.TableFor(chunks[i].From)
+		tableName := s.schemaCfg.ChunkTableFor(chunks[i].From)
 
 		// Must provide a range key, even though its not useds - hence 0x00.
 		q := s.session.Query(fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, 0x00, ?)",
@@ -321,7 +308,7 @@ func (s *storageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]c
 }
 
 func (s *storageClient) getChunk(ctx context.Context, input chunk.Chunk) (chunk.Chunk, error) {
-	tableName := s.schemaCfg.ChunkTables.TableFor(input.From)
+	tableName := s.schemaCfg.ChunkTableFor(input.From)
 	var buf []byte
 	if err := s.session.Query(fmt.Sprintf("SELECT value FROM %s WHERE hash = ?", tableName), input.ExternalKey()).
 		WithContext(ctx).Scan(&buf); err != nil {

@@ -9,7 +9,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/common/model"
 )
 
 // MockStorage is a fake in-memory StorageClient.
@@ -29,16 +28,6 @@ type mockTable struct {
 type mockItem struct {
 	rangeValue []byte
 	value      []byte
-}
-
-// Opts returns the chunk.StorageOpt's for the config.
-func Opts() ([]StorageOpt, error) {
-	client := NewMockStorage()
-
-	return []StorageOpt{{
-		From:   model.Time(0),
-		Client: client,
-	}}, nil
 }
 
 // NewMockStorage creates a new MockStorage.

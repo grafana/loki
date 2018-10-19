@@ -12,7 +12,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -56,11 +55,14 @@ func (f *fixture) Clients() (
 	}
 
 	schemaConfig = chunk.SchemaConfig{
-		ChunkTables: chunk.PeriodicTableConfig{
-			From:   util.NewDayValue(model.Now()),
-			Period: 10 * time.Minute,
-			Prefix: "chunks",
-		},
+		Configs: []chunk.PeriodConfig{{
+			Store: "gcp",
+			From:  model.Now(),
+			ChunkTables: chunk.PeriodicTableConfig{
+				Prefix: "chunks",
+				Period: 10 * time.Minute,
+			},
+		}},
 	}
 	tClient = &tableClient{
 		client: adminClient,

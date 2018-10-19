@@ -2,12 +2,10 @@ package cassandra
 
 import (
 	"context"
-	"flag"
 	"os"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 )
 
@@ -50,15 +48,7 @@ func Fixtures() ([]testutils.Fixture, error) {
 	}
 
 	// Get a SchemaConfig with the defaults.
-	flagSet := flag.NewFlagSet("flags", flag.PanicOnError)
-	schemaConfig := chunk.SchemaConfig{}
-	schemaConfig.RegisterFlags(flagSet)
-	err := flagSet.Parse([]string{})
-	if err != nil {
-		return nil, err
-	}
-	schemaConfig.IndexTables.From = util.NewDayValue(model.Now())
-	schemaConfig.ChunkTables.From = util.NewDayValue(model.Now())
+	schemaConfig := chunk.DefaultSchemaConfig("cassandra", "v1", model.Now())
 
 	storageClient, err := NewStorageClient(cfg, schemaConfig)
 	if err != nil {

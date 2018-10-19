@@ -20,7 +20,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
@@ -146,30 +145,6 @@ type storageClient struct {
 	queryRequestFn          func(ctx context.Context, input *dynamodb.QueryInput) dynamoDBRequest
 	batchGetItemRequestFn   func(ctx context.Context, input *dynamodb.BatchGetItemInput) dynamoDBRequest
 	batchWriteItemRequestFn func(ctx context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest
-}
-
-// Opts returns the chunk.StorageOpt's for the config.
-func Opts(cfg StorageConfig, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) {
-	client, err := NewS3StorageClient(cfg, schemaCfg)
-	if err != nil {
-		return nil, err
-	}
-
-	opts := []chunk.StorageOpt{}
-	opts = append(opts, chunk.StorageOpt{From: model.Time(0), Client: client})
-	if schemaCfg.ChunkTables.From.IsSet() {
-		client, err = NewStorageClient(cfg.DynamoDBConfig, schemaCfg)
-		if err != nil {
-			return nil, err
-		}
-
-		opts = append(opts, chunk.StorageOpt{
-			From:   schemaCfg.ChunkTables.From.Time,
-			Client: client,
-		})
-	}
-
-	return opts, nil
 }
 
 // NewStorageClient makes a new AWS-backed StorageClient.
@@ -527,7 +502,7 @@ func (a storageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chu
 	for _, chunk := range chunks {
 		key := chunk.ExternalKey()
 		chunksByKey[key] = chunk
-		tableName := a.schemaCfg.ChunkTables.TableFor(chunk.From)
+		tableName := a.schemaCfg.ChunkTableFor(chunk.From)
 		outstanding.Add(tableName, key, placeholder)
 	}
 
@@ -650,7 +625,7 @@ func (a storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) erro
 		}
 		key := chunks[i].ExternalKey()
 
-		table := a.schemaCfg.ChunkTables.TableFor(chunks[i].From)
+		table := a.schemaCfg.ChunkTableFor(chunks[i].From)
 		dynamoDBWrites.Add(table, key, placeholder, buf)
 	}
 

@@ -13,8 +13,8 @@ func TestHourlyBuckets(t *testing.T) {
 		metricName = model.LabelValue("name")
 		tableName  = "table"
 	)
-	var cfg = SchemaConfig{
-		OriginalTableName: tableName,
+	var cfg = PeriodConfig{
+		IndexTables: PeriodicTableConfig{Prefix: tableName},
 	}
 
 	type args struct {
@@ -99,8 +99,8 @@ func TestDailyBuckets(t *testing.T) {
 		metricName = model.LabelValue("name")
 		tableName  = "table"
 	)
-	var cfg = SchemaConfig{
-		OriginalTableName: tableName,
+	var cfg = PeriodConfig{
+		IndexTables: PeriodicTableConfig{Prefix: tableName},
 	}
 
 	type args struct {

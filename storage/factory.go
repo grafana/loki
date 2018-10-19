@@ -13,13 +13,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cassandra"
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 )
 
 // Config chooses which storage client to use.
 type Config struct {
-	StorageClient          string
 	AWSStorageConfig       aws.StorageConfig
 	GCPStorageConfig       gcp.Config
 	CassandraStorageConfig cassandra.Config
@@ -33,7 +33,6 @@ type Config struct {
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	flag.StringVar(&cfg.StorageClient, "chunk.storage-client", "aws", "Which storage client to use (aws, gcp, cassandra, inmemory).")
 	cfg.AWSStorageConfig.RegisterFlags(f)
 	cfg.GCPStorageConfig.RegisterFlags(f)
 	cfg.CassandraStorageConfig.RegisterFlags(f)
@@ -46,8 +45,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.indexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
 }
 
-// Opts makes the storage clients based on the configuration.
-func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) {
+// NewStore makes the storage clients based on the configuration.
+func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits *validation.Overrides) (chunk.Store, error) {
 	var tieredCache cache.Cache
 	var err error
 
@@ -78,23 +77,39 @@ func Opts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) 
 		}
 	}
 
-	opts, err := newStorageOpts(cfg, schemaCfg)
+	err = schemaCfg.Load()
 	if err != nil {
-		return nil, errors.Wrap(err, "error creating storage client")
+		return nil, errors.Wrap(err, "error loading schema config")
+	}
+	stores := chunk.NewCompositeStore()
+
+	for _, s := range schemaCfg.Configs {
+		storage, err := nameToStorage(s.Store, cfg, schemaCfg)
+		if err != nil {
+			return nil, errors.Wrap(err, "error creating storage client")
+		}
+		storage = newCachingStorageClient(storage, tieredCache, cfg.IndexCacheValidity)
+
+		if tieredCache != nil {
+			storage = newCachingStorageClient(storage, tieredCache, cfg.IndexCacheValidity)
+		}
+
+		err = stores.AddPeriod(storeCfg, s, storage, limits)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	for i := range opts {
-		opts[i].Client = newCachingStorageClient(opts[i].Client, tieredCache, cfg.indexQueriesCacheConfig.DefaultValidity)
-	}
-
-	return opts, nil
+	return stores, nil
 }
 
-func newStorageOpts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) {
-	switch cfg.StorageClient {
+func nameToStorage(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageClient, error) {
+	switch name {
 	case "inmemory":
-		return chunk.Opts()
+		return chunk.NewMockStorage(), nil
 	case "aws":
+		return aws.NewS3StorageClient(cfg.AWSStorageConfig, schemaCfg)
+	case "aws-dynamo":
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
 		}
@@ -102,32 +117,33 @@ func newStorageOpts(cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOp
 		if len(path) > 0 {
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
-		return aws.Opts(cfg.AWSStorageConfig, schemaCfg)
+		return aws.NewStorageClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
 	case "gcp":
-		return gcp.Opts(context.Background(), cfg.GCPStorageConfig, schemaCfg)
+		return gcp.NewStorageClientV1(context.Background(), cfg.GCPStorageConfig, schemaCfg)
+	case "gcp-columnkey":
+		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "cassandra":
-		return cassandra.Opts(cfg.CassandraStorageConfig, schemaCfg)
-	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, cassandra, inmemory", cfg.StorageClient)
+		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	}
+	return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, cassandra, inmemory", name)
 }
 
 // NewTableClient makes a new table client based on the configuration.
-func NewTableClient(cfg Config) (chunk.TableClient, error) {
-	switch cfg.StorageClient {
+func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
+	switch name {
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
-	case "aws":
+	case "aws", "aws-dynamo":
 		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
 		if len(path) > 0 {
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
 		return aws.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig)
-	case "gcp":
+	case "gcp", "gcp-columnkey":
 		return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
 	case "cassandra":
 		return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, inmemory", cfg.StorageClient)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, inmemory", name)
 	}
 }

@@ -62,11 +62,14 @@ func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) testutils.Fix
 		clients: func() (chunk.StorageClient, chunk.TableClient, chunk.SchemaConfig, error) {
 			dynamoDB := newMockDynamoDB(0, provisionedErr)
 			schemaCfg := chunk.SchemaConfig{
-				ChunkTables: chunk.PeriodicTableConfig{
-					From:   util.NewDayValue(model.Now()),
-					Period: 10 * time.Minute,
-					Prefix: "chunks",
-				},
+				Configs: []chunk.PeriodConfig{{
+					Store: "aws",
+					From:  model.Now(),
+					ChunkTables: chunk.PeriodicTableConfig{
+						Prefix: "chunks",
+						Period: 10 * time.Minute,
+					},
+				}},
 			}
 			table := &dynamoTableClient{
 				DynamoDB: dynamoDB,

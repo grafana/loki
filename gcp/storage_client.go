@@ -10,7 +10,6 @@ import (
 	"cloud.google.com/go/bigtable"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
-	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
@@ -38,38 +37,6 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.project, "bigtable.project", "", "Bigtable project ID.")
 	f.StringVar(&cfg.instance, "bigtable.instance", "", "Bigtable instance ID.")
-}
-
-// Opts returns the chunk.StorageOpt's for the config.
-func Opts(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) ([]chunk.StorageOpt, error) {
-	client, err := NewStorageClientV1(ctx, cfg, schemaCfg)
-	if err != nil {
-		return nil, err
-	}
-
-	opts := []chunk.StorageOpt{}
-	opts = append(opts, chunk.StorageOpt{From: model.Time(0), Client: client})
-	if schemaCfg.BigtableColumnKeyFrom.IsSet() {
-		client, err = NewStorageClientColumnKey(context.Background(), cfg, schemaCfg)
-		if err != nil {
-			return nil, errors.Wrap(err, "error creating storage client")
-		}
-
-		opts = append(opts, chunk.StorageOpt{
-			From:   schemaCfg.BigtableColumnKeyFrom.Time,
-			Client: client,
-		})
-	}
-
-	return opts, nil
-}
-
-// NewStorageClient returns a new StorageClient.
-func NewStorageClient(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageClient, error) {
-	if cfg.ColumnKey {
-		return NewStorageClientColumnKey(ctx, cfg, schemaCfg)
-	}
-	return NewStorageClientV1(ctx, cfg, schemaCfg)
 }
 
 // storageClientColumnKey implements chunk.storageClient for GCP.
@@ -353,7 +320,7 @@ func (s *storageClientColumnKey) PutChunks(ctx context.Context, chunks []chunk.C
 			return err
 		}
 		key := chunks[i].ExternalKey()
-		tableName := s.schemaCfg.ChunkTables.TableFor(chunks[i].From)
+		tableName := s.schemaCfg.ChunkTableFor(chunks[i].From)
 		keys[tableName] = append(keys[tableName], key)
 
 		mut := bigtable.NewMutation()
@@ -384,7 +351,7 @@ func (s *storageClientColumnKey) GetChunks(ctx context.Context, input []chunk.Ch
 	chunks := map[string]map[string]chunk.Chunk{}
 	keys := map[string]bigtable.RowList{}
 	for _, c := range input {
-		tableName := s.schemaCfg.ChunkTables.TableFor(c.From)
+		tableName := s.schemaCfg.ChunkTableFor(c.From)
 		key := c.ExternalKey()
 		keys[tableName] = append(keys[tableName], key)
 		if _, ok := chunks[tableName]; !ok {
