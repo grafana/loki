@@ -86,6 +86,12 @@ func (m *metricsData) DescribeTable(ctx context.Context, desc *chunk.TableDesc) 
 }
 
 func (m *metricsData) UpdateTable(ctx context.Context, current chunk.TableDesc, expected *chunk.TableDesc) error {
+	// If we don't take explicit action, return the current provision as the expected provision
+	expected.ProvisionedWrite = current.ProvisionedWrite
+
+	if !expected.WriteScale.Enabled {
+		return nil
+	}
 	if err := m.update(ctx); err != nil {
 		return err
 	}
@@ -94,9 +100,6 @@ func (m *metricsData) UpdateTable(ctx context.Context, current chunk.TableDesc, 
 	usageRate := m.usageRates[expected.Name]
 
 	level.Info(util.Logger).Log("msg", "checking metrics", "table", current.Name, "queueLengths", fmt.Sprint(m.queueLengths), "errorRate", errorRate, "usageRate", usageRate)
-
-	// If we don't take explicit action, return the current provision as the expected provision
-	expected.ProvisionedWrite = current.ProvisionedWrite
 
 	switch {
 	case errorRate < errorFractionScaledown*float64(current.ProvisionedWrite) &&
