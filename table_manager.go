@@ -189,6 +189,10 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 			continue
 		}
 		if config.IndexTables.Period == 0 { // non-periodic table
+			if len(result) > 0 && result[len(result)-1].Name == config.IndexTables.Prefix {
+				continue // already got a non-periodic table with this name
+			}
+
 			table := TableDesc{
 				Name:             config.IndexTables.Prefix,
 				ProvisionedRead:  config.IndexTables.InactiveReadThroughput,
