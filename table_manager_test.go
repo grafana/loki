@@ -119,12 +119,6 @@ func TestTableManager(t *testing.T) {
 				From: model.TimeFromUnix(baseTableStart.Unix()),
 				IndexTables: PeriodicTableConfig{
 					Prefix: baseTableName,
-					ProvisionedWriteThroughput: write,
-					ProvisionedReadThroughput:  read,
-					InactiveWriteThroughput:    inactiveWrite,
-					InactiveReadThroughput:     inactiveRead,
-					WriteScale:                 activeScalingConfig,
-					InactiveWriteScale:         inactiveScalingConfig,
 				},
 			},
 			{
@@ -132,22 +126,11 @@ func TestTableManager(t *testing.T) {
 				IndexTables: PeriodicTableConfig{
 					Prefix: tablePrefix,
 					Period: tablePeriod,
-					ProvisionedWriteThroughput: write,
-					ProvisionedReadThroughput:  read,
-					InactiveWriteThroughput:    inactiveWrite,
-					InactiveReadThroughput:     inactiveRead,
-					WriteScale:                 activeScalingConfig,
-					InactiveWriteScale:         inactiveScalingConfig,
-					InactiveWriteScaleLastN:    autoScaleLastN,
 				},
 
 				ChunkTables: PeriodicTableConfig{
 					Prefix: chunkTablePrefix,
 					Period: tablePeriod,
-					ProvisionedWriteThroughput: write,
-					ProvisionedReadThroughput:  read,
-					InactiveWriteThroughput:    inactiveWrite,
-					InactiveReadThroughput:     inactiveRead,
 				},
 			},
 			{
@@ -155,28 +138,32 @@ func TestTableManager(t *testing.T) {
 				IndexTables: PeriodicTableConfig{
 					Prefix: table2Prefix,
 					Period: tablePeriod,
-					ProvisionedWriteThroughput: write,
-					ProvisionedReadThroughput:  read,
-					InactiveWriteThroughput:    inactiveWrite,
-					InactiveReadThroughput:     inactiveRead,
-					WriteScale:                 activeScalingConfig,
-					InactiveWriteScale:         inactiveScalingConfig,
-					InactiveWriteScaleLastN:    autoScaleLastN,
 				},
 
 				ChunkTables: PeriodicTableConfig{
 					Prefix: chunkTable2Prefix,
 					Period: tablePeriod,
-					ProvisionedWriteThroughput: write,
-					ProvisionedReadThroughput:  read,
-					InactiveWriteThroughput:    inactiveWrite,
-					InactiveReadThroughput:     inactiveRead,
 				},
 			},
 		},
 	}
 	tbmConfig := TableManagerConfig{
 		CreationGracePeriod: gracePeriod,
+		IndexTables: ProvisionConfig{
+			ProvisionedWriteThroughput: write,
+			ProvisionedReadThroughput:  read,
+			InactiveWriteThroughput:    inactiveWrite,
+			InactiveReadThroughput:     inactiveRead,
+			WriteScale:                 activeScalingConfig,
+			InactiveWriteScale:         inactiveScalingConfig,
+			InactiveWriteScaleLastN:    autoScaleLastN,
+		},
+		ChunkTables: ProvisionConfig{
+			ProvisionedWriteThroughput: write,
+			ProvisionedReadThroughput:  read,
+			InactiveWriteThroughput:    inactiveWrite,
+			InactiveReadThroughput:     inactiveRead,
+		},
 	}
 	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client)
 	if err != nil {
@@ -315,11 +302,6 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 				From: model.TimeFromUnix(baseTableStart.Unix()),
 				IndexTables: PeriodicTableConfig{
 					Prefix: baseTableName,
-					ProvisionedWriteThroughput: write,
-					ProvisionedReadThroughput:  read,
-					InactiveWriteThroughput:    inactiveWrite,
-					InactiveReadThroughput:     inactiveRead,
-					InactiveWriteScale:         inactiveScalingConfig,
 				},
 			},
 			{
@@ -327,27 +309,31 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 				IndexTables: PeriodicTableConfig{
 					Prefix: tablePrefix,
 					Period: tablePeriod,
-					ProvisionedWriteThroughput: write,
-					ProvisionedReadThroughput:  read,
-					InactiveWriteThroughput:    inactiveWrite,
-					InactiveReadThroughput:     inactiveRead,
-					InactiveWriteScale:         inactiveScalingConfig,
-					InactiveWriteScaleLastN:    autoScaleLastN,
 				},
 
 				ChunkTables: PeriodicTableConfig{
 					Prefix: chunkTablePrefix,
 					Period: tablePeriod,
-					ProvisionedWriteThroughput: write,
-					ProvisionedReadThroughput:  read,
-					InactiveWriteThroughput:    inactiveWrite,
-					InactiveReadThroughput:     inactiveRead,
 				},
 			},
 		},
 	}
 	tbmConfig := TableManagerConfig{
 		CreationGracePeriod: gracePeriod,
+		IndexTables: ProvisionConfig{
+			ProvisionedWriteThroughput: write,
+			ProvisionedReadThroughput:  read,
+			InactiveWriteThroughput:    inactiveWrite,
+			InactiveReadThroughput:     inactiveRead,
+			InactiveWriteScale:         inactiveScalingConfig,
+			InactiveWriteScaleLastN:    autoScaleLastN,
+		},
+		ChunkTables: ProvisionConfig{
+			ProvisionedWriteThroughput: write,
+			ProvisionedReadThroughput:  read,
+			InactiveWriteThroughput:    inactiveWrite,
+			InactiveReadThroughput:     inactiveRead,
+		},
 	}
 	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client)
 	if err != nil {

@@ -42,20 +42,20 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 			{
 				Store: "aws-dynamo",
 				IndexTables: chunk.PeriodicTableConfig{
-					Prefix:                  "a",
-					InactiveReadThroughput:  inactiveRead,
-					InactiveWriteThroughput: inactiveWrite,
+					Prefix: "a",
 				},
 			},
 			{
 				Store:       "aws-dynamo",
-				IndexTables: fixturePeriodicTableConfig(tablePrefix, 2, indexWriteScale, inactiveWriteScale),
-				ChunkTables: fixturePeriodicTableConfig(chunkTablePrefix, 2, chunkWriteScale, inactiveWriteScale),
+				IndexTables: fixturePeriodicTableConfig(tablePrefix),
+				ChunkTables: fixturePeriodicTableConfig(chunkTablePrefix),
 			},
 		},
 	}
 	tbm := chunk.TableManagerConfig{
 		CreationGracePeriod: gracePeriod,
+		IndexTables:         fixtureProvisionConfig(2, indexWriteScale, inactiveWriteScale),
+		ChunkTables:         fixtureProvisionConfig(2, chunkWriteScale, inactiveWriteScale),
 	}
 
 	tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client)

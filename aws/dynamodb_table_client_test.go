@@ -40,10 +40,15 @@ func fixtureWriteScale() chunk.AutoScalingConfig {
 	}
 }
 
-func fixturePeriodicTableConfig(prefix string, inactLastN int64, writeScale, inactWriteScale chunk.AutoScalingConfig) chunk.PeriodicTableConfig {
+func fixturePeriodicTableConfig(prefix string) chunk.PeriodicTableConfig {
 	return chunk.PeriodicTableConfig{
 		Prefix: prefix,
 		Period: tablePeriod,
+	}
+}
+
+func fixtureProvisionConfig(inactLastN int64, writeScale, inactWriteScale chunk.AutoScalingConfig) chunk.ProvisionConfig {
+	return chunk.ProvisionConfig{
 		ProvisionedWriteThroughput: write,
 		ProvisionedReadThroughput:  read,
 		InactiveWriteThroughput:    inactiveWrite,
@@ -124,20 +129,18 @@ func TestTableManagerAutoScaling(t *testing.T) {
 		Configs: []chunk.PeriodConfig{
 			{
 				Store: "aws-dynamo",
-				IndexTables: chunk.PeriodicTableConfig{
-					InactiveReadThroughput:  inactiveRead,
-					InactiveWriteThroughput: inactiveWrite,
-				},
 			},
 			{
 				Store:       "aws-dynamo",
 				From:        model.TimeFromUnix(0),
-				IndexTables: fixturePeriodicTableConfig(tablePrefix, 0, fixtureWriteScale(), chunk.AutoScalingConfig{}),
-				ChunkTables: fixturePeriodicTableConfig(chunkTablePrefix, 0, fixtureWriteScale(), chunk.AutoScalingConfig{}),
+				IndexTables: fixturePeriodicTableConfig(tablePrefix),
+				ChunkTables: fixturePeriodicTableConfig(chunkTablePrefix),
 			}},
 	}
 	tbm := chunk.TableManagerConfig{
 		CreationGracePeriod: gracePeriod,
+		IndexTables:         fixtureProvisionConfig(0, fixtureWriteScale(), chunk.AutoScalingConfig{}),
+		ChunkTables:         fixtureProvisionConfig(0, fixtureWriteScale(), chunk.AutoScalingConfig{}),
 	}
 
 	// Check tables are created with autoscale
@@ -158,8 +161,8 @@ func TestTableManagerAutoScaling(t *testing.T) {
 
 	// Check tables are updated with new settings
 	{
-		cfg.Configs[1].IndexTables.WriteScale.OutCooldown = 200
-		cfg.Configs[1].ChunkTables.WriteScale.TargetValue = 90.0
+		tbm.IndexTables.WriteScale.OutCooldown = 200
+		tbm.ChunkTables.WriteScale.TargetValue = 90.0
 
 		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client)
 		if err != nil {
@@ -177,8 +180,8 @@ func TestTableManagerAutoScaling(t *testing.T) {
 
 	// Check tables are degristered when autoscaling is disabled for inactive tables
 	{
-		cfg.Configs[1].IndexTables.WriteScale.OutCooldown = 200
-		cfg.Configs[1].ChunkTables.WriteScale.TargetValue = 90.0
+		tbm.IndexTables.WriteScale.OutCooldown = 200
+		tbm.ChunkTables.WriteScale.TargetValue = 90.0
 
 		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client)
 		if err != nil {
@@ -197,8 +200,8 @@ func TestTableManagerAutoScaling(t *testing.T) {
 
 	// Check tables are degristered when autoscaling is disabled entirely
 	{
-		cfg.Configs[1].IndexTables.WriteScale.Enabled = false
-		cfg.Configs[1].ChunkTables.WriteScale.Enabled = false
+		tbm.IndexTables.WriteScale.Enabled = false
+		tbm.ChunkTables.WriteScale.Enabled = false
 
 		tableManager, err := chunk.NewTableManager(tbm, cfg, maxChunkAge, client)
 		if err != nil {
@@ -227,21 +230,20 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 	cfg := chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
 			{
-				Store: "aws-dynamo",
-				IndexTables: chunk.PeriodicTableConfig{
-					InactiveReadThroughput:  inactiveRead,
-					InactiveWriteThroughput: inactiveWrite,
-				},
+				Store:       "aws-dynamo",
+				IndexTables: chunk.PeriodicTableConfig{},
 			},
 			{
 				Store:       "aws-dynamo",
-				IndexTables: fixturePeriodicTableConfig(tablePrefix, 2, chunk.AutoScalingConfig{}, fixtureWriteScale()),
-				ChunkTables: fixturePeriodicTableConfig(chunkTablePrefix, 2, chunk.AutoScalingConfig{}, fixtureWriteScale()),
+				IndexTables: fixturePeriodicTableConfig(tablePrefix),
+				ChunkTables: fixturePeriodicTableConfig(chunkTablePrefix),
 			},
 		},
 	}
 	tbm := chunk.TableManagerConfig{
 		CreationGracePeriod: gracePeriod,
+		IndexTables:         fixtureProvisionConfig(2, chunk.AutoScalingConfig{}, fixtureWriteScale()),
+		ChunkTables:         fixtureProvisionConfig(2, chunk.AutoScalingConfig{}, fixtureWriteScale()),
 	}
 
 	// Check legacy and latest tables do not autoscale with inactive autoscale enabled.

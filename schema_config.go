@@ -124,12 +124,12 @@ func (cfg *SchemaConfig) translate() error {
 	}
 
 	cfg.ForEachAfter(cfg.legacy.IndexTablesFrom.Time, func(config *PeriodConfig) {
-		config.IndexTables = cfg.legacy.IndexTables.clean()
+		config.IndexTables = cfg.legacy.IndexTables
 	})
 	if cfg.legacy.ChunkTablesFrom.IsSet() {
 		cfg.ForEachAfter(cfg.legacy.ChunkTablesFrom.Time, func(config *PeriodConfig) {
 			config.Store = "aws-dynamo"
-			config.ChunkTables = cfg.legacy.ChunkTables.clean()
+			config.ChunkTables = cfg.legacy.ChunkTables
 		})
 	}
 	if cfg.legacy.BigtableColumnKeyFrom.IsSet() {
@@ -138,23 +138,6 @@ func (cfg *SchemaConfig) translate() error {
 		})
 	}
 	return nil
-}
-
-func (cfg PeriodicTableConfig) clean() PeriodicTableConfig {
-	cfg.WriteScale.clean()
-	cfg.InactiveWriteScale.clean()
-	return cfg
-}
-
-func (cfg *AutoScalingConfig) clean() {
-	if !cfg.Enabled {
-		// Blank the default values from flag since they aren't used
-		cfg.MinCapacity = 0
-		cfg.MaxCapacity = 0
-		cfg.OutCooldown = 0
-		cfg.InCooldown = 0
-		cfg.TargetValue = 0
-	}
 }
 
 // ForEachAfter will call f() on every entry after t, splitting
@@ -304,15 +287,6 @@ type PeriodicTableConfig struct {
 	Prefix string        `yaml:"prefix"`
 	Period time.Duration `yaml:"period,omitempty"`
 	Tags   Tags          `yaml:"tags,omitempty"`
-
-	ProvisionedWriteThroughput int64 `yaml:"write_throughput,omitempty"`
-	ProvisionedReadThroughput  int64 `yaml:"read_throughput,omitempty"`
-	InactiveWriteThroughput    int64 `yaml:"inactive_write_throughput,omitempty"`
-	InactiveReadThroughput     int64 `yaml:"inactive_read_throughput,omitempty"`
-
-	WriteScale              AutoScalingConfig `yaml:"write_scale,omitempty"`
-	InactiveWriteScale      AutoScalingConfig `yaml:"inactive_write_scale,omitempty"`
-	InactiveWriteScaleLastN int64             `yaml:"inactive_write_scale_last_n,omitempty"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -320,15 +294,6 @@ func (cfg *PeriodicTableConfig) RegisterFlags(argPrefix, tablePrefix string, f *
 	f.StringVar(&cfg.Prefix, argPrefix+".prefix", tablePrefix, "DynamoDB table prefix for period tables.")
 	f.DurationVar(&cfg.Period, argPrefix+".period", 7*24*time.Hour, "DynamoDB table period.")
 	f.Var(&cfg.Tags, argPrefix+".tag", "Tag (of the form key=value) to be added to all tables under management.")
-
-	f.Int64Var(&cfg.ProvisionedWriteThroughput, argPrefix+".write-throughput", 3000, "DynamoDB table default write throughput.")
-	f.Int64Var(&cfg.ProvisionedReadThroughput, argPrefix+".read-throughput", 300, "DynamoDB table default read throughput.")
-	f.Int64Var(&cfg.InactiveWriteThroughput, argPrefix+".inactive-write-throughput", 1, "DynamoDB table write throughput for inactive tables.")
-	f.Int64Var(&cfg.InactiveReadThroughput, argPrefix+".inactive-read-throughput", 300, "DynamoDB table read throughput for inactive tables.")
-
-	cfg.WriteScale.RegisterFlags(argPrefix+".write-throughput.scale", f)
-	cfg.InactiveWriteScale.RegisterFlags(argPrefix+".inactive-write-throughput.scale", f)
-	f.Int64Var(&cfg.InactiveWriteScaleLastN, argPrefix+".inactive-write-throughput.scale-last-n", 4, "Number of last inactive tables to enable write autoscale.")
 }
 
 // AutoScalingConfig for DynamoDB tables.
@@ -353,7 +318,7 @@ func (cfg *AutoScalingConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 	f.Float64Var(&cfg.TargetValue, argPrefix+".target-value", 80, "DynamoDB target ratio of consumed capacity to provisioned capacity.")
 }
 
-func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, beginGrace, endGrace time.Duration) []TableDesc {
+func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg ProvisionConfig, beginGrace, endGrace time.Duration) []TableDesc {
 	var (
 		periodSecs     = int64(cfg.Period / time.Second)
 		beginGraceSecs = int64(beginGrace / time.Second)
@@ -371,22 +336,22 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, beginGr
 		table := TableDesc{
 			// Name construction needs to be consistent with chunk_store.bigBuckets
 			Name:             cfg.Prefix + strconv.Itoa(int(i)),
-			ProvisionedRead:  cfg.InactiveReadThroughput,
-			ProvisionedWrite: cfg.InactiveWriteThroughput,
+			ProvisionedRead:  pCfg.InactiveReadThroughput,
+			ProvisionedWrite: pCfg.InactiveWriteThroughput,
 			Tags:             cfg.Tags,
 		}
 
 		// if now is within table [start - grace, end + grace), then we need some write throughput
 		if (i*periodSecs)-beginGraceSecs <= now && now < (i*periodSecs)+periodSecs+endGraceSecs {
-			table.ProvisionedRead = cfg.ProvisionedReadThroughput
-			table.ProvisionedWrite = cfg.ProvisionedWriteThroughput
+			table.ProvisionedRead = pCfg.ProvisionedReadThroughput
+			table.ProvisionedWrite = pCfg.ProvisionedWriteThroughput
 
-			if cfg.WriteScale.Enabled {
-				table.WriteScale = cfg.WriteScale
+			if pCfg.WriteScale.Enabled {
+				table.WriteScale = pCfg.WriteScale
 			}
-		} else if cfg.InactiveWriteScale.Enabled && i >= (lastTable-cfg.InactiveWriteScaleLastN) {
+		} else if pCfg.InactiveWriteScale.Enabled && i >= (lastTable-pCfg.InactiveWriteScaleLastN) {
 			// Autoscale last N tables
-			table.WriteScale = cfg.InactiveWriteScale
+			table.WriteScale = pCfg.InactiveWriteScale
 		}
 
 		result = append(result, table)

@@ -52,6 +52,21 @@ type TableManagerConfig struct {
 
 	// duration a table will be created before it is needed.
 	CreationGracePeriod time.Duration
+
+	IndexTables ProvisionConfig
+	ChunkTables ProvisionConfig
+}
+
+// ProvisionConfig holds config for provisioning capacity (on DynamoDB)
+type ProvisionConfig struct {
+	ProvisionedWriteThroughput int64
+	ProvisionedReadThroughput  int64
+	InactiveWriteThroughput    int64
+	InactiveReadThroughput     int64
+
+	WriteScale              AutoScalingConfig
+	InactiveWriteScale      AutoScalingConfig
+	InactiveWriteScaleLastN int64
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -60,6 +75,20 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
 	f.DurationVar(&cfg.CreationGracePeriod, "dynamodb.periodic-table.grace-period", 10*time.Minute, "DynamoDB periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
 
+	cfg.IndexTables.RegisterFlags("dynamodb.periodic-table", f)
+	cfg.ChunkTables.RegisterFlags("dynamodb.chunk-table", f)
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet.
+func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
+	f.Int64Var(&cfg.ProvisionedWriteThroughput, argPrefix+".write-throughput", 3000, "DynamoDB table default write throughput.")
+	f.Int64Var(&cfg.ProvisionedReadThroughput, argPrefix+".read-throughput", 300, "DynamoDB table default read throughput.")
+	f.Int64Var(&cfg.InactiveWriteThroughput, argPrefix+".inactive-write-throughput", 1, "DynamoDB table write throughput for inactive tables.")
+	f.Int64Var(&cfg.InactiveReadThroughput, argPrefix+".inactive-read-throughput", 300, "DynamoDB table read throughput for inactive tables.")
+
+	cfg.WriteScale.RegisterFlags(argPrefix+".write-throughput.scale", f)
+	cfg.InactiveWriteScale.RegisterFlags(argPrefix+".inactive-write-throughput.scale", f)
+	f.Int64Var(&cfg.InactiveWriteScaleLastN, argPrefix+".inactive-write-throughput.scale-last-n", 4, "Number of last inactive tables to enable write autoscale.")
 }
 
 // Tags is a string-string map that implements flag.Value.
@@ -191,8 +220,8 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 		if config.IndexTables.Period == 0 { // non-periodic table
 			table := TableDesc{
 				Name:             config.IndexTables.Prefix,
-				ProvisionedRead:  config.IndexTables.InactiveReadThroughput,
-				ProvisionedWrite: config.IndexTables.InactiveWriteThroughput,
+				ProvisionedRead:  m.cfg.IndexTables.InactiveReadThroughput,
+				ProvisionedWrite: m.cfg.IndexTables.InactiveWriteThroughput,
 				Tags:             config.IndexTables.Tags,
 			}
 			isActive := true
@@ -208,11 +237,11 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 				}
 			}
 			if isActive {
-				table.ProvisionedRead = config.IndexTables.ProvisionedReadThroughput
-				table.ProvisionedWrite = config.IndexTables.ProvisionedWriteThroughput
+				table.ProvisionedRead = m.cfg.IndexTables.ProvisionedReadThroughput
+				table.ProvisionedWrite = m.cfg.IndexTables.ProvisionedWriteThroughput
 
-				if config.IndexTables.WriteScale.Enabled {
-					table.WriteScale = config.IndexTables.WriteScale
+				if m.cfg.IndexTables.WriteScale.Enabled {
+					table.WriteScale = m.cfg.IndexTables.WriteScale
 				}
 			}
 			result = append(result, table)
@@ -226,11 +255,11 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 			}
 			endModelTime := model.TimeFromUnix(endTime.Unix())
 			result = append(result, config.IndexTables.periodicTables(
-				config.From, endModelTime, m.cfg.CreationGracePeriod, m.maxChunkAge,
+				config.From, endModelTime, m.cfg.IndexTables, m.cfg.CreationGracePeriod, m.maxChunkAge,
 			)...)
 			if config.ChunkTables.Prefix != "" {
 				result = append(result, config.ChunkTables.periodicTables(
-					config.From, endModelTime, m.cfg.CreationGracePeriod, m.maxChunkAge,
+					config.From, endModelTime, m.cfg.ChunkTables, m.cfg.CreationGracePeriod, m.maxChunkAge,
 				)...)
 			}
 		}
