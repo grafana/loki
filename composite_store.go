@@ -53,7 +53,7 @@ func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, stora
 	if err != nil {
 		return err
 	}
-	c.stores = append(c.stores, compositeStoreEntry{start: cfg.From, Store: store})
+	c.stores = append(c.stores, compositeStoreEntry{start: model.TimeFromUnixNano(cfg.From.UnixNano()), Store: store})
 	return nil
 }
 

@@ -23,7 +23,8 @@ const (
 
 // PeriodConfig defines the schema and tables to use for a period of time
 type PeriodConfig struct {
-	From        model.Time          `yaml:"from"`
+	From        model.Time          `yaml:"-"`              // used when working with config
+	FromStr     string              `yaml:"from,omitempty"` // used when loading from yaml
 	Store       string              `yaml:"store"`
 	Schema      string              `yaml:"schema"`
 	IndexTables PeriodicTableConfig `yaml:"index"`
@@ -93,9 +94,10 @@ func (cfg *SchemaConfig) translate() error {
 
 	add := func(t string, f model.Time) {
 		cfg.Configs = append(cfg.Configs, PeriodConfig{
-			From:   f,
-			Schema: t,
-			Store:  cfg.legacy.StorageClient,
+			From:    f,
+			FromStr: f.Time().Format("2006-01-02"),
+			Schema:  t,
+			Store:   cfg.legacy.StorageClient,
 			IndexTables: PeriodicTableConfig{
 				Prefix: cfg.legacy.OriginalTableName,
 			},
@@ -221,12 +223,22 @@ func (cfg *SchemaConfig) Load() error {
 	if err := decoder.Decode(&cfg); err != nil {
 		return err
 	}
+	for i := range cfg.Configs {
+		t, err := time.Parse("2006-01-02", cfg.Configs[i].FromStr)
+		if err != nil {
+			return err
+		}
+		cfg.Configs[i].From = model.TimeFromUnix(t.Unix())
+	}
 
 	return nil
 }
 
 // PrintYaml dumps the yaml to stdout, to aid in migration
 func (cfg SchemaConfig) PrintYaml() {
+	for i := range cfg.Configs {
+		cfg.Configs[i].FromStr = cfg.Configs[i].From.Time().Format("2006-01-02")
+	}
 	encoder := yaml.NewEncoder(os.Stdout)
 	encoder.Encode(cfg)
 }
