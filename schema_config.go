@@ -98,6 +98,7 @@ func (cfg *SchemaConfig) translate() error {
 			Store:  cfg.legacy.StorageClient,
 			IndexTables: PeriodicTableConfig{
 				Prefix: cfg.legacy.OriginalTableName,
+				Tags:   cfg.legacy.IndexTables.Tags,
 			},
 		})
 	}
