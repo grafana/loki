@@ -36,6 +36,7 @@ type MemcachedClientConfig struct {
 	Host           string
 	Service        string
 	Timeout        time.Duration
+	MaxIdleConns   int
 	UpdateInterval time.Duration
 }
 
@@ -43,6 +44,7 @@ type MemcachedClientConfig struct {
 func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Host, prefix+"memcached.hostname", "", description+"Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.")
 	f.StringVar(&cfg.Service, prefix+"memcached.service", "memcached", description+"SRV service used to discover memcache servers.")
+	f.IntVar(&cfg.MaxIdleConns, prefix+"memcached.max-idle-conns", 16, description+"Maximum number of idle connections in pool.")
 	f.DurationVar(&cfg.Timeout, prefix+"memcached.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on memcached requests.")
 	f.DurationVar(&cfg.UpdateInterval, prefix+"memcached.update-interval", 1*time.Minute, description+"Period with which to poll DNS for memcache servers.")
 }
@@ -53,6 +55,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig) MemcachedClient {
 	var servers memcache.ServerList
 	client := memcache.NewFromSelector(&servers)
 	client.Timeout = cfg.Timeout
+	client.MaxIdleConns = cfg.MaxIdleConns
 
 	newClient := &memcachedClient{
 		Client:     client,
