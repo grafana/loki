@@ -19,8 +19,8 @@ const userID = "userID"
 func dummyChunk(now model.Time) Chunk {
 	return dummyChunkFor(now, model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":                 "baz",
-		"toms":                "code",
+		"bar":  "baz",
+		"toms": "code",
 	})
 }
 
@@ -150,8 +150,8 @@ func TestChunksToMatrix(t *testing.T) {
 	// Create 2 chunks which have the same metric
 	metric := model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":                 "baz",
-		"toms":                "code",
+		"bar":  "baz",
+		"toms": "code",
 	}
 	now := model.Now()
 	chunk1 := dummyChunkFor(now, metric)
@@ -169,8 +169,8 @@ func TestChunksToMatrix(t *testing.T) {
 	// Create another chunk with a different metric
 	otherMetric := model.Metric{
 		model.MetricNameLabel: "foo2",
-		"bar":                 "baz",
-		"toms":                "code",
+		"bar":  "baz",
+		"toms": "code",
 	}
 	chunk3 := dummyChunkFor(now, otherMetric)
 	chunk3Samples, err := chunk3.Samples(chunk3.From, chunk3.Through)
