@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -19,13 +19,13 @@ const userID = "userID"
 func dummyChunk(now model.Time) Chunk {
 	return dummyChunkFor(now, model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "baz",
-		"toms": "code",
+		"bar":                 "baz",
+		"toms":                "code",
 	})
 }
 
-func dummyChunkForEncoding(now model.Time, metric model.Metric, encoding chunk.Encoding, samples int) Chunk {
-	c, _ := chunk.NewForEncoding(encoding)
+func dummyChunkForEncoding(now model.Time, metric model.Metric, enc encoding.Encoding, samples int) Chunk {
+	c, _ := encoding.NewForEncoding(enc)
 	for i := 0; i < samples; i++ {
 		t := time.Duration(i) * 15 * time.Second
 		cs, err := c.Add(model.SamplePair{Timestamp: now.Add(t), Value: 0})
@@ -51,7 +51,7 @@ func dummyChunkForEncoding(now model.Time, metric model.Metric, encoding chunk.E
 }
 
 func dummyChunkFor(now model.Time, metric model.Metric) Chunk {
-	return dummyChunkForEncoding(now, metric, chunk.Varbit, 1)
+	return dummyChunkForEncoding(now, metric, encoding.Varbit, 1)
 }
 
 func TestChunkCodec(t *testing.T) {
@@ -150,8 +150,8 @@ func TestChunksToMatrix(t *testing.T) {
 	// Create 2 chunks which have the same metric
 	metric := model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "baz",
-		"toms": "code",
+		"bar":                 "baz",
+		"toms":                "code",
 	}
 	now := model.Now()
 	chunk1 := dummyChunkFor(now, metric)
@@ -169,8 +169,8 @@ func TestChunksToMatrix(t *testing.T) {
 	// Create another chunk with a different metric
 	otherMetric := model.Metric{
 		model.MetricNameLabel: "foo2",
-		"bar":  "baz",
-		"toms": "code",
+		"bar":                 "baz",
+		"toms":                "code",
 	}
 	chunk3 := dummyChunkFor(now, otherMetric)
 	chunk3Samples, err := chunk3.Samples(chunk3.From, chunk3.Through)

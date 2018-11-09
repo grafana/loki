@@ -16,7 +16,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -135,25 +135,25 @@ func TestChunkStore_Get(t *testing.T) {
 
 	fooMetric1 := model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "baz",
-		"toms": "code",
-		"flip": "flop",
+		"bar":                 "baz",
+		"toms":                "code",
+		"flip":                "flop",
 	}
 	fooMetric2 := model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "beep",
-		"toms": "code",
+		"bar":                 "beep",
+		"toms":                "code",
 	}
 
 	// barMetric1 is a subset of barMetric2 to test over-matching bug.
 	barMetric1 := model.Metric{
 		model.MetricNameLabel: "bar",
-		"bar": "baz",
+		"bar":                 "baz",
 	}
 	barMetric2 := model.Metric{
 		model.MetricNameLabel: "bar",
-		"bar":  "baz",
-		"toms": "code",
+		"bar":                 "baz",
+		"toms":                "code",
 	}
 
 	fooChunk1 := dummyChunkFor(now, fooMetric1)
@@ -315,14 +315,14 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 	now := model.Now()
 	chunk1 := dummyChunkFor(now, model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "baz",
-		"toms": "code",
-		"flip": "flop",
+		"bar":                 "baz",
+		"toms":                "code",
+		"flip":                "flop",
 	})
 	chunk2 := dummyChunkFor(now, model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "beep",
-		"toms": "code",
+		"bar":                 "beep",
+		"toms":                "code",
 	})
 
 	for _, tc := range []struct {
@@ -415,7 +415,7 @@ func TestChunkStoreRandom(t *testing.T) {
 			const chunkLen = 2 * 3600 // in seconds
 			for i := 0; i < 100; i++ {
 				ts := model.TimeFromUnix(int64(i * chunkLen))
-				chunks, _ := chunk.New().Add(model.SamplePair{
+				chunks, _ := encoding.New().Add(model.SamplePair{
 					Timestamp: ts,
 					Value:     model.SampleValue(float64(i)),
 				})
@@ -424,7 +424,7 @@ func TestChunkStoreRandom(t *testing.T) {
 					model.Fingerprint(1),
 					model.Metric{
 						model.MetricNameLabel: "foo",
-						"bar": "baz",
+						"bar":                 "baz",
 					},
 					chunks[0],
 					ts,
@@ -479,7 +479,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 	const chunkLen = 60 // in seconds
 	for i := 0; i < 24; i++ {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
-		chunks, _ := chunk.New().Add(model.SamplePair{
+		chunks, _ := encoding.New().Add(model.SamplePair{
 			Timestamp: ts,
 			Value:     model.SampleValue(float64(i)),
 		})
@@ -488,7 +488,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 			model.Fingerprint(1),
 			model.Metric{
 				model.MetricNameLabel: "foo",
-				"bar": "baz",
+				"bar":                 "baz",
 			},
 			chunks[0],
 			ts,
@@ -534,7 +534,7 @@ func TestIndexCachingWorks(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	metric := model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar": "baz",
+		"bar":                 "baz",
 	}
 	storeMaker := stores[1]
 	storeCfg := storeMaker.configFn()

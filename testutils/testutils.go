@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	promchunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -70,8 +70,8 @@ func CreateChunks(startIndex, batchSize int) ([]string, []chunk.Chunk, error) {
 func dummyChunk(now model.Time) chunk.Chunk {
 	return dummyChunkFor(now, model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "baz",
-		"toms": "code",
+		"bar":                 "baz",
+		"toms":                "code",
 	})
 }
 
