@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/tsdb/chunkenc"
 )
 
-const samplesPerChunk = 60
+const samplesPerChunk = 120
 
 var errOutOfBounds = errors.New("out of bounds")
 
