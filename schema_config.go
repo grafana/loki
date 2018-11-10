@@ -131,7 +131,9 @@ func (cfg *SchemaConfig) translate() error {
 	})
 	if cfg.legacy.ChunkTablesFrom.IsSet() {
 		cfg.ForEachAfter(cfg.legacy.ChunkTablesFrom.Time, func(config *PeriodConfig) {
-			config.Store = "aws-dynamo"
+			if config.Store == "aws" {
+				config.Store = "aws-dynamo"
+			}
 			config.ChunkTables = cfg.legacy.ChunkTables
 		})
 	}
