@@ -90,10 +90,6 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 		}
 		storage = newCachingStorageClient(storage, tieredCache, cfg.IndexCacheValidity)
 
-		if tieredCache != nil {
-			storage = newCachingStorageClient(storage, tieredCache, cfg.IndexCacheValidity)
-		}
-
 		err = stores.AddPeriod(storeCfg, s, storage, limits)
 		if err != nil {
 			return nil, err
