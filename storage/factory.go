@@ -47,7 +47,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // NewStore makes the storage clients based on the configuration.
 func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits *validation.Overrides) (chunk.Store, error) {
-	var tieredCache cache.Cache
 	var err error
 
 	// Building up from deprecated flags.
@@ -67,6 +66,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 		}, memcache))
 	}
 
+	var tieredCache cache.Cache
 	if len(caches) > 0 {
 		tieredCache = cache.NewTiered(caches)
 		cfg.indexQueriesCacheConfig.DefaultValidity = cfg.IndexCacheValidity
@@ -76,6 +76,10 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 			return nil, err
 		}
 	}
+
+	// Cache is shared by multiple stores, which means they will try and Stop
+	// it more than once.  Wrap in a StopOnce to prevent this.
+	tieredCache = cache.StopOnce(tieredCache)
 
 	err = schemaCfg.Load()
 	if err != nil {
