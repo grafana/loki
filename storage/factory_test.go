@@ -21,12 +21,12 @@ func TestFactoryStop(t *testing.T) {
 	flagext.DefaultValues(&cfg, &storeConfig, &schemaConfig, &defaults)
 	schemaConfig.Configs = []chunk.PeriodConfig{
 		{
-			From:  model.Time(0),
-			Store: "inmemory",
+			From:      model.Time(0),
+			IndexType: "inmemory",
 		},
 		{
-			From:  model.Time(1),
-			Store: "inmemory",
+			From:      model.Time(1),
+			IndexType: "inmemory",
 		},
 	}
 	cfg.memcacheClient.Host = "localhost" // Fake address that should at least resolve.

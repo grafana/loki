@@ -12,7 +12,7 @@ import (
 )
 
 type mockStore struct {
-	chunk.StorageClient
+	chunk.IndexClient
 	queries int
 	results ReadBatch
 }
@@ -35,7 +35,7 @@ func TestCachingStorageClientBasic(t *testing.T) {
 		},
 	}
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingStorageClient(store, cache, 1*time.Second)
+	client := newCachingIndexClient(store, cache, 1*time.Second)
 	queries := []chunk.IndexQuery{{
 		TableName: "table",
 		HashValue: "baz",
@@ -64,7 +64,7 @@ func TestCachingStorageClient(t *testing.T) {
 		},
 	}
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingStorageClient(store, cache, 1*time.Second)
+	client := newCachingIndexClient(store, cache, 1*time.Second)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo"},
 		{TableName: "table", HashValue: "bar"},
@@ -99,7 +99,7 @@ func TestCachingStorageClient(t *testing.T) {
 func TestCachingStorageClientEmptyResponse(t *testing.T) {
 	store := &mockStore{}
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingStorageClient(store, cache, 1*time.Second)
+	client := newCachingIndexClient(store, cache, 1*time.Second)
 	queries := []chunk.IndexQuery{{TableName: "table", HashValue: "foo"}}
 	err := client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		assert.False(t, batch.Iterator().Next())
@@ -135,7 +135,7 @@ func TestCachingStorageClientCollision(t *testing.T) {
 		},
 	}
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingStorageClient(store, cache, 1*time.Second)
+	client := newCachingIndexClient(store, cache, 1*time.Second)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar")},
 		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("baz")},

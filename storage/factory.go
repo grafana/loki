@@ -22,6 +22,7 @@ import (
 type Config struct {
 	AWSStorageConfig       aws.StorageConfig
 	GCPStorageConfig       gcp.Config
+	GCSConfig              gcp.GCSConfig
 	CassandraStorageConfig cassandra.Config
 
 	IndexCacheSize     int
@@ -88,13 +89,22 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 	stores := chunk.NewCompositeStore()
 
 	for _, s := range schemaCfg.Configs {
-		storage, err := nameToStorage(s.Store, cfg, schemaCfg)
+		index, err := NewIndexClient(s.IndexType, cfg, schemaCfg)
 		if err != nil {
-			return nil, errors.Wrap(err, "error creating storage client")
+			return nil, errors.Wrap(err, "error creating index client")
 		}
-		storage = newCachingStorageClient(storage, tieredCache, cfg.IndexCacheValidity)
+		index = newCachingIndexClient(index, tieredCache, cfg.IndexCacheValidity)
 
-		err = stores.AddPeriod(storeCfg, s, storage, limits)
+		objectStoreType := s.ObjectType
+		if objectStoreType == "" {
+			objectStoreType = s.IndexType
+		}
+		chunks, err := NewObjectClient(objectStoreType, cfg, schemaCfg)
+		if err != nil {
+			return nil, errors.Wrap(err, "error creating object client")
+		}
+
+		err = stores.AddPeriod(storeCfg, s, index, chunks, limits)
 		if err != nil {
 			return nil, err
 		}
@@ -103,13 +113,13 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 	return stores, nil
 }
 
-func nameToStorage(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageClient, error) {
+// NewIndexClient makes a new index client of the desired type.
+func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
 	switch name {
 	case "inmemory":
-		return chunk.NewMockStorage(), nil
-	case "aws":
-		return aws.NewS3StorageClient(cfg.AWSStorageConfig, schemaCfg)
-	case "aws-dynamo":
+		store := chunk.NewMockStorage()
+		return store, nil
+	case "aws", "aws-dynamo", "dynamo":
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
 		}
@@ -117,15 +127,44 @@ func nameToStorage(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk
 		if len(path) > 0 {
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
-		return aws.NewStorageClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
+		return aws.NewDynamoDBStorageClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
 	case "gcp":
 		return gcp.NewStorageClientV1(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-	case "gcp-columnkey":
+	case "gcp-columnkey", "bigtable":
 		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "cassandra":
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
+	default:
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, cassandra, inmemory", name)
 	}
-	return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, cassandra, inmemory", name)
+}
+
+// NewObjectClient makes a new ObjectClient of the desired types.
+func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
+	switch name {
+	case "inmemory":
+		store := chunk.NewMockStorage()
+		return store, nil
+	case "aws", "s3":
+		return aws.NewS3ObjectClient(cfg.AWSStorageConfig, schemaCfg)
+	case "aws-dynamo", "dynamo":
+		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
+			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
+		}
+		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
+		if len(path) > 0 {
+			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+		}
+		return aws.NewDynamoDBStorageClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
+	case "gcp":
+		return gcp.NewBigtableChunkClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
+	case "gcp-columnkey", "bigtable":
+		return gcp.NewBigtableChunkClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
+	case "cassandra":
+		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
+	default:
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, cassandra, inmemory", name)
+	}
 }
 
 // NewTableClient makes a new table client based on the configuration.

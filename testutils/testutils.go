@@ -19,33 +19,33 @@ const (
 // Fixture type for per-backend testing.
 type Fixture interface {
 	Name() string
-	Clients() (chunk.StorageClient, chunk.TableClient, chunk.SchemaConfig, error)
+	Clients() (chunk.IndexClient, chunk.ObjectClient, chunk.TableClient, chunk.SchemaConfig, error)
 	Teardown() error
 }
 
 // Setup a fixture with initial tables
-func Setup(fixture Fixture, tableName string) (chunk.StorageClient, error) {
+func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.ObjectClient, error) {
 	var tbmConfig chunk.TableManagerConfig
 	flagext.DefaultValues(&tbmConfig)
-	storageClient, tableClient, schemaConfig, err := fixture.Clients()
+	indexClient, chunkClient, tableClient, schemaConfig, err := fixture.Clients()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	tableManager, err := chunk.NewTableManager(tbmConfig, schemaConfig, 12*time.Hour, tableClient)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	err = tableManager.SyncTables(context.Background())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	err = tableClient.CreateTable(context.Background(), chunk.TableDesc{
 		Name: tableName,
 	})
-	return storageClient, err
+	return indexClient, chunkClient, err
 }
 
 // CreateChunks creates some chunks for testing

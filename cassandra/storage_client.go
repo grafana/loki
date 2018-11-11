@@ -117,28 +117,30 @@ func (cfg *Config) createKeyspace() error {
 	return errors.WithStack(err)
 }
 
-// storageClient implements chunk.storageClient for GCP.
-type storageClient struct {
+// StorageClient implements chunk.IndexClient and chunk.ObjectClient for Cassandra.
+type StorageClient struct {
 	cfg       Config
 	schemaCfg chunk.SchemaConfig
 	session   *gocql.Session
 }
 
 // NewStorageClient returns a new StorageClient.
-func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageClient, error) {
+func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient, error) {
 	session, err := cfg.session()
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	return &storageClient{
+	client := &StorageClient{
 		cfg:       cfg,
 		schemaCfg: schemaCfg,
 		session:   session,
-	}, nil
+	}
+	return client, nil
 }
 
-func (s *storageClient) Stop() {
+// Stop implement chunk.IndexClient.
+func (s *StorageClient) Stop() {
 	s.session.Close()
 }
 
@@ -148,7 +150,8 @@ type writeBatch struct {
 	entries []chunk.IndexEntry
 }
 
-func (s *storageClient) NewWriteBatch() chunk.WriteBatch {
+// NewWriteBatch implement chunk.IndexClient.
+func (s *StorageClient) NewWriteBatch() chunk.WriteBatch {
 	return &writeBatch{}
 }
 
@@ -161,7 +164,8 @@ func (b *writeBatch) Add(tableName, hashValue string, rangeValue []byte, value [
 	})
 }
 
-func (s *storageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
+// BatchWrite implement chunk.IndexClient.
+func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
 	b := batch.(*writeBatch)
 
 	for _, entry := range b.entries {
@@ -175,11 +179,12 @@ func (s *storageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	return nil
 }
 
-func (s *storageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
+// QueryPages implement chunk.IndexClient.
+func (s *StorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
 	return util.DoParallelQueries(ctx, s.query, queries, callback)
 }
 
-func (s *storageClient) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
 	var q *gocql.Query
 
 	switch {
@@ -257,7 +262,8 @@ func (b *readBatchIter) Value() []byte {
 	return b.value
 }
 
-func (s *storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+// PutChunks implements chunk.ObjectClient.
+func (s *StorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	for i := range chunks {
 		// Encode the chunk first - checksum is calculated as a side effect.
 		buf, err := chunks[i].Encode()
@@ -278,43 +284,18 @@ func (s *storageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 	return nil
 }
 
-func (s *storageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
-	outs := make(chan chunk.Chunk, len(input))
-	errs := make(chan error, len(input))
-
-	for i := 0; i < len(input); i++ {
-		c := input[i]
-		go func(c chunk.Chunk) {
-			out, err := s.getChunk(ctx, c)
-			if err != nil {
-				errs <- err
-			} else {
-				outs <- out
-			}
-		}(c)
-	}
-
-	output := make([]chunk.Chunk, 0, len(input))
-	for i := 0; i < len(input); i++ {
-		select {
-		case c := <-outs:
-			output = append(output, c)
-		case err := <-errs:
-			return nil, err
-		}
-	}
-
-	return output, nil
+// GetChunks implements chunk.ObjectClient.
+func (s *StorageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
+	return util.GetParallelChunks(ctx, input, s.getChunk)
 }
 
-func (s *storageClient) getChunk(ctx context.Context, input chunk.Chunk) (chunk.Chunk, error) {
+func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
 	tableName := s.schemaCfg.ChunkTableFor(input.From)
 	var buf []byte
 	if err := s.session.Query(fmt.Sprintf("SELECT value FROM %s WHERE hash = ?", tableName), input.ExternalKey()).
 		WithContext(ctx).Scan(&buf); err != nil {
 		return input, errors.WithStack(err)
 	}
-	decodeContext := chunk.NewDecodeContext()
 	err := input.Decode(decodeContext, buf)
 	return input, err
 }

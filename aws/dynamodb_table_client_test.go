@@ -128,10 +128,10 @@ func TestTableManagerAutoScaling(t *testing.T) {
 	cfg := chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
 			{
-				Store: "aws-dynamo",
+				IndexType: "aws-dynamo",
 			},
 			{
-				Store:       "aws-dynamo",
+				IndexType:   "aws-dynamo",
 				From:        model.TimeFromUnix(0),
 				IndexTables: fixturePeriodicTableConfig(tablePrefix),
 				ChunkTables: fixturePeriodicTableConfig(chunkTablePrefix),
@@ -230,11 +230,11 @@ func TestTableManagerInactiveAutoScaling(t *testing.T) {
 	cfg := chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
 			{
-				Store:       "aws-dynamo",
+				IndexType:   "aws-dynamo",
 				IndexTables: chunk.PeriodicTableConfig{},
 			},
 			{
-				Store:       "aws-dynamo",
+				IndexType:   "aws-dynamo",
 				IndexTables: fixturePeriodicTableConfig(tablePrefix),
 				ChunkTables: fixturePeriodicTableConfig(chunkTablePrefix),
 			},

@@ -99,7 +99,7 @@ func newTestChunkStoreConfig(t *testing.T, schemaName string, storeCfg StoreConf
 	require.NoError(t, err)
 
 	store := NewCompositeStore()
-	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], storage, overrides)
+	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], storage, storage, overrides)
 	require.NoError(t, err)
 	return store
 }

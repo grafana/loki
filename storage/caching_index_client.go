@@ -38,29 +38,29 @@ var (
 	})
 )
 
-type cachingStorageClient struct {
-	chunk.StorageClient
+type cachingIndexClient struct {
+	chunk.IndexClient
 	cache    cache.Cache
 	validity time.Duration
 }
 
-func newCachingStorageClient(client chunk.StorageClient, c cache.Cache, validity time.Duration) chunk.StorageClient {
+func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration) chunk.IndexClient {
 	if c == nil {
 		return client
 	}
 
-	return &cachingStorageClient{
-		StorageClient: client,
-		cache:         cache.NewSnappy(c),
-		validity:      validity,
+	return &cachingIndexClient{
+		IndexClient: client,
+		cache:       cache.NewSnappy(c),
+		validity:    validity,
 	}
 }
 
-func (s *cachingStorageClient) Stop() {
+func (s *cachingIndexClient) Stop() {
 	s.cache.Stop()
 }
 
-func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	// We cache the entire row, so filter client side.
 	callback = chunk_util.QueryFilter(callback)
 
@@ -106,7 +106,7 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 		}
 	}
 
-	err := s.StorageClient.QueryPages(ctx, cacheableMissed, func(cacheableQuery chunk.IndexQuery, r chunk.ReadBatch) bool {
+	err := s.IndexClient.QueryPages(ctx, cacheableMissed, func(cacheableQuery chunk.IndexQuery, r chunk.ReadBatch) bool {
 		resultsMtx.Lock()
 		defer resultsMtx.Unlock()
 		key := queryKey(cacheableQuery)
@@ -174,7 +174,7 @@ func queryKey(q chunk.IndexQuery) string {
 	return q.TableName + sep + q.HashValue
 }
 
-func (s *cachingStorageClient) cacheStore(ctx context.Context, keys []string, batches []ReadBatch) {
+func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batches []ReadBatch) {
 	cachePuts.Add(float64(len(keys)))
 
 	// We're doing the hashing to handle unicode and key len properly.
@@ -196,7 +196,7 @@ func (s *cachingStorageClient) cacheStore(ctx context.Context, keys []string, ba
 	return
 }
 
-func (s *cachingStorageClient) cacheFetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {
+func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {
 	cacheGets.Inc()
 
 	// Build a map from hash -> key; NB there can be collisions here; we'll fetch

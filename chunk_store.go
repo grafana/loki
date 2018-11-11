@@ -79,21 +79,23 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 type store struct {
 	cfg StoreConfig
 
-	storage StorageClient
-	schema  Schema
-	limits  *validation.Overrides
+	index  IndexClient
+	chunks ObjectClient
+	schema Schema
+	limits *validation.Overrides
 	*Fetcher
 }
 
-func newStore(cfg StoreConfig, schema Schema, storage StorageClient, limits *validation.Overrides) (Store, error) {
-	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, storage)
+func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectClient, limits *validation.Overrides) (Store, error) {
+	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, chunks)
 	if err != nil {
 		return nil, err
 	}
 
 	return &store{
 		cfg:     cfg,
-		storage: storage,
+		index:   index,
+		chunks:  chunks,
 		schema:  schema,
 		limits:  limits,
 		Fetcher: fetcher,
@@ -140,7 +142,7 @@ func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chun
 		return err
 	}
 
-	return c.storage.BatchWrite(ctx, writeReqs)
+	return c.index.BatchWrite(ctx, writeReqs)
 }
 
 // calculateIndexEntries creates a set of batched WriteRequests for all the chunks it is given.
@@ -159,7 +161,7 @@ func (c *store) calculateIndexEntries(userID string, from, through model.Time, c
 	indexEntriesPerChunk.Observe(float64(len(entries)))
 
 	// Remove duplicate entries based on tableName:hashValue:rangeValue
-	result := c.storage.NewWriteBatch()
+	result := c.index.NewWriteBatch()
 	for _, entry := range entries {
 		key := fmt.Sprintf("%s:%s:%x", entry.TableName, entry.HashValue, entry.RangeValue)
 		if _, ok := seenIndexEntries[key]; !ok {
@@ -371,7 +373,7 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, from, through mode
 func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
 	var lock sync.Mutex
 	var entries []IndexEntry
-	err := c.storage.QueryPages(ctx, queries, func(query IndexQuery, resp ReadBatch) bool {
+	err := c.index.QueryPages(ctx, queries, func(query IndexQuery, resp ReadBatch) bool {
 		iter := resp.Iterator()
 		lock.Lock()
 		for iter.Next() {

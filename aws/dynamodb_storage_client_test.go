@@ -16,10 +16,10 @@ const (
 func TestChunksPartialError(t *testing.T) {
 	fixture := dynamoDBFixture(0, 10, 20)
 	defer fixture.Teardown()
-	client, err := testutils.Setup(fixture, tableName)
+	_, client, err := testutils.Setup(fixture, tableName)
 	require.NoError(t, err)
 
-	sc, ok := client.(*storageClient)
+	sc, ok := client.(*DynamoDBStorageClient)
 	if !ok {
 		t.Error("DynamoDB test client has unexpected type")
 		return
@@ -32,7 +32,7 @@ func TestChunksPartialError(t *testing.T) {
 	require.NoError(t, err)
 
 	// Make the read fail after 1 success, and keep failing until all retries are exhausted
-	sc.SetErrorParameters(999, 1)
+	sc.setErrorParameters(999, 1)
 	// Try to read back all the chunks we created, so we should get an error plus the first batch
 	chunksWeGot, err := client.GetChunks(ctx, chunks)
 	require.Error(t, err)
