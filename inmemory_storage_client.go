@@ -38,6 +38,10 @@ func NewMockStorage() *MockStorage {
 	}
 }
 
+// Stop doesn't do anything.
+func (*MockStorage) Stop() {
+}
+
 // ListTables implements StorageClient.
 func (m *MockStorage) ListTables(_ context.Context) ([]string, error) {
 	m.mtx.RLock()

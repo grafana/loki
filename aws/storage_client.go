@@ -165,6 +165,9 @@ func NewStorageClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (chunk.S
 	return client, nil
 }
 
+func (a storageClient) Stop() {
+}
+
 func (a storageClient) NewWriteBatch() chunk.WriteBatch {
 	return dynamoDBWriteBatch(map[string][]*dynamodb.WriteRequest{})
 }

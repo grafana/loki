@@ -98,6 +98,10 @@ func newStorageClientColumnKey(cfg Config, client *bigtable.Client, schemaCfg ch
 	}
 }
 
+func (s *storageClientColumnKey) Stop() {
+	s.client.Close()
+}
+
 func (s *storageClientColumnKey) NewWriteBatch() chunk.WriteBatch {
 	return bigtableWriteBatch{
 		tables: map[string]map[string]*bigtable.Mutation{},

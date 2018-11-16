@@ -102,6 +102,7 @@ func newStore(cfg StoreConfig, schema Schema, storage StorageClient, limits *val
 
 // Stop any background goroutines (ie in the cache.)
 func (c *store) Stop() {
+	c.storage.Stop()
 	c.Fetcher.Stop()
 }
 

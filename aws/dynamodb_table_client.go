@@ -69,6 +69,9 @@ func NewDynamoDBTableClient(cfg DynamoDBConfig) (chunk.TableClient, error) {
 	}, nil
 }
 
+func (d *dynamoTableClient) Stop() {
+}
+
 func (d dynamoTableClient) backoffAndRetry(ctx context.Context, fn func(context.Context) error) error {
 	return d.callManager.backoffAndRetry(ctx, fn)
 }

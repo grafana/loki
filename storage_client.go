@@ -4,6 +4,8 @@ import "context"
 
 // StorageClient is a client for the persistent storage for Cortex. (e.g. DynamoDB + S3).
 type StorageClient interface {
+	Stop()
+
 	// For the write path.
 	NewWriteBatch() WriteBatch
 	BatchWrite(context.Context, WriteBatch) error

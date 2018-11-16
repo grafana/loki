@@ -56,6 +56,10 @@ func newCachingStorageClient(client chunk.StorageClient, c cache.Cache, validity
 	}
 }
 
+func (s *cachingStorageClient) Stop() {
+	s.cache.Stop()
+}
+
 func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	// We cache the entire row, so filter client side.
 	callback = chunk_util.QueryFilter(callback)

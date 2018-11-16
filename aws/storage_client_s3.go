@@ -73,6 +73,9 @@ func NewS3StorageClient(cfg StorageConfig, schemaCfg chunk.SchemaConfig) (chunk.
 	return client, nil
 }
 
+func (a s3storageClient) Stop() {
+}
+
 func (a s3storageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	sp, ctx := ot.StartSpanFromContext(ctx, "GetChunks.S3")
 	defer sp.Finish()

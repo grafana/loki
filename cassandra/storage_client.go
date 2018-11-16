@@ -138,7 +138,7 @@ func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (chunk.StorageCl
 	}, nil
 }
 
-func (s *storageClient) Close() {
+func (s *storageClient) Stop() {
 	s.session.Close()
 }
 
