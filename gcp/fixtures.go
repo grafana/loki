@@ -2,12 +2,10 @@ package gcp
 
 import (
 	"context"
-	"time"
 
 	"cloud.google.com/go/bigtable"
 	"cloud.google.com/go/bigtable/bttest"
 	"github.com/fsouza/fake-gcs-server/fakestorage"
-	"github.com/prometheus/common/model"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 
@@ -56,16 +54,7 @@ func (f *fixture) Clients() (
 		return
 	}
 
-	schemaConfig = chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{{
-			IndexType: "gcp",
-			From:      model.Now(),
-			ChunkTables: chunk.PeriodicTableConfig{
-				Prefix: "chunks",
-				Period: 10 * time.Minute,
-			},
-		}},
-	}
+	schemaConfig = testutils.DefaultSchemaConfig("gcp-columnkey")
 	tClient = &tableClient{
 		client: adminClient,
 	}

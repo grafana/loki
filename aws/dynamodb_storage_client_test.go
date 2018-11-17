@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
@@ -26,7 +28,7 @@ func TestChunksPartialError(t *testing.T) {
 	}
 	ctx := context.Background()
 	// Create more chunks than we can read in one batch
-	_, chunks, err := testutils.CreateChunks(0, dynamoDBMaxReadBatchSize+50)
+	_, chunks, err := testutils.CreateChunks(0, dynamoDBMaxReadBatchSize+50, model.Now())
 	require.NoError(t, err)
 	err = client.PutChunks(ctx, chunks)
 	require.NoError(t, err)
