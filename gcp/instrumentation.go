@@ -1,8 +1,8 @@
 package gcp
 
 import (
-	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
-	"github.com/mwitkow/go-grpc-middleware"
+	"github.com/grpc-ecosystem/go-grpc-middleware"
+	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
