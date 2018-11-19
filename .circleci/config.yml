@@ -20,7 +20,7 @@ workflows:
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
   docker:
-    - image: gcr.io/metrictank-gcr/tempo-build-image:master-b5b6999
+    - image: gcr.io/metrictank-gcr/tempo-build-image:master-0ffb432
       auth:
         username: _json_key
         password: $GCR_CREDS
