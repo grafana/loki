@@ -3,19 +3,20 @@ package user
 import (
 	"golang.org/x/net/context"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/weaveworks/common/logging"
 )
 
-// LogFields returns user and org information from the context as log fields.
-func LogFields(ctx context.Context) log.Fields {
-	fields := log.Fields{}
+// LogWith returns user and org information from the context as log fields.
+func LogWith(ctx context.Context, log logging.Interface) logging.Interface {
 	userID, err := ExtractUserID(ctx)
 	if err == nil {
-		fields["userID"] = userID
+		log = log.WithField("userID", userID)
 	}
+
 	orgID, err := ExtractOrgID(ctx)
 	if err == nil {
-		fields["orgID"] = orgID
+		log = log.WithField("orgID", orgID)
 	}
-	return fields
+
+	return log
 }

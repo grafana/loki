@@ -6,4 +6,4 @@ To rebuild generated protobuf code, run:
 
     protoc -I ./ --go_out=plugins=grpc:./ ./httpgrpc.proto
 
-Follow the instructions here to get a working protoc: https://github.com/golang/protobuf
+Follow the instructions here to get a working protoc: https://github.com/gogo/protobuf

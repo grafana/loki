@@ -9,6 +9,8 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	oldcontext "golang.org/x/net/context"
+
+	"github.com/weaveworks/common/user"
 )
 
 // DefBuckets are histogram buckets for the response time (in seconds)
@@ -137,6 +139,12 @@ func CollectedRequest(ctx context.Context, method string, col Collector, toStatu
 	}
 	sp, newCtx := opentracing.StartSpanFromContext(ctx, method)
 	ext.SpanKindRPCClient.Set(sp)
+	if userID, err := user.ExtractUserID(ctx); err == nil {
+		sp.SetTag("user", userID)
+	}
+	if orgID, err := user.ExtractOrgID(ctx); err == nil {
+		sp.SetTag("organization", orgID)
+	}
 
 	start := time.Now()
 	col.Before(method, start)

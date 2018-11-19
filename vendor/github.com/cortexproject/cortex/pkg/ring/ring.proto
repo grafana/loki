@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package ring;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message Desc {
+	map<string,IngesterDesc> ingesters = 1 [(gogoproto.nullable) = false];
+	repeated TokenDesc tokens = 2 [(gogoproto.nullable) = false];
+}
+
+message IngesterDesc {
+	reserved 4, 5; // old, deprecated fields
+
+	string addr = 1;
+	int64 timestamp = 2;
+	IngesterState state = 3;
+	repeated uint32 tokens = 6;
+}
+
+message TokenDesc {
+	uint32 token = 1;
+	string ingester = 2;
+}
+
+enum IngesterState {
+	ACTIVE = 0;
+	LEAVING = 1;
+
+	PENDING = 2;
+	JOINING = 3;
+}

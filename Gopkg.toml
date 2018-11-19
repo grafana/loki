@@ -25,14 +25,14 @@
 #   unused-packages = true
 
 [[constraint]]
-  name = "github.com/weaveworks/cortex"
-  source = "github.com/grafana/cortex"
-  branch = "factorings"
+  name = "github.com/cortexproject/cortex"
+  source = "github.com/cortexproject/cortex"
+  branch = "master"
 
 [[constraint]]
   name = "github.com/weaveworks/common"
-  source = "github.com/tomwilkie/weaveworks-common"
-  branch = "stream-middleware"
+  source = "github.com/weaveworks/common"
+  branch = "master"
 
 [[override]]
   name = "github.com/sercand/kuberesolver"

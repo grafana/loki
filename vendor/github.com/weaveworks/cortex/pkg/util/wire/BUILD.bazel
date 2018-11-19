@@ -1,8 +1,0 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
-
-go_library(
-    name = "go_default_library",
-    srcs = ["bytes.go"],
-    importpath = "github.com/weaveworks/cortex/pkg/util/wire",
-    visibility = ["//visibility:public"],
-)

@@ -9,18 +9,17 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
-	"github.com/mwitkow/go-grpc-middleware"
-	"github.com/opentracing-contrib/go-stdlib/nethttp"
+	"github.com/grpc-ecosystem/go-grpc-middleware"
+	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
 	"github.com/weaveworks/common/httpgrpc"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/signals"
 )
@@ -43,6 +42,9 @@ type Config struct {
 	GRPCMiddleware       []grpc.UnaryServerInterceptor
 	GRPCStreamMiddleware []grpc.StreamServerInterceptor
 	HTTPMiddleware       []middleware.Interface
+
+	LogLevel logging.Level
+	Log      logging.Interface
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -50,25 +52,26 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.HTTPListenPort, "server.http-listen-port", 80, "HTTP server listen port.")
 	f.IntVar(&cfg.GRPCListenPort, "server.grpc-listen-port", 9095, "gRPC server listen port.")
 	f.BoolVar(&cfg.RegisterInstrumentation, "server.register-instrumentation", true, "Register the intrumentation handlers (/metrics etc).")
-	f.DurationVar(&cfg.ServerGracefulShutdownTimeout, "server.graceful-shutdown-timeout", 5*time.Second, "Timeout for graceful shutdowns")
-	f.DurationVar(&cfg.HTTPServerReadTimeout, "server.http-read-timeout", 5*time.Second, "Read timeout for HTTP server")
-	f.DurationVar(&cfg.HTTPServerWriteTimeout, "server.http-write-timeout", 5*time.Second, "Write timeout for HTTP server")
+	f.DurationVar(&cfg.ServerGracefulShutdownTimeout, "server.graceful-shutdown-timeout", 30*time.Second, "Timeout for graceful shutdowns")
+	f.DurationVar(&cfg.HTTPServerReadTimeout, "server.http-read-timeout", 30*time.Second, "Read timeout for HTTP server")
+	f.DurationVar(&cfg.HTTPServerWriteTimeout, "server.http-write-timeout", 30*time.Second, "Write timeout for HTTP server")
 	f.DurationVar(&cfg.HTTPServerIdleTimeout, "server.http-idle-timeout", 120*time.Second, "Idle timeout for HTTP server")
+	cfg.LogLevel.RegisterFlags(f)
 }
 
 // Server wraps a HTTP and gRPC server, and some common initialization.
 //
-// Servers will be automatically instrumented for Prometheus metrics
-// and Loki tracing.  HTTP over gRPC
+// Servers will be automatically instrumented for Prometheus metrics.
 type Server struct {
 	cfg          Config
 	handler      *signals.Handler
-	httpListener net.Listener
 	grpcListener net.Listener
-	httpServer   *http.Server
+	httpListener net.Listener
 
-	HTTP *mux.Router
-	GRPC *grpc.Server
+	HTTP       *mux.Router
+	HTTPServer *http.Server
+	GRPC       *grpc.Server
+	Log        logging.Interface
 }
 
 // New makes a new Server
@@ -93,8 +96,18 @@ func New(cfg Config) (*Server, error) {
 	}, []string{"method", "route", "status_code", "ws"})
 	prometheus.MustRegister(requestDuration)
 
+	// If user doesn't supply a logging implementation, by default instantiate
+	// logrus.
+	log := cfg.Log
+	if log == nil {
+		log = logging.NewLogrus(cfg.LogLevel)
+	}
+
 	// Setup gRPC server
-	serverLog := middleware.GRPCServerLog{WithRequest: !cfg.ExcludeRequestInLog}
+	serverLog := middleware.GRPCServerLog{
+		WithRequest: !cfg.ExcludeRequestInLog,
+		Log:         log,
+	}
 	grpcMiddleware := []grpc.UnaryServerInterceptor{
 		serverLog.UnaryServerInterceptor,
 		middleware.UnaryServerInstrumentInterceptor(requestDuration),
@@ -126,15 +139,18 @@ func New(cfg Config) (*Server, error) {
 		RegisterInstrumentation(router)
 	}
 	httpMiddleware := []middleware.Interface{
-		middleware.Log{},
+		middleware.Tracer{
+			RouteMatcher: router,
+		},
+		middleware.Log{
+			Log: log,
+		},
 		middleware.Instrument{
 			Duration:     requestDuration,
 			RouteMatcher: router,
 		},
-		middleware.Func(func(handler http.Handler) http.Handler {
-			return nethttp.Middleware(opentracing.GlobalTracer(), handler)
-		}),
 	}
+
 	httpMiddleware = append(httpMiddleware, cfg.HTTPMiddleware...)
 	httpServer := &http.Server{
 		ReadTimeout:  cfg.HTTPServerReadTimeout,
@@ -147,11 +163,12 @@ func New(cfg Config) (*Server, error) {
 		cfg:          cfg,
 		httpListener: httpListener,
 		grpcListener: grpcListener,
-		httpServer:   httpServer,
-		handler:      signals.NewHandler(log.StandardLogger()),
+		handler:      signals.NewHandler(log),
 
-		HTTP: router,
-		GRPC: grpcServer,
+		HTTP:       router,
+		HTTPServer: httpServer,
+		GRPC:       grpcServer,
+		Log:        log,
 	}, nil
 }
 
@@ -161,18 +178,48 @@ func RegisterInstrumentation(router *mux.Router) {
 	router.PathPrefix("/debug/pprof").Handler(http.DefaultServeMux)
 }
 
-// Run the server; blocks until SIGTERM is received.
-func (s *Server) Run() {
-	go s.httpServer.Serve(s.httpListener)
+// Run the server; blocks until SIGTERM or an error is received.
+func (s *Server) Run() error {
+	errChan := make(chan error, 1)
+
+	// Wait for a signal
+	go func() {
+		s.handler.Loop()
+		select {
+		case errChan <- nil:
+		default:
+		}
+	}()
+
+	go func() {
+		err := s.HTTPServer.Serve(s.httpListener)
+		if err == http.ErrServerClosed {
+			err = nil
+		}
+
+		select {
+		case errChan <- err:
+		default:
+		}
+	}()
 
 	// Setup gRPC server
 	// for HTTP over gRPC, ensure we don't double-count the middleware
 	httpgrpc.RegisterHTTPServer(s.GRPC, httpgrpc_server.NewServer(s.HTTP))
-	go s.GRPC.Serve(s.grpcListener)
-	defer s.GRPC.GracefulStop()
 
-	// Wait for a signal
-	s.handler.Loop()
+	go func() {
+		err := s.GRPC.Serve(s.grpcListener)
+		if err == grpc.ErrServerStopped {
+			err = nil
+		}
+
+		select {
+		case errChan <- err:
+		default:
+		}
+	}()
+
+	return <-errChan
 }
 
 // Stop unblocks Run().
@@ -185,6 +232,6 @@ func (s *Server) Shutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.ServerGracefulShutdownTimeout)
 	defer cancel() // releases resources if httpServer.Shutdown completes before timeout elapses
 
-	s.httpServer.Shutdown(ctx)
-	s.GRPC.Stop()
+	s.HTTPServer.Shutdown(ctx)
+	s.GRPC.GracefulStop()
 }

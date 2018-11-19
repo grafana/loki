@@ -5,6 +5,8 @@ import (
 	"os/signal"
 	"runtime"
 	"syscall"
+
+	"github.com/weaveworks/common/logging"
 )
 
 // SignalReceiver represents a subsystem/server/... that can be stopped or
@@ -13,22 +15,17 @@ type SignalReceiver interface {
 	Stop() error
 }
 
-// Logger is something to log too.
-type Logger interface {
-	Infof(format string, args ...interface{})
-}
-
 // Handler handles signals, can be interrupted.
 // On SIGINT or SIGTERM it will exit, on SIGQUIT it
 // will dump goroutine stacks to the Logger.
 type Handler struct {
-	log       Logger
+	log       logging.Interface
 	receivers []SignalReceiver
 	quit      chan struct{}
 }
 
 // NewHandler makes a new Handler.
-func NewHandler(log Logger, receivers ...SignalReceiver) *Handler {
+func NewHandler(log logging.Interface, receivers ...SignalReceiver) *Handler {
 	return &Handler{
 		log:       log,
 		receivers: receivers,
@@ -70,6 +67,6 @@ func (h *Handler) Loop() {
 // SignalHandlerLoop blocks until it receives a SIGINT, SIGTERM or SIGQUIT.
 // For SIGINT and SIGTERM, it exits; for SIGQUIT is print a goroutine stack
 // dump.
-func SignalHandlerLoop(log Logger, ss ...SignalReceiver) {
+func SignalHandlerLoop(log logging.Interface, ss ...SignalReceiver) {
 	NewHandler(log, ss...).Loop()
 }

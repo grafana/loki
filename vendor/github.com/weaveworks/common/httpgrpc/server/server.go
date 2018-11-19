@@ -11,14 +11,15 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
-	"github.com/mwitkow/go-grpc-middleware"
+	"github.com/grpc-ecosystem/go-grpc-middleware"
+	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/sercand/kuberesolver"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/middleware"
 )
 
@@ -41,9 +42,10 @@ func (s Server) Handle(ctx context.Context, r *httpgrpc.HTTPRequest) (*httpgrpc.
 	if err != nil {
 		return nil, err
 	}
-	req = req.WithContext(ctx)
 	toHeader(r.Headers, req.Header)
+	req = req.WithContext(ctx)
 	req.RequestURI = r.Url
+
 	recorder := httptest.NewRecorder()
 	s.handler.ServeHTTP(recorder, req)
 	resp := &httpgrpc.HTTPResponse{
@@ -54,7 +56,7 @@ func (s Server) Handle(ctx context.Context, r *httpgrpc.HTTPRequest) (*httpgrpc.
 	if recorder.Code/100 == 5 {
 		return nil, httpgrpc.ErrorFromHTTPResponse(resp)
 	}
-	return resp, err
+	return resp, nil
 }
 
 // Client is a http.Handler that forwards the request over gRPC.
@@ -89,13 +91,17 @@ func ParseURL(unparsed string) (string, []grpc.DialOption, error) {
 		if err != nil {
 			return "", nil, err
 		}
-		parts := strings.SplitN(host, ".", 2)
-		service, namespace := parts[0], "default"
-		if len(parts) == 2 {
+		parts := strings.SplitN(host, ".", 3)
+		service, namespace, domain := parts[0], "default", ""
+		if len(parts) > 1 {
 			namespace = parts[1]
+			domain = "." + namespace
+		}
+		if len(parts) > 2 {
+			domain = domain + "." + parts[2]
 		}
 		balancer := kuberesolver.NewWithNamespace(namespace)
-		address := fmt.Sprintf("kubernetes://%s:%s", service, port)
+		address := fmt.Sprintf("kubernetes://%s%s:%s", service, domain, port)
 		dialOptions := []grpc.DialOption{balancer.DialOption()}
 		return address, dialOptions, nil
 
@@ -131,20 +137,53 @@ func NewClient(address string) (*Client, error) {
 	}, nil
 }
 
-// ServeHTTP implements http.Handler
-func (c *Client) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// HTTPRequest wraps an ordinary HTTPRequest with a gRPC one
+func HTTPRequest(r *http.Request) (*httpgrpc.HTTPRequest, error) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, err
 	}
-	req := &httpgrpc.HTTPRequest{
+	return &httpgrpc.HTTPRequest{
 		Method:  r.Method,
 		Url:     r.RequestURI,
 		Body:    body,
 		Headers: fromHeader(r.Header),
+	}, nil
+}
+
+// WriteResponse converts an httpgrpc response to an HTTP one
+func WriteResponse(w http.ResponseWriter, resp *httpgrpc.HTTPResponse) error {
+	toHeader(resp.Headers, w.Header())
+	w.WriteHeader(int(resp.Code))
+	_, err := w.Write(resp.Body)
+	return err
+}
+
+// WriteError converts an httpgrpc error to an HTTP one
+func WriteError(w http.ResponseWriter, err error) {
+	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	if ok {
+		WriteResponse(w, resp)
+	} else {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// ServeHTTP implements http.Handler
+func (c *Client) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if tracer := opentracing.GlobalTracer(); tracer != nil {
+		if span := opentracing.SpanFromContext(r.Context()); span != nil {
+			if err := tracer.Inject(span.Context(), opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(r.Header)); err != nil {
+				logging.Global().Warnf("Failed to inject tracing headers into request: %v", err)
+			}
+		}
 	}
 
+	req, err := HTTPRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	resp, err := c.client.Handle(r.Context(), req)
 	if err != nil {
 		// Some errors will actually contain a valid resp, just need to unpack it
@@ -157,9 +196,7 @@ func (c *Client) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	toHeader(resp.Headers, w.Header())
-	w.WriteHeader(int(resp.Code))
-	if _, err := w.Write(resp.Body); err != nil {
+	if err := WriteResponse(w, resp); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
