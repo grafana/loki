@@ -12,7 +12,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	prom_chunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 )

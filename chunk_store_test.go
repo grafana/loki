@@ -16,7 +16,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -415,7 +415,7 @@ func TestChunkStoreRandom(t *testing.T) {
 			const chunkLen = 2 * 3600 // in seconds
 			for i := 0; i < 100; i++ {
 				ts := model.TimeFromUnix(int64(i * chunkLen))
-				chunks, _ := chunk.New().Add(model.SamplePair{
+				chunks, _ := encoding.New().Add(model.SamplePair{
 					Timestamp: ts,
 					Value:     model.SampleValue(float64(i)),
 				})
@@ -479,7 +479,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 	const chunkLen = 60 // in seconds
 	for i := 0; i < 24; i++ {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
-		chunks, _ := chunk.New().Add(model.SamplePair{
+		chunks, _ := encoding.New().Add(model.SamplePair{
 			Timestamp: ts,
 			Value:     model.SampleValue(float64(i)),
 		})

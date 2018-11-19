@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -24,13 +24,21 @@ func dummyChunk(now model.Time) Chunk {
 	})
 }
 
-func dummyChunkFor(now model.Time, metric model.Metric) Chunk {
-	cs, _ := chunk.New().Add(model.SamplePair{Timestamp: now, Value: 0})
+func dummyChunkForEncoding(now model.Time, metric model.Metric, enc encoding.Encoding, samples int) Chunk {
+	c, _ := encoding.NewForEncoding(enc)
+	for i := 0; i < samples; i++ {
+		t := time.Duration(i) * 15 * time.Second
+		cs, err := c.Add(model.SamplePair{Timestamp: now.Add(t), Value: 0})
+		if err != nil {
+			panic(err)
+		}
+		c = cs[0]
+	}
 	chunk := NewChunk(
 		userID,
 		metric.Fingerprint(),
 		metric,
-		cs[0],
+		c,
 		now.Add(-time.Hour),
 		now,
 	)
@@ -40,6 +48,10 @@ func dummyChunkFor(now model.Time, metric model.Metric) Chunk {
 		panic(err)
 	}
 	return chunk
+}
+
+func dummyChunkFor(now model.Time, metric model.Metric) Chunk {
+	return dummyChunkForEncoding(now, metric, encoding.Varbit, 1)
 }
 
 func TestChunkCodec(t *testing.T) {

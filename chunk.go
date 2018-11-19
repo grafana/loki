@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	prom_chunk "github.com/cortexproject/cortex/pkg/prom1/storage/local/chunk"
+	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/golang/snappy"
 	jsoniter "github.com/json-iterator/go"
@@ -28,6 +28,7 @@ const (
 	ErrInvalidChecksum = errs.Error("invalid chunk checksum")
 	ErrWrongMetadata   = errs.Error("wrong chunk metadata")
 	ErrMetadataLength  = errs.Error("chunk metadata wrong length")
+	ErrDataLength      = errs.Error("chunk data wrong length")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
@@ -213,12 +214,12 @@ func (c *Chunk) Encode() ([]byte, error) {
 
 	// Write the metadata length back at the start of the buffer.
 	// (note this length includes the 4 bytes for the length itself)
-	binary.BigEndian.PutUint32(metadataLenBytes[:], uint32(buf.Len()))
+	metadataLen := buf.Len()
+	binary.BigEndian.PutUint32(metadataLenBytes[:], uint32(metadataLen))
 	copy(buf.Bytes(), metadataLenBytes[:])
 
-	// Write the data length
+	// Write another 4 empty bytes - we will come back and put the len in here.
 	dataLenBytes := [4]byte{}
-	binary.BigEndian.PutUint32(dataLenBytes[:], uint32(prom_chunk.ChunkLen))
 	if _, err := buf.Write(dataLenBytes[:]); err != nil {
 		return nil, err
 	}
@@ -227,6 +228,10 @@ func (c *Chunk) Encode() ([]byte, error) {
 	if err := c.Data.Marshal(&buf); err != nil {
 		return nil, err
 	}
+
+	// Now write the data len back into the buf.
+	binary.BigEndian.PutUint32(dataLenBytes[:], uint32(buf.Len()-metadataLen-4))
+	copy(buf.Bytes()[metadataLen:], dataLenBytes[:])
 
 	// Now work out the checksum
 	c.encoded = buf.Bytes()
@@ -314,6 +319,10 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 
 	c.encoded = input
 	remainingData := input[len(input)-r.Len():]
+	if int(dataLen) != len(remainingData) {
+		return ErrDataLength
+	}
+
 	return c.Data.UnmarshalFromBuf(remainingData[:int(dataLen)])
 }
 
