@@ -5,13 +5,12 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/prometheus/common/promlog"
+	"github.com/cortexproject/cortex/pkg/util"
 	log "github.com/sirupsen/logrus"
-	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/cortex/pkg/util"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/tempo/pkg/flagext"
 	"github.com/grafana/tempo/pkg/ingester"
@@ -31,14 +30,11 @@ func main() {
 			},
 		}
 		ingesterConfig ingester.Config
-		logLevel       = promlog.AllowedLevel{}
 	)
-	flagext.Var(flagset, &logLevel, "log.level", "info", "")
 	flagext.RegisterConfigs(flagset, &serverConfig, &ingesterConfig)
 	flagset.Parse(os.Args[1:])
 
-	logging.Setup(logLevel.String())
-	util.InitLogger(logLevel)
+	util.InitLogger(&serverConfig)
 
 	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
 	ingester, err := ingester.New(ingesterConfig)
@@ -55,6 +51,7 @@ func main() {
 
 	logproto.RegisterPusherServer(server.GRPC, ingester)
 	logproto.RegisterQuerierServer(server.GRPC, ingester)
+	grpc_health_v1.RegisterHealthServer(server.GRPC, ingester)
 	server.HTTP.Path("/ready").Handler(http.HandlerFunc(ingester.ReadinessHandler))
 	server.Run()
 }

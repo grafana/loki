@@ -44,6 +44,7 @@ func New(cfg Config, addr string) (grpc_health_v1.HealthClient, error) {
 	return struct {
 		logproto.PusherClient
 		logproto.QuerierClient
+		grpc_health_v1.HealthClient
 		io.Closer
 	}{
 		PusherClient:  logproto.NewPusherClient(conn),

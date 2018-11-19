@@ -4,12 +4,10 @@ import (
 	"flag"
 	"os"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/promlog"
-	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/cortex/pkg/util"
 
 	"github.com/grafana/tempo/pkg/flagext"
 	"github.com/grafana/tempo/pkg/promtail"
@@ -19,17 +17,14 @@ func main() {
 	var (
 		flagset         = flag.NewFlagSet("", flag.ExitOnError)
 		configFile      = flagset.String("config.file", "promtail.yml", "The config file.")
-		logLevel        = promlog.AllowedLevel{}
 		serverConfig    server.Config
 		clientConfig    promtail.ClientConfig
 		positionsConfig promtail.PositionsConfig
 	)
-	flagext.Var(flagset, &logLevel, "log.level", "info", "")
 	flagext.RegisterConfigs(flagset, &serverConfig, &clientConfig, &positionsConfig)
 	flagset.Parse(os.Args[1:])
 
-	logging.Setup(logLevel.String())
-	util.InitLogger(logLevel)
+	util.InitLogger(&serverConfig)
 
 	client, err := promtail.NewClient(clientConfig)
 	if err != nil {

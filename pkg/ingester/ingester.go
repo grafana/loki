@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/weaveworks/common/user"
-	"github.com/weaveworks/cortex/pkg/ring"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/tempo/pkg/logproto"
@@ -57,7 +57,7 @@ func (i *Ingester) Flush() {
 
 }
 
-func (i *Ingester) Transfer() error {
+func (i *Ingester) TransferOut(context.Context) error {
 	return nil
 }
 
@@ -114,11 +114,15 @@ func (*Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckReque
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 
+func (*Ingester) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health_WatchServer) error {
+	return nil
+}
+
 // ReadinessHandler is used to indicate to k8s when the ingesters are ready for
 // the addition removal of another ingester. Returns 204 when the ingester is
 // ready, 500 otherwise.
 func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	if i.lifecycler.IsReady() {
+	if i.lifecycler.IsReady(r.Context()) {
 		w.WriteHeader(http.StatusNoContent)
 	} else {
 		w.WriteHeader(http.StatusInternalServerError)

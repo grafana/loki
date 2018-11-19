@@ -5,8 +5,9 @@ import (
 	"flag"
 	"time"
 
-	cortex_client "github.com/weaveworks/cortex/pkg/ingester/client"
-	"github.com/weaveworks/cortex/pkg/ring"
+	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/tempo/pkg/ingester/client"
@@ -42,7 +43,7 @@ func New(cfg Config, ring ring.ReadRing) (*Querier, error) {
 	return &Querier{
 		cfg:  cfg,
 		ring: ring,
-		pool: cortex_client.NewPool(cfg.PoolConfig, ring, factory),
+		pool: cortex_client.NewPool(cfg.PoolConfig, ring, factory, util.Logger),
 	}, nil
 }
 
@@ -56,7 +57,7 @@ func (q *Querier) forAllIngesters(f func(logproto.QuerierClient) (interface{}, e
 
 	resps, errs := make(chan interface{}), make(chan error)
 	for _, ingester := range replicationSet.Ingesters {
-		go func(ingester *ring.IngesterDesc) {
+		go func(ingester ring.IngesterDesc) {
 			client, err := q.pool.GetClientFor(ingester.Addr)
 			if err != nil {
 				errs <- err

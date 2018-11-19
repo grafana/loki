@@ -3,7 +3,7 @@ package distributor
 import (
 	"net/http"
 
-	"github.com/weaveworks/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/grafana/tempo/pkg/logproto"
 )
