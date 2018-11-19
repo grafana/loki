@@ -45,7 +45,8 @@ func (b *bigchunk) Add(sample model.SamplePair) ([]Chunk, error) {
 
 // addNextChunk adds a new XOR "subchunk" to the internal list of chunks.
 func (b *bigchunk) addNextChunk(start model.Time) error {
-	// To save memory, we "compact" the last chunk.
+	// To save memory, we "compact" the previous chunk - the array backing the slice
+	// will be upto 2x too big, and we can save this space.
 	if l := len(b.chunks); l > 0 {
 		c := b.chunks[l-1]
 		buf := make([]byte, len(c.Bytes()))

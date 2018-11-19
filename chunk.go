@@ -319,7 +319,7 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 
 	c.encoded = input
 	remainingData := input[len(input)-r.Len():]
-	if int(dataLen) > len(remainingData) {
+	if int(dataLen) != len(remainingData) {
 		return ErrDataLength
 	}
 
