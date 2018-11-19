@@ -140,16 +140,22 @@ func main() {
 				stop: func() {},
 			},
 		}
+
+		inited = map[string]struct{}{}
 	)
 
 	var run func(mod string)
 	run = func(mod string) {
+		if _, ok := inited[mod]; ok {
+			return
+		}
 		for _, dep := range mods[mod].deps {
 			run(dep)
 		}
 		if err := mods[mod].init(); err != nil {
 			log.Fatalf("Error initializing %s: %v", mod, err)
 		}
+		inited[mod] = struct{}{}
 	}
 
 	run(flagset.Arg(0))
