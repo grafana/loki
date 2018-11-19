@@ -10,3 +10,4 @@ cmd/querier/querier
 cmd/promtail/promtail
 *.output
 /images/
+mixin/vendor/
