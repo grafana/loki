@@ -9,11 +9,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/logish/pkg/iter"
-	"github.com/grafana/logish/pkg/logproto"
-	"github.com/grafana/logish/pkg/parser"
-	"github.com/grafana/logish/pkg/querier"
-	"github.com/grafana/logish/pkg/util"
+	"github.com/grafana/tempo/pkg/iter"
+	"github.com/grafana/tempo/pkg/logproto"
+	"github.com/grafana/tempo/pkg/parser"
+	"github.com/grafana/tempo/pkg/querier"
+	"github.com/grafana/tempo/pkg/util"
 )
 
 const queryBatchSize = 128
@@ -24,12 +24,12 @@ var (
 
 var (
 	streamsCreatedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "logish",
+		Namespace: "tempo",
 		Name:      "ingester_streams_created_total",
 		Help:      "The total number of streams created in the ingester.",
 	}, []string{"org"})
 	streamsRemovedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "logish",
+		Namespace: "tempo",
 		Name:      "ingester_streams_removed_total",
 		Help:      "The total number of streams removed by the ingester.",
 	}, []string{"org"})

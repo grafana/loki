@@ -9,9 +9,9 @@ import (
 	"github.com/weaveworks/cortex/pkg/ring"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/logish/pkg/ingester/client"
-	"github.com/grafana/logish/pkg/iter"
-	"github.com/grafana/logish/pkg/logproto"
+	"github.com/grafana/tempo/pkg/ingester/client"
+	"github.com/grafana/tempo/pkg/iter"
+	"github.com/grafana/tempo/pkg/logproto"
 )
 
 type Config struct {

@@ -3,8 +3,8 @@ package main
 import (
 	"time"
 
-	"github.com/grafana/logish/pkg/iter"
-	"github.com/grafana/logish/pkg/logproto"
+	"github.com/grafana/tempo/pkg/iter"
+	"github.com/grafana/tempo/pkg/logproto"
 )
 
 const tailIteratorIncrement = 10 * time.Second

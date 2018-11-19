@@ -2,10 +2,10 @@ local g = import 'grafana-builder/grafana.libsonnet';
 
 {
   dashboards+: {
-    'logish-writes.json':
-      g.dashboard('Logish / Writes')
-      .addTemplate('cluster', 'kube_pod_container_info{image=~".*logish.*"}', 'cluster')
-      .addTemplate('namespace', 'kube_pod_container_info{image=~".*logish.*"}', 'namespace')
+    'tempo-writes.json':
+      g.dashboard('Tempo / Writes')
+      .addTemplate('cluster', 'kube_pod_container_info{image=~".*tempo.*"}', 'cluster')
+      .addTemplate('namespace', 'kube_pod_container_info{image=~".*tempo.*"}', 'namespace')
       .addRow(
         g.row('Frontend (cortex_gw)')
         .addPanel(
@@ -21,29 +21,29 @@ local g = import 'grafana-builder/grafana.libsonnet';
         g.row('Distributor')
         .addPanel(
           g.panel('QPS') +
-          g.qpsPanel('logish_request_duration_seconds_count{cluster="$cluster", job="$namespace/distributor", route="api_prom_push"}')
+          g.qpsPanel('tempo_request_duration_seconds_count{cluster="$cluster", job="$namespace/distributor", route="api_prom_push"}')
         )
         .addPanel(
           g.panel('Latency') +
-          g.latencyRecordingRulePanel('logish_request_duration_seconds', [g.selector.eq('job', '$namespace/distributor'), g.selector.eq('route', 'api_prom_push')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          g.latencyRecordingRulePanel('tempo_request_duration_seconds', [g.selector.eq('job', '$namespace/distributor'), g.selector.eq('route', 'api_prom_push')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
         )
       )
       .addRow(
         g.row('Ingester')
         .addPanel(
           g.panel('QPS') +
-          g.qpsPanel('logish_request_duration_seconds_count{cluster="$cluster", job="$namespace/ingester",route="/logproto.Pusher/Push"}')
+          g.qpsPanel('tempo_request_duration_seconds_count{cluster="$cluster", job="$namespace/ingester",route="/logproto.Pusher/Push"}')
         )
         .addPanel(
           g.panel('Latency') +
-          g.latencyRecordingRulePanel('logish_request_duration_seconds', [g.selector.eq('job', '$namespace/ingester'), g.selector.eq('route', '/logproto.Pusher/Push')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          g.latencyRecordingRulePanel('tempo_request_duration_seconds', [g.selector.eq('job', '$namespace/ingester'), g.selector.eq('route', '/logproto.Pusher/Push')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
         )
       ),
 
-    'logish-reads.json':
-      g.dashboard('logish / Reads')
-      .addTemplate('cluster', 'kube_pod_container_info{image=~".*logish.*"}', 'cluster')
-      .addTemplate('namespace', 'kube_pod_container_info{image=~".*logish.*"}', 'namespace')
+    'tempo-reads.json':
+      g.dashboard('tempo / Reads')
+      .addTemplate('cluster', 'kube_pod_container_info{image=~".*tempo.*"}', 'cluster')
+      .addTemplate('namespace', 'kube_pod_container_info{image=~".*tempo.*"}', 'namespace')
       .addRow(
         g.row('Frontend (cortex_gw)')
         .addPanel(
@@ -59,83 +59,83 @@ local g = import 'grafana-builder/grafana.libsonnet';
         g.row('Querier')
         .addPanel(
           g.panel('QPS') +
-          g.qpsPanel('logish_request_duration_seconds_count{cluster="$cluster", job="$namespace/querier"}')
+          g.qpsPanel('tempo_request_duration_seconds_count{cluster="$cluster", job="$namespace/querier"}')
         )
         .addPanel(
           g.panel('Latency') +
-          g.latencyRecordingRulePanel('logish_request_duration_seconds', [g.selector.eq('job', '$namespace/querier')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          g.latencyRecordingRulePanel('tempo_request_duration_seconds', [g.selector.eq('job', '$namespace/querier')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
         )
       )
       .addRow(
         g.row('Ingester')
         .addPanel(
           g.panel('QPS') +
-          g.qpsPanel('logish_request_duration_seconds_count{cluster="$cluster", job="$namespace/ingester",route!~"/logproto.Pusher/Push|metrics|ready|traces"}')
+          g.qpsPanel('tempo_request_duration_seconds_count{cluster="$cluster", job="$namespace/ingester",route!~"/logproto.Pusher/Push|metrics|ready|traces"}')
         )
         .addPanel(
           g.panel('Latency') +
-          g.latencyRecordingRulePanel('logish_request_duration_seconds', [g.selector.eq('job', '$namespace/ingester'), g.selector.nre('route', '/logproto.Pusher/Push|metrics|ready')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          g.latencyRecordingRulePanel('tempo_request_duration_seconds', [g.selector.eq('job', '$namespace/ingester'), g.selector.nre('route', '/logproto.Pusher/Push|metrics|ready')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
         )
       ),
 
 
-    'logish-chunks.json':
-      g.dashboard('Logish / Chunks')
-      .addTemplate('cluster', 'kube_pod_container_info{image=~".*logish.*"}', 'cluster')
-      .addTemplate('namespace', 'kube_pod_container_info{image=~".*logish.*"}', 'namespace')
+    'tempo-chunks.json':
+      g.dashboard('Tempo / Chunks')
+      .addTemplate('cluster', 'kube_pod_container_info{image=~".*tempo.*"}', 'cluster')
+      .addTemplate('namespace', 'kube_pod_container_info{image=~".*tempo.*"}', 'namespace')
       .addRow(
         g.row('Active Series / Chunks')
         .addPanel(
           g.panel('Series') +
-          g.queryPanel('sum(logish_ingester_memory_chunks{cluster="$cluster", job="$namespace/ingester"})', 'series'),
+          g.queryPanel('sum(tempo_ingester_memory_chunks{cluster="$cluster", job="$namespace/ingester"})', 'series'),
         )
         .addPanel(
           g.panel('Chunks per series') +
-          g.queryPanel('sum(logish_ingester_memory_chunks{cluster="$cluster", job="$namespace/ingester"}) / sum(logish_ingester_memory_series{job="$namespace/ingester"})', 'chunks'),
+          g.queryPanel('sum(tempo_ingester_memory_chunks{cluster="$cluster", job="$namespace/ingester"}) / sum(tempo_ingester_memory_series{job="$namespace/ingester"})', 'chunks'),
         )
       )
       .addRow(
         g.row('Flush Stats')
         .addPanel(
           g.panel('Utilization') +
-          g.latencyPanel('logish_ingester_chunk_utilization', '{cluster="$cluster", job="$namespace/ingester"}', multiplier='1') +
+          g.latencyPanel('tempo_ingester_chunk_utilization', '{cluster="$cluster", job="$namespace/ingester"}', multiplier='1') +
           { yaxes: g.yaxes('percentunit') },
         )
         .addPanel(
           g.panel('Age') +
-          g.latencyPanel('logish_ingester_chunk_age_seconds', '{cluster="$cluster", job="$namespace/ingester"}'),
+          g.latencyPanel('tempo_ingester_chunk_age_seconds', '{cluster="$cluster", job="$namespace/ingester"}'),
         ),
       )
       .addRow(
         g.row('Flush Stats')
         .addPanel(
           g.panel('Size') +
-          g.latencyPanel('logish_ingester_chunk_length', '{cluster="$cluster", job="$namespace/ingester"}', multiplier='1') +
+          g.latencyPanel('tempo_ingester_chunk_length', '{cluster="$cluster", job="$namespace/ingester"}', multiplier='1') +
           { yaxes: g.yaxes('short') },
         )
         .addPanel(
           g.panel('Entries') +
-          g.queryPanel('sum(rate(logish_chunk_store_index_entries_per_chunk_sum{cluster="$cluster", job="$namespace/ingester"}[5m])) / sum(rate(logish_chunk_store_index_entries_per_chunk_count{cluster="$cluster", job="$namespace/ingester"}[5m]))', 'entries'),
+          g.queryPanel('sum(rate(tempo_chunk_store_index_entries_per_chunk_sum{cluster="$cluster", job="$namespace/ingester"}[5m])) / sum(rate(tempo_chunk_store_index_entries_per_chunk_count{cluster="$cluster", job="$namespace/ingester"}[5m]))', 'entries'),
         ),
       )
       .addRow(
         g.row('Flush Stats')
         .addPanel(
           g.panel('Queue Length') +
-          g.queryPanel('logish_ingester_flush_queue_length{cluster="$cluster", job="$namespace/ingester"}', '{{instance}}'),
+          g.queryPanel('tempo_ingester_flush_queue_length{cluster="$cluster", job="$namespace/ingester"}', '{{instance}}'),
         )
         .addPanel(
           g.panel('Flush Rate') +
-          g.qpsPanel('logish_ingester_chunk_age_seconds_count{cluster="$cluster", job="$namespace/ingester"}'),
+          g.qpsPanel('tempo_ingester_chunk_age_seconds_count{cluster="$cluster", job="$namespace/ingester"}'),
         ),
       ),
 
-    'logish-frontend.json':
-      g.dashboard('Logish / Frontend')
-      .addTemplate('cluster', 'kube_pod_container_info{image=~".*logish.*"}', 'cluster')
-      .addTemplate('namespace', 'kube_pod_container_info{image=~".*logish.*"}', 'namespace')
+    'tempo-frontend.json':
+      g.dashboard('Tempo / Frontend')
+      .addTemplate('cluster', 'kube_pod_container_info{image=~".*tempo.*"}', 'cluster')
+      .addTemplate('namespace', 'kube_pod_container_info{image=~".*tempo.*"}', 'namespace')
       .addRow(
-        g.row('logish Reqs (cortex_gw)')
+        g.row('tempo Reqs (cortex_gw)')
         .addPanel(
           g.panel('QPS') +
           g.qpsPanel('cortex_gw_request_duration_seconds_count{cluster="$cluster", job="$namespace/cortex-gw"}')
@@ -146,9 +146,9 @@ local g = import 'grafana-builder/grafana.libsonnet';
         )
       ),
       'promtail.json':
-        g.dashboard('Logish / Promtail')
-        .addTemplate('cluster', 'kube_pod_container_info{image=~".*logish.*"}', 'cluster')
-        .addTemplate('namespace', 'kube_pod_container_info{image=~".*logish.*"}', 'namespace')
+        g.dashboard('Tempo / Promtail')
+        .addTemplate('cluster', 'kube_pod_container_info{image=~".*tempo.*"}', 'cluster')
+        .addTemplate('namespace', 'kube_pod_container_info{image=~".*tempo.*"}', 'namespace')
         .addRow(
           g.row('promtail Reqs')
           .addPanel(

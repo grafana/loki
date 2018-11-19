@@ -22,13 +22,13 @@ local histogramRules(metric, labels) =
 {
   prometheus_rules+:: {
     groups+: [{
-      name: 'logish_rules',
+      name: 'tempo_rules',
       rules:
-        histogramRules('logish_request_duration_seconds', ['job']) +
-        histogramRules('logish_request_duration_seconds', ['job', 'route']) +
-        histogramRules('logish_request_duration_seconds', ['namespace', 'job', 'route']),
+        histogramRules('tempo_request_duration_seconds', ['job']) +
+        histogramRules('tempo_request_duration_seconds', ['job', 'route']) +
+        histogramRules('tempo_request_duration_seconds', ['namespace', 'job', 'route']),
     }, {
-      name: 'logish_frontend_rules',
+      name: 'tempo_frontend_rules',
       rules:
         histogramRules('cortex_gw_request_duration_seconds', ['job']) +
         histogramRules('cortex_gw_request_duration_seconds', ['job', 'route']) +

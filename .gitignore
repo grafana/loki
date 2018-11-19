@@ -11,3 +11,4 @@ cmd/promtail/promtail
 *.output
 /images/
 mixin/vendor/
+pkg/logproto/logproto.pb.go

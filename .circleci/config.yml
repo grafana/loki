@@ -20,11 +20,11 @@ workflows:
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
   docker:
-    - image: gcr.io/metrictank-gcr/logish-build-image:master-b5b6999
+    - image: gcr.io/metrictank-gcr/tempo-build-image:master-b5b6999
       auth:
         username: _json_key
         password: $GCR_CREDS
-  working_directory: /go/src/github.com/grafana/logish
+  working_directory: /go/src/github.com/grafana/tempo
 
 jobs:
   test:
@@ -57,7 +57,7 @@ jobs:
             make BUILD_IN_CONTAINER=false save-images
 
       - save_cache:
-          key: v1-logish-{{ .Branch }}-{{ .Revision }}
+          key: v1-tempo-{{ .Branch }}-{{ .Revision }}
           paths:
           - images/
 
@@ -68,7 +68,7 @@ jobs:
       - setup_remote_docker
 
       - restore_cache:
-          key: v1-logish-{{ .Branch }}-{{ .Revision }}
+          key: v1-tempo-{{ .Branch }}-{{ .Revision }}
 
       - run:
           name: Load Images

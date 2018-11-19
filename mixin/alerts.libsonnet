@@ -2,14 +2,14 @@
   prometheusAlerts+:: {
     groups+: [
       {
-        name: 'logish_alerts',
+        name: 'tempo_alerts',
         rules: [
           {
-            alert: 'LogishRequestErrors',
+            alert: 'TempoRequestErrors',
             expr: |||
-              100 * sum(rate(logish_request_duration_seconds_count{status_code=~"5.."}[1m])) by (namespace, job, route)
+              100 * sum(rate(tempo_request_duration_seconds_count{status_code=~"5.."}[1m])) by (namespace, job, route)
                 /
-              sum(rate(logish_request_duration_seconds_count[1m])) by (namespace, job, route)
+              sum(rate(tempo_request_duration_seconds_count[1m])) by (namespace, job, route)
                 > 10
             |||,
             'for': '15m',
@@ -23,9 +23,9 @@
             },
           },
           {
-            alert: 'LogishRequestLatency',
+            alert: 'TempoRequestLatency',
             expr: |||
-              namespace_job_route:logish_request_duration_seconds:99quantile > 1
+              namespace_job_route:tempo_request_duration_seconds:99quantile > 1
             |||,
             'for': '15m',
             labels: {
@@ -40,7 +40,7 @@
         ],
       },
       {
-        name: 'logish_frontend_alerts',
+        name: 'tempo_frontend_alerts',
         rules: [
           {
             alert: 'FrontendRequestErrors',

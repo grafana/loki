@@ -11,8 +11,8 @@ import (
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/cortex/pkg/util"
 
-	"github.com/grafana/logish/pkg/flagext"
-	"github.com/grafana/logish/pkg/promtail"
+	"github.com/grafana/tempo/pkg/flagext"
+	"github.com/grafana/tempo/pkg/promtail"
 )
 
 func main() {

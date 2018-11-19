@@ -9,9 +9,9 @@ import (
 	"github.com/fatih/color"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/grafana/logish/pkg/iter"
-	"github.com/grafana/logish/pkg/logproto"
-	"github.com/grafana/logish/pkg/parser"
+	"github.com/grafana/tempo/pkg/iter"
+	"github.com/grafana/tempo/pkg/logproto"
+	"github.com/grafana/tempo/pkg/parser"
 )
 
 type labelsCache func(labels string) labels.Labels

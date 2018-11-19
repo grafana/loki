@@ -15,8 +15,8 @@ import (
 	"github.com/prometheus/common/model"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/grafana/logish/pkg/flagext"
-	"github.com/grafana/logish/pkg/logproto"
+	"github.com/grafana/tempo/pkg/flagext"
+	"github.com/grafana/tempo/pkg/logproto"
 )
 
 const contentType = "application/x-protobuf"

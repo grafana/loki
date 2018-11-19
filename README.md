@@ -1,19 +1,19 @@
-# Logish: Like Prometheus, but for logs.
+# Tempo: Like Prometheus, but for logs.
 
-[![CircleCI](https://circleci.com/gh/grafana/logish/tree/master.svg?style=svg&circle-token=618193e5787b2951c1ea3352ad5f254f4f52313d)](https://circleci.com/gh/grafana/logish/tree/master) [Design doc](https://docs.google.com/document/d/11tjK_lvp1-SVsFZjgOTr1vV3-q6vBAsZYIQ5ZeYBkyM/edit)
+[![CircleCI](https://circleci.com/gh/grafana/tempo/tree/master.svg?style=svg&circle-token=618193e5787b2951c1ea3352ad5f254f4f52313d)](https://circleci.com/gh/grafana/tempo/tree/master) [Design doc](https://docs.google.com/document/d/11tjK_lvp1-SVsFZjgOTr1vV3-q6vBAsZYIQ5ZeYBkyM/edit)
 
-Logish is a horizontally-scalable, highly-available, multi-tenant, log aggregation
+Tempo is a horizontally-scalable, highly-available, multi-tenant, log aggregation
 system inspired by Prometheus.  It is design to be very cost effective, as it does
 not index the contents of the logs, but rather a set of labels for each log steam.
 
 ## Usage Instructions
 
-Logish is running in the ops-tools1 cluster.  You can query logs from that cluster
+Tempo is running in the ops-tools1 cluster.  You can query logs from that cluster
 using the following commands:
 
 ```
-$ go get github.com/grafana/logish/cmd/logcli
-$ . $GOPATH/src/github.com/grafana/logish/env # env vars inc. URL, username etc
+$ go get github.com/grafana/tempo/cmd/logcli
+$ . $GOPATH/src/github.com/grafana/tempo/env # env vars inc. URL, username etc
 $ logcli labels job
 https://logs-dev-ops-tools1.grafana.net/api/prom/label/job/values
 cortex-ops/consul
@@ -33,7 +33,7 @@ the requests are printed to help with integration work.
 $ logcli help
 usage: logcli [<flags>] <command> [<args> ...]
 
-A command-line for logish.
+A command-line for tempo.
 
 Flags:
   --help         Show context-sensitive help (also try --help-long and --help-man).

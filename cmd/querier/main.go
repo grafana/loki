@@ -16,8 +16,8 @@ import (
 	"github.com/weaveworks/cortex/pkg/util"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/logish/pkg/flagext"
-	"github.com/grafana/logish/pkg/querier"
+	"github.com/grafana/tempo/pkg/flagext"
+	"github.com/grafana/tempo/pkg/querier"
 )
 
 func main() {
@@ -27,7 +27,7 @@ func main() {
 			return r.URL.RequestURI()
 		})
 		serverConfig = server.Config{
-			MetricsNamespace: "logish",
+			MetricsNamespace: "tempo",
 			GRPCMiddleware: []grpc.UnaryServerInterceptor{
 				middleware.ServerUserHeaderInterceptor,
 			},

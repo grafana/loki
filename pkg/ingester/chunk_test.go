@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/logish/pkg/chunkenc"
-	"github.com/grafana/logish/pkg/iter"
-	"github.com/grafana/logish/pkg/logproto"
+	"github.com/grafana/tempo/pkg/chunkenc"
+	"github.com/grafana/tempo/pkg/iter"
+	"github.com/grafana/tempo/pkg/logproto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

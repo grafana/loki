@@ -5,7 +5,7 @@ import (
 
 	"github.com/weaveworks/cortex/pkg/util"
 
-	"github.com/grafana/logish/pkg/logproto"
+	"github.com/grafana/tempo/pkg/logproto"
 )
 
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {

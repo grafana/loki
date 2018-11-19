@@ -11,9 +11,9 @@ import (
 	"math"
 	"time"
 
-	"github.com/grafana/logish/pkg/logproto"
+	"github.com/grafana/tempo/pkg/logproto"
 
-	"github.com/grafana/logish/pkg/iter"
+	"github.com/grafana/tempo/pkg/iter"
 
 	"github.com/pkg/errors"
 )

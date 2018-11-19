@@ -4,7 +4,7 @@ import (
 	"flag"
 	"io"
 
-	"github.com/grafana/logish/pkg/logproto"
+	"github.com/grafana/tempo/pkg/logproto"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/mwitkow/go-grpc-middleware"
 	opentracing "github.com/opentracing/opentracing-go"

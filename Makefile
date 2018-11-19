@@ -3,12 +3,12 @@
 
 # Boiler plate for bulding Docker containers.
 # All this must go at top of file I'm afraid.
-IMAGE_PREFIX ?= gcr.io/metrictank-gcr/logish-
+IMAGE_PREFIX ?= gcr.io/metrictank-gcr/tempo-
 IMAGE_TAG := $(shell ./tools/image-tag)
 UPTODATE := .uptodate
 
 # Building Docker images is now automated. The convention is every directory
-# with a Dockerfile in it builds an image calls quay.io/grafana/logish-<dirname>.
+# with a Dockerfile in it builds an image calls quay.io/grafana/tempo-<dirname>.
 # Dependencies (i.e. things that go in the image) still need to be explicitly
 # declared.
 %/$(UPTODATE): %/Dockerfile
@@ -92,7 +92,7 @@ $(EXES) $(PROTO_GOS) $(YACC_GOS) lint test shell: build-image/$(UPTODATE)
 	$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/grafana/logish \
+		-v $(shell pwd):/go/src/github.com/grafana/tempo \
 		$(IMAGE_PREFIX)build-image $@;
 
 else

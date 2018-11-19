@@ -13,16 +13,16 @@ import (
 	"github.com/weaveworks/cortex/pkg/util"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/logish/pkg/flagext"
-	"github.com/grafana/logish/pkg/ingester"
-	"github.com/grafana/logish/pkg/logproto"
+	"github.com/grafana/tempo/pkg/flagext"
+	"github.com/grafana/tempo/pkg/ingester"
+	"github.com/grafana/tempo/pkg/logproto"
 )
 
 func main() {
 	var (
 		flagset      = flag.NewFlagSet("", flag.ExitOnError)
 		serverConfig = server.Config{
-			MetricsNamespace: "logish",
+			MetricsNamespace: "tempo",
 			GRPCMiddleware: []grpc.UnaryServerInterceptor{
 				middleware.ServerUserHeaderInterceptor,
 			},
