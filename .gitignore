@@ -12,3 +12,4 @@ cmd/promtail/promtail
 /images/
 mixin/vendor/
 pkg/logproto/logproto.pb.go
+pkg/parser/labels.go
