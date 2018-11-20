@@ -22,6 +22,8 @@ type Config struct {
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.PoolConfig.RegisterFlags(f)
+
 	f.IntVar(&cfg.MaxRecvMsgSize, "ingester.client.max-recv-message-size", 64*1024*1024, "Maximum message size, in bytes, this client will receive.")
 	f.DurationVar(&cfg.PoolConfig.RemoteTimeout, "ingester.client.healthcheck-timeout", 1*time.Second, "Timeout for healthcheck rpcs.")
 	f.DurationVar(&cfg.RemoteTimeout, "ingester.client.timeout", 5*time.Second, "Timeout for ingester client RPCs.")
