@@ -3,7 +3,7 @@
 
 # Boiler plate for bulding Docker containers.
 # All this must go at top of file I'm afraid.
-IMAGE_PREFIX ?= gcr.io/metrictank-gcr/tempo-
+IMAGE_PREFIX ?= grafana/
 IMAGE_TAG := $(shell ./tools/image-tag)
 UPTODATE := .uptodate
 
@@ -61,7 +61,7 @@ yacc: $(YACC_GOS)
 protos: $(PROTO_GOS)
 
 # And now what goes into each image
-build-image/$(UPTODATE): build-image/*
+tempo-build-image/$(UPTODATE): tempo-build-image/*
 
 # All the boiler plate for building golang follows:
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
@@ -86,22 +86,22 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) $(PROTO_GOS) $(YACC_GOS) lint test shell: build-image/$(UPTODATE)
+$(EXES) $(PROTO_GOS) $(YACC_GOS) lint test shell: tempo-build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/grafana/tempo \
-		$(IMAGE_PREFIX)build-image $@;
+		$(IMAGE_PREFIX)tempo-build-image $@;
 
 else
 
-$(EXES): build-image/$(UPTODATE)
+$(EXES): tempo-build-image/$(UPTODATE)
 	go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
-%.pb.go: build-image/$(UPTODATE)
+%.pb.go: tempo-build-image/$(UPTODATE)
 	case "$@" in 	\
 	vendor*)			\
 		protoc -I ./vendor:./$(@D) --gogoslick_out=plugins=grpc:./vendor ./$(patsubst %.pb.go,%.proto,$@); \
@@ -114,13 +114,13 @@ $(EXES): build-image/$(UPTODATE)
 %.go: %.y
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
 
-lint: build-image/$(UPTODATE)
+lint: tempo-build-image/$(UPTODATE)
 	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .
 
-test: build-image/$(UPTODATE)
+test: tempo-build-image/$(UPTODATE)
 	go test ./...
 
-shell: build-image/$(UPTODATE)
+shell: tempo-build-image/$(UPTODATE)
 	bash
 
 endif
