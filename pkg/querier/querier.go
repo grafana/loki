@@ -3,7 +3,6 @@ package querier
 import (
 	"context"
 	"flag"
-	"time"
 
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -16,13 +15,9 @@ import (
 )
 
 type Config struct {
-	PoolConfig    cortex_client.PoolConfig
-	RemoteTimeout time.Duration
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.PoolConfig.RegisterFlags(f)
-	f.DurationVar(&cfg.RemoteTimeout, "querier.remote-timeout", 10*time.Second, "")
 }
 
 type Querier struct {
