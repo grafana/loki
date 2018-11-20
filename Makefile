@@ -126,7 +126,8 @@ shell: tempo-build-image/$(UPTODATE)
 endif
 
 save-images:
-	@mkdir -p images
+	@set -e; \
+	mkdir -p images; \
 	for image_name in $(IMAGE_NAMES); do \
 		if ! echo $$image_name | grep build; then \
 			docker save $$image_name:$(IMAGE_TAG) -o images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
@@ -134,7 +135,8 @@ save-images:
 	done
 
 load-images:
-	@mkdir -p images
+	@set -e; \
+	mkdir -p images; \
 	for image_name in $(IMAGE_NAMES); do \
 		if ! echo $$image_name | grep build; then \
 			docker load -i images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
@@ -142,6 +144,7 @@ load-images:
 	done
 
 push-images:
+	@set -e; \
 	for image_name in $(IMAGE_NAMES); do \
 		if ! echo $$image_name | grep build; then \
 			docker push $$image_name:$(IMAGE_TAG); \
