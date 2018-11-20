@@ -35,7 +35,7 @@ jobs:
       - run:
           name: Run Unit Tests
           command: |
-            touch build-image/.uptodate &&
+            touch tempo-build-image/.uptodate &&
             make BUILD_IN_CONTAINER=false test
 
   build:
@@ -47,13 +47,13 @@ jobs:
       - run:
           name: Build Images
           command: |
-            touch build-image/.uptodate &&
+            touch tempo-build-image/.uptodate &&
             make BUILD_IN_CONTAINER=false
 
       - run:
           name: Save Images
           command: |
-            touch build-image/.uptodate &&
+            touch tempo-build-image/.uptodate &&
             make BUILD_IN_CONTAINER=false save-images
 
       - save_cache:
@@ -73,7 +73,7 @@ jobs:
       - run:
           name: Load Images
           command: |
-            touch build-image/.uptodate &&
+            touch tempo-build-image/.uptodate &&
             make BUILD_IN_CONTAINER=false load-images
 
       - run:
