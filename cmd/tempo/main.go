@@ -113,7 +113,15 @@ type module struct {
 }
 
 var modules = map[moduleName]module{
+	Server: module{
+		init: func(t *Tempo, cfg *config) (err error) {
+			t.server, err = server.New(cfg.serverConfig)
+			return
+		},
+	},
+
 	Ring: module{
+		deps: []moduleName{Server},
 		init: func(t *Tempo, cfg *config) (err error) {
 			t.ring, err = ring.New(cfg.ingesterConfig.LifecyclerConfig.RingConfig)
 			if err != nil {
@@ -121,16 +129,6 @@ var modules = map[moduleName]module{
 			}
 			t.server.HTTP.Handle("/ring", t.ring)
 			return
-		},
-	},
-
-	Server: module{
-		init: func(t *Tempo, cfg *config) (err error) {
-			t.server, err = server.New(cfg.serverConfig)
-			return
-		},
-		stop: func(t *Tempo) {
-			t.server.Shutdown()
 		},
 	},
 
@@ -230,6 +228,19 @@ func initModule(m moduleName) {
 	inited[m] = struct{}{}
 }
 
+func stopModule(m moduleName) {
+	if _, ok := inited[m]; !ok {
+		return
+	}
+	delete(inited, m)
+
+	for _, dep := range modules[m].deps {
+		stopModule(dep)
+	}
+
+	modules[m].stop(&tempo)
+}
+
 func main() {
 	flagset := flag.NewFlagSet("", flag.ExitOnError)
 	target := All
@@ -241,5 +252,7 @@ func main() {
 
 	initModule(target)
 	tempo.server.Run()
+
 	tempo.server.Shutdown()
+	stopModule(target)
 }
