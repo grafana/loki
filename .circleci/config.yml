@@ -79,7 +79,7 @@ jobs:
       - run:
           name: Push Images
           command: |
-            docker login -u _json_key -p "$GCR_CREDS" https://gcr.io &&
+            docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
             make push-images
 
   deploy:
