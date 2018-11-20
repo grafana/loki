@@ -27,7 +27,6 @@ import (
 
 type config struct {
 	serverConfig      server.Config
-	ringConfig        ring.Config
 	distributorConfig distributor.Config
 	ingesterConfig    ingester.Config
 	querierConfig     querier.Config
@@ -39,8 +38,8 @@ func (c *config) RegisterFlags(f *flag.FlagSet) {
 		middleware.ServerUserHeaderInterceptor,
 	}
 
-	flagext.RegisterConfigs(f, &c.serverConfig, &c.ringConfig,
-		&c.distributorConfig, &c.ingesterConfig, &c.querierConfig)
+	flagext.RegisterConfigs(f, &c.serverConfig, &c.distributorConfig,
+		&c.ingesterConfig, &c.querierConfig)
 }
 
 type Tempo struct {
@@ -115,7 +114,7 @@ type module struct {
 var modules = map[moduleName]module{
 	Ring: module{
 		init: func(t *Tempo, cfg *config) (err error) {
-			t.ring, err = ring.New(cfg.ringConfig)
+			t.ring, err = ring.New(cfg.ingesterConfig.LifecyclerConfig.RingConfig)
 			if err != nil {
 				return
 			}
