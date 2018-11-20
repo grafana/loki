@@ -7,29 +7,30 @@ import (
 	"os"
 	"strings"
 
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	opentracing "github.com/opentracing/opentracing-go"
 	log "github.com/sirupsen/logrus"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
-
-	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/tempo/pkg/distributor"
 	"github.com/grafana/tempo/pkg/flagext"
 	"github.com/grafana/tempo/pkg/ingester"
+	"github.com/grafana/tempo/pkg/ingester/client"
 	"github.com/grafana/tempo/pkg/logproto"
 	"github.com/grafana/tempo/pkg/querier"
 )
 
 type config struct {
-	serverConfig      server.Config
-	distributorConfig distributor.Config
-	ingesterConfig    ingester.Config
-	querierConfig     querier.Config
+	serverConfig         server.Config
+	distributorConfig    distributor.Config
+	ingesterConfig       ingester.Config
+	querierConfig        querier.Config
+	ingesterClientConfig client.Config
 }
 
 func (c *config) RegisterFlags(f *flag.FlagSet) {
@@ -39,7 +40,7 @@ func (c *config) RegisterFlags(f *flag.FlagSet) {
 	}
 
 	flagext.RegisterConfigs(f, &c.serverConfig, &c.distributorConfig,
-		&c.ingesterConfig, &c.querierConfig)
+		&c.ingesterConfig, &c.querierConfig, &c.ingesterClientConfig)
 }
 
 type Tempo struct {
@@ -136,7 +137,7 @@ var modules = map[moduleName]module{
 	Distributor: module{
 		deps: []moduleName{Ring, Server},
 		init: func(t *Tempo, cfg *config) (err error) {
-			t.distributor, err = distributor.New(cfg.distributorConfig, t.ring)
+			t.distributor, err = distributor.New(cfg.distributorConfig, cfg.ingesterClientConfig, t.ring)
 			if err != nil {
 				return
 			}
@@ -178,7 +179,7 @@ var modules = map[moduleName]module{
 	Querier: module{
 		deps: []moduleName{Ring, Server},
 		init: func(t *Tempo, cfg *config) (err error) {
-			t.querier, err = querier.New(cfg.querierConfig, t.ring)
+			t.querier, err = querier.New(cfg.querierConfig, cfg.ingesterClientConfig, t.ring)
 			if err != nil {
 				return
 			}

@@ -16,16 +16,12 @@ import (
 )
 
 type Config struct {
-	PoolConfig cortex_client.PoolConfig
-
+	PoolConfig    cortex_client.PoolConfig
 	RemoteTimeout time.Duration
-	ClientConfig  client.Config
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.ClientConfig.RegisterFlags(f)
 	cfg.PoolConfig.RegisterFlags(f)
-
 	f.DurationVar(&cfg.RemoteTimeout, "querier.remote-timeout", 10*time.Second, "")
 }
 
@@ -35,15 +31,15 @@ type Querier struct {
 	pool *cortex_client.Pool
 }
 
-func New(cfg Config, ring ring.ReadRing) (*Querier, error) {
+func New(cfg Config, clientCfg client.Config, ring ring.ReadRing) (*Querier, error) {
 	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
-		return client.New(cfg.ClientConfig, addr)
+		return client.New(clientCfg, addr)
 	}
 
 	return &Querier{
 		cfg:  cfg,
 		ring: ring,
-		pool: cortex_client.NewPool(cfg.PoolConfig, ring, factory, util.Logger),
+		pool: cortex_client.NewPool(clientCfg.PoolConfig, ring, factory, util.Logger),
 	}, nil
 }
 

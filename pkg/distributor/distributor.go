@@ -5,7 +5,6 @@ import (
 	"flag"
 	"hash/fnv"
 	"sync/atomic"
-	"time"
 
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -47,36 +46,30 @@ func init() {
 
 // Config for a Distributor.
 type Config struct {
-	RemoteTimeout time.Duration
-	ClientConfig  client.Config
-	PoolConfig    cortex_client.PoolConfig
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.ClientConfig.RegisterFlags(f)
-	cfg.PoolConfig.RegisterFlags(f)
-
-	f.DurationVar(&cfg.RemoteTimeout, "ingester.remote-timeout", 10*time.Second, "")
 }
 
 // Distributor coordinates replicates and distribution of log streams.
 type Distributor struct {
-	cfg  Config
-	ring ring.ReadRing
-	pool *cortex_client.Pool
+	cfg       Config
+	clientCfg client.Config
+	ring      ring.ReadRing
+	pool      *cortex_client.Pool
 }
 
 // New a distributor creates.
-func New(cfg Config, ring ring.ReadRing) (*Distributor, error) {
+func New(cfg Config, clientCfg client.Config, ring ring.ReadRing) (*Distributor, error) {
 	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
-		return client.New(cfg.ClientConfig, addr)
+		return client.New(clientCfg, addr)
 	}
-	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
 	return &Distributor{
-		cfg:  cfg,
-		ring: ring,
-		pool: cortex_client.NewPool(cfg.PoolConfig, ring, factory, util.Logger),
+		cfg:       cfg,
+		clientCfg: clientCfg,
+		ring:      ring,
+		pool:      cortex_client.NewPool(clientCfg.PoolConfig, ring, factory, util.Logger),
 	}, nil
 }
 
@@ -142,7 +135,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	for ingester, samples := range samplesByIngester {
 		go func(ingester ring.IngesterDesc, samples []*streamTracker) {
 			// Use a background context to make sure all ingesters get samples even if we return early
-			localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
+			localCtx, cancel := context.WithTimeout(context.Background(), d.clientCfg.RemoteTimeout)
 			defer cancel()
 			localCtx = user.InjectOrgID(localCtx, userID)
 			if sp := opentracing.SpanFromContext(ctx); sp != nil {

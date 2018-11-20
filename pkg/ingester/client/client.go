@@ -3,7 +3,9 @@ package client
 import (
 	"flag"
 	"io"
+	"time"
 
+	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/grafana/tempo/pkg/logproto"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/mwitkow/go-grpc-middleware"
@@ -14,11 +16,15 @@ import (
 )
 
 type Config struct {
+	PoolConfig     cortex_client.PoolConfig
 	MaxRecvMsgSize int
+	RemoteTimeout  time.Duration
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRecvMsgSize, "ingester.client.max-recv-message-size", 64*1024*1024, "Maximum message size, in bytes, this client will receive.")
+	f.DurationVar(&cfg.PoolConfig.RemoteTimeout, "ingester.client.healthcheck-timeout", 1*time.Second, "Timeout for healthcheck rpcs.")
+	f.DurationVar(&cfg.RemoteTimeout, "ingester.client.timeout", 5*time.Second, "Timeout for ingester client RPCs.")
 }
 
 func New(cfg Config, addr string) (grpc_health_v1.HealthClient, error) {
