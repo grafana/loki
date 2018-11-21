@@ -230,6 +230,10 @@ type bigchunkIterator struct {
 }
 
 func (it *bigchunkIterator) FindAtOrAfter(target model.Time) bool {
+	if it.i >= len(it.chunks) {
+		return false
+	}
+
 	// If the seek is outside the current chunk, use the index to find the right
 	// chunk.
 	if int64(target) < it.starts[it.i] || int64(target) > it.ends[it.i] {
