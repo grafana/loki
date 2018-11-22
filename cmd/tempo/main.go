@@ -38,6 +38,9 @@ func (c *config) RegisterFlags(f *flag.FlagSet) {
 	c.serverConfig.GRPCMiddleware = []grpc.UnaryServerInterceptor{
 		middleware.ServerUserHeaderInterceptor,
 	}
+	c.serverConfig.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
+		middleware.StreamServerUserHeaderInterceptor,
+	}
 
 	flagext.RegisterConfigs(f, &c.serverConfig, &c.distributorConfig,
 		&c.ingesterConfig, &c.querierConfig, &c.ingesterClientConfig)
