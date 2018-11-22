@@ -59,6 +59,7 @@ all: $(UPTODATE_FILES)
 test: $(PROTO_GOS) $(YACC_GOS)
 yacc: $(YACC_GOS)
 protos: $(PROTO_GOS)
+yacc: $(YACC_GOS)
 
 # And now what goes into each image
 tempo-build-image/$(UPTODATE): tempo-build-image/*

@@ -11,3 +11,4 @@ cmd/promtail/promtail
 mixin/vendor/
 pkg/logproto/logproto.pb.go
 pkg/parser/labels.go
+tempo

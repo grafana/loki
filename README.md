@@ -6,6 +6,17 @@ Tempo is a horizontally-scalable, highly-available, multi-tenant, log aggregatio
 system inspired by Prometheus.  It is design to be very cost effective, as it does
 not index the contents of the logs, but rather a set of labels for each log steam.
 
+## Run it locally
+
+Tempo can be run in a single host, no-dependancies mode using the following commands:
+
+```
+$ make protos yacc
+$ go build ./cmd/tempo
+$ ./tempo -config.file=./doc/local.yaml
+...
+```
+
 ## Usage Instructions
 
 Tempo is running in the ops-tools1 cluster.  You can query logs from that cluster
