@@ -1,3 +1,5 @@
+auth_enabled: false
+
 ingester:
   lifecycler:
     ring:
