@@ -17,6 +17,14 @@ $ ./tempo -config.file=./doc/local.yaml
 ...
 ```
 
+Grafana is Tempo's UI, so you'll also want to run one of those:
+
+```
+$ docker run -ti -p 3000:3000 grafana/grafana-dev:master-377eaa891c1eefdec9c83a2ee4dcf5c81665ab1f
+```
+
+In the Grafana UI, add a new "Grafana Logging" datasource for `http://host.docker.internal:80`.
+
 ## Usage Instructions
 
 Tempo is running in the ops-tools1 cluster.  You can query logs from that cluster
