@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -18,7 +18,7 @@ func TestFactoryStop(t *testing.T) {
 		schemaConfig chunk.SchemaConfig
 		defaults     validation.Limits
 	)
-	util.DefaultValues(&cfg, &storeConfig, &schemaConfig, &defaults)
+	flagext.DefaultValues(&cfg, &storeConfig, &schemaConfig, &defaults)
 	schemaConfig.Configs = []chunk.PeriodConfig{
 		{
 			From:  model.Time(0),

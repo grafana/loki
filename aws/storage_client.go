@@ -24,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
@@ -97,9 +98,9 @@ func init() {
 
 // DynamoDBConfig specifies config for a DynamoDB database.
 type DynamoDBConfig struct {
-	DynamoDB               util.URLValue
+	DynamoDB               flagext.URLValue
 	APILimit               float64
-	ApplicationAutoScaling util.URLValue
+	ApplicationAutoScaling flagext.URLValue
 	Metrics                MetricsAutoScalingConfig
 	ChunkGangSize          int
 	ChunkGetMaxParallelism int
@@ -123,7 +124,7 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 // StorageConfig specifies config for storing data on AWS.
 type StorageConfig struct {
 	DynamoDBConfig
-	S3 util.URLValue
+	S3 flagext.URLValue
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

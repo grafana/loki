@@ -17,8 +17,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/test"
 	"github.com/weaveworks/common/user"
@@ -49,7 +49,7 @@ var stores = []struct {
 			var (
 				storeCfg StoreConfig
 			)
-			util.DefaultValues(&storeCfg)
+			flagext.DefaultValues(&storeCfg)
 			return storeCfg
 		},
 	},
@@ -59,7 +59,7 @@ var stores = []struct {
 			var (
 				storeCfg StoreConfig
 			)
-			util.DefaultValues(&storeCfg)
+			flagext.DefaultValues(&storeCfg)
 
 			storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
 				Size: 500,
@@ -75,7 +75,7 @@ func newTestChunkStore(t *testing.T, schemaName string) Store {
 	var (
 		storeCfg StoreConfig
 	)
-	util.DefaultValues(&storeCfg)
+	flagext.DefaultValues(&storeCfg)
 	return newTestChunkStoreConfig(t, schemaName, storeCfg)
 }
 
@@ -84,7 +84,7 @@ func newTestChunkStoreConfig(t *testing.T, schemaName string, storeCfg StoreConf
 		tbmConfig TableManagerConfig
 		schemaCfg = DefaultSchemaConfig("", schemaName, 0)
 	)
-	util.DefaultValues(&tbmConfig)
+	flagext.DefaultValues(&tbmConfig)
 	storage := NewMockStorage()
 	tableManager, err := NewTableManager(tbmConfig, schemaCfg, maxChunkAge, storage)
 	require.NoError(t, err)
@@ -93,7 +93,7 @@ func newTestChunkStoreConfig(t *testing.T, schemaName string, storeCfg StoreConf
 	require.NoError(t, err)
 
 	var limits validation.Limits
-	util.DefaultValues(&limits)
+	flagext.DefaultValues(&limits)
 	limits.MaxQueryLength = 30 * 24 * time.Hour
 	overrides, err := validation.NewOverrides(limits)
 	require.NoError(t, err)
@@ -135,25 +135,25 @@ func TestChunkStore_Get(t *testing.T) {
 
 	fooMetric1 := model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "baz",
-		"toms": "code",
-		"flip": "flop",
+		"bar":                 "baz",
+		"toms":                "code",
+		"flip":                "flop",
 	}
 	fooMetric2 := model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "beep",
-		"toms": "code",
+		"bar":                 "beep",
+		"toms":                "code",
 	}
 
 	// barMetric1 is a subset of barMetric2 to test over-matching bug.
 	barMetric1 := model.Metric{
 		model.MetricNameLabel: "bar",
-		"bar": "baz",
+		"bar":                 "baz",
 	}
 	barMetric2 := model.Metric{
 		model.MetricNameLabel: "bar",
-		"bar":  "baz",
-		"toms": "code",
+		"bar":                 "baz",
+		"toms":                "code",
 	}
 
 	fooChunk1 := dummyChunkFor(now, fooMetric1)
@@ -315,14 +315,14 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 	now := model.Now()
 	chunk1 := dummyChunkFor(now, model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "baz",
-		"toms": "code",
-		"flip": "flop",
+		"bar":                 "baz",
+		"toms":                "code",
+		"flip":                "flop",
 	})
 	chunk2 := dummyChunkFor(now, model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "beep",
-		"toms": "code",
+		"bar":                 "beep",
+		"toms":                "code",
 	})
 
 	for _, tc := range []struct {
@@ -424,7 +424,7 @@ func TestChunkStoreRandom(t *testing.T) {
 					model.Fingerprint(1),
 					model.Metric{
 						model.MetricNameLabel: "foo",
-						"bar": "baz",
+						"bar":                 "baz",
 					},
 					chunks[0],
 					ts,
@@ -488,7 +488,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 			model.Fingerprint(1),
 			model.Metric{
 				model.MetricNameLabel: "foo",
-				"bar": "baz",
+				"bar":                 "baz",
 			},
 			chunks[0],
 			ts,
@@ -534,7 +534,7 @@ func TestIndexCachingWorks(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	metric := model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar": "baz",
+		"bar":                 "baz",
 	}
 	storeMaker := stores[1]
 	storeCfg := storeMaker.configFn()
