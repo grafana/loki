@@ -14,7 +14,7 @@ import (
 )
 
 type Config struct {
-	LifecyclerConfig ring.LifecyclerConfig
+	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {

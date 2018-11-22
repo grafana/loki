@@ -3,22 +3,26 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
 
-	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	opentracing "github.com/opentracing/opentracing-go"
-	log "github.com/sirupsen/logrus"
-	"github.com/weaveworks/common/middleware"
-	"github.com/weaveworks/common/server"
+	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"gopkg.in/yaml.v2"
+
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/weaveworks/common/middleware"
+	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/tempo/pkg/distributor"
-	"github.com/grafana/tempo/pkg/flagext"
 	"github.com/grafana/tempo/pkg/ingester"
 	"github.com/grafana/tempo/pkg/ingester/client"
 	"github.com/grafana/tempo/pkg/logproto"
@@ -26,24 +30,27 @@ import (
 )
 
 type config struct {
-	serverConfig         server.Config
-	distributorConfig    distributor.Config
-	ingesterConfig       ingester.Config
-	querierConfig        querier.Config
-	ingesterClientConfig client.Config
+	Server         server.Config      `yaml:"server,omitempty"`
+	Distributor    distributor.Config `yaml:"distributor,omitempty"`
+	Querier        querier.Config     `yaml:"querier,omitempty"`
+	IngesterClient client.Config      `yaml:"ingester_client,omitempty"`
+	Ingester       ingester.Config    `yaml:"ingester,omitempty"`
 }
 
 func (c *config) RegisterFlags(f *flag.FlagSet) {
-	c.serverConfig.MetricsNamespace = "tempo"
-	c.serverConfig.GRPCMiddleware = []grpc.UnaryServerInterceptor{
+	c.Server.MetricsNamespace = "tempo"
+	c.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
 		middleware.ServerUserHeaderInterceptor,
 	}
-	c.serverConfig.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
+	c.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
 		middleware.StreamServerUserHeaderInterceptor,
 	}
 
-	flagext.RegisterConfigs(f, &c.serverConfig, &c.distributorConfig,
-		&c.ingesterConfig, &c.querierConfig, &c.ingesterClientConfig)
+	c.Server.RegisterFlags(f)
+	c.Distributor.RegisterFlags(f)
+	c.Querier.RegisterFlags(f)
+	c.IngesterClient.RegisterFlags(f)
+	c.Ingester.RegisterFlags(f)
 }
 
 type Tempo struct {
@@ -118,7 +125,7 @@ type module struct {
 var modules = map[moduleName]module{
 	Server: module{
 		init: func(t *Tempo, cfg *config) (err error) {
-			t.server, err = server.New(cfg.serverConfig)
+			t.server, err = server.New(cfg.Server)
 			return
 		},
 	},
@@ -126,7 +133,7 @@ var modules = map[moduleName]module{
 	Ring: module{
 		deps: []moduleName{Server},
 		init: func(t *Tempo, cfg *config) (err error) {
-			t.ring, err = ring.New(cfg.ingesterConfig.LifecyclerConfig.RingConfig)
+			t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig)
 			if err != nil {
 				return
 			}
@@ -138,7 +145,7 @@ var modules = map[moduleName]module{
 	Distributor: module{
 		deps: []moduleName{Ring, Server},
 		init: func(t *Tempo, cfg *config) (err error) {
-			t.distributor, err = distributor.New(cfg.distributorConfig, cfg.ingesterClientConfig, t.ring)
+			t.distributor, err = distributor.New(cfg.Distributor, cfg.IngesterClient, t.ring)
 			if err != nil {
 				return
 			}
@@ -160,8 +167,8 @@ var modules = map[moduleName]module{
 	Ingester: module{
 		deps: []moduleName{Server},
 		init: func(t *Tempo, cfg *config) (err error) {
-			cfg.ingesterConfig.LifecyclerConfig.ListenPort = &cfg.serverConfig.GRPCListenPort
-			t.ingester, err = ingester.New(cfg.ingesterConfig)
+			cfg.Ingester.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
+			t.ingester, err = ingester.New(cfg.Ingester)
 			if err != nil {
 				return
 			}
@@ -180,7 +187,7 @@ var modules = map[moduleName]module{
 	Querier: module{
 		deps: []moduleName{Ring, Server},
 		init: func(t *Tempo, cfg *config) (err error) {
-			t.querier, err = querier.New(cfg.querierConfig, cfg.ingesterClientConfig, t.ring)
+			t.querier, err = querier.New(cfg.Querier, cfg.IngesterClient, t.ring)
 			if err != nil {
 				return
 			}
@@ -215,20 +222,22 @@ var (
 	inited = map[moduleName]struct{}{}
 )
 
-func initModule(m moduleName) {
+func initModule(m moduleName) error {
 	if _, ok := inited[m]; ok {
-		return
+		return nil
 	}
 
 	for _, dep := range modules[m].deps {
 		initModule(dep)
 	}
 
+	level.Info(util.Logger).Log("msg", "initialising", "module", m)
 	if err := modules[m].init(&tempo, &cfg); err != nil {
-		log.Fatalf("Error initializing %s: %v", m, err)
+		return errors.Wrap(err, fmt.Sprintf("error initialising module: %s", m))
 	}
 
 	inited[m] = struct{}{}
+	return nil
 }
 
 func stopModule(m moduleName) {
@@ -241,21 +250,55 @@ func stopModule(m moduleName) {
 		stopModule(dep)
 	}
 
-	modules[m].stop(&tempo)
+	if modules[m].stop != nil {
+		level.Info(util.Logger).Log("msg", "stopping", "module", m)
+		modules[m].stop(&tempo)
+	}
+}
+
+func readConfig(filename string) error {
+	f, err := os.Open(filename)
+	if err != nil {
+		return errors.Wrap(err, "error opening config file")
+	}
+	defer f.Close()
+
+	buf, err := ioutil.ReadAll(f)
+	if err != nil {
+		return errors.Wrap(err, "Error reading config file: %v")
+	}
+
+	if err := yaml.Unmarshal(buf, &cfg); err != nil {
+		return errors.Wrap(err, "Error reading config file: %v")
+	}
+	return nil
 }
 
 func main() {
-	flagset := flag.NewFlagSet("", flag.ExitOnError)
-	target := All
-	flagset.Var(&target, "target", "target module (default All)")
-	flagext.RegisterConfigs(flagset, &cfg)
-	flagset.Parse(os.Args[1:])
+	var (
+		target     = All
+		configFile = ""
+	)
+	flag.Var(&target, "target", "target module (default All)")
+	flag.StringVar(&configFile, "config.file", "", "Configuration file to load.")
+	flagext.RegisterFlags(&cfg)
+	flag.Parse()
 
-	util.InitLogger(&cfg.serverConfig)
+	util.InitLogger(&cfg.Server)
 
-	initModule(target)
+	if configFile != "" {
+		if err := readConfig(configFile); err != nil {
+			level.Error(util.Logger).Log("msg", "error loading config", "filename", configFile, "err", err)
+			os.Exit(1)
+		}
+	}
+
+	if err := initModule(target); err != nil {
+		level.Error(util.Logger).Log("msg", "error initialising module", "err", err)
+		os.Exit(1)
+	}
+
 	tempo.server.Run()
-
 	tempo.server.Shutdown()
 	stopModule(target)
 }

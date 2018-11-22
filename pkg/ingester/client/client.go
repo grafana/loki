@@ -16,9 +16,9 @@ import (
 )
 
 type Config struct {
-	PoolConfig     cortex_client.PoolConfig
-	MaxRecvMsgSize int
-	RemoteTimeout  time.Duration
+	PoolConfig     cortex_client.PoolConfig `yaml:"pool_config,omitempty"`
+	MaxRecvMsgSize int                      `yaml:"max_recv_msg_size,omitempty"`
+	RemoteTimeout  time.Duration            `yaml:"remote_timeout,omitempty"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {

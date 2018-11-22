@@ -15,7 +15,8 @@ import (
 	"github.com/prometheus/common/model"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/grafana/tempo/pkg/flagext"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+
 	"github.com/grafana/tempo/pkg/logproto"
 )
 
@@ -40,7 +41,7 @@ func init() {
 }
 
 type ClientConfig struct {
-	URL       flagext.URL
+	URL       flagext.URLValue
 	BatchWait time.Duration
 	BatchSize int
 }

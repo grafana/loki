@@ -2,27 +2,27 @@ package main
 
 import (
 	"flag"
-	"os"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
+
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/server"
 
-	"github.com/grafana/tempo/pkg/flagext"
 	"github.com/grafana/tempo/pkg/promtail"
 )
 
 func main() {
 	var (
-		flagset         = flag.NewFlagSet("", flag.ExitOnError)
-		configFile      = flagset.String("config.file", "promtail.yml", "The config file.")
+		configFile      string
 		serverConfig    server.Config
 		clientConfig    promtail.ClientConfig
 		positionsConfig promtail.PositionsConfig
 	)
-	flagext.RegisterConfigs(flagset, &serverConfig, &clientConfig, &positionsConfig)
-	flagset.Parse(os.Args[1:])
+	flag.StringVar(&configFile, "config.file", "promtail.yml", "The config file.")
+	flagext.RegisterFlags(&serverConfig, &clientConfig, &positionsConfig)
+	flag.Parse()
 
 	util.InitLogger(&serverConfig)
 
@@ -39,7 +39,7 @@ func main() {
 		return
 	}
 
-	cfg, err := promtail.LoadConfig(*configFile)
+	cfg, err := promtail.LoadConfig(configFile)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "Failed to load config", "error", err)
 		return

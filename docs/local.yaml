@@ -1,0 +1,5 @@
+ingester:
+  lifecycler:
+    ring:
+      store: inmemory
+      replication_factor: 1
