@@ -56,19 +56,19 @@ var ErrEmptyRing = errors.New("empty ring")
 
 // Config for a Ring
 type Config struct {
-	ConsulConfig
-	store             string
-	HeartbeatTimeout  time.Duration
-	ReplicationFactor int
+	Consul            ConsulConfig  `yaml:"consul,omitempty"`
+	Store             string        `yaml:"store,omitempty"`
+	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout,omitempty"`
+	ReplicationFactor int           `yaml:"replication_factor,omitempty"`
 
 	Mock KVClient
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.ConsulConfig.RegisterFlags(f)
+	cfg.Consul.RegisterFlags(f)
 
-	f.StringVar(&cfg.store, "ring.store", "consul", "Backend storage to use for the ring (consul, inmemory).")
+	f.StringVar(&cfg.Store, "ring.store", "consul", "Backend storage to use for the ring (consul, inmemory).")
 	f.DurationVar(&cfg.HeartbeatTimeout, "ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 	f.IntVar(&cfg.ReplicationFactor, "distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 }
@@ -95,20 +95,9 @@ func New(cfg Config) (*Ring, error) {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
 	}
 
-	store := cfg.Mock
-	if store == nil {
-		var err error
-
-		switch cfg.store {
-		case "consul":
-			codec := ProtoCodec{Factory: ProtoDescFactory}
-			store, err = NewConsulClient(cfg.ConsulConfig, codec)
-		case "inmemory":
-			store = NewInMemoryKVClient()
-		}
-		if err != nil {
-			return nil, err
-		}
+	store, err := newKVStore(cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	r := &Ring{

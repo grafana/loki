@@ -136,20 +136,21 @@
   revision = "3a0bb77429bd3a61596f5e8a3172445844342120"
 
 [[projects]]
-  branch = "master"
-  digest = "1:96f8f762aa5b24911f30a664adeebc54931e40a509bf1f2f73e2dc2c9a187ff5"
+  branch = "yaml"
+  digest = "1:c2173e3680ca782a3a7cbbe4b94fd52613b15337b7472ffec3d693615cd3c357"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/ingester/client",
     "pkg/prom1/storage/metric",
     "pkg/ring",
     "pkg/util",
+    "pkg/util/flagext",
     "pkg/util/middleware",
     "pkg/util/wire",
   ]
   pruneopts = "UT"
-  revision = "5d187b904c5806d7aa50b7d8fb8ed2806de34fed"
-  source = "github.com/cortexproject/cortex"
+  revision = "0c1365873fd258f98acab8db9c26f5bc35e9350e"
+  source = "github.com/grafana/cortex"
 
 [[projects]]
   digest = "1:a2c1d0e43bd3baaa071d1b9ed72c27d78169b2b269f71c105ac4ba34b1be4a39"
@@ -597,14 +598,13 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:13b089e2b04703d8ab6b73ca2edbc48878af49f3cb8d8a3f1c93aecd12d5cbcc"
+  digest = "1:27ada03e350884dbfc3bc97f0542b3a1f16480fff57a000e5f7544d8c4f61d7d"
   name = "github.com/prometheus/common"
   packages = [
     "config",
     "expfmt",
     "internal/bitbucket.org/ww/goautoneg",
     "model",
-    "promlog",
   ]
   pruneopts = "UT"
   revision = "d0f7cd64bda49e08b22ae8a730aa57aa0db125d6"
@@ -1102,6 +1102,7 @@
     "github.com/cortexproject/cortex/pkg/ingester/client",
     "github.com/cortexproject/cortex/pkg/ring",
     "github.com/cortexproject/cortex/pkg/util",
+    "github.com/cortexproject/cortex/pkg/util/flagext",
     "github.com/cortexproject/cortex/pkg/util/wire",
     "github.com/fatih/color",
     "github.com/go-kit/kit/log",
@@ -1119,7 +1120,6 @@
     "github.com/pkg/errors",
     "github.com/prometheus/client_golang/prometheus",
     "github.com/prometheus/common/model",
-    "github.com/prometheus/common/promlog",
     "github.com/prometheus/prometheus/config",
     "github.com/prometheus/prometheus/discovery",
     "github.com/prometheus/prometheus/discovery/config",
@@ -1130,7 +1130,6 @@
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
     "github.com/weaveworks/common/instrument",
-    "github.com/weaveworks/common/logging",
     "github.com/weaveworks/common/middleware",
     "github.com/weaveworks/common/server",
     "github.com/weaveworks/common/user",

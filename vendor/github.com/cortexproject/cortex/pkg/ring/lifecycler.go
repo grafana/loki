@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
@@ -37,21 +38,20 @@ var (
 
 // LifecyclerConfig is the config to build a Lifecycler.
 type LifecyclerConfig struct {
-	KVClient   KVClient
-	RingConfig Config
+	RingConfig Config `yaml:"ring,omitempty"`
 
 	// Config for the ingester lifecycle control
 	ListenPort      *int
-	NumTokens       int
-	HeartbeatPeriod time.Duration
-	JoinAfter       time.Duration
-	ClaimOnRollout  bool
-	NormaliseTokens bool
+	NumTokens       int           `yaml:"num_tokens,omitempty"`
+	HeartbeatPeriod time.Duration `yaml:"heartbeat_period,omitempty"`
+	JoinAfter       time.Duration `yaml:"join_after,omitempty"`
+	ClaimOnRollout  bool          `yaml:"claim_on_rollout,omitempty"`
+	NormaliseTokens bool          `yaml:"normalise_tokens,omitempty"`
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string
 	Port           int
-	InfName        string
+	InfNames       []string
 	ID             string
 	SkipUnregister bool
 }
@@ -72,7 +72,8 @@ func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
 		os.Exit(1)
 	}
 
-	f.StringVar(&cfg.InfName, "ingester.interface", "eth0", "Name of network interface to read address from.")
+	cfg.InfNames = []string{"eth0", "en0"}
+	f.Var((*flagext.Strings)(&cfg.InfNames), "ingester.interface", "Name of network interface to read address from.")
 	f.StringVar(&cfg.Addr, "ingester.addr", "", "IP address to advertise in consul.")
 	f.IntVar(&cfg.Port, "ingester.port", 0, "port to advertise in consul (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.ID, "ingester.ID", hostname, "ID to register into consul.")
@@ -114,20 +115,10 @@ type Lifecycler struct {
 
 // NewLifecycler makes and starts a new Lifecycler.
 func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Lifecycler, error) {
-	kvstore := cfg.KVClient
-	if kvstore == nil {
-		var err error
-		codec := ProtoCodec{Factory: ProtoDescFactory}
-		kvstore, err = NewConsulClient(cfg.RingConfig.ConsulConfig, codec)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	addr := cfg.Addr
 	if addr == "" {
 		var err error
-		addr, err = util.GetFirstAddressOf(cfg.InfName)
+		addr, err = util.GetFirstAddressOf(cfg.InfNames)
 		if err != nil {
 			return nil, err
 		}
@@ -137,10 +128,15 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Life
 		port = *cfg.ListenPort
 	}
 
+	store, err := newKVStore(cfg.RingConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	l := &Lifecycler{
 		cfg:             cfg,
 		flushTransferer: flushTransferer,
-		KVStore:         kvstore,
+		KVStore:         store,
 
 		addr: fmt.Sprintf("%s:%d", addr, port),
 		ID:   cfg.ID,
