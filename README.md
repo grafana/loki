@@ -20,10 +20,10 @@ $ ./tempo -config.file=./doc/local.yaml
 Grafana is Tempo's UI, so you'll also want to run one of those:
 
 ```
-$ docker run -ti -p 3000:3000 grafana/grafana-dev:master-377eaa891c1eefdec9c83a2ee4dcf5c81665ab1f
+$ docker run -ti -p 3000:3000 -e "GF_EXPLORE_ENABLED=true" grafana/grafana-dev:master-377eaa891c1eefdec9c83a2ee4dcf5c81665ab1f
 ```
 
-In the Grafana UI, add a new "Grafana Logging" datasource for `http://host.docker.internal:80`.
+In the Grafana UI (http://localhost:3000), loging with "admin"/"admin", add a new "Grafana Logging" datasource for `http://host.docker.internal:80`, then go to explore and enjoy!
 
 ## Usage Instructions
 
