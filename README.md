@@ -8,12 +8,12 @@ not index the contents of the logs, but rather a set of labels for each log stea
 
 ## Run it locally
 
-Tempo can be run in a single host, no-dependancies mode using the following commands:
+Tempo can be run in a single host, no-dependencies mode using the following commands:
 
 ```
 $ make protos yacc
 $ go build ./cmd/tempo
-$ ./tempo -config.file=./doc/local.yaml
+$ ./tempo -config.file=./docs/local.yaml
 ...
 ```
 
