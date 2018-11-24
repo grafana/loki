@@ -4,6 +4,7 @@ import (
 	"flag"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -13,16 +14,19 @@ import (
 
 const positionFileMode = 0700
 
+// PositionsConfig describes where to get postition information from.
 type PositionsConfig struct {
 	SyncPeriod    time.Duration
 	PositionsFile string
 }
 
+// RegisterFlags register flags.
 func (cfg *PositionsConfig) RegisterFlags(flags *flag.FlagSet) {
 	flags.DurationVar(&cfg.SyncPeriod, "positions.sync-period", 10*time.Second, "Period with this to sync the position file.")
 	flag.StringVar(&cfg.PositionsFile, "positions.file", "/var/log/positions.yaml", "Location to read/wrtie positions from.")
 }
 
+// Positions tracks how far through each file we've read.
 type Positions struct {
 	cfg       PositionsConfig
 	mtx       sync.Mutex
@@ -34,6 +38,7 @@ type positionsFile struct {
 	Positions map[string]int64 `yaml:"positions"`
 }
 
+// NewPositions makes a new Positions.
 func NewPositions(cfg PositionsConfig) (*Positions, error) {
 	positions, err := readPositionsFile(cfg.PositionsFile)
 	if err != nil {
@@ -49,16 +54,20 @@ func NewPositions(cfg PositionsConfig) (*Positions, error) {
 	go p.run()
 	return p, nil
 }
+
+// Stop the Position tracker.
 func (p *Positions) Stop() {
 	close(p.quit)
 }
 
+// Put records (asynchronously) how far we've read through a file.
 func (p *Positions) Put(path string, pos int64) {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	p.positions[path] = pos
 }
 
+// Get returns how far we've read through a file.
 func (p *Positions) Get(path string) int64 {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
@@ -93,7 +102,7 @@ func (p *Positions) save() {
 }
 
 func readPositionsFile(filename string) (map[string]int64, error) {
-	buf, err := ioutil.ReadFile(filename)
+	buf, err := ioutil.ReadFile(filepath.Clean(filename))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return map[string]int64{}, nil
@@ -117,5 +126,5 @@ func writePositionFile(filename string, positions map[string]int64) error {
 		return err
 	}
 
-	return ioutil.WriteFile(filename, buf, os.FileMode(positionFileMode))
+	return ioutil.WriteFile(filepath.Clean(filename), buf, os.FileMode(positionFileMode))
 }

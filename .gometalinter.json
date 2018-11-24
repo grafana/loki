@@ -7,18 +7,19 @@
     "goimports": {"Command": "goimports -l -w"}
   },
   "Exclude": [
-    "\\.pb\\.go"
+    "\\.pb\\.go",
+    "method Seek.*should have signature",
+    "error return value not checked \\(level\\.",
+    "\"err\" shadows declaration"
   ],
 
   "Enable": [
     "deadcode",
     "errcheck",
     "goconst",
-    "gocyclo",
     "gofmt",
     "goimports",
     "golint",
-    "gosec",
     "gosimple",
     "gotype",
     "gotypex",
@@ -26,7 +27,6 @@
     "interfacer",
     "megacheck",
     "misspell",
-    "nakedret",
     "structcheck",
     "unconvert",
     "unparam",

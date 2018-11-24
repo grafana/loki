@@ -11,7 +11,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -48,6 +47,7 @@ func init() {
 type Config struct {
 }
 
+// RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
@@ -100,7 +100,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
-	streams := make([]streamTracker, len(req.Streams), len(req.Streams))
+	streams := make([]streamTracker, len(req.Streams))
 	keys := make([]uint32, 0, len(req.Streams))
 	for i, stream := range req.Streams {
 		keys = append(keys, tokenFor(userID, stream.Labels))
@@ -127,7 +127,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 	}
 
-	pushTracker := pushTracker{
+	tracker := pushTracker{
 		samplesPending: int32(len(streams)),
 		done:           make(chan struct{}),
 		err:            make(chan error),
@@ -141,13 +141,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			if sp := opentracing.SpanFromContext(ctx); sp != nil {
 				localCtx = opentracing.ContextWithSpan(localCtx, sp)
 			}
-			d.sendSamples(localCtx, ingester, samples, &pushTracker)
+			d.sendSamples(localCtx, ingester, samples, &tracker)
 		}(ingesterDescs[ingester], samples)
 	}
 	select {
-	case err := <-pushTracker.err:
+	case err := <-tracker.err:
 		return nil, err
-	case <-pushTracker.done:
+	case <-tracker.done:
 		return &logproto.PushResponse{}, nil
 	}
 }
@@ -198,10 +198,7 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Ingester
 		req.Streams[i] = s.stream
 	}
 
-	err = instrument.TimeRequestHistogram(ctx, "Distributor.sendSamples", sendDuration, func(ctx context.Context) error {
-		_, err := c.(logproto.PusherClient).Push(ctx, req)
-		return err
-	})
+	_, err = c.(logproto.PusherClient).Push(ctx, req)
 	ingesterAppends.WithLabelValues(ingester.Addr).Inc()
 	if err != nil {
 		ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
@@ -217,6 +214,6 @@ func tokenFor(userID, labels string) uint32 {
 }
 
 // Check implements the grpc healthcheck
-func (*Distributor) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+func (*Distributor) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }

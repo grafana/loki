@@ -9,23 +9,28 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/tempo/pkg/helpers"
 	"github.com/grafana/tempo/pkg/ingester/client"
 	"github.com/grafana/tempo/pkg/iter"
 	"github.com/grafana/tempo/pkg/logproto"
 )
 
+// Config for a querier.
 type Config struct {
 }
 
+// RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
+// Querier handlers queries.
 type Querier struct {
 	cfg  Config
 	ring ring.ReadRing
 	pool *cortex_client.Pool
 }
 
+// New makes a new Querier.
 func New(cfg Config, clientCfg client.Config, ring ring.ReadRing) (*Querier, error) {
 	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
 		return client.New(clientCfg, addr)
@@ -82,6 +87,7 @@ func (q *Querier) forAllIngesters(f func(logproto.QuerierClient) (interface{}, e
 	return result, nil
 }
 
+// Query does the heavy lifting for an actual query.
 func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logproto.QueryResponse, error) {
 	clients, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
 		return client.Query(ctx, req)
@@ -95,12 +101,13 @@ func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logpr
 		iterators[i] = iter.NewQueryClientIterator(clients[i].(logproto.Querier_QueryClient), req.Direction)
 	}
 	iterator := iter.NewHeapIterator(iterators, req.Direction)
-	defer iterator.Close()
+	defer helpers.LogError("closing iterator", iterator.Close)
 
 	resp, _, err := ReadBatch(iterator, req.Limit)
 	return resp, err
 }
 
+// Label does the heavy lifting for a Label query.
 func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	resps, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
 		return client.Label(ctx, req)
@@ -119,6 +126,7 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 	}, nil
 }
 
+// ReadBatch reads a set of entries off an iterator.
 func ReadBatch(i iter.EntryIterator, size uint32) (*logproto.QueryResponse, uint32, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
@@ -144,13 +152,8 @@ func ReadBatch(i iter.EntryIterator, size uint32) (*logproto.QueryResponse, uint
 }
 
 // Check implements the grpc healthcheck
-func (*Querier) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
+func (*Querier) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
-}
-
-type iteratorBatcher struct {
-	iterator    iter.EntryIterator
-	queryServer logproto.Querier_QueryServer
 }
 
 func mergeLists(ss ...[]string) []string {

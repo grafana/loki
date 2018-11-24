@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
+// Matchers parses a string and returns a set of matchers.
 func Matchers(input string) ([]*labels.Matcher, error) {
 	l, err := parse(MATCHERS, input)
 	if err != nil {
@@ -17,6 +18,7 @@ func Matchers(input string) ([]*labels.Matcher, error) {
 	return l.matcher, nil
 }
 
+// Labels parses a string and returns a set of labels.
 func Labels(input string) (labels.Labels, error) {
 	l, err := parse(LABELS, input)
 	if err != nil {
@@ -33,8 +35,7 @@ func parse(thing int, input string) (*lexer, error) {
 		},
 	}
 	l.Init(strings.NewReader(input))
-	parser := labelsNewParser()
-	e := parser.Parse(&l)
+	e := labelsParse(&l)
 	if e != 0 {
 		return nil, l.err
 	}

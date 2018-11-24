@@ -19,6 +19,7 @@ const (
 	defaulSince       = 1 * time.Hour
 )
 
+// nolint
 func intParam(values url.Values, name string, def int) (int, error) {
 	value := values.Get(name)
 	if value == "" {
@@ -42,6 +43,7 @@ func unixNanoTimeParam(values url.Values, name string, def time.Time) (time.Time
 	return time.Unix(0, nanos), nil
 }
 
+// nolint
 func directionParam(values url.Values, name string, def logproto.Direction) (logproto.Direction, error) {
 	value := values.Get(name)
 	if value == "" {
@@ -55,6 +57,7 @@ func directionParam(values url.Values, name string, def logproto.Direction) (log
 	return logproto.Direction(d), nil
 }
 
+// QueryHandler is a http.HandlerFunc for queries.
 func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
 	params := r.URL.Query()
 	query := params.Get("query")
@@ -105,6 +108,7 @@ func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// LabelHandler is a http.HandlerFunc for handling label queries.
 func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	name, ok := mux.Vars(r)["name"]
 	req := &logproto.LabelRequest{

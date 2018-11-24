@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/tempo/pkg/logproto"
 )
 
+// PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	var req logproto.PushRequest
 	if _, err := util.ParseProtoReader(r.Context(), r.Body, &req, util.RawSnappy); err != nil {

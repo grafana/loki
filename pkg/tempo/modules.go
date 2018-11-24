@@ -21,6 +21,7 @@ import (
 
 type moduleName int
 
+// The various modules that make up Tempo.
 const (
 	Ring moduleName = iota
 	Server
@@ -142,43 +143,44 @@ func (t *Tempo) initIngester() (err error) {
 	return
 }
 
-func (t *Tempo) stopIngester() {
+func (t *Tempo) stopIngester() error {
 	t.ingester.Shutdown()
+	return nil
 }
 
 type module struct {
 	deps []moduleName
 	init func(t *Tempo) error
-	stop func(t *Tempo)
+	stop func(t *Tempo) error
 }
 
 var modules = map[moduleName]module{
-	Server: module{
+	Server: {
 		init: (*Tempo).initServer,
 	},
 
-	Ring: module{
+	Ring: {
 		deps: []moduleName{Server},
 		init: (*Tempo).initRing,
 	},
 
-	Distributor: module{
+	Distributor: {
 		deps: []moduleName{Ring, Server},
 		init: (*Tempo).initDistributor,
 	},
 
-	Ingester: module{
+	Ingester: {
 		deps: []moduleName{Server},
 		init: (*Tempo).initIngester,
 		stop: (*Tempo).stopIngester,
 	},
 
-	Querier: module{
+	Querier: {
 		deps: []moduleName{Ring, Server},
 		init: (*Tempo).initQuerier,
 	},
 
-	All: module{
+	All: {
 		deps: []moduleName{Querier, Ingester, Distributor},
 	},
 }

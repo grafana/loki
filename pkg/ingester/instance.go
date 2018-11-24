@@ -9,15 +9,16 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/grafana/tempo/pkg/helpers"
 	"github.com/grafana/tempo/pkg/iter"
 	"github.com/grafana/tempo/pkg/logproto"
 	"github.com/grafana/tempo/pkg/parser"
 	"github.com/grafana/tempo/pkg/querier"
-	"github.com/grafana/tempo/pkg/util"
 )
 
 const queryBatchSize = 128
 
+// Errors returned on Query.
 var (
 	ErrStreamMissing = errors.New("Stream missing")
 )
@@ -106,7 +107,7 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	i.streamsMtx.Unlock()
 
 	iterator := iter.NewHeapIterator(iterators, req.Direction)
-	defer iterator.Close()
+	defer helpers.LogError("closing iterator", iterator.Close)
 
 	if req.Regex != "" {
 		var err error
@@ -144,7 +145,7 @@ func isDone(ctx context.Context) bool {
 func sendBatches(i iter.EntryIterator, queryServer logproto.Querier_QueryServer, limit uint32) error {
 	sent := uint32(0)
 	for sent < limit && !isDone(queryServer.Context()) {
-		batch, batchSize, err := querier.ReadBatch(i, util.MinUint32(queryBatchSize, limit-sent))
+		batch, batchSize, err := querier.ReadBatch(i, helpers.MinUint32(queryBatchSize, limit-sent))
 		if err != nil {
 			return err
 		}

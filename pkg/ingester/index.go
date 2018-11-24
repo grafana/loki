@@ -97,6 +97,7 @@ func (i *invertedIndex) lookupLabelValues(name string) []string {
 	return res
 }
 
+// nolint
 func (i *invertedIndex) delete(ls labels.Labels, id string) {
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
