@@ -87,7 +87,7 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) $(PROTO_GOS) $(YACC_GOS) lint test shell: tempo-build-image/$(UPTODATE)
+$(EXES) $(PROTO_GOS) $(YACC_GOS) lint test shell check-generated-files: tempo-build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) docker run $(RM) $(TTY) -i \
@@ -116,7 +116,10 @@ $(EXES): tempo-build-image/$(UPTODATE)
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
 
 lint: tempo-build-image/$(UPTODATE)
-	./tools/lint -notestpackage -ignorespelling queriers -ignorespelling Queriers .
+	gometalinter ./...
+
+check-generated-files: tempo-build-image/$(UPTODATE) yacc protos
+	@git diff-files || (echo "changed files; failing check" && exit 1)
 
 test: tempo-build-image/$(UPTODATE)
 	go test ./...
