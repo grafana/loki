@@ -3,6 +3,7 @@ package promtail
 import (
 	"fmt"
 	"io/ioutil"
+	"path/filepath"
 	"strings"
 
 	yaml "gopkg.in/yaml.v2"
@@ -11,6 +12,7 @@ import (
 	sd_config "github.com/prometheus/prometheus/discovery/config"
 )
 
+// Config for promtail, describing what files to watch.
 type Config struct {
 	ScrapeConfig []ScrapeConfig `yaml:"scrape_configs,omitempty"`
 
@@ -18,8 +20,9 @@ type Config struct {
 	XXX map[string]interface{} `yaml:",inline"`
 }
 
+// LoadConfig loads config from a file.
 func LoadConfig(filename string) (*Config, error) {
-	buf, err := ioutil.ReadFile(filename)
+	buf, err := ioutil.ReadFile(filepath.Clean(filename))
 	if err != nil {
 		return nil, err
 	}
@@ -45,6 +48,7 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
+// ScrapeConfig describes a job to scrape.
 type ScrapeConfig struct {
 	JobName                string                           `yaml:"job_name,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`

@@ -9,12 +9,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	log "github.com/sirupsen/logrus"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 
 	"github.com/grafana/tempo/pkg/logproto"
@@ -40,18 +42,21 @@ func init() {
 	prometheus.MustRegister(requestDuration)
 }
 
+// ClientConfig describes configuration for a HTTP pusher client.
 type ClientConfig struct {
 	URL       flagext.URLValue
 	BatchWait time.Duration
 	BatchSize int
 }
 
+// RegisterFlags registers flags.
 func (c *ClientConfig) RegisterFlags(flags *flag.FlagSet) {
 	flags.Var(&c.URL, "client.url", "URL of log server")
 	flags.DurationVar(&c.BatchWait, "client.batch-wait", 1*time.Second, "Maximum wait period before sending batch.")
 	flags.IntVar(&c.BatchSize, "client.batch-size-bytes", 100*1024, "Maximum batch size to accrue before sending. ")
 }
 
+// Client for pushing logs in snappy-compressed protos over HTTP.
 type Client struct {
 	cfg     ClientConfig
 	quit    chan struct{}
@@ -64,6 +69,7 @@ type entry struct {
 	logproto.Entry
 }
 
+// NewClient makes a new Client.
 func NewClient(cfg ClientConfig) (*Client, error) {
 	c := &Client{
 		cfg:     cfg,
@@ -81,7 +87,9 @@ func (c *Client) run() {
 	maxWait := time.NewTimer(c.cfg.BatchWait)
 
 	defer func() {
-		c.send(batch)
+		if err := c.send(batch); err != nil {
+			level.Error(util.Logger).Log("msg", "error sending batch", "error", err)
+		}
 		c.wg.Done()
 	}()
 
@@ -137,11 +145,13 @@ func (c *Client) send(batch map[model.Fingerprint]*logproto.Stream) error {
 	start := time.Now()
 	resp, err := http.Post(c.cfg.URL.String(), contentType, bytes.NewReader(buf))
 	if err != nil {
-		requestDuration.WithLabelValues("failed").Observe(start.Sub(time.Now()).Seconds())
+		requestDuration.WithLabelValues("failed").Observe(time.Until(start).Seconds())
 		return err
 	}
-	resp.Body.Close()
-	requestDuration.WithLabelValues(strconv.Itoa(resp.StatusCode)).Observe(start.Sub(time.Now()).Seconds())
+	if err := resp.Body.Close(); err != nil {
+		return err
+	}
+	requestDuration.WithLabelValues(strconv.Itoa(resp.StatusCode)).Observe(time.Until(start).Seconds())
 
 	if resp.StatusCode/100 != 2 {
 		return fmt.Errorf("Error doing write: %d - %s", resp.StatusCode, resp.Status)
@@ -149,11 +159,13 @@ func (c *Client) send(batch map[model.Fingerprint]*logproto.Stream) error {
 	return nil
 }
 
+// Stop the client.
 func (c *Client) Stop() {
 	close(c.quit)
 	c.wg.Wait()
 }
 
+// Line adds a new line to the next batch; send is async.
 func (c *Client) Line(ls model.LabelSet, t time.Time, s string) error {
 	c.entries <- entry{ls, logproto.Entry{
 		Timestamp: t,

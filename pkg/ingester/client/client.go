@@ -15,12 +15,14 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
+// Config for an ingester client.
 type Config struct {
 	PoolConfig     cortex_client.PoolConfig `yaml:"pool_config,omitempty"`
 	MaxRecvMsgSize int                      `yaml:"max_recv_msg_size,omitempty"`
 	RemoteTimeout  time.Duration            `yaml:"remote_timeout,omitempty"`
 }
 
+// RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.PoolConfig.RegisterFlags(f)
 
@@ -29,6 +31,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RemoteTimeout, "ingester.client.timeout", 5*time.Second, "Timeout for ingester client RPCs.")
 }
 
+// New returns a new ingester client.
 func New(cfg Config, addr string) (grpc_health_v1.HealthClient, error) {
 	opts := []grpc.DialOption{
 		grpc.WithInsecure(),

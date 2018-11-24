@@ -1,7 +1,21 @@
 package chunkenc
 
 import (
+	"errors"
 	"io"
+	"time"
+
+	"github.com/grafana/tempo/pkg/iter"
+	"github.com/grafana/tempo/pkg/logproto"
+)
+
+// Errors returned by the chunk interface.
+var (
+	ErrChunkFull       = errors.New("Chunk full")
+	ErrOutOfOrder      = errors.New("Entry out of order")
+	ErrInvalidSize     = errors.New("invalid size")
+	ErrInvalidFlag     = errors.New("invalid flag")
+	ErrInvalidChecksum = errors.New("invalid checksum")
 )
 
 // Encoding is the identifier for a chunk encoding.
@@ -11,6 +25,7 @@ type Encoding uint8
 const (
 	EncNone Encoding = iota
 	EncGZIP
+	EncDumb
 )
 
 func (e Encoding) String() string {
@@ -19,9 +34,20 @@ func (e Encoding) String() string {
 		return "gzip"
 	case EncNone:
 		return "none"
+	case EncDumb:
+		return "dumb"
 	default:
 		return "unknown"
 	}
+}
+
+// Chunk is the interface for the compressed logs chunk format.
+type Chunk interface {
+	Bounds() (time.Time, time.Time)
+	SpaceFor(*logproto.Entry) bool
+	Append(*logproto.Entry) error
+	Iterator(from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error)
+	Size() int
 }
 
 // CompressionWriter is the writer that compresses the data passed to it.

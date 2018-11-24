@@ -42,10 +42,10 @@ func TestIterator(t *testing.T) {
 
 	for _, chk := range []struct {
 		name string
-		new  func() Chunk
+		new  func() chunkenc.Chunk
 	}{
-		{"dumbChunk", newChunk},
-		{"gzipChunk", func() Chunk { return chunkenc.NewMemChunk(chunkenc.EncGZIP) }},
+		{"dumbChunk", chunkenc.NewDumbChunk},
+		{"gzipChunk", func() chunkenc.Chunk { return chunkenc.NewMemChunk(chunkenc.EncGZIP) }},
 	} {
 		t.Run(chk.name, func(t *testing.T) {
 			chunk := chk.new()

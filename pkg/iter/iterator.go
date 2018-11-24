@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/grafana/tempo/pkg/helpers"
 	"github.com/grafana/tempo/pkg/logproto"
 )
 
@@ -98,6 +99,8 @@ type heapIterator struct {
 	errs []error
 }
 
+// NewHeapIterator returns a new iterator which uses a heap to merge together
+// entries for multiple interators.
 func NewHeapIterator(is []EntryIterator, direction logproto.Direction) EntryIterator {
 	result := &heapIterator{}
 	switch direction {
@@ -126,7 +129,7 @@ func (i *heapIterator) requeue(ei EntryIterator) {
 	if err := ei.Error(); err != nil {
 		i.errs = append(i.errs, err)
 	}
-	ei.Close()
+	helpers.LogError("closing iterator", ei.Close)
 }
 
 func (i *heapIterator) Next() bool {
@@ -184,6 +187,7 @@ func (i *heapIterator) Close() error {
 	return nil
 }
 
+// NewQueryResponseIterator returns an iterator over a QueryResponse.
 func NewQueryResponseIterator(resp *logproto.QueryResponse, direction logproto.Direction) EntryIterator {
 	is := make([]EntryIterator, 0, len(resp.Streams))
 	for i := range resp.Streams {
@@ -199,6 +203,7 @@ type queryClientIterator struct {
 	curr      EntryIterator
 }
 
+// NewQueryClientIterator returns an iterator over a QueryClient.
 func NewQueryClientIterator(client logproto.Querier_QueryClient, direction logproto.Direction) EntryIterator {
 	return &queryClientIterator{
 		client:    client,
@@ -243,6 +248,7 @@ type regexpFilter struct {
 	EntryIterator
 }
 
+// NewRegexpFilter returns an iterator that filters entries by regexp.
 func NewRegexpFilter(r string, i EntryIterator) (EntryIterator, error) {
 	re, err := regexp.Compile(r)
 	if err != nil {
@@ -270,7 +276,7 @@ type nonOverlappingIterator struct {
 	curr      EntryIterator
 }
 
-// NewNonOverlappingIterator gives a chained iterator over the iterators.
+// NewNonOverlappingIterator gives a chained iterator over a list of iterators.
 func NewNonOverlappingIterator(iterators []EntryIterator, labels string) EntryIterator {
 	return &nonOverlappingIterator{
 		labels:    labels,
@@ -312,6 +318,7 @@ type timeRangedIterator struct {
 	mint, maxt time.Time
 }
 
+// NewTimeRangedIterator returns an iterator which filters entries by time range.
 func NewTimeRangedIterator(it EntryIterator, mint, maxt time.Time) EntryIterator {
 	return &timeRangedIterator{
 		EntryIterator: it,
@@ -341,6 +348,8 @@ type entryIteratorBackward struct {
 	entries []logproto.Entry
 }
 
+// NewEntryIteratorBackward returns an iterator which loads all the entries
+// of an existing iterator, and then iterates over them backward.
 func NewEntryIteratorBackward(it EntryIterator) (EntryIterator, error) {
 	entries := make([]logproto.Entry, 0, 128)
 	for it.Next() {

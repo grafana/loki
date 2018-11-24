@@ -62,5 +62,7 @@ func main() {
 	}
 
 	defer server.Shutdown()
-	server.Run()
+	if err := server.Run(); err != nil {
+		level.Error(util.Logger).Log("msg", "Error running server", "error", err)
+	}
 }

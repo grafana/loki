@@ -1,14 +1,8 @@
 .uptodate
-!vendor/**/*.pb.go
-vendor/github.com/cortexproject/cortex/pkg/ingester/client/cortex.pb.go
-vendor/github.com/cortexproject/cortex/pkg/ring/ring.pb.go
 .pkg
 .cache
+*.output
+mixin/vendor/
 cmd/tempo/tempo
 cmd/promtail/promtail
-*.output
-/images/
-mixin/vendor/
-pkg/logproto/logproto.pb.go
-pkg/parser/labels.go
 /tempo

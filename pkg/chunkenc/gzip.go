@@ -22,12 +22,6 @@ var (
 	magicNumber = uint32(0x12EE56A)
 
 	chunkFormatV1 = byte(1)
-
-	// The errors on read.
-	ErrInvalidSize     = errors.New("invalid size")
-	ErrInvalidFlag     = errors.New("invalid flag")
-	ErrInvalidChecksum = errors.New("invalid checksum")
-	ErrOutOfOrder      = errors.New("out of order sample")
 )
 
 // The table gets initialized with sync.Once but may still cause a race
@@ -49,8 +43,6 @@ func newCRC32() hash.Hash32 {
 type MemChunk struct {
 	// The number of uncompressed bytes per block.
 	blockSize int
-	// The max number of blocks in a chunk.
-	maxBlocks int
 
 	// The finished blocks.
 	blocks []block
@@ -208,7 +200,7 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 		blk.b = b[blk.offset : blk.offset+l]
 
 		// Verify checksums.
-		expCRC := binary.BigEndian.Uint32(b[blk.offset+int(l):])
+		expCRC := binary.BigEndian.Uint32(b[blk.offset+l:])
 		if expCRC != crc32.Checksum(blk.b, castagnoliTable) {
 			return bc, ErrInvalidChecksum
 		}
@@ -227,7 +219,9 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 func (c *MemChunk) Bytes() ([]byte, error) {
 	if c.head != nil {
 		// When generating the bytes, we need to flush the data held in-buffer.
-		c.cut()
+		if err := c.cut(); err != nil {
+			return nil, err
+		}
 	}
 	crc32Hash := newCRC32()
 
@@ -276,7 +270,7 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 	}
 	eb.putHash(crc32Hash)
 
-	n, err = buf.Write(eb.get())
+	_, err = buf.Write(eb.get())
 	if err != nil {
 		return buf.Bytes(), errors.Wrap(err, "write block metas")
 	}
@@ -284,7 +278,7 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 	// Write the metasOffset.
 	eb.reset()
 	eb.putBE64int(metasOffset)
-	n, err = buf.Write(eb.get())
+	_, err = buf.Write(eb.get())
 	if err != nil {
 		return buf.Bytes(), errors.Wrap(err, "write metasOffset")
 	}
@@ -297,7 +291,7 @@ func (c *MemChunk) Encoding() Encoding {
 	return c.encoding
 }
 
-// NumSamples implements Chunk.
+// Size implements Chunk.
 func (c *MemChunk) Size() int {
 	ne := 0
 	for _, blk := range c.blocks {
@@ -459,7 +453,10 @@ func (li *listIterator) Next() bool {
 }
 
 func (li *listIterator) Entry() logproto.Entry {
-	return logproto.Entry{time.Unix(0, li.cur.t), li.cur.s}
+	return logproto.Entry{
+		Timestamp: time.Unix(0, li.cur.t),
+		Line:      li.cur.s,
+	}
 }
 
 func (li *listIterator) Error() error   { return nil }
@@ -518,7 +515,7 @@ func (si *bufferedIterator) Next() bool {
 		return false
 	}
 	if n < int(l) {
-		n, err = si.s.Read(si.buf[n:l])
+		_, err = si.s.Read(si.buf[n:l])
 		if err != nil {
 			si.err = err
 			return false
@@ -532,17 +529,12 @@ func (si *bufferedIterator) Next() bool {
 }
 
 func (si *bufferedIterator) Entry() logproto.Entry {
-	return logproto.Entry{time.Unix(0, si.curT), si.curLog}
+	return logproto.Entry{
+		Timestamp: time.Unix(0, si.curT),
+		Line:      si.curLog,
+	}
 }
 
 func (si *bufferedIterator) Error() error   { return si.err }
 func (si *bufferedIterator) Close() error   { return si.err }
 func (si *bufferedIterator) Labels() string { return "" }
-
-type noopFlushingWriter struct {
-	io.WriteCloser
-}
-
-func (noopFlushingWriter) Flush() error {
-	return nil
-}

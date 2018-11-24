@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/grafana/tempo/pkg/helpers"
 	"github.com/hpcloud/tail"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -25,6 +26,7 @@ func init() {
 	prometheus.MustRegister(readBytes)
 }
 
+// Target describes a particular set of logs.
 type Target struct {
 	labels    model.LabelSet
 	client    *Client
@@ -37,6 +39,7 @@ type Target struct {
 	tails map[string]*tailer
 }
 
+// NewTarget create a new Target.
 func NewTarget(c *Client, positions *Positions, path string, labels model.LabelSet) (*Target, error) {
 	log.Info("newTarget", labels)
 
@@ -46,7 +49,7 @@ func NewTarget(c *Client, positions *Positions, path string, labels model.LabelS
 	}
 
 	if err := watcher.Add(path); err != nil {
-		watcher.Close()
+		helpers.LogError("closing watcher", watcher.Close)
 		return nil, err
 	}
 
@@ -83,15 +86,16 @@ func NewTarget(c *Client, positions *Positions, path string, labels model.LabelS
 	return t, nil
 }
 
+// Stop the target.
 func (t *Target) Stop() {
 	close(t.quit)
 }
 
 func (t *Target) run() {
 	defer func() {
-		t.watcher.Close()
+		helpers.LogError("closing watcher", t.watcher.Close)
 		for _, v := range t.tails {
-			v.stop()
+			helpers.LogError("stopping tailer", v.stop)
 		}
 	}()
 
@@ -117,7 +121,7 @@ func (t *Target) run() {
 			case fsnotify.Remove:
 				tailer, ok := t.tails[event.Name]
 				if ok {
-					tailer.stop()
+					helpers.LogError("stopping tailer", tailer.stop)
 					delete(t.tails, event.Name)
 				}
 
@@ -212,6 +216,6 @@ func (t *tailer) run() {
 	}
 }
 
-func (t *tailer) stop() {
-	t.tail.Stop()
+func (t *tailer) stop() error {
+	return t.tail.Stop()
 }

@@ -4,8 +4,10 @@ import (
 	"flag"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/tempo/pkg/helpers"
 	"github.com/grafana/tempo/pkg/tempo"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
@@ -34,20 +36,26 @@ func main() {
 
 	t, err := tempo.New(cfg)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initialising module", "err", err)
+		level.Error(util.Logger).Log("msg", "error initialising tempo", "err", err)
 		os.Exit(1)
 	}
 
-	t.Run()
-	t.Stop()
+	if err := t.Run(); err != nil {
+		level.Error(util.Logger).Log("msg", "error running tempo", "err", err)
+	}
+
+	if err := t.Stop(); err != nil {
+		level.Error(util.Logger).Log("msg", "error stopping tempo", "err", err)
+		os.Exit(1)
+	}
 }
 
 func readConfig(filename string, cfg *tempo.Config) error {
-	f, err := os.Open(filename)
+	f, err := os.Open(filepath.Clean(filename))
 	if err != nil {
 		return errors.Wrap(err, "error opening config file")
 	}
-	defer f.Close()
+	defer helpers.LogError("closing config", f.Close)
 
 	buf, err := ioutil.ReadAll(f)
 	if err != nil {

@@ -1,11 +1,9 @@
-package ingester
+package chunkenc
 
 import (
 	"log"
 	"sort"
 	"time"
-
-	"github.com/pkg/errors"
 
 	"github.com/grafana/tempo/pkg/iter"
 	"github.com/grafana/tempo/pkg/logproto"
@@ -15,22 +13,8 @@ const (
 	tmpNumEntries = 1024
 )
 
-// Errors returned by the chunk interface.
-var (
-	ErrChunkFull  = errors.New("Chunk full")
-	ErrOutOfOrder = errors.New("Entry out of order")
-)
-
-// Chunk is the interface for the compressed logs chunk format.
-type Chunk interface {
-	Bounds() (time.Time, time.Time)
-	SpaceFor(*logproto.Entry) bool
-	Append(*logproto.Entry) error
-	Iterator(from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error)
-	Size() int
-}
-
-func newChunk() Chunk {
+// NewDumbChunk returns a new chunk that isn't very good.
+func NewDumbChunk() Chunk {
 	return &dumbChunk{}
 }
 

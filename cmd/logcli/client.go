@@ -60,10 +60,14 @@ func doRequest(path string, out interface{}) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Println("error closing body", err)
+		}
+	}()
 
 	if resp.StatusCode/100 != 2 {
-		buf, _ := ioutil.ReadAll(resp.Body)
+		buf, _ := ioutil.ReadAll(resp.Body) // nolint
 		return fmt.Errorf("Error response from server: %s (%v)", string(buf), err)
 	}
 

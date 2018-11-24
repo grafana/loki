@@ -14,8 +14,6 @@ import (
 	"github.com/grafana/tempo/pkg/parser"
 )
 
-type labelsCache func(labels string) labels.Labels
-
 func doQuery() {
 	var (
 		i            iter.EntryIterator
@@ -137,7 +135,7 @@ func intersect(a, b labels.Labels) labels.Labels {
 	return result
 }
 
-// substract b from a
+// subtract b from a
 func subtract(a, b labels.Labels) labels.Labels {
 	var result labels.Labels
 	i, j := 0, 0

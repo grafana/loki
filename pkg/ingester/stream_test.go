@@ -17,10 +17,10 @@ func TestStreamIterator(t *testing.T) {
 
 	for _, chk := range []struct {
 		name string
-		new  func() Chunk
+		new  func() chunkenc.Chunk
 	}{
-		{"dumbChunk", newChunk},
-		{"gzipChunk", func() Chunk { return chunkenc.NewMemChunk(chunkenc.EncGZIP) }},
+		{"dumbChunk", chunkenc.NewDumbChunk},
+		{"gzipChunk", func() chunkenc.Chunk { return chunkenc.NewMemChunk(chunkenc.EncGZIP) }},
 	} {
 		t.Run(chk.name, func(t *testing.T) {
 			var s stream
@@ -34,7 +34,7 @@ func TestStreamIterator(t *testing.T) {
 					})
 					require.NoError(t, err)
 				}
-				s.chunks = append([]Chunk{chunk}, s.chunks...)
+				s.chunks = append([]chunkenc.Chunk{chunk}, s.chunks...)
 			}
 
 			for i := 0; i < 100; i++ {

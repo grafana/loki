@@ -20,8 +20,10 @@ const (
 	hostLabel = "__host__"
 )
 
+// NewTargetFunc is the type of function that creates a new target.
 type NewTargetFunc func(path string, labels model.LabelSet) (*Target, error)
 
+// TargetManager manages a set of targets.
 type TargetManager struct {
 	syncers map[string]*syncer
 	manager *discovery.Manager
@@ -39,6 +41,7 @@ func hostname() (string, error) {
 	return os.Hostname()
 }
 
+// NewTargetManager creates a new TargetManager.
 func NewTargetManager(
 	logger log.Logger,
 	scrapeConfig []ScrapeConfig,
@@ -84,6 +87,7 @@ func (tm *TargetManager) run() {
 	}
 }
 
+// Stop the TargetManager.
 func (tm *TargetManager) Stop() {
 	tm.quit()
 

@@ -45,7 +45,7 @@ const tmpMaxChunks = 3
 type stream struct {
 	// Newest chunk at chunks[0].
 	// Not thread-safe; assume accesses to this are locked by caller.
-	chunks []Chunk
+	chunks []chunkenc.Chunk
 	labels labels.Labels
 }
 
@@ -55,7 +55,7 @@ func newStream(labels labels.Labels) *stream {
 	}
 }
 
-func (s *stream) Push(ctx context.Context, entries []logproto.Entry) error {
+func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 	if len(s.chunks) == 0 {
 		s.chunks = append(s.chunks, chunkenc.NewMemChunk(chunkenc.EncGZIP))
 		chunksCreatedTotal.Inc()
@@ -64,7 +64,7 @@ func (s *stream) Push(ctx context.Context, entries []logproto.Entry) error {
 	for i := range entries {
 		if !s.chunks[0].SpaceFor(&entries[i]) {
 			samplesPerChunk.Observe(float64(s.chunks[0].Size()))
-			s.chunks = append([]Chunk{chunkenc.NewMemChunk(chunkenc.EncGZIP)}, s.chunks...)
+			s.chunks = append([]chunkenc.Chunk{chunkenc.NewMemChunk(chunkenc.EncGZIP)}, s.chunks...)
 			chunksCreatedTotal.Inc()
 		}
 		if err := s.chunks[0].Append(&entries[i]); err != nil {
