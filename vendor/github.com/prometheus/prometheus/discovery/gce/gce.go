@@ -17,6 +17,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,10 +41,12 @@ const (
 	gceLabelSubnetwork     = gceLabel + "subnetwork"
 	gceLabelPublicIP       = gceLabel + "public_ip"
 	gceLabelPrivateIP      = gceLabel + "private_ip"
+	gceLabelInstanceID     = gceLabel + "instance_id"
 	gceLabelInstanceName   = gceLabel + "instance_name"
 	gceLabelInstanceStatus = gceLabel + "instance_status"
 	gceLabelTags           = gceLabel + "tags"
 	gceLabelMetadata       = gceLabel + "metadata_"
+	gceLabelLabel          = gceLabel + "label_"
 	gceLabelMachineType    = gceLabel + "machine_type"
 )
 
@@ -208,6 +211,7 @@ func (d *Discovery) refresh() (tg *targetgroup.Group, err error) {
 			labels := model.LabelSet{
 				gceLabelProject:        model.LabelValue(d.project),
 				gceLabelZone:           model.LabelValue(inst.Zone),
+				gceLabelInstanceID:     model.LabelValue(strconv.FormatUint(inst.Id, 10)),
 				gceLabelInstanceName:   model.LabelValue(inst.Name),
 				gceLabelInstanceStatus: model.LabelValue(inst.Status),
 				gceLabelMachineType:    model.LabelValue(inst.MachineType),
@@ -237,6 +241,12 @@ func (d *Discovery) refresh() (tg *targetgroup.Group, err error) {
 					name := strutil.SanitizeLabelName(i.Key)
 					labels[gceLabelMetadata+model.LabelName(name)] = model.LabelValue(*i.Value)
 				}
+			}
+
+			// GCE labels are key-value pairs that group associated resources
+			for key, value := range inst.Labels {
+				name := strutil.SanitizeLabelName(key)
+				labels[gceLabelLabel+model.LabelName(name)] = model.LabelValue(value)
 			}
 
 			if len(priIface.AccessConfigs) > 0 {

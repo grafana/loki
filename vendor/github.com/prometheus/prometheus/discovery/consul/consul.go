@@ -30,7 +30,6 @@ import (
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
-	"github.com/prometheus/prometheus/util/httputil"
 	"github.com/prometheus/prometheus/util/strutil"
 )
 
@@ -44,6 +43,8 @@ const (
 	nodeLabel = model.MetaLabelPrefix + "consul_node"
 	// metaDataLabel is the prefix for the labels mapping to a target's metadata.
 	metaDataLabel = model.MetaLabelPrefix + "consul_metadata_"
+	// serviceMetaDataLabel is the prefix for the labels mapping to a target's service metadata.
+	serviceMetaDataLabel = model.MetaLabelPrefix + "consul_service_metadata_"
 	// tagsLabel is the name of the label containing the tags assigned to the target.
 	tagsLabel = model.MetaLabelPrefix + "consul_tags"
 	// serviceLabel is the name of the label containing the service name.
@@ -109,7 +110,7 @@ type SDConfig struct {
 	// See https://www.consul.io/api/catalog.html#list-services
 	// The list of services for which targets are discovered.
 	// Defaults to all services if empty.
-	Services []string `yaml:"services"`
+	Services []string `yaml:"services,omitempty"`
 	// An optional tag used to filter instances inside a service. A single tag is supported
 	// here to match the Consul API.
 	ServiceTag string `yaml:"tag,omitempty"`
@@ -146,7 +147,6 @@ func init() {
 // and updates them via watches.
 type Discovery struct {
 	client           *consul.Client
-	clientConf       *consul.Config
 	clientDatacenter string
 	tagSeparator     string
 	watchedServices  []string // Set of services which will be discovered.
@@ -154,6 +154,7 @@ type Discovery struct {
 	watchedNodeMeta  map[string]string
 	allowStale       bool
 	refreshInterval  time.Duration
+	finalizer        func()
 	logger           log.Logger
 }
 
@@ -163,11 +164,12 @@ func NewDiscovery(conf *SDConfig, logger log.Logger) (*Discovery, error) {
 		logger = log.NewNopLogger()
 	}
 
-	tls, err := httputil.NewTLSConfig(conf.TLSConfig)
+	tls, err := config_util.NewTLSConfig(&conf.TLSConfig)
 	if err != nil {
 		return nil, err
 	}
 	transport := &http.Transport{
+		IdleConnTimeout: 5 * time.Duration(conf.RefreshInterval),
 		TLSClientConfig: tls,
 		DialContext: conntrack.NewDialContextFunc(
 			conntrack.DialWithTracing(),
@@ -196,14 +198,14 @@ func NewDiscovery(conf *SDConfig, logger log.Logger) (*Discovery, error) {
 	}
 	cd := &Discovery{
 		client:           client,
-		clientConf:       clientConf,
 		tagSeparator:     conf.TagSeparator,
 		watchedServices:  conf.Services,
 		watchedTag:       conf.ServiceTag,
 		watchedNodeMeta:  conf.NodeMeta,
 		allowStale:       conf.AllowStale,
 		refreshInterval:  time.Duration(conf.RefreshInterval),
-		clientDatacenter: clientConf.Datacenter,
+		clientDatacenter: conf.Datacenter,
+		finalizer:        transport.CloseIdleConnections,
 		logger:           logger,
 	}
 	return cd, nil
@@ -297,6 +299,9 @@ func (d *Discovery) initialize(ctx context.Context) {
 
 // Run implements the Discoverer interface.
 func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
+	if d.finalizer != nil {
+		defer d.finalizer()
+	}
 	d.initialize(ctx)
 
 	if len(d.watchedServices) == 0 || d.watchedTag != "" {
@@ -504,6 +509,12 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Gr
 		for k, v := range node.NodeMeta {
 			name := strutil.SanitizeLabelName(k)
 			labels[metaDataLabel+model.LabelName(name)] = model.LabelValue(v)
+		}
+
+		// Add all key/value pairs from the service's metadata as their own labels
+		for k, v := range node.ServiceMeta {
+			name := strutil.SanitizeLabelName(k)
+			labels[serviceMetaDataLabel+model.LabelName(name)] = model.LabelValue(v)
 		}
 
 		tgroup.Targets = append(tgroup.Targets, labels)

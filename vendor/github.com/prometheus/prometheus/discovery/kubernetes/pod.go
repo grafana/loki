@@ -23,9 +23,10 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
-	"k8s.io/client-go/pkg/api"
-	apiv1 "k8s.io/client-go/pkg/api/v1"
+	apiv1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
 
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/util/strutil"
@@ -36,6 +37,7 @@ type Pod struct {
 	informer cache.SharedInformer
 	store    cache.Store
 	logger   log.Logger
+	queue    *workqueue.Type
 }
 
 // NewPod creates a new pod discovery.
@@ -43,75 +45,84 @@ func NewPod(l log.Logger, pods cache.SharedInformer) *Pod {
 	if l == nil {
 		l = log.NewNopLogger()
 	}
-	return &Pod{
+	p := &Pod{
 		informer: pods,
 		store:    pods.GetStore(),
 		logger:   l,
-	}
-}
-
-// Run implements the Discoverer interface.
-func (p *Pod) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
-	// Send full initial set of pod targets.
-	var initial []*targetgroup.Group
-	for _, o := range p.store.List() {
-		tg := p.buildPod(o.(*apiv1.Pod))
-		initial = append(initial, tg)
-
-		level.Debug(p.logger).Log("msg", "initial pod", "tg", fmt.Sprintf("%#v", tg))
-	}
-	select {
-	case <-ctx.Done():
-		return
-	case ch <- initial:
-	}
-
-	// Send target groups for pod updates.
-	send := func(tg *targetgroup.Group) {
-		if tg == nil {
-			return
-		}
-		level.Debug(p.logger).Log("msg", "pod update", "tg", fmt.Sprintf("%#v", tg))
-		select {
-		case <-ctx.Done():
-		case ch <- []*targetgroup.Group{tg}:
-		}
+		queue:    workqueue.NewNamed("pod"),
 	}
 	p.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(o interface{}) {
 			eventCount.WithLabelValues("pod", "add").Inc()
-
-			pod, err := convertToPod(o)
-			if err != nil {
-				level.Error(p.logger).Log("msg", "converting to Pod object failed", "err", err)
-				return
-			}
-			send(p.buildPod(pod))
+			p.enqueue(o)
 		},
 		DeleteFunc: func(o interface{}) {
 			eventCount.WithLabelValues("pod", "delete").Inc()
-
-			pod, err := convertToPod(o)
-			if err != nil {
-				level.Error(p.logger).Log("msg", "converting to Pod object failed", "err", err)
-				return
-			}
-			send(&targetgroup.Group{Source: podSource(pod)})
+			p.enqueue(o)
 		},
 		UpdateFunc: func(_, o interface{}) {
 			eventCount.WithLabelValues("pod", "update").Inc()
-
-			pod, err := convertToPod(o)
-			if err != nil {
-				level.Error(p.logger).Log("msg", "converting to Pod object failed", "err", err)
-				return
-			}
-			send(p.buildPod(pod))
+			p.enqueue(o)
 		},
 	})
+	return p
+}
+
+func (p *Pod) enqueue(obj interface{}) {
+	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
+	if err != nil {
+		return
+	}
+
+	p.queue.Add(key)
+}
+
+// Run implements the Discoverer interface.
+func (p *Pod) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
+	defer p.queue.ShutDown()
+
+	if !cache.WaitForCacheSync(ctx.Done(), p.informer.HasSynced) {
+		level.Error(p.logger).Log("msg", "pod informer unable to sync cache")
+		return
+	}
+
+	go func() {
+		for p.process(ctx, ch) {
+		}
+	}()
 
 	// Block until the target provider is explicitly canceled.
 	<-ctx.Done()
+}
+
+func (p *Pod) process(ctx context.Context, ch chan<- []*targetgroup.Group) bool {
+	keyObj, quit := p.queue.Get()
+	if quit {
+		return false
+	}
+	defer p.queue.Done(keyObj)
+	key := keyObj.(string)
+
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		return true
+	}
+
+	o, exists, err := p.store.GetByKey(key)
+	if err != nil {
+		return true
+	}
+	if !exists {
+		send(ctx, p.logger, RolePod, ch, &targetgroup.Group{Source: podSourceFromNamespaceAndName(namespace, name)})
+		return true
+	}
+	eps, err := convertToPod(o)
+	if err != nil {
+		level.Error(p.logger).Log("msg", "converting to Pod object failed", "err", err)
+		return true
+	}
+	send(ctx, p.logger, RolePod, ch, p.buildPod(eps))
+	return true
 }
 
 func convertToPod(o interface{}) (*apiv1.Pod, error) {
@@ -120,15 +131,7 @@ func convertToPod(o interface{}) (*apiv1.Pod, error) {
 		return pod, nil
 	}
 
-	deletedState, ok := o.(cache.DeletedFinalStateUnknown)
-	if !ok {
-		return nil, fmt.Errorf("Received unexpected object: %v", o)
-	}
-	pod, ok = deletedState.Obj.(*apiv1.Pod)
-	if !ok {
-		return nil, fmt.Errorf("DeletedFinalStateUnknown contained non-Pod object: %v", deletedState.Obj)
-	}
-	return pod, nil
+	return nil, fmt.Errorf("Received unexpected object: %v", o)
 }
 
 const (
@@ -139,21 +142,46 @@ const (
 	podContainerPortNumberLabel   = metaLabelPrefix + "pod_container_port_number"
 	podContainerPortProtocolLabel = metaLabelPrefix + "pod_container_port_protocol"
 	podReadyLabel                 = metaLabelPrefix + "pod_ready"
+	podPhaseLabel                 = metaLabelPrefix + "pod_phase"
 	podLabelPrefix                = metaLabelPrefix + "pod_label_"
 	podAnnotationPrefix           = metaLabelPrefix + "pod_annotation_"
 	podNodeNameLabel              = metaLabelPrefix + "pod_node_name"
 	podHostIPLabel                = metaLabelPrefix + "pod_host_ip"
 	podUID                        = metaLabelPrefix + "pod_uid"
+	podControllerKind             = metaLabelPrefix + "pod_controller_kind"
+	podControllerName             = metaLabelPrefix + "pod_controller_name"
 )
+
+// GetControllerOf returns a pointer to a copy of the controllerRef if controllee has a controller
+// https://github.com/kubernetes/apimachinery/blob/cd2cae2b39fa57e8063fa1f5f13cfe9862db3d41/pkg/apis/meta/v1/controller_ref.go
+func GetControllerOf(controllee metav1.Object) *metav1.OwnerReference {
+	for _, ref := range controllee.GetOwnerReferences() {
+		if ref.Controller != nil && *ref.Controller {
+			return &ref
+		}
+	}
+	return nil
+}
 
 func podLabels(pod *apiv1.Pod) model.LabelSet {
 	ls := model.LabelSet{
 		podNameLabel:     lv(pod.ObjectMeta.Name),
 		podIPLabel:       lv(pod.Status.PodIP),
 		podReadyLabel:    podReady(pod),
+		podPhaseLabel:    lv(string(pod.Status.Phase)),
 		podNodeNameLabel: lv(pod.Spec.NodeName),
 		podHostIPLabel:   lv(pod.Status.HostIP),
 		podUID:           lv(string(pod.ObjectMeta.UID)),
+	}
+
+	createdBy := GetControllerOf(pod)
+	if createdBy != nil {
+		if createdBy.Kind != "" {
+			ls[podControllerKind] = lv(createdBy.Kind)
+		}
+		if createdBy.Name != "" {
+			ls[podControllerName] = lv(createdBy.Name)
+		}
 	}
 
 	for k, v := range pod.Labels {
@@ -212,7 +240,11 @@ func (p *Pod) buildPod(pod *apiv1.Pod) *targetgroup.Group {
 }
 
 func podSource(pod *apiv1.Pod) string {
-	return "pod/" + pod.Namespace + "/" + pod.Name
+	return podSourceFromNamespaceAndName(pod.Namespace, pod.Name)
+}
+
+func podSourceFromNamespaceAndName(namespace, name string) string {
+	return "pod/" + namespace + "/" + name
 }
 
 func podReady(pod *apiv1.Pod) model.LabelValue {
@@ -221,5 +253,5 @@ func podReady(pod *apiv1.Pod) model.LabelValue {
 			return lv(strings.ToLower(string(cond.Status)))
 		}
 	}
-	return lv(strings.ToLower(string(api.ConditionUnknown)))
+	return lv(strings.ToLower(string(apiv1.ConditionUnknown)))
 }

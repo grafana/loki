@@ -39,6 +39,7 @@ const (
 
 // HypervisorDiscovery discovers OpenStack hypervisors.
 type HypervisorDiscovery struct {
+	provider *gophercloud.ProviderClient
 	authOpts *gophercloud.AuthOptions
 	region   string
 	interval time.Duration
@@ -47,9 +48,9 @@ type HypervisorDiscovery struct {
 }
 
 // NewHypervisorDiscovery returns a new hypervisor discovery.
-func NewHypervisorDiscovery(opts *gophercloud.AuthOptions,
+func NewHypervisorDiscovery(provider *gophercloud.ProviderClient, opts *gophercloud.AuthOptions,
 	interval time.Duration, port int, region string, l log.Logger) *HypervisorDiscovery {
-	return &HypervisorDiscovery{authOpts: opts,
+	return &HypervisorDiscovery{provider: provider, authOpts: opts,
 		region: region, interval: interval, port: port, logger: l}
 }
 
@@ -100,11 +101,11 @@ func (h *HypervisorDiscovery) refresh() (*targetgroup.Group, error) {
 		}
 	}()
 
-	provider, err := openstack.AuthenticatedClient(*h.authOpts)
+	err = openstack.Authenticate(h.provider, *h.authOpts)
 	if err != nil {
-		return nil, fmt.Errorf("could not create OpenStack session: %s", err)
+		return nil, fmt.Errorf("could not authenticate to OpenStack: %s", err)
 	}
-	client, err := openstack.NewComputeV2(provider, gophercloud.EndpointOpts{
+	client, err := openstack.NewComputeV2(h.provider, gophercloud.EndpointOpts{
 		Region: h.region,
 	})
 	if err != nil {
@@ -123,9 +124,7 @@ func (h *HypervisorDiscovery) refresh() (*targetgroup.Group, error) {
 			return false, fmt.Errorf("could not extract hypervisors: %s", err)
 		}
 		for _, hypervisor := range hypervisorList {
-			labels := model.LabelSet{
-				openstackLabelHypervisorHostIP: model.LabelValue(hypervisor.HostIP),
-			}
+			labels := model.LabelSet{}
 			addr := net.JoinHostPort(hypervisor.HostIP, fmt.Sprintf("%d", h.port))
 			labels[model.AddressLabel] = model.LabelValue(addr)
 			labels[openstackLabelHypervisorHostName] = model.LabelValue(hypervisor.HypervisorHostname)

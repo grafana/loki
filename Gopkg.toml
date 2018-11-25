@@ -45,12 +45,16 @@
 # For Prometheus
 
 [[override]]
-  name = "k8s.io/client-go"
-  revision = "3627aeb7d4f6ade38f995d2c923e459146493c7e"
+  name = "k8s.io/api"
+  revision = "072894a440bdee3a891dea811fe42902311cd2a3"
 
 [[override]]
   name = "k8s.io/apimachinery"
-  revision = "75b8dd260ef0469d96d578705a87cffd0e09dab8"
+  revision = "103fd098999dc9c0c88536f5c9ad2e5da39373ae"
+
+[[override]]
+  name = "k8s.io/client-go"
+  version = "v8.0.0"
 
 [[override]]
   name = "github.com/ugorji/go"
@@ -62,7 +66,7 @@
 
 [[override]]
   name = "github.com/Azure/go-autorest"
-  revision = "8a25372bbfec739b8719a9e3987400d15ef9e179"
+  version = "10.8.1"
 
 [prune]
   go-tests = true
