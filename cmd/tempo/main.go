@@ -62,7 +62,7 @@ func readConfig(filename string, cfg *tempo.Config) error {
 		return errors.Wrap(err, "Error reading config file: %v")
 	}
 
-	if err := yaml.Unmarshal(buf, &cfg); err != nil {
+	if err := yaml.UnmarshalStrict(buf, &cfg); err != nil {
 		return errors.Wrap(err, "Error reading config file: %v")
 	}
 	return nil

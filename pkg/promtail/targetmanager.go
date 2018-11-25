@@ -61,7 +61,6 @@ func NewTargetManager(
 	}
 
 	config := map[string]sd_config.ServiceDiscoveryConfig{}
-
 	for _, cfg := range scrapeConfig {
 		s := &syncer{
 			log:           logger,
@@ -75,6 +74,7 @@ func NewTargetManager(
 	}
 
 	go tm.run()
+	go tm.manager.Run()
 
 	return tm, tm.manager.ApplyConfig(config)
 }
@@ -109,10 +109,13 @@ func (s *syncer) Sync(groups []*targetgroup.Group) {
 
 	for _, group := range groups {
 		for _, t := range group.Targets {
+			level.Debug(s.log).Log("msg", "new target", "labels", t)
+
 			labels := group.Labels.Merge(t)
 			labels = relabel.Process(labels, s.relabelConfig...)
 			// Drop empty targets (drop in relabeling).
 			if labels == nil {
+				level.Debug(s.log).Log("msg", "dropping target, no labels")
 				continue
 			}
 

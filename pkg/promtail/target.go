@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/tempo/pkg/helpers"
 	"github.com/hpcloud/tail"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	log "github.com/sirupsen/logrus"
@@ -41,16 +42,14 @@ type Target struct {
 
 // NewTarget create a new Target.
 func NewTarget(c *Client, positions *Positions, path string, labels model.LabelSet) (*Target, error) {
-	log.Info("newTarget", labels)
-
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "fsnotify.NewWatcher")
 	}
 
 	if err := watcher.Add(path); err != nil {
 		helpers.LogError("closing watcher", watcher.Close)
-		return nil, err
+		return nil, errors.Wrap(err, "watcher.Add")
 	}
 
 	t := &Target{
@@ -66,7 +65,7 @@ func NewTarget(c *Client, positions *Positions, path string, labels model.LabelS
 	// Fist, we're going to add all the existing files
 	fis, err := ioutil.ReadDir(t.path)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "ioutil.ReadDir")
 	}
 	for _, fi := range fis {
 		if fi.IsDir() {

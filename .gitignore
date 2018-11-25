@@ -6,3 +6,4 @@ mixin/vendor/
 cmd/tempo/tempo
 cmd/promtail/promtail
 /tempo
+/promtail

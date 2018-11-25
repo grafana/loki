@@ -111,7 +111,7 @@ func readPositionsFile(filename string) (map[string]int64, error) {
 	}
 
 	var p positionsFile
-	if err := yaml.Unmarshal(buf, &p); err != nil {
+	if err := yaml.UnmarshalStrict(buf, &p); err != nil {
 		return nil, err
 	}
 
