@@ -6,13 +6,15 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/grafana/tempo/pkg/helpers"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/hpcloud/tail"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	log "github.com/sirupsen/logrus"
 	fsnotify "gopkg.in/fsnotify.v1"
+
+	"github.com/grafana/tempo/pkg/helpers"
 )
 
 var (
@@ -23,12 +25,18 @@ var (
 	}, []string{"path"})
 )
 
+const (
+	filename = "__filename__"
+)
+
 func init() {
 	prometheus.MustRegister(readBytes)
 }
 
 // Target describes a particular set of logs.
 type Target struct {
+	logger log.Logger
+
 	labels    model.LabelSet
 	client    *Client
 	positions *Positions
@@ -41,7 +49,7 @@ type Target struct {
 }
 
 // NewTarget create a new Target.
-func NewTarget(c *Client, positions *Positions, path string, labels model.LabelSet) (*Target, error) {
+func NewTarget(logger log.Logger, c *Client, positions *Positions, path string, labels model.LabelSet) (*Target, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, errors.Wrap(err, "fsnotify.NewWatcher")
@@ -53,6 +61,7 @@ func NewTarget(c *Client, positions *Positions, path string, labels model.LabelS
 	}
 
 	t := &Target{
+		logger:    logger,
 		labels:    labels,
 		watcher:   watcher,
 		path:      path,
@@ -72,9 +81,9 @@ func NewTarget(c *Client, positions *Positions, path string, labels model.LabelS
 			continue
 		}
 
-		tailer, err := newTailer(t, t.path, fi.Name())
+		tailer, err := newTailer(t.logger, t, t.path, fi.Name(), t.labels)
 		if err != nil {
-			log.Errorf("Failed to tail file: %v", err)
+			level.Error(t.logger).Log("msg", "failed to tail file", "error", err)
 			continue
 		}
 
@@ -105,13 +114,13 @@ func (t *Target) run() {
 			case fsnotify.Create:
 				// protect against double Creates.
 				if _, ok := t.tails[event.Name]; ok {
-					log.Infof("Got 'create' for existing file '%s'", event.Name)
+					level.Info(t.logger).Log("msg", "got 'create' for existing file", "filename", event.Name)
 					continue
 				}
 
-				tailer, err := newTailer(t, t.path, event.Name)
+				tailer, err := newTailer(t.logger, t, t.path, event.Name, t.labels)
 				if err != nil {
-					log.Errorf("Failed to tail file: %v", err)
+					level.Error(t.logger).Log("msg", "failed to tail file", "error", err)
 					continue
 				}
 
@@ -125,17 +134,17 @@ func (t *Target) run() {
 				}
 
 			default:
-				log.Println("event:", event)
+				level.Debug(t.logger).Log("msg", "got unknown event", "event", event)
 			}
 		case err := <-t.watcher.Errors:
-			log.Println("error:", err)
+			level.Error(t.logger).Log("msg", "error from fswatch", "error", err)
 		case <-t.quit:
 			return
 		}
 	}
 }
 
-func (t *Target) handleLine(_ time.Time, line string) error {
+func (t *Target) handleLine(labels model.LabelSet, _ time.Time, line string) error {
 	// Hard code to deal with docker-style json for now; eventually we'll use
 	// relabelling.
 	var entry struct {
@@ -146,16 +155,18 @@ func (t *Target) handleLine(_ time.Time, line string) error {
 	if err := json.Unmarshal([]byte(line), &entry); err != nil {
 		return err
 	}
-	return t.client.Line(t.labels, entry.Time, entry.Log)
+	return t.client.Line(labels, entry.Time, entry.Log)
 }
 
 type tailer struct {
+	logger log.Logger
 	target *Target
 	path   string
 	tail   *tail.Tail
+	labels model.LabelSet
 }
 
-func newTailer(target *Target, dir, name string) (*tailer, error) {
+func newTailer(logger log.Logger, target *Target, dir, name string, labels model.LabelSet) (*tailer, error) {
 	path := filepath.Join(dir, name)
 	tail, err := tail.TailFile(path, tail.Config{
 		Follow: true,
@@ -168,10 +179,18 @@ func newTailer(target *Target, dir, name string) (*tailer, error) {
 		return nil, err
 	}
 
+	labelsCp := make(model.LabelSet, len(labels)+1)
+	for k, v := range labels {
+		labelsCp[k] = v
+	}
+	labelsCp[filename] = model.LabelValue(path)
+
 	tailer := &tailer{
+		logger: logger,
 		target: target,
 		path:   path,
 		tail:   tail,
+		labels: labels,
 	}
 	go tailer.run()
 	return tailer, nil
@@ -179,10 +198,10 @@ func newTailer(target *Target, dir, name string) (*tailer, error) {
 
 func (t *tailer) run() {
 	defer func() {
-		log.Infof("Stopping tailing file: %s", t.path)
+		level.Info(t.logger).Log("msg", "stopping tailing file", "filename", t.path)
 	}()
 
-	log.Infof("Tailing file: %s", t.path)
+	level.Info(t.logger).Log("msg", "start tailing file", "filename", t.path)
 	positionSyncPeriod := t.target.positions.cfg.SyncPeriod
 	positionWait := time.NewTimer(positionSyncPeriod)
 	defer positionWait.Stop()
@@ -193,7 +212,7 @@ func (t *tailer) run() {
 		case <-positionWait.C:
 			pos, err := t.tail.Tell()
 			if err != nil {
-				log.Errorf("Error getting tail position: %v", err)
+				level.Error(t.logger).Log("msg", "error getting tail position", "error", err)
 				continue
 			}
 			t.target.positions.Put(t.path, pos)
@@ -204,12 +223,12 @@ func (t *tailer) run() {
 			}
 
 			if line.Err != nil {
-				log.Errorf("error reading line: %v", line.Err)
+				level.Error(t.logger).Log("msg", "error reading line", "error", line.Err)
 			}
 
 			readBytes.WithLabelValues(t.path).Add(float64(len(line.Text)))
-			if err := t.target.handleLine(line.Time, line.Text); err != nil {
-				log.Infof("error handling line: %v", err)
+			if err := t.target.handleLine(t.labels, line.Time, line.Text); err != nil {
+				level.Error(t.logger).Log("msg", "error handling line", "error", err)
 			}
 		}
 	}

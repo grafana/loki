@@ -14,18 +14,18 @@ type Promtail struct {
 }
 
 func New(cfg Config) (*Promtail, error) {
-	client, err := NewClient(cfg.ClientConfig)
+	client, err := NewClient(cfg.ClientConfig, util.Logger)
 	if err != nil {
 		return nil, err
 	}
 
-	positions, err := NewPositions(cfg.PositionsConfig)
+	positions, err := NewPositions(cfg.PositionsConfig, util.Logger)
 	if err != nil {
 		return nil, err
 	}
 
 	newTargetFunc := func(path string, labels model.LabelSet) (*Target, error) {
-		return NewTarget(client, positions, path, labels)
+		return NewTarget(util.Logger, client, positions, path, labels)
 	}
 	tm, err := NewTargetManager(util.Logger, cfg.ScrapeConfig, newTargetFunc)
 	if err != nil {
