@@ -26,25 +26,25 @@ import (
 
 // Config for a Server
 type Config struct {
-	MetricsNamespace string
-	HTTPListenPort   int
-	GRPCListenPort   int
+	MetricsNamespace string `yaml:"-"`
+	HTTPListenPort   int    `yaml:"http_listen_port"`
+	GRPCListenPort   int    `yaml:"grpc_listen_port"`
 
-	RegisterInstrumentation bool
-	ExcludeRequestInLog     bool
+	RegisterInstrumentation bool `yaml:"-"`
+	ExcludeRequestInLog     bool `yaml:"-"`
 
-	ServerGracefulShutdownTimeout time.Duration
-	HTTPServerReadTimeout         time.Duration
-	HTTPServerWriteTimeout        time.Duration
-	HTTPServerIdleTimeout         time.Duration
+	ServerGracefulShutdownTimeout time.Duration `yaml:"graceful_shutdown_timeout"`
+	HTTPServerReadTimeout         time.Duration `yaml:"http_server_read_timeout"`
+	HTTPServerWriteTimeout        time.Duration `yaml:"http_server_write_timeout"`
+	HTTPServerIdleTimeout         time.Duration `yaml:"http_server_idle_timeout"`
 
-	GRPCOptions          []grpc.ServerOption
-	GRPCMiddleware       []grpc.UnaryServerInterceptor
-	GRPCStreamMiddleware []grpc.StreamServerInterceptor
-	HTTPMiddleware       []middleware.Interface
+	GRPCOptions          []grpc.ServerOption            `yaml:"-"`
+	GRPCMiddleware       []grpc.UnaryServerInterceptor  `yaml:"-"`
+	GRPCStreamMiddleware []grpc.StreamServerInterceptor `yaml:"-"`
+	HTTPMiddleware       []middleware.Interface         `yaml:"-"`
 
 	LogLevel logging.Level
-	Log      logging.Interface
+	Log      logging.Interface `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

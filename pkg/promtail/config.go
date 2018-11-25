@@ -1,6 +1,7 @@
 package promtail
 
 import (
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
@@ -10,11 +11,21 @@ import (
 	"github.com/prometheus/prometheus/config"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
+	"github.com/weaveworks/common/server"
 )
 
 // Config for promtail, describing what files to watch.
 type Config struct {
-	ScrapeConfig []ScrapeConfig `yaml:"scrape_configs,omitempty"`
+	ServerConfig    server.Config   `yaml:"server,omitempty"`
+	ClientConfig    ClientConfig    `yaml:"client,omitempty"`
+	PositionsConfig PositionsConfig `yaml:"positions,omitempty"`
+	ScrapeConfig    []ScrapeConfig  `yaml:"scrape_configs,omitempty"`
+}
+
+func (c *Config) RegisterFlags(f *flag.FlagSet) {
+	c.ServerConfig.RegisterFlags(f)
+	c.ClientConfig.RegisterFlags(f)
+	c.PositionsConfig.RegisterFlags(f)
 }
 
 // LoadConfig loads config from a file.

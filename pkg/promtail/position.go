@@ -16,8 +16,8 @@ const positionFileMode = 0700
 
 // PositionsConfig describes where to get postition information from.
 type PositionsConfig struct {
-	SyncPeriod    time.Duration
-	PositionsFile string
+	SyncPeriod    time.Duration `yaml:"sync_period"`
+	PositionsFile string        `yaml:"filename"`
 }
 
 // RegisterFlags register flags.
