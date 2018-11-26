@@ -100,10 +100,18 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 			TableName: queries[0].TableName,
 			HashValue: queries[0].HashValue,
 		})
-		results[key] = ReadBatch{
+
+		rb := ReadBatch{
 			Key:    key,
 			Expiry: expiryTime.UnixNano(),
 		}
+
+		// If the query is cacheable forever, nil the expiry.
+		if queries[0].Cacheable {
+			rb.Expiry = 0
+		}
+
+		results[key] = rb
 	}
 
 	err := s.StorageClient.QueryPages(ctx, cacheableMissed, func(cacheableQuery chunk.IndexQuery, r chunk.ReadBatch) bool {
@@ -232,7 +240,7 @@ func (s *cachingStorageClient) cacheFetch(ctx context.Context, keys []string) (b
 
 		// Make sure the hash(key) is not a collision in the cache by looking at the
 		// key in the value.
-		if key != readBatch.Key || time.Now().After(time.Unix(0, readBatch.Expiry)) {
+		if key != readBatch.Key || (readBatch.Expiry != 0 && time.Now().After(time.Unix(0, readBatch.Expiry))) {
 			cacheCorruptErrs.Inc()
 			continue
 		}
