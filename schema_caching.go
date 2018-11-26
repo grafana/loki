@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/weaveworks/common/mtime"
 )
 
 type cachingSchema struct {
@@ -13,7 +14,7 @@ type cachingSchema struct {
 }
 
 func (s *cachingSchema) GetReadQueriesForMetric(from, through model.Time, userID string, metricName model.LabelValue) ([]IndexQuery, error) {
-	cFrom, cThrough, from, through := splitTimesByCacheability(from, through, model.Now().Add(-s.cacheOlderThan))
+	cFrom, cThrough, from, through := splitTimesByCacheability(from, through, model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix()))
 
 	cacheableQueries, err := s.Schema.GetReadQueriesForMetric(cFrom, cThrough, userID, metricName)
 	if err != nil {
@@ -29,7 +30,7 @@ func (s *cachingSchema) GetReadQueriesForMetric(from, through model.Time, userID
 }
 
 func (s *cachingSchema) GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName) ([]IndexQuery, error) {
-	cFrom, cThrough, from, through := splitTimesByCacheability(from, through, model.Now().Add(-s.cacheOlderThan))
+	cFrom, cThrough, from, through := splitTimesByCacheability(from, through, model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix()))
 
 	cacheableQueries, err := s.Schema.GetReadQueriesForMetricLabel(cFrom, cThrough, userID, metricName, labelName)
 	if err != nil {
@@ -45,7 +46,7 @@ func (s *cachingSchema) GetReadQueriesForMetricLabel(from, through model.Time, u
 }
 
 func (s *cachingSchema) GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexQuery, error) {
-	cFrom, cThrough, from, through := splitTimesByCacheability(from, through, model.Now().Add(-s.cacheOlderThan))
+	cFrom, cThrough, from, through := splitTimesByCacheability(from, through, model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix()))
 
 	cacheableQueries, err := s.Schema.GetReadQueriesForMetricLabelValue(cFrom, cThrough, userID, metricName, labelName, labelValue)
 	if err != nil {
@@ -62,7 +63,7 @@ func (s *cachingSchema) GetReadQueriesForMetricLabelValue(from, through model.Ti
 
 // If the query resulted in series IDs, use this method to find chunks.
 func (s *cachingSchema) GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
-	cFrom, cThrough, from, through := splitTimesByCacheability(from, through, model.Now().Add(-s.cacheOlderThan))
+	cFrom, cThrough, from, through := splitTimesByCacheability(from, through, model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix()))
 
 	cacheableQueries, err := s.Schema.GetChunksForSeries(cFrom, cThrough, userID, seriesID)
 	if err != nil {

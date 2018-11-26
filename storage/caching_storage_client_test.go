@@ -54,7 +54,7 @@ func TestCachingStorageClientBasic(t *testing.T) {
 	assert.EqualValues(t, 1, store.queries)
 }
 
-func TestCachingStorageClient(t *testing.T) {
+func TestTempCachingStorageClient(t *testing.T) {
 	store := &mockStore{
 		results: ReadBatch{
 			Entries: []Entry{{
@@ -64,7 +64,7 @@ func TestCachingStorageClient(t *testing.T) {
 		},
 	}
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingStorageClient(store, cache, 1*time.Second)
+	client := newCachingStorageClient(store, cache, 100*time.Millisecond)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo"},
 		{TableName: "table", HashValue: "bar"},
@@ -83,6 +83,76 @@ func TestCachingStorageClient(t *testing.T) {
 	assert.EqualValues(t, len(queries), results)
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
+	results = 0
+	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+		iter := batch.Iterator()
+		for iter.Next() {
+			results++
+		}
+		return true
+	})
+	require.NoError(t, err)
+	assert.EqualValues(t, len(queries), store.queries)
+	assert.EqualValues(t, len(queries), results)
+
+	// If we do the query after validity, it should see the queries.
+	time.Sleep(100 * time.Millisecond)
+	results = 0
+	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+		iter := batch.Iterator()
+		for iter.Next() {
+			results++
+		}
+		return true
+	})
+	require.NoError(t, err)
+	assert.EqualValues(t, 2*len(queries), store.queries)
+	assert.EqualValues(t, len(queries), results)
+}
+
+func TestPermCachingStorageClient(t *testing.T) {
+	store := &mockStore{
+		results: ReadBatch{
+			Entries: []Entry{{
+				Column: []byte("foo"),
+				Value:  []byte("bar"),
+			}},
+		},
+	}
+	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
+	client := newCachingStorageClient(store, cache, 100*time.Millisecond)
+	queries := []chunk.IndexQuery{
+		{TableName: "table", HashValue: "foo", Cacheable: true},
+		{TableName: "table", HashValue: "bar", Cacheable: true},
+		{TableName: "table", HashValue: "baz", Cacheable: true},
+	}
+	results := 0
+	err := client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+		iter := batch.Iterator()
+		for iter.Next() {
+			results++
+		}
+		return true
+	})
+	require.NoError(t, err)
+	assert.EqualValues(t, len(queries), store.queries)
+	assert.EqualValues(t, len(queries), results)
+
+	// If we do the query to the cache again, the underlying store shouldn't see it.
+	results = 0
+	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+		iter := batch.Iterator()
+		for iter.Next() {
+			results++
+		}
+		return true
+	})
+	require.NoError(t, err)
+	assert.EqualValues(t, len(queries), store.queries)
+	assert.EqualValues(t, len(queries), results)
+
+	// If we do the query after validity, it still shouldn't see the queries.
+	time.Sleep(200 * time.Millisecond)
 	results = 0
 	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		iter := batch.Iterator()
