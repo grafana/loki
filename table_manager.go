@@ -47,6 +47,9 @@ type TableManagerConfig struct {
 	// Master 'off-switch' for table capacity updates, e.g. when troubleshooting
 	ThroughputUpdatesDisabled bool
 
+	// Master 'off-switch' for table retention deletions
+	RetentionDeletesDisabled bool
+
 	// Period with which the table manager will poll for tables.
 	DynamoDBPollInterval time.Duration
 
@@ -72,6 +75,7 @@ type ProvisionConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ThroughputUpdatesDisabled, "table-manager.throughput-updates-disabled", false, "If true, disable all changes to DB capacity")
+	f.BoolVar(&cfg.RetentionDeletesDisabled, "table-manager.retention-deletes-disabled", false, "If true, disable all deletes of DB tables")
 	f.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
 	f.DurationVar(&cfg.CreationGracePeriod, "dynamodb.periodic-table.grace-period", 10*time.Minute, "DynamoDB periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
 
@@ -198,8 +202,12 @@ func (m *TableManager) SyncTables(ctx context.Context) error {
 	expected := m.calculateExpectedTables()
 	level.Info(util.Logger).Log("msg", "synching tables", "num_expected_tables", len(expected), "expected_tables", len(expected))
 
-	toCreate, toCheckThroughput, err := m.partitionTables(ctx, expected)
+	toCreate, toCheckThroughput, toDelete, err := m.partitionTables(ctx, expected)
 	if err != nil {
+		return err
+	}
+
+	if err := m.deleteTables(ctx, toDelete); err != nil {
 		return err
 	}
 
@@ -274,14 +282,20 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 }
 
 // partitionTables works out tables that need to be created vs tables that need to be updated
-func (m *TableManager) partitionTables(ctx context.Context, descriptions []TableDesc) ([]TableDesc, []TableDesc, error) {
+func (m *TableManager) partitionTables(ctx context.Context, descriptions []TableDesc) ([]TableDesc, []TableDesc, []TableDesc, error) {
 	existingTables, err := m.client.ListTables(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	sort.Strings(existingTables)
 
-	toCreate, toCheck := []TableDesc{}, []TableDesc{}
+	tablePrefixes := map[string]struct{}{}
+	for _, cfg := range m.schemaCfg.Configs {
+		tablePrefixes[cfg.IndexTables.Prefix] = struct{}{}
+		tablePrefixes[cfg.ChunkTables.Prefix] = struct{}{}
+	}
+
+	toCreate, toCheck, toDelete := []TableDesc{}, []TableDesc{}, []TableDesc{}
 	i, j := 0, 0
 	for i < len(descriptions) && j < len(existingTables) {
 		if descriptions[i].Name < existingTables[j] {
@@ -289,7 +303,16 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []Table
 			toCreate = append(toCreate, descriptions[i])
 			i++
 		} else if descriptions[i].Name > existingTables[j] {
-			// existingTables[j].name isn't in descriptions, can ignore
+			// existingTables[j].name isn't in descriptions, and can be removed
+			isMatch := false
+			for tblPrefix := range tablePrefixes {
+				if strings.HasPrefix(existingTables[j], tblPrefix) {
+					isMatch = true
+				}
+			}
+			if isMatch {
+				toDelete = append(toDelete, TableDesc{Name: existingTables[j]})
+			}
 			j++
 		} else {
 			// Table exists, need to check it has correct throughput
@@ -302,13 +325,29 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []Table
 		toCreate = append(toCreate, descriptions[i])
 	}
 
-	return toCreate, toCheck, nil
+	return toCreate, toCheck, toDelete, nil
 }
 
 func (m *TableManager) createTables(ctx context.Context, descriptions []TableDesc) error {
 	for _, desc := range descriptions {
 		level.Info(util.Logger).Log("msg", "creating table", "table", desc.Name)
 		err := m.client.CreateTable(ctx, desc)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *TableManager) deleteTables(ctx context.Context, descriptions []TableDesc) error {
+	for _, desc := range descriptions {
+		level.Info(util.Logger).Log("msg", "table has exceeded the retention period", "table", desc.Name)
+		if m.cfg.RetentionDeletesDisabled {
+			continue
+		}
+
+		level.Info(util.Logger).Log("msg", "deleting table", "table", desc.Name)
+		err := m.client.DeleteTable(ctx, desc.Name)
 		if err != nil {
 			return err
 		}

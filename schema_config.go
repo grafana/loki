@@ -299,15 +299,17 @@ func (cfg *PeriodConfig) dailyBuckets(from, through model.Time, userID string) [
 
 // PeriodicTableConfig is configuration for a set of time-sharded tables.
 type PeriodicTableConfig struct {
-	Prefix string        `yaml:"prefix"`
-	Period time.Duration `yaml:"period,omitempty"`
-	Tags   Tags          `yaml:"tags,omitempty"`
+	Prefix    string        `yaml:"prefix"`
+	Period    time.Duration `yaml:"period,omitempty"`
+	Retention int64         `yaml:"retention,omitempty"`
+	Tags      Tags          `yaml:"tags,omitempty"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *PeriodicTableConfig) RegisterFlags(argPrefix, tablePrefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Prefix, argPrefix+".prefix", tablePrefix, "DynamoDB table prefix for period tables.")
 	f.DurationVar(&cfg.Period, argPrefix+".period", 7*24*time.Hour, "DynamoDB table period.")
+	f.Int64Var(&cfg.Retention, argPrefix+".retention", 0, "Number of tables to keep, (0 disables retention).")
 	f.Var(&cfg.Tags, argPrefix+".tag", "Tag (of the form key=value) to be added to all tables under management.")
 }
 
@@ -346,6 +348,10 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 	// If through ends on 00:00 of the day, don't include the upcoming day
 	if through.Unix()%secondsInDay == 0 {
 		lastTable--
+	}
+	// Don't make tables further back than the configured retention
+	if cfg.Retention > 0 && lastTable > cfg.Retention && lastTable-firstTable >= cfg.Retention {
+		firstTable = lastTable - cfg.Retention
 	}
 	for i := firstTable; i <= lastTable; i++ {
 		table := TableDesc{

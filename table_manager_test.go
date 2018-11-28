@@ -69,6 +69,14 @@ func (m *mockTableClient) CreateTable(_ context.Context, desc TableDesc) error {
 	return nil
 }
 
+func (m *mockTableClient) DeleteTable(_ context.Context, name string) error {
+	m.Lock()
+	defer m.Unlock()
+
+	delete(m.tables, name)
+	return nil
+}
+
 func (m *mockTableClient) DescribeTable(_ context.Context, name string) (desc TableDesc, isActive bool, err error) {
 	m.Lock()
 	defer m.Unlock()
@@ -439,4 +447,118 @@ func TestTableManagerTags(t *testing.T) {
 			},
 		)
 	}
+}
+
+func TestTableManagerRetentionOnly(t *testing.T) {
+	client := newMockTableClient()
+
+	cfg := SchemaConfig{
+		Configs: []PeriodConfig{
+			{
+				From: model.TimeFromUnix(baseTableStart.Unix()),
+				IndexTables: PeriodicTableConfig{
+					Prefix:    tablePrefix,
+					Period:    tablePeriod,
+					Retention: 2,
+				},
+
+				ChunkTables: PeriodicTableConfig{
+					Prefix:    chunkTablePrefix,
+					Period:    tablePeriod,
+					Retention: 2,
+				},
+			},
+		},
+	}
+	tbmConfig := TableManagerConfig{
+		CreationGracePeriod: gracePeriod,
+		IndexTables: ProvisionConfig{
+			ProvisionedWriteThroughput: write,
+			ProvisionedReadThroughput:  read,
+			InactiveWriteThroughput:    inactiveWrite,
+			InactiveReadThroughput:     inactiveRead,
+			InactiveWriteScale:         inactiveScalingConfig,
+			InactiveWriteScaleLastN:    autoScaleLastN,
+		},
+		ChunkTables: ProvisionConfig{
+			ProvisionedWriteThroughput: write,
+			ProvisionedReadThroughput:  read,
+			InactiveWriteThroughput:    inactiveWrite,
+			InactiveReadThroughput:     inactiveRead,
+		},
+	}
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check at time zero, we have one weekly table
+	tmTest(t, client, tableManager,
+		"Initial test",
+		baseTableStart,
+		[]TableDesc{
+			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+		},
+	)
+
+	// Check after one week, we have two weekly tables
+	tmTest(t, client, tableManager,
+		"Move forward by one table period",
+		baseTableStart.Add(tablePeriod),
+		[]TableDesc{
+			{Name: tablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "0", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
+		},
+	)
+
+	// Check after two weeks, we have three tables (two previous periods and the new one)
+	tmTest(t, client, tableManager,
+		"Move forward by two table periods",
+		baseTableStart.Add(tablePeriod*2),
+		[]TableDesc{
+			{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
+			{Name: tablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "2", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: chunkTablePrefix + "1", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "2", ProvisionedRead: read, ProvisionedWrite: write},
+		},
+	)
+
+	// Check after three weeks, we have three tables (two previous periods and the new one), table 0 was deleted
+	tmTest(t, client, tableManager,
+		"Move forward by three table periods",
+		baseTableStart.Add(tablePeriod*3),
+		[]TableDesc{
+			{Name: tablePrefix + "1", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
+			{Name: tablePrefix + "2", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "3", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "1", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: chunkTablePrefix + "2", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "3", ProvisionedRead: read, ProvisionedWrite: write},
+		},
+	)
+
+	// Verify that with RetentionDeletesDisasbled set no tables are removed
+	tableManager.cfg.RetentionDeletesDisabled = true
+	// Retention > 0 will prevent older tables from being created so we need to create the old tables manually for the test
+	client.CreateTable(nil, TableDesc{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig})
+	client.CreateTable(nil, TableDesc{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite})
+	tmTest(t, client, tableManager,
+		"Move forward by three table periods (no deletes)",
+		baseTableStart.Add(tablePeriod*3),
+		[]TableDesc{
+			{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
+			{Name: tablePrefix + "1", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
+			{Name: tablePrefix + "2", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "3", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: chunkTablePrefix + "1", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: chunkTablePrefix + "2", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "3", ProvisionedRead: read, ProvisionedWrite: write},
+		},
+	)
 }
