@@ -18,6 +18,7 @@ package encoding
 
 import (
 	"encoding/binary"
+	"flag"
 	"fmt"
 	"io"
 	"math"
@@ -314,8 +315,21 @@ func (c varbitChunk) Utilization() float64 {
 	return math.Min(float64(c.nextSampleOffset()/8+15)/float64(cap(c)), 1)
 }
 
+// MarshalConfig configures the behaviour of marshalling
+type MarshalConfig struct{}
+
+var alwaysMarshalFullsizeChunks = true
+
+// RegisterFlags registers configuration settings.
+func (MarshalConfig) RegisterFlags(f *flag.FlagSet) {
+	flag.BoolVar(&alwaysMarshalFullsizeChunks, "store.fullsize-chunks", alwaysMarshalFullsizeChunks, "When saving varbit chunks, pad to 1024 bytes")
+}
+
 // MarshalLen implements chunk.
 func (c varbitChunk) MarshalLen() int {
+	if alwaysMarshalFullsizeChunks {
+		return cap(c)
+	}
 	bits := c.nextSampleOffset()
 	if bits < varbitThirdSampleBitOffset {
 		bits = varbitThirdSampleBitOffset

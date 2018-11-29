@@ -55,6 +55,7 @@ func TestLen(t *testing.T) {
 var step = int(15 * time.Second / time.Millisecond)
 
 func TestChunk(t *testing.T) {
+	alwaysMarshalFullsizeChunks = false
 	for _, tc := range []struct {
 		encoding   Encoding
 		maxSamples int
