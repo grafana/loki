@@ -287,7 +287,7 @@ func (c *varbitChunk) Slice(_, _ model.Time) Chunk {
 
 // Marshal implements chunk.
 func (c varbitChunk) Marshal(w io.Writer) error {
-	size := c.MarshalLen()
+	size := c.marshalLen()
 	n, err := w.Write(c[:size])
 	if err != nil {
 		return err
@@ -300,8 +300,8 @@ func (c varbitChunk) Marshal(w io.Writer) error {
 
 // UnmarshalFromBuf implements chunk.
 func (c varbitChunk) UnmarshalFromBuf(buf []byte) error {
-	if copied := copy(c, buf); copied != cap(c) && copied != c.MarshalLen() {
-		return fmt.Errorf("incorrect byte count copied from buffer during unmarshaling, want %d or %d, got %d", c.MarshalLen(), ChunkLen, copied)
+	if copied := copy(c, buf); copied != cap(c) && copied != c.marshalLen() {
+		return fmt.Errorf("incorrect byte count copied from buffer during unmarshaling, want %d or %d, got %d", c.marshalLen(), ChunkLen, copied)
 	}
 	return nil
 }
@@ -325,8 +325,8 @@ func (MarshalConfig) RegisterFlags(f *flag.FlagSet) {
 	flag.BoolVar(&alwaysMarshalFullsizeChunks, "store.fullsize-chunks", alwaysMarshalFullsizeChunks, "When saving varbit chunks, pad to 1024 bytes")
 }
 
-// MarshalLen implements chunk.
-func (c varbitChunk) MarshalLen() int {
+// marshalLen returns the number of bytes that should be marshalled for this chunk
+func (c varbitChunk) marshalLen() int {
 	if alwaysMarshalFullsizeChunks {
 		return cap(c)
 	}
@@ -351,7 +351,7 @@ func (c varbitChunk) Len() int {
 }
 
 func (c varbitChunk) Size() int {
-	return len(c)
+	return c.marshalLen()
 }
 
 func (c varbitChunk) firstTime() model.Time {
