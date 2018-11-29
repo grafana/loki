@@ -18,6 +18,7 @@ const (
 	table2Prefix      = "cortex2_"
 	chunkTablePrefix  = "chunks_"
 	chunkTable2Prefix = "chunks2_"
+	tableRetention    = 2 * 7 * 24 * time.Hour
 	tablePeriod       = 7 * 24 * time.Hour
 	gracePeriod       = 15 * time.Minute
 	maxChunkAge       = 12 * time.Hour
@@ -459,13 +460,13 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 				IndexTables: PeriodicTableConfig{
 					Prefix:    tablePrefix,
 					Period:    tablePeriod,
-					Retention: 2,
+					Retention: tableRetention,
 				},
 
 				ChunkTables: PeriodicTableConfig{
 					Prefix:    chunkTablePrefix,
 					Period:    tablePeriod,
-					Retention: 2,
+					Retention: tableRetention,
 				},
 			},
 		},
