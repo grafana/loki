@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -43,7 +43,7 @@ type Config struct {
 	GRPCStreamMiddleware []grpc.StreamServerInterceptor `yaml:"-"`
 	HTTPMiddleware       []middleware.Interface         `yaml:"-"`
 
-	LogLevel logging.Level
+	LogLevel logging.Level     `yaml:"log_level"`
 	Log      logging.Interface `yaml:"-"`
 }
 

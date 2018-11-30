@@ -31,8 +31,8 @@
 
 [[constraint]]
   name = "github.com/weaveworks/common"
-  source = "github.com/weaveworks/common"
-  branch = "master"
+  source = "github.com/tomwilkie/weaveworks-common"
+  branch = "yaml"
 
 [[override]]
   name = "github.com/sercand/kuberesolver"

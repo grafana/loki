@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
+	"strings"
 
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/prometheus/prometheus/config"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
-	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/weaveworks/common/server"
 )
 
@@ -46,20 +46,63 @@ func LoadConfig(filename string) (*Config, error) {
 // ScrapeConfig describes a job to scrape.
 type ScrapeConfig struct {
 	JobName                string                           `yaml:"job_name,omitempty"`
+	EntryParser            EntryParser                      `yaml:"entry_parser"`
 	RelabelConfigs         []*config.RelabelConfig          `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
-	StaticConfig           targetgroup.Group                `yaml:"static_config"`
+}
+
+var DefaultScrapeConfig = ScrapeConfig{
+	EntryParser: Docker,
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	*c = DefaultScrapeConfig
 	type plain ScrapeConfig
-	err := unmarshal((*plain)(c))
-	if err != nil {
+	if err := unmarshal((*plain)(c)); err != nil {
 		return err
 	}
 	if len(c.JobName) == 0 {
 		return fmt.Errorf("job_name is empty")
 	}
 	return nil
+}
+
+type EntryParser int
+
+const (
+	Docker EntryParser = iota
+	Raw
+)
+
+func (e EntryParser) String() string {
+	switch e {
+	case Docker:
+		return "docker"
+	case Raw:
+		return "raw"
+	default:
+		panic(e)
+	}
+}
+
+func (e *EntryParser) Set(s string) error {
+	switch strings.ToLower(s) {
+	case "docker":
+		*e = Docker
+		return nil
+	case "raw":
+		*e = Raw
+		return nil
+	default:
+		return fmt.Errorf("unrecognised EntryParser: %v", s)
+	}
+}
+
+func (e *EntryParser) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	return e.Set(s)
 }

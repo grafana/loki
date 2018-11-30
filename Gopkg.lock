@@ -125,7 +125,7 @@
 
 [[projects]]
   branch = "yaml"
-  digest = "1:c2173e3680ca782a3a7cbbe4b94fd52613b15337b7472ffec3d693615cd3c357"
+  digest = "1:9ce73fdeb90debf12ed0791e6c10e4022e7d090157246f59a621fa1a600b6fcc"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/ingester/client",
@@ -137,7 +137,7 @@
     "pkg/util/wire",
   ]
   pruneopts = "UT"
-  revision = "0c1365873fd258f98acab8db9c26f5bc35e9350e"
+  revision = "5215e8e67823d4827105b78bf0354612ea7cd184"
   source = "github.com/grafana/cortex"
 
 [[projects]]
@@ -708,8 +708,8 @@
   version = "v1.5.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:2c21e9187b98bb473e67b65d7b6208223e5f4135df667cb2ec0deba275564125"
+  branch = "yaml"
+  digest = "1:534dffb10832c96ad44e3c3235cd2da3f8a2e4ac0cca29bccefe420b4b9123be"
   name = "github.com/weaveworks/common"
   packages = [
     "errors",
@@ -723,8 +723,8 @@
     "user",
   ]
   pruneopts = "UT"
-  revision = "c1808abf9c462ba088ef5c764053a316a58cde24"
-  source = "github.com/weaveworks/common"
+  revision = "dc4f97a727c8ffdbae5e683a3ddb26c2d93e152f"
+  source = "github.com/tomwilkie/weaveworks-common"
 
 [[projects]]
   digest = "1:bb40f7ff970145324f2a2acafdff3a23ed3f05db49cb5eb519b3d6bee86a5887"
@@ -1125,7 +1125,6 @@
     "github.com/prometheus/prometheus/discovery/targetgroup",
     "github.com/prometheus/prometheus/pkg/labels",
     "github.com/prometheus/prometheus/relabel",
-    "github.com/sirupsen/logrus",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
     "github.com/weaveworks/common/middleware",
