@@ -287,7 +287,7 @@ func (c *varbitChunk) Slice(_, _ model.Time) Chunk {
 
 // Marshal implements chunk.
 func (c varbitChunk) Marshal(w io.Writer) error {
-	size := c.marshalLen()
+	size := c.Size()
 	n, err := w.Write(c[:size])
 	if err != nil {
 		return err
@@ -327,9 +327,6 @@ func (MarshalConfig) RegisterFlags(f *flag.FlagSet) {
 
 // marshalLen returns the number of bytes that should be marshalled for this chunk
 func (c varbitChunk) marshalLen() int {
-	if alwaysMarshalFullsizeChunks {
-		return cap(c)
-	}
 	bits := c.nextSampleOffset()
 	if bits < varbitThirdSampleBitOffset {
 		bits = varbitThirdSampleBitOffset
@@ -351,6 +348,9 @@ func (c varbitChunk) Len() int {
 }
 
 func (c varbitChunk) Size() int {
+	if alwaysMarshalFullsizeChunks {
+		return cap(c)
+	}
 	return c.marshalLen()
 }
 
