@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"io/ioutil"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/tsdb/chunkenc"
@@ -93,14 +92,6 @@ func (b *bigchunk) Marshal(wio io.Writer) error {
 func (b *bigchunk) MarshalToBuf(buf []byte) error {
 	writer := bytes.NewBuffer(buf)
 	return b.Marshal(writer)
-}
-
-func (b *bigchunk) Unmarshal(r io.Reader) error {
-	buf, err := ioutil.ReadAll(r)
-	if err != nil {
-		return err
-	}
-	return b.UnmarshalFromBuf(buf)
 }
 
 func (b *bigchunk) UnmarshalFromBuf(buf []byte) error {

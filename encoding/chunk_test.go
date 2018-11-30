@@ -55,6 +55,7 @@ func TestLen(t *testing.T) {
 var step = int(15 * time.Second / time.Millisecond)
 
 func TestChunk(t *testing.T) {
+	alwaysMarshalFullsizeChunks = false
 	for _, tc := range []struct {
 		encoding   Encoding
 		maxSamples int
@@ -112,7 +113,7 @@ func testChunkEncoding(t *testing.T, encoding Encoding, samples int) {
 
 	bs1 := buf.Bytes()
 	chunk, err = NewForEncoding(encoding)
-	err = chunk.Unmarshal(&buf)
+	err = chunk.UnmarshalFromBuf(bs1)
 	require.NoError(t, err)
 
 	// Check all the samples are in there.
@@ -127,11 +128,12 @@ func testChunkEncoding(t *testing.T, encoding Encoding, samples int) {
 	require.NoError(t, iter.Err())
 
 	// Check the byte representation after another Marshall is the same.
+	buf = bytes.Buffer{}
 	err = chunk.Marshal(&buf)
 	require.NoError(t, err)
 	bs2 := buf.Bytes()
 
-	require.True(t, bytes.Equal(bs1, bs2))
+	require.Equal(t, bs1, bs2)
 }
 
 // testChunkSeek checks seek works as expected.
