@@ -15,7 +15,7 @@ import (
 
 func main() {
 	var (
-		configFile string = "docs/promtail-local-config.yaml"
+		configFile = "docs/promtail-local-config.yaml"
 		config     promtail.Config
 	)
 	flag.StringVar(&configFile, "config.file", "promtail.yml", "The config file.")

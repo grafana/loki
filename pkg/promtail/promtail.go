@@ -6,6 +6,7 @@ import (
 	"github.com/weaveworks/common/server"
 )
 
+// Promtail is the root struct for Promtail...
 type Promtail struct {
 	client        *Client
 	positions     *Positions
@@ -13,6 +14,7 @@ type Promtail struct {
 	server        *server.Server
 }
 
+// New makes a new Promtail.
 func New(cfg Config) (*Promtail, error) {
 	client, err := NewClient(cfg.ClientConfig, util.Logger)
 	if err != nil {
@@ -45,10 +47,12 @@ func New(cfg Config) (*Promtail, error) {
 	}, nil
 }
 
+// Run the promtail; will block until a signal is received.
 func (p *Promtail) Run() error {
 	return p.server.Run()
 }
 
+// Shutdown the promtail.
 func (p *Promtail) Shutdown() {
 	p.server.Shutdown()
 	p.targetManager.Stop()

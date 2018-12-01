@@ -22,6 +22,7 @@ type Config struct {
 	ScrapeConfig    []ScrapeConfig  `yaml:"scrape_configs,omitempty"`
 }
 
+// RegisterFlags registers flags.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.ServerConfig.RegisterFlags(f)
 	c.ClientConfig.RegisterFlags(f)
@@ -51,6 +52,7 @@ type ScrapeConfig struct {
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
 }
 
+// DefaultScrapeConfig is the default ScrapeConfig.
 var DefaultScrapeConfig = ScrapeConfig{
 	EntryParser: Docker,
 }
@@ -68,13 +70,16 @@ func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
+// EntryParser describes how to parse log lines.
 type EntryParser int
 
+// Different supported EntryParsers.
 const (
 	Docker EntryParser = iota
 	Raw
 )
 
+// String returns a string representation of the EnEntryParser.
 func (e EntryParser) String() string {
 	switch e {
 	case Docker:
@@ -86,6 +91,7 @@ func (e EntryParser) String() string {
 	}
 }
 
+// Set implements flag.Value.
 func (e *EntryParser) Set(s string) error {
 	switch strings.ToLower(s) {
 	case "docker":
@@ -99,6 +105,7 @@ func (e *EntryParser) Set(s string) error {
 	}
 }
 
+// UnmarshalYAML implements yaml.Unmarshaler.
 func (e *EntryParser) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
