@@ -654,11 +654,12 @@
   revision = "c4fab1ac1bec58281ad0667dc3f0907a9476ac47"
 
 [[projects]]
-  digest = "1:8e79da55d2a6a92374cc7ca5ce1a7739fe0a13ca04b6f8c806a50f1873138eff"
+  digest = "1:30bef1faf227592dcae9ced04b457efe84298d059b9a8398630d848c0f507e89"
   name = "github.com/sercand/kuberesolver"
   packages = ["."]
   pruneopts = "UT"
-  revision = "aa801ca262949d887bbe0bae3f6f731ac82c26f6"
+  revision = "f0a61d5e8ca1bcc7a607d6de3dfd51467791db88"
+  version = "v2.1.0"
 
 [[projects]]
   digest = "1:9e9193aa51197513b3abcb108970d831fbcf40ef96aa845c4f03276e1fa316d2"
@@ -708,7 +709,7 @@
   version = "v1.5.0"
 
 [[projects]]
-  branch = "yaml"
+  branch = "dev"
   digest = "1:534dffb10832c96ad44e3c3235cd2da3f8a2e4ac0cca29bccefe420b4b9123be"
   name = "github.com/weaveworks/common"
   packages = [
@@ -723,7 +724,7 @@
     "user",
   ]
   pruneopts = "UT"
-  revision = "dc4f97a727c8ffdbae5e683a3ddb26c2d93e152f"
+  revision = "7070d832ce459bc2d03af0e98a687065002e78fd"
   source = "github.com/tomwilkie/weaveworks-common"
 
 [[projects]]

@@ -3,11 +3,14 @@ package kuberesolver
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -16,13 +19,23 @@ const (
 	serviceAccountCACert = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 )
 
+// K8sClient is minimal kubernetes client interface
+type K8sClient interface {
+	Do(req *http.Request) (*http.Response, error)
+	GetRequest(url string) (*http.Request, error)
+	Host() string
+}
+
 type k8sClient struct {
 	host       string
 	token      string
 	httpClient *http.Client
 }
 
-func (kc *k8sClient) getRequest(url string) (*http.Request, error) {
+func (kc *k8sClient) GetRequest(url string) (*http.Request, error) {
+	if !strings.HasPrefix(url, kc.host) {
+		url = fmt.Sprintf("%s/%s", kc.host, url)
+	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -37,12 +50,12 @@ func (kc *k8sClient) Do(req *http.Request) (*http.Response, error) {
 	return kc.httpClient.Do(req)
 }
 
-/*
-KUBERNETES_SERVICE_PORT=443
-KUBERNETES_SERVICE_PORT_HTTPS=443
-KUBERNETES_SERVICE_HOST=10.0.0.1
-*/
-func newInClusterClient() (*k8sClient, error) {
+func (kc *k8sClient) Host() string {
+	return kc.host
+}
+
+// NewInClusterK8sClient creates K8sClient if it is inside Kubernetes
+func NewInClusterK8sClient() (K8sClient, error) {
 	host, port := os.Getenv("KUBERNETES_SERVICE_HOST"), os.Getenv("KUBERNETES_SERVICE_PORT")
 	if len(host) == 0 || len(port) == 0 {
 		return nil, fmt.Errorf("unable to load in-cluster configuration, KUBERNETES_SERVICE_HOST and KUBERNETES_SERVICE_PORT must be defined")
@@ -68,4 +81,57 @@ func newInClusterClient() (*k8sClient, error) {
 		token:      string(token),
 		httpClient: httpClient,
 	}, nil
+}
+
+// NewInsecureK8sClient creates an insecure k8s client which is suitable
+// to connect kubernetes api behind proxy
+func NewInsecureK8sClient(apiURL string) K8sClient {
+	return &k8sClient{
+		host:       apiURL,
+		httpClient: http.DefaultClient,
+	}
+}
+
+func getEndpoints(client K8sClient, namespace, targetName string) (Endpoints, error) {
+	u, err := url.Parse(fmt.Sprintf("%s/api/v1/namespaces/%s/endpoints/%s",
+		client.Host(), namespace, targetName))
+	if err != nil {
+		return Endpoints{}, err
+	}
+	req, err := client.GetRequest(u.String())
+	if err != nil {
+		return Endpoints{}, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return Endpoints{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return Endpoints{}, fmt.Errorf("invalid response code %d", resp.StatusCode)
+	}
+	result := Endpoints{}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	return result, err
+}
+
+func watchEndpoints(client K8sClient, namespace, targetName string) (watchInterface, error) {
+	u, err := url.Parse(fmt.Sprintf("%s/api/v1/watch/namespaces/%s/endpoints/%s",
+		client.Host(), namespace, targetName))
+	if err != nil {
+		return nil, err
+	}
+	req, err := client.GetRequest(u.String())
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		return nil, fmt.Errorf("invalid response code %d", resp.StatusCode)
+	}
+	return newStreamWatcher(resp.Body), nil
 }

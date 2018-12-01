@@ -23,8 +23,10 @@ type Endpoints struct {
 }
 
 type Metadata struct {
-	Name            string `json:"name"`
-	ResourceVersion string `json:"resourceVersion"`
+	Name            string            `json:"name"`
+	Namespace       string            `json:"namespace"`
+	ResourceVersion string            `json:"resourceVersion"`
+	Labels          map[string]string `json:"labels"`
 }
 
 type Subset struct {
@@ -33,9 +35,15 @@ type Subset struct {
 }
 
 type Address struct {
-	IP string `json:"ip"`
+	IP        string           `json:"ip"`
+	TargetRef *ObjectReference `json:"targetRef,omitempty"`
 }
 
+type ObjectReference struct {
+	Kind      string `json:"kind"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+}
 type Port struct {
 	Name string `json:"name"`
 	Port int    `json:"port"`
