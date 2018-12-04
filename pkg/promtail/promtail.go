@@ -2,7 +2,6 @@ package promtail
 
 import (
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/server"
 )
 
@@ -16,20 +15,18 @@ type Promtail struct {
 
 // New makes a new Promtail.
 func New(cfg Config) (*Promtail, error) {
+
+	positions, err := NewPositions(util.Logger, cfg.PositionsConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	client, err := NewClient(cfg.ClientConfig, util.Logger)
 	if err != nil {
 		return nil, err
 	}
 
-	positions, err := NewPositions(cfg.PositionsConfig, util.Logger)
-	if err != nil {
-		return nil, err
-	}
-
-	newTargetFunc := func(path string, labels model.LabelSet) (*Target, error) {
-		return NewTarget(util.Logger, client, positions, path, labels)
-	}
-	tm, err := NewTargetManager(util.Logger, cfg.ScrapeConfig, newTargetFunc)
+	tm, err := NewTargetManager(util.Logger, positions, client, cfg.ScrapeConfig)
 	if err != nil {
 		return nil, err
 	}

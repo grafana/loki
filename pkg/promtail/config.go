@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
-	"strings"
 
 	yaml "gopkg.in/yaml.v2"
 
@@ -68,48 +67,4 @@ func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return fmt.Errorf("job_name is empty")
 	}
 	return nil
-}
-
-// EntryParser describes how to parse log lines.
-type EntryParser int
-
-// Different supported EntryParsers.
-const (
-	Docker EntryParser = iota
-	Raw
-)
-
-// String returns a string representation of the EnEntryParser.
-func (e EntryParser) String() string {
-	switch e {
-	case Docker:
-		return "docker"
-	case Raw:
-		return "raw"
-	default:
-		panic(e)
-	}
-}
-
-// Set implements flag.Value.
-func (e *EntryParser) Set(s string) error {
-	switch strings.ToLower(s) {
-	case "docker":
-		*e = Docker
-		return nil
-	case "raw":
-		*e = Raw
-		return nil
-	default:
-		return fmt.Errorf("unrecognised EntryParser: %v", s)
-	}
-}
-
-// UnmarshalYAML implements yaml.Unmarshaler.
-func (e *EntryParser) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var s string
-	if err := unmarshal(&s); err != nil {
-		return err
-	}
-	return e.Set(s)
 }

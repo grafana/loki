@@ -166,8 +166,8 @@ func (c *Client) Stop() {
 	c.wg.Wait()
 }
 
-// Line adds a new line to the next batch; send is async.
-func (c *Client) Line(ls model.LabelSet, t time.Time, s string) error {
+// Handle implement EntryHandler; adds a new line to the next batch; send is async.
+func (c *Client) Handle(ls model.LabelSet, t time.Time, s string) error {
 	c.entries <- entry{ls, logproto.Entry{
 		Timestamp: t,
 		Line:      s,

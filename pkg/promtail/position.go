@@ -41,7 +41,7 @@ type positionsFile struct {
 }
 
 // NewPositions makes a new Positions.
-func NewPositions(cfg PositionsConfig, logger log.Logger) (*Positions, error) {
+func NewPositions(logger log.Logger, cfg PositionsConfig) (*Positions, error) {
 	positions, err := readPositionsFile(cfg.PositionsFile)
 	if err != nil {
 		return nil, err

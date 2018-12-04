@@ -1,7 +1,6 @@
 package promtail
 
 import (
-	"encoding/json"
 	"io/ioutil"
 	"path/filepath"
 	"time"
@@ -38,7 +37,7 @@ type Target struct {
 	logger log.Logger
 
 	labels    model.LabelSet
-	client    *Client
+	handler   EntryHandler
 	positions *Positions
 
 	watcher *fsnotify.Watcher
@@ -49,7 +48,7 @@ type Target struct {
 }
 
 // NewTarget create a new Target.
-func NewTarget(logger log.Logger, c *Client, positions *Positions, path string, labels model.LabelSet) (*Target, error) {
+func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, path string, labels model.LabelSet) (*Target, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, errors.Wrap(err, "fsnotify.NewWatcher")
@@ -65,7 +64,7 @@ func NewTarget(logger log.Logger, c *Client, positions *Positions, path string, 
 		labels:    labels,
 		watcher:   watcher,
 		path:      path,
-		client:    c,
+		handler:   handler,
 		positions: positions,
 		quit:      make(chan struct{}),
 		tails:     map[string]*tailer{},
@@ -81,7 +80,7 @@ func NewTarget(logger log.Logger, c *Client, positions *Positions, path string, 
 			continue
 		}
 
-		tailer, err := newTailer(t.logger, t, t.path, fi.Name(), t.labels)
+		tailer, err := newTailer(t.logger, t.handler, t.positions, t.path, fi.Name(), t.labels)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "failed to tail file", "error", err)
 			continue
@@ -118,7 +117,7 @@ func (t *Target) run() {
 					continue
 				}
 
-				tailer, err := newTailer(t.logger, t, t.path, event.Name, t.labels)
+				tailer, err := newTailer(t.logger, t.handler, t.positions, t.path, event.Name, t.labels)
 				if err != nil {
 					level.Error(t.logger).Log("msg", "failed to tail file", "error", err)
 					continue
@@ -144,34 +143,22 @@ func (t *Target) run() {
 	}
 }
 
-func (t *Target) handleLine(labels model.LabelSet, _ time.Time, line string) error {
-	// Hard code to deal with docker-style json for now; eventually we'll use
-	// relabelling.
-	var entry struct {
-		Log    string
-		Stream string
-		Time   time.Time
-	}
-	if err := json.Unmarshal([]byte(line), &entry); err != nil {
-		return err
-	}
-	return t.client.Line(labels, entry.Time, entry.Log)
-}
-
 type tailer struct {
-	logger log.Logger
-	target *Target
+	logger    log.Logger
+	handler   EntryHandler
+	positions *Positions
+
 	path   string
 	tail   *tail.Tail
 	labels model.LabelSet
 }
 
-func newTailer(logger log.Logger, target *Target, dir, name string, labels model.LabelSet) (*tailer, error) {
+func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, dir, name string, labels model.LabelSet) (*tailer, error) {
 	path := filepath.Join(dir, name)
 	tail, err := tail.TailFile(path, tail.Config{
 		Follow: true,
 		Location: &tail.SeekInfo{
-			Offset: target.positions.Get(path),
+			Offset: positions.Get(path),
 			Whence: 0,
 		},
 	})
@@ -186,8 +173,10 @@ func newTailer(logger log.Logger, target *Target, dir, name string, labels model
 	labelsCp[filename] = model.LabelValue(path)
 
 	tailer := &tailer{
-		logger: logger,
-		target: target,
+		logger:    logger,
+		handler:   handler,
+		positions: positions,
+
 		path:   path,
 		tail:   tail,
 		labels: labels,
@@ -202,7 +191,7 @@ func (t *tailer) run() {
 	}()
 
 	level.Info(t.logger).Log("msg", "start tailing file", "filename", t.path)
-	positionSyncPeriod := t.target.positions.cfg.SyncPeriod
+	positionSyncPeriod := t.positions.cfg.SyncPeriod
 	positionWait := time.NewTimer(positionSyncPeriod)
 	defer positionWait.Stop()
 
@@ -215,7 +204,7 @@ func (t *tailer) run() {
 				level.Error(t.logger).Log("msg", "error getting tail position", "error", err)
 				continue
 			}
-			t.target.positions.Put(t.path, pos)
+			t.positions.Put(t.path, pos)
 
 		case line, ok := <-t.tail.Lines:
 			if !ok {
@@ -227,7 +216,7 @@ func (t *tailer) run() {
 			}
 
 			readBytes.WithLabelValues(t.path).Add(float64(len(line.Text)))
-			if err := t.target.handleLine(t.labels, line.Time, line.Text); err != nil {
+			if err := t.handler.Handle(t.labels, line.Time, line.Text); err != nil {
 				level.Error(t.logger).Log("msg", "error handling line", "error", err)
 			}
 		}
