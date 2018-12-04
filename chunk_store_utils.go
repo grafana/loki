@@ -131,7 +131,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []Chunk, keys []string
 	}
 
 	if err != nil {
-		return nil, promql.ErrStorage(err)
+		return nil, promql.ErrStorage{Err: err}
 	}
 
 	allChunks := append(fromCache, fromStorage...)
