@@ -6,10 +6,10 @@ import (
 	"time"
 
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -26,7 +26,7 @@ type Fixture interface {
 // Setup a fixture with initial tables
 func Setup(fixture Fixture, tableName string) (chunk.StorageClient, error) {
 	var tbmConfig chunk.TableManagerConfig
-	util.DefaultValues(&tbmConfig)
+	flagext.DefaultValues(&tbmConfig)
 	storageClient, tableClient, schemaConfig, err := fixture.Clients()
 	if err != nil {
 		return nil, err

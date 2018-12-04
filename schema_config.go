@@ -11,6 +11,7 @@ import (
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/mtime"
 )
 
@@ -45,20 +46,20 @@ type LegacySchemaConfig struct {
 
 	// After midnight on this day, we start bucketing indexes by day instead of by
 	// hour.  Only the day matters, not the time within the day.
-	DailyBucketsFrom      util.DayValue
-	Base64ValuesFrom      util.DayValue
-	V4SchemaFrom          util.DayValue
-	V5SchemaFrom          util.DayValue
-	V6SchemaFrom          util.DayValue
-	V9SchemaFrom          util.DayValue
-	BigtableColumnKeyFrom util.DayValue
+	DailyBucketsFrom      flagext.DayValue
+	Base64ValuesFrom      flagext.DayValue
+	V4SchemaFrom          flagext.DayValue
+	V5SchemaFrom          flagext.DayValue
+	V6SchemaFrom          flagext.DayValue
+	V9SchemaFrom          flagext.DayValue
+	BigtableColumnKeyFrom flagext.DayValue
 
 	// Config for the index & chunk tables.
 	OriginalTableName string
 	UsePeriodicTables bool
-	IndexTablesFrom   util.DayValue
+	IndexTablesFrom   flagext.DayValue
 	IndexTables       PeriodicTableConfig
-	ChunkTablesFrom   util.DayValue
+	ChunkTablesFrom   flagext.DayValue
 	ChunkTables       PeriodicTableConfig
 }
 
