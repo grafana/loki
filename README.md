@@ -26,7 +26,7 @@ To run promtail, use the following commands:
 
 ```
 $ go build ./cmd/promtail
-$ ./promtail -config.file=./docs/promtail-local-config.yaml -positions.file=./positions.yaml -client.url=http://localhost/api/prom/push
+$ ./promtail -config.file=./docs/promtail-local-config.yaml
 ...
 ```
 

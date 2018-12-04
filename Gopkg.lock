@@ -125,7 +125,7 @@
 
 [[projects]]
   branch = "yaml"
-  digest = "1:c2173e3680ca782a3a7cbbe4b94fd52613b15337b7472ffec3d693615cd3c357"
+  digest = "1:9ce73fdeb90debf12ed0791e6c10e4022e7d090157246f59a621fa1a600b6fcc"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/ingester/client",
@@ -137,7 +137,7 @@
     "pkg/util/wire",
   ]
   pruneopts = "UT"
-  revision = "0c1365873fd258f98acab8db9c26f5bc35e9350e"
+  revision = "5215e8e67823d4827105b78bf0354612ea7cd184"
   source = "github.com/grafana/cortex"
 
 [[projects]]
@@ -654,11 +654,12 @@
   revision = "c4fab1ac1bec58281ad0667dc3f0907a9476ac47"
 
 [[projects]]
-  digest = "1:8e79da55d2a6a92374cc7ca5ce1a7739fe0a13ca04b6f8c806a50f1873138eff"
+  digest = "1:30bef1faf227592dcae9ced04b457efe84298d059b9a8398630d848c0f507e89"
   name = "github.com/sercand/kuberesolver"
   packages = ["."]
   pruneopts = "UT"
-  revision = "aa801ca262949d887bbe0bae3f6f731ac82c26f6"
+  revision = "f0a61d5e8ca1bcc7a607d6de3dfd51467791db88"
+  version = "v2.1.0"
 
 [[projects]]
   digest = "1:9e9193aa51197513b3abcb108970d831fbcf40ef96aa845c4f03276e1fa316d2"
@@ -708,8 +709,8 @@
   version = "v1.5.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:2c21e9187b98bb473e67b65d7b6208223e5f4135df667cb2ec0deba275564125"
+  branch = "dev"
+  digest = "1:3c85f094a53c7167e9d5f143f0fe7e429001a43a1f069e2b31204fd420842286"
   name = "github.com/weaveworks/common"
   packages = [
     "errors",
@@ -723,8 +724,8 @@
     "user",
   ]
   pruneopts = "UT"
-  revision = "c1808abf9c462ba088ef5c764053a316a58cde24"
-  source = "github.com/weaveworks/common"
+  revision = "8a5020509c71d59f6b3b1fec00d998862376c8e9"
+  source = "github.com/tomwilkie/weaveworks-common"
 
 [[projects]]
   digest = "1:bb40f7ff970145324f2a2acafdff3a23ed3f05db49cb5eb519b3d6bee86a5887"
@@ -1125,7 +1126,6 @@
     "github.com/prometheus/prometheus/discovery/targetgroup",
     "github.com/prometheus/prometheus/pkg/labels",
     "github.com/prometheus/prometheus/relabel",
-    "github.com/sirupsen/logrus",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
     "github.com/weaveworks/common/middleware",

@@ -31,12 +31,8 @@
 
 [[constraint]]
   name = "github.com/weaveworks/common"
-  source = "github.com/weaveworks/common"
-  branch = "master"
-
-[[override]]
-  name = "github.com/sercand/kuberesolver"
-  revision = "aa801ca262949d887bbe0bae3f6f731ac82c26f6"
+  source = "github.com/tomwilkie/weaveworks-common"
+  branch = "dev"
 
 [[constraint]]
   name = "gopkg.in/fsnotify.v1"

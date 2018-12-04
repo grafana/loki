@@ -1,6 +1,7 @@
 package promtail
 
 import (
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
@@ -9,12 +10,22 @@ import (
 
 	"github.com/prometheus/prometheus/config"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
-	"github.com/prometheus/prometheus/discovery/targetgroup"
+	"github.com/weaveworks/common/server"
 )
 
 // Config for promtail, describing what files to watch.
 type Config struct {
-	ScrapeConfig []ScrapeConfig `yaml:"scrape_configs,omitempty"`
+	ServerConfig    server.Config   `yaml:"server,omitempty"`
+	ClientConfig    ClientConfig    `yaml:"client,omitempty"`
+	PositionsConfig PositionsConfig `yaml:"positions,omitempty"`
+	ScrapeConfig    []ScrapeConfig  `yaml:"scrape_configs,omitempty"`
+}
+
+// RegisterFlags registers flags.
+func (c *Config) RegisterFlags(f *flag.FlagSet) {
+	c.ServerConfig.RegisterFlags(f)
+	c.ClientConfig.RegisterFlags(f)
+	c.PositionsConfig.RegisterFlags(f)
 }
 
 // LoadConfig loads config from a file.
@@ -35,16 +46,21 @@ func LoadConfig(filename string) (*Config, error) {
 // ScrapeConfig describes a job to scrape.
 type ScrapeConfig struct {
 	JobName                string                           `yaml:"job_name,omitempty"`
+	EntryParser            EntryParser                      `yaml:"entry_parser"`
 	RelabelConfigs         []*config.RelabelConfig          `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
-	StaticConfig           targetgroup.Group                `yaml:"static_config"`
+}
+
+// DefaultScrapeConfig is the default ScrapeConfig.
+var DefaultScrapeConfig = ScrapeConfig{
+	EntryParser: Docker,
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	*c = DefaultScrapeConfig
 	type plain ScrapeConfig
-	err := unmarshal((*plain)(c))
-	if err != nil {
+	if err := unmarshal((*plain)(c)); err != nil {
 		return err
 	}
 	if len(c.JobName) == 0 {

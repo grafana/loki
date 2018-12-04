@@ -24,3 +24,18 @@ func (v *URLValue) Set(s string) error {
 	v.URL = u
 	return nil
 }
+
+// UnmarshalYAML implements yaml.Unmarshaler.
+func (v *URLValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+
+	u, err := url.Parse(s)
+	if err != nil {
+		return err
+	}
+	v.URL = u
+	return nil
+}

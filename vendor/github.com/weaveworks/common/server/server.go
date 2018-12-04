@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,25 +26,27 @@ import (
 
 // Config for a Server
 type Config struct {
-	MetricsNamespace string
-	HTTPListenPort   int
-	GRPCListenPort   int
+	MetricsNamespace string `yaml:"-"`
+	HTTPListenPort   int    `yaml:"http_listen_port"`
+	GRPCListenPort   int    `yaml:"grpc_listen_port"`
 
-	RegisterInstrumentation bool
-	ExcludeRequestInLog     bool
+	RegisterInstrumentation bool `yaml:"-"`
+	ExcludeRequestInLog     bool `yaml:"-"`
 
-	ServerGracefulShutdownTimeout time.Duration
-	HTTPServerReadTimeout         time.Duration
-	HTTPServerWriteTimeout        time.Duration
-	HTTPServerIdleTimeout         time.Duration
+	ServerGracefulShutdownTimeout time.Duration `yaml:"graceful_shutdown_timeout"`
+	HTTPServerReadTimeout         time.Duration `yaml:"http_server_read_timeout"`
+	HTTPServerWriteTimeout        time.Duration `yaml:"http_server_write_timeout"`
+	HTTPServerIdleTimeout         time.Duration `yaml:"http_server_idle_timeout"`
 
-	GRPCOptions          []grpc.ServerOption
-	GRPCMiddleware       []grpc.UnaryServerInterceptor
-	GRPCStreamMiddleware []grpc.StreamServerInterceptor
-	HTTPMiddleware       []middleware.Interface
+	GPRCServerMaxRecvMsgSize int `yaml:"grpc_server_max_recv_msg_size"`
 
-	LogLevel logging.Level
-	Log      logging.Interface
+	GRPCOptions          []grpc.ServerOption            `yaml:"-"`
+	GRPCMiddleware       []grpc.UnaryServerInterceptor  `yaml:"-"`
+	GRPCStreamMiddleware []grpc.StreamServerInterceptor `yaml:"-"`
+	HTTPMiddleware       []middleware.Interface         `yaml:"-"`
+
+	LogLevel logging.Level     `yaml:"log_level"`
+	Log      logging.Interface `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -53,6 +55,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.GRPCListenPort, "server.grpc-listen-port", 9095, "gRPC server listen port.")
 	f.BoolVar(&cfg.RegisterInstrumentation, "server.register-instrumentation", true, "Register the intrumentation handlers (/metrics etc).")
 	f.DurationVar(&cfg.ServerGracefulShutdownTimeout, "server.graceful-shutdown-timeout", 30*time.Second, "Timeout for graceful shutdowns")
+	f.IntVar(&cfg.GPRCServerMaxRecvMsgSize, "server.grpc-max-recv-msg-size-bytes", 1024*1024*64, "Limit on the size of a grpc message this server can receive.")
 	f.DurationVar(&cfg.HTTPServerReadTimeout, "server.http-read-timeout", 30*time.Second, "Read timeout for HTTP server")
 	f.DurationVar(&cfg.HTTPServerWriteTimeout, "server.http-write-timeout", 30*time.Second, "Write timeout for HTTP server")
 	f.DurationVar(&cfg.HTTPServerIdleTimeout, "server.http-idle-timeout", 120*time.Second, "Idle timeout for HTTP server")
@@ -129,6 +132,7 @@ func New(cfg Config) (*Server, error) {
 		grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
 			grpcStreamMiddleware...,
 		)),
+		grpc.MaxRecvMsgSize(cfg.GPRCServerMaxRecvMsgSize),
 	}
 	grpcOptions = append(grpcOptions, cfg.GRPCOptions...)
 	grpcServer := grpc.NewServer(grpcOptions...)

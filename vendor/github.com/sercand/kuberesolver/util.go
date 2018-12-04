@@ -30,6 +30,6 @@ func until(f func(), period time.Duration, stopCh <-chan struct{}) {
 func handleCrash() {
 	if r := recover(); r != nil {
 		callers := string(debug.Stack())
-		grpclog.Printf("kuberesolver: recovered from panic: %#v (%v)\n%v", r, r, callers)
+		grpclog.Errorf("kuberesolver: recovered from panic: %#v (%v)\n%v", r, r, callers)
 	}
 }

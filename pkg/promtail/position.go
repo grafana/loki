@@ -8,7 +8,8 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"gopkg.in/yaml.v2"
 )
 
@@ -16,8 +17,8 @@ const positionFileMode = 0700
 
 // PositionsConfig describes where to get postition information from.
 type PositionsConfig struct {
-	SyncPeriod    time.Duration
-	PositionsFile string
+	SyncPeriod    time.Duration `yaml:"sync_period"`
+	PositionsFile string        `yaml:"filename"`
 }
 
 // RegisterFlags register flags.
@@ -28,6 +29,7 @@ func (cfg *PositionsConfig) RegisterFlags(flags *flag.FlagSet) {
 
 // Positions tracks how far through each file we've read.
 type Positions struct {
+	logger    log.Logger
 	cfg       PositionsConfig
 	mtx       sync.Mutex
 	positions map[string]int64
@@ -39,13 +41,14 @@ type positionsFile struct {
 }
 
 // NewPositions makes a new Positions.
-func NewPositions(cfg PositionsConfig) (*Positions, error) {
+func NewPositions(logger log.Logger, cfg PositionsConfig) (*Positions, error) {
 	positions, err := readPositionsFile(cfg.PositionsFile)
 	if err != nil {
 		return nil, err
 	}
 
 	p := &Positions{
+		logger:    logger,
 		cfg:       cfg,
 		positions: positions,
 		quit:      make(chan struct{}),
@@ -97,7 +100,7 @@ func (p *Positions) save() {
 	p.mtx.Unlock()
 
 	if err := writePositionFile(p.cfg.PositionsFile, positions); err != nil {
-		log.Errorf("Error writing positions file: %v", err)
+		level.Error(p.logger).Log("msg", "error writing positions file", "error", err)
 	}
 }
 

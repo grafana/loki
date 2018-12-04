@@ -21,39 +21,29 @@ const (
 	hostLabel = "__host__"
 )
 
-// NewTargetFunc is the type of function that creates a new target.
-type NewTargetFunc func(path string, labels model.LabelSet) (*Target, error)
-
 // TargetManager manages a set of targets.
 type TargetManager struct {
+	log log.Logger
+
+	quit    context.CancelFunc
 	syncers map[string]*syncer
 	manager *discovery.Manager
-
-	log  log.Logger
-	quit context.CancelFunc
-}
-
-func hostname() (string, error) {
-	hostname := os.Getenv("HOSTNAME")
-	if hostname != "" {
-		return hostname, nil
-	}
-
-	return os.Hostname()
 }
 
 // NewTargetManager creates a new TargetManager.
 func NewTargetManager(
 	logger log.Logger,
+	positions *Positions,
+	client *Client,
 	scrapeConfig []ScrapeConfig,
-	fn NewTargetFunc,
 ) (*TargetManager, error) {
 	ctx, quit := context.WithCancel(context.Background())
 	tm := &TargetManager{
-		log:     logger,
+		log: logger,
+
+		quit:    quit,
 		syncers: map[string]*syncer{},
 		manager: discovery.NewManager(ctx, log.With(logger, "component", "discovery")),
-		quit:    quit,
 	}
 
 	hostname, err := hostname()
@@ -65,10 +55,11 @@ func NewTargetManager(
 	for _, cfg := range scrapeConfig {
 		s := &syncer{
 			log:           logger,
-			newTarget:     fn,
+			positions:     positions,
 			relabelConfig: cfg.RelabelConfigs,
 			targets:       map[string]*Target{},
 			hostname:      hostname,
+			entryHandler:  cfg.EntryParser.Wrap(client),
 		}
 		tm.syncers[cfg.JobName] = s
 		config[cfg.JobName] = cfg.ServiceDiscoveryConfig
@@ -98,11 +89,13 @@ func (tm *TargetManager) Stop() {
 }
 
 type syncer struct {
-	log           log.Logger
-	newTarget     NewTargetFunc
+	log          log.Logger
+	positions    *Positions
+	entryHandler EntryHandler
+	hostname     string
+
 	targets       map[string]*Target
 	relabelConfig []*config.RelabelConfig
-	hostname      string
 }
 
 func (s *syncer) Sync(groups []*targetgroup.Group) {
@@ -114,6 +107,7 @@ func (s *syncer) Sync(groups []*targetgroup.Group) {
 
 			labels := group.Labels.Merge(t)
 			labels = relabel.Process(labels, s.relabelConfig...)
+
 			// Drop empty targets (drop in relabeling).
 			if labels == nil {
 				level.Debug(s.log).Log("msg", "dropping target, no labels")
@@ -165,10 +159,23 @@ func (s *syncer) Sync(groups []*targetgroup.Group) {
 	}
 }
 
+func (s *syncer) newTarget(path string, labels model.LabelSet) (*Target, error) {
+	return NewTarget(s.log, s.entryHandler, s.positions, path, labels)
+}
+
 func (s *syncer) stop() {
 	for key, target := range s.targets {
 		level.Info(s.log).Log("msg", "Removing target", "key", key)
 		target.Stop()
 		delete(s.targets, key)
 	}
+}
+
+func hostname() (string, error) {
+	hostname := os.Getenv("HOSTNAME")
+	if hostname != "" {
+		return hostname, nil
+	}
+
+	return os.Hostname()
 }

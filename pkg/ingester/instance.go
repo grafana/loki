@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"context"
-	"log"
 	"sort"
 	"sync"
 
@@ -155,7 +154,6 @@ func sendBatches(i iter.EntryIterator, queryServer logproto.Querier_QueryServer,
 			return nil
 		}
 
-		log.Println("sendBatch", batchSize)
 		if err := queryServer.Send(batch); err != nil {
 			return err
 		}
