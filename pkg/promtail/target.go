@@ -36,7 +36,6 @@ func init() {
 type Target struct {
 	logger log.Logger
 
-	labels    model.LabelSet
 	handler   EntryHandler
 	positions *Positions
 
@@ -61,10 +60,9 @@ func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, pa
 
 	t := &Target{
 		logger:    logger,
-		labels:    labels,
 		watcher:   watcher,
 		path:      path,
-		handler:   handler,
+		handler:   addLabelsMiddleware(labels).Wrap(handler),
 		positions: positions,
 		quit:      make(chan struct{}),
 		tails:     map[string]*tailer{},
@@ -80,7 +78,7 @@ func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, pa
 			continue
 		}
 
-		tailer, err := newTailer(t.logger, t.handler, t.positions, t.path, fi.Name(), t.labels)
+		tailer, err := newTailer(t.logger, t.handler, t.positions, t.path, fi.Name())
 		if err != nil {
 			level.Error(t.logger).Log("msg", "failed to tail file", "error", err)
 			continue
@@ -117,7 +115,7 @@ func (t *Target) run() {
 					continue
 				}
 
-				tailer, err := newTailer(t.logger, t.handler, t.positions, t.path, event.Name, t.labels)
+				tailer, err := newTailer(t.logger, t.handler, t.positions, t.path, event.Name)
 				if err != nil {
 					level.Error(t.logger).Log("msg", "failed to tail file", "error", err)
 					continue
@@ -148,12 +146,11 @@ type tailer struct {
 	handler   EntryHandler
 	positions *Positions
 
-	path   string
-	tail   *tail.Tail
-	labels model.LabelSet
+	path string
+	tail *tail.Tail
 }
 
-func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, dir, name string, labels model.LabelSet) (*tailer, error) {
+func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, dir, name string) (*tailer, error) {
 	path := filepath.Join(dir, name)
 	tail, err := tail.TailFile(path, tail.Config{
 		Follow: true,
@@ -166,20 +163,13 @@ func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, di
 		return nil, err
 	}
 
-	labelsCp := make(model.LabelSet, len(labels)+1)
-	for k, v := range labels {
-		labelsCp[k] = v
-	}
-	labelsCp[filename] = model.LabelValue(path)
-
 	tailer := &tailer{
 		logger:    logger,
-		handler:   handler,
+		handler:   addLabelsMiddleware(model.LabelSet{filename: model.LabelValue(path)}).Wrap(handler),
 		positions: positions,
 
-		path:   path,
-		tail:   tail,
-		labels: labels,
+		path: path,
+		tail: tail,
 	}
 	go tailer.run()
 	return tailer, nil
@@ -216,7 +206,7 @@ func (t *tailer) run() {
 			}
 
 			readBytes.WithLabelValues(t.path).Add(float64(len(line.Text)))
-			if err := t.handler.Handle(t.labels, line.Time, line.Text); err != nil {
+			if err := t.handler.Handle(model.LabelSet{}, line.Time, line.Text); err != nil {
 				level.Error(t.logger).Log("msg", "error handling line", "error", err)
 			}
 		}
