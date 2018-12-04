@@ -157,6 +157,7 @@ func (b *bigchunk) Size() int {
 func (b *bigchunk) NewIterator() Iterator {
 	return &bigchunkIterator{
 		bigchunk: b,
+		curr:     b.chunks[0].Iterator(),
 	}
 }
 
@@ -215,71 +216,78 @@ func (r *reader) ReadBytes(count int) ([]byte, error) {
 type bigchunkIterator struct {
 	*bigchunk
 
-	iter chunkenc.Iterator
+	curr chunkenc.Iterator
 	i    int
 }
 
-func (i *bigchunkIterator) FindAtOrAfter(target model.Time) bool {
-	// On average we'll have about 12*3600/15/120 = 24 chunks, so just linear
-	// scan for now.
-	i.i = 0
-	for i.i < len(i.chunks) {
-		if int64(target) <= i.ends[i.i] {
-			break
-		}
-		i.i++
-	}
-
-	if i.i >= len(i.chunks) {
+func (it *bigchunkIterator) FindAtOrAfter(target model.Time) bool {
+	if it.i >= len(it.chunks) {
 		return false
 	}
 
-	i.iter = i.chunks[i.i].Iterator()
-	i.i++
+	// If the seek is outside the current chunk, use the index to find the right
+	// chunk.
+	if int64(target) < it.starts[it.i] || int64(target) > it.ends[it.i] {
+		it.curr = nil
+		for it.i = 0; it.i < len(it.chunks) && int64(target) > it.ends[it.i]; it.i++ {
+		}
+	}
 
-	for i.iter.Next() {
-		t, _ := i.iter.At()
+	if it.i >= len(it.chunks) {
+		return false
+	}
+
+	if it.curr == nil {
+		it.curr = it.chunks[it.i].Iterator()
+	} else if t, _ := it.curr.At(); int64(target) <= t {
+		it.curr = it.chunks[it.i].Iterator()
+	}
+
+	for it.curr.Next() {
+		t, _ := it.curr.At()
 		if t >= int64(target) {
 			return true
 		}
 	}
-
 	return false
 }
 
-func (i *bigchunkIterator) Scan() bool {
-	if i.iter != nil && i.iter.Next() {
+func (it *bigchunkIterator) Scan() bool {
+	if it.curr.Next() {
 		return true
 	}
+	if err := it.curr.Err(); err != nil {
+		return false
+	}
 
-	for i.i < len(i.chunks) {
-		i.iter = i.chunks[i.i].Iterator()
-		i.i++
-		if i.iter.Next() {
+	for it.i < len(it.chunks)-1 {
+		it.i++
+		it.curr = it.chunks[it.i].Iterator()
+		if it.curr.Next() {
 			return true
 		}
 	}
 	return false
 }
 
-func (i *bigchunkIterator) Value() model.SamplePair {
-	t, v := i.iter.At()
+func (it *bigchunkIterator) Value() model.SamplePair {
+	t, v := it.curr.At()
 	return model.SamplePair{
 		Timestamp: model.Time(t),
 		Value:     model.SampleValue(v),
 	}
 }
 
-func (i *bigchunkIterator) Batch(size int) Batch {
+func (it *bigchunkIterator) Batch(size int) Batch {
 	var result Batch
 	j := 0
 	for j < size {
-		t, v := i.iter.At()
+		t, v := it.curr.At()
 		result.Timestamps[j] = t
 		result.Values[j] = v
 		j++
 
-		if j < size && !i.Scan() {
+		if j < size && !it.Scan() {
 			break
 		}
 	}
@@ -287,9 +295,9 @@ func (i *bigchunkIterator) Batch(size int) Batch {
 	return result
 }
 
-func (i *bigchunkIterator) Err() error {
-	if i.iter != nil {
-		return i.iter.Err()
+func (it *bigchunkIterator) Err() error {
+	if it.curr != nil {
+		return it.curr.Err()
 	}
 	return nil
 }

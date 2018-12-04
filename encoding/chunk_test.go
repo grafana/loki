@@ -64,7 +64,7 @@ func TestChunk(t *testing.T) {
 		{Varbit, 2048},
 		{Bigchunk, 4096},
 	} {
-		for samples := 0; samples < tc.maxSamples; samples += tc.maxSamples / 10 {
+		for samples := tc.maxSamples / 10; samples < tc.maxSamples; samples += tc.maxSamples / 10 {
 
 			// DoubleDelta doesn't support zero length chunks.
 			if tc.encoding == DoubleDelta && samples == 0 {
@@ -77,6 +77,10 @@ func TestChunk(t *testing.T) {
 
 			t.Run(fmt.Sprintf("testChunkSeek/%s/%d", tc.encoding.String(), samples), func(t *testing.T) {
 				testChunkSeek(t, tc.encoding, samples)
+			})
+
+			t.Run(fmt.Sprintf("testChunkSeekForward/%s/%d", tc.encoding.String(), samples), func(t *testing.T) {
+				testChunkSeekForward(t, tc.encoding, samples)
 			})
 
 			t.Run(fmt.Sprintf("testChunkBatch/%s/%d", tc.encoding.String(), samples), func(t *testing.T) {
@@ -137,6 +141,7 @@ func testChunkEncoding(t *testing.T, encoding Encoding, samples int) {
 }
 
 // testChunkSeek checks seek works as expected.
+// This version of the test will seek backwards.
 func testChunkSeek(t *testing.T, encoding Encoding, samples int) {
 	chunk := mkChunk(t, encoding, samples)
 
@@ -157,6 +162,28 @@ func testChunkSeek(t *testing.T, encoding Encoding, samples int) {
 		require.False(t, iter.Scan())
 		require.NoError(t, iter.Err())
 	}
+}
+
+func testChunkSeekForward(t *testing.T, encoding Encoding, samples int) {
+	chunk := mkChunk(t, encoding, samples)
+
+	iter := chunk.NewIterator()
+	for i := 0; i < samples; i += samples / 10 {
+		require.True(t, iter.FindAtOrAfter(model.Time(i*step)))
+		sample := iter.Value()
+		require.EqualValues(t, model.Time(i*step), sample.Timestamp)
+		require.EqualValues(t, model.SampleValue(i), sample.Value)
+
+		j := i + 1
+		for ; j < (i+samples/10) && j < samples; j++ {
+			require.True(t, iter.Scan())
+			sample := iter.Value()
+			require.EqualValues(t, model.Time(j*step), sample.Timestamp)
+			require.EqualValues(t, model.SampleValue(j), sample.Value)
+		}
+	}
+	require.False(t, iter.Scan())
+	require.NoError(t, iter.Err())
 }
 
 func testChunkBatch(t *testing.T, encoding Encoding, samples int) {
