@@ -50,6 +50,9 @@ type TableManagerConfig struct {
 	// Master 'off-switch' for table retention deletions
 	RetentionDeletesDisabled bool
 
+	// How far back tables will be kept before they are deleted
+	RetentionPeriod time.Duration
+
 	// Period with which the table manager will poll for tables.
 	DynamoDBPollInterval time.Duration
 
@@ -76,6 +79,7 @@ type ProvisionConfig struct {
 func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ThroughputUpdatesDisabled, "table-manager.throughput-updates-disabled", false, "If true, disable all changes to DB capacity")
 	f.BoolVar(&cfg.RetentionDeletesDisabled, "table-manager.retention-deletes-disabled", false, "If true, disable all deletes of DB tables")
+	f.DurationVar(&cfg.RetentionPeriod, "table-manager.retention-period", 0, "How far back tables will be kept before they are deleted (default all tables are saved)")
 	f.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
 	f.DurationVar(&cfg.CreationGracePeriod, "dynamodb.periodic-table.grace-period", 10*time.Minute, "DynamoDB periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
 
@@ -267,11 +271,11 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 			}
 			endModelTime := model.TimeFromUnix(endTime.Unix())
 			result = append(result, config.IndexTables.periodicTables(
-				config.From, endModelTime, m.cfg.IndexTables, m.cfg.CreationGracePeriod, m.maxChunkAge,
+				config.From, endModelTime, m.cfg.IndexTables, m.cfg.CreationGracePeriod, m.maxChunkAge, m.cfg.RetentionPeriod,
 			)...)
 			if config.ChunkTables.Prefix != "" {
 				result = append(result, config.ChunkTables.periodicTables(
-					config.From, endModelTime, m.cfg.ChunkTables, m.cfg.CreationGracePeriod, m.maxChunkAge,
+					config.From, endModelTime, m.cfg.ChunkTables, m.cfg.CreationGracePeriod, m.maxChunkAge, m.cfg.RetentionPeriod,
 				)...)
 			}
 		}
@@ -304,14 +308,16 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []Table
 			i++
 		} else if descriptions[i].Name > existingTables[j] {
 			// existingTables[j].name isn't in descriptions, and can be removed
-			isMatch := false
-			for tblPrefix := range tablePrefixes {
-				if strings.HasPrefix(existingTables[j], tblPrefix) {
-					isMatch = true
+			if m.cfg.RetentionPeriod > 0 {
+				isMatch := false
+				for tblPrefix := range tablePrefixes {
+					if strings.HasPrefix(existingTables[j], tblPrefix) {
+						isMatch = true
+					}
 				}
-			}
-			if isMatch {
-				toDelete = append(toDelete, TableDesc{Name: existingTables[j]})
+				if isMatch {
+					toDelete = append(toDelete, TableDesc{Name: existingTables[j]})
+				}
 			}
 			j++
 		} else {

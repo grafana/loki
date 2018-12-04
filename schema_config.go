@@ -299,17 +299,15 @@ func (cfg *PeriodConfig) dailyBuckets(from, through model.Time, userID string) [
 
 // PeriodicTableConfig is configuration for a set of time-sharded tables.
 type PeriodicTableConfig struct {
-	Prefix    string        `yaml:"prefix"`
-	Period    time.Duration `yaml:"period,omitempty"`
-	Retention time.Duration `yaml:"retention,omitempty"`
-	Tags      Tags          `yaml:"tags,omitempty"`
+	Prefix string        `yaml:"prefix"`
+	Period time.Duration `yaml:"period,omitempty"`
+	Tags   Tags          `yaml:"tags,omitempty"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *PeriodicTableConfig) RegisterFlags(argPrefix, tablePrefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Prefix, argPrefix+".prefix", tablePrefix, "DynamoDB table prefix for period tables.")
 	f.DurationVar(&cfg.Period, argPrefix+".period", 7*24*time.Hour, "DynamoDB table period.")
-	f.DurationVar(&cfg.Retention, argPrefix+".retention", 0, "Tables passed this retention period is deleted, (0 disables retention).")
 	f.Var(&cfg.Tags, argPrefix+".tag", "Tag (of the form key=value) to be added to all tables under management.")
 }
 
@@ -335,14 +333,14 @@ func (cfg *AutoScalingConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 	f.Float64Var(&cfg.TargetValue, argPrefix+".target-value", 80, "DynamoDB target ratio of consumed capacity to provisioned capacity.")
 }
 
-func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg ProvisionConfig, beginGrace, endGrace time.Duration) []TableDesc {
+func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg ProvisionConfig, beginGrace, endGrace time.Duration, retention time.Duration) []TableDesc {
 	var (
 		periodSecs     = int64(cfg.Period / time.Second)
 		beginGraceSecs = int64(beginGrace / time.Second)
 		endGraceSecs   = int64(endGrace / time.Second)
 		firstTable     = from.Unix() / periodSecs
 		lastTable      = through.Unix() / periodSecs
-		tablesToKeep   = int64(int64(cfg.Retention/time.Second) / periodSecs)
+		tablesToKeep   = int64(int64(retention/time.Second) / periodSecs)
 		now            = mtime.Now().Unix()
 		result         = []TableDesc{}
 	)
@@ -351,7 +349,7 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 		lastTable--
 	}
 	// Don't make tables further back than the configured retention
-	if cfg.Retention > 0 && lastTable > tablesToKeep && lastTable-firstTable >= tablesToKeep {
+	if retention > 0 && lastTable > tablesToKeep && lastTable-firstTable >= tablesToKeep {
 		firstTable = lastTable - tablesToKeep
 	}
 	for i := firstTable; i <= lastTable; i++ {

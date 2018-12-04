@@ -458,20 +458,19 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 			{
 				From: model.TimeFromUnix(baseTableStart.Unix()),
 				IndexTables: PeriodicTableConfig{
-					Prefix:    tablePrefix,
-					Period:    tablePeriod,
-					Retention: tableRetention,
+					Prefix: tablePrefix,
+					Period: tablePeriod,
 				},
 
 				ChunkTables: PeriodicTableConfig{
-					Prefix:    chunkTablePrefix,
-					Period:    tablePeriod,
-					Retention: tableRetention,
+					Prefix: chunkTablePrefix,
+					Period: tablePeriod,
 				},
 			},
 		},
 	}
 	tbmConfig := TableManagerConfig{
+		RetentionPeriod:     tableRetention,
 		CreationGracePeriod: gracePeriod,
 		IndexTables: ProvisionConfig{
 			ProvisionedWriteThroughput: write,
@@ -543,13 +542,37 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 		},
 	)
 
-	// Verify that with RetentionDeletesDisasbled set no tables are removed
+	// Verify that with RetentionDeletesDisabled set no tables are removed
 	tableManager.cfg.RetentionDeletesDisabled = true
 	// Retention > 0 will prevent older tables from being created so we need to create the old tables manually for the test
 	client.CreateTable(nil, TableDesc{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig})
 	client.CreateTable(nil, TableDesc{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite})
 	tmTest(t, client, tableManager,
 		"Move forward by three table periods (no deletes)",
+		baseTableStart.Add(tablePeriod*3),
+		[]TableDesc{
+			{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
+			{Name: tablePrefix + "1", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
+			{Name: tablePrefix + "2", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + "3", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: chunkTablePrefix + "1", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: chunkTablePrefix + "2", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "3", ProvisionedRead: read, ProvisionedWrite: write},
+		},
+	)
+
+	// Re-enable table deletions (default)
+	tableManager.cfg.RetentionDeletesDisabled = false
+
+	// Verify that with a retention period of zero no tables outside the configs 'From' range are removed
+	tableManager.cfg.RetentionPeriod = 0
+	tableManager.schemaCfg.Configs[0].From = model.TimeFromUnix(baseTableStart.Add(tablePeriod).Unix())
+	// Retention > 0 will prevent older tables from being created so we need to create the old tables manually for the test
+	client.CreateTable(nil, TableDesc{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig})
+	client.CreateTable(nil, TableDesc{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite})
+	tmTest(t, client, tableManager,
+		"Move forward by three table periods (no deletes) and move From one table forward",
 		baseTableStart.Add(tablePeriod*3),
 		[]TableDesc{
 			{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
