@@ -27,7 +27,13 @@ message QueryRequest {
   google.protobuf.Timestamp start = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   google.protobuf.Timestamp end = 4 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   Direction direction = 5;
-  string regex = 6;
+
+  repeated Filter filters = 6;
+}
+
+message Filter {
+  string pattern = 1;
+  bool inverse = 2;
 }
 
 enum Direction {

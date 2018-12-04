@@ -92,7 +92,7 @@ func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
 		Start:     start,
 		End:       end,
 		Direction: direction,
-		Regex:     params.Get("regexp"),
+		Filters:   makeFilters(params["regexp"], params["invregexp"]),
 	}
 
 	log.Printf("Query request: %+v", request)
@@ -106,6 +106,25 @@ func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+func makeFilters(filterStrs, inverseFilterStrs []string) []*logproto.Filter {
+	filters := make([]*logproto.Filter, 0, len(filterStrs))
+
+	for _, filterStr := range filterStrs {
+		filters = append(filters, &logproto.Filter{
+			Pattern: filterStr,
+		})
+	}
+
+	for _, filterStr := range inverseFilterStrs {
+		filters = append(filters, &logproto.Filter{
+			Pattern: filterStr,
+			Inverse: true,
+		})
+	}
+
+	return filters
 }
 
 // LabelHandler is a http.HandlerFunc for handling label queries.

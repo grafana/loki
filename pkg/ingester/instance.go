@@ -109,12 +109,23 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	iterator := iter.NewHeapIterator(iterators, req.Direction)
 	defer helpers.LogError("closing iterator", iterator.Close)
 
-	if req.Regex != "" {
-		var err error
-		iterator, err = iter.NewRegexpFilter(req.Regex, iterator)
-		if err != nil {
-			return err
+	if len(req.Filters) > 0 {
+		filters := make([]iter.Filter, 0, len(req.Filters))
+		for _, filter := range req.Filters {
+			f, err := iter.NewRegexpFilter(filter.Pattern)
+			if err != nil {
+				return err
+			}
+
+			if filter.Inverse {
+				f = iter.NewInverseFilter(f)
+			}
+
+			filters = append(filters, f)
 		}
+
+		filter := iter.NewChainedFilter(filters...)
+		iterator = iter.NewFilteredIterator(filter, iterator)
 	}
 
 	return sendBatches(iterator, queryServer, req.Limit)

@@ -243,29 +243,83 @@ func (i *queryClientIterator) Close() error {
 	return i.client.CloseSend()
 }
 
+// Filter is used to filter the log lines we want.
+type Filter interface {
+	Filter(string) bool
+}
+
 type regexpFilter struct {
 	re *regexp.Regexp
-	EntryIterator
 }
 
 // NewRegexpFilter returns an iterator that filters entries by regexp.
-func NewRegexpFilter(r string, i EntryIterator) (EntryIterator, error) {
+func NewRegexpFilter(r string) (Filter, error) {
 	re, err := regexp.Compile(r)
 	if err != nil {
 		return nil, err
 	}
 	return &regexpFilter{
-		re:            re,
-		EntryIterator: i,
+		re: re,
 	}, nil
 }
 
-func (i *regexpFilter) Next() bool {
+func (f *regexpFilter) Filter(log string) bool {
+	return f.re.MatchString(log)
+}
+
+type inverseFilter struct {
+	filter Filter
+}
+
+// NewInverseFilter filter returns an inverse filter.
+func NewInverseFilter(f Filter) Filter {
+	return inverseFilter{filter: f}
+}
+
+func (f inverseFilter) Filter(log string) bool {
+	return !f.filter.Filter(log)
+}
+
+type chainedFilter struct {
+	filters []Filter
+}
+
+// NewChainedFilter returns a filter that chains the filters with AND.
+func NewChainedFilter(filters ...Filter) Filter {
+	return chainedFilter{filters: filters}
+}
+
+func (f chainedFilter) Filter(log string) bool {
+	for _, filter := range f.filters {
+		if !filter.Filter(log) {
+			return false
+		}
+	}
+
+	return true
+}
+
+type filteredIterator struct {
+	EntryIterator
+
+	filter Filter
+}
+
+// NewFilteredIterator returns an iterator with the filter applied.
+func NewFilteredIterator(filter Filter, it EntryIterator) EntryIterator {
+	return &filteredIterator{
+		EntryIterator: it,
+		filter:        filter,
+	}
+}
+
+func (i *filteredIterator) Next() bool {
 	for i.EntryIterator.Next() {
-		if i.re.MatchString(i.Entry().Line) {
+		if i.filter.Filter(i.Entry().Line) {
 			return true
 		}
 	}
+
 	return false
 }
 
