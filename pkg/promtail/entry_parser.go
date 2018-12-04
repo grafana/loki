@@ -53,6 +53,7 @@ func (e *EntryParser) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return e.Set(s)
 }
 
+// Wrap implements EntryMiddleware.
 func (e EntryParser) Wrap(next EntryHandler) EntryHandler {
 	switch e {
 	case Docker:
