@@ -125,7 +125,7 @@
 
 [[projects]]
   branch = "yaml"
-  digest = "1:9ce73fdeb90debf12ed0791e6c10e4022e7d090157246f59a621fa1a600b6fcc"
+  digest = "1:35215932e8abb9ee56fb7936cb90cbe298766a21e86015544429988f66bf5ecd"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/ingester/client",
@@ -137,7 +137,7 @@
     "pkg/util/wire",
   ]
   pruneopts = "UT"
-  revision = "5215e8e67823d4827105b78bf0354612ea7cd184"
+  revision = "6c6d089138917b241e09bc7063a257f71bcb6185"
   source = "github.com/grafana/cortex"
 
 [[projects]]

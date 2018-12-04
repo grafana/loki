@@ -47,11 +47,11 @@ type LifecyclerConfig struct {
 	JoinAfter       time.Duration `yaml:"join_after,omitempty"`
 	ClaimOnRollout  bool          `yaml:"claim_on_rollout,omitempty"`
 	NormaliseTokens bool          `yaml:"normalise_tokens,omitempty"`
+	InfNames        []string      `yaml:"interface_names"`
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string
 	Port           int
-	InfNames       []string
 	ID             string
 	SkipUnregister bool
 }

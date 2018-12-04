@@ -2,6 +2,10 @@ auth_enabled: false
 
 ingester:
   lifecycler:
+    interface_names:
+      - eth0
+      - en0
+      - lo0
     ring:
       store: inmemory
       replication_factor: 1
