@@ -5,22 +5,42 @@ import (
 	"flag"
 	"net/http"
 	"sync"
+	"time"
 
-	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/grafana/loki/pkg/logproto"
 )
+
+var flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
+	Name: "cortex_ingester_flush_queue_length",
+	Help: "The total number of series pending in the flush queue.",
+})
 
 // Config for an ingester.
 type Config struct {
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
+
+	ConcurrentFlushes int           `yaml:"concurrent_flushes"`
+	FlushCheckPeriod  time.Duration `yaml:"flush_check_period"`
+	FlushOpTimeout    time.Duration `yaml:"flush_op_timeout"`
+	RetainPeriod      time.Duration `yaml:"chunk_retain_period"`
 }
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
+
+	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushed", 16, "")
+	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "")
+	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Second, "")
+	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 15*time.Minute, "")
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -31,13 +51,31 @@ type Ingester struct {
 	instances    map[string]*instance
 
 	lifecycler *ring.Lifecycler
+	store      chunk.Store
+
+	done sync.WaitGroup
+	quit chan struct{}
+
+	// One queue per flush thread.  Fingerprint is used to
+	// pick a queue.
+	flushQueues     []*util.PriorityQueue
+	flushQueuesDone sync.WaitGroup
 }
 
 // New makes a new Ingester.
-func New(cfg Config) (*Ingester, error) {
+func New(cfg Config, store chunk.Store) (*Ingester, error) {
 	i := &Ingester{
-		cfg:       cfg,
-		instances: map[string]*instance{},
+		cfg:         cfg,
+		instances:   map[string]*instance{},
+		store:       store,
+		quit:        make(chan struct{}),
+		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+	}
+
+	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
+	for j := 0; j < cfg.ConcurrentFlushes; j++ {
+		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
+		go i.flushLoop(j)
 	}
 
 	var err error
@@ -46,21 +84,39 @@ func New(cfg Config) (*Ingester, error) {
 		return nil, err
 	}
 
+	i.done.Add(1)
+	go i.loop()
+
 	return i, nil
+}
+
+func (i *Ingester) loop() {
+	defer i.done.Done()
+
+	flushTicker := time.NewTicker(i.cfg.FlushCheckPeriod)
+	defer flushTicker.Stop()
+
+	for {
+		select {
+		case <-flushTicker.C:
+			i.sweepUsers(false)
+
+		case <-i.quit:
+			return
+		}
+	}
 }
 
 // Shutdown stops the ingester.
 func (i *Ingester) Shutdown() {
+	close(i.quit)
+	i.done.Wait()
+
 	i.lifecycler.Shutdown()
 }
 
 // StopIncomingRequests implements ring.Lifecycler.
 func (i *Ingester) StopIncomingRequests() {
-
-}
-
-// Flush implements ring.Lifecycler.
-func (i *Ingester) Flush() {
 
 }
 

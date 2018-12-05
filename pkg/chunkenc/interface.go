@@ -48,6 +48,7 @@ type Chunk interface {
 	Append(*logproto.Entry) error
 	Iterator(from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error)
 	Size() int
+	Bytes() ([]byte, error)
 }
 
 // CompressionWriter is the writer that compresses the data passed to it.

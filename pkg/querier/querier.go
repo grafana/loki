@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -25,21 +26,23 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Querier handlers queries.
 type Querier struct {
-	cfg  Config
-	ring ring.ReadRing
-	pool *cortex_client.Pool
+	cfg   Config
+	ring  ring.ReadRing
+	pool  *cortex_client.Pool
+	store chunk.Store
 }
 
 // New makes a new Querier.
-func New(cfg Config, clientCfg client.Config, ring ring.ReadRing) (*Querier, error) {
+func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, store chunk.Store) (*Querier, error) {
 	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
 		return client.New(clientCfg, addr)
 	}
 
 	return &Querier{
-		cfg:  cfg,
-		ring: ring,
-		pool: cortex_client.NewPool(clientCfg.PoolConfig, ring, factory, util.Logger),
+		cfg:   cfg,
+		ring:  ring,
+		pool:  cortex_client.NewPool(clientCfg.PoolConfig, ring, factory, util.Logger),
+		store: store,
 	}, nil
 }
 
@@ -89,6 +92,25 @@ func (q *Querier) forAllIngesters(f func(logproto.QuerierClient) (interface{}, e
 
 // Query does the heavy lifting for an actual query.
 func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logproto.QueryResponse, error) {
+	ingesterIterators, err := q.queryIngesters(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	chunkStoreIterators, err := q.queryStore(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	iterators := append(chunkStoreIterators, ingesterIterators...)
+	iterator := iter.NewHeapIterator(iterators, req.Direction)
+	defer helpers.LogError("closing iterator", iterator.Close)
+
+	resp, _, err := ReadBatch(iterator, req.Limit)
+	return resp, err
+}
+
+func (q *Querier) queryIngesters(ctx context.Context, req *logproto.QueryRequest) ([]iter.EntryIterator, error) {
 	clients, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
 		return client.Query(ctx, req)
 	})
@@ -100,11 +122,7 @@ func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logpr
 	for i := range clients {
 		iterators[i] = iter.NewQueryClientIterator(clients[i].(logproto.Querier_QueryClient), req.Direction)
 	}
-	iterator := iter.NewHeapIterator(iterators, req.Direction)
-	defer helpers.LogError("closing iterator", iterator.Close)
-
-	resp, _, err := ReadBatch(iterator, req.Limit)
-	return resp, err
+	return iterators, nil
 }
 
 // Label does the heavy lifting for a Label query.

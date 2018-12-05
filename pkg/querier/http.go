@@ -3,13 +3,14 @@ package querier
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -95,7 +96,7 @@ func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
 		Regex:     params.Get("regexp"),
 	}
 
-	log.Printf("Query request: %+v", request)
+	level.Debug(util.Logger).Log("request", fmt.Sprintf("%+v", request))
 	result, err := q.Query(r.Context(), &request)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

@@ -1,7 +1,6 @@
 package chunkenc
 
 import (
-	"log"
 	"sort"
 	"time"
 
@@ -59,7 +58,6 @@ func (c *dumbChunk) Iterator(from, through time.Time, direction logproto.Directi
 	j := sort.Search(len(c.entries), func(j int) bool {
 		return !through.After(c.entries[j].Timestamp)
 	})
-	log.Println("from", from, "through", through, "i", i, "j", j, "entries", len(c.entries))
 
 	if from == through {
 		return nil, nil
@@ -76,6 +74,10 @@ func (c *dumbChunk) Iterator(from, through time.Time, direction logproto.Directi
 		i:         start,
 		entries:   c.entries[i:j],
 	}, nil
+}
+
+func (c *dumbChunk) Bytes() ([]byte, error) {
+	return nil, nil
 }
 
 type dumbChunkIterator struct {
