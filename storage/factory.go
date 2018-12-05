@@ -12,6 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/cassandra"
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
+	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
@@ -20,10 +21,11 @@ import (
 
 // Config chooses which storage client to use.
 type Config struct {
-	AWSStorageConfig       aws.StorageConfig
-	GCPStorageConfig       gcp.Config
-	GCSConfig              gcp.GCSConfig
-	CassandraStorageConfig cassandra.Config
+	AWSStorageConfig       aws.StorageConfig  `yaml:"aws"`
+	GCPStorageConfig       gcp.Config         `yaml:"bigtable"`
+	GCSConfig              gcp.GCSConfig      `yaml:"gcs"`
+	CassandraStorageConfig cassandra.Config   `yaml:"cassandra"`
+	BoltDBConfig           local.BoltDBConfig `yaml:"boltdb"`
 
 	IndexCacheSize     int
 	IndexCacheValidity time.Duration
@@ -37,6 +39,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.AWSStorageConfig.RegisterFlags(f)
 	cfg.GCPStorageConfig.RegisterFlags(f)
 	cfg.CassandraStorageConfig.RegisterFlags(f)
+	cfg.BoltDBConfig.RegisterFlags(f)
 
 	// Deprecated flags!!
 	f.IntVar(&cfg.IndexCacheSize, "store.index-cache-size", 0, "Deprecated: Use -store.index-cache-read.*; Size of in-memory index cache, 0 to disable.")
@@ -134,6 +137,8 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "cassandra":
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
+	case "boltdb":
+		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, cassandra, inmemory", name)
 	}
@@ -182,6 +187,8 @@ func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 		return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
 	case "cassandra":
 		return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig)
+	case "boltdb":
+		return local.NewTableClient()
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, inmemory", name)
 	}
