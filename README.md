@@ -58,7 +58,7 @@ Common labels: {job="cortex-ops/consul", namespace="cortex-ops"}
 2018-06-25T12:52:09Z {instance="consul-8576459955-pl75w"} 2018/06/25 12:52:09 [INFO] raft: Compacting logs from 456973 to 465169
 ```
 
-The `logcli` command is lokirary until we have Grafana integration. The URLs of
+The `logcli` command is temporary until we have Grafana integration. The URLs of
 the requests are printed to help with integration work.
 
 ```
