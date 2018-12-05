@@ -6,6 +6,7 @@ import (
 
 	"cloud.google.com/go/bigtable"
 	"cloud.google.com/go/bigtable/bttest"
+	"github.com/fsouza/fake-gcs-server/fakestorage"
 	"github.com/prometheus/common/model"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
@@ -19,9 +20,12 @@ const (
 )
 
 type fixture struct {
-	srv  *bttest.Server
+	btsrv  *bttest.Server
+	gcssrv *fakestorage.Server
+
 	name string
 
+	gcsChunkClient  bool
 	columnKeyClient bool
 }
 
@@ -30,15 +34,18 @@ func (f *fixture) Name() string {
 }
 
 func (f *fixture) Clients() (
-	sClient chunk.StorageClient, tClient chunk.TableClient,
+	iClient chunk.IndexClient, cClient chunk.ObjectClient, tClient chunk.TableClient,
 	schemaConfig chunk.SchemaConfig, err error,
 ) {
-	f.srv, err = bttest.NewServer("localhost:0")
+	f.btsrv, err = bttest.NewServer("localhost:0")
 	if err != nil {
 		return
 	}
 
-	conn, err := grpc.Dial(f.srv.Addr, grpc.WithInsecure())
+	f.gcssrv = fakestorage.NewServer(nil)
+	f.gcssrv.CreateBucket("chunks")
+
+	conn, err := grpc.Dial(f.btsrv.Addr, grpc.WithInsecure())
 	if err != nil {
 		return
 	}
@@ -49,15 +56,10 @@ func (f *fixture) Clients() (
 		return
 	}
 
-	client, err := bigtable.NewClient(ctx, proj, instance, option.WithGRPCConn(conn))
-	if err != nil {
-		return
-	}
-
 	schemaConfig = chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{{
-			Store: "gcp",
-			From:  model.Now(),
+			IndexType: "gcp",
+			From:      model.Now(),
 			ChunkTables: chunk.PeriodicTableConfig{
 				Prefix: "chunks",
 				Period: 10 * time.Minute,
@@ -68,27 +70,50 @@ func (f *fixture) Clients() (
 		client: adminClient,
 	}
 
+	client, err := bigtable.NewClient(ctx, proj, instance, option.WithGRPCConn(conn))
+	if err != nil {
+		return
+	}
+
 	if f.columnKeyClient {
-		sClient = newStorageClientColumnKey(Config{}, client, schemaConfig)
+		iClient = newStorageClientColumnKey(Config{}, schemaConfig, client)
 	} else {
-		sClient = newStorageClientV1(Config{}, client, schemaConfig)
+		iClient = newStorageClientV1(Config{}, schemaConfig, client)
+	}
+
+	if f.gcsChunkClient {
+		cClient = newGCSChunkClient(GCSConfig{
+			BucketName: "chunks",
+		}, schemaConfig, f.gcssrv.Client())
+	} else {
+		cClient = newBigtableChunkClient(Config{}, schemaConfig, client)
 	}
 
 	return
 }
 
 func (f *fixture) Teardown() error {
-	f.srv.Close()
+	f.btsrv.Close()
+	f.gcssrv.Stop()
 	return nil
 }
 
 // Fixtures for unit testing GCP storage.
 var Fixtures = []testutils.Fixture{
 	&fixture{
-		name:            "GCP-ColumnKey",
+		name: "bigtable",
+	},
+	&fixture{
+		name:            "bigtable-columnkey",
 		columnKeyClient: true,
 	},
 	&fixture{
-		name: "GCPv1",
+		name:           "bigtable-gcs",
+		gcsChunkClient: true,
+	},
+	&fixture{
+		name:            "bigtable-columnkey-gcs",
+		gcsChunkClient:  true,
+		columnKeyClient: true,
 	},
 }
