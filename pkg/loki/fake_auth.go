@@ -1,4 +1,4 @@
-package tempo
+package loki
 
 import (
 	"context"

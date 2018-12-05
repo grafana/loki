@@ -6,7 +6,7 @@ import (
 	"time"
 
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/grafana/tempo/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/mwitkow/go-grpc-middleware"
 	opentracing "github.com/opentracing/opentracing-go"

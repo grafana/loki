@@ -3,7 +3,7 @@
 .cache
 *.output
 mixin/vendor/
-cmd/tempo/tempo
+cmd/loki/loki
 cmd/promtail/promtail
-/tempo
+/loki
 /promtail

@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	app      = kingpin.New("logcli", "A command-line for tempo.")
+	app      = kingpin.New("logcli", "A command-line for loki.")
 	addr     = app.Flag("addr", "Server address.").Default("https://log-us.grafana.net").Envar("GRAFANA_ADDR").String()
 	username = app.Flag("username", "Username for HTTP basic auth.").Default("").Envar("GRAFANA_USERNAME").String()
 	password = app.Flag("password", "Password for HTTP basic auth.").Default("").Envar("GRAFANA_PASSWORD").String()

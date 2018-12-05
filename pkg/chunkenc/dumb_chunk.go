@@ -5,8 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/grafana/tempo/pkg/iter"
-	"github.com/grafana/tempo/pkg/logproto"
+	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (
