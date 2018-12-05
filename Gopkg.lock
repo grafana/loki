@@ -710,7 +710,7 @@
 
 [[projects]]
   branch = "dev"
-  digest = "1:3c85f094a53c7167e9d5f143f0fe7e429001a43a1f069e2b31204fd420842286"
+  digest = "1:191feeef6626348af82c26ca3e6dda3a3a46b081fc1a20b0fe42abeb8bff8787"
   name = "github.com/weaveworks/common"
   packages = [
     "errors",
@@ -724,7 +724,7 @@
     "user",
   ]
   pruneopts = "UT"
-  revision = "8a5020509c71d59f6b3b1fec00d998862376c8e9"
+  revision = "b316501cede4ffdfeef3b22c52918326430b5fc5"
   source = "github.com/tomwilkie/weaveworks-common"
 
 [[projects]]
