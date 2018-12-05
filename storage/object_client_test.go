@@ -16,13 +16,13 @@ import (
 
 func TestChunksBasic(t *testing.T) {
 	forAllFixtures(t, func(t *testing.T, _ chunk.IndexClient, client chunk.ObjectClient) {
-		const batchSize = 50
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		const batchSize = 5
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 
 		// Write a few batches of chunks.
 		written := []string{}
-		for i := 0; i < 50; i++ {
+		for i := 0; i < 5; i++ {
 			keys, chunks, err := testutils.CreateChunks(i, batchSize)
 			require.NoError(t, err)
 			written = append(written, keys...)
