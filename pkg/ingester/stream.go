@@ -7,25 +7,25 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/grafana/tempo/pkg/chunkenc"
-	"github.com/grafana/tempo/pkg/iter"
-	"github.com/grafana/tempo/pkg/logproto"
+	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 var (
 	chunksCreatedTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "tempo",
+		Namespace: "loki",
 		Name:      "ingester_chunks_created_total",
 		Help:      "The total number of chunks created in the ingester.",
 	})
 	chunksFlushedTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "tempo",
+		Namespace: "loki",
 		Name:      "ingester_chunks_flushed_total",
 		Help:      "The total number of chunks flushed by the ingester.",
 	})
 
 	samplesPerChunk = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "tempo",
+		Namespace: "loki",
 		Subsystem: "ingester",
 		Name:      "samples_per_chunk",
 		Help:      "The number of samples in a chunk.",

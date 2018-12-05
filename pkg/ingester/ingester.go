@@ -10,7 +10,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/tempo/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 // Config for an ingester.

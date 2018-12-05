@@ -18,7 +18,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 
-	"github.com/grafana/tempo/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const contentType = "application/x-protobuf"

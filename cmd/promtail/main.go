@@ -9,8 +9,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 
-	"github.com/grafana/tempo/pkg/helpers"
-	"github.com/grafana/tempo/pkg/promtail"
+	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/promtail"
 )
 
 func main() {
@@ -33,12 +33,12 @@ func main() {
 
 	p, err := promtail.New(config)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error creating tempo", "error", err)
+		level.Error(util.Logger).Log("msg", "error creating loki", "error", err)
 		os.Exit(1)
 	}
 
 	if err := p.Run(); err != nil {
-		level.Error(util.Logger).Log("msg", "error starting tempo", "error", err)
+		level.Error(util.Logger).Log("msg", "error starting loki", "error", err)
 		os.Exit(1)
 	}
 

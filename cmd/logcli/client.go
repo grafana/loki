@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/grafana/tempo/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (

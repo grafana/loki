@@ -9,10 +9,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/tempo/pkg/helpers"
-	"github.com/grafana/tempo/pkg/ingester/client"
-	"github.com/grafana/tempo/pkg/iter"
-	"github.com/grafana/tempo/pkg/logproto"
+	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 // Config for a querier.

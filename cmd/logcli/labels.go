@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/grafana/tempo/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func doLabels() {

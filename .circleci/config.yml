@@ -22,8 +22,8 @@ workflows:
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
   docker:
-    - image: grafana/tempo-build-image:checkin-generated-files-86c363c
-  working_directory: /go/src/github.com/grafana/tempo
+    - image: grafana/loki-build-image:checkin-generated-files-86c363c
+  working_directory: /go/src/github.com/grafana/loki
 
 jobs:
   test:
@@ -34,7 +34,7 @@ jobs:
       - run:
           name: Run Unit Tests
           command: |
-            touch tempo-build-image/.uptodate &&
+            touch loki-build-image/.uptodate &&
             make BUILD_IN_CONTAINER=false test
 
   lint:
@@ -45,13 +45,13 @@ jobs:
       - run:
           name: Lint
           command: |
-            touch tempo-build-image/.uptodate &&
+            touch loki-build-image/.uptodate &&
             make BUILD_IN_CONTAINER=false lint
 
       - run:
           name: Check Generated Fies
           command: |
-            touch tempo-build-image/.uptodate &&
+            touch loki-build-image/.uptodate &&
             make BUILD_IN_CONTAINER=false check-generated-files
 
   build:
@@ -63,17 +63,17 @@ jobs:
       - run:
           name: Build Images
           command: |
-            touch tempo-build-image/.uptodate &&
+            touch loki-build-image/.uptodate &&
             make BUILD_IN_CONTAINER=false
 
       - run:
           name: Save Images
           command: |
-            touch tempo-build-image/.uptodate &&
+            touch loki-build-image/.uptodate &&
             make BUILD_IN_CONTAINER=false save-images
 
       - save_cache:
-          key: v1-tempo-{{ .Branch }}-{{ .Revision }}
+          key: v1-loki-{{ .Branch }}-{{ .Revision }}
           paths:
           - images/
 
@@ -84,12 +84,12 @@ jobs:
       - setup_remote_docker
 
       - restore_cache:
-          key: v1-tempo-{{ .Branch }}-{{ .Revision }}
+          key: v1-loki-{{ .Branch }}-{{ .Revision }}
 
       - run:
           name: Load Images
           command: |
-            touch tempo-build-image/.uptodate &&
+            touch loki-build-image/.uptodate &&
             make BUILD_IN_CONTAINER=false load-images
 
       - run:

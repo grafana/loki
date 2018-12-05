@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/grafana/tempo/pkg/helpers"
-	"github.com/grafana/tempo/pkg/logproto"
+	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 // EntryIterator iterates over entries in time-order.

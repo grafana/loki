@@ -14,24 +14,24 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/tempo/pkg/ingester/client"
-	"github.com/grafana/tempo/pkg/logproto"
+	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 var (
 	sendDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "tempo",
+		Namespace: "loki",
 		Name:      "distributor_send_duration_seconds",
 		Help:      "Time spent sending a sample batch to multiple replicated ingesters.",
 		Buckets:   []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1},
 	}, []string{"method", "status_code"})
 	ingesterAppends = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "tempo",
+		Namespace: "loki",
 		Name:      "distributor_ingester_appends_total",
 		Help:      "The total number of batch appends sent to ingesters.",
 	}, []string{"ingester"})
 	ingesterAppendFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "tempo",
+		Namespace: "loki",
 		Name:      "distributor_ingester_append_failures_total",
 		Help:      "The total number of failed batch appends sent to ingesters.",
 	}, []string{"ingester"})

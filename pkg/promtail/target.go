@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	fsnotify "gopkg.in/fsnotify.v1"
 
-	"github.com/grafana/tempo/pkg/helpers"
+	"github.com/grafana/loki/pkg/helpers"
 )
 
 var (

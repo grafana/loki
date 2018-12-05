@@ -8,7 +8,7 @@ IMAGE_TAG := $(shell ./tools/image-tag)
 UPTODATE := .uptodate
 
 # Building Docker images is now automated. The convention is every directory
-# with a Dockerfile in it builds an image calls quay.io/grafana/tempo-<dirname>.
+# with a Dockerfile in it builds an image calls quay.io/grafana/loki-<dirname>.
 # Dependencies (i.e. things that go in the image) still need to be explicitly
 # declared.
 %/$(UPTODATE): %/Dockerfile
@@ -17,7 +17,7 @@ UPTODATE := .uptodate
 	touch $@
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
-# 'make: Entering directory '/go/src/github.com/grafana/tempo' phase.
+# 'make: Entering directory '/go/src/github.com/grafana/loki' phase.
 DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # Get a list of directories containing Dockerfiles
@@ -62,7 +62,7 @@ protos: $(PROTO_GOS)
 yacc: $(YACC_GOS)
 
 # And now what goes into each image
-tempo-build-image/$(UPTODATE): tempo-build-image/*
+loki-build-image/$(UPTODATE): loki-build-image/*
 
 # All the boiler plate for building golang follows:
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
@@ -87,22 +87,22 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) $(PROTO_GOS) $(YACC_GOS) lint test shell check-generated-files: tempo-build-image/$(UPTODATE)
+$(EXES) $(PROTO_GOS) $(YACC_GOS) lint test shell check-generated-files: loki-build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/grafana/tempo \
-		$(IMAGE_PREFIX)tempo-build-image $@;
+		-v $(shell pwd):/go/src/github.com/grafana/loki \
+		$(IMAGE_PREFIX)loki-build-image $@;
 
 else
 
-$(EXES): tempo-build-image/$(UPTODATE)
+$(EXES): loki-build-image/$(UPTODATE)
 	go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
-%.pb.go: tempo-build-image/$(UPTODATE)
+%.pb.go: loki-build-image/$(UPTODATE)
 	case "$@" in 	\
 	vendor*)			\
 		protoc -I ./vendor:./$(@D) --gogoslick_out=plugins=grpc:./vendor ./$(patsubst %.pb.go,%.proto,$@); \
@@ -115,16 +115,16 @@ $(EXES): tempo-build-image/$(UPTODATE)
 %.go: %.y
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
 
-lint: tempo-build-image/$(UPTODATE)
+lint: loki-build-image/$(UPTODATE)
 	gometalinter ./...
 
-check-generated-files: tempo-build-image/$(UPTODATE) yacc protos
+check-generated-files: loki-build-image/$(UPTODATE) yacc protos
 	@git diff-files || (echo "changed files; failing check" && exit 1)
 
-test: tempo-build-image/$(UPTODATE)
+test: loki-build-image/$(UPTODATE)
 	go test ./...
 
-shell: tempo-build-image/$(UPTODATE)
+shell: loki-build-image/$(UPTODATE)
 	bash
 
 endif

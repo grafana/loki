@@ -9,9 +9,9 @@ import (
 	"github.com/fatih/color"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/grafana/tempo/pkg/iter"
-	"github.com/grafana/tempo/pkg/logproto"
-	"github.com/grafana/tempo/pkg/parser"
+	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/parser"
 )
 
 func doQuery() {

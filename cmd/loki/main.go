@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/tempo/pkg/helpers"
-	"github.com/grafana/tempo/pkg/tempo"
+	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/loki"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -14,7 +14,7 @@ import (
 
 func main() {
 	var (
-		cfg        tempo.Config
+		cfg        loki.Config
 		configFile = ""
 	)
 	flag.StringVar(&configFile, "config.file", "", "Configuration file to load.")
@@ -30,18 +30,18 @@ func main() {
 		}
 	}
 
-	t, err := tempo.New(cfg)
+	t, err := loki.New(cfg)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error initialising tempo", "err", err)
+		level.Error(util.Logger).Log("msg", "error initialising loki", "err", err)
 		os.Exit(1)
 	}
 
 	if err := t.Run(); err != nil {
-		level.Error(util.Logger).Log("msg", "error running tempo", "err", err)
+		level.Error(util.Logger).Log("msg", "error running loki", "err", err)
 	}
 
 	if err := t.Stop(); err != nil {
-		level.Error(util.Logger).Log("msg", "error stopping tempo", "err", err)
+		level.Error(util.Logger).Log("msg", "error stopping loki", "err", err)
 		os.Exit(1)
 	}
 }
