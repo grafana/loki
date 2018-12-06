@@ -309,14 +309,11 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []Table
 		} else if descriptions[i].Name > existingTables[j] {
 			// existingTables[j].name isn't in descriptions, and can be removed
 			if m.cfg.RetentionPeriod > 0 {
-				isMatch := false
 				for tblPrefix := range tablePrefixes {
 					if strings.HasPrefix(existingTables[j], tblPrefix) {
-						isMatch = true
+						toDelete = append(toDelete, TableDesc{Name: existingTables[j]})
+						break
 					}
-				}
-				if isMatch {
-					toDelete = append(toDelete, TableDesc{Name: existingTables[j]})
 				}
 			}
 			j++
