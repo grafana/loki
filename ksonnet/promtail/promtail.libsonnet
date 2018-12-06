@@ -13,7 +13,13 @@ k {
       scheme: 'https',
       hostname: 'log-us.grafana.net',
     },
-    service_url: '%(scheme)s://%(username)s:%(password)s@%(hostname)s/api/prom/push' % self.promtail_config,
+
+
+    service_url:
+      if std.objectHas(self.promtail_config, 'username') then
+        '%(scheme)s://%(username)s:%(password)s@%(hostname)s/api/prom/push' % self.promtail_config
+      else
+        '%(scheme)s://%(hostname)s/api/prom/push' % self.promtail_config,
   },
 
   namespace:
