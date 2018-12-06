@@ -1,4 +1,4 @@
-package tempo
+package loki
 
 import (
 	"flag"
@@ -13,13 +13,13 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 
-	"github.com/grafana/tempo/pkg/distributor"
-	"github.com/grafana/tempo/pkg/ingester"
-	"github.com/grafana/tempo/pkg/ingester/client"
-	"github.com/grafana/tempo/pkg/querier"
+	"github.com/grafana/loki/pkg/distributor"
+	"github.com/grafana/loki/pkg/ingester"
+	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/querier"
 )
 
-// Config is the root config for Tempo.
+// Config is the root config for Loki.
 type Config struct {
 	Target      moduleName `yaml:"target,omitempty"`
 	AuthEnabled bool       `yaml:"auth_enabled,omitempty"`
@@ -33,7 +33,7 @@ type Config struct {
 
 // RegisterFlags registers flag.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
-	c.Server.MetricsNamespace = "tempo"
+	c.Server.MetricsNamespace = "loki"
 	c.Target = All
 	f.Var(&c.Target, "target", "target module (default All)")
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
@@ -45,8 +45,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Ingester.RegisterFlags(f)
 }
 
-// Tempo is the root datastructure for Tempo.
-type Tempo struct {
+// Loki is the root datastructure for Loki.
+type Loki struct {
 	cfg Config
 
 	server      *server.Server
@@ -60,23 +60,23 @@ type Tempo struct {
 	inited map[moduleName]struct{}
 }
 
-// New makes a new Tempo.
-func New(cfg Config) (*Tempo, error) {
-	tempo := &Tempo{
+// New makes a new Loki.
+func New(cfg Config) (*Loki, error) {
+	loki := &Loki{
 		cfg:    cfg,
 		inited: map[moduleName]struct{}{},
 	}
 
-	tempo.setupAuthMiddleware()
+	loki.setupAuthMiddleware()
 
-	if err := tempo.init(cfg.Target); err != nil {
+	if err := loki.init(cfg.Target); err != nil {
 		return nil, err
 	}
 
-	return tempo, nil
+	return loki, nil
 }
 
-func (t *Tempo) setupAuthMiddleware() {
+func (t *Loki) setupAuthMiddleware() {
 	if t.cfg.AuthEnabled {
 		t.cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
 			middleware.ServerUserHeaderInterceptor,
@@ -96,7 +96,7 @@ func (t *Tempo) setupAuthMiddleware() {
 	}
 }
 
-func (t *Tempo) init(m moduleName) error {
+func (t *Loki) init(m moduleName) error {
 	if _, ok := t.inited[m]; ok {
 		return nil
 	}
@@ -118,19 +118,19 @@ func (t *Tempo) init(m moduleName) error {
 	return nil
 }
 
-// Run starts Tempo running, and blocks until a signal is received.
-func (t *Tempo) Run() error {
+// Run starts Loki running, and blocks until a signal is received.
+func (t *Loki) Run() error {
 	return t.server.Run()
 }
 
-// Stop gracefully stops a Tempo.
-func (t *Tempo) Stop() error {
+// Stop gracefully stops a Loki.
+func (t *Loki) Stop() error {
 	t.server.Shutdown()
 	t.stop(t.cfg.Target)
 	return nil
 }
 
-func (t *Tempo) stop(m moduleName) {
+func (t *Loki) stop(m moduleName) {
 	if _, ok := t.inited[m]; !ok {
 		return
 	}

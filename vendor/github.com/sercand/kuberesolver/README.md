@@ -2,17 +2,27 @@
 Grpc Client-Side Load Balancer with Kubernetes name resolver
 
 ```go
-//New balancer for default namespace
-balancer := kuberesolver.New() 
-//Dials with RoundRobin lb and kubernetes name resolver. if url schema is not 'kubernetes' than uses dns
-cc, err := balancer.Dial("kubernetes://service-name:portname", opts...) 
-// or, add balancer as dial option bu this does not fallback to dns if schema is not 'kubernetes'
-cc, err := grpc.Dial("kubernetes://service-name:portname", balancer.DialOption(), opts...)
+// Register kuberesolver to grpc
+kuberesolver.RegisterInCluster()
+// is same as
+resolver.Register(kuberesolver.NewBuilder(nil))
+// you can bring your own k8s client, below is default behaviour
+client, err := kuberesolver.NewInClusterK8sClient()
+resolver.Register(kuberesolver.NewBuilder(client))
+
+// USAGE:
+// if schema is 'kubernetes' then grpc will use kuberesolver to resolve addresses
+cc, err := grpc.Dial("kubernetes:///service-name.namespace:portname", opts...)
 ```
-An url can be one of the following
+
+An url can be one of the following, [grpc naming docs](https://github.com/grpc/grpc/blob/master/doc/naming.md)
 ```
-kubernetes://service-name:portname    uses kubernetes api to fetch endpoints and port names
-kubernetes://service-name:8080        uses kubernetes api to fetch endpoints but uses given port
-dns://service-name:8080               does not use lb
-service-name:8080
+kubernetes:///service-name:8080
+kubernetes:///service-name:portname
+kubernetes:///service-name.namespace:8080
+
+kubernetes://namespace/service-name:8080
+kubernetes://service-name:8080/
+kubernetes://service-name.namespace:8080/
+
 ```

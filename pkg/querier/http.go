@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/grafana/tempo/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (

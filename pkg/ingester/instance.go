@@ -2,18 +2,17 @@ package ingester
 
 import (
 	"context"
-	"log"
 	"sort"
 	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/tempo/pkg/helpers"
-	"github.com/grafana/tempo/pkg/iter"
-	"github.com/grafana/tempo/pkg/logproto"
-	"github.com/grafana/tempo/pkg/parser"
-	"github.com/grafana/tempo/pkg/querier"
+	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/parser"
+	"github.com/grafana/loki/pkg/querier"
 )
 
 const queryBatchSize = 128
@@ -25,12 +24,12 @@ var (
 
 var (
 	streamsCreatedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "tempo",
+		Namespace: "loki",
 		Name:      "ingester_streams_created_total",
 		Help:      "The total number of streams created in the ingester.",
 	}, []string{"org"})
 	streamsRemovedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "tempo",
+		Namespace: "loki",
 		Name:      "ingester_streams_removed_total",
 		Help:      "The total number of streams removed by the ingester.",
 	}, []string{"org"})
@@ -155,7 +154,6 @@ func sendBatches(i iter.EntryIterator, queryServer logproto.Querier_QueryServer,
 			return nil
 		}
 
-		log.Println("sendBatch", batchSize)
 		if err := queryServer.Send(batch); err != nil {
 			return err
 		}

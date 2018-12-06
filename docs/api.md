@@ -9,11 +9,11 @@ There are 4 API endpoints:
 
 - `POST /api/prom/push`
 
-  For sending log entries, expects a snappy compresses proto in the HTTP Body.
+  For sending log entries, expects a snappy compressed proto in the HTTP Body.
 
 - `GET /api/prom/query`
 
-  For doing queries, accepts the following paramters in the query-string:
+  For doing queries, accepts the following parameters in the query-string:
   - `query`: a logQL query
   - `limit`: max number of entries to return
   - `start`: the start time for the query, as a nanosecond Unix epoch (nanoseconds since 1970)

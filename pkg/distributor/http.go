@@ -5,7 +5,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 
-	"github.com/grafana/tempo/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.

@@ -4,6 +4,7 @@ import (
 	"fmt"
 )
 
+// Strings is a list of strings.
 type Strings []string
 
 // String implements flag.Value

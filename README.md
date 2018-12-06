@@ -1,24 +1,24 @@
-# Tempo: Like Prometheus, but for logs.
+# Loki: Like Prometheus, but for logs.
 
-[![CircleCI](https://circleci.com/gh/grafana/tempo/tree/master.svg?style=svg&circle-token=618193e5787b2951c1ea3352ad5f254f4f52313d)](https://circleci.com/gh/grafana/tempo/tree/master) [Design doc](https://docs.google.com/document/d/11tjK_lvp1-SVsFZjgOTr1vV3-q6vBAsZYIQ5ZeYBkyM/edit)
+[![CircleCI](https://circleci.com/gh/grafana/loki/tree/master.svg?style=svg&circle-token=618193e5787b2951c1ea3352ad5f254f4f52313d)](https://circleci.com/gh/grafana/loki/tree/master) [Design doc](https://docs.google.com/document/d/11tjK_lvp1-SVsFZjgOTr1vV3-q6vBAsZYIQ5ZeYBkyM/edit)
 
-Tempo is a horizontally-scalable, highly-available, multi-tenant, log aggregation
-system inspired by Prometheus.  It is design to be very cost effective, as it does
-not index the contents of the logs, but rather a set of labels for each log steam.
+Loki is a horizontally-scalable, highly-available, multi-tenant, log aggregation
+system inspired by Prometheus.  It is designed to be very cost effective, as it does
+not index the contents of the logs, but rather a set of labels for each log stream.
 
 ## Run it locally
 
-Tempo can be run in a single host, no-dependencies mode using the following commands.
+Loki can be run in a single host, no-dependencies mode using the following commands.
 
-Tempo consists of 3 components; `tempo` is the main server, responsible for storing
+Loki consists of 3 components; `loki` is the main server, responsible for storing
 logs and processing queries.  `promtail` is the agent, responsible for gather logs
-and sending them to tempo and `grafana` as the UI.
+and sending them to loki and `grafana` as the UI.
 
-To run tempo, use the following commands:
+To run loki, use the following commands:
 
 ```
-$ go build ./cmd/tempo
-$ ./tempo -config.file=./docs/tempo-local-config.yaml
+$ go build ./cmd/loki
+$ ./loki -config.file=./docs/loki-local-config.yaml
 ...
 ```
 
@@ -26,26 +26,26 @@ To run promtail, use the following commands:
 
 ```
 $ go build ./cmd/promtail
-$ ./promtail -config.file=./docs/promtail-local-config.yaml -positions.file=./positions.yaml -client.url=http://localhost/api/prom/push
+$ ./promtail -config.file=./docs/promtail-local-config.yaml
 ...
 ```
 
-Grafana is Tempo's UI, so you'll also want to run one of those:
+Grafana is Loki's UI, so you'll also want to run one of those:
 
 ```
 $ docker run -ti -p 3000:3000 -e "GF_EXPLORE_ENABLED=true" grafana/grafana-dev:master-377eaa891c1eefdec9c83a2ee4dcf5c81665ab1f
 ```
 
-In the Grafana UI (http://localhost:3000), loging with "admin"/"admin", add a new "Grafana Logging" datasource for `http://host.docker.internal:80`, then go to explore and enjoy!
+In the Grafana UI (http://localhost:3000), log in with "admin"/"admin", add a new "Grafana Logging" datasource for `http://host.docker.internal:80`, then go to explore and enjoy!
 
 ## Usage Instructions
 
-Tempo is running in the ops-tools1 cluster.  You can query logs from that cluster
+Loki is running in the ops-tools1 cluster.  You can query logs from that cluster
 using the following commands:
 
 ```
-$ go get github.com/grafana/tempo/cmd/logcli
-$ . $GOPATH/src/github.com/grafana/tempo/env # env vars inc. URL, username etc
+$ go get github.com/grafana/loki/cmd/logcli
+$ . $GOPATH/src/github.com/grafana/loki/env # env vars inc. URL, username etc
 $ logcli labels job
 https://logs-dev-ops-tools1.grafana.net/api/prom/label/job/values
 cortex-ops/consul
@@ -65,7 +65,7 @@ the requests are printed to help with integration work.
 $ logcli help
 usage: logcli [<flags>] <command> [<args> ...]
 
-A command-line for tempo.
+A command-line for loki.
 
 Flags:
   --help         Show context-sensitive help (also try --help-long and --help-man).

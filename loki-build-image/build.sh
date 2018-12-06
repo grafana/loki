@@ -2,7 +2,7 @@
 
 set -eu
 
-SRC_PATH=$GOPATH/src/github.com/grafana/tempo
+SRC_PATH=$GOPATH/src/github.com/grafana/loki
 
 # If we run make directly, any files created on the bind mount
 # will have awkward ownership.  So we switch to a user with the

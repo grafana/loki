@@ -1,4 +1,4 @@
-package tempo
+package loki
 
 import (
 	"fmt"
@@ -13,15 +13,15 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 
-	"github.com/grafana/tempo/pkg/distributor"
-	"github.com/grafana/tempo/pkg/ingester"
-	"github.com/grafana/tempo/pkg/logproto"
-	"github.com/grafana/tempo/pkg/querier"
+	"github.com/grafana/loki/pkg/distributor"
+	"github.com/grafana/loki/pkg/ingester"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/querier"
 )
 
 type moduleName int
 
-// The various modules that make up Tempo.
+// The various modules that make up Loki.
 const (
 	Ring moduleName = iota
 	Server
@@ -75,12 +75,12 @@ func (m *moduleName) Set(s string) error {
 	}
 }
 
-func (t *Tempo) initServer() (err error) {
+func (t *Loki) initServer() (err error) {
 	t.server, err = server.New(t.cfg.Server)
 	return
 }
 
-func (t *Tempo) initRing() (err error) {
+func (t *Loki) initRing() (err error) {
 	t.ring, err = ring.New(t.cfg.Ingester.LifecyclerConfig.RingConfig)
 	if err != nil {
 		return
@@ -89,7 +89,7 @@ func (t *Tempo) initRing() (err error) {
 	return
 }
 
-func (t *Tempo) initDistributor() (err error) {
+func (t *Loki) initDistributor() (err error) {
 	t.distributor, err = distributor.New(t.cfg.Distributor, t.cfg.IngesterClient, t.ring)
 	if err != nil {
 		return
@@ -108,7 +108,7 @@ func (t *Tempo) initDistributor() (err error) {
 	return
 }
 
-func (t *Tempo) initQuerier() (err error) {
+func (t *Loki) initQuerier() (err error) {
 	t.querier, err = querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring)
 	if err != nil {
 		return
@@ -129,7 +129,7 @@ func (t *Tempo) initQuerier() (err error) {
 	return
 }
 
-func (t *Tempo) initIngester() (err error) {
+func (t *Loki) initIngester() (err error) {
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = &t.cfg.Server.GRPCListenPort
 	t.ingester, err = ingester.New(t.cfg.Ingester)
 	if err != nil {
@@ -143,41 +143,41 @@ func (t *Tempo) initIngester() (err error) {
 	return
 }
 
-func (t *Tempo) stopIngester() error {
+func (t *Loki) stopIngester() error {
 	t.ingester.Shutdown()
 	return nil
 }
 
 type module struct {
 	deps []moduleName
-	init func(t *Tempo) error
-	stop func(t *Tempo) error
+	init func(t *Loki) error
+	stop func(t *Loki) error
 }
 
 var modules = map[moduleName]module{
 	Server: {
-		init: (*Tempo).initServer,
+		init: (*Loki).initServer,
 	},
 
 	Ring: {
 		deps: []moduleName{Server},
-		init: (*Tempo).initRing,
+		init: (*Loki).initRing,
 	},
 
 	Distributor: {
 		deps: []moduleName{Ring, Server},
-		init: (*Tempo).initDistributor,
+		init: (*Loki).initDistributor,
 	},
 
 	Ingester: {
 		deps: []moduleName{Server},
-		init: (*Tempo).initIngester,
-		stop: (*Tempo).stopIngester,
+		init: (*Loki).initIngester,
+		stop: (*Loki).stopIngester,
 	},
 
 	Querier: {
 		deps: []moduleName{Ring, Server},
-		init: (*Tempo).initQuerier,
+		init: (*Loki).initQuerier,
 	},
 
 	All: {

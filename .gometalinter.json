@@ -24,7 +24,6 @@
     "gotype",
     "gotypex",
     "ineffassign",
-    "interfacer",
     "megacheck",
     "misspell",
     "structcheck",

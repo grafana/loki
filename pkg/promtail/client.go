@@ -9,17 +9,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	log "github.com/sirupsen/logrus"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 
-	"github.com/grafana/tempo/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const contentType = "application/x-protobuf"
@@ -58,6 +57,7 @@ func (c *ClientConfig) RegisterFlags(flags *flag.FlagSet) {
 
 // Client for pushing logs in snappy-compressed protos over HTTP.
 type Client struct {
+	logger  log.Logger
 	cfg     ClientConfig
 	quit    chan struct{}
 	entries chan entry
@@ -70,8 +70,9 @@ type entry struct {
 }
 
 // NewClient makes a new Client.
-func NewClient(cfg ClientConfig) (*Client, error) {
+func NewClient(cfg ClientConfig, logger log.Logger) (*Client, error) {
 	c := &Client{
+		logger:  logger,
 		cfg:     cfg,
 		quit:    make(chan struct{}),
 		entries: make(chan entry),
@@ -88,7 +89,7 @@ func (c *Client) run() {
 
 	defer func() {
 		if err := c.send(batch); err != nil {
-			level.Error(util.Logger).Log("msg", "error sending batch", "error", err)
+			level.Error(c.logger).Log("msg", "error sending batch", "error", err)
 		}
 		c.wg.Done()
 	}()
@@ -101,7 +102,7 @@ func (c *Client) run() {
 		case e := <-c.entries:
 			if batchSize+len(e.Line) > c.cfg.BatchSize {
 				if err := c.send(batch); err != nil {
-					log.Errorf("Error sending batch: %v", err)
+					level.Error(c.logger).Log("msg", "error sending batch", "error", err)
 				}
 				batch = map[model.Fingerprint]*logproto.Stream{}
 			}
@@ -118,7 +119,7 @@ func (c *Client) run() {
 		case <-maxWait.C:
 			if len(batch) > 0 {
 				if err := c.send(batch); err != nil {
-					log.Errorf("Error sending batch: %v", err)
+					level.Error(c.logger).Log("msg", "error sending batch", "error", err)
 				}
 				batch = map[model.Fingerprint]*logproto.Stream{}
 			}
@@ -165,8 +166,8 @@ func (c *Client) Stop() {
 	c.wg.Wait()
 }
 
-// Line adds a new line to the next batch; send is async.
-func (c *Client) Line(ls model.LabelSet, t time.Time, s string) error {
+// Handle implement EntryHandler; adds a new line to the next batch; send is async.
+func (c *Client) Handle(ls model.LabelSet, t time.Time, s string) error {
 	c.entries <- entry{ls, logproto.Entry{
 		Timestamp: t,
 		Line:      s,
