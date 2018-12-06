@@ -10,7 +10,7 @@
     },
 
   ingester_container::
-    container.new('ingester', $._images.tempo) +
+    container.new('ingester', $._images.ingester) +
     container.withPorts($.util.defaultPorts) +
     container.withArgsMixin($.util.mapToFlags($.ingester_args)) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +

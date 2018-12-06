@@ -8,7 +8,7 @@
     },
 
   querier_container::
-    container.new('querier', $._images.tempo) +
+    container.new('querier', $._images.querier) +
     container.withPorts($.util.defaultPorts) +
     container.withArgsMixin($.util.mapToFlags($.querier_args)),
 

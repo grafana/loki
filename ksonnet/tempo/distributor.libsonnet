@@ -9,7 +9,7 @@
     },
 
   distributor_container::
-    container.new('distributor', $._images.tempo) +
+    container.new('distributor', $._images.distributor) +
     container.withPorts($.util.defaultPorts) +
     container.withArgsMixin($.util.mapToFlags($.distributor_args)),
 

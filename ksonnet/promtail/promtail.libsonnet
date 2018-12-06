@@ -149,15 +149,17 @@ k {
       'promtail.yml': $.util.manifestYaml($.promtail_config),
     }),
 
+  promtail_args:: {
+    'client.url': $._config.service_url,
+    'config.file': '/etc/promtail/promtail.yml',
+  }
+
   local container = $.core.v1.container,
 
   promtail_container::
     container.new('promtail', $._images.promtail) +
     container.withPorts($.core.v1.containerPort.new('http-metrics', 80)) +
-    container.withArgs([
-      '-client.url=%s' % $._config.service_url,
-      '-config.file=/etc/promtail/promtail.yml',
-    ]) +
+    container.withArgsMixin($.util.mapToFlags($.promtail_args)) +
     container.withEnv([
       container.envType.fromFieldPath('HOSTNAME', 'spec.nodeName'),
     ]) +

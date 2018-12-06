@@ -11,6 +11,11 @@
     // Our services.
     cortex_gw: 'raintank/cortex-gw:0.9.0-93-gceff250',
     tableManager: 'grafana/cortex-table-manager:r45-6247bbc8',
+
     tempo: 'grafana/tempo:master-4635769-WIP',
+
+    distributor: self.tempo,
+    ingester: self.tempo,
+    querier: self.tempo,
   },
 }
