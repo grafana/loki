@@ -2,7 +2,7 @@
 (import 'images.libsonnet') +
 (import 'common.libsonnet') +
 (import 'config.libsonnet') +
-(import 'cortex/consul.libsonnet') +
+(import 'consul/consul.libsonnet') +
 
 // Cortex services
 (import 'distributor.libsonnet') +
