@@ -72,11 +72,12 @@ k {
             target_label: 'instance',
           },
 
-          // Kubernetes puts logs under subdirectories keyed pod UID.
+          // Kubernetes puts logs under subdirectories keyed pod UID and container_name.
           {
-            source_labels: ['__meta_kubernetes_pod_uid'],
+            source_labels: ['__meta_kubernetes_pod_uid', '__meta_kubernetes_pod_container_name'],
             target_label: '__path__',
-            replacement: '/var/log/pods/$1/',
+            separator: '/',
+            replacement: '/var/log/pods/$1',
           },
         ],
       },
@@ -130,11 +131,12 @@ k {
             regex: '__meta_kubernetes_pod_label_(.+)',
           },
 
-          // Kubernetes puts logs under subdirectories keyed pod UID.
+          // Kubernetes puts logs under subdirectories keyed pod UID and container_name.
           {
-            source_labels: ['__meta_kubernetes_pod_uid'],
+            source_labels: ['__meta_kubernetes_pod_uid', '__meta_kubernetes_pod_container_name'],
             target_label: '__path__',
-            replacement: '/var/log/pods/$1/',
+            separator: '/',
+            replacement: '/var/log/pods/$1',
           },
         ],
       },
@@ -152,7 +154,7 @@ k {
   promtail_args:: {
     'client.url': $._config.service_url,
     'config.file': '/etc/promtail/promtail.yml',
-  }
+  },
 
   local container = $.core.v1.container,
 
