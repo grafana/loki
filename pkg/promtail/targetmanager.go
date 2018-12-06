@@ -34,7 +34,7 @@ type TargetManager struct {
 func NewTargetManager(
 	logger log.Logger,
 	positions *Positions,
-	client *Client,
+	client EntryHandler,
 	scrapeConfig []ScrapeConfig,
 ) (*TargetManager, error) {
 	ctx, quit := context.WithCancel(context.Background())
