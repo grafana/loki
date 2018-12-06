@@ -18,7 +18,6 @@ package encoding
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"sort"
 
@@ -30,48 +29,9 @@ import (
 // ChunkLen is the length of a chunk in bytes.
 const ChunkLen = 1024
 
-// DefaultEncoding can be changed via a flag.
-var DefaultEncoding = DoubleDelta
-
 var (
 	errChunkBoundsExceeded = errors.New("attempted access outside of chunk boundaries")
 	errAddedToEvictedChunk = errors.New("attempted to add sample to evicted chunk")
-)
-
-// Encoding defines which encoding we are using, delta, doubledelta, or varbit
-type Encoding byte
-
-// String implements flag.Value.
-func (e Encoding) String() string {
-	return fmt.Sprintf("%d", e)
-}
-
-// Set implements flag.Value.
-func (e *Encoding) Set(s string) error {
-	switch s {
-	case "0":
-		*e = Delta
-	case "1":
-		*e = DoubleDelta
-	case "2":
-		*e = Varbit
-	case "3":
-		*e = Bigchunk
-	default:
-		return fmt.Errorf("invalid chunk encoding: %s", s)
-	}
-	return nil
-}
-
-const (
-	// Delta encoding
-	Delta Encoding = iota
-	// DoubleDelta encoding
-	DoubleDelta
-	// Varbit encoding
-	Varbit
-	// Bigchunk encoding
-	Bigchunk
 )
 
 // Chunk is the interface for all chunks. Chunks are generally not
@@ -197,32 +157,6 @@ func transcodeAndAdd(dst Chunk, src Chunk, s model.SamplePair) ([]Chunk, error) 
 		return nil, err
 	}
 	return append(body, NewChunks...), nil
-}
-
-// New creates a new chunk according to the encoding set by the
-// DefaultEncoding flag.
-func New() Chunk {
-	chunk, err := NewForEncoding(DefaultEncoding)
-	if err != nil {
-		panic(err)
-	}
-	return chunk
-}
-
-// NewForEncoding allows configuring what chunk type you want
-func NewForEncoding(encoding Encoding) (Chunk, error) {
-	switch encoding {
-	case Delta:
-		return newDeltaEncodedChunk(d1, d0, true, ChunkLen), nil
-	case DoubleDelta:
-		return newDoubleDeltaEncodedChunk(d1, d0, true, ChunkLen), nil
-	case Varbit:
-		return newVarbitChunk(varbitZeroEncoding), nil
-	case Bigchunk:
-		return newBigchunk(), nil
-	default:
-		return nil, fmt.Errorf("unknown chunk encoding: %v", encoding)
-	}
 }
 
 // indexAccessor allows accesses to samples by index.
