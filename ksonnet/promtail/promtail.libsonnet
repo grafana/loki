@@ -16,6 +16,9 @@ k {
     service_url: '%(scheme)s://%(username)s:%(password)s@%(hostname)s/api/prom/push' % self.promtail_config,
   },
 
+  namespace:
+    $.core.v1.namespace.new($._config.namespace),
+
   local policyRule = $.rbac.v1beta1.policyRule,
 
   promtail_rbac:
