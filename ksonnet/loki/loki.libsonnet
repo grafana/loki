@@ -3,6 +3,7 @@
 (import 'common.libsonnet') +
 (import 'config.libsonnet') +
 (import 'consul/consul.libsonnet') +
+(import 'gateway.libsonnet') +
 
 // Cortex services
 (import 'distributor.libsonnet') +

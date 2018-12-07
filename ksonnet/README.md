@@ -60,6 +60,8 @@ If you want to further also deploy the server to the cluster, then run the follo
 jb install github.com/grafana/loki/ksonnet/loki
 ```
 
+Be sure to replace the username, password and the relevant htpasswd contents.
+
 
 ```
 local loki = import 'loki/loki.libsonnet';
@@ -68,10 +70,14 @@ local promtail = import 'promtail/promtail.libsonnet';
 loki + promtail + {
   _config+:: {
     namespace: 'loki',
+    htpasswd_contents: 'loki:$apr1$H4yGiGNg$ssl5/NymaGFRUvxIV1Nyr.',
+
 
     promtail_config: {
       scheme: 'http',
       hostname: 'gateway.%(namespace)s.svc' % $._config,
+      username: 'loki',
+      password: 'password'
     },
     replication_factor: 3,
     consul_replicas: 1,
