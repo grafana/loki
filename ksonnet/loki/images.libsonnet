@@ -8,7 +8,7 @@
     cortex_gw: 'raintank/cortex-gw:0.9.0-93-gceff250',
     tableManager: 'grafana/cortex-table-manager:r45-6247bbc8',
 
-    loki: 'grafana/loki:master-6bf7be2',
+    loki: 'grafana/loki:master-d5e6c60',
 
     distributor: self.loki,
     ingester: self.loki,
