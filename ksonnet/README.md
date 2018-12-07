@@ -64,10 +64,11 @@ Be sure to replace the username, password and the relevant htpasswd contents.
 Replace the contents of `environments/loki/main.jsonnet` with:
 
 ```
+local gateway = import 'loki/gateway.libsonnet';
 local loki = import 'loki/loki.libsonnet';
 local promtail = import 'promtail/promtail.libsonnet';
 
-loki + promtail + {
+loki + promtail + gateway {
   _config+:: {
     namespace: 'loki',
     htpasswd_contents: 'loki:$apr1$H4yGiGNg$ssl5/NymaGFRUvxIV1Nyr.',
