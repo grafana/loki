@@ -75,7 +75,7 @@ RM := --rm
 # as it currently disallows TTY devices. This value needs to be overridden
 # in any custom cloudbuild.yaml files
 TTY := --tty
-GO_FLAGS := -ldflags "-extldflags \"-static\" -linkmode=external -s -w" -tags netgo -i
+GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w" -tags netgo -i
 NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
        rm $@; \
        echo "\nYour go standard library was built without the 'netgo' build tag."; \
