@@ -35,8 +35,8 @@
   branch = "dev"
 
 [[constraint]]
-  name = "gopkg.in/fsnotify.v1"
-  source = "https://github.com/fsnotify/fsnotify.git"
+  name = "github.com/google/mtail"
+  version = "v3.0.0-rc17"
 
 # For Prometheus
 
