@@ -69,14 +69,9 @@ loki + promtail + {
   _config+:: {
     namespace: 'loki',
 
-    loki_username: 'username',
-    loki_password: 'password',
-
     promtail_config: {
       scheme: 'http',
-      hostname: 'gateway.loki.svc',
-      username: $._config.loki_username,
-      password: $._config.loki_password,
+      hostname: 'gateway.%(namespace)s.svc' % $._config,
     },
     replication_factor: 3,
     consul_replicas: 1,
