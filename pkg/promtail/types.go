@@ -35,7 +35,7 @@ func (e EntryMiddlewareFunc) Wrap(next EntryHandler) EntryHandler {
 func addLabelsMiddleware(additionalLabels model.LabelSet) EntryMiddleware {
 	return EntryMiddlewareFunc(func(next EntryHandler) EntryHandler {
 		return EntryHandlerFunc(func(labels model.LabelSet, time time.Time, entry string) error {
-			labels = labels.Merge(additionalLabels)
+			labels = additionalLabels.Merge(labels) // Add the additionalLabels but preserves the original labels.
 			return next.Handle(labels, time, entry)
 		})
 	})

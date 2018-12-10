@@ -15,7 +15,6 @@ type Promtail struct {
 
 // New makes a new Promtail.
 func New(cfg Config) (*Promtail, error) {
-
 	positions, err := NewPositions(util.Logger, cfg.PositionsConfig)
 	if err != nil {
 		return nil, err

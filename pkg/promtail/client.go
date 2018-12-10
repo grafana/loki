@@ -46,6 +46,8 @@ type ClientConfig struct {
 	URL       flagext.URLValue
 	BatchWait time.Duration
 	BatchSize int
+
+	ExternalLabels model.LabelSet `yaml:"external_labels,omitempty"`
 }
 
 // RegisterFlags registers flags.
@@ -62,6 +64,8 @@ type Client struct {
 	quit    chan struct{}
 	entries chan entry
 	wg      sync.WaitGroup
+
+	externalLabels model.LabelSet
 }
 
 type entry struct {
@@ -72,10 +76,11 @@ type entry struct {
 // NewClient makes a new Client.
 func NewClient(cfg ClientConfig, logger log.Logger) (*Client, error) {
 	c := &Client{
-		logger:  logger,
-		cfg:     cfg,
-		quit:    make(chan struct{}),
-		entries: make(chan entry),
+		logger:         logger,
+		cfg:            cfg,
+		quit:           make(chan struct{}),
+		entries:        make(chan entry),
+		externalLabels: cfg.ExternalLabels,
 	}
 	c.wg.Add(1)
 	go c.run()
@@ -168,6 +173,10 @@ func (c *Client) Stop() {
 
 // Handle implement EntryHandler; adds a new line to the next batch; send is async.
 func (c *Client) Handle(ls model.LabelSet, t time.Time, s string) error {
+	if len(c.externalLabels) > 0 {
+		ls = c.externalLabels.Merge(ls)
+	}
+
 	c.entries <- entry{ls, logproto.Entry{
 		Timestamp: t,
 		Line:      s,
