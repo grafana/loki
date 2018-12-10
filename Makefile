@@ -155,6 +155,15 @@ push-images:
 		fi \
 	done
 
+push-master:
+	@set -e; \
+	for image_name in $(IMAGE_NAMES); do \
+		if ! echo $$image_name | grep build; then \
+			docker tag $$image_name:$(IMAGE_TAG) $$image_name:master; \
+			docker push $$image_name:master; \
+		fi \
+	done
+
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
 	rm -rf $(UPTODATE_FILES) $(EXES) .cache
