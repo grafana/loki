@@ -41,9 +41,11 @@ data:
         source_labels:
         - __meta_kubernetes_pod_name
         target_label: instance
-      - replacement: /var/log/pods/$1/
+      - replacement: /var/log/pods/$1
+        separator: /
         source_labels:
         - __meta_kubernetes_pod_uid
+        - __meta_kubernetes_pod_container_name
         target_label: __path__
     - job_name: kubernetes-pods-app
       kubernetes_sd_configs:
@@ -73,9 +75,11 @@ data:
         target_label: instance
       - action: labelmap
         regex: __meta_kubernetes_pod_label_(.+)
-      - replacement: /var/log/pods/$1/
+      - replacement: /var/log/pods/$1
+        separator: /
         source_labels:
         - __meta_kubernetes_pod_uid
+        - __meta_kubernetes_pod_container_name
         target_label: __path__
 kind: ConfigMap
 metadata:
