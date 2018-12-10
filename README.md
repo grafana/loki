@@ -1,6 +1,8 @@
-# Loki: Like Prometheus, but for logs.
+<p align="center"><img src="docs/logo_and_name.png" alt="Loki Logo"></p>
 
-[![CircleCI](https://circleci.com/gh/grafana/loki/tree/master.svg?style=svg&circle-token=618193e5787b2951c1ea3352ad5f254f4f52313d)](https://circleci.com/gh/grafana/loki/tree/master) [Design doc](https://docs.google.com/document/d/11tjK_lvp1-SVsFZjgOTr1vV3-q6vBAsZYIQ5ZeYBkyM/edit)
+[![CircleCI](https://circleci.com/gh/grafana/loki/tree/master.svg?style=svg&circle-token=618193e5787b2951c1ea3352ad5f254f4f52313d)](https://circleci.com/gh/grafana/loki/tree/master) [![Slack](https://img.shields.io/badge/join%20slack-%23loki-brightgreen.svg)](http://slack.raintank.io/)
+
+# Grafana Loki: like Prometheus, but for logs.
 
 Loki is a horizontally-scalable, highly-available, multi-tenant log aggregation system inspired by Prometheus.  It is designed to be very cost effective and easy to operate, as it does not index the contents of the logs, but rather a set of labels for each log stream.
 
@@ -106,3 +108,8 @@ $ docker run -ti -p 3000:3000 -e "GF_EXPLORE_ENABLED=true" grafana/grafana:maste
 ```
 
 In the Grafana UI (http://localhost:3000), log in with "admin"/"admin", add a new "Grafana Loki" datasource for `http://host.docker.internal:3100`, then go to explore and enjoy!
+
+## Further Reading
+
+- The original [design doc](https://docs.google.com/document/d/11tjK_lvp1-SVsFZjgOTr1vV3-q6vBAsZYIQ5ZeYBkyM/view) for Loki is a good source for discussion of the motivation and design decisions.
+>>>>>>> Add logo to readme.
