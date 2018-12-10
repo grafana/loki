@@ -12,6 +12,14 @@ workflows:
         - test
         - build
         - lint
+    - publish-master:
+        requires:
+        - test
+        - build
+        - lint
+        filters:
+          branches:
+            only: master
     - deploy:
         requires:
         - publish
@@ -97,6 +105,27 @@ jobs:
           command: |
             docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
             make push-images
+
+  publish-master:
+    <<: *defaults
+    steps:
+      - checkout
+      - setup_remote_docker
+
+      - restore_cache:
+          key: v1-loki-{{ .Branch }}-{{ .Revision }}
+
+      - run:
+          name: Load Images
+          command: |
+            touch loki-build-image/.uptodate &&
+            make BUILD_IN_CONTAINER=false load-images
+
+      - run:
+          name: Push Images
+          command: |
+            docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
+            make push-master
 
   deploy:
     <<: *defaults
