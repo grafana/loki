@@ -47,8 +47,8 @@ type TableManagerConfig struct {
 	// Master 'off-switch' for table capacity updates, e.g. when troubleshooting
 	ThroughputUpdatesDisabled bool
 
-	// Master 'off-switch' for table retention deletions
-	RetentionDeletesDisabled bool
+	// Master 'on-switch' for table retention deletions
+	RetentionDeletesEnabled bool
 
 	// How far back tables will be kept before they are deleted
 	RetentionPeriod time.Duration
@@ -78,8 +78,8 @@ type ProvisionConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ThroughputUpdatesDisabled, "table-manager.throughput-updates-disabled", false, "If true, disable all changes to DB capacity")
-	f.BoolVar(&cfg.RetentionDeletesDisabled, "table-manager.retention-deletes-disabled", false, "If true, disable all deletes of DB tables")
-	f.DurationVar(&cfg.RetentionPeriod, "table-manager.retention-period", 0, "How far back tables will be kept before they are deleted (default all tables are saved)")
+	f.BoolVar(&cfg.RetentionDeletesEnabled, "table-manager.retention-deletes-enabled", false, "If true, enables retention deletes of DB tables")
+	f.DurationVar(&cfg.RetentionPeriod, "table-manager.retention-period", 0, "Tables older than this retention period are deleted. Note: This setting is destructive to data!(default: 0, which disables deletion)")
 	f.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
 	f.DurationVar(&cfg.CreationGracePeriod, "dynamodb.periodic-table.grace-period", 10*time.Minute, "DynamoDB periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
 
@@ -345,7 +345,7 @@ func (m *TableManager) createTables(ctx context.Context, descriptions []TableDes
 func (m *TableManager) deleteTables(ctx context.Context, descriptions []TableDesc) error {
 	for _, desc := range descriptions {
 		level.Info(util.Logger).Log("msg", "table has exceeded the retention period", "table", desc.Name)
-		if m.cfg.RetentionDeletesDisabled {
+		if !m.cfg.RetentionDeletesEnabled {
 			continue
 		}
 

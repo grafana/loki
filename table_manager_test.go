@@ -470,8 +470,9 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 		},
 	}
 	tbmConfig := TableManagerConfig{
-		RetentionPeriod:     tableRetention,
-		CreationGracePeriod: gracePeriod,
+		RetentionPeriod:         tableRetention,
+		RetentionDeletesEnabled: true,
+		CreationGracePeriod:     gracePeriod,
 		IndexTables: ProvisionConfig{
 			ProvisionedWriteThroughput: write,
 			ProvisionedReadThroughput:  read,
@@ -542,8 +543,8 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 		},
 	)
 
-	// Verify that with RetentionDeletesDisabled set no tables are removed
-	tableManager.cfg.RetentionDeletesDisabled = true
+	// Verify that without RetentionDeletesEnabled no tables are removed
+	tableManager.cfg.RetentionDeletesEnabled = false
 	// Retention > 0 will prevent older tables from being created so we need to create the old tables manually for the test
 	client.CreateTable(nil, TableDesc{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig})
 	client.CreateTable(nil, TableDesc{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite})
@@ -562,8 +563,8 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 		},
 	)
 
-	// Re-enable table deletions (default)
-	tableManager.cfg.RetentionDeletesDisabled = false
+	// Re-enable table deletions
+	tableManager.cfg.RetentionDeletesEnabled = true
 
 	// Verify that with a retention period of zero no tables outside the configs 'From' range are removed
 	tableManager.cfg.RetentionPeriod = 0
