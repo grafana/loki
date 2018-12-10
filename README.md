@@ -40,7 +40,7 @@ In the Grafana UI (http://localhost:3000), log in with "admin"/"admin", add a ne
 
 ## Usage Instructions
 
-Loki is running in the ops-tools1 cluster.  You can query logs from that cluster
+Once you have Loki running in a cluster, you can query logs from that cluster
 using the following commands:
 
 ```
