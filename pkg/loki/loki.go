@@ -8,8 +8,11 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 
@@ -24,11 +27,15 @@ type Config struct {
 	Target      moduleName `yaml:"target,omitempty"`
 	AuthEnabled bool       `yaml:"auth_enabled,omitempty"`
 
-	Server         server.Config      `yaml:"server,omitempty"`
-	Distributor    distributor.Config `yaml:"distributor,omitempty"`
-	Querier        querier.Config     `yaml:"querier,omitempty"`
-	IngesterClient client.Config      `yaml:"ingester_client,omitempty"`
-	Ingester       ingester.Config    `yaml:"ingester,omitempty"`
+	Server           server.Config      `yaml:"server,omitempty"`
+	Distributor      distributor.Config `yaml:"distributor,omitempty"`
+	Querier          querier.Config     `yaml:"querier,omitempty"`
+	IngesterClient   client.Config      `yaml:"ingester_client,omitempty"`
+	Ingester         ingester.Config    `yaml:"ingester,omitempty"`
+	StorageConfig    storage.Config     `yaml:"storage_config,omitempty"`
+	ChunkStoreConfig chunk.StoreConfig  `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig     chunk.SchemaConfig `yaml:"schema_config,omitempty"`
+	LimitsConfig     validation.Limits  `yaml:"limits_config,omitempty"`
 }
 
 // RegisterFlags registers flag.
@@ -43,6 +50,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Querier.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
 	c.Ingester.RegisterFlags(f)
+	c.ChunkStoreConfig.RegisterFlags(f)
+	c.SchemaConfig.RegisterFlags(f)
+	c.LimitsConfig.RegisterFlags(f)
 }
 
 // Loki is the root datastructure for Loki.
@@ -54,6 +64,7 @@ type Loki struct {
 	distributor *distributor.Distributor
 	ingester    *ingester.Ingester
 	querier     *querier.Querier
+	store       chunk.Store
 
 	httpAuthMiddleware middleware.Interface
 

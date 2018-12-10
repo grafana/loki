@@ -4,8 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
@@ -23,7 +24,6 @@ var (
 		Name:      "ingester_chunks_flushed_total",
 		Help:      "The total number of chunks flushed by the ingester.",
 	})
-
 	samplesPerChunk = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Subsystem: "ingester",
@@ -40,43 +40,48 @@ func init() {
 	prometheus.MustRegister(samplesPerChunk)
 }
 
-const tmpMaxChunks = 3
-
 type stream struct {
-	// Newest chunk at chunks[0].
+	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
-	chunks []chunkenc.Chunk
-	labels labels.Labels
+	chunks []chunkDesc
+	fp     model.Fingerprint
+	labels []client.LabelPair
 }
 
-func newStream(labels labels.Labels) *stream {
+type chunkDesc struct {
+	chunk   chunkenc.Chunk
+	closed  bool
+	flushed time.Time
+}
+
+func newStream(fp model.Fingerprint, labels []client.LabelPair) *stream {
 	return &stream{
+		fp:     fp,
 		labels: labels,
 	}
 }
 
 func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 	if len(s.chunks) == 0 {
-		s.chunks = append(s.chunks, chunkenc.NewMemChunk(chunkenc.EncGZIP))
+		s.chunks = append(s.chunks, chunkDesc{
+			chunk: chunkenc.NewMemChunk(chunkenc.EncGZIP),
+		})
 		chunksCreatedTotal.Inc()
 	}
 
 	for i := range entries {
-		if !s.chunks[0].SpaceFor(&entries[i]) {
-			samplesPerChunk.Observe(float64(s.chunks[0].Size()))
-			s.chunks = append([]chunkenc.Chunk{chunkenc.NewMemChunk(chunkenc.EncGZIP)}, s.chunks...)
+		if s.chunks[0].closed || !s.chunks[0].chunk.SpaceFor(&entries[i]) {
+			samplesPerChunk.Observe(float64(s.chunks[0].chunk.Size()))
+			s.chunks = append(s.chunks, chunkDesc{
+				chunk: chunkenc.NewMemChunk(chunkenc.EncGZIP),
+			})
 			chunksCreatedTotal.Inc()
 		}
-		if err := s.chunks[0].Append(&entries[i]); err != nil {
+		if err := s.chunks[len(s.chunks)-1].chunk.Append(&entries[i]); err != nil {
 			return err
 		}
 	}
 
-	// Temp; until we implement flushing, only keep N chunks in memory.
-	if len(s.chunks) > tmpMaxChunks {
-		chunksFlushedTotal.Add(float64(len(s.chunks) - tmpMaxChunks))
-		s.chunks = s.chunks[:tmpMaxChunks]
-	}
 	return nil
 }
 
@@ -84,7 +89,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 func (s *stream) Iterator(from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error) {
 	iterators := make([]iter.EntryIterator, 0, len(s.chunks))
 	for _, c := range s.chunks {
-		iter, err := c.Iterator(from, through, direction)
+		iter, err := c.chunk.Iterator(from, through, direction)
 		if err != nil {
 			return nil, err
 		}
@@ -93,11 +98,11 @@ func (s *stream) Iterator(from, through time.Time, direction logproto.Direction)
 		}
 	}
 
-	if direction == logproto.FORWARD {
+	if direction != logproto.FORWARD {
 		for left, right := 0, len(iterators)-1; left < right; left, right = left+1, right-1 {
 			iterators[left], iterators[right] = iterators[right], iterators[left]
 		}
 	}
 
-	return iter.NewNonOverlappingIterator(iterators, s.labels.String()), nil
+	return iter.NewNonOverlappingIterator(iterators, client.FromLabelPairsToLabels(s.labels).String()), nil
 }

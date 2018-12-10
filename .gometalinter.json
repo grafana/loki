@@ -21,7 +21,6 @@
     "goimports",
     "golint",
     "gosimple",
-    "gotype",
     "gotypex",
     "ineffassign",
     "megacheck",

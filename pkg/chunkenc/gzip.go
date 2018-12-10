@@ -354,7 +354,7 @@ func (c *MemChunk) Bounds() (fromT, toT time.Time) {
 	}
 
 	if !c.head.isEmpty() {
-		if from > c.head.mint {
+		if from == 0 || from > c.head.mint {
 			from = c.head.mint
 		}
 

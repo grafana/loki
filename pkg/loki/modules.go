@@ -9,7 +9,9 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 
@@ -28,6 +30,7 @@ const (
 	Distributor
 	Ingester
 	Querier
+	Store
 	All
 )
 
@@ -39,6 +42,8 @@ func (m moduleName) String() string {
 		return "server"
 	case Distributor:
 		return "distributor"
+	case Store:
+		return "store"
 	case Ingester:
 		return "ingester"
 	case Querier:
@@ -60,6 +65,9 @@ func (m *moduleName) Set(s string) error {
 		return nil
 	case "distributor":
 		*m = Distributor
+		return nil
+	case "store":
+		*m = Store
 		return nil
 	case "ingester":
 		*m = Ingester
@@ -109,7 +117,7 @@ func (t *Loki) initDistributor() (err error) {
 }
 
 func (t *Loki) initQuerier() (err error) {
-	t.querier, err = querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring)
+	t.querier, err = querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store)
 	if err != nil {
 		return
 	}
@@ -131,7 +139,7 @@ func (t *Loki) initQuerier() (err error) {
 
 func (t *Loki) initIngester() (err error) {
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = &t.cfg.Server.GRPCListenPort
-	t.ingester, err = ingester.New(t.cfg.Ingester)
+	t.ingester, err = ingester.New(t.cfg.Ingester, t.store)
 	if err != nil {
 		return
 	}
@@ -140,11 +148,28 @@ func (t *Loki) initIngester() (err error) {
 	logproto.RegisterQuerierServer(t.server.GRPC, t.ingester)
 	grpc_health_v1.RegisterHealthServer(t.server.GRPC, t.ingester)
 	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.ingester.ReadinessHandler))
+	t.server.HTTP.Path("/flush").Handler(http.HandlerFunc(t.ingester.FlushHandler))
 	return
 }
 
 func (t *Loki) stopIngester() error {
 	t.ingester.Shutdown()
+	return nil
+}
+
+func (t *Loki) initStore() (err error) {
+	var overrides *validation.Overrides
+	overrides, err = validation.NewOverrides(t.cfg.LimitsConfig)
+	if err != nil {
+		return err
+	}
+
+	t.store, err = storage.NewStore(t.cfg.StorageConfig, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig, overrides)
+	return
+}
+
+func (t *Loki) stopStore() error {
+	t.store.Stop()
 	return nil
 }
 
@@ -169,14 +194,19 @@ var modules = map[moduleName]module{
 		init: (*Loki).initDistributor,
 	},
 
+	Store: {
+		init: (*Loki).initStore,
+		stop: (*Loki).stopStore,
+	},
+
 	Ingester: {
-		deps: []moduleName{Server},
+		deps: []moduleName{Store, Server},
 		init: (*Loki).initIngester,
 		stop: (*Loki).stopIngester,
 	},
 
 	Querier: {
-		deps: []moduleName{Ring, Server},
+		deps: []moduleName{Store, Ring, Server},
 		init: (*Loki).initQuerier,
 	},
 

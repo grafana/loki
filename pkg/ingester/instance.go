@@ -2,11 +2,15 @@ package ingester
 
 import (
 	"context"
-	"sort"
 	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/ingester/index"
+	"github.com/cortexproject/cortex/pkg/util/wire"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
@@ -42,8 +46,8 @@ func init() {
 
 type instance struct {
 	streamsMtx sync.Mutex
-	streams    map[string]*stream
-	index      *invertedIndex
+	streams    map[model.Fingerprint]*stream
+	index      *index.InvertedIndex
 
 	instanceID string
 }
@@ -51,8 +55,8 @@ type instance struct {
 func newInstance(instanceID string) *instance {
 	streamsCreatedTotal.WithLabelValues(instanceID).Inc()
 	return &instance{
-		streams:    map[string]*stream{},
-		index:      newInvertedIndex(),
+		streams:    map[model.Fingerprint]*stream{},
+		index:      index.New(),
 		instanceID: instanceID,
 	}
 }
@@ -62,16 +66,17 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	defer i.streamsMtx.Unlock()
 
 	for _, s := range req.Streams {
-		labels, err := parser.Labels(s.Labels)
+		labels, err := toClientLabels(s.Labels)
 		if err != nil {
 			return err
 		}
 
-		stream, ok := i.streams[s.Labels]
+		fp := client.FastFingerprint(labels)
+		stream, ok := i.streams[fp]
 		if !ok {
-			stream = newStream(labels)
-			i.index.add(labels, s.Labels)
-			i.streams[s.Labels] = stream
+			stream = newStream(fp, labels)
+			i.index.Add(labels, fp)
+			i.streams[fp] = stream
 		}
 
 		if err := stream.Push(ctx, s.Entries); err != nil {
@@ -90,7 +95,7 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 	// TODO: lock smell
 	i.streamsMtx.Lock()
-	ids := i.index.lookup(matchers)
+	ids := i.index.Lookup(matchers)
 	iterators := make([]iter.EntryIterator, len(ids))
 	for j := range ids {
 		stream, ok := i.streams[ids[j]]
@@ -122,11 +127,18 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	var labels []string
 	if req.Values {
-		labels = i.index.lookupLabelValues(req.Name)
+		values := i.index.LabelValues(model.LabelName(req.Name))
+		labels = make([]string, len(values))
+		for i := 0; i < len(values); i++ {
+			labels[i] = string(values[i])
+		}
 	} else {
-		labels = i.index.labelNames()
+		names := i.index.LabelNames()
+		labels = make([]string, len(names))
+		for i := 0; i < len(names); i++ {
+			labels[i] = string(names[i])
+		}
 	}
-	sort.Strings(labels)
 	return &logproto.LabelResponse{
 		Values: labels,
 	}, nil
@@ -159,4 +171,20 @@ func sendBatches(i iter.EntryIterator, queryServer logproto.Querier_QueryServer,
 		}
 	}
 	return nil
+}
+
+func toClientLabels(labels string) ([]client.LabelPair, error) {
+	ls, err := parser.Labels(labels)
+	if err != nil {
+		return nil, err
+	}
+
+	pairs := make([]client.LabelPair, 0, len(ls))
+	for i := 0; i < len(ls); i++ {
+		pairs = append(pairs, client.LabelPair{
+			Name:  wire.Bytes(ls[i].Name),
+			Value: wire.Bytes(ls[i].Value),
+		})
+	}
+	return pairs, nil
 }

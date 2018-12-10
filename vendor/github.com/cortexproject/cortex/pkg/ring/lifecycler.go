@@ -50,7 +50,7 @@ type LifecyclerConfig struct {
 	InfNames        []string      `yaml:"interface_names"`
 
 	// For testing, you can override the address and ID of this ingester
-	Addr           string
+	Addr           string `yaml:"address"`
 	Port           int
 	ID             string
 	SkipUnregister bool

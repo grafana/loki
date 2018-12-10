@@ -33,7 +33,8 @@ images:
 PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
 PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS)) \
 	vendor/github.com/cortexproject/cortex/pkg/ring/ring.pb.go \
-	vendor/github.com/cortexproject/cortex/pkg/ingester/client/cortex.pb.go
+	vendor/github.com/cortexproject/cortex/pkg/ingester/client/cortex.pb.go \
+	vendor/github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.pb.go
 
 # Generating yacc code is automated.
 YACC_DEFS := $(shell find . $(DONT_FIND) -type f -name *.y -print)
@@ -53,6 +54,8 @@ $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 # Manually declared dependancies and what goes into each exe
 pkg/logproto/logproto.pb.go: pkg/logproto/logproto.proto
 vendor/github.com/cortexproject/cortex/pkg/ring/ring.pb.go: vendor/github.com/cortexproject/cortex/pkg/ring/ring.proto
+vendor/github.com/cortexproject/cortex/pkg/ingester/client/cortex.pb.go: vendor/github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto
+vendor/github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.pb.go: vendor/github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.proto
 pkg/parser/labels.go: pkg/parser/labels.y
 pkg/parser/matchers.go: pkg/parser/matchers.y
 all: $(UPTODATE_FILES)
