@@ -26,6 +26,7 @@ type Config struct {
 	GCSConfig              gcp.GCSConfig      `yaml:"gcs"`
 	CassandraStorageConfig cassandra.Config   `yaml:"cassandra"`
 	BoltDBConfig           local.BoltDBConfig `yaml:"boltdb"`
+	FSConfig               local.FSConfig     `yaml:"filesystem"`
 
 	IndexCacheSize     int
 	IndexCacheValidity time.Duration
@@ -41,6 +42,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GCSConfig.RegisterFlags(f)
 	cfg.CassandraStorageConfig.RegisterFlags(f)
 	cfg.BoltDBConfig.RegisterFlags(f)
+	cfg.FSConfig.RegisterFlags(f)
 
 	// Deprecated flags!!
 	f.IntVar(&cfg.IndexCacheSize, "store.index-cache-size", 0, "Deprecated: Use -store.index-cache-read.*; Size of in-memory index cache, 0 to disable.")
@@ -170,6 +172,8 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 		return gcp.NewGCSChunkClient(context.Background(), cfg.GCSConfig, schemaCfg)
 	case "cassandra":
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
+	case "filesystem":
+		return local.NewFSObjectClient(cfg.FSConfig)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, gcp, cassandra, inmemory", name)
 	}
