@@ -99,7 +99,7 @@ $(EXES) $(PROTO_GOS) $(YACC_GOS) lint test shell check-generated-files: loki-bui
 else
 
 $(EXES): loki-build-image/$(UPTODATE)
-	go build $(GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 %.pb.go: loki-build-image/$(UPTODATE)
