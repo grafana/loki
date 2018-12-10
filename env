@@ -1,3 +1,0 @@
-export GRAFANA_ADDR=https://logs-dev-ops-tools1.grafana.net
-export GRAFANA_USERNAME=29
-export GRAFANA_PASSWORD=eyJrIjoiMzJmNDRjYjI1NGI1MGUxODc3NmIzNjhlZjRkM2QzMWE5OWU4ZjllZSIsIm4iOiJ0b20tcHJvbS10ZXN0IiwiaWQiOjUwMDB9
