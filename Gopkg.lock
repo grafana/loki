@@ -156,7 +156,7 @@
 
 [[projects]]
   branch = "dev"
-  digest = "1:7b991a3c580d562f9be0d1bff7b9ff242744a2fcca20bb8d4acafa1ceb8f9654"
+  digest = "1:6c631f5c60ec7a2e4aa73056d3c88a79db61c33db33f587c4547db53ff2aa5e5"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/chunk",
@@ -182,7 +182,7 @@
     "pkg/util/wire",
   ]
   pruneopts = "UT"
-  revision = "6a792e09e63e618ef7a11b72ba09a57fc2df024c"
+  revision = "3cd31f207556dd5483f78410c9f1f69634c7cda3"
   source = "github.com/grafana/cortex"
 
 [[projects]]

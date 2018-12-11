@@ -28,10 +28,8 @@ const (
 
 // Config for a StorageClient
 type Config struct {
-	Project  string
-	Instance string
-
-	ColumnKey bool
+	Project  string `yaml:"project"`
+	Instance string `yaml:"instance"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
