@@ -17,7 +17,7 @@ type tableClient struct {
 
 // NewTableClient returns a new TableClient.
 func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) {
-	client, err := bigtable.NewAdminClient(ctx, cfg.project, cfg.instance, instrumentation()...)
+	client, err := bigtable.NewAdminClient(ctx, cfg.Project, cfg.Instance, instrumentation()...)
 	if err != nil {
 		return nil, err
 	}
