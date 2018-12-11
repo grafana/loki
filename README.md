@@ -12,8 +12,8 @@ Loki is a horizontally-scalable, highly-available, multi-tenant log aggregation 
 Compared to other log aggregation systems, Loki:
 
 - does not do full text indexing on logs. By storing compressed, unstructured logs and only indexing metadata, Loki is simpler to operate and cheaper to run.
-- indexes and groups log streams using the same labels you’re already using with Prometheus, enabling you to seamless to switch between metrics and logs using the same labels that you’re already using with Prometheus.
-- ia an especially good fit for storing Kubernetes Pod logs; metadata such as Pod labels is automatically scraped and indexed.
+- indexes and groups log streams using the same labels you’re already using with Prometheus, enabling you to seamlessly switch between metrics and logs using the same labels that you’re already using with Prometheus.
+- is an especially good fit for storing Kubernetes Pod logs; metadata such as Pod labels is automatically scraped and indexed.
 - has native support in Grafana (already in the nightly builds, will be included in Grafana 6.0).
 
 Loki consists of 3 components:
