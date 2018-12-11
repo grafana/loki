@@ -1,0 +1,34 @@
+version: "3"
+
+networks:
+  loki:
+
+services:
+  loki:
+    image: grafana/loki:master-8fa9461
+    ports:
+      - "3100:3100"
+    volumes:
+      - $PWD:/etc/loki
+    command: -config.file=/etc/loki/loki-local-config.yaml
+    networks:
+      - loki
+
+  promtail:
+    image: grafana/promtail:make-images-static-26a87c9
+    volumes:
+      - $PWD:/etc/promtail
+      - /var/log:/var/log
+    command: 
+      -config.file=/etc/promtail/promtail-docker-config.yaml
+    networks:
+      - loki
+      
+  grafana:
+    image: grafana/grafana:master
+    ports:
+      - "3000:3000"
+    environment:
+      GF_EXPLORE_ENABLED: "true"
+    networks:
+      - loki
