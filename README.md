@@ -114,6 +114,39 @@ $ docker run -ti -p 3000:3000 -e "GF_EXPLORE_ENABLED=true" grafana/grafana:maste
 
 In the Grafana UI (http://localhost:3000), log in with "admin"/"admin", add a new "Grafana Loki" datasource for `http://host.docker.internal:3100`, then go to explore and enjoy!
 
+## Grafana Provisioning
+
+It is possible to configure Grafana datasources using config files with Grafana’s provisioning system. You can read more about how it works in the [Grafana documentation](http://docs.grafana.org/administration/provisioning/#datasources).
+
+Here is a simple example of the provisioning yaml config for the Grafana Loki datasource:
+
+```yaml
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://localhost:3100
+    editable: false
+```
+
+Example with basic auth:
+
+```yaml
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://localhost:3100
+    editable: false
+    basicAuth: true
+    basicAuthUser: my_user
+    basicAuthPassword: test_password
+```
+
 ## Further Reading
 
 - The original [design doc](https://docs.google.com/document/d/11tjK_lvp1-SVsFZjgOTr1vV3-q6vBAsZYIQ5ZeYBkyM/view) for Loki is a good source for discussion of the motivation and design decisions.
