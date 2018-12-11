@@ -66,7 +66,6 @@
         if $._config.storage_backend == 'gcp' then {
           instance: $._config.bigtable_instance,
           project: $._config.bigtable_project,
-          columnkey: true,
         } else {},
       gcs:
         if $._config.storage_backend == 'gcp' then {
