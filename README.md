@@ -4,12 +4,12 @@
 
 Loki is a horizontally-scalable, highly-available, multi-tenant log aggregation system inspired by Prometheus.  It is designed to be very cost effective and easy to operate, as it does not index the contents of the logs, but rather a set of labels for each log stream.
 
-Compared to other log aggregation systems, Loki's main features are:
+Compared to other log aggregation systems, Loki:
 
-- does not parse incoming logs, or do full text indexing. By storing plain text logs and only indexing the metadata, Loki is simpler to operate and cheaper to run.
+- does not do full text indexing on logs. By storing compressed, unstructured logs and only indexing the metadata, Loki is simpler to operate and cheaper to run.
 - indexes and groups log streams using the same labels you’re already using with Prometheus.
-- especially good fit for storing Kubernetes logs and seamless to switch between metrics and logs using the same Kubernetes labels that you’re already using with Prometheus.
-- native support in Grafana (already in the nightly builds, will be included in Grafana 6.0).
+- ia an especially good fit for storing Kubernetes logs. It is seamless to switch between metrics and logs using the same Kubernetes labels that you’re already using with Prometheus.
+- has native support in Grafana (already in the nightly builds, will be included in Grafana 6.0).
 
 Loki consists of 3 components:
 
@@ -41,8 +41,8 @@ To test locally using `docker run`:
     ```
 4. If you also want to run Grafana in docker:
     ```bash
-    docker pull grafana/grafana:master
     docker run --name grafana --network=loki -p 3000:3000 -e "GF_EXPLORE_ENABLED=true" grafana/grafana:master
+    ```
 5. Follow the steps for configuring the datasource in Grafana in the section below and set the URL field to: `http://loki:3100`
 
 Another option is to use the docker-compose file in the docs directory:
@@ -50,6 +50,18 @@ Another option is to use the docker-compose file in the docs directory:
 1. git clone this repo locally (or just copy the contents of the docker-compose file locally into a file named `docker-compose.yaml`)
 2. `cd loki/docs`
 3. `docker-compose up`
+
+If you have have an older cached version of the grafana/grafana:master container then start by doing either:
+
+```bash
+docker pull grafana/grafana:master
+```
+
+Or for docker-compose:
+
+```bash
+docker-compose pull
+```
 
 ### Configuring the Loki Datasource in Grafana
 
@@ -93,4 +105,4 @@ Grafana is Loki's UI, so you'll also want to run one of those:
 $ docker run -ti -p 3000:3000 -e "GF_EXPLORE_ENABLED=true" grafana/grafana:master
 ```
 
-In the Grafana UI (http://localhost:3000), log in with "admin"/"admin", add a new "Grafana Logging" datasource for `http://host.docker.internal:3100`, then go to explore and enjoy!
+In the Grafana UI (http://localhost:3000), log in with "admin"/"admin", add a new "Grafana Loki" datasource for `http://host.docker.internal:3100`, then go to explore and enjoy!
