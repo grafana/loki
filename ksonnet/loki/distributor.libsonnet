@@ -3,7 +3,7 @@
   local containerPort = $.core.v1.containerPort,
 
   distributor_args::
-    $._config.ringConfig {
+    $._config.ringArgs {
       target: 'distributor',
       'distributor.replication-factor': $._config.replication_factor,
     },
@@ -17,6 +17,7 @@
 
   distributor_deployment:
     deployment.new('distributor', 3, [$.distributor_container]) +
+    $.util.configVolumeMount('loki', '/etc/loki') +
     $.util.antiAffinity,
 
   distributor_service:

@@ -2,7 +2,7 @@
   local container = $.core.v1.container,
 
   ingester_args::
-    $._config.ringConfig {
+    $._config.ringArgs {
       target: 'ingester',
       'ingester.num-tokens': '512',
       'ingester.join-after': '30s',
@@ -22,6 +22,7 @@
 
   ingester_deployment:
     deployment.new('ingester', 3, [$.ingester_container]) +
+    $.util.configVolumeMount('loki', '/etc/loki') +
     $.util.antiAffinity +
     deployment.mixin.spec.withMinReadySeconds(60) +
     deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge(0) +

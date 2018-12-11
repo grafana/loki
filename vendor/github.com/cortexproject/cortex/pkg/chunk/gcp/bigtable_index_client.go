@@ -28,16 +28,14 @@ const (
 
 // Config for a StorageClient
 type Config struct {
-	project  string
-	instance string
-
-	ColumnKey bool
+	Project  string `yaml:"project"`
+	Instance string `yaml:"instance"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.project, "bigtable.project", "", "Bigtable project ID.")
-	f.StringVar(&cfg.instance, "bigtable.instance", "", "Bigtable instance ID.")
+	f.StringVar(&cfg.Project, "bigtable.project", "", "Bigtable project ID.")
+	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID.")
 }
 
 // storageClientColumnKey implements chunk.storageClient for GCP.
@@ -55,7 +53,7 @@ type storageClientV1 struct {
 
 // NewStorageClientV1 returns a new v1 StorageClient.
 func NewStorageClientV1(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
-	client, err := bigtable.NewClient(ctx, cfg.project, cfg.instance, instrumentation()...)
+	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, instrumentation()...)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +76,7 @@ func newStorageClientV1(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtab
 
 // NewStorageClientColumnKey returns a new v2 StorageClient.
 func NewStorageClientColumnKey(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
-	client, err := bigtable.NewClient(ctx, cfg.project, cfg.instance, instrumentation()...)
+	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, instrumentation()...)
 	if err != nil {
 		return nil, err
 	}

@@ -22,7 +22,7 @@ type bigtableChunkClient struct {
 // NewBigtableChunkClient makes a new chunk.ChunkClient that stores chunks in
 // Bigtable.
 func NewBigtableChunkClient(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
-	client, err := bigtable.NewClient(ctx, cfg.project, cfg.instance, instrumentation()...)
+	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, instrumentation()...)
 	if err != nil {
 		return nil, err
 	}
