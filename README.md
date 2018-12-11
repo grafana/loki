@@ -1,48 +1,58 @@
-# Loki: Like Prometheus, but for logs.
+<p align="center"><img src="docs/logo_and_name.png" width="600" alt="Loki Logo"></p>
 
-[![CircleCI](https://circleci.com/gh/grafana/loki/tree/master.svg?style=svg&circle-token=618193e5787b2951c1ea3352ad5f254f4f52313d)](https://circleci.com/gh/grafana/loki/tree/master) [Design doc](https://docs.google.com/document/d/11tjK_lvp1-SVsFZjgOTr1vV3-q6vBAsZYIQ5ZeYBkyM/edit)
+[![CircleCI](https://circleci.com/gh/grafana/loki/tree/master.svg?style=svg&circle-token=618193e5787b2951c1ea3352ad5f254f4f52313d)](https://circleci.com/gh/grafana/loki/tree/master) [![Slack](https://img.shields.io/badge/join%20slack-%23loki-brightgreen.svg)](http://slack.raintank.io/)
+
+# Grafana Loki: like Prometheus, but for logs.
 
 Loki is a horizontally-scalable, highly-available, multi-tenant log aggregation system inspired by Prometheus.  It is designed to be very cost effective and easy to operate, as it does not index the contents of the logs, but rather a set of labels for each log stream.
 
 Compared to other log aggregation systems, Loki:
 
-- does not do full text indexing on logs. By storing compressed, unstructured logs and only indexing the metadata, Loki is simpler to operate and cheaper to run.
-- indexes and groups log streams using the same labels you’re already using with Prometheus.
-- ia an especially good fit for storing Kubernetes logs. It is seamless to switch between metrics and logs using the same Kubernetes labels that you’re already using with Prometheus.
+- does not do full text indexing on logs. By storing compressed, unstructured logs and only indexing metadata, Loki is simpler to operate and cheaper to run.
+- indexes and groups log streams using the same labels you’re already using with Prometheus, enabling you to seamless to switch between metrics and logs using the same labels that you’re already using with Prometheus.
+- ia an especially good fit for storing Kubernetes Pod logs; metadata such as Pod labels is automatically scraped and indexed.
 - has native support in Grafana (already in the nightly builds, will be included in Grafana 6.0).
 
 Loki consists of 3 components:
 
 - `loki` is the main server, responsible for storing logs and processing queries.
 - `promtail` is the agent, responsible for gathering logs and sending them to loki.
-- Grafana for the UI.
+- [Grafana](https://github.com/grafana/grafana) for the UI.
 
-## Install
+## Getting started
 
-Currently there are two ways to install Loki, docker and building from source (precompiled binaries coming soon).
+Currently there are three ways to try out Loki: using our free hosted demo, running it locally with Docker or building from source.
 
-### Install Using Docker
+### Free Hosted Demo
+
+Grafana is running a free, hosted demo cluster of Loki; instructions for getting access can be found at [grafana.com](https://grafana.com/loki).
+
+### Run Locally Using Docker
 
 The Docker images for [Loki](https://hub.docker.com/r/grafana/loki/) and [Promtail](https://hub.docker.com/r/grafana/promtail/) are available on DockerHub.
 
 To test locally using `docker run`:
 
-1. Create a docker network that the docker containers can share:
+1. Create a Docker network that the Docker containers can share:
     ```bash
     docker network create loki
     ```
+
 2. Start the Loki server:
     ```bash
-    docker run --name loki --network=loki -p 3100:3100 --volume "$PWD/docs:/etc/loki" grafana/loki:master-8fa9461 -config.file=/etc/loki/loki-local-config.yaml
+    docker run --name loki --network=loki -p 3100:3100 --volume "$PWD/docs:/etc/loki" grafana/loki:master -config.file=/etc/loki/loki-local-config.yaml
     ```
+
 3. Then start the Promtail agent. The default config polls the contents of your `/var/log` directory.
     ```bash
-    docker run --name promtail --network=loki --volume "$PWD/docs:/etc/promtail" --volume "/var/log:/var/log" --network="container:loki" grafana/promtail:make-images-static-26a87c9 -config.file=/etc/promtail/promtail-local-config.yaml
+    docker run --name promtail --network=loki --volume "$PWD/docs:/etc/promtail" --volume "/var/log:/var/log" --network="container:loki" grafana/promtail:master -config.file=/etc/promtail/promtail-local-config.yaml
     ```
+
 4. If you also want to run Grafana in docker:
     ```bash
     docker run --name grafana --network=loki -p 3000:3000 -e "GF_EXPLORE_ENABLED=true" grafana/grafana:master
     ```
+
 5. Follow the steps for configuring the datasource in Grafana in the section below and set the URL field to: `http://loki:3100`
 
 Another option is to use the docker-compose file in the docs directory:
@@ -79,12 +89,6 @@ Read more about the Explore feature in the [Grafana docs](http://docs.grafana.or
 
 Loki can be run in a single host, no-dependencies mode using the following commands.
 
-Loki consists of 3 components; `loki` is the main server, responsible for storing
-logs and processing queries.  `promtail` is the agent, responsible for gather logs
-and sending them to loki and `grafana` as the UI.
-
-To run loki, use the following commands:
-
 ```bash
 $ go build ./cmd/loki
 $ ./loki -config.file=./docs/loki-local-config.yaml
@@ -106,3 +110,8 @@ $ docker run -ti -p 3000:3000 -e "GF_EXPLORE_ENABLED=true" grafana/grafana:maste
 ```
 
 In the Grafana UI (http://localhost:3000), log in with "admin"/"admin", add a new "Grafana Loki" datasource for `http://host.docker.internal:3100`, then go to explore and enjoy!
+
+## Further Reading
+
+- The original [design doc](https://docs.google.com/document/d/11tjK_lvp1-SVsFZjgOTr1vV3-q6vBAsZYIQ5ZeYBkyM/view) for Loki is a good source for discussion of the motivation and design decisions.
+- David Kaltschmidt KubeCon 2018 talk "[On the OSS Path to Full Observability with Grafana](https://kccna18.sched.com/event/GrXC/on-the-oss-path-to-full-observability-with-grafana-david-kaltschmidt-grafana-labs)"
