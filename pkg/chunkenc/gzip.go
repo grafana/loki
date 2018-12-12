@@ -312,7 +312,15 @@ func (c *MemChunk) SpaceFor(*logproto.Entry) bool {
 
 // Append implements Chunk.
 func (c *MemChunk) Append(entry *logproto.Entry) error {
-	return c.head.append(entry.Timestamp.UnixNano(), entry.Line)
+	if err := c.head.append(entry.Timestamp.UnixNano(), entry.Line); err != nil {
+		return err
+	}
+
+	if c.head.size >= c.blockSize {
+		return c.cut()
+	}
+
+	return nil
 }
 
 // Close implements Chunk.
@@ -341,6 +349,7 @@ func (c *MemChunk) cut() error {
 
 	c.head.entries = c.head.entries[:0]
 	c.head.mint = 0 // Will be set on first append.
+	c.head.size = 0
 
 	return nil
 }
