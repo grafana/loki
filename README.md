@@ -4,7 +4,6 @@
 <a href="https://goreportcard.com/report/github.com/grafana/loki"><img src="https://goreportcard.com/badge/github.com/grafana/loki" alt="Go Report Card" /></a>
 <a href="http://slack.raintank.io/"><img src="https://img.shields.io/badge/join%20slack-%23loki-brightgreen.svg" alt="Slack" /></a>
 
-
 # Loki: like Prometheus, but for logs.
 
 Loki is a horizontally-scalable, highly-available, multi-tenant log aggregation system inspired by [Prometheus](https://prometheus.io/).  It is designed to be very cost effective and easy to operate, as it does not index the contents of the logs, but rather a set of labels for each log stream.
@@ -87,6 +86,44 @@ Grafana ships with built-in support for Loki in the [latest nightly builds](http
 5. The http URL field should be the address of your Loki server e.g. `http://localhost:3100`
 
 Read more about the Explore feature in the [Grafana docs](http://docs.grafana.org/features/explore) and on how to search and filter logs with Loki.
+
+### Searching with Labels and Distributed Grep
+
+A log query consists of two parts: **log stream selector**, and a **search expression**. For performance reasons you need to start by choosing a log stream by selecting a log label.
+
+The log stream selector will reduce the number of log streams to a manageable volume and then the regex search expression is used to do a distributed grep over those log streams.
+
+Searching can be done in the Explore section of Grafana (latest nightly builds) or via the `logcli` tool which is documented [here](https://github.com/grafana/loki/blob/master/docs/logcli.md).
+
+#### Log Stream Selector
+
+For the label part of the query expression, wrap it in curly braces `{}` and then use the key value syntax for selecting labels. Multiple label expressions are separated by a comma:
+
+`{app="mysql",name="mysql-backup"}`
+
+The following label matching operators are currently supported:
+
+- `=` exactly equal.
+- `!=` not equal.
+- `=~` regex-match.
+- `!~` do not regex-match.
+
+Examples:
+
+- `{name=~"mysql.+"}`
+- `{name!~"mysql.+"}`
+
+The [same rules that apply for Prometheus Label Selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors) apply for Loki Log Stream Selectors.
+
+#### Regex Search Expression
+
+After writing the Log Stream Selector, you can filter the results further by writing a search expression. The search expression can be just text or a regex expression.
+
+Example queries:
+
+- `{job="mysql"} error`
+- `{name="kafka"} tsdb-ops.*io:2003`
+- `{instance=~"kafka-[23]",name="kafka"} kafka.server:type=ReplicaManager`
 
 ### Build and Run Loki Locally
 
