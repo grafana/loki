@@ -11,7 +11,7 @@ import (
 func LoadConfig(filename string, cfg interface{}) error {
 	buf, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return errors.Wrap(err, "Eeror reading config file")
+		return errors.Wrap(err, "Error reading config file")
 	}
 
 	return yaml.UnmarshalStrict(buf, cfg)
