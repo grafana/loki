@@ -2,6 +2,7 @@
 
 <p align="center">
 <a href="https://circleci.com/gh/grafana/loki/tree/master"><img src="https://circleci.com/gh/grafana/loki.svg?style=svg&circle-token=618193e5787b2951c1ea3352ad5f254f4f52313d" alt="CircleCI" /></a>
+[![Go Report Card](https://goreportcard.com/badge/github.com/grafana/loki)](https://goreportcard.com/report/github.com/grafana/loki)
 <a href="http://slack.raintank.io/"><img src="https://img.shields.io/badge/join%20slack-%23loki-brightgreen.svg" alt="Slack" /></a>
 </p>
 
