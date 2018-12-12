@@ -5,7 +5,7 @@ networks:
 
 services:
   loki:
-    image: grafana/loki:master-8fa9461
+    image: grafana/loki:master
     ports:
       - "3100:3100"
     volumes:
