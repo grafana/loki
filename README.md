@@ -48,7 +48,7 @@ To test locally using `docker run`:
 
 3. Then start the Promtail agent. The default config polls the contents of your `/var/log` directory.
     ```bash
-    docker run --name promtail --network=loki --volume "$PWD/docs:/etc/promtail" --volume "/var/log:/var/log" --network="container:loki" grafana/promtail:master -config.file=/etc/promtail/promtail-local-config.yaml
+    docker run --name promtail --network=loki --volume "$PWD/docs:/etc/promtail" --volume "/var/log:/var/log" grafana/promtail:master -config.file=/etc/promtail/promtail-local-config.yaml
     ```
 
 4. If you also want to run Grafana in docker:
