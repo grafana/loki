@@ -25,9 +25,11 @@ Loki consists of 3 components:
 
 Currently there are three ways to try out Loki: using our free hosted demo, running it locally with Docker or building from source.
 
-### Free Hosted Demo
+### Get a Free Hosted Demo of Grafana Cloud: Logs
 
-Grafana is running a free, hosted demo cluster of Loki; instructions for getting access can be found at [grafana.com](https://grafana.com/loki).
+Grafana is running a free, hosted demo cluster of Loki; instructions for getting access can be found at [grafana.com/loki](https://grafana.com/loki).
+
+In addition, the demo also includes an allotment of complimentary metrics (Prometheus or Graphite) to help illustrate the experience of easily switching between logs and metrics.  
 
 ### Run Locally Using Docker
 
