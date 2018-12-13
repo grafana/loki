@@ -129,6 +129,8 @@ Example queries:
 
 Loki can be run in a single host, no-dependencies mode using the following commands.
 
+You need `go` v1.10+
+
 ```bash
 $ go build ./cmd/loki
 $ ./loki -config.file=./docs/loki-local-config.yaml
