@@ -7,4 +7,5 @@
 // Cortex services
 (import 'distributor.libsonnet') +
 (import 'ingester.libsonnet') +
-(import 'querier.libsonnet')
+(import 'querier.libsonnet') +
+(import 'table-manager.libsonnet')

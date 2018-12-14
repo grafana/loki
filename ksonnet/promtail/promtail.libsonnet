@@ -2,7 +2,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 
 k {
   _images+:: {
-    promtail: 'grafana/promtail:master-5da1fde',
+    promtail: 'grafana/promtail:master',
   },
 
   _config+:: {

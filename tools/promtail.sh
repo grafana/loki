@@ -105,7 +105,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
-        image: grafana/promtail:master-5da1fde
+        image: grafana/promtail:master
         imagePullPolicy: IfNotPresent
         name: promtail
         ports:

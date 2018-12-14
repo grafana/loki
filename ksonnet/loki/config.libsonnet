@@ -14,7 +14,7 @@
     s3_bucket_name: error 'must specify S3 bucket name',
 
     // December 11 is when we first launched to the public.
-    schema_start_date: '0',
+    schema_start_date: '2018-12-11',
 
     server_config: {
       http_listen_port: 80,
@@ -79,7 +79,7 @@
       object_store: 'gcs',
       schema: 'v9',
       index: {
-        prefix: 'prefix_',
+        prefix: '%s_index_' % $._config.table_prefix,
         period: '168h',
       },
     }],
