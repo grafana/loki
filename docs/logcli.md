@@ -60,6 +60,7 @@ Flags:
   --limit=30     Limit on number of entries to print.
   --since=1h     Lookback window.
   --forward      Scan forwards through logs.
+  -t, --tail     Tail the logs
 
 Args:
   <query>    eg '{foo="bar",baz="blip"}'
