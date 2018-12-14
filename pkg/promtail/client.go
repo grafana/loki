@@ -109,9 +109,11 @@ func (c *Client) run() {
 				if err := c.send(batch); err != nil {
 					level.Error(c.logger).Log("msg", "error sending batch", "error", err)
 				}
+				batchSize = 0
 				batch = map[model.Fingerprint]*logproto.Stream{}
 			}
 
+			batchSize += len(e.Line)
 			fp := e.labels.FastFingerprint()
 			stream, ok := batch[fp]
 			if !ok {
