@@ -35,27 +35,33 @@ The Docker images for [Loki](https://hub.docker.com/r/grafana/loki/) and [Promta
 
 To test locally using `docker run`:
 
-1. Create a Docker network that the Docker containers can share:
+1. git clone this repo locally
+    ```bash
+    git clone https://github.com/grafana/loki.git
+    cd loki
+    ```
+
+2. Create a Docker network that the Docker containers can share:
     ```bash
     docker network create loki
     ```
 
-2. Start the Loki server:
+3. Start the Loki server:
     ```bash
-    docker run --name loki --network=loki -p 3100:3100 --volume "$PWD/docs:/etc/loki" grafana/loki:master -config.file=/etc/loki/loki-local-config.yaml
+    docker run -d --name loki --network=loki -p 3100:3100 --volume "$PWD/docs:/etc/loki" grafana/loki:master -config.file=/etc/loki/loki-local-config.yaml
     ```
 
-3. Then start the Promtail agent. The default config polls the contents of your `/var/log` directory.
+4. Then start the Promtail agent. The default config polls the contents of your `/var/log` directory.
     ```bash
-    docker run --name promtail --network=loki --volume "$PWD/docs:/etc/promtail" --volume "/var/log:/var/log" grafana/promtail:master -config.file=/etc/promtail/promtail-docker-config.yaml
+    docker run -d --name promtail --network=loki --volume "$PWD/docs:/etc/promtail" --volume "/var/log:/var/log" grafana/promtail:master -config.file=/etc/promtail/promtail-docker-config.yaml
     ```
 
-4. If you also want to run Grafana in docker:
+5. If you also want to run Grafana in docker:
     ```bash
-    docker run --name grafana --network=loki -p 3000:3000 -e "GF_EXPLORE_ENABLED=true" grafana/grafana:master
+    docker run -d --name grafana --network=loki -p 3000:3000 -e "GF_EXPLORE_ENABLED=true" grafana/grafana:master
     ```
 
-5. Follow the steps for configuring the datasource in Grafana in the section below and set the URL field to: `http://loki:3100`
+6. Follow the steps for configuring the datasource in Grafana in the section below and set the URL field to: `http://loki:3100`
 
 Another option is to use the docker-compose file in the docs directory:
 
