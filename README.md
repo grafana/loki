@@ -170,7 +170,7 @@ apiVersion: 1
 
 datasources:
   - name: Loki
-    type: loki
+    type: logging
     access: proxy
     url: http://localhost:3100
     editable: false
@@ -183,7 +183,7 @@ apiVersion: 1
 
 datasources:
   - name: Loki
-    type: loki
+    type: logging
     access: proxy
     url: http://localhost:3100
     editable: false
