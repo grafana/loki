@@ -84,11 +84,13 @@ data:
 kind: ConfigMap
 metadata:
   name: promtail
+  namespace: <namespace>
 ---
 apiVersion: extensions/v1beta1
 kind: DaemonSet
 metadata:
   name: promtail
+  namespace: <namespace>
 spec:
   minReadySeconds: 10
   template:
@@ -143,11 +145,13 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: promtail
+  namespace: <namespace>
 ---
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRole
 metadata:
   name: promtail
+  namespace: <namespace>
 rules:
 - apiGroups:
   - ""
@@ -166,6 +170,7 @@ apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRoleBinding
 metadata:
   name: promtail
+  namespace: <namespace>
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
