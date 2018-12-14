@@ -1,0 +1,18 @@
+{{- if .Values.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: RoleBinding
+metadata:
+  name: {{ template "loki.fullname" . }}
+  labels:
+    app: {{ template "loki.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ template "loki.fullname" . }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "loki.serviceAccountName" . }}
+{{- end -}}

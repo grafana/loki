@@ -1,0 +1,19 @@
+{{- if .Values.rbac.create }}
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  labels:
+    app: {{ template "loki.name" . }}
+    chart: {{ template "loki.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+{{- with .Values.loki.annotations }}
+  annotations:
+{{ toYaml . | indent 4 }}
+{{- end }}
+  name: {{ template "loki.fullname" . }}-clusterrole
+rules:
+- apiGroups: [""] # "" indicates the core API group
+  resources: ["configmaps"]
+  verbs: ["get", "watch", "list"]
+{{- end}}

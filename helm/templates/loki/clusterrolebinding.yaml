@@ -1,0 +1,23 @@
+{{- if .Values.rbac.create }}
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "loki.fullname" . }}-clusterrolebinding
+  labels:
+    app: {{ template "loki.name" . }}
+    chart: {{ template "loki.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+{{- with .Values.loki.annotations }}
+  annotations:
+{{ toYaml . | indent 4 }}
+{{- end }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ template "loki.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ template "loki.fullname" . }}-clusterrole
+  apiGroup: rbac.authorization.k8s.io
+{{- end}}
