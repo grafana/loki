@@ -42,8 +42,7 @@ spec:
           imagePullPolicy: {{ .Values.promtail.image.pullPolicy }}
           args: 
             - "-config.file=/etc/promtail/promtail.yaml"
-            - "-client.url=http://loki:3100/api/prom/push"
-            - "-server.grpc-listen-port=0"
+            - "-client.url=http://{{ template "loki.fullname" . }}:{{ .Values.loki.service.port }}/api/prom/push"
           volumeMounts:
             - name: config
               mountPath: /etc/promtail
