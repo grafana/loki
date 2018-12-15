@@ -16,10 +16,10 @@ metadata:
 {{- end }}
 spec:
   ports:
-    - name: service
+    - name: {{ template "loki.name" . }}
       port: {{ .Values.loki.service.port }}
       protocol: TCP
-      targetPort: 3100
+      targetPort: {{ .Values.loki.service.port }}
   selector:
     app: {{ template "loki.name" . }}
     release: {{ .Release.Name }}

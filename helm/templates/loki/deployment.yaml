@@ -45,13 +45,9 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/loki
-              # subPath: loki.yaml
           ports:
-            - name: service
+            - name: {{ template "loki.name" . }}
               containerPort: {{ .Values.loki.service.port }}
-              protocol: TCP
-            - name: loki
-              containerPort: 3100
               protocol: TCP
           livenessProbe:
 {{ toYaml .Values.loki.livenessProbe | indent 12 }}

@@ -16,7 +16,6 @@ data:
 
     ingester:
       lifecycler:
-        address: {{ .Values.loki.config.ingester.lifecycler.address }}
         ring:
           store: {{ .Values.loki.config.ingester.lifecycler.ring.store }}
           replication_factor: {{ .Values.loki.config.ingester.lifecycler.ring.replication_factor }}
