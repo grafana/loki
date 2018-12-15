@@ -62,7 +62,6 @@ loki:
     auth_enabled: false
     ingester:
       lifecycler:
-        address: 127.0.0.1
         ring:
           store: inmemory
           replication_factor: 1
