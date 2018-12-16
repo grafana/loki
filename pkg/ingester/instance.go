@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
@@ -45,7 +46,7 @@ func init() {
 }
 
 type instance struct {
-	streamsMtx sync.Mutex
+	streamsMtx sync.RWMutex
 	streams    map[model.Fingerprint]*stream
 	index      *index.InvertedIndex
 
@@ -93,22 +94,10 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
-	// TODO: lock smell
-	i.streamsMtx.Lock()
-	ids := i.index.Lookup(matchers)
-	iterators := make([]iter.EntryIterator, len(ids))
-	for j := range ids {
-		stream, ok := i.streams[ids[j]]
-		if !ok {
-			i.streamsMtx.Unlock()
-			return ErrStreamMissing
-		}
-		iterators[j], err = stream.Iterator(req.Start, req.End, req.Direction)
-		if err != nil {
-			return err
-		}
+	iterators, err := i.lookupStreams(req, matchers)
+	if err != nil {
+		return err
 	}
-	i.streamsMtx.Unlock()
 
 	iterator := iter.NewHeapIterator(iterators, req.Direction)
 	defer helpers.LogError("closing iterator", iterator.Close)
@@ -142,6 +131,26 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	return &logproto.LabelResponse{
 		Values: labels,
 	}, nil
+}
+
+func (i *instance) lookupStreams(req *logproto.QueryRequest, matchers []*labels.Matcher) ([]iter.EntryIterator, error) {
+	i.streamsMtx.RLock()
+	defer i.streamsMtx.RUnlock()
+
+	var err error
+	ids := i.index.Lookup(matchers)
+	iterators := make([]iter.EntryIterator, len(ids))
+	for j := range ids {
+		stream, ok := i.streams[ids[j]]
+		if !ok {
+			return nil, ErrStreamMissing
+		}
+		iterators[j], err = stream.Iterator(req.Start, req.End, req.Direction)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return iterators, nil
 }
 
 func isDone(ctx context.Context) bool {

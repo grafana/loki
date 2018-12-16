@@ -63,20 +63,20 @@ func (o *flushOp) Priority() int64 {
 
 // sweepUsers periodically schedules series for flushing and garbage collects users with no series
 func (i *Ingester) sweepUsers(immediate bool) {
-	i.instancesMtx.RLock()
-	instances := make([]*instance, 0, len(i.instances))
-	for _, instance := range i.instances {
-		instances = append(instances, instance)
-	}
-	i.instancesMtx.RUnlock()
+	instances := i.getInstances()
 
 	for _, instance := range instances {
-		instance.streamsMtx.Lock()
-		for _, stream := range instance.streams {
-			i.sweepStream(instance, stream, immediate)
-			i.removeFlushedChunks(instance, stream)
-		}
-		instance.streamsMtx.Unlock()
+		i.sweepInstance(instance, immediate)
+	}
+}
+
+func (i *Ingester) sweepInstance(instance *instance, immediate bool) {
+	instance.streamsMtx.Lock()
+	defer instance.streamsMtx.Unlock()
+
+	for _, stream := range instance.streams {
+		i.sweepStream(instance, stream, immediate)
+		i.removeFlushedChunks(instance, stream)
 	}
 }
 
@@ -123,47 +123,20 @@ func (i *Ingester) flushLoop(j int) {
 }
 
 func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediate bool) error {
-	i.instancesMtx.Lock()
-	instance, ok := i.instances[userID]
-	i.instancesMtx.Unlock()
+	instance, ok := i.getInstanceByID(userID)
 	if !ok {
 		return nil
 	}
 
-	instance.streamsMtx.Lock()
-	stream, ok := instance.streams[fp]
-	if !ok {
-		instance.streamsMtx.Unlock()
+	chunks, labels := i.collectChunksToFlush(instance, fp, immediate)
+	if len(chunks) < 1 {
 		return nil
 	}
-
-	if len(stream.chunks) < 2 && !immediate {
-		instance.streamsMtx.Unlock()
-		return nil
-	}
-
-	var chunks []*chunkDesc
-	lastIndex := len(stream.chunks)
-	if !immediate {
-		lastIndex--
-	}
-	for i := 0; i < lastIndex; i++ {
-		// Ensure no more writes happen to this chunk.
-		if !stream.chunks[i].closed {
-			stream.chunks[i].closed = true
-		}
-
-		// Flush this chunk if it hasn't already been successfully flushed.
-		if stream.chunks[i].flushed.IsZero() {
-			chunks = append(chunks, &stream.chunks[i])
-		}
-	}
-	instance.streamsMtx.Unlock()
 
 	ctx := user.InjectOrgID(context.Background(), userID)
 	ctx, cancel := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
 	defer cancel()
-	err := i.flushChunks(ctx, fp, stream.labels, chunks)
+	err := i.flushChunks(ctx, fp, labels, chunks)
 	if err != nil {
 		return err
 	}
@@ -176,11 +149,43 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	return nil
 }
 
+func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, []client.LabelPair) {
+	instance.streamsMtx.Lock()
+	defer instance.streamsMtx.Unlock()
+
+	stream, ok := instance.streams[fp]
+	if !ok {
+		return nil, nil
+	}
+
+	if len(stream.chunks) < 2 && !immediate {
+		return nil, nil
+	}
+
+	var chunks []*chunkDesc
+	lastIndex := len(stream.chunks)
+	if !immediate {
+		lastIndex--
+	}
+	for i := 0; i < lastIndex; i++ {
+		// Ensure no more writes happen to this chunk.
+		if !stream.chunks[i].closed {
+			stream.chunks[i].closed = true
+		}
+		// Flush this chunk if it hasn't already been successfully flushed.
+		if stream.chunks[i].flushed.IsZero() {
+			chunks = append(chunks, &stream.chunks[i])
+		}
+	}
+
+	return chunks, stream.labels
+}
+
 func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 	now := time.Now()
 
 	for len(stream.chunks) > 0 {
-		if stream.chunks[0].flushed.IsZero() || now.Sub(stream.chunks[0].flushed) > i.cfg.RetainPeriod {
+		if stream.chunks[0].flushed.IsZero() || now.Sub(stream.chunks[0].flushed) < i.cfg.RetainPeriod {
 			break
 		}
 
