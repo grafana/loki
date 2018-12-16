@@ -12,7 +12,7 @@ Compared to other log aggregation systems, Loki:
 
 - does not do full text indexing on logs. By storing compressed, unstructured logs and only indexing metadata, Loki is simpler to operate and cheaper to run.
 - indexes and groups log streams using the same labels you’re already using with Prometheus, enabling you to seamlessly switch between metrics and logs using the same labels that you’re already using with Prometheus.
-- is an especially good fit for storing Kubernetes Pod logs; metadata such as Pod labels is automatically scraped and indexed.
+- is an especially good fit for storing [Kubernetes](https://kubernetes.io/) Pod logs. Metadata such as Pod labels is automatically scraped and indexed.
 - has native support in Grafana (already in the nightly builds, will be included in Grafana 6.0).
 
 Loki consists of 3 components:
@@ -35,7 +35,7 @@ The Docker images for [Loki](https://hub.docker.com/r/grafana/loki/) and [Promta
 
 To test locally using `docker run`:
 
-1. git clone this repo locally
+1. Clone this repository locally
     ```bash
     git clone https://github.com/grafana/loki.git
     cd loki
@@ -65,11 +65,11 @@ To test locally using `docker run`:
 
 Another option is to use the docker-compose file in the docs directory:
 
-1. git clone this repo locally (or just copy the contents of the docker-compose file locally into a file named `docker-compose.yaml`)
+1. `git clone` this repository locally (or just copy the contents of the docker-compose file locally into a file named `docker-compose.yaml`)
 2. `cd loki/docs`
 3. `docker-compose up`
 
-If you have have an older cached version of the grafana/grafana:master container then start by doing either:
+If you have an older cached version of the `grafana/grafana:master` container then start by doing either:
 
 ```bash
 docker pull grafana/grafana:master
@@ -135,7 +135,7 @@ Example queries:
 
 Loki can be run in a single host, no-dependencies mode using the following commands.
 
-You need `go` v1.10+
+You need `go` [v1.10+](https://golang.org/dl/)
 
 ```bash
 $ go build ./cmd/loki
@@ -143,7 +143,7 @@ $ ./loki -config.file=./docs/loki-local-config.yaml
 ...
 ```
 
-To run promtail, use the following commands:
+To run Promtail, use the following commands:
 
 ```bash
 $ go build ./cmd/promtail
