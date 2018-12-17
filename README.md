@@ -200,6 +200,17 @@ Make sure to adjust the url and authentication to your needs, the `url` should b
 
 `basicAuthUser` and `basicAuthPassword` should same as your Grafana setting.
 
+## Getting Help
+
+If you have any questions or feedback regarding Loki:
+
+- Ask a question on the Loki Slack channel. To invite yourself to the Grafana Slack, visit [http://slack.raintank.io/](http://slack.raintank.io/) and join the #loki channel.
+- [File an issue](https://github.com/grafana/loki/issues/new) for bugs, issues and feature suggestions.
+- Send an email to [lokiproject@googlegroups.com](mailto:lokiproject@googlegroups.com), or use the [web interface](https://groups.google.com/forum/#!forum/lokiproject).
+- UI issues should be filed directly in [Grafana](https://github.com/grafana/grafana/issues/new).
+
+Your feedback is always welcome.
+
 ## Further Reading
 
 - The original [design doc](https://docs.google.com/document/d/11tjK_lvp1-SVsFZjgOTr1vV3-q6vBAsZYIQ5ZeYBkyM/view) for Loki is a good source for discussion of the motivation and design decisions.
