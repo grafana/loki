@@ -32,13 +32,13 @@ var (
 	streamsCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "ingester_streams_created_total",
-		Help:      "The total number of streams created in the ingester.",
-	}, []string{"org"})
+		Help:      "The total number of streams created per instance in the ingester.",
+	}, []string{"instance"})
 	streamsRemovedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "ingester_streams_removed_total",
-		Help:      "The total number of streams removed by the ingester.",
-	}, []string{"org"})
+		Help:      "The total number of streams removed per instance by the ingester.",
+	}, []string{"instance"})
 )
 
 type instance struct {
