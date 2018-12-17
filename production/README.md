@@ -1,10 +1,10 @@
 # Running Loki
 
 Currently there are four ways to try out Loki, in order from easier to hardest:
-- [using our free hosted demo](#free-hosted-demo)
-- [running it locally with Docker](#run-locally-with-docker)
-- [building from source](#build-and-run-from-source)
-- [using our Ksonnet config to run a fully-blown production setup](ksonnet/)
+- [Using our free hosted demo](#free-hosted-demo)
+- [Running it locally with Docker](#run-locally-using-docker)
+- [Building from source](#build-and-run-from-source)
+- [Using our Ksonnet config to run a fully-blown production setup](ksonnet/)
 
 ## Free Hosted Demo
 
@@ -16,15 +16,20 @@ The Docker images for [Loki](https://hub.docker.com/r/grafana/loki/) and [Promta
 
 To test locally, we recommend using the docker-compose.yaml file in this directory:
 
-1. `git clone` this repository locally (or just copy the contents of the docker-compose file locally into a file named `docker-compose.yaml`)
-1. `cd loki/production`
-1. If you have an older cached version of the `grafana/grafana:master` container then start by doing either:
+1. Either `git clone` this repository locally and `cd loki/production`, or download a copy of the [docker-compose.yaml](docker-compose.yaml) locally.
+
+1. Ensure you have the freshest, most up to date container images:
 
    ```bash
    docker-compose pull
    ```
 
-1. `docker-compose up`
+1. Run the stack on your local docker:
+
+   ```bash
+   docker-compose up
+   ```
+
 1. Follow the [steps for configuring the datasource in Grafana](../docs/usage.md) and set the URL field to: `http://loki:3100`
 
 ## Build and Run From Source
