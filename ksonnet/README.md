@@ -31,7 +31,7 @@ $ jb init
 $ jb install github.com/grafana/loki/ksonnet/promtail
 ```
 
-Add the following to the file: `environments/loki/main.jsonnet`
+Replace the contents of `environments/loki/main.jsonnet` with:
 ```
 local promtail = import 'promtail/promtail.libsonnet';
 
@@ -46,6 +46,7 @@ promtail + {
       username: 'user-id',
       password: 'password',
     },
+  },
 }
 ```
 
