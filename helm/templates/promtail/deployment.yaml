@@ -62,10 +62,18 @@ spec:
           securityContext:
             privileged: true
             runAsUser: 0
+{{- with .Values.promtail.livenessProbe }}
           livenessProbe:
-{{ toYaml .Values.promtail.livenessProbe | indent 12 }}
+{{ toYaml . | indent 12 }}
+{{- end }}
+{{- with .Values.promtail.readinessProbe }}
           readinessProbe:
-{{ toYaml .Values.promtail.readinessProbe | indent 12 }}
+{{ toYaml . | indent 12 }}
+{{- end }}
+{{- with .Values.promtail.resources }}
+          resources:
+{{ toYaml . | indent 12 }}
+{{- end }}
     {{- with .Values.promtail.nodeSelector }}
       nodeSelector:
 {{ toYaml . | indent 8 }}

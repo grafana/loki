@@ -20,18 +20,17 @@ loki:
     annotations: {}
     labels: {}
 
-  # readinessProbe:
-  #   httpGet:
-  #     path: /api/health
-  #     port: 3000
+  readinessProbe: {}
 
-  # livenessProbe:
-  #   httpGet:
-  #     path: /api/health
-  #     port: 3000
-  #   initialDelaySeconds: 60
-  #   timeoutSeconds: 30
-  #   failureThreshold: 10
+  livenessProbe: {}
+
+  resources: {}
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
 
   ## Pod Annotations
   # podAnnotations: {}
@@ -94,18 +93,17 @@ promtail:
     annotations: {}
     labels: {}
 
-  # readinessProbe:
-  #   httpGet:
-  #     path: /api/health
-  #     port: 3000
+  readinessProbe: {}
 
-  # livenessProbe:
-  #   httpGet:
-  #     path: /api/health
-  #     port: 3000
-  #   initialDelaySeconds: 60
-  #   timeoutSeconds: 30
-  #   failureThreshold: 10
+  livenessProbe: {}
+
+  resources: {}
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
 
   ## Pod Annotations
   # podAnnotations: {}
