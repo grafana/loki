@@ -7,6 +7,7 @@ Currently there are four ways to try out Loki, in order from easier to hardest:
 - [Building from source](#build-and-run-from-source)
 - [Run on Kubernetes with Helm](#run-on-kubernetes-with-helm)
 - [Using our Ksonnet config to run a fully-blown production setup](ksonnet/)
+- [Using Helm to deploy on Kubernetes](helm/)
 
 ## Free Hosted Demo
 
