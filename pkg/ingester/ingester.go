@@ -138,9 +138,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 }
 
 func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
-	i.instancesMtx.RLock()
-	inst, ok := i.instances[instanceID]
-	i.instancesMtx.RUnlock()
+	inst, ok := i.getInstanceByID(instanceID)
 	if ok {
 		return inst
 	}
@@ -196,4 +194,23 @@ func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
+}
+
+func (i *Ingester) getInstanceByID(id string) (*instance, bool) {
+	i.instancesMtx.RLock()
+	defer i.instancesMtx.RUnlock()
+
+	inst, ok := i.instances[id]
+	return inst, ok
+}
+
+func (i *Ingester) getInstances() []*instance {
+	i.instancesMtx.RLock()
+	defer i.instancesMtx.RUnlock()
+
+	instances := make([]*instance, 0, len(i.instances))
+	for _, instance := range i.instances {
+		instances = append(instances, instance)
+	}
+	return instances
 }

@@ -84,6 +84,12 @@ outer:
 			if err != nil {
 				return nil, err
 			}
+			if req.Regex != "" {
+				iterator, err = iter.NewRegexpFilter(req.Regex, iterator)
+				if err != nil {
+					return nil, err
+				}
+			}
 			iterators = append(iterators, iterator)
 		}
 		result = append(result, iter.NewNonOverlappingIterator(iterators, labels))

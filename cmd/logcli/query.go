@@ -37,10 +37,7 @@ func doQuery() {
 			log.Fatalf("Query failed: %+v", err)
 		}
 
-		cache, lss, err := parseLabels(resp)
-		if err != nil {
-			log.Fatalf("Failed parsing labels: %+v", err)
-		}
+		cache, lss := parseLabels(resp)
 
 		labelsCache = func(labels string) labels.Labels {
 			return cache[labels]
@@ -92,7 +89,7 @@ func mustParseLabels(labels string) labels.Labels {
 	return ls
 }
 
-func parseLabels(resp *logproto.QueryResponse) (map[string]labels.Labels, []labels.Labels, error) {
+func parseLabels(resp *logproto.QueryResponse) (map[string]labels.Labels, []labels.Labels) {
 	cache := make(map[string]labels.Labels, len(resp.Streams))
 	lss := make([]labels.Labels, 0, len(resp.Streams))
 	for _, stream := range resp.Streams {
@@ -100,7 +97,7 @@ func parseLabels(resp *logproto.QueryResponse) (map[string]labels.Labels, []labe
 		cache[stream.Labels] = ls
 		lss = append(lss, ls)
 	}
-	return cache, lss, nil
+	return cache, lss
 }
 
 func commonLabels(lss []labels.Labels) labels.Labels {

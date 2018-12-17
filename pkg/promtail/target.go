@@ -78,7 +78,7 @@ func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, pa
 			continue
 		}
 
-		tailer, err := newTailer(t.logger, t.handler, t.positions, t.path, fi.Name())
+		tailer, err := newTailer(t.logger, t.handler, t.positions, filepath.Join(t.path, fi.Name()))
 		if err != nil {
 			level.Error(t.logger).Log("msg", "failed to tail file", "error", err)
 			continue
@@ -115,7 +115,7 @@ func (t *Target) run() {
 					continue
 				}
 
-				tailer, err := newTailer(t.logger, t.handler, t.positions, t.path, event.Name)
+				tailer, err := newTailer(t.logger, t.handler, t.positions, event.Name)
 				if err != nil {
 					level.Error(t.logger).Log("msg", "failed to tail file", "error", err)
 					continue
@@ -150,8 +150,7 @@ type tailer struct {
 	tail *tail.Tail
 }
 
-func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, dir, name string) (*tailer, error) {
-	path := filepath.Join(dir, name)
+func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, path string) (*tailer, error) {
 	tail, err := tail.TailFile(path, tail.Config{
 		Follow: true,
 		Location: &tail.SeekInfo{
