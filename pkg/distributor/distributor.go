@@ -11,6 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -19,29 +20,34 @@ import (
 )
 
 var (
-	sendDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	sendDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "distributor_send_duration_seconds",
 		Help:      "Time spent sending a sample batch to multiple replicated ingesters.",
 		Buckets:   []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1},
 	}, []string{"method", "status_code"})
-	ingesterAppends = prometheus.NewCounterVec(prometheus.CounterOpts{
+	ingesterAppends = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "distributor_ingester_appends_total",
 		Help:      "The total number of batch appends sent to ingesters.",
 	}, []string{"ingester"})
-	ingesterAppendFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
+	ingesterAppendFailures = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "distributor_ingester_append_failures_total",
 		Help:      "The total number of failed batch appends sent to ingesters.",
 	}, []string{"ingester"})
-)
 
-func init() {
-	prometheus.MustRegister(sendDuration)
-	prometheus.MustRegister(ingesterAppends)
-	prometheus.MustRegister(ingesterAppendFailures)
-}
+	bytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "distributor_bytes_received_total",
+		Help:      "The total number of uncompressed bytes received per user",
+	}, []string{"org"})
+	linesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "distributor_lines_received_total",
+		Help:      "The total number of lines received per user",
+	}, []string{"org"})
+)
 
 // Config for a Distributor.
 type Config struct {
@@ -96,6 +102,18 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	if err != nil {
 		return nil, err
 	}
+
+	// Track metrics.
+	bytesCount := 0
+	lineCount := 0
+	for _, stream := range req.Streams {
+		for _, entry := range stream.Entries {
+			bytesCount += len(entry.Line)
+			lineCount++
+		}
+	}
+	bytesIngested.WithLabelValues(userID).Add(float64(bytesCount))
+	linesIngested.WithLabelValues(userID).Add(float64(lineCount))
 
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
