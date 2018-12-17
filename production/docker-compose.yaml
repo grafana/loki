@@ -8,19 +8,16 @@ services:
     image: grafana/loki:master
     ports:
       - "3100:3100"
-    volumes:
-      - $PWD:/etc/loki
-    command: -config.file=/etc/loki/loki-local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml
     networks:
       - loki
 
   promtail:
-    image: grafana/promtail:make-images-static-26a87c9
+    image: grafana/promtail:master
     volumes:
-      - $PWD:/etc/promtail
       - /var/log:/var/log
     command: 
-      -config.file=/etc/promtail/promtail-docker-config.yaml
+      -config.file=/etc/promtail/docker-config.yaml
     networks:
       - loki
       

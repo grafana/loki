@@ -28,7 +28,7 @@ Grab the promtail module using jb:
 ```
 $ go get -u github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
 $ jb init
-$ jb install github.com/grafana/loki/ksonnet/promtail
+$ jb install github.com/grafana/loki/production/ksonnet/promtail
 ```
 
 Replace the contents of `environments/loki/main.jsonnet` with:
@@ -58,7 +58,7 @@ Apply them using `ks apply loki`.
 If you want to further also deploy the server to the cluster, then run the following to install the module:
 
 ```
-jb install github.com/grafana/loki/ksonnet/loki
+jb install github.com/grafana/loki/production/ksonnet/loki
 ```
 
 Be sure to replace the username, password and the relevant htpasswd contents.
