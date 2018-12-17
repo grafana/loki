@@ -1,6 +1,8 @@
 FROM golang:1.11.2-stretch
 RUN apt-get update && apt-get install -y file jq unzip protobuf-compiler libprotobuf-dev && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+RUN go clean -i net && \
+	go install -tags netgo std
 ENV DOCKER_VER="17.03.0-ce"
 RUN curl -L -o /tmp/docker-$DOCKER_VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$DOCKER_VER.tgz && \
     tar -xz -C /tmp -f /tmp/docker-$DOCKER_VER.tgz && \
