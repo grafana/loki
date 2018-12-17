@@ -25,7 +25,7 @@ Loki consists of 3 components:
 
 For instructions on getting started with Loki, see [our getting started docs](./production/README.md).
 
-For the beginnins of documentation on how to use Loki, see [our usage docs](./docs/usage.md).
+For the beginnings of documentation on how to use Loki, see [our usage docs](./docs/usage.md).
 
 ## Getting Help
 
