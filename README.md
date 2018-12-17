@@ -192,10 +192,12 @@ datasources:
     basicAuthPassword: test_password
 ```
 
-Make sure to adjust the url and authentication to your needs, the url should be:
+Make sure to adjust the url and authentication to your needs, the `url` should be:
+
 - `http://localhost:3100` when run Loki locally
-- `http://loki:3100` when run Loki with docker or docker-compose
-basicAuthUser and basicAuthPassword should same as your Grafana setting.
+- `http://loki:3100` when run Loki with docker-compose
+
+`basicAuthUser` and `basicAuthPassword` should same as your Grafana setting.
 
 ## Further Reading
 
