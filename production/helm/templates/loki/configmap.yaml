@@ -9,7 +9,7 @@ metadata:
     heritage: {{ .Release.Service }}
 data:
   loki.yaml: |
-    auth_enabled: {{ .Values.loki.configauth_enabled }}
+    auth_enabled: {{ .Values.loki.config.auth_enabled }}
 
     server:
       http_listen_port: {{ .Values.loki.service.port }}

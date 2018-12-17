@@ -8,6 +8,6 @@ icon: https://github.com/grafana/loki/raw/master/docs/logo.png
 sources:
   - https://github.com/grafana/loki
 maintainers:
-  - name: TDB
-    email: TBD@gmail.com
+  - name: Loki Maintainers
+    email: lokiproject@googlegroups.com
 engine: gotpl

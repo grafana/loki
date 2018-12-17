@@ -1,13 +1,12 @@
 # Running Loki
 
-Currently there are four ways to try out Loki, in order from easier to hardest:
+Currently there are five ways to try out Loki, in order from easier to hardest:
 
 - [Using our free hosted demo](#free-hosted-demo)
 - [Running it locally with Docker](#run-locally-using-docker)
-- [Building from source](#build-and-run-from-source)
-- [Run on Kubernetes with Helm](#run-on-kubernetes-with-helm)
-- [Using our Ksonnet config to run a fully-blown production setup](ksonnet/)
 - [Using Helm to deploy on Kubernetes](helm/)
+- [Building from source](#build-and-run-from-source)
+- [Using our Ksonnet config to run a fully-blown production setup](ksonnet/)
 
 ## Free Hosted Demo
 
@@ -36,15 +35,6 @@ To test locally, we recommend using the docker-compose.yaml file in this directo
 1. Grafana should now be available at http://localhost:3000/.  Follow the [steps for configuring the datasource in Grafana](../docs/usage.md) and set the URL field to `http://loki:3100`.
 
 For instructions on how to use loki, see [our usage docs](../docs/usage.md).
-
-## Run on Kubernetes with Helm
-
-From within a local checkout of the loki repo, run:
-
-```bash
-$ helm install --name loki ./production/helm --namespace monitoring
-```
-
 
 ## Build and Run From Source
 
