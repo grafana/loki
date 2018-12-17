@@ -81,6 +81,12 @@ Or for docker-compose:
 docker-compose pull
 ```
 
+### Run on Kubernetes with Helm
+
+```
+$ helm install --name loki ./helm --namespace monitoring
+```
+
 ### Configuring the Loki Datasource in Grafana
 
 Grafana ships with built-in support for Loki in the [latest nightly builds](https://grafana.com/grafana/download). Loki support will be officially released in Grafana 6.0.
