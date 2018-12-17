@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "loki.fullname" . }}
+  labels:
+    app: {{ template "loki.name" . }}
+    chart: {{ template "loki.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+{{- if .Values.loki.service.labels }}
+{{ toYaml .Values.loki.service.labels | indent 4 }}
+{{- end }}
+{{- with .Values.loki.service.annotations }}
+  annotations:
+{{ toYaml . | indent 4 }}
+{{- end }}
+spec:
+  ports:
+    - name: {{ template "loki.name" . }}
+      port: {{ .Values.loki.service.port }}
+      protocol: TCP
+      targetPort: {{ .Values.loki.service.port }}
+  selector:
+    app: {{ template "loki.name" . }}
+    release: {{ .Release.Name }}

@@ -1,9 +1,10 @@
 # Running Loki
 
-Currently there are four ways to try out Loki, in order from easier to hardest:
+Currently there are five ways to try out Loki, in order from easier to hardest:
 
 - [Using our free hosted demo](#free-hosted-demo)
 - [Running it locally with Docker](#run-locally-using-docker)
+- [Using Helm to deploy on Kubernetes](helm/)
 - [Building from source](#build-and-run-from-source)
 - [Using our Ksonnet config to run a fully-blown production setup](ksonnet/)
 

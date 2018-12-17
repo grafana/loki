@@ -1,0 +1,13 @@
+name: loki
+version: 0.0.1
+appVersion: 0.0.1
+kubeVersion: "^1.10.0-0"
+description: "Loki: like Prometheus, but for logs."
+home: https://grafana.com/loki
+icon: https://github.com/grafana/loki/raw/master/docs/logo.png
+sources:
+  - https://github.com/grafana/loki
+maintainers:
+  - name: Loki Maintainers
+    email: lokiproject@googlegroups.com
+engine: gotpl

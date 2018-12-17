@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "loki.fullname" . }}
+  labels:
+    app: {{ template "loki.name" . }}
+    chart: {{ template "loki.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+data:
+  loki.yaml: |
+    auth_enabled: {{ .Values.loki.config.auth_enabled }}
+
+    server:
+      http_listen_port: {{ .Values.loki.service.port }}
+
+    ingester:
+      lifecycler:
+        ring:
+          store: {{ .Values.loki.config.ingester.lifecycler.ring.store }}
+          replication_factor: {{ .Values.loki.config.ingester.lifecycler.ring.replication_factor }}
+
+{{- if .Values.loki.config.schema_configs }}
+    schema_config:
+      configs:
+  {{- range .Values.loki.config.schema_configs }}
+      - from: {{ .from }}
+        store: {{ .store }}
+        object_store: {{ .object_store }}
+        schema: {{ .schema }}
+        index:
+          prefix: {{ .index.prefix }}
+          period: {{ .index.period }}
+  {{- end -}}
+{{- end -}}
+
+{{- if .Values.loki.config.storage_configs }}
+    storage_config:
+  {{- range .Values.loki.config.storage_configs }}
+      {{ .name }}:
+        directory: {{ .directory }}
+  {{- end -}}
+{{- end -}}

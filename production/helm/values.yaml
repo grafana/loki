@@ -1,0 +1,130 @@
+rbac:
+  create: true
+  pspEnabled: true
+
+serviceAccount:
+  create: true
+  name: 
+
+loki: 
+  replicas: 1
+  deploymentStrategy: RollingUpdate
+
+  image:
+    repository: grafana/loki
+    tag: master
+    pullPolicy: IfNotPresent
+
+  service:
+    port: 3100
+    annotations: {}
+    labels: {}
+
+  readinessProbe: {}
+
+  livenessProbe: {}
+
+  resources: {}
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+
+  ## Pod Annotations
+  # podAnnotations: {}
+
+  ## Deployment annotations
+  # annotations: {}
+
+  ## Assign a PriorityClassName to pods if set
+  # priorityClassName:
+
+  ## Node labels for pod assignment
+  ## ref: https://kubernetes.io/docs/user-guide/node-selection/
+  #
+  nodeSelector: {}
+
+  ## Tolerations for pod assignment
+  ## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+  ##
+  tolerations: []
+
+  ## Affinity for pod assignment
+  ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+  ##
+  affinity: {}
+
+
+  config:
+    auth_enabled: false
+    ingester:
+      lifecycler:
+        ring:
+          store: inmemory
+          replication_factor: 1
+    schema_configs:
+      - from: 0
+        store: boltdb
+        object_store: filesystem
+        schema: v9
+        index:
+          prefix: index_
+          period: 168h
+    storage_configs:
+      - name: boltdb
+        directory: /tmp/loki/index
+      - name: filesystem
+        directory: /tmp/loki/chunks
+
+promtail:
+  nameOverride: promtail
+  replicas: 1
+  deploymentStrategy: RollingUpdate
+
+  image:
+    repository: grafana/promtail
+    tag: master 
+    pullPolicy: IfNotPresent
+
+  service:
+    port: 3100
+    annotations: {}
+    labels: {}
+
+  readinessProbe: {}
+
+  livenessProbe: {}
+
+  resources: {}
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+
+  ## Pod Annotations
+  # podAnnotations: {}
+
+  ## Deployment annotations
+  # annotations: {}
+
+  ## Assign a PriorityClassName to pods if set
+  # priorityClassName:
+
+  ## Node labels for pod assignment
+  ## ref: https://kubernetes.io/docs/user-guide/node-selection/
+  #
+  nodeSelector: {}
+
+  ## Tolerations for pod assignment
+  ## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+  ##
+  tolerations: []
+
+  ## Affinity for pod assignment
+  ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+  ##
+  affinity: {}
