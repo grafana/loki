@@ -3,10 +3,9 @@
 INSTANCEID="${1:-}"
 APIKEY="${2:-}"
 INSTANCEURL="${3:-}"
-NAMESPACE="${4:-default}"
 
-if [ -z "$INSTANCEID" -o -z "$APIKEY" -o -z "$INSTANCEURL" -o -z "$NAMESPACE" ]; then
-    echo "usage: $0 <instanceId> <apiKey> <url> <namespace>"
+if [ -z "$INSTANCEID" -o -z "$APIKEY" -o -z "$INSTANCEURL" ]; then
+    echo "usage: $0 <instanceId> <apiKey> <url>"
     exit 1
 fi
 
@@ -161,24 +160,10 @@ rules:
   - get
   - list
   - watch
----
-apiVersion: rbac.authorization.k8s.io/v1beta1
-kind: ClusterRoleBinding
-metadata:
-  name: promtail
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: promtail
-subjects:
-- kind: ServiceAccount
-  name: promtail
-  namespace: <namespace>
 YAML
 )
 
 echo "$TEMPLATE" | sed \
   -e "s#<instanceId>#${INSTANCEID}#" \
   -e "s#<apiKey>#${APIKEY}#" \
-  -e "s#<instanceUrl>#${INSTANCEURL}#" \
-  -e "s#<namespace>#${NAMESPACE}#"
+  -e "s#<instanceUrl>#${INSTANCEURL}#"
