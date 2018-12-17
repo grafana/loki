@@ -45,8 +45,8 @@ promtail + {
       hostname: 'logs-us-west1.grafana.net',
       username: 'user-id',
       password: 'password',
-      },
-  }
+    },
+  },
 }
 ```
 
