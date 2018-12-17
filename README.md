@@ -207,6 +207,7 @@ If you have any questions or feedback regarding Loki:
 - Ask a question on the Loki Slack channel. To invite yourself to the Grafana Slack, visit [http://slack.raintank.io/](http://slack.raintank.io/) and join the #loki channel.
 - [File an issue](https://github.com/grafana/loki/issues/new) for bugs, issues and feature suggestions.
 - Send an email to [lokiproject@googlegroups.com](mailto:lokiproject@googlegroups.com), or use the [web interface](https://groups.google.com/forum/#!forum/lokiproject).
+- UI issues should be filed directly in [Grafana](https://github.com/grafana/grafana/issues/new).
 
 Your feedback is always welcome.
 
