@@ -6,6 +6,9 @@
 IMAGE_PREFIX ?= grafana/
 IMAGE_TAG := $(shell ./tools/image-tag)
 UPTODATE := .uptodate
+GIT_REVISION := $(shell git rev-parse --short HEAD)
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
+
 
 # Building Docker images is now automated. The convention is every directory
 # with a Dockerfile in it builds an image calls quay.io/grafana/loki-<dirname>.
@@ -78,7 +81,10 @@ RM := --rm
 # as it currently disallows TTY devices. This value needs to be overridden
 # in any custom cloudbuild.yaml files
 TTY := --tty
-GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w" -tags netgo
+
+VPREFIX := github.com/grafana/loki/vendor/github.com/prometheus/common/version
+GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION)" -tags netgo
+
 NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
        rm $@; \
        echo "\nYour go standard library was built without the 'netgo' build tag."; \

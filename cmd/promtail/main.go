@@ -5,6 +5,8 @@ import (
 	"os"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/version"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -12,6 +14,10 @@ import (
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/promtail"
 )
+
+func init() {
+	prometheus.MustRegister(version.NewCollector("promtail"))
+}
 
 func main() {
 	var (
@@ -36,6 +42,8 @@ func main() {
 		level.Error(util.Logger).Log("msg", "error creating loki", "error", err)
 		os.Exit(1)
 	}
+
+	level.Info(util.Logger).Log("msg", "Starting Promtail", "version", version.Info())
 
 	if err := p.Run(); err != nil {
 		level.Error(util.Logger).Log("msg", "error starting loki", "error", err)
