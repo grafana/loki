@@ -85,7 +85,7 @@ promtail:
 
   image:
     repository: grafana/promtail
-    tag: master-5da1fde
+    tag: master 
     pullPolicy: IfNotPresent
 
   service:
