@@ -1,4 +1,4 @@
-package promtail
+package api
 
 import (
 	"flag"
@@ -11,14 +11,17 @@ import (
 	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/weaveworks/common/server"
+
+	"github.com/grafana/loki/pkg/promtail/client"
+	"github.com/grafana/loki/pkg/promtail/positions"
 )
 
 // Config for promtail, describing what files to watch.
 type Config struct {
-	ServerConfig    server.Config   `yaml:"server,omitempty"`
-	ClientConfig    ClientConfig    `yaml:"client,omitempty"`
-	PositionsConfig PositionsConfig `yaml:"positions,omitempty"`
-	ScrapeConfig    []ScrapeConfig  `yaml:"scrape_configs,omitempty"`
+	ServerConfig    server.Config    `yaml:"server,omitempty"`
+	ClientConfig    client.Config    `yaml:"client,omitempty"`
+	PositionsConfig positions.Config `yaml:"positions,omitempty"`
+	ScrapeConfig    []ScrapeConfig   `yaml:"scrape_configs,omitempty"`
 }
 
 // RegisterFlags registers flags.

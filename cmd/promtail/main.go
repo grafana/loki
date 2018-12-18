@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/promtail"
+	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 func init() {
@@ -22,7 +23,7 @@ func init() {
 func main() {
 	var (
 		configFile = "docs/promtail-local-config.yaml"
-		config     promtail.Config
+		config     api.Config
 	)
 	flag.StringVar(&configFile, "config.file", "promtail.yml", "The config file.")
 	flagext.RegisterFlags(&config)

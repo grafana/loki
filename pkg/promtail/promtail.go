@@ -3,29 +3,34 @@ package promtail
 import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/server"
+
+	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/promtail/client"
+	"github.com/grafana/loki/pkg/promtail/positions"
+	"github.com/grafana/loki/pkg/promtail/targets"
 )
 
 // Promtail is the root struct for Promtail...
 type Promtail struct {
-	client        *Client
-	positions     *Positions
-	targetManager *TargetManager
+	client        *client.Client
+	positions     *positions.Positions
+	targetManager *targets.TargetManager
 	server        *server.Server
 }
 
 // New makes a new Promtail.
-func New(cfg Config) (*Promtail, error) {
-	positions, err := NewPositions(util.Logger, cfg.PositionsConfig)
+func New(cfg api.Config) (*Promtail, error) {
+	positions, err := positions.New(util.Logger, cfg.PositionsConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	client, err := NewClient(cfg.ClientConfig, util.Logger)
+	client, err := client.New(cfg.ClientConfig, util.Logger)
 	if err != nil {
 		return nil, err
 	}
 
-	tm, err := NewTargetManager(util.Logger, positions, client, cfg.ScrapeConfig)
+	tm, err := targets.NewTargetManager(util.Logger, positions, client, cfg.ScrapeConfig)
 	if err != nil {
 		return nil, err
 	}

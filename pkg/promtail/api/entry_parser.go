@@ -1,4 +1,4 @@
-package promtail
+package api
 
 import (
 	"encoding/json"

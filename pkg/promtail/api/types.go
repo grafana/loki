@@ -1,4 +1,4 @@
-package promtail
+package api
 
 import (
 	"time"
@@ -32,7 +32,7 @@ func (e EntryMiddlewareFunc) Wrap(next EntryHandler) EntryHandler {
 	return e(next)
 }
 
-func addLabelsMiddleware(additionalLabels model.LabelSet) EntryMiddleware {
+func AddLabelsMiddleware(additionalLabels model.LabelSet) EntryMiddleware {
 	return EntryMiddlewareFunc(func(next EntryHandler) EntryHandler {
 		return EntryHandlerFunc(func(labels model.LabelSet, time time.Time, entry string) error {
 			labels = additionalLabels.Merge(labels) // Add the additionalLabels but preserves the original labels.

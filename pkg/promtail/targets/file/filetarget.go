@@ -1,4 +1,4 @@
-package promtail
+package file
 
 import (
 	"os"
@@ -16,6 +16,8 @@ import (
 	fsnotify "gopkg.in/fsnotify.v1"
 
 	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/promtail/positions"
 )
 
 var (
@@ -42,12 +44,12 @@ const (
 	filename = "__filename__"
 )
 
-// Target describes a particular set of logs.
-type Target struct {
+// FileTarget describes a particular set of logs.
+type FileTarget struct {
 	logger log.Logger
 
-	handler   EntryHandler
-	positions *Positions
+	handler   api.EntryHandler
+	positions *positions.Positions
 
 	watcher *fsnotify.Watcher
 	path    string
@@ -57,13 +59,14 @@ type Target struct {
 	tails map[string]*tailer
 }
 
-// NewTarget create a new Target.
-func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, path string, labels model.LabelSet) (*Target, error) {
+// NewFileTarget create a new FileTarget.
+func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions *positions.Positions, path string, labels model.LabelSet) (*FileTarget, error) {
 	var err error
 	path, err = filepath.Abs(path)
 	if err != nil {
 		return nil, errors.Wrap(err, "filepath.Abs")
 	}
+
 	matches, err := filepath.Glob(path)
 	if err != nil {
 		return nil, errors.Wrap(err, "filepath.Glob")
@@ -94,11 +97,11 @@ func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, pa
 		}
 	}
 
-	t := &Target{
+	t := &FileTarget{
 		logger:    logger,
 		watcher:   watcher,
 		path:      path,
-		handler:   addLabelsMiddleware(labels).Wrap(handler),
+		handler:   api.AddLabelsMiddleware(labels).Wrap(handler),
 		positions: positions,
 		quit:      make(chan struct{}),
 		done:      make(chan struct{}),
@@ -130,12 +133,12 @@ func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, pa
 }
 
 // Stop the target.
-func (t *Target) Stop() {
+func (t *FileTarget) Stop() {
 	close(t.quit)
 	<-t.done
 }
 
-func (t *Target) run() {
+func (t *FileTarget) run() {
 	defer func() {
 		helpers.LogError("closing watcher", t.watcher.Close)
 		for _, v := range t.tails {
@@ -203,8 +206,8 @@ func (t *Target) run() {
 
 type tailer struct {
 	logger    log.Logger
-	handler   EntryHandler
-	positions *Positions
+	handler   api.EntryHandler
+	positions *positions.Positions
 
 	path     string
 	filename string
@@ -248,7 +251,7 @@ func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, pa
 
 	tailer := &tailer{
 		logger:    logger,
-		handler:   addLabelsMiddleware(model.LabelSet{"filename": model.LabelValue(path)}).Wrap(handler),
+		handler:   api.AddLabelsMiddleware(model.LabelSet{filename: model.LabelValue(path)}).Wrap(handler),
 		positions: positions,
 
 		path:     path,

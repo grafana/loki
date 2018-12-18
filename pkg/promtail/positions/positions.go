@@ -1,4 +1,4 @@
-package promtail
+package positions
 
 import (
 	"flag"
@@ -10,19 +10,19 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v2"
 )
 
 const positionFileMode = 0700
 
-// PositionsConfig describes where to get postition information from.
-type PositionsConfig struct {
+// Config describes where to get postition information from.
+type Config struct {
 	SyncPeriod    time.Duration `yaml:"sync_period"`
 	PositionsFile string        `yaml:"filename"`
 }
 
 // RegisterFlags register flags.
-func (cfg *PositionsConfig) RegisterFlags(flags *flag.FlagSet) {
+func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
 	flags.DurationVar(&cfg.SyncPeriod, "positions.sync-period", 10*time.Second, "Period with this to sync the position file.")
 	flag.StringVar(&cfg.PositionsFile, "positions.file", "/var/log/positions.yaml", "Location to read/wrtie positions from.")
 }
@@ -30,7 +30,7 @@ func (cfg *PositionsConfig) RegisterFlags(flags *flag.FlagSet) {
 // Positions tracks how far through each file we've read.
 type Positions struct {
 	logger    log.Logger
-	cfg       PositionsConfig
+	cfg       Config
 	mtx       sync.Mutex
 	positions map[string]int64
 	quit      chan struct{}
@@ -41,8 +41,8 @@ type positionsFile struct {
 	Positions map[string]int64 `yaml:"positions"`
 }
 
-// NewPositions makes a new Positions.
-func NewPositions(logger log.Logger, cfg PositionsConfig) (*Positions, error) {
+// New makes a new Positions.
+func New(logger log.Logger, cfg Config) (*Positions, error) {
 	positions, err := readPositionsFile(cfg.PositionsFile)
 	if err != nil {
 		return nil, err
@@ -85,6 +85,11 @@ func (p *Positions) Remove(path string) {
 	p.mtx.Lock()
 	delete(p.positions, path)
 	p.mtx.Unlock()
+}
+
+// SyncPeriod returns how often the positions file gets resynced
+func (p *Positions) SyncPeriod() time.Duration {
+	return p.cfg.SyncPeriod
 }
 
 func (p *Positions) run() {
