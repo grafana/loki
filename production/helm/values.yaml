@@ -56,6 +56,18 @@ loki:
   ##
   affinity: {}
 
+  ## Enable persistence using Persistent Volume Claims
+  ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+  ##
+  persistence:
+    enabled: true
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+    # storageClassName: default
+    # annotations: {}
+    # subPath: ""
+    # existingClaim:
 
   config:
     auth_enabled: false
@@ -74,9 +86,9 @@ loki:
           period: 168h
     storage_configs:
       - name: boltdb
-        directory: /tmp/loki/index
+        directory: /data/loki/index
       - name: filesystem
-        directory: /tmp/loki/chunks
+        directory: /data/loki/chunks
 
 promtail:
   nameOverride: promtail
