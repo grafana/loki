@@ -23,6 +23,21 @@ There are 4 API endpoints:
   - [ProtoBuffer defition](/pkg/logproto/logproto.proto)
   - [Golang client library](/pkg/promtail/client.go)
 
+  Also accepts JSON formatted requests when the header `Content-Type: application/json` is sent.  Example of the JSON format:
+
+  ```json
+  {
+      "streams": [
+          {
+              "labels": "{foo=\"bar\"}",
+              "entries": [
+                  {"timestamp": "2018-12-18T08:28:06.801064-04:00", "line": "baz"}
+              ]
+          }
+      ]
+  }
+  ```
+
 - `GET /api/prom/query`
 
   For doing queries, accepts the following parameters in the query-string:
