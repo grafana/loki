@@ -20,12 +20,6 @@ import (
 )
 
 var (
-	sendDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
-		Name:      "distributor_send_duration_seconds",
-		Help:      "Time spent sending a sample batch to multiple replicated ingesters.",
-		Buckets:   []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5, 1},
-	}, []string{"method", "status_code"})
 	ingesterAppends = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "distributor_ingester_appends_total",
