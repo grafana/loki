@@ -31,7 +31,7 @@ There are 4 API endpoints:
           {
               "labels": "{foo=\"bar\"}",
               "entries": [
-                  {"timestamp": "2018-12-18T08:28:06.801064-04:00", "line": "baz"}
+                  {"ts": "2018-12-18T08:28:06.801064-04:00", "line": "baz"}
               ]
           }
       ]

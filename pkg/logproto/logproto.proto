@@ -54,6 +54,6 @@ message Stream {
 }
 
 message Entry {
-  google.protobuf.Timestamp timestamp = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false, (gogoproto.jsontag) = "timestamp"];
+  google.protobuf.Timestamp timestamp = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false, (gogoproto.jsontag) = "ts"];
   string line = 2 [(gogoproto.jsontag) = "line"];
 }
