@@ -12,7 +12,7 @@ Tenant IDs can be any alphanumeric string; limiting them to 20 bytes is reasonab
 Loki can be run in "single-tenant" mode where the `X-Scope-OrgID` header is not required.
 In this situation, the tenant ID is defaulted to be `fake`.
 
-## REST API
+## REST API
 
 There are 4 API endpoints:
 
