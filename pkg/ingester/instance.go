@@ -6,6 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
@@ -28,22 +29,17 @@ var (
 )
 
 var (
-	streamsCreatedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+	streamsCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "ingester_streams_created_total",
-		Help:      "The total number of streams created in the ingester.",
-	}, []string{"org"})
-	streamsRemovedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Help:      "The total number of streams created per instance in the ingester.",
+	}, []string{"instance"})
+	streamsRemovedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "ingester_streams_removed_total",
-		Help:      "The total number of streams removed by the ingester.",
-	}, []string{"org"})
+		Help:      "The total number of streams removed per instance by the ingester.",
+	}, []string{"instance"})
 )
-
-func init() {
-	prometheus.MustRegister(streamsCreatedTotal)
-	prometheus.MustRegister(streamsRemovedTotal)
-}
 
 type instance struct {
 	streamsMtx sync.RWMutex
@@ -51,14 +47,19 @@ type instance struct {
 	index      *index.InvertedIndex
 
 	instanceID string
+
+	streamsCreatedTotal prometheus.Counter
+	streamsRemovedTotal prometheus.Counter
 }
 
 func newInstance(instanceID string) *instance {
-	streamsCreatedTotal.WithLabelValues(instanceID).Inc()
 	return &instance{
 		streams:    map[model.Fingerprint]*stream{},
 		index:      index.New(),
 		instanceID: instanceID,
+
+		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
+		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
 	}
 }
 
@@ -78,6 +79,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			stream = newStream(fp, labels)
 			i.index.Add(labels, fp)
 			i.streams[fp] = stream
+			i.streamsCreatedTotal.Inc()
 		}
 
 		if err := stream.Push(ctx, s.Entries); err != nil {
