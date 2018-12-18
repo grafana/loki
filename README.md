@@ -15,7 +15,7 @@ Compared to other log aggregation systems, Loki:
 - is an especially good fit for storing [Kubernetes](https://kubernetes.io/) Pod logs. Metadata such as Pod labels is automatically scraped and indexed.
 - has native support in Grafana (already in the nightly builds, will be included in Grafana 6.0).
 
-Loki consists of 3 components:
+A Loki-based logging stack consists of 3 components:
 
 - `loki` is the main server, responsible for storing logs and processing queries.
 - `promtail` is the agent, responsible for gathering logs and sending them to loki.
