@@ -17,9 +17,12 @@ Compared to other log aggregation systems, Loki:
 
 A Loki-based logging stack consists of 3 components:
 
+- `promtail` is the agent, responsible for gathering logs and sending them to Loki.
 - `loki` is the main server, responsible for storing logs and processing queries.
-- `promtail` is the agent, responsible for gathering logs and sending them to loki.
 - [Grafana](https://github.com/grafana/grafana) for the UI.
+
+Loki is like Prometheus, but for logs: we prefer a multidimensional label-based approach to indexing, and want a single-binary, easy to operate system with no dependancies.
+Loki differs from Prometheus by forcussing on logs instead of metrics, and deliverying logs via push, instead of pull.
 
 ## Getting started
 
