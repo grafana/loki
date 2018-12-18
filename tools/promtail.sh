@@ -135,7 +135,7 @@ spec:
           path: /var/log
         name: varlog
       - hostPath:
-          path: dataroot/containers
+          path: <dataroot>/containers
         name: varlibdockercontainers
   updateStrategy:
     type: RollingUpdate

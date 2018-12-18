@@ -39,6 +39,7 @@ local promtail = import 'promtail/promtail.libsonnet';
 promtail + {
   _config+:: {
     namespace: 'loki',
+    dataroot: '/var/lib/docker',
 
     promtail_config: {
       scheme: 'https',
@@ -49,6 +50,7 @@ promtail + {
   },
 }
 ```
+Notice that `dataroot` is your own data root for docker daemon, use `docker info | grep "Root Dir"` to get it.
 
 Then do `ks show loki` to see the manifests that'll be deployed to your cluster.
 Apply them using `ks apply loki`.
@@ -72,6 +74,7 @@ local promtail = import 'promtail/promtail.libsonnet';
 loki + promtail + gateway {
   _config+:: {
     namespace: 'loki',
+    dataroot: '/var/lib/docker',
     htpasswd_contents: 'loki:$apr1$H4yGiGNg$ssl5/NymaGFRUvxIV1Nyr.',
 
 
@@ -86,6 +89,7 @@ loki + promtail + gateway {
   },
 }
 ```
+Notice that `dataroot` is your own data root for docker daemon, use `docker info | grep "Root Dir"` to get it.
 
 Do `ks show loki` to see the manifests being deployed to the cluster.
 Finally `ks apply loki` to deploy the server components to your cluster.
