@@ -21,8 +21,8 @@ A Loki-based logging stack consists of 3 components:
 - `loki` is the main server, responsible for storing logs and processing queries.
 - [Grafana](https://github.com/grafana/grafana) for the UI.
 
-Loki is like Prometheus, but for logs: we prefer a multidimensional label-based approach to indexing, and want a single-binary, easy to operate system with no dependancies.
-Loki differs from Prometheus by forcussing on logs instead of metrics, and deliverying logs via push, instead of pull.
+Loki is like Prometheus, but for logs: we prefer a multidimensional label-based approach to indexing, and want a single-binary, easy to operate system with no dependencies.
+Loki differs from Prometheus by focussing on logs instead of metrics, and deliverying logs via push, instead of pull.
 
 ## Getting started
 
