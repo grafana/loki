@@ -1,4 +1,4 @@
-package promtail
+package file
 
 import (
 	"context"
@@ -16,6 +16,10 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	pkgrelabel "github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/relabel"
+
+	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/promtail/positions"
 )
 
 const (
@@ -48,9 +52,9 @@ type TargetManager struct {
 // NewTargetManager creates a new TargetManager.
 func NewTargetManager(
 	logger log.Logger,
-	positions *Positions,
-	client EntryHandler,
-	scrapeConfig []ScrapeConfig,
+	positions *positions.Positions,
+	client api.EntryHandler,
+	scrapeConfigs []api.ScrapeConfig,
 ) (*TargetManager, error) {
 	ctx, quit := context.WithCancel(context.Background())
 	tm := &TargetManager{
@@ -67,12 +71,12 @@ func NewTargetManager(
 	}
 
 	config := map[string]sd_config.ServiceDiscoveryConfig{}
-	for _, cfg := range scrapeConfig {
+	for _, cfg := range scrapeConfigs {
 		s := &syncer{
 			log:           logger,
 			positions:     positions,
 			relabelConfig: cfg.RelabelConfigs,
-			targets:       map[string]*Target{},
+			targets:       map[string]*FileTarget{},
 			hostname:      hostname,
 			entryHandler:  cfg.EntryParser.Wrap(client),
 		}
@@ -101,15 +105,16 @@ func (tm *TargetManager) Stop() {
 	for _, s := range tm.syncers {
 		s.stop()
 	}
+
 }
 
 type syncer struct {
 	log          log.Logger
-	positions    *Positions
-	entryHandler EntryHandler
+	positions    *positions.Positions
+	entryHandler api.EntryHandler
 	hostname     string
 
-	targets       map[string]*Target
+	targets       map[string]*FileTarget
 	relabelConfig []*pkgrelabel.Config
 }
 
@@ -181,8 +186,8 @@ func (s *syncer) Sync(groups []*targetgroup.Group) {
 	}
 }
 
-func (s *syncer) newTarget(path string, labels model.LabelSet) (*Target, error) {
-	return NewTarget(s.log, s.entryHandler, s.positions, path, labels)
+func (s *syncer) newTarget(path string, labels model.LabelSet) (*FileTarget, error) {
+	return NewFileTarget(s.log, s.entryHandler, s.positions, path, labels)
 }
 
 func (s *syncer) stop() {

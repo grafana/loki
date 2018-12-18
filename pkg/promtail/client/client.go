@@ -1,4 +1,4 @@
-package promtail
+package client
 
 import (
 	"bytes"
@@ -41,8 +41,8 @@ func init() {
 	prometheus.MustRegister(requestDuration)
 }
 
-// ClientConfig describes configuration for a HTTP pusher client.
-type ClientConfig struct {
+// Config describes configuration for a HTTP pusher client.
+type Config struct {
 	URL       flagext.URLValue
 	BatchWait time.Duration
 	BatchSize int
@@ -51,7 +51,7 @@ type ClientConfig struct {
 }
 
 // RegisterFlags registers flags.
-func (c *ClientConfig) RegisterFlags(flags *flag.FlagSet) {
+func (c *Config) RegisterFlags(flags *flag.FlagSet) {
 	flags.Var(&c.URL, "client.url", "URL of log server")
 	flags.DurationVar(&c.BatchWait, "client.batch-wait", 1*time.Second, "Maximum wait period before sending batch.")
 	flags.IntVar(&c.BatchSize, "client.batch-size-bytes", 100*1024, "Maximum batch size to accrue before sending. ")
@@ -60,7 +60,7 @@ func (c *ClientConfig) RegisterFlags(flags *flag.FlagSet) {
 // Client for pushing logs in snappy-compressed protos over HTTP.
 type Client struct {
 	logger  log.Logger
-	cfg     ClientConfig
+	cfg     Config
 	quit    chan struct{}
 	entries chan entry
 	wg      sync.WaitGroup
@@ -73,8 +73,8 @@ type entry struct {
 	logproto.Entry
 }
 
-// NewClient makes a new Client.
-func NewClient(cfg ClientConfig, logger log.Logger) (*Client, error) {
+// New makes a new Client.
+func New(cfg Config, logger log.Logger) (*Client, error) {
 	c := &Client{
 		logger:         logger,
 		cfg:            cfg,
