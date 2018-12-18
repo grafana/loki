@@ -1,0 +1,24 @@
+{{- if and .Values.loki.persistence.enabled (not .Values.loki.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ template "loki.fullname" . }}
+  labels:
+    app: {{ template "loki.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+  {{- with .Values.loki.persistence.annotations  }}
+  annotations:
+{{ toYaml . | indent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    {{- range .Values.loki.persistence.accessModes }}
+    - {{ . | quote }}
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.loki.persistence.size | quote }}
+  storageClassName: {{ .Values.loki.persistence.storageClassName }}
+{{- end -}}
