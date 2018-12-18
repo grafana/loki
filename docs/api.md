@@ -9,7 +9,10 @@ There are 4 API endpoints:
 
 - `POST /api/prom/push`
 
-  For sending log entries, expects a snappy compressed proto in the HTTP Body.
+  For sending log entries, expects a snappy compressed proto in the HTTP Body:
+
+  - [ProtoBuffer defition](/pkg/logproto/logproto.proto)
+  - [Golang client library](/pkg/promtail/client.go)
 
 - `GET /api/prom/query`
 
