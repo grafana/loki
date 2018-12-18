@@ -4,9 +4,10 @@ INSTANCEID="${1:-}"
 APIKEY="${2:-}"
 INSTANCEURL="${3:-}"
 NAMESPACE="${4:-default}"
+DATAROOT="${5-/var/lib/docker}"
 
-if [ -z "$INSTANCEID" -o -z "$APIKEY" -o -z "$INSTANCEURL" -o -z "$NAMESPACE" ]; then
-    echo "usage: $0 <instanceId> <apiKey> <url> <namespace>"
+if [ -z "$INSTANCEID" -o -z "$APIKEY" -o -z "$INSTANCEURL" -o -z "$NAMESPACE" -o -z "$DATAROOT" ]; then
+    echo "usage: $0 <instanceId> <apiKey> <url> <namespace> <dataroot>"
     exit 1
 fi
 
@@ -134,7 +135,7 @@ spec:
           path: /var/log
         name: varlog
       - hostPath:
-          path: /var/lib/docker/containers
+          path: dataroot/containers
         name: varlibdockercontainers
   updateStrategy:
     type: RollingUpdate
@@ -182,3 +183,4 @@ echo "$TEMPLATE" | sed \
   -e "s#<apiKey>#${APIKEY}#" \
   -e "s#<instanceUrl>#${INSTANCEURL}#" \
   -e "s#<namespace>#${NAMESPACE}#"
+  -e "s#<dataroot>#${DATAROOT}#"
