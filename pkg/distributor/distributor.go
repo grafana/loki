@@ -34,13 +34,13 @@ var (
 	bytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "distributor_bytes_received_total",
-		Help:      "The total number of uncompressed bytes received per instance",
-	}, []string{"instance"})
+		Help:      "The total number of uncompressed bytes received per tenant",
+	}, []string{"tenant"})
 	linesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "distributor_lines_received_total",
-		Help:      "The total number of lines received per instance",
-	}, []string{"instance"})
+		Help:      "The total number of lines received per tenant",
+	}, []string{"tenant"})
 )
 
 // Config for a Distributor.
