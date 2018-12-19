@@ -1,0 +1,366 @@
+---
+apiVersion: v1
+data:
+  promtail.yml: |
+    scrape_configs:
+    - job_name: kubernetes-pods
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      - source_labels:
+        - __meta_kubernetes_pod_node_name
+        target_label: __host__
+      - action: drop
+        regex: ^$
+        source_labels:
+        - __meta_kubernetes_pod_label_name
+      - action: replace
+        replacement: $1
+        separator: /
+        source_labels:
+        - __meta_kubernetes_namespace
+        - __meta_kubernetes_pod_label_name
+        target_label: job
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_namespace
+        target_label: namespace
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_pod_name
+        target_label: instance
+      - replacement: /var/log/pods/$1
+        separator: /
+        source_labels:
+        - __meta_kubernetes_pod_uid
+        - __meta_kubernetes_pod_container_name
+        target_label: __path__
+    - job_name: kubernetes-pods-app
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      - source_labels:
+        - __meta_kubernetes_pod_node_name
+        target_label: __host__
+      - action: drop
+        regex: ^$
+        source_labels:
+        - __meta_kubernetes_pod_label_app
+      - action: replace
+        replacement: $1
+        separator: /
+        source_labels:
+        - __meta_kubernetes_namespace
+        - __meta_kubernetes_pod_label_app
+        target_label: job
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_namespace
+        target_label: namespace
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_pod_name
+        target_label: instance
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
+      - replacement: /var/log/pods/$1
+        separator: /
+        source_labels:
+        - __meta_kubernetes_pod_uid
+        - __meta_kubernetes_pod_container_name
+        target_label: __path__
+kind: ConfigMap
+metadata:
+  name: promtail
+---
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: promtail
+spec:
+  minReadySeconds: 10
+  template:
+    metadata:
+      labels:
+        name: promtail
+    spec:
+      containers:
+      - args:
+        - -client.url=http://loki.default.svc/api/prom/push
+        - -config.file=/etc/promtail/promtail.yml
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        image: grafana/promtail:master-5da1fde
+        imagePullPolicy: IfNotPresent
+        name: promtail
+        ports:
+        - containerPort: 80
+          name: http-metrics
+        securityContext:
+          privileged: true
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /etc/promtail
+          name: promtail
+        - mountPath: /var/log
+          name: varlog
+        - mountPath: /var/lib/docker/containers
+          name: varlibdockercontainers
+          readOnly: true
+      serviceAccount: promtail
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      volumes:
+      - configMap:
+          name: promtail
+        name: promtail
+      - hostPath:
+          path: /var/log
+        name: varlog
+      - hostPath:
+          path: /var/lib/docker/containers
+        name: varlibdockercontainers
+  updateStrategy:
+    type: RollingUpdate
+---
+apiVersion: v1
+data:
+  config.yaml: |
+    auth_enabled: false
+    ingester:
+      lifecycler:
+        address: 0.0.0.0
+        ring:
+          replication_factor: 1
+          store: inmemory
+    schema_config:
+      configs:
+      - from: 0
+        index:
+          period: 168h
+          prefix: index_
+        object_store: filesystem
+        schema: v9
+        store: boltdb
+    server:
+      http_listen_port: 80
+    storage_config:
+      boltdb:
+        directory: /tmp/loki/index
+      filesystem:
+        directory: /tmp/loki/chunks
+kind: ConfigMap
+metadata:
+  name: loki
+---
+apiVersion: v1
+data: {}
+kind: ConfigMap
+metadata:
+  name: dashboards
+---
+apiVersion: v1
+data:
+  grafana.ini: "[analytics]\nreporting_enabled = false\n[auth.anonymous]\nenabled
+    = true\norg_role = Admin\n[explore]\nenabled = true\n[server]\nhttp_port = 80\nroot_url
+    = \n[users]\ndefault_theme = light\n"
+kind: ConfigMap
+metadata:
+  name: grafana-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+spec:
+  ports:
+  - name: grafana-grafana
+    port: 80
+    targetPort: 80
+  selector:
+    name: grafana
+---
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: loki
+spec:
+  minReadySeconds: 10
+  replicas: 1
+  revisionHistoryLimit: 10
+  template:
+    metadata:
+      annotations:
+        schemaID: 0100f93805f5a1f4098fccdb06cf03c0
+      labels:
+        name: loki
+    spec:
+      containers:
+      - args:
+        - -config.file=/etc/loki/config.yaml
+        image: grafana/loki:master
+        imagePullPolicy: IfNotPresent
+        name: loki
+        ports:
+        - containerPort: 80
+          name: http-metrics
+        - containerPort: 9095
+          name: grpc
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 80
+          initialDelaySeconds: 15
+          timeoutSeconds: 1
+        volumeMounts:
+        - mountPath: /etc/loki
+          name: loki
+      terminationGracePeriodSeconds: 4800
+      volumes:
+      - configMap:
+          name: loki
+        name: loki
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: default
+---
+apiVersion: v1
+data:
+  dashboards.yml: |
+    apiVersion: 1
+    providers:
+    - disableDeletion: true
+      editable: false
+      folder: ""
+      name: dashboards
+      options:
+        path: /grafana/dashboards
+      orgId: 1
+      type: file
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provisioning
+---
+apiVersion: v1
+data:
+  loki.yml: |
+    apiVersion: 1
+    datasources:
+    - access: proxy
+      editable: false
+      name: Loki
+      type: loki
+      url: http://loki.default.svc
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+---
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: grafana
+spec:
+  minReadySeconds: 10
+  replicas: 1
+  revisionHistoryLimit: 10
+  template:
+    metadata:
+      labels:
+        name: grafana
+    spec:
+      containers:
+      - command:
+        - /usr/share/grafana/bin/grafana-server
+        - --homepath=/usr/share/grafana
+        - --config=/etc/grafana-config/grafana.ini
+        image: grafana/grafana:master
+        imagePullPolicy: IfNotPresent
+        name: grafana
+        ports:
+        - containerPort: 80
+          name: grafana
+        resources:
+          requests:
+            cpu: 10m
+            memory: 40Mi
+        volumeMounts:
+        - mountPath: /etc/grafana-config
+          name: grafana-config
+        - mountPath: /etc/grafana/provisioning/dashboards
+          name: grafana-dashboard-provisioning
+        - mountPath: /etc/grafana/provisioning/datasources
+          name: grafana-datasources
+        - mountPath: /grafana/dashboards
+          name: dashboards
+      securityContext:
+        runAsUser: 0
+      volumes:
+      - configMap:
+          name: grafana-config
+        name: grafana-config
+      - configMap:
+          name: grafana-dashboard-provisioning
+        name: grafana-dashboard-provisioning
+      - configMap:
+          name: grafana-datasources
+        name: grafana-datasources
+      - configMap:
+          name: dashboards
+        name: dashboards
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+spec:
+  ports:
+  - name: loki-http-metrics
+    port: 80
+    targetPort: 80
+  - name: loki-grpc
+    port: 9095
+    targetPort: 9095
+  selector:
+    name: loki
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: promtail
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  - nodes/proxy
+  - services
+  - endpoints
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: promtail
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promtail
+subjects:
+- kind: ServiceAccount
+  name: promtail
+  namespace: default
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: promtail

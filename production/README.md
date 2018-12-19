@@ -4,6 +4,7 @@ Currently there are five ways to try out Loki, in order from easier to hardest:
 
 - [Using our free hosted demo](#free-hosted-demo)
 - [Running it locally with Docker](#run-locally-using-docker)
+- [In minikube](#run-in-minikube)
 - [Using Helm to deploy on Kubernetes](helm/)
 - [Building from source](#build-and-run-from-source)
 - [Using our Ksonnet config to run a fully-blown production setup](ksonnet/)
@@ -35,6 +36,18 @@ To test locally, we recommend using the docker-compose.yaml file in this directo
 1. Grafana should now be available at http://localhost:3000/.  Follow the [steps for configuring the datasource in Grafana](../docs/usage.md) and set the URL field to `http://loki:3100`.
 
 For instructions on how to use loki, see [our usage docs](../docs/usage.md).
+
+## Run in minikube
+
+To run in minikube, the manifests are [here](../docs/loki-promtail-minkube.yaml).
+
+```bash
+$ kubectl apply -f ./docs/loki-promtail-minikube.yaml
+$ kubectl get po
+$ kubectl port-forward <grfana-pod> 3000:80
+```
+
+Visit http://localhost:3000/explore to play around with Loki.
 
 ## Build and Run From Source
 
