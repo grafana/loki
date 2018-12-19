@@ -3,9 +3,8 @@
   local containerPort = $.core.v1.containerPort,
 
   distributor_args::
-    $._config.ringArgs {
+    $._config.commonArgs {
       target: 'distributor',
-      'distributor.replication-factor': $._config.replication_factor,
     },
 
   distributor_container::

@@ -2,11 +2,8 @@
   local container = $.core.v1.container,
 
   ingester_args::
-    $._config.ringArgs {
+    $._config.commonArgs {
       target: 'ingester',
-      'ingester.num-tokens': '512',
-      'ingester.join-after': '30s',
-      'ingester.claim-on-rollout': true,
     },
 
   ingester_container::

@@ -14,7 +14,8 @@
     s3_bucket_name: error 'must specify S3 bucket name',
 
     // December 11 is when we first launched to the public.
-    schema_start_date: '2018-12-11',
+    // Assume we can ingest logs that are 5months old.
+    schema_start_date: '2018-07-11',
 
     server_config: {
       http_listen_port: 80,
@@ -53,39 +54,60 @@
         num_tokens: 512,
         heartbeat_period: '5s',
         join_after: '10s',
+        claim_on_rollout: false,
         interface_names: ['eth0'],
       },
     },
 
-    storage_config: {
-      aws:
-        if $._config.storage_backend == 'aws' then {
-          // TODO
-        } else {},
-      bigtable:
-        if $._config.storage_backend == 'gcp' then {
-          instance: $._config.bigtable_instance,
-          project: $._config.bigtable_project,
-        } else {},
-      gcs:
-        if $._config.storage_backend == 'gcp' then {
-          bucket_name: $._config.gcs_bucket_name,
-        } else {},
+    local awsStorageConfig(config) = {
+      aws: {
+        // TODO.
+      },
     },
 
-    schema_configs: [{
+    local gcpStorageConfig(config) = {
+      bigtable: {
+        instance: config.bigtable_instance,
+        project: config.bigtable_project,
+      },
+      gcs: {
+        bucket_name: config.gcs_bucket_name,
+      },
+    },
+
+    storage_config:
+      if $._config.storage_backend == 'aws' then awsStorageConfig($._config)
+      else if $._config.storage_backend == 'gcp' then gcpStorageConfig($._config)
+      else {},
+
+    local awsSchemaConfig(config) = [{
       from: '0',
       store: 'bigtable',
       object_store: 'gcs',
       schema: 'v9',
       index: {
-        prefix: '%s_index_' % $._config.table_prefix,
+        prefix: '%s_index_' % config.table_prefix,
         period: '168h',
       },
     }],
 
-    ringArgs: {
-      'consul.prefix': '',
+    local gcpSchemaConfig(config) = [{
+      from: '0',
+      store: 'bigtable',
+      object_store: 'gcs',
+      schema: 'v9',
+      index: {
+        prefix: '%s_index_' % config.table_prefix,
+        period: '168h',
+      },
+    }],
+
+    schema_configs:
+      if $._config.storage_backend == 'aws' then awsSchemaConfig($._config)
+      else if $._config.storage_backend == 'gcp' then gcpSchemaConfig($._config)
+      else {},
+
+    commonArgs: {
       'config.file': '/etc/loki/config.yaml',
     },
   },
