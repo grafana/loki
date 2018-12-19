@@ -18,6 +18,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+const blocksPerChunk = 10
+
 var (
 	magicNumber = uint32(0x12EE56A)
 
@@ -307,7 +309,7 @@ func (c *MemChunk) Size() int {
 
 // SpaceFor implements Chunk.
 func (c *MemChunk) SpaceFor(*logproto.Entry) bool {
-	return len(c.blocks) < 10
+	return len(c.blocks) < blocksPerChunk
 }
 
 // Append implements Chunk.

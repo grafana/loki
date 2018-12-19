@@ -177,7 +177,11 @@ func TestGZIPChunkFilling(t *testing.T) {
 	chk.blockSize = 1024
 
 	// We should be able to append only 10KB of logs.
-	logLine := string(make([]byte, 512))
+	maxBytes := chk.blockSize * blocksPerChunk
+	lineSize := 512
+	lines := maxBytes / lineSize
+
+	logLine := string(make([]byte, lineSize))
 	entry := &logproto.Entry{
 		Timestamp: time.Unix(0, 0),
 		Line:      logLine,
@@ -189,7 +193,7 @@ func TestGZIPChunkFilling(t *testing.T) {
 		require.NoError(t, chk.Append(entry))
 	}
 
-	require.Equal(t, int64(20), i)
+	require.Equal(t, int64(lines), i)
 
 	it, err := chk.Iterator(time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD)
 	require.NoError(t, err)
@@ -200,7 +204,7 @@ func TestGZIPChunkFilling(t *testing.T) {
 		i++
 	}
 
-	require.Equal(t, int64(20), i)
+	require.Equal(t, int64(lines), i)
 }
 
 func logprotoEntry(ts int64, line string) *logproto.Entry {
