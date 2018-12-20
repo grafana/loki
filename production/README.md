@@ -43,6 +43,10 @@ Loki can be run in a single host, no-dependencies mode using the following comma
 You need `go` [v1.10+](https://golang.org/dl/) installed locally.
 
 ```bash
+
+$ go get github.com/grafana/loki
+$ cd $GOPATH/src/github.com/grafana/loki # GOPATH is $HOME/go by default.
+
 $ go build ./cmd/loki
 $ ./loki -config.file=./cmd/loki/loki-local-config.yaml
 ...
