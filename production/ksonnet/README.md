@@ -39,14 +39,14 @@ local promtail = import 'promtail/promtail.libsonnet';
 promtail + {
   _config+:: {
     namespace: 'loki',
-    dataroot: '/var/lib/docker',
 
     promtail_config: {
       scheme: 'https',
       hostname: 'logs-us-west1.grafana.net',
       username: 'user-id',
       password: 'password',
-    },
+      dataroot: '/var/lib/docker',
+   },
   },
 }
 ```
@@ -74,7 +74,6 @@ local promtail = import 'promtail/promtail.libsonnet';
 loki + promtail + gateway {
   _config+:: {
     namespace: 'loki',
-    dataroot: '/var/lib/docker',
     htpasswd_contents: 'loki:$apr1$H4yGiGNg$ssl5/NymaGFRUvxIV1Nyr.',
 
 
@@ -82,7 +81,8 @@ loki + promtail + gateway {
       scheme: 'http',
       hostname: 'gateway.%(namespace)s.svc' % $._config,
       username: 'loki',
-      password: 'password'
+      password: 'password',
+      dataroot: '/var/lib/docker',
     },
     replication_factor: 3,
     consul_replicas: 1,
