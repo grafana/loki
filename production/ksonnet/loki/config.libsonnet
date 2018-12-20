@@ -54,11 +54,11 @@
 
       storage_config: {
         bigtable: {
-          instance: config.bigtable_instance,
-          project: config.bigtable_project,
+          instance: $._config.bigtable_instance,
+          project: $._config.bigtable_project,
         },
         gcs: {
-          bucket_name: config.gcs_bucket_name,
+          bucket_name: $._config.gcs_bucket_name,
         },
       },
 
@@ -69,7 +69,7 @@
           object_store: 'gcs',
           schema: 'v9',
           index: {
-            prefix: '%s_index_' % config.table_prefix,
+            prefix: '%s_index_' % $._config.table_prefix,
             period: '168h',
           },
         }],
@@ -82,6 +82,6 @@
   config_file:
     configMap.new('loki') +
     configMap.withData({
-      'config.yaml': $.util.manifestYaml($.loki),
+      'config.yaml': $.util.manifestYaml($._config.loki),
     }),
 }
