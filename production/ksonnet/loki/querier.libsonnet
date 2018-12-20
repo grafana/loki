@@ -15,6 +15,7 @@
 
   querier_deployment:
     deployment.new('querier', 3, [$.querier_container]) +
+    $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki') +
     $.util.antiAffinity,
 

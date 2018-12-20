@@ -11,7 +11,7 @@
 
     // December 11 is when we first launched to the public.
     // Assume we can ingest logs that are 5months old.
-    schema_start_date: '2018-07-11', 
+    schema_start_date: '2018-07-11',
 
     commonArgs: {
       'config.file': '/etc/loki/config.yaml',
@@ -83,5 +83,12 @@
     configMap.new('loki') +
     configMap.withData({
       'config.yaml': $.util.manifestYaml($._config.loki),
+    }),
+
+  local deployment = $.apps.v1beta1.deployment,
+
+  config_hash_mixin::
+    deployment.mixin.spec.template.metadata.withAnnotationsMixin({
+      config_hash: std.md5(std.toString($._config.loki)),
     }),
 }
