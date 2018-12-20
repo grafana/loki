@@ -698,13 +698,14 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:b799e9ea3170ff5e789dd1eabf918bfa0c2b128f45018cd755eb1dc3389ab988"
+  digest = "1:0e732cbc80b0781f353137dfcf8813a470c5049a99bf96d8a3b32d0feda96423"
   name = "github.com/prometheus/common"
   packages = [
     "config",
     "expfmt",
     "internal/bitbucket.org/ww/goautoneg",
     "model",
+    "version",
   ]
   pruneopts = "UT"
   revision = "aeab699e26f4d4089dba5e522e5d9babd2adbaf7"
@@ -1312,6 +1313,7 @@
     "github.com/prometheus/client_golang/prometheus",
     "github.com/prometheus/client_golang/prometheus/promauto",
     "github.com/prometheus/common/model",
+    "github.com/prometheus/common/version",
     "github.com/prometheus/prometheus/config",
     "github.com/prometheus/prometheus/discovery",
     "github.com/prometheus/prometheus/discovery/config",
