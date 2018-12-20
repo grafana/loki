@@ -16,6 +16,7 @@
 
   distributor_deployment:
     deployment.new('distributor', 3, [$.distributor_container]) +
+    $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki') +
     $.util.antiAffinity,
 
