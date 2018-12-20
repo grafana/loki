@@ -26,3 +26,15 @@ storage_config:
 
   filesystem:
     directory: /tmp/loki/chunks
+
+querier:
+  exporter:
+    refresh_rate: 10s
+    queries:
+      - name: varlogs
+        query: '{job="varlogs"}'
+        limit: -1
+        start: -72h
+        end: 0s
+        direction:
+        regexp: error

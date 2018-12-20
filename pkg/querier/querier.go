@@ -18,6 +18,7 @@ import (
 
 // Config for a querier.
 type Config struct {
+	Exporter ExporterConfig `yaml:"exporter"`
 }
 
 // RegisterFlags register flags.
@@ -38,12 +39,21 @@ func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, store chunk.St
 		return client.New(clientCfg, addr)
 	}
 
-	return &Querier{
+	q := &Querier{
 		cfg:   cfg,
 		ring:  ring,
 		pool:  cortex_client.NewPool(clientCfg.PoolConfig, ring, factory, util.Logger),
 		store: store,
-	}, nil
+	}
+
+	e, err := NewExporter(cfg.Exporter)
+	if err != nil {
+		return nil, err
+	}
+
+	go RunExporter(q, e)
+
+	return q, nil
 }
 
 // forAllIngesters runs f, in parallel, for all ingesters
