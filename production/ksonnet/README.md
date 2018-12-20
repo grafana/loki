@@ -46,7 +46,7 @@ promtail + {
       username: 'user-id',
       password: 'password',
       dataroot: '/var/lib/docker',
-   },
+    },
   },
 }
 ```
