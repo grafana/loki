@@ -2,9 +2,8 @@
   local container = $.core.v1.container,
 
   querier_args::
-    $._config.ringArgs {
+    $._config.commonArgs {
       target: 'querier',
-      'distributor.replication-factor': $._config.replication_factor,
     },
 
   querier_container::
