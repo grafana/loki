@@ -33,12 +33,12 @@ func main() {
 
 	p, err := promtail.New(config)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error creating loki", "error", err)
+		level.Error(util.Logger).Log("msg", "error creating promtail", "error", err)
 		os.Exit(1)
 	}
 
 	if err := p.Run(); err != nil {
-		level.Error(util.Logger).Log("msg", "error starting loki", "error", err)
+		level.Error(util.Logger).Log("msg", "error starting promtail", "error", err)
 		os.Exit(1)
 	}
 
