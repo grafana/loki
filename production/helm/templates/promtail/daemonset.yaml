@@ -12,7 +12,6 @@ metadata:
 {{ toYaml . | indent 4 }}
 {{- end }}
 spec:
-  replicas: {{ .Values.promtail.replicas }}
   selector:
     matchLabels:
       app: {{ template "promtail.name" . }}
