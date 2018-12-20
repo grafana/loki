@@ -185,5 +185,5 @@ k {
     daemonSet.mixin.spec.template.spec.withServiceAccount('promtail') +
     $.util.configVolumeMount('promtail', '/etc/promtail') +
     $.util.hostVolumeMount('varlog', '/var/log', '/var/log') +
-    $.util.hostVolumeMount('varlibdockercontainers', $.promtail_config.dataroot + '/containers', '/var/lib/docker/containers', readOnly=true),
+    $.util.hostVolumeMount('varlibdockercontainers', $._config.promtail_config.dataroot + '/containers', '/var/lib/docker/containers', readOnly=true),
 }
