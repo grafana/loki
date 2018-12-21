@@ -109,9 +109,8 @@ func RunExporter(q *Querier, e *Exporter) {
 				labelValuePairs := strings.Split(stream.Labels[1:len(stream.Labels)-1], ",")
 
 				hasher := md5.New()
-				hasher.Write([]byte(stream.Labels))
-				md5String := hex.EncodeToString(hasher.Sum(nil))
-				name := "query_" + query.Name + "_labels_" + md5String
+				hasher.Write([]byte(query.Name + stream.Labels))
+				id := hex.EncodeToString(hasher.Sum(nil))
 
 				for _, labelValuePair := range labelValuePairs {
 					labelValuePairSlice := strings.Split(labelValuePair, "=")
@@ -122,8 +121,8 @@ func RunExporter(q *Querier, e *Exporter) {
 					labelNames = append(labelNames, strings.Trim(strings.TrimSpace(label), "_"))
 				}
 
-				e.addMetric(name, query.Name, labelNames, md5String)
-				e.updateMetricValue(name, labels, float64(len(stream.Entries)))
+				e.addMetric(id, query.Name, prometheus.Labels{"id": id}, labelNames)
+				e.updateMetricValue(id, labels, float64(len(stream.Entries)))
 			}
 		}
 
@@ -131,19 +130,19 @@ func RunExporter(q *Querier, e *Exporter) {
 	}
 }
 
-func (e *Exporter) addMetric(name string, queryName string, labelNames []string, md5String string) {
-	if _, ok := e.queryMetrics[name]; !ok {
-		e.queryMetrics[name] = promauto.NewGaugeVec(prometheus.GaugeOpts{
+func (e *Exporter) addMetric(id string, queryName string, labels prometheus.Labels, labelNames []string) {
+	if _, ok := e.queryMetrics[id]; !ok {
+		e.queryMetrics[id] = promauto.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace:   "loki",
 			Name:        "query_" + queryName + "_total",
 			Help:        "The total number of events for the " + queryName + " query.",
-			ConstLabels: prometheus.Labels{"hash": md5String},
+			ConstLabels: labels,
 		}, labelNames)
 	}
 }
 
-func (e *Exporter) updateMetricValue(name string, labels prometheus.Labels, value float64) {
-	if _, ok := e.queryMetrics[name]; ok {
-		e.queryMetrics[name].With(labels).Set(value)
+func (e *Exporter) updateMetricValue(id string, labels prometheus.Labels, value float64) {
+	if _, ok := e.queryMetrics[id]; ok {
+		e.queryMetrics[id].With(labels).Set(value)
 	}
 }
