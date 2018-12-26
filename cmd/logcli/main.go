@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
@@ -8,7 +9,7 @@ import (
 
 var (
 	app      = kingpin.New("logcli", "A command-line for loki.")
-	addr     = app.Flag("addr", "Server address.").Default("https://log-us.grafana.net").Envar("GRAFANA_ADDR").String()
+	addr     = app.Flag("addr", "Server address.").Default("").Envar("GRAFANA_ADDR").String()
 	username = app.Flag("username", "Username for HTTP basic auth.").Default("").Envar("GRAFANA_USERNAME").String()
 	password = app.Flag("password", "Password for HTTP basic auth.").Default("").Envar("GRAFANA_PASSWORD").String()
 
@@ -27,6 +28,10 @@ var (
 func main() {
 	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
 	case queryCmd.FullCommand():
+		if *addr == "" {
+			fmt.Println("Server address cannot be empty")
+			os.Exit(1)
+		}
 		doQuery()
 	case labelsCmd.FullCommand():
 		doLabels()

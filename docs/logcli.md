@@ -31,8 +31,7 @@ A command-line for loki.
 
 Flags:
   --help         Show context-sensitive help (also try --help-long and --help-man).
-  --addr="https://log-us.grafana.net"
-                 Server address.
+  --addr=""      Server address, need to specify.
   --username=""  Username for HTTP basic auth.
   --password=""  Password for HTTP basic auth.
 
@@ -53,8 +52,7 @@ Run a LogQL query.
 
 Flags:
   --help         Show context-sensitive help (also try --help-long and --help-man).
-  --addr="https://log-us.grafana.net"
-                 Server address.
+  --addr=""      Server address, need to specify.
   --username=""  Username for HTTP basic auth.
   --password=""  Password for HTTP basic auth.
   --limit=30     Limit on number of entries to print.
