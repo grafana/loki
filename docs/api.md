@@ -20,7 +20,7 @@ There are 4 API endpoints:
 
   For sending log entries, expects a snappy compressed proto in the HTTP Body:
 
-  - [ProtoBuffer defition](/pkg/logproto/logproto.proto)
+  - [ProtoBuffer definition](/pkg/logproto/logproto.proto)
   - [Golang client library](/pkg/promtail/client.go)
 
   Also accepts JSON formatted requests when the header `Content-Type: application/json` is sent.  Example of the JSON format:
