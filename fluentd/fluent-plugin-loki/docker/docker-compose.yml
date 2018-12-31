@@ -1,0 +1,20 @@
+version: '3'
+services:
+  fluentd:
+    image: fluent/fluentd
+    command:
+      - "fluentd"
+      - "-v"
+      - "-c"
+      - "/fluentd/etc/fluentd.conf"
+      - "-p"
+      - "/fluentd/plugins"
+    volumes:
+      - ./conf:/fluentd/etc
+      - ../lib/fluent/plugin:/fluentd/plugins
+      - /var/log:/var/log
+    environment:
+      FLUENTD_CONF: fluentd.conf
+      FLUENT_UID: '0'
+
+
