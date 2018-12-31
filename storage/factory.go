@@ -59,7 +59,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 		client := cache.NewMemcachedClient(cfg.memcacheClient)
 		memcache := cache.Instrument("memcache-index", cache.NewMemcached(cache.MemcachedConfig{
 			Expiration: cfg.IndexCacheValidity,
-		}, client))
+		}, client, "memcache-index"))
 		caches = append(caches, cache.NewBackground("memcache-index", cache.BackgroundConfig{
 			WriteBackGoroutines: 10,
 			WriteBackBuffer:     100,

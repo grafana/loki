@@ -14,7 +14,7 @@ import (
 func TestMemcached(t *testing.T) {
 	t.Run("unbatched", func(t *testing.T) {
 		client := newMockMemcache()
-		memcache := cache.NewMemcached(cache.MemcachedConfig{}, client)
+		memcache := cache.NewMemcached(cache.MemcachedConfig{}, client, "test")
 
 		testMemcache(t, memcache)
 	})
@@ -24,7 +24,7 @@ func TestMemcached(t *testing.T) {
 		memcache := cache.NewMemcached(cache.MemcachedConfig{
 			BatchSize:   10,
 			Parallelism: 5,
-		}, client)
+		}, client, "test")
 
 		testMemcache(t, memcache)
 	})
@@ -89,7 +89,7 @@ func (c *mockMemcacheFailing) GetMulti(keys []string) (map[string]*memcache.Item
 func TestMemcacheFailure(t *testing.T) {
 	t.Run("unbatched", func(t *testing.T) {
 		client := newMockMemcacheFailing()
-		memcache := cache.NewMemcached(cache.MemcachedConfig{}, client)
+		memcache := cache.NewMemcached(cache.MemcachedConfig{}, client, "test")
 
 		testMemcacheFailing(t, memcache)
 	})
@@ -99,7 +99,7 @@ func TestMemcacheFailure(t *testing.T) {
 		memcache := cache.NewMemcached(cache.MemcachedConfig{
 			BatchSize:   10,
 			Parallelism: 5,
-		}, client)
+		}, client, "test")
 
 		testMemcacheFailing(t, memcache)
 	})
