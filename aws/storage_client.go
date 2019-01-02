@@ -47,7 +47,7 @@ const (
 )
 
 var (
-	dynamoRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	dynamoRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "dynamo_request_duration_seconds",
 		Help:      "Time spent doing DynamoDB requests.",
@@ -55,7 +55,7 @@ var (
 		// DynamoDB latency seems to range from a few ms to a few sec and is
 		// important.  So use 8 buckets from 128us to 2s.
 		Buckets: prometheus.ExponentialBuckets(0.000128, 4, 8),
-	}, []string{"operation", "status_code"})
+	}, []string{"operation", "status_code"}))
 	dynamoConsumedCapacity = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "dynamo_consumed_capacity_total",
@@ -88,7 +88,7 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(dynamoRequestDuration)
+	dynamoRequestDuration.Register()
 	prometheus.MustRegister(dynamoConsumedCapacity)
 	prometheus.MustRegister(dynamoFailures)
 	prometheus.MustRegister(dynamoQueryPagesCount)
@@ -214,7 +214,7 @@ func (a storageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) e
 			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 		})
 
-		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, func(ctx context.Context) error {
+		err := instrument.CollectedRequest(ctx, "DynamoDB.BatchWriteItem", dynamoRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			return request.Send()
 		})
 		resp := request.Data().(*dynamodb.BatchWriteItemOutput)
@@ -350,7 +350,7 @@ func (a storageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput
 
 	var err error
 	for backoff.Ongoing() {
-		err = instrument.TimeRequestHistogram(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, func(_ context.Context) error {
+		err = instrument.CollectedRequest(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 			return page.Send()
 		})
 
@@ -527,7 +527,7 @@ func (a storageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chu
 			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 		})
 
-		err := instrument.TimeRequestHistogram(ctx, "DynamoDB.BatchGetItemPages", dynamoRequestDuration, func(ctx context.Context) error {
+		err := instrument.CollectedRequest(ctx, "DynamoDB.BatchGetItemPages", dynamoRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			return request.Send()
 		})
 		response := request.Data().(*dynamodb.BatchGetItemOutput)
