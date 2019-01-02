@@ -18,17 +18,17 @@ import (
 )
 
 var (
-	memcacheRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	memcacheRequestDuration = instr.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "memcache_request_duration_seconds",
 		Help:      "Total time spent in seconds doing memcache requests.",
 		// Memecache requests are very quick: smallest bucket is 16us, biggest is 1s
 		Buckets: prometheus.ExponentialBuckets(0.000016, 4, 8),
-	}, []string{"method", "status_code"})
+	}, []string{"method", "status_code"}))
 )
 
 func init() {
-	prometheus.MustRegister(memcacheRequestDuration)
+	memcacheRequestDuration.Register()
 }
 
 // MemcachedConfig is config to make a Memcached
@@ -116,7 +116,7 @@ func memcacheStatusCode(err error) string {
 
 // Fetch gets keys from the cache. The keys that are found must be in the order of the keys requested.
 func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
-	instr.TimeRequestHistogramStatus(ctx, "Memcache.Get", memcacheRequestDuration, memcacheStatusCode, func(ctx context.Context) error {
+	instr.CollectedRequest(ctx, "Memcache.Get", memcacheRequestDuration, memcacheStatusCode, func(ctx context.Context) error {
 		if c.cfg.BatchSize == 0 {
 			found, bufs, missed = c.fetch(ctx, keys)
 			return nil
@@ -130,7 +130,7 @@ func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, b
 
 func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
 	var items map[string]*memcache.Item
-	instr.TimeRequestHistogramStatus(ctx, "Memcache.GetMulti", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
+	instr.CollectedRequest(ctx, "Memcache.GetMulti", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
 		sp := opentracing.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys requested", len(keys)))
 
@@ -202,7 +202,7 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 // Store stores the key in the cache.
 func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) {
 	for i := range keys {
-		err := instr.TimeRequestHistogramStatus(ctx, "Memcache.Put", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
+		err := instr.CollectedRequest(ctx, "Memcache.Put", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
 			item := memcache.Item{
 				Key:        keys[i],
 				Value:      bufs[i],

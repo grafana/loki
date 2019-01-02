@@ -24,12 +24,12 @@ const (
 )
 
 var (
-	syncTableDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	syncTableDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "dynamo_sync_tables_seconds",
 		Help:      "Time spent doing SyncTables.",
 		Buckets:   prometheus.DefBuckets,
-	}, []string{"operation", "status_code"})
+	}, []string{"operation", "status_code"}))
 	tableCapacity = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "dynamo_table_capacity_units",
@@ -39,7 +39,7 @@ var (
 
 func init() {
 	prometheus.MustRegister(tableCapacity)
-	prometheus.MustRegister(syncTableDuration)
+	syncTableDuration.Register()
 }
 
 // TableManagerConfig holds config for a TableManager
@@ -172,7 +172,7 @@ func (m *TableManager) loop() {
 	ticker := time.NewTicker(m.cfg.DynamoDBPollInterval)
 	defer ticker.Stop()
 
-	if err := instrument.TimeRequestHistogram(context.Background(), "TableManager.SyncTables", syncTableDuration, func(ctx context.Context) error {
+	if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", syncTableDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		return m.SyncTables(ctx)
 	}); err != nil {
 		level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
@@ -181,7 +181,7 @@ func (m *TableManager) loop() {
 	for {
 		select {
 		case <-ticker.C:
-			if err := instrument.TimeRequestHistogram(context.Background(), "TableManager.SyncTables", syncTableDuration, func(ctx context.Context) error {
+			if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", syncTableDuration, instrument.ErrorCode, func(ctx context.Context) error {
 				return m.SyncTables(ctx)
 			}); err != nil {
 				level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
