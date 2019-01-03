@@ -81,7 +81,7 @@ func New(cfg Config) (Cache, error) {
 		}
 
 		client := NewMemcachedClient(cfg.memcacheClient)
-		cache := NewMemcached(cfg.memcache, client)
+		cache := NewMemcached(cfg.memcache, client, cfg.prefix)
 
 		cacheName := cfg.prefix + "memcache"
 		caches = append(caches, NewBackground(cacheName, cfg.background, Instrument(cacheName, cache)))
