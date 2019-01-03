@@ -266,7 +266,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 	// Now fetch the actual chunk data from Memcache / S3
 	allChunks, err := c.FetchChunks(ctx, filtered, keys)
 	if err != nil {
-		return nil, promql.ErrStorage(err)
+		return nil, promql.ErrStorage{Err: err}
 	}
 
 	// Filter out chunks based on the empty matchers in the query.
