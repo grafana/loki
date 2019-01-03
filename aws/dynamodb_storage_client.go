@@ -135,8 +135,7 @@ func (cfg *StorageConfig) RegisterFlags(f *flag.FlagSet) {
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<bucket-name> to use a mock in-memory implementation.")
 }
 
-// DynamoDBStorageClient implements both chunk.IndexClient and chunk.ObjectClient for DynamoDB.
-type DynamoDBStorageClient struct {
+type dynamoDBStorageClient struct {
 	cfg       DynamoDBConfig
 	schemaCfg chunk.SchemaConfig
 
@@ -149,14 +148,24 @@ type DynamoDBStorageClient struct {
 	batchWriteItemRequestFn func(ctx context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest
 }
 
-// NewDynamoDBStorageClient makes a new DynamoDB-backed IndexClient and ObjectClient.
-func NewDynamoDBStorageClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (*DynamoDBStorageClient, error) {
+// NewDynamoDBIndexClient makes a new DynamoDB-backed IndexClient.
+func NewDynamoDBIndexClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
+	return newDynamoDBStorageClient(cfg, schemaCfg)
+}
+
+// NewDynamoDBObjectClient makes a new DynamoDB-backed ObjectClient.
+func NewDynamoDBObjectClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
+	return newDynamoDBStorageClient(cfg, schemaCfg)
+}
+
+// newDynamoDBStorageClient makes a new DynamoDB-backed IndexClient and ObjectClient.
+func newDynamoDBStorageClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (*dynamoDBStorageClient, error) {
 	dynamoDB, err := dynamoClientFromURL(cfg.DynamoDB.URL)
 	if err != nil {
 		return nil, err
 	}
 
-	client := &DynamoDBStorageClient{
+	client := &dynamoDBStorageClient{
 		cfg:       cfg,
 		schemaCfg: schemaCfg,
 		DynamoDB:  dynamoDB,
@@ -168,11 +177,11 @@ func NewDynamoDBStorageClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) 
 }
 
 // Stop implements chunk.IndexClient.
-func (a DynamoDBStorageClient) Stop() {
+func (a dynamoDBStorageClient) Stop() {
 }
 
 // NewWriteBatch implements chunk.IndexClient.
-func (a DynamoDBStorageClient) NewWriteBatch() chunk.WriteBatch {
+func (a dynamoDBStorageClient) NewWriteBatch() chunk.WriteBatch {
 	return dynamoDBWriteBatch(map[string][]*dynamodb.WriteRequest{})
 }
 
@@ -198,7 +207,7 @@ func logRetry(ctx context.Context, unprocessed dynamoDBWriteBatch) {
 // BatchWrite writes requests to the underlying storage, handling retries and backoff.
 // Structure is identical to getDynamoDBChunks(), but operating on different datatypes
 // so cannot share implementation.  If you fix a bug here fix it there too.
-func (a DynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) error {
+func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.WriteBatch) error {
 	outstanding := input.(dynamoDBWriteBatch)
 	unprocessed := dynamoDBWriteBatch{}
 
@@ -272,11 +281,11 @@ func (a DynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 }
 
 // QueryPages implements chunk.IndexClient.
-func (a DynamoDBStorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
+func (a dynamoDBStorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
 	return chunk_util.DoParallelQueries(ctx, a.query, queries, callback)
 }
 
-func (a DynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
 	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
 	defer sp.Finish()
 
@@ -346,7 +355,7 @@ func (a DynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery
 	return nil
 }
 
-func (a DynamoDBStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput, page dynamoDBRequest) (*dynamoDBReadResponse, error) {
+func (a dynamoDBStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput, page dynamoDBRequest) (*dynamoDBReadResponse, error) {
 	backoff := util.NewBackoff(ctx, a.cfg.backoffConfig)
 	defer func() {
 		dynamoQueryRetryCount.WithLabelValues("queryPage").Observe(float64(backoff.NumRetries()))
@@ -392,19 +401,19 @@ type dynamoDBRequest interface {
 	Retryable() bool
 }
 
-func (a DynamoDBStorageClient) queryRequest(ctx context.Context, input *dynamodb.QueryInput) dynamoDBRequest {
+func (a dynamoDBStorageClient) queryRequest(ctx context.Context, input *dynamodb.QueryInput) dynamoDBRequest {
 	req, _ := a.DynamoDB.QueryRequest(input)
 	req.SetContext(ctx)
 	return dynamoDBRequestAdapter{req}
 }
 
-func (a DynamoDBStorageClient) batchGetItemRequest(ctx context.Context, input *dynamodb.BatchGetItemInput) dynamoDBRequest {
+func (a dynamoDBStorageClient) batchGetItemRequest(ctx context.Context, input *dynamodb.BatchGetItemInput) dynamoDBRequest {
 	req, _ := a.DynamoDB.BatchGetItemRequest(input)
 	req.SetContext(ctx)
 	return dynamoDBRequestAdapter{req}
 }
 
-func (a DynamoDBStorageClient) batchWriteItemRequest(ctx context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest {
+func (a dynamoDBStorageClient) batchWriteItemRequest(ctx context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest {
 	req, _ := a.DynamoDB.BatchWriteItemRequest(input)
 	req.SetContext(ctx)
 	return dynamoDBRequestAdapter{req}
@@ -451,7 +460,7 @@ type chunksPlusError struct {
 }
 
 // GetChunks implements chunk.ObjectClient.
-func (a DynamoDBStorageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+func (a dynamoDBStorageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	sp, ctx := ot.StartSpanFromContext(ctx, "GetChunks.DynamoDB")
 	defer sp.Finish()
 	sp.LogFields(otlog.Int("chunks requested", len(chunks)))
@@ -503,7 +512,7 @@ var placeholder = []byte{'c'}
 // Fetch a set of chunks from DynamoDB, handling retries and backoff.
 // Structure is identical to BatchWrite(), but operating on different datatypes
 // so cannot share implementation.  If you fix a bug here fix it there too.
-func (a DynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	sp, ctx := ot.StartSpanFromContext(ctx, "getDynamoDBChunks", ot.Tag{Key: "numChunks", Value: len(chunks)})
 	defer sp.Finish()
 	outstanding := dynamoDBReadRequest{}
@@ -622,7 +631,7 @@ func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map
 }
 
 // PutChunks implements chunk.ObjectClient.
-func (a DynamoDBStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (a dynamoDBStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	var (
 		dynamoDBWrites = dynamoDBWriteBatch{}
 	)

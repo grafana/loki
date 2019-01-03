@@ -48,7 +48,7 @@ func newMockDynamoDB(unprocessed int, provisionedErr int) *mockDynamoDBClient {
 	}
 }
 
-func (a DynamoDBStorageClient) setErrorParameters(provisionedErr, errAfter int) {
+func (a dynamoDBStorageClient) setErrorParameters(provisionedErr, errAfter int) {
 	if m, ok := a.DynamoDB.(*mockDynamoDBClient); ok {
 		m.provisionedErr = provisionedErr
 		m.errAfter = errAfter

@@ -37,7 +37,7 @@ var Fixtures = []testutils.Fixture{
 			table := &dynamoTableClient{
 				DynamoDB: dynamoDB,
 			}
-			index := &DynamoDBStorageClient{
+			index := &dynamoDBStorageClient{
 				DynamoDB:                dynamoDB,
 				queryRequestFn:          dynamoDB.queryRequest,
 				batchGetItemRequestFn:   dynamoDB.batchGetItemRequest,
@@ -74,7 +74,7 @@ func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) testutils.Fix
 			table := &dynamoTableClient{
 				DynamoDB: dynamoDB,
 			}
-			storage := &DynamoDBStorageClient{
+			storage := &dynamoDBStorageClient{
 				cfg: DynamoDBConfig{
 					ChunkGangSize:          gangsize,
 					ChunkGetMaxParallelism: maxParallelism,
