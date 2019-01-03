@@ -69,28 +69,42 @@ func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, pa
 	}
 
 	// Fist, we're going to add all the existing files
-	fis, err := ioutil.ReadDir(t.path)
+	fis, err := readFiles(t.path)
 	if err != nil {
 		return nil, errors.Wrap(err, "ioutil.ReadDir")
 	}
 	for _, fi := range fis {
-		if fi.IsDir() {
-			continue
-		}
-
-		tailer, err := newTailer(t.logger, t.handler, t.positions, filepath.Join(t.path, fi.Name()))
+		tailer, err := newTailer(t.logger, t.handler, t.positions, fi)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "failed to tail file", "error", err)
 			continue
 		}
 
-		t.tails[fi.Name()] = tailer
+		t.tails[filepath.Base(fi)] = tailer
 	}
 
 	go t.run()
 	return t, nil
 }
-
+func  readFiles(path string)([]string,error)  {
+	fis, err := ioutil.ReadDir(path)
+	if err != nil{
+		return nil,err
+	}
+	var fs []string
+	for _, f := range fis {
+		if f.IsDir() {
+			tmp,err := readFiles(filepath.Join(path,f.Name()))
+			if err != nil{
+				continue
+			}
+			fs = append(fs,tmp...)
+			continue
+		}
+		fs = append(fs,filepath.Join(path,f.Name()))
+	}
+	return fs,nil
+}
 // Stop the target.
 func (t *Target) Stop() {
 	close(t.quit)
