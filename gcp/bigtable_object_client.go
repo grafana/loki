@@ -13,35 +13,35 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-type bigtableChunkClient struct {
+type bigtableObjectClient struct {
 	cfg       Config
 	schemaCfg chunk.SchemaConfig
 	client    *bigtable.Client
 }
 
-// NewBigtableChunkClient makes a new chunk.ChunkClient that stores chunks in
+// NewBigtableObjectClient makes a new chunk.ObjectClient that stores chunks in
 // Bigtable.
-func NewBigtableChunkClient(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
+func NewBigtableObjectClient(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
 	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, instrumentation()...)
 	if err != nil {
 		return nil, err
 	}
-	return newBigtableChunkClient(cfg, schemaCfg, client), nil
+	return newBigtableObjectClient(cfg, schemaCfg, client), nil
 }
 
-func newBigtableChunkClient(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtable.Client) chunk.ObjectClient {
-	return &bigtableChunkClient{
+func newBigtableObjectClient(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtable.Client) chunk.ObjectClient {
+	return &bigtableObjectClient{
 		cfg:       cfg,
 		schemaCfg: schemaCfg,
 		client:    client,
 	}
 }
 
-func (s *bigtableChunkClient) Stop() {
+func (s *bigtableObjectClient) Stop() {
 	s.client.Close()
 }
 
-func (s *bigtableChunkClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	keys := map[string][]string{}
 	muts := map[string][]*bigtable.Mutation{}
 
@@ -75,7 +75,7 @@ func (s *bigtableChunkClient) PutChunks(ctx context.Context, chunks []chunk.Chun
 	return nil
 }
 
-func (s *bigtableChunkClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
+func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
 	sp, ctx := ot.StartSpanFromContext(ctx, "GetChunks")
 	defer sp.Finish()
 	sp.LogFields(otlog.Int("chunks requested", len(input)))

@@ -32,11 +32,11 @@ func forAllFixtures(t *testing.T, storageClientTest storageClientTest) {
 
 	for _, fixture := range fixtures {
 		t.Run(fixture.Name(), func(t *testing.T) {
-			indexClient, chunkClient, err := testutils.Setup(fixture, tableName)
+			indexClient, objectClient, err := testutils.Setup(fixture, tableName)
 			require.NoError(t, err)
 			defer fixture.Teardown()
 
-			storageClientTest(t, indexClient, chunkClient)
+			storageClientTest(t, indexClient, objectClient)
 		})
 	}
 }

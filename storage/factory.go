@@ -165,11 +165,11 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 		}
 		return aws.NewDynamoDBObjectClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
 	case "gcp":
-		return gcp.NewBigtableChunkClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
+		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcp-columnkey", "bigtable":
-		return gcp.NewBigtableChunkClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
+		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcs":
-		return gcp.NewGCSChunkClient(context.Background(), cfg.GCSConfig, schemaCfg)
+		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, schemaCfg)
 	case "cassandra":
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	case "filesystem":

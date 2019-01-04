@@ -25,7 +25,7 @@ type fixture struct {
 
 	name string
 
-	gcsChunkClient  bool
+	gcsObjectClient bool
 	columnKeyClient bool
 }
 
@@ -81,12 +81,12 @@ func (f *fixture) Clients() (
 		iClient = newStorageClientV1(Config{}, schemaConfig, client)
 	}
 
-	if f.gcsChunkClient {
-		cClient = newGCSChunkClient(GCSConfig{
+	if f.gcsObjectClient {
+		cClient = newGCSObjectClient(GCSConfig{
 			BucketName: "chunks",
 		}, schemaConfig, f.gcssrv.Client())
 	} else {
-		cClient = newBigtableChunkClient(Config{}, schemaConfig, client)
+		cClient = newBigtableObjectClient(Config{}, schemaConfig, client)
 	}
 
 	return
@@ -108,12 +108,12 @@ var Fixtures = []testutils.Fixture{
 		columnKeyClient: true,
 	},
 	&fixture{
-		name:           "bigtable-gcs",
-		gcsChunkClient: true,
+		name:            "bigtable-gcs",
+		gcsObjectClient: true,
 	},
 	&fixture{
 		name:            "bigtable-columnkey-gcs",
-		gcsChunkClient:  true,
+		gcsObjectClient: true,
 		columnKeyClient: true,
 	},
 }

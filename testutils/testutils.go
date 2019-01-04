@@ -27,7 +27,7 @@ type Fixture interface {
 func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.ObjectClient, error) {
 	var tbmConfig chunk.TableManagerConfig
 	flagext.DefaultValues(&tbmConfig)
-	indexClient, chunkClient, tableClient, schemaConfig, err := fixture.Clients()
+	indexClient, objectClient, tableClient, schemaConfig, err := fixture.Clients()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -45,7 +45,7 @@ func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.ObjectCl
 	err = tableClient.CreateTable(context.Background(), chunk.TableDesc{
 		Name: tableName,
 	})
-	return indexClient, chunkClient, err
+	return indexClient, objectClient, err
 }
 
 // CreateChunks creates some chunks for testing
@@ -70,8 +70,8 @@ func CreateChunks(startIndex, batchSize int) ([]string, []chunk.Chunk, error) {
 func dummyChunk(now model.Time) chunk.Chunk {
 	return dummyChunkFor(now, model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "baz",
-		"toms": "code",
+		"bar":                 "baz",
+		"toms":                "code",
 	})
 }
 
