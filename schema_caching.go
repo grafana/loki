@@ -7,13 +7,13 @@ import (
 	"github.com/weaveworks/common/mtime"
 )
 
-type cachingSchema struct {
+type schemaCaching struct {
 	Schema
 
 	cacheOlderThan time.Duration
 }
 
-func (s *cachingSchema) GetReadQueriesForMetric(from, through model.Time, userID string, metricName model.LabelValue) ([]IndexQuery, error) {
+func (s *schemaCaching) GetReadQueriesForMetric(from, through model.Time, userID string, metricName model.LabelValue) ([]IndexQuery, error) {
 	cFrom, cThrough, from, through := splitTimesByCacheability(from, through, model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix()))
 
 	cacheableQueries, err := s.Schema.GetReadQueriesForMetric(cFrom, cThrough, userID, metricName)
@@ -29,7 +29,7 @@ func (s *cachingSchema) GetReadQueriesForMetric(from, through model.Time, userID
 	return mergeCacheableAndActiveQueries(cacheableQueries, activeQueries), nil
 }
 
-func (s *cachingSchema) GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName) ([]IndexQuery, error) {
+func (s *schemaCaching) GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName) ([]IndexQuery, error) {
 	cFrom, cThrough, from, through := splitTimesByCacheability(from, through, model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix()))
 
 	cacheableQueries, err := s.Schema.GetReadQueriesForMetricLabel(cFrom, cThrough, userID, metricName, labelName)
@@ -45,7 +45,7 @@ func (s *cachingSchema) GetReadQueriesForMetricLabel(from, through model.Time, u
 	return mergeCacheableAndActiveQueries(cacheableQueries, activeQueries), nil
 }
 
-func (s *cachingSchema) GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexQuery, error) {
+func (s *schemaCaching) GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexQuery, error) {
 	cFrom, cThrough, from, through := splitTimesByCacheability(from, through, model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix()))
 
 	cacheableQueries, err := s.Schema.GetReadQueriesForMetricLabelValue(cFrom, cThrough, userID, metricName, labelName, labelValue)
@@ -62,7 +62,7 @@ func (s *cachingSchema) GetReadQueriesForMetricLabelValue(from, through model.Ti
 }
 
 // If the query resulted in series IDs, use this method to find chunks.
-func (s *cachingSchema) GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
+func (s *schemaCaching) GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
 	cFrom, cThrough, from, through := splitTimesByCacheability(from, through, model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix()))
 
 	cacheableQueries, err := s.Schema.GetChunksForSeries(cFrom, cThrough, userID, seriesID)
@@ -103,7 +103,7 @@ Outer:
 			}
 		}
 
-		cq.Cacheable = true
+		cq.Immutable = true
 		finalQueries = append(finalQueries, cq)
 	}
 

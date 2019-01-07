@@ -107,7 +107,7 @@ func (s *cachingStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 		}
 
 		// If the query is cacheable forever, nil the expiry.
-		if queries[0].Cacheable {
+		if queries[0].Immutable {
 			rb.Expiry = 0
 		}
 

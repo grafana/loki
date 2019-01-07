@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -61,8 +60,6 @@ type seriesStore struct {
 	cardinalityCache *cache.FifoCache
 
 	writeDedupeCache cache.Cache
-
-	cacheLookupsOlderThan time.Duration
 }
 
 func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient, limits *validation.Overrides) (Store, error) {
@@ -77,7 +74,7 @@ func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient, limit
 	}
 
 	if cfg.CacheLookupsOlderThan != 0 {
-		schema = &cachingSchema{
+		schema = &schemaCaching{
 			Schema:         schema,
 			cacheOlderThan: cfg.CacheLookupsOlderThan,
 		}

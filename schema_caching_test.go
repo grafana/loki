@@ -16,7 +16,7 @@ func TestCachingSchema(t *testing.T) {
 	)
 
 	dailyBuckets := makeSchema("v3")
-	schema := &cachingSchema{
+	schema := &schemaCaching{
 		Schema:         dailyBuckets,
 		cacheOlderThan: 24 * time.Hour,
 	}
@@ -66,9 +66,9 @@ func TestCachingSchema(t *testing.T) {
 
 		for i := range have {
 			if i <= tc.cacheableIdx {
-				require.True(t, have[i].Cacheable)
+				require.True(t, have[i].Immutable)
 			} else {
-				require.False(t, have[i].Cacheable)
+				require.False(t, have[i].Immutable)
 			}
 		}
 	}

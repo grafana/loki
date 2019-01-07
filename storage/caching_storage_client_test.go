@@ -122,9 +122,9 @@ func TestPermCachingStorageClient(t *testing.T) {
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
 	client := newCachingStorageClient(store, cache, 100*time.Millisecond)
 	queries := []chunk.IndexQuery{
-		{TableName: "table", HashValue: "foo", Cacheable: true},
-		{TableName: "table", HashValue: "bar", Cacheable: true},
-		{TableName: "table", HashValue: "baz", Cacheable: true},
+		{TableName: "table", HashValue: "foo", Immutable: true},
+		{TableName: "table", HashValue: "bar", Immutable: true},
+		{TableName: "table", HashValue: "baz", Immutable: true},
 	}
 	results := 0
 	err := client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
