@@ -140,7 +140,7 @@ func testCache(t *testing.T, cache cache.Cache) {
 
 func TestMemcache(t *testing.T) {
 	t.Run("Unbatched", func(t *testing.T) {
-		cache := cache.NewMemcached(cache.MemcachedConfig{}, newMockMemcache())
+		cache := cache.NewMemcached(cache.MemcachedConfig{}, newMockMemcache(), "test")
 		testCache(t, cache)
 	})
 
@@ -148,7 +148,7 @@ func TestMemcache(t *testing.T) {
 		cache := cache.NewMemcached(cache.MemcachedConfig{
 			BatchSize:   10,
 			Parallelism: 3,
-		}, newMockMemcache())
+		}, newMockMemcache(), "test")
 		testCache(t, cache)
 	})
 }

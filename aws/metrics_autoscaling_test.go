@@ -40,13 +40,13 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 	cfg := chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
 			{
-				Store: "aws-dynamo",
+				IndexType: "aws-dynamo",
 				IndexTables: chunk.PeriodicTableConfig{
 					Prefix: "a",
 				},
 			},
 			{
-				Store:       "aws-dynamo",
+				IndexType:   "aws-dynamo",
 				IndexTables: fixturePeriodicTableConfig(tablePrefix),
 				ChunkTables: fixturePeriodicTableConfig(chunkTablePrefix),
 			},

@@ -31,9 +31,9 @@ var BenchmarkMetric = model.Metric{
 func DefaultSchemaConfig(store, schema string, from model.Time) SchemaConfig {
 	return SchemaConfig{
 		Configs: []PeriodConfig{{
-			Store:  store,
-			Schema: schema,
-			From:   from,
+			IndexType: store,
+			Schema:    schema,
+			From:      from,
 			ChunkTables: PeriodicTableConfig{
 				Prefix: "cortex",
 				Period: 7 * 24 * time.Hour,

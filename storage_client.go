@@ -2,8 +2,8 @@ package chunk
 
 import "context"
 
-// StorageClient is a client for the persistent storage for Cortex. (e.g. DynamoDB + S3).
-type StorageClient interface {
+// IndexClient is a client for the storage of the index (e.g. DynamoDB or Bigtable).
+type IndexClient interface {
 	Stop()
 
 	// For the write path.
@@ -12,8 +12,12 @@ type StorageClient interface {
 
 	// For the read path.
 	QueryPages(ctx context.Context, queries []IndexQuery, callback func(IndexQuery, ReadBatch) (shouldContinue bool)) error
+}
 
-	// For storing and retrieving chunks.
+// ObjectClient is for storing and retrieving chunks.
+type ObjectClient interface {
+	Stop()
+
 	PutChunks(ctx context.Context, chunks []Chunk) error
 	GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error)
 }

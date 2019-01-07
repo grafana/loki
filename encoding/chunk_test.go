@@ -55,6 +55,7 @@ func TestLen(t *testing.T) {
 var step = int(15 * time.Second / time.Millisecond)
 
 func TestChunk(t *testing.T) {
+	alwaysMarshalFullsizeChunks = false
 	for _, tc := range []struct {
 		encoding   Encoding
 		maxSamples int
@@ -63,7 +64,7 @@ func TestChunk(t *testing.T) {
 		{Varbit, 2048},
 		{Bigchunk, 4096},
 	} {
-		for samples := 0; samples < tc.maxSamples; samples += tc.maxSamples / 10 {
+		for samples := tc.maxSamples / 10; samples < tc.maxSamples; samples += tc.maxSamples / 10 {
 
 			// DoubleDelta doesn't support zero length chunks.
 			if tc.encoding == DoubleDelta && samples == 0 {
@@ -76,6 +77,10 @@ func TestChunk(t *testing.T) {
 
 			t.Run(fmt.Sprintf("testChunkSeek/%s/%d", tc.encoding.String(), samples), func(t *testing.T) {
 				testChunkSeek(t, tc.encoding, samples)
+			})
+
+			t.Run(fmt.Sprintf("testChunkSeekForward/%s/%d", tc.encoding.String(), samples), func(t *testing.T) {
+				testChunkSeekForward(t, tc.encoding, samples)
 			})
 
 			t.Run(fmt.Sprintf("testChunkBatch/%s/%d", tc.encoding.String(), samples), func(t *testing.T) {
@@ -112,7 +117,7 @@ func testChunkEncoding(t *testing.T, encoding Encoding, samples int) {
 
 	bs1 := buf.Bytes()
 	chunk, err = NewForEncoding(encoding)
-	err = chunk.Unmarshal(&buf)
+	err = chunk.UnmarshalFromBuf(bs1)
 	require.NoError(t, err)
 
 	// Check all the samples are in there.
@@ -127,14 +132,16 @@ func testChunkEncoding(t *testing.T, encoding Encoding, samples int) {
 	require.NoError(t, iter.Err())
 
 	// Check the byte representation after another Marshall is the same.
+	buf = bytes.Buffer{}
 	err = chunk.Marshal(&buf)
 	require.NoError(t, err)
 	bs2 := buf.Bytes()
 
-	require.True(t, bytes.Equal(bs1, bs2))
+	require.Equal(t, bs1, bs2)
 }
 
 // testChunkSeek checks seek works as expected.
+// This version of the test will seek backwards.
 func testChunkSeek(t *testing.T, encoding Encoding, samples int) {
 	chunk := mkChunk(t, encoding, samples)
 
@@ -155,6 +162,28 @@ func testChunkSeek(t *testing.T, encoding Encoding, samples int) {
 		require.False(t, iter.Scan())
 		require.NoError(t, iter.Err())
 	}
+}
+
+func testChunkSeekForward(t *testing.T, encoding Encoding, samples int) {
+	chunk := mkChunk(t, encoding, samples)
+
+	iter := chunk.NewIterator()
+	for i := 0; i < samples; i += samples / 10 {
+		require.True(t, iter.FindAtOrAfter(model.Time(i*step)))
+		sample := iter.Value()
+		require.EqualValues(t, model.Time(i*step), sample.Timestamp)
+		require.EqualValues(t, model.SampleValue(i), sample.Value)
+
+		j := i + 1
+		for ; j < (i+samples/10) && j < samples; j++ {
+			require.True(t, iter.Scan())
+			sample := iter.Value()
+			require.EqualValues(t, model.Time(j*step), sample.Timestamp)
+			require.EqualValues(t, model.SampleValue(j), sample.Value)
+		}
+	}
+	require.False(t, iter.Scan())
+	require.NoError(t, iter.Err())
 }
 
 func testChunkBatch(t *testing.T, encoding Encoding, samples int) {

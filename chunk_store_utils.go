@@ -47,7 +47,7 @@ outer:
 // and writing back any misses to the cache.  Also responsible for decoding
 // chunks from the cache, in parallel.
 type Fetcher struct {
-	storage StorageClient
+	storage ObjectClient
 	cache   cache.Cache
 
 	wait           sync.WaitGroup
@@ -65,7 +65,7 @@ type decodeResponse struct {
 }
 
 // NewChunkFetcher makes a new ChunkFetcher.
-func NewChunkFetcher(cfg cache.Config, storage StorageClient) (*Fetcher, error) {
+func NewChunkFetcher(cfg cache.Config, storage ObjectClient) (*Fetcher, error) {
 	cache, err := cache.New(cfg)
 	if err != nil {
 		return nil, err
@@ -131,7 +131,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []Chunk, keys []string
 	}
 
 	if err != nil {
-		return nil, promql.ErrStorage(err)
+		return nil, promql.ErrStorage{Err: err}
 	}
 
 	allChunks := append(fromCache, fromStorage...)

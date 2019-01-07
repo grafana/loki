@@ -62,8 +62,8 @@ type seriesStore struct {
 	writeDedupeCache cache.Cache
 }
 
-func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient, limits *validation.Overrides) (Store, error) {
-	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, storage)
+func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectClient, limits *validation.Overrides) (Store, error) {
+	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, chunks)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,8 @@ func newSeriesStore(cfg StoreConfig, schema Schema, storage StorageClient, limit
 	return &seriesStore{
 		store: store{
 			cfg:     cfg,
-			storage: storage,
+			index:   index,
+			chunks:  chunks,
 			schema:  schema,
 			limits:  limits,
 			Fetcher: fetcher,
@@ -353,7 +354,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 		return err
 	}
 
-	if err := c.storage.BatchWrite(ctx, writeReqs); err != nil {
+	if err := c.index.BatchWrite(ctx, writeReqs); err != nil {
 		return err
 	}
 
@@ -402,7 +403,7 @@ func (c *seriesStore) calculateIndexEntries(userID string, from, through model.T
 	indexEntriesPerChunk.Observe(float64(len(entries)))
 
 	// Remove duplicate entries based on tableName:hashValue:rangeValue
-	result := c.storage.NewWriteBatch()
+	result := c.index.NewWriteBatch()
 	for _, entry := range entries {
 		key := fmt.Sprintf("%s:%s:%x", entry.TableName, entry.HashValue, entry.RangeValue)
 		if _, ok := seenIndexEntries[key]; !ok {

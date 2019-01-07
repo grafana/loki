@@ -99,9 +99,6 @@ func TestUnmarshalingCorruptedDeltaReturnsAnError(t *testing.T) {
 		err = cs[0].UnmarshalFromBuf(buf)
 		verifyUnmarshallingError(err, c.chunkTypeName, "buf", "invalid number of time bytes")
 
-		err = cs[0].Unmarshal(bytes.NewBuffer(buf))
-		verifyUnmarshallingError(err, c.chunkTypeName, "Reader", "invalid number of time bytes")
-
 		// Fix the corruption to go on.
 		buf[c.timeBytesPos] = byte(d1)
 
@@ -111,9 +108,6 @@ func TestUnmarshalingCorruptedDeltaReturnsAnError(t *testing.T) {
 
 			err = cs[0].UnmarshalFromBuf(buf)
 			verifyUnmarshallingError(err, c.chunkTypeName, "buf", "header size")
-
-			err = cs[0].Unmarshal(bytes.NewBuffer(buf))
-			verifyUnmarshallingError(err, c.chunkTypeName, "Reader", "header size")
 		}
 	}
 }

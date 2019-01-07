@@ -14,21 +14,28 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	instr "github.com/weaveworks/common/instrument"
 )
 
 var (
-	memcacheRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	memcacheRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "memcache_request_duration_seconds",
 		Help:      "Total time spent in seconds doing memcache requests.",
 		// Memecache requests are very quick: smallest bucket is 16us, biggest is 1s
 		Buckets: prometheus.ExponentialBuckets(0.000016, 4, 8),
-	}, []string{"method", "status_code"})
+	}, []string{"method", "status_code", "name"})
 )
 
-func init() {
-	prometheus.MustRegister(memcacheRequestDuration)
+type observableVecCollector struct {
+	v prometheus.ObserverVec
+}
+
+func (observableVecCollector) Register()                             {}
+func (observableVecCollector) Before(method string, start time.Time) {}
+func (o observableVecCollector) After(method, statusCode string, start time.Time) {
+	o.v.WithLabelValues(method, statusCode).Observe(time.Now().Sub(start).Seconds())
 }
 
 // MemcachedConfig is config to make a Memcached
@@ -50,16 +57,25 @@ func (cfg *MemcachedConfig) RegisterFlagsWithPrefix(prefix, description string, 
 type Memcached struct {
 	cfg      MemcachedConfig
 	memcache MemcachedClient
+	name     string
+
+	requestDuration observableVecCollector
 
 	wg      sync.WaitGroup
 	inputCh chan *work
 }
 
 // NewMemcached makes a new Memcache
-func NewMemcached(cfg MemcachedConfig, client MemcachedClient) *Memcached {
+func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string) *Memcached {
 	c := &Memcached{
 		cfg:      cfg,
 		memcache: client,
+		name:     name,
+		requestDuration: observableVecCollector{
+			v: memcacheRequestDuration.MustCurryWith(prometheus.Labels{
+				"name": name,
+			}),
+		},
 	}
 
 	if cfg.BatchSize == 0 || cfg.Parallelism == 0 {
@@ -116,7 +132,7 @@ func memcacheStatusCode(err error) string {
 
 // Fetch gets keys from the cache. The keys that are found must be in the order of the keys requested.
 func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
-	instr.TimeRequestHistogramStatus(ctx, "Memcache.Get", memcacheRequestDuration, memcacheStatusCode, func(ctx context.Context) error {
+	instr.CollectedRequest(ctx, "Memcache.Get", c.requestDuration, memcacheStatusCode, func(ctx context.Context) error {
 		if c.cfg.BatchSize == 0 {
 			found, bufs, missed = c.fetch(ctx, keys)
 			return nil
@@ -130,7 +146,7 @@ func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, b
 
 func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
 	var items map[string]*memcache.Item
-	instr.TimeRequestHistogramStatus(ctx, "Memcache.GetMulti", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
+	instr.CollectedRequest(ctx, "Memcache.GetMulti", c.requestDuration, memcacheStatusCode, func(_ context.Context) error {
 		sp := opentracing.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys requested", len(keys)))
 
@@ -202,7 +218,7 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 // Store stores the key in the cache.
 func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) {
 	for i := range keys {
-		err := instr.TimeRequestHistogramStatus(ctx, "Memcache.Put", memcacheRequestDuration, memcacheStatusCode, func(_ context.Context) error {
+		err := instr.CollectedRequest(ctx, "Memcache.Put", c.requestDuration, memcacheStatusCode, func(_ context.Context) error {
 			item := memcache.Item{
 				Key:        keys[i],
 				Value:      bufs[i],
@@ -211,7 +227,7 @@ func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) {
 			return c.memcache.Set(&item)
 		})
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "failed to put to memcached", "err", err)
+			level.Error(util.Logger).Log("msg", "failed to put to memcached", "name", c.name, "err", err)
 		}
 	}
 }

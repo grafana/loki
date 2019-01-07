@@ -11,6 +11,7 @@ import (
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/mtime"
 )
 
@@ -25,7 +26,8 @@ const (
 type PeriodConfig struct {
 	From        model.Time          `yaml:"-"`              // used when working with config
 	FromStr     string              `yaml:"from,omitempty"` // used when loading from yaml
-	Store       string              `yaml:"store"`
+	IndexType   string              `yaml:"store"`          // type of index client to use.
+	ObjectType  string              `yaml:"object_store"`   // type of object client to use; if omitted, defaults to store.
 	Schema      string              `yaml:"schema"`
 	IndexTables PeriodicTableConfig `yaml:"index"`
 	ChunkTables PeriodicTableConfig `yaml:"chunks,omitempty"`
@@ -45,20 +47,20 @@ type LegacySchemaConfig struct {
 
 	// After midnight on this day, we start bucketing indexes by day instead of by
 	// hour.  Only the day matters, not the time within the day.
-	DailyBucketsFrom      util.DayValue
-	Base64ValuesFrom      util.DayValue
-	V4SchemaFrom          util.DayValue
-	V5SchemaFrom          util.DayValue
-	V6SchemaFrom          util.DayValue
-	V9SchemaFrom          util.DayValue
-	BigtableColumnKeyFrom util.DayValue
+	DailyBucketsFrom      flagext.DayValue
+	Base64ValuesFrom      flagext.DayValue
+	V4SchemaFrom          flagext.DayValue
+	V5SchemaFrom          flagext.DayValue
+	V6SchemaFrom          flagext.DayValue
+	V9SchemaFrom          flagext.DayValue
+	BigtableColumnKeyFrom flagext.DayValue
 
 	// Config for the index & chunk tables.
 	OriginalTableName string
 	UsePeriodicTables bool
-	IndexTablesFrom   util.DayValue
+	IndexTablesFrom   flagext.DayValue
 	IndexTables       PeriodicTableConfig
-	ChunkTablesFrom   util.DayValue
+	ChunkTablesFrom   flagext.DayValue
 	ChunkTables       PeriodicTableConfig
 }
 
@@ -94,10 +96,10 @@ func (cfg *SchemaConfig) translate() error {
 
 	add := func(t string, f model.Time) {
 		cfg.Configs = append(cfg.Configs, PeriodConfig{
-			From:    f,
-			FromStr: f.Time().Format("2006-01-02"),
-			Schema:  t,
-			Store:   cfg.legacy.StorageClient,
+			From:      f,
+			FromStr:   f.Time().Format("2006-01-02"),
+			Schema:    t,
+			IndexType: cfg.legacy.StorageClient,
 			IndexTables: PeriodicTableConfig{
 				Prefix: cfg.legacy.OriginalTableName,
 				Tags:   cfg.legacy.IndexTables.Tags,
@@ -131,15 +133,15 @@ func (cfg *SchemaConfig) translate() error {
 	})
 	if cfg.legacy.ChunkTablesFrom.IsSet() {
 		cfg.ForEachAfter(cfg.legacy.ChunkTablesFrom.Time, func(config *PeriodConfig) {
-			if config.Store == "aws" {
-				config.Store = "aws-dynamo"
+			if config.IndexType == "aws" {
+				config.IndexType = "aws-dynamo"
 			}
 			config.ChunkTables = cfg.legacy.ChunkTables
 		})
 	}
 	if cfg.legacy.BigtableColumnKeyFrom.IsSet() {
 		cfg.ForEachAfter(cfg.legacy.BigtableColumnKeyFrom.Time, func(config *PeriodConfig) {
-			config.Store = "gcp-columnkey"
+			config.IndexType = "gcp-columnkey"
 		})
 	}
 	return nil

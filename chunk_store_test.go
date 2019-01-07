@@ -17,8 +17,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/test"
 	"github.com/weaveworks/common/user"
@@ -49,7 +49,7 @@ var stores = []struct {
 			var (
 				storeCfg StoreConfig
 			)
-			util.DefaultValues(&storeCfg)
+			flagext.DefaultValues(&storeCfg)
 			return storeCfg
 		},
 	},
@@ -59,7 +59,7 @@ var stores = []struct {
 			var (
 				storeCfg StoreConfig
 			)
-			util.DefaultValues(&storeCfg)
+			flagext.DefaultValues(&storeCfg)
 
 			storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
 				Size: 500,
@@ -75,7 +75,7 @@ func newTestChunkStore(t *testing.T, schemaName string) Store {
 	var (
 		storeCfg StoreConfig
 	)
-	util.DefaultValues(&storeCfg)
+	flagext.DefaultValues(&storeCfg)
 	return newTestChunkStoreConfig(t, schemaName, storeCfg)
 }
 
@@ -84,7 +84,7 @@ func newTestChunkStoreConfig(t *testing.T, schemaName string, storeCfg StoreConf
 		tbmConfig TableManagerConfig
 		schemaCfg = DefaultSchemaConfig("", schemaName, 0)
 	)
-	util.DefaultValues(&tbmConfig)
+	flagext.DefaultValues(&tbmConfig)
 	storage := NewMockStorage()
 	tableManager, err := NewTableManager(tbmConfig, schemaCfg, maxChunkAge, storage)
 	require.NoError(t, err)
@@ -93,13 +93,13 @@ func newTestChunkStoreConfig(t *testing.T, schemaName string, storeCfg StoreConf
 	require.NoError(t, err)
 
 	var limits validation.Limits
-	util.DefaultValues(&limits)
+	flagext.DefaultValues(&limits)
 	limits.MaxQueryLength = 30 * 24 * time.Hour
 	overrides, err := validation.NewOverrides(limits)
 	require.NoError(t, err)
 
 	store := NewCompositeStore()
-	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], storage, overrides)
+	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], storage, storage, overrides)
 	require.NoError(t, err)
 	return store
 }
