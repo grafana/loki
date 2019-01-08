@@ -64,3 +64,12 @@ $ cd $GOPATH/src/github.com/grafana/loki # GOPATH is $HOME/go by default.
 $ git remote add <FORK_NAME> <FORK_URL>
 ```
 Notice: `go get` return `package github.com/grafana/loki: no Go files in /go/src/github.com/grafana/loki` is normal.
+
+### Code Visualization:
+
+Here is a cool visualization of the code evolution
+
+ [![Watch the video](https://img.youtube.com/vi/ecrtYMJqQOI/0.jpg)](https://www.youtube.com/watch?v=ecrtYMJqQOI)
+
+ [https://www.youtube.com/watch?v=ecrtYMJqQOI](https://www.youtube.com/watch?v=ecrtYMJqQOI)
+
