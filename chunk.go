@@ -29,6 +29,7 @@ const (
 	ErrWrongMetadata   = errs.Error("wrong chunk metadata")
 	ErrMetadataLength  = errs.Error("chunk metadata wrong length")
 	ErrDataLength      = errs.Error("chunk data wrong length")
+	ErrNotEncoded      = errs.Error("Chunk not encoded")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
@@ -188,18 +189,14 @@ var writerPool = sync.Pool{
 	New: func() interface{} { return snappy.NewBufferedWriter(nil) },
 }
 
-// Encode writes the chunk out to a big write buffer, then calculates the checksum.
-func (c *Chunk) Encode() ([]byte, error) {
-	if c.encoded != nil {
-		return c.encoded, nil
-	}
-
+// Encode writes the chunk into a buffer, and calculates the checksum.
+func (c *Chunk) Encode() error {
 	var buf bytes.Buffer
 
 	// Write 4 empty bytes first - we will come back and put the len in here.
 	metadataLenBytes := [4]byte{}
 	if _, err := buf.Write(metadataLenBytes[:]); err != nil {
-		return nil, err
+		return err
 	}
 
 	// Encode chunk metadata into snappy-compressed buffer
@@ -208,7 +205,7 @@ func (c *Chunk) Encode() ([]byte, error) {
 	writer.Reset(&buf)
 	json := jsoniter.ConfigFastest
 	if err := json.NewEncoder(writer).Encode(c); err != nil {
-		return nil, err
+		return err
 	}
 	writer.Close()
 
@@ -221,12 +218,12 @@ func (c *Chunk) Encode() ([]byte, error) {
 	// Write another 4 empty bytes - we will come back and put the len in here.
 	dataLenBytes := [4]byte{}
 	if _, err := buf.Write(dataLenBytes[:]); err != nil {
-		return nil, err
+		return err
 	}
 
 	// And now the chunk data
 	if err := c.Data.Marshal(&buf); err != nil {
-		return nil, err
+		return err
 	}
 
 	// Now write the data len back into the buf.
@@ -237,6 +234,14 @@ func (c *Chunk) Encode() ([]byte, error) {
 	c.encoded = buf.Bytes()
 	c.ChecksumSet = true
 	c.Checksum = crc32.Checksum(c.encoded, castagnoliTable)
+	return nil
+}
+
+// Encoded returns the buffer created by Encoded()
+func (c *Chunk) Encoded() ([]byte, error) {
+	if c.encoded == nil {
+		return nil, errors.WithStack(ErrNotEncoded)
+	}
 	return c.encoded, nil
 }
 

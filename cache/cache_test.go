@@ -44,7 +44,9 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
 			ts.Add(chunkLen),
 		)
 
-		buf, err := c.Encode()
+		err := c.Encode()
+		require.NoError(t, err)
+		buf, err := c.Encoded()
 		require.NoError(t, err)
 
 		keys = append(keys, c.ExternalKey())

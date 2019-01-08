@@ -266,7 +266,7 @@ func (m *MockStorage) PutChunks(_ context.Context, chunks []Chunk) error {
 	defer m.mtx.Unlock()
 
 	for i := range chunks {
-		buf, err := chunks[i].Encode()
+		buf, err := chunks[i].Encoded()
 		if err != nil {
 			return err
 		}
