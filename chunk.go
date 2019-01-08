@@ -240,11 +240,6 @@ func (c *Chunk) Encode() ([]byte, error) {
 	return c.encoded, nil
 }
 
-// EncodedSize returns the number of bytes in the encoded data for this chunk
-func (c *Chunk) EncodedSize() int {
-	return len(c.encoded)
-}
-
 // DecodeContext holds data that can be re-used between decodes of different chunks
 type DecodeContext struct {
 	reader *snappy.Reader
