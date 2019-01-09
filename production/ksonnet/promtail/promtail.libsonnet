@@ -11,7 +11,7 @@ k {
       username: '',
       password: '',
       scheme: 'https',
-      hostname: 'log-us.grafana.net',
+      hostname: 'logs-us-west1.grafana.net',
     },
 
 
@@ -86,7 +86,7 @@ k {
             source_labels: ['__meta_kubernetes_pod_uid', '__meta_kubernetes_pod_container_name'],
             target_label: '__path__',
             separator: '/',
-            replacement: '/var/log/pods/$1',
+            replacement: '/var/log/pods/$1/0.log',
           },
         ],
       },
@@ -145,7 +145,7 @@ k {
             source_labels: ['__meta_kubernetes_pod_uid', '__meta_kubernetes_pod_container_name'],
             target_label: '__path__',
             separator: '/',
-            replacement: '/var/log/pods/$1',
+            replacement: '/var/log/pods/$1/0.log',
           },
         ],
       },
