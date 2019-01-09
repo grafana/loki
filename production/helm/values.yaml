@@ -74,9 +74,19 @@ loki:
           period: 168h
     storage_configs:
       - name: boltdb
-        directory: /tmp/loki/index
+        directory: /loki/index
       - name: filesystem
-        directory: /tmp/loki/chunks
+        directory: /loki/chunks
+
+  persistence:
+    enabled: false
+    # storageClassName: default
+    accessModes:
+      - ReadWriteOnce
+    size: 20Gi
+    # annotations: {}
+    # subPath: ""
+    # existingClaim:
 
 promtail:
   nameOverride: promtail
