@@ -10,10 +10,12 @@ import (
 	"cloud.google.com/go/bigtable"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"google.golang.org/api/option"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/pkg/errors"
 )
 
@@ -30,12 +32,21 @@ const (
 type Config struct {
 	Project  string `yaml:"project"`
 	Instance string `yaml:"instance"`
+
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
+
+	ColumnKey bool
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Project, "bigtable.project", "", "Bigtable project ID.")
 	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID.")
+
+	cfg.GRPCClientConfig.RegisterFlags("bigtable", f)
+
+	// Deprecated.
+	f.Int("bigtable.max-recv-msg-size", 100<<20, "DEPRECATED. Bigtable grpc max receive message size.")
 }
 
 // storageClientColumnKey implements chunk.storageClient for GCP.
@@ -53,7 +64,10 @@ type storageClientV1 struct {
 
 // NewStorageClientV1 returns a new v1 StorageClient.
 func NewStorageClientV1(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
-	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, instrumentation()...)
+	opts := instrumentation()
+	opts = append(opts, option.WithGRPCDialOption(cfg.GRPCClientConfig.DialOption()))
+
+	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
 	if err != nil {
 		return nil, err
 	}
