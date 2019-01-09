@@ -209,7 +209,7 @@ func (t *tailer) run() {
 
 	level.Info(t.logger).Log("msg", "start tailing file", "filename", t.path)
 	positionSyncPeriod := t.positions.cfg.SyncPeriod
-	positionWait := time.NewTimer(positionSyncPeriod)
+	positionWait := time.NewTicker(positionSyncPeriod)
 	defer positionWait.Stop()
 
 	for {
