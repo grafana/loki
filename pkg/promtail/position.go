@@ -82,7 +82,6 @@ func (p *Positions) Remove(path string) {
 	p.mtx.Lock()
 	delete(p.positions, path)
 	p.mtx.Unlock()
-	return
 }
 
 func (p *Positions) run() {
