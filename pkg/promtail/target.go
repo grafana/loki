@@ -157,6 +157,14 @@ func (t *Target) run() {
 					tailer.cleanup()
 					delete(t.tails, event.Name)
 				}
+			case fsnotify.Rename:
+				// Rename is only issued on the original file path; the new name receives a Create event
+				tailer, ok := t.tails[event.Name]
+				if ok {
+					helpers.LogError("stopping tailer", tailer.stop)
+					tailer.cleanup()
+					delete(t.tails, event.Name)
+				}
 
 			default:
 				level.Debug(t.logger).Log("msg", "got unknown event", "event", event)
