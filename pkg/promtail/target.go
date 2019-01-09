@@ -154,6 +154,7 @@ func (t *Target) run() {
 				tailer, ok := t.tails[event.Name]
 				if ok {
 					helpers.LogError("stopping tailer", tailer.stop)
+					tailer.cleanup()
 					delete(t.tails, event.Name)
 				}
 
@@ -241,4 +242,8 @@ func (t *tailer) run() {
 
 func (t *tailer) stop() error {
 	return t.tail.Stop()
+}
+
+func (t *tailer) cleanup() {
+	t.positions.Remove(t.path)
 }

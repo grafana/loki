@@ -77,6 +77,14 @@ func (p *Positions) Get(path string) int64 {
 	return p.positions[path]
 }
 
+// Remove removes the position tracking for a filepath
+func (p *Positions) Remove(path string) {
+	p.mtx.Lock()
+	delete(p.positions, path)
+	p.mtx.Unlock()
+	return
+}
+
 func (p *Positions) run() {
 	defer p.save()
 
