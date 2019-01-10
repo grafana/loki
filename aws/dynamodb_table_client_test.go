@@ -40,6 +40,17 @@ func fixtureWriteScale() chunk.AutoScalingConfig {
 	}
 }
 
+func fixtureReadScale() chunk.AutoScalingConfig {
+	return chunk.AutoScalingConfig{
+		Enabled:     true,
+		MinCapacity: 1,
+		MaxCapacity: 2000,
+		OutCooldown: 100,
+		InCooldown:  100,
+		TargetValue: 80.0,
+	}
+}
+
 func fixturePeriodicTableConfig(prefix string) chunk.PeriodicTableConfig {
 	return chunk.PeriodicTableConfig{
 		Prefix: prefix,
@@ -56,6 +67,17 @@ func fixtureProvisionConfig(inactLastN int64, writeScale, inactWriteScale chunk.
 		WriteScale:                 writeScale,
 		InactiveWriteScale:         inactWriteScale,
 		InactiveWriteScaleLastN:    inactLastN,
+	}
+}
+
+func fixtureReadProvisionConfig(readScale, inactReadScale chunk.AutoScalingConfig) chunk.ProvisionConfig {
+	return chunk.ProvisionConfig{
+		ProvisionedWriteThroughput: write,
+		ProvisionedReadThroughput:  read,
+		InactiveWriteThroughput:    inactiveWrite,
+		InactiveReadThroughput:     inactiveRead,
+		ReadScale:                  readScale,
+		InactiveReadScale:          inactReadScale,
 	}
 }
 

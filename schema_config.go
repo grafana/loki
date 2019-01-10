@@ -3,6 +3,7 @@ package chunk
 import (
 	"flag"
 	"fmt"
+	"github.com/go-kit/kit/log/level"
 	"os"
 	"strconv"
 	"time"
@@ -343,6 +344,7 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 		firstTable     = from.Unix() / periodSecs
 		lastTable      = through.Unix() / periodSecs
 		now            = mtime.Now().Unix()
+		nowWeek        = now / periodSecs
 		result         = []TableDesc{}
 	)
 	// If through ends on 00:00 of the day, don't include the upcoming day
@@ -352,23 +354,61 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 	for i := firstTable; i <= lastTable; i++ {
 		table := TableDesc{
 			// Name construction needs to be consistent with chunk_store.bigBuckets
-			Name:             cfg.Prefix + strconv.Itoa(int(i)),
-			ProvisionedRead:  pCfg.InactiveReadThroughput,
-			ProvisionedWrite: pCfg.InactiveWriteThroughput,
-			Tags:             cfg.Tags,
+			Name:              cfg.Prefix + strconv.Itoa(int(i)),
+			ProvisionedRead:   pCfg.InactiveReadThroughput,
+			ProvisionedWrite:  pCfg.InactiveWriteThroughput,
+			UseOnDemandIOMode: pCfg.InactiveThroughputOnDemandMode,
+			Tags:              cfg.Tags,
 		}
+		level.Debug(util.Logger).Log("msg", "Expected Table", "tableName", table.Name,
+			"provisionedRead", table.ProvisionedRead,
+			"provisionedWrite", table.ProvisionedWrite,
+			"useOnDemandMode", table.UseOnDemandIOMode,
+		)
 
 		// if now is within table [start - grace, end + grace), then we need some write throughput
 		if (i*periodSecs)-beginGraceSecs <= now && now < (i*periodSecs)+periodSecs+endGraceSecs {
 			table.ProvisionedRead = pCfg.ProvisionedReadThroughput
 			table.ProvisionedWrite = pCfg.ProvisionedWriteThroughput
+			table.UseOnDemandIOMode = pCfg.ProvisionedThroughputOnDemandMode
 
 			if pCfg.WriteScale.Enabled {
 				table.WriteScale = pCfg.WriteScale
+				table.UseOnDemandIOMode = false
 			}
-		} else if pCfg.InactiveWriteScale.Enabled && i >= (lastTable-pCfg.InactiveWriteScaleLastN) {
+
+			if pCfg.ReadScale.Enabled {
+				table.ReadScale = pCfg.ReadScale
+				table.UseOnDemandIOMode = false
+			}
+			level.Debug(util.Logger).Log("msg", "Table is Active",
+				"tableName", table.Name,
+				"provisionedRead", table.ProvisionedRead,
+				"provisionedWrite", table.ProvisionedWrite,
+				"useOnDemandMode", table.UseOnDemandIOMode,
+				"useWriteAutoScale", table.WriteScale.Enabled,
+				"useReadAutoScale", table.ReadScale.Enabled)
+
+		} else if pCfg.InactiveWriteScale.Enabled || pCfg.InactiveReadScale.Enabled {
 			// Autoscale last N tables
-			table.WriteScale = pCfg.InactiveWriteScale
+			// this is measured against "now", since the lastWeek is the final week in the schema config range
+			// the N last tables in that range will always be set to the inactive scaling settings.
+			if pCfg.InactiveWriteScale.Enabled && i >= (nowWeek-pCfg.InactiveWriteScaleLastN) {
+				table.WriteScale = pCfg.InactiveWriteScale
+				table.UseOnDemandIOMode = false
+			}
+			if pCfg.InactiveReadScale.Enabled && i >= (nowWeek-pCfg.InactiveReadScaleLastN) {
+				table.ReadScale = pCfg.InactiveReadScale
+				table.UseOnDemandIOMode = false
+			}
+
+			level.Debug(util.Logger).Log("msg", "Table is Inactive",
+				"tableName", table.Name,
+				"provisionedRead", table.ProvisionedRead,
+				"provisionedWrite", table.ProvisionedWrite,
+				"useOnDemandMode", table.UseOnDemandIOMode,
+				"useWriteAutoScale", table.WriteScale.Enabled,
+				"useReadAutoScale", table.ReadScale.Enabled)
 		}
 
 		result = append(result, table)

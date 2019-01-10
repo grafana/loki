@@ -59,14 +59,19 @@ type TableManagerConfig struct {
 
 // ProvisionConfig holds config for provisioning capacity (on DynamoDB)
 type ProvisionConfig struct {
-	ProvisionedWriteThroughput int64
-	ProvisionedReadThroughput  int64
-	InactiveWriteThroughput    int64
-	InactiveReadThroughput     int64
+	ProvisionedThroughputOnDemandMode bool
+	ProvisionedWriteThroughput        int64
+	ProvisionedReadThroughput         int64
+	InactiveThroughputOnDemandMode    bool
+	InactiveWriteThroughput           int64
+	InactiveReadThroughput            int64
 
 	WriteScale              AutoScalingConfig
 	InactiveWriteScale      AutoScalingConfig
 	InactiveWriteScaleLastN int64
+	ReadScale               AutoScalingConfig
+	InactiveReadScale       AutoScalingConfig
+	InactiveReadScaleLastN  int64
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -83,12 +88,18 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 	f.Int64Var(&cfg.ProvisionedWriteThroughput, argPrefix+".write-throughput", 3000, "DynamoDB table default write throughput.")
 	f.Int64Var(&cfg.ProvisionedReadThroughput, argPrefix+".read-throughput", 300, "DynamoDB table default read throughput.")
+	f.BoolVar(&cfg.ProvisionedThroughputOnDemandMode, argPrefix+".enable-ondemand-throughput-mode", false, "Enables on demand througput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled")
 	f.Int64Var(&cfg.InactiveWriteThroughput, argPrefix+".inactive-write-throughput", 1, "DynamoDB table write throughput for inactive tables.")
 	f.Int64Var(&cfg.InactiveReadThroughput, argPrefix+".inactive-read-throughput", 300, "DynamoDB table read throughput for inactive tables.")
+	f.BoolVar(&cfg.InactiveThroughputOnDemandMode, argPrefix+".inactive-enable-ondemand-throughput-mode", false, "Enables on demand througput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled")
 
 	cfg.WriteScale.RegisterFlags(argPrefix+".write-throughput.scale", f)
 	cfg.InactiveWriteScale.RegisterFlags(argPrefix+".inactive-write-throughput.scale", f)
 	f.Int64Var(&cfg.InactiveWriteScaleLastN, argPrefix+".inactive-write-throughput.scale-last-n", 4, "Number of last inactive tables to enable write autoscale.")
+
+	cfg.ReadScale.RegisterFlags(argPrefix+".read-throughput.scale", f)
+	cfg.InactiveReadScale.RegisterFlags(argPrefix+".inactive-read-throughput.scale", f)
+	f.Int64Var(&cfg.InactiveReadScaleLastN, argPrefix+".inactive-read-throughput.scale-last-n", 4, "Number of last inactive tables to enable read autoscale.")
 }
 
 // Tags is a string-string map that implements flag.Value.
@@ -223,10 +234,11 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 			}
 
 			table := TableDesc{
-				Name:             config.IndexTables.Prefix,
-				ProvisionedRead:  m.cfg.IndexTables.InactiveReadThroughput,
-				ProvisionedWrite: m.cfg.IndexTables.InactiveWriteThroughput,
-				Tags:             config.IndexTables.Tags,
+				Name:              config.IndexTables.Prefix,
+				ProvisionedRead:   m.cfg.IndexTables.InactiveReadThroughput,
+				ProvisionedWrite:  m.cfg.IndexTables.InactiveWriteThroughput,
+				UseOnDemandIOMode: m.cfg.IndexTables.InactiveThroughputOnDemandMode,
+				Tags:              config.IndexTables.Tags,
 			}
 			isActive := true
 			if i+1 < len(m.schemaCfg.Configs) {
@@ -238,14 +250,20 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 				)
 				if now >= endTime+gracePeriodSecs+maxChunkAgeSecs {
 					isActive = false
+
 				}
 			}
 			if isActive {
 				table.ProvisionedRead = m.cfg.IndexTables.ProvisionedReadThroughput
 				table.ProvisionedWrite = m.cfg.IndexTables.ProvisionedWriteThroughput
-
+				table.UseOnDemandIOMode = m.cfg.IndexTables.ProvisionedThroughputOnDemandMode
 				if m.cfg.IndexTables.WriteScale.Enabled {
 					table.WriteScale = m.cfg.IndexTables.WriteScale
+					table.UseOnDemandIOMode = false
+				}
+				if m.cfg.IndexTables.ReadScale.Enabled {
+					table.ReadScale = m.cfg.IndexTables.ReadScale
+					table.UseOnDemandIOMode = false
 				}
 			}
 			result = append(result, table)
