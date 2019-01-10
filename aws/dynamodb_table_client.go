@@ -191,7 +191,7 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc chunk.TableDesc
 
 func (d dynamoTableClient) DeleteTable(ctx context.Context, name string) error {
 	if err := d.backoffAndRetry(ctx, func(ctx context.Context) error {
-		return instrument.TimeRequestHistogram(ctx, "DynamoDB.DeleteTable", dynamoRequestDuration, func(ctx context.Context) error {
+		return instrument.CollectedRequest(ctx, "DynamoDB.DeleteTable", dynamoRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			input := &dynamodb.DeleteTableInput{TableName: aws.String(name)}
 			_, err := d.DynamoDB.DeleteTableWithContext(ctx, input)
 			if err != nil {

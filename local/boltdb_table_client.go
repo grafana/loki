@@ -21,6 +21,10 @@ func (c *tableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) err
 	return nil
 }
 
+func (c *tableClient) DeleteTable(ctx context.Context, name string) error {
+	return nil
+}
+
 func (c *tableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, isActive bool, err error) {
 	return chunk.TableDesc{
 		Name: name,
