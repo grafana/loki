@@ -19,6 +19,8 @@
 package transport
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"math"
 	"net"
@@ -28,13 +30,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/net/context"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/internal/channelz"
+	"google.golang.org/grpc/internal/syscall"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
@@ -121,7 +123,7 @@ func dial(ctx context.Context, fn func(context.Context, string) (net.Conn, error
 	if fn != nil {
 		return fn(ctx, addr)
 	}
-	return dialContext(ctx, "tcp", addr)
+	return (&net.Dialer{}).DialContext(ctx, "tcp", addr)
 }
 
 func isTemporary(err error) bool {
@@ -165,6 +167,21 @@ func newHTTP2Client(connectCtx, ctx context.Context, addr TargetInfo, opts Conne
 			conn.Close()
 		}
 	}(conn)
+	kp := opts.KeepaliveParams
+	// Validate keepalive parameters.
+	if kp.Time == 0 {
+		kp.Time = defaultClientKeepaliveTime
+	}
+	if kp.Timeout == 0 {
+		kp.Timeout = defaultClientKeepaliveTimeout
+	}
+	keepaliveEnabled := false
+	if kp.Time != infinity {
+		if err = syscall.SetTCPUserTimeout(conn, kp.Timeout); err != nil {
+			return nil, connectionErrorf(false, err, "transport: failed to set TCP_USER_TIMEOUT: %v", err)
+		}
+		keepaliveEnabled = true
+	}
 	var (
 		isSecure bool
 		authInfo credentials.AuthInfo
@@ -187,14 +204,6 @@ func newHTTP2Client(connectCtx, ctx context.Context, addr TargetInfo, opts Conne
 			return nil, connectionErrorf(isTemporary(err), err, "transport: authentication handshake failed: %v", err)
 		}
 		isSecure = true
-	}
-	kp := opts.KeepaliveParams
-	// Validate keepalive parameters.
-	if kp.Time == 0 {
-		kp.Time = defaultClientKeepaliveTime
-	}
-	if kp.Timeout == 0 {
-		kp.Timeout = defaultClientKeepaliveTimeout
 	}
 	dynamicWindow := true
 	icwz := int32(initialWindowSize)
@@ -239,6 +248,7 @@ func newHTTP2Client(connectCtx, ctx context.Context, addr TargetInfo, opts Conne
 		czData:                new(channelzData),
 		onGoAway:              onGoAway,
 		onClose:               onClose,
+		keepaliveEnabled:      keepaliveEnabled,
 	}
 	t.controlBuf = newControlBuffer(t.ctxDone)
 	if opts.InitialWindowSize >= defaultWindowSize {
@@ -265,10 +275,9 @@ func newHTTP2Client(connectCtx, ctx context.Context, addr TargetInfo, opts Conne
 		t.statsHandler.HandleConn(t.ctx, connBegin)
 	}
 	if channelz.IsOn() {
-		t.channelzID = channelz.RegisterNormalSocket(t, opts.ChannelzParentID, "")
+		t.channelzID = channelz.RegisterNormalSocket(t, opts.ChannelzParentID, fmt.Sprintf("%s -> %s", t.localAddr, t.remoteAddr))
 	}
-	if t.kp.Time != infinity {
-		t.keepaliveEnabled = true
+	if t.keepaliveEnabled {
 		go t.keepalive()
 	}
 	// Start the reader goroutine for incoming message. Each transport has

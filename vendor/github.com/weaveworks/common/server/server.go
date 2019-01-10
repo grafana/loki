@@ -38,7 +38,9 @@ type Config struct {
 	HTTPServerWriteTimeout        time.Duration `yaml:"http_server_write_timeout"`
 	HTTPServerIdleTimeout         time.Duration `yaml:"http_server_idle_timeout"`
 
-	GPRCServerMaxRecvMsgSize int `yaml:"grpc_server_max_recv_msg_size"`
+	GPRCServerMaxRecvMsgSize       int  `yaml:"grpc_server_max_recv_msg_size"`
+	GRPCServerMaxSendMsgSize       int  `yaml:"grpc_server_max_send_msg_size"`
+	GPRCServerMaxConcurrentStreams uint `yaml:"grpc_server_max_concurrent_streams"`
 
 	GRPCOptions          []grpc.ServerOption            `yaml:"-"`
 	GRPCMiddleware       []grpc.UnaryServerInterceptor  `yaml:"-"`
@@ -47,6 +49,8 @@ type Config struct {
 
 	LogLevel logging.Level     `yaml:"log_level"`
 	Log      logging.Interface `yaml:"-"`
+
+	PathPrefix string `yaml:"http_path_prefix"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -55,10 +59,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.GRPCListenPort, "server.grpc-listen-port", 9095, "gRPC server listen port.")
 	f.BoolVar(&cfg.RegisterInstrumentation, "server.register-instrumentation", true, "Register the intrumentation handlers (/metrics etc).")
 	f.DurationVar(&cfg.ServerGracefulShutdownTimeout, "server.graceful-shutdown-timeout", 30*time.Second, "Timeout for graceful shutdowns")
-	f.IntVar(&cfg.GPRCServerMaxRecvMsgSize, "server.grpc-max-recv-msg-size-bytes", 1024*1024*64, "Limit on the size of a grpc message this server can receive.")
 	f.DurationVar(&cfg.HTTPServerReadTimeout, "server.http-read-timeout", 30*time.Second, "Read timeout for HTTP server")
 	f.DurationVar(&cfg.HTTPServerWriteTimeout, "server.http-write-timeout", 30*time.Second, "Write timeout for HTTP server")
 	f.DurationVar(&cfg.HTTPServerIdleTimeout, "server.http-idle-timeout", 120*time.Second, "Idle timeout for HTTP server")
+	f.IntVar(&cfg.GPRCServerMaxRecvMsgSize, "server.grpc-max-recv-msg-size-bytes", 4*1024*1024, "Limit on the size of a gRPC message this server can receive (bytes).")
+	f.IntVar(&cfg.GRPCServerMaxSendMsgSize, "server.grpc-max-send-msg-size-bytes", 4*1024*1024, "Limit on the size of a gRPC message this server can send (bytes).")
+	f.UintVar(&cfg.GPRCServerMaxConcurrentStreams, "server.grpc-max-concurrent-streams", 100, "Limit on the number of concurrent streams for gRPC calls (0 = unlimited)")
+	f.StringVar(&cfg.PathPrefix, "server.path-prefix", "", "Base path to serve all API routes from (e.g. /v1/)")
 	cfg.LogLevel.RegisterFlags(f)
 }
 
@@ -135,6 +142,8 @@ func New(cfg Config) (*Server, error) {
 			grpcStreamMiddleware...,
 		)),
 		grpc.MaxRecvMsgSize(cfg.GPRCServerMaxRecvMsgSize),
+		grpc.MaxSendMsgSize(cfg.GRPCServerMaxSendMsgSize),
+		grpc.MaxConcurrentStreams(uint32(cfg.GPRCServerMaxConcurrentStreams)),
 	}
 	grpcOptions = append(grpcOptions, cfg.GRPCOptions...)
 	grpcServer := grpc.NewServer(grpcOptions...)
@@ -143,6 +152,9 @@ func New(cfg Config) (*Server, error) {
 	router := mux.NewRouter()
 	if cfg.RegisterInstrumentation {
 		RegisterInstrumentation(router)
+	}
+	if cfg.PathPrefix != "" {
+		router = router.PathPrefix(cfg.PathPrefix).Subrouter()
 	}
 	httpMiddleware := []middleware.Interface{
 		middleware.Tracer{

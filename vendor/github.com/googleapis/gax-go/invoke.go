@@ -32,58 +32,21 @@ package gax
 import (
 	"context"
 	"time"
+
+	v2 "github.com/googleapis/gax-go/v2"
 )
 
-// A user defined call stub.
-type APICall func(context.Context, CallSettings) error
+// APICall is a user defined call stub.
+type APICall = v2.APICall
 
 // Invoke calls the given APICall,
 // performing retries as specified by opts, if any.
 func Invoke(ctx context.Context, call APICall, opts ...CallOption) error {
-	var settings CallSettings
-	for _, opt := range opts {
-		opt.Resolve(&settings)
-	}
-	return invoke(ctx, call, settings, Sleep)
+	return v2.Invoke(ctx, call, opts...)
 }
 
 // Sleep is similar to time.Sleep, but it can be interrupted by ctx.Done() closing.
 // If interrupted, Sleep returns ctx.Err().
 func Sleep(ctx context.Context, d time.Duration) error {
-	t := time.NewTimer(d)
-	select {
-	case <-ctx.Done():
-		t.Stop()
-		return ctx.Err()
-	case <-t.C:
-		return nil
-	}
-}
-
-type sleeper func(ctx context.Context, d time.Duration) error
-
-// invoke implements Invoke, taking an additional sleeper argument for testing.
-func invoke(ctx context.Context, call APICall, settings CallSettings, sp sleeper) error {
-	var retryer Retryer
-	for {
-		err := call(ctx, settings)
-		if err == nil {
-			return nil
-		}
-		if settings.Retry == nil {
-			return err
-		}
-		if retryer == nil {
-			if r := settings.Retry(); r != nil {
-				retryer = r
-			} else {
-				return err
-			}
-		}
-		if d, ok := retryer.Retry(err); !ok {
-			return err
-		} else if err = sp(ctx, d); err != nil {
-			return err
-		}
-	}
+	return v2.Sleep(ctx, d)
 }

@@ -113,13 +113,13 @@ func TsigGenerate(m *Msg, secret, requestMAC string, timersOnly bool) ([]byte, s
 	var h hash.Hash
 	switch strings.ToLower(rr.Algorithm) {
 	case HmacMD5:
-		h = hmac.New(md5.New, []byte(rawsecret))
+		h = hmac.New(md5.New, rawsecret)
 	case HmacSHA1:
-		h = hmac.New(sha1.New, []byte(rawsecret))
+		h = hmac.New(sha1.New, rawsecret)
 	case HmacSHA256:
-		h = hmac.New(sha256.New, []byte(rawsecret))
+		h = hmac.New(sha256.New, rawsecret)
 	case HmacSHA512:
-		h = hmac.New(sha512.New, []byte(rawsecret))
+		h = hmac.New(sha512.New, rawsecret)
 	default:
 		return nil, "", ErrKeyAlg
 	}
@@ -133,13 +133,12 @@ func TsigGenerate(m *Msg, secret, requestMAC string, timersOnly bool) ([]byte, s
 	t.Algorithm = rr.Algorithm
 	t.OrigId = m.Id
 
-	tbuf := make([]byte, t.len())
-	if off, err := PackRR(t, tbuf, 0, nil, false); err == nil {
-		tbuf = tbuf[:off] // reset to actual size used
-	} else {
+	tbuf := make([]byte, Len(t))
+	off, err := PackRR(t, tbuf, 0, nil, false)
+	if err != nil {
 		return nil, "", err
 	}
-	mbuf = append(mbuf, tbuf...)
+	mbuf = append(mbuf, tbuf[:off]...)
 	// Update the ArCount directly in the buffer.
 	binary.BigEndian.PutUint16(mbuf[10:], uint16(len(m.Extra)+1))
 

@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,12 +15,12 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
 
 	"cloud.google.com/go/internal/trace"
-	"golang.org/x/net/context"
 	raw "google.golang.org/api/storage/v1"
 )
 

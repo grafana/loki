@@ -22,6 +22,7 @@
 package transport
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -29,7 +30,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
@@ -186,8 +186,12 @@ type Stream struct {
 	headerDone uint32        // set when headerChan is closed. Used to avoid closing headerChan multiple times.
 
 	// hdrMu protects header and trailer metadata on the server-side.
-	hdrMu   sync.Mutex
-	header  metadata.MD // the received header metadata.
+	hdrMu sync.Mutex
+	// On client side, header keeps the received header metadata.
+	//
+	// On server side, header keeps the header set by SetHeader(). The complete
+	// header will merged into this after t.WriteHeader() is called.
+	header  metadata.MD
 	trailer metadata.MD // the key-value map of trailer metadata.
 
 	noHeaders bool // set if the client never received headers (set only after the stream is done).
@@ -266,10 +270,19 @@ func (s *Stream) Done() <-chan struct{} {
 	return s.done
 }
 
-// Header acquires the key-value pairs of header metadata once it
-// is available. It blocks until i) the metadata is ready or ii) there is no
-// header metadata or iii) the stream is canceled/expired.
+// Header returns the header metadata of the stream.
+//
+// On client side, it acquires the key-value pairs of header metadata once it is
+// available. It blocks until i) the metadata is ready or ii) there is no header
+// metadata or iii) the stream is canceled/expired.
+//
+// On server side, it returns the out header after t.WriteHeader is called.
 func (s *Stream) Header() (metadata.MD, error) {
+	if s.headerChan == nil && s.header != nil {
+		// On server side, return the header in stream. It will be the out
+		// header after t.WriteHeader is called.
+		return s.header.Copy(), nil
+	}
 	err := s.waitOnHeader()
 	// Even if the stream is closed, header is returned if available.
 	select {
@@ -709,4 +722,15 @@ type channelzData struct {
 	msgRecv               int64
 	lastMsgSentTime       int64
 	lastMsgRecvTime       int64
+}
+
+// ContextErr converts the error from context package into a status error.
+func ContextErr(err error) error {
+	switch err {
+	case context.DeadlineExceeded:
+		return status.Error(codes.DeadlineExceeded, err.Error())
+	case context.Canceled:
+		return status.Error(codes.Canceled, err.Error())
+	}
+	return status.Errorf(codes.Internal, "Unexpected error from context packet: %v", err)
 }

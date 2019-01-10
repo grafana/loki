@@ -20,7 +20,7 @@
 // symbols to avoid circular dependencies.
 package internal
 
-import "golang.org/x/net/context"
+import "context"
 
 var (
 	// WithContextDialer is exported by clientconn.go
