@@ -50,6 +50,12 @@ func (c *tableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) err
 	return errors.WithStack(err)
 }
 
+func (c *tableClient) DeleteTable(ctx context.Context, name string) error {
+	err := c.session.Query(fmt.Sprintf(`
+		DROP TABLE IF EXISTS %s;`, name)).WithContext(ctx).Exec()
+	return errors.WithStack(err)
+}
+
 func (c *tableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, isActive bool, err error) {
 	return chunk.TableDesc{
 		Name: name,
