@@ -4,6 +4,7 @@ require 'rubocop/rspec/support'
 require 'bundler/setup'
 require 'fluent/plugin/out_loki'
 require 'simplecov'
+
 SimpleCov.start
 puts 'SimpleCov started successfully!'
 

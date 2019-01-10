@@ -1,0 +1,4 @@
+source 'https://rubygems.org'
+
+gem 'fluent-plugin-systemd', '~> 1.0.1'
+gem 'fluentd', '1.3.2'

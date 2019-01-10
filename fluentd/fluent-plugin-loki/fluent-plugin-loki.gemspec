@@ -1,12 +1,10 @@
-lib = File.expand_path('lib', __dir__)
-$LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
-require 'fluent/plugin/helpers/version'
+$LOAD_PATH.push File.expand_path('lib', __dir__)
 
 Gem::Specification.new do |spec|
   spec.name    = 'fluent-plugin-loki'
-  spec.version = Fluent::Plugin::VERSION
-  spec.authors = ['woodsaj']
-  spec.email   = ['awoods@grafana.com']
+  spec.version = '0.1.1'
+  spec.authors = %w[woodsaj briangann]
+  spec.email   = ['awoods@grafana.com', 'brian@grafana.com']
 
   spec.summary       = 'Output plugin to ship logs to a Grafana Loki server'
   spec.description   = 'Output plugin to ship logs to a Grafana Loki server'
@@ -28,6 +26,5 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency 'bundler', '~> 1.15'
   spec.add_development_dependency 'rake', '~> 12.0'
   spec.add_development_dependency 'rspec', '~> 3.0'
-  # spec.add_development_dependency 'test-unit', '~> 3.0'
   spec.add_runtime_dependency 'fluentd', ['>= 0.14.10', '< 2']
 end
