@@ -31,6 +31,7 @@ type Config struct {
 	FlushCheckPeriod  time.Duration `yaml:"flush_check_period"`
 	FlushOpTimeout    time.Duration `yaml:"flush_op_timeout"`
 	RetainPeriod      time.Duration `yaml:"chunk_retain_period"`
+	MaxChunkIdle      time.Duration `yaml:"chunk_idle_period"`
 }
 
 // RegisterFlags registers the flags.
@@ -41,6 +42,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Second, "")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 15*time.Minute, "")
+	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "")
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -51,7 +53,7 @@ type Ingester struct {
 	instances    map[string]*instance
 
 	lifecycler *ring.Lifecycler
-	store      chunk.Store
+	store      ChunkStore
 
 	done sync.WaitGroup
 	quit chan struct{}
@@ -62,8 +64,13 @@ type Ingester struct {
 	flushQueuesDone sync.WaitGroup
 }
 
+// ChunkStore is the interface we need to store chunks.
+type ChunkStore interface {
+	Put(ctx context.Context, chunks []chunk.Chunk) error
+}
+
 // New makes a new Ingester.
-func New(cfg Config, store chunk.Store) (*Ingester, error) {
+func New(cfg Config, store ChunkStore) (*Ingester, error) {
 	i := &Ingester{
 		cfg:         cfg,
 		instances:   map[string]*instance{},
