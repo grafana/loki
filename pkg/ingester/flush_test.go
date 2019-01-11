@@ -97,7 +97,7 @@ func (s *testStore) checkData(t *testing.T, userIDs []string, testData map[strin
 			streams = append(streams, stream)
 		}
 		sort.Slice(streams, func(i, j int) bool {
-			return streams[i].Labels < streams[i].Labels
+			return streams[i].Labels < streams[j].Labels
 		})
 
 		require.Equal(t, testData[userID], streams)

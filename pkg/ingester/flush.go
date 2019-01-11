@@ -81,16 +81,12 @@ func (i *Ingester) sweepInstance(instance *instance, immediate bool) {
 }
 
 func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate bool) {
-	old := false
-	if len(stream.chunks) == 1 {
-		chunk := stream.chunks[0]
-		if i.cfg.MaxChunkIdle > 0 &&
-			time.Since(chunk.lastUpdated) > i.cfg.MaxChunkIdle {
-			old = true
-		}
+	if len(stream.chunks) == 0 {
+		return
 	}
 
-	if !old && len(stream.chunks) <= 1 && !immediate {
+	lastChunk := stream.chunks[len(stream.chunks)-1]
+	if time.Since(lastChunk.lastUpdated) < i.cfg.MaxChunkIdle && len(stream.chunks) <= 1 && !immediate {
 		return
 	}
 
@@ -171,13 +167,11 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 	if len(stream.chunks) == 1 {
 		chunk := &stream.chunks[0]
 
-		if i.cfg.MaxChunkIdle > 0 &&
-			time.Since(chunk.lastUpdated) > i.cfg.MaxChunkIdle {
+		if time.Since(chunk.lastUpdated) > i.cfg.MaxChunkIdle &&
+			chunk.flushed.IsZero() {
 			chunk.closed = true
 
-			if chunk.flushed.IsZero() {
-				return []*chunkDesc{chunk}, stream.labels
-			}
+			return []*chunkDesc{chunk}, stream.labels
 		}
 	}
 

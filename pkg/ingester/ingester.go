@@ -71,6 +71,10 @@ type ChunkStore interface {
 
 // New makes a new Ingester.
 func New(cfg Config, store ChunkStore) (*Ingester, error) {
+	if cfg.MaxChunkIdle == 0 {
+		cfg.MaxChunkIdle = 30 * time.Minute
+	}
+
 	i := &Ingester{
 		cfg:         cfg,
 		instances:   map[string]*instance{},
