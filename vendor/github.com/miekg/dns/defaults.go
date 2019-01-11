@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net"
 	"strconv"
-	"strings"
 )
 
 const hexDigit = "0123456789abcdef"
@@ -164,72 +163,11 @@ func (dns *Msg) IsEdns0() *OPT {
 // the number of labels.  When false is returned the number of labels is not
 // defined.  Also note that this function is extremely liberal; almost any
 // string is a valid domain name as the DNS is 8 bit protocol. It checks if each
-// label fits in 63 characters and that the entire name will fit into the 255
-// octet wire format limit.
+// label fits in 63 characters, but there is no length check for the entire
+// string s. I.e.  a domain name longer than 255 characters is considered valid.
 func IsDomainName(s string) (labels int, ok bool) {
-	// XXX: The logic in this function was copied from packDomainName and
-	// should be kept in sync with that function.
-
-	const lenmsg = 256
-
-	if len(s) == 0 { // Ok, for instance when dealing with update RR without any rdata.
-		return 0, false
-	}
-
-	s = Fqdn(s)
-
-	// Each dot ends a segment of the name. Except for escaped dots (\.), which
-	// are normal dots.
-
-	var (
-		off    int
-		begin  int
-		wasDot bool
-	)
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '\\':
-			if off+1 > lenmsg {
-				return labels, false
-			}
-
-			// check for \DDD
-			if i+3 < len(s) && isDigit(s[i+1]) && isDigit(s[i+2]) && isDigit(s[i+3]) {
-				i += 3
-				begin += 3
-			} else {
-				i++
-				begin++
-			}
-
-			wasDot = false
-		case '.':
-			if wasDot {
-				// two dots back to back is not legal
-				return labels, false
-			}
-			wasDot = true
-
-			labelLen := i - begin
-			if labelLen >= 1<<6 { // top two bits of length must be clear
-				return labels, false
-			}
-
-			// off can already (we're in a loop) be bigger than lenmsg
-			// this happens when a name isn't fully qualified
-			off += 1 + labelLen
-			if off > lenmsg {
-				return labels, false
-			}
-
-			labels++
-			begin = i + 1
-		default:
-			wasDot = false
-		}
-	}
-
-	return labels, true
+	_, labels, err := packDomainName(s, nil, 0, nil, false)
+	return labels, err == nil
 }
 
 // IsSubDomain checks if child is indeed a child of the parent. If child and parent
@@ -243,7 +181,7 @@ func IsSubDomain(parent, child string) bool {
 // The checking is performed on the binary payload.
 func IsMsg(buf []byte) error {
 	// Header
-	if len(buf) < headerSize {
+	if len(buf) < 12 {
 		return errors.New("dns: bad message header")
 	}
 	// Header: Opcode
@@ -253,7 +191,11 @@ func IsMsg(buf []byte) error {
 
 // IsFqdn checks if a domain name is fully qualified.
 func IsFqdn(s string) bool {
-	return strings.HasSuffix(s, ".")
+	l := len(s)
+	if l == 0 {
+		return false
+	}
+	return s[l-1] == '.'
 }
 
 // IsRRset checks if a set of RRs is a valid RRset as defined by RFC 2181.
@@ -302,19 +244,12 @@ func ReverseAddr(addr string) (arpa string, err error) {
 	if ip == nil {
 		return "", &Error{err: "unrecognized address: " + addr}
 	}
-	if v4 := ip.To4(); v4 != nil {
-		buf := make([]byte, 0, net.IPv4len*4+len("in-addr.arpa."))
-		// Add it, in reverse, to the buffer
-		for i := len(v4) - 1; i >= 0; i-- {
-			buf = strconv.AppendInt(buf, int64(v4[i]), 10)
-			buf = append(buf, '.')
-		}
-		// Append "in-addr.arpa." and return (buf already has the final .)
-		buf = append(buf, "in-addr.arpa."...)
-		return string(buf), nil
+	if ip.To4() != nil {
+		return strconv.Itoa(int(ip[15])) + "." + strconv.Itoa(int(ip[14])) + "." + strconv.Itoa(int(ip[13])) + "." +
+			strconv.Itoa(int(ip[12])) + ".in-addr.arpa.", nil
 	}
 	// Must be IPv6
-	buf := make([]byte, 0, net.IPv6len*4+len("ip6.arpa."))
+	buf := make([]byte, 0, len(ip)*4+len("ip6.arpa."))
 	// Add it, in reverse, to the buffer
 	for i := len(ip) - 1; i >= 0; i-- {
 		v := ip[i]

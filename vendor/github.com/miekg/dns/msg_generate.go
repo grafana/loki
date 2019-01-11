@@ -80,7 +80,13 @@ func main() {
 		o := scope.Lookup(name)
 		st, _ := getTypeStruct(o.Type(), scope)
 
-		fmt.Fprintf(b, "func (rr *%s) pack(msg []byte, off int, compression compressionMap, compress bool) (off1 int, err error) {\n", name)
+		fmt.Fprintf(b, "func (rr *%s) pack(msg []byte, off int, compression map[string]int, compress bool) (int, error) {\n", name)
+		fmt.Fprint(b, `off, err := rr.Hdr.pack(msg, off, compression, compress)
+if err != nil {
+	return off, err
+}
+headerEnd := off
+`)
 		for i := 1; i < st.NumFields(); i++ {
 			o := func(s string) {
 				fmt.Fprintf(b, s, st.Field(i).Name())
@@ -100,7 +106,7 @@ return off, err
 				case `dns:"nsec"`:
 					o("off, err = packDataNsec(rr.%s, msg, off)\n")
 				case `dns:"domain-name"`:
-					o("off, err = packDataDomainNames(rr.%s, msg, off, compression, false)\n")
+					o("off, err = packDataDomainNames(rr.%s, msg, off, compression, compress)\n")
 				default:
 					log.Fatalln(name, st.Field(i).Name(), st.Tag(i))
 				}
@@ -110,9 +116,9 @@ return off, err
 			switch {
 			case st.Tag(i) == `dns:"-"`: // ignored
 			case st.Tag(i) == `dns:"cdomain-name"`:
-				o("off, err = packDomainName(rr.%s, msg, off, compression, compress)\n")
+				o("off, err = PackDomainName(rr.%s, msg, off, compression, compress)\n")
 			case st.Tag(i) == `dns:"domain-name"`:
-				o("off, err = packDomainName(rr.%s, msg, off, compression, false)\n")
+				o("off, err = PackDomainName(rr.%s, msg, off, compression, false)\n")
 			case st.Tag(i) == `dns:"a"`:
 				o("off, err = packDataA(rr.%s, msg, off)\n")
 			case st.Tag(i) == `dns:"aaaa"`:
@@ -148,8 +154,7 @@ if rr.%s != "-" {
 				fallthrough
 			case st.Tag(i) == `dns:"hex"`:
 				o("off, err = packStringHex(rr.%s, msg, off)\n")
-			case st.Tag(i) == `dns:"any"`:
-				o("off, err = packStringAny(rr.%s, msg, off)\n")
+
 			case st.Tag(i) == `dns:"octet"`:
 				o("off, err = packStringOctet(rr.%s, msg, off)\n")
 			case st.Tag(i) == "":
@@ -171,6 +176,8 @@ if rr.%s != "-" {
 				log.Fatalln(name, st.Field(i).Name(), st.Tag(i))
 			}
 		}
+		// We have packed everything, only now we know the rdlength of this RR
+		fmt.Fprintln(b, "rr.Header().Rdlength = uint16(off-headerEnd)")
 		fmt.Fprintln(b, "return off, nil }\n")
 	}
 
@@ -179,8 +186,14 @@ if rr.%s != "-" {
 		o := scope.Lookup(name)
 		st, _ := getTypeStruct(o.Type(), scope)
 
-		fmt.Fprintf(b, "func (rr *%s) unpack(msg []byte, off int) (off1 int, err error) {\n", name)
-		fmt.Fprint(b, `rdStart := off
+		fmt.Fprintf(b, "func unpack%s(h RR_Header, msg []byte, off int) (RR, int, error) {\n", name)
+		fmt.Fprintf(b, "rr := new(%s)\n", name)
+		fmt.Fprint(b, "rr.Hdr = h\n")
+		fmt.Fprint(b, `if noRdata(h) {
+return rr, off, nil
+	}
+var err error
+rdStart := off
 _ = rdStart
 
 `)
@@ -188,7 +201,7 @@ _ = rdStart
 			o := func(s string) {
 				fmt.Fprintf(b, s, st.Field(i).Name())
 				fmt.Fprint(b, `if err != nil {
-return off, err
+return rr, off, err
 }
 `)
 			}
@@ -208,7 +221,7 @@ return off, err
 					log.Fatalln(name, st.Field(i).Name(), st.Tag(i))
 				}
 				fmt.Fprint(b, `if err != nil {
-return off, err
+return rr, off, err
 }
 `)
 				continue
@@ -251,8 +264,6 @@ return off, err
 				o("rr.%s, off, err = unpackStringBase64(msg, off, rdStart + int(rr.Hdr.Rdlength))\n")
 			case `dns:"hex"`:
 				o("rr.%s, off, err = unpackStringHex(msg, off, rdStart + int(rr.Hdr.Rdlength))\n")
-			case `dns:"any"`:
-				o("rr.%s, off, err = unpackStringAny(msg, off, rdStart + int(rr.Hdr.Rdlength))\n")
 			case `dns:"octet"`:
 				o("rr.%s, off, err = unpackStringOctet(msg, off)\n")
 			case "":
@@ -276,13 +287,22 @@ return off, err
 			// If we've hit len(msg) we return without error.
 			if i < st.NumFields()-1 {
 				fmt.Fprintf(b, `if off == len(msg) {
-return off, nil
+return rr, off, nil
 	}
 `)
 			}
 		}
-		fmt.Fprintf(b, "return off, nil }\n\n")
+		fmt.Fprintf(b, "return rr, off, err }\n\n")
 	}
+	// Generate typeToUnpack map
+	fmt.Fprintln(b, "var typeToUnpack = map[uint16]func(RR_Header, []byte, int) (RR, int, error){")
+	for _, name := range namedTypes {
+		if name == "RFC3597" {
+			continue
+		}
+		fmt.Fprintf(b, "Type%s: unpack%s,\n", name, name)
+	}
+	fmt.Fprintln(b, "}\n")
 
 	// gofmt
 	res, err := format.Source(b.Bytes())

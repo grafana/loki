@@ -82,7 +82,7 @@ func (r *DNSKEY) PrivateKeyString(p crypto.PrivateKey) string {
 			"Public_value(y): " + pub + "\n"
 
 	case ed25519.PrivateKey:
-		private := toBase64(p.Seed())
+		private := toBase64(p[:32])
 		return format +
 			"Algorithm: " + algorithm + "\n" +
 			"PrivateKey: " + private + "\n"

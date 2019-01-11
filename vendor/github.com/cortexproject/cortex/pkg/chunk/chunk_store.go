@@ -54,8 +54,8 @@ func init() {
 
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
-	ChunkCacheConfig       cache.Config
-	WriteDedupeCacheConfig cache.Config
+	ChunkCacheConfig       cache.Config `yaml:"chunk_cache_config"`
+	WriteDedupeCacheConfig cache.Config `yaml:"write_dedupe_cache_config"`
 
 	MinChunkAge              time.Duration
 	CardinalityCacheSize     int
