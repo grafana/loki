@@ -39,6 +39,16 @@ var (
 		Name:      "ingester_streams_removed_total",
 		Help:      "The total number of streams removed per tenant.",
 	}, []string{"tenant"})
+	memoryStreams = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "loki",
+		Name:      "ingester_memory_streams",
+		Help:      "The current number of streams in memory.",
+	})
+	memoryTenants = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "loki",
+		Name:      "ingester_memory_tenants",
+		Help:      "The current number of tenants in memory.",
+	})
 )
 
 type instance struct {
@@ -82,6 +92,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			i.index.Add(labels, fp)
 			i.streams[fp] = stream
 			i.streamsCreatedTotal.Inc()
+			memoryStreams.Inc()
 		}
 
 		if err := stream.Push(ctx, s.Entries); err != nil {

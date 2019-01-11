@@ -78,6 +78,13 @@ func (i *Ingester) sweepInstance(instance *instance, immediate bool) {
 		i.sweepStream(instance, stream, immediate)
 		i.removeFlushedChunks(instance, stream)
 	}
+
+	if len(instance.streams) == 0 {
+		i.instancesMtx.Lock()
+		delete(i.instances, instance.instanceID)
+		i.instancesMtx.Unlock()
+		memoryTenants.Dec()
+	}
 }
 
 func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate bool) {
@@ -205,6 +212,7 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 	if len(stream.chunks) == 0 {
 		delete(instance.streams, stream.fp)
 		instance.streamsRemovedTotal.Inc()
+		memoryStreams.Dec()
 	}
 }
 
@@ -228,6 +236,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		))
 	}
 
+	chunksFlushedTotal.Add(float64(len(wireChunks)))
 	return i.store.Put(ctx, wireChunks)
 }
 
