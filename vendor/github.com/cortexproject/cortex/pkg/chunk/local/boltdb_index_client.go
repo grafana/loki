@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"fmt"
+	"os"
 	"path"
 	"sync"
 
@@ -34,7 +36,7 @@ type boltIndexClient struct {
 	cfg BoltDBConfig
 
 	dbsMtx sync.RWMutex
-	dbs    map[string]*bolt.DB
+	dbs    map[string]*bbolt.DB
 }
 
 // NewBoltDBIndexClient creates a new IndexClient that used BoltDB.
@@ -45,7 +47,7 @@ func NewBoltDBIndexClient(cfg BoltDBConfig) (chunk.IndexClient, error) {
 
 	return &boltIndexClient{
 		cfg: cfg,
-		dbs: map[string]*bolt.DB{},
+		dbs: map[string]*bbolt.DB{},
 	}, nil
 }
 
@@ -63,7 +65,7 @@ func (b *boltIndexClient) NewWriteBatch() chunk.WriteBatch {
 	}
 }
 
-func (b *boltIndexClient) getDB(name string) (*bolt.DB, error) {
+func (b *boltIndexClient) getDB(name string) (*bbolt.DB, error) {
 	b.dbsMtx.RLock()
 	db, ok := b.dbs[name]
 	b.dbsMtx.RUnlock()
@@ -79,7 +81,7 @@ func (b *boltIndexClient) getDB(name string) (*bolt.DB, error) {
 	}
 
 	// Open the database.
-	db, err := bolt.Open(path.Join(b.cfg.Directory, name), 0666, nil)
+	db, err := bbolt.Open(path.Join(b.cfg.Directory, name), 0666, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +97,7 @@ func (b *boltIndexClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch
 			return err
 		}
 
-		if err := db.Update(func(tx *bolt.Tx) error {
+		if err := db.Update(func(tx *bbolt.Tx) error {
 			b, err := tx.CreateBucketIfNotExists(bucketName)
 			if err != nil {
 				return err
@@ -136,7 +138,7 @@ func (b *boltIndexClient) query(ctx context.Context, query chunk.IndexQuery, cal
 
 	rowPrefix := []byte(query.HashValue + separator)
 
-	return db.View(func(tx *bolt.Tx) error {
+	return db.View(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(bucketName)
 		if b == nil {
 			return nil
@@ -213,4 +215,14 @@ func (b *boltReadBatchIterator) RangeValue() []byte {
 
 func (b *boltReadBatchIterator) Value() []byte {
 	return b.value
+}
+
+func ensureDirectory(dir string) error {
+	info, err := os.Stat(dir)
+	if os.IsNotExist(err) {
+		return os.MkdirAll(dir, 0777)
+	} else if err == nil && !info.IsDir() {
+		return fmt.Errorf("not a directory: %s", dir)
+	}
+	return err
 }

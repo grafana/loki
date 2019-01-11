@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"flag"
-	"fmt"
 	"io/ioutil"
-	"os"
 	"path"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -72,14 +70,4 @@ func (f *fsObjectClient) getChunk(_ context.Context, decodeContext *chunk.Decode
 	}
 
 	return c, nil
-}
-
-func ensureDirectory(dir string) error {
-	info, err := os.Stat(dir)
-	if os.IsNotExist(err) {
-		return os.MkdirAll(dir, 0777)
-	} else if err == nil && !info.IsDir() {
-		return fmt.Errorf("not a directory: %s", dir)
-	}
-	return err
 }

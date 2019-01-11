@@ -12,7 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/util"
 )
 
-type gcsChunkClient struct {
+type gcsObjectClient struct {
 	cfg       GCSConfig
 	schemaCfg chunk.SchemaConfig
 	client    *storage.Client
@@ -29,18 +29,18 @@ func (cfg *GCSConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.BucketName, "gcs.bucketname", "", "Name of GCS bucket to put chunks in.")
 }
 
-// NewGCSChunkClient makes a new chunk.ChunkClient that writes chunks to GCS.
-func NewGCSChunkClient(ctx context.Context, cfg GCSConfig, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
+// NewGCSObjectClient makes a new chunk.ObjectClient that writes chunks to GCS.
+func NewGCSObjectClient(ctx context.Context, cfg GCSConfig, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
 	client, err := storage.NewClient(ctx, instrumentation()...)
 	if err != nil {
 		return nil, err
 	}
-	return newGCSChunkClient(cfg, schemaCfg, client), nil
+	return newGCSObjectClient(cfg, schemaCfg, client), nil
 }
 
-func newGCSChunkClient(cfg GCSConfig, schemaCfg chunk.SchemaConfig, client *storage.Client) chunk.ObjectClient {
+func newGCSObjectClient(cfg GCSConfig, schemaCfg chunk.SchemaConfig, client *storage.Client) chunk.ObjectClient {
 	bucket := client.Bucket(cfg.BucketName)
-	return &gcsChunkClient{
+	return &gcsObjectClient{
 		cfg:       cfg,
 		schemaCfg: schemaCfg,
 		client:    client,
@@ -48,11 +48,11 @@ func newGCSChunkClient(cfg GCSConfig, schemaCfg chunk.SchemaConfig, client *stor
 	}
 }
 
-func (s *gcsChunkClient) Stop() {
+func (s *gcsObjectClient) Stop() {
 	s.client.Close()
 }
 
-func (s *gcsChunkClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (s *gcsObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	for _, chunk := range chunks {
 		buf, err := chunk.Encode()
 		if err != nil {
@@ -69,11 +69,11 @@ func (s *gcsChunkClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) er
 	return nil
 }
 
-func (s *gcsChunkClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
+func (s *gcsObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
 	return util.GetParallelChunks(ctx, input, s.getChunk)
 }
 
-func (s *gcsChunkClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
+func (s *gcsObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
 	reader, err := s.bucket.Object(input.ExternalKey()).NewReader(ctx)
 	if err != nil {
 		return chunk.Chunk{}, errors.WithStack(err)

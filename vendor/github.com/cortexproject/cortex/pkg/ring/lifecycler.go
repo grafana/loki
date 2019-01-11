@@ -17,10 +17,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
-const (
-	minReadyDuration = 1 * time.Minute
-)
-
 var (
 	consulHeartbeats = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ingester_consul_heartbeats_total",
@@ -41,13 +37,14 @@ type LifecyclerConfig struct {
 	RingConfig Config `yaml:"ring,omitempty"`
 
 	// Config for the ingester lifecycle control
-	ListenPort      *int
-	NumTokens       int           `yaml:"num_tokens,omitempty"`
-	HeartbeatPeriod time.Duration `yaml:"heartbeat_period,omitempty"`
-	JoinAfter       time.Duration `yaml:"join_after,omitempty"`
-	ClaimOnRollout  bool          `yaml:"claim_on_rollout,omitempty"`
-	NormaliseTokens bool          `yaml:"normalise_tokens,omitempty"`
-	InfNames        []string      `yaml:"interface_names"`
+	ListenPort       *int
+	NumTokens        int           `yaml:"num_tokens,omitempty"`
+	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period,omitempty"`
+	JoinAfter        time.Duration `yaml:"join_after,omitempty"`
+	MinReadyDuration time.Duration `yaml:"min_ready_duration,omitempty"`
+	ClaimOnRollout   bool          `yaml:"claim_on_rollout,omitempty"`
+	NormaliseTokens  bool          `yaml:"normalise_tokens,omitempty"`
+	InfNames         []string      `yaml:"interface_names"`
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string `yaml:"address"`
@@ -63,6 +60,7 @@ func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.NumTokens, "ingester.num-tokens", 128, "Number of tokens for each ingester.")
 	f.DurationVar(&cfg.HeartbeatPeriod, "ingester.heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul.")
 	f.DurationVar(&cfg.JoinAfter, "ingester.join-after", 0*time.Second, "Period to wait for a claim from another ingester; will join automatically after this.")
+	f.DurationVar(&cfg.MinReadyDuration, "ingester.min-ready-duration", 1*time.Minute, "Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring.")
 	f.BoolVar(&cfg.ClaimOnRollout, "ingester.claim-on-rollout", false, "Send chunks to PENDING ingesters on exit.")
 	f.BoolVar(&cfg.NormaliseTokens, "ingester.normalise-tokens", false, "Store tokens in a normalised fashion to reduce allocations.")
 
@@ -167,7 +165,7 @@ func (i *Lifecycler) IsReady(ctx context.Context) bool {
 
 	// Ingester always take at least minReadyDuration to become ready to work
 	// around race conditions with ingesters exiting and updating the ring
-	if time.Now().Sub(i.startTime) < minReadyDuration {
+	if time.Now().Sub(i.startTime) < i.cfg.MinReadyDuration {
 		return false
 	}
 

@@ -54,8 +54,8 @@ const (
 
 // DiskcacheConfig for the Disk cache.
 type DiskcacheConfig struct {
-	Path string `yaml:"path"`
-	Size int    `yaml:"size"`
+	Path string
+	Size int
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

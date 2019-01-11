@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const indexShards = 32
@@ -19,7 +20,7 @@ type InvertedIndex struct {
 	shards []indexShard
 }
 
-// New returns an new InvertedIndex.
+// New returns a new InvertedIndex.
 func New() *InvertedIndex {
 	shards := make([]indexShard, indexShards)
 	for i := 0; i < indexShards; i++ {
@@ -32,7 +33,7 @@ func New() *InvertedIndex {
 
 // Add a fingerprint under the specified labels.
 func (ii *InvertedIndex) Add(labels []client.LabelPair, fp model.Fingerprint) {
-	shard := &ii.shards[hashFP(fp)%indexShards]
+	shard := &ii.shards[util.HashFP(fp)%indexShards]
 	shard.add(labels, fp)
 }
 
@@ -50,12 +51,6 @@ func (ii *InvertedIndex) Lookup(matchers []*labels.Matcher) []model.Fingerprint 
 
 	sort.Sort(fingerprints(result))
 	return result
-}
-
-// Delete a fingerprint with the given label pairs.
-func (ii *InvertedIndex) Delete(labels []client.LabelPair, fp model.Fingerprint) {
-	shard := &ii.shards[hashFP(fp)%indexShards]
-	shard.delete(labels, fp)
 }
 
 // LabelNames returns all label names.
@@ -82,10 +77,17 @@ func (ii *InvertedIndex) LabelValues(name model.LabelName) model.LabelValues {
 	return mergeLabelValueLists(results)
 }
 
-const cacheLineSize = 64
+// Delete a fingerprint with the given label pairs.
+func (ii *InvertedIndex) Delete(labels []client.LabelPair, fp model.Fingerprint) {
+	shard := &ii.shards[util.HashFP(fp)%indexShards]
+	shard.delete(labels, fp)
+}
 
 // NB slice entries are sorted in fp order.
 type unlockIndex map[model.LabelName]map[model.LabelValue][]model.Fingerprint
+
+// This is the prevalent value for Intel and AMD CPUs as-at 2018.
+const cacheLineSize = 64
 
 type indexShard struct {
 	mtx sync.RWMutex
@@ -154,6 +156,37 @@ func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint 
 	return result
 }
 
+func (shard *indexShard) labelNames() model.LabelNames {
+	shard.mtx.RLock()
+	defer shard.mtx.RUnlock()
+
+	results := make(model.LabelNames, 0, len(shard.idx))
+	for name := range shard.idx {
+		results = append(results, name)
+	}
+
+	sort.Sort(labelNames(results))
+	return results
+}
+
+func (shard *indexShard) labelValues(name model.LabelName) model.LabelValues {
+	shard.mtx.RLock()
+	defer shard.mtx.RUnlock()
+
+	values, ok := shard.idx[name]
+	if !ok {
+		return nil
+	}
+
+	results := make(model.LabelValues, 0, len(values))
+	for val := range values {
+		results = append(results, val)
+	}
+
+	sort.Sort(labelValues(results))
+	return results
+}
+
 func (shard *indexShard) delete(labels []client.LabelPair, fp model.Fingerprint) {
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
@@ -188,37 +221,6 @@ func (shard *indexShard) delete(labels []client.LabelPair, fp model.Fingerprint)
 	}
 }
 
-func (shard *indexShard) labelNames() model.LabelNames {
-	shard.mtx.RLock()
-	defer shard.mtx.RUnlock()
-
-	results := make(model.LabelNames, 0, len(shard.idx))
-	for name := range shard.idx {
-		results = append(results, name)
-	}
-
-	sort.Sort(labelNames(results))
-	return results
-}
-
-func (shard *indexShard) labelValues(name model.LabelName) model.LabelValues {
-	shard.mtx.RLock()
-	defer shard.mtx.RUnlock()
-
-	values, ok := shard.idx[name]
-	if !ok {
-		return nil
-	}
-
-	results := make(model.LabelValues, 0, len(values))
-	for val := range values {
-		results = append(results, val)
-	}
-
-	sort.Sort(labelValues(results))
-	return results
-}
-
 // intersect two sorted lists of fingerprints.  Assumes there are no duplicate
 // fingerprints within the input lists.
 func intersect(a, b []model.Fingerprint) []model.Fingerprint {
@@ -237,17 +239,6 @@ func intersect(a, b []model.Fingerprint) []model.Fingerprint {
 		}
 	}
 	return result
-}
-
-// hashFP simply moves entropy from the most significant 48 bits of the
-// fingerprint into the least significant 16 bits (by XORing) so that a simple
-// MOD on the result can be used to pick a mutex while still making use of
-// changes in more significant bits of the fingerprint. (The fast fingerprinting
-// function we use is prone to only change a few bits for similar metrics. We
-// really want to make use of every change in the fingerprint to vary mutex
-// selection.)
-func hashFP(fp model.Fingerprint) uint {
-	return uint(fp ^ (fp >> 32) ^ (fp >> 16))
 }
 
 type labelValues model.LabelValues

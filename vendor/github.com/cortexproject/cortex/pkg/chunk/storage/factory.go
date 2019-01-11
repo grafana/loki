@@ -46,10 +46,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	// Deprecated flags!!
 	f.IntVar(&cfg.IndexCacheSize, "store.index-cache-size", 0, "Deprecated: Use -store.index-cache-read.*; Size of in-memory index cache, 0 to disable.")
-	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Deprecated: Use -store.index-cache-read.*; Period for which entries in the index cache are valid. Should be no higher than -ingester.max-chunk-idle.")
 	cfg.memcacheClient.RegisterFlagsWithPrefix("index.", "Deprecated: Use -store.index-cache-read.*;", f)
 
 	cfg.indexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
+	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
 }
 
 // NewStore makes the storage clients based on the configuration.
@@ -59,14 +59,14 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 	// Building up from deprecated flags.
 	var caches []cache.Cache
 	if cfg.IndexCacheSize > 0 {
-		fifocache := cache.Instrument("fifo-index", cache.NewFifoCache("index", cache.FifoCacheConfig{Size: cfg.IndexCacheSize, Validity: cfg.IndexCacheValidity}))
+		fifocache := cache.Instrument("fifo-index", cache.NewFifoCache("index", cache.FifoCacheConfig{Size: cfg.IndexCacheSize}))
 		caches = append(caches, fifocache)
 	}
 	if cfg.memcacheClient.Host != "" {
 		client := cache.NewMemcachedClient(cfg.memcacheClient)
 		memcache := cache.Instrument("memcache-index", cache.NewMemcached(cache.MemcachedConfig{
 			Expiration: cfg.IndexCacheValidity,
-		}, client))
+		}, client, "memcache-index"))
 		caches = append(caches, cache.NewBackground("memcache-index", cache.BackgroundConfig{
 			WriteBackGoroutines: 10,
 			WriteBackBuffer:     100,
@@ -76,7 +76,6 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 	var tieredCache cache.Cache
 	if len(caches) > 0 {
 		tieredCache = cache.NewTiered(caches)
-		cfg.indexQueriesCacheConfig.DefaultValidity = cfg.IndexCacheValidity
 	} else {
 		tieredCache, err = cache.New(cfg.indexQueriesCacheConfig)
 		if err != nil {
@@ -133,7 +132,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 		if len(path) > 0 {
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
-		return aws.NewDynamoDBStorageClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
+		return aws.NewDynamoDBIndexClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
 	case "gcp":
 		return gcp.NewStorageClientV1(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcp-columnkey", "bigtable":
@@ -163,13 +162,13 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 		if len(path) > 0 {
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
-		return aws.NewDynamoDBStorageClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
+		return aws.NewDynamoDBObjectClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
 	case "gcp":
-		return gcp.NewBigtableChunkClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
+		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcp-columnkey", "bigtable":
-		return gcp.NewBigtableChunkClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
+		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcs":
-		return gcp.NewGCSChunkClient(context.Background(), cfg.GCSConfig, schemaCfg)
+		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, schemaCfg)
 	case "cassandra":
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	case "filesystem":

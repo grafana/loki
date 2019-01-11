@@ -15,16 +15,16 @@ type Cache interface {
 
 // Config for building Caches.
 type Config struct {
-	EnableDiskcache bool `yaml:"enable_disk_cache"`
-	EnableFifoCache bool `yaml:"enable_fifo_cache"`
+	EnableDiskcache bool
+	EnableFifoCache bool
 
-	DefaultValidity time.Duration `yaml:"default_validity"`
+	DefaultValidity time.Duration
 
-	background     BackgroundConfig      `yaml:"background"`
-	memcache       MemcachedConfig       `yaml:"memcache"`
-	memcacheClient MemcachedClientConfig `yaml:"memcache_client"`
-	diskcache      DiskcacheConfig       `yaml:"diskcache"`
-	fifocache      FifoCacheConfig       `yaml:"fifocache"`
+	background     BackgroundConfig
+	memcache       MemcachedConfig
+	memcacheClient MemcachedClientConfig
+	diskcache      DiskcacheConfig
+	fifocache      FifoCacheConfig
 
 	// This is to name the cache metrics properly.
 	prefix string
@@ -81,7 +81,7 @@ func New(cfg Config) (Cache, error) {
 		}
 
 		client := NewMemcachedClient(cfg.memcacheClient)
-		cache := NewMemcached(cfg.memcache, client)
+		cache := NewMemcached(cfg.memcache, client, cfg.prefix)
 
 		cacheName := cfg.prefix + "memcache"
 		caches = append(caches, NewBackground(cacheName, cfg.background, Instrument(cacheName, cache)))

@@ -19,7 +19,7 @@ const (
 	autoScalingPolicyNamePrefix = "DynamoScalingPolicy_cortex_"
 )
 
-var applicationAutoScalingRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+var applicationAutoScalingRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Namespace: "cortex",
 	Name:      "application_autoscaling_request_duration_seconds",
 	Help:      "Time spent doing ApplicationAutoScaling requests.",
@@ -27,10 +27,10 @@ var applicationAutoScalingRequestDuration = prometheus.NewHistogramVec(prometheu
 	// AWS latency seems to range from a few ms to a few sec. So use 8 buckets
 	// from 128us to 2s. TODO: Confirm that this is the case for ApplicationAutoScaling.
 	Buckets: prometheus.ExponentialBuckets(0.000128, 4, 8),
-}, []string{"operation", "status_code"})
+}, []string{"operation", "status_code"}))
 
 func init() {
-	prometheus.MustRegister(applicationAutoScalingRequestDuration)
+	applicationAutoScalingRequestDuration.Register()
 }
 
 type awsAutoscale struct {
@@ -58,7 +58,7 @@ func (a *awsAutoscale) PostCreateTable(ctx context.Context, desc chunk.TableDesc
 
 func (a *awsAutoscale) DescribeTable(ctx context.Context, desc *chunk.TableDesc) error {
 	err := a.call.backoffAndRetry(ctx, func(ctx context.Context) error {
-		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.DescribeScalableTargetsWithContext", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
+		return instrument.CollectedRequest(ctx, "ApplicationAutoScaling.DescribeScalableTargetsWithContext", applicationAutoScalingRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			out, err := a.ApplicationAutoScaling.DescribeScalableTargetsWithContext(ctx, &applicationautoscaling.DescribeScalableTargetsInput{
 				ResourceIds:       []*string{aws.String("table/" + desc.Name)},
 				ScalableDimension: aws.String("dynamodb:table:WriteCapacityUnits"),
@@ -94,7 +94,7 @@ func (a *awsAutoscale) DescribeTable(ctx context.Context, desc *chunk.TableDesc)
 	}
 
 	err = a.call.backoffAndRetry(ctx, func(ctx context.Context) error {
-		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.DescribeScalingPoliciesWithContext", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
+		return instrument.CollectedRequest(ctx, "ApplicationAutoScaling.DescribeScalingPoliciesWithContext", applicationAutoScalingRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			out, err := a.ApplicationAutoScaling.DescribeScalingPoliciesWithContext(ctx, &applicationautoscaling.DescribeScalingPoliciesInput{
 				PolicyNames:       []*string{aws.String(autoScalingPolicyNamePrefix + desc.Name)},
 				ResourceId:        aws.String("table/" + desc.Name),
@@ -151,7 +151,7 @@ func (a *awsAutoscale) UpdateTable(ctx context.Context, current chunk.TableDesc,
 func (a *awsAutoscale) enableAutoScaling(ctx context.Context, desc chunk.TableDesc) error {
 	// Registers or updates a scalable target
 	if err := a.call.backoffAndRetry(ctx, func(ctx context.Context) error {
-		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.RegisterScalableTarget", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
+		return instrument.CollectedRequest(ctx, "ApplicationAutoScaling.RegisterScalableTarget", applicationAutoScalingRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			input := &applicationautoscaling.RegisterScalableTargetInput{
 				MinCapacity:       aws.Int64(desc.WriteScale.MinCapacity),
 				MaxCapacity:       aws.Int64(desc.WriteScale.MaxCapacity),
@@ -172,7 +172,7 @@ func (a *awsAutoscale) enableAutoScaling(ctx context.Context, desc chunk.TableDe
 
 	// Puts or updates a scaling policy
 	return a.call.backoffAndRetry(ctx, func(ctx context.Context) error {
-		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.PutScalingPolicy", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
+		return instrument.CollectedRequest(ctx, "ApplicationAutoScaling.PutScalingPolicy", applicationAutoScalingRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			input := &applicationautoscaling.PutScalingPolicyInput{
 				PolicyName:        aws.String(autoScalingPolicyNamePrefix + desc.Name),
 				PolicyType:        aws.String("TargetTrackingScaling"),
@@ -197,7 +197,7 @@ func (a *awsAutoscale) enableAutoScaling(ctx context.Context, desc chunk.TableDe
 func (a *awsAutoscale) disableAutoScaling(ctx context.Context, desc chunk.TableDesc) error {
 	// Deregister scalable target
 	if err := a.call.backoffAndRetry(ctx, func(ctx context.Context) error {
-		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.DeregisterScalableTarget", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
+		return instrument.CollectedRequest(ctx, "ApplicationAutoScaling.DeregisterScalableTarget", applicationAutoScalingRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			input := &applicationautoscaling.DeregisterScalableTargetInput{
 				ResourceId:        aws.String("table/" + desc.Name),
 				ScalableDimension: aws.String("dynamodb:table:WriteCapacityUnits"),
@@ -212,7 +212,7 @@ func (a *awsAutoscale) disableAutoScaling(ctx context.Context, desc chunk.TableD
 
 	// Delete scaling policy
 	return a.call.backoffAndRetry(ctx, func(ctx context.Context) error {
-		return instrument.TimeRequestHistogram(ctx, "ApplicationAutoScaling.DeleteScalingPolicy", applicationAutoScalingRequestDuration, func(ctx context.Context) error {
+		return instrument.CollectedRequest(ctx, "ApplicationAutoScaling.DeleteScalingPolicy", applicationAutoScalingRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			input := &applicationautoscaling.DeleteScalingPolicyInput{
 				PolicyName:        aws.String(autoScalingPolicyNamePrefix + desc.Name),
 				ResourceId:        aws.String("table/" + desc.Name),

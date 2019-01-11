@@ -28,6 +28,10 @@ const (
 	invalidLabel            = "label_invalid"
 	labelNameTooLong        = "label_name_too_long"
 	labelValueTooLong       = "label_value_too_long"
+
+	// RateLimited is one of the values for the reason to discard samples.
+	// Declared here to avoid duplication in ingester and distributor.
+	RateLimited = "rate_limited"
 )
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
