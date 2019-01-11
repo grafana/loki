@@ -595,13 +595,6 @@ func UnpackRR(msg []byte, off int) (rr RR, off1 int, err error) {
 	if err != nil {
 		return nil, len(msg), err
 	}
-
-	return UnpackRRWithHeader(h, msg, off)
-}
-
-// UnpackRRWithHeader unpacks the record type specific payload given an existing
-// RR_Header.
-func UnpackRRWithHeader(h RR_Header, msg []byte, off int) (rr RR, off1 int, err error) {
 	end := off + int(h.Rdlength)
 
 	if fn, known := typeToUnpack[h.Rrtype]; !known {
@@ -933,65 +926,49 @@ func compressedLen(dns *Msg, compress bool) int {
 			l += r.len()
 			compressionLenHelper(compression, r.Name)
 		}
-		l += compressionLenSlice(l, compression, dns.Answer)
-		l += compressionLenSlice(l, compression, dns.Ns)
-		l += compressionLenSlice(l, compression, dns.Extra)
-
-		return l
-	}
-
-	for _, r := range dns.Question {
-		l += r.len()
-	}
-	for _, r := range dns.Answer {
-		if r != nil {
+		l += compressionLenSlice(compression, dns.Answer)
+		l += compressionLenSlice(compression, dns.Ns)
+		l += compressionLenSlice(compression, dns.Extra)
+	} else {
+		for _, r := range dns.Question {
 			l += r.len()
 		}
-	}
-	for _, r := range dns.Ns {
-		if r != nil {
-			l += r.len()
+		for _, r := range dns.Answer {
+			if r != nil {
+				l += r.len()
+			}
+		}
+		for _, r := range dns.Ns {
+			if r != nil {
+				l += r.len()
+			}
+		}
+		for _, r := range dns.Extra {
+			if r != nil {
+				l += r.len()
+			}
 		}
 	}
-	for _, r := range dns.Extra {
-		if r != nil {
-			l += r.len()
-		}
-	}
-
 	return l
 }
 
-func compressionLenSlice(len int, c map[string]int, rs []RR) int {
+func compressionLenSlice(c map[string]int, rs []RR) int {
 	var l int
 	for _, r := range rs {
 		if r == nil {
 			continue
 		}
-		// track this length, and the global length in len, while taking compression into account for both.
-		x := r.len()
-		l += x
-		len += x
-
+		l += r.len()
 		k, ok := compressionLenSearch(c, r.Header().Name)
 		if ok {
 			l += 1 - k
-			len += 1 - k
 		}
-
-		if len < maxCompressionOffset {
-			compressionLenHelper(c, r.Header().Name)
-		}
-
+		compressionLenHelper(c, r.Header().Name)
 		k, ok = compressionLenSearchType(c, r)
 		if ok {
 			l += 1 - k
-			len += 1 - k
 		}
-
-		if len < maxCompressionOffset {
-			compressionLenHelperType(c, r)
-		}
+		compressionLenHelperType(c, r)
 	}
 	return l
 }

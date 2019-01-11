@@ -1,13 +1,13 @@
-// +build !amd64 appengine !gc noasm
+// +build !amd64 appengine !gc purego
 
 package xxhash
 
 // Sum64 computes the 64-bit xxHash digest of b.
 func Sum64(b []byte) uint64 {
 	// A simpler version would be
-	//   x := New()
-	//   x.Write(b)
-	//   return x.Sum64()
+	//   d := New()
+	//   d.Write(b)
+	//   return d.Sum64()
 	// but this is faster, particularly for small inputs.
 
 	n := len(b)
@@ -61,8 +61,9 @@ func Sum64(b []byte) uint64 {
 	return h
 }
 
-func writeBlocks(x *xxh, b []byte) []byte {
-	v1, v2, v3, v4 := x.v1, x.v2, x.v3, x.v4
+func writeBlocks(d *Digest, b []byte) int {
+	v1, v2, v3, v4 := d.v1, d.v2, d.v3, d.v4
+	n := len(b)
 	for len(b) >= 32 {
 		v1 = round(v1, u64(b[0:8:len(b)]))
 		v2 = round(v2, u64(b[8:16:len(b)]))
@@ -70,6 +71,6 @@ func writeBlocks(x *xxh, b []byte) []byte {
 		v4 = round(v4, u64(b[24:32:len(b)]))
 		b = b[32:len(b):len(b)]
 	}
-	x.v1, x.v2, x.v3, x.v4 = v1, v2, v3, v4
-	return b
+	d.v1, d.v2, d.v3, d.v4 = v1, v2, v3, v4
+	return n - len(b)
 }

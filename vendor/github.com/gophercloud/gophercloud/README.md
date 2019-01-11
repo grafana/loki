@@ -140,7 +140,7 @@ See the [contributing guide](./.github/CONTRIBUTING.md).
 ## Help and feedback
 
 If you're struggling with something or have spotted a potential bug, feel free
-to submit an issue to our [bug tracker](/issues).
+to submit an issue to our [bug tracker](https://github.com/gophercloud/gophercloud/issues).
 
 ## Thank You
 

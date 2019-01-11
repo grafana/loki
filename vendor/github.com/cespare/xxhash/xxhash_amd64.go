@@ -1,6 +1,6 @@
 // +build !appengine
 // +build gc
-// +build !noasm
+// +build !purego
 
 package xxhash
 
@@ -9,4 +9,5 @@ package xxhash
 //go:noescape
 func Sum64(b []byte) uint64
 
-func writeBlocks(x *xxh, b []byte) []byte
+//go:noescape
+func writeBlocks(*Digest, []byte) int

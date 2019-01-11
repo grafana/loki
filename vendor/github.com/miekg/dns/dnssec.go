@@ -73,7 +73,6 @@ var StringToAlgorithm = reverseInt8(AlgorithmToString)
 // AlgorithmToHash is a map of algorithm crypto hash IDs to crypto.Hash's.
 var AlgorithmToHash = map[uint8]crypto.Hash{
 	RSAMD5:           crypto.MD5, // Deprecated in RFC 6725
-	DSA:              crypto.SHA1,
 	RSASHA1:          crypto.SHA1,
 	RSASHA1NSEC3SHA1: crypto.SHA1,
 	RSASHA256:        crypto.SHA256,
