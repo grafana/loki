@@ -195,6 +195,7 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 
 	if len(stream.chunks) == 0 {
 		delete(instance.streams, stream.fp)
+		instance.streamsRemovedTotal.Inc()
 	}
 }
 

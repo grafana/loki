@@ -2,9 +2,8 @@
   local container = $.core.v1.container,
 
   querier_args::
-    $._config.ringArgs {
+    $._config.commonArgs {
       target: 'querier',
-      'distributor.replication-factor': $._config.replication_factor,
     },
 
   querier_container::
@@ -16,6 +15,7 @@
 
   querier_deployment:
     deployment.new('querier', 3, [$.querier_container]) +
+    $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki') +
     $.util.antiAffinity,
 

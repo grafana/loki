@@ -3,9 +3,10 @@
 INSTANCEID="${1:-}"
 APIKEY="${2:-}"
 INSTANCEURL="${3:-}"
+DATAROOT="${5-/var/lib/docker}"
 
-if [ -z "$INSTANCEID" -o -z "$APIKEY" -o -z "$INSTANCEURL" ]; then
-    echo "usage: $0 <instanceId> <apiKey> <url>"
+if [ -z "$INSTANCEID" -o -z "$APIKEY" -o -z "$INSTANCEURL" -o -z "$DATAROOT" ]; then
+    echo "usage: $0 <instanceId> <apiKey> <url> <dataroot>"
     exit 1
 fi
 
@@ -133,7 +134,7 @@ spec:
           path: /var/log
         name: varlog
       - hostPath:
-          path: /var/lib/docker/containers
+          path: <dataroot>/containers
         name: varlibdockercontainers
   updateStrategy:
     type: RollingUpdate
@@ -166,4 +167,5 @@ YAML
 echo "$TEMPLATE" | sed \
   -e "s#<instanceId>#${INSTANCEID}#" \
   -e "s#<apiKey>#${APIKEY}#" \
-  -e "s#<instanceUrl>#${INSTANCEURL}#"
+  -e "s#<instanceUrl>#${INSTANCEURL}#" \
+  -e "s#<dataroot>#${DATAROOT}#"

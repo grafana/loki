@@ -15,17 +15,20 @@ Compared to other log aggregation systems, Loki:
 - is an especially good fit for storing [Kubernetes](https://kubernetes.io/) Pod logs. Metadata such as Pod labels is automatically scraped and indexed.
 - has native support in Grafana (already in the nightly builds, will be included in Grafana 6.0).
 
-Loki consists of 3 components:
+A Loki-based logging stack consists of 3 components:
 
+- `promtail` is the agent, responsible for gathering logs and sending them to Loki.
 - `loki` is the main server, responsible for storing logs and processing queries.
-- `promtail` is the agent, responsible for gathering logs and sending them to loki.
 - [Grafana](https://github.com/grafana/grafana) for the UI.
+
+Loki is like Prometheus, but for logs: we prefer a multidimensional label-based approach to indexing, and want a single-binary, easy to operate system with no dependencies.
+Loki differs from Prometheus by focussing on logs instead of metrics, and delivering logs via push, instead of pull.
 
 ## Getting started
 
 For instructions on getting started with Loki, see [our getting started docs](./production/README.md).
 
-For the beginnings of documentation on how to use Loki, see [our usage docs](./docs/usage.md).
+For the beginnings of documentation on how to use Loki, see [our usage docs](./docs/usage.md).  [API documentation](./docs/api.md) is also available.
 
 ## Getting Help
 
@@ -47,4 +50,17 @@ Your feedback is always welcome.
 
 [kccna18-event]: https://kccna18.sched.com/event/GrXC/on-the-oss-path-to-full-observability-with-grafana-david-kaltschmidt-grafana-labs
 [kccna18-slides]: https://speakerdeck.com/davkal/on-the-path-to-full-observability-with-oss-and-launch-of-loki
-[kccna18-video]: https://www.youtube.com/watch?v=tpJRG_ijKe0
+[kccna18-video]: https://www.youtube.com/watch?v=U7C5SpRtK74&list=PLj6h78yzYM2PZf9eA7bhWnIh_mK1vyOfU&index=346
+
+## Contributing
+
+For now, you need to add your fork as a remote on the original **$GOPATH**/src/github.com/grafana/loki clone, so:
+
+```bash
+
+$ go get github.com/grafana/loki
+$ cd $GOPATH/src/github.com/grafana/loki # GOPATH is $HOME/go by default.
+
+$ git remote add <FORK_NAME> <FORK_URL>
+```
+Notice: `go get` return `package github.com/grafana/loki: no Go files in /go/src/github.com/grafana/loki` is normal.

@@ -15,7 +15,7 @@ service Querier {
 }
 
 message PushRequest {
-  repeated Stream streams = 1;
+  repeated Stream streams = 1 [(gogoproto.jsontag) = "streams"];
 }
 
 message PushResponse {
@@ -49,11 +49,11 @@ message LabelResponse {
 }
 
 message Stream {
-  string labels = 1;
-  repeated Entry entries = 2 [(gogoproto.nullable) = false];
+  string labels = 1 [(gogoproto.jsontag) = "labels"];
+  repeated Entry entries = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "entries"];
 }
 
 message Entry {
-  google.protobuf.Timestamp timestamp = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
-  string line = 2;
+  google.protobuf.Timestamp timestamp = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false, (gogoproto.jsontag) = "ts"];
+  string line = 2 [(gogoproto.jsontag) = "line"];
 }

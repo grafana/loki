@@ -8,9 +8,11 @@ Currently there are five ways to try out Loki, in order from easier to hardest:
 - [Building from source](#build-and-run-from-source)
 - [Using our Ksonnet config to run a fully-blown production setup](ksonnet/)
 
-## Free Hosted Demo
+## Get a Free Hosted Demo of Grafana Cloud: Logs
 
-Grafana is running a free, hosted demo cluster of Loki; instructions for getting access can be found at [grafana.com](https://grafana.com/loki).
+Grafana is running a free, hosted demo cluster of Loki; instructions for getting access can be found at [grafana.com/loki](https://grafana.com/loki).
+
+In addition, the demo also includes an allotment of complimentary metrics (Prometheus or Graphite) to help illustrate the experience of easily switching between logs and metrics.
 
 ## Run Locally Using Docker
 
@@ -43,6 +45,10 @@ Loki can be run in a single host, no-dependencies mode using the following comma
 You need `go` [v1.10+](https://golang.org/dl/) installed locally.
 
 ```bash
+
+$ go get github.com/grafana/loki
+$ cd $GOPATH/src/github.com/grafana/loki # GOPATH is $HOME/go by default.
+
 $ go build ./cmd/loki
 $ ./loki -config.file=./cmd/loki/loki-local-config.yaml
 ...

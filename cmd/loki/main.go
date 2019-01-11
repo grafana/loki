@@ -7,10 +7,16 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/loki"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/version"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
+
+func init() {
+	prometheus.MustRegister(version.NewCollector("loki"))
+}
 
 func main() {
 	var (
@@ -35,6 +41,8 @@ func main() {
 		level.Error(util.Logger).Log("msg", "error initialising loki", "err", err)
 		os.Exit(1)
 	}
+
+	level.Info(util.Logger).Log("msg", "Starting Loki", "version", version.Info())
 
 	if err := t.Run(); err != nil {
 		level.Error(util.Logger).Log("msg", "error running loki", "err", err)
