@@ -2,7 +2,11 @@
 
 [Fluentd](https://fluentd.org/) output plugin to ship logs to a Loki server.
 
-TODO: write description for you plugin.
+This plugin offers two line formats and uses protobuf to send compressed data to Loki.
+
+Key features:
+  * extra_labels - labels to be added to every line of a logfile, useful for designating environments
+  * label_keys - customizable list of keys for stream labels
 
 ## Installation
 
