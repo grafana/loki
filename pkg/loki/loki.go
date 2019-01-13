@@ -50,6 +50,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Querier.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
 	c.Ingester.RegisterFlags(f)
+	c.StorageConfig.RegisterFlags(f)
 	c.ChunkStoreConfig.RegisterFlags(f)
 	c.SchemaConfig.RegisterFlags(f)
 	c.LimitsConfig.RegisterFlags(f)
