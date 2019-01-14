@@ -1,24 +1,29 @@
 # xxhash
 
 [![GoDoc](https://godoc.org/github.com/cespare/xxhash?status.svg)](https://godoc.org/github.com/cespare/xxhash)
+[![Build Status](https://travis-ci.org/cespare/xxhash.svg?branch=master)](https://travis-ci.org/cespare/xxhash)
 
 xxhash is a Go implementation of the 64-bit
 [xxHash](http://cyan4973.github.io/xxHash/) algorithm, XXH64. This is a
 high-quality hashing algorithm that is much faster than anything in the Go
 standard library.
 
-The API is very small, taking its cue from the other hashing packages in the
-standard library:
+This package provides a straightforward API:
 
-    $ go doc github.com/cespare/xxhash                                                                                                                                                                                              !
-    package xxhash // import "github.com/cespare/xxhash"
+```
+func Sum64(b []byte) uint64
+func Sum64String(s string) uint64
+type Digest struct{ ... }
+    func New() *Digest
+```
 
-    Package xxhash implements the 64-bit variant of xxHash (XXH64) as described
-    at http://cyan4973.github.io/xxHash/.
+The `Digest` type implements hash.Hash64. Its key methods are:
 
-    func New() hash.Hash64
-    func Sum64(b []byte) uint64
-    func Sum64String(s string) uint64
+```
+func (*Digest) Write([]byte) (int, error)
+func (*Digest) WriteString(string) (int, error)
+func (*Digest) Sum64() uint64
+```
 
 This implementation provides a fast pure-Go implementation and an even faster
 assembly implementation for amd64.
@@ -26,17 +31,25 @@ assembly implementation for amd64.
 ## Benchmarks
 
 Here are some quick benchmarks comparing the pure-Go and assembly
-implementations of Sum64 against another popular Go XXH64 implementation,
-[github.com/OneOfOne/xxhash](https://github.com/OneOfOne/xxhash):
+implementations of Sum64.
 
-| input size | OneOfOne | cespare (noasm) | cespare |
-| --- | --- | --- | --- |
-| 5 B   |  438.34 MB/s |  596.40 MB/s |  711.11 MB/s  |
-| 100 B | 3676.54 MB/s | 4301.40 MB/s | 4598.95 MB/s  |
-| 4 KB  | 8128.64 MB/s | 8840.83 MB/s | 10549.72 MB/s |
-| 10 MB | 7335.19 MB/s | 7736.64 MB/s | 9024.04 MB/s  |
+| input size | purego | asm |
+| --- | --- | --- |
+| 5 B   |  979.66 MB/s |  1291.17 MB/s  |
+| 100 B | 7475.26 MB/s | 7973.40 MB/s  |
+| 4 KB  | 17573.46 MB/s | 17602.65 MB/s |
+| 10 MB | 17131.46 MB/s | 17142.16 MB/s |
+
+These numbers were generated on Ubuntu 18.04 with an Intel i7-8700K CPU using
+the following commands under Go 1.11.2:
+
+```
+$ go test -tags purego -benchtime 10s -bench '/xxhash,direct,bytes'
+$ go test -benchtime 10s -bench '/xxhash,direct,bytes'
+```
 
 ## Projects using this package
 
 - [InfluxDB](https://github.com/influxdata/influxdb)
 - [Prometheus](https://github.com/prometheus/prometheus)
+- [FreeCache](https://github.com/coocood/freecache)

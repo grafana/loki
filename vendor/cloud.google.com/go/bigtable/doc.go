@@ -1,5 +1,5 @@
 /*
-Copyright 2015 Google Inc. All Rights Reserved.
+Copyright 2015 Google LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -116,7 +116,7 @@ const (
 
 // clientUserAgent identifies the version of this package.
 // It should be bumped upon significant changes only.
-const clientUserAgent = "cbt-go/20160628"
+const clientUserAgent = "cbt-go/20180601"
 
 // resourcePrefixHeader is the name of the metadata header used to indicate
 // the resource being operated on.

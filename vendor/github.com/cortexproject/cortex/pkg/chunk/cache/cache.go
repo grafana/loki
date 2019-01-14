@@ -15,16 +15,16 @@ type Cache interface {
 
 // Config for building Caches.
 type Config struct {
-	EnableDiskcache bool
-	EnableFifoCache bool
+	EnableDiskcache bool `yaml:"enable_disk_cache"`
+	EnableFifoCache bool `yaml:"enable_fifo_cache"`
 
-	DefaultValidity time.Duration
+	DefaultValidity time.Duration `yaml:"default_validity"`
 
-	background     BackgroundConfig
-	memcache       MemcachedConfig
-	memcacheClient MemcachedClientConfig
-	diskcache      DiskcacheConfig
-	fifocache      FifoCacheConfig
+	background     BackgroundConfig      `yaml:"background"`
+	memcache       MemcachedConfig       `yaml:"memcache"`
+	memcacheClient MemcachedClientConfig `yaml:"memcache_client"`
+	diskcache      DiskcacheConfig       `yaml:"diskcache"`
+	fifocache      FifoCacheConfig       `yaml:"fifocache"`
 
 	// This is to name the cache metrics properly.
 	prefix string

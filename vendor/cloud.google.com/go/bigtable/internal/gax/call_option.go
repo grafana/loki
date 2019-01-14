@@ -1,5 +1,5 @@
 /*
-Copyright 2016 Google Inc. All Rights Reserved.
+Copyright 2016 Google LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// This is ia snapshot from github.com/googleapis/gax-go with minor modifications.
+// Package gax is a snapshot from github.com/googleapis/gax-go with minor modifications.
 package gax
 
 import (
@@ -23,12 +23,14 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
+// CallOption is a generic interface for modifying the behavior of outbound calls.
 type CallOption interface {
 	Resolve(*CallSettings)
 }
 
 type callOptions []CallOption
 
+// Resolve resolves all call options individually.
 func (opts callOptions) Resolve(s *CallSettings) *CallSettings {
 	for _, opt := range opts {
 		opt.Resolve(s)
@@ -36,30 +38,32 @@ func (opts callOptions) Resolve(s *CallSettings) *CallSettings {
 	return s
 }
 
-// Encapsulates the call settings for a particular API call.
+// CallSettings encapsulates the call settings for a particular API call.
 type CallSettings struct {
 	Timeout       time.Duration
 	RetrySettings RetrySettings
 }
 
-// Per-call configurable settings for retrying upon transient failure.
+// RetrySettings are per-call configurable settings for retrying upon transient failure.
 type RetrySettings struct {
 	RetryCodes      map[codes.Code]bool
 	BackoffSettings BackoffSettings
 }
 
-// Parameters to the exponential backoff algorithm for retrying.
+// BackoffSettings are parameters to the exponential backoff algorithm for retrying.
 type BackoffSettings struct {
 	DelayTimeoutSettings MultipliableDuration
 	RPCTimeoutSettings   MultipliableDuration
 }
 
+// MultipliableDuration defines parameters for backoff settings.
 type MultipliableDuration struct {
 	Initial    time.Duration
 	Max        time.Duration
 	Multiplier float64
 }
 
+// Resolve merges the receiver CallSettings into the given CallSettings.
 func (w CallSettings) Resolve(s *CallSettings) {
 	s.Timeout = w.Timeout
 	s.RetrySettings = w.RetrySettings

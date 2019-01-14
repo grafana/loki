@@ -4,7 +4,8 @@ package xxhash
 
 import (
 	"encoding/binary"
-	"hash"
+	"errors"
+	"math/bits"
 )
 
 const (
@@ -29,72 +30,79 @@ var (
 	prime5v = prime5
 )
 
-type xxh struct {
+// Digest implements hash.Hash64.
+type Digest struct {
 	v1    uint64
 	v2    uint64
 	v3    uint64
 	v4    uint64
-	total int
+	total uint64
 	mem   [32]byte
 	n     int // how much of mem is used
 }
 
-// New creates a new hash.Hash64 that implements the 64-bit xxHash algorithm.
-func New() hash.Hash64 {
-	var x xxh
-	x.Reset()
-	return &x
+// New creates a new Digest that computes the 64-bit xxHash algorithm.
+func New() *Digest {
+	var d Digest
+	d.Reset()
+	return &d
 }
 
-func (x *xxh) Reset() {
-	x.n = 0
-	x.total = 0
-	x.v1 = prime1v + prime2
-	x.v2 = prime2
-	x.v3 = 0
-	x.v4 = -prime1v
+// Reset clears the Digest's state so that it can be reused.
+func (d *Digest) Reset() {
+	d.v1 = prime1v + prime2
+	d.v2 = prime2
+	d.v3 = 0
+	d.v4 = -prime1v
+	d.total = 0
+	d.n = 0
 }
 
-func (x *xxh) Size() int      { return 8 }
-func (x *xxh) BlockSize() int { return 32 }
+// Size always returns 8 bytes.
+func (d *Digest) Size() int { return 8 }
 
-// Write adds more data to x. It always returns len(b), nil.
-func (x *xxh) Write(b []byte) (n int, err error) {
+// BlockSize always returns 32 bytes.
+func (d *Digest) BlockSize() int { return 32 }
+
+// Write adds more data to d. It always returns len(b), nil.
+func (d *Digest) Write(b []byte) (n int, err error) {
 	n = len(b)
-	x.total += len(b)
+	d.total += uint64(n)
 
-	if x.n+len(b) < 32 {
+	if d.n+n < 32 {
 		// This new data doesn't even fill the current block.
-		copy(x.mem[x.n:], b)
-		x.n += len(b)
+		copy(d.mem[d.n:], b)
+		d.n += n
 		return
 	}
 
-	if x.n > 0 {
+	if d.n > 0 {
 		// Finish off the partial block.
-		copy(x.mem[x.n:], b)
-		x.v1 = round(x.v1, u64(x.mem[0:8]))
-		x.v2 = round(x.v2, u64(x.mem[8:16]))
-		x.v3 = round(x.v3, u64(x.mem[16:24]))
-		x.v4 = round(x.v4, u64(x.mem[24:32]))
-		b = b[32-x.n:]
-		x.n = 0
+		copy(d.mem[d.n:], b)
+		d.v1 = round(d.v1, u64(d.mem[0:8]))
+		d.v2 = round(d.v2, u64(d.mem[8:16]))
+		d.v3 = round(d.v3, u64(d.mem[16:24]))
+		d.v4 = round(d.v4, u64(d.mem[24:32]))
+		b = b[32-d.n:]
+		d.n = 0
 	}
 
 	if len(b) >= 32 {
 		// One or more full blocks left.
-		b = writeBlocks(x, b)
+		nw := writeBlocks(d, b)
+		b = b[nw:]
 	}
 
 	// Store any remaining partial block.
-	copy(x.mem[:], b)
-	x.n = len(b)
+	copy(d.mem[:], b)
+	d.n = len(b)
 
 	return
 }
 
-func (x *xxh) Sum(b []byte) []byte {
-	s := x.Sum64()
+// Sum appends the current hash to b and returns the resulting slice.
+func (d *Digest) Sum(b []byte) []byte {
+	s := d.Sum64()
 	return append(
 		b,
 		byte(s>>56),
@@ -108,35 +116,36 @@ func (x *xxh) Sum(b []byte) []byte {
 	)
 }
 
-func (x *xxh) Sum64() uint64 {
+// Sum64 returns the current hash.
+func (d *Digest) Sum64() uint64 {
 	var h uint64
 
-	if x.total >= 32 {
-		v1, v2, v3, v4 := x.v1, x.v2, x.v3, x.v4
+	if d.total >= 32 {
+		v1, v2, v3, v4 := d.v1, d.v2, d.v3, d.v4
 		h = rol1(v1) + rol7(v2) + rol12(v3) + rol18(v4)
 		h = mergeRound(h, v1)
 		h = mergeRound(h, v2)
 		h = mergeRound(h, v3)
 		h = mergeRound(h, v4)
 	} else {
-		h = x.v3 + prime5
+		h = d.v3 + prime5
 	}
 
-	h += uint64(x.total)
+	h += d.total
 
-	i, end := 0, x.n
+	i, end := 0, d.n
 	for ; i+8 <= end; i += 8 {
-		k1 := round(0, u64(x.mem[i:i+8]))
+		k1 := round(0, u64(d.mem[i:i+8]))
 		h ^= k1
 		h = rol27(h)*prime1 + prime4
 	}
 	if i+4 <= end {
-		h ^= uint64(u32(x.mem[i:i+4])) * prime1
+		h ^= uint64(u32(d.mem[i:i+4])) * prime1
 		h = rol23(h)*prime2 + prime3
 		i += 4
 	}
 	for i < end {
-		h ^= uint64(x.mem[i]) * prime5
+		h ^= uint64(d.mem[i]) * prime5
 		h = rol11(h) * prime1
 		i++
 	}
@@ -148,6 +157,56 @@ func (x *xxh) Sum64() uint64 {
 	h ^= h >> 32
 
 	return h
+}
+
+const (
+	magic         = "xxh\x06"
+	marshaledSize = len(magic) + 8*5 + 32
+)
+
+// MarshalBinary implements the encoding.BinaryMarshaler interface.
+func (d *Digest) MarshalBinary() ([]byte, error) {
+	b := make([]byte, 0, marshaledSize)
+	b = append(b, magic...)
+	b = appendUint64(b, d.v1)
+	b = appendUint64(b, d.v2)
+	b = appendUint64(b, d.v3)
+	b = appendUint64(b, d.v4)
+	b = appendUint64(b, d.total)
+	b = append(b, d.mem[:d.n]...)
+	b = b[:len(b)+len(d.mem)-d.n]
+	return b, nil
+}
+
+// UnmarshalBinary implements the encoding.BinaryUnmarshaler interface.
+func (d *Digest) UnmarshalBinary(b []byte) error {
+	if len(b) < len(magic) || string(b[:len(magic)]) != magic {
+		return errors.New("xxhash: invalid hash state identifier")
+	}
+	if len(b) != marshaledSize {
+		return errors.New("xxhash: invalid hash state size")
+	}
+	b = b[len(magic):]
+	b, d.v1 = consumeUint64(b)
+	b, d.v2 = consumeUint64(b)
+	b, d.v3 = consumeUint64(b)
+	b, d.v4 = consumeUint64(b)
+	b, d.total = consumeUint64(b)
+	copy(d.mem[:], b)
+	b = b[len(d.mem):]
+	d.n = int(d.total % uint64(len(d.mem)))
+	return nil
+}
+
+func appendUint64(b []byte, x uint64) []byte {
+	var a [8]byte
+	binary.LittleEndian.PutUint64(a[:], x)
+	return append(b, a[:]...)
+}
+
+func consumeUint64(b []byte) ([]byte, uint64) {
+	x := u64(b)
+	return b[8:], x
 }
 
 func u64(b []byte) uint64 { return binary.LittleEndian.Uint64(b) }
@@ -167,21 +226,11 @@ func mergeRound(acc, val uint64) uint64 {
 	return acc
 }
 
-// It's important for performance to get the rotates to actually compile to
-// ROLQs. gc will do this for us but only if rotate amount is a constant.
-//
-// TODO(caleb): In Go 1.9 a single function
-//   rol(x uint64, k uint) uint64
-// should do instead. See https://golang.org/issue/18254.
-//
-// TODO(caleb): In Go 1.x (1.9?) consider using the new math/bits package to be more
-// explicit about things. See https://golang.org/issue/18616.
-
-func rol1(x uint64) uint64  { return (x << 1) | (x >> (64 - 1)) }
-func rol7(x uint64) uint64  { return (x << 7) | (x >> (64 - 7)) }
-func rol11(x uint64) uint64 { return (x << 11) | (x >> (64 - 11)) }
-func rol12(x uint64) uint64 { return (x << 12) | (x >> (64 - 12)) }
-func rol18(x uint64) uint64 { return (x << 18) | (x >> (64 - 18)) }
-func rol23(x uint64) uint64 { return (x << 23) | (x >> (64 - 23)) }
-func rol27(x uint64) uint64 { return (x << 27) | (x >> (64 - 27)) }
-func rol31(x uint64) uint64 { return (x << 31) | (x >> (64 - 31)) }
+func rol1(x uint64) uint64  { return bits.RotateLeft64(x, 1) }
+func rol7(x uint64) uint64  { return bits.RotateLeft64(x, 7) }
+func rol11(x uint64) uint64 { return bits.RotateLeft64(x, 11) }
+func rol12(x uint64) uint64 { return bits.RotateLeft64(x, 12) }
+func rol18(x uint64) uint64 { return bits.RotateLeft64(x, 18) }
+func rol23(x uint64) uint64 { return bits.RotateLeft64(x, 23) }
+func rol27(x uint64) uint64 { return bits.RotateLeft64(x, 27) }
+func rol31(x uint64) uint64 { return bits.RotateLeft64(x, 31) }

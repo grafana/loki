@@ -9,21 +9,20 @@ import (
 // BaseEndpoint will return a URL without the /vX.Y
 // portion of the URL.
 func BaseEndpoint(endpoint string) (string, error) {
-	var base string
-
 	u, err := url.Parse(endpoint)
 	if err != nil {
-		return base, err
+		return "", err
 	}
 
 	u.RawQuery, u.Fragment = "", ""
 
+	path := u.Path
 	versionRe := regexp.MustCompile("v[0-9.]+/?")
-	if version := versionRe.FindString(u.Path); version != "" {
-		base = strings.Replace(u.String(), version, "", -1)
-	} else {
-		base = u.String()
+
+	if version := versionRe.FindString(path); version != "" {
+		versionIndex := strings.Index(path, version)
+		u.Path = path[:versionIndex]
 	}
 
-	return base, nil
+	return u.String(), nil
 }

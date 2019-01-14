@@ -8,8 +8,8 @@ import (
 
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/prometheus/prometheus/config"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/weaveworks/common/server"
 )
 
@@ -47,7 +47,7 @@ func LoadConfig(filename string) (*Config, error) {
 type ScrapeConfig struct {
 	JobName                string                           `yaml:"job_name,omitempty"`
 	EntryParser            EntryParser                      `yaml:"entry_parser"`
-	RelabelConfigs         []*config.RelabelConfig          `yaml:"relabel_configs,omitempty"`
+	RelabelConfigs         []*relabel.Config                `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
 }
 

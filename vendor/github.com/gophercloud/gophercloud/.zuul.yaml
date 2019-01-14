@@ -19,7 +19,17 @@
     description: |
       Run gophercloud acceptance test on queens branch
     vars:
-      os_branch: 'stable/queens'
+      global_env:
+        OS_BRANCH: stable/queens
+
+- job:
+    name: gophercloud-acceptance-test-rocky
+    parent: gophercloud-acceptance-test
+    description: |
+      Run gophercloud acceptance test on rocky branch
+    vars:
+      global_env:
+        OS_BRANCH: stable/rocky
 
 - job:
     name: gophercloud-acceptance-test-pike
@@ -27,14 +37,17 @@
     description: |
       Run gophercloud acceptance test on pike branch
     vars:
-      os_branch: 'stable/pike'
+      global_env:
+        OS_BRANCH: stable/pike
+
 - job:
     name: gophercloud-acceptance-test-ocata
     parent: gophercloud-acceptance-test
     description: |
       Run gophercloud acceptance test on ocata branch
     vars:
-      os_branch: 'stable/ocata'
+      global_env:
+        OS_BRANCH: stable/ocata
 
 - job:
     name: gophercloud-acceptance-test-newton
@@ -42,7 +55,8 @@
     description: |
       Run gophercloud acceptance test on newton branch
     vars:
-      os_branch: 'stable/newton'
+      global_env:
+        OS_BRANCH: stable/newton
 
 - job:
     name: gophercloud-acceptance-test-mitaka
@@ -50,7 +64,8 @@
     description: |
       Run gophercloud acceptance test on mitaka branch
     vars:
-      os_branch: 'stable/mitaka'
+      global_env:
+        OS_BRANCH: stable/mitaka
     nodeset: ubuntu-trusty
 
 - project:
@@ -74,3 +89,10 @@
     recheck-queens:
       jobs:
         - gophercloud-acceptance-test-queens
+    recheck-rocky:
+      jobs:
+        - gophercloud-acceptance-test-rocky
+    periodic:
+      jobs:
+        - gophercloud-unittest
+        - gophercloud-acceptance-test
