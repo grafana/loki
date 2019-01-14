@@ -182,5 +182,5 @@ echo "$TEMPLATE" | sed \
   -e "s#<instanceId>#${INSTANCEID}#" \
   -e "s#<apiKey>#${APIKEY}#" \
   -e "s#<instanceUrl>#${INSTANCEURL}#" \
-  -e "s#<namespace>#${NAMESPACE}#"
+  -e "s#<namespace>#${NAMESPACE}#" \
   -e "s#<dataroot>#${DATAROOT}#"
