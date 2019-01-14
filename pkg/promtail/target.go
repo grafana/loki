@@ -22,6 +22,12 @@ var (
 		Name:      "read_bytes_total",
 		Help:      "Number of bytes read.",
 	}, []string{"path"})
+
+	readLines = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "promtail",
+		Name:      "read_lines_total",
+		Help:      "Number of lines read.",
+	}, []string{"path"})
 )
 
 const (
@@ -30,6 +36,7 @@ const (
 
 func init() {
 	prometheus.MustRegister(readBytes)
+	prometheus.MustRegister(readLines)
 }
 
 // Target describes a particular set of logs.
@@ -204,6 +211,7 @@ func (t *tailer) run() {
 				level.Error(t.logger).Log("msg", "error reading line", "error", line.Err)
 			}
 
+			readLines.WithLabelValues(t.path).Inc()
 			readBytes.WithLabelValues(t.path).Add(float64(len(line.Text)))
 			if err := t.handler.Handle(model.LabelSet{}, line.Time, line.Text); err != nil {
 				level.Error(t.logger).Log("msg", "error handling line", "error", err)
