@@ -29,7 +29,6 @@ const (
 	ErrWrongMetadata   = errs.Error("wrong chunk metadata")
 	ErrMetadataLength  = errs.Error("chunk metadata wrong length")
 	ErrDataLength      = errs.Error("chunk data wrong length")
-	ErrNotEncoded      = errs.Error("Chunk not encoded")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
@@ -240,7 +239,9 @@ func (c *Chunk) Encode() error {
 // Encoded returns the buffer created by Encoded()
 func (c *Chunk) Encoded() ([]byte, error) {
 	if c.encoded == nil {
-		return nil, errors.WithStack(ErrNotEncoded)
+		if err := c.Encode(); err != nil {
+			return nil, err
+		}
 	}
 	return c.encoded, nil
 }
