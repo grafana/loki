@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,11 +15,10 @@
 package internal
 
 import (
+	"context"
 	"time"
 
 	gax "github.com/googleapis/gax-go"
-
-	"golang.org/x/net/context"
 )
 
 // Retry calls the supplied function f repeatedly according to the provided

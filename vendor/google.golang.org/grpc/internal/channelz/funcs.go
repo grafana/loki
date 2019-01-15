@@ -558,7 +558,7 @@ func (c *channelMap) GetServerSockets(id int64, startID int64) ([]*SocketMetric,
 		ids = append(ids, k)
 	}
 	sort.Sort(int64Slice(ids))
-	idx := sort.Search(len(ids), func(i int) bool { return ids[i] >= id })
+	idx := sort.Search(len(ids), func(i int) bool { return ids[i] >= startID })
 	count := 0
 	var end bool
 	for i, v := range ids[idx:] {
@@ -601,8 +601,11 @@ func (c *channelMap) GetChannel(id int64) *ChannelMetric {
 	}
 	cm.NestedChans = copyMap(cn.nestedChans)
 	cm.SubChans = copyMap(cn.subChans)
+	// cn.c can be set to &dummyChannel{} when deleteSelfFromMap is called. Save a copy of cn.c when
+	// holding the lock to prevent potential data race.
+	chanCopy := cn.c
 	c.mu.RUnlock()
-	cm.ChannelData = cn.c.ChannelzMetric()
+	cm.ChannelData = chanCopy.ChannelzMetric()
 	cm.ID = cn.id
 	cm.RefName = cn.refName
 	cm.Trace = cn.trace.dumpData()
@@ -620,8 +623,11 @@ func (c *channelMap) GetSubChannel(id int64) *SubChannelMetric {
 		return nil
 	}
 	cm.Sockets = copyMap(sc.sockets)
+	// sc.c can be set to &dummyChannel{} when deleteSelfFromMap is called. Save a copy of sc.c when
+	// holding the lock to prevent potential data race.
+	chanCopy := sc.c
 	c.mu.RUnlock()
-	cm.ChannelData = sc.c.ChannelzMetric()
+	cm.ChannelData = chanCopy.ChannelzMetric()
 	cm.ID = sc.id
 	cm.RefName = sc.refName
 	cm.Trace = sc.trace.dumpData()

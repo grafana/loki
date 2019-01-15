@@ -33,10 +33,10 @@ func init() {
 
 // MemcachedConfig is config to make a Memcached
 type MemcachedConfig struct {
-	Expiration time.Duration
+	Expiration time.Duration `yaml:"expiration"`
 
-	BatchSize   int
-	Parallelism int
+	BatchSize   int `yaml:"batch_size"`
+	Parallelism int `yaml:"parallelism"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet

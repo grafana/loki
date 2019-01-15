@@ -21,6 +21,8 @@ type Conn struct {
 	net.Conn                         // a net.Conn holding the connection
 	UDPSize        uint16            // minimum receive buffer for UDP messages
 	TsigSecret     map[string]string // secret(s) for Tsig map[<zonename>]<base64 secret>, zonename must be in canonical form (lowercase, fqdn, see RFC 4034 Section 6.2)
+	rtt            time.Duration
+	t              time.Time
 	tsigRequestMAC string
 }
 
@@ -175,9 +177,8 @@ func (c *Client) exchange(m *Msg, a string) (r *Msg, rtt time.Duration, err erro
 	}
 
 	co.TsigSecret = c.TsigSecret
-	t := time.Now()
 	// write with the appropriate write timeout
-	co.SetWriteDeadline(t.Add(c.getTimeoutForRequest(c.writeTimeout())))
+	co.SetWriteDeadline(time.Now().Add(c.getTimeoutForRequest(c.writeTimeout())))
 	if err = co.WriteMsg(m); err != nil {
 		return nil, 0, err
 	}
@@ -187,8 +188,7 @@ func (c *Client) exchange(m *Msg, a string) (r *Msg, rtt time.Duration, err erro
 	if err == nil && r.Id != m.Id {
 		err = ErrId
 	}
-	rtt = time.Since(t)
-	return r, rtt, err
+	return r, co.rtt, err
 }
 
 // ReadMsg reads a message from the connection co.
@@ -240,6 +240,7 @@ func (co *Conn) ReadMsgHeader(hdr *Header) ([]byte, error) {
 		}
 		p = make([]byte, l)
 		n, err = tcpRead(r, p)
+		co.rtt = time.Since(co.t)
 	default:
 		if co.UDPSize > MinMsgSize {
 			p = make([]byte, co.UDPSize)
@@ -247,6 +248,7 @@ func (co *Conn) ReadMsgHeader(hdr *Header) ([]byte, error) {
 			p = make([]byte, MinMsgSize)
 		}
 		n, err = co.Read(p)
+		co.rtt = time.Since(co.t)
 	}
 
 	if err != nil {
@@ -359,6 +361,7 @@ func (co *Conn) WriteMsg(m *Msg) (err error) {
 	if err != nil {
 		return err
 	}
+	co.t = time.Now()
 	if _, err = co.Write(out); err != nil {
 		return err
 	}

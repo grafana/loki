@@ -138,7 +138,11 @@ type ErrDefault503 struct {
 }
 
 func (e ErrDefault400) Error() string {
-	return "Invalid request due to incorrect syntax or missing required parameters."
+	e.DefaultErrString = fmt.Sprintf(
+		"Bad request with: [%s %s], error message: %s",
+		e.Method, e.URL, e.Body,
+	)
+	return e.choseErrString()
 }
 func (e ErrDefault401) Error() string {
 	return "Authentication failed"
@@ -446,4 +450,11 @@ type ErrScopeEmpty struct{ BaseError }
 
 func (e ErrScopeEmpty) Error() string {
 	return "You must provide either a Project or Domain in a Scope"
+}
+
+// ErrAppCredMissingSecret indicates that no Application Credential Secret was provided with Application Credential ID or Name
+type ErrAppCredMissingSecret struct{ BaseError }
+
+func (e ErrAppCredMissingSecret) Error() string {
+	return "You must provide an Application Credential Secret"
 }

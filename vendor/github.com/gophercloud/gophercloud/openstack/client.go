@@ -406,3 +406,22 @@ func NewMessagingV2(client *gophercloud.ProviderClient, clientID string, eo goph
 func NewContainerV1(client *gophercloud.ProviderClient, eo gophercloud.EndpointOpts) (*gophercloud.ServiceClient, error) {
 	return initClientOpts(client, eo, "container")
 }
+
+// NewKeyManagerV1 creates a ServiceClient that may be used with the v1 key
+// manager service.
+func NewKeyManagerV1(client *gophercloud.ProviderClient, eo gophercloud.EndpointOpts) (*gophercloud.ServiceClient, error) {
+	sc, err := initClientOpts(client, eo, "key-manager")
+	sc.ResourceBase = sc.Endpoint + "v1/"
+	return sc, err
+}
+
+// NewContainerInfraV1 creates a ServiceClient that may be used with the v1 container infra management
+// package.
+func NewContainerInfraV1(client *gophercloud.ProviderClient, eo gophercloud.EndpointOpts) (*gophercloud.ServiceClient, error) {
+	return initClientOpts(client, eo, "container-infra")
+}
+
+// NewWorkflowV2 creates a ServiceClient that may be used with the v2 workflow management package.
+func NewWorkflowV2(client *gophercloud.ProviderClient, eo gophercloud.EndpointOpts) (*gophercloud.ServiceClient, error) {
+	return initClientOpts(client, eo, "workflowv2")
+}

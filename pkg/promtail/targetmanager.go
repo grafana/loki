@@ -9,10 +9,10 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
+	pkgrelabel "github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/relabel"
 )
 
@@ -95,7 +95,7 @@ type syncer struct {
 	hostname     string
 
 	targets       map[string]*Target
-	relabelConfig []*config.RelabelConfig
+	relabelConfig []*pkgrelabel.Config
 }
 
 func (s *syncer) Sync(groups []*targetgroup.Group) {
