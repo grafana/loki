@@ -22,6 +22,7 @@ There are 4 API endpoints:
 
   - [ProtoBuffer definition](/pkg/logproto/logproto.proto)
   - [Golang client library](/pkg/promtail/client.go)
+  - [Third party client library](https://github.com/afiskon/promtail-client)
 
   Also accepts JSON formatted requests when the header `Content-Type: application/json` is sent.  Example of the JSON format:
 
