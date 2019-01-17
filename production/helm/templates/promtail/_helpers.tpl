@@ -36,7 +36,7 @@ Create the name of the service account
 */}}
 {{- define "promtail.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create -}}
-    {{ default (include "promtail.fullname" .) .Values.serviceAccount.name }}
+    {{ default (include "loki.fullname" .) .Values.serviceAccount.name }}
 {{- else -}}
     {{ default "default" .Values.serviceAccount.name }}
 {{- end -}}
