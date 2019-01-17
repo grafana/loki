@@ -29,7 +29,7 @@ const (
 // Flush triggers a flush of all the chunks and closes the flush queues.
 // Called from the Lifecycler as part of the ingester shutdown.
 func (i *Ingester) Flush() {
-	i.sweepUsers(true)
+	i.sweepInstances(true)
 
 	// Close the flush queues, to unblock waiting workers.
 	for _, flushQueue := range i.flushQueues {
@@ -42,7 +42,7 @@ func (i *Ingester) Flush() {
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
 // local testing.
 func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
-	i.sweepUsers(true)
+	i.sweepInstances(true)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -62,11 +62,23 @@ func (o *flushOp) Priority() int64 {
 }
 
 // sweepUsers periodically schedules series for flushing and garbage collects users with no series
-func (i *Ingester) sweepUsers(immediate bool) {
+func (i *Ingester) sweepInstances(immediate bool) {
 	instances := i.getInstances()
-
 	for _, instance := range instances {
 		i.sweepInstance(instance, immediate)
+	}
+
+	// Must take write lock on instance before write lock on streams, to
+	// prevent deadlock with write path.
+	i.instancesMtx.Lock()
+	defer i.instancesMtx.Unlock()
+	for _, instance := range i.instances {
+		instance.streamsMtx.Lock()
+		if len(instance.streams) == 0 {
+			delete(i.instances, instance.instanceID)
+			memoryTenants.Dec()
+		}
+		instance.streamsMtx.Unlock()
 	}
 }
 
@@ -77,13 +89,6 @@ func (i *Ingester) sweepInstance(instance *instance, immediate bool) {
 	for _, stream := range instance.streams {
 		i.sweepStream(instance, stream, immediate)
 		i.removeFlushedChunks(instance, stream)
-	}
-
-	if len(instance.streams) == 0 {
-		i.instancesMtx.Lock()
-		delete(i.instances, instance.instanceID)
-		i.instancesMtx.Unlock()
-		memoryTenants.Dec()
 	}
 }
 
