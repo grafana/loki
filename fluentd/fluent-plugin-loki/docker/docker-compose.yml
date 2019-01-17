@@ -1,0 +1,21 @@
+version: '3'
+services:
+  fluentd:
+    build: ../
+    image: fluentd:loki
+    command:
+      - "fluentd"
+      - "-v"
+      - "-p"
+      - "/fluentd/plugins"
+      - "-c"
+      - "/fluentd/etc/fluentd.conf"
+    volumes:
+      - ./conf:/fluentd/etc
+      - /var/log:/var/log
+      - ../lib/fluent/plugin:/fluentd/plugins
+    environment:
+      LOKI_USERNAME: "${LOKI_USERNAME}"
+      LOKI_PASSWORD: ${LOKI_PASSWORD}
+      FLUENT_CONF: /fluentd/etc/fluentd.conf
+      FLUENT_UID: '0'

@@ -1,0 +1,6 @@
+source 'https://rubygems.org'
+
+gemspec
+
+gem 'rubocop-rspec'
+gem 'simplecov', require: false, group: :test

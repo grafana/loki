@@ -1,0 +1,27 @@
+require: rubocop-rspec
+
+AllCops:
+  Exclude:
+    - 'bin/**'
+    - 'test/**/*.rb'
+
+Metrics/BlockLength:
+  Exclude:
+    - 'Rakefile'
+    - '**/*.rake'
+    - 'spec/**/*.rb'
+  Max: 60
+Metrics/MethodLength:
+  Max: 50
+Metrics/LineLength:
+  Max: 120
+Metrics/ClassLength:
+  Max: 150
+Metrics/AbcSize:
+  Max: 35
+Style/GuardClause:
+  Enabled: false
+RSpec/ExampleLength:
+  Max: 100
+RSpec/MultipleExpectations:
+  Max: 10
