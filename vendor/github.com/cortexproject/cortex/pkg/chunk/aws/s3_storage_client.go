@@ -20,16 +20,16 @@ import (
 )
 
 var (
-	s3RequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	s3RequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "s3_request_duration_seconds",
 		Help:      "Time spent doing S3 requests.",
 		Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},
-	}, []string{"operation", "status_code"})
+	}, []string{"operation", "status_code"}))
 )
 
 func init() {
-	prometheus.MustRegister(s3RequestDuration)
+	s3RequestDuration.Register()
 }
 
 type s3ObjectClient struct {
@@ -66,7 +66,7 @@ func (a s3ObjectClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]
 
 func (a s3ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
 	var resp *s3.GetObjectOutput
-	err := instrument.TimeRequestHistogram(ctx, "S3.GetObject", s3RequestDuration, func(ctx context.Context) error {
+	err := instrument.CollectedRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		resp, err = a.S3.GetObjectWithContext(ctx, &s3.GetObjectInput{
 			Bucket: aws.String(a.bucketName),
@@ -124,7 +124,7 @@ func (a s3ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 }
 
 func (a s3ObjectClient) putS3Chunk(ctx context.Context, key string, buf []byte) error {
-	return instrument.TimeRequestHistogram(ctx, "S3.PutObject", s3RequestDuration, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		_, err := a.S3.PutObjectWithContext(ctx, &s3.PutObjectInput{
 			Body:   bytes.NewReader(buf),
 			Bucket: aws.String(a.bucketName),

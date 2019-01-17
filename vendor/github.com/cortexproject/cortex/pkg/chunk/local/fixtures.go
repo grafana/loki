@@ -21,7 +21,7 @@ func (f *fixture) Name() string {
 }
 
 func (f *fixture) Clients() (
-	indexClient chunk.IndexClient, chunkClient chunk.ObjectClient, tableClient chunk.TableClient,
+	indexClient chunk.IndexClient, objectClient chunk.ObjectClient, tableClient chunk.TableClient,
 	schemaConfig chunk.SchemaConfig, err error,
 ) {
 	f.dirname, err = ioutil.TempDir(os.TempDir(), "boltdb")
@@ -36,7 +36,7 @@ func (f *fixture) Clients() (
 		return
 	}
 
-	chunkClient, err = NewFSObjectClient(FSConfig{
+	objectClient, err = NewFSObjectClient(FSConfig{
 		Directory: f.dirname,
 	})
 	if err != nil {

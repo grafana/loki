@@ -74,6 +74,20 @@ func (m *MockStorage) CreateTable(_ context.Context, desc TableDesc) error {
 	return nil
 }
 
+// DeleteTable implements StorageClient.
+func (m *MockStorage) DeleteTable(_ context.Context, name string) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	if _, ok := m.tables[name]; !ok {
+		return fmt.Errorf("table does not exist")
+	}
+
+	delete(m.tables, name)
+
+	return nil
+}
+
 // DescribeTable implements StorageClient.
 func (m *MockStorage) DescribeTable(_ context.Context, name string) (desc TableDesc, isActive bool, err error) {
 	m.mtx.RLock()

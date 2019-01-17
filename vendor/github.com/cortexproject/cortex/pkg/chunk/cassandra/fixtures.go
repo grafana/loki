@@ -17,7 +17,7 @@ import (
 type fixture struct {
 	name         string
 	indexClient  chunk.IndexClient
-	chunkClient  chunk.ObjectClient
+	objectClient chunk.ObjectClient
 	tableClient  chunk.TableClient
 	schemaConfig chunk.SchemaConfig
 }
@@ -27,7 +27,7 @@ func (f fixture) Name() string {
 }
 
 func (f fixture) Clients() (chunk.IndexClient, chunk.ObjectClient, chunk.TableClient, chunk.SchemaConfig, error) {
-	return f.indexClient, f.chunkClient, f.tableClient, f.schemaConfig, nil
+	return f.indexClient, f.objectClient, f.tableClient, f.schemaConfig, nil
 }
 
 func (f fixture) Teardown() error {
@@ -65,7 +65,7 @@ func Fixtures() ([]testutils.Fixture, error) {
 		fixture{
 			name:         "Cassandra",
 			indexClient:  storageClient,
-			chunkClient:  storageClient,
+			objectClient: storageClient,
 			tableClient:  tableClient,
 			schemaConfig: schemaConfig,
 		},

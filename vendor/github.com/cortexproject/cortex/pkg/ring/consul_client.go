@@ -86,7 +86,7 @@ var (
 // CAS atomically modifies a value in a callback.
 // If value doesn't exist you'll get nil as an argument to your callback.
 func (c *consulClient) CAS(ctx context.Context, key string, f CASCallback) error {
-	return instrument.TimeRequestHistogram(ctx, "CAS loop", consulRequestDuration, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "CAS loop", consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		return c.cas(ctx, key, f)
 	})
 }

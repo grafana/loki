@@ -74,7 +74,7 @@ func ParseProtoReader(ctx context.Context, reader io.Reader, req proto.Message, 
 		return nil, err
 	}
 
-	if err := instrument.TimeRequestHistogram(ctx, "util.ParseProtoRequest[unmarshal]", nil, func(_ context.Context) error {
+	if err := instrument.CollectedRequest(ctx, "util.ParseProtoRequest[unmarshal]", &instrument.HistogramCollector{}, instrument.ErrorCode, func(_ context.Context) error {
 		return proto.Unmarshal(body, req)
 	}); err != nil {
 		return nil, err

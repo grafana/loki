@@ -13,7 +13,7 @@ const maxParallel = 1000
 
 // GetParallelChunks fetches chunks in parallel (up to maxParallel).
 func GetParallelChunks(ctx context.Context, chunks []chunk.Chunk, f func(context.Context, *chunk.DecodeContext, chunk.Chunk) (chunk.Chunk, error)) ([]chunk.Chunk, error) {
-	sp, ctx := ot.StartSpanFromContext(ctx, "GetChunks")
+	sp, ctx := ot.StartSpanFromContext(ctx, "GetParallelChunks")
 	defer sp.Finish()
 	sp.LogFields(otlog.Int("chunks requested", len(chunks)))
 

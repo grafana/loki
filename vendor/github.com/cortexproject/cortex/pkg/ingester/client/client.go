@@ -12,6 +12,7 @@ import (
 	_ "google.golang.org/grpc/encoding/gzip" // get gzip compressor registered
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	cortex_middleware "github.com/cortexproject/cortex/pkg/util/middleware"
 	"github.com/weaveworks/common/middleware"
 )
@@ -49,13 +50,7 @@ func MakeIngesterClient(addr string, cfg Config) (HealthAndIngesterClient, error
 			middleware.StreamClientUserHeaderInterceptor,
 			cortex_middleware.PrometheusGRPCStreamInstrumentation(ingesterClientRequestDuration),
 		)),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(cfg.MaxRecvMsgSize)),
-	}
-	if cfg.legacyCompressToIngester {
-		cfg.CompressToIngester = true
-	}
-	if cfg.CompressToIngester {
-		opts = append(opts, grpc.WithDefaultCallOptions(grpc.UseCompressor("gzip")))
+		cfg.GRPCClientConfig.DialOption(),
 	}
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {
@@ -74,16 +69,15 @@ func (c *closableHealthAndIngesterClient) Close() error {
 
 // Config is the configuration struct for the ingester client
 type Config struct {
-	MaxRecvMsgSize           int
-	CompressToIngester       bool
-	legacyCompressToIngester bool
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 }
 
 // RegisterFlags registers configuration settings used by the ingester client config.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	// We have seen 20MB returns from queries - add a bit of headroom
-	f.IntVar(&cfg.MaxRecvMsgSize, "ingester.client.max-recv-message-size", 64*1024*1024, "Maximum message size, in bytes, this client will receive.")
-	f.BoolVar(&cfg.CompressToIngester, "ingester.client.compress-to-ingester", false, "Compress data in calls to ingesters.")
-	// moved from distributor pkg, but flag prefix left as back compat fallback for existing users.
-	f.BoolVar(&cfg.legacyCompressToIngester, "distributor.compress-to-ingester", false, "Compress data in calls to ingesters. (DEPRECATED: use ingester.client.compress-to-ingester instead")
+	cfg.GRPCClientConfig.RegisterFlags("ingester.client", f)
+
+	// Deprecated.
+	f.Int("ingester.client.max-recv-message-size", 64*1024*1024, "DEPRECATED. Maximum message size, in bytes, this client will receive.")
+	f.Bool("ingester.client.compress-to-ingester", false, "DEPRECATED. Compress data in calls to ingesters.")
+	f.Bool("distributor.compress-to-ingester", false, "DEPRECATED. Compress data in calls to ingesters. (DEPRECATED: use ingester.client.compress-to-ingester instead")
 }

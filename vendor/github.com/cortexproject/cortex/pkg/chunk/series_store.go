@@ -73,6 +73,13 @@ func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Ob
 		return nil, err
 	}
 
+	if cfg.CacheLookupsOlderThan != 0 {
+		schema = &schemaCaching{
+			Schema:         schema,
+			cacheOlderThan: cfg.CacheLookupsOlderThan,
+		}
+	}
+
 	return &seriesStore{
 		store: store{
 			cfg:     cfg,

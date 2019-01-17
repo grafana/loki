@@ -1,4 +1,4 @@
-// Copied from github.com/prometheus/common/model/fnv.go
+// Modified from github.com/prometheus/common/model/fnv.go
 // Copyright 2015 The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ func hashNew() uint64 {
 }
 
 // hashAdd adds a string to a fnv64a hash value, returning the updated hash.
-func hashAdd(h uint64, s string) uint64 {
+func hashAdd(h uint64, s []byte) uint64 {
 	for i := 0; i < len(s); i++ {
 		h ^= uint64(s[i])
 		h *= prime64

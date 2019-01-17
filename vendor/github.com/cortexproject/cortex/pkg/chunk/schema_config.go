@@ -335,19 +335,24 @@ func (cfg *AutoScalingConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 	f.Float64Var(&cfg.TargetValue, argPrefix+".target-value", 80, "DynamoDB target ratio of consumed capacity to provisioned capacity.")
 }
 
-func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg ProvisionConfig, beginGrace, endGrace time.Duration) []TableDesc {
+func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg ProvisionConfig, beginGrace, endGrace time.Duration, retention time.Duration) []TableDesc {
 	var (
 		periodSecs     = int64(cfg.Period / time.Second)
 		beginGraceSecs = int64(beginGrace / time.Second)
 		endGraceSecs   = int64(endGrace / time.Second)
 		firstTable     = from.Unix() / periodSecs
 		lastTable      = through.Unix() / periodSecs
+		tablesToKeep   = int64(int64(retention/time.Second) / periodSecs)
 		now            = mtime.Now().Unix()
 		result         = []TableDesc{}
 	)
 	// If through ends on 00:00 of the day, don't include the upcoming day
 	if through.Unix()%secondsInDay == 0 {
 		lastTable--
+	}
+	// Don't make tables further back than the configured retention
+	if retention > 0 && lastTable > tablesToKeep && lastTable-firstTable >= tablesToKeep {
+		firstTable = lastTable - tablesToKeep
 	}
 	for i := firstTable; i <= lastTable; i++ {
 		table := TableDesc{

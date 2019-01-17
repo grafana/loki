@@ -58,6 +58,9 @@ type IndexQuery struct {
 
 	// Filters for querying
 	ValueEqual []byte
+
+	// If the result of this lookup is immutable or not (for caching).
+	Immutable bool
 }
 
 // IndexEntry describes an entry in the chunk index

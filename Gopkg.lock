@@ -163,8 +163,8 @@
   revision = "3a0bb77429bd3a61596f5e8a3172445844342120"
 
 [[projects]]
-  branch = "dev"
-  digest = "1:263542950680f505b60f5d66e5cf828bf0206ad485a64e956d3f9be87c475788"
+  branch = "master"
+  digest = "1:e7525991325b400ecf4f6c6383e965b12801b87e2f687afda23f57f091f9fcc0"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/chunk",
@@ -184,14 +184,14 @@
     "pkg/util",
     "pkg/util/extract",
     "pkg/util/flagext",
+    "pkg/util/grpcclient",
     "pkg/util/middleware",
     "pkg/util/spanlogger",
     "pkg/util/validation",
     "pkg/util/wire",
   ]
   pruneopts = "UT"
-  revision = "26c93125feb2a50a2b9f5f496e731eae875a20e5"
-  source = "github.com/grafana/cortex"
+  revision = "4c9e2025ab6733e0f42187b64d2522d558f9f31c"
 
 [[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
@@ -210,12 +210,12 @@
   version = "v3.2.0"
 
 [[projects]]
-  digest = "1:c28625428387b63dd7154eb857f51e700465cfbf7c06f619e71f2da33cefe47e"
+  digest = "1:3762d59edaa6e5c71d5e594c020c8391f274ff283e9c30fb43c518ec59a3f9b3"
   name = "github.com/etcd-io/bbolt"
   packages = ["."]
   pruneopts = "UT"
-  revision = "583e8937c61f1af6513608ccc75c97b6abdf4ff9"
-  version = "v1.3.0"
+  revision = "7ee3ded59d4835e10f3e7d0f7603c42aa5e83820"
+  version = "v1.3.1-etcd.8"
 
 [[projects]]
   digest = "1:865079840386857c809b72ce300be7580cb50d3d3129ce11bf9aa6ca2bc1934a"
@@ -721,10 +721,9 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:55e2b00b96200066b7feaf44eb05b1e539e76d217d5be54978a4e0a24b2b3f66"
+  digest = "1:efd4f8cbe8bca553023cd1ac1db42875f1606f410ba585ff2486f9b04ab0af3f"
   name = "github.com/prometheus/prometheus"
   packages = [
-    "config",
     "discovery",
     "discovery/azure",
     "discovery/config",
@@ -1337,11 +1336,11 @@
     "github.com/prometheus/client_golang/prometheus/promauto",
     "github.com/prometheus/common/model",
     "github.com/prometheus/common/version",
-    "github.com/prometheus/prometheus/config",
     "github.com/prometheus/prometheus/discovery",
     "github.com/prometheus/prometheus/discovery/config",
     "github.com/prometheus/prometheus/discovery/targetgroup",
     "github.com/prometheus/prometheus/pkg/labels",
+    "github.com/prometheus/prometheus/pkg/relabel",
     "github.com/prometheus/prometheus/relabel",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",

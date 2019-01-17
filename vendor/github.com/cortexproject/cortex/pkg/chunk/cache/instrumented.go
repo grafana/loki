@@ -10,13 +10,13 @@ import (
 )
 
 var (
-	requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	requestDuration = instr.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "cache_request_duration_seconds",
 		Help:      "Total time spent in seconds doing cache requests.",
 		// Cache requests are very quick: smallest bucket is 16us, biggest is 1s.
 		Buckets: prometheus.ExponentialBuckets(0.000016, 4, 8),
-	}, []string{"method", "status_code"})
+	}, []string{"method", "status_code"}))
 
 	fetchedKeys = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
@@ -32,7 +32,7 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(requestDuration)
+	requestDuration.Register()
 	prometheus.MustRegister(fetchedKeys)
 	prometheus.MustRegister(hits)
 }
@@ -55,7 +55,7 @@ type instrumentedCache struct {
 
 func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
 	method := i.name + ".store"
-	instr.TimeRequestHistogram(ctx, method, requestDuration, func(ctx context.Context) error {
+	instr.CollectedRequest(ctx, method, requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := ot.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys", len(keys)))
 		i.Cache.Store(ctx, keys, bufs)
@@ -71,7 +71,7 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 		method  = i.name + ".fetch"
 	)
 
-	instr.TimeRequestHistogram(ctx, method, requestDuration, func(ctx context.Context) error {
+	instr.CollectedRequest(ctx, method, requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := ot.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys requested", len(keys)))
 
