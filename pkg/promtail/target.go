@@ -1,7 +1,7 @@
 package promtail
 
 import (
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -55,14 +55,32 @@ type Target struct {
 
 // NewTarget create a new Target.
 func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, path string, labels model.LabelSet) (*Target, error) {
+	var err error
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return nil, errors.Wrap(err, "filepath.Abs")
+	}
+	matches, err := filepath.Glob(path)
+	if err != nil {
+		return nil, errors.Wrap(err, "filepath.Glob")
+	}
+
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, errors.Wrap(err, "fsnotify.NewWatcher")
 	}
 
-	if err := watcher.Add(path); err != nil {
-		helpers.LogError("closing watcher", watcher.Close)
-		return nil, errors.Wrap(err, "watcher.Add")
+	// get the current unique set of dirs to watch.
+	dirs := make(map[string]struct{})
+	for _, p := range matches {
+		dirs[filepath.Dir(p)] = struct{}{}
+	}
+	// watch each dir for any new files.
+	for dir := range dirs {
+		if err := watcher.Add(dir); err != nil {
+			helpers.LogError("closing watcher", watcher.Close)
+			return nil, errors.Wrap(err, "watcher.Add")
+		}
 	}
 
 	t := &Target{
@@ -75,23 +93,24 @@ func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, pa
 		tails:     map[string]*tailer{},
 	}
 
-	// Fist, we're going to add all the existing files
-	fis, err := ioutil.ReadDir(t.path)
-	if err != nil {
-		return nil, errors.Wrap(err, "ioutil.ReadDir")
-	}
-	for _, fi := range fis {
-		if fi.IsDir() {
-			continue
-		}
-
-		tailer, err := newTailer(t.logger, t.handler, t.positions, filepath.Join(t.path, fi.Name()))
+	// start tailing all of the matched files
+	for _, p := range matches {
+		fi, err := os.Stat(p)
 		if err != nil {
-			level.Error(t.logger).Log("msg", "failed to tail file", "error", err)
+			level.Error(t.logger).Log("msg", "failed to stat file", "error", err, "filename", p)
+			continue
+		}
+		if fi.IsDir() {
+			level.Debug(t.logger).Log("msg", "skipping matched dir", "filename", p)
 			continue
 		}
 
-		t.tails[fi.Name()] = tailer
+		tailer, err := newTailer(t.logger, t.handler, t.positions, p)
+		if err != nil {
+			level.Error(t.logger).Log("msg", "failed to tail file", "error", err, "filename", p)
+			continue
+		}
+		t.tails[p] = tailer
 	}
 
 	go t.run()
@@ -121,10 +140,18 @@ func (t *Target) run() {
 					level.Info(t.logger).Log("msg", "got 'create' for existing file", "filename", event.Name)
 					continue
 				}
-
+				matched, err := filepath.Match(t.path, event.Name)
+				if err != nil {
+					level.Error(t.logger).Log("msg", "failed to match file", "error", err, "filename", event.Name)
+					continue
+				}
+				if !matched {
+					level.Debug(t.logger).Log("msg", "new file does not match glob", "filename", event.Name)
+					continue
+				}
 				tailer, err := newTailer(t.logger, t.handler, t.positions, event.Name)
 				if err != nil {
-					level.Error(t.logger).Log("msg", "failed to tail file", "error", err)
+					level.Error(t.logger).Log("msg", "failed to tail file", "error", err, "filename", event.Name)
 					continue
 				}
 
@@ -134,6 +161,15 @@ func (t *Target) run() {
 				tailer, ok := t.tails[event.Name]
 				if ok {
 					helpers.LogError("stopping tailer", tailer.stop)
+					tailer.cleanup()
+					delete(t.tails, event.Name)
+				}
+			case fsnotify.Rename:
+				// Rename is only issued on the original file path; the new name receives a Create event
+				tailer, ok := t.tails[event.Name]
+				if ok {
+					helpers.LogError("stopping tailer", tailer.stop)
+					tailer.cleanup()
 					delete(t.tails, event.Name)
 				}
 
@@ -188,7 +224,7 @@ func (t *tailer) run() {
 
 	level.Info(t.logger).Log("msg", "start tailing file", "filename", t.path)
 	positionSyncPeriod := t.positions.cfg.SyncPeriod
-	positionWait := time.NewTimer(positionSyncPeriod)
+	positionWait := time.NewTicker(positionSyncPeriod)
 	defer positionWait.Stop()
 
 	for {
@@ -222,4 +258,8 @@ func (t *tailer) run() {
 
 func (t *tailer) stop() error {
 	return t.tail.Stop()
+}
+
+func (t *tailer) cleanup() {
+	t.positions.Remove(t.path)
 }
