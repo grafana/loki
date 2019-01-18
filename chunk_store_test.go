@@ -430,8 +430,9 @@ func TestChunkStoreRandom(t *testing.T) {
 					ts,
 					ts.Add(chunkLen*time.Second),
 				)
-
-				err := store.Put(ctx, []Chunk{chunk})
+				err := chunk.Encode()
+				require.NoError(t, err)
+				err = store.Put(ctx, []Chunk{chunk})
 				require.NoError(t, err)
 			}
 
@@ -495,7 +496,9 @@ func TestChunkStoreLeastRead(t *testing.T) {
 			ts.Add(chunkLen*time.Second),
 		)
 		t.Logf("Loop %d", i)
-		err := store.Put(ctx, []Chunk{chunk})
+		err := chunk.Encode()
+		require.NoError(t, err)
+		err = store.Put(ctx, []Chunk{chunk})
 		require.NoError(t, err)
 	}
 
@@ -545,12 +548,16 @@ func TestIndexCachingWorks(t *testing.T) {
 	storage := store.(CompositeStore).stores[0].Store.(*seriesStore).storage.(*MockStorage)
 
 	fooChunk1 := dummyChunkFor(model.Time(0).Add(15*time.Second), metric)
-	err := store.Put(ctx, []Chunk{fooChunk1})
+	err := fooChunk1.Encode()
+	require.NoError(t, err)
+	err = store.Put(ctx, []Chunk{fooChunk1})
 	require.NoError(t, err)
 	n := storage.numWrites
 
 	// Only one extra entry for the new chunk of same series.
 	fooChunk2 := dummyChunkFor(model.Time(0).Add(30*time.Second), metric)
+	err = fooChunk2.Encode()
+	require.NoError(t, err)
 	err = store.Put(ctx, []Chunk{fooChunk2})
 	require.NoError(t, err)
 	require.Equal(t, n+1, storage.numWrites)

@@ -58,10 +58,6 @@ func CreateChunks(startIndex, batchSize int) ([]string, []chunk.Chunk, error) {
 			"index":               model.LabelValue(strconv.Itoa(startIndex*batchSize + j)),
 		})
 		chunks = append(chunks, chunk)
-		_, err := chunk.Encode() // Need to encode it, side effect calculates crc
-		if err != nil {
-			return nil, nil, err
-		}
 		keys = append(keys, chunk.ExternalKey())
 	}
 	return keys, chunks, nil
@@ -86,7 +82,7 @@ func dummyChunkFor(now model.Time, metric model.Metric) chunk.Chunk {
 		now,
 	)
 	// Force checksum calculation.
-	_, err := chunk.Encode()
+	err := chunk.Encode()
 	if err != nil {
 		panic(err)
 	}

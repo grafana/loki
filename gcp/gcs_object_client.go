@@ -54,7 +54,7 @@ func (s *gcsObjectClient) Stop() {
 
 func (s *gcsObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	for _, chunk := range chunks {
-		buf, err := chunk.Encode()
+		buf, err := chunk.Encoded()
 		if err != nil {
 			return err
 		}

@@ -46,8 +46,7 @@ func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 	muts := map[string][]*bigtable.Mutation{}
 
 	for i := range chunks {
-		// Encode the chunk first - checksum is calculated as a side effect.
-		buf, err := chunks[i].Encode()
+		buf, err := chunks[i].Encoded()
 		if err != nil {
 			return err
 		}

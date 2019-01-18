@@ -128,9 +128,6 @@ func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chun
 		return err
 	}
 
-	// Horribly, PutChunks mutates the chunk by setting its checksum.  By putting
-	// the chunk in a slice we are in fact passing by reference, so below we
-	// need to make sure we pick the chunk back out the slice.
 	chunks := []Chunk{chunk}
 
 	err = c.storage.PutChunks(ctx, chunks)
@@ -140,7 +137,7 @@ func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chun
 
 	c.writeBackCache(ctx, chunks)
 
-	writeReqs, err := c.calculateIndexEntries(userID, from, through, chunks[0])
+	writeReqs, err := c.calculateIndexEntries(userID, from, through, chunk)
 	if err != nil {
 		return err
 	}

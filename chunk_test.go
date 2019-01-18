@@ -47,7 +47,7 @@ func dummyChunkForEncoding(now model.Time, metric model.Metric, enc encoding.Enc
 		now,
 	)
 	// Force checksum calculation.
-	_, err := chunk.Encode()
+	err := chunk.Encode()
 	if err != nil {
 		panic(err)
 	}
@@ -98,7 +98,9 @@ func TestChunkCodec(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			encoded, err := c.chunk.Encode()
+			err := c.chunk.Encode()
+			require.NoError(t, err)
+			encoded, err := c.chunk.Encoded()
 			require.NoError(t, err)
 
 			have, err := ParseExternalKey(userID, c.chunk.ExternalKey())
@@ -234,7 +236,9 @@ func BenchmarkDecode10000(b *testing.B) { benchmarkDecode(b, 10000) }
 
 func benchmarkDecode(b *testing.B, batchSize int) {
 	chunk := benchmarkChunk(model.Now())
-	buf, err := chunk.Encode()
+	err := chunk.Encode()
+	require.NoError(b, err)
+	buf, err := chunk.Encoded()
 	require.NoError(b, err)
 
 	b.ResetTimer()
