@@ -360,8 +360,8 @@ func (a dynamoDBStorageClient) queryPage(ctx context.Context, input *dynamodb.Qu
 
 	var err error
 	for backoff.Ongoing() {
-		err = instrument.CollectedRequest(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
-			if sp := ot.SpanFromContext(ctx); sp != nil {
+		err = instrument.CollectedRequest(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, instrument.ErrorCode, func(innerCtx context.Context) error {
+			if sp := ot.SpanFromContext(innerCtx); sp != nil {
 				sp.SetTag("tableName", aws.StringValue(input.TableName))
 				sp.SetTag("hashValue", hashValue)
 				sp.SetTag("page", pageCount)
