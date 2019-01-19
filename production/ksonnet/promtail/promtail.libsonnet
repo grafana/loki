@@ -82,6 +82,19 @@ k {
             target_label: 'instance',
           },
 
+          // Include container_name label
+          {
+            source_labels: ['__meta_kubernetes_container_name'],
+            action: 'replace',
+            target_label: 'container_name',
+          },
+
+          // Also include all the other labels on the pod.
+          {
+            action: 'labelmap',
+            regex: '__meta_kubernetes_pod_label_(.+)',
+          },
+
           // Kubernetes puts logs under subdirectories keyed pod UID and container_name.
           {
             source_labels: ['__meta_kubernetes_pod_uid', '__meta_kubernetes_pod_container_name'],
@@ -133,6 +146,13 @@ k {
             source_labels: ['__meta_kubernetes_pod_name'],
             action: 'replace',
             target_label: 'instance',
+          },
+
+          // Include container_name label
+          {
+            source_labels: ['__meta_kubernetes_container_name'],
+            action: 'replace',
+            target_label: 'container_name',
           },
 
           // Also include all the other labels on the pod.
