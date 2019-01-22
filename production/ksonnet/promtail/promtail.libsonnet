@@ -88,7 +88,7 @@ k {
 
           // Include container_name label
           {
-            source_labels: ['__meta_kubernetes_container_name'],
+            source_labels: ['__meta_kubernetes_pod_container_name'],
             action: 'replace',
             target_label: 'container_name',
           },
@@ -154,7 +154,7 @@ k {
 
           // Include container_name label
           {
-            source_labels: ['__meta_kubernetes_container_name'],
+            source_labels: ['__meta_kubernetes_pod_container_name'],
             action: 'replace',
             target_label: 'container_name',
           },
