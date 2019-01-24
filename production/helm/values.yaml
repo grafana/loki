@@ -94,6 +94,7 @@ loki:
         directory: /data/loki/chunks
 
 promtail:
+  enabled: true
   nameOverride: promtail
   deploymentStrategy: RollingUpdate
 
