@@ -13,11 +13,13 @@ type TableClient interface {
 
 // TableDesc describes a table.
 type TableDesc struct {
-	Name             string
-	ProvisionedRead  int64
-	ProvisionedWrite int64
-	Tags             Tags
-	WriteScale       AutoScalingConfig
+	Name              string
+	UseOnDemandIOMode bool
+	ProvisionedRead   int64
+	ProvisionedWrite  int64
+	Tags              Tags
+	WriteScale        AutoScalingConfig
+	ReadScale         AutoScalingConfig
 }
 
 // Equals returns true if other matches desc.
@@ -26,12 +28,22 @@ func (desc TableDesc) Equals(other TableDesc) bool {
 		return false
 	}
 
-	if desc.ProvisionedRead != other.ProvisionedRead {
+	if desc.ReadScale != other.ReadScale {
+		return false
+	}
+
+	// Only check provisioned read if auto scaling is disabled
+	if !desc.ReadScale.Enabled && desc.ProvisionedRead != other.ProvisionedRead {
 		return false
 	}
 
 	// Only check provisioned write if auto scaling is disabled
 	if !desc.WriteScale.Enabled && desc.ProvisionedWrite != other.ProvisionedWrite {
+		return false
+	}
+
+	// if the billing mode needs updating
+	if desc.UseOnDemandIOMode != other.UseOnDemandIOMode {
 		return false
 	}
 

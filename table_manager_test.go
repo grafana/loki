@@ -374,6 +374,7 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 	)
 
 	// Fast forward table period + max chunk age + grace period, check we remove provisioned throughput
+
 	tmTest(t, client, tableManager,
 		"Move forward by table period + max chunk age + grace period",
 		weeklyTableStart.Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
@@ -383,6 +384,110 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 			{Name: tablePrefix + week2Suffix, ProvisionedRead: read, ProvisionedWrite: write},
 			{Name: chunkTablePrefix + week1Suffix, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
 			{Name: chunkTablePrefix + week2Suffix, ProvisionedRead: read, ProvisionedWrite: write},
+		},
+	)
+}
+
+func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
+	client := newMockTableClient()
+
+	cfg := SchemaConfig{
+		Configs: []PeriodConfig{
+			{
+				From: model.TimeFromUnix(baseTableStart.Unix()),
+				IndexTables: PeriodicTableConfig{
+					Prefix: baseTableName,
+				},
+			},
+			{
+				From: model.TimeFromUnix(weeklyTableStart.Unix()),
+				IndexTables: PeriodicTableConfig{
+					Prefix: tablePrefix,
+					Period: tablePeriod,
+				},
+
+				ChunkTables: PeriodicTableConfig{
+					Prefix: chunkTablePrefix,
+					Period: tablePeriod,
+				},
+			},
+		},
+	}
+	tbmConfig := TableManagerConfig{
+		CreationGracePeriod: gracePeriod,
+		IndexTables: ProvisionConfig{
+			ProvisionedWriteThroughput:     write,
+			ProvisionedReadThroughput:      read,
+			InactiveWriteThroughput:        inactiveWrite,
+			InactiveReadThroughput:         inactiveRead,
+			InactiveWriteScale:             inactiveScalingConfig,
+			InactiveWriteScaleLastN:        1,
+			InactiveThroughputOnDemandMode: true,
+		},
+		ChunkTables: ProvisionConfig{
+			ProvisionedWriteThroughput:     write,
+			ProvisionedReadThroughput:      read,
+			InactiveWriteThroughput:        inactiveWrite,
+			InactiveReadThroughput:         inactiveRead,
+			InactiveThroughputOnDemandMode: true,
+		},
+	}
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check at time zero, we have the base table and one weekly table
+	tmTest(t, client, tableManager,
+		"Initial test",
+		weeklyTableStart,
+		[]TableDesc{
+			{Name: baseTableName, ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + week1Suffix, ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + week1Suffix, ProvisionedRead: read, ProvisionedWrite: write},
+		},
+	)
+
+	// Fast forward table period + grace period, check we still have provisioned throughput
+	tmTest(t, client, tableManager,
+		"Move forward by table period + grace period",
+		weeklyTableStart.Add(tablePeriod).Add(gracePeriod),
+		[]TableDesc{
+			{Name: baseTableName, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, UseOnDemandIOMode: true},
+			{Name: tablePrefix + week1Suffix, ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: tablePrefix + week2Suffix, ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + week1Suffix, ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + week2Suffix, ProvisionedRead: read, ProvisionedWrite: write},
+		},
+	)
+
+	// Fast forward table period + max chunk age + grace period, check we remove provisioned throughput
+	// Week 1 index table will not have dynamic mode enabled, since it has an active autoscale config for
+	// a managed provisioning mode. However the week 1 chunk table will flip to the DynamicIO mode.
+	tmTest(t, client, tableManager,
+		"Move forward by table period + max chunk age + grace period",
+		weeklyTableStart.Add(tablePeriod).Add(maxChunkAge).Add(gracePeriod),
+		[]TableDesc{
+			{Name: baseTableName, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, UseOnDemandIOMode: true},
+			{Name: tablePrefix + week1Suffix, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig, UseOnDemandIOMode: false},
+			{Name: tablePrefix + week2Suffix, ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + week1Suffix, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, UseOnDemandIOMode: true},
+			{Name: chunkTablePrefix + week2Suffix, ProvisionedRead: read, ProvisionedWrite: write},
+		},
+	)
+
+	// fast forward to another table period. Now week 1's dynamic mode will flip to true, as the managed autoscaling config is no longer active
+	tmTest(t, client, tableManager,
+		"Move forward by table period + max chunk age + grace period",
+		weeklyTableStart.Add(tablePeriod*2).Add(maxChunkAge).Add(gracePeriod),
+		[]TableDesc{
+			{Name: baseTableName, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, UseOnDemandIOMode: true},
+			{Name: tablePrefix + week1Suffix, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, UseOnDemandIOMode: true},
+			{Name: tablePrefix + week2Suffix, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig, UseOnDemandIOMode: false},
+			{Name: tablePrefix + "5", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + week1Suffix, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, UseOnDemandIOMode: true},
+			{Name: chunkTablePrefix + week2Suffix, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, UseOnDemandIOMode: true},
+			{Name: chunkTablePrefix + "5", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)
 }
