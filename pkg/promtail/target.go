@@ -1,6 +1,10 @@
 package promtail
 
 import (
+	"os"
+	"path/filepath"
+	"time"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/hpcloud/tail"
@@ -8,9 +12,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"gopkg.in/fsnotify.v1"
-	"os"
-	"path/filepath"
-	"time"
 
 	"github.com/grafana/loki/pkg/helpers"
 )
@@ -245,7 +246,7 @@ func (t *tailer) run() {
 	defer func() {
 		level.Info(t.logger).Log("msg", "stopping tailing file", "filename", t.path)
 		positionWait.Stop()
-		t.markPosition()
+		_ = t.markPosition()
 		close(t.done)
 	}()
 

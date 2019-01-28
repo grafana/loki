@@ -1,15 +1,16 @@
 package promtail
 
 import (
-	"github.com/go-kit/kit/log"
-	"github.com/prometheus/common/model"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/go-kit/kit/log"
+	"github.com/prometheus/common/model"
+	"gopkg.in/yaml.v2"
 )
 
 func TestLongSyncDelayStillSavesCorrectPosition(t *testing.T) {
