@@ -29,15 +29,15 @@ func (cfg *PositionsConfig) RegisterFlags(flags *flag.FlagSet) {
 
 // Positions tracks how far through each file we've read.
 type Positions struct {
-	logger       log.Logger
-	cfg          PositionsConfig
-	mtx          sync.Mutex
-	positions    map[string]int64
-	quit         chan struct{}
-	quitComplete chan struct{}
+	logger    log.Logger
+	cfg       PositionsConfig
+	mtx       sync.Mutex
+	positions map[string]int64
+	quit      chan struct{}
+	done      chan struct{}
 }
 
-type PositionsFile struct {
+type positionsFile struct {
 	Positions map[string]int64 `yaml:"positions"`
 }
 
@@ -49,11 +49,11 @@ func NewPositions(logger log.Logger, cfg PositionsConfig) (*Positions, error) {
 	}
 
 	p := &Positions{
-		logger:       logger,
-		cfg:          cfg,
-		positions:    positions,
-		quit:         make(chan struct{}),
-		quitComplete: make(chan struct{}),
+		logger:    logger,
+		cfg:       cfg,
+		positions: positions,
+		quit:      make(chan struct{}),
+		done:      make(chan struct{}),
 	}
 
 	go p.run()
@@ -63,7 +63,7 @@ func NewPositions(logger log.Logger, cfg PositionsConfig) (*Positions, error) {
 // Stop the Position tracker.
 func (p *Positions) Stop() {
 	close(p.quit)
-	<-p.quitComplete
+	<-p.done
 }
 
 // Put records (asynchronously) how far we've read through a file.
@@ -91,7 +91,7 @@ func (p *Positions) run() {
 	defer func() {
 		p.save()
 		level.Debug(p.logger).Log("msg", "positions saved")
-		close(p.quitComplete)
+		close(p.done)
 	}()
 
 	ticker := time.NewTicker(p.cfg.SyncPeriod)
@@ -122,14 +122,12 @@ func readPositionsFile(filename string) (map[string]int64, error) {
 	buf, err := ioutil.ReadFile(filepath.Clean(filename))
 	if err != nil {
 		if os.IsNotExist(err) {
-			positions := map[string]int64{}
-			err = writePositionFile(filename, positions)
-			return positions, err
+			return map[string]int64{}, nil
 		}
 		return nil, err
 	}
 
-	var p PositionsFile
+	var p positionsFile
 	if err := yaml.UnmarshalStrict(buf, &p); err != nil {
 		return nil, err
 	}
@@ -138,7 +136,7 @@ func readPositionsFile(filename string) (map[string]int64, error) {
 }
 
 func writePositionFile(filename string, positions map[string]int64) error {
-	buf, err := yaml.Marshal(PositionsFile{
+	buf, err := yaml.Marshal(positionsFile{
 		Positions: positions,
 	})
 	if err != nil {

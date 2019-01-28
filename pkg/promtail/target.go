@@ -45,10 +45,10 @@ type Target struct {
 	handler   EntryHandler
 	positions *Positions
 
-	watcher      *fsnotify.Watcher
-	path         string
-	quit         chan struct{}
-	quitComplete chan struct{}
+	watcher *fsnotify.Watcher
+	path    string
+	quit    chan struct{}
+	done    chan struct{}
 
 	tails map[string]*tailer
 }
@@ -92,14 +92,14 @@ func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, pa
 	}
 
 	t := &Target{
-		logger:       logger,
-		watcher:      watcher,
-		path:         path,
-		handler:      addLabelsMiddleware(labels).Wrap(handler),
-		positions:    positions,
-		quit:         make(chan struct{}),
-		quitComplete: make(chan struct{}),
-		tails:        map[string]*tailer{},
+		logger:    logger,
+		watcher:   watcher,
+		path:      path,
+		handler:   addLabelsMiddleware(labels).Wrap(handler),
+		positions: positions,
+		quit:      make(chan struct{}),
+		done:      make(chan struct{}),
+		tails:     map[string]*tailer{},
 	}
 
 	// start tailing all of the matched files
@@ -129,7 +129,7 @@ func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, pa
 // Stop the target.
 func (t *Target) Stop() {
 	close(t.quit)
-	<-t.quitComplete
+	<-t.done
 }
 
 func (t *Target) run() {
@@ -141,7 +141,7 @@ func (t *Target) run() {
 		//Save positions
 		t.positions.Stop()
 		level.Debug(t.logger).Log("msg", "watcher closed, tailer stopped, positions saved")
-		close(t.quitComplete)
+		close(t.done)
 	}()
 
 	for {
@@ -207,8 +207,8 @@ type tailer struct {
 	path string
 	tail *tail.Tail
 
-	quit         chan struct{}
-	quitComplete chan struct{}
+	quit chan struct{}
+	done chan struct{}
 }
 
 func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, path string) (*tailer, error) {
@@ -228,10 +228,10 @@ func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, pa
 		handler:   addLabelsMiddleware(model.LabelSet{filename: model.LabelValue(path)}).Wrap(handler),
 		positions: positions,
 
-		path:         path,
-		tail:         tail,
-		quit:         make(chan struct{}),
-		quitComplete: make(chan struct{}),
+		path: path,
+		tail: tail,
+		quit: make(chan struct{}),
+		done: make(chan struct{}),
 	}
 	go tailer.run()
 	return tailer, nil
@@ -246,7 +246,7 @@ func (t *tailer) run() {
 		level.Info(t.logger).Log("msg", "stopping tailing file", "filename", t.path)
 		positionWait.Stop()
 		t.markPosition()
-		close(t.quitComplete)
+		close(t.done)
 	}()
 
 	for {
@@ -290,7 +290,7 @@ func (t *tailer) markPosition() error {
 
 func (t *tailer) stop() error {
 	close(t.quit)
-	<-t.quitComplete
+	<-t.done
 	return t.tail.Stop()
 }
 

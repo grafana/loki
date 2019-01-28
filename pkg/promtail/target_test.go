@@ -18,7 +18,7 @@ func TestLongSyncDelayStillSavesCorrectPosition(t *testing.T) {
 
 	initRandom()
 	dirName := "/tmp/" + randName()
-	positionsFile := dirName + "/positions.yml"
+	positionsFileName := dirName + "/positions.yml"
 	logFile := dirName + "/test.log"
 
 	err := os.MkdirAll(dirName, 0750)
@@ -32,7 +32,7 @@ func TestLongSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	//everything saved was done through channel notifications when target.stop() was called
 	positions, err := NewPositions(logger, PositionsConfig{
 		SyncPeriod:    10 * time.Second,
-		PositionsFile: positionsFile,
+		PositionsFile: positionsFileName,
 	})
 	if err != nil {
 		t.Error(err)
@@ -72,12 +72,12 @@ func TestLongSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	target.Stop()
 
 	//Load the positions file and unmarshal it
-	buf, err := ioutil.ReadFile(filepath.Clean(positionsFile))
+	buf, err := ioutil.ReadFile(filepath.Clean(positionsFileName))
 	if err != nil {
 		t.Error("Expected to find a positions file but did not", err)
 		return
 	}
-	var p PositionsFile
+	var p positionsFile
 	if err := yaml.UnmarshalStrict(buf, &p); err != nil {
 		t.Error("Failed to parse positions file:", err)
 		return
@@ -209,7 +209,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 
 	initRandom()
 	dirName := "/tmp/" + randName()
-	positionsFile := dirName + "/positions.yml"
+	positionsFileName := dirName + "/positions.yml"
 	logFile := dirName + "/test.log"
 
 	err := os.MkdirAll(dirName, 0750)
@@ -223,7 +223,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	//everything saved was done through channel notifications when target.stop() was called
 	positions, err := NewPositions(logger, PositionsConfig{
 		SyncPeriod:    10 * time.Second,
-		PositionsFile: positionsFile,
+		PositionsFile: positionsFileName,
 	})
 	if err != nil {
 		t.Error(err)
@@ -265,7 +265,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	//Create another positions (so that it loads from the positions file)
 	positions2, err := NewPositions(logger, PositionsConfig{
 		SyncPeriod:    10 * time.Second,
-		PositionsFile: positionsFile,
+		PositionsFile: positionsFileName,
 	})
 	if err != nil {
 		t.Error(err)
@@ -313,7 +313,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 
 	initRandom()
 	dirName := "/tmp/" + randName()
-	positionsFile := dirName + "/positions.yml"
+	positionsFileName := dirName + "/positions.yml"
 	logFile1 := dirName + "/test.log"
 	logFile2 := dirName + "/dirt.log"
 
@@ -328,7 +328,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	//everything saved was done through channel notifications when target.stop() was called
 	positions, err := NewPositions(logger, PositionsConfig{
 		SyncPeriod:    10 * time.Second,
-		PositionsFile: positionsFile,
+		PositionsFile: positionsFileName,
 	})
 	if err != nil {
 		t.Error(err)
@@ -379,12 +379,12 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	target.Stop()
 
 	//Load the positions file and unmarshal it
-	buf, err := ioutil.ReadFile(filepath.Clean(positionsFile))
+	buf, err := ioutil.ReadFile(filepath.Clean(positionsFileName))
 	if err != nil {
 		t.Error("Expected to find a positions file but did not", err)
 		return
 	}
-	var p PositionsFile
+	var p positionsFile
 	if err := yaml.UnmarshalStrict(buf, &p); err != nil {
 		t.Error("Failed to parse positions file:", err)
 		return
