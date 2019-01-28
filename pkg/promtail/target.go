@@ -1,17 +1,16 @@
 package promtail
 
 import (
-	"os"
-	"path/filepath"
-	"time"
-
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/hpcloud/tail"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	fsnotify "gopkg.in/fsnotify.v1"
+	"gopkg.in/fsnotify.v1"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/grafana/loki/pkg/helpers"
 )
@@ -46,9 +45,10 @@ type Target struct {
 	handler   EntryHandler
 	positions *Positions
 
-	watcher *fsnotify.Watcher
-	path    string
-	quit    chan struct{}
+	watcher      *fsnotify.Watcher
+	path         string
+	quit         chan struct{}
+	quitComplete chan struct{}
 
 	tails map[string]*tailer
 }
@@ -75,8 +75,16 @@ func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, pa
 	for _, p := range matches {
 		dirs[filepath.Dir(p)] = struct{}{}
 	}
+
+	//If no files exist yet watch the directory specified in the path
+	if matches == nil {
+		//TODO does this work if the path is a directory?
+		dirs[filepath.Dir(path)] = struct{}{}
+	}
+
 	// watch each dir for any new files.
 	for dir := range dirs {
+		level.Debug(logger).Log("msg", "watching new directory", "directory", dir)
 		if err := watcher.Add(dir); err != nil {
 			helpers.LogError("closing watcher", watcher.Close)
 			return nil, errors.Wrap(err, "watcher.Add")
@@ -84,13 +92,14 @@ func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, pa
 	}
 
 	t := &Target{
-		logger:    logger,
-		watcher:   watcher,
-		path:      path,
-		handler:   addLabelsMiddleware(labels).Wrap(handler),
-		positions: positions,
-		quit:      make(chan struct{}),
-		tails:     map[string]*tailer{},
+		logger:       logger,
+		watcher:      watcher,
+		path:         path,
+		handler:      addLabelsMiddleware(labels).Wrap(handler),
+		positions:    positions,
+		quit:         make(chan struct{}),
+		quitComplete: make(chan struct{}),
+		tails:        map[string]*tailer{},
 	}
 
 	// start tailing all of the matched files
@@ -120,6 +129,7 @@ func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, pa
 // Stop the target.
 func (t *Target) Stop() {
 	close(t.quit)
+	<-t.quitComplete
 }
 
 func (t *Target) run() {
@@ -128,6 +138,10 @@ func (t *Target) run() {
 		for _, v := range t.tails {
 			helpers.LogError("stopping tailer", v.stop)
 		}
+		//Save positions
+		t.positions.Stop()
+		level.Debug(t.logger).Log("msg", "watcher closed, tailer stopped, positions saved")
+		close(t.quitComplete)
 	}()
 
 	for {
@@ -155,6 +169,7 @@ func (t *Target) run() {
 					continue
 				}
 
+				level.Debug(t.logger).Log("msg", "tailing new file", "filename", event.Name)
 				t.tails[event.Name] = tailer
 
 			case fsnotify.Remove:
@@ -191,6 +206,9 @@ type tailer struct {
 
 	path string
 	tail *tail.Tail
+
+	quit         chan struct{}
+	quitComplete chan struct{}
 }
 
 func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, path string) (*tailer, error) {
@@ -210,33 +228,34 @@ func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, pa
 		handler:   addLabelsMiddleware(model.LabelSet{filename: model.LabelValue(path)}).Wrap(handler),
 		positions: positions,
 
-		path: path,
-		tail: tail,
+		path:         path,
+		tail:         tail,
+		quit:         make(chan struct{}),
+		quitComplete: make(chan struct{}),
 	}
 	go tailer.run()
 	return tailer, nil
 }
 
 func (t *tailer) run() {
-	defer func() {
-		level.Info(t.logger).Log("msg", "stopping tailing file", "filename", t.path)
-	}()
-
 	level.Info(t.logger).Log("msg", "start tailing file", "filename", t.path)
 	positionSyncPeriod := t.positions.cfg.SyncPeriod
 	positionWait := time.NewTicker(positionSyncPeriod)
-	defer positionWait.Stop()
+
+	defer func() {
+		level.Info(t.logger).Log("msg", "stopping tailing file", "filename", t.path)
+		positionWait.Stop()
+		t.markPosition()
+		close(t.quitComplete)
+	}()
 
 	for {
 		select {
-
 		case <-positionWait.C:
-			pos, err := t.tail.Tell()
+			err := t.markPosition()
 			if err != nil {
-				level.Error(t.logger).Log("msg", "error getting tail position", "error", err)
 				continue
 			}
-			t.positions.Put(t.path, pos)
 
 		case line, ok := <-t.tail.Lines:
 			if !ok {
@@ -252,11 +271,26 @@ func (t *tailer) run() {
 			if err := t.handler.Handle(model.LabelSet{}, line.Time, line.Text); err != nil {
 				level.Error(t.logger).Log("msg", "error handling line", "error", err)
 			}
+		case <-t.quit:
+			return
 		}
 	}
 }
 
+func (t *tailer) markPosition() error {
+	pos, err := t.tail.Tell()
+	if err != nil {
+		level.Error(t.logger).Log("msg", "error getting tail position", "error", err)
+		return err
+	}
+	level.Debug(t.logger).Log("path", t.path, "current_position", pos)
+	t.positions.Put(t.path, pos)
+	return nil
+}
+
 func (t *tailer) stop() error {
+	close(t.quit)
+	<-t.quitComplete
 	return t.tail.Stop()
 }
 
