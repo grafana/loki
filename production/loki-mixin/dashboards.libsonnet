@@ -1,4 +1,5 @@
 local g = import 'grafana-builder/grafana.libsonnet';
+local utils = import "mixin-utils/utils.libsonnet";
 
 {
   dashboards+: {
@@ -14,7 +15,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
         )
         .addPanel(
           g.panel('Latency') +
-          g.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [g.selector.eq('job', '$namespace/cortex-gw'), g.selector.eq('route', 'cortex-write')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [g.selector.eq('job', '$namespace/cortex-gw'), g.selector.eq('route', 'cortex-write')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
         )
       )
       .addRow(
@@ -25,7 +26,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
         )
         .addPanel(
           g.panel('Latency') +
-          g.latencyRecordingRulePanel('loki_request_duration_seconds', [g.selector.eq('job', '$namespace/distributor'), g.selector.eq('route', 'api_prom_push')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [g.selector.eq('job', '$namespace/distributor'), g.selector.eq('route', 'api_prom_push')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
         )
       )
       .addRow(
@@ -36,7 +37,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
         )
         .addPanel(
           g.panel('Latency') +
-          g.latencyRecordingRulePanel('loki_request_duration_seconds', [g.selector.eq('job', '$namespace/ingester'), g.selector.eq('route', '/logproto.Pusher/Push')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [g.selector.eq('job', '$namespace/ingester'), g.selector.eq('route', '/logproto.Pusher/Push')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
         )
       ),
 
@@ -52,7 +53,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
         )
         .addPanel(
           g.panel('Latency') +
-          g.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [g.selector.eq('job', '$namespace/cortex-gw'), g.selector.eq('route', 'cortex-read')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [g.selector.eq('job', '$namespace/cortex-gw'), g.selector.eq('route', 'cortex-read')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
         )
       )
       .addRow(
@@ -63,7 +64,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
         )
         .addPanel(
           g.panel('Latency') +
-          g.latencyRecordingRulePanel('loki_request_duration_seconds', [g.selector.eq('job', '$namespace/querier')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [g.selector.eq('job', '$namespace/querier')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
         )
       )
       .addRow(
@@ -74,7 +75,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
         )
         .addPanel(
           g.panel('Latency') +
-          g.latencyRecordingRulePanel('loki_request_duration_seconds', [g.selector.eq('job', '$namespace/ingester'), g.selector.nre('route', '/logproto.Pusher/Push|metrics|ready')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [g.selector.eq('job', '$namespace/ingester'), g.selector.nre('route', '/logproto.Pusher/Push|metrics|ready')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
         )
       ),
 
@@ -98,19 +99,19 @@ local g = import 'grafana-builder/grafana.libsonnet';
         g.row('Flush Stats')
         .addPanel(
           g.panel('Utilization') +
-          g.latencyPanel('loki_ingester_chunk_utilization', '{cluster="$cluster", job="$namespace/ingester"}', multiplier='1') +
+          utils.latencyPanel('loki_ingester_chunk_utilization', '{cluster="$cluster", job="$namespace/ingester"}', multiplier='1') +
           { yaxes: g.yaxes('percentunit') },
         )
         .addPanel(
           g.panel('Age') +
-          g.latencyPanel('loki_ingester_chunk_age_seconds', '{cluster="$cluster", job="$namespace/ingester"}'),
+          utils.latencyPanel('loki_ingester_chunk_age_seconds', '{cluster="$cluster", job="$namespace/ingester"}'),
         ),
       )
       .addRow(
         g.row('Flush Stats')
         .addPanel(
           g.panel('Size') +
-          g.latencyPanel('loki_ingester_chunk_length', '{cluster="$cluster", job="$namespace/ingester"}', multiplier='1') +
+          utils.latencyPanel('loki_ingester_chunk_length', '{cluster="$cluster", job="$namespace/ingester"}', multiplier='1') +
           { yaxes: g.yaxes('short') },
         )
         .addPanel(
@@ -142,7 +143,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
         )
         .addPanel(
           g.panel('Latency') +
-          g.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [g.selector.eq('job', '$namespace/cortex-gw')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [g.selector.eq('job', '$namespace/cortex-gw')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
         )
       ),
       'promtail.json':
@@ -157,7 +158,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
            )
            .addPanel(
              g.panel('Latency') +
-             g.latencyRecordingRulePanel('promtail_request_duration_seconds', [g.selector.eq('job', '$namespace/promtail')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+             utils.latencyRecordingRulePanel('promtail_request_duration_seconds', [g.selector.eq('job', '$namespace/promtail')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
            )
         )
   },
