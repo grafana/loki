@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	fsnotify "gopkg.in/fsnotify.v1"
+	"gopkg.in/fsnotify.v1"
 
 	"github.com/grafana/loki/pkg/helpers"
 )
@@ -49,6 +49,7 @@ type Target struct {
 	watcher *fsnotify.Watcher
 	path    string
 	quit    chan struct{}
+	done    chan struct{}
 
 	tails map[string]*tailer
 }
@@ -75,8 +76,15 @@ func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, pa
 	for _, p := range matches {
 		dirs[filepath.Dir(p)] = struct{}{}
 	}
+
+	// If no files exist yet watch the directory specified in the path.
+	if matches == nil {
+		dirs[filepath.Dir(path)] = struct{}{}
+	}
+
 	// watch each dir for any new files.
 	for dir := range dirs {
+		level.Debug(logger).Log("msg", "watching new directory", "directory", dir)
 		if err := watcher.Add(dir); err != nil {
 			helpers.LogError("closing watcher", watcher.Close)
 			return nil, errors.Wrap(err, "watcher.Add")
@@ -90,6 +98,7 @@ func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, pa
 		handler:   addLabelsMiddleware(labels).Wrap(handler),
 		positions: positions,
 		quit:      make(chan struct{}),
+		done:      make(chan struct{}),
 		tails:     map[string]*tailer{},
 	}
 
@@ -120,6 +129,7 @@ func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, pa
 // Stop the target.
 func (t *Target) Stop() {
 	close(t.quit)
+	<-t.done
 }
 
 func (t *Target) run() {
@@ -128,6 +138,10 @@ func (t *Target) run() {
 		for _, v := range t.tails {
 			helpers.LogError("stopping tailer", v.stop)
 		}
+		//Save positions
+		t.positions.Stop()
+		level.Debug(t.logger).Log("msg", "watcher closed, tailer stopped, positions saved")
+		close(t.done)
 	}()
 
 	for {
@@ -155,6 +169,7 @@ func (t *Target) run() {
 					continue
 				}
 
+				level.Debug(t.logger).Log("msg", "tailing new file", "filename", event.Name)
 				t.tails[event.Name] = tailer
 
 			case fsnotify.Remove:
@@ -191,6 +206,9 @@ type tailer struct {
 
 	path string
 	tail *tail.Tail
+
+	quit chan struct{}
+	done chan struct{}
 }
 
 func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, path string) (*tailer, error) {
@@ -212,31 +230,36 @@ func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, pa
 
 		path: path,
 		tail: tail,
+		quit: make(chan struct{}),
+		done: make(chan struct{}),
 	}
 	go tailer.run()
 	return tailer, nil
 }
 
 func (t *tailer) run() {
-	defer func() {
-		level.Info(t.logger).Log("msg", "stopping tailing file", "filename", t.path)
-	}()
-
 	level.Info(t.logger).Log("msg", "start tailing file", "filename", t.path)
 	positionSyncPeriod := t.positions.cfg.SyncPeriod
 	positionWait := time.NewTicker(positionSyncPeriod)
-	defer positionWait.Stop()
+
+	defer func() {
+		level.Info(t.logger).Log("msg", "stopping tailing file", "filename", t.path)
+		positionWait.Stop()
+		err := t.markPosition()
+		if err != nil {
+			level.Error(t.logger).Log("msg", "error getting tail position", "error", err)
+		}
+		close(t.done)
+	}()
 
 	for {
 		select {
-
 		case <-positionWait.C:
-			pos, err := t.tail.Tell()
+			err := t.markPosition()
 			if err != nil {
 				level.Error(t.logger).Log("msg", "error getting tail position", "error", err)
 				continue
 			}
-			t.positions.Put(t.path, pos)
 
 		case line, ok := <-t.tail.Lines:
 			if !ok {
@@ -252,11 +275,25 @@ func (t *tailer) run() {
 			if err := t.handler.Handle(model.LabelSet{}, line.Time, line.Text); err != nil {
 				level.Error(t.logger).Log("msg", "error handling line", "error", err)
 			}
+		case <-t.quit:
+			return
 		}
 	}
 }
 
+func (t *tailer) markPosition() error {
+	pos, err := t.tail.Tell()
+	if err != nil {
+		return err
+	}
+	level.Debug(t.logger).Log("path", t.path, "current_position", pos)
+	t.positions.Put(t.path, pos)
+	return nil
+}
+
 func (t *tailer) stop() error {
+	close(t.quit)
+	<-t.done
 	return t.tail.Stop()
 }
 

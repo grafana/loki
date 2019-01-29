@@ -34,6 +34,7 @@ type Positions struct {
 	mtx       sync.Mutex
 	positions map[string]int64
 	quit      chan struct{}
+	done      chan struct{}
 }
 
 type positionsFile struct {
@@ -52,6 +53,7 @@ func NewPositions(logger log.Logger, cfg PositionsConfig) (*Positions, error) {
 		cfg:       cfg,
 		positions: positions,
 		quit:      make(chan struct{}),
+		done:      make(chan struct{}),
 	}
 
 	go p.run()
@@ -61,6 +63,7 @@ func NewPositions(logger log.Logger, cfg PositionsConfig) (*Positions, error) {
 // Stop the Position tracker.
 func (p *Positions) Stop() {
 	close(p.quit)
+	<-p.done
 }
 
 // Put records (asynchronously) how far we've read through a file.
@@ -85,7 +88,11 @@ func (p *Positions) Remove(path string) {
 }
 
 func (p *Positions) run() {
-	defer p.save()
+	defer func() {
+		p.save()
+		level.Debug(p.logger).Log("msg", "positions saved")
+		close(p.done)
+	}()
 
 	ticker := time.NewTicker(p.cfg.SyncPeriod)
 	for {
