@@ -38,7 +38,7 @@ data:
           target_label: instance
         - action: replace
           source_labels:
-          - __meta_kubernetes_container_name
+          - __meta_kubernetes_pod_container_name
           target_label: container_name
         - action: labelmap
           regex: __meta_kubernetes_pod_label_(.+)
@@ -76,7 +76,7 @@ data:
           target_label: instance
         - action: replace
           source_labels:
-          - __meta_kubernetes_container_name
+          - __meta_kubernetes_pod_container_name
           target_label: container_name
         - action: labelmap
           regex: __meta_kubernetes_pod_label_(.+)
