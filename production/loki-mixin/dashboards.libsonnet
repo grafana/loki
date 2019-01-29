@@ -15,7 +15,7 @@ local utils = import "mixin-utils/utils.libsonnet";
         )
         .addPanel(
           g.panel('Latency') +
-          utils.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [g.selector.eq('job', '$namespace/cortex-gw'), g.selector.eq('route', 'cortex-write')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [utils.selector.eq('job', '$namespace/cortex-gw'), utils.selector.eq('route', 'cortex-write')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
         )
       )
       .addRow(
@@ -26,7 +26,7 @@ local utils = import "mixin-utils/utils.libsonnet";
         )
         .addPanel(
           g.panel('Latency') +
-          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [g.selector.eq('job', '$namespace/distributor'), g.selector.eq('route', 'api_prom_push')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/distributor'), utils.selector.eq('route', 'api_prom_push')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
         )
       )
       .addRow(
@@ -37,7 +37,7 @@ local utils = import "mixin-utils/utils.libsonnet";
         )
         .addPanel(
           g.panel('Latency') +
-          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [g.selector.eq('job', '$namespace/ingester'), g.selector.eq('route', '/logproto.Pusher/Push')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/ingester'), utils.selector.eq('route', '/logproto.Pusher/Push')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
         )
       ),
 
@@ -53,7 +53,7 @@ local utils = import "mixin-utils/utils.libsonnet";
         )
         .addPanel(
           g.panel('Latency') +
-          utils.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [g.selector.eq('job', '$namespace/cortex-gw'), g.selector.eq('route', 'cortex-read')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [utils.selector.eq('job', '$namespace/cortex-gw'), utils.selector.eq('route', 'cortex-read')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
         )
       )
       .addRow(
@@ -64,7 +64,7 @@ local utils = import "mixin-utils/utils.libsonnet";
         )
         .addPanel(
           g.panel('Latency') +
-          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [g.selector.eq('job', '$namespace/querier')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/querier')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
         )
       )
       .addRow(
@@ -75,7 +75,7 @@ local utils = import "mixin-utils/utils.libsonnet";
         )
         .addPanel(
           g.panel('Latency') +
-          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [g.selector.eq('job', '$namespace/ingester'), g.selector.nre('route', '/logproto.Pusher/Push|metrics|ready')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/ingester'), utils.selector.nre('route', '/logproto.Pusher/Push|metrics|ready')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
         )
       ),
 
@@ -143,7 +143,7 @@ local utils = import "mixin-utils/utils.libsonnet";
         )
         .addPanel(
           g.panel('Latency') +
-          utils.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [g.selector.eq('job', '$namespace/cortex-gw')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [utils.selector.eq('job', '$namespace/cortex-gw')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
         )
       ),
       'promtail.json':
@@ -158,7 +158,7 @@ local utils = import "mixin-utils/utils.libsonnet";
            )
            .addPanel(
              g.panel('Latency') +
-             utils.latencyRecordingRulePanel('promtail_request_duration_seconds', [g.selector.eq('job', '$namespace/promtail')], extra_selectors=[g.selector.eq('cluster', '$cluster')])
+             utils.latencyRecordingRulePanel('promtail_request_duration_seconds', [utils.selector.eq('job', '$namespace/promtail')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
            )
         )
   },
