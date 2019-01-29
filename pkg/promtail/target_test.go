@@ -69,6 +69,7 @@ func TestLongSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	}
 
 	target.Stop()
+	positions.Stop()
 
 	buf, err := ioutil.ReadFile(filepath.Clean(positionsFileName))
 	if err != nil {
@@ -161,6 +162,7 @@ func TestWatchEntireDirectory(t *testing.T) {
 	}
 
 	target.Stop()
+	positions.Stop()
 
 	buf, err := ioutil.ReadFile(filepath.Clean(positionsFileName))
 	if err != nil {
@@ -269,6 +271,7 @@ func TestFileRolls(t *testing.T) {
 	}
 
 	target.Stop()
+	positions.Stop()
 
 	if len(client.messages) != 20 {
 		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.messages))
@@ -339,6 +342,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	target.Stop()
+	positions.Stop()
 
 	// Create another positions (so that it loads from the previously saved positions file).
 	positions2, err := NewPositions(logger, PositionsConfig{
@@ -367,6 +371,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	target2.Stop()
+	positions2.Stop()
 
 	if len(client.messages) != 20 {
 		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.messages))
@@ -449,6 +454,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	}
 
 	target.Stop()
+	positions.Stop()
 
 	buf, err := ioutil.ReadFile(filepath.Clean(positionsFileName))
 	if err != nil {
