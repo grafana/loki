@@ -12,13 +12,13 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
-	"github.com/cortexproject/cortex/pkg/util/wire"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/parser"
 	"github.com/grafana/loki/pkg/querier"
+	"github.com/grafana/loki/pkg/util"
 )
 
 const queryBatchSize = 128
@@ -67,10 +67,12 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	i.streamsMtx.Lock()
 	defer i.streamsMtx.Unlock()
 
+	var appendErr error
 	for _, s := range req.Streams {
-		labels, err := toClientLabels(s.Labels)
+		labels, err := util.ToClientLabels(s.Labels)
 		if err != nil {
-			return err
+			appendErr = err
+			continue
 		}
 
 		fp := client.FastFingerprint(labels)
@@ -83,11 +85,12 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		}
 
 		if err := stream.Push(ctx, s.Entries); err != nil {
-			return err
+			appendErr = err
+			continue
 		}
 	}
 
-	return nil
+	return appendErr
 }
 
 func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
@@ -182,20 +185,4 @@ func sendBatches(i iter.EntryIterator, queryServer logproto.Querier_QueryServer,
 		}
 	}
 	return nil
-}
-
-func toClientLabels(labels string) ([]client.LabelPair, error) {
-	ls, err := parser.Labels(labels)
-	if err != nil {
-		return nil, err
-	}
-
-	pairs := make([]client.LabelPair, 0, len(ls))
-	for i := 0; i < len(ls); i++ {
-		pairs = append(pairs, client.LabelPair{
-			Name:  wire.Bytes(ls[i].Name),
-			Value: wire.Bytes(ls[i].Value),
-		})
-	}
-	return pairs, nil
 }

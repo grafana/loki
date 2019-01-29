@@ -26,6 +26,7 @@ type moduleName int
 // The various modules that make up Loki.
 const (
 	Ring moduleName = iota
+	Overrides
 	Server
 	Distributor
 	Ingester
@@ -38,6 +39,8 @@ func (m moduleName) String() string {
 	switch m {
 	case Ring:
 		return "ring"
+	case Overrides:
+		return "overrides"
 	case Server:
 		return "server"
 	case Distributor:
@@ -59,6 +62,9 @@ func (m *moduleName) Set(s string) error {
 	switch strings.ToLower(s) {
 	case "ring":
 		*m = Ring
+		return nil
+	case "overrides":
+		*m = Overrides
 		return nil
 	case "server":
 		*m = Server
@@ -97,8 +103,13 @@ func (t *Loki) initRing() (err error) {
 	return
 }
 
+func (t *Loki) initOverrides() (err error) {
+	t.overrides, err = validation.NewOverrides(t.cfg.LimitsConfig)
+	return err
+}
+
 func (t *Loki) initDistributor() (err error) {
-	t.distributor, err = distributor.New(t.cfg.Distributor, t.cfg.IngesterClient, t.ring)
+	t.distributor, err = distributor.New(t.cfg.Distributor, t.cfg.IngesterClient, t.ring, t.overrides)
 	if err != nil {
 		return
 	}
@@ -158,13 +169,7 @@ func (t *Loki) stopIngester() error {
 }
 
 func (t *Loki) initStore() (err error) {
-	var overrides *validation.Overrides
-	overrides, err = validation.NewOverrides(t.cfg.LimitsConfig)
-	if err != nil {
-		return err
-	}
-
-	t.store, err = storage.NewStore(t.cfg.StorageConfig, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig, overrides)
+	t.store, err = storage.NewStore(t.cfg.StorageConfig, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig, t.overrides)
 	return
 }
 
@@ -189,12 +194,17 @@ var modules = map[moduleName]module{
 		init: (*Loki).initRing,
 	},
 
+	Overrides: {
+		init: (*Loki).initOverrides,
+	},
+
 	Distributor: {
-		deps: []moduleName{Ring, Server},
+		deps: []moduleName{Ring, Server, Overrides},
 		init: (*Loki).initDistributor,
 	},
 
 	Store: {
+		deps: []moduleName{Overrides},
 		init: (*Loki).initStore,
 		stop: (*Loki).stopStore,
 	},

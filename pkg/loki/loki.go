@@ -62,6 +62,7 @@ type Loki struct {
 
 	server      *server.Server
 	ring        *ring.Ring
+	overrides   *validation.Overrides
 	distributor *distributor.Distributor
 	ingester    *ingester.Ingester
 	querier     *querier.Querier
