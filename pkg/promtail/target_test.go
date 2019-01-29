@@ -1,6 +1,7 @@
 package promtail
 
 import (
+	"github.com/go-kit/kit/log/level"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -29,8 +30,8 @@ func TestLongSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	}
 	defer os.RemoveAll(dirName)
 
-	//Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
-	//everything saved was done through channel notifications when target.stop() was called
+	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
+	// everything saved was done through channel notifications when target.stop() was called.
 	positions, err := NewPositions(logger, PositionsConfig{
 		SyncPeriod:    10 * time.Second,
 		PositionsFile: positionsFileName,
@@ -45,21 +46,18 @@ func TestLongSyncDelayStillSavesCorrectPosition(t *testing.T) {
 		messages: make([]string, 0),
 	}
 
-	//Create the target which should start tailing
 	target, err := NewTarget(logger, client, positions, logFile, nil)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	//Create the test log file
 	f, err := os.Create(logFile)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	//Write some entries to it
 	for i := 0; i < 10; i++ {
 		_, err = f.WriteString("test\n")
 		if err != nil {
@@ -69,10 +67,8 @@ func TestLongSyncDelayStillSavesCorrectPosition(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 	}
 
-	//Stop the target
 	target.Stop()
 
-	//Load the positions file and unmarshal it
 	buf, err := ioutil.ReadFile(filepath.Clean(positionsFileName))
 	if err != nil {
 		t.Error("Expected to find a positions file but did not", err)
@@ -84,7 +80,7 @@ func TestLongSyncDelayStillSavesCorrectPosition(t *testing.T) {
 		return
 	}
 
-	//Assert the position value is in the correct spot
+	// Assert the position value is in the correct spot.
 	if val, ok := p.Positions[logFile]; ok {
 		if val != 50 {
 			t.Error("Incorrect position found, expected 50, found", val)
@@ -93,12 +89,104 @@ func TestLongSyncDelayStillSavesCorrectPosition(t *testing.T) {
 		t.Error("Positions file did not contain any data for our test log file")
 	}
 
-	//Assert the number of messages the handler received is correct
+	// Assert the number of messages the handler received is correct.
 	if len(client.messages) != 10 {
 		t.Error("Handler did not receive the correct number of messages, expected 10 received", len(client.messages))
 	}
 
-	//Spot check one of the messages
+	// Spot check one of the messages.
+	if client.messages[0] != "test" {
+		t.Error("Expected first log message to be 'test' but was", client.messages[0])
+	}
+
+}
+
+func TestWatchEntireDirectory(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	initRandom()
+	dirName := "/tmp/" + randName()
+	positionsFileName := dirName + "/positions.yml"
+	logFileDir := dirName + "/logdir/"
+
+	err := os.MkdirAll(dirName, 0750)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	err = os.MkdirAll(logFileDir, 0750)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer os.RemoveAll(dirName)
+
+	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
+	// everything saved was done through channel notifications when target.stop() was called.
+	positions, err := NewPositions(logger, PositionsConfig{
+		SyncPeriod:    10 * time.Second,
+		PositionsFile: positionsFileName,
+	})
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	client := &TestClient{
+		log:      logger,
+		messages: make([]string, 0),
+	}
+
+	target, err := NewTarget(logger, client, positions, logFileDir+"*", nil)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	f, err := os.Create(logFileDir + "test.log")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	for i := 0; i < 10; i++ {
+		_, err = f.WriteString("test\n")
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		time.Sleep(1 * time.Millisecond)
+	}
+
+	target.Stop()
+
+	buf, err := ioutil.ReadFile(filepath.Clean(positionsFileName))
+	if err != nil {
+		t.Error("Expected to find a positions file but did not", err)
+		return
+	}
+	var p positionsFile
+	if err := yaml.UnmarshalStrict(buf, &p); err != nil {
+		t.Error("Failed to parse positions file:", err)
+		return
+	}
+
+	// Assert the position value is in the correct spot.
+	if val, ok := p.Positions[logFileDir+"test.log"]; ok {
+		if val != 50 {
+			t.Error("Incorrect position found, expected 50, found", val)
+		}
+	} else {
+		t.Error("Positions file did not contain any data for our test log file")
+	}
+
+	// Assert the number of messages the handler received is correct.
+	if len(client.messages) != 10 {
+		t.Error("Handler did not receive the correct number of messages, expected 10 received", len(client.messages))
+	}
+
+	// Spot check one of the messages.
 	if client.messages[0] != "test" {
 		t.Error("Expected first log message to be 'test' but was", client.messages[0])
 	}
@@ -121,8 +209,8 @@ func TestFileRolls(t *testing.T) {
 	}
 	defer os.RemoveAll(dirName)
 
-	//Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
-	//everything saved was done through channel notifications when target.stop() was called
+	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
+	// everything saved was done through channel notifications when target.stop() was called.
 	positions, err := NewPositions(logger, PositionsConfig{
 		SyncPeriod:    10 * time.Second,
 		PositionsFile: positionsFile,
@@ -137,21 +225,18 @@ func TestFileRolls(t *testing.T) {
 		messages: make([]string, 0),
 	}
 
-	//Create the target which should start tailing
 	target, err := NewTarget(logger, client, positions, dirName+"/*.log", nil)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	//Create the test log file
 	f, err := os.Create(logFile)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	//Write some entries to it
 	for i := 0; i < 10; i++ {
 		_, err = f.WriteString("test1\n")
 		if err != nil {
@@ -161,21 +246,18 @@ func TestFileRolls(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 	}
 
-	//Rename the log file
+	// Rename the log file to something not in the pattern, then create a new file with the same name.
 	err = os.Rename(logFile, dirName+"/test.log.1")
 	if err != nil {
 		t.Error("Failed to rename log file for test", err)
 		return
 	}
-
-	//Create the test log file again
 	f, err = os.Create(logFile)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	//Write some entries to it
 	for i := 0; i < 10; i++ {
 		_, err = f.WriteString("test2\n")
 		if err != nil {
@@ -185,20 +267,18 @@ func TestFileRolls(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 	}
 
-	//Stop the target
 	target.Stop()
 
-	//Assert the number of messages the handler received is correct
 	if len(client.messages) != 20 {
 		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.messages))
 	}
 
-	//Spot check one of the messages
+	// Spot check one of the messages.
 	if client.messages[0] != "test1" {
 		t.Error("Expected first log message to be 'test1' but was", client.messages[0])
 	}
 
-	//Spot check the first message from the second file
+	// Spot check the first message from the second file.
 	if client.messages[10] != "test2" {
 		t.Error("Expected first log message to be 'test2' but was", client.messages[10])
 	}
@@ -220,8 +300,8 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 	defer os.RemoveAll(dirName)
 
-	//Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
-	//everything saved was done through channel notifications when target.stop() was called
+	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
+	// everything saved was done through channel notifications when target.stop() was called.
 	positions, err := NewPositions(logger, PositionsConfig{
 		SyncPeriod:    10 * time.Second,
 		PositionsFile: positionsFileName,
@@ -236,21 +316,18 @@ func TestResumesWhereLeftOff(t *testing.T) {
 		messages: make([]string, 0),
 	}
 
-	//Create the target which should start tailing
 	target, err := NewTarget(logger, client, positions, dirName+"/*.log", nil)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	//Create the test log file
 	f, err := os.Create(logFile)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	//Write some entries to it
 	for i := 0; i < 10; i++ {
 		_, err = f.WriteString("test1\n")
 		if err != nil {
@@ -260,10 +337,9 @@ func TestResumesWhereLeftOff(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 	}
 
-	//Stop the target
 	target.Stop()
 
-	//Create another positions (so that it loads from the positions file)
+	// Create another positions (so that it loads from the previously saved positions file).
 	positions2, err := NewPositions(logger, PositionsConfig{
 		SyncPeriod:    10 * time.Second,
 		PositionsFile: positionsFileName,
@@ -273,14 +349,13 @@ func TestResumesWhereLeftOff(t *testing.T) {
 		return
 	}
 
-	//Create a new target, keep the same client so we can track what was sent through the handler
+	// Create a new target, keep the same client so we can track what was sent through the handler.
 	target2, err := NewTarget(logger, client, positions2, dirName+"/*.log", nil)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	//Write some more log entries
 	for i := 0; i < 10; i++ {
 		_, err = f.WriteString("test2\n")
 		if err != nil {
@@ -292,17 +367,16 @@ func TestResumesWhereLeftOff(t *testing.T) {
 
 	target2.Stop()
 
-	//Assert the number of messages the handler received is correct
 	if len(client.messages) != 20 {
 		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.messages))
 	}
 
-	//Spot check one of the messages
+	// Spot check one of the messages.
 	if client.messages[0] != "test1" {
 		t.Error("Expected first log message to be 'test1' but was", client.messages[0])
 	}
 
-	//Spot check the first message from the second file
+	// Spot check the first message from the second file.
 	if client.messages[10] != "test2" {
 		t.Error("Expected first log message to be 'test2' but was", client.messages[10])
 	}
@@ -325,8 +399,8 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	}
 	defer os.RemoveAll(dirName)
 
-	//Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
-	//everything saved was done through channel notifications when target.stop() was called
+	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
+	// everything saved was done through channel notifications when target.stop() was called.
 	positions, err := NewPositions(logger, PositionsConfig{
 		SyncPeriod:    10 * time.Second,
 		PositionsFile: positionsFileName,
@@ -341,14 +415,12 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 		messages: make([]string, 0),
 	}
 
-	//Create the target which should start tailing
 	target, err := NewTarget(logger, client, positions, dirName+"/*.log", nil)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	//Create the test log file
 	f1, err := os.Create(logFile1)
 	if err != nil {
 		t.Error(err)
@@ -360,7 +432,6 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 		return
 	}
 
-	//Write some entries to both files
 	for i := 0; i < 10; i++ {
 		_, err = f1.WriteString("test1\n")
 		if err != nil {
@@ -376,10 +447,8 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 	}
 
-	//Stop the target
 	target.Stop()
 
-	//Load the positions file and unmarshal it
 	buf, err := ioutil.ReadFile(filepath.Clean(positionsFileName))
 	if err != nil {
 		t.Error("Expected to find a positions file but did not", err)
@@ -391,7 +460,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 		return
 	}
 
-	//Assert the position value is in the correct spot
+	// Assert the position value is in the correct spot.
 	if val, ok := p.Positions[logFile1]; ok {
 		if val != 60 {
 			t.Error("Incorrect position found for file 1, expected 60, found", val)
@@ -407,17 +476,17 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 		t.Error("Positions file did not contain any data for our test log file")
 	}
 
-	//Assert the number of messages the handler received is correct
+	// Assert the number of messages the handler received is correct.
 	if len(client.messages) != 20 {
 		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.messages))
 	}
 
-	//Spot check one of the messages
+	// Spot check one of the messages, the first message should be from the first file because we wrote that first.
 	if client.messages[0] != "test1" {
 		t.Error("Expected first log message to be 'test1' but was", client.messages[0])
 	}
 
-	//Spot check the first message from the second file
+	// Spot check the second message, it should be from the second file.
 	if client.messages[1] != "dirt1" {
 		t.Error("Expected first log message to be 'test2' but was", client.messages[1])
 	}
@@ -425,12 +494,12 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 
 type TestClient struct {
 	log      log.Logger
-	messages []string //FIXME should this be an array of pointers to strings?
+	messages []string
 }
 
 func (c *TestClient) Handle(ls model.LabelSet, t time.Time, s string) error {
 	c.messages = append(c.messages, s)
-	//level.Info(c.log).Log("msg", "received log", "log", s)
+	level.Debug(c.log).Log("msg", "received log", "log", s)
 	return nil
 }
 

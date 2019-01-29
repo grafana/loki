@@ -77,9 +77,8 @@ func NewTarget(logger log.Logger, handler EntryHandler, positions *Positions, pa
 		dirs[filepath.Dir(p)] = struct{}{}
 	}
 
-	//If no files exist yet watch the directory specified in the path
+	// If no files exist yet watch the directory specified in the path.
 	if matches == nil {
-		//TODO does this work if the path is a directory?
 		dirs[filepath.Dir(path)] = struct{}{}
 	}
 
@@ -246,7 +245,10 @@ func (t *tailer) run() {
 	defer func() {
 		level.Info(t.logger).Log("msg", "stopping tailing file", "filename", t.path)
 		positionWait.Stop()
-		_ = t.markPosition()
+		err := t.markPosition()
+		if err != nil {
+			level.Error(t.logger).Log("msg", "error getting tail position", "error", err)
+		}
 		close(t.done)
 	}()
 
@@ -255,6 +257,7 @@ func (t *tailer) run() {
 		case <-positionWait.C:
 			err := t.markPosition()
 			if err != nil {
+				level.Error(t.logger).Log("msg", "error getting tail position", "error", err)
 				continue
 			}
 
@@ -281,7 +284,6 @@ func (t *tailer) run() {
 func (t *tailer) markPosition() error {
 	pos, err := t.tail.Tell()
 	if err != nil {
-		level.Error(t.logger).Log("msg", "error getting tail position", "error", err)
 		return err
 	}
 	level.Debug(t.logger).Log("path", t.path, "current_position", pos)
