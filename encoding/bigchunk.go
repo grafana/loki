@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"flag"
 	"io"
 
 	"github.com/prometheus/common/model"
@@ -14,16 +13,6 @@ import (
 const samplesPerChunk = 120
 
 var errOutOfBounds = errors.New("out of bounds")
-
-// BigchunkConfig configures the behaviour of bigchunks
-type BigchunkConfig struct{}
-
-var bigchunkSizeCapBytes = 0
-
-// RegisterFlags registers configuration settings.
-func (BigchunkConfig) RegisterFlags(f *flag.FlagSet) {
-	flag.IntVar(&bigchunkSizeCapBytes, "store.bigchunk-size-cap-bytes", bigchunkSizeCapBytes, "When using bigchunk encoding, start a new bigchunk if over this size (0 = unlimited)")
-}
 
 // bigchunk is a set of prometheus/tsdb chunks.  It grows over time and has no
 // upperbound on number of samples it can contain.
