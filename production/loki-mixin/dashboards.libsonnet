@@ -99,19 +99,19 @@ local utils = import "mixin-utils/utils.libsonnet";
         g.row('Flush Stats')
         .addPanel(
           g.panel('Utilization') +
-          utils.latencyPanel('loki_ingester_chunk_utilization', '{cluster="$cluster", job="$namespace/ingester"}', multiplier='1') +
+          g.latencyPanel('loki_ingester_chunk_utilization', '{cluster="$cluster", job="$namespace/ingester"}', multiplier='1') +
           { yaxes: g.yaxes('percentunit') },
         )
         .addPanel(
           g.panel('Age') +
-          utils.latencyPanel('loki_ingester_chunk_age_seconds', '{cluster="$cluster", job="$namespace/ingester"}'),
+          g.latencyPanel('loki_ingester_chunk_age_seconds', '{cluster="$cluster", job="$namespace/ingester"}'),
         ),
       )
       .addRow(
         g.row('Flush Stats')
         .addPanel(
           g.panel('Size') +
-          utils.latencyPanel('loki_ingester_chunk_length', '{cluster="$cluster", job="$namespace/ingester"}', multiplier='1') +
+          g.latencyPanel('loki_ingester_chunk_length', '{cluster="$cluster", job="$namespace/ingester"}', multiplier='1') +
           { yaxes: g.yaxes('short') },
         )
         .addPanel(
