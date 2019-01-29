@@ -5,44 +5,44 @@ local utils = import "mixin-utils/utils.libsonnet";
   dashboards+: {
     'loki-writes.json':
       g.dashboard('Loki / Writes')
-      .addTemplate('cluster', 'kube_pod_container_info{image=~".*loki.*"}', 'cluster')
-      .addTemplate('namespace', 'kube_pod_container_info{image=~".*loki.*"}', 'namespace')
+      .addMultiTemplate('cluster', 'kube_pod_container_info{image=~".*loki.*"}', 'cluster')
+      .addMultiTemplate('namespace', 'kube_pod_container_info{image=~".*loki.*"}', 'namespace')
       .addRow(
         g.row('Frontend (cortex_gw)')
         .addPanel(
           g.panel('QPS') +
-          g.qpsPanel('cortex_gw_request_duration_seconds_count{cluster="$cluster", job="$namespace/cortex-gw", route="cortex-write"}')
+          g.qpsPanel('cortex_gw_request_duration_seconds_count{cluster=~"$cluster", job=~"($namespace)/cortex-gw", route="cortex-write"}')
         )
         .addPanel(
           g.panel('Latency') +
-          utils.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [utils.selector.eq('job', '$namespace/cortex-gw'), utils.selector.eq('route', 'cortex-write')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [utils.selector.re('job', '($namespace)/cortex-gw'), utils.selector.eq('route', 'cortex-write')], extra_selectors=[utils.selector.re('cluster', '$cluster')])
         )
       )
       .addRow(
         g.row('Distributor')
         .addPanel(
           g.panel('QPS') +
-          g.qpsPanel('loki_request_duration_seconds_count{cluster="$cluster", job="$namespace/distributor", route="api_prom_push"}')
+          g.qpsPanel('loki_request_duration_seconds_count{cluster=~"($cluster)", job=~"($namespace)/distributor"}')
         )
         .addPanel(
           g.panel('Latency') +
-          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/distributor'), utils.selector.eq('route', 'api_prom_push')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.re('job', '($namespace)/distributor')], extra_selectors=[utils.selector.re('cluster', '$cluster')])
         )
       )
       .addRow(
         g.row('Ingester')
         .addPanel(
           g.panel('QPS') +
-          g.qpsPanel('loki_request_duration_seconds_count{cluster="$cluster", job="$namespace/ingester",route="/logproto.Pusher/Push"}')
+          g.qpsPanel('loki_request_duration_seconds_count{cluster=~"$cluster", job=~"($namespace)/ingester",route="/logproto.Pusher/Push"}')
         )
         .addPanel(
           g.panel('Latency') +
-          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/ingester'), utils.selector.eq('route', '/logproto.Pusher/Push')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.re('job', '($namespace)/ingester'), utils.selector.eq('route', '/logproto.Pusher/Push')], extra_selectors=[utils.selector.re('cluster', '$cluster')])
         )
       ),
 
     'loki-reads.json':
-      g.dashboard('loki / Reads')
+      g.dashboard('Loki / Reads')
       .addTemplate('cluster', 'kube_pod_container_info{image=~".*loki.*"}', 'cluster')
       .addTemplate('namespace', 'kube_pod_container_info{image=~".*loki.*"}', 'namespace')
       .addRow(
