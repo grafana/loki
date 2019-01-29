@@ -1,13 +1,14 @@
 package promtail
 
 import (
-	"github.com/go-kit/kit/log/level"
 	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/go-kit/kit/log/level"
 
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
