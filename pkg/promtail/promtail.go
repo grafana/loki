@@ -52,5 +52,6 @@ func (p *Promtail) Run() error {
 func (p *Promtail) Shutdown() {
 	p.server.Shutdown()
 	p.targetManager.Stop()
+	p.positions.Stop()
 	p.client.Stop()
 }

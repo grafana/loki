@@ -136,10 +136,9 @@ func (t *Target) run() {
 	defer func() {
 		helpers.LogError("closing watcher", t.watcher.Close)
 		for _, v := range t.tails {
+			helpers.LogError("updating tailer last position", v.markPosition)
 			helpers.LogError("stopping tailer", v.stop)
 		}
-		//Save positions
-		t.positions.Stop()
 		level.Debug(t.logger).Log("msg", "watcher closed, tailer stopped, positions saved")
 		close(t.done)
 	}()
