@@ -47,7 +47,7 @@ data:
         - __meta_kubernetes_container_name
         target_label: container_name
       - action: labelmap
-          regex: __meta_kubernetes_pod_label_(.+)
+        regex: __meta_kubernetes_pod_label_(.+)
       - replacement: /var/log/pods/$1/0.log
         separator: /
         source_labels:
