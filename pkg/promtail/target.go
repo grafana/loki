@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/hpcloud/tail"
@@ -17,27 +19,28 @@ import (
 )
 
 var (
-	readBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
+	readBytes = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "read_bytes_total",
 		Help:      "Number of bytes read.",
 	}, []string{"path"})
 
-	readLines = prometheus.NewCounterVec(prometheus.CounterOpts{
+	readLines = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "read_lines_total",
 		Help:      "Number of lines read.",
 	}, []string{"path"})
+
+	filesActive = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "promtail",
+		Name:      "files_active_total",
+		Help:      "Number of active files.",
+	})
 )
 
 const (
 	filename = "__filename__"
 )
-
-func init() {
-	prometheus.MustRegister(readBytes)
-	prometheus.MustRegister(readLines)
-}
 
 // Target describes a particular set of logs.
 type Target struct {
@@ -233,6 +236,7 @@ func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, pa
 		done: make(chan struct{}),
 	}
 	go tailer.run()
+	filesActive.Add(1.)
 	return tailer, nil
 }
 
@@ -293,6 +297,7 @@ func (t *tailer) markPosition() error {
 func (t *tailer) stop() error {
 	close(t.quit)
 	<-t.done
+	filesActive.Add(-1.)
 	return t.tail.Stop()
 }
 

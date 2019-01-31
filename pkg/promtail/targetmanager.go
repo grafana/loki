@@ -8,6 +8,8 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/helpers"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
@@ -19,6 +21,19 @@ import (
 const (
 	pathLabel = "__path__"
 	hostLabel = "__host__"
+)
+
+var (
+	failedTargets = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "promtail",
+		Name:      "targets_failed_total",
+		Help:      "Number of failed targets.",
+	}, []string{"reason"})
+	targetsActive = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "promtail",
+		Name:      "targets_active_total",
+		Help:      "Number of active total.",
+	})
 )
 
 // TargetManager manages a set of targets.
@@ -111,18 +126,21 @@ func (s *syncer) Sync(groups []*targetgroup.Group) {
 			// Drop empty targets (drop in relabeling).
 			if labels == nil {
 				level.Debug(s.log).Log("msg", "dropping target, no labels")
+				failedTargets.WithLabelValues("empty_labels").Inc()
 				continue
 			}
 
 			host, ok := labels[hostLabel]
 			if ok && string(host) != s.hostname {
 				level.Debug(s.log).Log("msg", "ignoring target, wrong host", "labels", labels.String(), "hostname", s.hostname)
+				failedTargets.WithLabelValues("wrong_host").Inc()
 				continue
 			}
 
 			path, ok := labels[pathLabel]
 			if !ok {
 				level.Info(s.log).Log("msg", "no path for target", "labels", labels.String())
+				failedTargets.WithLabelValues("no_path").Inc()
 				continue
 			}
 
@@ -136,6 +154,7 @@ func (s *syncer) Sync(groups []*targetgroup.Group) {
 			targets[key] = struct{}{}
 			if _, ok := s.targets[key]; ok {
 				level.Debug(s.log).Log("msg", "ignoring target, already exists", "labels", labels.String())
+				failedTargets.WithLabelValues("exists").Inc()
 				continue
 			}
 
@@ -143,9 +162,11 @@ func (s *syncer) Sync(groups []*targetgroup.Group) {
 			t, err := s.newTarget(string(path), labels)
 			if err != nil {
 				level.Error(s.log).Log("msg", "Failed to create target", "key", key, "error", err)
+				failedTargets.WithLabelValues("error").Inc()
 				continue
 			}
 
+			targetsActive.Add(1.)
 			s.targets[key] = t
 		}
 	}
@@ -154,6 +175,7 @@ func (s *syncer) Sync(groups []*targetgroup.Group) {
 		if _, ok := targets[key]; !ok {
 			level.Info(s.log).Log("msg", "Removing target", "key", key)
 			target.Stop()
+			targetsActive.Add(-1.)
 			delete(s.targets, key)
 		}
 	}
