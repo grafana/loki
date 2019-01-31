@@ -11,7 +11,7 @@
     container.new('distributor', $._images.distributor) +
     container.withPorts($.util.defaultPorts) +
     container.withArgsMixin($.util.mapToFlags($.distributor_args)) +
-    $.util.resourcesRequests('0.5', '100Mi') +
+    $.util.resourcesRequests('500m', '100Mi') +
     $.util.resourcesLimits('1', '200Mi'),
 
   local deployment = $.apps.v1beta1.deployment,
