@@ -8,7 +8,8 @@ import (
 
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util"
+	cortex_util "github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util"
 )
 
 var (
@@ -56,11 +58,12 @@ type Distributor struct {
 	cfg       Config
 	clientCfg client.Config
 	ring      ring.ReadRing
+	overrides *validation.Overrides
 	pool      *cortex_client.Pool
 }
 
 // New a distributor creates.
-func New(cfg Config, clientCfg client.Config, ring ring.ReadRing) (*Distributor, error) {
+func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, overrides *validation.Overrides) (*Distributor, error) {
 	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
 		return client.New(clientCfg, addr)
 	}
@@ -69,7 +72,8 @@ func New(cfg Config, clientCfg client.Config, ring ring.ReadRing) (*Distributor,
 		cfg:       cfg,
 		clientCfg: clientCfg,
 		ring:      ring,
-		pool:      cortex_client.NewPool(clientCfg.PoolConfig, ring, factory, util.Logger),
+		overrides: overrides,
+		pool:      cortex_client.NewPool(clientCfg.PoolConfig, ring, factory, cortex_util.Logger),
 	}, nil
 }
 
@@ -114,7 +118,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// We also work out the hash value at the same time.
 	streams := make([]streamTracker, len(req.Streams))
 	keys := make([]uint32, 0, len(req.Streams))
+	var validationErr error
 	for i, stream := range req.Streams {
+		if err := d.validateLabels(userID, stream.Labels); err != nil {
+			validationErr = err
+			continue
+		}
+
 		keys = append(keys, tokenFor(userID, stream.Labels))
 		streams[i].stream = stream
 	}
@@ -160,8 +170,17 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	case err := <-tracker.err:
 		return nil, err
 	case <-tracker.done:
-		return &logproto.PushResponse{}, nil
+		return &logproto.PushResponse{}, validationErr
 	}
+}
+
+func (d *Distributor) validateLabels(userID, labels string) error {
+	ls, err := util.ToClientLabels(labels)
+	if err != nil {
+		return err
+	}
+
+	return d.overrides.ValidateLabels(userID, ls)
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.

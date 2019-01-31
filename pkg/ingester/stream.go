@@ -69,6 +69,9 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 		chunksCreatedTotal.Inc()
 	}
 
+	// Don't fail on the first append error - if samples are sent out of order,
+	// we still want to append the later ones.
+	var appendErr error
 	for i := range entries {
 		if s.chunks[0].closed || !s.chunks[0].chunk.SpaceFor(&entries[i]) {
 			samplesPerChunk.Observe(float64(s.chunks[0].chunk.Size()))
@@ -78,11 +81,11 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 			chunksCreatedTotal.Inc()
 		}
 		if err := s.chunks[len(s.chunks)-1].chunk.Append(&entries[i]); err != nil {
-			return err
+			appendErr = err
 		}
 	}
 
-	return nil
+	return appendErr
 }
 
 // Returns an iterator.

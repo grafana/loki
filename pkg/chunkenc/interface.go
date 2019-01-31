@@ -3,7 +3,10 @@ package chunkenc
 import (
 	"errors"
 	"io"
+	"net/http"
 	"time"
+
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -12,7 +15,7 @@ import (
 // Errors returned by the chunk interface.
 var (
 	ErrChunkFull       = errors.New("Chunk full")
-	ErrOutOfOrder      = errors.New("Entry out of order")
+	ErrOutOfOrder      = httpgrpc.Errorf(http.StatusBadRequest, "Entry out of order")
 	ErrInvalidSize     = errors.New("invalid size")
 	ErrInvalidFlag     = errors.New("invalid flag")
 	ErrInvalidChecksum = errors.New("invalid checksum")
