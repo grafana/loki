@@ -100,10 +100,11 @@ func (shard *indexShard) add(metric []client.LabelPair, fp model.Fingerprint) {
 	defer shard.mtx.Unlock()
 
 	for _, pair := range metric {
-		name, value := model.LabelName(pair.Name), model.LabelValue(pair.Value)
-		values, ok := shard.idx[name]
+		value := model.LabelValue(pair.Value)
+		values, ok := shard.idx[model.LabelName(pair.Name)]
 		if !ok {
 			values = map[model.LabelValue][]model.Fingerprint{}
+			shard.idx[model.LabelName(pair.Name)] = values
 		}
 		fingerprints := values[value]
 		// Insert into the right position to keep fingerprints sorted
@@ -114,7 +115,6 @@ func (shard *indexShard) add(metric []client.LabelPair, fp model.Fingerprint) {
 		copy(fingerprints[j+1:], fingerprints[j:])
 		fingerprints[j] = fp
 		values[value] = fingerprints
-		shard.idx[name] = values
 	}
 }
 

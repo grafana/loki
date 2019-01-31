@@ -33,6 +33,10 @@ const (
 	// fetch write capacity usage per DynamoDB table
 	// use the rate over 15 minutes so we take a broad average
 	defaultUsageQuery = `sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m])) by (table) > 0`
+	// use the read rate over 1hr so we take a broad average
+	defaultReadUsageQuery = `sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.QueryPages"}[1h])) by (table) > 0`
+	// fetch read error rate per DynamoDB table
+	defaultReadErrorQuery = `sum(increase(cortex_dynamo_failures_total{operation="DynamoDB.QueryPages",error="ProvisionedThroughputExceededException"}[1m])) by (table) > 0`
 )
 
 // MetricsAutoScalingConfig holds parameters to configure how it works
@@ -43,6 +47,8 @@ type MetricsAutoScalingConfig struct {
 	QueueLengthQuery string  // Promql query to fetch ingester queue length
 	ErrorRateQuery   string  // Promql query to fetch error rates per table
 	UsageQuery       string  // Promql query to fetch write capacity usage per table
+	ReadUsageQuery   string  // Promql query to fetch read usage per table
+	ReadErrorQuery   string  // Promql query to fetch read errors per table
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -53,16 +59,21 @@ func (cfg *MetricsAutoScalingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.QueueLengthQuery, "metrics.queue-length-query", defaultQueueLenQuery, "query to fetch ingester queue length")
 	f.StringVar(&cfg.ErrorRateQuery, "metrics.error-rate-query", defaultErrorRateQuery, "query to fetch error rates per table")
 	f.StringVar(&cfg.UsageQuery, "metrics.usage-query", defaultUsageQuery, "query to fetch write capacity usage per table")
+	f.StringVar(&cfg.ReadUsageQuery, "metrics.read-usage-query", defaultReadUsageQuery, "query to fetch read capacity usage per table")
+	f.StringVar(&cfg.ReadErrorQuery, "metrics.read-error-query", defaultReadErrorQuery, "query to fetch read errors per table")
 }
 
 type metricsData struct {
-	cfg              MetricsAutoScalingConfig
-	promAPI          promV1.API
-	promLastQuery    time.Time
-	tableLastUpdated map[string]time.Time
-	queueLengths     []float64
-	errorRates       map[string]float64
-	usageRates       map[string]float64
+	cfg                  MetricsAutoScalingConfig
+	promAPI              promV1.API
+	promLastQuery        time.Time
+	tableLastUpdated     map[string]time.Time
+	tableReadLastUpdated map[string]time.Time
+	queueLengths         []float64
+	errorRates           map[string]float64
+	usageRates           map[string]float64
+	usageReadRates       map[string]float64
+	readErrorRates       map[string]float64
 }
 
 func newMetrics(cfg DynamoDBConfig) (*metricsData, error) {
@@ -71,9 +82,10 @@ func newMetrics(cfg DynamoDBConfig) (*metricsData, error) {
 		return nil, err
 	}
 	return &metricsData{
-		promAPI:          promV1.NewAPI(client),
-		cfg:              cfg.Metrics,
-		tableLastUpdated: make(map[string]time.Time),
+		promAPI:              promV1.NewAPI(client),
+		cfg:                  cfg.Metrics,
+		tableLastUpdated:     make(map[string]time.Time),
+		tableReadLastUpdated: make(map[string]time.Time),
 	}, nil
 }
 
@@ -86,106 +98,183 @@ func (m *metricsData) DescribeTable(ctx context.Context, desc *chunk.TableDesc) 
 }
 
 func (m *metricsData) UpdateTable(ctx context.Context, current chunk.TableDesc, expected *chunk.TableDesc) error {
-	// If we don't take explicit action, return the current provision as the expected provision
-	expected.ProvisionedWrite = current.ProvisionedWrite
 
-	if !expected.WriteScale.Enabled {
-		return nil
-	}
 	if err := m.update(ctx); err != nil {
 		return err
 	}
 
-	errorRate := m.errorRates[expected.Name]
-	usageRate := m.usageRates[expected.Name]
+	if expected.WriteScale.Enabled {
+		// default if no action is taken is to use the currently provisioned setting
+		expected.ProvisionedWrite = current.ProvisionedWrite
 
-	level.Info(util.Logger).Log("msg", "checking metrics", "table", current.Name, "queueLengths", fmt.Sprint(m.queueLengths), "errorRate", errorRate, "usageRate", usageRate)
+		errorRate := m.errorRates[expected.Name]
+		usageRate := m.usageRates[expected.Name]
 
-	switch {
-	case errorRate < errorFractionScaledown*float64(current.ProvisionedWrite) &&
-		m.queueLengths[2] < float64(m.cfg.TargetQueueLen)*targetScaledown:
-		// No big queue, low errors -> scale down
-		m.scaleDownWrite(current, expected, m.computeScaleDown(current, *expected), "metrics scale-down")
-	case errorRate == 0 &&
-		m.queueLengths[2] < m.queueLengths[1] && m.queueLengths[1] < m.queueLengths[0]:
-		// zero errors and falling queue -> scale down to current usage
-		m.scaleDownWrite(current, expected, m.computeScaleDown(current, *expected), "zero errors scale-down")
-	case errorRate > 0 && m.queueLengths[2] > float64(m.cfg.TargetQueueLen)*targetMax:
-		// Too big queue, some errors -> scale up
-		m.scaleUpWrite(current, expected, m.computeScaleUp(current, *expected), "metrics max queue scale-up")
-	case errorRate > 0 &&
-		m.queueLengths[2] > float64(m.cfg.TargetQueueLen) &&
-		m.queueLengths[2] > m.queueLengths[1] && m.queueLengths[1] > m.queueLengths[0]:
-		// Growing queue, some errors -> scale up
-		m.scaleUpWrite(current, expected, m.computeScaleUp(current, *expected), "metrics queue growing scale-up")
+		level.Info(util.Logger).Log("msg", "checking write metrics", "table", current.Name, "queueLengths", fmt.Sprint(m.queueLengths), "errorRate", errorRate, "usageRate", usageRate)
+
+		switch {
+		case errorRate < errorFractionScaledown*float64(current.ProvisionedWrite) &&
+			m.queueLengths[2] < float64(m.cfg.TargetQueueLen)*targetScaledown:
+			// No big queue, low errors -> scale down
+			expected.ProvisionedWrite = scaleDown(current.Name,
+				current.ProvisionedWrite,
+				expected.WriteScale.MinCapacity,
+				computeScaleDown(current.Name, m.usageRates, expected.WriteScale.TargetValue),
+				m.tableLastUpdated,
+				expected.WriteScale.InCooldown,
+				"metrics scale-down",
+				"write",
+				m.usageRates)
+		case errorRate == 0 &&
+			m.queueLengths[2] < m.queueLengths[1] && m.queueLengths[1] < m.queueLengths[0]:
+			// zero errors and falling queue -> scale down to current usage
+			expected.ProvisionedWrite = scaleDown(current.Name,
+				current.ProvisionedWrite,
+				expected.WriteScale.MinCapacity,
+				computeScaleDown(current.Name, m.usageRates, expected.WriteScale.TargetValue),
+				m.tableLastUpdated,
+				expected.WriteScale.InCooldown,
+				"zero errors scale-down",
+				"write",
+				m.usageRates)
+		case errorRate > 0 && m.queueLengths[2] > float64(m.cfg.TargetQueueLen)*targetMax:
+			// Too big queue, some errors -> scale up
+			expected.ProvisionedWrite = scaleUp(current.Name,
+				current.ProvisionedWrite,
+				expected.WriteScale.MaxCapacity,
+				computeScaleUp(current.ProvisionedWrite, expected.WriteScale.MaxCapacity, m.cfg.ScaleUpFactor),
+				m.tableLastUpdated,
+				expected.WriteScale.OutCooldown,
+				"metrics max queue scale-up",
+				"write")
+		case errorRate > 0 &&
+			m.queueLengths[2] > float64(m.cfg.TargetQueueLen) &&
+			m.queueLengths[2] > m.queueLengths[1] && m.queueLengths[1] > m.queueLengths[0]:
+			// Growing queue, some errors -> scale up
+			expected.ProvisionedWrite = scaleUp(current.Name,
+				current.ProvisionedWrite,
+				expected.WriteScale.MaxCapacity,
+				computeScaleUp(current.ProvisionedWrite, expected.WriteScale.MaxCapacity, m.cfg.ScaleUpFactor),
+				m.tableLastUpdated,
+				expected.WriteScale.OutCooldown,
+				"metrics queue growing scale-up",
+				"write")
+		}
 	}
+
+	if expected.ReadScale.Enabled {
+		// default if no action is taken is to use the currently provisioned setting
+		expected.ProvisionedRead = current.ProvisionedRead
+		readUsageRate := m.usageReadRates[expected.Name]
+		readErrorRate := m.readErrorRates[expected.Name]
+
+		level.Info(util.Logger).Log("msg", "checking read metrics", "table", current.Name, "errorRate", readErrorRate, "readUsageRate", readUsageRate)
+		// Read Scaling
+		switch {
+		// the table is at low/minimum capacity and it is being used -> scale up
+		case readUsageRate > 0 && current.ProvisionedRead < expected.ReadScale.MaxCapacity/10:
+			expected.ProvisionedRead = scaleUp(
+				current.Name,
+				current.ProvisionedRead,
+				expected.ReadScale.MaxCapacity,
+				computeScaleUp(current.ProvisionedRead, expected.ReadScale.MaxCapacity, m.cfg.ScaleUpFactor),
+				m.tableReadLastUpdated, expected.ReadScale.OutCooldown,
+				"table is being used. scale up",
+				"read")
+		case readErrorRate > 0 && readUsageRate > 0:
+			// Queries are causing read throttling on the table -> scale up
+			expected.ProvisionedRead = scaleUp(
+				current.Name,
+				current.ProvisionedRead,
+				expected.ReadScale.MaxCapacity,
+				computeScaleUp(current.ProvisionedRead, expected.ReadScale.MaxCapacity, m.cfg.ScaleUpFactor),
+				m.tableReadLastUpdated, expected.ReadScale.OutCooldown,
+				"table is in use and there are read throttle errors, scale up",
+				"read")
+		case readErrorRate == 0 && readUsageRate == 0:
+			// this table is not being used. -> scale down
+			expected.ProvisionedRead = scaleDown(current.Name,
+				current.ProvisionedRead,
+				expected.ReadScale.MinCapacity,
+				computeScaleDown(current.Name, m.usageReadRates, expected.ReadScale.TargetValue),
+				m.tableReadLastUpdated,
+				expected.ReadScale.InCooldown,
+				"table is not in use. scale down", "read",
+				nil)
+		}
+	}
+
 	return nil
 }
 
-func (m metricsData) computeScaleDown(current, expected chunk.TableDesc) int64 {
-	usageRate := m.usageRates[expected.Name]
-	return int64(usageRate * 100.0 / expected.WriteScale.TargetValue)
-}
-
-func (m metricsData) computeScaleUp(current, expected chunk.TableDesc) int64 {
-	scaleUp := int64(float64(current.ProvisionedWrite) * m.cfg.ScaleUpFactor)
+func computeScaleUp(currentValue, maxValue int64, scaleFactor float64) int64 {
+	scaleUp := int64(float64(currentValue) * scaleFactor)
 	// Scale up minimum of 10% of max capacity, to avoid futzing around at low levels
-	minIncrement := expected.WriteScale.MaxCapacity / 10
-	if scaleUp < current.ProvisionedWrite+minIncrement {
-		scaleUp = current.ProvisionedWrite + minIncrement
+	minIncrement := maxValue / 10
+	if scaleUp < currentValue+minIncrement {
+		scaleUp = currentValue + minIncrement
 	}
 	return scaleUp
 }
 
-func (m *metricsData) scaleDownWrite(current chunk.TableDesc, expected *chunk.TableDesc, newWrite int64, msg string) {
-	if newWrite < expected.WriteScale.MinCapacity {
-		newWrite = expected.WriteScale.MinCapacity
-	}
-	// If we're already at or below the requested value, it's not a scale-down.
-	if newWrite >= current.ProvisionedWrite {
-		return
-	}
-	earliest := m.tableLastUpdated[current.Name].Add(time.Duration(expected.WriteScale.InCooldown) * time.Second)
-	if earliest.After(mtime.Now()) {
-		level.Info(util.Logger).Log("msg", "deferring "+msg, "table", current.Name, "till", earliest)
-		return
-	}
-	// Reject a change that is less than 20% - AWS rate-limits scale-downs so save
-	// our chances until it makes a bigger difference
-	if newWrite > current.ProvisionedWrite*4/5 {
-		level.Info(util.Logger).Log("msg", "rejected de minimis "+msg, "table", current.Name, "current", current.ProvisionedWrite, "proposed", newWrite)
-		return
-	}
-	// Check that the ingesters seem to be doing some work - don't want to scale down
-	// if all our metrics are returning zero, or all the ingesters have crashed, etc
-	totalUsage := 0.0
-	for _, u := range m.usageRates {
-		totalUsage += u
-	}
-	if totalUsage < minUsageForScaledown {
-		level.Info(util.Logger).Log("msg", "rejected low usage "+msg, "table", current.Name, "totalUsage", totalUsage)
-		return
-	}
-
-	level.Info(util.Logger).Log("msg", msg, "table", current.Name, "write", newWrite)
-	expected.ProvisionedWrite = newWrite
-	m.tableLastUpdated[current.Name] = mtime.Now()
+func computeScaleDown(currentName string, usageRates map[string]float64, targetValue float64) int64 {
+	usageRate := usageRates[currentName]
+	return int64(usageRate * 100.0 / targetValue)
 }
 
-func (m *metricsData) scaleUpWrite(current chunk.TableDesc, expected *chunk.TableDesc, newWrite int64, msg string) {
-	if newWrite > expected.WriteScale.MaxCapacity {
-		newWrite = expected.WriteScale.MaxCapacity
+func scaleDown(tableName string, currentValue, minValue int64, newValue int64, lastUpdated map[string]time.Time, coolDown int64, msg, operation string, usageRates map[string]float64) int64 {
+	if newValue < minValue {
+		newValue = minValue
 	}
-	earliest := m.tableLastUpdated[current.Name].Add(time.Duration(expected.WriteScale.OutCooldown) * time.Second)
+	// If we're already at or below the requested value, it's not a scale-down.
+	if newValue >= currentValue {
+		return currentValue
+	}
+
+	earliest := lastUpdated[tableName].Add(time.Duration(coolDown) * time.Second)
 	if earliest.After(mtime.Now()) {
-		level.Info(util.Logger).Log("msg", "deferring "+msg, "table", current.Name, "till", earliest)
-		return
+		level.Info(util.Logger).Log("msg", "deferring "+msg, "table", tableName, "till", earliest, "op", operation)
+		return currentValue
 	}
-	if newWrite > current.ProvisionedWrite {
-		level.Info(util.Logger).Log("msg", msg, "table", current.Name, "write", newWrite)
-		expected.ProvisionedWrite = newWrite
-		m.tableLastUpdated[current.Name] = mtime.Now()
+
+	// Reject a change that is less than 20% - AWS rate-limits scale-downs so save
+	// our chances until it makes a bigger difference
+	if newValue > currentValue*4/5 {
+		level.Info(util.Logger).Log("msg", "rejected de minimis "+msg, "table", tableName, "current", currentValue, "proposed", newValue, "op", operation)
+		return currentValue
 	}
+
+	if usageRates != nil {
+		// Check that the ingesters seem to be doing some work - don't want to scale down
+		// if all our metrics are returning zero, or all the ingesters have crashed, etc
+		totalUsage := 0.0
+		for _, u := range usageRates {
+			totalUsage += u
+		}
+		if totalUsage < minUsageForScaledown {
+			level.Info(util.Logger).Log("msg", "rejected low usage "+msg, "table", tableName, "totalUsage", totalUsage, "op", operation)
+			return currentValue
+		}
+	}
+
+	level.Info(util.Logger).Log("msg", msg, "table", tableName, operation, newValue)
+	lastUpdated[tableName] = mtime.Now()
+	return newValue
+}
+
+func scaleUp(tableName string, currentValue, maxValue int64, newValue int64, lastUpdated map[string]time.Time, coolDown int64, msg, operation string) int64 {
+	if newValue > maxValue {
+		newValue = maxValue
+	}
+	earliest := lastUpdated[tableName].Add(time.Duration(coolDown) * time.Second)
+	if !earliest.After(mtime.Now()) && newValue > currentValue {
+		level.Info(util.Logger).Log("msg", msg, "table", tableName, operation, newValue)
+		lastUpdated[tableName] = mtime.Now()
+		return newValue
+	}
+
+	level.Info(util.Logger).Log("msg", "deferring "+msg, "table", tableName, "till", earliest)
+	return currentValue
 }
 
 func (m *metricsData) update(ctx context.Context) error {
@@ -222,6 +311,22 @@ func (m *metricsData) update(ctx context.Context) error {
 		return err
 	}
 	if m.usageRates, err = extractRates(usageMatrix); err != nil {
+		return err
+	}
+
+	readUsageMatrix, err := promQuery(ctx, m.promAPI, m.cfg.ReadUsageQuery, 0, time.Second)
+	if err != nil {
+		return err
+	}
+	if m.usageReadRates, err = extractRates(readUsageMatrix); err != nil {
+		return err
+	}
+
+	readErrorMatrix, err := promQuery(ctx, m.promAPI, m.cfg.ReadErrorQuery, 0, time.Second)
+	if err != nil {
+		return err
+	}
+	if m.readErrorRates, err = extractRates(readErrorMatrix); err != nil {
 		return err
 	}
 

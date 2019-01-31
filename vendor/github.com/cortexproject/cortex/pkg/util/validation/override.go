@@ -241,3 +241,10 @@ func (o *Overrides) MaxQueryLength(userID string) time.Duration {
 		return l.MaxQueryLength
 	})
 }
+
+// EnforceMetricName whether to enforce the presence of a metric name.
+func (o *Overrides) EnforceMetricName(userID string) bool {
+	return o.getBool(userID, func(l *Limits) bool {
+		return l.EnforceMetricName
+	})
+}
