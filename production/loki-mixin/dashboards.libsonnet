@@ -152,6 +152,23 @@ local utils = import "mixin-utils/utils.libsonnet";
         .addTemplate('cluster', 'kube_pod_container_info{image=~".*promtail.*"}', 'cluster')
         .addTemplate('namespace', 'kube_pod_container_info{image=~".*promtail.*"}', 'namespace')
         .addRow(
+          g.row('Targets & Files')
+          .addPanel(
+            g.panel('Active Targets') +
+            g.queryPanel(
+              'sum(promtail_targets_active_total)',
+              'Active Targets',
+            ),
+           )
+           .addPanel(
+            g.panel('Active Files') +
+             g.queryPanel(
+              'sum(promtail_files_active_total)',
+              'Active Targets',
+            ),
+          )
+        )
+        .addRow(
           g.row('IO')
           .addPanel(
             g.panel('Bps') +
