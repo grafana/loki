@@ -58,14 +58,8 @@ Your feedback is always welcome.
 
 ## Contributing
 
-For now, you need to add your fork as a remote on the original **\$GOPATH**/src/github.com/grafana/loki clone, so:
+Refer to [CONTRIBUTING.md](CONTRIBUTING.md)
 
-```bash
+## License
 
-$ go get github.com/grafana/loki
-$ cd $GOPATH/src/github.com/grafana/loki # GOPATH is $HOME/go by default.
-
-$ git remote add <FORK_NAME> <FORK_URL>
-```
-
-Notice: `go get` return `package github.com/grafana/loki: no Go files in /go/src/github.com/grafana/loki` is normal.
+Apache License 2.0, see [LICENSE](LICENSE).
