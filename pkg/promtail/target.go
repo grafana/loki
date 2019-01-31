@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"gopkg.in/fsnotify.v1"
+	fsnotify "gopkg.in/fsnotify.v1"
 
 	"github.com/grafana/loki/pkg/helpers"
 )
@@ -246,7 +246,7 @@ func (t *tailer) run() {
 		positionWait.Stop()
 		err := t.markPosition()
 		if err != nil {
-			level.Error(t.logger).Log("msg", "error getting tail position", "error", err)
+			level.Error(t.logger).Log("msg", "error getting tail position", "filename", t.path, "error", err)
 		}
 		close(t.done)
 	}()
@@ -256,7 +256,7 @@ func (t *tailer) run() {
 		case <-positionWait.C:
 			err := t.markPosition()
 			if err != nil {
-				level.Error(t.logger).Log("msg", "error getting tail position", "error", err)
+				level.Error(t.logger).Log("msg", "error getting tail position", "filename", t.path, "error", err)
 				continue
 			}
 
@@ -266,13 +266,13 @@ func (t *tailer) run() {
 			}
 
 			if line.Err != nil {
-				level.Error(t.logger).Log("msg", "error reading line", "error", line.Err)
+				level.Error(t.logger).Log("msg", "error reading line", "filename", t.path, "error", line.Err)
 			}
 
 			readLines.WithLabelValues(t.path).Inc()
 			readBytes.WithLabelValues(t.path).Add(float64(len(line.Text)))
 			if err := t.handler.Handle(model.LabelSet{}, line.Time, line.Text); err != nil {
-				level.Error(t.logger).Log("msg", "error handling line", "error", err)
+				level.Error(t.logger).Log("msg", "error handling line", "filename", t.path, "error", err)
 			}
 		case <-t.quit:
 			return
