@@ -32,7 +32,10 @@ The [getting started docs](./production/README.md) have instructions on how to i
 
 Once you have promtail, Loki, and Grafana running, continue with [our usage docs](./docs/usage.md) on how to query your logs.
 
-There is also an [API documentation](./docs/api.md) available for alternative ways of getting logs into Loki.
+### Advanced documentation
+
+- [API documentation](./docs/api.md) for alternative ways of getting logs into Loki
+- [Operations](./docs/operations.md) for important aspects of running Loki
 
 ## Getting Help
 
