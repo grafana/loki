@@ -19,6 +19,7 @@ type Limits struct {
 	RejectOldSamples       bool          `yaml:"reject_old_samples"`
 	RejectOldSamplesMaxAge time.Duration `yaml:"reject_old_samples_max_age"`
 	CreationGracePeriod    time.Duration `yaml:"creation_grace_period"`
+	EnforceMetricName      bool          `yaml:"enforce_metric_name"`
 
 	// Ingester enforced limits.
 	MaxSeriesPerQuery  int `yaml:"max_series_per_query"`
@@ -45,6 +46,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.RejectOldSamples, "validation.reject-old-samples", false, "Reject old samples.")
 	f.DurationVar(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")
 	f.DurationVar(&l.CreationGracePeriod, "validation.create-grace-period", 10*time.Minute, "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
+	f.BoolVar(&l.EnforceMetricName, "validation.enforce-metric-name", true, "Enforce every sample has a metric name.")
 
 	f.IntVar(&l.MaxSeriesPerQuery, "ingester.max-series-per-query", 100000, "The maximum number of series that a query can return.")
 	f.IntVar(&l.MaxSamplesPerQuery, "ingester.max-samples-per-query", 1000000, "The maximum number of samples that a query can return.")

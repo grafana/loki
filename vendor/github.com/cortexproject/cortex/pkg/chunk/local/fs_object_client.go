@@ -40,8 +40,7 @@ func (fsObjectClient) Stop() {}
 
 func (f *fsObjectClient) PutChunks(_ context.Context, chunks []chunk.Chunk) error {
 	for i := range chunks {
-		// Encode the chunk first - checksum is calculated as a side effect.
-		buf, err := chunks[i].Encode()
+		buf, err := chunks[i].Encoded()
 		if err != nil {
 			return err
 		}

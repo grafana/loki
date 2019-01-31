@@ -65,12 +65,14 @@ func (cfg *Overrides) ValidateSample(userID string, metricName []byte, s client.
 // ValidateLabels returns an err if the labels are invalid.
 func (cfg *Overrides) ValidateLabels(userID string, ls []client.LabelPair) error {
 	metricName, err := extract.MetricNameFromLabelPairs(ls)
-	if err != nil {
-		return httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName)
-	}
+	if cfg.EnforceMetricName(userID) {
+		if err != nil {
+			return httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName)
+		}
 
-	if !model.IsValidMetricName(model.LabelValue(metricName)) {
-		return httpgrpc.Errorf(http.StatusBadRequest, errInvalidMetricName, metricName)
+		if !model.IsValidMetricName(model.LabelValue(metricName)) {
+			return httpgrpc.Errorf(http.StatusBadRequest, errInvalidMetricName, metricName)
+		}
 	}
 
 	numLabelNames := len(ls)

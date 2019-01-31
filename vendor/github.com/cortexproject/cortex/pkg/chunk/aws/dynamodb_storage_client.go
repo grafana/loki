@@ -286,9 +286,6 @@ func (a dynamoDBStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 }
 
 func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
-	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
-	defer sp.Finish()
-
 	input := &dynamodb.QueryInput{
 		TableName: aws.String(query.TableName),
 		KeyConditions: map[string]*dynamodb.Condition{
@@ -337,7 +334,7 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery
 	for page := request; page != nil; page = page.NextPage() {
 		pageCount++
 
-		response, err := a.queryPage(ctx, input, page)
+		response, err := a.queryPage(ctx, input, page, query.HashValue, pageCount)
 		if err != nil {
 			return err
 		}
@@ -355,7 +352,7 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery
 	return nil
 }
 
-func (a dynamoDBStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput, page dynamoDBRequest) (*dynamoDBReadResponse, error) {
+func (a dynamoDBStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput, page dynamoDBRequest, hashValue string, pageCount int) (*dynamoDBReadResponse, error) {
 	backoff := util.NewBackoff(ctx, a.cfg.backoffConfig)
 	defer func() {
 		dynamoQueryRetryCount.WithLabelValues("queryPage").Observe(float64(backoff.NumRetries()))
@@ -363,7 +360,13 @@ func (a dynamoDBStorageClient) queryPage(ctx context.Context, input *dynamodb.Qu
 
 	var err error
 	for backoff.Ongoing() {
-		err = instrument.CollectedRequest(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
+		err = instrument.CollectedRequest(ctx, "DynamoDB.QueryPages", dynamoRequestDuration, instrument.ErrorCode, func(innerCtx context.Context) error {
+			if sp := ot.SpanFromContext(innerCtx); sp != nil {
+				sp.SetTag("tableName", aws.StringValue(input.TableName))
+				sp.SetTag("hashValue", hashValue)
+				sp.SetTag("page", pageCount)
+				sp.SetTag("retry", backoff.NumRetries())
+			}
 			return page.Send()
 		})
 
@@ -637,8 +640,7 @@ func (a dynamoDBStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 	)
 
 	for i := range chunks {
-		// Encode the chunk first - checksum is calculated as a side effect.
-		buf, err := chunks[i].Encode()
+		buf, err := chunks[i].Encoded()
 		if err != nil {
 			return err
 		}

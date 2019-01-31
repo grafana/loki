@@ -163,8 +163,8 @@
   revision = "3a0bb77429bd3a61596f5e8a3172445844342120"
 
 [[projects]]
-  branch = "master"
-  digest = "1:e7525991325b400ecf4f6c6383e965b12801b87e2f687afda23f57f091f9fcc0"
+  branch = "optionally-enforce-metric-name"
+  digest = "1:2cced64caeee7972668c48e0a80e98f09489bd3a7a61c470fd0ca36cb5e24344"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/chunk",
@@ -191,7 +191,8 @@
     "pkg/util/wire",
   ]
   pruneopts = "UT"
-  revision = "4c9e2025ab6733e0f42187b64d2522d558f9f31c"
+  revision = "16a08e037bce5343c5692aa1015e76b172ddf917"
+  source = "https://github.com/grafana/cortex.git"
 
 [[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
@@ -1344,6 +1345,7 @@
     "github.com/prometheus/prometheus/relabel",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
+    "github.com/weaveworks/common/httpgrpc",
     "github.com/weaveworks/common/middleware",
     "github.com/weaveworks/common/server",
     "github.com/weaveworks/common/user",

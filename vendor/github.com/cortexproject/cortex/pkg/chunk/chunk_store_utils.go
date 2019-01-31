@@ -142,7 +142,7 @@ func (c *Fetcher) writeBackCache(ctx context.Context, chunks []Chunk) error {
 	keys := make([]string, 0, len(chunks))
 	bufs := make([][]byte, 0, len(chunks))
 	for i := range chunks {
-		encoded, err := chunks[i].Encode()
+		encoded, err := chunks[i].Encoded()
 		// TODO don't fail, just log and conitnue?
 		if err != nil {
 			return err

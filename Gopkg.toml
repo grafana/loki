@@ -26,7 +26,8 @@
 
 [[constraint]]
   name = "github.com/cortexproject/cortex"
-  branch = "master"
+  branch = "optionally-enforce-metric-name"
+  source = "https://github.com/grafana/cortex.git"
 
 [[constraint]]
   name = "github.com/weaveworks/common"
