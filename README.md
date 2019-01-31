@@ -36,6 +36,7 @@ Once you have promtail, Loki, and Grafana running, continue with [our usage docs
 
 - [API documentation](./docs/api.md) for alternative ways of getting logs into Loki
 - [Operations](./docs/operations.md) for important aspects of running Loki
+- [Troubleshooting](./docs/troubleshooting.md) for help around frequent error messages
 
 ## Getting Help
 
