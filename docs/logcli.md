@@ -1,6 +1,6 @@
 # Log CLI usage Instructions
 
-Loki's main UI is Grafana; however, a basic CLI is provided as a proof of concept.
+Loki's main query interface is Grafana; however, a basic CLI is provided as a proof of concept.
 
 Once you have Loki running in a cluster, you can query logs from that cluster using the following commands:
 
