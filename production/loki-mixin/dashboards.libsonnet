@@ -148,8 +148,8 @@ local utils = import "mixin-utils/utils.libsonnet";
       ),
       'promtail.json':
         g.dashboard('Loki / Promtail')
-        .addTemplate('cluster', 'kube_pod_container_info{image=~".*loki.*"}', 'cluster')
-        .addTemplate('namespace', 'kube_pod_container_info{image=~".*loki.*"}', 'namespace')
+        .addTemplate('cluster', 'kube_pod_container_info{image=~".*promtail.*"}', 'cluster')
+        .addTemplate('namespace', 'kube_pod_container_info{image=~".*promtail.*"}', 'namespace')
         .addRow(
           g.row('promtail Reqs')
           .addPanel(
