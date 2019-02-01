@@ -44,6 +44,13 @@ func TestChunkFlushingIdle(t *testing.T) {
 	store.checkData(t, userIDs, testData)
 }
 
+func TestChunkFlushingShutdown(t *testing.T) {
+	store, ing := newTestStore(t, defaultIngesterTestConfig())
+	userIDs, testData := pushTestSamples(t, ing)
+	ing.Shutdown()
+	store.checkData(t, userIDs, testData)
+}
+
 type testStore struct {
 	mtx sync.Mutex
 	// Chunks keyed by userID.
@@ -152,7 +159,7 @@ func (s *testStore) checkData(t *testing.T, userIDs []string, testData map[strin
 	defer s.mtx.Unlock()
 	for _, userID := range userIDs {
 		chunks := s.chunks[userID]
-		streams := make([]*logproto.Stream, 0, len(chunks))
+		streams := []*logproto.Stream{}
 		for _, chunk := range chunks {
 			lokiChunk := chunk.Data.(*chunkenc.Facade).LokiChunk()
 			delete(chunk.Metric, nameLabel)

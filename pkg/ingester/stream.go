@@ -75,17 +75,22 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 	// we still want to append the later ones.
 	var appendErr error
 	for i := range entries {
-		if s.chunks[0].closed || !s.chunks[0].chunk.SpaceFor(&entries[i]) {
-			samplesPerChunk.Observe(float64(s.chunks[0].chunk.Size()))
+		chunk := &s.chunks[len(s.chunks)-1]
+		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) {
+			chunk.closed = true
+
+			samplesPerChunk.Observe(float64(chunk.chunk.Size()))
+			chunksCreatedTotal.Inc()
+
 			s.chunks = append(s.chunks, chunkDesc{
 				chunk: chunkenc.NewMemChunk(chunkenc.EncGZIP),
 			})
-			chunksCreatedTotal.Inc()
+			chunk = &s.chunks[len(s.chunks)-1]
 		}
-		if err := s.chunks[len(s.chunks)-1].chunk.Append(&entries[i]); err != nil {
+		if err := chunk.chunk.Append(&entries[i]); err != nil {
 			appendErr = err
 		}
-		s.chunks[len(s.chunks)-1].lastUpdated = entries[i].Timestamp
+		chunk.lastUpdated = entries[i].Timestamp
 	}
 
 	return appendErr
