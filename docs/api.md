@@ -1,20 +1,6 @@
 # Loki API
 
-## Authentication
-
-*nb* Authentication is out of scope for this project.
-You are expected to run an authenticating reverse proxy in front of our services, such as an Nginx with basic auth or an OAuth2 proxy.
-
-Loki is a multitenant system; requests and data for tenant A are isolated from tenant B.
-Requests to the Loki API should include an HTTP header (`X-Scope-OrgID`) identifying the tenant for the request.
-Tenant IDs can be any alphanumeric string; limiting them to 20 bytes is reasonable.
-
-Loki can be run in "single-tenant" mode where the `X-Scope-OrgID` header is not required.
-In this situation, the tenant ID is defaulted to be `fake`.
-
-## REST API
-
-There are 4 API endpoints:
+The Loki server has the following API endpoints (_Note:_ Authentication is out of scope for this project):
 
 - `POST /api/prom/push`
 
@@ -23,24 +9,23 @@ There are 4 API endpoints:
   - [ProtoBuffer definition](/pkg/logproto/logproto.proto)
   - [Golang client library](/pkg/promtail/client.go)
 
-  Also accepts JSON formatted requests when the header `Content-Type: application/json` is sent.  Example of the JSON format:
+  Also accepts JSON formatted requests when the header `Content-Type: application/json` is sent. Example of the JSON format:
 
   ```json
   {
-      "streams": [
-          {
-              "labels": "{foo=\"bar\"}",
-              "entries": [
-                  {"ts": "2018-12-18T08:28:06.801064-04:00", "line": "baz"}
-              ]
-          }
-      ]
+    "streams": [
+      {
+        "labels": "{foo=\"bar\"}",
+        "entries": [{ "ts": "2018-12-18T08:28:06.801064-04:00", "line": "baz" }]
+      }
+    ]
   }
   ```
 
 - `GET /api/prom/query`
 
   For doing queries, accepts the following parameters in the query-string:
+
   - `query`: a logQL query
   - `limit`: max number of entries to return
   - `start`: the start time for the query, as a nanosecond Unix epoch (nanoseconds since 1970)
@@ -49,6 +34,7 @@ There are 4 API endpoints:
   - `regexp`: a regex to filter the returned results, will eventually be rolled into the query language
 
   Responses looks like this:
+
   ```
   {
     "streams": [
@@ -72,6 +58,7 @@ There are 4 API endpoints:
   For retrieving the names of the labels one can query on.
 
   Responses looks like this:
+
   ```
   {
     "values": [
@@ -86,6 +73,7 @@ There are 4 API endpoints:
   For retrieving the label values one can query on.
 
   Responses looks like this:
+
   ```
   {
     "values": [

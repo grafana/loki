@@ -16,16 +16,13 @@ services:
     image: grafana/promtail:master
     volumes:
       - /var/log:/var/log
-    command: 
-      -config.file=/etc/promtail/docker-config.yaml
+    command: -config.file=/etc/promtail/docker-config.yaml
     networks:
       - loki
-      
+
   grafana:
     image: grafana/grafana:master
     ports:
       - "3000:3000"
-    environment:
-      GF_EXPLORE_ENABLED: "true"
     networks:
       - loki
