@@ -30,7 +30,7 @@ func New(cfg api.Config) (*Promtail, error) {
 		return nil, err
 	}
 
-	tms, err := targets.NewTargetManagers(util.Logger, positions, client, cfg.ScrapeConfig)
+	tms, err := targets.NewTargetManagers(util.Logger, positions, client, cfg.ScrapeConfig, &cfg.TargetConfig)
 	if err != nil {
 		return nil, err
 	}

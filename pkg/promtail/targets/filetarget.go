@@ -52,80 +52,39 @@ type FileTarget struct {
 	positions *positions.Positions
 
 	watcher *fsnotify.Watcher
+	watches map[string]struct{}
 	path    string
 	quit    chan struct{}
 	done    chan struct{}
 
 	tails map[string]*tailer
+
+	targetConfig *api.TargetConfig
 }
 
 // NewFileTarget create a new FileTarget.
-func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions *positions.Positions, path string, labels model.LabelSet) (*FileTarget, error) {
-	var err error
-	path, err = filepath.Abs(path)
-	if err != nil {
-		return nil, errors.Wrap(err, "filepath.Abs")
-	}
-
-	matches, err := filepath.Glob(path)
-	if err != nil {
-		return nil, errors.Wrap(err, "filepath.Glob")
-	}
+func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions *positions.Positions, path string, labels model.LabelSet, targetConfig *api.TargetConfig) (*FileTarget, error) {
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, errors.Wrap(err, "fsnotify.NewWatcher")
 	}
 
-	// get the current unique set of dirs to watch.
-	dirs := make(map[string]struct{})
-	for _, p := range matches {
-		dirs[filepath.Dir(p)] = struct{}{}
-	}
-
-	// If no files exist yet watch the directory specified in the path.
-	if matches == nil {
-		dirs[filepath.Dir(path)] = struct{}{}
-	}
-
-	// watch each dir for any new files.
-	for dir := range dirs {
-		level.Debug(logger).Log("msg", "watching new directory", "directory", dir)
-		if err := watcher.Add(dir); err != nil {
-			helpers.LogError("closing watcher", watcher.Close)
-			return nil, errors.Wrap(err, "watcher.Add")
-		}
-	}
-
 	t := &FileTarget{
-		logger:    logger,
-		watcher:   watcher,
-		path:      path,
-		handler:   api.AddLabelsMiddleware(labels).Wrap(handler),
-		positions: positions,
-		quit:      make(chan struct{}),
-		done:      make(chan struct{}),
-		tails:     map[string]*tailer{},
+		logger:       logger,
+		watcher:      watcher,
+		path:         path,
+		handler:      api.AddLabelsMiddleware(labels).Wrap(handler),
+		positions:    positions,
+		quit:         make(chan struct{}),
+		done:         make(chan struct{}),
+		tails:        map[string]*tailer{},
+		targetConfig: targetConfig,
 	}
 
-	// start tailing all of the matched files
-	for _, p := range matches {
-		fi, err := os.Stat(p)
-		if err != nil {
-			level.Error(t.logger).Log("msg", "failed to stat file", "error", err, "filename", p)
-			continue
-		}
-		if fi.IsDir() {
-			level.Debug(t.logger).Log("msg", "skipping matched dir", "filename", p)
-			continue
-		}
-
-		tailer, err := newTailer(t.logger, t.handler, t.positions, p)
-		if err != nil {
-			level.Error(t.logger).Log("msg", "failed to tail file", "error", err, "filename", p)
-			continue
-		}
-		t.tails[p] = tailer
+	err = t.sync()
+	if err != nil {
+		return nil, errors.Wrap(err, "target.sync")
 	}
 
 	go t.run()
@@ -148,6 +107,8 @@ func (t *FileTarget) run() {
 		level.Debug(t.logger).Log("msg", "watcher closed, tailer stopped, positions saved")
 		close(t.done)
 	}()
+
+	ticker := time.NewTicker(t.targetConfig.SyncPeriod)
 
 	for {
 		select {
@@ -198,10 +159,102 @@ func (t *FileTarget) run() {
 			}
 		case err := <-t.watcher.Errors:
 			level.Error(t.logger).Log("msg", "error from fswatch", "error", err)
+		case <-ticker.C:
+			err := t.sync()
+			if err != nil {
+				level.Error(t.logger).Log("msg", "error running sync function", "error", err)
+			}
 		case <-t.quit:
 			return
 		}
 	}
+}
+
+func (t *FileTarget) sync() error {
+
+	// Find list of directories to add to watcher.
+	var err error
+	path, err := filepath.Abs(t.path)
+	if err != nil {
+		return errors.Wrap(err, "filepath.Abs")
+	}
+
+	// Gets current list of files to tail.
+	matches, err := filepath.Glob(path)
+	if err != nil {
+		return errors.Wrap(err, "filepath.Glob")
+	}
+
+	// Get the current unique set of dirs to watch.
+	dirs := make(map[string]struct{})
+	for _, p := range matches {
+		dirs[filepath.Dir(p)] = struct{}{}
+	}
+
+	// If no files exist yet watch the directory specified in the path.
+	if matches == nil {
+		dirs[filepath.Dir(path)] = struct{}{}
+	}
+
+	// Add any directories which are not already being watched.
+	for dir := range dirs {
+		if _, ok := t.watches[dir]; !ok {
+			level.Debug(t.logger).Log("msg", "sync() watching new directory", "directory", dir)
+			if err := t.watcher.Add(dir); err != nil {
+				level.Error(t.logger).Log("msg", "sync() error adding directory to watcher", "error", err)
+			}
+		}
+	}
+
+	// Remove any directories which no longer need watching.
+	if len(t.watches) > 0 && len(t.watches) != len(dirs) {
+		for watched := range t.watches {
+			if _, ok := dirs[watched]; !ok {
+				// The existing directory being watched is no longer in our list of dirs to watch so we can remove it.
+				level.Debug(t.logger).Log("msg", "sync() removing directory from watcher", "directory", watched)
+				err = t.watcher.Remove(watched)
+				if err != nil {
+					level.Error(t.logger).Log("msg", "sync() failed to remove directory from watcher", "error", err)
+				}
+
+				// Shutdown and cleanup and tailers for files in directories no longer being watched.
+				for tailedFile, tailer := range t.tails {
+					if filepath.Dir(tailedFile) == watched {
+						helpers.LogError("stopping tailer", tailer.stop)
+						tailer.cleanup() //FIXME should we defer this to the cleanup function?
+						delete(t.tails, tailedFile)
+					}
+				}
+
+			}
+		}
+	}
+
+	t.watches = dirs
+
+	// Start tailing all of the matched files if not already doing so.
+	for _, p := range matches {
+		if _, ok := t.tails[p]; !ok {
+			fi, err := os.Stat(p)
+			if err != nil {
+				level.Error(t.logger).Log("msg", "sync() failed to stat file", "error", err, "filename", p)
+				continue
+			}
+			if fi.IsDir() {
+				level.Debug(t.logger).Log("msg", "sync() skipping matched dir", "filename", p)
+				continue
+			}
+
+			level.Debug(t.logger).Log("msg", "sync() tailing new file", "filename", p)
+			tailer, err := newTailer(t.logger, t.handler, t.positions, p)
+			if err != nil {
+				level.Error(t.logger).Log("msg", "sync() failed to tail file", "error", err, "filename", p)
+				continue
+			}
+			t.tails[p] = tailer
+		}
+	}
+	return nil
 }
 
 type tailer struct {

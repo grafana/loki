@@ -23,6 +23,7 @@ func NewTargetManagers(
 	positions *positions.Positions,
 	client api.EntryHandler,
 	scrapeConfigs []api.ScrapeConfig,
+	targetConfig *api.TargetConfig,
 ) (*TargetManagers, error) {
 	var targetManagers []targetManager
 	var fileScrapeConfigs []api.ScrapeConfig
@@ -34,6 +35,7 @@ func NewTargetManagers(
 		positions,
 		client,
 		fileScrapeConfigs,
+		targetConfig,
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to make file target manager")

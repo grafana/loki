@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
 
 	"github.com/go-kit/kit/log"
@@ -48,7 +49,9 @@ func TestLongSyncDelayStillSavesCorrectPosition(t *testing.T) {
 		messages: make([]string, 0),
 	}
 
-	target, err := NewFileTarget(logger, client, ps, logFile, nil)
+	target, err := NewFileTarget(logger, client, ps, logFile, nil, &api.TargetConfig{
+		SyncPeriod: 10 * time.Second,
+	})
 	if err != nil {
 		t.Error(err)
 		return
@@ -141,7 +144,9 @@ func TestWatchEntireDirectory(t *testing.T) {
 		messages: make([]string, 0),
 	}
 
-	target, err := NewFileTarget(logger, client, ps, logFileDir+"*", nil)
+	target, err := NewFileTarget(logger, client, ps, logFileDir+"*", nil, &api.TargetConfig{
+		SyncPeriod: 10 * time.Second,
+	})
 	if err != nil {
 		t.Error(err)
 		return
@@ -229,7 +234,9 @@ func TestFileRolls(t *testing.T) {
 		messages: make([]string, 0),
 	}
 
-	target, err := NewFileTarget(logger, client, positions, dirName+"/*.log", nil)
+	target, err := NewFileTarget(logger, client, positions, dirName+"/*.log", nil, &api.TargetConfig{
+		SyncPeriod: 10 * time.Second,
+	})
 	if err != nil {
 		t.Error(err)
 		return
@@ -321,7 +328,9 @@ func TestResumesWhereLeftOff(t *testing.T) {
 		messages: make([]string, 0),
 	}
 
-	target, err := NewFileTarget(logger, client, ps, dirName+"/*.log", nil)
+	target, err := NewFileTarget(logger, client, ps, dirName+"/*.log", nil, &api.TargetConfig{
+		SyncPeriod: 10 * time.Second,
+	})
 	if err != nil {
 		t.Error(err)
 		return
@@ -356,7 +365,9 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	// Create a new target, keep the same client so we can track what was sent through the handler.
-	target2, err := NewFileTarget(logger, client, ps2, dirName+"/*.log", nil)
+	target2, err := NewFileTarget(logger, client, ps2, dirName+"/*.log", nil, &api.TargetConfig{
+		SyncPeriod: 10 * time.Second,
+	})
 	if err != nil {
 		t.Error(err)
 		return
@@ -422,7 +433,9 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 		messages: make([]string, 0),
 	}
 
-	target, err := NewFileTarget(logger, client, ps, dirName+"/*.log", nil)
+	target, err := NewFileTarget(logger, client, ps, dirName+"/*.log", nil, &api.TargetConfig{
+		SyncPeriod: 10 * time.Second,
+	})
 	if err != nil {
 		t.Error(err)
 		return

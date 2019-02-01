@@ -54,6 +54,7 @@ func NewFileTargetManager(
 	positions *positions.Positions,
 	client api.EntryHandler,
 	scrapeConfigs []api.ScrapeConfig,
+	targetConfig *api.TargetConfig,
 ) (*FileTargetManager, error) {
 	ctx, quit := context.WithCancel(context.Background())
 	tm := &FileTargetManager{
@@ -78,6 +79,7 @@ func NewFileTargetManager(
 			targets:       map[string]*FileTarget{},
 			hostname:      hostname,
 			entryHandler:  cfg.EntryParser.Wrap(client),
+			targetConfig:  targetConfig,
 		}
 		tm.syncers[cfg.JobName] = s
 		config[cfg.JobName] = cfg.ServiceDiscoveryConfig
@@ -115,6 +117,8 @@ type syncer struct {
 
 	targets       map[string]*FileTarget
 	relabelConfig []*pkgrelabel.Config
+
+	targetConfig *api.TargetConfig
 }
 
 func (s *syncer) sync(groups []*targetgroup.Group) {
@@ -186,7 +190,7 @@ func (s *syncer) sync(groups []*targetgroup.Group) {
 }
 
 func (s *syncer) newTarget(path string, labels model.LabelSet) (*FileTarget, error) {
-	return NewFileTarget(s.log, s.entryHandler, s.positions, path, labels)
+	return NewFileTarget(s.log, s.entryHandler, s.positions, path, labels, s.targetConfig)
 }
 
 func (s *syncer) stop() {
