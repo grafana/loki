@@ -151,10 +151,10 @@ func (t *Target) run() {
 		case event := <-t.watcher.Events:
 			switch event.Op {
 			case fsnotify.Create:
-				// protect against double Creates.
-				if _, ok := t.tails[event.Name]; ok {
-					level.Info(t.logger).Log("msg", "got 'create' for existing file", "filename", event.Name)
-					continue
+				if tailer, ok := t.tails[event.Name]; ok {
+					level.Info(t.logger).Log("msg", "create for file being tailed. Will close and re-open", "filename", event.Name)
+					helpers.LogError("stopping tailer", tailer.stop)
+					delete(t.tails, event.Name)
 				}
 				matched, err := filepath.Match(t.path, event.Name)
 				if err != nil {
