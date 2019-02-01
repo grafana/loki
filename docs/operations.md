@@ -49,7 +49,7 @@ Most of these metrics are counters and should continuously increase during norma
 Check out our [Loki mixin](../production/loki-mixin) for a set of dashboards, recording rules, and alerts.
 These give you a comprehensive package on how to monitor Loki in production.
 
-For more information about mixins, take a look at the [Kubernetes mixins project](https://github.com/kubernetes-monitoring/kubernetes-mixin).
+For more information about mixins, take a look at the [mixins project docs](https://github.com/monitoring-mixins/docs).
 
 ## Scalability
 
@@ -79,4 +79,4 @@ The chunks are stored under `/tmp/loki/chunks`.
 Loki has support for Google Cloud storage.
 Take a look at our [production setup](https://github.com/grafana/loki/blob/a422f394bb4660c98f7d692e16c3cc28747b7abd/production/ksonnet/loki/config.libsonnet#L55) for the relevant configuration fields.
 
-Support for AWS and Azure is still under development.
+Support for AWS and Azure is also available, but not yet documented.

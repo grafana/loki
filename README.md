@@ -32,11 +32,11 @@ The [getting started docs](./production/README.md) have instructions on how to i
 
 Once you have promtail, Loki, and Grafana running, continue with [our usage docs](./docs/usage.md) on how to query your logs.
 
-### Advanced documentation
+### Documentation
 
-- [API documentation](./docs/api.md) for alternative ways of getting logs into Loki
-- [Operations](./docs/operations.md) for important aspects of running Loki
-- [Troubleshooting](./docs/troubleshooting.md) for help around frequent error messages
+- [API documentation](./docs/api.md) for alternative ways of getting logs into Loki.
+- [Operations](./docs/operations.md) for important aspects of running Loki.
+- [Troubleshooting](./docs/troubleshooting.md) for help around frequent error messages.
 
 ## Getting Help
 
@@ -52,6 +52,7 @@ Your feedback is always welcome.
 ## Further Reading
 
 - The original [design doc](https://docs.google.com/document/d/11tjK_lvp1-SVsFZjgOTr1vV3-q6vBAsZYIQ5ZeYBkyM/view) for Loki is a good source for discussion of the motivation and design decisions.
+- Tom Wilkie's Jan 2019 CNCF Paris Meetup talk "[Grafana Loki: like Prometheus, but for logs](https://speakerdeck.com/grafana/grafana-loki-like-prometheus-but-for-logs)".
 - David Kaltschmidt's KubeCon 2018 talk "[On the OSS Path to Full Observability with Grafana][kccna18-event]" ([slides][kccna18-slides], [video][kccna18-video]) on how Loki fits into a cloud-native environment.
 - Goutham Veeramachaneni's blog post "[Loki: Prometheus-inspired, open source logging for cloud natives](https://grafana.com/blog/2018/12/12/loki-prometheus-inspired-open-source-logging-for-cloud-natives/)" on details of the Loki architectire.
 - David Kaltschmidt's blog post "[Closer look at Grafana's user interface for Loki](https://grafana.com/blog/2019/01/02/closer-look-at-grafanas-user-interface-for-loki/)" on the ideas that went into the logging user interface.
