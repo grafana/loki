@@ -9,6 +9,7 @@ ingester:
     ring:
       store: inmemory
       replication_factor: 1
+  chunk_idle_period: 15m
 
 schema_config:
   configs:
