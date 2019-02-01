@@ -85,7 +85,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 		if err := s.chunks[len(s.chunks)-1].chunk.Append(&entries[i]); err != nil {
 			appendErr = err
 		}
-		s.chunks[len(s.chunks)-1].lastUpdated = time.Now()
+		s.chunks[len(s.chunks)-1].lastUpdated = entries[i].Timestamp
 	}
 
 	return appendErr

@@ -86,7 +86,7 @@ func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate boo
 	}
 
 	lastChunk := stream.chunks[len(stream.chunks)-1]
-	if time.Since(lastChunk.lastUpdated) < i.cfg.MaxChunkIdle && len(stream.chunks) <= 1 && !immediate {
+	if len(stream.chunks) == 1 && time.Since(lastChunk.lastUpdated) < i.cfg.MaxChunkIdle && !immediate {
 		return
 	}
 
@@ -163,39 +163,31 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 		return nil, nil
 	}
 
-	// Flush a chunk after it received no samples for a long time.
-	if len(stream.chunks) == 1 {
-		chunk := &stream.chunks[0]
-
-		if time.Since(chunk.lastUpdated) > i.cfg.MaxChunkIdle &&
-			chunk.flushed.IsZero() {
-			chunk.closed = true
-
-			return []*chunkDesc{chunk}, stream.labels
+	var result []*chunkDesc
+	for j := range stream.chunks {
+		if immediate || i.shouldFlushChunk(&stream.chunks[j]) {
+			result = append(result, &stream.chunks[j])
 		}
 	}
+	return result, stream.labels
+}
 
-	if len(stream.chunks) < 2 && !immediate {
-		return nil, nil
+func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) bool {
+	if !chunk.flushed.IsZero() {
+		return false
 	}
 
-	var chunks []*chunkDesc
-	lastIndex := len(stream.chunks)
-	if !immediate {
-		lastIndex--
-	}
-	for i := 0; i < lastIndex; i++ {
-		// Ensure no more writes happen to this chunk.
-		if !stream.chunks[i].closed {
-			stream.chunks[i].closed = true
-		}
-		// Flush this chunk if it hasn't already been successfully flushed.
-		if stream.chunks[i].flushed.IsZero() {
-			chunks = append(chunks, &stream.chunks[i])
-		}
+	// Append should close the chunk when the a new one is added.
+	if chunk.closed {
+		return true
 	}
 
-	return chunks, stream.labels
+	if time.Since(chunk.lastUpdated) > i.cfg.MaxChunkIdle {
+		chunk.closed = true
+		return true
+	}
+
+	return false
 }
 
 func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
