@@ -15,7 +15,7 @@ const samplesPerChunk = 120
 var errOutOfBounds = errors.New("out of bounds")
 
 type smallChunk struct {
-	chunkenc.Chunk
+	*chunkenc.XORChunk
 	start int64
 	end   int64
 }
@@ -54,14 +54,14 @@ func (b *bigchunk) addNextChunk(start model.Time) error {
 	// To save memory, we "compact" the previous chunk - the array backing the slice
 	// will be upto 2x too big, and we can save this space.
 	if l := len(b.chunks); l > 0 {
-		c := b.chunks[l-1].Chunk
+		c := b.chunks[l-1].XORChunk
 		buf := make([]byte, len(c.Bytes()))
 		copy(buf, c.Bytes())
 		compacted, err := chunkenc.FromData(chunkenc.EncXOR, buf)
 		if err != nil {
 			return err
 		}
-		b.chunks[l-1].Chunk = compacted
+		b.chunks[l-1].XORChunk = compacted.(*chunkenc.XORChunk)
 	}
 
 	chunk := chunkenc.NewXORChunk()
@@ -71,9 +71,9 @@ func (b *bigchunk) addNextChunk(start model.Time) error {
 	}
 
 	b.chunks = append(b.chunks, smallChunk{
-		Chunk: chunk,
-		start: int64(start),
-		end:   int64(start),
+		XORChunk: chunk,
+		start:    int64(start),
+		end:      int64(start),
 	})
 
 	b.appender = appender
@@ -133,9 +133,9 @@ func (b *bigchunk) UnmarshalFromBuf(buf []byte) error {
 		}
 
 		b.chunks = append(b.chunks, smallChunk{
-			Chunk: chunk,
-			start: int64(start),
-			end:   int64(end),
+			XORChunk: chunk.(*chunkenc.XORChunk),
+			start:    int64(start),
+			end:      int64(end),
 		})
 	}
 	return nil
