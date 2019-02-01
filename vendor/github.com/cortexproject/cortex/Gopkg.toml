@@ -1,0 +1,69 @@
+[prune]
+  unused-packages = true
+  go-tests = true
+
+[[constraint]]
+  name = "github.com/aws/aws-sdk-go"
+  version = "v1.15.90"
+
+# Need an override on jaeger-lib as it has a ^0.8.0 contraint on client_golang.
+[[override]]
+  name = "github.com/uber/jaeger-lib"
+  version = ">=v1.5.0"
+
+# Pin to master branch until there is a more recent stable release:
+#   https://github.com/prometheus/client_golang/issues/375
+[[override]]
+  name = "github.com/prometheus/client_golang"
+  branch = "master"
+
+[[constraint]]
+  name = "github.com/prometheus/alertmanager"
+  revision = "fb713f6d8239b57c646cae30f78e8b4b8861a1aa"
+
+# Since Cortex is heavily based on Prometheus packages, we want
+# to track upstream master quite closely, without being constrained
+# to the latest Prometheus release. This means we get various bug
+# fixes and features earlier, and makes necessary refactorings upon
+# vendor updates less huge (if updated frequently).
+[[constraint]]
+  name = "github.com/prometheus/prometheus"
+  branch = "master"
+
+[[constraint]]
+  name = "github.com/prometheus/tsdb"
+  version = "0.2.0"
+
+[[override]]
+  name = "k8s.io/client-go"
+  revision = "7d04d0e2a0a1a4d4a1cd6baa432a2301492e4e65"
+
+[[override]]
+  name = "k8s.io/apimachinery"
+  revision = "103fd098999dc9c0c88536f5c9ad2e5da39373ae"
+
+[[override]]
+  name = "github.com/Azure/azure-sdk-for-go"
+  revision = "bd73d950fa4440dae889bd9917bff7cef539f86e"
+
+[[override]]
+  name = "github.com/weaveworks/mesh"
+  revision = "5015f896ab62d3e9fe757456c757521ce0c3faff"
+
+# bbolt version tags are not understood by dep, so we need to manually specify them.
+[[constraint]]
+  name = "github.com/etcd-io/bbolt"
+  version = "v1.3.1-etcd.8"
+
+# Need googleapis/google-cloud-go@c750310, which isn't in a release yet, to fix
+# googleapis/google-cloud-go#1242.  And needs to be an override to satisfy
+# "github.com/fsouza/fake-gcs-server.
+[[override]]
+  name = "cloud.google.com/go"
+  branch = "master"
+
+# Depends on specific version of cloud.google.com/go, and we need master of that.
+# So override to latest version.
+[[override]]
+  version = "1.3.0"
+  name = "github.com/fsouza/fake-gcs-server"

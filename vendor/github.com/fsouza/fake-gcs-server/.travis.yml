@@ -1,0 +1,15 @@
+language: go
+sudo: false
+install:
+  - go get github.com/alecthomas/gometalinter github.com/golang/dep/cmd/dep
+  - gometalinter --install
+  - dep ensure -v
+  - go install ./...
+script:
+  - gometalinter --enable-gc --enable=gofmt --enable=goimports --disable=errcheck --disable=gas --disable=gosec --deadline=10m --vendor --tests ./...
+  - go test -race ./...
+go:
+  - 1.10.x
+  - 1.11.x
+  - 1.12beta1
+  - tip

@@ -1,0 +1,10 @@
+language: go
+
+go_import_path: k8s.io/client-go
+
+go:
+  - 1.11.1
+
+script:
+  - if [ "$TRAVIS_BRANCH" != "master" ]; then godep restore; fi
+  - go build ./...

@@ -1,0 +1,27 @@
+[prune]
+  non-go = true
+
+# Pin to master branch until there is a more recent stable release:
+#   https://github.com/prometheus/client_golang/issues/375
+[[override]]
+  name = "github.com/prometheus/client_golang"
+  branch = "master"
+
+# Need an override on jaeger-lib as it has a ^0.8.0 contraint on client_golang.
+[[override]]
+  name = "github.com/uber/jaeger-lib"
+  branch = "master"
+
+[[constraint]]
+  name = "github.com/sercand/kuberesolver"
+  version = ">=2.1.0"
+
+# Older versions apparently have problems converting 'Any' types used in errors
+[[constraint]]
+  name = "github.com/gogo/googleapis"
+  version = ">=v1.1.0"
+
+# Need this version to get past https://github.com/gogo/status/issues/4
+[[constraint]]
+  name = "github.com/gogo/status"
+  version = ">=v1.0.3"
