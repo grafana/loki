@@ -14,7 +14,7 @@ Grafana ships with built-in support for Loki as part of its [latest release (6.0
 1. Go to `Configuration` > `Data Sources` via the cog icon on the left side bar.
 1. Click the big `+ Add data source` button.
 1. Choose Loki from the list.
-1. The http URL field should be the address of your Loki server e.g. `http://localhost:3100` or `http://loki:3100` when running with docker and docker-compose.
+1. The http URL field should be the address of your Loki server e.g. `http://localhost:3100` when running locally or with docker, `http://loki:3100` when running with docker-compose or kubernetes.
 1. To see the logs, click "Explore" on the sidebar, select the Loki datasource, and then choose a log stream using the "Log labels" button.
 
 Read more about the Explore feature in the [Grafana docs](http://docs.grafana.org/features/explore) and on how to search and filter logs with Loki.
