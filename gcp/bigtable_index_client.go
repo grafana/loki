@@ -63,8 +63,8 @@ type storageClientV1 struct {
 
 // NewStorageClientV1 returns a new v1 StorageClient.
 func NewStorageClientV1(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
-	opts := cfg.GRPCClientConfig.DialOption(instrumentation())
-	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, toBigtableOpts(opts)...)
+	opts := toOptions(cfg.GRPCClientConfig.DialOption(bigtableInstrumentation()))
+	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func newStorageClientV1(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtab
 
 // NewStorageClientColumnKey returns a new v2 StorageClient.
 func NewStorageClientColumnKey(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
-	opts := toBigtableOpts(cfg.GRPCClientConfig.DialOption(instrumentation()))
+	opts := toOptions(cfg.GRPCClientConfig.DialOption(bigtableInstrumentation()))
 	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
 	if err != nil {
 		return nil, err
