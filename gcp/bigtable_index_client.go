@@ -10,7 +10,6 @@ import (
 	"cloud.google.com/go/bigtable"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
-	"google.golang.org/api/option"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
@@ -64,10 +63,8 @@ type storageClientV1 struct {
 
 // NewStorageClientV1 returns a new v1 StorageClient.
 func NewStorageClientV1(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
-	opts := instrumentation()
-	opts = append(opts, option.WithGRPCDialOption(cfg.GRPCClientConfig.DialOption()))
-
-	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
+	opts := cfg.GRPCClientConfig.DialOption(instrumentation())
+	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, toBigtableOpts(opts)...)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +87,8 @@ func newStorageClientV1(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtab
 
 // NewStorageClientColumnKey returns a new v2 StorageClient.
 func NewStorageClientColumnKey(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
-	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, instrumentation()...)
+	opts := toBigtableOpts(cfg.GRPCClientConfig.DialOption(instrumentation()))
+	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
 	if err != nil {
 		return nil, err
 	}

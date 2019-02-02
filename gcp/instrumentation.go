@@ -1,9 +1,8 @@
 package gcp
 
 import (
-	"github.com/grpc-ecosystem/go-grpc-middleware"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
-	"github.com/opentracing/opentracing-go"
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/api/option"
@@ -22,19 +21,21 @@ var bigtableRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 	Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
 }, []string{"operation", "status_code"})
 
-func instrumentation() []option.ClientOption {
-	return []option.ClientOption{
-		option.WithGRPCDialOption(
-			grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
-				otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-				middleware.PrometheusGRPCUnaryInstrumentation(bigtableRequestDuration),
-			)),
-		),
-		option.WithGRPCDialOption(
-			grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(
-				otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
-				middleware.PrometheusGRPCStreamInstrumentation(bigtableRequestDuration),
-			)),
-		),
+func instrumentation() ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
+	return []grpc.UnaryClientInterceptor{
+			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+			middleware.PrometheusGRPCUnaryInstrumentation(bigtableRequestDuration),
+		},
+		[]grpc.StreamClientInterceptor{
+			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
+			middleware.PrometheusGRPCStreamInstrumentation(bigtableRequestDuration),
+		}
+}
+
+func toBigtableOpts(opts []grpc.DialOption) []option.ClientOption {
+	result := make([]option.ClientOption, 0, len(opts))
+	for _, opt := range opts {
+		result = append(result, option.WithGRPCDialOption(opt))
 	}
+	return result
 }
