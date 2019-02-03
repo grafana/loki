@@ -45,6 +45,9 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/loki
+            - name: storage
+              mountPath: "/data"
+              subPath: {{ .Values.loki.persistence.subPath }}
           ports:
             - name: {{ template "loki.name" . }}
               containerPort: {{ .Values.loki.service.port }}
@@ -77,3 +80,10 @@ spec:
         - name: config
           configMap:
             name: {{ template "loki.fullname" . }}
+        - name: storage
+      {{- if .Values.loki.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.loki.persistence.existingClaim | default (include "loki.fullname" .) }}
+      {{- else }}
+          emptyDir: {}
+      {{- end -}}

@@ -13,6 +13,8 @@ spec:
   allowPrivilegeEscalation: false
   volumes:
     - 'configMap'
+    - 'emptyDir'
+    - 'persistentVolumeClaim'
   hostNetwork: false
   hostIPC: false
   hostPID: false
