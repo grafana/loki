@@ -6,7 +6,6 @@ import (
 
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
-	"github.com/grafana/loki/pkg/promtail/targets/file"
 )
 
 type GenericTargetManager interface {
@@ -34,7 +33,7 @@ func NewTargetManager(
 		)
 	}
 
-	fileTargetManager, err := file.NewTargetManager(
+	fileTargetManager, err := NewTargetManager(
 		logger,
 		positions,
 		client,

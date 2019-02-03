@@ -1,4 +1,4 @@
-package file
+package targets
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -40,8 +39,8 @@ var (
 	})
 )
 
-// TargetManager manages a set of targets.
-type TargetManager struct {
+// FileTargetManager manages a set of targets.
+type FileTargetManager struct {
 	log log.Logger
 
 	quit    context.CancelFunc
@@ -50,14 +49,14 @@ type TargetManager struct {
 }
 
 // NewTargetManager creates a new TargetManager.
-func NewTargetManager(
+func NewFileTargetManager(
 	logger log.Logger,
 	positions *positions.Positions,
 	client api.EntryHandler,
 	scrapeConfigs []api.ScrapeConfig,
-) (*TargetManager, error) {
+) (*FileTargetManager, error) {
 	ctx, quit := context.WithCancel(context.Background())
-	tm := &TargetManager{
+	tm := &FileTargetManager{
 		log: logger,
 
 		quit:    quit,
@@ -90,7 +89,7 @@ func NewTargetManager(
 	return tm, tm.manager.ApplyConfig(config)
 }
 
-func (tm *TargetManager) run() {
+func (tm *FileTargetManager) run() {
 	for targetGoups := range tm.manager.SyncCh() {
 		for jobName, groups := range targetGoups {
 			tm.syncers[jobName].Sync(groups)
@@ -99,7 +98,7 @@ func (tm *TargetManager) run() {
 }
 
 // Stop the TargetManager.
-func (tm *TargetManager) Stop() {
+func (tm *FileTargetManager) Stop() {
 	tm.quit()
 
 	for _, s := range tm.syncers {

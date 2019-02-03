@@ -37,7 +37,8 @@ type Positions struct {
 	done      chan struct{}
 }
 
-type positionsFile struct {
+// File format for the positions data.
+type File struct {
 	Positions map[string]int64 `yaml:"positions"`
 }
 
@@ -132,7 +133,7 @@ func readPositionsFile(filename string) (map[string]int64, error) {
 		return nil, err
 	}
 
-	var p positionsFile
+	var p File
 	if err := yaml.UnmarshalStrict(buf, &p); err != nil {
 		return nil, err
 	}
@@ -141,7 +142,7 @@ func readPositionsFile(filename string) (map[string]int64, error) {
 }
 
 func writePositionFile(filename string, positions map[string]int64) error {
-	buf, err := yaml.Marshal(positionsFile{
+	buf, err := yaml.Marshal(File{
 		Positions: positions,
 	})
 	if err != nil {
