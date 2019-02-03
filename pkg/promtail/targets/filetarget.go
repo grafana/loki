@@ -1,4 +1,4 @@
-package file
+package targets
 
 import (
 	"os"
@@ -41,7 +41,7 @@ var (
 )
 
 const (
-	filename = "__filename__"
+	filenameLabel = "__filename__"
 )
 
 // FileTarget describes a particular set of logs.
@@ -217,7 +217,7 @@ type tailer struct {
 	done chan struct{}
 }
 
-func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, path string) (*tailer, error) {
+func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions.Positions, path string) (*tailer, error) {
 	filename := path
 	var reOpen bool
 
@@ -251,7 +251,7 @@ func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, pa
 
 	tailer := &tailer{
 		logger:    logger,
-		handler:   api.AddLabelsMiddleware(model.LabelSet{filename: model.LabelValue(path)}).Wrap(handler),
+		handler:   api.AddLabelsMiddleware(model.LabelSet{filenameLabel: model.LabelValue(path)}).Wrap(handler),
 		positions: positions,
 
 		path:     path,
@@ -267,7 +267,7 @@ func newTailer(logger log.Logger, handler EntryHandler, positions *Positions, pa
 
 func (t *tailer) run() {
 	level.Info(t.logger).Log("msg", "start tailing file", "path", t.path)
-	positionSyncPeriod := t.positions.cfg.SyncPeriod
+	positionSyncPeriod := t.positions.SyncPeriod()
 	positionWait := time.NewTicker(positionSyncPeriod)
 
 	defer func() {

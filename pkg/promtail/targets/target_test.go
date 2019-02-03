@@ -1,4 +1,4 @@
-package promtail
+package targets
 
 import (
 	"io/ioutil"
@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/loki/pkg/promtail/positions"
 
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
-	"gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v2"
 )
 
 func TestLongSyncDelayStillSavesCorrectPosition(t *testing.T) {
@@ -33,7 +34,7 @@ func TestLongSyncDelayStillSavesCorrectPosition(t *testing.T) {
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
-	positions, err := NewPositions(logger, PositionsConfig{
+	ps, err := positions.New(logger, positions.Config{
 		SyncPeriod:    10 * time.Second,
 		PositionsFile: positionsFileName,
 	})
@@ -47,7 +48,7 @@ func TestLongSyncDelayStillSavesCorrectPosition(t *testing.T) {
 		messages: make([]string, 0),
 	}
 
-	target, err := NewTarget(logger, client, positions, logFile, nil)
+	target, err := NewFileTarget(logger, client, ps, logFile, nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -69,14 +70,14 @@ func TestLongSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	}
 
 	target.Stop()
-	positions.Stop()
+	ps.Stop()
 
 	buf, err := ioutil.ReadFile(filepath.Clean(positionsFileName))
 	if err != nil {
 		t.Error("Expected to find a positions file but did not", err)
 		return
 	}
-	var p positionsFile
+	var p positions.File
 	if err := yaml.UnmarshalStrict(buf, &p); err != nil {
 		t.Error("Failed to parse positions file:", err)
 		return
@@ -126,7 +127,7 @@ func TestWatchEntireDirectory(t *testing.T) {
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
-	positions, err := NewPositions(logger, PositionsConfig{
+	ps, err := positions.New(logger, positions.Config{
 		SyncPeriod:    10 * time.Second,
 		PositionsFile: positionsFileName,
 	})
@@ -140,7 +141,7 @@ func TestWatchEntireDirectory(t *testing.T) {
 		messages: make([]string, 0),
 	}
 
-	target, err := NewTarget(logger, client, positions, logFileDir+"*", nil)
+	target, err := NewFileTarget(logger, client, ps, logFileDir+"*", nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -162,14 +163,14 @@ func TestWatchEntireDirectory(t *testing.T) {
 	}
 
 	target.Stop()
-	positions.Stop()
+	ps.Stop()
 
 	buf, err := ioutil.ReadFile(filepath.Clean(positionsFileName))
 	if err != nil {
 		t.Error("Expected to find a positions file but did not", err)
 		return
 	}
-	var p positionsFile
+	var p positions.File
 	if err := yaml.UnmarshalStrict(buf, &p); err != nil {
 		t.Error("Failed to parse positions file:", err)
 		return
@@ -214,7 +215,7 @@ func TestFileRolls(t *testing.T) {
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
-	positions, err := NewPositions(logger, PositionsConfig{
+	positions, err := positions.New(logger, positions.Config{
 		SyncPeriod:    10 * time.Second,
 		PositionsFile: positionsFile,
 	})
@@ -228,7 +229,7 @@ func TestFileRolls(t *testing.T) {
 		messages: make([]string, 0),
 	}
 
-	target, err := NewTarget(logger, client, positions, dirName+"/*.log", nil)
+	target, err := NewFileTarget(logger, client, positions, dirName+"/*.log", nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -306,7 +307,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
-	positions, err := NewPositions(logger, PositionsConfig{
+	ps, err := positions.New(logger, positions.Config{
 		SyncPeriod:    10 * time.Second,
 		PositionsFile: positionsFileName,
 	})
@@ -320,7 +321,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 		messages: make([]string, 0),
 	}
 
-	target, err := NewTarget(logger, client, positions, dirName+"/*.log", nil)
+	target, err := NewFileTarget(logger, client, ps, dirName+"/*.log", nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -342,10 +343,10 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	target.Stop()
-	positions.Stop()
+	ps.Stop()
 
 	// Create another positions (so that it loads from the previously saved positions file).
-	positions2, err := NewPositions(logger, PositionsConfig{
+	ps2, err := positions.New(logger, positions.Config{
 		SyncPeriod:    10 * time.Second,
 		PositionsFile: positionsFileName,
 	})
@@ -355,7 +356,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	// Create a new target, keep the same client so we can track what was sent through the handler.
-	target2, err := NewTarget(logger, client, positions2, dirName+"/*.log", nil)
+	target2, err := NewFileTarget(logger, client, ps2, dirName+"/*.log", nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -371,7 +372,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	target2.Stop()
-	positions2.Stop()
+	ps2.Stop()
 
 	if len(client.messages) != 20 {
 		t.Error("Handler did not receive the correct number of messages, expected 20 received", len(client.messages))
@@ -407,7 +408,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
-	positions, err := NewPositions(logger, PositionsConfig{
+	ps, err := positions.New(logger, positions.Config{
 		SyncPeriod:    10 * time.Second,
 		PositionsFile: positionsFileName,
 	})
@@ -421,7 +422,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 		messages: make([]string, 0),
 	}
 
-	target, err := NewTarget(logger, client, positions, dirName+"/*.log", nil)
+	target, err := NewFileTarget(logger, client, ps, dirName+"/*.log", nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -454,14 +455,14 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	}
 
 	target.Stop()
-	positions.Stop()
+	ps.Stop()
 
 	buf, err := ioutil.ReadFile(filepath.Clean(positionsFileName))
 	if err != nil {
 		t.Error("Expected to find a positions file but did not", err)
 		return
 	}
-	var p positionsFile
+	var p positions.File
 	if err := yaml.UnmarshalStrict(buf, &p); err != nil {
 		t.Error("Failed to parse positions file:", err)
 		return
