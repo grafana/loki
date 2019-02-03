@@ -12,7 +12,7 @@ RUN go get \
 		github.com/gogo/protobuf/gogoproto \
 		golang.org/x/tools/cmd/goyacc && \
 		rm -rf /go/pkg /go/src
-ENV GOMETALINTER_VER="2.0.11"
+ENV GOMETALINTER_VER="3.0.0"
 RUN curl -L -o /tmp/gometalinter-$GOMETALINTER_VER.tgz https://github.com/alecthomas/gometalinter/releases/download/v$GOMETALINTER_VER/gometalinter-$GOMETALINTER_VER-linux-amd64.tar.gz && \
 		tar -xz -C /tmp -f /tmp/gometalinter-$GOMETALINTER_VER.tgz && \
 		mv /tmp/gometalinter-$GOMETALINTER_VER-linux-amd64/* /usr/bin && \
