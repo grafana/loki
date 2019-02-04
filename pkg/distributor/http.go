@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/weaveworks/common/httpgrpc"
+
 	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -32,9 +34,15 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err := d.Push(r.Context(), &req)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err == nil {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+
+	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	if ok {
+		http.Error(w, string(resp.Body), int(resp.Code))
+	} else {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
