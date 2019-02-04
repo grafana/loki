@@ -54,7 +54,7 @@ func (m moduleName) String() string {
 	case All:
 		return "all"
 	default:
-		panic(fmt.Sprintf("unknow module name: %d", m))
+		panic(fmt.Sprintf("unknown module name: %d", m))
 	}
 }
 
@@ -176,6 +176,55 @@ func (t *Loki) initStore() (err error) {
 func (t *Loki) stopStore() error {
 	t.store.Stop()
 	return nil
+}
+
+// listDeps recursively gets a list of dependencies for a passed moduleName
+func listDeps(m moduleName) []moduleName {
+	deps := modules[m].deps
+	for _, d := range modules[m].deps {
+		deps = append(deps, listDeps(d)...)
+	}
+	return deps
+}
+
+// getDeps gets a list of all dependencies ordered so that items are always after any of their dependencies.
+func getDeps(m moduleName) []moduleName {
+	deps := listDeps(m)
+
+	// get a unique list of moduleNames, with a flag for whether they have been added to our result
+	uniq := make(map[moduleName]bool)
+	for _, d := range deps {
+		uniq[d] = false
+	}
+
+	result := make([]moduleName, len(uniq))
+	numAdded := 0
+
+	// keep looping through all modules until they have all been added to the result.
+	for numAdded < len(uniq) {
+		for d, s := range uniq {
+			if s {
+				continue
+			}
+			// check if all dependencies have been added to the result
+			allDepsAdded := true
+			for _, dep := range modules[d].deps {
+				if !uniq[dep] {
+					allDepsAdded = false
+					break
+				}
+			}
+
+			// if all of the module's dependencies have been added the result slice,
+			// then we can safely add this module to the result slice as well.
+			if allDepsAdded {
+				uniq[d] = true
+				result[numAdded] = d
+				numAdded++
+			}
+		}
+	}
+	return result
 }
 
 type module struct {
