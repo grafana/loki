@@ -12,10 +12,10 @@ import (
 
 // Promtail is the root struct for Promtail...
 type Promtail struct {
-	client        *client.Client
-	positions     *positions.Positions
-	targetManager *targets.TargetManager
-	server        *server.Server
+	client         *client.Client
+	positions      *positions.Positions
+	targetManagers *targets.TargetManagers
+	server         *server.Server
 }
 
 // New makes a new Promtail.
@@ -30,7 +30,7 @@ func New(cfg api.Config) (*Promtail, error) {
 		return nil, err
 	}
 
-	tm, err := targets.NewTargetManager(util.Logger, positions, client, cfg.ScrapeConfig)
+	tms, err := targets.NewTargetManagers(util.Logger, positions, client, cfg.ScrapeConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -41,10 +41,10 @@ func New(cfg api.Config) (*Promtail, error) {
 	}
 
 	return &Promtail{
-		client:        client,
-		positions:     positions,
-		targetManager: tm,
-		server:        server,
+		client:         client,
+		positions:      positions,
+		targetManagers: tms,
+		server:         server,
 	}, nil
 }
 
@@ -56,7 +56,7 @@ func (p *Promtail) Run() error {
 // Shutdown the promtail.
 func (p *Promtail) Shutdown() {
 	p.server.Shutdown()
-	p.targetManager.Stop()
+	p.targetManagers.Stop()
 	p.positions.Stop()
 	p.client.Stop()
 }
