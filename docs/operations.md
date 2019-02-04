@@ -76,7 +76,11 @@ The chunks are stored under `/tmp/loki/chunks`.
 
 ### Cloud storage
 
+#### Google Cloud Storage
+
 Loki has support for Google Cloud storage.
 Take a look at our [production setup](https://github.com/grafana/loki/blob/a422f394bb4660c98f7d692e16c3cc28747b7abd/production/ksonnet/loki/config.libsonnet#L55) for the relevant configuration fields.
 
-Support for AWS and Azure is also available, but not yet documented.
+
+#### AWS S3 & DynamoDB
+Take a look at our [s3-dynamodb setup](./aws_storage.md)
