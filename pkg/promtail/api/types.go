@@ -32,6 +32,7 @@ func (e EntryMiddlewareFunc) Wrap(next EntryHandler) EntryHandler {
 	return e(next)
 }
 
+// AddLabelsMiddleware is an EntryMiddleware that adds some labels.
 func AddLabelsMiddleware(additionalLabels model.LabelSet) EntryMiddleware {
 	return EntryMiddlewareFunc(func(next EntryHandler) EntryHandler {
 		return EntryHandlerFunc(func(labels model.LabelSet, time time.Time, entry string) error {

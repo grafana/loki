@@ -48,7 +48,7 @@ type FileTargetManager struct {
 	manager *discovery.Manager
 }
 
-// NewTargetManager creates a new TargetManager.
+// NewFileTargetManager creates a new TargetManager.
 func NewFileTargetManager(
 	logger log.Logger,
 	positions *positions.Positions,
@@ -92,7 +92,7 @@ func NewFileTargetManager(
 func (tm *FileTargetManager) run() {
 	for targetGoups := range tm.manager.SyncCh() {
 		for jobName, groups := range targetGoups {
-			tm.syncers[jobName].Sync(groups)
+			tm.syncers[jobName].sync(groups)
 		}
 	}
 }
@@ -117,7 +117,7 @@ type syncer struct {
 	relabelConfig []*pkgrelabel.Config
 }
 
-func (s *syncer) Sync(groups []*targetgroup.Group) {
+func (s *syncer) sync(groups []*targetgroup.Group) {
 	targets := map[string]struct{}{}
 
 	for _, group := range groups {

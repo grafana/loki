@@ -8,32 +8,28 @@ import (
 	"github.com/grafana/loki/pkg/promtail/positions"
 )
 
-type GenericTargetManager interface {
+type targetManager interface {
 	Stop()
 }
 
-type TargetManager struct {
-	targetManagers []GenericTargetManager
+// TargetManagers manages a list of target managers.
+type TargetManagers struct {
+	targetManagers []targetManager
 }
 
-func NewTargetManager(
+// NewTargetManagers makes a new TargetManagers
+func NewTargetManagers(
 	logger log.Logger,
 	positions *positions.Positions,
 	client api.EntryHandler,
 	scrapeConfigs []api.ScrapeConfig,
-) (*TargetManager, error) {
-	var targetManagers []GenericTargetManager
+) (*TargetManagers, error) {
+	var targetManagers []targetManager
 	var fileScrapeConfigs []api.ScrapeConfig
 
-	for _, cfg := range scrapeConfigs {
-		// for now every scrape config is a file target
-		fileScrapeConfigs = append(
-			fileScrapeConfigs,
-			cfg,
-		)
-	}
-
-	fileTargetManager, err := NewTargetManager(
+	// for now every scrape config is a file target
+	fileScrapeConfigs = append(fileScrapeConfigs, scrapeConfigs...)
+	fileTargetManager, err := NewFileTargetManager(
 		logger,
 		positions,
 		client,
@@ -44,14 +40,13 @@ func NewTargetManager(
 	}
 	targetManagers = append(targetManagers, fileTargetManager)
 
-	return &TargetManager{targetManagers: targetManagers}, nil
+	return &TargetManagers{targetManagers: targetManagers}, nil
 
 }
 
-func (tm *TargetManager) Stop() {
+// Stop the TargetManagers.
+func (tm *TargetManagers) Stop() {
 	for _, t := range tm.targetManagers {
-		go func() {
-			t.Stop()
-		}()
+		t.Stop()
 	}
 }
