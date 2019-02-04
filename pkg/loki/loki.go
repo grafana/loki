@@ -111,14 +111,19 @@ func (t *Loki) setupAuthMiddleware() {
 }
 
 func (t *Loki) init(m moduleName) error {
-	if _, ok := t.inited[m]; ok {
-		return nil
-	}
-
-	for _, dep := range modules[m].deps {
-		if err := t.init(dep); err != nil {
+	// initialize all of our dependencies first
+	for _, dep := range getDeps(m) {
+		if err := t.initModule(dep); err != nil {
 			return err
 		}
+	}
+	// lastly, initialize the requested module
+	return t.initModule(m)
+}
+
+func (t *Loki) initModule(m moduleName) error {
+	if _, ok := t.inited[m]; ok {
+		return nil
 	}
 
 	level.Info(util.Logger).Log("msg", "initialising", "module", m)
@@ -145,21 +150,23 @@ func (t *Loki) Stop() error {
 }
 
 func (t *Loki) stop(m moduleName) {
+	t.stopModule(m)
+	deps := getDeps(m)
+	// iterate over our deps in reverse order and call stopModule
+	for i := len(deps) - 1; i >= 0; i-- {
+		t.stopModule(deps[i])
+	}
+}
+
+func (t *Loki) stopModule(m moduleName) {
 	if _, ok := t.inited[m]; !ok {
 		return
 	}
-	delete(t.inited, m)
-
-	for _, dep := range modules[m].deps {
-		t.stop(dep)
-	}
-
-	if modules[m].stop == nil {
-		return
-	}
-
 	level.Info(util.Logger).Log("msg", "stopping", "module", m)
-	if err := modules[m].stop(t); err != nil {
-		level.Error(util.Logger).Log("msg", "error stopping", "module", m, "err", err)
+	if modules[m].stop != nil {
+		if err := modules[m].stop(t); err != nil {
+			level.Error(util.Logger).Log("msg", "error stopping", "module", m, "err", err)
+		}
 	}
+	delete(t.inited, m)
 }
