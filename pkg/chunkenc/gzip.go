@@ -82,7 +82,7 @@ func (hb *headBlock) isEmpty() bool {
 }
 
 func (hb *headBlock) append(ts int64, line string) error {
-	if !hb.isEmpty() && hb.maxt >= ts {
+	if !hb.isEmpty() && hb.maxt > ts {
 		return ErrOutOfOrder
 	}
 
