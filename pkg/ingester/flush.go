@@ -221,12 +221,17 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	wireChunks := make([]chunk.Chunk, 0, len(cs))
 	for _, c := range cs {
 		firstTime, lastTime := c.chunk.Bounds()
-		wireChunks = append(wireChunks, chunk.NewChunk(
+		c := chunk.NewChunk(
 			userID, fp, metric,
 			chunkenc.NewFacade(c.chunk),
 			model.TimeFromUnixNano(firstTime.UnixNano()),
 			model.TimeFromUnixNano(lastTime.UnixNano()),
-		))
+		)
+
+		if err := c.Encode(); err != nil {
+			return err
+		}
+		wireChunks = append(wireChunks, c)
 	}
 
 	return i.store.Put(ctx, wireChunks)
