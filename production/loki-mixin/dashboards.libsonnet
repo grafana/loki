@@ -156,14 +156,14 @@ local utils = import "mixin-utils/utils.libsonnet";
           .addPanel(
             g.panel('Active Targets') +
             g.queryPanel(
-              'sum(promtail_targets_active_total)',
+              'sum(promtail_targets_active_total{cluster="$cluster", job="$namespace/promtail"})',
               'Active Targets',
             ),
            )
            .addPanel(
             g.panel('Active Files') +
              g.queryPanel(
-              'sum(promtail_files_active_total)',
+              'sum(promtail_files_active_total{cluster="$cluster", job="$namespace/promtail"})',
               'Active Targets',
             ),
           )
