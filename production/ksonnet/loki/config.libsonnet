@@ -34,6 +34,8 @@
       },
 
       ingester: {
+        chunk_idle_period: '15m',
+
         lifecycler: {
           ring: {
             store: 'consul',
@@ -47,8 +49,6 @@
               consistentreads: true,
             },
           },
-
-          chunk_idle_period: '15m',
 
           num_tokens: 512,
           heartbeat_period: '5s',
