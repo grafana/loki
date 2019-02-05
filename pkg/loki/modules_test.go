@@ -6,7 +6,7 @@ import (
 
 func TestGetDeps(t *testing.T) {
 	for _, m := range []moduleName{All, Distributor, Ingester, Querier} {
-		deps := getDeps(m)
+		deps := orderedDeps(m)
 		seen := make(map[moduleName]struct{})
 		// make sure that getDeps always orders dependencies correctly.
 		for _, d := range deps {

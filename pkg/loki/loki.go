@@ -112,7 +112,7 @@ func (t *Loki) setupAuthMiddleware() {
 
 func (t *Loki) init(m moduleName) error {
 	// initialize all of our dependencies first
-	for _, dep := range getDeps(m) {
+	for _, dep := range orderedDeps(m) {
 		if err := t.initModule(dep); err != nil {
 			return err
 		}
@@ -122,10 +122,6 @@ func (t *Loki) init(m moduleName) error {
 }
 
 func (t *Loki) initModule(m moduleName) error {
-	if _, ok := t.inited[m]; ok {
-		return nil
-	}
-
 	level.Info(util.Logger).Log("msg", "initialising", "module", m)
 	if modules[m].init != nil {
 		if err := modules[m].init(t); err != nil {
@@ -151,7 +147,7 @@ func (t *Loki) Stop() error {
 
 func (t *Loki) stop(m moduleName) {
 	t.stopModule(m)
-	deps := getDeps(m)
+	deps := orderedDeps(m)
 	// iterate over our deps in reverse order and call stopModule
 	for i := len(deps) - 1; i >= 0; i-- {
 		t.stopModule(deps[i])
@@ -159,9 +155,6 @@ func (t *Loki) stop(m moduleName) {
 }
 
 func (t *Loki) stopModule(m moduleName) {
-	if _, ok := t.inited[m]; !ok {
-		return
-	}
 	level.Info(util.Logger).Log("msg", "stopping", "module", m)
 	if modules[m].stop != nil {
 		if err := modules[m].stop(t); err != nil {
