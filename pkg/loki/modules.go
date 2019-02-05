@@ -197,7 +197,7 @@ func orderedDeps(m moduleName) []moduleName {
 		uniq[dep] = false
 	}
 
-	result := make([]moduleName, 0)
+	result := make([]moduleName, 0, len(uniq))
 
 	// keep looping through all modules until they have all been added to the result.
 
