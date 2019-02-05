@@ -21,7 +21,7 @@ storage_config:
 ## S3 
 
 Loki is using S3 as object storage. It stores log within directories based on
-[`OrgID`](./operations.md#Multi-tenancy). For example, Logs from org `faker'
+[`OrgID`](./operations.md#Multi-tenancy). For example, Logs from org `faker`
 will stored in `s3://BUCKET_NAME/faker/`.
 
 The S3 configuration is setup with url format: `s3://access_key:secret_access_key@region/bucket_name`.
