@@ -31,6 +31,9 @@ func newBigchunk() *bigchunk {
 
 func (b *bigchunk) Add(sample model.SamplePair) ([]Chunk, error) {
 	if b.remainingSamples == 0 {
+		if bigchunkSizeCapBytes > 0 && b.Size() > bigchunkSizeCapBytes {
+			return addToOverflowChunk(b, sample)
+		}
 		if err := b.addNextChunk(sample.Timestamp); err != nil {
 			return nil, err
 		}
