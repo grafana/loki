@@ -70,15 +70,12 @@ type Loki struct {
 	store       chunk.Store
 
 	httpAuthMiddleware middleware.Interface
-
-	inited map[moduleName]struct{}
 }
 
 // New makes a new Loki.
 func New(cfg Config) (*Loki, error) {
 	loki := &Loki{
-		cfg:    cfg,
-		inited: map[moduleName]struct{}{},
+		cfg: cfg,
 	}
 
 	loki.setupAuthMiddleware()
@@ -128,8 +125,6 @@ func (t *Loki) initModule(m moduleName) error {
 			return errors.Wrap(err, fmt.Sprintf("error initialising module: %s", m))
 		}
 	}
-
-	t.inited[m] = struct{}{}
 	return nil
 }
 
@@ -161,5 +156,4 @@ func (t *Loki) stopModule(m moduleName) {
 			level.Error(util.Logger).Log("msg", "error stopping", "module", m, "err", err)
 		}
 	}
-	delete(t.inited, m)
 }
