@@ -34,9 +34,9 @@ func TestIterator(t *testing.T) {
 		// Test dedupe of overlapping iterators with the heap iterator.
 		{
 			iterator: NewHeapIterator([]EntryIterator{
-				mkStreamIterator(testSize, offset(0)),
-				mkStreamIterator(testSize, offset(testSize/2)),
-				mkStreamIterator(testSize, offset(testSize)),
+				mkStreamIterator(testSize, offset(0, identity)),
+				mkStreamIterator(testSize, offset(testSize/2, identity)),
+				mkStreamIterator(testSize, offset(testSize, identity)),
 			}, logproto.FORWARD),
 			generator: identity,
 			length:    2 * testSize,
@@ -45,11 +45,22 @@ func TestIterator(t *testing.T) {
 		// Test dedupe of overlapping iterators with the heap iterator (backward).
 		{
 			iterator: NewHeapIterator([]EntryIterator{
-				mkStreamIterator(testSize, inverse(offset(0))),
-				mkStreamIterator(testSize, inverse(offset(-testSize/2))),
-				mkStreamIterator(testSize, inverse(offset(-testSize))),
+				mkStreamIterator(testSize, inverse(offset(0, identity))),
+				mkStreamIterator(testSize, inverse(offset(-testSize/2, identity))),
+				mkStreamIterator(testSize, inverse(offset(-testSize, identity))),
 			}, logproto.BACKWARD),
 			generator: inverse(identity),
+			length:    2 * testSize,
+		},
+
+		// Test dedupe of entries with the same timestamp but different entries.
+		{
+			iterator: NewHeapIterator([]EntryIterator{
+				mkStreamIterator(testSize, offset(0, constant(0))),
+				mkStreamIterator(testSize, offset(0, constant(0))),
+				mkStreamIterator(testSize, offset(testSize, constant(0))),
+			}, logproto.FORWARD),
+			generator: constant(0),
 			length:    2 * testSize,
 		},
 	} {
@@ -85,11 +96,17 @@ func identity(i int64) logproto.Entry {
 	}
 }
 
-func offset(j int64) generator {
+func offset(j int64, g generator) generator {
+	return func(i int64) logproto.Entry {
+		return g(i + j)
+	}
+}
+
+func constant(t int64) generator {
 	return func(i int64) logproto.Entry {
 		return logproto.Entry{
-			Timestamp: time.Unix(i+j, 0),
-			Line:      fmt.Sprintf("%d", i+j),
+			Timestamp: time.Unix(t, 0),
+			Line:      fmt.Sprintf("%d", i),
 		}
 	}
 }

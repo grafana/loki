@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"sort"
 	"time"
 
 	"github.com/grafana/loki/pkg/helpers"
@@ -95,8 +96,9 @@ type heapIterator struct {
 		heap.Interface
 		Peek() EntryIterator
 	}
-	curr EntryIterator
-	errs []error
+	currEntry  logproto.Entry
+	currLabels string
+	errs       []error
 }
 
 // NewHeapIterator returns a new iterator which uses a heap to merge together
@@ -114,14 +116,14 @@ func NewHeapIterator(is []EntryIterator, direction logproto.Direction) EntryIter
 
 	// pre-next each iterator, drop empty.
 	for _, i := range is {
-		result.requeue(i)
+		result.requeue(i, false)
 	}
 
 	return result
 }
 
-func (i *heapIterator) requeue(ei EntryIterator) {
-	if ei.Next() {
+func (i *heapIterator) requeue(ei EntryIterator, advanced bool) {
+	if advanced || ei.Next() {
 		heap.Push(i.heap, ei)
 		return
 	}
@@ -133,38 +135,67 @@ func (i *heapIterator) requeue(ei EntryIterator) {
 }
 
 func (i *heapIterator) Next() bool {
-	if i.curr != nil {
-		i.requeue(i.curr)
-	}
-
 	if i.heap.Len() == 0 {
 		return false
 	}
 
-	i.curr = heap.Pop(i.heap).(EntryIterator)
-	currEntry := i.curr.Entry()
-
-	// keep popping entries off if they match, to dedupe
+	// We support multiple entries with the same timestamp, and we want to
+	// preserve their original order. We look at all the top entries in the
+	// heap with the same timestamp, and pop the ones whose common value
+	// occurs most often.
+	type tuple struct {
+		logproto.Entry
+		EntryIterator
+	}
+	tuples := make([]tuple, 0, i.heap.Len())
 	for i.heap.Len() > 0 {
 		next := i.heap.Peek()
-		nextEntry := next.Entry()
-		if !currEntry.Equal(nextEntry) {
+		entry := next.Entry()
+		if len(tuples) > 0 && !tuples[0].Timestamp.Equal(entry.Timestamp) {
 			break
 		}
 
-		next = heap.Pop(i.heap).(EntryIterator)
-		i.requeue(next)
+		heap.Pop(i.heap)
+		tuples = append(tuples, tuple{
+			Entry:         entry,
+			EntryIterator: next,
+		})
+	}
+
+	// Find in entry which occurs most often which, due to quorum based
+	// replication, is guaranteed to be the correct next entry.
+	sort.Slice(tuples, func(i, j int) bool {
+		return tuples[i].Line < tuples[j].Line
+	})
+	i.currEntry = tuples[0].Entry
+	count, max := 1, 1
+	for j := 1; j < len(tuples); j++ {
+		if tuples[j].Equal(tuples[j-1]) {
+			count++
+			continue
+		}
+		if count > max {
+			i.currEntry = tuples[j-1].Entry
+			max = count
+		}
+		count++
+	}
+
+	// Requeue the iterators, only advancing them if they were not the
+	// correct pick.
+	for j := range tuples {
+		i.requeue(tuples[j].EntryIterator, tuples[j].Line != i.currEntry.Line)
 	}
 
 	return true
 }
 
 func (i *heapIterator) Entry() logproto.Entry {
-	return i.curr.Entry()
+	return i.currEntry
 }
 
 func (i *heapIterator) Labels() string {
-	return i.curr.Labels()
+	return i.currLabels
 }
 
 func (i *heapIterator) Error() error {
