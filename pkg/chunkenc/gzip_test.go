@@ -55,6 +55,14 @@ func TestGZIPBlock(t *testing.T) {
 			str: "hello, worl\nd8!",
 		},
 		{
+			ts:  8,
+			str: "hello, world 8, 2!",
+		},
+		{
+			ts:  8,
+			str: "hello, world 8, 3!",
+		},
+		{
 			ts:  9,
 			str: "",
 		},
