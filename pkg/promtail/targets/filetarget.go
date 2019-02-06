@@ -324,12 +324,7 @@ func (t *tailer) run() {
 	positionWait := time.NewTicker(positionSyncPeriod)
 
 	defer func() {
-		level.Info(t.logger).Log("msg", "stopped tailing file", "path", t.path)
 		positionWait.Stop()
-		err := t.markPosition()
-		if err != nil {
-			level.Error(t.logger).Log("msg", "error getting tail position", "path", t.path, "error", err)
-		}
 		close(t.done)
 	}()
 
@@ -373,10 +368,17 @@ func (t *tailer) markPosition() error {
 }
 
 func (t *tailer) stop() error {
+	// Save the current position before shutting down tailer
+	err := t.markPosition()
+	if err != nil {
+		level.Error(t.logger).Log("msg", "error getting tail position", "path", t.path, "error", err)
+	}
+	err = t.tail.Stop()
 	close(t.quit)
 	<-t.done
 	filesActive.Add(-1.)
-	return t.tail.Stop()
+	level.Info(t.logger).Log("msg", "stopped tailing file", "path", t.path)
+	return err
 }
 
 func (t *tailer) cleanup() {
