@@ -184,7 +184,7 @@ func mostCommon(tuples []tuple) tuple {
 	result := tuples[0]
 	count, max := 0, 0
 	for i := 0; i < len(tuples)-1; i++ {
-		if tuples[i].Equal(tuples[i+1].Entry) {
+		if tuples[i].Line == tuples[i+1].Line {
 			count++
 			continue
 		}
