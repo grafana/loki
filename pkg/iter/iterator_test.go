@@ -5,11 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/assert"
 )
 
-const testSize = 100
+const testSize = 10
 
 func TestIterator(t *testing.T) {
 	for i, tc := range []struct {
@@ -115,4 +117,29 @@ func inverse(g generator) generator {
 	return func(i int64) logproto.Entry {
 		return g(-i)
 	}
+}
+
+func TestMostCommont(t *testing.T) {
+	// First is most common.
+	tuples := []tuple{
+		{Entry: logproto.Entry{Line: "a"}},
+		{Entry: logproto.Entry{Line: "b"}},
+		{Entry: logproto.Entry{Line: "c"}},
+		{Entry: logproto.Entry{Line: "a"}},
+		{Entry: logproto.Entry{Line: "b"}},
+		{Entry: logproto.Entry{Line: "c"}},
+		{Entry: logproto.Entry{Line: "a"}},
+	}
+	require.Equal(t, "a", mostCommon(tuples).Entry.Line)
+
+	// Last is most common
+	tuples = []tuple{
+		{Entry: logproto.Entry{Line: "a"}},
+		{Entry: logproto.Entry{Line: "b"}},
+		{Entry: logproto.Entry{Line: "c"}},
+		{Entry: logproto.Entry{Line: "b"}},
+		{Entry: logproto.Entry{Line: "c"}},
+		{Entry: logproto.Entry{Line: "c"}},
+	}
+	require.Equal(t, "c", mostCommon(tuples).Entry.Line)
 }
