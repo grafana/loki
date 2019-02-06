@@ -168,8 +168,7 @@ func (i *heapIterator) Next() bool {
 	// replication, is guaranteed to be the correct next entry.
 	i.currEntry = mostCommon(tuples).Entry
 
-	// Requeue the iterators, only advancing them if they were not the
-	// correct pick.
+	// Requeue the iterators, advancing them if they were consumed.
 	for j := range tuples {
 		i.requeue(tuples[j].EntryIterator, tuples[j].Line != i.currEntry.Line)
 	}
