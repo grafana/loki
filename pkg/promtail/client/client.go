@@ -154,13 +154,13 @@ func (c *Client) send(batch map[model.Fingerprint]*logproto.Stream) error {
 	start := time.Now()
 	resp, err := http.Post(c.cfg.URL.String(), contentType, bytes.NewReader(buf))
 	if err != nil {
-		requestDuration.WithLabelValues("failed").Observe(time.Until(start).Seconds())
+		requestDuration.WithLabelValues("failed").Observe(time.Since(start).Seconds())
 		return err
 	}
 	if err := resp.Body.Close(); err != nil {
 		return err
 	}
-	requestDuration.WithLabelValues(strconv.Itoa(resp.StatusCode)).Observe(time.Until(start).Seconds())
+	requestDuration.WithLabelValues(strconv.Itoa(resp.StatusCode)).Observe(time.Since(start).Seconds())
 
 	if resp.StatusCode/100 != 2 {
 		return fmt.Errorf("Error doing write: %d - %s", resp.StatusCode, resp.Status)
