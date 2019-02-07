@@ -24,7 +24,7 @@ type Config struct {
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
 	flags.DurationVar(&cfg.SyncPeriod, "positions.sync-period", 10*time.Second, "Period with this to sync the position file.")
-	flag.StringVar(&cfg.PositionsFile, "positions.file", "/var/log/positions.yaml", "Location to read/wrtie positions from.")
+	flag.StringVar(&cfg.PositionsFile, "positions.file", "/var/log/positions.yaml", "Location to read/write positions from.")
 }
 
 // Positions tracks how far through each file we've read.
