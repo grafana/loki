@@ -206,9 +206,7 @@ func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 func (i *Ingester) getInstanceByID(id string) (*instance, bool) {
 	i.instancesMtx.RLock()
 	defer i.instancesMtx.RUnlock()
-
-	inst, ok := i.instances[id]
-	return inst, ok
+	return i.instances[id]
 }
 
 func (i *Ingester) getInstances() []*instance {
