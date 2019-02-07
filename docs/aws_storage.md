@@ -5,8 +5,8 @@
 schema_config:
   configs:
   - from: 0
-    store: aws
-    object_store: aws
+    store: dynamo
+    object_store: s3
     schema: v9
     index:
       prefix: dynamodb_table_name
@@ -35,7 +35,11 @@ DynamoDB access is very similar to S3, however you do not need to specific a
 table name in the storage section.  You will need to set the table name for
 `index.prefix` inside schema config section.
 
-To setup dynamodb, you can do it manually, or use `table_manager` to create and
-maintain the tables for you.  You can find out more info about table manager at
-[cortex
-project](https://github.com/cortexproject/cortex)(https://github.com/cortexproject/cortex). There is an example table manager deployment inside the ksonnet deployment method.  You can find it [here](../production/ksonnet/loki/table-manager.libsonnet)
+You can setup DynamoDB by yourself, or have `table-manager` setup for you.
+You can find out more info about table manager at
+[cortex project](https://github.com/cortexproject/cortex)(https://github.com/cortexproject/cortex).
+There is an example table manager deployment inside the ksonnet deployment method.  You can find it [here](../production/ksonnet/loki/table-manager.libsonnet)
+
+### Manual setup
+You will need to setup primary index key `h`(string) and `r`(binary) as the sort
+key. Make sure adjust your throughput base on your usage.
