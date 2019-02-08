@@ -152,7 +152,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	tracker := pushTracker{
-		samplesPending: int32(len(samplesByIngester)),
+		samplesPending: int32(len(streams)),
 		done:           make(chan struct{}),
 		err:            make(chan error),
 	}
@@ -173,6 +173,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return nil, err
 	case <-tracker.done:
 		return &logproto.PushResponse{}, validationErr
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 }
 
