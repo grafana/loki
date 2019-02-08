@@ -1,10 +1,12 @@
 package targets
 
 import (
+	"flag"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/go-kit/kit/log"
@@ -16,7 +18,7 @@ import (
 	fsnotify "gopkg.in/fsnotify.v1"
 
 	"github.com/grafana/loki/pkg/helpers"
-	"github.com/grafana/loki/pkg/promtail/api"
+
 	"github.com/grafana/loki/pkg/promtail/positions"
 )
 
@@ -44,6 +46,16 @@ const (
 	filenameLabel = "__filename__"
 )
 
+// Config describes behavior for Target
+type Config struct {
+	SyncPeriod time.Duration `yaml:"sync_period"`
+}
+
+// RegisterFlags register flags.
+func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
+	flags.DurationVar(&cfg.SyncPeriod, "target.sync-period", 10*time.Second, "Period to resync directories being watched and files being tailed.")
+}
+
 // FileTarget describes a particular set of logs.
 type FileTarget struct {
 	logger log.Logger
@@ -59,11 +71,11 @@ type FileTarget struct {
 
 	tails map[string]*tailer
 
-	targetConfig *api.TargetConfig
+	targetConfig *Config
 }
 
 // NewFileTarget create a new FileTarget.
-func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions *positions.Positions, path string, labels model.LabelSet, targetConfig *api.TargetConfig) (*FileTarget, error) {
+func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions *positions.Positions, path string, labels model.LabelSet, targetConfig *Config) (*FileTarget, error) {
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -173,7 +185,6 @@ func (t *FileTarget) run() {
 func (t *FileTarget) sync() error {
 
 	// Find list of directories to add to watcher.
-	var err error
 	path, err := filepath.Abs(t.path)
 	if err != nil {
 		return errors.Wrap(err, "filepath.Abs")
@@ -186,13 +197,13 @@ func (t *FileTarget) sync() error {
 	}
 
 	// Get the current unique set of dirs to watch.
-	dirs := make(map[string]struct{})
+	dirs := map[string]struct{}{}
 	for _, p := range matches {
 		dirs[filepath.Dir(p)] = struct{}{}
 	}
 
 	// If no files exist yet watch the directory specified in the path.
-	if matches == nil {
+	if len(matches) == 0 {
 		dirs[filepath.Dir(path)] = struct{}{}
 	}
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/loki/pkg/promtail/scrape"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -53,8 +54,8 @@ func NewFileTargetManager(
 	logger log.Logger,
 	positions *positions.Positions,
 	client api.EntryHandler,
-	scrapeConfigs []api.ScrapeConfig,
-	targetConfig *api.TargetConfig,
+	scrapeConfigs []scrape.Config,
+	targetConfig *Config,
 ) (*FileTargetManager, error) {
 	ctx, quit := context.WithCancel(context.Background())
 	tm := &FileTargetManager{
@@ -118,7 +119,7 @@ type syncer struct {
 	targets       map[string]*FileTarget
 	relabelConfig []*pkgrelabel.Config
 
-	targetConfig *api.TargetConfig
+	targetConfig *Config
 }
 
 func (s *syncer) sync(groups []*targetgroup.Group) {

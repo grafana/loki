@@ -2,6 +2,7 @@ package targets
 
 import (
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/loki/pkg/promtail/scrape"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/promtail/api"
@@ -22,11 +23,11 @@ func NewTargetManagers(
 	logger log.Logger,
 	positions *positions.Positions,
 	client api.EntryHandler,
-	scrapeConfigs []api.ScrapeConfig,
-	targetConfig *api.TargetConfig,
+	scrapeConfigs []scrape.Config,
+	targetConfig *Config,
 ) (*TargetManagers, error) {
 	var targetManagers []targetManager
-	var fileScrapeConfigs []api.ScrapeConfig
+	var fileScrapeConfigs []scrape.Config
 
 	// for now every scrape config is a file target
 	fileScrapeConfigs = append(fileScrapeConfigs, scrapeConfigs...)

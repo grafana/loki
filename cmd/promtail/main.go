@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/loki/pkg/promtail/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 
@@ -13,7 +14,6 @@ import (
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/promtail"
-	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 func init() {
@@ -23,7 +23,7 @@ func init() {
 func main() {
 	var (
 		configFile = "docs/promtail-local-config.yaml"
-		config     api.Config
+		config     config.Config
 	)
 	flag.StringVar(&configFile, "config.file", "promtail.yml", "The config file.")
 	flagext.RegisterFlags(&config)
