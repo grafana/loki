@@ -81,7 +81,7 @@ func (i instrumentedTransport) RoundTrip(req *http.Request) (*http.Response, err
 	start := time.Now()
 	resp, err := i.next.RoundTrip(req)
 	if err == nil {
-		i.observer.WithLabelValues(req.URL.Path, strconv.Itoa(resp.StatusCode)).Observe(time.Since(start).Seconds())
+		i.observer.WithLabelValues(req.Method, strconv.Itoa(resp.StatusCode)).Observe(time.Since(start).Seconds())
 	}
 	return resp, err
 }
