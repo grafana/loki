@@ -74,17 +74,15 @@ By default, Loki stores everything on disk.
 The index is stored in a BoltDB under `/tmp/loki/index`.
 The chunks are stored under `/tmp/loki/chunks`.
 
-### Cloud storage
-
-#### Google Cloud Storage
+### Google Cloud Storage
 
 Loki has support for Google Cloud storage.
 Take a look at our [production setup](https://github.com/grafana/loki/blob/a422f394bb4660c98f7d692e16c3cc28747b7abd/production/ksonnet/loki/config.libsonnet#L55) for the relevant configuration fields.
 
+### AWS S3 & DynamoDB
 
-#### AWS S3 & DynamoDB
+Example config for using S3 & DynamoDB:
 
-##### Example config via yaml file
 ```yaml
 schema_config:
   configs:
@@ -102,7 +100,7 @@ storage_config:
       dynamodb: dynamodb://access_key:secret_access_key@region
 ```
 
-###### S3 
+#### S3 
 
 Loki is using S3 as object storage. It stores log within directories based on
 [`OrgID`](./operations.md#Multi-tenancy). For example, Logs from org `faker`
@@ -110,20 +108,20 @@ will stored in `s3://BUCKET_NAME/faker/`.
 
 The S3 configuration is setup with url format: `s3://access_key:secret_access_key@region/bucket_name`.
 
-###### Dynamo DB
+#### DynamoDB
 
-Loki uses dynamodb for the index storage. It is used for querying logs, make
+Loki uses DynamoDB for the index storage. It is used for querying logs, make
 sure you adjuest your throughput to your usage.
 
-DynamoDB access is very similar to S3, however you do not need to specific a
-table name in the storage section.  You will need to set the table name for
-`index.prefix` inside schema config section.
+DynamoDB access is very similar to S3, however you do not need to specify a
+table name in the storage section, as Loki will calculate that for you.
+You will need to set the table name prefix inside schema config section, 
+and ensure the `index.prefix` table exists.
 
 You can setup DynamoDB by yourself, or have `table-manager` setup for you.
 You can find out more info about table manager at
-[cortex project](https://github.com/cortexproject/cortex)(https://github.com/cortexproject/cortex).
+[Cortex project](https://github.com/cortexproject/cortex)(https://github.com/cortexproject/cortex).
 There is an example table manager deployment inside the ksonnet deployment method.  You can find it [here](../production/ksonnet/loki/table-manager.libsonnet)
 
-####### Manual setup
-You will need to setup primary index key `h`(string) and `r`(binary) as the sort
-key. Make sure adjust your throughput base on your usage.
+If you set your DynamoDB table manually, ensure you set the primary index key to `h`
+(string) and use `r` (binary) as the sort key. Make sure adjust your throughput base on your usage.
