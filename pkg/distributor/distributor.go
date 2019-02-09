@@ -47,6 +47,8 @@ var (
 
 // Config for a Distributor.
 type Config struct {
+	// For testing.
+	factory func(addr string) (grpc_health_v1.HealthClient, error)
 }
 
 // RegisterFlags registers the flags.
@@ -64,8 +66,11 @@ type Distributor struct {
 
 // New a distributor creates.
 func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, overrides *validation.Overrides) (*Distributor, error) {
-	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
-		return client.New(clientCfg, addr)
+	factory := cfg.factory
+	if factory == nil {
+		factory = func(addr string) (grpc_health_v1.HealthClient, error) {
+			return client.New(clientCfg, addr)
+		}
 	}
 
 	return &Distributor{
@@ -132,7 +137,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	if len(streams) == 0 {
-		return &logproto.PushResponse{}, nil
+		return &logproto.PushResponse{}, validationErr
 	}
 
 	replicationSets, err := d.ring.BatchGet(keys, ring.Write)
