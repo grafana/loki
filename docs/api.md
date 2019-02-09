@@ -7,7 +7,7 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
   For sending log entries, expects a snappy compressed proto in the HTTP Body:
 
   - [ProtoBuffer definition](/pkg/logproto/logproto.proto)
-  - [Golang client library](/pkg/promtail/client.go)
+  - [Golang client library](/pkg/promtail/client/client.go)
 
   Also accepts JSON formatted requests when the header `Content-Type: application/json` is sent. Example of the JSON format:
 
