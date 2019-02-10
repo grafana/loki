@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
 )
 
@@ -197,7 +198,7 @@ func (c *Client) send(ctx context.Context, buf []byte) (int, error) {
 	if err != nil {
 		return -1, err
 	}
-	defer resp.Body.Close()
+	defer helpers.LogError("closing watcher", resp.Body.Close)
 
 	if resp.StatusCode/100 != 2 {
 		scanner := bufio.NewScanner(io.LimitReader(resp.Body, maxErrMsgLen))
