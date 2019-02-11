@@ -119,6 +119,10 @@ func NewHeapIterator(is []EntryIterator, direction logproto.Direction) EntryIter
 		result.requeue(i, false)
 	}
 
+	if len(is) > 0 {
+		result.currLabels = is[0].Labels()
+	}
+
 	return result
 }
 
