@@ -64,6 +64,11 @@ func (s *gcsObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) e
 			return err
 		}
 		writer := s.bucket.Object(chunk.ExternalKey()).NewWriter(ctx)
+		// Default GCSChunkSize is 8M and for each call, 8M is allocated xD
+		// By setting it to 0, we just upload the object in a single a request
+		// which should work for our chunk sizes.
+		writer.ChunkSize = 0
+
 		if _, err := writer.Write(buf); err != nil {
 			return err
 		}
