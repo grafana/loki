@@ -4,9 +4,9 @@ rbac:
 
 serviceAccount:
   create: true
-  name: 
+  name:
 
-loki: 
+loki:
   replicas: 1
   deploymentStrategy: RollingUpdate
 
@@ -99,7 +99,7 @@ promtail:
 
   image:
     repository: grafana/promtail
-    tag: master 
+    tag: master
     pullPolicy: IfNotPresent
 
   service:

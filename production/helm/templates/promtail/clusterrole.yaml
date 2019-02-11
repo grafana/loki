@@ -19,6 +19,6 @@ rules:
   - nodes/proxy
   - services
   - endpoints
-  - pods  
+  - pods
   verbs: ["get", "watch", "list"]
 {{- end}}

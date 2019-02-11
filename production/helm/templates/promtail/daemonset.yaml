@@ -40,7 +40,7 @@ spec:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.promtail.image.repository }}:{{ .Values.promtail.image.tag }}"
           imagePullPolicy: {{ .Values.promtail.image.pullPolicy }}
-          args: 
+          args:
             - "-config.file=/etc/promtail/promtail.yaml"
             - "-client.url=http://{{ template "loki.fullname" . }}:{{ .Values.loki.service.port }}/api/prom/push"
           volumeMounts:
