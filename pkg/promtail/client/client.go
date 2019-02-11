@@ -152,22 +152,26 @@ func (c *Client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 
 	ctx := context.Background()
 	backoff := util.NewBackoff(ctx, c.cfg.BackoffConfig)
+	var status int
 	for backoff.Ongoing() {
 		start := time.Now()
-		status, err := c.send(ctx, buf)
+		status, err = c.send(ctx, buf)
 		requestDuration.WithLabelValues(strconv.Itoa(status)).Observe(time.Since(start).Seconds())
 		if err == nil {
 			return
 		}
 
-		level.Error(c.logger).Log("msg", "error sending batch", "status", status, "error", err)
-
 		// Only retry 500s and connection-level errors.
 		if status > 0 && status/100 != 5 {
-			return
+			break
 		}
 
+		level.Warn(c.logger).Log("msg", "error sending batch", "status", status, "error", err)
 		backoff.Wait()
+	}
+
+	if err != nil {
+		level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "error", err)
 	}
 }
 
