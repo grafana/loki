@@ -2,11 +2,13 @@ package ingester
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
@@ -91,6 +93,10 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 			appendErr = err
 		}
 		chunk.lastUpdated = entries[i].Timestamp
+	}
+
+	if appendErr == chunkenc.ErrOutOfOrder {
+		return httpgrpc.Errorf(http.StatusBadRequest, "entry out of order for stream: %s", client.FromLabelPairsToLabels(s.labels).String())
 	}
 
 	return appendErr
