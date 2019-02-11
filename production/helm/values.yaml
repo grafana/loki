@@ -4,9 +4,9 @@ rbac:
 
 serviceAccount:
   create: true
-  name: 
+  name:
 
-loki: 
+loki:
   replicas: 1
   deploymentStrategy: RollingUpdate
 
@@ -58,13 +58,15 @@ loki:
 
   ## Enable persistence using Persistent Volume Claims
   ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
-  ##
+  ## If you set enabled as "True", you need :
+  ## - create a pv which above 10Gi and has same namespace with loki
+  ## - keep storageClassName same with below setting
   persistence:
-    enabled: true
+    enabled: false
     accessModes:
       - ReadWriteOnce
     size: 10Gi
-    # storageClassName: default
+    storageClassName: default
     # annotations: {}
     # subPath: ""
     # existingClaim:
@@ -97,7 +99,7 @@ promtail:
 
   image:
     repository: grafana/promtail
-    tag: master 
+    tag: master
     pullPolicy: IfNotPresent
 
   service:

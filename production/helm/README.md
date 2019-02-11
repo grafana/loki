@@ -26,7 +26,7 @@ $ helm install . -n loki --namespace <YOUR-NAMESPACE>
 To install Grafana on your cluster with helm, use the following command:
 
 ```bash
-$ helm install stable/grafana -n loki-grafana -f grafana.yaml --namespace <YOUR-NAMESPACE> 
+$ helm install stable/grafana -n loki-grafana -f grafana.yaml --namespace <YOUR-NAMESPACE>
 ```
 
 To get the admin password for the Grafana pod, run the following command:

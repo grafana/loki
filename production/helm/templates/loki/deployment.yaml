@@ -40,7 +40,7 @@ spec:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.loki.image.repository }}:{{ .Values.loki.image.tag }}"
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
-          args: 
+          args:
             - "-config.file=/etc/loki/loki.yaml"
           volumeMounts:
             - name: config
