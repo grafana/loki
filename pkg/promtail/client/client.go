@@ -198,7 +198,7 @@ func (c *Client) send(ctx context.Context, buf []byte) (int, error) {
 	if err != nil {
 		return -1, err
 	}
-	defer helpers.LogError("closing watcher", resp.Body.Close)
+	defer helpers.LogError("closing response body", resp.Body.Close)
 
 	if resp.StatusCode/100 != 2 {
 		scanner := bufio.NewScanner(io.LimitReader(resp.Body, maxErrMsgLen))
