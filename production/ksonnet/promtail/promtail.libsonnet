@@ -129,6 +129,14 @@ k {
             regex: '^$',
           },
 
+          // Drop pods with a 'name' and an 'app' label.  They will have already been added by 
+          // the scrape_config that matches on the 'name' label
+          {
+            source_labels: ['__meta_kubernetes_pod_label_name'],
+            action: 'drop',
+            regex: '.+',
+          },
+
           // Rename jobs to be <namespace>/<app, from pod app label>
           {
             source_labels: ['__meta_kubernetes_namespace', '__meta_kubernetes_pod_label_app'],

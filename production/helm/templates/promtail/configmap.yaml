@@ -59,6 +59,10 @@ data:
           regex: ^$
           source_labels:
           - __meta_kubernetes_pod_label_app
+        - action: drop
+          regex: .+
+          source_labels:
+          - __meta_kubernetes_pod_label_name
         - action: replace
           replacement: $1
           separator: /
