@@ -33,7 +33,7 @@ datasources:
 
 Make sure to adjust the url and authentication to your needs, the `url` should be:
 
-- `http://localhost:3100` when run Loki locally
-- `http://loki:3100` when run Loki with docker-compose
+- `http://localhost:3100` when run Loki locally or with docker
+- `http://loki:3100` when run Loki with docker-compose, or with helm in kubernetes
 
 `basicAuthUser` and `basicAuthPassword` should same as your Grafana setting.
