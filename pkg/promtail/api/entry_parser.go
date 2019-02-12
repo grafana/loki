@@ -18,7 +18,7 @@ const (
 	Raw
 )
 
-// String returns a string representation of the EnEntryParser.
+// String returns a string representation of the EntryParser.
 func (e EntryParser) String() string {
 	switch e {
 	case Docker:
