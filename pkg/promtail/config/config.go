@@ -5,14 +5,13 @@ import (
 	"io/ioutil"
 	"path/filepath"
 
-	"github.com/grafana/loki/pkg/promtail/scrape"
-	"github.com/grafana/loki/pkg/promtail/targets"
-	"gopkg.in/yaml.v2"
-
 	"github.com/weaveworks/common/server"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/positions"
+	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/targets"
 )
 
 // Config for promtail, describing what files to watch.

@@ -6,19 +6,16 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/hpcloud/tail"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	fsnotify "gopkg.in/fsnotify.v1"
 
 	"github.com/grafana/loki/pkg/helpers"
-
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
 )
 
@@ -79,7 +76,7 @@ func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions *posit
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, errors.Wrap(err, "fsnotify.NewWatcher")
+		return nil, errors.Wrap(err, "filetarget.fsnotify.NewWatcher")
 	}
 
 	t := &FileTarget{
@@ -96,7 +93,7 @@ func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions *posit
 
 	err = t.sync()
 	if err != nil {
-		return nil, errors.Wrap(err, "target.sync")
+		return nil, errors.Wrap(err, "filetarget.sync")
 	}
 
 	go t.run()
@@ -127,6 +124,8 @@ func (t *FileTarget) run() {
 		case event := <-t.watcher.Events:
 			switch event.Op {
 			case fsnotify.Create:
+				// If the file was a symlink we don't get a Remove notification if the symlink resolves to a non watched directory.
+				// Close and re-open the tailer to make sure we tail the new file.
 				if tailer, ok := t.tails[event.Name]; ok {
 					level.Info(t.logger).Log("msg", "create for file being tailed. Will close and re-open", "filename", event.Name)
 					helpers.LogError("stopping tailer", tailer.stop)
@@ -141,31 +140,12 @@ func (t *FileTarget) run() {
 					level.Debug(t.logger).Log("msg", "new file does not match glob", "filename", event.Name)
 					continue
 				}
-				tailer, err := newTailer(t.logger, t.handler, t.positions, event.Name)
-				if err != nil {
-					level.Error(t.logger).Log("msg", "failed to tail file", "error", err, "filename", event.Name)
-					continue
-				}
-
-				level.Debug(t.logger).Log("msg", "tailing new file", "filename", event.Name)
-				t.tails[event.Name] = tailer
-
+				t.startTailing([]string{event.Name})
 			case fsnotify.Remove:
-				tailer, ok := t.tails[event.Name]
-				if ok {
-					helpers.LogError("stopping tailer", tailer.stop)
-					tailer.cleanup()
-					delete(t.tails, event.Name)
-				}
+				t.stopTailing([]string{event.Name})
 			case fsnotify.Rename:
 				// Rename is only issued on the original file path; the new name receives a Create event
-				tailer, ok := t.tails[event.Name]
-				if ok {
-					helpers.LogError("stopping tailer", tailer.stop)
-					tailer.cleanup()
-					delete(t.tails, event.Name)
-				}
-
+				t.stopTailing([]string{event.Name})
 			default:
 				level.Debug(t.logger).Log("msg", "got unknown event", "event", event)
 			}
@@ -187,13 +167,13 @@ func (t *FileTarget) sync() error {
 	// Find list of directories to add to watcher.
 	path, err := filepath.Abs(t.path)
 	if err != nil {
-		return errors.Wrap(err, "filepath.Abs")
+		return errors.Wrap(err, "filetarget.sync.filepath.Abs")
 	}
 
 	// Gets current list of files to tail.
 	matches, err := filepath.Glob(path)
 	if err != nil {
-		return errors.Wrap(err, "filepath.Glob")
+		return errors.Wrap(err, "filetarget.sync.filepath.Glob")
 	}
 
 	// Get the current unique set of dirs to watch.
@@ -202,196 +182,112 @@ func (t *FileTarget) sync() error {
 		dirs[filepath.Dir(p)] = struct{}{}
 	}
 
-	// If no files exist yet watch the directory specified in the path.
-	if len(matches) == 0 {
-		dirs[filepath.Dir(path)] = struct{}{}
-	}
-
 	// Add any directories which are not already being watched.
-	for dir := range dirs {
-		if _, ok := t.watches[dir]; !ok {
-			level.Debug(t.logger).Log("msg", "sync() watching new directory", "directory", dir)
-			if err := t.watcher.Add(dir); err != nil {
-				level.Error(t.logger).Log("msg", "sync() error adding directory to watcher", "error", err)
-			}
-		}
-	}
+	toStartWatching := missing(t.watches, dirs)
+	t.startWatching(toStartWatching)
 
 	// Remove any directories which no longer need watching.
-	if len(t.watches) > 0 && len(t.watches) != len(dirs) {
-		for watched := range t.watches {
-			if _, ok := dirs[watched]; !ok {
-				// The existing directory being watched is no longer in our list of dirs to watch so we can remove it.
-				level.Debug(t.logger).Log("msg", "sync() removing directory from watcher", "directory", watched)
-				err = t.watcher.Remove(watched)
-				if err != nil {
-					level.Error(t.logger).Log("msg", "sync() failed to remove directory from watcher", "error", err)
-				}
+	toStopWatching := missing(dirs, t.watches)
+	t.stopWatching(toStopWatching)
 
-				// Shutdown and cleanup and tailers for files in directories no longer being watched.
-				for tailedFile, tailer := range t.tails {
-					if filepath.Dir(tailedFile) == watched {
-						helpers.LogError("stopping tailer", tailer.stop)
-						tailer.cleanup() //FIXME should we defer this to the cleanup function?
-						delete(t.tails, tailedFile)
-					}
-				}
-
-			}
-		}
-	}
-
+	// fsnotify.Watcher doesn't allow us to see what is currently being watched so we have to track it ourselves.
 	t.watches = dirs
 
 	// Start tailing all of the matched files if not already doing so.
-	for _, p := range matches {
-		if _, ok := t.tails[p]; !ok {
-			fi, err := os.Stat(p)
-			if err != nil {
-				level.Error(t.logger).Log("msg", "sync() failed to stat file", "error", err, "filename", p)
-				continue
-			}
-			if fi.IsDir() {
-				level.Debug(t.logger).Log("msg", "sync() skipping matched dir", "filename", p)
-				continue
-			}
+	t.startTailing(matches)
 
-			level.Debug(t.logger).Log("msg", "sync() tailing new file", "filename", p)
-			tailer, err := newTailer(t.logger, t.handler, t.positions, p)
-			if err != nil {
-				level.Error(t.logger).Log("msg", "sync() failed to tail file", "error", err, "filename", p)
-				continue
-			}
-			t.tails[p] = tailer
-		}
-	}
+	// Stop tailing any files which no longer exist
+	toStopTailing := toStopTailing(matches, t.tails)
+	t.stopTailing(toStopTailing)
+
 	return nil
 }
 
-type tailer struct {
-	logger    log.Logger
-	handler   api.EntryHandler
-	positions *positions.Positions
-
-	path     string
-	filename string
-	tail     *tail.Tail
-
-	quit chan struct{}
-	done chan struct{}
+func (t *FileTarget) startWatching(dirs map[string]struct{}) {
+	for dir := range dirs {
+		if _, ok := t.watches[dir]; ok {
+			continue
+		}
+		level.Debug(t.logger).Log("msg", "watching new directory", "directory", dir)
+		if err := t.watcher.Add(dir); err != nil {
+			level.Error(t.logger).Log("msg", "error adding directory to watcher", "error", err)
+		}
+	}
 }
 
-func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions.Positions, path string) (*tailer, error) {
-	filename := path
-	var reOpen bool
-
-	// Check if the path requested is a symbolic link
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	if fi.Mode()&os.ModeSymlink == os.ModeSymlink {
-		filename, err = os.Readlink(path)
+func (t *FileTarget) stopWatching(dirs map[string]struct{}) {
+	for dir := range dirs {
+		if _, ok := t.watches[dir]; !ok {
+			continue
+		}
+		level.Debug(t.logger).Log("msg", "removing directory from watcher", "directory", dir)
+		err := t.watcher.Remove(dir)
 		if err != nil {
-			return nil, err
-		}
-
-		// if we are tailing a symbolic link then we need to automatically re-open
-		// as we wont get a Create event when a file is rotated.
-		reOpen = true
-	}
-
-	tail, err := tail.TailFile(filename, tail.Config{
-		Follow: true,
-		ReOpen: reOpen,
-		Location: &tail.SeekInfo{
-			Offset: positions.Get(filename),
-			Whence: 0,
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	tailer := &tailer{
-		logger:    logger,
-		handler:   api.AddLabelsMiddleware(model.LabelSet{filenameLabel: model.LabelValue(path)}).Wrap(handler),
-		positions: positions,
-
-		path:     path,
-		filename: filename,
-		tail:     tail,
-		quit:     make(chan struct{}),
-		done:     make(chan struct{}),
-	}
-	go tailer.run()
-	filesActive.Add(1.)
-	return tailer, nil
-}
-
-func (t *tailer) run() {
-	level.Info(t.logger).Log("msg", "start tailing file", "path", t.path)
-	positionSyncPeriod := t.positions.SyncPeriod()
-	positionWait := time.NewTicker(positionSyncPeriod)
-
-	defer func() {
-		positionWait.Stop()
-		close(t.done)
-	}()
-
-	for {
-		select {
-		case <-positionWait.C:
-			err := t.markPosition()
-			if err != nil {
-				level.Error(t.logger).Log("msg", "error getting tail position", "path", t.path, "error", err)
-				continue
-			}
-
-		case line, ok := <-t.tail.Lines:
-			if !ok {
-				return
-			}
-
-			if line.Err != nil {
-				level.Error(t.logger).Log("msg", "error reading line", "path", t.path, "error", line.Err)
-			}
-
-			readLines.WithLabelValues(t.path).Inc()
-			readBytes.WithLabelValues(t.path).Add(float64(len(line.Text)))
-			if err := t.handler.Handle(model.LabelSet{}, line.Time, line.Text); err != nil {
-				level.Error(t.logger).Log("msg", "error handling line", "path", t.path, "error", err)
-			}
-		case <-t.quit:
-			return
+			level.Error(t.logger).Log("msg", " failed to remove directory from watcher", "error", err)
 		}
 	}
 }
 
-func (t *tailer) markPosition() error {
-	pos, err := t.tail.Tell()
-	if err != nil {
-		return err
+func (t *FileTarget) startTailing(ps []string) {
+	for _, p := range ps {
+		if _, ok := t.tails[p]; ok {
+			continue
+		}
+		fi, err := os.Stat(p)
+		if err != nil {
+			level.Error(t.logger).Log("msg", "failed to tail file, stat failed", "error", err, "filename", p)
+		}
+		if fi.IsDir() {
+			level.Error(t.logger).Log("msg", "failed to tail file", "error", "file is a directory", "filename", p)
+		}
+		level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
+		tailer, err := newTailer(t.logger, t.handler, t.positions, p)
+		if err != nil {
+			level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p)
+		}
+		t.tails[p] = tailer
 	}
-	level.Debug(t.logger).Log("path", t.path, "filename", t.filename, "current_position", pos)
-	t.positions.Put(t.filename, pos)
-	return nil
 }
 
-func (t *tailer) stop() error {
-	// Save the current position before shutting down tailer
-	err := t.markPosition()
-	if err != nil {
-		level.Error(t.logger).Log("msg", "error getting tail position", "path", t.path, "error", err)
+func (t *FileTarget) stopTailing(ps []string) {
+	for _, p := range ps {
+		if tailer, ok := t.tails[p]; ok {
+			helpers.LogError("stopping tailer", tailer.stop)
+			tailer.cleanup()
+			delete(t.tails, p)
+		}
 	}
-	err = t.tail.Stop()
-	close(t.quit)
-	<-t.done
-	filesActive.Add(-1.)
-	level.Info(t.logger).Log("msg", "stopped tailing file", "path", t.path)
-	return err
 }
 
-func (t *tailer) cleanup() {
-	t.positions.Remove(t.filename)
+func toStopTailing(nt []string, et map[string]*tailer) []string {
+	// Make a set of all existing tails
+	existingTails := make(map[string]struct{}, len(et))
+	for file := range et {
+		existingTails[file] = struct{}{}
+	}
+	// Make a set of what we are about to start tailing
+	newTails := make(map[string]struct{}, len(nt))
+	for _, p := range nt {
+		newTails[p] = struct{}{}
+	}
+	// Find the tails in our existing which are not in the new, these need to be stopped!
+	ts := missing(newTails, existingTails)
+	ta := make([]string, len(ts))
+	i := 0
+	for t := range ts {
+		ta[i] = t
+		i++
+	}
+	return ta
+}
+
+// Returns the elements from set b which are missing from set a
+func missing(as map[string]struct{}, bs map[string]struct{}) map[string]struct{} {
+	c := map[string]struct{}{}
+	for a := range bs {
+		if _, ok := as[a]; !ok {
+			c[a] = struct{}{}
+		}
+	}
+	return c
 }

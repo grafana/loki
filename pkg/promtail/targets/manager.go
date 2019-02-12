@@ -2,11 +2,11 @@ package targets
 
 import (
 	"github.com/go-kit/kit/log"
-	"github.com/grafana/loki/pkg/promtail/scrape"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
+	"github.com/grafana/loki/pkg/promtail/scrape"
 )
 
 type targetManager interface {

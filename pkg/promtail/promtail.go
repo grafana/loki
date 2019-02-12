@@ -2,10 +2,10 @@ package promtail
 
 import (
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/grafana/loki/pkg/promtail/config"
 	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/pkg/promtail/client"
+	"github.com/grafana/loki/pkg/promtail/config"
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/targets"
 )

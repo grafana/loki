@@ -3,9 +3,10 @@ package scrape
 import (
 	"fmt"
 
-	"github.com/grafana/loki/pkg/promtail/api"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/pkg/relabel"
+
+	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 // Config describes a job to scrape.

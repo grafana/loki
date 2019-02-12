@@ -4,16 +4,15 @@ import (
 	"flag"
 	"os"
 
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/promtail/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/promtail"
+	"github.com/grafana/loki/pkg/promtail/config"
 )
 
 func init() {
