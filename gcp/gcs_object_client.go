@@ -21,12 +21,14 @@ type gcsObjectClient struct {
 
 // GCSConfig is config for the GCS Chunk Client.
 type GCSConfig struct {
-	BucketName string `yaml:"bucket_name"`
+	BucketName      string `yaml:"bucket_name"`
+	ChunkBufferSize int    `yaml:"chunk_buffer_size"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *GCSConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.BucketName, "gcs.bucketname", "", "Name of GCS bucket to put chunks in.")
+	f.IntVar(&cfg.ChunkBufferSize, "gcs.chunk-buffer-size", 0, "The size of the buffer that GCS client for each PUT request. 0 to disable buffering.")
 }
 
 // NewGCSObjectClient makes a new chunk.ObjectClient that writes chunks to GCS.
@@ -67,7 +69,7 @@ func (s *gcsObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) e
 		// Default GCSChunkSize is 8M and for each call, 8M is allocated xD
 		// By setting it to 0, we just upload the object in a single a request
 		// which should work for our chunk sizes.
-		writer.ChunkSize = 0
+		writer.ChunkSize = s.cfg.ChunkBufferSize
 
 		if _, err := writer.Write(buf); err != nil {
 			return err
