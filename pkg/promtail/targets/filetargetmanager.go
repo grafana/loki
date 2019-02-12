@@ -72,7 +72,7 @@ func NewFileTargetManager(
 	config := map[string]sd_config.ServiceDiscoveryConfig{}
 	for _, cfg := range scrapeConfigs {
 		entryHandler := cfg.EntryParser.Wrap(client)
-		entryHandler = cfg.CaptureConfigs.Wrap(client)
+		entryHandler = cfg.CaptureConfigs.Wrap(entryHandler)
 
 		s := &syncer{
 			log:           logger,
