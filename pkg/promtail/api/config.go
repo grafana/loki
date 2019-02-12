@@ -51,7 +51,15 @@ type ScrapeConfig struct {
 	JobName                string                           `yaml:"job_name,omitempty"`
 	EntryParser            EntryParser                      `yaml:"entry_parser"`
 	RelabelConfigs         []*relabel.Config                `yaml:"relabel_configs,omitempty"`
+	CaptureConfigs         CaptureParser                    `yaml:"capture_configs,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
+}
+
+// CaptureConfig describes a job to use regex to capture logs.
+type CaptureConfig struct {
+	Regex     string `yaml:"regex,omitempty"`
+	Template  string `yaml:"template,omitempty"`
+	LabelName string `yaml:"label_name,omitempty"`
 }
 
 // DefaultScrapeConfig is the default ScrapeConfig.

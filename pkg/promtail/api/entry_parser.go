@@ -18,7 +18,7 @@ const (
 	Raw
 )
 
-// String returns a string representation of the EnEntryParser.
+// String returns a string representation of the EntryParser.
 func (e EntryParser) String() string {
 	switch e {
 	case Docker:
@@ -50,11 +50,13 @@ func (e *EntryParser) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if err := unmarshal(&s); err != nil {
 		return err
 	}
+
 	return e.Set(s)
 }
 
 // Wrap implements EntryMiddleware.
 func (e EntryParser) Wrap(next EntryHandler) EntryHandler {
+	fmt.Println("Entry Wrap called")
 	switch e {
 	case Docker:
 		return EntryHandlerFunc(func(labels model.LabelSet, _ time.Time, line string) error {
