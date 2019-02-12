@@ -171,8 +171,8 @@
   revision = "3a0bb77429bd3a61596f5e8a3172445844342120"
 
 [[projects]]
-  branch = "optionally-enforce-metric-name"
-  digest = "1:2cced64caeee7972668c48e0a80e98f09489bd3a7a61c470fd0ca36cb5e24344"
+  branch = "master"
+  digest = "1:5750dfa5a8160b51a01c02d6d7841b50fe7d2d97344c200fc4cdc3c46b3953f8"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/chunk",
@@ -199,8 +199,7 @@
     "pkg/util/wire",
   ]
   pruneopts = "UT"
-  revision = "16a08e037bce5343c5692aa1015e76b172ddf917"
-  source = "https://github.com/grafana/cortex.git"
+  revision = "ff51bd3c7267184042ea4cf347e6d1fa24934c91"
 
 [[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
@@ -836,16 +835,16 @@
   version = "v2.15.0"
 
 [[projects]]
-  digest = "1:0f09db8429e19d57c8346ad76fbbc679341fa86073d3b8fb5ac919f0357d8f4c"
+  digest = "1:0da2810678a062e0567c3215911869b0423da0e497c56683ff8e87e7a6952597"
   name = "github.com/uber/jaeger-lib"
   packages = ["metrics"]
   pruneopts = "UT"
-  revision = "ed3a127ec5fef7ae9ea95b01b542c47fbd999ce5"
-  version = "v1.5.0"
+  revision = "5519f3beabf28707fca8d3f47f9cff87dad48d96"
+  version = "v1.3.0"
 
 [[projects]]
-  branch = "dev"
-  digest = "1:f13b5f09ac1d4ea4cecd6075fa7d0c46c419775eb585f42812f2b19f3de33d92"
+  branch = "master"
+  digest = "1:bab227df7effab81fbfdbf0c4d14ce78345a8d169c24c62c74c6053c3b22a252"
   name = "github.com/weaveworks/common"
   packages = [
     "aws",
@@ -861,8 +860,7 @@
     "user",
   ]
   pruneopts = "UT"
-  revision = "6ebd07f752e2a8d51d3ac919014f972350d25b39"
-  source = "github.com/tomwilkie/weaveworks-common"
+  revision = "81a1a4d158e60de72dbead600ec011fb90344f8c"
 
 [[projects]]
   digest = "1:bb40f7ff970145324f2a2acafdff3a23ed3f05db49cb5eb519b3d6bee86a5887"

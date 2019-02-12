@@ -7,7 +7,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/prometheus/common/model"
 )
 
 type fixture struct {
@@ -32,7 +31,7 @@ var Fixtures = []testutils.Fixture{
 	fixture{
 		name: "S3 chunks",
 		clients: func() (chunk.IndexClient, chunk.ObjectClient, chunk.TableClient, chunk.SchemaConfig, error) {
-			schemaConfig := chunk.SchemaConfig{} // Defaults == S3
+			schemaConfig := testutils.DefaultSchemaConfig("s3")
 			dynamoDB := newMockDynamoDB(0, 0)
 			table := &dynamoTableClient{
 				DynamoDB: dynamoDB,
@@ -61,16 +60,7 @@ func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) testutils.Fix
 			provisionedErr, gangsize, maxParallelism),
 		clients: func() (chunk.IndexClient, chunk.ObjectClient, chunk.TableClient, chunk.SchemaConfig, error) {
 			dynamoDB := newMockDynamoDB(0, provisionedErr)
-			schemaCfg := chunk.SchemaConfig{
-				Configs: []chunk.PeriodConfig{{
-					IndexType: "aws",
-					From:      model.Now(),
-					ChunkTables: chunk.PeriodicTableConfig{
-						Prefix: "chunks",
-						Period: 10 * time.Minute,
-					},
-				}},
-			}
+			schemaCfg := testutils.DefaultSchemaConfig("aws")
 			table := &dynamoTableClient{
 				DynamoDB: dynamoDB,
 			}

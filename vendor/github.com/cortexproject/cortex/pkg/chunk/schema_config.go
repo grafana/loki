@@ -422,13 +422,13 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 }
 
 // ChunkTableFor calculates the chunk table shard for a given point in time.
-func (cfg SchemaConfig) ChunkTableFor(t model.Time) string {
+func (cfg SchemaConfig) ChunkTableFor(t model.Time) (string, error) {
 	for i := range cfg.Configs {
 		if t > cfg.Configs[i].From && (i+1 == len(cfg.Configs) || t < cfg.Configs[i+1].From) {
-			return cfg.Configs[i].ChunkTables.TableFor(t)
+			return cfg.Configs[i].ChunkTables.TableFor(t), nil
 		}
 	}
-	return ""
+	return "", fmt.Errorf("no chunk table found for time %v", t)
 }
 
 // TableFor calculates the table shard for a given point in time.

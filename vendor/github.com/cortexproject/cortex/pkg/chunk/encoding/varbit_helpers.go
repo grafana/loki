@@ -38,7 +38,7 @@ func isInt32(v model.SampleValue) bool {
 	return model.SampleValue(int32(v)) == v
 }
 
-// countBits returs the number of leading zero bits and the number of
+// countBits returns the number of leading zero bits and the number of
 // significant bits after that in the given bit pattern. The maximum number of
 // leading zeros is 31 (so that it can be represented by a 5bit number). Leading
 // zeros beyond that are considered part of the significant bits.

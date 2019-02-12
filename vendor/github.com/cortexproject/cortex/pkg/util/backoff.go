@@ -2,6 +2,7 @@ package util
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"math/rand"
 	"time"
@@ -12,6 +13,13 @@ type BackoffConfig struct {
 	MinBackoff time.Duration // start backoff at this level
 	MaxBackoff time.Duration // increase exponentially to this level
 	MaxRetries int           // give up after this many; zero means infinite retries
+}
+
+// RegisterFlags for BackoffConfig.
+func (cfg *BackoffConfig) RegisterFlags(prefix string, f *flag.FlagSet) {
+	f.DurationVar(&cfg.MinBackoff, prefix+".backoff-min-period", 100*time.Millisecond, "Minimum delay when backing off.")
+	f.DurationVar(&cfg.MaxBackoff, prefix+".backoff-max-period", 10*time.Second, "Maximum delay when backing off.")
+	f.IntVar(&cfg.MaxRetries, prefix+".backoff-retries", 10, "Number of times to backoff and retry before failing.")
 }
 
 // Backoff implements exponential backoff with randomized wait times

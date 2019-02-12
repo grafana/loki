@@ -1,6 +1,7 @@
 package encoding
 
 import (
+	"flag"
 	"fmt"
 	"strconv"
 )
@@ -8,8 +9,22 @@ import (
 // Encoding defines which encoding we are using, delta, doubledelta, or varbit
 type Encoding byte
 
-// DefaultEncoding can be changed via a flag.
-var DefaultEncoding = DoubleDelta
+// Config configures the behaviour of chunk encoding
+type Config struct{}
+
+var (
+	// DefaultEncoding exported for use in unit tests elsewhere
+	DefaultEncoding             = DoubleDelta
+	alwaysMarshalFullsizeChunks = true
+	bigchunkSizeCapBytes        = 0
+)
+
+// RegisterFlags registers configuration settings.
+func (Config) RegisterFlags(f *flag.FlagSet) {
+	f.Var(&DefaultEncoding, "ingester.chunk-encoding", "Encoding version to use for chunks.")
+	flag.BoolVar(&alwaysMarshalFullsizeChunks, "store.fullsize-chunks", alwaysMarshalFullsizeChunks, "When saving varbit chunks, pad to 1024 bytes")
+	flag.IntVar(&bigchunkSizeCapBytes, "store.bigchunk-size-cap-bytes", bigchunkSizeCapBytes, "When using bigchunk encoding, start a new bigchunk if over this size (0 = unlimited)")
+}
 
 // String implements flag.Value.
 func (e Encoding) String() string {

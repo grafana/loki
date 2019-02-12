@@ -248,6 +248,18 @@ func FromLabelPairsToLabels(labelPairs []LabelPair) labels.Labels {
 	return ls
 }
 
+// FromLabelsToLabelPairs converts labels.Labels to []LabelPair
+func FromLabelsToLabelPairs(s labels.Labels) []LabelPair {
+	labelPairs := make([]LabelPair, 0, len(s))
+	for _, v := range s {
+		labelPairs = append(labelPairs, LabelPair{
+			Name:  []byte(v.Name),
+			Value: []byte(v.Value),
+		})
+	}
+	return labelPairs // note already sorted
+}
+
 // FastFingerprint runs the same algorithm as Prometheus labelSetToFastFingerprint()
 func FastFingerprint(labelPairs []LabelPair) model.Fingerprint {
 	if len(labelPairs) == 0 {

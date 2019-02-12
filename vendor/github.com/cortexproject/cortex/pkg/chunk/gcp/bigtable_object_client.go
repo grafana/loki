@@ -22,7 +22,8 @@ type bigtableObjectClient struct {
 // NewBigtableObjectClient makes a new chunk.ObjectClient that stores chunks in
 // Bigtable.
 func NewBigtableObjectClient(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
-	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, instrumentation()...)
+	opts := toOptions(cfg.GRPCClientConfig.DialOption(bigtableInstrumentation()))
+	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +52,10 @@ func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 			return err
 		}
 		key := chunks[i].ExternalKey()
-		tableName := s.schemaCfg.ChunkTableFor(chunks[i].From)
+		tableName, err := s.schemaCfg.ChunkTableFor(chunks[i].From)
+		if err != nil {
+			return err
+		}
 		keys[tableName] = append(keys[tableName], key)
 
 		mut := bigtable.NewMutation()
@@ -82,7 +86,10 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 	chunks := map[string]map[string]chunk.Chunk{}
 	keys := map[string]bigtable.RowList{}
 	for _, c := range input {
-		tableName := s.schemaCfg.ChunkTableFor(c.From)
+		tableName, err := s.schemaCfg.ChunkTableFor(c.From)
+		if err != nil {
+			return nil, err
+		}
 		key := c.ExternalKey()
 		keys[tableName] = append(keys[tableName], key)
 		if _, ok := chunks[tableName]; !ok {
