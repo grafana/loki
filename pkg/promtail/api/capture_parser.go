@@ -3,6 +3,8 @@ package api
 import (
 	"fmt"
 	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -18,7 +20,6 @@ var DefaultCaptureConfig = CaptureConfig{}
 
 // String returns a string representation of the CaptureParser.
 func (e CaptureParser) String() string {
-	fmt.Println("capture String()")
 	return "captureparser"
 }
 
@@ -55,16 +56,23 @@ func (cp *CaptureParser) UnmarshalYAML(unmarshal func(interface{}) error) error 
 
 // Wrap implements EntryMiddleware.
 func (e CaptureParser) Wrap(next EntryHandler) EntryHandler {
-	fmt.Println("!!!Capture Wrap called")
 
-	re, _ := regexp.Compile(".*level=([a-zA-Z]+).*")
 	return EntryHandlerFunc(func(labels model.LabelSet, t time.Time, line string) error {
-		matched := re.FindStringSubmatch(line)
-		fmt.Println(matched)
-		// Get label names as array from YAML
-		// for each matched:
-		// labels = labels.Merge(labels[index], matched[index])
-		// labels = labels.Merge(model.LabelSet{"stream": model.LabelValue(entry.Stream)})
+		for _, config := range e.Configs {
+			// TODO: precompile
+			re, _ := regexp.Compile(config.Regex)
+			matched := re.FindStringSubmatch(line)
+
+			labelValue := config.Template
+			for idx, value := range matched[1:] {
+				replacement := strings.Replace("${n}", "n", strconv.Itoa(idx+1), 1)
+				labelValue = strings.Replace(labelValue, replacement, value, 1)
+
+			}
+
+			labels = labels.Merge(model.LabelSet{model.LabelName(config.LabelName): model.LabelValue(labelValue)})
+		}
+
 		return next.Handle(labels, t, line)
 	})
 

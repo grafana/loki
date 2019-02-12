@@ -56,7 +56,6 @@ func (e *EntryParser) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // Wrap implements EntryMiddleware.
 func (e EntryParser) Wrap(next EntryHandler) EntryHandler {
-	fmt.Println("Entry Wrap called")
 	switch e {
 	case Docker:
 		return EntryHandlerFunc(func(labels model.LabelSet, _ time.Time, line string) error {
