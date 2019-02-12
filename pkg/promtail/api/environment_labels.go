@@ -59,7 +59,6 @@ func (e EnvironmentParser) Wrap(next EntryHandler) EntryHandler {
 
 	return EntryHandlerFunc(func(labels model.LabelSet, t time.Time, line string) error {
 		for labelName, value := range e.Environment {
-			fmt.Println(labelName, value)
 			labels = labels.Merge(model.LabelSet{model.LabelName(labelName): model.LabelValue(value)})
 		}
 
