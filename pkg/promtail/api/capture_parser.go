@@ -12,8 +12,11 @@ import (
 
 // CaptureParser describes how to parse log lines.
 type CaptureParser struct {
-	Configs []CaptureConfig
+	Configs  []CaptureConfig
+	compiled reMap
 }
+
+type reMap map[int]*regexp.Regexp
 
 // DefaultCaptureConfig is the default ScrapeConfig.
 var DefaultCaptureConfig = CaptureConfig{}
@@ -25,7 +28,7 @@ func (e CaptureParser) String() string {
 
 // Set implements flag.Value.
 func (cp *CaptureParser) Set(configs *[]CaptureConfig) error {
-	*cp = CaptureParser{*configs}
+	cp.Configs = *configs
 	return nil
 }
 
@@ -34,12 +37,14 @@ func (cp *CaptureParser) UnmarshalYAML(unmarshal func(interface{}) error) error 
 
 	configs := &[]CaptureConfig{}
 
+	*cp = CaptureParser{*configs, make(reMap)}
+
 	// TODO: line in Entry does (*plain), unclear why.
 	if err := unmarshal(configs); err != nil {
 		return err
 	}
 
-	for _, c := range *configs {
+	for idx, c := range *configs {
 		if len(c.Regex) == 0 {
 			return fmt.Errorf("regex is empty")
 		}
@@ -49,6 +54,13 @@ func (cp *CaptureParser) UnmarshalYAML(unmarshal func(interface{}) error) error 
 		if len(c.LabelName) == 0 {
 			return fmt.Errorf("label_name is empty")
 		}
+
+		re, regExErr := regexp.Compile(c.Regex)
+		if regExErr != nil {
+			return fmt.Errorf("regex didn't compile")
+		}
+
+		cp.compiled[idx] = re
 	}
 
 	return cp.Set(configs)
@@ -58,9 +70,8 @@ func (cp *CaptureParser) UnmarshalYAML(unmarshal func(interface{}) error) error 
 func (e CaptureParser) Wrap(next EntryHandler) EntryHandler {
 
 	return EntryHandlerFunc(func(labels model.LabelSet, t time.Time, line string) error {
-		for _, config := range e.Configs {
-			// TODO: precompile
-			re, _ := regexp.Compile(config.Regex)
+		for idx, config := range e.Configs {
+			re := e.compiled[idx]
 			matched := re.FindStringSubmatch(line)
 
 			labelValue := config.Template
