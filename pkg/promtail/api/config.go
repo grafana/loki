@@ -51,7 +51,14 @@ type ScrapeConfig struct {
 	JobName                string                           `yaml:"job_name,omitempty"`
 	EntryParser            EntryParser                      `yaml:"entry_parser"`
 	RelabelConfigs         []*relabel.Config                `yaml:"relabel_configs,omitempty"`
+	EnvironmentParser      EnvironmentParser                `yaml:"environment_labels,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
+}
+
+// EnvironmentConfig describes a job to scrape.
+type EnvironmentConfig struct {
+	LabelName           string `yaml:"label_name,omitempty"`
+	EnvironmentVariable string `yaml:"environment_variable,omitempty"`
 }
 
 // DefaultScrapeConfig is the default ScrapeConfig.

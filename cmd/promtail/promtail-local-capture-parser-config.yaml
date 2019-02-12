@@ -1,0 +1,24 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+client:
+  url: http://localhost:3100/api/prom/push
+
+scrape_configs:
+- job_name: system
+  entry_parser: raw
+  capture_configs:
+    - regex: '.*level=([a-zA-Z]+).*'
+      template: '${1}'
+      label_name: 'level'
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: tmp
+      pop: 'test'
+      __path__: /tmp/*log
