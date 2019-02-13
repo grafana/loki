@@ -4,16 +4,15 @@ import (
 	"flag"
 	"os"
 
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/promtail"
-	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/promtail/config"
 )
 
 func init() {
@@ -23,7 +22,7 @@ func init() {
 func main() {
 	var (
 		configFile = "docs/promtail-local-config.yaml"
-		config     api.Config
+		config     config.Config
 	)
 	flag.StringVar(&configFile, "config.file", "promtail.yml", "The config file.")
 	flagext.RegisterFlags(&config)

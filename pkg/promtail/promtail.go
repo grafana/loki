@@ -4,8 +4,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/server"
 
-	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/client"
+	"github.com/grafana/loki/pkg/promtail/config"
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/targets"
 )
@@ -19,7 +19,7 @@ type Promtail struct {
 }
 
 // New makes a new Promtail.
-func New(cfg api.Config) (*Promtail, error) {
+func New(cfg config.Config) (*Promtail, error) {
 	positions, err := positions.New(util.Logger, cfg.PositionsConfig)
 	if err != nil {
 		return nil, err
@@ -30,7 +30,7 @@ func New(cfg api.Config) (*Promtail, error) {
 		return nil, err
 	}
 
-	tms, err := targets.NewTargetManagers(util.Logger, positions, client, cfg.ScrapeConfig)
+	tms, err := targets.NewTargetManagers(util.Logger, positions, client, cfg.ScrapeConfig, &cfg.TargetConfig)
 	if err != nil {
 		return nil, err
 	}

@@ -7,3 +7,4 @@ cmd/loki/loki
 cmd/promtail/promtail
 /loki
 /promtail
+.idea/

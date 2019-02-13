@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
+	"github.com/grafana/loki/pkg/promtail/scrape"
 )
 
 const (
@@ -53,7 +54,8 @@ func NewFileTargetManager(
 	logger log.Logger,
 	positions *positions.Positions,
 	client api.EntryHandler,
-	scrapeConfigs []api.ScrapeConfig,
+	scrapeConfigs []scrape.Config,
+	targetConfig *Config,
 ) (*FileTargetManager, error) {
 	ctx, quit := context.WithCancel(context.Background())
 	tm := &FileTargetManager{
@@ -78,6 +80,7 @@ func NewFileTargetManager(
 			targets:       map[string]*FileTarget{},
 			hostname:      hostname,
 			entryHandler:  cfg.EntryParser.Wrap(client),
+			targetConfig:  targetConfig,
 		}
 		tm.syncers[cfg.JobName] = s
 		config[cfg.JobName] = cfg.ServiceDiscoveryConfig
@@ -115,6 +118,8 @@ type syncer struct {
 
 	targets       map[string]*FileTarget
 	relabelConfig []*pkgrelabel.Config
+
+	targetConfig *Config
 }
 
 func (s *syncer) sync(groups []*targetgroup.Group) {
@@ -186,7 +191,7 @@ func (s *syncer) sync(groups []*targetgroup.Group) {
 }
 
 func (s *syncer) newTarget(path string, labels model.LabelSet) (*FileTarget, error) {
-	return NewFileTarget(s.log, s.entryHandler, s.positions, path, labels)
+	return NewFileTarget(s.log, s.entryHandler, s.positions, path, labels, s.targetConfig)
 }
 
 func (s *syncer) stop() {

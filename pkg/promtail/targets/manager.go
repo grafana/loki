@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
+	"github.com/grafana/loki/pkg/promtail/scrape"
 )
 
 type targetManager interface {
@@ -22,10 +23,11 @@ func NewTargetManagers(
 	logger log.Logger,
 	positions *positions.Positions,
 	client api.EntryHandler,
-	scrapeConfigs []api.ScrapeConfig,
+	scrapeConfigs []scrape.Config,
+	targetConfig *Config,
 ) (*TargetManagers, error) {
 	var targetManagers []targetManager
-	var fileScrapeConfigs []api.ScrapeConfig
+	var fileScrapeConfigs []scrape.Config
 
 	// for now every scrape config is a file target
 	fileScrapeConfigs = append(fileScrapeConfigs, scrapeConfigs...)
@@ -34,6 +36,7 @@ func NewTargetManagers(
 		positions,
 		client,
 		fileScrapeConfigs,
+		targetConfig,
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to make file target manager")
