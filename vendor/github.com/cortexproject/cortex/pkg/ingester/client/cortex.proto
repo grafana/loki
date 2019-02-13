@@ -15,6 +15,7 @@ service Ingester {
   rpc QueryStream(QueryRequest) returns (stream QueryStreamResponse) {};
 
   rpc LabelValues(LabelValuesRequest) returns (LabelValuesResponse) {};
+  rpc LabelNames(LabelNamesRequest) returns (LabelNamesResponse) {};
   rpc UserStats(UserStatsRequest) returns (UserStatsResponse) {};
   rpc AllUserStats(UserStatsRequest) returns (UsersStatsResponse) {};
   rpc MetricsForLabelMatchers(MetricsForLabelMatchersRequest) returns (MetricsForLabelMatchersResponse) {};
@@ -63,6 +64,13 @@ message LabelValuesRequest {
 
 message LabelValuesResponse {
   repeated string label_values = 1;
+}
+
+message LabelNamesRequest {
+}
+
+message LabelNamesResponse {
+  repeated string label_names = 1;
 }
 
 message UserStatsRequest {}

@@ -1,40 +1,87 @@
 package gcp
 
 import (
-	"github.com/grpc-ecosystem/go-grpc-middleware"
+	"context"
+	"net/http"
+	"strconv"
+	"time"
+
 	otgrpc "github.com/opentracing-contrib/go-grpc"
-	"github.com/opentracing/opentracing-go"
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/api/option"
+	google_http "google.golang.org/api/transport/http"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/util/middleware"
 )
 
-var bigtableRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace: "cortex",
-	Name:      "bigtable_request_duration_seconds",
-	Help:      "Time spent doing Bigtable requests.",
+var (
+	bigtableRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "bigtable_request_duration_seconds",
+		Help:      "Time spent doing Bigtable requests.",
 
-	// Bigtable latency seems to range from a few ms to a few hundred ms and is
-	// important.  So use 6 buckets from 1ms to 1s.
-	Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
-}, []string{"operation", "status_code"})
+		// Bigtable latency seems to range from a few ms to a few hundred ms and is
+		// important.  So use 6 buckets from 1ms to 1s.
+		Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
+	}, []string{"operation", "status_code"})
 
-func instrumentation() []option.ClientOption {
-	return []option.ClientOption{
-		option.WithGRPCDialOption(
-			grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
-				otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-				middleware.PrometheusGRPCUnaryInstrumentation(bigtableRequestDuration),
-			)),
-		),
-		option.WithGRPCDialOption(
-			grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(
-				otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
-				middleware.PrometheusGRPCStreamInstrumentation(bigtableRequestDuration),
-			)),
-		),
+	gcsRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "gcs_request_duration_seconds",
+		Help:      "Time spent doing GCS requests.",
+
+		// Bigtable latency seems to range from a few ms to a few hundred ms and is
+		// important.  So use 6 buckets from 1ms to 1s.
+		Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
+	}, []string{"operation", "status_code"})
+)
+
+func bigtableInstrumentation() ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
+	return []grpc.UnaryClientInterceptor{
+			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+			middleware.PrometheusGRPCUnaryInstrumentation(bigtableRequestDuration),
+		},
+		[]grpc.StreamClientInterceptor{
+			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
+			middleware.PrometheusGRPCStreamInstrumentation(bigtableRequestDuration),
+		}
+}
+
+func gcsInstrumentation(ctx context.Context) (option.ClientOption, error) {
+	transport, err := google_http.NewTransport(ctx, http.DefaultTransport)
+	if err != nil {
+		return nil, err
 	}
+	client := &http.Client{
+		Transport: instrumentedTransport{
+			observer: gcsRequestDuration,
+			next:     transport,
+		},
+	}
+	return option.WithHTTPClient(client), nil
+}
+
+func toOptions(opts []grpc.DialOption) []option.ClientOption {
+	result := make([]option.ClientOption, 0, len(opts))
+	for _, opt := range opts {
+		result = append(result, option.WithGRPCDialOption(opt))
+	}
+	return result
+}
+
+type instrumentedTransport struct {
+	observer prometheus.ObserverVec
+	next     http.RoundTripper
+}
+
+func (i instrumentedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	start := time.Now()
+	resp, err := i.next.RoundTrip(req)
+	if err == nil {
+		i.observer.WithLabelValues(req.Method, strconv.Itoa(resp.StatusCode)).Observe(time.Since(start).Seconds())
+	}
+	return resp, err
 }

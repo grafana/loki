@@ -454,7 +454,7 @@ func (a dynamoDBRequestAdapter) HasNextPage() bool {
 }
 
 func (a dynamoDBRequestAdapter) Retryable() bool {
-	return *a.request.Retryable
+	return aws.BoolValue(a.request.Retryable)
 }
 
 type chunksPlusError struct {

@@ -29,7 +29,7 @@ integration with your RPC framework:
 
 * [net/http](https://godoc.org/go.opencensus.io/plugin/ochttp)
 * [gRPC](https://godoc.org/go.opencensus.io/plugin/ocgrpc)
-* [database/sql](https://godoc.org/github.com/basvanbeek/ocsql)
+* [database/sql](https://godoc.org/github.com/opencensus-integrations/ocsql)
 * [Go kit](https://godoc.org/github.com/go-kit/kit/tracing/opencensus)
 * [Groupcache](https://godoc.org/github.com/orijtech/groupcache)
 * [Caddy webserver](https://godoc.org/github.com/orijtech/caddy)

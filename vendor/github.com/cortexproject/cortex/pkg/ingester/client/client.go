@@ -3,9 +3,8 @@ package client
 import (
 	"flag"
 
-	"github.com/grpc-ecosystem/go-grpc-middleware"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
-	"github.com/opentracing/opentracing-go"
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
@@ -36,22 +35,22 @@ type closableHealthAndIngesterClient struct {
 	conn *grpc.ClientConn
 }
 
-// MakeIngesterClient makes a new IngesterClient
-func MakeIngesterClient(addr string, cfg Config) (HealthAndIngesterClient, error) {
-	opts := []grpc.DialOption{
-		grpc.WithInsecure(),
-		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
+func instrumentation() ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
+	return []grpc.UnaryClientInterceptor{
 			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 			middleware.ClientUserHeaderInterceptor,
 			cortex_middleware.PrometheusGRPCUnaryInstrumentation(ingesterClientRequestDuration),
-		)),
-		grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(
+		}, []grpc.StreamClientInterceptor{
 			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
 			middleware.StreamClientUserHeaderInterceptor,
 			cortex_middleware.PrometheusGRPCStreamInstrumentation(ingesterClientRequestDuration),
-		)),
-		cfg.GRPCClientConfig.DialOption(),
-	}
+		}
+}
+
+// MakeIngesterClient makes a new IngesterClient
+func MakeIngesterClient(addr string, cfg Config) (HealthAndIngesterClient, error) {
+	opts := []grpc.DialOption{grpc.WithInsecure()}
+	opts = append(opts, cfg.GRPCClientConfig.DialOption(instrumentation())...)
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {
 		return nil, err
