@@ -139,6 +139,14 @@
   version = "v3.5.1"
 
 [[projects]]
+  digest = "1:2aaf2cc045d0219bba79655e4df795b973168c310574669cb75786684f7287d3"
+  name = "github.com/bmatcuk/doublestar"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "85a78806aa1b4707d1dbace9be592cf1ece91ab3"
+  version = "v1.1.1"
+
+[[projects]]
   branch = "master"
   digest = "1:f98385a9b77f6cacae716a59c04e6ac374d101466d4369c4e8cc706a39c4bb2e"
   name = "github.com/bradfitz/gomemcache"
@@ -1309,6 +1317,7 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/bmatcuk/doublestar",
     "github.com/cortexproject/cortex/pkg/chunk",
     "github.com/cortexproject/cortex/pkg/chunk/encoding",
     "github.com/cortexproject/cortex/pkg/chunk/storage",

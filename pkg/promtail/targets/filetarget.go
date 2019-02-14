@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bmatcuk/doublestar"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -171,7 +172,7 @@ func (t *FileTarget) sync() error {
 	}
 
 	// Gets current list of files to tail.
-	matches, err := filepath.Glob(path)
+	matches, err := doublestar.Glob(path)
 	if err != nil {
 		return errors.Wrap(err, "filetarget.sync.filepath.Glob")
 	}
