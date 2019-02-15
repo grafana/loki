@@ -15,6 +15,7 @@ spec:
     - 'configMap'
     - 'emptyDir'
     - 'persistentVolumeClaim'
+    - 'secret'
   hostNetwork: false
   hostIPC: false
   hostPID: false
