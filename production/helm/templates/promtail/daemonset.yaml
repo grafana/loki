@@ -12,12 +12,11 @@ metadata:
 {{ toYaml . | indent 4 }}
 {{- end }}
 spec:
-  replicas: {{ .Values.promtail.replicas }}
   selector:
     matchLabels:
       app: {{ template "promtail.name" . }}
       release: {{ .Release.Name }}
-  strategy:
+  updateStrategy:
     type: {{ .Values.promtail.deploymentStrategy }}
   {{- if ne .Values.promtail.deploymentStrategy "RollingUpdate" }}
     rollingUpdate: null

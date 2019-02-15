@@ -94,7 +94,6 @@ loki:
 
 promtail:
   nameOverride: promtail
-  replicas: 1
   deploymentStrategy: RollingUpdate
 
   image:
