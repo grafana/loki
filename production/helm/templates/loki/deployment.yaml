@@ -78,8 +78,8 @@ spec:
     {{- end }}
       volumes:
         - name: config
-          configMap:
-            name: {{ template "loki.fullname" . }}
+          secret:
+            secretName: {{ template "loki.fullname" . }}
         - name: storage
       {{- if .Values.loki.persistence.enabled }}
           persistentVolumeClaim:
