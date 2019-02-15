@@ -13,7 +13,7 @@ loki:
   image:
     repository: grafana/loki
     tag: master
-    pullPolicy: IfNotPresent
+    pullPolicy: Always # Always pull while in BETA
 
   service:
     port: 3100
@@ -24,7 +24,8 @@ loki:
 
   livenessProbe: {}
 
-  resources: {}
+  resources:
+    {}
     # limits:
     #   cpu: 100m
     #   memory: 128Mi
@@ -99,7 +100,7 @@ promtail:
   image:
     repository: grafana/promtail
     tag: master
-    pullPolicy: IfNotPresent
+    pullPolicy: Always # Always pull while in BETA
 
   service:
     port: 3100
@@ -110,7 +111,8 @@ promtail:
 
   livenessProbe: {}
 
-  resources: {}
+  resources:
+    {}
     # limits:
     #   cpu: 100m
     #   memory: 128Mi
@@ -138,7 +140,6 @@ promtail:
   tolerations:
     - key: node-role.kubernetes.io/master
       effect: NoSchedule
-
 
   ## Affinity for pod assignment
   ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
