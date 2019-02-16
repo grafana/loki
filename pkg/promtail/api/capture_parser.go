@@ -22,7 +22,7 @@ type reMap map[int]*regexp.Regexp
 var DefaultCaptureConfig = CaptureConfig{}
 
 // String returns a string representation of the CaptureParser.
-func (e CaptureParser) String() string {
+func (cp CaptureParser) String() string {
 	return "captureparser"
 }
 
@@ -67,11 +67,11 @@ func (cp *CaptureParser) UnmarshalYAML(unmarshal func(interface{}) error) error 
 }
 
 // Wrap implements EntryMiddleware.
-func (e CaptureParser) Wrap(next EntryHandler) EntryHandler {
+func (cp CaptureParser) Wrap(next EntryHandler) EntryHandler {
 
 	return EntryHandlerFunc(func(labels model.LabelSet, t time.Time, line string) error {
-		for idx, config := range e.Configs {
-			re := e.compiled[idx]
+		for idx, config := range cp.Configs {
+			re := cp.compiled[idx]
 			matched := re.FindStringSubmatch(line)
 
 			labelValue := config.Template
