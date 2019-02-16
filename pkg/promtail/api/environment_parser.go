@@ -25,17 +25,17 @@ func (e EnvironmentParser) String() string {
 }
 
 // Set implements flag.Value.
-func (cp *EnvironmentParser) Set(configs *[]EnvironmentConfig) error {
-	cp.Configs = *configs
+func (e *EnvironmentParser) Set(configs *[]EnvironmentConfig) error {
+	e.Configs = *configs
 	return nil
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cp *EnvironmentParser) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (e *EnvironmentParser) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	configs := &[]EnvironmentConfig{}
 
-	*cp = EnvironmentParser{*configs, make(envMap)}
+	*e = EnvironmentParser{*configs, make(envMap)}
 
 	if err := unmarshal(configs); err != nil {
 		return err
@@ -48,10 +48,10 @@ func (cp *EnvironmentParser) UnmarshalYAML(unmarshal func(interface{}) error) er
 		if len(c.EnvironmentVariable) == 0 {
 			return fmt.Errorf("environment_variable is empty")
 		}
-		cp.Environment[c.LabelName] = os.Getenv(c.EnvironmentVariable)
+		e.Environment[c.LabelName] = os.Getenv(c.EnvironmentVariable)
 	}
 
-	return cp.Set(configs)
+	return e.Set(configs)
 }
 
 // Wrap implements EntryMiddleware.
