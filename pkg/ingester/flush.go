@@ -22,6 +22,8 @@ const (
 	// position, not wallclock time.
 	flushBackoff = 1 * time.Second
 
+	flushLoopFailureLimit = 20
+
 	nameLabel = model.LabelName("__name__")
 	logsValue = model.LabelValue("logs")
 )
@@ -47,6 +49,7 @@ func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 type flushOp struct {
+	hits      int
 	from      model.Time
 	userID    string
 	fp        model.Fingerprint
@@ -93,7 +96,7 @@ func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate boo
 	flushQueueIndex := int(uint64(stream.fp) % uint64(i.cfg.ConcurrentFlushes))
 	firstTime, _ := stream.chunks[0].chunk.Bounds()
 	i.flushQueues[flushQueueIndex].Enqueue(&flushOp{
-		model.TimeFromUnixNano(firstTime.UnixNano()), instance.instanceID,
+		0, model.TimeFromUnixNano(firstTime.UnixNano()), instance.instanceID,
 		stream.fp, immediate,
 	})
 }
@@ -119,8 +122,10 @@ func (i *Ingester) flushLoop(j int) {
 		}
 
 		// If we're exiting & we failed to flush, put the failed operation
-		// back in the queue at a later point.
-		if op.immediate && err != nil {
+		// back in the queue at a later point. Number of retries limited to
+		// prevent infinite loop
+		if op.immediate && err != nil && op.hits < flushLoopFailureLimit-1 {
+			op.hits++
 			op.from = op.from.Add(flushBackoff)
 			i.flushQueues[j].Enqueue(op)
 		}
