@@ -79,7 +79,11 @@ type iteratorMinHeap struct {
 }
 
 func (h iteratorMinHeap) Less(i, j int) bool {
-	return h.iteratorHeap[i].Entry().Timestamp.Before(h.iteratorHeap[j].Entry().Timestamp)
+	t1, t2 := h.iteratorHeap[i].Entry().Timestamp, h.iteratorHeap[j].Entry().Timestamp
+	if !t1.Equal(t2) {
+		return t1.Before(t2)
+	}
+	return h.iteratorHeap[i].Labels() < h.iteratorHeap[j].Labels()
 }
 
 type iteratorMaxHeap struct {
@@ -87,7 +91,11 @@ type iteratorMaxHeap struct {
 }
 
 func (h iteratorMaxHeap) Less(i, j int) bool {
-	return h.iteratorHeap[i].Entry().Timestamp.After(h.iteratorHeap[j].Entry().Timestamp)
+	t1, t2 := h.iteratorHeap[i].Entry().Timestamp, h.iteratorHeap[j].Entry().Timestamp
+	if !t1.Equal(t2) {
+		return t1.After(t2)
+	}
+	return h.iteratorHeap[i].Labels() > h.iteratorHeap[j].Labels()
 }
 
 // heapIterator iterates over a heap of iterators.
@@ -117,10 +125,6 @@ func NewHeapIterator(is []EntryIterator, direction logproto.Direction) EntryIter
 	// pre-next each iterator, drop empty.
 	for _, i := range is {
 		result.requeue(i, false)
-	}
-
-	if len(is) > 0 {
-		result.currLabels = is[0].Labels()
 	}
 
 	return result
@@ -157,7 +161,7 @@ func (i *heapIterator) Next() bool {
 	for i.heap.Len() > 0 {
 		next := i.heap.Peek()
 		entry := next.Entry()
-		if len(tuples) > 0 && !tuples[0].Timestamp.Equal(entry.Timestamp) {
+		if len(tuples) > 0 && (tuples[0].Labels() != next.Labels() || !tuples[0].Timestamp.Equal(entry.Timestamp)) {
 			break
 		}
 
@@ -170,7 +174,9 @@ func (i *heapIterator) Next() bool {
 
 	// Find in entry which occurs most often which, due to quorum based
 	// replication, is guaranteed to be the correct next entry.
-	i.currEntry = mostCommon(tuples).Entry
+	t := mostCommon(tuples)
+	i.currEntry = t.Entry
+	i.currLabels = t.Labels()
 
 	// Requeue the iterators, advancing them if they were consumed.
 	for j := range tuples {
