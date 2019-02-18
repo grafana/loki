@@ -109,7 +109,7 @@ k {
         ],
       },
       {
-        job_name: 'kubernetes-pods-app',
+        job_name: 'kubernetes-pods-controller',
         kubernetes_sd_configs: [{
           role: 'pod',
         }],
@@ -137,9 +137,9 @@ k {
             regex: '.+',
           },
 
-          // Rename jobs to be <namespace>/<app, from pod app label>
+          // Rename jobs to be <namespace>/<controller_name>
           {
-            source_labels: ['__meta_kubernetes_namespace', '__meta_kubernetes_pod_label_app'],
+            source_labels: ['__meta_kubernetes_namespace', '__meta_kubernetes_pod_controller_name'],
             action: 'replace',
             separator: '/',
             target_label: 'job',
@@ -180,64 +180,7 @@ k {
             separator: '/',
             replacement: '/var/log/pods/$1/*.log',
           },
-        ],
-      },
-      {
-        job_name: 'kubernetes-pods',
-        kubernetes_sd_configs: [{
-          role: 'pod',
-        }],
-
-        relabel_configs: [
-          // Only scrape local pods; Promtail will drop targets with a __host__ label
-          // that does not match the current host name.
-          {
-            source_labels: ['__meta_kubernetes_pod_node_name'],
-            target_label: '__host__',
-          },
-
-          // Drop pods with an app label
-          {
-            source_labels: ['__meta_kubernetes_pod_label_app'],
-            action: 'keep',
-            regex: '^$',
-          },
-
-          // Drop pods with an name label
-          {
-            source_labels: ['__meta_kubernetes_pod_label_name'],
-            action: 'keep',
-            regex: '^$',
-          },
-
-          // Include the namespace as a separate label, for routing alerts
-          {
-            source_labels: ['__meta_kubernetes_namespace'],
-            action: 'replace',
-            target_label: 'namespace',
-          },
-
-          // Rename instances to be the pod name
-          {
-            source_labels: ['__meta_kubernetes_pod_name'],
-            action: 'replace',
-            target_label: 'instance',
-          },
-
-          // Also include all the other labels on the pod.
-          {
-            action: 'labelmap',
-            regex: '__meta_kubernetes_pod_label_(.+)',
-          },
-
-          // Kubernetes puts logs under subdirectories keyed pod UID and container_name.
-          {
-            source_labels: ['__meta_kubernetes_pod_uid', '__meta_kubernetes_pod_container_name'],
-            target_label: '__path__',
-            separator: '/',
-            replacement: '/var/log/pods/$1',
-          },
-        ],
+        ]
       },
     ],
   },

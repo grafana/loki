@@ -50,7 +50,7 @@ data:
           - __meta_kubernetes_pod_uid
           - __meta_kubernetes_pod_container_name
           target_label: __path__
-      - job_name: kubernetes-pods-app
+      - job_name: kubernetes-pods-controller
         entry_parser: {{ .Values.promtail.entryParser }}
         kubernetes_sd_configs:
         - role: pod
@@ -58,10 +58,6 @@ data:
         - source_labels:
           - __meta_kubernetes_pod_node_name
           target_label: __host__
-        - action: drop
-          regex: ^$
-          source_labels:
-          - __meta_kubernetes_pod_label_app
         - action: drop
           regex: .+
           source_labels:
@@ -71,7 +67,7 @@ data:
           separator: /
           source_labels:
           - __meta_kubernetes_namespace
-          - __meta_kubernetes_pod_label_app
+          - __meta_kubernetes_pod_controller_name
           target_label: job
         - action: replace
           source_labels:

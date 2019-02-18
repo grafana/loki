@@ -54,17 +54,13 @@ data:
         - __meta_kubernetes_pod_uid
         - __meta_kubernetes_pod_container_name
         target_label: __path__
-    - job_name: kubernetes-pods-app
+    - job_name: kubernetes-pods-controller
       kubernetes_sd_configs:
       - role: pod
       relabel_configs:
       - source_labels:
         - __meta_kubernetes_pod_node_name
         target_label: __host__
-      - action: drop
-        regex: ^$
-        source_labels:
-        - __meta_kubernetes_pod_label_app
       - action: drop
         regex: .+
         source_labels:
@@ -74,7 +70,7 @@ data:
         separator: /
         source_labels:
         - __meta_kubernetes_namespace
-        - __meta_kubernetes_pod_label_app
+        - __meta_kubernetes_pod_controller_name
         target_label: job
       - action: replace
         source_labels:
@@ -91,37 +87,6 @@ data:
       - action: labelmap
         regex: __meta_kubernetes_pod_label_(.+)
       - replacement: /var/log/pods/$1/*.log
-        separator: /
-        source_labels:
-        - __meta_kubernetes_pod_uid
-        - __meta_kubernetes_pod_container_name
-        target_label: __path__
-    - job_name: kubernetes-pods
-      kubernetes_sd_configs:
-      - role: pod
-      relabel_configs:
-      - source_labels:
-        - __meta_kubernetes_pod_node_name
-        target_label: __host__
-      - action: keep
-        regex: ^$
-        source_labels:
-        - __meta_kubernetes_pod_label_app
-      - action: keep
-        regex: ^$
-        source_labels:
-        - __meta_kubernetes_pod_label_name
-      - action: replace
-        source_labels:
-        - __meta_kubernetes_namespace
-        target_label: namespace
-      - action: replace
-        source_labels:
-        - __meta_kubernetes_pod_name
-        target_label: instance
-      - action: labelmap
-        regex: __meta_kubernetes_pod_label_(.+)
-      - replacement: /var/log/pods/$1
         separator: /
         source_labels:
         - __meta_kubernetes_pod_uid
