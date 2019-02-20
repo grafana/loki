@@ -7,7 +7,7 @@
     // Our services.
     tableManager: 'grafana/cortex-table-manager:r47-06f3294e',
 
-    loki: 'grafana/loki:master',
+    loki: 'grafana/loki:latest',
 
     distributor: self.loki,
     ingester: self.loki,

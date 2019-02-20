@@ -12,7 +12,7 @@ loki:
 
   image:
     repository: grafana/loki
-    tag: master
+    tag: latest
     pullPolicy: Always # Always pull while in BETA
 
   service:
@@ -99,7 +99,7 @@ promtail:
 
   image:
     repository: grafana/promtail
-    tag: master
+    tag: latest
     pullPolicy: Always # Always pull while in BETA
 
   service:
