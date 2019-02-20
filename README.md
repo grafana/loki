@@ -1,6 +1,6 @@
 ![](https://www.grafanacon.org/2019/images/grafanacon_la_nav-logo.png)
 
-Join us Feb 25-26 in Los Angeles, California for GrafanaCon - a two-day event with talks focused on Grafana and the surrounding open source monitoring ecosystem. Get deep dives into Loki, the Explore workflow and all of the new features of Grafana 6, plus participate in hands on workshops to help you get the most out of your data. 
+Join us Feb 25-26 in Los Angeles, California for GrafanaCon - a two-day event with talks focused on Grafana and the surrounding open source monitoring ecosystem. Get deep dives into Loki, the Explore workflow and all of the new features of Grafana 6, plus participate in hands on workshops to help you get the most out of your data.
 
 Time is running out - grab your ticket now! http://grafanacon.org
 

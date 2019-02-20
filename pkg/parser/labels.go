@@ -6,7 +6,6 @@ package parser
 import __yyfmt__ "fmt"
 
 //line pkg/parser/labels.y:2
-
 import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
