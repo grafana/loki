@@ -99,7 +99,7 @@ module Fluent
                         end
           log.warn "failed to #{req.method} #{uri} (#{res_summary})"
           log.warn Yajl.dump(body)
-        
+
         end
       end
 
