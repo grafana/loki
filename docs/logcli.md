@@ -20,6 +20,12 @@ Common labels: {job="cortex-ops/consul", namespace="cortex-ops"}
 2018-06-25T12:52:09Z {instance="consul-8576459955-pl75w"} 2018/06/25 12:52:09 [INFO] raft: Snapshot to 475409 complete
 2018-06-25T12:52:09Z {instance="consul-8576459955-pl75w"} 2018/06/25 12:52:09 [INFO] raft: Compacting logs from 456973 to 465169
 ```
+You may use `--config=path/to/file` to load configuration options from a file. For an example file see `cmd/logcli/logcli-config.yaml`
+
+Configuration values are considered in the following order (lowest to highest):
+- config file
+- environment value
+- command line
 
 The URLs of the requests are printed to help with integration work.
 
@@ -34,6 +40,7 @@ Flags:
   --addr=""      Server address, need to specify.
   --username=""  Username for HTTP basic auth.
   --password=""  Password for HTTP basic auth.
+  --config=""    Configuration file for logcli.
 
 Commands:
   help [<command>...]
