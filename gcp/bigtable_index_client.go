@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"cloud.google.com/go/bigtable"
@@ -34,7 +35,8 @@ type Config struct {
 
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 
-	ColumnKey bool
+	ColumnKey      bool
+	DistributeKeys bool
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -54,6 +56,8 @@ type storageClientColumnKey struct {
 	schemaCfg chunk.SchemaConfig
 	client    *bigtable.Client
 	keysFn    keysFn
+
+	distributeKeys bool
 }
 
 // storageClientV1 implements chunk.storageClient for GCP.
@@ -96,13 +100,20 @@ func NewStorageClientColumnKey(ctx context.Context, cfg Config, schemaCfg chunk.
 }
 
 func newStorageClientColumnKey(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtable.Client) *storageClientColumnKey {
+
 	return &storageClientColumnKey{
 		cfg:       cfg,
 		schemaCfg: schemaCfg,
 		client:    client,
 		keysFn: func(hashValue string, rangeValue []byte) (string, string) {
-			// We could hash the row key for better distribution but we decided against it
-			// because that would make migrations very, very hard.
+
+			// We hash the row key and prepend it back to the key for better distribution.
+			// We preserve the existing key to make migrations and o11y easier.
+			if cfg.DistributeKeys {
+				prefix := hashAdd(hashNew(), hashValue)
+				hashValue = strconv.FormatUint(prefix, 8) + "-" + hashValue
+			}
+
 			return hashValue, string(rangeValue)
 		},
 	}
@@ -194,8 +205,9 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []chunk
 				queries: map[string]chunk.IndexQuery{},
 			}
 		}
-		tq.queries[query.HashValue] = query
-		tq.rows = append(tq.rows, query.HashValue)
+		hashKey, _ := s.keysFn(query.HashValue, nil)
+		tq.queries[hashKey] = query
+		tq.rows = append(tq.rows, hashKey)
 		tableQueries[query.TableName] = tq
 	}
 
@@ -344,7 +356,6 @@ func (s *storageClientV1) query(ctx context.Context, query chunk.IndexQuery, cal
 		readOpts = append(readOpts, bigtable.RowFilter(bigtable.ValueFilter(string(query.ValueEqual))))
 	}
 	*/
-
 	if len(query.RangeValuePrefix) > 0 {
 		rowRange = bigtable.PrefixRange(query.HashValue + separator + string(query.RangeValuePrefix))
 	} else if len(query.RangeValueStart) > 0 {
