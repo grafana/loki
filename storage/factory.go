@@ -192,7 +192,7 @@ func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
 		return aws.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig)
-	case "gcp", "gcp-columnkey":
+	case "gcp", "gcp-columnkey", "bigtable", "bigtable-hashed":
 		return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
 	case "cassandra":
 		return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig)
