@@ -3,9 +3,10 @@ package gcp
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"encoding/hex"
 	"flag"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"cloud.google.com/go/bigtable"
@@ -110,13 +111,23 @@ func newStorageClientColumnKey(cfg Config, schemaCfg chunk.SchemaConfig, client 
 			// We hash the row key and prepend it back to the key for better distribution.
 			// We preserve the existing key to make migrations and o11y easier.
 			if cfg.DistributeKeys {
-				prefix := hashAdd(hashNew(), hashValue)
-				hashValue = strconv.FormatUint(prefix, 8) + "-" + hashValue
+				hashValue = hashPrefix(hashValue) + "-" + hashValue
 			}
 
 			return hashValue, string(rangeValue)
 		},
 	}
+}
+
+// hashPrefix calculates a 64bit hash of the input string and hex-encodes
+// the result, taking care to zero pad etc.
+func hashPrefix(input string) string {
+	prefix := hashAdd(hashNew(), input)
+	var encodedUint64 [8]byte
+	binary.LittleEndian.PutUint64(encodedUint64[:], prefix)
+	var hexEncoded [16]byte
+	hex.Encode(hexEncoded[:], encodedUint64[:])
+	return string(hexEncoded[:])
 }
 
 func (s *storageClientColumnKey) Stop() {
