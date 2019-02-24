@@ -6,13 +6,13 @@ Once you have Loki running in a cluster, you can query logs from that cluster.
 
 ## Installation
 
-### Get newest version
+### Get latest version
 
 ```
 $ go get github.com/grafana/loki/cmd/logcli
 ```
 
-### Build by yourself
+### Build from source
 
 ```
 $ go get github.com/grafana/loki
@@ -53,7 +53,7 @@ Configuration values are considered in the following order (lowest to highest):
 
 The URLs of the requests are printed to help with integration work.
 
-### Detail
+### Details
 
 ```
 $ logcli help
