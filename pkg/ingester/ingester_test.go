@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -36,7 +37,10 @@ func TestIngester(t *testing.T) {
 	req := logproto.PushRequest{
 		Streams: []*logproto.Stream{
 			{
-				Labels: `{foo="bar"}`,
+				Labels: `{foo="bar",bar="baz1"}`,
+			},
+			{
+				Labels: `{foo="bar",bar="baz2"}`,
 			},
 		},
 	}
@@ -45,10 +49,33 @@ func TestIngester(t *testing.T) {
 			Timestamp: time.Unix(0, 0),
 			Line:      fmt.Sprintf("line %d", i),
 		})
+		req.Streams[1].Entries = append(req.Streams[0].Entries, logproto.Entry{
+			Timestamp: time.Unix(0, 0),
+			Line:      fmt.Sprintf("line %d", i),
+		})
 	}
 
-	_, err = i.Push(user.InjectOrgID(context.Background(), "test"), &req)
+	ctx := user.InjectOrgID(context.Background(), "test")
+	_, err = i.Push(ctx, &req)
 	require.NoError(t, err)
+
+	fmt.Println("hehe")
+
+	result := mockQuerierServer{
+		ctx: ctx,
+	}
+	err = i.Query(&logproto.QueryRequest{
+		Query: `{foo="bar"}`,
+		Limit: 100,
+		Start: time.Unix(0, 0),
+		End:   time.Unix(1, 0),
+	}, &result)
+	require.NoError(t, err)
+
+	require.Len(t, result.resps, 1)
+	require.Len(t, result.resps[0].Streams, 2)
+	require.Equal(t, `{foo="bar", bar="baz1"}`, result.resps[0].Streams[0].Labels)
+	require.Equal(t, `{foo="bar", bar="baz2"}`, result.resps[0].Streams[1].Labels)
 }
 
 type mockStore struct {
@@ -67,4 +94,19 @@ func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 
 	s.chunks[userid] = append(s.chunks[userid], chunks...)
 	return nil
+}
+
+type mockQuerierServer struct {
+	ctx   context.Context
+	resps []*logproto.QueryResponse
+	grpc.ServerStream
+}
+
+func (m *mockQuerierServer) Send(resp *logproto.QueryResponse) error {
+	m.resps = append(m.resps, resp)
+	return nil
+}
+
+func (m *mockQuerierServer) Context() context.Context {
+	return m.ctx
 }

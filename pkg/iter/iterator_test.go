@@ -95,6 +95,63 @@ func TestIterator(t *testing.T) {
 	}
 }
 
+func TestIteratorMultipleLabels(t *testing.T) {
+	for i, tc := range []struct {
+		iterator  EntryIterator
+		generator generator
+		length    int64
+		labels    func(int64) string
+	}{
+		// Test merging with differing labels but same timestamps and values.
+		{
+			iterator: NewHeapIterator([]EntryIterator{
+				mkStreamIterator(testSize, identity, "{foobar: \"baz1\"}"),
+				mkStreamIterator(testSize, identity, "{foobar: \"baz2\"}"),
+			}, logproto.FORWARD),
+			generator: func(i int64) logproto.Entry {
+				return identity(i / 2)
+			},
+			length: testSize * 2,
+			labels: func(i int64) string {
+				if i%2 == 0 {
+					return "{foobar: \"baz1\"}"
+				}
+				return "{foobar: \"baz2\"}"
+			},
+		},
+
+		// Test merging with differing labels but all the same timestamps and different values.
+		{
+			iterator: NewHeapIterator([]EntryIterator{
+				mkStreamIterator(testSize, constant(0), "{foobar: \"baz1\"}"),
+				mkStreamIterator(testSize, constant(0), "{foobar: \"baz2\"}"),
+			}, logproto.FORWARD),
+			generator: func(i int64) logproto.Entry {
+				return constant(0)(i % testSize)
+			},
+			length: testSize * 2,
+			labels: func(i int64) string {
+				if i/testSize == 0 {
+					return "{foobar: \"baz1\"}"
+				}
+				return "{foobar: \"baz2\"}"
+			},
+		},
+	} {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			for i := int64(0); i < tc.length; i++ {
+				assert.Equal(t, true, tc.iterator.Next())
+				assert.Equal(t, tc.generator(i), tc.iterator.Entry(), fmt.Sprintln("iteration", i))
+				assert.Equal(t, tc.labels(i), tc.iterator.Labels(), fmt.Sprintln("iteration", i))
+			}
+
+			assert.Equal(t, false, tc.iterator.Next())
+			assert.Equal(t, nil, tc.iterator.Error())
+			assert.NoError(t, tc.iterator.Close())
+		})
+	}
+}
+
 type generator func(i int64) logproto.Entry
 
 func mkStreamIterator(numEntries int64, f generator, labels string) EntryIterator {
@@ -136,7 +193,7 @@ func inverse(g generator) generator {
 	}
 }
 
-func TestMostCommont(t *testing.T) {
+func TestMostCommon(t *testing.T) {
 	// First is most common.
 	tuples := []tuple{
 		{Entry: logproto.Entry{Line: "a"}},

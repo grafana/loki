@@ -41,7 +41,7 @@ By default the url is set to `https://logs-us-west1.grafana.net`, the url of the
 Starting with version 0.8.0, this gem uses excon, which supports proxy with environment variables - https://github.com/excon/excon#proxy-support
 
 ### username / password
-Specify a username and password if the Loki server requires authentication. 
+Specify a username and password if the Loki server requires authentication.
 If using the GrafanaLab's hosted Loki, the username needs to be set to your instanceId and the password should be a Grafana.com api key.
 
 ### tenant
@@ -49,7 +49,7 @@ Loki is a multi-tenant log storage platform and all requests sent must include a
 
 
 ### output format
-Loki is intended to index and group log streams using only a small set of labels.  It is not intended for full-text indexing.  When sending logs to Loki the majority of log message will be sent as a single log "line".  
+Loki is intended to index and group log streams using only a small set of labels.  It is not intended for full-text indexing.  When sending logs to Loki the majority of log message will be sent as a single log "line".
 
 There are 3 configurations settings to control the output format.
  - extra_labels: (default: nil) set of labels to include with every Loki stream. eg `{"env":"dev", "datacenter": "dc1"}`

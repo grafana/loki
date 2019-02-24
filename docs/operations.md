@@ -100,7 +100,7 @@ storage_config:
       dynamodb: dynamodb://access_key:secret_access_key@region
 ```
 
-#### S3 
+#### S3
 
 Loki is using S3 as object storage. It stores log within directories based on
 [`OrgID`](./operations.md#Multi-tenancy). For example, Logs from org `faker`
@@ -115,7 +115,7 @@ sure you adjuest your throughput to your usage.
 
 DynamoDB access is very similar to S3, however you do not need to specify a
 table name in the storage section, as Loki will calculate that for you.
-You will need to set the table name prefix inside schema config section, 
+You will need to set the table name prefix inside schema config section,
 and ensure the `index.prefix` table exists.
 
 You can setup DynamoDB by yourself, or have `table-manager` setup for you.
