@@ -3,17 +3,17 @@ package chunk
 import (
 	"flag"
 	"fmt"
-	"github.com/go-kit/kit/log/level"
 	"os"
 	"strconv"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
+	"github.com/weaveworks/common/mtime"
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/weaveworks/common/mtime"
 )
 
 const (
@@ -181,6 +181,8 @@ func (cfg PeriodConfig) createSchema() Schema {
 		s = schema{cfg.dailyBuckets, v6Entries{}}
 	case "v9":
 		s = schema{cfg.dailyBuckets, v9Entries{}}
+	case "v10":
+		s = schema{cfg.dailyBuckets, v10Entries{}}
 	}
 	return s
 }

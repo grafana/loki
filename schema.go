@@ -1,6 +1,7 @@
 package chunk
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"strings"
@@ -540,7 +541,7 @@ func (v6Entries) GetChunksForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
 type v9Entries struct {
 }
 
-func (e v9Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
+func (v9Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
 	return nil, ErrNotSupported
 }
 
@@ -621,6 +622,112 @@ func (v9Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName model.
 }
 
 func (v9Entries) GetChunksForSeries(bucket Bucket, seriesID []byte) ([]IndexQuery, error) {
+	encodedFromBytes := encodeTime(bucket.from)
+	return []IndexQuery{
+		{
+			TableName:       bucket.tableName,
+			HashValue:       bucket.hashKey + ":" + string(seriesID),
+			RangeValueStart: encodeRangeKey(encodedFromBytes),
+		},
+	}, nil
+}
+
+// v10Entries builds on v9 by sharding index rows to reduce their size.
+type v10Entries struct {
+}
+
+const rowShards = 16
+
+func (v10Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
+	return nil, ErrNotSupported
+}
+
+func (v10Entries) GetLabelWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
+	seriesID := sha256bytes(labels.String())
+
+	// read first 32 bits of the hash and use this to calculate the shard
+	shard := binary.BigEndian.Uint32(seriesID) % rowShards
+
+	entries := []IndexEntry{
+		// Entry for metricName -> seriesID
+		{
+			TableName:  bucket.tableName,
+			HashValue:  fmt.Sprintf("%02d:%s:%s", shard, bucket.hashKey, string(metricName)),
+			RangeValue: encodeRangeKey(seriesID, nil, nil, seriesRangeKeyV1),
+		},
+	}
+
+	// Entries for metricName:labelName -> hash(value):seriesID
+	// We use a hash of the value to limit its length.
+	for key, value := range labels {
+		if key == model.MetricNameLabel {
+			continue
+		}
+		valueHash := sha256bytes(string(value))
+		entries = append(entries, IndexEntry{
+			TableName:  bucket.tableName,
+			HashValue:  fmt.Sprintf("%02d:%s:%s:%s", shard, bucket.hashKey, metricName, key),
+			RangeValue: encodeRangeKey(valueHash, seriesID, nil, labelSeriesRangeKeyV1),
+			Value:      []byte(value),
+		})
+	}
+
+	return entries, nil
+}
+
+func (v10Entries) GetChunkWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
+	seriesID := sha256bytes(labels.String())
+	encodedThroughBytes := encodeTime(bucket.through)
+
+	entries := []IndexEntry{
+		// Entry for seriesID -> chunkID
+		{
+			TableName:  bucket.tableName,
+			HashValue:  bucket.hashKey + ":" + string(seriesID),
+			RangeValue: encodeRangeKey(encodedThroughBytes, nil, []byte(chunkID), chunkTimeRangeKeyV3),
+		},
+	}
+
+	return entries, nil
+}
+
+func (v10Entries) GetReadMetricQueries(bucket Bucket, metricName model.LabelValue) ([]IndexQuery, error) {
+	result := make([]IndexQuery, 0, rowShards)
+	for i := 0; i < rowShards; i++ {
+		result = append(result, IndexQuery{
+			TableName: bucket.tableName,
+			HashValue: fmt.Sprintf("%02d:%s:%s", i, bucket.hashKey, string(metricName)),
+		})
+	}
+	return result, nil
+}
+
+func (v10Entries) GetReadMetricLabelQueries(bucket Bucket, metricName model.LabelValue, labelName model.LabelName) ([]IndexQuery, error) {
+	result := make([]IndexQuery, 0, rowShards)
+	for i := 0; i < rowShards; i++ {
+		result = append(result, IndexQuery{
+			TableName: bucket.tableName,
+			HashValue: fmt.Sprintf("%02d:%s:%s:%s", i, bucket.hashKey, metricName, labelName),
+		})
+	}
+	return result, nil
+}
+
+func (v10Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexQuery, error) {
+	valueHash := sha256bytes(string(labelValue))
+	result := make([]IndexQuery, 0, rowShards)
+	for i := 0; i < rowShards; i++ {
+		result = append(result, IndexQuery{
+			TableName:       bucket.tableName,
+			HashValue:       fmt.Sprintf("%02d:%s:%s:%s", i, bucket.hashKey, metricName, labelName),
+			RangeValueStart: encodeRangeKey(valueHash),
+			ValueEqual:      []byte(labelValue),
+		})
+	}
+	return result, nil
+}
+
+func (v10Entries) GetChunksForSeries(bucket Bucket, seriesID []byte) ([]IndexQuery, error) {
 	encodedFromBytes := encodeTime(bucket.from)
 	return []IndexQuery{
 		{
