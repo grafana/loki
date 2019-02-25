@@ -26,6 +26,7 @@ spec:
     metadata:
       labels:
         app: {{ template "loki.name" . }}
+        name: {{ template "loki.name" . }}
         release: {{ .Release.Name }}
 {{- with .Values.loki.podAnnotations }}
       annotations:
@@ -49,7 +50,7 @@ spec:
               mountPath: "/data"
               subPath: {{ .Values.loki.persistence.subPath }}
           ports:
-            - name: {{ template "loki.name" . }}
+            - name: {{ template "loki.name" . }}-metrics
               containerPort: {{ .Values.loki.service.port }}
               protocol: TCP
 {{- with .Values.loki.livenessProbe }}
