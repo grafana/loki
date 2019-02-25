@@ -79,6 +79,9 @@ spec:
       tolerations:
 {{ toYaml . | indent 8 }}
     {{- end }}
+    {{- if .Values.loki.terminationGracePeriodSeconds}}
+      terminationGracePeriodSeconds: {{ .Values.loki.terminationGracePeriodSeconds }}
+    {{- end }}
       volumes:
         - name: config
           configMap:
