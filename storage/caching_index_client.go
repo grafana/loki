@@ -244,9 +244,13 @@ func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (bat
 
 		// Make sure the hash(key) is not a collision in the cache by looking at the
 		// key in the value.
-		if key != readBatch.Key || (readBatch.Expiry != 0 && time.Now().After(time.Unix(0, readBatch.Expiry))) {
-			level.Warn(log).Log("msg", "collision/expiration in entry cache", "key", key, "readBatch.Key", readBatch.Key, "expiry", time.Unix(0, readBatch.Expiry))
-			cacheCorruptErrs.Inc()
+		if key != readBatch.Key {
+			level.Debug(log).Log("msg", "dropping index cache entry due to key collision", "key", key, "readBatch.Key", readBatch.Key, "expiry")
+			continue
+		}
+
+		if readBatch.Expiry != 0 && time.Now().After(time.Unix(0, readBatch.Expiry)) {
+			level.Debug(log).Log("msg", "dropping index cache entry due to expiration", "key", key, "readBatch.Key", readBatch.Key, "expiry", time.Unix(0, readBatch.Expiry))
 			continue
 		}
 
