@@ -25,7 +25,7 @@ loki:
   readinessProbe: {}
     # httpGet:
     #     path: /ready
-    #     port: 80
+    #     port: 3100
     #   initialDelaySeconds: 15
 
   livenessProbe: {}
