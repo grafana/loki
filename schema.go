@@ -634,19 +634,18 @@ func (v9Entries) GetChunksForSeries(bucket Bucket, seriesID []byte) ([]IndexQuer
 
 // v10Entries builds on v9 by sharding index rows to reduce their size.
 type v10Entries struct {
+	rowShards uint32
 }
-
-const rowShards = 16
 
 func (v10Entries) GetWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
 	return nil, ErrNotSupported
 }
 
-func (v10Entries) GetLabelWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
+func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName model.LabelValue, labels model.Metric, chunkID string) ([]IndexEntry, error) {
 	seriesID := sha256bytes(labels.String())
 
 	// read first 32 bits of the hash and use this to calculate the shard
-	shard := binary.BigEndian.Uint32(seriesID) % rowShards
+	shard := binary.BigEndian.Uint32(seriesID) % s.rowShards
 
 	entries := []IndexEntry{
 		// Entry for metricName -> seriesID
@@ -691,9 +690,9 @@ func (v10Entries) GetChunkWriteEntries(bucket Bucket, metricName model.LabelValu
 	return entries, nil
 }
 
-func (v10Entries) GetReadMetricQueries(bucket Bucket, metricName model.LabelValue) ([]IndexQuery, error) {
-	result := make([]IndexQuery, 0, rowShards)
-	for i := 0; i < rowShards; i++ {
+func (s v10Entries) GetReadMetricQueries(bucket Bucket, metricName model.LabelValue) ([]IndexQuery, error) {
+	result := make([]IndexQuery, 0, s.rowShards)
+	for i := uint32(0); i < s.rowShards; i++ {
 		result = append(result, IndexQuery{
 			TableName: bucket.tableName,
 			HashValue: fmt.Sprintf("%02d:%s:%s", i, bucket.hashKey, string(metricName)),
@@ -702,9 +701,9 @@ func (v10Entries) GetReadMetricQueries(bucket Bucket, metricName model.LabelValu
 	return result, nil
 }
 
-func (v10Entries) GetReadMetricLabelQueries(bucket Bucket, metricName model.LabelValue, labelName model.LabelName) ([]IndexQuery, error) {
-	result := make([]IndexQuery, 0, rowShards)
-	for i := 0; i < rowShards; i++ {
+func (s v10Entries) GetReadMetricLabelQueries(bucket Bucket, metricName model.LabelValue, labelName model.LabelName) ([]IndexQuery, error) {
+	result := make([]IndexQuery, 0, s.rowShards)
+	for i := uint32(0); i < s.rowShards; i++ {
 		result = append(result, IndexQuery{
 			TableName: bucket.tableName,
 			HashValue: fmt.Sprintf("%02d:%s:%s:%s", i, bucket.hashKey, metricName, labelName),
@@ -713,10 +712,10 @@ func (v10Entries) GetReadMetricLabelQueries(bucket Bucket, metricName model.Labe
 	return result, nil
 }
 
-func (v10Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexQuery, error) {
+func (s v10Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName model.LabelValue, labelName model.LabelName, labelValue model.LabelValue) ([]IndexQuery, error) {
 	valueHash := sha256bytes(string(labelValue))
-	result := make([]IndexQuery, 0, rowShards)
-	for i := 0; i < rowShards; i++ {
+	result := make([]IndexQuery, 0, s.rowShards)
+	for i := uint32(0); i < s.rowShards; i++ {
 		result = append(result, IndexQuery{
 			TableName:       bucket.tableName,
 			HashValue:       fmt.Sprintf("%02d:%s:%s:%s", i, bucket.hashKey, metricName, labelName),

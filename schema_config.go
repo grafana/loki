@@ -32,6 +32,7 @@ type PeriodConfig struct {
 	Schema      string              `yaml:"schema"`
 	IndexTables PeriodicTableConfig `yaml:"index"`
 	ChunkTables PeriodicTableConfig `yaml:"chunks,omitempty"`
+	RowShards   uint32              `yaml:"row_shards"`
 }
 
 // SchemaConfig contains the config for our chunk index schemas
@@ -182,7 +183,14 @@ func (cfg PeriodConfig) createSchema() Schema {
 	case "v9":
 		s = schema{cfg.dailyBuckets, v9Entries{}}
 	case "v10":
-		s = schema{cfg.dailyBuckets, v10Entries{}}
+		rowShards := uint32(16)
+		if cfg.RowShards > 0 {
+			rowShards = cfg.RowShards
+		}
+
+		s = schema{cfg.dailyBuckets, v10Entries{
+			rowShards: rowShards,
+		}}
 	}
 	return s
 }
