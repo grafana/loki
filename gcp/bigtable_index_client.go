@@ -259,50 +259,6 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []chunk
 	return lastErr
 }
 
-func (s *storageClientColumnKey) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
-	sp, ctx := ot.StartSpanFromContext(ctx, "QueryPages", ot.Tag{Key: "tableName", Value: query.TableName}, ot.Tag{Key: "hashValue", Value: query.HashValue})
-	defer sp.Finish()
-
-	table := s.client.Open(query.TableName)
-
-	rOpts := []bigtable.ReadOption{
-		bigtable.RowFilter(bigtable.FamilyFilter(columnFamily)),
-	}
-
-	if len(query.RangeValuePrefix) > 0 {
-		rOpts = append(rOpts, bigtable.RowFilter(bigtable.ColumnRangeFilter(columnFamily, string(query.RangeValuePrefix), string(query.RangeValuePrefix)+null)))
-	} else if len(query.RangeValueStart) > 0 {
-		rOpts = append(rOpts, bigtable.RowFilter(bigtable.ColumnRangeFilter(columnFamily, string(query.RangeValueStart), null)))
-	}
-
-	r, err := table.ReadRow(ctx, query.HashValue, rOpts...)
-	if err != nil {
-		sp.LogFields(otlog.String("error", err.Error()))
-		return errors.WithStack(err)
-	}
-
-	val, ok := r[columnFamily]
-	if !ok {
-		// There are no matching rows.
-		return nil
-	}
-
-	if query.ValueEqual != nil {
-		filteredItems := make([]bigtable.ReadItem, 0, len(val))
-		for _, item := range val {
-			if bytes.Equal(query.ValueEqual, item.Value) {
-				filteredItems = append(filteredItems, item)
-			}
-		}
-
-		val = filteredItems
-	}
-	callback(&columnKeyBatch{
-		items: val,
-	})
-	return nil
-}
-
 // columnKeyBatch represents a batch of values read from Bigtable.
 type columnKeyBatch struct {
 	items []bigtable.ReadItem
