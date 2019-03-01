@@ -2,7 +2,8 @@ package gcp
 
 import (
 	"context"
-	"strings"
+
+	"google.golang.org/grpc/codes"
 
 	"cloud.google.com/go/bigtable"
 	"google.golang.org/grpc/status"
@@ -68,17 +69,17 @@ func (c *tableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) err
 	}
 
 	if err := c.client.CreateColumnFamily(ctx, desc.Name, columnFamily); err != nil {
-		return errors.Wrap(err, "client.CreateColumnFamily")
+		if !alreadyExistsError(err) {
+			return errors.Wrap(err, "client.CreateColumnFamily")
+		}
 	}
 
 	return nil
 }
 
 func alreadyExistsError(err error) bool {
-	// This is super fragile, but I can't find a better way of doing it.
-	// Have filed bug upstream: https://github.com/GoogleCloudPlatform/google-cloud-go/issues/672
 	serr, ok := status.FromError(err)
-	return ok && strings.Contains(serr.Message(), "already exists")
+	return ok && serr.Code() == codes.AlreadyExists
 }
 
 func (c *tableClient) DeleteTable(ctx context.Context, name string) error {
