@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -14,13 +15,20 @@ type EntryParser int
 
 // Different supported EntryParsers.
 const (
-	Docker EntryParser = iota
+	Containerd EntryParser = iota
+	Docker     EntryParser = iota
 	Raw
+)
+
+var (
+	containerdPattern = regexp.MustCompile(`^(?s)(?P<time>\S+?) (?P<stream>stdout|stderr) (?P<flags>\S+?) (?P<content>.+)$`)
 )
 
 // String returns a string representation of the EntryParser.
 func (e EntryParser) String() string {
 	switch e {
+	case Containerd:
+		return "containerd"
 	case Docker:
 		return "docker"
 	case Raw:
@@ -33,6 +41,9 @@ func (e EntryParser) String() string {
 // Set implements flag.Value.
 func (e *EntryParser) Set(s string) error {
 	switch strings.ToLower(s) {
+	case "containerd":
+		*e = Containerd
+		return nil
 	case "docker":
 		*e = Docker
 		return nil
@@ -56,6 +67,20 @@ func (e *EntryParser) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // Wrap implements EntryMiddleware.
 func (e EntryParser) Wrap(next EntryHandler) EntryHandler {
 	switch e {
+	case Containerd:
+		return EntryHandlerFunc(func(labels model.LabelSet, _ time.Time, line string) error {
+			parts := containerdPattern.FindStringSubmatch(line)
+			if parts == nil || len(parts) < 5 {
+				return fmt.Errorf("Log line did not match containerd format")
+			}
+
+			timestamp, err := time.Parse(time.RFC3339Nano, parts[1])
+			if err != nil {
+				return fmt.Errorf("Containerd timestamp '%s' does not match RFC3339Nano", parts[1])
+			}
+
+			return next.Handle(labels, timestamp, parts[4])
+		})
 	case Docker:
 		return EntryHandlerFunc(func(labels model.LabelSet, _ time.Time, line string) error {
 			// Docker-style json object per line.
