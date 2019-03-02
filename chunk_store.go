@@ -209,12 +209,6 @@ func (c *store) validateQuery(ctx context.Context, from model.Time, through *mod
 		return "", nil, false, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, length > limit (%s > %s)", (*through).Sub(from), maxQueryLength)
 	}
 
-	// Fetch metric name chunks if the matcher is of type equal,
-	metricNameMatcher, matchers, ok := extract.MetricNameMatcherFromMatchers(matchers)
-	if !ok || metricNameMatcher.Type != labels.MatchEqual {
-		return "", nil, false, httpgrpc.Errorf(http.StatusBadRequest, "query must contain metric name")
-	}
-
 	now := model.Now()
 
 	if from.After(now) {
@@ -232,6 +226,12 @@ func (c *store) validateQuery(ctx context.Context, from model.Time, through *mod
 		// time-span end is in future ... regard as legal
 		level.Error(log).Log("msg", "adjusting end timerange from future to now", "old_through", through, "new_through", now)
 		*through = now // Avoid processing future part - otherwise some schemas could fail with eg non-existent table gripes
+	}
+
+	// Check there is a metric name matcher of type equal,
+	metricNameMatcher, matchers, ok := extract.MetricNameMatcherFromMatchers(matchers)
+	if !ok || metricNameMatcher.Type != labels.MatchEqual {
+		return "", nil, false, httpgrpc.Errorf(http.StatusBadRequest, "query must contain metric name")
 	}
 
 	return metricNameMatcher.Value, matchers, false, nil
