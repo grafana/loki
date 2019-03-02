@@ -88,9 +88,9 @@ roleRef:
 Sidecar method will deploy promtail as a container within a pod that
 developer/devops create.
 
-Sidecar method is good for logging for specific deployment/application. This
-method works well in multi-tenant enviroment.  This method also allow multiply
-Loki servers receive logs from multiply promtail. 
+This method will deploy promtail as a sidecar container within a pod.
+In a multi-tenant environment, this enables teams to aggregate logs
+for specific pods and deployments for example for all pods in a namespace.
 
 ### Example
 ```yaml
