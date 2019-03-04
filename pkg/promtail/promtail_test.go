@@ -350,17 +350,23 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 		t.Fatal("Failed to parse client URL")
 	}
 
-	clientConfig := client.Config{
-		URL:            clientURL,
-		BatchWait:      10 * time.Millisecond,
-		BatchSize:      10 * 1024,
-		ExternalLabels: nil,
+	cfg := config.Config{
+		ServerConfig:    server.Config{},
+		ClientConfig:    client.Config{},
+		PositionsConfig: positions.Config{},
+		ScrapeConfig:    []scrape.Config{},
+		TargetConfig:    targets.Config{},
 	}
+	// Init everything with default values.
+	flagext.RegisterFlags(&cfg)
 
-	positionsConfig := positions.Config{
-		SyncPeriod:    100 * time.Millisecond,
-		PositionsFile: positionsFileName,
-	}
+	// Override some of those defaults
+	cfg.ClientConfig.URL = clientURL
+	cfg.ClientConfig.BatchWait = 10 * time.Millisecond
+	cfg.ClientConfig.BatchSize = 10 * 1024
+
+	cfg.PositionsConfig.SyncPeriod = 100 * time.Millisecond
+	cfg.PositionsConfig.PositionsFile = positionsFileName
 
 	targetGroup := targetgroup.Group{
 		Targets: []model.LabelSet{{
@@ -385,21 +391,11 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 		RelabelConfigs:         nil,
 		ServiceDiscoveryConfig: serviceConfig,
 	}
+	cfg.ScrapeConfig = append(cfg.ScrapeConfig, scrapeConfig)
 
-	targetConfig := targets.Config{
-		SyncPeriod: 10 * time.Millisecond,
-	}
+	cfg.TargetConfig.SyncPeriod = 10 * time.Millisecond
 
-	return config.Config{
-		ServerConfig:    server.Config{},
-		ClientConfig:    clientConfig,
-		PositionsConfig: positionsConfig,
-		ScrapeConfig: []scrape.Config{
-			scrapeConfig,
-		},
-		TargetConfig: targetConfig,
-	}
-
+	return cfg
 }
 
 func initRandom() {
