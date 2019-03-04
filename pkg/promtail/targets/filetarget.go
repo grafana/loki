@@ -256,7 +256,10 @@ func (t *FileTarget) startTailing(ps []string) {
 func (t *FileTarget) stopTailing(ps []string) {
 	for _, p := range ps {
 		if tailer, ok := t.tails[p]; ok {
-			helpers.LogError("stopping tailer", tailer.stop)
+			if err := tailer.stop(); err != nil {
+				level.Error(t.logger).Log("msg", "stopping tailer", "error", err)
+				continue
+			}
 			tailer.cleanup()
 			delete(t.tails, p)
 		}

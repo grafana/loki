@@ -129,12 +129,14 @@ func (t *tailer) stop() error {
 	if err != nil {
 		level.Error(t.logger).Log("msg", "error getting tail position", "path", t.path, "error", err)
 	}
-	err = t.tail.Stop()
+	if err = t.tail.Stop(); err != nil {
+		return err
+	}
 	close(t.quit)
 	<-t.done
 	filesActive.Add(-1.)
 	level.Info(t.logger).Log("msg", "stopped tailing file", "path", t.path)
-	return err
+	return nil
 }
 
 func (t *tailer) cleanup() {
