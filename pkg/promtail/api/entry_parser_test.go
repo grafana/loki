@@ -17,7 +17,7 @@ type Entry struct {
 	Log  string
 }
 
-var containerdTestCases = []struct {
+var criTestCases = []struct {
 	Line     string // input
 	Error    bool
 	Expected Entry
@@ -34,13 +34,13 @@ var containerdTestCases = []struct {
 	{TestTimeStr + " stderr P message1\nmessage2", false, Entry{TestTime, "message1\nmessage2"}},
 }
 
-func TestContainerd(t *testing.T) {
-	for _, tc := range containerdTestCases {
+func TestCRI(t *testing.T) {
+	for _, tc := range criTestCases {
 		client := &TestClient{
 			Entries: make([]Entry, 0),
 		}
 
-		EntryParser := Containerd.Wrap(client)
+		EntryParser := CRI.Wrap(client)
 		err := EntryParser.Handle(model.LabelSet{}, time.Now(), tc.Line)
 		hasError := err != nil
 

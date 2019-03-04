@@ -15,20 +15,20 @@ type EntryParser int
 
 // Different supported EntryParsers.
 const (
-	Containerd EntryParser = iota
-	Docker     EntryParser = iota
+	CRI    EntryParser = iota
+	Docker EntryParser = iota
 	Raw
 )
 
 var (
-	containerdPattern = regexp.MustCompile(`^(?s)(?P<time>\S+?) (?P<stream>stdout|stderr) (?P<flags>\S+?) (?P<content>.+)$`)
+	criPattern = regexp.MustCompile(`^(?s)(?P<time>\S+?) (?P<stream>stdout|stderr) (?P<flags>\S+?) (?P<content>.+)$`)
 )
 
 // String returns a string representation of the EntryParser.
 func (e EntryParser) String() string {
 	switch e {
-	case Containerd:
-		return "containerd"
+	case CRI:
+		return "cri"
 	case Docker:
 		return "docker"
 	case Raw:
@@ -41,8 +41,8 @@ func (e EntryParser) String() string {
 // Set implements flag.Value.
 func (e *EntryParser) Set(s string) error {
 	switch strings.ToLower(s) {
-	case "containerd":
-		*e = Containerd
+	case "cri":
+		*e = CRI
 		return nil
 	case "docker":
 		*e = Docker
@@ -67,16 +67,16 @@ func (e *EntryParser) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // Wrap implements EntryMiddleware.
 func (e EntryParser) Wrap(next EntryHandler) EntryHandler {
 	switch e {
-	case Containerd:
+	case CRI:
 		return EntryHandlerFunc(func(labels model.LabelSet, _ time.Time, line string) error {
-			parts := containerdPattern.FindStringSubmatch(line)
+			parts := criPattern.FindStringSubmatch(line)
 			if parts == nil || len(parts) < 5 {
-				return fmt.Errorf("Log line did not match containerd format")
+				return fmt.Errorf("Line did not match the CRI log format")
 			}
 
 			timestamp, err := time.Parse(time.RFC3339Nano, parts[1])
 			if err != nil {
-				return fmt.Errorf("Containerd timestamp '%s' does not match RFC3339Nano", parts[1])
+				return fmt.Errorf("CRI timestamp '%s' does not match RFC3339Nano", parts[1])
 			}
 
 			return next.Handle(labels, timestamp, parts[4])
