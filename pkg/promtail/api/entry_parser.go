@@ -15,9 +15,9 @@ type EntryParser int
 
 // Different supported EntryParsers.
 const (
-	CRI    EntryParser = iota
 	Docker EntryParser = iota
 	Raw
+	CRI
 )
 
 var (
