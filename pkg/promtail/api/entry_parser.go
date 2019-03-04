@@ -79,6 +79,7 @@ func (e EntryParser) Wrap(next EntryHandler) EntryHandler {
 				return fmt.Errorf("CRI timestamp '%s' does not match RFC3339Nano", parts[1])
 			}
 
+			labels = labels.Merge(model.LabelSet{"stream": model.LabelValue(parts[2])})
 			return next.Handle(labels, timestamp, parts[4])
 		})
 	case Docker:

@@ -13,8 +13,13 @@ var (
 )
 
 type Entry struct {
-	Time time.Time
-	Log  string
+	Time   time.Time
+	Log    string
+	Labels model.LabelSet
+}
+
+func NewEntry(message string, stream string) Entry {
+	return Entry{TestTime, message, model.LabelSet{"stream": model.LabelValue(stream)}}
 }
 
 var criTestCases = []struct {
@@ -29,9 +34,9 @@ var criTestCases = []struct {
 	{TestTimeStr + " invalid F message", true, Entry{}},
 	{"2019-01-01 01:00:00.000000001 stdout F message", true, Entry{}},
 	{" " + TestTimeStr + " stdout F message", true, Entry{}},
-	{TestTimeStr + " stdout F message", false, Entry{TestTime, "message"}},
-	{TestTimeStr + " stderr P message", false, Entry{TestTime, "message"}},
-	{TestTimeStr + " stderr P message1\nmessage2", false, Entry{TestTime, "message1\nmessage2"}},
+	{TestTimeStr + " stdout F message", false, NewEntry("message", "stdout")},
+	{TestTimeStr + " stderr P message", false, NewEntry("message", "stderr")},
+	{TestTimeStr + " stderr P message1\nmessage2", false, NewEntry("message1\nmessage2", "stderr")},
 }
 
 func TestCRI(t *testing.T) {
@@ -62,6 +67,10 @@ func TestCRI(t *testing.T) {
 			if tc.Expected.Log != entry.Log {
 				t.Error("For", tc.Line, "expected", tc.Expected.Log, "got", entry.Log)
 			}
+
+			if !tc.Expected.Labels.Equal(entry.Labels) {
+				t.Error("For", tc.Line, "expected", tc.Expected.Labels, "got", entry.Labels)
+			}
 		}
 	}
 }
@@ -71,6 +80,6 @@ type TestClient struct {
 }
 
 func (c *TestClient) Handle(ls model.LabelSet, t time.Time, s string) error {
-	c.Entries = append(c.Entries, Entry{t, s})
+	c.Entries = append(c.Entries, Entry{t, s, ls})
 	return nil
 }
