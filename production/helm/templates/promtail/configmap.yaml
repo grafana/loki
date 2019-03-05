@@ -77,7 +77,7 @@ data:
         - action: replace
           source_labels:
           - __meta_kubernetes_pod_name
-          target_label: instance
+          target_label: pod_name
         - action: replace
           source_labels:
           - __meta_kubernetes_pod_container_name
