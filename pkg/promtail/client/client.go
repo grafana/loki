@@ -194,13 +194,13 @@ func encodeBatch(batch map[model.Fingerprint]*logproto.Stream) ([]byte, error) {
 }
 
 func (c *Client) send(ctx context.Context, buf []byte) (int, error) {
-	timedCtx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
 	req, err := http.NewRequest("POST", c.cfg.URL.String(), bytes.NewReader(buf))
 	if err != nil {
 		return -1, err
 	}
-	req = req.WithContext(timedCtx)
+	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", contentType)
 
 	resp, err := http.DefaultClient.Do(req)
