@@ -21,7 +21,7 @@ const (
 )
 
 var (
-	criPattern = regexp.MustCompile(`^(?s)(?P<time>\S+?) (?P<stream>stdout|stderr) (?P<flags>\S+?) (?P<content>.+)$`)
+	criPattern = regexp.MustCompile(`^(?s)(?P<time>\S+?) (?P<stream>stdout|stderr) (?P<flags>\S+?) (?P<content>.*)$`)
 )
 
 // String returns a string representation of the EntryParser.
@@ -71,7 +71,7 @@ func (e EntryParser) Wrap(next EntryHandler) EntryHandler {
 		return EntryHandlerFunc(func(labels model.LabelSet, _ time.Time, line string) error {
 			parts := criPattern.FindStringSubmatch(line)
 			if parts == nil || len(parts) < 5 {
-				return fmt.Errorf("Line did not match the CRI log format")
+				return fmt.Errorf("Line did not match the CRI log format: '%s'", line)
 			}
 
 			timestamp, err := time.Parse(time.RFC3339Nano, parts[1])
