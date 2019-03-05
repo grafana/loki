@@ -25,9 +25,9 @@ func NewEntry(time time.Time, message string, stream string) Entry {
 }
 
 type TestCase struct {
-	Line     string // input
-	Error    bool
-	Expected Entry
+	Line          string // input
+	ExpectedError bool
+	Expected      Entry
 }
 
 var criTestCases = []TestCase{
@@ -49,20 +49,20 @@ func TestCRI(t *testing.T) {
 
 var dockerTestCases = []TestCase{
 	{
-		Line:     "{{\"log\":\"bad json, should fail to parse\\n\",\"stream\":\"stderr\",\"time\":\"2019-03-04T21:37:44.789508817Z\"}",
-		Error:    true,
-		Expected: Entry{},
+		Line:          "{{\"log\":\"bad json, should fail to parse\\n\",\"stream\":\"stderr\",\"time\":\"2019-03-04T21:37:44.789508817Z\"}",
+		ExpectedError: true,
+		Expected:      Entry{},
 	},
 	{
-		Line:  "{\"log\":\"some silly log message\\n\",\"stream\":\"stderr\",\"time\":\"2019-03-04T21:37:44.789508817Z\"}",
-		Error: false,
+		Line:          "{\"log\":\"some silly log message\\n\",\"stream\":\"stderr\",\"time\":\"2019-03-04T21:37:44.789508817Z\"}",
+		ExpectedError: false,
 		Expected: NewEntry(time.Date(2019, 03, 04, 21, 37, 44, 789508817, time.UTC),
 			"some silly log message\n",
 			"stderr"),
 	},
 	{
-		Line:  "{\"log\":\"10.15.0.5 - - [04/Mar/2019:21:37:44 +0000] \\\"POST /api/prom/push HTTP/1.1\\\" 200 0 \\\"\\\" \\\"Go-http-client/1.1\\\"\\n\",\"stream\":\"stdout\",\"time\":\"2019-03-04T21:37:44.790195228Z\"}",
-		Error: false,
+		Line:          "{\"log\":\"10.15.0.5 - - [04/Mar/2019:21:37:44 +0000] \\\"POST /api/prom/push HTTP/1.1\\\" 200 0 \\\"\\\" \\\"Go-http-client/1.1\\\"\\n\",\"stream\":\"stdout\",\"time\":\"2019-03-04T21:37:44.790195228Z\"}",
+		ExpectedError: false,
 		Expected: NewEntry(time.Date(2019, 03, 04, 21, 37, 44, 790195228, time.UTC),
 			"10.15.0.5 - - [04/Mar/2019:21:37:44 +0000] \"POST /api/prom/push HTTP/1.1\" 200 0 \"\" \"Go-http-client/1.1\"\n",
 			"stdout"),
@@ -81,19 +81,18 @@ func runTestCases(parser EntryParser, testCases []TestCase, t *testing.T) {
 
 		handler := parser.Wrap(client)
 		err := handler.Handle(model.LabelSet{}, time.Now(), tc.Line)
-		hasError := err != nil
 
-		if tc.Error != hasError {
-			t.Fatal("Parse error for test case", i, "with entry", tc.Line, "\nerror:", err)
+		if err != nil && tc.ExpectedError {
+			continue
+		} else if err != nil {
+			t.Fatal("Unexpected error for test case", i, "with entry", tc.Line, "\nerror:", err)
 		}
 
-		if !tc.Error {
-			require.Equal(t, 1, len(client.Entries), "Handler did not receive the correct number of Entries")
-			entry := client.Entries[0]
-			assert.Equal(t, tc.Expected.Time, entry.Time, "Time error for test case %d, with entry %s", i, tc.Line)
-			assert.Equal(t, tc.Expected.Log, entry.Log, "Log entry error for test case %d, with entry %s", i, tc.Line)
-			assert.True(t, tc.Expected.Labels.Equal(entry.Labels), "Label error for test case %d, labels did not match; expected: %s, found %s", i, tc.Expected.Labels, entry.Labels)
-		}
+		require.Equal(t, 1, len(client.Entries), "Handler did not receive the correct number of Entries for test case %d", i)
+		entry := client.Entries[0]
+		assert.Equal(t, tc.Expected.Time, entry.Time, "Time error for test case %d, with entry %s", i, tc.Line)
+		assert.Equal(t, tc.Expected.Log, entry.Log, "Log entry error for test case %d, with entry %s", i, tc.Line)
+		assert.True(t, tc.Expected.Labels.Equal(entry.Labels), "Label error for test case %d, labels did not match; expected: %s, found %s", i, tc.Expected.Labels, entry.Labels)
 	}
 }
 
