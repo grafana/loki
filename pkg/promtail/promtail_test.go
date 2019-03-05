@@ -18,16 +18,12 @@ import (
 	"github.com/prometheus/common/model"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
-	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/parser"
 	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/config"
-	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/scrape"
-	"github.com/grafana/loki/pkg/promtail/targets"
 )
 
 func TestPromtail(t *testing.T) {
@@ -350,13 +346,7 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 		t.Fatal("Failed to parse client URL")
 	}
 
-	cfg := config.Config{
-		ServerConfig:    server.Config{},
-		ClientConfig:    client.Config{},
-		PositionsConfig: positions.Config{},
-		ScrapeConfig:    []scrape.Config{},
-		TargetConfig:    targets.Config{},
-	}
+	cfg := config.Config{}
 	// Init everything with default values.
 	flagext.RegisterFlags(&cfg)
 

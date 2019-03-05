@@ -18,7 +18,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
@@ -158,17 +157,8 @@ func (c *Client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 	var status int
 	for backoff.Ongoing() {
 		start := time.Now()
-		timedCtx, ctxCancel := context.WithTimeout(ctx, c.cfg.Timeout)
-		status, err = c.send(timedCtx, buf)
+		status, err = c.send(ctx, buf)
 		requestDuration.WithLabelValues(strconv.Itoa(status)).Observe(time.Since(start).Seconds())
-		ctxErr := timedCtx.Err()
-		if ctxErr != nil {
-			switch ctxErr {
-			case context.DeadlineExceeded:
-				err = errors.Wrap(err, "Timeout waiting for server")
-			}
-		}
-		ctxCancel()
 
 		if err == nil {
 			return
@@ -204,11 +194,13 @@ func encodeBatch(batch map[model.Fingerprint]*logproto.Stream) ([]byte, error) {
 }
 
 func (c *Client) send(ctx context.Context, buf []byte) (int, error) {
+	timedCtx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	defer cancel()
 	req, err := http.NewRequest("POST", c.cfg.URL.String(), bytes.NewReader(buf))
 	if err != nil {
 		return -1, err
 	}
-	req = req.WithContext(ctx)
+	req = req.WithContext(timedCtx)
 	req.Header.Set("Content-Type", contentType)
 
 	resp, err := http.DefaultClient.Do(req)
