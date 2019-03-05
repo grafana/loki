@@ -1,11 +1,3 @@
-![](https://www.grafanacon.org/2019/images/grafanacon_la_nav-logo.png)
-
-Join us Feb 25-26 in Los Angeles, California for GrafanaCon - a two-day event with talks focused on Grafana and the surrounding open source monitoring ecosystem. Get deep dives into Loki, the Explore workflow and all of the new features of Grafana 6, plus participate in hands on workshops to help you get the most out of your data.
-
-Time is running out - grab your ticket now! http://grafanacon.org
-
----
-
 <p align="center"><img src="docs/logo_and_name.png" alt="Loki Logo"></p>
 
 <a href="https://circleci.com/gh/grafana/loki/tree/master"><img src="https://circleci.com/gh/grafana/loki.svg?style=shield&circle-token=618193e5787b2951c1ea3352ad5f254f4f52313d" alt="CircleCI" /></a>
