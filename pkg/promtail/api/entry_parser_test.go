@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -86,23 +88,11 @@ func runTestCases(parser EntryParser, testCases []TestCase, t *testing.T) {
 		}
 
 		if !tc.Error {
-			if len(client.Entries) != 1 {
-				t.Fatal("Handler did not receive the correct number of Entries, expected 1 received", len(client.Entries))
-			}
-
+			require.Equal(t, 1, len(client.Entries), "Handler did not receive the correct number of Entries")
 			entry := client.Entries[0]
-
-			if tc.Expected.Time != entry.Time {
-				t.Error("Time error for test case", i, "with entry", tc.Line, "\nexpected", tc.Expected.Time, "\ngot\t\t", entry.Time)
-			}
-
-			if tc.Expected.Log != entry.Log {
-				t.Error("Log entry error for test case", i, "with entry", tc.Line, "\nexpected", tc.Expected.Log, "\ngot\t\t", entry.Log)
-			}
-
-			if !tc.Expected.Labels.Equal(entry.Labels) {
-				t.Error("Label error for test case", i, "with entry", tc.Line, "\nexpected", tc.Expected.Labels, "\ngot\t\t", entry.Labels)
-			}
+			assert.Equal(t, tc.Expected.Time, entry.Time, "Time error for test case %d, with entry %s", i, tc.Line)
+			assert.Equal(t, tc.Expected.Log, entry.Log, "Log entry error for test case %d, with entry %s", i, tc.Line)
+			assert.True(t, tc.Expected.Labels.Equal(entry.Labels), "Label error for test case %d, labels did not match; expected: %s, found %s", i, tc.Expected.Labels, entry.Labels)
 		}
 	}
 }
