@@ -34,7 +34,7 @@ In your Fluentd configuration, use `@type loki`. Additional configuration is opt
 
 ### url
 The url of the Loki server to send logs to.  When sending data the publish path (`/api/prom/push`) will automatically be appended.
-By default the url is set to `https://logs-us-west1.grafana.net`, the url of the Grafana Labs preview (hosted Loki)[https://grafana.com/loki] service.
+By default the url is set to `https://logs-us-west1.grafana.net`, the url of the Grafana Labs preview [hosted Loki](https://grafana.com/loki) service.
 
 #### Proxy Support
 
