@@ -23,12 +23,12 @@ In your cluster if you are running promtail as a daemonset, you will have a prom
 
 
 ```shell
-work-pc:.kube ewelch$ kubectl get pods -o wide
-NAME                                   READY   STATUS    RESTARTS   AGE   IP             NODE                                                  NOMINATED NODE
+$ kubectl get pods --all-namespaces -o wide
+NAME                                   READY   STATUS    RESTARTS   AGE   IP             NODE        NOMINATED NODE
 ...
-nginx-7b6fb56fb8-cw2cm                 1/1     Running   0          41d   10.56.4.12     gke-ops-tools1-gke-u-ops-tools1-gke-u-9d232f9e-ckgc   <none>
+nginx-7b6fb56fb8-cw2cm                 1/1     Running   0          41d   10.56.4.12     node-ckgc   <none>
 ...
-promtail-bth9q                         1/1     Running   0          3h    10.56.4.217    gke-ops-tools1-gke-u-ops-tools1-gke-u-9d232f9e-ckgc   <none>
+promtail-bth9q                         1/1     Running   0          3h    10.56.4.217    node-ckgc   <none>
 ```
 
 That output is truncated to highlight just the two pods we are interseted in, you can see with the `-o wide` flag the NODE on which they are running.
