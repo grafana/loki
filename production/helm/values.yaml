@@ -98,7 +98,7 @@ promtail:
   deploymentStrategy: RollingUpdate
 
   entryParser: docker
-  dockerRoot: /var/lib/docker
+  containerRootPath: /var/lib/docker
 
   image:
     repository: grafana/promtail

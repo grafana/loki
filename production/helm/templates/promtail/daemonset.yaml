@@ -48,7 +48,7 @@ spec:
             - name: varlog
               mountPath: /var/log
             - name: varlibdockercontainers
-              mountPath: {{ .Values.promtail.dockerRoot }}/containers
+              mountPath: {{ .Values.promtail.containerRootPath }}/containers
               readOnly: true
           env:
           - name: HOSTNAME
@@ -94,4 +94,4 @@ spec:
             path: /var/log
         - name: varlibdockercontainers
           hostPath:
-            path: {{ .Values.promtail.dockerRoot }}/containers
+            path: {{ .Values.promtail.containerRootPath }}/containers
