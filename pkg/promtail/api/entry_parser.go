@@ -18,15 +18,22 @@ const (
 	Docker EntryParser = iota
 	Raw
 	CRI
+	Auto
 )
 
 var (
-	criPattern = regexp.MustCompile(`^(?s)(?P<time>\S+?) (?P<stream>stdout|stderr) (?P<flags>\S+?) (?P<content>.*)$`)
+	criPattern      = regexp.MustCompile(`^(?s)(?P<time>\S+?) (?P<stream>stdout|stderr) (?P<flags>\S+?) (?P<content>.*)$`)
+	autodetectOrder = [3]EntryParser{Docker, CRI, Raw}
+	dummyHandler    = EntryHandlerFunc(func(ls model.LabelSet, t time.Time, s string) error {
+		return nil
+	})
 )
 
 // String returns a string representation of the EntryParser.
 func (e EntryParser) String() string {
 	switch e {
+	case Auto:
+		return "auto"
 	case CRI:
 		return "cri"
 	case Docker:
@@ -41,6 +48,9 @@ func (e EntryParser) String() string {
 // Set implements flag.Value.
 func (e *EntryParser) Set(s string) error {
 	switch strings.ToLower(s) {
+	case "auto":
+		*e = Auto
+		return nil
 	case "cri":
 		*e = CRI
 		return nil
@@ -67,6 +77,20 @@ func (e *EntryParser) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // Wrap implements EntryMiddleware.
 func (e EntryParser) Wrap(next EntryHandler) EntryHandler {
 	switch e {
+	case Auto:
+		autodetected := EntryHandler(nil)
+		return EntryHandlerFunc(func(labels model.LabelSet, timestamp time.Time, line string) error {
+			if autodetected == nil {
+				for _, current := range autodetectOrder {
+					if current.Wrap(dummyHandler).Handle(labels, timestamp, line) == nil {
+						autodetected = current.Wrap(next)
+						break
+					}
+				}
+			}
+
+			return autodetected.Handle(labels, timestamp, line)
+		})
 	case CRI:
 		return EntryHandlerFunc(func(labels model.LabelSet, _ time.Time, line string) error {
 			parts := criPattern.FindStringSubmatch(line)

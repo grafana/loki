@@ -19,7 +19,7 @@ type Config struct {
 
 // DefaultScrapeConfig is the default Config.
 var DefaultScrapeConfig = Config{
-	EntryParser: api.Docker,
+	EntryParser: api.Auto,
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.

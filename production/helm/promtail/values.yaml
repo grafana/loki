@@ -6,7 +6,7 @@ annotations: {}
 
 deploymentStrategy: RollingUpdate
 
-entryParser: docker
+entryParser: auto
 
 image:
   repository: grafana/promtail

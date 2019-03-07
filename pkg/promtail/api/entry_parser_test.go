@@ -12,6 +12,7 @@ import (
 var (
 	TestTimeStr = "2019-01-01T01:00:00.000000001Z"
 	TestTime, _ = time.Parse(time.RFC3339Nano, TestTimeStr)
+	CurrentTime = time.Now()
 )
 
 type Entry struct {
@@ -73,6 +74,24 @@ func TestDocker(t *testing.T) {
 	runTestCases(Docker, dockerTestCases, t)
 }
 
+var rawTestCases = []TestCase{
+	{"message", false, Entry{CurrentTime, "message", model.LabelSet{}}},
+}
+
+func TestRaw(t *testing.T) {
+	runTestCases(Raw, rawTestCases, t)
+}
+
+var autoTestCases = []TestCase{
+	{"{\"log\":\"message\",\"stream\":\"stdout\",\"time\":\"" + TestTimeStr + "\"}", false, NewEntry(TestTime, "message", "stdout")},
+	{TestTimeStr + " stdout F message", false, NewEntry(TestTime, "message", "stdout")},
+	{"message", false, Entry{CurrentTime, "message", model.LabelSet{}}},
+}
+
+func TestAuto(t *testing.T) {
+	runTestCases(Auto, autoTestCases, t)
+}
+
 func runTestCases(parser EntryParser, testCases []TestCase, t *testing.T) {
 	for i, tc := range testCases {
 		client := &TestClient{
@@ -80,7 +99,7 @@ func runTestCases(parser EntryParser, testCases []TestCase, t *testing.T) {
 		}
 
 		handler := parser.Wrap(client)
-		err := handler.Handle(model.LabelSet{}, time.Now(), tc.Line)
+		err := handler.Handle(model.LabelSet{}, CurrentTime, tc.Line)
 
 		if err != nil && tc.ExpectedError {
 			continue

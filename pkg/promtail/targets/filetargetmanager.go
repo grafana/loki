@@ -79,7 +79,8 @@ func NewFileTargetManager(
 			relabelConfig: cfg.RelabelConfigs,
 			targets:       map[string]*FileTarget{},
 			hostname:      hostname,
-			entryHandler:  cfg.EntryParser.Wrap(client),
+			entryHandler:  client,
+			entryParser:   cfg.EntryParser,
 			targetConfig:  targetConfig,
 		}
 		tm.syncers[cfg.JobName] = s
@@ -124,6 +125,7 @@ type syncer struct {
 	log          log.Logger
 	positions    *positions.Positions
 	entryHandler api.EntryHandler
+	entryParser  api.EntryParser
 	hostname     string
 
 	targets       map[string]*FileTarget
@@ -201,7 +203,7 @@ func (s *syncer) sync(groups []*targetgroup.Group) {
 }
 
 func (s *syncer) newTarget(path string, labels model.LabelSet) (*FileTarget, error) {
-	return NewFileTarget(s.log, s.entryHandler, s.positions, path, labels, s.targetConfig)
+	return NewFileTarget(s.log, s.entryParser.Wrap(s.entryHandler), s.positions, path, labels, s.targetConfig)
 }
 
 func (s *syncer) ready() bool {
