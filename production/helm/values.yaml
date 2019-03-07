@@ -99,6 +99,8 @@ promtail:
 
   entryParser: docker
 
+  dataRoot: /var/lib/docker
+
   image:
     repository: grafana/promtail
     tag: master
