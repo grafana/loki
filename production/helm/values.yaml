@@ -106,9 +106,11 @@ promtail:
 
   volumes:
     - name: varlog
-      path: /var/log
+      hostPath:
+        path: /var/log
     - name: varlibdockercontainers
-      path: /var/lib/docker/containers
+      hostPath:
+        path: /var/lib/docker/containers
 
   volumeMounts:
     - name: varlog

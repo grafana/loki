@@ -45,12 +45,8 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/promtail
-          {{- range .Values.promtail.volumeMounts }}
-            - name: {{ .name }}
-              mountPath: {{ .mountPath }}
-              {{- if .readOnly }}
-              readOnly: {{ .readOnly}}
-              {{- end }}
+          {{- if .Values.promtail.volumeMounts -}}
+          {{ toYaml .Values.promtail.volumeMounts | nindent 12 }}
           {{- end }}
           env:
           - name: HOSTNAME
@@ -91,8 +87,6 @@ spec:
         - name: config
           configMap:
             name: {{ template "promtail.fullname" . }}
-        {{- range .Values.promtail.volumes }}
-        - name: {{ .name }}
-          hostPath:
-            path: {{ .path }}
-        {{- end }} 
+        {{- if .Values.promtail.volumes -}}
+        {{ toYaml .Values.promtail.volumes | nindent 8 }}
+        {{- end }}
