@@ -2,10 +2,31 @@
 
 Loki's main query interface is Grafana; however, a basic CLI is provided as a proof of concept.
 
-Once you have Loki running in a cluster, you can query logs from that cluster using the following commands:
+Once you have Loki running in a cluster, you can query logs from that cluster.
+
+## Installation
+
+### Get latest version
 
 ```
 $ go get github.com/grafana/loki/cmd/logcli
+```
+
+### Build from source
+
+```
+$ go get github.com/grafana/loki
+$ cd $GOPATH/github.com/grafana/loki
+$ go build ./cmd/logcli
+```
+
+Now `logcli` is in your current directory.
+
+## Usage
+
+### Example
+
+```
 $ export GRAFANA_ADDR=https://logs-us-west1.grafana.net
 $ export GRAFANA_USERNAME=<username>
 $ export GRAFANA_PASSWORD=<password>
@@ -20,6 +41,9 @@ Common labels: {job="cortex-ops/consul", namespace="cortex-ops"}
 2018-06-25T12:52:09Z {instance="consul-8576459955-pl75w"} 2018/06/25 12:52:09 [INFO] raft: Snapshot to 475409 complete
 2018-06-25T12:52:09Z {instance="consul-8576459955-pl75w"} 2018/06/25 12:52:09 [INFO] raft: Compacting logs from 456973 to 465169
 ```
+
+### Configuration
+
 You may use `--config=path/to/file` to load configuration options from a file. For an example file see `cmd/logcli/logcli-config.yaml`
 
 Configuration values are considered in the following order (lowest to highest):
@@ -28,6 +52,8 @@ Configuration values are considered in the following order (lowest to highest):
 - command line
 
 The URLs of the requests are printed to help with integration work.
+
+### Details
 
 ```
 $ logcli help

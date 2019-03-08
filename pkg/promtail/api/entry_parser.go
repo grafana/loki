@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -16,11 +17,18 @@ type EntryParser int
 const (
 	Docker EntryParser = iota
 	Raw
+	CRI
+)
+
+var (
+	criPattern = regexp.MustCompile(`^(?s)(?P<time>\S+?) (?P<stream>stdout|stderr) (?P<flags>\S+?) (?P<content>.*)$`)
 )
 
 // String returns a string representation of the EntryParser.
 func (e EntryParser) String() string {
 	switch e {
+	case CRI:
+		return "cri"
 	case Docker:
 		return "docker"
 	case Raw:
@@ -33,6 +41,9 @@ func (e EntryParser) String() string {
 // Set implements flag.Value.
 func (e *EntryParser) Set(s string) error {
 	switch strings.ToLower(s) {
+	case "cri":
+		*e = CRI
+		return nil
 	case "docker":
 		*e = Docker
 		return nil
@@ -56,6 +67,21 @@ func (e *EntryParser) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // Wrap implements EntryMiddleware.
 func (e EntryParser) Wrap(next EntryHandler) EntryHandler {
 	switch e {
+	case CRI:
+		return EntryHandlerFunc(func(labels model.LabelSet, _ time.Time, line string) error {
+			parts := criPattern.FindStringSubmatch(line)
+			if parts == nil || len(parts) < 5 {
+				return fmt.Errorf("Line did not match the CRI log format: '%s'", line)
+			}
+
+			timestamp, err := time.Parse(time.RFC3339Nano, parts[1])
+			if err != nil {
+				return fmt.Errorf("CRI timestamp '%s' does not match RFC3339Nano", parts[1])
+			}
+
+			labels = labels.Merge(model.LabelSet{"stream": model.LabelValue(parts[2])})
+			return next.Handle(labels, timestamp, parts[4])
+		})
 	case Docker:
 		return EntryHandlerFunc(func(labels model.LabelSet, _ time.Time, line string) error {
 			// Docker-style json object per line.

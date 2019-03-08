@@ -21,7 +21,7 @@ func init() {
 
 func main() {
 	var (
-		configFile = "docs/promtail-local-config.yaml"
+		configFile = "cmd/promtail/promtail-local-config.yaml"
 		config     config.Config
 	)
 	flag.StringVar(&configFile, "config.file", "promtail.yml", "The config file.")

@@ -111,6 +111,8 @@ promtail:
   nameOverride: promtail
   deploymentStrategy: RollingUpdate
 
+  entryParser: docker
+
   image:
     repository: grafana/promtail
     tag: master

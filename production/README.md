@@ -8,6 +8,8 @@ Currently there are five ways to try out Loki, in order from easier to hardest:
 - [Building from source](#build-and-run-from-source)
 - [Get inspired by our production setup](#get-inspired-by-our-production-setup)
 
+For the various ways to run `promtail`, the tailing agent, see our [Promtail documentation](../docs/promtail-setup.md).
+
 ## Get a Free Hosted Demo of Grafana Cloud: Logs
 
 Grafana is running a free, hosted demo cluster of Loki; instructions for getting access can be found at [grafana.com/loki](https://grafana.com/loki).
