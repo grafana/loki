@@ -8,8 +8,8 @@ serviceAccount:
 
 loki:
   replicas: 1
-  # minReadySeconds: 60
-  # terminationGracePeriodSeconds: 3600
+  minReadySeconds: 0
+  terminationGracePeriodSeconds: 30
   deploymentStrategy: RollingUpdate
 
   image:
