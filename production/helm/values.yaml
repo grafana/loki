@@ -98,12 +98,24 @@ promtail:
   deploymentStrategy: RollingUpdate
 
   entryParser: docker
-  containerRootPath: /var/lib/docker
 
   image:
     repository: grafana/promtail
     tag: master
     pullPolicy: Always # Always pull while in BETA
+
+  volumes:
+    - name: varlog
+      path: /var/log
+    - name: varlibdockercontainers
+      path: /var/lib/docker/containers
+
+  volumeMounts:
+    - name: varlog
+      mountPath: /var/log
+    - name: varlibdockercontainers
+      mountPath: /var/lib/docker/containers
+      readOnly: true
 
   service:
     port: 3100

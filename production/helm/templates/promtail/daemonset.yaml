@@ -45,11 +45,13 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/promtail
-            - name: varlog
-              mountPath: /var/log
-            - name: varlibdockercontainers
-              mountPath: {{ .Values.promtail.containerRootPath }}/containers
-              readOnly: true
+          {{- range .Values.promtail.volumeMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              {{- if .readOnly }}
+              readOnly: {{ .readOnly}}
+              {{- end }}
+          {{- end }}
           env:
           - name: HOSTNAME
             valueFrom:
@@ -89,9 +91,8 @@ spec:
         - name: config
           configMap:
             name: {{ template "promtail.fullname" . }}
-        - name: varlog
+        {{- range .Values.promtail.volumes }}
+        - name: {{ .name }}
           hostPath:
-            path: /var/log
-        - name: varlibdockercontainers
-          hostPath:
-            path: {{ .Values.promtail.containerRootPath }}/containers
+            path: {{ .path }}
+        {{- end }} 
