@@ -2,6 +2,9 @@ rbac:
   create: true
   pspEnabled: true
 
+networkPolicy:
+  enabled: false
+
 serviceAccount:
   create: true
   name:
