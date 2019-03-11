@@ -14,7 +14,7 @@ Gem::Specification.new do |spec|
   # test_files, files  = `git ls-files -z`.split("\x0").partition do |f|
   #   f.match(%r{^(test|spec|features)/})
   # end
-  spec.files         = Dir.glob('{bin,lib}/**/*') + %w[LICENSE.txt README.md]
+  spec.files         = Dir.glob('{bin,lib}/**/*') + %w[../../LICENSE README.md]
   spec.executables   = spec.files.grep(%r{^exe/}) { |f| File.basename(f) }
   spec.require_paths = ['lib']
 
