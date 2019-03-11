@@ -29,7 +29,7 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-func TestUnmarshalingCorruptedDeltaReturnsAnError(t *testing.T) {
+func TestUnmarshallingCorruptedDeltaReturnsAnError(t *testing.T) {
 
 	var verifyUnmarshallingError = func(
 		err error,

@@ -300,7 +300,7 @@ func (c varbitChunk) Marshal(w io.Writer) error {
 // UnmarshalFromBuf implements chunk.
 func (c varbitChunk) UnmarshalFromBuf(buf []byte) error {
 	if copied := copy(c, buf); copied != cap(c) && copied != c.marshalLen() {
-		return fmt.Errorf("incorrect byte count copied from buffer during unmarshaling, want %d or %d, got %d", c.marshalLen(), ChunkLen, copied)
+		return fmt.Errorf("incorrect byte count copied from buffer during unmarshalling, want %d or %d, got %d", c.marshalLen(), ChunkLen, copied)
 	}
 	return nil
 }
