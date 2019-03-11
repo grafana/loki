@@ -29,6 +29,44 @@ In your Fluentd configuration, use `@type loki`. Additional configuration is opt
 </match>
 ```
 
+## Docker Image
+
+There is a Docker image `grafana/fluent-plugin-loki:master` which contains default configuration files to git log information
+a host's `/var/log` dir, and from the host's Journald. To use it, you can set the `LOKI_URL`, `LOKI_USERNAME`, and `LOKI_PASSWORD` environment variables (you can leave the USERNAME and PASSWORD blank if they're not used.)
+
+
+A Docker Swarm Compose configuration that will work looks like:
+
+```
+services:
+  fluentd:
+    image: grafana/fluent-plugin-loki:master
+    command:
+      - "fluentd"
+      - "-v"
+      - "-p"
+      - "/fluentd/plugins"
+    environment:
+      LOKI_URL: http://loki:3100
+      LOKI_USERNAME:
+      LOKI_PASSWORD:
+    deploy:
+      mode: global
+    configs:
+      - source: loki_config
+        target: /fluentd/etc/loki/loki.conf
+    networks:
+      - loki
+    volumes:
+      - host_logs:/var/log
+      # Needed for journald log ingestion:
+      - /etc/machine-id:/etc/machine-id
+      - /dev/log:/dev/log
+      - /var/run/systemd/journal/:/var/run/systemd/journal/
+    logging:
+      options:
+         tag: infra.monitoring
+```
 
 ## Configuration
 
