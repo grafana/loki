@@ -142,7 +142,7 @@ module Fluent
           # 'labels' => '{worker="0"}',
           payload.push(
             'labels' => labels_to_protocol(k),
-	    'entries' => v.sort_by { |hsh| Time.parse(hsh["ts"])}
+            'entries' => v.sort_by { |hsh| Time.parse(hsh['ts']) }
           )
         end
         payload
