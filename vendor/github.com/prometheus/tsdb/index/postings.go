@@ -14,6 +14,7 @@
 package index
 
 import (
+	"container/heap"
 	"encoding/binary"
 	"runtime"
 	"sort"
@@ -305,9 +306,8 @@ func Intersect(its ...Postings) Postings {
 }
 
 type intersectPostings struct {
-	a, b     Postings
-	aok, bok bool
-	cur      uint64
+	a, b Postings
+	cur  uint64
 }
 
 func newIntersectPostings(a, b Postings) *intersectPostings {
@@ -366,80 +366,132 @@ func Merge(its ...Postings) Postings {
 	if len(its) == 1 {
 		return its[0]
 	}
-	l := len(its) / 2
-	return newMergedPostings(Merge(its[:l]...), Merge(its[l:]...))
+	return newMergedPostings(its)
+}
+
+type postingsHeap []Postings
+
+func (h postingsHeap) Len() int           { return len(h) }
+func (h postingsHeap) Less(i, j int) bool { return h[i].At() < h[j].At() }
+func (h *postingsHeap) Swap(i, j int)     { (*h)[i], (*h)[j] = (*h)[j], (*h)[i] }
+
+func (h *postingsHeap) Push(x interface{}) {
+	*h = append(*h, x.(Postings))
+}
+
+func (h *postingsHeap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
 }
 
 type mergedPostings struct {
-	a, b        Postings
-	initialized bool
-	aok, bok    bool
-	cur         uint64
+	h          postingsHeap
+	initilized bool
+	heaped     bool
+	cur        uint64
+	err        error
 }
 
-func newMergedPostings(a, b Postings) *mergedPostings {
-	return &mergedPostings{a: a, b: b}
-}
-
-func (it *mergedPostings) At() uint64 {
-	return it.cur
+func newMergedPostings(p []Postings) *mergedPostings {
+	ph := make(postingsHeap, 0, len(p))
+	for _, it := range p {
+		if it.Next() {
+			ph = append(ph, it)
+		} else {
+			if it.Err() != nil {
+				return &mergedPostings{err: it.Err()}
+			}
+		}
+	}
+	return &mergedPostings{h: ph}
 }
 
 func (it *mergedPostings) Next() bool {
-	if !it.initialized {
-		it.aok = it.a.Next()
-		it.bok = it.b.Next()
-		it.initialized = true
-	}
-
-	if !it.aok && !it.bok {
+	if it.h.Len() == 0 || it.err != nil {
 		return false
 	}
 
-	if !it.aok {
-		it.cur = it.b.At()
-		it.bok = it.b.Next()
-		return true
+	if !it.heaped {
+		heap.Init(&it.h)
+		it.heaped = true
 	}
-	if !it.bok {
-		it.cur = it.a.At()
-		it.aok = it.a.Next()
+	// The user must issue an initial Next.
+	if !it.initilized {
+		it.cur = it.h[0].At()
+		it.initilized = true
 		return true
 	}
 
-	acur, bcur := it.a.At(), it.b.At()
+	for {
+		cur := it.h[0]
+		if !cur.Next() {
+			heap.Pop(&it.h)
+			if cur.Err() != nil {
+				it.err = cur.Err()
+				return false
+			}
+			if it.h.Len() == 0 {
+				return false
+			}
+		} else {
+			// Value of top of heap has changed, re-heapify.
+			heap.Fix(&it.h, 0)
+		}
 
-	if acur < bcur {
-		it.cur = acur
-		it.aok = it.a.Next()
-	} else if acur > bcur {
-		it.cur = bcur
-		it.bok = it.b.Next()
-	} else {
-		it.cur = acur
-		it.aok = it.a.Next()
-		it.bok = it.b.Next()
+		if it.h[0].At() != it.cur {
+			it.cur = it.h[0].At()
+			return true
+		}
 	}
-	return true
 }
 
 func (it *mergedPostings) Seek(id uint64) bool {
+	if it.h.Len() == 0 || it.err != nil {
+		return false
+	}
+	if !it.initilized {
+		if !it.Next() {
+			return false
+		}
+	}
 	if it.cur >= id {
 		return true
 	}
-
-	it.aok = it.a.Seek(id)
-	it.bok = it.b.Seek(id)
-	it.initialized = true
-
-	return it.Next()
+	// Heapifying when there is lots of Seeks is inefficient,
+	// mark to be re-heapified on the Next() call.
+	it.heaped = false
+	newH := make(postingsHeap, 0, len(it.h))
+	lowest := ^uint64(0)
+	for _, i := range it.h {
+		if i.Seek(id) {
+			newH = append(newH, i)
+			if i.At() < lowest {
+				lowest = i.At()
+			}
+		} else {
+			if i.Err() != nil {
+				it.err = i.Err()
+				return false
+			}
+		}
+	}
+	it.h = newH
+	if len(it.h) == 0 {
+		return false
+	}
+	it.cur = lowest
+	return true
 }
 
-func (it *mergedPostings) Err() error {
-	if it.a.Err() != nil {
-		return it.a.Err()
-	}
-	return it.b.Err()
+func (it mergedPostings) At() uint64 {
+	return it.cur
+}
+
+func (it mergedPostings) Err() error {
+	return it.err
 }
 
 // Without returns a new postings list that contains all elements from the full list that
@@ -553,6 +605,9 @@ func (it *listPostings) Seek(x uint64) bool {
 	// If the current value satisfies, then return.
 	if it.cur >= x {
 		return true
+	}
+	if len(it.list) == 0 {
+		return false
 	}
 
 	// Do binary search between current position and end.

@@ -7,17 +7,22 @@ dist: trusty
 
 matrix:
   include:
-  - go: 1.9
+  - go: 1.11.5
     env:
     - TESTS=true
     - COVERAGE=true
-  - go: 1.9
+  - go: 1.11.5
     env:
     - CROSSDOCK=true
-  - go: 1.9
+  - go: 1.11.5
     env:
     - TESTS=true
     - USE_DEP=true
+  - go: 1.10.8
+    env:
+    - TESTS=true
+    - USE_DEP=true
+    - CI_SKIP_LINT=true
 
 services:
   - docker

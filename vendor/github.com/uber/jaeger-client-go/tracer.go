@@ -17,6 +17,7 @@ package jaeger
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"reflect"
 	"strconv"
@@ -122,9 +123,18 @@ func NewTracer(
 	}
 
 	if t.randomNumber == nil {
-		rng := utils.NewRand(time.Now().UnixNano())
+		seedGenerator := utils.NewRand(time.Now().UnixNano())
+		pool := sync.Pool{
+			New: func() interface{} {
+				return rand.NewSource(seedGenerator.Int63())
+			},
+		}
+
 		t.randomNumber = func() uint64 {
-			return uint64(rng.Int63())
+			generator := pool.Get().(rand.Source)
+			number := uint64(generator.Int63())
+			pool.Put(generator)
+			return number
 		}
 	}
 	if t.timeNow == nil {

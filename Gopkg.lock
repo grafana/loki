@@ -24,17 +24,27 @@
   version = "v0.34.0"
 
 [[projects]]
-  digest = "1:253580c3e9e495538385a96f276a0e06f3ba90c73421df1258de8a8375ff4b09"
-  name = "github.com/Azure/azure-sdk-for-go"
-  packages = [
-    "arm/compute",
-    "arm/network",
-  ]
+  digest = "1:b92928b73320648b38c93cacb9082c0fe3f8ac3383ad9bd537eef62c380e0e7a"
+  name = "contrib.go.opencensus.io/exporter/ocagent"
+  packages = ["."]
   pruneopts = "UT"
-  revision = "bd73d950fa44"
+  revision = "00af367e65149ff1f2f4b93bbfbb84fd9297170d"
+  version = "v0.2.0"
 
 [[projects]]
-  digest = "1:61d8ba12db8ce8281d05b4de74343f407b43c4fe468dfae874621e0445b09055"
+  digest = "1:21ff1da3c3b72937020d435199409c50b29f919c3400ebe4e72549fa1bdba276"
+  name = "github.com/Azure/azure-sdk-for-go"
+  packages = [
+    "services/compute/mgmt/2018-10-01/compute",
+    "services/network/mgmt/2018-10-01/network",
+    "version",
+  ]
+  pruneopts = "UT"
+  revision = "a1a2da0aba294fe51ba47119e652ff2f08a78afb"
+  version = "v26.3.0"
+
+[[projects]]
+  digest = "1:ae0afbb4ba38fc78943a738a1d853294a9591d9c7dd69594d641b7649535d518"
   name = "github.com/Azure/go-autorest"
   packages = [
     "autorest",
@@ -44,11 +54,11 @@
     "autorest/to",
     "autorest/validation",
     "logger",
-    "version",
+    "tracing",
   ]
   pruneopts = "UT"
-  revision = "9bc4033dd347c7f416fca46b2f42a043dc1fbdf6"
-  version = "v10.15.5"
+  revision = "134ac34d5a96fc72758c0f157f38f87cbdb3f532"
+  version = "v11.5.1"
 
 [[projects]]
   branch = "master"
@@ -155,20 +165,25 @@
   revision = "bc664df9673713a0ccf26e3b55a673ec7301088b"
 
 [[projects]]
+  digest = "1:65b0d980b428a6ad4425f2df4cd5410edd81f044cf527bd1c345368444649e58"
+  name = "github.com/census-instrumentation/opencensus-proto"
+  packages = [
+    "gen-go/agent/common/v1",
+    "gen-go/agent/trace/v1",
+    "gen-go/resource/v1",
+    "gen-go/trace/v1",
+  ]
+  pruneopts = "UT"
+  revision = "7f2434bc10da710debe5c4315ed6d4df454b4024"
+  version = "v0.1.0"
+
+[[projects]]
   digest = "1:998cf998358a303ac2430c386ba3fd3398477d6013153d3c6e11432765cc9ae6"
   name = "github.com/cespare/xxhash"
   packages = ["."]
   pruneopts = "UT"
   revision = "3b82fb7d186719faeedd0c2864f868c74fbf79a1"
   version = "v2.0.0"
-
-[[projects]]
-  branch = "master"
-  digest = "1:4c4c33075b704791d6a7f09dfb55c66769e8a1dc6adf87026292d274fe8ad113"
-  name = "github.com/codahale/hdrhistogram"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "3a0bb77429bd3a61596f5e8a3172445844342120"
 
 [[projects]]
   branch = "master"
@@ -679,7 +694,8 @@
   version = "v1.0.0"
 
 [[projects]]
-  digest = "1:d9b6740eebeb6b53cdba4b379dd5ed632179f72f73ad64a7ccbc484460d189aa"
+  branch = "master"
+  digest = "1:8577a254ffb1b97e5c824fa32ccbc09bcbd327b2faa66b5abd83d7e6169a49b8"
   name = "github.com/prometheus/client_golang"
   packages = [
     "api",
@@ -689,8 +705,7 @@
     "prometheus/promauto",
   ]
   pruneopts = "UT"
-  revision = "505eaef017263e299324067d40ca2c48f6a2cf50"
-  version = "v0.9.2"
+  revision = "c5e14697eaa7af985b2e326f1f5ed50bacb75c06"
 
 [[projects]]
   branch = "master"
@@ -729,7 +744,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:efd4f8cbe8bca553023cd1ac1db42875f1606f410ba585ff2486f9b04ab0af3f"
+  digest = "1:c270fde3390cf824f004853135a8cb6347d013eab2d31e129bbae66219284284"
   name = "github.com/prometheus/prometheus"
   packages = [
     "discovery",
@@ -762,22 +777,24 @@
     "util/treecache",
   ]
   pruneopts = "UT"
-  revision = "718344434c52fdbecba99f1e6ba0d69c1d64e3d7"
+  revision = "0d1a69353e2864f9498e50fa51fa22bfb8346dcc"
 
 [[projects]]
-  digest = "1:f8a24aba8b8c1d611384f1fb47d7c5139c1a48c4ecb9cb9ae3ce4c7bd4977b40"
+  digest = "1:7aa5ae0ef5452ce26522f16677edee5016afeaa689f77e62e6b46374463b1884"
   name = "github.com/prometheus/tsdb"
   packages = [
     ".",
     "chunkenc",
     "chunks",
+    "encoding",
     "fileutil",
     "index",
     "labels",
     "wal",
   ]
   pruneopts = "UT"
-  revision = "6d489a1004dc"
+  revision = "8921f18eb3e34d1e2a752ae0df5bbb94dc367cc7"
+  version = "v0.6.1"
 
 [[projects]]
   branch = "master"
@@ -815,36 +832,45 @@
   version = "v1.3.0"
 
 [[projects]]
-  digest = "1:9cd877df0dd71efcb84a7b9ad0eec5de1221775ccb87bba8a9cb1d125be35ecf"
+  branch = "master"
+  digest = "1:c9fac76a6828c9dd4bf2a73804c35f28b9d15db602e11a7ffe87f44d52c8ab3b"
   name = "github.com/uber/jaeger-client-go"
   packages = [
     ".",
+    "config",
     "internal/baggage",
+    "internal/baggage/remote",
     "internal/spanlog",
     "internal/throttler",
+    "internal/throttler/remote",
     "log",
+    "rpcmetrics",
     "thrift",
     "thrift-gen/agent",
+    "thrift-gen/baggage",
     "thrift-gen/jaeger",
     "thrift-gen/sampling",
     "thrift-gen/zipkincore",
+    "transport",
     "utils",
   ]
   pruneopts = "UT"
-  revision = "1a782e2da844727691fef1757c72eb190c2909f0"
-  version = "v2.15.0"
+  revision = "9774b4be474341fae05defb1c36109da954fd543"
 
 [[projects]]
-  digest = "1:0da2810678a062e0567c3215911869b0423da0e497c56683ff8e87e7a6952597"
+  digest = "1:45eca1bfd62fd1df8eb6e72c842a41448187a9d19b0254b7ff199c84f12d8a45"
   name = "github.com/uber/jaeger-lib"
-  packages = ["metrics"]
+  packages = [
+    "metrics",
+    "metrics/prometheus",
+  ]
   pruneopts = "UT"
-  revision = "5519f3beabf28707fca8d3f47f9cff87dad48d96"
-  version = "v1.3.0"
+  revision = "0e30338a695636fe5bcf7301e8030ce8dd2a8530"
+  version = "v2.0.0"
 
 [[projects]]
   branch = "master"
-  digest = "1:bab227df7effab81fbfdbf0c4d14ce78345a8d169c24c62c74c6053c3b22a252"
+  digest = "1:81403343bc9a102e3c924f87ad81e5a13bb7c36211714475c906853f4e887933"
   name = "github.com/weaveworks/common"
   packages = [
     "aws",
@@ -857,6 +883,7 @@
     "mtime",
     "server",
     "signals",
+    "tracing",
     "user",
   ]
   pruneopts = "UT"
@@ -871,7 +898,7 @@
   version = "v1.2.0"
 
 [[projects]]
-  digest = "1:381ccafa5e013a0e3f9b54604ae522a73b9533a375a6a714b483c634d5e927ab"
+  digest = "1:86b11d1e4dd05cd44d14b1e30b0497f98a37f696e8740ae88383de56d766cb34"
   name = "go.opencensus.io"
   packages = [
     ".",
@@ -881,6 +908,7 @@
     "plugin/ocgrpc",
     "plugin/ochttp",
     "plugin/ochttp/propagation/b3",
+    "plugin/ochttp/propagation/tracecontext",
     "stats",
     "stats/internal",
     "stats/view",
@@ -944,9 +972,12 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:b521f10a2d8fa85c04a8ef4e62f2d1e14d303599a55d64dabf9f5a02f84d35eb"
+  digest = "1:04a5b0e4138f98eef79ce12a955a420ee358e9f787044cc3a553ac3c3ade997e"
   name = "golang.org/x/sync"
-  packages = ["errgroup"]
+  packages = [
+    "errgroup",
+    "semaphore",
+  ]
   pruneopts = "UT"
   revision = "37e7f081c4d4c64e13b10787722085407fe5d15f"
 
@@ -994,7 +1025,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:741069bd2d0d40c37a3ffd708286a3aa0d24f91a9543ab404d920fa546d83ad6"
+  digest = "1:d594bebb1e46761948a5162ce831bdee8bbf54204a9f87c5687143b4efe10cde"
   name = "google.golang.org/api"
   packages = [
     "cloudresourcemanager/v1",
@@ -1007,6 +1038,7 @@
     "iterator",
     "option",
     "storage/v1",
+    "support/bundler",
     "transport",
     "transport/grpc",
     "transport/http",
@@ -1355,6 +1387,7 @@
     "github.com/weaveworks/common/httpgrpc",
     "github.com/weaveworks/common/middleware",
     "github.com/weaveworks/common/server",
+    "github.com/weaveworks/common/tracing",
     "github.com/weaveworks/common/user",
     "golang.org/x/net/context",
     "google.golang.org/grpc",
