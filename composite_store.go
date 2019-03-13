@@ -45,7 +45,7 @@ func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index
 	var store Store
 	var err error
 	switch cfg.Schema {
-	case "v9":
+	case "v9", "v10":
 		store, err = newSeriesStore(storeCfg, schema, index, chunks, limits)
 	default:
 		store, err = newStore(storeCfg, schema, index, chunks, limits)
