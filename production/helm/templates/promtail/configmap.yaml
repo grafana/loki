@@ -11,8 +11,8 @@ metadata:
 data:
   promtail.yaml: |
     scrape_configs:
-      - job_name: kubernetes-pods-name
-        entry_parser: {{ .Values.promtail.entryParser }}
+      - entry_parser: {{ .Values.promtail.entryParser }}
+        job_name: kubernetes-pods-name
         kubernetes_sd_configs:
         - role: pod
         relabel_configs:
@@ -50,8 +50,8 @@ data:
           - __meta_kubernetes_pod_uid
           - __meta_kubernetes_pod_container_name
           target_label: __path__
-      - job_name: kubernetes-pods-controller
-        entry_parser: {{ .Values.promtail.entryParser }}
+      - entry_parser: {{ .Values.promtail.entryParser }}
+        job_name: kubernetes-pods-controller
         kubernetes_sd_configs:
         - role: pod
         relabel_configs:
@@ -62,6 +62,10 @@ data:
           regex: .+
           source_labels:
           - __meta_kubernetes_pod_label_name
+        - action: drop
+          regex: ^([0-9a-z-.]+)(-[0-9a-f]{8,10})$
+          source_labels:
+          - __meta_kubernetes_pod_controller_name
         - action: replace
           replacement: $1
           separator: /
