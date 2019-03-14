@@ -44,7 +44,7 @@ func newAWSAutoscale(cfg DynamoDBConfig, callManager callManager) (*awsAutoscale
 		return nil, err
 	}
 	return &awsAutoscale{
-		call: callManager,
+		call:                   callManager,
 		ApplicationAutoScaling: applicationautoscaling.New(session),
 	}, nil
 }
