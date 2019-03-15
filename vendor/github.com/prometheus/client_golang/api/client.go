@@ -119,8 +119,8 @@ func (c *httpClient) Do(ctx context.Context, req *http.Request) (*http.Response,
 
 	select {
 	case <-ctx.Done():
-		err = resp.Body.Close()
 		<-done
+		err = resp.Body.Close()
 		if err == nil {
 			err = ctx.Err()
 		}

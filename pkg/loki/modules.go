@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/opentracing-contrib/go-stdlib/nethttp"
-	opentracing "github.com/opentracing/opentracing-go"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
@@ -114,13 +112,7 @@ func (t *Loki) initDistributor() (err error) {
 		return
 	}
 
-	operationNameFunc := nethttp.OperationNameFunc(func(r *http.Request) string {
-		return r.URL.RequestURI()
-	})
 	t.server.HTTP.Handle("/api/prom/push", middleware.Merge(
-		middleware.Func(func(handler http.Handler) http.Handler {
-			return nethttp.Middleware(opentracing.GlobalTracer(), handler, operationNameFunc)
-		}),
 		t.httpAuthMiddleware,
 	).Wrap(http.HandlerFunc(t.distributor.PushHandler)))
 
@@ -133,13 +125,7 @@ func (t *Loki) initQuerier() (err error) {
 		return
 	}
 
-	operationNameFunc := nethttp.OperationNameFunc(func(r *http.Request) string {
-		return r.URL.RequestURI()
-	})
 	httpMiddleware := middleware.Merge(
-		middleware.Func(func(handler http.Handler) http.Handler {
-			return nethttp.Middleware(opentracing.GlobalTracer(), handler, operationNameFunc)
-		}),
 		t.httpAuthMiddleware,
 	)
 	t.server.HTTP.Handle("/api/prom/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.QueryHandler)))

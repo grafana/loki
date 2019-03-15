@@ -111,7 +111,6 @@ func (q *querier) LabelValuesFor(string, labels.Label) ([]string, error) {
 
 func (q *querier) Select(ms ...labels.Matcher) (SeriesSet, error) {
 	return q.sel(q.blocks, ms)
-
 }
 
 func (q *querier) sel(qs []Querier, ms []labels.Matcher) (SeriesSet, error) {
@@ -141,6 +140,36 @@ func (q *querier) Close() error {
 		merr.Add(bq.Close())
 	}
 	return merr.Err()
+}
+
+// verticalQuerier aggregates querying results from time blocks within
+// a single partition. The block time ranges can be overlapping.
+type verticalQuerier struct {
+	querier
+}
+
+func (q *verticalQuerier) Select(ms ...labels.Matcher) (SeriesSet, error) {
+	return q.sel(q.blocks, ms)
+}
+
+func (q *verticalQuerier) sel(qs []Querier, ms []labels.Matcher) (SeriesSet, error) {
+	if len(qs) == 0 {
+		return EmptySeriesSet(), nil
+	}
+	if len(qs) == 1 {
+		return qs[0].Select(ms...)
+	}
+	l := len(qs) / 2
+
+	a, err := q.sel(qs[:l], ms)
+	if err != nil {
+		return nil, err
+	}
+	b, err := q.sel(qs[l:], ms)
+	if err != nil {
+		return nil, err
+	}
+	return newMergedVerticalSeriesSet(a, b), nil
 }
 
 // NewBlockQuerier returns a querier against the reader.
@@ -247,37 +276,6 @@ func PostingsForMatchers(ix IndexReader, ms ...labels.Matcher) (index.Postings, 
 	return ix.SortedPostings(index.Intersect(its...)), nil
 }
 
-// tuplesByPrefix uses binary search to find prefix matches within ts.
-func tuplesByPrefix(m *labels.PrefixMatcher, ts StringTuples) ([]string, error) {
-	var outErr error
-	tslen := ts.Len()
-	i := sort.Search(tslen, func(i int) bool {
-		vs, err := ts.At(i)
-		if err != nil {
-			outErr = fmt.Errorf("Failed to read tuple %d/%d: %v", i, tslen, err)
-			return true
-		}
-		val := vs[0]
-		l := len(m.Prefix())
-		if l > len(vs) {
-			l = len(val)
-		}
-		return val[:l] >= m.Prefix()
-	})
-	if outErr != nil {
-		return nil, outErr
-	}
-	var matches []string
-	for ; i < tslen; i++ {
-		vs, err := ts.At(i)
-		if err != nil || !m.Matches(vs[0]) {
-			return matches, err
-		}
-		matches = append(matches, vs[0])
-	}
-	return matches, nil
-}
-
 func postingsForMatcher(ix IndexReader, m labels.Matcher) (index.Postings, error) {
 	// If the matcher selects an empty value, it selects all the series which don't
 	// have the label name set too. See: https://github.com/prometheus/prometheus/issues/3575
@@ -301,21 +299,13 @@ func postingsForMatcher(ix IndexReader, m labels.Matcher) (index.Postings, error
 	}
 
 	var res []string
-	if pm, ok := m.(*labels.PrefixMatcher); ok {
-		res, err = tuplesByPrefix(pm, tpls)
+	for i := 0; i < tpls.Len(); i++ {
+		vals, err := tpls.At(i)
 		if err != nil {
 			return nil, err
 		}
-
-	} else {
-		for i := 0; i < tpls.Len(); i++ {
-			vals, err := tpls.At(i)
-			if err != nil {
-				return nil, err
-			}
-			if m.Matches(vals[0]) {
-				res = append(res, vals[0])
-			}
+		if m.Matches(vals[0]) {
+			res = append(res, vals[0])
 		}
 	}
 
@@ -364,11 +354,23 @@ func postingsForUnsetLabelMatcher(ix IndexReader, m labels.Matcher) (index.Posti
 		rit = append(rit, it)
 	}
 
+	merged := index.Merge(rit...)
+	// With many many postings, it's best to pre-calculate
+	// the merged list via next rather than have a ton of seeks
+	// in Without/Intersection.
+	if len(rit) > 100 {
+		pl, err := index.ExpandPostings(merged)
+		if err != nil {
+			return nil, err
+		}
+		merged = index.NewListPostings(pl)
+	}
+
 	allPostings, err := ix.Postings(index.AllPostingsKey())
 	if err != nil {
 		return nil, err
 	}
-	return index.Without(allPostings, index.Merge(rit...)), nil
+	return index.Without(allPostings, merged), nil
 }
 
 func mergeStrings(a, b []string) []string {
@@ -477,6 +479,72 @@ func (s *mergedSeriesSet) Next() bool {
 		s.adone = !s.a.Next()
 	} else {
 		s.cur = &chainedSeries{series: []Series{s.a.At(), s.b.At()}}
+		s.adone = !s.a.Next()
+		s.bdone = !s.b.Next()
+	}
+	return true
+}
+
+type mergedVerticalSeriesSet struct {
+	a, b         SeriesSet
+	cur          Series
+	adone, bdone bool
+}
+
+// NewMergedVerticalSeriesSet takes two series sets as a single series set.
+// The input series sets must be sorted and
+// the time ranges of the series can be overlapping.
+func NewMergedVerticalSeriesSet(a, b SeriesSet) SeriesSet {
+	return newMergedVerticalSeriesSet(a, b)
+}
+
+func newMergedVerticalSeriesSet(a, b SeriesSet) *mergedVerticalSeriesSet {
+	s := &mergedVerticalSeriesSet{a: a, b: b}
+	// Initialize first elements of both sets as Next() needs
+	// one element look-ahead.
+	s.adone = !s.a.Next()
+	s.bdone = !s.b.Next()
+
+	return s
+}
+
+func (s *mergedVerticalSeriesSet) At() Series {
+	return s.cur
+}
+
+func (s *mergedVerticalSeriesSet) Err() error {
+	if s.a.Err() != nil {
+		return s.a.Err()
+	}
+	return s.b.Err()
+}
+
+func (s *mergedVerticalSeriesSet) compare() int {
+	if s.adone {
+		return 1
+	}
+	if s.bdone {
+		return -1
+	}
+	return labels.Compare(s.a.At().Labels(), s.b.At().Labels())
+}
+
+func (s *mergedVerticalSeriesSet) Next() bool {
+	if s.adone && s.bdone || s.Err() != nil {
+		return false
+	}
+
+	d := s.compare()
+
+	// Both sets contain the current series. Chain them into a single one.
+	if d > 0 {
+		s.cur = s.b.At()
+		s.bdone = !s.b.Next()
+	} else if d < 0 {
+		s.cur = s.a.At()
+		s.adone = !s.a.Next()
+	} else {
+		s.cur = &verticalChainedSeries{series: []Series{s.a.At(), s.b.At()}}
 		s.adone = !s.a.Next()
 		s.bdone = !s.b.Next()
 	}
@@ -620,11 +688,9 @@ func (s *populatedChunkSeries) Next() bool {
 				// This means that the chunk has be garbage collected. Remove it from the list.
 				if s.err == ErrNotFound {
 					s.err = nil
-
 					// Delete in-place.
-					chks = append(chks[:j], chks[j+1:]...)
+					s.chks = append(chks[:j], chks[j+1:]...)
 				}
-
 				return false
 			}
 		}
@@ -778,6 +844,100 @@ func (it *chainedSeriesIterator) At() (t int64, v float64) {
 
 func (it *chainedSeriesIterator) Err() error {
 	return it.cur.Err()
+}
+
+// verticalChainedSeries implements a series for a list of time-sorted, time-overlapping series.
+// They all must have the same labels.
+type verticalChainedSeries struct {
+	series []Series
+}
+
+func (s *verticalChainedSeries) Labels() labels.Labels {
+	return s.series[0].Labels()
+}
+
+func (s *verticalChainedSeries) Iterator() SeriesIterator {
+	return newVerticalMergeSeriesIterator(s.series...)
+}
+
+// verticalMergeSeriesIterator implements a series iterater over a list
+// of time-sorted, time-overlapping iterators.
+type verticalMergeSeriesIterator struct {
+	a, b                  SeriesIterator
+	aok, bok, initialized bool
+
+	curT int64
+	curV float64
+}
+
+func newVerticalMergeSeriesIterator(s ...Series) SeriesIterator {
+	if len(s) == 1 {
+		return s[0].Iterator()
+	} else if len(s) == 2 {
+		return &verticalMergeSeriesIterator{
+			a: s[0].Iterator(),
+			b: s[1].Iterator(),
+		}
+	}
+	return &verticalMergeSeriesIterator{
+		a: s[0].Iterator(),
+		b: newVerticalMergeSeriesIterator(s[1:]...),
+	}
+}
+
+func (it *verticalMergeSeriesIterator) Seek(t int64) bool {
+	it.aok, it.bok = it.a.Seek(t), it.b.Seek(t)
+	it.initialized = true
+	return it.Next()
+}
+
+func (it *verticalMergeSeriesIterator) Next() bool {
+	if !it.initialized {
+		it.aok = it.a.Next()
+		it.bok = it.b.Next()
+		it.initialized = true
+	}
+
+	if !it.aok && !it.bok {
+		return false
+	}
+
+	if !it.aok {
+		it.curT, it.curV = it.b.At()
+		it.bok = it.b.Next()
+		return true
+	}
+	if !it.bok {
+		it.curT, it.curV = it.a.At()
+		it.aok = it.a.Next()
+		return true
+	}
+
+	acurT, acurV := it.a.At()
+	bcurT, bcurV := it.b.At()
+	if acurT < bcurT {
+		it.curT, it.curV = acurT, acurV
+		it.aok = it.a.Next()
+	} else if acurT > bcurT {
+		it.curT, it.curV = bcurT, bcurV
+		it.bok = it.b.Next()
+	} else {
+		it.curT, it.curV = bcurT, bcurV
+		it.aok = it.a.Next()
+		it.bok = it.b.Next()
+	}
+	return true
+}
+
+func (it *verticalMergeSeriesIterator) At() (t int64, v float64) {
+	return it.curT, it.curV
+}
+
+func (it *verticalMergeSeriesIterator) Err() error {
+	if it.a.Err() != nil {
+		return it.a.Err()
+	}
+	return it.b.Err()
 }
 
 // chunkSeriesIterator implements a series iterator on top

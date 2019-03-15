@@ -62,11 +62,11 @@ imports:
   - require
   - suite
 - name: github.com/uber/jaeger-lib
-  version: 4267858c0679cd4e47cefed8d7f70fd386cfb567
+  version: 0e30338a695636fe5bcf7301e8030ce8dd2a8530
   subpackages:
   - metrics
+  - metrics/metricstest
   - metrics/prometheus
-  - metrics/testutils
 - name: go.uber.org/atomic
   version: 8474b86a5a6f79c443ce4b2992817ff32cf208b8
 - name: go.uber.org/multierr
