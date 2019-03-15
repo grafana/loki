@@ -22,7 +22,7 @@ In your Fluentd configuration, use `@type loki`. Additional configuration is opt
   url "https://logs-us-west1.grafana.net"
   username "#{ENV['LOKI_USERNAME']}"
   password "#{ENV['LOKI_PASSWORD']}"
-  labels {"env":"dev"}
+  extra_labels {"env":"dev"}
   flush_interval 10s
   flush_at_shutdown true
   buffer_chunk_limit 1m
