@@ -23,6 +23,12 @@ type Fixture interface {
 	Teardown() error
 }
 
+// DefaultSchemaConfig returns default schema for use in test fixtures
+func DefaultSchemaConfig(kind string) chunk.SchemaConfig {
+	schemaConfig := chunk.DefaultSchemaConfig(kind, "v1", model.Now().Add(-time.Hour*2))
+	return schemaConfig
+}
+
 // Setup a fixture with initial tables
 func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.ObjectClient, error) {
 	var tbmConfig chunk.TableManagerConfig
@@ -49,11 +55,11 @@ func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.ObjectCl
 }
 
 // CreateChunks creates some chunks for testing
-func CreateChunks(startIndex, batchSize int) ([]string, []chunk.Chunk, error) {
+func CreateChunks(startIndex, batchSize int, start model.Time) ([]string, []chunk.Chunk, error) {
 	keys := []string{}
 	chunks := []chunk.Chunk{}
 	for j := 0; j < batchSize; j++ {
-		chunk := dummyChunkFor(model.Now(), model.Metric{
+		chunk := dummyChunkFor(start, model.Metric{
 			model.MetricNameLabel: "foo",
 			"index":               model.LabelValue(strconv.Itoa(startIndex*batchSize + j)),
 		})

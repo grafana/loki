@@ -2,12 +2,11 @@ package gcp
 
 import (
 	"context"
-	"time"
+	"fmt"
 
 	"cloud.google.com/go/bigtable"
 	"cloud.google.com/go/bigtable/bttest"
 	"github.com/fsouza/fake-gcs-server/fakestorage"
-	"github.com/prometheus/common/model"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 
@@ -27,6 +26,7 @@ type fixture struct {
 
 	gcsObjectClient bool
 	columnKeyClient bool
+	hashPrefix      bool
 }
 
 func (f *fixture) Name() string {
@@ -56,16 +56,7 @@ func (f *fixture) Clients() (
 		return
 	}
 
-	schemaConfig = chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{{
-			IndexType: "gcp",
-			From:      model.Now(),
-			ChunkTables: chunk.PeriodicTableConfig{
-				Prefix: "chunks",
-				Period: 10 * time.Minute,
-			},
-		}},
-	}
+	schemaConfig = testutils.DefaultSchemaConfig("gcp-columnkey")
 	tClient = &tableClient{
 		client: adminClient,
 	}
@@ -75,10 +66,13 @@ func (f *fixture) Clients() (
 		return
 	}
 
+	cfg := Config{
+		DistributeKeys: f.hashPrefix,
+	}
 	if f.columnKeyClient {
-		iClient = newStorageClientColumnKey(Config{}, schemaConfig, client)
+		iClient = newStorageClientColumnKey(cfg, schemaConfig, client)
 	} else {
-		iClient = newStorageClientV1(Config{}, schemaConfig, client)
+		iClient = newStorageClientV1(cfg, schemaConfig, client)
 	}
 
 	if f.gcsObjectClient {
@@ -99,21 +93,19 @@ func (f *fixture) Teardown() error {
 }
 
 // Fixtures for unit testing GCP storage.
-var Fixtures = []testutils.Fixture{
-	&fixture{
-		name: "bigtable",
-	},
-	&fixture{
-		name:            "bigtable-columnkey",
-		columnKeyClient: true,
-	},
-	&fixture{
-		name:            "bigtable-gcs",
-		gcsObjectClient: true,
-	},
-	&fixture{
-		name:            "bigtable-columnkey-gcs",
-		gcsObjectClient: true,
-		columnKeyClient: true,
-	},
-}
+var Fixtures = func() []testutils.Fixture {
+	fixtures := []testutils.Fixture{}
+	for _, gcsObjectClient := range []bool{true, false} {
+		for _, columnKeyClient := range []bool{true, false} {
+			for _, hashPrefix := range []bool{true, false} {
+				fixtures = append(fixtures, &fixture{
+					name:            fmt.Sprintf("bigtable-columnkey:%v-gcsObjectClient:%v-hashPrefix:%v", columnKeyClient, gcsObjectClient, hashPrefix),
+					columnKeyClient: columnKeyClient,
+					gcsObjectClient: gcsObjectClient,
+					hashPrefix:      hashPrefix,
+				})
+			}
+		}
+	}
+	return fixtures
+}()

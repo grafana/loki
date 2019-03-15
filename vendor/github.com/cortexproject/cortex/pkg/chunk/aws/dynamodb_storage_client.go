@@ -454,7 +454,7 @@ func (a dynamoDBRequestAdapter) HasNextPage() bool {
 }
 
 func (a dynamoDBRequestAdapter) Retryable() bool {
-	return *a.request.Retryable
+	return aws.BoolValue(a.request.Retryable)
 }
 
 type chunksPlusError struct {
@@ -523,7 +523,10 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 	for _, chunk := range chunks {
 		key := chunk.ExternalKey()
 		chunksByKey[key] = chunk
-		tableName := a.schemaCfg.ChunkTableFor(chunk.From)
+		tableName, err := a.schemaCfg.ChunkTableFor(chunk.From)
+		if err != nil {
+			return nil, err
+		}
 		outstanding.Add(tableName, key, placeholder)
 	}
 
@@ -646,7 +649,11 @@ func (a dynamoDBStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 		}
 		key := chunks[i].ExternalKey()
 
-		table := a.schemaCfg.ChunkTableFor(chunks[i].From)
+		table, err := a.schemaCfg.ChunkTableFor(chunks[i].From)
+		if err != nil {
+			return err
+		}
+
 		dynamoDBWrites.Add(table, key, placeholder, buf)
 	}
 

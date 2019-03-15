@@ -2,12 +2,14 @@ package gcp
 
 import (
 	"context"
-	"strings"
+
+	"google.golang.org/grpc/codes"
 
 	"cloud.google.com/go/bigtable"
 	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/pkg/errors"
 )
 
 type tableClient struct {
@@ -17,7 +19,8 @@ type tableClient struct {
 
 // NewTableClient returns a new TableClient.
 func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) {
-	client, err := bigtable.NewAdminClient(ctx, cfg.Project, cfg.Instance, instrumentation()...)
+	opts := toOptions(cfg.GRPCClientConfig.DialOption(bigtableInstrumentation()))
+	client, err := bigtable.NewAdminClient(ctx, cfg.Project, cfg.Instance, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +33,7 @@ func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) 
 func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 	tables, err := c.client.Tables(ctx)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "client.Tables")
 	}
 
 	// Check each table has the right column family.  If not, omit it.
@@ -38,7 +41,7 @@ func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 	for _, table := range tables {
 		info, err := c.client.TableInfo(ctx, table)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "client.TableInfo")
 		}
 
 		if hasColumnFamily(info.FamilyInfos) {
@@ -61,22 +64,27 @@ func hasColumnFamily(infos []bigtable.FamilyInfo) bool {
 func (c *tableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) error {
 	if err := c.client.CreateTable(ctx, desc.Name); err != nil {
 		if !alreadyExistsError(err) {
-			return err
+			return errors.Wrap(err, "client.CreateTable")
 		}
 	}
-	return c.client.CreateColumnFamily(ctx, desc.Name, columnFamily)
+
+	if err := c.client.CreateColumnFamily(ctx, desc.Name, columnFamily); err != nil {
+		if !alreadyExistsError(err) {
+			return errors.Wrap(err, "client.CreateColumnFamily")
+		}
+	}
+
+	return nil
 }
 
 func alreadyExistsError(err error) bool {
-	// This is super fragile, but I can't find a better way of doing it.
-	// Have filed bug upstream: https://github.com/GoogleCloudPlatform/google-cloud-go/issues/672
 	serr, ok := status.FromError(err)
-	return ok && strings.Contains(serr.Message(), "already exists")
+	return ok && serr.Code() == codes.AlreadyExists
 }
 
 func (c *tableClient) DeleteTable(ctx context.Context, name string) error {
 	if err := c.client.DeleteTable(ctx, name); err != nil {
-		return err
+		return errors.Wrap(err, "client.DeleteTable")
 	}
 
 	return nil

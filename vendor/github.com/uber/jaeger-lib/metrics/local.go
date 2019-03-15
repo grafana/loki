@@ -286,11 +286,6 @@ func (l *LocalFactory) newNamespace(name string) string {
 	if l.namespace == "" {
 		return name
 	}
-
-	if name == "" {
-		return l.namespace
-	}
-
 	return l.namespace + "." + name
 }
 

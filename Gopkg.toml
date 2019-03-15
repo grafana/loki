@@ -26,13 +26,11 @@
 
 [[constraint]]
   name = "github.com/cortexproject/cortex"
-  branch = "optionally-enforce-metric-name"
-  source = "https://github.com/grafana/cortex.git"
+  branch = "master"
 
 [[constraint]]
   name = "github.com/weaveworks/common"
-  source = "github.com/tomwilkie/weaveworks-common"
-  branch = "dev"
+  branch = "master"
 
 [[constraint]]
   name = "gopkg.in/fsnotify.v1"

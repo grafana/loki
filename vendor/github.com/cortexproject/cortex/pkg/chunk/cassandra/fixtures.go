@@ -6,7 +6,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
-	"github.com/prometheus/common/model"
 )
 
 // GOCQL doesn't provide nice mocks, so we use a real Cassandra instance.
@@ -49,7 +48,7 @@ func Fixtures() ([]testutils.Fixture, error) {
 	}
 
 	// Get a SchemaConfig with the defaults.
-	schemaConfig := chunk.DefaultSchemaConfig("cassandra", "v1", model.Now())
+	schemaConfig := testutils.DefaultSchemaConfig("cassandra")
 
 	storageClient, err := NewStorageClient(cfg, schemaConfig)
 	if err != nil {

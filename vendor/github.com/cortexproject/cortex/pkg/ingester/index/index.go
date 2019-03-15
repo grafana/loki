@@ -78,7 +78,7 @@ func (ii *InvertedIndex) LabelValues(name model.LabelName) model.LabelValues {
 }
 
 // Delete a fingerprint with the given label pairs.
-func (ii *InvertedIndex) Delete(labels []client.LabelPair, fp model.Fingerprint) {
+func (ii *InvertedIndex) Delete(labels labels.Labels, fp model.Fingerprint) {
 	shard := &ii.shards[util.HashFP(fp)%indexShards]
 	shard.delete(labels, fp)
 }
@@ -187,7 +187,7 @@ func (shard *indexShard) labelValues(name model.LabelName) model.LabelValues {
 	return results
 }
 
-func (shard *indexShard) delete(labels []client.LabelPair, fp model.Fingerprint) {
+func (shard *indexShard) delete(labels labels.Labels, fp model.Fingerprint) {
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
 
