@@ -1,4 +1,5 @@
-{{- if .Values.rbac.create -}}
+{{- if .Values.promtail.enabled }}
+{{- if .Values.rbac.create }}
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: RoleBinding
 metadata:
@@ -15,4 +16,5 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: {{ template "promtail.serviceAccountName" . }}
-{{- end -}}
+{{- end }}
+{{- end }}

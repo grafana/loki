@@ -1,3 +1,4 @@
+{{- if .Values.loki.enabled }}
 apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
@@ -87,4 +88,5 @@ spec:
             claimName: {{ .Values.loki.persistence.existingClaim | default (include "loki.fullname" .) }}
       {{- else }}
           emptyDir: {}
-      {{- end -}}
+      {{- end }}
+{{- end }}

@@ -1,3 +1,4 @@
+{{- if .Values.promtail.enabled }}
 apiVersion: extensions/v1beta1
 kind: DaemonSet
 metadata:
@@ -95,3 +96,4 @@ spec:
         - name: varlibdockercontainers
           hostPath:
             path: /var/lib/docker/containers
+{{- end }}
