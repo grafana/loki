@@ -2,6 +2,9 @@ package targets
 
 import (
 	"context"
+	"fmt"
+	"github.com/grafana/loki/pkg/promtail/concat"
+	"github.com/pkg/errors"
 	"os"
 	"strings"
 
@@ -73,13 +76,18 @@ func NewFileTargetManager(
 
 	config := map[string]sd_config.ServiceDiscoveryConfig{}
 	for _, cfg := range scrapeConfigs {
+		concat, err := concat.New(logger, client, cfg.ConcatConfig)
+		if err != nil {
+			return nil, errors.Wrap(err, fmt.Sprintf("error parsing concat config for %s", cfg.JobName))
+		}
 		s := &syncer{
 			log:           logger,
 			positions:     positions,
 			relabelConfig: cfg.RelabelConfigs,
 			targets:       map[string]*FileTarget{},
 			hostname:      hostname,
-			entryHandler:  cfg.EntryParser.Wrap(client),
+			concat:        concat,
+			entryHandler:  cfg.EntryParser.Wrap(concat),
 			targetConfig:  targetConfig,
 		}
 		tm.syncers[cfg.JobName] = s
@@ -114,6 +122,7 @@ type syncer struct {
 	log          log.Logger
 	positions    *positions.Positions
 	entryHandler api.EntryHandler
+	concat       *concat.Concat
 	hostname     string
 
 	targets       map[string]*FileTarget
@@ -199,6 +208,7 @@ func (s *syncer) stop() {
 		level.Info(s.log).Log("msg", "Removing target", "key", key)
 		target.Stop()
 		delete(s.targets, key)
+		s.concat.Stop()
 	}
 }
 

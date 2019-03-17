@@ -2,7 +2,7 @@ package scrape
 
 import (
 	"fmt"
-
+	"github.com/grafana/loki/pkg/promtail/concat"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/pkg/relabel"
 
@@ -15,11 +15,16 @@ type Config struct {
 	EntryParser            api.EntryParser                  `yaml:"entry_parser"`
 	RelabelConfigs         []*relabel.Config                `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
+	ConcatConfig           concat.Config					`yaml:"concat_config"`
 }
 
 // DefaultScrapeConfig is the default Config.
 var DefaultScrapeConfig = Config{
-	EntryParser: api.Docker,
+	EntryParser:  api.Docker,
+	ConcatConfig: concat.Config {
+		MultilineStartRegexpString: "",
+		Timeout: 0,
+	},
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.

@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	fsnotify "gopkg.in/fsnotify.v1"
+	"gopkg.in/fsnotify.v1"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/promtail/api"
@@ -38,10 +38,6 @@ var (
 		Name:      "files_active_total",
 		Help:      "Number of active files.",
 	})
-)
-
-const (
-	filenameLabel = "__filename__"
 )
 
 // Config describes behavior for Target
