@@ -8,6 +8,8 @@ serviceAccount:
 
 loki:
   replicas: 1
+  minReadySeconds: 0
+  terminationGracePeriodSeconds: 30
   deploymentStrategy: RollingUpdate
 
   image:
@@ -21,11 +23,14 @@ loki:
     labels: {}
 
   readinessProbe: {}
+    # httpGet:
+    #     path: /ready
+    #     port: 3100
+    #   initialDelaySeconds: 15
 
   livenessProbe: {}
 
-  resources:
-    {}
+  resources: {}
     # limits:
     #   cpu: 100m
     #   memory: 128Mi
@@ -56,7 +61,16 @@ loki:
   ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
   ##
   affinity: {}
-
+    # podAntiAffinity:
+    #   requiredDuringSchedulingIgnoredDuringExecution:
+    #   - labelSelector:
+    #       matchExpressions:
+    #       - key: app
+    #         operator: In
+    #         values:
+    #         - loki
+    #     topologyKey: "kubernetes.io/hostname"
+  
   ## Enable persistence using Persistent Volume Claims
   ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
   ## If you set enabled as "True", you need :
@@ -113,8 +127,7 @@ promtail:
 
   livenessProbe: {}
 
-  resources:
-    {}
+  resources: {}
     # limits:
     #   cpu: 100m
     #   memory: 128Mi
