@@ -252,7 +252,7 @@ func (c *doubleDeltaEncodedChunk) UnmarshalFromBuf(buf []byte) error {
 func (c *doubleDeltaEncodedChunk) setLen() error {
 	l := binary.LittleEndian.Uint16((*c)[doubleDeltaHeaderBufLenOffset:])
 	if int(l) > cap(*c) {
-		return fmt.Errorf("doubledelta chunk length exceeded during unmarshaling: %d", l)
+		return fmt.Errorf("doubledelta chunk length exceeded during unmarshalling: %d", l)
 	}
 	if int(l) < doubleDeltaHeaderMinBytes {
 		return fmt.Errorf("doubledelta chunk length less than header size: %d < %d", l, doubleDeltaHeaderMinBytes)

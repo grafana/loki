@@ -16,11 +16,14 @@ package tsdb
 
 import (
 	"encoding/json"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/tsdb/chunkenc"
@@ -132,12 +135,24 @@ type BlockReader interface {
 
 	// Tombstones returns a TombstoneReader over the block's deleted data.
 	Tombstones() (TombstoneReader, error)
+
+	// MinTime returns the min time of the block.
+	MinTime() int64
+
+	// MaxTime returns the max time of the block.
+	MaxTime() int64
 }
 
 // Appendable defines an entity to which data can be appended.
 type Appendable interface {
 	// Appender returns a new Appender against an underlying store.
 	Appender() Appender
+}
+
+// SizeReader returns the size of the object in bytes.
+type SizeReader interface {
+	// Size returns the size in bytes.
+	Size() int64
 }
 
 // BlockMeta provides meta information about a block.
@@ -166,6 +181,7 @@ type BlockStats struct {
 	NumSeries     uint64 `json:"numSeries,omitempty"`
 	NumChunks     uint64 `json:"numChunks,omitempty"`
 	NumTombstones uint64 `json:"numTombstones,omitempty"`
+	NumBytes      int64  `json:"numBytes,omitempty"`
 }
 
 // BlockDesc describes a block by ULID and time range.
@@ -182,6 +198,9 @@ type BlockMetaCompaction struct {
 	Level int `json:"level"`
 	// ULIDs of all source head blocks that went into the block.
 	Sources []ulid.ULID `json:"sources,omitempty"`
+	// Indicates that during compaction it resulted in a block without any samples
+	// so it should be deleted on the next reload.
+	Deletable bool `json:"deletable,omitempty"`
 	// Short descriptions of the direct blocks that were used to create
 	// this block.
 	Parents []BlockDesc `json:"parents,omitempty"`
@@ -257,7 +276,19 @@ type Block struct {
 
 // OpenBlock opens the block in the directory. It can be passed a chunk pool, which is used
 // to instantiate chunk structs.
-func OpenBlock(dir string, pool chunkenc.Pool) (*Block, error) {
+func OpenBlock(logger log.Logger, dir string, pool chunkenc.Pool) (pb *Block, err error) {
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
+	var closers []io.Closer
+	defer func() {
+		if err != nil {
+			var merr MultiError
+			merr.Add(err)
+			merr.Add(closeAll(closers))
+			err = merr.Err()
+		}
+	}()
 	meta, err := readMetaFile(dir)
 	if err != nil {
 		return nil, err
@@ -267,17 +298,30 @@ func OpenBlock(dir string, pool chunkenc.Pool) (*Block, error) {
 	if err != nil {
 		return nil, err
 	}
-	ir, err := index.NewFileReader(filepath.Join(dir, "index"))
+	closers = append(closers, cr)
+
+	ir, err := index.NewFileReader(filepath.Join(dir, indexFilename))
 	if err != nil {
 		return nil, err
 	}
+	closers = append(closers, ir)
 
-	tr, err := readTombstones(dir)
+	tr, tsr, err := readTombstones(dir)
 	if err != nil {
 		return nil, err
 	}
+	closers = append(closers, tr)
 
-	pb := &Block{
+	// TODO refactor to set this at block creation time as
+	// that would be the logical place for a block size to be calculated.
+	bs := blockSize(cr, ir, tsr)
+	meta.Stats.NumBytes = bs
+	err = writeMetaFile(dir, meta)
+	if err != nil {
+		level.Warn(logger).Log("msg", "couldn't write the meta file for the block size", "block", dir, "err", err)
+	}
+
+	pb = &Block{
 		dir:             dir,
 		meta:            *meta,
 		chunkr:          cr,
@@ -286,6 +330,16 @@ func OpenBlock(dir string, pool chunkenc.Pool) (*Block, error) {
 		symbolTableSize: ir.SymbolTableSize(),
 	}
 	return pb, nil
+}
+
+func blockSize(rr ...SizeReader) int64 {
+	var total int64
+	for _, r := range rr {
+		if r != nil {
+			total += r.Size()
+		}
+	}
+	return total
 }
 
 // Close closes the on-disk block. It blocks as long as there are readers reading from the block.
@@ -314,6 +368,15 @@ func (pb *Block) Dir() string { return pb.dir }
 
 // Meta returns meta information about the block.
 func (pb *Block) Meta() BlockMeta { return pb.meta }
+
+// MinTime returns the min time of the meta.
+func (pb *Block) MinTime() int64 { return pb.meta.MinTime }
+
+// MaxTime returns the max time of the meta.
+func (pb *Block) MaxTime() int64 { return pb.meta.MaxTime }
+
+// Size returns the number of bytes that the block takes up.
+func (pb *Block) Size() int64 { return pb.meta.Stats.NumBytes }
 
 // ErrClosing is returned when a block is in the process of being closed.
 var ErrClosing = errors.New("block is closing")

@@ -12,7 +12,7 @@ k {
       password: '',
       scheme: 'https',
       hostname: 'logs-us-west1.grafana.net',
-      dataroot: '/var/lib/docker',
+      container_root_path: '/var/lib/docker',
       external_labels: {},
     },
 
@@ -217,5 +217,5 @@ k {
     daemonSet.mixin.spec.template.spec.withServiceAccount('promtail') +
     $.util.configVolumeMount('promtail', '/etc/promtail') +
     $.util.hostVolumeMount('varlog', '/var/log', '/var/log') +
-    $.util.hostVolumeMount('varlibdockercontainers', $._config.promtail_config.dataroot + '/containers', $._config.promtail_config.dataroot + '/containers', readOnly=true),
+    $.util.hostVolumeMount('varlibdockercontainers', $._config.promtail_config.container_root_path + '/containers', $._config.promtail_config.container_root_path + '/containers', readOnly=true),
 }

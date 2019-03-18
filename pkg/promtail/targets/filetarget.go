@@ -237,14 +237,17 @@ func (t *FileTarget) startTailing(ps []string) {
 		fi, err := os.Stat(p)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "failed to tail file, stat failed", "error", err, "filename", p)
+			continue
 		}
 		if fi.IsDir() {
 			level.Error(t.logger).Log("msg", "failed to tail file", "error", "file is a directory", "filename", p)
+			continue
 		}
 		level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
 		tailer, err := newTailer(t.logger, t.handler, t.positions, p)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p)
+			continue
 		}
 		t.tails[p] = tailer
 	}

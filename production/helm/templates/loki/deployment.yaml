@@ -13,6 +13,7 @@ metadata:
 {{- end }}
 spec:
   replicas: {{ .Values.loki.replicas }}
+  minReadySeconds: {{ .Values.loki.minReadySeconds }}
   selector:
     matchLabels:
       app: {{ template "loki.name" . }}
@@ -26,6 +27,7 @@ spec:
     metadata:
       labels:
         app: {{ template "loki.name" . }}
+        name: {{ template "loki.name" . }}
         release: {{ .Release.Name }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/loki/secret.yaml") . | sha256sum }}
@@ -50,7 +52,7 @@ spec:
               mountPath: "/data"
               subPath: {{ .Values.loki.persistence.subPath }}
           ports:
-            - name: {{ template "loki.name" . }}
+            - name: {{ template "loki.name" . }}-metrics
               containerPort: {{ .Values.loki.service.port }}
               protocol: TCP
 {{- with .Values.loki.livenessProbe }}
@@ -77,6 +79,7 @@ spec:
       tolerations:
 {{ toYaml . | indent 8 }}
     {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.loki.terminationGracePeriodSeconds }}
       volumes:
         - name: config
           secret:

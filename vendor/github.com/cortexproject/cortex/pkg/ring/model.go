@@ -1,6 +1,7 @@
 package ring
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
@@ -72,11 +73,17 @@ func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) []uint32 {
 
 	if normaliseTokens {
 
+		// If the ingester we are claiming from is normalising, get its tokens then erase them from the ring.
+		if fromDesc, found := d.Ingesters[from]; found {
+			result = fromDesc.Tokens
+			fromDesc.Tokens = nil
+			d.Ingesters[from] = fromDesc
+		}
+
 		// If we are storing the tokens in a normalise form, we need to deal with
 		// the migration from denormalised by removing the tokens from the tokens
 		// list.
-		result = d.Ingesters[from].Tokens
-
+		// When all ingesters are in normalised mode, d.Tokens is empty here
 		for i := 0; i < len(d.Tokens); {
 			if d.Tokens[i].Ingester == from {
 				result = append(result, d.Tokens[i].Token)
@@ -115,19 +122,22 @@ func (d *Desc) FindIngestersByState(state IngesterState) []IngesterDesc {
 	return result
 }
 
-// Ready is true when all ingesters are active and healthy.
-func (d *Desc) Ready(heartbeatTimeout time.Duration) bool {
+// Ready returns no error when all ingesters are active and healthy.
+func (d *Desc) Ready(heartbeatTimeout time.Duration) error {
 	numTokens := len(d.Tokens)
-	for _, ingester := range d.Ingesters {
+	for id, ingester := range d.Ingesters {
 		if time.Now().Sub(time.Unix(ingester.Timestamp, 0)) > heartbeatTimeout {
-			return false
+			return fmt.Errorf("ingester %s past heartbeat timeout", id)
 		} else if ingester.State != ACTIVE {
-			return false
+			return fmt.Errorf("ingester %s in state %v", id, ingester.State)
 		}
 		numTokens += len(ingester.Tokens)
 	}
 
-	return numTokens > 0
+	if numTokens == 0 {
+		return fmt.Errorf("Not ready: no tokens in ring")
+	}
+	return nil
 }
 
 // TokensFor partitions the tokens into those for the given ID, and those for others.

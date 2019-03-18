@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/go-kit/kit/log"
@@ -121,4 +122,17 @@ func WithUserID(userID string, l log.Logger) log.Logger {
 func WithTraceID(traceID string, l log.Logger) log.Logger {
 	// See note in WithContext.
 	return log.With(l, "trace_id", traceID)
+}
+
+// CheckFatal prints an error and exits with error code 1 if err is non-nil
+func CheckFatal(location string, err error) {
+	if err != nil {
+		logger := level.Error(Logger)
+		if location != "" {
+			logger = log.With(logger, "msg", "error "+location)
+		}
+		// %+v gets the stack trace from errors using github.com/pkg/errors
+		logger.Log("err", fmt.Sprintf("%+v", err))
+		os.Exit(1)
+	}
 }

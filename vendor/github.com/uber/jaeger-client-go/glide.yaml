@@ -7,7 +7,7 @@ import:
   - log
 - package: github.com/crossdock/crossdock-go
 - package: github.com/uber/jaeger-lib
-  version: ^1.2.1
+  version: ^2.0.0
   subpackages:
   - metrics
 - package: github.com/pkg/errors

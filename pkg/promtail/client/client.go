@@ -54,6 +54,7 @@ type Config struct {
 
 	BackoffConfig  util.BackoffConfig `yaml:"backoff_config"`
 	ExternalLabels model.LabelSet     `yaml:"external_labels,omitempty"`
+	Timeout        time.Duration      `yaml:"timeout"`
 }
 
 // RegisterFlags registers flags.
@@ -65,6 +66,7 @@ func (c *Config) RegisterFlags(flags *flag.FlagSet) {
 	flag.IntVar(&c.BackoffConfig.MaxRetries, "client.max-retries", 5, "Maximum number of retires when sending batches.")
 	flag.DurationVar(&c.BackoffConfig.MinBackoff, "client.min-backoff", 100*time.Millisecond, "Initial backoff time between retries.")
 	flag.DurationVar(&c.BackoffConfig.MaxBackoff, "client.max-backoff", 5*time.Second, "Maximum backoff time between retries.")
+	flag.DurationVar(&c.Timeout, "client.timeout", 10*time.Second, "Maximum time to wait for server to respond to a request")
 }
 
 // Client for pushing logs in snappy-compressed protos over HTTP.
@@ -157,6 +159,7 @@ func (c *Client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 		start := time.Now()
 		status, err = c.send(ctx, buf)
 		requestDuration.WithLabelValues(strconv.Itoa(status)).Observe(time.Since(start).Seconds())
+
 		if err == nil {
 			return
 		}
@@ -166,7 +169,7 @@ func (c *Client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 			break
 		}
 
-		level.Warn(c.logger).Log("msg", "error sending batch", "status", status, "error", err)
+		level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err)
 		backoff.Wait()
 	}
 
@@ -191,6 +194,8 @@ func encodeBatch(batch map[model.Fingerprint]*logproto.Stream) ([]byte, error) {
 }
 
 func (c *Client) send(ctx context.Context, buf []byte) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	defer cancel()
 	req, err := http.NewRequest("POST", c.cfg.URL.String(), bytes.NewReader(buf))
 	if err != nil {
 		return -1, err

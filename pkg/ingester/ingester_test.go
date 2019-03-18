@@ -49,7 +49,7 @@ func TestIngester(t *testing.T) {
 			Timestamp: time.Unix(0, 0),
 			Line:      fmt.Sprintf("line %d", i),
 		})
-		req.Streams[1].Entries = append(req.Streams[0].Entries, logproto.Entry{
+		req.Streams[1].Entries = append(req.Streams[1].Entries, logproto.Entry{
 			Timestamp: time.Unix(0, 0),
 			Line:      fmt.Sprintf("line %d", i),
 		})
@@ -71,11 +71,36 @@ func TestIngester(t *testing.T) {
 		End:   time.Unix(1, 0),
 	}, &result)
 	require.NoError(t, err)
-
 	require.Len(t, result.resps, 1)
 	require.Len(t, result.resps[0].Streams, 2)
+
+	result = mockQuerierServer{
+		ctx: ctx,
+	}
+	err = i.Query(&logproto.QueryRequest{
+		Query: `{foo="bar",bar="baz1"}`,
+		Limit: 100,
+		Start: time.Unix(0, 0),
+		End:   time.Unix(1, 0),
+	}, &result)
+	require.NoError(t, err)
+	require.Len(t, result.resps, 1)
+	require.Len(t, result.resps[0].Streams, 1)
 	require.Equal(t, `{foo="bar", bar="baz1"}`, result.resps[0].Streams[0].Labels)
-	require.Equal(t, `{foo="bar", bar="baz2"}`, result.resps[0].Streams[1].Labels)
+
+	result = mockQuerierServer{
+		ctx: ctx,
+	}
+	err = i.Query(&logproto.QueryRequest{
+		Query: `{foo="bar",bar="baz2"}`,
+		Limit: 100,
+		Start: time.Unix(0, 0),
+		End:   time.Unix(1, 0),
+	}, &result)
+	require.NoError(t, err)
+	require.Len(t, result.resps, 1)
+	require.Len(t, result.resps[0].Streams, 1)
+	require.Equal(t, `{foo="bar", bar="baz2"}`, result.resps[0].Streams[0].Labels)
 }
 
 type mockStore struct {

@@ -108,9 +108,6 @@ type adapter struct {
 
 // Options of the DB storage.
 type Options struct {
-	// The interval at which the write ahead log is flushed to disc.
-	WALFlushInterval time.Duration
-
 	// The timestamp range of head blocks after which they get persisted.
 	// It's the minimum duration of any persisted block.
 	MinBlockDuration model.Duration
@@ -122,10 +119,17 @@ type Options struct {
 	WALSegmentSize units.Base2Bytes
 
 	// Duration for how long to retain data.
-	Retention model.Duration
+	RetentionDuration model.Duration
+
+	// Maximum number of bytes to be retained.
+	MaxBytes units.Base2Bytes
 
 	// Disable creation and consideration of lockfile.
 	NoLockfile bool
+
+	// When true it disables the overlapping blocks check.
+	// This in-turn enables vertical compaction and vertical query merge.
+	AllowOverlappingBlocks bool
 }
 
 var (
@@ -185,11 +189,12 @@ func Open(path string, l log.Logger, r prometheus.Registerer, opts *Options) (*t
 	}
 
 	db, err := tsdb.Open(path, l, r, &tsdb.Options{
-		WALFlushInterval:  10 * time.Second,
-		WALSegmentSize:    int(opts.WALSegmentSize),
-		RetentionDuration: uint64(time.Duration(opts.Retention).Seconds() * 1000),
-		BlockRanges:       rngs,
-		NoLockfile:        opts.NoLockfile,
+		WALSegmentSize:         int(opts.WALSegmentSize),
+		RetentionDuration:      uint64(time.Duration(opts.RetentionDuration).Seconds() * 1000),
+		MaxBytes:               int64(opts.MaxBytes),
+		BlockRanges:            rngs,
+		NoLockfile:             opts.NoLockfile,
+		AllowOverlappingBlocks: opts.AllowOverlappingBlocks,
 	})
 	if err != nil {
 		return nil, err

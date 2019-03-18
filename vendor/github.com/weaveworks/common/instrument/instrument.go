@@ -152,7 +152,9 @@ func CollectedRequest(ctx context.Context, method string, col Collector, toStatu
 	col.After(method, toStatusCode(err), start)
 
 	if err != nil {
-		ext.Error.Set(sp, true)
+		if err != context.Canceled {
+			ext.Error.Set(sp, true)
+		}
 		sp.LogFields(otlog.Error(err))
 	}
 	sp.Finish()

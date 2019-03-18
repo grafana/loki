@@ -9,6 +9,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
@@ -205,7 +206,10 @@ func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batc
 }
 
 func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {
-	cacheGets.Inc()
+	log, ctx := spanlogger.New(ctx, "cachingIndexClient.cacheFetch")
+	defer log.Finish()
+
+	cacheGets.Add(float64(len(keys)))
 
 	// Build a map from hash -> key; NB there can be collisions here; we'll fetch
 	// the last hash.
@@ -233,15 +237,20 @@ func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (bat
 		var readBatch ReadBatch
 
 		if err := proto.Unmarshal(bufs[j], &readBatch); err != nil {
-			level.Warn(util.Logger).Log("msg", "error unmarshalling index entry from cache", "err", err)
+			level.Warn(log).Log("msg", "error unmarshalling index entry from cache", "err", err)
 			cacheCorruptErrs.Inc()
 			continue
 		}
 
 		// Make sure the hash(key) is not a collision in the cache by looking at the
 		// key in the value.
-		if key != readBatch.Key || (readBatch.Expiry != 0 && time.Now().After(time.Unix(0, readBatch.Expiry))) {
-			cacheCorruptErrs.Inc()
+		if key != readBatch.Key {
+			level.Debug(log).Log("msg", "dropping index cache entry due to key collision", "key", key, "readBatch.Key", readBatch.Key, "expiry")
+			continue
+		}
+
+		if readBatch.Expiry != 0 && time.Now().After(time.Unix(0, readBatch.Expiry)) {
+			level.Debug(log).Log("msg", "dropping index cache entry due to expiration", "key", key, "readBatch.Key", readBatch.Key, "expiry", time.Unix(0, readBatch.Expiry))
 			continue
 		}
 
@@ -262,5 +271,6 @@ func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (bat
 		missed = append(missed, miss)
 	}
 
+	level.Debug(log).Log("hits", len(batches), "misses", len(misses))
 	return batches, missed
 }

@@ -26,17 +26,23 @@
 
 [[constraint]]
   name = "github.com/cortexproject/cortex"
-  branch = "optionally-enforce-metric-name"
-  source = "https://github.com/grafana/cortex.git"
+  branch = "master"
 
 [[constraint]]
   name = "github.com/weaveworks/common"
-  source = "github.com/tomwilkie/weaveworks-common"
-  branch = "dev"
+  branch = "master"
 
 [[constraint]]
   name = "gopkg.in/fsnotify.v1"
   source = "https://github.com/fsnotify/fsnotify.git"
+
+[[override]]
+  name = "github.com/uber/jaeger-lib"
+  version = "2.0.0"
+
+[[override]]
+  name = "github.com/uber/jaeger-client-go"
+  branch = "master"
 
 # For Prometheus
 
@@ -49,32 +55,12 @@
   name = "github.com/prometheus/common"
 
 [[override]]
+  branch = "master"
+  name = "github.com/prometheus/client_golang"
+
+[[override]]
   name = "github.com/prometheus/tsdb"
-  revision = "6d489a1004dc"
-
-[[override]]
-  name = "k8s.io/api"
-  revision = "05914d821849"
-
-[[override]]
-  name = "k8s.io/apimachinery"
-  revision = "2b1284ed4c93"
-
-[[override]]
-  name = "k8s.io/client-go"
-  revision = "a47917edff34"
-
-[[override]]
-  name = "github.com/Azure/azure-sdk-for-go"
-  revision = "bd73d950fa44"
-
-[[override]]
-  name = "github.com/Azure/go-autorest"
-  version = "10.8.1"
-
-[[override]]
-  version = "=v1.0.4"
-  name = "github.com/miekg/dns"
+  version = "0.6.1"
 
 [prune]
   go-tests = true

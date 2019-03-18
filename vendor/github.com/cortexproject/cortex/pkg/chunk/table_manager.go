@@ -305,45 +305,48 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 
 // partitionTables works out tables that need to be created vs tables that need to be updated
 func (m *TableManager) partitionTables(ctx context.Context, descriptions []TableDesc) ([]TableDesc, []TableDesc, []TableDesc, error) {
-	existingTables, err := m.client.ListTables(ctx)
+	tables, err := m.client.ListTables(ctx)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	sort.Strings(existingTables)
 
-	tablePrefixes := map[string]struct{}{}
-	for _, cfg := range m.schemaCfg.Configs {
-		tablePrefixes[cfg.IndexTables.Prefix] = struct{}{}
-		tablePrefixes[cfg.ChunkTables.Prefix] = struct{}{}
+	existingTables := make(map[string]struct{}, len(tables))
+	for _, table := range tables {
+		existingTables[table] = struct{}{}
+	}
+
+	expectedTables := make(map[string]TableDesc, len(descriptions))
+	for _, desc := range descriptions {
+		expectedTables[desc.Name] = desc
 	}
 
 	toCreate, toCheck, toDelete := []TableDesc{}, []TableDesc{}, []TableDesc{}
-	i, j := 0, 0
-	for i < len(descriptions) && j < len(existingTables) {
-		if descriptions[i].Name < existingTables[j] {
-			// Table descriptions[i] doesn't exist
-			toCreate = append(toCreate, descriptions[i])
-			i++
-		} else if descriptions[i].Name > existingTables[j] {
-			// existingTables[j].name isn't in descriptions, and can be removed
-			if m.cfg.RetentionPeriod > 0 {
+	for _, expectedTable := range expectedTables {
+		if _, ok := existingTables[expectedTable.Name]; ok {
+			toCheck = append(toCheck, expectedTable)
+		} else {
+			toCreate = append(toCreate, expectedTable)
+		}
+	}
+
+	if m.cfg.RetentionPeriod > 0 {
+		// Ensure we only delete tables which have a prefix managed by Cortex.
+		tablePrefixes := map[string]struct{}{}
+		for _, cfg := range m.schemaCfg.Configs {
+			tablePrefixes[cfg.IndexTables.Prefix] = struct{}{}
+			tablePrefixes[cfg.ChunkTables.Prefix] = struct{}{}
+		}
+
+		for existingTable := range existingTables {
+			if _, ok := expectedTables[existingTable]; !ok {
 				for tblPrefix := range tablePrefixes {
-					if strings.HasPrefix(existingTables[j], tblPrefix) {
-						toDelete = append(toDelete, TableDesc{Name: existingTables[j]})
+					if strings.HasPrefix(existingTable, tblPrefix) {
+						toDelete = append(toDelete, TableDesc{Name: existingTable})
 						break
 					}
 				}
 			}
-			j++
-		} else {
-			// Table exists, need to check it has correct throughput
-			toCheck = append(toCheck, descriptions[i])
-			i++
-			j++
 		}
-	}
-	for ; i < len(descriptions); i++ {
-		toCreate = append(toCreate, descriptions[i])
 	}
 
 	return toCreate, toCheck, toDelete, nil
