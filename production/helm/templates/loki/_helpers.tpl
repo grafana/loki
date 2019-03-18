@@ -72,24 +72,6 @@ schema_config:
 {{- end -}}
 {{- end -}}
 
-{{- if .Values.loki.config.aws_storage_configs }}
-storage_config:
-{{end}}         
-{{- if .Values.loki.config.storage_configs }}
-storage_config:
-  {{- if .Values.loki.config.storage_configs.aws }}
-  {{- with .Values.loki.config.storage_configs.aws}}
-  aws:
-    s3: {{ .s3 }}
-    dynamodbconfig:
-      dynamodb: {{ .dynamodbconfig.dynamodb }}
-  {{end}}
-  {{end}}
-  {{- if .Values.loki.config.storage_configs.local_storage }}
-  {{- range .Values.loki.config.storage_configs.local_storage }}
-  {{ .name }}:
-    directory: {{ .directory }}
-  {{- end -}}
-  {{- end -}}
-{{- end -}}
-{{- end}}
+{{- with .Values.loki.podAnnotations }}
+{{ toYaml .}}
+{{- end }}
