@@ -72,6 +72,9 @@ schema_config:
 {{- end -}}
 {{- end -}}
 
-{{- with .Values.loki.podAnnotations }}
-{{ toYaml .}}
+{{- with .Values.loki.config.storage_config }}
+storage_config:
+{{ toYaml . | indent 2 }}
 {{- end }}
+
+{{- end}}
