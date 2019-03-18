@@ -45,12 +45,12 @@ promtail + {
       hostname: 'logs-us-west1.grafana.net',
       username: 'user-id',
       password: 'password',
-      dataroot: '/var/lib/docker',
+      container_root_path: '/var/lib/docker',
     },
   },
 }
 ```
-Notice that `dataroot` is your own data root for docker daemon, use `docker info | grep "Root Dir"` to get it.
+Notice that `container_root_path` is your own data root for docker daemon, use `docker info | grep "Root Dir"` to get it.
 
 Then do `ks show loki` to see the manifests that'll be deployed to your cluster.
 Apply them using `ks apply loki`.
@@ -82,14 +82,14 @@ loki + promtail + gateway {
       hostname: 'gateway.%(namespace)s.svc' % $._config,
       username: 'loki',
       password: 'password',
-      dataroot: '/var/lib/docker',
+      container_root_path: '/var/lib/docker',
     },
     replication_factor: 3,
     consul_replicas: 1,
   },
 }
 ```
-Notice that `dataroot` is your own data root for docker daemon, use `docker info | grep "Root Dir"` to get it.
+Notice that `container_root_path` is your own data root for docker daemon, use `docker info | grep "Root Dir"` to get it.
 
 Do `ks show loki` to see the manifests being deployed to the cluster.
 Finally `ks apply loki` to deploy the server components to your cluster.
