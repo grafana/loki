@@ -2,6 +2,9 @@ rbac:
   create: true
   pspEnabled: true
 
+networkPolicy:
+  enabled: false
+
 serviceAccount:
   create: true
   name:
@@ -10,6 +13,8 @@ loki:
   enabled: true
 
   replicas: 1
+  minReadySeconds: 0
+  terminationGracePeriodSeconds: 30
   deploymentStrategy: RollingUpdate
 
   image:
@@ -23,11 +28,14 @@ loki:
     labels: {}
 
   readinessProbe: {}
+    # httpGet:
+    #     path: /ready
+    #     port: 3100
+    #   initialDelaySeconds: 15
 
   livenessProbe: {}
 
-  resources:
-    {}
+  resources: {}
     # limits:
     #   cpu: 100m
     #   memory: 128Mi
@@ -58,7 +66,16 @@ loki:
   ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
   ##
   affinity: {}
-
+    # podAntiAffinity:
+    #   requiredDuringSchedulingIgnoredDuringExecution:
+    #   - labelSelector:
+    #       matchExpressions:
+    #       - key: app
+    #         operator: In
+    #         values:
+    #         - loki
+    #     topologyKey: "kubernetes.io/hostname"
+  
   ## Enable persistence using Persistent Volume Claims
   ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
   ## If you set enabled as "True", you need :
@@ -108,6 +125,21 @@ promtail:
     tag: master
     pullPolicy: Always # Always pull while in BETA
 
+  volumes:
+    - name: varlog
+      hostPath:
+        path: /var/log
+    - name: varlibdockercontainers
+      hostPath:
+        path: /var/lib/docker/containers
+
+  volumeMounts:
+    - name: varlog
+      mountPath: /var/log
+    - name: varlibdockercontainers
+      mountPath: /var/lib/docker/containers
+      readOnly: true
+
   service:
     port: 3100
     annotations: {}
@@ -117,8 +149,7 @@ promtail:
 
   livenessProbe: {}
 
-  resources:
-    {}
+  resources: {}
     # limits:
     #   cpu: 100m
     #   memory: 128Mi

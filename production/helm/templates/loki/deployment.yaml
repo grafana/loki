@@ -14,6 +14,7 @@ metadata:
 {{- end }}
 spec:
   replicas: {{ .Values.loki.replicas }}
+  minReadySeconds: {{ .Values.loki.minReadySeconds }}
   selector:
     matchLabels:
       app: {{ template "loki.name" . }}
@@ -78,6 +79,7 @@ spec:
       tolerations:
 {{ toYaml . | indent 8 }}
     {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.loki.terminationGracePeriodSeconds }}
       volumes:
         - name: config
           configMap:
