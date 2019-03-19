@@ -53,15 +53,18 @@ func (b *bigchunk) Add(sample model.SamplePair) ([]Chunk, error) {
 func (b *bigchunk) addNextChunk(start model.Time) error {
 	// To save memory, we "compact" the previous chunk - the array backing the slice
 	// will be upto 2x too big, and we can save this space.
+	const chunkCapacityExcess = 32 // don't bother copying if it's within this range
 	if l := len(b.chunks); l > 0 {
-		c := b.chunks[l-1].XORChunk
-		buf := make([]byte, len(c.Bytes()))
-		copy(buf, c.Bytes())
-		compacted, err := chunkenc.FromData(chunkenc.EncXOR, buf)
-		if err != nil {
-			return err
+		oldBuf := b.chunks[l-1].XORChunk.Bytes()
+		if cap(oldBuf) > len(oldBuf)+chunkCapacityExcess {
+			buf := make([]byte, len(oldBuf))
+			copy(buf, oldBuf)
+			compacted, err := chunkenc.FromData(chunkenc.EncXOR, buf)
+			if err != nil {
+				return err
+			}
+			b.chunks[l-1].XORChunk = compacted.(*chunkenc.XORChunk)
 		}
-		b.chunks[l-1].XORChunk = compacted.(*chunkenc.XORChunk)
 	}
 
 	chunk := chunkenc.NewXORChunk()
