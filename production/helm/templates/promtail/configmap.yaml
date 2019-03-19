@@ -1,3 +1,4 @@
+{{- if .Values.promtail.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -92,3 +93,4 @@ data:
           - __meta_kubernetes_pod_uid
           - __meta_kubernetes_pod_container_name
           target_label: __path__
+{{- end }}
