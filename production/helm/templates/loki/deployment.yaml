@@ -30,8 +30,9 @@ spec:
         app: {{ template "loki.name" . }}
         name: {{ template "loki.name" . }}
         release: {{ .Release.Name }}
-{{- with .Values.loki.podAnnotations }}
       annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/loki/secret.yaml") . | sha256sum }}
+{{- with .Values.loki.podAnnotations }}
 {{ toYaml . | indent 8 }}
 {{- end }}
     spec:
@@ -82,8 +83,8 @@ spec:
       terminationGracePeriodSeconds: {{ .Values.loki.terminationGracePeriodSeconds }}
       volumes:
         - name: config
-          configMap:
-            name: {{ template "loki.fullname" . }}
+          secret:
+            secretName: {{ template "loki.fullname" . }}
         - name: storage
       {{- if .Values.loki.persistence.enabled }}
           persistentVolumeClaim:

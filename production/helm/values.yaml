@@ -106,10 +106,10 @@ loki:
         index:
           prefix: index_
           period: 168h
-    storage_configs:
-      - name: boltdb
+    storage_config:
+      boltdb:
         directory: /data/loki/index
-      - name: filesystem
+      filesystem:
         directory: /data/loki/chunks
 
 promtail:
