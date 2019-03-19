@@ -1,4 +1,5 @@
-{{- if .Values.rbac.create -}}
+{{- if .Values.loki.enabled }}
+{{- if .Values.rbac.create }}
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: RoleBinding
 metadata:
@@ -15,4 +16,5 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: {{ template "loki.serviceAccountName" . }}
-{{- end -}}
+{{- end }}
+{{- end }}

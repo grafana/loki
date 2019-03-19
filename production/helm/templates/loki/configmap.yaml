@@ -1,3 +1,4 @@
+{{- if .Values.loki.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -35,13 +36,14 @@ data:
         index:
           prefix: {{ .index.prefix }}
           period: {{ .index.period }}
-  {{- end -}}
-{{- end -}}
+  {{- end }}
+{{- end }}
 
 {{- if .Values.loki.config.storage_configs }}
     storage_config:
   {{- range .Values.loki.config.storage_configs }}
       {{ .name }}:
         directory: {{ .directory }}
-  {{- end -}}
-{{- end -}}
+  {{- end }}
+{{- end }}
+{{- end }}

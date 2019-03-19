@@ -1,3 +1,4 @@
+{{- if .Values.promtail.enabled }}
 apiVersion: extensions/v1beta1
 kind: DaemonSet
 metadata:
@@ -90,3 +91,4 @@ spec:
         {{- if .Values.promtail.volumes -}}
         {{ toYaml .Values.promtail.volumes | nindent 8 }}
         {{- end }}
+{{- end }}

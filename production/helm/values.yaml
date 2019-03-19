@@ -10,6 +10,8 @@ serviceAccount:
   name:
 
 loki:
+  enabled: true
+
   replicas: 1
   minReadySeconds: 0
   terminationGracePeriodSeconds: 30
@@ -111,6 +113,8 @@ loki:
         directory: /data/loki/chunks
 
 promtail:
+  enabled: true
+
   nameOverride: promtail
   deploymentStrategy: RollingUpdate
 
