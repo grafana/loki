@@ -46,7 +46,7 @@ Create the name of the service account
 auth_enabled: {{ .Values.loki.config.auth_enabled }}
 
 server:
-  http_listen_port: {{ .Values.loki.service.port }}
+  http_listen_port: {{ .Values.loki.port }}
 
 limits_config:
   enforce_metric_name: false

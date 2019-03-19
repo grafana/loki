@@ -8,19 +8,17 @@ metadata:
     chart: {{ template "loki.chart" . }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
-{{- if .Values.loki.service.labels }}
-{{ toYaml .Values.loki.service.labels | indent 4 }}
-{{- end }}
-{{- with .Values.loki.service.annotations }}
+    {{- with .Values.loki.service.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   annotations:
-{{ toYaml . | indent 4 }}
-{{- end }}
+    {{- toYaml .Values.loki.service.annotations | nindent 4 }}
 spec:
   ports:
-    - name: {{ template "loki.name" . }}
+    - name: http-metrics
       port: {{ .Values.loki.service.port }}
       protocol: TCP
-      targetPort: {{ .Values.loki.service.port }}
+      targetPort: http-metrics
   selector:
     app: {{ template "loki.name" . }}
     release: {{ .Release.Name }}
