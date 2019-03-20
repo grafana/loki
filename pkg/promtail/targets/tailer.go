@@ -102,6 +102,8 @@ func (t *tailer) run() {
 				level.Error(t.logger).Log("msg", "error reading line", "path", t.path, "error", line.Err)
 			}
 
+			readLines.WithLabelValues(t.path).Inc()
+
 			if err := t.handler.Handle(model.LabelSet{}, line.Time, line.Text); err != nil {
 				level.Error(t.logger).Log("msg", "error handling line", "path", t.path, "error", err)
 			}
