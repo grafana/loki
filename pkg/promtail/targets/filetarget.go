@@ -182,6 +182,9 @@ func (t *FileTarget) sync() error {
 		return errors.Wrap(err, "filetarget.sync.filepath.Glob")
 	}
 
+	// Record the size of all the files matched by the Glob pattern.
+	t.updateTotalBytesMetric(matches)
+
 	// Get the current unique set of dirs to watch.
 	dirs := map[string]struct{}{}
 	for _, p := range matches {
@@ -205,9 +208,6 @@ func (t *FileTarget) sync() error {
 	// Stop tailing any files which no longer exist
 	toStopTailing := toStopTailing(matches, t.tails)
 	t.stopTailing(toStopTailing)
-
-	// Record the size of all the files being tailed.
-	t.updateTotalBytesMetric()
 
 	return nil
 }
@@ -293,14 +293,14 @@ func toStopTailing(nt []string, et map[string]*tailer) []string {
 	return ta
 }
 
-func (t *FileTarget) updateTotalBytesMetric() {
-	for _, tr := range t.tails {
-		fi, err := os.Stat(tr.filename)
+func (t *FileTarget) updateTotalBytesMetric(ms []string) {
+	for _, m := range ms {
+		fi, err := os.Stat(m)
 		if err != nil {
-			level.Error(t.logger).Log("msg", "failed to stat log file being tailed, cannot report size", tr.filename, "error", err)
+			level.Error(t.logger).Log("msg", "failed to stat matched file, cannot report size", m, "error", err)
 			continue
 		}
-		totalBytes.WithLabelValues(tr.path).Set(float64(fi.Size()))
+		totalBytes.WithLabelValues(m).Set(float64(fi.Size()))
 	}
 }
 
