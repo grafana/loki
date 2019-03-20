@@ -6,12 +6,12 @@ metadata:
   name: {{ template "promtail.fullname" . }}
   labels:
     app: {{ template "promtail.name" . }}
-    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    chart: {{ template "promtail.chart" . }}
     heritage: {{ .Release.Service }}
     release: {{ .Release.Name }}
 spec:
-  privileged: true
-  allowPrivilegeEscalation: true
+  privileged: false
+  allowPrivilegeEscalation: false
   volumes:
     - 'secret'
     - 'configMap'
@@ -27,6 +27,8 @@ spec:
     rule: 'RunAsAny'
   fsGroup:
     rule: 'RunAsAny'
-  readOnlyRootFilesystem: false
+  readOnlyRootFilesystem: true
+  requiredDropCapabilities:
+    - ALL
   {{- end }}
 {{- end }}

@@ -6,7 +6,7 @@ metadata:
   name: {{ template "loki.fullname" . }}
   labels:
     app: {{ template "loki.name" . }}
-    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    chart: {{ template "loki.chart" . }}
     heritage: {{ .Release.Service }}
     release: {{ .Release.Name }}
 {{- if .Values.rbac.pspEnabled }}

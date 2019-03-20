@@ -14,7 +14,10 @@ data:
       minbackoff: {{ .Values.promtail.config.backoff_config.minbackoff }}
       maxbackoff: {{ .Values.promtail.config.backoff_config.maxbackoff }}
       maxretries: {{ .Values.promtail.config.backoff_config.maxretries }}
-
+    server:
+      http_listen_port: {{ .Values.promtail.port }}
+    positions:
+      filename: /run/promtail/positions.yaml
     scrape_configs:
       - entry_parser: '{{ .Values.promtail.entryParser }}'
         job_name: kubernetes-pods-name
