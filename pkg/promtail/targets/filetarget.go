@@ -206,6 +206,9 @@ func (t *FileTarget) sync() error {
 	toStopTailing := toStopTailing(matches, t.tails)
 	t.stopTailing(toStopTailing)
 
+	// Record the size of all the files being tailed.
+	t.updateTotalBytesMetric()
+
 	return nil
 }
 
@@ -288,6 +291,17 @@ func toStopTailing(nt []string, et map[string]*tailer) []string {
 		i++
 	}
 	return ta
+}
+
+func (t *FileTarget) updateTotalBytesMetric() {
+	for _, tr := range t.tails {
+		fi, err := os.Stat(tr.filename)
+		if err != nil {
+			level.Error(t.logger).Log("msg", "failed to stat log file being tailed, cannot report size", tr.filename, "error", err)
+			continue
+		}
+		totalBytes.WithLabelValues(tr.path).Set(float64(fi.Size()))
+	}
 }
 
 // Returns the elements from set b which are missing from set a

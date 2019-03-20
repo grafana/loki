@@ -87,14 +87,7 @@ func (t *tailer) run() {
 	for {
 		select {
 		case <-positionWait.C:
-			fi, err := os.Stat(t.filename)
-			if err != nil {
-				level.Error(t.logger).Log("msg", "failed to stat log file being tailed, "+
-					"cannot report size or mark position", t.filename, "error", err)
-				continue
-			}
-			totalBytes.WithLabelValues(t.path).Set(float64(fi.Size()))
-			err = t.markPosition()
+			err := t.markPosition()
 			if err != nil {
 				level.Error(t.logger).Log("msg", "error getting tail position", "path", t.path, "error", err)
 				continue
