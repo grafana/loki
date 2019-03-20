@@ -102,11 +102,6 @@ func (t *tailer) run() {
 				level.Error(t.logger).Log("msg", "error reading line", "path", t.path, "error", line.Err)
 			}
 
-			readLines.WithLabelValues(t.path).Inc()
-			// The line we receive from the tailer is stripped of the newline character, which causes counts to be
-			// off between the file size and this metric of bytes read, so we are adding back a byte to represent the newline
-			// If you are reading this you are probably using Windows which has a 2 byte /r/n newline string.... sorry
-			readBytes.WithLabelValues(t.path).Add(float64(len(line.Text) + 1))
 			if err := t.handler.Handle(model.LabelSet{}, line.Time, line.Text); err != nil {
 				level.Error(t.logger).Log("msg", "error handling line", "path", t.path, "error", err)
 			}
@@ -121,6 +116,8 @@ func (t *tailer) markPosition() error {
 	if err != nil {
 		return err
 	}
+
+	readBytes.WithLabelValues(t.path).Add(float64(pos))
 	level.Debug(t.logger).Log("path", t.path, "filename", t.filename, "current_position", pos)
 	t.positions.Put(t.filename, pos)
 	return nil

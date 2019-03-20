@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	readBytes = promauto.NewCounterVec(prometheus.CounterOpts{
+	readBytes = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "promtail",
 		Name:      "read_bytes_total",
 		Help:      "Number of bytes read.",
