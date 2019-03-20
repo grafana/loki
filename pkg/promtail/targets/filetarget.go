@@ -26,6 +26,11 @@ var (
 		Name:      "read_bytes_total",
 		Help:      "Number of bytes read.",
 	}, []string{"path"})
+	totalBytes = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "promtail",
+		Name:      "file_bytes_total",
+		Help:      "Number of bytes total.",
+	}, []string{"path"})
 
 	readLines = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",

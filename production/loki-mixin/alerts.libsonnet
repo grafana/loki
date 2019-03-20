@@ -113,6 +113,21 @@
               |||,
             },
           },
+          {
+            alert: 'PromtailFileLagging',
+            expr: |||
+              promtail_file_bytes_total - promtail_read_bytes_total > 100000
+            |||,
+            'for': '15m',
+            labels: {
+              severity: 'critical',
+            },
+            annotations: {
+              message: |||
+                {{ $labels.instance }} {{ $labels.job }} {{ $labels.path }} has been lagging by more than 100kb for more than 15m.
+              |||,
+            },
+          },
         ],
       },
     ],
