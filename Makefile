@@ -169,7 +169,9 @@ push-latest:
 	for image_name in $(IMAGE_NAMES); do \
 		if ! echo $$image_name | grep build; then \
 			docker tag $$image_name:$(IMAGE_TAG) $$image_name:latest; \
+			docker tag $$image_name:$(IMAGE_TAG) $$image_name:master; \
 			docker push $$image_name:latest; \
+			docker push $$image_name:master; \
 		fi \
 	done
 
