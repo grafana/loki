@@ -26,6 +26,11 @@ var (
 		Name:      "read_bytes_total",
 		Help:      "Number of bytes read.",
 	}, []string{"path"})
+	totalBytes = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "promtail",
+		Name:      "file_bytes_total",
+		Help:      "Number of bytes total.",
+	}, []string{"path"})
 
 	readLines = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
@@ -177,6 +182,9 @@ func (t *FileTarget) sync() error {
 		return errors.Wrap(err, "filetarget.sync.filepath.Glob")
 	}
 
+	// Record the size of all the files matched by the Glob pattern.
+	t.updateTotalBytesMetric(matches)
+
 	// Get the current unique set of dirs to watch.
 	dirs := map[string]struct{}{}
 	for _, p := range matches {
@@ -283,6 +291,17 @@ func toStopTailing(nt []string, et map[string]*tailer) []string {
 		i++
 	}
 	return ta
+}
+
+func (t *FileTarget) updateTotalBytesMetric(ms []string) {
+	for _, m := range ms {
+		fi, err := os.Stat(m)
+		if err != nil {
+			level.Error(t.logger).Log("msg", "failed to stat matched file, cannot report size", m, "error", err)
+			continue
+		}
+		totalBytes.WithLabelValues(m).Set(float64(fi.Size()))
+	}
 }
 
 // Returns the elements from set b which are missing from set a

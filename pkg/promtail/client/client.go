@@ -29,6 +29,11 @@ const contentType = "application/x-protobuf"
 const maxErrMsgLen = 1024
 
 var (
+	encodedBytes = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "promtail",
+		Name:      "encoded_bytes_total",
+		Help:      "Number of bytes encoded and ready to send.",
+	})
 	sentBytes = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "sent_bytes_total",
@@ -42,6 +47,7 @@ var (
 )
 
 func init() {
+	prometheus.MustRegister(encodedBytes)
 	prometheus.MustRegister(sentBytes)
 	prometheus.MustRegister(requestDuration)
 }
@@ -150,7 +156,8 @@ func (c *Client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 		level.Error(c.logger).Log("msg", "error encoding batch", "error", err)
 		return
 	}
-	sentBytes.Add(float64(len(buf)))
+	bufBytes := float64(len(buf))
+	encodedBytes.Add(bufBytes)
 
 	ctx := context.Background()
 	backoff := util.NewBackoff(ctx, c.cfg.BackoffConfig)
@@ -161,6 +168,7 @@ func (c *Client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 		requestDuration.WithLabelValues(strconv.Itoa(status)).Observe(time.Since(start).Seconds())
 
 		if err == nil {
+			sentBytes.Add(bufBytes)
 			return
 		}
 

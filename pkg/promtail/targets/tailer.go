@@ -103,7 +103,10 @@ func (t *tailer) run() {
 			}
 
 			readLines.WithLabelValues(t.path).Inc()
-			readBytes.WithLabelValues(t.path).Add(float64(len(line.Text)))
+			// The line we receive from the tailer is stripped of the newline character, which causes counts to be
+			// off between the file size and this metric of bytes read, so we are adding back a byte to represent the newline
+			// If you are reading this you are probably using Windows which has a 2 byte /r/n newline string.... sorry
+			readBytes.WithLabelValues(t.path).Add(float64(len(line.Text) + 1))
 			if err := t.handler.Handle(model.LabelSet{}, line.Time, line.Text); err != nil {
 				level.Error(t.logger).Log("msg", "error handling line", "path", t.path, "error", err)
 			}
