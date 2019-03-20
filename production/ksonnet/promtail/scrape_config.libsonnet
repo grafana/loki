@@ -1,4 +1,3 @@
-
 local config = import 'config.libsonnet';
 
 config + {
@@ -70,95 +69,97 @@ config + {
     ],
   },
 
-  scrape_configs: [
-    // Scrape config to scrape any pods with a 'name' label.
-    gen_scrape_config('kubernetes-pods-name') {
-      prelabel_config:: [
+  promtail_config:: {
+    scrape_configs: [
+      // Scrape config to scrape any pods with a 'name' label.
+      gen_scrape_config('kubernetes-pods-name') {
+        prelabel_config:: [
 
-        // Use name label as __service__.
-        {
-          source_labels: ['__meta_kubernetes_pod_label_name'],
-          target_label: '__service__',
-        }
-      ],
-    },
+          // Use name label as __service__.
+          {
+            source_labels: ['__meta_kubernetes_pod_label_name'],
+            target_label: '__service__',
+          }
+        ],
+      },
 
-    // Scrape config to scrape any pods with a 'app' label.
-    gen_scrape_config('kubernetes-pods-app') {
-      prelabel_config:: [
-        // Drop pods with a 'name' label.  They will have already been added by
-        // the scrape_config that matches on the 'name' label
-        {
-          source_labels: ['__meta_kubernetes_pod_label_name'],
-          action: 'drop',
-          regex: '.+',
-        },
+      // Scrape config to scrape any pods with a 'app' label.
+      gen_scrape_config('kubernetes-pods-app') {
+        prelabel_config:: [
+          // Drop pods with a 'name' label.  They will have already been added by
+          // the scrape_config that matches on the 'name' label
+          {
+            source_labels: ['__meta_kubernetes_pod_label_name'],
+            action: 'drop',
+            regex: '.+',
+          },
 
-        // Use app label as the __service__.
-        {
-          source_labels: ['__meta_kubernetes_pod_label_app'],
-          target_label: '__service__',
-        },
-      ],
-    },
+          // Use app label as the __service__.
+          {
+            source_labels: ['__meta_kubernetes_pod_label_app'],
+            target_label: '__service__',
+          },
+        ],
+      },
 
-    // Scrape config to scrape any pods with a direct controller (eg
-    // StatefulSets).
-    gen_scrape_config('kubernetes-pods-direct-controllers') {
-      prelabel_config:: [
-        // Drop pods with a 'name' or 'app' label.  They will have already been added by
-        // the scrape_config that matches above.
-        {
-          source_labels: ['__meta_kubernetes_pod_label_name', '__meta_kubernetes_pod_label_app'],
-          separator: '',
-          action: 'drop',
-          regex: '.+',
-        },
+      // Scrape config to scrape any pods with a direct controller (eg
+      // StatefulSets).
+      gen_scrape_config('kubernetes-pods-direct-controllers') {
+        prelabel_config:: [
+          // Drop pods with a 'name' or 'app' label.  They will have already been added by
+          // the scrape_config that matches above.
+          {
+            source_labels: ['__meta_kubernetes_pod_label_name', '__meta_kubernetes_pod_label_app'],
+            separator: '',
+            action: 'drop',
+            regex: '.+',
+          },
 
-        // Drop pods with an indirect controller. eg Deployments create replicaSets
-        // which then create pods.
-        {
-          source_labels: ['__meta_kubernetes_pod_controller_name'],
-          action: 'drop',
-          regex: '^([0-9a-z-.]+)(-[0-9a-f]{8,10})$',
-        },
+          // Drop pods with an indirect controller. eg Deployments create replicaSets
+          // which then create pods.
+          {
+            source_labels: ['__meta_kubernetes_pod_controller_name'],
+            action: 'drop',
+            regex: '^([0-9a-z-.]+)(-[0-9a-f]{8,10})$',
+          },
 
-        // Use controller name as __service__.
-        {
-          source_labels: ['__meta_kubernetes_pod_controller_name'],
-          target_label: '__service__',
-        },
-      ],
-    },
+          // Use controller name as __service__.
+          {
+            source_labels: ['__meta_kubernetes_pod_controller_name'],
+            target_label: '__service__',
+          },
+        ],
+      },
 
-    // Scrape config to scrape any pods with an indirect controller (eg
-    // Deployments).
-    gen_scrape_config('kubernetes-pods-indirect-controller') {
-      prelabel_config:: [
-        // Drop pods with a 'name' or 'app' label.  They will have already been added by
-        // the scrape_config that matches above.
-        {
-          source_labels: ['__meta_kubernetes_pod_label_name', '__meta_kubernetes_pod_label_app'],
-          separator: '',
-          action: 'drop',
-          regex: '.+',
-        },
+      // Scrape config to scrape any pods with an indirect controller (eg
+      // Deployments).
+      gen_scrape_config('kubernetes-pods-indirect-controller') {
+        prelabel_config:: [
+          // Drop pods with a 'name' or 'app' label.  They will have already been added by
+          // the scrape_config that matches above.
+          {
+            source_labels: ['__meta_kubernetes_pod_label_name', '__meta_kubernetes_pod_label_app'],
+            separator: '',
+            action: 'drop',
+            regex: '.+',
+          },
 
-        // Drop pods not from an indirect controller. eg StatefulSets, DaemonSets
-        {
-          source_labels: ['__meta_kubernetes_pod_controller_name'],
-          regex: '^([0-9a-z-.]+)(-[0-9a-f]{8,10})$',
-          action: 'keep',
-        },
+          // Drop pods not from an indirect controller. eg StatefulSets, DaemonSets
+          {
+            source_labels: ['__meta_kubernetes_pod_controller_name'],
+            regex: '^([0-9a-z-.]+)(-[0-9a-f]{8,10})$',
+            action: 'keep',
+          },
 
-        // put the indirect controller name into a temp label.
-        {
-          source_labels: ['__meta_kubernetes_pod_controller_name'],
-          action: 'replace',
-          regex: '^([0-9a-z-.]+)(-[0-9a-f]{8,10})$',
-          target_label: '__service__',
-        },
-      ]
-    },
-  ]
+          // put the indirect controller name into a temp label.
+          {
+            source_labels: ['__meta_kubernetes_pod_controller_name'],
+            action: 'replace',
+            regex: '^([0-9a-z-.]+)(-[0-9a-f]{8,10})$',
+            target_label: '__service__',
+          },
+        ]
+      },
+    ],
+  },
 }

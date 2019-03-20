@@ -15,8 +15,9 @@ target=${1:-shell}
 
 case $target in
     "shell")
-        (cd $BASE; jsonnet -e '(import "../production/ksonnet/promtail/scrape_config.libsonnet") + { _config:: { promtail_config: { entry_parser: "<parser>"}}}' | ytools 2>/dev/null)
+        (cd $BASE; jsonnet -e '((import "../production/ksonnet/promtail/scrape_config.libsonnet") + { _config:: { promtail_config: { entry_parser: "<parser>"}}}).promtail_config' | ytools 2>/dev/null)
         ;;
+
     "helm")
         cat <<EOF
 {{- if .Values.promtail.enabled }}
@@ -34,7 +35,7 @@ data:
     scrape_configs:
 EOF
         (cd $BASE;
-          jsonnet -e '(import "../production/ksonnet/promtail/scrape_config.libsonnet") + { _config:: { promtail_config: { entry_parser: "{{ .Values.promtail.entryParser }}"}}}' \
+          jsonnet -e '((import "../production/ksonnet/promtail/scrape_config.libsonnet") + { _config:: { promtail_config: { entry_parser: "{{ .Values.promtail.entryParser }}"}}}).promtail_config' \
           | ytools 2>/dev/null \
           | tail -n +3 \
           | awk '{ print "      " $0 }' \

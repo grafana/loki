@@ -14,7 +14,6 @@
       external_labels: {},
     },
 
-
     service_url:
       if std.objectHas(self.promtail_config, 'username') then
         '%(scheme)s://%(username)s:%(password)s@%(hostname)s/api/prom/push' % self.promtail_config

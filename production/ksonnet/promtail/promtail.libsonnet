@@ -1,7 +1,8 @@
 local k = import 'ksonnet-util/kausal.libsonnet';
 local config = import 'config.libsonnet';
+local scrape_config = import './scrape_config.libsonnet';
 
-k + config {
+k + config + scrape_config {
   namespace:
     $.core.v1.namespace.new($._config.namespace),
 
@@ -15,11 +16,11 @@ k + config {
       policyRule.withVerbs(['get', 'list', 'watch']),
     ]),
 
-  promtail_config:: {
+  promtail_config+:: {
     client: {
       external_labels: $._config.promtail_config.external_labels,
     },
-  } + (import './scrape_config.libsonnet'),
+  },
 
   local configMap = $.core.v1.configMap,
 
