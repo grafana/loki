@@ -1,5 +1,5 @@
 {{- if .Values.loki.enabled }}
-apiVersion: apps/v1beta2
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ template "loki.fullname" . }}
@@ -8,10 +8,8 @@ metadata:
     chart: {{ template "loki.chart" . }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
-{{- with .Values.loki.annotations }}
   annotations:
-{{ toYaml . | indent 4 }}
-{{- end }}
+    {{- toYaml .Values.loki.annotations | nindent 4 }}
 spec:
   replicas: {{ .Values.loki.replicas }}
   minReadySeconds: {{ .Values.loki.minReadySeconds }}
@@ -32,14 +30,14 @@ spec:
         release: {{ .Release.Name }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/loki/secret.yaml") . | sha256sum }}
-{{- with .Values.loki.podAnnotations }}
-{{ toYaml . | indent 8 }}
-{{- end }}
+        {{- with .Values.loki.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ template "loki.serviceAccountName" . }}
-{{- if .Values.loki.priorityClassName }}
+    {{- if .Values.loki.priorityClassName }}
       priorityClassName: {{ .Values.loki.priorityClassName }}
-{{- end }}
+    {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.loki.image.repository }}:{{ .Values.loki.image.tag }}"
@@ -53,33 +51,21 @@ spec:
               mountPath: "/data"
               subPath: {{ .Values.loki.persistence.subPath }}
           ports:
-            - name: {{ template "loki.name" . }}-metrics
-              containerPort: {{ .Values.loki.service.port }}
+            - name: http-metrics
+              containerPort: {{ .Values.loki.port }}
               protocol: TCP
-{{- with .Values.loki.livenessProbe }}
           livenessProbe:
-{{ toYaml . | indent 12 }}
-{{- end }}
-{{- with .Values.loki.readinessProbe }}
+            {{- toYaml .Values.loki.livenessProbe | nindent 12 }}
           readinessProbe:
-{{ toYaml . | indent 12 }}
-{{- end }}
-{{- with .Values.loki.resources }}
+            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
           resources:
-{{ toYaml . | indent 12 }}
-{{- end }}
-    {{- with .Values.loki.nodeSelector }}
+            {{- toYaml .Values.loki.resources | nindent 12 }}
       nodeSelector:
-{{ toYaml . | indent 8 }}
-    {{- end }}
-    {{- with .Values.loki.affinity }}
+        {{- toYaml .Values.loki.nodeSelector | nindent 8 }}
       affinity:
-{{ toYaml . | indent 8 }}
-    {{- end }}
-    {{- with .Values.loki.tolerations }}
+        {{- toYaml .Values.loki.affinity | nindent 8 }}
       tolerations:
-{{ toYaml . | indent 8 }}
-    {{- end }}
+        {{- toYaml .Values.loki.tolerations | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.loki.terminationGracePeriodSeconds }}
       volumes:
         - name: config
@@ -93,3 +79,4 @@ spec:
           emptyDir: {}
       {{- end }}
 {{- end }}
+

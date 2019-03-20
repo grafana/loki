@@ -1,6 +1,6 @@
 {{- if .Values.loki.enabled }}
 {{- if .Values.rbac.pspEnabled }}
-apiVersion: extensions/v1beta1
+apiVersion: policy/v1beta1
 kind: PodSecurityPolicy
 metadata:
   name: {{ template "loki.fullname" . }}

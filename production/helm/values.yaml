@@ -16,6 +16,7 @@ loki:
   minReadySeconds: 0
   terminationGracePeriodSeconds: 30
   deploymentStrategy: RollingUpdate
+  port: 3100
 
   image:
     repository: grafana/loki
@@ -25,29 +26,35 @@ loki:
   service:
     port: 3100
     annotations: {}
+    #  prometheus.io/scrape: "true"
+    #  prometheus.io/port: "http-metrics"
     labels: {}
 
-  readinessProbe: {}
-    # httpGet:
-    #     path: /ready
-    #     port: 3100
-    #   initialDelaySeconds: 15
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: http-metrics
+    initialDelaySeconds: 45
 
-  livenessProbe: {}
+  livenessProbe:
+    httpGet:
+      path: /ready
+      port: http-metrics
+    initialDelaySeconds: 45
 
   resources: {}
     # limits:
-    #   cpu: 100m
-    #   memory: 128Mi
+    #   cpu: 200m
+    #   memory: 256Mi
     # requests:
     #   cpu: 100m
     #   memory: 128Mi
 
   ## Pod Annotations
-  # podAnnotations: {}
+  podAnnotations: {}
 
   ## Deployment annotations
-  # annotations: {}
+  annotations: {}
 
   ## Assign a PriorityClassName to pods if set
   # priorityClassName:
@@ -140,28 +147,25 @@ promtail:
       mountPath: /var/lib/docker/containers
       readOnly: true
 
-  service:
-    port: 3100
-    annotations: {}
-    labels: {}
+  readinessProbe: null
 
-  readinessProbe: {}
-
-  livenessProbe: {}
+  livenessProbe: null
 
   resources: {}
-    # limits:
-    #   cpu: 100m
-    #   memory: 128Mi
-    # requests:
-    #   cpu: 100m
-    #   memory: 128Mi
+  #  limits:
+  #    cpu: 200m
+  #    memory: 128Mi
+  #  requests:
+  #    cpu: 100m
+  #    memory: 128Mi
 
   ## Pod Annotations
-  # podAnnotations: {}
+  podAnnotations: {}
+  #  prometheus.io/scrape: "true"
+  #  prometheus.io/port: "http-metrics"
 
   ## Deployment annotations
-  # annotations: {}
+  annotations: {}
 
   ## Assign a PriorityClassName to pods if set
   # priorityClassName:
@@ -182,3 +186,4 @@ promtail:
   ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
   ##
   affinity: {}
+
