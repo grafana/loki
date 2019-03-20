@@ -20,4 +20,5 @@
         '%(scheme)s://%(username)s:%(password)s@%(hostname)s/api/prom/push' % self.promtail_config
       else
         '%(scheme)s://%(hostname)s/api/prom/push' % self.promtail_config,
-  }
+  },
+}

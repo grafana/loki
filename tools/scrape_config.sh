@@ -19,6 +19,7 @@ case $target in
         ;;
     "helm")
         cat <<EOF
+{{- if .Values.promtail.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -38,6 +39,9 @@ EOF
           | tail -n +3 \
           | awk '{ print "      " $0 }' \
         )
+        cat <<EOF
+{{- end }}
+EOF
         ;;
     *)
         echo "unknown target. expected 'shell' or 'helm'"
