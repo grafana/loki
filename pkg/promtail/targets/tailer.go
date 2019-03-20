@@ -119,7 +119,7 @@ func (t *tailer) markPosition() error {
 		return err
 	}
 
-	readBytes.WithLabelValues(t.path).Add(float64(pos))
+	readBytes.WithLabelValues(t.path).Set(float64(pos))
 	level.Debug(t.logger).Log("path", t.path, "filename", t.filename, "current_position", pos)
 	t.positions.Put(t.filename, pos)
 	return nil
