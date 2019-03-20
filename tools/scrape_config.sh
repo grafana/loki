@@ -18,7 +18,26 @@ case $target in
         (cd $BASE; jsonnet -e '(import "../production/ksonnet/promtail/scrape_config.libsonnet") + { _config:: { promtail_config: { entry_parser: "<parser>"}}}' | ytools 2>/dev/null)
         ;;
     "helm")
-        (cd $BASE; jsonnet -e '(import "../production/ksonnet/promtail/scrape_config.libsonnet") + { _config:: { promtail_config: { entry_parser: "{{ .Values.promtail.entryParser }}"}}}' | ytools 2>/dev/null)
+        cat <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "promtail.fullname" . }}
+  labels:
+    app: {{ template "promtail.name" . }}
+    chart: {{ template "promtail.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+data:
+  promtail.yaml: |
+    scrape_configs:
+EOF
+        (cd $BASE;
+          jsonnet -e '(import "../production/ksonnet/promtail/scrape_config.libsonnet") + { _config:: { promtail_config: { entry_parser: "{{ .Values.promtail.entryParser }}"}}}' \
+          | ytools 2>/dev/null \
+          | tail -n +3 \
+          | awk '{ print "      " $0 }' \
+        )
         ;;
     *)
         echo "unknown target. expected 'shell' or 'helm'"
