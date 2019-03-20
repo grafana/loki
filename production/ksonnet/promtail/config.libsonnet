@@ -12,6 +12,7 @@
       hostname: 'logs-us-west1.grafana.net',
       container_root_path: '/var/lib/docker',
       external_labels: {},
+      entry_parser: 'docker',
     },
 
     service_url:
