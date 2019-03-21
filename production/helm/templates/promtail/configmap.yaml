@@ -10,10 +10,11 @@ metadata:
     heritage: {{ .Release.Service }}
 data:
   promtail.yaml: |
-    backoff_config:
-      minbackoff: {{ .Values.promtail.config.backoff_config.minbackoff }}
-      maxbackoff: {{ .Values.promtail.config.backoff_config.maxbackoff }}
-      maxretries: {{ .Values.promtail.config.backoff_config.maxretries }}
+    client:
+      backoff_config:
+        minbackoff: {{ .Values.promtail.config.backoff_config.minbackoff }}
+        maxbackoff: {{ .Values.promtail.config.backoff_config.maxbackoff }}
+        maxretries: {{ .Values.promtail.config.backoff_config.maxretries }}
     server:
       http_listen_port: {{ .Values.promtail.port }}
     positions:
