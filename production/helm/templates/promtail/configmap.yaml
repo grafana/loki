@@ -10,6 +10,11 @@ metadata:
     heritage: {{ .Release.Service }}
 data:
   promtail.yaml: |
+    backoff_config:
+      minbackoff: {{ .Values.promtail.config.backoff_config.minbackoff }}
+      maxbackoff: {{ .Values.promtail.config.backoff_config.maxbackoff }}
+      maxretries: {{ .Values.promtail.config.backoff_config.maxretries }}
+
     scrape_configs:
       - entry_parser: '{{ .Values.promtail.entryParser }}'
         job_name: kubernetes-pods-name

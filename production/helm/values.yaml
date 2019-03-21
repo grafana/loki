@@ -127,6 +127,15 @@ promtail:
 
   entryParser: docker
 
+  config:
+    backoff_config:
+      # Initial backoff time between retries
+      minbackoff: 100ms
+      # Maximum backoff time between retries
+      maxbackoff: 5s
+      # Maximum number of retires when sending batches, 0 means infinite retries
+      maxretries: 5
+
   image:
     repository: grafana/promtail
     tag: latest
