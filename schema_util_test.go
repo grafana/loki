@@ -25,16 +25,16 @@ func TestMetricSeriesID(t *testing.T) {
 		{
 			model.Metric{
 				model.MetricNameLabel: "foo",
-				"bar":  "baz",
-				"toms": "code",
-				"flip": "flop",
+				"bar":                 "baz",
+				"toms":                "code",
+				"flip":                "flop",
 			},
 			"KrbXMezYneba+o7wfEdtzOdAWhbfWcDrlVfs1uOCX3M",
 		},
 		{
 			model.Metric{
-				"flip": "flop",
-				"bar":  "baz",
+				"flip":                "flop",
+				"bar":                 "baz",
 				model.MetricNameLabel: "foo",
 				"toms":                "code",
 			},
@@ -126,8 +126,8 @@ func TestParseMetricNameRangeValue(t *testing.T) {
 func TestParseSeriesRangeValue(t *testing.T) {
 	metric := model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar": "bary",
-		"baz": "bazy",
+		"bar":                 "bary",
+		"baz":                 "bazy",
 	}
 
 	fingerprintBytes := make([]byte, 8)

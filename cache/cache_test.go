@@ -37,7 +37,7 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
 			model.Fingerprint(1),
 			model.Metric{
 				model.MetricNameLabel: "foo",
-				"bar": "baz",
+				"bar":                 "baz",
 			},
 			promChunk[0],
 			ts,
