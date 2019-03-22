@@ -113,7 +113,7 @@ func (b *bigchunk) UnmarshalFromBuf(buf []byte) error {
 		return err
 	}
 
-	b.chunks = make([]smallChunk, 0, numChunks)
+	b.chunks = make([]smallChunk, 0, numChunks+1) // allow one extra space in case we want to add new data
 	for i := uint16(0); i < numChunks; i++ {
 		chunkLen, err := r.ReadUint16()
 		if err != nil {
