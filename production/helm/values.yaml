@@ -166,10 +166,6 @@ promtail:
       mountPath: /var/lib/docker/containers
       readOnly: true
 
-  readinessProbe: null
-
-  livenessProbe: null
-
   resources: {}
   #  limits:
   #    cpu: 200m
