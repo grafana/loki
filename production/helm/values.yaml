@@ -82,7 +82,7 @@ loki:
     #         values:
     #         - loki
     #     topologyKey: "kubernetes.io/hostname"
-  
+
   ## Enable persistence using Persistent Volume Claims
   ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
   ## If you set enabled as "True", you need :
@@ -126,6 +126,15 @@ promtail:
   deploymentStrategy: RollingUpdate
 
   entryParser: docker
+
+  config:
+    backoff_config:
+      # Initial backoff time between retries
+      minbackoff: 100ms
+      # Maximum backoff time between retries
+      maxbackoff: 5s
+      # Maximum number of retires when sending batches, 0 means infinite retries
+      maxretries: 5
 
   image:
     repository: grafana/promtail
