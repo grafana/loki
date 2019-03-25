@@ -42,7 +42,8 @@ loki:
       port: http-metrics
     initialDelaySeconds: 45
 
-  resources: {}
+  resources:
+    {}
     # limits:
     #   cpu: 200m
     #   memory: 256Mi
@@ -79,7 +80,8 @@ loki:
   ## Affinity for pod assignment
   ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
   ##
-  affinity: {}
+  affinity:
+    {}
     # podAntiAffinity:
     #   requiredDuringSchedulingIgnoredDuringExecution:
     #   - labelSelector:
@@ -133,15 +135,6 @@ promtail:
   deploymentStrategy: RollingUpdate
 
   entryParser: docker
-
-  config:
-    backoff_config:
-      # Initial backoff time between retries
-      minbackoff: 100ms
-      # Maximum backoff time between retries
-      maxbackoff: 5s
-      # Maximum number of retires when sending batches, 0 means infinite retries
-      maxretries: 5
 
   image:
     repository: grafana/promtail
@@ -212,4 +205,3 @@ promtail:
   ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
   ##
   affinity: {}
-
