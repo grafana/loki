@@ -25,14 +25,38 @@ const (
 
 // PeriodConfig defines the schema and tables to use for a period of time
 type PeriodConfig struct {
-	From        model.Time          `yaml:"-"`              // used when working with config
-	FromStr     string              `yaml:"from,omitempty"` // used when loading from yaml
-	IndexType   string              `yaml:"store"`          // type of index client to use.
-	ObjectType  string              `yaml:"object_store"`   // type of object client to use; if omitted, defaults to store.
+	From        DayTime             `yaml:"from"`         // used when working with config
+	IndexType   string              `yaml:"store"`        // type of index client to use.
+	ObjectType  string              `yaml:"object_store"` // type of object client to use; if omitted, defaults to store.
 	Schema      string              `yaml:"schema"`
 	IndexTables PeriodicTableConfig `yaml:"index"`
 	ChunkTables PeriodicTableConfig `yaml:"chunks,omitempty"`
 	RowShards   uint32              `yaml:"row_shards"`
+}
+
+// DayTime is a model.Time what holds day-aligned values, and marshals to/from
+// YAML in YYYY-MM-DD format.
+type DayTime struct {
+	model.Time
+}
+
+// MarshalYAML implements yaml.Marshaller.
+func (d DayTime) MarshalYAML() (interface{}, error) {
+	return d.Time.Time().Format("2006-01-02"), nil
+}
+
+// UnmarshalYAML implements yaml.Unmarshaller.
+func (d *DayTime) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var from string
+	if err := unmarshal(&from); err != nil {
+		return err
+	}
+	t, err := time.Parse("2006-01-02", from)
+	if err != nil {
+		return err
+	}
+	d.Time = model.TimeFromUnix(t.Unix())
+	return nil
 }
 
 // SchemaConfig contains the config for our chunk index schemas
@@ -98,8 +122,7 @@ func (cfg *SchemaConfig) translate() error {
 
 	add := func(t string, f model.Time) {
 		cfg.Configs = append(cfg.Configs, PeriodConfig{
-			From:      f,
-			FromStr:   f.Time().Format("2006-01-02"),
+			From:      DayTime{f},
 			Schema:    t,
 			IndexType: cfg.legacy.StorageClient,
 			IndexTables: PeriodicTableConfig{
@@ -153,13 +176,13 @@ func (cfg *SchemaConfig) translate() error {
 // entries if necessary so there is an entry starting at t
 func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)) {
 	for i := 0; i < len(cfg.Configs); i++ {
-		if t > cfg.Configs[i].From &&
-			(i+1 == len(cfg.Configs) || t < cfg.Configs[i+1].From) {
+		if t > cfg.Configs[i].From.Time &&
+			(i+1 == len(cfg.Configs) || t < cfg.Configs[i+1].From.Time) {
 			// Split the i'th entry by duplicating then overwriting the From time
 			cfg.Configs = append(cfg.Configs[:i+1], cfg.Configs[i:]...)
-			cfg.Configs[i+1].From = t
+			cfg.Configs[i+1].From = DayTime{t}
 		}
-		if cfg.Configs[i].From >= t {
+		if cfg.Configs[i].From.Time >= t {
 			f(&cfg.Configs[i])
 		}
 	}
@@ -211,25 +234,11 @@ func (cfg *SchemaConfig) Load() error {
 
 	decoder := yaml.NewDecoder(f)
 	decoder.SetStrict(true)
-	if err := decoder.Decode(&cfg); err != nil {
-		return err
-	}
-	for i := range cfg.Configs {
-		t, err := time.Parse("2006-01-02", cfg.Configs[i].FromStr)
-		if err != nil {
-			return err
-		}
-		cfg.Configs[i].From = model.TimeFromUnix(t.Unix())
-	}
-
-	return nil
+	return decoder.Decode(&cfg)
 }
 
 // PrintYaml dumps the yaml to stdout, to aid in migration
 func (cfg SchemaConfig) PrintYaml() {
-	for i := range cfg.Configs {
-		cfg.Configs[i].FromStr = cfg.Configs[i].From.Time().Format("2006-01-02")
-	}
 	encoder := yaml.NewEncoder(os.Stdout)
 	encoder.Encode(cfg)
 }
@@ -425,7 +434,7 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 // ChunkTableFor calculates the chunk table shard for a given point in time.
 func (cfg SchemaConfig) ChunkTableFor(t model.Time) (string, error) {
 	for i := range cfg.Configs {
-		if t >= cfg.Configs[i].From && (i+1 == len(cfg.Configs) || t < cfg.Configs[i+1].From) {
+		if t >= cfg.Configs[i].From.Time && (i+1 == len(cfg.Configs) || t < cfg.Configs[i+1].From.Time) {
 			return cfg.Configs[i].ChunkTables.TableFor(t), nil
 		}
 	}

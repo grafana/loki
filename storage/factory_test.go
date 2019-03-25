@@ -21,11 +21,11 @@ func TestFactoryStop(t *testing.T) {
 	flagext.DefaultValues(&cfg, &storeConfig, &schemaConfig, &defaults)
 	schemaConfig.Configs = []chunk.PeriodConfig{
 		{
-			From:      model.Time(0),
+			From:      chunk.DayTime{model.Time(0)},
 			IndexType: "inmemory",
 		},
 		{
-			From:      model.Time(1),
+			From:      chunk.DayTime{model.Time(1)},
 			IndexType: "inmemory",
 		},
 	}

@@ -187,7 +187,7 @@ func TestChunkTableFor(t *testing.T) {
 
 	periodConfigs := []PeriodConfig{
 		{
-			FromStr: "1970-01-01",
+			From: MustParseDayTime("1970-01-01"),
 			IndexTables: PeriodicTableConfig{
 				Prefix: "index_1_",
 				Period: tablePeriod,
@@ -198,7 +198,7 @@ func TestChunkTableFor(t *testing.T) {
 			},
 		},
 		{
-			FromStr: "2019-01-02",
+			From: MustParseDayTime("2019-01-02"),
 			IndexTables: PeriodicTableConfig{
 				Prefix: "index_2_",
 				Period: tablePeriod,
@@ -209,7 +209,7 @@ func TestChunkTableFor(t *testing.T) {
 			},
 		},
 		{
-			FromStr: "2019-03-06",
+			From: MustParseDayTime("2019-03-06"),
 			IndexTables: PeriodicTableConfig{
 				Prefix: "index_3_",
 				Period: tablePeriod,
@@ -219,13 +219,6 @@ func TestChunkTableFor(t *testing.T) {
 				Period: tablePeriod,
 			},
 		},
-	}
-
-	for i, cfg := range periodConfigs {
-		ts, err := time.Parse("2006-01-02", cfg.FromStr)
-		require.NoError(t, err)
-
-		periodConfigs[i].From = model.TimeFromUnix(ts.Unix())
 	}
 
 	schemaCfg := SchemaConfig{
@@ -275,4 +268,12 @@ func TestChunkTableFor(t *testing.T) {
 
 		require.Equal(t, tc.chunkTable, table)
 	}
+}
+
+func MustParseDayTime(s string) DayTime {
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		panic(err)
+	}
+	return DayTime{model.TimeFromUnix(t.Unix())}
 }
