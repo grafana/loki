@@ -51,7 +51,7 @@ loki:
     #   memory: 128Mi
 
   securityContext:
-    readOnlyRootFilesystem: true
+    fsGroup: 10001
     runAsGroup: 10001
     runAsNonRoot: true
     runAsUser: 10001

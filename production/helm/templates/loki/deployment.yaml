@@ -37,6 +37,8 @@ spec:
       serviceAccountName: {{ template "loki.serviceAccountName" . }}
     {{- if .Values.loki.priorityClassName }}
       priorityClassName: {{ .Values.loki.priorityClassName }}
+      securityContext:
+        {{- toYaml .Values.loki.securityContext | nindent 8 }}
     {{- end }}
       containers:
         - name: {{ .Chart.Name }}
@@ -61,7 +63,7 @@ spec:
           resources:
             {{- toYaml .Values.loki.resources | nindent 12 }}
           securityContext:
-            {{- toYaml .Values.loki.securityContext | nindent 12 }}
+            readOnlyRootFilesystem: true
       nodeSelector:
         {{- toYaml .Values.loki.nodeSelector | nindent 8 }}
       affinity:
