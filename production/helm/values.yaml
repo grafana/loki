@@ -51,7 +51,6 @@ loki:
     #   memory: 128Mi
 
   securityContext:
-    fsGroup: 10001
     readOnlyRootFilesystem: true
     runAsGroup: 10001
     runAsNonRoot: true
@@ -180,7 +179,6 @@ promtail:
   #    memory: 128Mi
 
   securityContext:
-    fsGroup: 0
     readOnlyRootFilesystem: true
     runAsGroup: 0
     runAsUser: 0
