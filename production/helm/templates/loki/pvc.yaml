@@ -6,13 +6,11 @@ metadata:
   name: {{ template "loki.fullname" . }}
   labels:
     app: {{ template "loki.name" . }}
-    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    chart: {{ template "loki.chart" . }}
     heritage: {{ .Release.Service }}
     release: {{ .Release.Name }}
-  {{- with .Values.loki.persistence.annotations  }}
   annotations:
-{{ toYaml . | indent 4 }}
-  {{- end }}
+    {{- toYaml .Values.loki.persistence.annotations | nindent 4 }}
 spec:
   accessModes:
     {{- range .Values.loki.persistence.accessModes }}

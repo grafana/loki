@@ -50,6 +50,13 @@ loki:
     #   cpu: 100m
     #   memory: 128Mi
 
+  securityContext:
+    fsGroup: 10001
+    readOnlyRootFilesystem: true
+    runAsGroup: 10001
+    runAsNonRoot: true
+    runAsUser: 10001
+
   ## Pod Annotations
   podAnnotations: {}
 
@@ -94,7 +101,7 @@ loki:
       - ReadWriteOnce
     size: 10Gi
     storageClassName: default
-    # annotations: {}
+    annotations: {}
     # subPath: ""
     # existingClaim:
 
@@ -141,18 +148,22 @@ promtail:
     tag: latest
     pullPolicy: Always # Always pull while in BETA
 
+  port: 3101
+
+  # Extra volumes to scrape logs from
   volumes:
-    - name: varlog
+    - name: pods
       hostPath:
-        path: /var/log
-    - name: varlibdockercontainers
+        path: /var/log/pods
+    - name: docker
       hostPath:
         path: /var/lib/docker/containers
 
   volumeMounts:
-    - name: varlog
-      mountPath: /var/log
-    - name: varlibdockercontainers
+    - name: pods
+      mountPath: /var/log/pods
+      readOnly: true
+    - name: docker
       mountPath: /var/lib/docker/containers
       readOnly: true
 
@@ -167,6 +178,12 @@ promtail:
   #  requests:
   #    cpu: 100m
   #    memory: 128Mi
+
+  securityContext:
+    fsGroup: 0
+    readOnlyRootFilesystem: true
+    runAsGroup: 0
+    runAsUser: 0
 
   ## Pod Annotations
   podAnnotations: {}

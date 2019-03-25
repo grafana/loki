@@ -60,6 +60,8 @@ spec:
             {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml .Values.loki.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.loki.securityContext | nindent 12 }}
       nodeSelector:
         {{- toYaml .Values.loki.nodeSelector | nindent 8 }}
       affinity:

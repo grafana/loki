@@ -6,7 +6,7 @@ metadata:
   name: {{ template "loki.fullname" . }}
   labels:
     app: {{ template "loki.name" . }}
-    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    chart: {{ template "loki.chart" . }}
     heritage: {{ .Release.Service }}
     release: {{ .Release.Name }}
 spec:
@@ -21,13 +21,24 @@ spec:
   hostIPC: false
   hostPID: false
   runAsUser:
-    rule: 'RunAsAny'
+    rule: 'MustRunAsNonRoot'
   seLinux:
-    rule: 'RunAsAny'
+    rule: 'MustRunAs'
+    ranges:
+    - min: 1
+      max: 65535
   supplementalGroups:
-    rule: 'RunAsAny'
+    rule: 'MustRunAs'
+    ranges:
+    - min: 1
+      max: 65535
   fsGroup:
-    rule: 'RunAsAny'
-  readOnlyRootFilesystem: false
+    rule: 'MustRunAs'
+    ranges:
+    - min: 1
+      max: 65535
+  readOnlyRootFilesystem: true
+  requiredDropCapabilities:
+    - ALL
 {{- end }}
 {{- end }}

@@ -42,6 +42,8 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/promtail
+            - name: run
+              mountPath: /run/promtail
             {{- with .Values.promtail.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -51,11 +53,10 @@ spec:
               fieldRef:
                 fieldPath: spec.nodeName
           ports:
-            - containerPort: 80
+            - containerPort: {{ .Values.promtail.port }}
               name: http-metrics
           securityContext:
-            privileged: true
-            runAsUser: 0
+            {{- toYaml .Values.promtail.securityContext | nindent 12 }}
           livenessProbe:
             {{- toYaml .Values.promtail.livenessProbe | nindent 12 }}
           readinessProbe:
@@ -72,6 +73,9 @@ spec:
         - name: config
           configMap:
             name: {{ template "promtail.fullname" . }}
+        - name: run
+          hostPath:
+            path: /run/promtail
         {{- with .Values.promtail.volumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
