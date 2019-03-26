@@ -52,7 +52,6 @@ loki:
 
   securityContext:
     fsGroup: 10001
-    readOnlyRootFilesystem: true
     runAsGroup: 10001
     runAsNonRoot: true
     runAsUser: 10001
@@ -159,10 +158,6 @@ promtail:
       mountPath: /var/lib/docker/containers
       readOnly: true
 
-  readinessProbe: null
-
-  livenessProbe: null
-
   resources: {}
   #  limits:
   #    cpu: 200m
@@ -172,7 +167,6 @@ promtail:
   #    memory: 128Mi
 
   securityContext:
-    fsGroup: 0
     readOnlyRootFilesystem: true
     runAsGroup: 0
     runAsUser: 0

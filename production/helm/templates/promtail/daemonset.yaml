@@ -57,10 +57,6 @@ spec:
               name: http-metrics
           securityContext:
             {{- toYaml .Values.promtail.securityContext | nindent 12 }}
-          livenessProbe:
-            {{- toYaml .Values.promtail.livenessProbe | nindent 12 }}
-          readinessProbe:
-            {{- toYaml .Values.promtail.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml .Values.promtail.resources | nindent 12 }}
       nodeSelector:
