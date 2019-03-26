@@ -4,10 +4,11 @@ INSTANCEID="${1:-}"
 APIKEY="${2:-}"
 INSTANCEURL="${3:-}"
 NAMESPACE="${4:-default}"
-CONTAINERROOT="${5-/var/lib/docker}"
+CONTAINERROOT="${5:-/var/lib/docker}"
+PARSER="${6:-docker}"
 
-if [ -z "$INSTANCEID" -o -z "$APIKEY" -o -z "$INSTANCEURL" -o -z "$NAMESPACE" -o -z "$CONTAINERROOT" ]; then
-    echo "usage: $0 <instanceId> <apiKey> <url> <namespace> <container_root_path>"
+if [ -z "$INSTANCEID" -o -z "$APIKEY" -o -z "$INSTANCEURL" -o -z "$NAMESPACE" -o -z "$CONTAINERROOT" -o -z "$PARSER" ]; then
+    echo "usage: $0 <instanceId> <apiKey> <url> [<namespace>[<container_root_path>[<parser>]]]"
     exit 1
 fi
 
@@ -311,4 +312,5 @@ echo "$TEMPLATE" | sed \
   -e "s#<apiKey>#${APIKEY}#" \
   -e "s#<instanceUrl>#${INSTANCEURL}#" \
   -e "s#<namespace>#${NAMESPACE}#" \
-  -e "s#<container_root_path>#${CONTAINERROOT}#"
+  -e "s#<container_root_path>#${CONTAINERROOT}#" \
+  -e "s#<parser>#${PARSER}#"
