@@ -2,7 +2,7 @@
 
 To query and display your logs you need to configure your Loki to be a datasource in your Grafana.
 
-To configure the datasource via provisioning see [Configuring Grafana via Provisioning](grafana-provisioning.md).
+To configure the datasource via provisioning see [Configuring Grafana via Provisioning](http://docs.grafana.org/features/datasources/loki/#configure-the-datasource-with-provisioning).
 
 _Note_: Querying your logs without Grafana is possible by using [logcli](./logcli.md).
 
