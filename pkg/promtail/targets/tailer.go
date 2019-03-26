@@ -48,6 +48,7 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions
 
 	tail, err := tail.TailFile(filename, tail.Config{
 		Follow: true,
+		Poll:   true,
 		ReOpen: reOpen,
 		Location: &tail.SeekInfo{
 			Offset: positions.Get(filename),
