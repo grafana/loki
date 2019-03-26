@@ -19,30 +19,12 @@ case $target in
         ;;
 
     "helm")
-        cat <<EOF
-{{- if .Values.promtail.enabled }}
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: {{ template "promtail.fullname" . }}
-  labels:
-    app: {{ template "promtail.name" . }}
-    chart: {{ template "promtail.chart" . }}
-    release: {{ .Release.Name }}
-    heritage: {{ .Release.Service }}
-data:
-  promtail.yaml: |
-    scrape_configs:
-EOF
         (cd $BASE;
           jsonnet -e '((import "../production/ksonnet/promtail/scrape_config.libsonnet") + { _config:: { promtail_config: { entry_parser: "{{ .Values.promtail.entryParser }}"}}}).promtail_config' \
           | ytools 2>/dev/null \
           | tail -n +3 \
           | awk '{ print "      " $0 }' \
         )
-        cat <<EOF
-{{- end }}
-EOF
         ;;
     *)
         echo "unknown target. expected 'shell' or 'helm'"
