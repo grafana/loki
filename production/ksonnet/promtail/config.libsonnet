@@ -13,10 +13,12 @@
       container_root_path: '/var/lib/docker',
       external_labels: {},
       entry_parser: 'docker',
-      backoff_config: {
-        minbackoff: 100ms,
-        maxbackoff: 5s,
-        maxretries: 5
+      client: {
+          backoff_config: {
+            minbackoff: 100ms,
+            maxbackoff: 5s,
+            maxretries: 5
+        }
       }
     },
 
