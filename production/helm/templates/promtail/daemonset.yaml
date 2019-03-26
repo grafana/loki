@@ -57,6 +57,14 @@ spec:
               name: http-metrics
           securityContext:
             {{- toYaml .Values.promtail.securityContext | nindent 12 }}
+          {{- if .Values.promtail.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.promtail.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.promtail.livenessProbe }}
+          readinessProbe:
+            {{- toYaml .Values.promtail.readinessProbe | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.promtail.resources | nindent 12 }}
       nodeSelector:

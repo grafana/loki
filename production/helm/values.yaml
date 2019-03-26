@@ -158,6 +158,30 @@ promtail:
       mountPath: /var/lib/docker/containers
       readOnly: true
 
+  readinessProbe:
+    failureThreshold: 5
+    exec:
+      command:
+      - /bin/sh
+      - -c
+      - /bin/ps -ef | grep promtail | grep -v grep
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 1
+
+  livenessProbe:
+    failureThreshold: 5
+    exec:
+      command:
+      - /bin/sh
+      - -c
+      - /bin/ps -ef | grep promtail | grep -v grep
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 1
+
   resources: {}
   #  limits:
   #    cpu: 200m
