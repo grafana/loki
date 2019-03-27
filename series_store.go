@@ -111,38 +111,17 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 		return nil, err
 	}
 
-	// Validate the query is within reasonable bounds.
-	metricName, matchers, shortcut, err := c.validateQuery(ctx, from, &through, allMatchers)
+	chks, _, err := c.GetChunkRefs(ctx, from, through, allMatchers...)
 	if err != nil {
 		return nil, err
-	} else if shortcut {
+	}
+
+	if len(chks) == 0 {
+		// Shortcut
 		return nil, nil
 	}
 
-	level.Debug(log).Log("metric", metricName)
-
-	// Fetch the series IDs from the index, based on non-empty matchers from
-	// the query.
-	_, matchers = util.SplitFiltersAndMatchers(matchers)
-	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, metricName, matchers)
-	if err != nil {
-		return nil, err
-	}
-	level.Debug(log).Log("series-ids", len(seriesIDs))
-
-	// Lookup the series in the index to get the chunks.
-	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, seriesIDs)
-	if err != nil {
-		level.Error(log).Log("msg", "lookupChunksBySeries", "err", err)
-		return nil, err
-	}
-	level.Debug(log).Log("chunk-ids", len(chunkIDs))
-
-	chunks, err := c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
-	if err != nil {
-		level.Error(log).Log("err", "convertChunkIDsToChunks", "err", err)
-		return nil, err
-	}
+	chunks := chks[0]
 	// Filter out chunks that are not in the selected time range.
 	filtered, keys := filterChunksByTime(from, through, chunks)
 	level.Debug(log).Log("chunks-post-filtering", len(chunks))
@@ -150,8 +129,8 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 
 	// Protect ourselves against OOMing.
 	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
-	if maxChunksPerQuery > 0 && len(chunkIDs) > maxChunksPerQuery {
-		err := httpgrpc.Errorf(http.StatusBadRequest, "Query %v fetched too many chunks (%d > %d)", allMatchers, len(chunkIDs), maxChunksPerQuery)
+	if maxChunksPerQuery > 0 && len(chunks) > maxChunksPerQuery {
+		err := httpgrpc.Errorf(http.StatusBadRequest, "Query %v fetched too many chunks (%d > %d)", allMatchers, len(chunks), maxChunksPerQuery)
 		level.Error(log).Log("err", err)
 		return nil, err
 	}
@@ -166,6 +145,51 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	// Filter out chunks based on the empty matchers in the query.
 	filteredChunks := filterChunksByMatchers(allChunks, allMatchers)
 	return filteredChunks, nil
+}
+
+func (c *seriesStore) GetChunkRefs(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
+	log, ctx := spanlogger.New(ctx, "SeriesStore.GetChunkRefs")
+	defer log.Span.Finish()
+
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Validate the query is within reasonable bounds.
+	metricName, matchers, shortcut, err := c.validateQuery(ctx, from, &through, allMatchers)
+	if err != nil {
+		return nil, nil, err
+	} else if shortcut {
+		return nil, nil, nil
+	}
+
+	level.Debug(log).Log("metric", metricName)
+
+	// Fetch the series IDs from the index, based on non-empty matchers from
+	// the query.
+	_, matchers = util.SplitFiltersAndMatchers(matchers)
+	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, metricName, matchers)
+	if err != nil {
+		return nil, nil, err
+	}
+	level.Debug(log).Log("series-ids", len(seriesIDs))
+
+	// Lookup the series in the index to get the chunks.
+	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, seriesIDs)
+	if err != nil {
+		level.Error(log).Log("msg", "lookupChunksBySeries", "err", err)
+		return nil, nil, err
+	}
+	level.Debug(log).Log("chunk-ids", len(chunkIDs))
+
+	chunks, err := c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
+	if err != nil {
+		level.Error(log).Log("op", "convertChunkIDsToChunks", "err", err)
+		return nil, nil, err
+	}
+
+	return [][]Chunk{chunks}, []*Fetcher{c.store.Fetcher}, nil
 }
 
 func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from, through model.Time, metricName string, matchers []*labels.Matcher) ([]string, error) {

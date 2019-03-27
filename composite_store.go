@@ -14,7 +14,8 @@ import (
 type Store interface {
 	Put(ctx context.Context, chunks []Chunk) error
 	PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error
-	Get(tx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error)
+	Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error)
+	GetChunkRefs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error)
 	LabelValuesForMetricName(ctx context.Context, from, through model.Time, metricName string, labelName string) ([]string, error)
 	Stop()
 }
@@ -101,6 +102,22 @@ func (c compositeStore) LabelValuesForMetricName(ctx context.Context, from, thro
 		return nil
 	})
 	return result, err
+}
+
+func (c compositeStore) GetChunkRefs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
+	chunkIDs := [][]Chunk{}
+	fetchers := []*Fetcher{}
+	err := c.forStores(from, through, func(from, through model.Time, store Store) error {
+		ids, fetcher, err := store.GetChunkRefs(ctx, from, through, matchers...)
+		if err != nil {
+			return err
+		}
+
+		chunkIDs = append(chunkIDs, ids...)
+		fetchers = append(fetchers, fetcher...)
+		return nil
+	})
+	return chunkIDs, fetchers, err
 }
 
 func (c compositeStore) Stop() {

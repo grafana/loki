@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -181,6 +182,10 @@ func (c *store) Get(ctx context.Context, from, through model.Time, allMatchers .
 
 	log.Span.SetTag("metric", metricName)
 	return c.getMetricNameChunks(ctx, from, through, matchers, metricName)
+}
+
+func (c *store) GetChunkRefs(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
+	return nil, nil, errors.New("not implemented")
 }
 
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
