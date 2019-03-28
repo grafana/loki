@@ -376,10 +376,6 @@ promtail:
         - source_labels:
           - __meta_kubernetes_pod_node_name
           target_label: __host__
-        - action: drop
-          regex: ^$
-          source_labels:
-          - __service__
         - action: replace
           replacement: $1
           separator: /
