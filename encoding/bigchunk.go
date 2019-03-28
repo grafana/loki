@@ -161,8 +161,9 @@ func (b *bigchunk) Len() int {
 }
 
 func (b *bigchunk) Size() int {
-	sum := 0
+	sum := 2 // For the number of sub chunks.
 	for _, c := range b.chunks {
+		sum += 2 // For the length of the sub chunk.
 		sum += len(c.Bytes())
 	}
 	return sum
