@@ -10,9 +10,9 @@ import (
 var (
 	app = kingpin.New("logcli", "A command-line for loki.")
 
-	config = app.Flag("config", "Logcli config.").Default("").String()
-
-	addr, username, password *string
+	addr     = app.Flag("addr", "Server address.").Default("https://logs-us-west1.grafana.net").Envar("GRAFANA_ADDR").String()
+	username = app.Flag("username", "Username for HTTP basic auth.").Default("").Envar("GRAFANA_USERNAME").String()
+	password = app.Flag("password", "Password for HTTP basic auth.").Default("").Envar("GRAFANA_PASSWORD").String()
 
 	queryCmd  = app.Command("query", "Run a LogQL query.")
 	queryStr  = queryCmd.Arg("query", "eg '{foo=\"bar\",baz=\"blip\"}'").Required().String()
@@ -27,17 +27,6 @@ var (
 )
 
 func main() {
-	// get val from config file
-	cfg, err := getConfig(*config)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	addr = app.Flag("addr", "Server address.").Default(cfg.Addr).Envar("GRAFANA_ADDR").String()
-	username = app.Flag("username", "Username for HTTP basic auth.").Default(cfg.Username).Envar("GRAFANA_USERNAME").String()
-	password = app.Flag("password", "Password for HTTP basic auth.").Default(cfg.Password).Envar("GRAFANA_PASSWORD").String()
-
 	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
 	case queryCmd.FullCommand():
 		if *addr == "" {
