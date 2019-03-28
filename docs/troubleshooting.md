@@ -10,6 +10,14 @@ This can have several reasons:
 - Promtail started sending logs before Loki was ready. This can happen in test environments where promtail already read all logs and sent them off. Here is what you can do:
   - Generally start promtail after Loki, e.g., 60 seconds later.
   - Restarting promtail will not necessarily resend log messages that have been read. To force sending all messages again, delete the positions file (default location `/tmp/positions.yaml`) or make sure new log messages are written after both promtail and Loki have started.
+- Promtail is ignoring targets because of a configuration rule
+  - Detect this by turning on debug logging and then look for `dropping target, no labels` or `ignoring target` messages.
+
+## Debug output
+
+Both binaries support a log level parameter on the command-line, e.g.: `loki —log.level= debug ...`
+
+## No labels: 
 
 ## Failed to create target, "ioutil.ReadDir: readdirent: not a directory"
 
