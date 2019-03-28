@@ -186,8 +186,8 @@
   version = "v2.0.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:5750dfa5a8160b51a01c02d6d7841b50fe7d2d97344c200fc4cdc3c46b3953f8"
+  branch = "lazy-load-chunks"
+  digest = "1:ec8e0308d1e557f50317a6437073a7a859d73e4cf8e4c20a60d7009e352353c6"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/chunk",
@@ -214,7 +214,8 @@
     "pkg/util/wire",
   ]
   pruneopts = "UT"
-  revision = "ff51bd3c7267184042ea4cf347e6d1fa24934c91"
+  revision = "161f6716cba9a32f07f359c4f9f8578e0c5d5ae8"
+  source = "https://github.com/grafana/cortex"
 
 [[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"

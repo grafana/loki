@@ -27,22 +27,47 @@ func (q Querier) queryStore(ctx context.Context, req *logproto.QueryRequest) ([]
 
 	matchers = append(matchers, nameLabelMatcher)
 	from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
-	chunks, err := q.store.Get(ctx, from, through, matchers...)
+	chks, fetchers, err := q.store.GetChunkRefs(ctx, from, through, matchers...)
 	if err != nil {
 		return nil, err
 	}
 
-	return partitionBySeriesChunks(req, chunks)
+	for i := range chks {
+		chks[i], _ = filterChunksByTime(from, through, chks[i])
+	}
+
+	// TODO(gouthamve): Figure out how to do the filtering lazily.
+	//chunks, err := filterChunksByMatchers(ctx, chks, filters, matchers...)
+	//if err != nil {
+	//return nil, err
+	//}
+
+	return partitionBySeriesChunks(req, chks, fetchers)
 }
 
-func partitionBySeriesChunks(req *logproto.QueryRequest, chunks []chunk.Chunk) ([]iter.EntryIterator, error) {
-	chunksByFp := map[model.Fingerprint][]chunk.Chunk{}
+func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) ([]chunk.Chunk, []string) {
+	filtered := make([]chunk.Chunk, 0, len(chunks))
+	keys := make([]string, 0, len(chunks))
+	for _, chunk := range chunks {
+		if chunk.Through < from || through < chunk.From {
+			continue
+		}
+		filtered = append(filtered, chunk)
+		keys = append(keys, chunk.ExternalKey())
+	}
+	return filtered, keys
+}
+
+func partitionBySeriesChunks(req *logproto.QueryRequest, chunks [][]chunk.Chunk, fetchers []*chunk.Fetcher) ([]iter.EntryIterator, error) {
+	chunksByFp := map[model.Fingerprint][]chunkenc.LazyChunk{}
 	metricByFp := map[model.Fingerprint]model.Metric{}
-	for _, c := range chunks {
-		fp := c.Metric.Fingerprint()
-		chunksByFp[fp] = append(chunksByFp[fp], c)
-		delete(c.Metric, "__name__")
-		metricByFp[fp] = c.Metric
+	for i, chks := range chunks {
+		for _, c := range chks {
+			fp := c.Metric.Fingerprint()
+			chunksByFp[fp] = append(chunksByFp[fp], chunkenc.LazyChunk{Chunk: c, Fetcher: fetchers[i]})
+			delete(c.Metric, "__name__")
+			metricByFp[fp] = c.Metric
+		}
 	}
 
 	iters := make([]iter.EntryIterator, 0, len(chunksByFp))
@@ -58,19 +83,21 @@ func partitionBySeriesChunks(req *logproto.QueryRequest, chunks []chunk.Chunk) (
 	return iters, nil
 }
 
-func partitionOverlappingChunks(req *logproto.QueryRequest, labels string, chunks []chunk.Chunk) ([]iter.EntryIterator, error) {
-	sort.Sort(byFrom(chunks))
+func partitionOverlappingChunks(req *logproto.QueryRequest, labels string, chunks []chunkenc.LazyChunk) ([]iter.EntryIterator, error) {
+	sort.Slice(chunks, func(i, j int) bool {
+		return chunks[i].Chunk.From < chunks[i].Chunk.From
+	})
 
-	css := [][]chunk.Chunk{}
+	css := [][]chunkenc.LazyChunk{}
 outer:
 	for _, c := range chunks {
 		for i, cs := range css {
-			if cs[len(cs)-1].Through.Before(c.From) {
+			if cs[len(cs)-1].Chunk.Through.Before(c.Chunk.From) {
 				css[i] = append(css[i], c)
 				continue outer
 			}
 		}
-		cs := make([]chunk.Chunk, 0, len(chunks)/(len(css)+1))
+		cs := make([]chunkenc.LazyChunk, 0, len(chunks)/(len(css)+1))
 		cs = append(cs, c)
 		css = append(css, cs)
 	}
@@ -79,8 +106,7 @@ outer:
 	for i := range css {
 		iterators := make([]iter.EntryIterator, 0, len(css[i]))
 		for j := range css[i] {
-			lokiChunk := css[i][j].Data.(*chunkenc.Facade).LokiChunk()
-			iterator, err := lokiChunk.Iterator(req.Start, req.End, req.Direction)
+			iterator, err := css[i][j].Iterator(req.Start, req.End, req.Direction)
 			if err != nil {
 				return nil, err
 			}

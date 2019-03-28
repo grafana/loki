@@ -72,8 +72,8 @@ func CreateChunks(startIndex, batchSize int, start model.Time) ([]string, []chun
 func dummyChunk(now model.Time) chunk.Chunk {
 	return dummyChunkFor(now, model.Metric{
 		model.MetricNameLabel: "foo",
-		"bar":  "baz",
-		"toms": "code",
+		"bar":                 "baz",
+		"toms":                "code",
 	})
 }
 

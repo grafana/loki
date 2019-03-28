@@ -356,7 +356,7 @@ func (i *nonOverlappingIterator) Labels() string {
 }
 
 func (i *nonOverlappingIterator) Error() error {
-	return nil
+	return i.curr.Error()
 }
 
 func (i *nonOverlappingIterator) Close() error {
