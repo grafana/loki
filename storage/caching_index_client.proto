@@ -8,8 +8,8 @@ option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
 message Entry {
-    bytes Column = 1 [(gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/util/wire.Bytes", (gogoproto.nullable) = false];
-    bytes Value = 2 [(gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/util/wire.Bytes", (gogoproto.nullable) = false];
+    bytes Column = 1 [(gogoproto.customtype) = "Bytes", (gogoproto.nullable) = false];
+    bytes Value = 2 [(gogoproto.customtype) = "Bytes", (gogoproto.nullable) = false];
 }
 
 message ReadBatch {
