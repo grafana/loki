@@ -51,6 +51,18 @@ These give you a comprehensive package on how to monitor Loki in production.
 
 For more information about mixins, take a look at the [mixins project docs](https://github.com/monitoring-mixins/docs).
 
+## Retention/Deleting old data
+
+A retention policy and API to delete ingested logs is still under development.
+Feel free to add your use case to this [GitHub issue](https://github.com/grafana/loki/issues/162).
+
+A design goal of Loki is that storing logs should be cheap, hence a volume-based deletion API was deprioritized.
+But we realize that time-based retention could be a compliance issue.
+
+Until this feature is released: If you suddenly must delete ingested logs, you can delete old chunks in your object store.
+Note that this will only delete the log content while keeping the label index intact.
+You will still be able to see related labels, but the log retrieval of the deleted log content will no longer work.
+
 ## Scalability
 
 See this [blog post](https://grafana.com/blog/2018/12/12/loki-prometheus-inspired-open-source-logging-for-cloud-natives/) on a discussion about Loki's scalability.
