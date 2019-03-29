@@ -160,11 +160,9 @@ promtail:
 
   readinessProbe:
     failureThreshold: 5
-    exec:
-      command:
-      - /bin/sh
-      - -c
-      - /bin/ps -ef | grep promtail | grep -v grep
+    httpGet:
+      path: /metrics
+      port: http-metrics
     initialDelaySeconds: 10
     periodSeconds: 10
     successThreshold: 1
@@ -172,11 +170,9 @@ promtail:
 
   livenessProbe:
     failureThreshold: 5
-    exec:
-      command:
-      - /bin/sh
-      - -c
-      - /bin/ps -ef | grep promtail | grep -v grep
+    httpGet:
+      path: /metrics
+      port: http-metrics
     initialDelaySeconds: 10
     periodSeconds: 10
     successThreshold: 1
