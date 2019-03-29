@@ -1,5 +1,9 @@
 # Promtail Setups
 
+## Design Documentation
+
+* [Extracting labels from logs](./design/labels.md)
+
 ## Daemonset method
 
 Daemonset will deploy promtail on every node within the kubernetes cluster.
