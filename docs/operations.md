@@ -21,6 +21,8 @@ In this situation, the tenant ID is defaulted to be `fake`.
 ### Metrics
 
 Both Loki and promtail expose a `/metrics` endpoint for Prometheus metrics.
+You need add right target info into [prometheus service discovery config](https://prometheus.io/docs/prometheus/latest/configuration/configuration)
+then you can get following metrics.
 
 Loki metrics:
 
