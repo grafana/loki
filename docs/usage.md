@@ -2,9 +2,7 @@
 
 To query and display your logs you need to configure your Loki to be a datasource in your Grafana.
 
-To configure the datasource via provisioning see [Configuring Grafana via Provisioning](http://docs.grafana.org/features/datasources/loki/#configure-the-datasource-with-provisioning).
-
-_Note_: Querying your logs without Grafana is possible by using [logcli](./logcli.md).
+> _Note_: Querying your logs without Grafana is possible by using [logcli](./logcli.md).
 
 ## Configuring the Loki Datasource in Grafana
 
@@ -18,6 +16,8 @@ Grafana ships with built-in support for Loki as part of its [latest release (6.0
 1. To see the logs, click "Explore" on the sidebar, select the Loki datasource, and then choose a log stream using the "Log labels" button.
 
 Read more about the Explore feature in the [Grafana docs](http://docs.grafana.org/features/explore) and on how to search and filter logs with Loki.
+
+> To configure the datasource via provisioning see [Configuring Grafana via Provisioning](http://docs.grafana.org/features/datasources/loki/#configure-the-datasource-with-provisioning) and make sure to adjust the URL similarly as shown above.
 
 ## Searching with Labels and Distributed Grep
 
