@@ -61,7 +61,7 @@ spec:
           livenessProbe:
             {{- toYaml .Values.promtail.livenessProbe | nindent 12 }}
           {{- end }}
-          {{- if .Values.promtail.livenessProbe }}
+          {{- if .Values.promtail.readinessProbe }}
           readinessProbe:
             {{- toYaml .Values.promtail.readinessProbe | nindent 12 }}
           {{- end }}
