@@ -92,6 +92,7 @@ Flags:
   --since=1h     Lookback window.
   --forward      Scan forwards through logs.
   -t, --tail     Tail the logs
+  --no-labels    Do not print labels
 
 Args:
   <query>    eg '{foo="bar",baz="blip"}'
