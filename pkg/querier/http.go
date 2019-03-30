@@ -12,6 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
 	"github.com/grafana/loki/pkg/logproto"
 )
 
@@ -124,5 +125,39 @@ func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+}
+
+// LabelHandler is a http.HandlerFunc for handling tail queries.
+func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		level.Error(util.Logger).Log("Error in upgrading websocket", fmt.Sprintf("%v", err))
+		return
+	}
+	defer conn.Close()
+
+	params := r.URL.Query()
+	itr := q.TailQuery(r.Context(), params.Get("query"), params.Get("regexp"))
+
+	stream := logproto.Stream{}
+
+	for itr.Next() {
+		stream.Entries = []logproto.Entry{itr.Entry()}
+		stream.Labels = itr.Labels()
+
+		err := conn.WriteJSON(stream)
+		if err != nil {
+			level.Error(util.Logger).Log("Error writing to websocket", fmt.Sprintf("%v", err))
+			break
+		}
+	}
+
+	if err := itr.Error(); err != nil {
+		level.Error(util.Logger).Log("Error from iterator", fmt.Sprintf("%v", err))
 	}
 }

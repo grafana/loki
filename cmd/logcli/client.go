@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/gorilla/websocket"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -15,6 +18,7 @@ const (
 	queryPath       = "/api/prom/query?query=%s&limit=%d&start=%d&end=%d&direction=%s&regexp=%s"
 	labelsPath      = "/api/prom/label"
 	labelValuesPath = "/api/prom/label/%s/values"
+	tailPath       = "/api/prom/tail?query=%s&regexp=%s"
 )
 
 func query(from, through time.Time, direction logproto.Direction) (*logproto.QueryResponse, error) {
@@ -72,4 +76,27 @@ func doRequest(path string, out interface{}) error {
 	}
 
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+func liveTailQueryConn() (*websocket.Conn, error) {
+	path := fmt.Sprintf(tailPath, url.QueryEscape(*queryStr), url.QueryEscape(*regexpStr))
+	return wsConnect(path)
+}
+
+func wsConnect(path string) (*websocket.Conn, error) {
+	url := *addr + path
+	if strings.HasPrefix(url, "https") {
+		url = strings.Replace(url, "https", "wss", 1)
+	} else if strings.HasPrefix(url, "http") {
+		url = strings.Replace(url, "http", "ws", 1)
+	}
+	fmt.Println(url)
+
+	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(*username + ":" + *password))}}
+	c, _, err := websocket.DefaultDialer.Dial(url, h)
+	if err != nil {
+		return nil, err
+	}
+
+	return c, nil
 }

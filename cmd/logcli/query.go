@@ -15,6 +15,11 @@ import (
 )
 
 func doQuery() {
+	if *tail {
+		tailQuery()
+		return
+	}
+
 	var (
 		i            iter.EntryIterator
 		labelsCache  = mustParseLabels
@@ -22,39 +27,35 @@ func doQuery() {
 		maxLabelsLen = 100
 	)
 
-	if *tail {
-		i = tailQuery()
-	} else {
-		end := time.Now()
-		start := end.Add(-*since)
-		d := logproto.BACKWARD
-		if *forward {
-			d = logproto.FORWARD
-		}
+	end := time.Now()
+	start := end.Add(-*since)
+	d := logproto.BACKWARD
+	if *forward {
+		d = logproto.FORWARD
+	}
 
-		resp, err := query(start, end, d)
-		if err != nil {
-			log.Fatalf("Query failed: %+v", err)
-		}
+	resp, err := query(start, end, d)
+	if err != nil {
+		log.Fatalf("Query failed: %+v", err)
+	}
 
-		cache, lss := parseLabels(resp)
+	cache, lss := parseLabels(resp)
 
-		labelsCache = func(labels string) labels.Labels {
-			return cache[labels]
-		}
-		common = commonLabels(lss)
-		i = iter.NewQueryResponseIterator(resp, d)
+	labelsCache = func(labels string) labels.Labels {
+		return cache[labels]
+	}
+	common = commonLabels(lss)
+	i = iter.NewQueryResponseIterator(resp, d)
 
-		if len(common) > 0 {
-			fmt.Println("Common labels:", color.RedString(common.String()))
-		}
+	if len(common) > 0 {
+		fmt.Println("Common labels:", color.RedString(common.String()))
+	}
 
-		for _, ls := range cache {
-			ls = subtract(common, ls)
-			len := len(ls.String())
-			if maxLabelsLen < len {
-				maxLabelsLen = len
-			}
+	for _, ls := range cache {
+		ls = subtract(common, ls)
+		len := len(ls.String())
+		if maxLabelsLen < len {
+			maxLabelsLen = len
 		}
 	}
 
