@@ -10,7 +10,7 @@ import (
 
 const tailIteratorIncrement = 10 * time.Second
 
-func (q *Querier) TailQuery(ctx context.Context, queryStr, regexp string) iter.EntryIterator {
+func (q *Querier) tailQuery(ctx context.Context, queryStr, regexp string) iter.EntryIterator {
 	return &tailIterator{
 		from:     time.Now().Add(-tailIteratorIncrement),
 		queryStr: queryStr,

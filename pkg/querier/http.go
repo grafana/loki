@@ -146,7 +146,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	params := r.URL.Query()
-	itr := q.TailQuery(r.Context(), params.Get("query"), params.Get("regexp"))
+	itr := q.tailQuery(r.Context(), params.Get("query"), params.Get("regexp"))
 
 	stream := logproto.Stream{}
 
