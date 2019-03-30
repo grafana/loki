@@ -4,12 +4,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/websocket"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/gorilla/websocket"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -18,7 +19,7 @@ const (
 	queryPath       = "/api/prom/query?query=%s&limit=%d&start=%d&end=%d&direction=%s&regexp=%s"
 	labelsPath      = "/api/prom/label"
 	labelValuesPath = "/api/prom/label/%s/values"
-	tailPath       = "/api/prom/tail?query=%s&regexp=%s"
+	tailPath        = "/api/prom/tail?query=%s&regexp=%s"
 )
 
 func query(from, through time.Time, direction logproto.Direction) (*logproto.QueryResponse, error) {
@@ -92,7 +93,7 @@ func wsConnect(path string) (*websocket.Conn, error) {
 	}
 	fmt.Println(url)
 
-	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(*username + ":" + *password))}}
+	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(*username+":"+*password))}}
 	c, _, err := websocket.DefaultDialer.Dial(url, h)
 	if err != nil {
 		return nil, err

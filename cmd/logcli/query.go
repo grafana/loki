@@ -22,7 +22,6 @@ func doQuery() {
 
 	var (
 		i            iter.EntryIterator
-		labelsCache  = mustParseLabels
 		common       labels.Labels
 		maxLabelsLen = 100
 	)
@@ -41,7 +40,7 @@ func doQuery() {
 
 	cache, lss := parseLabels(resp)
 
-	labelsCache = func(labels string) labels.Labels {
+	labelsCache := func(labels string) labels.Labels {
 		return cache[labels]
 	}
 	common = commonLabels(lss)

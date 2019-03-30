@@ -128,7 +128,7 @@ func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// LabelHandler is a http.HandlerFunc for handling tail queries.
+// TailHandler is a http.HandlerFunc for handling tail queries.
 func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
@@ -139,7 +139,11 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 		level.Error(util.Logger).Log("Error in upgrading websocket", fmt.Sprintf("%v", err))
 		return
 	}
-	defer conn.Close()
+
+	defer func() {
+		err := conn.Close()
+		level.Error(util.Logger).Log("Error closing websocket", fmt.Sprintf("%v", err))
+	}()
 
 	params := r.URL.Query()
 	itr := q.TailQuery(r.Context(), params.Get("query"), params.Get("regexp"))
