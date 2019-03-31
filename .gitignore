@@ -2,7 +2,6 @@
 .pkg
 .cache
 *.output
-*.tgz
 mixin/vendor/
 cmd/loki/loki
 cmd/promtail/promtail
