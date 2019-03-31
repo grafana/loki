@@ -6,6 +6,11 @@ RUN curl -L -o /tmp/docker-$DOCKER_VER.tgz https://download.docker.com/linux/sta
     tar -xz -C /tmp -f /tmp/docker-$DOCKER_VER.tgz && \
     mv /tmp/docker/* /usr/bin && \
 		rm /tmp/docker-$DOCKER_VER.tgz
+ENV HELM_VER="v2.13.1"
+RUN curl -L -o /tmp/helm-$HELM_VER.tgz http://storage.googleapis.com/kubernetes-helm/helm-${HELM_VER}-linux-amd64.tar.gz && \
+    tar -xz -C /tmp -f /tmp/helm-$HELM_VER.tgz && \
+    mv /tmp/linux-amd64/helm /usr/bin/helm && \
+    rm -rf /tmp/linux-amd64 /tmp/helm-$HELM_VER.tgz
 RUN go get \
 		github.com/golang/protobuf/protoc-gen-go \
 		github.com/gogo/protobuf/protoc-gen-gogoslick \

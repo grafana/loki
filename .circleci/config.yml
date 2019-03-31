@@ -23,6 +23,14 @@ workflows:
         filters:
           branches:
             only: master
+    - publish-helm:
+        requires:
+        - test
+        - build
+        - lint
+        filters:
+          branches:
+            only: master
     - deploy:
         requires:
         - publish
@@ -33,7 +41,7 @@ workflows:
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
   docker:
-    - image: grafana/loki-build-image:rename-49e21d5-WIP
+    - image: grafana/loki-build-image:0.1.0
   working_directory: /go/src/github.com/grafana/loki
 
 jobs:
@@ -131,6 +139,12 @@ jobs:
           command: |
             docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
             make push-latest
+
+  publish-helm:
+    <<: *defaults
+    steps:
+      - checkout
+      - run: make helm-publish
 
   deploy:
     <<: *defaults
