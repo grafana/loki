@@ -61,9 +61,15 @@ func doQuery() {
 	for i.Next() {
 		ls := labelsCache(i.Labels())
 		ls = subtract(ls, common)
+
+		labels := ""
+		if !*noLabels {
+			labels = color.RedString(padLabel(ls, maxLabelsLen))
+		}
+
 		fmt.Println(
 			color.BlueString(i.Entry().Timestamp.Format(time.RFC3339)),
-			color.RedString(padLabel(ls, maxLabelsLen)),
+			labels,
 			strings.TrimSpace(i.Entry().Line),
 		)
 	}

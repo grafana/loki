@@ -21,6 +21,8 @@ In this situation, the tenant ID is defaulted to be `fake`.
 ### Metrics
 
 Both Loki and promtail expose a `/metrics` endpoint for Prometheus metrics.
+You need a local Prometheus and make sure it can add your Loki and promtail as targets, [see Prometheus configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration).
+When Prometheus can scrape Loki and promtail, you get the following metrics:
 
 Loki metrics:
 
@@ -98,13 +100,13 @@ Example config for using S3 & DynamoDB:
 ```yaml
 schema_config:
   configs:
-  - from: 0
-    store: dynamo
-    object_store: s3
-    schema: v9
-    index:
-      prefix: dynamodb_table_name
-      period: 0
+    - from: 0
+      store: dynamo
+      object_store: s3
+      schema: v9
+      index:
+        prefix: dynamodb_table_name
+        period: 0
 storage_config:
   aws:
     s3: s3://access_key:secret_access_key@region/bucket_name
@@ -133,7 +135,7 @@ and ensure the `index.prefix` table exists.
 You can setup DynamoDB by yourself, or have `table-manager` setup for you.
 You can find out more info about table manager at
 [Cortex project](https://github.com/cortexproject/cortex)(https://github.com/cortexproject/cortex).
-There is an example table manager deployment inside the ksonnet deployment method.  You can find it [here](../production/ksonnet/loki/table-manager.libsonnet)
+There is an example table manager deployment inside the ksonnet deployment method. You can find it [here](../production/ksonnet/loki/table-manager.libsonnet)
 
 If you set your DynamoDB table manually, ensure you set the primary index key to `h`
 (string) and use `r` (binary) as the sort key. Make sure adjust your throughput base on your usage.

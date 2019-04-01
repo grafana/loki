@@ -68,6 +68,12 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 	}
 
+	countdown := 10000
+	for len(client.messages) != 10 && countdown > 0 {
+		time.Sleep(1 * time.Millisecond)
+		countdown--
+	}
+
 	target.Stop()
 	ps.Stop()
 
@@ -155,6 +161,12 @@ func TestWatchEntireDirectory(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 	}
 
+	countdown := 10000
+	for len(client.messages) != 10 && countdown > 0 {
+		time.Sleep(1 * time.Millisecond)
+		countdown--
+	}
+
 	target.Stop()
 	ps.Stop()
 
@@ -238,6 +250,12 @@ func TestFileRolls(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 	}
 
+	countdown := 10000
+	for len(client.messages) != 10 && countdown > 0 {
+		time.Sleep(1 * time.Millisecond)
+		countdown--
+	}
+
 	// Rename the log file to something not in the pattern, then create a new file with the same name.
 	err = os.Rename(logFile, dirName+"/test.log.1")
 	if err != nil {
@@ -254,6 +272,12 @@ func TestFileRolls(t *testing.T) {
 			t.Fatal(err)
 		}
 		time.Sleep(1 * time.Millisecond)
+	}
+
+	countdown = 10000
+	for len(client.messages) != 20 && countdown > 0 {
+		time.Sleep(1 * time.Millisecond)
+		countdown--
 	}
 
 	target.Stop()
@@ -324,6 +348,12 @@ func TestResumesWhereLeftOff(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 	}
 
+	countdown := 10000
+	for len(client.messages) != 10 && countdown > 0 {
+		time.Sleep(1 * time.Millisecond)
+		countdown--
+	}
+
 	target.Stop()
 	ps.Stop()
 
@@ -350,6 +380,12 @@ func TestResumesWhereLeftOff(t *testing.T) {
 			t.Fatal(err)
 		}
 		time.Sleep(1 * time.Millisecond)
+	}
+
+	countdown = 10000
+	for len(client.messages) != 20 && countdown > 0 {
+		time.Sleep(1 * time.Millisecond)
+		countdown--
 	}
 
 	target2.Stop()
@@ -429,6 +465,12 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 		time.Sleep(1 * time.Millisecond)
+	}
+
+	countdown := 10000
+	for len(client.messages) != 20 && countdown > 0 {
+		time.Sleep(1 * time.Millisecond)
+		countdown--
 	}
 
 	target.Stop()

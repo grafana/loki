@@ -58,9 +58,10 @@ type Config struct {
 	BatchWait time.Duration
 	BatchSize int
 
-	BackoffConfig  util.BackoffConfig `yaml:"backoff_config"`
-	ExternalLabels model.LabelSet     `yaml:"external_labels,omitempty"`
-	Timeout        time.Duration      `yaml:"timeout"`
+	BackoffConfig util.BackoffConfig `yaml:"backoff_config"`
+	// The labels to add to any time series or alerts when communicating with loki
+	ExternalLabels model.LabelSet `yaml:"external_labels,omitempty"`
+	Timeout        time.Duration  `yaml:"timeout"`
 }
 
 // RegisterFlags registers flags.

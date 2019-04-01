@@ -21,6 +21,7 @@ var (
 	since     = queryCmd.Flag("since", "Lookback window.").Default("1h").Duration()
 	forward   = queryCmd.Flag("forward", "Scan forwards through logs.").Default("false").Bool()
 	tail      = queryCmd.Flag("tail", "Tail the logs").Short('t').Default("false").Bool()
+	noLabels  = queryCmd.Flag("no-labels", "Do not print labels").Default("false").Bool()
 
 	labelsCmd = app.Command("labels", "Find values for a given label.")
 	labelName = labelsCmd.Arg("label", "The name of the label.").HintAction(listLabels).String()
