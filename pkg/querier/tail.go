@@ -8,11 +8,14 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+// tailIteratorIncrement is for defining size of time window we want to query entries for
 const tailIteratorIncrement = 10 * time.Second
+// delay is for delaying querying of logs for specified seconds to not miss any late entries
+const delay = 10 * time.Second
 
 func (q *Querier) tailQuery(ctx context.Context, queryStr, regexp string) iter.EntryIterator {
 	return &tailIterator{
-		from:     time.Now().Add(-tailIteratorIncrement),
+		from:     time.Now().Add(-(tailIteratorIncrement+delay)),
 		queryStr: queryStr,
 		regexp:   regexp,
 		querier:  q,
@@ -34,8 +37,8 @@ func (t *tailIterator) Next() bool {
 	var err error
 	for t.EntryIterator == nil || !t.EntryIterator.Next() {
 		through, now := t.from.Add(tailIteratorIncrement), time.Now()
-		if through.After(now) {
-			time.Sleep(through.Sub(now))
+		if through.After(now.Add(-delay)) {
+			time.Sleep(through.Sub(now.Add(-delay)))
 		}
 
 		t.EntryIterator, err = t.query(t.from, through)
