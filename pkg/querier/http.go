@@ -84,11 +84,8 @@ func httpRequestToQueryRequest(httpRequest *http.Request) (logproto.QueryRequest
 	}
 
 	queryRequest.Direction, err = directionParam(params, "direction", logproto.BACKWARD)
-	if err != nil {
-		return queryRequest, err
-	}
 
-	return queryRequest, nil
+	return queryRequest, err
 }
 
 // QueryHandler is a http.HandlerFunc for queries.
@@ -149,7 +146,9 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 	queryRequest, err := httpRequestToQueryRequest(r)
 	if err != nil {
-		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseUnsupportedData, err.Error()))
+		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseUnsupportedData, err.Error())); err != nil {
+			level.Error(util.Logger).Log("Error writing close message to websocket", fmt.Sprintf("%v", err))
+		}
 		return
 	}
 
@@ -169,6 +168,8 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := itr.Error(); err != nil {
 		level.Error(util.Logger).Log("Error from iterator", fmt.Sprintf("%v", err))
-		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error()))
+		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
+			level.Error(util.Logger).Log("Error writing close message to websocket", fmt.Sprintf("%v", err))
+		}
 	}
 }
