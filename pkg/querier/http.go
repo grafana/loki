@@ -59,42 +59,44 @@ func directionParam(values url.Values, name string, def logproto.Direction) (log
 	return logproto.Direction(d), nil
 }
 
-// QueryHandler is a http.HandlerFunc for queries.
-func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
-	params := r.URL.Query()
-	query := params.Get("query")
+func httpRequestToQueryRequest(httpRequest *http.Request) (logproto.QueryRequest, error) {
+	params := httpRequest.URL.Query()
+	now := time.Now()
+	queryRequest := logproto.QueryRequest{
+		Regex: params.Get("regexp"),
+	}
+
+	queryRequest.Query = params.Get("query")
 	limit, err := intParam(params, "limit", defaultQueryLimit)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return queryRequest, err
+	}
+	queryRequest.Limit = uint32(limit)
+
+	queryRequest.Start, err = unixNanoTimeParam(params, "start", now.Add(-defaulSince))
+	if err != nil {
+		return queryRequest, err
 	}
 
-	now := time.Now()
-	start, err := unixNanoTimeParam(params, "start", now.Add(-defaulSince))
+	queryRequest.End, err = unixNanoTimeParam(params, "end", now)
+	if err != nil {
+		return queryRequest, err
+	}
+
+	queryRequest.Direction, err = directionParam(params, "direction", logproto.BACKWARD)
+	if err != nil {
+		return queryRequest, err
+	}
+
+	return queryRequest, nil
+}
+
+// QueryHandler is a http.HandlerFunc for queries.
+func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
+	request, err := httpRequestToQueryRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
-	}
-
-	end, err := unixNanoTimeParam(params, "end", now)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	direction, err := directionParam(params, "direction", logproto.BACKWARD)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	request := logproto.QueryRequest{
-		Query:     query,
-		Limit:     uint32(limit),
-		Start:     start,
-		End:       end,
-		Direction: direction,
-		Regex:     params.Get("regexp"),
 	}
 
 	level.Debug(util.Logger).Log("request", fmt.Sprintf("%+v", request))
@@ -145,9 +147,13 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 		level.Error(util.Logger).Log("Error closing websocket", fmt.Sprintf("%v", err))
 	}()
 
-	params := r.URL.Query()
-	itr := q.tailQuery(r.Context(), params.Get("query"), params.Get("regexp"))
+	queryRequest, err := httpRequestToQueryRequest(r)
+	if err != nil {
+		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseUnsupportedData, err.Error()))
+		return
+	}
 
+	itr := q.tailQuery(r.Context(), &queryRequest)
 	stream := logproto.Stream{}
 
 	for itr.Next() {
@@ -163,5 +169,6 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := itr.Error(); err != nil {
 		level.Error(util.Logger).Log("Error from iterator", fmt.Sprintf("%v", err))
+		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error()))
 	}
 }
