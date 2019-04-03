@@ -116,7 +116,7 @@
           {
             alert: 'PromtailFileLagging',
             expr: |||
-              promtail_file_bytes_total - promtail_read_bytes_total > 100000
+              abs(promtail_file_bytes_total - promtail_read_bytes_total) > 100000
             |||,
             'for': '15m',
             labels: {
@@ -125,6 +125,21 @@
             annotations: {
               message: |||
                 {{ $labels.instance }} {{ $labels.job }} {{ $labels.path }} has been lagging by more than 100kb for more than 15m.
+              |||,
+            },
+          },
+          {
+            alert: 'PromtailFileMissing',
+            expr: |||
+              count by (path,instance,job) (promtail_file_bytes_total) unless count by (path,instance,job) (promtail_read_bytes_total)
+            |||,
+            'for': '15m',
+            labels: {
+              severity: 'critical',
+            },
+            annotations: {
+              message: |||
+                {{ $labels.instance }} {{ $labels.job }} {{ $labels.path }} matches the glob but is not being tailed.
               |||,
             },
           },

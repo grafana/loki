@@ -46,6 +46,16 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions
 		reOpen = true
 	}
 
+	// Simple check to make sure the file we are tailing doesn't
+	// have a position already saved which is past the end of the file.
+	fi, err = os.Stat(filename)
+	if err != nil {
+		return nil, err
+	}
+	if fi.Size() < positions.Get(filename) {
+		positions.Remove(filename)
+	}
+
 	tail, err := tail.TailFile(filename, tail.Config{
 		Follow: true,
 		Poll:   true,
