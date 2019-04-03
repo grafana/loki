@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/weaveworks/common/httpgrpc/server"
+
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/weaveworks/common/httpgrpc"
 
@@ -94,25 +96,11 @@ func httpRequestToQueryRequest(httpRequest *http.Request) (*logproto.QueryReques
 	return &queryRequest, nil
 }
 
-func writeHTTPErrorResponse(err error, defaultStatusCode int, w http.ResponseWriter) { // nolint
-	statusCode := defaultStatusCode
-	var errMessage string
-
-	if httpResponse, isHTTPResponse := httpgrpc.HTTPResponseFromError(err); isHTTPResponse {
-		errMessage = string(httpResponse.Body)
-		statusCode = int(httpResponse.Code)
-	} else {
-		errMessage = err.Error()
-	}
-
-	http.Error(w, errMessage, statusCode)
-}
-
 // QueryHandler is a http.HandlerFunc for queries.
 func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
 	request, err := httpRequestToQueryRequest(r)
 	if err != nil {
-		writeHTTPErrorResponse(err, http.StatusBadRequest, w)
+		server.WriteError(w, err)
 		return
 	}
 
@@ -155,7 +143,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 	queryRequestPtr, err := httpRequestToQueryRequest(r)
 	if err != nil {
-		writeHTTPErrorResponse(err, http.StatusBadRequest, w)
+		server.WriteError(w, err)
 		return
 	}
 
