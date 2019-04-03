@@ -15,7 +15,7 @@ type LazyChunk struct {
 }
 
 func (c *LazyChunk) getChunk(ctx context.Context) (Chunk, error) {
-	chunks, err := c.Fetcher.FetchChunks(context.TODO(), []chunk.Chunk{c.Chunk}, []string{c.Chunk.ExternalKey()})
+	chunks, err := c.Fetcher.FetchChunks(ctx, []chunk.Chunk{c.Chunk}, []string{c.Chunk.ExternalKey()})
 	if err != nil {
 		return nil, err
 	}
@@ -23,13 +23,14 @@ func (c *LazyChunk) getChunk(ctx context.Context) (Chunk, error) {
 	return chunks[0].Data.(*Facade).LokiChunk(), nil
 }
 
-func (c LazyChunk) Iterator(from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error) {
+func (c LazyChunk) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error) {
 	return &lazyIterator{
 		chunk: c,
 
 		from:      from,
 		through:   through,
 		direction: direction,
+		context:   ctx,
 	}, nil
 }
 
@@ -41,6 +42,7 @@ type lazyIterator struct {
 
 	from, through time.Time
 	direction     logproto.Direction
+	context       context.Context
 }
 
 func (it *lazyIterator) Next() bool {
@@ -52,7 +54,7 @@ func (it *lazyIterator) Next() bool {
 		return it.EntryIterator.Next()
 	}
 
-	chk, err := it.chunk.getChunk(context.TODO())
+	chk, err := it.chunk.getChunk(it.context)
 	if err != nil {
 		it.err = err
 		return false

@@ -42,7 +42,7 @@ func (q Querier) queryStore(ctx context.Context, req *logproto.QueryRequest) ([]
 	//return nil, err
 	//}
 
-	return partitionBySeriesChunks(req, chks, fetchers)
+	return partitionBySeriesChunks(ctx, req, chks, fetchers)
 }
 
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) ([]chunk.Chunk, []string) {
@@ -58,7 +58,7 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) ([]chunk
 	return filtered, keys
 }
 
-func partitionBySeriesChunks(req *logproto.QueryRequest, chunks [][]chunk.Chunk, fetchers []*chunk.Fetcher) ([]iter.EntryIterator, error) {
+func partitionBySeriesChunks(ctx context.Context, req *logproto.QueryRequest, chunks [][]chunk.Chunk, fetchers []*chunk.Fetcher) ([]iter.EntryIterator, error) {
 	chunksByFp := map[model.Fingerprint][]chunkenc.LazyChunk{}
 	metricByFp := map[model.Fingerprint]model.Metric{}
 	for i, chks := range chunks {
@@ -72,7 +72,7 @@ func partitionBySeriesChunks(req *logproto.QueryRequest, chunks [][]chunk.Chunk,
 
 	iters := make([]iter.EntryIterator, 0, len(chunksByFp))
 	for fp := range chunksByFp {
-		iterators, err := partitionOverlappingChunks(req, metricByFp[fp].String(), chunksByFp[fp])
+		iterators, err := partitionOverlappingChunks(ctx, req, metricByFp[fp].String(), chunksByFp[fp])
 		if err != nil {
 			return nil, err
 		}
@@ -83,7 +83,7 @@ func partitionBySeriesChunks(req *logproto.QueryRequest, chunks [][]chunk.Chunk,
 	return iters, nil
 }
 
-func partitionOverlappingChunks(req *logproto.QueryRequest, labels string, chunks []chunkenc.LazyChunk) ([]iter.EntryIterator, error) {
+func partitionOverlappingChunks(ctx context.Context, req *logproto.QueryRequest, labels string, chunks []chunkenc.LazyChunk) ([]iter.EntryIterator, error) {
 	sort.Slice(chunks, func(i, j int) bool {
 		return chunks[i].Chunk.From < chunks[i].Chunk.From
 	})
@@ -106,7 +106,7 @@ outer:
 	for i := range css {
 		iterators := make([]iter.EntryIterator, 0, len(css[i]))
 		for j := range css[i] {
-			iterator, err := css[i][j].Iterator(req.Start, req.End, req.Direction)
+			iterator, err := css[i][j].Iterator(ctx, req.Start, req.End, req.Direction)
 			if err != nil {
 				return nil, err
 			}
