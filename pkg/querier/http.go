@@ -94,7 +94,7 @@ func httpRequestToQueryRequest(httpRequest *http.Request) (*logproto.QueryReques
 	return &queryRequest, nil
 }
 
-func writeHTTPErrorResponse(err error, defaultStatusCode int, w http.ResponseWriter) {
+func writeHTTPErrorResponse(err error, defaultStatusCode int, w http.ResponseWriter) { // nolint
 	statusCode := defaultStatusCode
 	var errMessage string
 
