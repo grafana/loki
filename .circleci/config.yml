@@ -143,6 +143,9 @@ jobs:
   publish-helm:
     <<: *defaults
     steps:
+      - add_ssh_keys:
+          fingerprints:
+            - "5a:d3:08:5e:f7:53:a0:c4:e9:5d:83:c6:02:6a:d9:bd"
       - checkout
       - run: make helm-publish
 
