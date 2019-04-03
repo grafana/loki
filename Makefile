@@ -175,6 +175,22 @@ push-latest:
 		fi \
 	done
 
+helm:
+	helm init -c
+	helm lint production/helm/loki
+	helm package production/helm/loki
+
+helm-publish: helm
+	git config user.email "$CIRCLE_USERNAME@users.noreply.github.com"
+	git config user.name "${CIRCLE_USERNAME}"
+	git checkout gh-pages || (git checkout --orphan gh-pages && git rm -rf . > /dev/null)
+	mkdir -p charts
+	mv loki-*.tgz charts/
+	helm repo index charts/
+	git add charts/
+	git commit -m "[skip ci] Publishing helm chart: ${CIRCLE_SHA1}"
+	git push origin gh-pages
+
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
 	rm -rf $(UPTODATE_FILES) $(EXES) .cache

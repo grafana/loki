@@ -1,24 +1,19 @@
-# Deploy Loki to Kubernetes with Helm
+# Loki Helm Chart
 
 ## Prerequisites
 
-Make sure you have the helm configure on your cluster:
+Make sure you have Helm [installed](https://helm.sh/docs/using_helm/#installing-helm) and
+[deployed](https://helm.sh/docs/using_helm/#installing-tiller) to your cluster. Then add
+Loki's chart repository to Helm:
 
 ```bash
-$ helm init
-```
-
-Clone `grafana/loki` repository and navigate to `production helm` directory:
-
-```bash
-$ git clone https://github.com/grafana/loki.git
-$ cd loki/production/helm
+$ helm repo add loki https://grafana.github.io/loki/charts
 ```
 
 ## Deploy Loki and Promtail to your cluster
 
 ```bash
-$ helm install . -n loki --namespace <YOUR-NAMESPACE>
+$ helm upgrade --install loki loki/loki
 ```
 
 ## Deploy Grafana to your cluster
