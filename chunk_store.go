@@ -206,7 +206,7 @@ func (c *store) validateQuery(ctx context.Context, from model.Time, through *mod
 
 	maxQueryLength := c.limits.MaxQueryLength(userID)
 	if maxQueryLength > 0 && (*through).Sub(from) > maxQueryLength {
-		return "", nil, false, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, length > limit (%s > %s)", (*through).Sub(from), maxQueryLength)
+		return "", nil, false, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, (*through).Sub(from), maxQueryLength)
 	}
 
 	now := model.Now()
