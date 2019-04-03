@@ -118,7 +118,7 @@ outer:
 			}
 			iterators = append(iterators, iterator)
 		}
-		result = append(result, iter.NewNonOverlappingIterator(iterators, labels))
+		result = append(result, iter.NewNonOverlappingIterator(iterators, ""))
 	}
 	return result, nil
 }

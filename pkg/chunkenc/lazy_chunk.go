@@ -20,6 +20,7 @@ func (c *LazyChunk) getChunk(ctx context.Context) (Chunk, error) {
 		return nil, err
 	}
 
+	c.Chunk = chunks[0]
 	return chunks[0].Data.(*Facade).LokiChunk(), nil
 }
 
@@ -63,6 +64,10 @@ func (it *lazyIterator) Next() bool {
 	it.EntryIterator, it.err = chk.Iterator(it.from, it.through, it.direction)
 
 	return it.Next()
+}
+
+func (it *lazyIterator) Labels() string {
+	return it.chunk.Chunk.Metric.String()
 }
 
 func (it *lazyIterator) Error() error {
