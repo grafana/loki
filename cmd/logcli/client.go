@@ -94,9 +94,14 @@ func wsConnect(path string) (*websocket.Conn, error) {
 	fmt.Println(url)
 
 	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(*username+":"+*password))}}
-	c, _, err := websocket.DefaultDialer.Dial(url, h)
+	c, resp, err := websocket.DefaultDialer.Dial(url, h)
+
 	if err != nil {
-		return nil, err
+		if resp == nil {
+			return nil, err
+		}
+		buf, _ := ioutil.ReadAll(resp.Body) // nolint
+		return nil, fmt.Errorf("Error response from server: %s (%v)", string(buf), err)
 	}
 
 	return c, nil
