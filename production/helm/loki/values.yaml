@@ -6,6 +6,7 @@ networkPolicy:
   enabled: false
 
 serviceAccount:
+  # if has deployed loki or promtail, must set false
   create: true
   name:
 
