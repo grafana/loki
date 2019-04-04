@@ -1,4 +1,3 @@
-{{- if .Values.promtail.enabled }}
 {{- if .Values.rbac.create }}
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -9,8 +8,6 @@ metadata:
     chart: {{ template "promtail.chart" . }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
-  annotations:
-    {{- toYaml .Values.promtail.annotations | nindent 4 }}
 subjects:
   - kind: ServiceAccount
     name: {{ template "promtail.serviceAccountName" . }}
@@ -19,5 +16,4 @@ roleRef:
   kind: ClusterRole
   name: {{ template "promtail.fullname" . }}-clusterrole
   apiGroup: rbac.authorization.k8s.io
-{{- end }}
 {{- end }}

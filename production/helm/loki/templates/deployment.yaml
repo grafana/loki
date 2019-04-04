@@ -1,4 +1,3 @@
-{{- if .Values.loki.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -9,17 +8,17 @@ metadata:
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
   annotations:
-    {{- toYaml .Values.loki.annotations | nindent 4 }}
+    {{- toYaml .Values.annotations | nindent 4 }}
 spec:
-  replicas: {{ .Values.loki.replicas }}
-  minReadySeconds: {{ .Values.loki.minReadySeconds }}
+  replicas: {{ .Values.replicas }}
+  minReadySeconds: {{ .Values.minReadySeconds }}
   selector:
     matchLabels:
       app: {{ template "loki.name" . }}
       release: {{ .Release.Name }}
   strategy:
-    type: {{ .Values.loki.deploymentStrategy }}
-  {{- if ne .Values.loki.deploymentStrategy "RollingUpdate" }}
+    type: {{ .Values.deploymentStrategy }}
+  {{- if ne .Values.deploymentStrategy "RollingUpdate" }}
     rollingUpdate: null
   {{- end }}
   template:
@@ -29,21 +28,21 @@ spec:
         name: {{ template "loki.name" . }}
         release: {{ .Release.Name }}
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/loki/secret.yaml") . | sha256sum }}
-        {{- with .Values.loki.podAnnotations }}
+        checksum/config: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ template "loki.serviceAccountName" . }}
-    {{- if .Values.loki.priorityClassName }}
-      priorityClassName: {{ .Values.loki.priorityClassName }}
+    {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
       securityContext:
-        {{- toYaml .Values.loki.securityContext | nindent 8 }}
+        {{- toYaml .Values.securityContext | nindent 8 }}
     {{- end }}
       containers:
         - name: {{ .Chart.Name }}
-          image: "{{ .Values.loki.image.repository }}:{{ .Values.loki.image.tag }}"
-          imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - "-config.file=/etc/loki/loki.yaml"
           volumeMounts:
@@ -51,36 +50,35 @@ spec:
               mountPath: /etc/loki
             - name: storage
               mountPath: "/data"
-              subPath: {{ .Values.loki.persistence.subPath }}
+              subPath: {{ .Values.persistence.subPath }}
           ports:
             - name: http-metrics
-              containerPort: {{ .Values.loki.port }}
+              containerPort: {{ .Values.port }}
               protocol: TCP
           livenessProbe:
-            {{- toYaml .Values.loki.livenessProbe | nindent 12 }}
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:
-            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
           resources:
-            {{- toYaml .Values.loki.resources | nindent 12 }}
+            {{- toYaml .Values.resources | nindent 12 }}
           securityContext:
             readOnlyRootFilesystem: true
       nodeSelector:
-        {{- toYaml .Values.loki.nodeSelector | nindent 8 }}
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
       affinity:
-        {{- toYaml .Values.loki.affinity | nindent 8 }}
+        {{- toYaml .Values.affinity | nindent 8 }}
       tolerations:
-        {{- toYaml .Values.loki.tolerations | nindent 8 }}
-      terminationGracePeriodSeconds: {{ .Values.loki.terminationGracePeriodSeconds }}
+        {{- toYaml .Values.tolerations | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       volumes:
         - name: config
           secret:
             secretName: {{ template "loki.fullname" . }}
         - name: storage
-      {{- if .Values.loki.persistence.enabled }}
+      {{- if .Values.persistence.enabled }}
           persistentVolumeClaim:
-            claimName: {{ .Values.loki.persistence.existingClaim | default (include "loki.fullname" .) }}
+            claimName: {{ .Values.persistence.existingClaim | default (include "loki.fullname" .) }}
       {{- else }}
           emptyDir: {}
       {{- end }}
-{{- end }}
 

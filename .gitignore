@@ -2,6 +2,8 @@
 .pkg
 .cache
 *.output
+*.tgz
+requirements.lock
 mixin/vendor/
 cmd/loki/loki
 cmd/promtail/promtail

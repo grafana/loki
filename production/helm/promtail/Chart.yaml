@@ -1,13 +1,13 @@
-name: loki
+name: promtail
 version: 0.6.0
 appVersion: 0.0.1
 kubeVersion: "^1.10.0-0"
-description: "Loki: like Prometheus, but for logs."
+description: "Responsible for gathering logs and sending them to Loki"
 home: https://grafana.com/loki
 icon: https://github.com/grafana/loki/raw/master/docs/logo.png
 sources:
-  - https://github.com/grafana/loki
+- https://github.com/grafana/loki
 maintainers:
-  - name: Loki Maintainers
-    email: lokiproject@googlegroups.com
+- name: Loki Maintainers
+  email: lokiproject@googlegroups.com
 engine: gotpl

@@ -3,7 +3,7 @@
 Expand the name of the chart.
 */}}
 {{- define "promtail.name" -}}
-{{- default .Chart.Name .Values.promtail.nameOverride | trunc 63 | trimSuffix "-" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
 {{/*
@@ -12,10 +12,10 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this 
 If release name contains chart name it will be used as a full name.
 */}}
 {{- define "promtail.fullname" -}}
-{{- if .Values.promtail.fullnameOverride -}}
-{{- .Values.promtail.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
-{{- $name := default .Chart.Name .Values.promtail.nameOverride -}}
+{{- $name := default .Chart.Name .Values.nameOverride -}}
 {{- if contains $name .Release.Name -}}
 {{- .Release.Name | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
@@ -36,8 +36,17 @@ Create the name of the service account
 */}}
 {{- define "promtail.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create -}}
-    {{ default (include "loki.fullname" .) .Values.serviceAccount.name }}
+    {{ default (include "promtail.fullname" .) .Values.serviceAccount.name }}
 {{- else -}}
     {{ default "default" .Values.serviceAccount.name }}
 {{- end -}}
 {{- end -}}
+
+{{/*
+The service name to connect to Loki. Defaults to release-loki if not set
+*/}}
+{{- define "loki.serviceName" -}}
+{{- $service := .Values.loki.serviceName | default (printf "%s-loki" .Release.Name) -}}
+{{- $service | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+

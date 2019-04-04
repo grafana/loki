@@ -177,18 +177,19 @@ push-latest:
 
 helm:
 	helm init -c
-	helm lint production/helm/loki
-	helm package production/helm/loki
+	helm lint production/helm/*
+	helm dependency build production/helm/*
+	helm package production/helm/*
 
 helm-publish: helm
 	git config user.email "$CIRCLE_USERNAME@users.noreply.github.com"
 	git config user.name "${CIRCLE_USERNAME}"
 	git checkout gh-pages || (git checkout --orphan gh-pages && git rm -rf . > /dev/null)
 	mkdir -p charts
-	mv loki-*.tgz charts/
+	mv *.tgz charts/
 	helm repo index charts/
 	git add charts/
-	git commit -m "[skip ci] Publishing helm chart: ${CIRCLE_SHA1}"
+	git commit -m "[skip ci] Publishing helm charts: ${CIRCLE_SHA1}"
 	git push origin gh-pages
 
 clean:

@@ -1,0 +1,6 @@
+dependencies:
+- name: "promtail"
+  condition: promtail.enabled
+  repository: "file://../promtail"
+  version: "^0.6.0"
+

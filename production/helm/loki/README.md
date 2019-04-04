@@ -16,6 +16,18 @@ $ helm repo add loki https://grafana.github.io/loki/charts
 $ helm upgrade --install loki loki/loki
 ```
 
+## Deploy Loki only
+
+```bash
+$ helm upgrade --install loki loki/loki --set 'promtail.enabled=false'
+```
+
+## Deploy Promtail only
+
+```bash
+$ helm upgrade --install promtail loki/promtail
+```
+
 ## Deploy Grafana to your cluster
 
 To install Grafana on your cluster with helm, use the following command:
