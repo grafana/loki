@@ -46,6 +46,8 @@ Most of these metrics are counters and should continuously increase during norma
 3. Promtail forwards the line to a Loki distributor, its received counters should increase.
 4. The Loki distributor forwards it to a Loki ingester, its request duration counter increases.
 
+You can import dashboard with ID [10004](https://grafana.com/dashboards/10004) to see them in Grafana UI.
+
 ### Monitoring Mixins
 
 Check out our [Loki mixin](../production/loki-mixin) for a set of dashboards, recording rules, and alerts.
