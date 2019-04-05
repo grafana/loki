@@ -60,7 +60,6 @@ type StoreConfig struct {
 	MinChunkAge              time.Duration
 	CardinalityCacheSize     int
 	CardinalityCacheValidity time.Duration
-	CardinalityLimit         int
 
 	CacheLookupsOlderThan time.Duration
 }
@@ -74,7 +73,6 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MinChunkAge, "store.min-chunk-age", 0, "Minimum time between chunk update and being saved to the store.")
 	f.IntVar(&cfg.CardinalityCacheSize, "store.cardinality-cache-size", 0, "Size of in-memory cardinality cache, 0 to disable.")
 	f.DurationVar(&cfg.CardinalityCacheValidity, "store.cardinality-cache-validity", 1*time.Hour, "Period for which entries in the cardinality cache are valid.")
-	f.IntVar(&cfg.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.DurationVar(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", 0, "Cache index entries older than this period. 0 to disable.")
 }
 

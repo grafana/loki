@@ -263,7 +263,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 			continue
 		}
 		cardinality := value.(int)
-		if cardinality > c.cfg.CardinalityLimit {
+		if cardinality > c.limits.CardinalityLimit(userID) {
 			return nil, errCardinalityExceeded
 		}
 	}
@@ -283,7 +283,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	}
 	c.cardinalityCache.Put(ctx, keys, values)
 
-	if len(entries) > c.cfg.CardinalityLimit {
+	if len(entries) > c.limits.CardinalityLimit(userID) {
 		return nil, errCardinalityExceeded
 	}
 
