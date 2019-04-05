@@ -210,6 +210,10 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 				ids = intersectStrings(ids, incoming)
 			}
 		case err := <-incomingErrors:
+			// The idea is that if we have 2 matchers, and if one returns a lot of
+			// series and the other returns only 10 (a few), we don't lookup the first one at all.
+			// We just manually filter through the 10 series again using "filterChunksByMatchers",
+			// saving us from looking up and intersecting a lot of series.
 			if err == errCardinalityExceeded {
 				cardinalityExceededErrors++
 			} else {
@@ -217,6 +221,8 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 			}
 		}
 	}
+
+	// But if every single matcher returns a lot of series, then it makes sense to abort the query.
 	if cardinalityExceededErrors == len(matchers) {
 		return nil, errCardinalityExceeded
 	} else if lastErr != nil {
