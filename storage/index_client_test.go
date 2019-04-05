@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
@@ -16,7 +15,7 @@ func TestIndexBasic(t *testing.T) {
 		for i := 0; i < 30; i++ {
 			batch.Add(tableName, fmt.Sprintf("hash%d", i), []byte(fmt.Sprintf("range%d", i)), nil)
 		}
-		err := client.BatchWrite(context.Background(), batch)
+		err := client.BatchWrite(ctx, batch)
 		require.NoError(t, err)
 
 		// Make sure we get back the correct entries by hash value.
@@ -28,7 +27,7 @@ func TestIndexBasic(t *testing.T) {
 				},
 			}
 			var have []chunk.IndexEntry
-			err := client.QueryPages(context.Background(), entries, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
+			err := client.QueryPages(ctx, entries, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
 				iter := read.Iterator()
 				for iter.Next() {
 					have = append(have, chunk.IndexEntry{
@@ -103,7 +102,7 @@ func TestQueryPages(t *testing.T) {
 			batch.Add(entry.TableName, entry.HashValue, entry.RangeValue, entry.Value)
 		}
 
-		err := client.BatchWrite(context.Background(), batch)
+		err := client.BatchWrite(ctx, batch)
 		require.NoError(t, err)
 
 		tests := []struct {
@@ -170,7 +169,7 @@ func TestQueryPages(t *testing.T) {
 				run := true
 				for run {
 					var have []chunk.IndexEntry
-					err = client.QueryPages(context.Background(), []chunk.IndexQuery{tt.query}, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
+					err = client.QueryPages(ctx, []chunk.IndexQuery{tt.query}, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
 						iter := read.Iterator()
 						for iter.Next() {
 							have = append(have, chunk.IndexEntry{

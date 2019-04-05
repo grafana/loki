@@ -9,7 +9,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 )
+
+var ctx = user.InjectOrgID(context.Background(), "1")
 
 type mockStore struct {
 	chunk.IndexClient
@@ -34,20 +37,22 @@ func TestCachingStorageClientBasic(t *testing.T) {
 			}},
 		},
 	}
+	limits, err := defaultLimits()
+	require.NoError(t, err)
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingIndexClient(store, cache, 1*time.Second)
+	client := newCachingIndexClient(store, cache, 1*time.Second, limits)
 	queries := []chunk.IndexQuery{{
 		TableName: "table",
 		HashValue: "baz",
 	}}
-	err := client.QueryPages(context.Background(), queries, func(_ chunk.IndexQuery, _ chunk.ReadBatch) bool {
+	err = client.QueryPages(ctx, queries, func(_ chunk.IndexQuery, _ chunk.ReadBatch) bool {
 		return true
 	})
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, store.queries)
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
-	err = client.QueryPages(context.Background(), queries, func(_ chunk.IndexQuery, _ chunk.ReadBatch) bool {
+	err = client.QueryPages(ctx, queries, func(_ chunk.IndexQuery, _ chunk.ReadBatch) bool {
 		return true
 	})
 	require.NoError(t, err)
@@ -63,15 +68,17 @@ func TestTempCachingStorageClient(t *testing.T) {
 			}},
 		},
 	}
+	limits, err := defaultLimits()
+	require.NoError(t, err)
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingIndexClient(store, cache, 100*time.Millisecond)
+	client := newCachingIndexClient(store, cache, 100*time.Millisecond, limits)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo"},
 		{TableName: "table", HashValue: "bar"},
 		{TableName: "table", HashValue: "baz"},
 	}
 	results := 0
-	err := client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -84,7 +91,7 @@ func TestTempCachingStorageClient(t *testing.T) {
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
 	results = 0
-	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -98,7 +105,7 @@ func TestTempCachingStorageClient(t *testing.T) {
 	// If we do the query after validity, it should see the queries.
 	time.Sleep(100 * time.Millisecond)
 	results = 0
-	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -119,15 +126,17 @@ func TestPermCachingStorageClient(t *testing.T) {
 			}},
 		},
 	}
+	limits, err := defaultLimits()
+	require.NoError(t, err)
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingIndexClient(store, cache, 100*time.Millisecond)
+	client := newCachingIndexClient(store, cache, 100*time.Millisecond, limits)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo", Immutable: true},
 		{TableName: "table", HashValue: "bar", Immutable: true},
 		{TableName: "table", HashValue: "baz", Immutable: true},
 	}
 	results := 0
-	err := client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -140,7 +149,7 @@ func TestPermCachingStorageClient(t *testing.T) {
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
 	results = 0
-	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -154,7 +163,7 @@ func TestPermCachingStorageClient(t *testing.T) {
 	// If we do the query after validity, it still shouldn't see the queries.
 	time.Sleep(200 * time.Millisecond)
 	results = 0
-	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -168,10 +177,12 @@ func TestPermCachingStorageClient(t *testing.T) {
 
 func TestCachingStorageClientEmptyResponse(t *testing.T) {
 	store := &mockStore{}
+	limits, err := defaultLimits()
+	require.NoError(t, err)
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingIndexClient(store, cache, 1*time.Second)
+	client := newCachingIndexClient(store, cache, 1*time.Second, limits)
 	queries := []chunk.IndexQuery{{TableName: "table", HashValue: "foo"}}
-	err := client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		assert.False(t, batch.Iterator().Next())
 		return true
 	})
@@ -179,7 +190,7 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 	assert.EqualValues(t, 1, store.queries)
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
-	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		assert.False(t, batch.Iterator().Next())
 		return true
 	})
@@ -204,15 +215,17 @@ func TestCachingStorageClientCollision(t *testing.T) {
 			},
 		},
 	}
+	limits, err := defaultLimits()
+	require.NoError(t, err)
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 10, Validity: 10 * time.Second})
-	client := newCachingIndexClient(store, cache, 1*time.Second)
+	client := newCachingIndexClient(store, cache, 1*time.Second, limits)
 	queries := []chunk.IndexQuery{
 		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar")},
 		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("baz")},
 	}
 
 	var results ReadBatch
-	err := client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results.Entries = append(results.Entries, Entry{
@@ -228,7 +241,7 @@ func TestCachingStorageClientCollision(t *testing.T) {
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
 	results = ReadBatch{}
-	err = client.QueryPages(context.Background(), queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
+	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results.Entries = append(results.Entries, Entry{
