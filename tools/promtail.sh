@@ -215,7 +215,7 @@ kind: ConfigMap
 metadata:
   name: promtail
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: promtail
@@ -236,8 +236,20 @@ spec:
             fieldRef:
               fieldPath: spec.nodeName
         image: grafana/promtail:latest
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         name: promtail
+        livenessProbe:
+          httpGet:
+            path: /ready
+            port: http-metrics
+            scheme: HTTP
+          initialDelaySeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http-metrics
+            scheme: HTTP
+          initialDelaySeconds: 10
         ports:
         - containerPort: 80
           name: http-metrics

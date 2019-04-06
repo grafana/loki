@@ -10,6 +10,7 @@ import (
 )
 
 type targetManager interface {
+	Ready() bool
 	Stop()
 }
 
@@ -45,6 +46,16 @@ func NewTargetManagers(
 
 	return &TargetManagers{targetManagers: targetManagers}, nil
 
+}
+
+// Ready if there's at least one ready FileTargetManager
+func (tm *TargetManagers) Ready() bool {
+	for _, t := range tm.targetManagers {
+		if t.Ready() {
+			return true
+		}
+	}
+	return false
 }
 
 // Stop the TargetManagers.

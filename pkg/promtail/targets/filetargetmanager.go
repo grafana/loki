@@ -100,6 +100,16 @@ func (tm *FileTargetManager) run() {
 	}
 }
 
+// Ready if there's at least one file target
+func (tm *FileTargetManager) Ready() bool {
+	for _, s := range tm.syncers {
+		if s.ready() {
+			return true
+		}
+	}
+	return false
+}
+
 // Stop the TargetManager.
 func (tm *FileTargetManager) Stop() {
 	tm.quit()
@@ -194,6 +204,14 @@ func (s *syncer) newTarget(path string, labels model.LabelSet) (*FileTarget, err
 	return NewFileTarget(s.log, s.entryHandler, s.positions, path, labels, s.targetConfig)
 }
 
+func (s *syncer) ready() bool {
+	for _, target := range s.targets {
+		if target.Ready() {
+			return true
+		}
+	}
+	return false
+}
 func (s *syncer) stop() {
 	for key, target := range s.targets {
 		level.Info(s.log).Log("msg", "Removing target", "key", key)
