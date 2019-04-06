@@ -16,7 +16,7 @@ image:
 livenessProbe:
   failureThreshold: 5
   httpGet:
-    path: /metrics
+    path: /ready
     port: http-metrics
   initialDelaySeconds: 10
   periodSeconds: 10
@@ -50,7 +50,7 @@ rbac:
 readinessProbe:
   failureThreshold: 5
   httpGet:
-    path: /metrics
+    path: /ready
     port: http-metrics
   initialDelaySeconds: 10
   periodSeconds: 10

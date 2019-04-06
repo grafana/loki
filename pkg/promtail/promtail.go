@@ -1,6 +1,8 @@
 package promtail
 
 import (
+	"net/http"
+
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/server"
 
@@ -39,6 +41,14 @@ func New(cfg config.Config) (*Promtail, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	server.HTTP.Path("/ready").Handler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		if tms.Ready() {
+			rw.WriteHeader(http.StatusNoContent)
+		} else {
+			rw.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
 
 	return &Promtail{
 		client:         client,

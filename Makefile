@@ -185,6 +185,7 @@ helm:
 		helm dependency build $$chart; \
 		helm package $$chart; \
 	done
+	rm -f production/helm/*/requirements.lock
 
 helm-publish: helm
 	cp production/helm/README.md index.md

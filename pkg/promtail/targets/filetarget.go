@@ -106,6 +106,11 @@ func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions *posit
 	return t, nil
 }
 
+// Ready if at least one file is being tailed
+func (t *FileTarget) Ready() bool {
+	return len(t.tails) > 0
+}
+
 // Stop the target.
 func (t *FileTarget) Stop() {
 	close(t.quit)
