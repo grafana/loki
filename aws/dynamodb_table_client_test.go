@@ -154,7 +154,7 @@ func TestTableManagerAutoScaling(t *testing.T) {
 			},
 			{
 				IndexType:   "aws-dynamo",
-				From:        chunk.DayTime{model.TimeFromUnix(0)},
+				From:        chunk.DayTime{Time: model.TimeFromUnix(0)},
 				IndexTables: fixturePeriodicTableConfig(tablePrefix),
 				ChunkTables: fixturePeriodicTableConfig(chunkTablePrefix),
 			}},
