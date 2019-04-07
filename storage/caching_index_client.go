@@ -150,18 +150,18 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 		defer resultsMtx.Unlock()
 		keys := make([]string, 0, len(results))
 		batches := make([]ReadBatch, 0, len(results))
-		var cadinalityErr error
+		var cardinalityErr error
 		for key, batch := range results {
 			cardinality := int32(len(batch.Entries))
 			if cardinalityLimit > 0 && cardinality > cardinalityLimit {
 				batch.Cardinality = cardinality
 				batch.Entries = nil
-				cadinalityErr = chunk.ErrCardinalityExceeded
+				cardinalityErr = chunk.ErrCardinalityExceeded
 			}
 
 			keys = append(keys, key)
 			batches = append(batches, batch)
-			if cadinalityErr != nil {
+			if cardinalityErr != nil {
 				continue
 			}
 
@@ -171,7 +171,7 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 			}
 		}
 		s.cacheStore(ctx, keys, batches)
-		return cadinalityErr
+		return cardinalityErr
 	}
 }
 

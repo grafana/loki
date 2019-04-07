@@ -19,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
@@ -70,8 +71,8 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", 0, "Cache index entries older than this period. 0 to disable.")
 
 	// Deprecated.
-	f.Int("store.cardinality-cache-size", 0, "DEPRECATED. store.cardinality-cache.enable-fifocache and store.cardinality-cache.fifocache.size.")
-	f.Duration("store.cardinality-cache-validity", 1*time.Hour, "DEPRECATED. store.cardinality-cache.enable-fifocache and store.cardinality-cache.fifocache.duration.")
+	flagext.DeprecatedFlag(f, "store.cardinality-cache-size", "DEPRECATED. Use store.index-cache-size.enable-fifocache and store.cardinality-cache.fifocache.size instead.")
+	flagext.DeprecatedFlag(f, "store.cardinality-cache-validity", "DEPRECATED. Use store.index-cache-size.enable-fifocache and store.cardinality-cache.fifocache.duration instead.")
 }
 
 // store implements Store
