@@ -81,9 +81,6 @@ port: 3100
 ## Assign a PriorityClassName to pods if set
 # priorityClassName:
 
-promtail:
-  enabled: true
-
 rbac:
   create: true
   pspEnabled: true

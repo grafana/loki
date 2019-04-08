@@ -1,6 +1,8 @@
 .PHONY: all test clean images protos
 .DEFAULT_GOAL := all
 
+CHARTS := production/helm/loki production/helm/promtail production/helm/loki-stack
+
 # Boiler plate for bulding Docker containers.
 # All this must go at top of file I'm afraid.
 IMAGE_PREFIX ?= grafana/
@@ -176,17 +178,21 @@ push-latest:
 	done
 
 helm:
-	helm init -c
-	helm lint production/helm/*
-	helm dependency build production/helm/*
-	helm package production/helm/*
+	@set -e; \
+	helm init -c; \
+	for chart in $(CHARTS); do \
+		helm lint $$chart; \
+		helm dependency build $$chart; \
+		helm package $$chart; \
+	done
 
 helm-publish: helm
+	cp production/helm/README.md index.md
 	git config user.email "$CIRCLE_USERNAME@users.noreply.github.com"
 	git config user.name "${CIRCLE_USERNAME}"
 	git checkout gh-pages || (git checkout --orphan gh-pages && git rm -rf . > /dev/null)
 	mkdir -p charts
-	mv *.tgz charts/
+	mv *.tgz index.md charts/
 	helm repo index charts/
 	git add charts/
 	git commit -m "[skip ci] Publishing helm charts: ${CIRCLE_SHA1}"

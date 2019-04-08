@@ -13,13 +13,13 @@ $ helm repo add loki https://grafana.github.io/loki/charts
 ## Deploy Loki and Promtail to your cluster
 
 ```bash
-$ helm upgrade --install loki loki/loki
+$ helm upgrade --install loki loki/loki-stack
 ```
 
 ## Deploy Loki only
 
 ```bash
-$ helm upgrade --install loki loki/loki --set 'promtail.enabled=false'
+$ helm upgrade --install loki loki/loki --set "loki.serviceName=my-loki"
 ```
 
 ## Deploy Promtail only
@@ -33,7 +33,7 @@ $ helm upgrade --install promtail loki/promtail
 To install Grafana on your cluster with helm, use the following command:
 
 ```bash
-$ helm install stable/grafana -n loki-grafana -f grafana.yaml --namespace <YOUR-NAMESPACE>
+$ helm install stable/grafana -n loki-grafana
 ```
 
 To get the admin password for the Grafana pod, run the following command:
