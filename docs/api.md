@@ -28,10 +28,14 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
 
   - `query`: a logQL query
   - `limit`: max number of entries to return
-  - `start`: the start time for the query, as a nanosecond Unix epoch (nanoseconds since 1970)
-  - `end`: the end time for the query, as a nanosecond Unix epoch (nanoseconds since 1970)
+  - `start`: the start time for the query, as a nanosecond Unix epoch (nanoseconds since 1970). Default is always one hour ago.
+  - `end`: the end time for the query, as a nanosecond Unix epoch (nanoseconds since 1970).
   - `direction`: `forward` or `backward`, useful when specifying a limit
   - `regexp`: a regex to filter the returned results, will eventually be rolled into the query language
+
+  Loki needs to query the index store in order to find log streams for particular labels and the store is spread out by time,
+  so you need to specify the start and end labels accordingly. Querying a long time into the history will cause additional
+  load to the index server and make the query slower.
 
   Responses looks like this:
 
