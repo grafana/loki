@@ -154,6 +154,6 @@ The table-manager allows deleting old indices by rotating a number of different 
 create the table manually you cannot easily erase old data and your index just grows indefinitely.
 
 If you set your DynamoDB table manually, ensure you set the primary index key to `h`
-(string) and use `r` (binary) as the sort key. Also set the "perior" attribute in the yaml to zero.
+(string) and use `r` (binary) as the sort key. Also set the "period" attribute in the yaml to zero.
 Make sure adjust your throughput base on your usage.
 

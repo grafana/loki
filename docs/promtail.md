@@ -1,6 +1,6 @@
 ## Promtail and scrape_configs
 
-Promtail is an agent which reads the Kubernets pod log files and sends streams of log data to
+Promtail is an agent which reads the Kubernetes pod log files and sends streams of log data to
 the centralised Loki instances along with a set of labels. Each container in a single pod will usually yield a
 single log stream with a set of labels based on that particular pod Kubernetes labels.
 
