@@ -1,8 +1,10 @@
 ## Promtail and scrape_configs
 
-Promtail is an agent which reads the Kubernetes pod log files and sends streams of log data to
-the centralised Loki instances along with a set of labels. Each container in a single pod will usually yield a
-single log stream with a set of labels based on that particular pod Kubernetes labels.
+Promtail is an agent which reads log files and sends streams of log data to
+the centralised Loki instances along with a set of labels. For example if you are running Promtail in Kubernetes
+then each container in a single pod will usually yield a single log stream with a set of labels
+based on that particular pod Kubernetes labels. You can also run Promtail outside Kubernetes, but you would
+then need to customise the scrape_configs for your particular use case.
 
 The way how Promtail finds out the log locations and extracts the set of labels is by using the *scrape_configs*
 section in the Promtail yaml configuration. The syntax is the same what Prometheus uses.
@@ -22,8 +24,9 @@ The term "label" here is used in more than one different way and they can be eas
 * The label \_\_path\_\_ is a special label which Promtail will read to find out where the log files are to be read in.
 
 The most important part of each entry is the *relabel_configs* which are a list of operations which creates,
-renames, modifies or alters labels. A single scrape_config can also reject logs by doing an "action: drop" which means
-that this particular scrape_config will not forward logs from a particular pod, but another scrape_config might.
+renames, modifies or alters labels. A single scrape_config can also reject logs by doing an "action: drop" if
+a label value matches a specified regex, which means that this particular scrape_config will not forward logs
+from a particular log source, but another scrape_config might.
 
 Many of the scrape_configs read labels from \_\_meta_kubernetes_* meta-labels, assign them to intermediate labels
 such as \_\_service\_\_ based on a few different logic, possibly drop the processing if the \_\_service\_\_ was empty
