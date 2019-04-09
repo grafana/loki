@@ -14,20 +14,20 @@ The term "label" here is used in more than one different way and they can be eas
 
 * Labels starting with __ (two underscores) are internal labels. They are not stored to the loki index and are
   invisible after Promtail. They "magically" appear from different sources.
-* Labels starting with __meta_kubernetes_pod_label_* are "meta labels" which are generated based on your kubernetes
+* Labels starting with \_\_meta_kubernetes_pod_label_* are "meta labels" which are generated based on your kubernetes
   pod labels. Example: If your kubernetes pod has a label "name" set to "foobar" then the scrape_configs section
-  will have a label __meta_kubernetes_pod_label_name with value set to "foobar".
+  will have a label \_\_meta_kubernetes_pod_label_name with value set to "foobar".
 * There are other __meta_kubernetes_* labels based on the Kubernetes metadadata, such as the namespace the pod is
-  running (__meta_kubernetes_namespace) or the name of the container inside the pod (__meta_kubernetes_pod_container_name)
-* The label __path__ is a special label which Promtail will read to find out where the log files are to be read in.
+  running (__meta_kubernetes_namespace) or the name of the container inside the pod (\_\_meta_kubernetes_pod_container_name)
+* The label \_\_path\_\_ is a special label which Promtail will read to find out where the log files are to be read in.
 
 The most important part of each entry is the *relabel_configs* which are a list of operations which creates,
 renames, modifies or alters labels. A single scrape_config can also reject logs by doing an "action: drop" which means
 that this particular scrape_config will not forward logs from a particular pod, but another scrape_config might.
 
 Many of the scrape_configs read labels from __meta_kubernetes_* meta-labels, assign them to intermediate labels
-such as __service__ based on a few different logic, possibly drop the processing if the __service__ was empty
-and finally set visible labels (such as "job") based on the __service__ label.
+such as \_\_service\_\_ based on a few different logic, possibly drop the processing if the \_\_service\_\_ was empty
+and finally set visible labels (such as "job") based on the \_\_service\_\_ label.
 
 In general, all of the default Promtail scrape_configs do the following:
  * They read pod logs from under /var/log/pods/$1/*.log.
