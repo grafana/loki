@@ -15,6 +15,7 @@ RUN go get \
 		github.com/golang/protobuf/protoc-gen-go \
 		github.com/gogo/protobuf/protoc-gen-gogoslick \
 		github.com/gogo/protobuf/gogoproto \
+		github.com/go-delve/delve/cmd/dlv \
 		golang.org/x/tools/cmd/goyacc && \
 		rm -rf /go/pkg /go/src
 ENV GOMETALINTER_VER="2.0.11"
