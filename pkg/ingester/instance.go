@@ -63,7 +63,7 @@ func newInstance(instanceID string) *instance {
 	}
 }
 
-func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+func (i *instance) Push(ctx context.Context, req *logproto.PushRequest, blockSize int) error {
 	i.streamsMtx.Lock()
 	defer i.streamsMtx.Unlock()
 
@@ -84,7 +84,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			i.streamsCreatedTotal.Inc()
 		}
 
-		if err := stream.Push(ctx, s.Entries); err != nil {
+		if err := stream.Push(ctx, s.Entries, blockSize); err != nil {
 			appendErr = err
 			continue
 		}

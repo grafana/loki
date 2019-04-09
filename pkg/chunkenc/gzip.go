@@ -129,10 +129,11 @@ type entry struct {
 	s string
 }
 
-// NewMemChunk returns a new in-mem chunk.
-func NewMemChunk(enc Encoding) *MemChunk {
+// NewChunk returns a new in-mem chunk.
+// mainly for config push size.
+func NewChunk(enc Encoding, blockSize int) *MemChunk {
 	c := &MemChunk{
-		blockSize: 256 * 1024, // The blockSize in bytes.
+		blockSize: blockSize, // The blockSize in bytes.
 		blocks:    []block{},
 
 		head: &headBlock{
@@ -152,6 +153,11 @@ func NewMemChunk(enc Encoding) *MemChunk {
 	}
 
 	return c
+}
+
+// NewMemChunk returns a new in-mem chunk for query.
+func NewMemChunk(enc Encoding) *MemChunk {
+	return NewChunk(enc, 256*1024)
 }
 
 // NewByteChunk returns a MemChunk on the passed bytes.

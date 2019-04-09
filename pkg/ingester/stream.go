@@ -65,10 +65,10 @@ func newStream(fp model.Fingerprint, labels []client.LabelAdapter) *stream {
 	}
 }
 
-func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
+func (s *stream) Push(_ context.Context, entries []logproto.Entry, blockSize int) error {
 	if len(s.chunks) == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
-			chunk: chunkenc.NewMemChunk(chunkenc.EncGZIP),
+			chunk: chunkenc.NewChunk(chunkenc.EncGZIP, blockSize),
 		})
 		chunksCreatedTotal.Inc()
 	}
@@ -85,7 +85,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 			chunksCreatedTotal.Inc()
 
 			s.chunks = append(s.chunks, chunkDesc{
-				chunk: chunkenc.NewMemChunk(chunkenc.EncGZIP),
+				chunk: chunkenc.NewChunk(chunkenc.EncGZIP, blockSize),
 			})
 			chunk = &s.chunks[len(s.chunks)-1]
 		}
