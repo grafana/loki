@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"time"
@@ -48,7 +49,7 @@ func listLabelValues(name string) (*logproto.LabelResponse, error) {
 
 func doRequest(path string, out interface{}) error {
 	url := *addr + path
-	fmt.Println(url)
+	log.Print(url)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {

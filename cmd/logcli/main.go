@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"os"
 
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
@@ -28,11 +28,12 @@ var (
 )
 
 func main() {
+	log.SetOutput(os.Stderr)
+
 	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
 	case queryCmd.FullCommand():
 		if *addr == "" {
-			fmt.Println("Server address cannot be empty")
-			os.Exit(1)
+			log.Fatalln("Server address cannot be empty")
 		}
 		doQuery()
 	case labelsCmd.FullCommand():
