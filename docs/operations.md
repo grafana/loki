@@ -116,6 +116,18 @@ storage_config:
       dynamodb: dynamodb://access_key:secret_access_key@region
 ```
 
+You can also use an EC2 instance role instead of hard coding credentials like in the above example.
+If you wish to do this the storage_config example looks like this:
+
+```yaml
+storage_config:
+  aws:
+    s3: s3://region/bucket_name
+    dynamodbconfig:
+      dynamodb: dynamodb://region
+```
+
+
 #### S3
 
 Loki is using S3 as object storage. It stores log within directories based on
@@ -138,6 +150,10 @@ You can setup DynamoDB by yourself, or have `table-manager` setup for you.
 You can find out more info about table manager at
 [Cortex project](https://github.com/cortexproject/cortex)(https://github.com/cortexproject/cortex).
 There is an example table manager deployment inside the ksonnet deployment method. You can find it [here](../production/ksonnet/loki/table-manager.libsonnet)
+The table-manager allows deleting old indices by rotating a number of different dynamodb tables and deleting the oldest one. If you choose to
+create the table manually you cannot easily erase old data and your index just grows indefinitely.
 
 If you set your DynamoDB table manually, ensure you set the primary index key to `h`
-(string) and use `r` (binary) as the sort key. Make sure adjust your throughput base on your usage.
+(string) and use `r` (binary) as the sort key. Also set the "period" attribute in the yaml to zero.
+Make sure adjust your throughput base on your usage.
+
