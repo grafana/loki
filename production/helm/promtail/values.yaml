@@ -82,11 +82,17 @@ tolerations:
 
 # Extra volumes to scrape logs from
 volumes:
+- name: docker
+  hostPath:
+    path: /var/lib/docker/containers
 - name: pods
   hostPath:
     path: /var/log/pods
 
 volumeMounts:
+- name: docker
+  mountPath: /var/lib/docker/containers
+  readOnly: true
 - name: pods
   mountPath: /var/log/pods
   readOnly: true
