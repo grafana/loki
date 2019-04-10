@@ -14,6 +14,22 @@ This can have several reasons:
   - Detect this by turning on debug logging and then look for `dropping target, no labels` or `ignoring target` messages.
 - Promtail cannot find the location of your log files. Check that the scrape_configs contains valid path setting for finding the logs in your worker nodes.
 - Your pods are running but not with the labels Promtail is expecting. Check the Promtail scape_configs.
+- Now default scape_configs not work for kubernetes 1.14 and above, if you use 1.14 or above version, need update scape_config from
+```
+        - replacement: /var/log/pods/$1/*.log
+          separator: /
+          source_labels:
+          - __meta_kubernetes_pod_uid
+          - __meta_kubernetes_pod_container_name
+          target_label: __path__
+```
+to
+```
+        - replacement: /var/log/pods/*$1*/*/*.log
+          source_labels:
+          - __meta_kubernetes_pod_uid
+          target_label: __path__
+```
 
 ## Debug output
 
