@@ -1,5 +1,0 @@
-image:
-  tag: latest
-
-env:
-  GF_EXPLORE_ENABLED: true

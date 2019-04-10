@@ -1,4 +1,3 @@
-{{- if .Values.promtail.enabled }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -9,15 +8,15 @@ metadata:
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
   annotations:
-    {{- toYaml .Values.promtail.annotations | nindent 4 }}
+    {{- toYaml .Values.annotations | nindent 4 }}
 spec:
   selector:
     matchLabels:
       app: {{ template "promtail.name" . }}
       release: {{ .Release.Name }}
   updateStrategy:
-    type: {{ .Values.promtail.deploymentStrategy }}
-  {{- if ne .Values.promtail.deploymentStrategy "RollingUpdate" }}
+    type: {{ .Values.deploymentStrategy }}
+  {{- if ne .Values.deploymentStrategy "RollingUpdate" }}
     rollingUpdate: null
   {{- end }}
   template:
@@ -26,25 +25,25 @@ spec:
         app: {{ template "promtail.name" . }}
         release: {{ .Release.Name }}
       annotations:
-        {{ toYaml .Values.promtail.podAnnotations | nindent 8 }}
+        {{ toYaml .Values.podAnnotations | nindent 8 }}
     spec:
       serviceAccountName: {{ template "promtail.serviceAccountName" . }}
-    {{- if .Values.promtail.priorityClassName }}
-      priorityClassName: {{ .Values.promtail.priorityClassName }}
+    {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
     {{- end }}
       containers:
         - name: promtail
-          image: "{{ .Values.promtail.image.repository }}:{{ .Values.promtail.image.tag }}"
-          imagePullPolicy: {{ .Values.promtail.image.pullPolicy }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - "-config.file=/etc/promtail/promtail.yaml"
-            - "-client.url=http://{{ template "loki.fullname" . }}:{{ .Values.loki.service.port }}/api/prom/push"
+            - "-client.url=http://{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/api/prom/push"
           volumeMounts:
             - name: config
               mountPath: /etc/promtail
             - name: run
               mountPath: /run/promtail
-            {{- with .Values.promtail.volumeMounts }}
+            {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           env:
@@ -53,26 +52,26 @@ spec:
               fieldRef:
                 fieldPath: spec.nodeName
           ports:
-            - containerPort: {{ .Values.promtail.port }}
+            - containerPort: {{ .Values.port }}
               name: http-metrics
           securityContext:
-            {{- toYaml .Values.promtail.securityContext | nindent 12 }}
-          {{- if .Values.promtail.livenessProbe }}
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if .Values.livenessProbe }}
           livenessProbe:
-            {{- toYaml .Values.promtail.livenessProbe | nindent 12 }}
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
           {{- end }}
-          {{- if .Values.promtail.readinessProbe }}
+          {{- if .Values.readinessProbe }}
           readinessProbe:
-            {{- toYaml .Values.promtail.readinessProbe | nindent 12 }}
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
           {{- end }}
           resources:
-            {{- toYaml .Values.promtail.resources | nindent 12 }}
+            {{- toYaml .Values.resources | nindent 12 }}
       nodeSelector:
-        {{- toYaml .Values.promtail.nodeSelector | nindent 8 }}
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
       affinity:
-        {{- toYaml .Values.promtail.affinity | nindent 8 }}
+        {{- toYaml .Values.affinity | nindent 8 }}
       tolerations:
-        {{- toYaml .Values.promtail.tolerations | nindent 8 }}
+        {{- toYaml .Values.tolerations | nindent 8 }}
       volumes:
         - name: config
           configMap:
@@ -80,8 +79,7 @@ spec:
         - name: run
           hostPath:
             path: /run/promtail
-        {{- with .Values.promtail.volumes }}
+        {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-{{- end }}
 

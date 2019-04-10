@@ -1,0 +1,313 @@
+## Affinity for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+affinity: {}
+
+annotations: {}
+
+deploymentStrategy: RollingUpdate
+
+entryParser: docker
+
+image:
+  repository: grafana/promtail
+  tag: latest
+  pullPolicy: Always # Always pull while in BETA
+
+livenessProbe:
+  failureThreshold: 5
+  httpGet:
+    path: /metrics
+    port: http-metrics
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  successThreshold: 1
+  timeoutSeconds: 1
+
+loki:
+  serviceName: "" # Defaults to "${RELEASE}-loki" if not set
+  servicePort: 3100
+
+nameOverride: promtail
+
+## Node labels for pod assignment
+## ref: https://kubernetes.io/docs/user-guide/node-selection/
+nodeSelector: {}
+
+podAnnotations: {}
+#  prometheus.io/scrape: "true"
+#  prometheus.io/port: "http-metrics"
+
+# This should match config.server.http_listen_port
+port: 3101
+
+## Assign a PriorityClassName to pods if set
+# priorityClassName:
+
+rbac:
+  create: true
+  pspEnabled: true
+
+readinessProbe:
+  failureThreshold: 5
+  httpGet:
+    path: /metrics
+    port: http-metrics
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  successThreshold: 1
+  timeoutSeconds: 1
+
+resources: {}
+#  limits:
+#    cpu: 200m
+#    memory: 128Mi
+#  requests:
+#    cpu: 100m
+#    memory: 128Mi
+
+securityContext:
+  readOnlyRootFilesystem: true
+  runAsGroup: 0
+  runAsUser: 0
+
+serviceAccount:
+  create: true
+  name:
+
+## Tolerations for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+tolerations:
+- key: node-role.kubernetes.io/master
+  effect: NoSchedule
+
+# Extra volumes to scrape logs from
+volumes:
+- name: pods
+  hostPath:
+    path: /var/log/pods
+
+volumeMounts:
+- name: pods
+  mountPath: /var/log/pods
+  readOnly: true
+
+config:
+  client:
+    # Maximum wait period before sending batch
+    batchwait: 1s
+    # Maximum batch size to accrue before sending, unit is byte
+    batchsize: 102400
+
+    # Maximum time to wait for server to respond to a request
+    timeout: 10s
+
+    backoff_config:
+      # Initial backoff time between retries
+      minbackoff: 100ms
+      # Maximum backoff time between retries
+      maxbackoff: 5s
+      # Maximum number of retires when sending batches, 0 means infinite retries
+      maxretries: 5
+
+    # The labels to add to any time series or alerts when communicating with loki
+    external_labels: {}
+
+  server:
+    http_listen_port: 3101
+  positions:
+    filename: /run/promtail/positions.yaml
+  scrape_configs:
+  - entry_parser: '{{ .Values.entryParser }}'
+    job_name: kubernetes-pods-name
+    kubernetes_sd_configs:
+    - role: pod
+    relabel_configs:
+    - source_labels:
+      - __meta_kubernetes_pod_label_name
+      target_label: __service__
+    - source_labels:
+      - __meta_kubernetes_pod_node_name
+      target_label: __host__
+    - action: drop
+      regex: ^$
+      source_labels:
+      - __service__
+    - action: replace
+      replacement: $1
+      separator: /
+      source_labels:
+      - __meta_kubernetes_namespace
+      - __service__
+      target_label: job
+    - action: replace
+      source_labels:
+      - __meta_kubernetes_namespace
+      target_label: namespace
+    - action: replace
+      source_labels:
+      - __meta_kubernetes_pod_name
+      target_label: instance
+    - action: replace
+      source_labels:
+      - __meta_kubernetes_pod_container_name
+      target_label: container_name
+    - action: labelmap
+      regex: __meta_kubernetes_pod_label_(.+)
+    - replacement: /var/log/pods/$1/*.log
+      separator: /
+      source_labels:
+      - __meta_kubernetes_pod_uid
+      - __meta_kubernetes_pod_container_name
+      target_label: __path__
+  - entry_parser: '{{ .Values.entryParser }}'
+    job_name: kubernetes-pods-app
+    kubernetes_sd_configs:
+    - role: pod
+    relabel_configs:
+    - action: drop
+      regex: .+
+      source_labels:
+      - __meta_kubernetes_pod_label_name
+    - source_labels:
+      - __meta_kubernetes_pod_label_app
+      target_label: __service__
+    - source_labels:
+      - __meta_kubernetes_pod_node_name
+      target_label: __host__
+    - action: drop
+      regex: ^$
+      source_labels:
+      - __service__
+    - action: replace
+      replacement: $1
+      separator: /
+      source_labels:
+      - __meta_kubernetes_namespace
+      - __service__
+      target_label: job
+    - action: replace
+      source_labels:
+      - __meta_kubernetes_namespace
+      target_label: namespace
+    - action: replace
+      source_labels:
+      - __meta_kubernetes_pod_name
+      target_label: instance
+    - action: replace
+      source_labels:
+      - __meta_kubernetes_pod_container_name
+      target_label: container_name
+    - action: labelmap
+      regex: __meta_kubernetes_pod_label_(.+)
+    - replacement: /var/log/pods/$1/*.log
+      separator: /
+      source_labels:
+      - __meta_kubernetes_pod_uid
+      - __meta_kubernetes_pod_container_name
+      target_label: __path__
+  - entry_parser: '{{ .Values.entryParser }}'
+    job_name: kubernetes-pods-direct-controllers
+    kubernetes_sd_configs:
+    - role: pod
+    relabel_configs:
+    - action: drop
+      regex: .+
+      separator: ''
+      source_labels:
+      - __meta_kubernetes_pod_label_name
+      - __meta_kubernetes_pod_label_app
+    - action: drop
+      regex: ^([0-9a-z-.]+)(-[0-9a-f]{8,10})$
+      source_labels:
+      - __meta_kubernetes_pod_controller_name
+    - source_labels:
+      - __meta_kubernetes_pod_controller_name
+      target_label: __service__
+    - source_labels:
+      - __meta_kubernetes_pod_node_name
+      target_label: __host__
+    - action: drop
+      regex: ^$
+      source_labels:
+      - __service__
+    - action: replace
+      replacement: $1
+      separator: /
+      source_labels:
+      - __meta_kubernetes_namespace
+      - __service__
+      target_label: job
+    - action: replace
+      source_labels:
+      - __meta_kubernetes_namespace
+      target_label: namespace
+    - action: replace
+      source_labels:
+      - __meta_kubernetes_pod_name
+      target_label: instance
+    - action: replace
+      source_labels:
+      - __meta_kubernetes_pod_container_name
+      target_label: container_name
+    - action: labelmap
+      regex: __meta_kubernetes_pod_label_(.+)
+    - replacement: /var/log/pods/$1/*.log
+      separator: /
+      source_labels:
+      - __meta_kubernetes_pod_uid
+      - __meta_kubernetes_pod_container_name
+      target_label: __path__
+  - entry_parser: '{{ .Values.entryParser }}'
+    job_name: kubernetes-pods-indirect-controller
+    kubernetes_sd_configs:
+    - role: pod
+    relabel_configs:
+    - action: drop
+      regex: .+
+      separator: ''
+      source_labels:
+      - __meta_kubernetes_pod_label_name
+      - __meta_kubernetes_pod_label_app
+    - action: keep
+      regex: ^([0-9a-z-.]+)(-[0-9a-f]{8,10})$
+      source_labels:
+      - __meta_kubernetes_pod_controller_name
+    - action: replace
+      regex: ^([0-9a-z-.]+)(-[0-9a-f]{8,10})$
+      source_labels:
+      - __meta_kubernetes_pod_controller_name
+      target_label: __service__
+    - source_labels:
+      - __meta_kubernetes_pod_node_name
+      target_label: __host__
+    - action: drop
+      regex: ^$
+      source_labels:
+      - __service__
+    - action: replace
+      replacement: $1
+      separator: /
+      source_labels:
+      - __meta_kubernetes_namespace
+      - __service__
+      target_label: job
+    - action: replace
+      source_labels:
+      - __meta_kubernetes_namespace
+      target_label: namespace
+    - action: replace
+      source_labels:
+      - __meta_kubernetes_pod_name
+      target_label: instance
+    - action: replace
+      source_labels:
+      - __meta_kubernetes_pod_container_name
+      target_label: container_name
+    - action: labelmap
+      regex: __meta_kubernetes_pod_label_(.+)
+    - replacement: /var/log/pods/$1/*.log
+      separator: /
+      source_labels:
+      - __meta_kubernetes_pod_uid
+      - __meta_kubernetes_pod_container_name
+      target_label: __path__

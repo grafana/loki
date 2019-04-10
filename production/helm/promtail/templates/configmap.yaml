@@ -1,4 +1,3 @@
-{{- if .Values.promtail.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -10,5 +9,4 @@ metadata:
     heritage: {{ .Release.Service }}
 data:
   promtail.yaml: |
-    {{- tpl (toYaml .Values.promtail.config | nindent 4 ) . }}
-{{- end }}
+    {{- tpl (toYaml .Values.config | nindent 4 ) . }}

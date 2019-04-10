@@ -46,6 +46,8 @@ Most of these metrics are counters and should continuously increase during norma
 3. Promtail forwards the line to a Loki distributor, its received counters should increase.
 4. The Loki distributor forwards it to a Loki ingester, its request duration counter increases.
 
+You can import dashboard with ID [10004](https://grafana.com/dashboards/10004) to see them in Grafana UI.
+
 ### Monitoring Mixins
 
 Check out our [Loki mixin](../production/loki-mixin) for a set of dashboards, recording rules, and alerts.
@@ -114,6 +116,18 @@ storage_config:
       dynamodb: dynamodb://access_key:secret_access_key@region
 ```
 
+You can also use an EC2 instance role instead of hard coding credentials like in the above example.
+If you wish to do this the storage_config example looks like this:
+
+```yaml
+storage_config:
+  aws:
+    s3: s3://region/bucket_name
+    dynamodbconfig:
+      dynamodb: dynamodb://region
+```
+
+
 #### S3
 
 Loki is using S3 as object storage. It stores log within directories based on
@@ -136,6 +150,10 @@ You can setup DynamoDB by yourself, or have `table-manager` setup for you.
 You can find out more info about table manager at
 [Cortex project](https://github.com/cortexproject/cortex)(https://github.com/cortexproject/cortex).
 There is an example table manager deployment inside the ksonnet deployment method. You can find it [here](../production/ksonnet/loki/table-manager.libsonnet)
+The table-manager allows deleting old indices by rotating a number of different dynamodb tables and deleting the oldest one. If you choose to
+create the table manually you cannot easily erase old data and your index just grows indefinitely.
 
 If you set your DynamoDB table manually, ensure you set the primary index key to `h`
-(string) and use `r` (binary) as the sort key. Make sure adjust your throughput base on your usage.
+(string) and use `r` (binary) as the sort key. Also set the "period" attribute in the yaml to zero.
+Make sure adjust your throughput base on your usage.
+

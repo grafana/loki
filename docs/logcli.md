@@ -44,10 +44,8 @@ Common labels: {job="cortex-ops/consul", namespace="cortex-ops"}
 
 ### Configuration
 
-You may use `--config=path/to/file` to load configuration options from a file. For an example file see `cmd/logcli/logcli-config.yaml`
 
 Configuration values are considered in the following order (lowest to highest):
-- config file
 - environment value
 - command line
 
@@ -66,7 +64,6 @@ Flags:
   --addr=""      Server address, need to specify.
   --username=""  Username for HTTP basic auth.
   --password=""  Password for HTTP basic auth.
-  --config=""    Configuration file for logcli.
 
 Commands:
   help [<command>...]
