@@ -2,7 +2,11 @@ package storage
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
+	"time"
+
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/stretchr/testify/require"
@@ -192,5 +196,34 @@ func TestQueryPages(t *testing.T) {
 				}
 			})
 		}
+	})
+}
+
+func TestCardinalityLimit(t *testing.T) {
+	forAllFixtures(t, func(t *testing.T, client chunk.IndexClient, _ chunk.ObjectClient) {
+		limits, err := defaultLimits()
+		require.NoError(t, err)
+
+		client = newCachingIndexClient(client, cache.NewMockCache(), time.Minute, limits)
+		batch := client.NewWriteBatch()
+		for i := 0; i < 10; i++ {
+			batch.Add(tableName, "bar", []byte(strconv.Itoa(i)), []byte(strconv.Itoa(i)))
+		}
+		err = client.BatchWrite(ctx, batch)
+		require.NoError(t, err)
+
+		var have int
+		err = client.QueryPages(ctx, []chunk.IndexQuery{{
+			TableName: tableName,
+			HashValue: "bar",
+		}}, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
+			iter := read.Iterator()
+			for iter.Next() {
+				have++
+			}
+			return true
+		})
+		require.Error(t, err, "cardinality limit exceeded for {}; 10 entries, more than limit of 5")
+		require.Equal(t, 0, have)
 	})
 }

@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -22,11 +21,19 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-var (
-	// ErrCardinalityExceeded is returned when the user reads a row that
-	// is too large.
-	ErrCardinalityExceeded = errors.New("cardinality limit exceeded")
+// CardinalityExceededError is returned when the user reads a row that
+// is too large.
+type CardinalityExceededError struct {
+	MetricName, LabelName string
+	Size, Limit           int32
+}
 
+func (e CardinalityExceededError) Error() string {
+	return fmt.Sprintf("cardinality limit exceeded for %s{%s}; %d entries, more than limit of %d",
+		e.MetricName, e.LabelName, e.Size, e.Limit)
+}
+
+var (
 	indexLookupsPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "chunk_store_index_lookups_per_query",
@@ -196,6 +203,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	var preIntersectionCount int
 	var lastErr error
 	var cardinalityExceededErrors int
+	var cardinalityExceededError CardinalityExceededError
 	for i := 0; i < len(matchers); i++ {
 		select {
 		case incoming := <-incomingIDs:
@@ -210,8 +218,9 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 			// series and the other returns only 10 (a few), we don't lookup the first one at all.
 			// We just manually filter through the 10 series again using "filterChunksByMatchers",
 			// saving us from looking up and intersecting a lot of series.
-			if err == ErrCardinalityExceeded {
+			if e, ok := err.(CardinalityExceededError); ok {
 				cardinalityExceededErrors++
+				cardinalityExceededError = e
 			} else {
 				lastErr = err
 			}
@@ -220,7 +229,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 
 	// But if every single matcher returns a lot of series, then it makes sense to abort the query.
 	if cardinalityExceededErrors == len(matchers) {
-		return nil, ErrCardinalityExceeded
+		return nil, cardinalityExceededError
 	} else if lastErr != nil {
 		return nil, lastErr
 	}
@@ -241,11 +250,14 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	}
 
 	var queries []IndexQuery
+	var labelName string
 	if matcher == nil {
 		queries, err = c.schema.GetReadQueriesForMetric(from, through, userID, model.LabelValue(metricName))
 	} else if matcher.Type != labels.MatchEqual {
+		labelName = matcher.Name
 		queries, err = c.schema.GetReadQueriesForMetricLabel(from, through, userID, model.LabelValue(metricName), model.LabelName(matcher.Name))
 	} else {
+		labelName = matcher.Name
 		queries, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, model.LabelValue(metricName), model.LabelName(matcher.Name), model.LabelValue(matcher.Value))
 	}
 	if err != nil {
@@ -254,7 +266,11 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	level.Debug(log).Log("queries", len(queries))
 
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
-	if err != nil {
+	if e, ok := err.(CardinalityExceededError); ok {
+		e.MetricName = metricName
+		e.LabelName = labelName
+		return nil, e
+	} else if err != nil {
 		return nil, err
 	}
 	level.Debug(log).Log("entries", len(entries))
