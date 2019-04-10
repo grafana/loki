@@ -21,5 +21,5 @@ spec:
             app: {{ template "promtail.name" . }}
             release: {{ .Release.Name }}
     - ports:
-      - port: {{ .Values.loki.service.port }}
+      - port: {{ .Values.service.port }}
 {{- end -}}

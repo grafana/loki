@@ -1,7 +1,6 @@
-{{- if .Values.promtail.enabled }}
 {{- if .Values.rbac.create }}
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: RoleBinding
 metadata:
   name: {{ template "promtail.fullname" . }}
   labels:
@@ -9,12 +8,12 @@ metadata:
     chart: {{ template "promtail.chart" . }}
     heritage: {{ .Release.Service }}
     release: {{ .Release.Name }}
-{{- if .Values.rbac.pspEnabled }}
-rules:
-- apiGroups:      ['extensions']
-  resources:      ['podsecuritypolicies']
-  verbs:          ['use']
-  resourceNames:  [{{ template "promtail.fullname" . }}]
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ template "promtail.fullname" . }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "promtail.serviceAccountName" . }}
 {{- end }}
-{{- end }}
-{{- end }}
+

@@ -1,12 +1,11 @@
-{{- if .Values.loki.enabled }}
 {{- if .Values.rbac.create }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ template "loki.fullname" . }}
+  name: {{ template "promtail.fullname" . }}
   labels:
-    app: {{ template "loki.name" . }}
-    chart: {{ template "loki.chart" . }}
+    app: {{ template "promtail.name" . }}
+    chart: {{ template "promtail.chart" . }}
     heritage: {{ .Release.Service }}
     release: {{ .Release.Name }}
 {{- if .Values.rbac.pspEnabled }}
@@ -14,7 +13,6 @@ rules:
 - apiGroups:      ['extensions']
   resources:      ['podsecuritypolicies']
   verbs:          ['use']
-  resourceNames:  [{{ template "loki.fullname" . }}]
-{{- end }}
+  resourceNames:  [{{ template "promtail.fullname" . }}]
 {{- end }}
 {{- end }}

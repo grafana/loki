@@ -12,10 +12,10 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this 
 If release name contains chart name it will be used as a full name.
 */}}
 {{- define "loki.fullname" -}}
-{{- if .Values.loki.fullnameOverride -}}
-{{- .Values.loki.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
-{{- $name := default .Chart.Name .Values.loki.nameOverride -}}
+{{- $name := default .Chart.Name .Values.nameOverride -}}
 {{- if contains $name .Release.Name -}}
 {{- .Release.Name | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
@@ -43,10 +43,10 @@ Create the name of the service account
 {{- end -}}
 
 {{- define "configSecret" }}
-auth_enabled: {{ .Values.loki.config.auth_enabled }}
+auth_enabled: {{ .Values.config.auth_enabled }}
 
 server:
-  http_listen_port: {{ .Values.loki.port }}
+  http_listen_port: {{ .Values.port }}
 
 limits_config:
   enforce_metric_name: false
@@ -54,14 +54,14 @@ limits_config:
 ingester:
   lifecycler:
     ring:
-      store: {{ .Values.loki.config.ingester.lifecycler.ring.store }}
-      replication_factor: {{ .Values.loki.config.ingester.lifecycler.ring.replication_factor }}
+      store: {{ .Values.config.ingester.lifecycler.ring.store }}
+      replication_factor: {{ .Values.config.ingester.lifecycler.ring.replication_factor }}
   chunk_idle_period: 15m
 
-{{- if .Values.loki.config.schema_configs }}
+{{- if .Values.config.schema_configs }}
 schema_config:
   configs:
-{{- range .Values.loki.config.schema_configs }}
+{{- range .Values.config.schema_configs }}
   - from: {{ .from }}
     store: {{ .store }}
     object_store: {{ .object_store }}
@@ -72,7 +72,7 @@ schema_config:
 {{- end -}}
 {{- end -}}
 
-{{- with .Values.loki.config.storage_config }}
+{{- with .Values.config.storage_config }}
 storage_config:
 {{ toYaml . | indent 2 }}
 {{- end }}

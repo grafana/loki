@@ -1,20 +1,19 @@
-{{- if .Values.promtail.enabled }}
 {{- if .Values.rbac.create }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ template "promtail.fullname" . }}
+  name: {{ template "loki.fullname" . }}
   labels:
-    app: {{ template "promtail.name" . }}
-    chart: {{ template "promtail.chart" . }}
+    app: {{ template "loki.name" . }}
+    chart: {{ template "loki.chart" . }}
     heritage: {{ .Release.Service }}
     release: {{ .Release.Name }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: {{ template "promtail.fullname" . }}
+  name: {{ template "loki.fullname" . }}
 subjects:
 - kind: ServiceAccount
-  name: {{ template "promtail.serviceAccountName" . }}
+  name: {{ template "loki.serviceAccountName" . }}
 {{- end }}
-{{- end }}
+
