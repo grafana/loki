@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -724,9 +725,12 @@ func TestMissing(t *testing.T) {
 type TestClient struct {
 	log      log.Logger
 	messages []string
+	sync.Mutex
 }
 
 func (c *TestClient) Handle(ls model.LabelSet, t time.Time, s string) error {
+	c.Lock()
+	defer c.Unlock()
 	c.messages = append(c.messages, s)
 	level.Debug(c.log).Log("msg", "received log", "log", s)
 	return nil
