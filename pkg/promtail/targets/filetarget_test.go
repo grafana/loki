@@ -2,6 +2,7 @@ package targets
 
 import (
 	"fmt"
+	"github.com/go-kit/kit/log/level"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 
@@ -729,10 +729,11 @@ type TestClient struct {
 }
 
 func (c *TestClient) Handle(ls model.LabelSet, t time.Time, s string) error {
+	level.Debug(c.log).Log("msg", "received log", "log", s)
+
 	c.Lock()
 	defer c.Unlock()
 	c.messages = append(c.messages, s)
-	level.Debug(c.log).Log("msg", "received log", "log", s)
 	return nil
 }
 
