@@ -21,8 +21,12 @@ func tailQuery() {
 			return
 		}
 
+		labels := ""
+		if !*noLabels {
+			labels = stream.Labels
+		}
 		for _, entry := range stream.Entries {
-			printLogEntry(entry.Timestamp, stream.Labels, entry.Line)
+			printLogEntry(entry.Timestamp, labels, entry.Line)
 		}
 	}
 }
