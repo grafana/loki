@@ -45,7 +45,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Second, "")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 15*time.Minute, "")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "")
-	f.IntVar(&cfg.blockSize, "ingester.chunks-block-size", 256 * 1024, "")
+	f.IntVar(&cfg.blockSize, "ingester.chunks-block-size", 256*1024, "")
 }
 
 // Ingester builds chunks for incoming log streams.
