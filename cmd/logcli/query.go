@@ -64,19 +64,23 @@ func doQuery() {
 
 		labels := ""
 		if !*noLabels {
-			labels = color.RedString(padLabel(ls, maxLabelsLen))
+			labels = padLabel(ls, maxLabelsLen)
 		}
 
-		fmt.Println(
-			color.BlueString(i.Entry().Timestamp.Format(time.RFC3339)),
-			labels,
-			strings.TrimSpace(i.Entry().Line),
-		)
+		printLogEntry(i.Entry().Timestamp, labels, i.Entry().Line)
 	}
 
 	if err := i.Error(); err != nil {
 		log.Fatalf("Error from iterator: %v", err)
 	}
+}
+
+func printLogEntry(ts time.Time, lbls string, line string) {
+	fmt.Println(
+		color.BlueString(ts.Format(time.RFC3339)),
+		color.RedString(lbls),
+		strings.TrimSpace(line),
+	)
 }
 
 func padLabel(ls labels.Labels, maxLabelsLen int) string {

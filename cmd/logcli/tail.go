@@ -2,6 +2,8 @@ package main
 
 import (
 	"log"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func tailQuery() {
@@ -10,12 +12,17 @@ func tailQuery() {
 		log.Fatalf("Tailing logs failed: %+v", err)
 	}
 
+	stream := new(logproto.Stream)
+
 	for {
-		_, message, err := conn.ReadMessage()
+		err := conn.ReadJSON(stream)
 		if err != nil {
-			log.Println("read:", err)
+			log.Println("Error reading stream:", err)
 			return
 		}
-		log.Printf("recv: %s", message)
+
+		for _, entry := range stream.Entries {
+			printLogEntry(entry.Timestamp, stream.Labels, entry.Line)
+		}
 	}
 }

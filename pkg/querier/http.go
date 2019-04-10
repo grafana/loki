@@ -11,7 +11,6 @@ import (
 
 	"github.com/weaveworks/common/httpgrpc/server"
 
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -171,17 +170,17 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 		err := conn.WriteJSON(stream)
 		if err != nil {
 			level.Error(util.Logger).Log("Error writing to websocket", fmt.Sprintf("%v", err))
-			helpers.LogError("writing close message to websocket", func() error {
-				return conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error()))
-			})
+			if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
+				level.Error(util.Logger).Log("Error writing close message to websocket", fmt.Sprintf("%v", err))
+			}
 			break
 		}
 	}
 
 	if err := itr.Error(); err != nil {
 		level.Error(util.Logger).Log("Error from iterator", fmt.Sprintf("%v", err))
-		helpers.LogError("writing close message to websocket", func() error {
-			return conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error()))
-		})
+		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
+			level.Error(util.Logger).Log("Error writing close message to websocket", fmt.Sprintf("%v", err))
+		}
 	}
 }
