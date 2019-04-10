@@ -2,7 +2,6 @@ package targets
 
 import (
 	"fmt"
-	"github.com/go-kit/kit/log/level"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -11,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/go-kit/kit/log/level"
 
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
