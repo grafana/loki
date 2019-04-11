@@ -83,6 +83,7 @@ Loki receives logs in separate streams.
 Each stream is identified by a set of labels.
 As the log entries from a stream arrive, they are gzipped as chunks and saved in the chunks store.
 The index then stores the stream's label set, and links them to the chunks.
+The chunk format refer to [doc](../pkg/chunkenc/README.md)
 
 ### Local storage
 
