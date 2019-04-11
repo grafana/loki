@@ -54,8 +54,7 @@ limits_config:
 ingester:
   lifecycler:
     ring:
-      store: {{ .Values.config.ingester.lifecycler.ring.store }}
-      replication_factor: {{ .Values.config.ingester.lifecycler.ring.replication_factor }}
+{{ toYaml .Values.config.ingester.lifecycler.ring | indent 6 }}    
   chunk_idle_period: 15m
 
 {{- if .Values.config.schema_configs }}
