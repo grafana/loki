@@ -30,18 +30,3 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.PositionsConfig.RegisterFlags(f)
 	c.TargetConfig.RegisterFlags(f)
 }
-
-// LoadConfig loads config from a file.
-func LoadConfig(filename string) (*Config, error) {
-	buf, err := ioutil.ReadFile(filepath.Clean(filename))
-	if err != nil {
-		return nil, err
-	}
-
-	var cfg Config
-	if err := yaml.UnmarshalStrict(buf, &cfg); err != nil {
-		return nil, err
-	}
-
-	return &cfg, nil
-}
