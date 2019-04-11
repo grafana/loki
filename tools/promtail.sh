@@ -238,12 +238,6 @@ spec:
         image: grafana/promtail:latest
         imagePullPolicy: Always
         name: promtail
-        livenessProbe:
-          httpGet:
-            path: /ready
-            port: http-metrics
-            scheme: HTTP
-          initialDelaySeconds: 10
         readinessProbe:
           httpGet:
             path: /ready
