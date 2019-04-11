@@ -2,11 +2,8 @@ package config
 
 import (
 	"flag"
-	"io/ioutil"
-	"path/filepath"
 
 	"github.com/weaveworks/common/server"
-	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/positions"
@@ -29,19 +26,4 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.ClientConfig.RegisterFlags(f)
 	c.PositionsConfig.RegisterFlags(f)
 	c.TargetConfig.RegisterFlags(f)
-}
-
-// LoadConfig loads config from a file.
-func LoadConfig(filename string) (*Config, error) {
-	buf, err := ioutil.ReadFile(filepath.Clean(filename))
-	if err != nil {
-		return nil, err
-	}
-
-	var cfg Config
-	if err := yaml.UnmarshalStrict(buf, &cfg); err != nil {
-		return nil, err
-	}
-
-	return &cfg, nil
 }
