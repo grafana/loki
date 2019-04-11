@@ -44,10 +44,6 @@ k + config + scrape_config {
     container.withEnv([
       container.envType.fromFieldPath('HOSTNAME', 'spec.nodeName'),
     ]) +
-    container.mixin.livenessProbe.httpGet.withPath('/ready') +
-    container.mixin.livenessProbe.httpGet.withPort(80) +
-    container.mixin.livenessProbe.withInitialDelaySeconds(10) +
-    container.mixin.livenessProbe.withTimeoutSeconds(1) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
     container.mixin.readinessProbe.httpGet.withPort(80) +
     container.mixin.readinessProbe.withInitialDelaySeconds(10) +
