@@ -10,6 +10,12 @@ Loki's chart repository to Helm:
 $ helm repo add loki https://grafana.github.io/loki/charts
 ```
 
+If you have added it, need to update in case miss any sub-repo:
+
+```bash
+$ helm repo update
+```
+
 ## Deploy Loki and Promtail to your cluster
 
 ```bash
