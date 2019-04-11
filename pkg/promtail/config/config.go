@@ -2,11 +2,8 @@ package config
 
 import (
 	"flag"
-	"io/ioutil"
-	"path/filepath"
 
 	"github.com/weaveworks/common/server"
-	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/positions"
