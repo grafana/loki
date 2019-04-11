@@ -53,7 +53,7 @@ spec:
               subPath: {{ .Values.persistence.subPath }}
           ports:
             - name: http-metrics
-              containerPort: {{ .Values.port }}
+              containerPort: {{ .Values.config.server.http_listen_port }}
               protocol: TCP
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
