@@ -6,20 +6,20 @@ import (
 	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/pkg/relabel"
 
-	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/logentry"
 )
 
 // Config describes a job to scrape.
 type Config struct {
 	JobName                string                           `yaml:"job_name,omitempty"`
-	EntryParser            api.EntryParser                  `yaml:"entry_parser"`
+	PipelineStages         []logentry.PipelineStage         `yaml:"pipeline_stages,omitempty"`
 	RelabelConfigs         []*relabel.Config                `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
 }
 
 // DefaultScrapeConfig is the default Config.
 var DefaultScrapeConfig = Config{
-	EntryParser: api.Docker,
+	//PipelineStages: api.Docker,
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.

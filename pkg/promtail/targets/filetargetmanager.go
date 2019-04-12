@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/relabel"
 
 	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/logentry"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/scrape"
@@ -73,6 +74,10 @@ func NewFileTargetManager(
 
 	config := map[string]sd_config.ServiceDiscoveryConfig{}
 	for _, cfg := range scrapeConfigs {
+		pipeline, err := logentry.NewPipeline(cfg.PipelineStages)
+		if err != nil {
+			return nil, err
+		}
 		s := &targetSyncer{
 			log:            logger,
 			positions:      positions,
@@ -80,7 +85,7 @@ func NewFileTargetManager(
 			targets:        map[string]*FileTarget{},
 			droppedTargets: []Target{},
 			hostname:       hostname,
-			entryHandler:   cfg.EntryParser.Wrap(client),
+			entryHandler:   pipeline.Wrap(client),
 			targetConfig:   targetConfig,
 		}
 		tm.syncers[cfg.JobName] = s
