@@ -9,9 +9,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/weaveworks/common/httpgrpc/server"
+
+	"github.com/weaveworks/common/httpgrpc"
+
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
 	"github.com/grafana/loki/pkg/logproto"
 )
 
@@ -58,46 +63,48 @@ func directionParam(values url.Values, name string, def logproto.Direction) (log
 	return logproto.Direction(d), nil
 }
 
-// QueryHandler is a http.HandlerFunc for queries.
-func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
-	params := r.URL.Query()
-	query := params.Get("query")
+func httpRequestToQueryRequest(httpRequest *http.Request) (*logproto.QueryRequest, error) {
+	params := httpRequest.URL.Query()
+	now := time.Now()
+	queryRequest := logproto.QueryRequest{
+		Regex: params.Get("regexp"),
+		Query: params.Get("query"),
+	}
+
 	limit, err := intParam(params, "limit", defaultQueryLimit)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
+	queryRequest.Limit = uint32(limit)
 
-	now := time.Now()
-	start, err := unixNanoTimeParam(params, "start", now.Add(-defaulSince))
+	queryRequest.Start, err = unixNanoTimeParam(params, "start", now.Add(-defaulSince))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	end, err := unixNanoTimeParam(params, "end", now)
+	queryRequest.End, err = unixNanoTimeParam(params, "end", now)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	direction, err := directionParam(params, "direction", logproto.BACKWARD)
+	queryRequest.Direction, err = directionParam(params, "direction", logproto.BACKWARD)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	request := logproto.QueryRequest{
-		Query:     query,
-		Limit:     uint32(limit),
-		Start:     start,
-		End:       end,
-		Direction: direction,
-		Regex:     params.Get("regexp"),
+	return &queryRequest, nil
+}
+
+// QueryHandler is a http.HandlerFunc for queries.
+func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
+	request, err := httpRequestToQueryRequest(r)
+	if err != nil {
+		server.WriteError(w, err)
+		return
 	}
 
 	level.Debug(util.Logger).Log("request", fmt.Sprintf("%+v", request))
-	result, err := q.Query(r.Context(), &request)
+	result, err := q.Query(r.Context(), request)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -124,5 +131,56 @@ func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+}
+
+// TailHandler is a http.HandlerFunc for handling tail queries.
+func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+
+	queryRequestPtr, err := httpRequestToQueryRequest(r)
+	if err != nil {
+		server.WriteError(w, err)
+		return
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		level.Error(util.Logger).Log("Error in upgrading websocket", fmt.Sprintf("%v", err))
+		return
+	}
+
+	defer func() {
+		err := conn.Close()
+		level.Error(util.Logger).Log("Error closing websocket", fmt.Sprintf("%v", err))
+	}()
+
+	// response from httpRequestToQueryRequest is a ptr, if we keep passing pointer down the call then it would stay on
+	// heap until connection to websocket stays open
+	queryRequest := *queryRequestPtr
+	itr := q.tailQuery(r.Context(), &queryRequest)
+	stream := logproto.Stream{}
+
+	for itr.Next() {
+		stream.Entries = []logproto.Entry{itr.Entry()}
+		stream.Labels = itr.Labels()
+
+		err := conn.WriteJSON(stream)
+		if err != nil {
+			level.Error(util.Logger).Log("Error writing to websocket", fmt.Sprintf("%v", err))
+			if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
+				level.Error(util.Logger).Log("Error writing close message to websocket", fmt.Sprintf("%v", err))
+			}
+			break
+		}
+	}
+
+	if err := itr.Error(); err != nil {
+		level.Error(util.Logger).Log("Error from iterator", fmt.Sprintf("%v", err))
+		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
+			level.Error(util.Logger).Log("Error writing close message to websocket", fmt.Sprintf("%v", err))
+		}
 	}
 }
