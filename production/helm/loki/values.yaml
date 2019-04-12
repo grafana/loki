@@ -21,6 +21,16 @@ config:
       ring:
         store: inmemory
         replication_factor: 1
+
+      ## Different ring configs can be used. E.g. Consul
+      # ring:
+      #   store: consul
+      #   replication_factor: 1
+      #   consul:
+      #     host: "consul:8500"
+      #     prefix: ""
+      #     httpclienttimeout: "20s"
+      #     consistentreads: true
   schema_configs:
   - from: 0
     store: boltdb
@@ -108,6 +118,8 @@ securityContext:
   runAsUser: 10001
 
 service:
+  type: ClusterIP
+  nodePort: 
   port: 3100
   annotations: {}
   labels: {}
@@ -121,4 +133,3 @@ terminationGracePeriodSeconds: 30
 ## Tolerations for pod assignment
 ## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
 tolerations: []
-
