@@ -12,7 +12,7 @@ import (
 // Config describes a job to scrape.
 type Config struct {
 	JobName                string                           `yaml:"job_name,omitempty"`
-	EntryParser            api.EntryParser                  `yaml:"entry_parser"`
+	EntryParser            []ParserStages                   `yaml:"parser_stages"`
 	RelabelConfigs         []*relabel.Config                `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
 }
