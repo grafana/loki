@@ -10,7 +10,7 @@ Loki's chart repository to Helm:
 $ helm repo add loki https://grafana.github.io/loki/charts
 ```
 
-If you have added it, need to update in case miss any sub-repo:
+You can update the chart repository by running:
 
 ```bash
 $ helm repo update
