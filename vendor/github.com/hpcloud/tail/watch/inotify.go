@@ -10,7 +10,7 @@ import (
 
 	"github.com/hpcloud/tail/util"
 
-	"gopkg.in/fsnotify.v1"
+	"gopkg.in/fsnotify/fsnotify.v1"
 	"gopkg.in/tomb.v1"
 )
 
@@ -75,7 +75,6 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 	fw.Size = pos
 
 	go func() {
-		defer RemoveWatch(fw.Filename)
 
 		events := Events(fw.Filename)
 
@@ -88,9 +87,11 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 			select {
 			case evt, ok = <-events:
 				if !ok {
+					RemoveWatch(fw.Filename)
 					return
 				}
 			case <-t.Dying():
+				RemoveWatch(fw.Filename)
 				return
 			}
 
@@ -99,13 +100,19 @@ func (fw *InotifyFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 				fallthrough
 
 			case evt.Op&fsnotify.Rename == fsnotify.Rename:
+				RemoveWatch(fw.Filename)
 				changes.NotifyDeleted()
 				return
+
+			//With an open fd, unlink(fd) - inotify returns IN_ATTRIB (==fsnotify.Chmod)
+			case evt.Op&fsnotify.Chmod == fsnotify.Chmod:
+				fallthrough
 
 			case evt.Op&fsnotify.Write == fsnotify.Write:
 				fi, err := os.Stat(fw.Filename)
 				if err != nil {
 					if os.IsNotExist(err) {
+						RemoveWatch(fw.Filename)
 						changes.NotifyDeleted()
 						return
 					}

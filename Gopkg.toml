@@ -65,3 +65,8 @@
 [prune]
   go-tests = true
   unused-packages = true
+
+[[constraint]]
+  name = "github.com/hpcloud/tail"
+  source = "github.com/slim-bean/tail"
+  branch = "master"

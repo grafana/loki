@@ -180,9 +180,6 @@ func fileRoll(t *testing.T, filename string, prefix string) int {
 		time.Sleep(1 * time.Millisecond)
 	}
 
-	//FIXME this is a hack to make sure the hpcloud tail polling implementation reads all lines before we roll the file
-	time.Sleep(300 * time.Millisecond)
-
 	if err = os.Rename(filename, filename+".1"); err != nil {
 		t.Fatal("Failed to rename file for test: ", err)
 	}
@@ -198,9 +195,6 @@ func fileRoll(t *testing.T, filename string, prefix string) int {
 		}
 		time.Sleep(1 * time.Millisecond)
 	}
-
-	//FIXME this is a hack to make sure the hpcloud tail polling implementation reads all lines before we roll the file
-	time.Sleep(300 * time.Millisecond)
 
 	return 200
 }
@@ -231,9 +225,6 @@ func symlinkRoll(t *testing.T, testDir string, filename string, prefix string) i
 		time.Sleep(1 * time.Millisecond)
 	}
 
-	//FIXME this is a hack to make sure the hpcloud tail polling implementation reads all lines before we roll the file
-	time.Sleep(300 * time.Millisecond)
-
 	// Remove the link, make a new file, link to the new file.
 	if err := os.Remove(filename); err != nil {
 		t.Fatal(err)
@@ -254,9 +245,6 @@ func symlinkRoll(t *testing.T, testDir string, filename string, prefix string) i
 		}
 		time.Sleep(1 * time.Millisecond)
 	}
-
-	//FIXME this is a hack to make sure the hpcloud tail polling implementation reads all lines before we roll the file
-	time.Sleep(300 * time.Millisecond)
 
 	return 200
 
