@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	ErrStop = fmt.Errorf("tail should now stop")
+	ErrStop = errors.New("tail should now stop")
 )
 
 type Line struct {
@@ -143,7 +143,7 @@ func (tail *Tail) Tell() (offset int64, err error) {
 	if tail.file == nil {
 		return
 	}
-	offset, err = tail.file.Seek(0, os.SEEK_CUR)
+	offset, err = tail.file.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return
 	}
@@ -184,7 +184,19 @@ func (tail *Tail) closeFile() {
 	}
 }
 
-func (tail *Tail) reopen() error {
+func (tail *Tail) reopen(truncated bool) error {
+
+	// There are cases where the file is reopened so quickly it's still the same file
+	// which causes the poller to hang on an open file handle to a file no longer being written to
+	// and which eventually gets deleted.  Save the current file handle info to make sure we only
+	// start tailing a different file.
+	cf, err := tail.file.Stat()
+	if !truncated && err != nil {
+		log.Print("stat of old file returned, this is not expected and may result in unexpected behavior")
+		// We don't action on this error but are logging it, not expecting to see it happen and not sure if we
+		// need to action on it, cf is checked for nil later on to accommodate this
+	}
+
 	tail.closeFile()
 	for {
 		var err error
@@ -201,6 +213,30 @@ func (tail *Tail) reopen() error {
 				continue
 			}
 			return fmt.Errorf("Unable to open file %s: %s", tail.Filename, err)
+		}
+
+		// File exists and is opened, get information about it.
+		nf, err := tail.file.Stat()
+		if err != nil {
+			tail.Logger.Print("Failed to stat new file to be tailed, will try to open it again")
+			tail.closeFile()
+			continue
+		}
+
+		// Check to see if we are trying to reopen and tail the exact same file (and it was not truncated).
+		retries := 20
+		if !truncated && cf != nil && os.SameFile(cf, nf) {
+			retries--
+			if retries <= 0 {
+				return errors.New("gave up trying to reopen log file with a different handle")
+			}
+			select {
+			case <-time.After(watch.POLL_DURATION):
+				tail.closeFile()
+				continue
+			case <-tail.Tomb.Dying():
+				return tomb.ErrDying
+			}
 		}
 		break
 	}
@@ -228,8 +264,8 @@ func (tail *Tail) tailFileSync() {
 	defer tail.close()
 
 	if !tail.MustExist {
-		// deferred first open.
-		err := tail.reopen()
+		// deferred first open, not technically truncated but we don't need to check for changed files
+		err := tail.reopen(true)
 		if err != nil {
 			if err != tomb.ErrDying {
 				tail.Kill(err)
@@ -250,8 +286,9 @@ func (tail *Tail) tailFileSync() {
 
 	tail.openReader()
 
-	var offset int64 = 0
+	var offset int64
 	var err error
+	oneMoreRun := false
 
 	// Read line by line.
 	for {
@@ -273,10 +310,9 @@ func (tail *Tail) tailFileSync() {
 			if cooloff {
 				// Wait a second before seeking till the end of
 				// file when rate limit is reached.
-				msg := fmt.Sprintf(
-					"Too much log activity; waiting a second " +
-						"before resuming tailing")
-				tail.Lines <- &Line{msg, time.Now(), fmt.Errorf(msg)}
+				msg := ("Too much log activity; waiting a second " +
+					"before resuming tailing")
+				tail.Lines <- &Line{msg, time.Now(), errors.New(msg)}
 				select {
 				case <-time.After(time.Second):
 				case <-tail.Dying():
@@ -305,10 +341,24 @@ func (tail *Tail) tailFileSync() {
 				}
 			}
 
+			// oneMoreRun is set true when a file is deleted,
+			// this is to catch events which might get missed in polling mode.
+			// now that the last run is completed, finish deleting the file
+			if oneMoreRun {
+				oneMoreRun = false
+				err = tail.finishDelete()
+				if err != nil {
+					if err != ErrStop {
+						tail.Kill(err)
+					}
+					return
+				}
+			}
+
 			// When EOF is reached, wait for more data to become
 			// available. Wait strategy is based on the `tail.watcher`
 			// implementation (inotify or polling).
-			err := tail.waitForChanges()
+			oneMoreRun, err = tail.waitForChanges()
 			if err != nil {
 				if err != ErrStop {
 					tail.Kill(err)
@@ -335,49 +385,55 @@ func (tail *Tail) tailFileSync() {
 // waitForChanges waits until the file has been appended, deleted,
 // moved or truncated. When moved or deleted - the file will be
 // reopened if ReOpen is true. Truncated files are always reopened.
-func (tail *Tail) waitForChanges() error {
+func (tail *Tail) waitForChanges() (bool, error) {
 	if tail.changes == nil {
-		pos, err := tail.file.Seek(0, os.SEEK_CUR)
+		pos, err := tail.file.Seek(0, io.SeekCurrent)
 		if err != nil {
-			return err
+			return false, err
 		}
 		tail.changes, err = tail.watcher.ChangeEvents(&tail.Tomb, pos)
 		if err != nil {
-			return err
+			return false, err
 		}
 	}
 
 	select {
 	case <-tail.changes.Modified:
-		return nil
+		return false, nil
 	case <-tail.changes.Deleted:
-		tail.changes = nil
-		if tail.ReOpen {
-			// XXX: we must not log from a library.
-			tail.Logger.Printf("Re-opening moved/deleted file %s ...", tail.Filename)
-			if err := tail.reopen(); err != nil {
-				return err
-			}
-			tail.Logger.Printf("Successfully reopened %s", tail.Filename)
-			tail.openReader()
-			return nil
-		} else {
-			tail.Logger.Printf("Stopping tail as file no longer exists: %s", tail.Filename)
-			return ErrStop
-		}
+		// In polling mode we could miss events when a file is deleted, so before we give up our file handle
+		// run the poll one more time to catch anything we may have missed since the last poll.
+		return true, nil
 	case <-tail.changes.Truncated:
 		// Always reopen truncated files (Follow is true)
 		tail.Logger.Printf("Re-opening truncated file %s ...", tail.Filename)
-		if err := tail.reopen(); err != nil {
-			return err
+		if err := tail.reopen(true); err != nil {
+			return false, err
 		}
 		tail.Logger.Printf("Successfully reopened truncated %s", tail.Filename)
 		tail.openReader()
-		return nil
+		return false, nil
 	case <-tail.Dying():
-		return ErrStop
+		return false, ErrStop
 	}
 	panic("unreachable")
+}
+
+func (tail *Tail) finishDelete() error {
+	tail.changes = nil
+	if tail.ReOpen {
+		// XXX: we must not log from a library.
+		tail.Logger.Printf("Re-opening moved/deleted file %s ...", tail.Filename)
+		if err := tail.reopen(false); err != nil {
+			return err
+		}
+		tail.Logger.Printf("Successfully reopened %s", tail.Filename)
+		tail.openReader()
+		return nil
+	} else {
+		tail.Logger.Printf("Stopping tail as file no longer exists: %s", tail.Filename)
+		return ErrStop
+	}
 }
 
 func (tail *Tail) openReader() {
