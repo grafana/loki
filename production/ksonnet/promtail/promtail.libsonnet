@@ -44,6 +44,10 @@ k + config + scrape_config {
     container.withEnv([
       container.envType.fromFieldPath('HOSTNAME', 'spec.nodeName'),
     ]) +
+    container.mixin.readinessProbe.httpGet.withPath('/ready') +
+    container.mixin.readinessProbe.httpGet.withPort(80) +
+    container.mixin.readinessProbe.withInitialDelaySeconds(10) +
+    container.mixin.readinessProbe.withTimeoutSeconds(1) +
     container.mixin.securityContext.withPrivileged(true) +
     container.mixin.securityContext.withRunAsUser(0),
 

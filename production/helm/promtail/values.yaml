@@ -13,15 +13,7 @@ image:
   tag: latest
   pullPolicy: Always # Always pull while in BETA
 
-livenessProbe:
-  failureThreshold: 5
-  httpGet:
-    path: /metrics
-    port: http-metrics
-  initialDelaySeconds: 10
-  periodSeconds: 10
-  successThreshold: 1
-  timeoutSeconds: 1
+livenessProbe: {}
 
 loki:
   serviceName: "" # Defaults to "${RELEASE}-loki" if not set
@@ -47,7 +39,7 @@ rbac:
 readinessProbe:
   failureThreshold: 5
   httpGet:
-    path: /metrics
+    path: /ready
     port: http-metrics
   initialDelaySeconds: 10
   periodSeconds: 10
