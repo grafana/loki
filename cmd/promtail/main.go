@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/promtail"
 	"github.com/grafana/loki/pkg/promtail/config"
 )
@@ -31,24 +30,19 @@ func main() {
 	util.InitLogger(&config.ServerConfig)
 
 	if configFile != "" {
-		if err := helpers.LoadConfig(configFile, &config); err != nil {
-			level.Error(util.Logger).Log("msg", "error loading config", "filename", configFile, "err", err)
+		p, err := promtail.New(configFile)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error creating promtail", "error", err)
 			os.Exit(1)
 		}
+
+		level.Info(util.Logger).Log("msg", "Starting Promtail", "version", version.Info())
+
+		if err := p.Run(); err != nil {
+			level.Error(util.Logger).Log("msg", "error starting promtail", "error", err)
+			os.Exit(1)
+		}
+
+		p.Shutdown()
 	}
-
-	p, err := promtail.New(config)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error creating promtail", "error", err)
-		os.Exit(1)
-	}
-
-	level.Info(util.Logger).Log("msg", "Starting Promtail", "version", version.Info())
-
-	if err := p.Run(); err != nil {
-		level.Error(util.Logger).Log("msg", "error starting promtail", "error", err)
-		os.Exit(1)
-	}
-
-	p.Shutdown()
 }

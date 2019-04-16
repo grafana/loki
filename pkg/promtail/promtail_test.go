@@ -3,27 +3,22 @@ package promtail
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/common/model"
-	sd_config "github.com/prometheus/prometheus/discovery/config"
-	"github.com/prometheus/prometheus/discovery/targetgroup"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/parser"
-	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/promtail/config"
-	"github.com/grafana/loki/pkg/promtail/scrape"
 )
 
 func TestPromtail(t *testing.T) {
@@ -66,8 +61,13 @@ func TestPromtail(t *testing.T) {
 	}()
 
 	// Run.
+	configFile, err := buildTestConfig(t, positionsFileName, testDir)
+	if err != nil {
+		t.Error(err)
+		return
+	}
 
-	p, err := New(buildTestConfig(t, positionsFileName, testDir))
+	p, err := New(configFile)
 	if err != nil {
 		t.Error("error creating promtail", err)
 		return
@@ -86,7 +86,7 @@ func TestPromtail(t *testing.T) {
 	expectedCounts[startupMarkerFile] = createStartupFile(t, startupMarkerFile)
 
 	// Wait for promtail to startup and send entry from our startup marker file.
-	if err := waitForEntries(10, handler, expectedCounts); err != nil {
+	if err := waitForEntries(20, handler, expectedCounts); err != nil {
 		t.Fatal("Timed out waiting for promtail to start")
 	}
 
@@ -114,7 +114,6 @@ func TestPromtail(t *testing.T) {
 	}
 
 	p.Shutdown()
-
 	// Verify.
 
 	verifyFile(t, expectedCounts[logFile1], prefix1, handler.receivedMap[logFile1])
@@ -352,53 +351,31 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.recMtx.Unlock()
 }
 
-func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) config.Config {
-	var clientURL flagext.URLValue
-	err := clientURL.Set("http://localhost:3100/api/prom/push")
+func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) (configFile string, err error) {
+	configTemplate := "./promtail-test-config.yaml"
+	input, err := ioutil.ReadFile(configTemplate)
 	if err != nil {
-		t.Fatal("Failed to parse client URL")
+		t.Fatal(err)
 	}
 
-	cfg := config.Config{}
-	// Init everything with default values.
-	flagext.RegisterFlags(&cfg)
+	lines := strings.Split(string(input), "\n")
 
-	// Override some of those defaults
-	cfg.ClientConfig.URL = clientURL
-	cfg.ClientConfig.BatchWait = 10 * time.Millisecond
-	cfg.ClientConfig.BatchSize = 10 * 1024
-
-	cfg.PositionsConfig.SyncPeriod = 100 * time.Millisecond
-	cfg.PositionsConfig.PositionsFile = positionsFileName
-
-	targetGroup := targetgroup.Group{
-		Targets: []model.LabelSet{{
-			"localhost": "",
-		}},
-		Labels: model.LabelSet{
-			"job":      "varlogs",
-			"__path__": model.LabelValue(logDirName + "/**/*.log"),
-		},
-		Source: "",
+	for i, line := range lines {
+		if strings.Contains(line, "varLogsPath") {
+			lines[i] = strings.Replace(line, "varLogsPath", logDirName+"/**/*.log", 1)
+		}
+		if strings.Contains(line, "positionsFileName") {
+			lines[i] = strings.Replace(line, "positionsFileName", positionsFileName, 1)
+		}
+	}
+	output := strings.Join(lines, "\n")
+	fmt.Println(output)
+	err = ioutil.WriteFile(configTemplate, []byte(output), 0644)
+	if err != nil {
+		return "", err
 	}
 
-	serviceConfig := sd_config.ServiceDiscoveryConfig{
-		StaticConfigs: []*targetgroup.Group{
-			&targetGroup,
-		},
-	}
-
-	scrapeConfig := scrape.Config{
-		JobName:                "",
-		EntryParser:            api.Raw,
-		RelabelConfigs:         nil,
-		ServiceDiscoveryConfig: serviceConfig,
-	}
-	cfg.ScrapeConfig = append(cfg.ScrapeConfig, scrapeConfig)
-
-	cfg.TargetConfig.SyncPeriod = 10 * time.Millisecond
-
-	return cfg
+	return configTemplate, err
 }
 
 func initRandom() {

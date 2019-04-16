@@ -1,0 +1,21 @@
+client:
+  url: http://localhost:3100/api/prom/push
+  batchwait: 10ms
+  batchsize: 10240
+
+positions:
+  sync_period: 100ms
+  filename: positionsFileName
+
+target_config:
+  sync_period: 10ms
+
+scrape_configs:
+- job_name: system
+  entry_parser: raw
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: varlogs
+      __path__: varLogsPath
