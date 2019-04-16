@@ -276,7 +276,6 @@ func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (bat
 		}
 
 		if readBatch.Expiry != 0 && time.Now().After(time.Unix(0, readBatch.Expiry)) {
-			level.Debug(log).Log("msg", "dropping index cache entry due to expiration", "key", key, "readBatch.Key", readBatch.Key, "expiry", time.Unix(0, readBatch.Expiry))
 			continue
 		}
 
