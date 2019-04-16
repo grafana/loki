@@ -1,5 +1,15 @@
 # Troubleshooting
 
+## "Loki: Bad Gateway. 502"
+This error can appear in Grafana when you add Loki as a datasource.
+It means that Grafana cannot connect to Loki, but Loki has not received any logs from promtail.
+This can have several reasons:
+
+- If you deploy in docker env, Grafana and Loki are not in same node, check iptables or firewalls to ensure connected.
+- If you deploy in kubernetes env, please note:
+  - Grafana and Loki are in same namespace, set Loki url as "http://$LOKI_SERVICE_NAME:$LOKI_PORT".
+  - Grafana and Loki are in different namespace, set Loki url as "http://$LOKI_SERVICE_NAME.$LOKI_NAMESPACE:$LOKI_PORT".
+
 ## "Data source connected, but no labels received. Verify that Loki and Promtail is configured properly."
 
 This error can appear in Grafana when you add Loki as a datasource.
