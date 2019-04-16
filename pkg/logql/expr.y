@@ -1,5 +1,5 @@
 %{
-package parser
+package logql
 
 import (
   "github.com/prometheus/prometheus/pkg/labels"
@@ -7,33 +7,35 @@ import (
 %}
 
 %union{
-  MatchersExpr []*labels.Matcher
+  Expr         Expr
   Matchers     []*labels.Matcher
   Matcher      *labels.Matcher
-  LabelsExpr   labels.Labels
-  Labels       labels.Labels
-  Label        labels.Label
   str          string
   int          int64
   Identifier   string
 }
 
-%start expr
+%start root
 
+%type  <Expr>         expr
 %type  <Matchers>     matchers
 %type  <Matcher>      matcher
-%type  <Labels>       labels
-%type  <Label>        label
 %type  <Identifier>   identifier
 
 %token <str>  IDENTIFIER STRING
-%token <val>  MATCHERS LABELS EQ NEQ RE NRE OPEN_BRACE CLOSE_BRACE COMMA DOT
+%token <val>  MATCHERS LABELS EQ NEQ RE NRE OPEN_BRACE CLOSE_BRACE COMMA DOT PIPE_MATCH PIPE_EXACT
 
 %%
 
+root: expr { exprlex.(*lexer).expr = $1 };
+
 expr:
-      MATCHERS OPEN_BRACE matchers CLOSE_BRACE  { labelslex.(*lexer).matcher = $3 };
-    | LABELS OPEN_BRACE labels CLOSE_BRACE      { labelslex.(*lexer).labels = $3 }
+      OPEN_BRACE matchers CLOSE_BRACE  { $$ = &matchersExpr{ $2 } }
+    | expr PIPE_MATCH STRING           { $$ = &matchExpr{ $1, labels.MatchRegexp, $3 } }
+    | expr PIPE_EXACT STRING           { $$ = &matchExpr{ $1, labels.MatchEqual, $3 } }
+    | expr NRE STRING                  { $$ = &matchExpr{ $1, labels.MatchNotRegexp, $3 } }
+    | expr NEQ STRING                  { $$ = &matchExpr{ $1, labels.MatchNotEqual, $3 } }
+    ;
 
 matchers:
       matcher                          { $$ = []*labels.Matcher{ $1 } }
@@ -45,15 +47,6 @@ matcher:
     | identifier NEQ STRING            { $$ = mustNewMatcher(labels.MatchNotEqual, $1, $3) }
     | identifier RE STRING             { $$ = mustNewMatcher(labels.MatchRegexp, $1, $3) }
     | identifier NRE STRING            { $$ = mustNewMatcher(labels.MatchNotRegexp, $1, $3) }
-    ;
-
-labels:
-      label                            { $$ = labels.Labels{ $1 } }
-    | labels COMMA label               { $$ = append($1, $3) }
-    ;
-
-label:
-      identifier EQ STRING             { $$ = labels.Label{Name: $1, Value: $3} }
     ;
 
 identifier:
