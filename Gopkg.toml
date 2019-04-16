@@ -68,5 +68,5 @@
 
 [[constraint]]
   name = "github.com/hpcloud/tail"
-  source = "github.com/slim-bean/tail"
+  source = "github.com/grafana/tail"
   branch = "master"

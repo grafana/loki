@@ -510,7 +510,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:d7eb20f276c32cfcd395d013f94d236c25d9f2ed4cf9108279e07e7544279f21"
+  digest = "1:e7ce5eb68fc4693fd92736e4a3c1c1cf95bb7c9d72d7b6aa9feb7cafff0a8708"
   name = "github.com/hpcloud/tail"
   packages = [
     ".",
@@ -520,8 +520,8 @@
     "winfile",
   ]
   pruneopts = "UT"
-  revision = "b3c6c4808227e5772299d6827851c3a6ed98baef"
-  source = "github.com/slim-bean/tail"
+  revision = "5ab7a9e9e921267ac3efdb95cb194ba9fc216d13"
+  source = "github.com/grafana/tail"
 
 [[projects]]
   digest = "1:bb81097a5b62634f3e9fec1014657855610c82d19b9a40c17612e32651e35dca"
