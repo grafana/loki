@@ -6,18 +6,17 @@ package logproto
 import (
 	context "context"
 	fmt "fmt"
+	_ "github.com/gogo/protobuf/gogoproto"
+	proto "github.com/gogo/protobuf/proto"
+	_ "github.com/gogo/protobuf/types"
+	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
+	grpc "google.golang.org/grpc"
 	io "io"
 	math "math"
 	reflect "reflect"
 	strconv "strconv"
 	strings "strings"
 	time "time"
-
-	_ "github.com/gogo/protobuf/gogoproto"
-	proto "github.com/gogo/protobuf/proto"
-	_ "github.com/gogo/protobuf/types"
-	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
-	grpc "google.golang.org/grpc"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
