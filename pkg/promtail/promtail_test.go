@@ -3,6 +3,8 @@ package promtail
 import (
 	"errors"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"os"
@@ -18,6 +20,9 @@ import (
 	"github.com/prometheus/common/model"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/textparse"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/parser"
@@ -110,8 +115,20 @@ func TestPromtail(t *testing.T) {
 
 	// Wait for all lines to be received.
 	if err := waitForEntries(20, handler, expectedCounts); err != nil {
-		t.Fatal("Timed out waiting all log entries to be sent, still waiting for ", err)
+		t.Fatal("Timed out waiting for log entries: ", err)
 	}
+
+	// Delete one of the log files so we can verify metrics are clean up
+	err = os.Remove(logFile1)
+	if err != nil {
+		t.Fatal("Could not delete a log file to verify metrics are removed: ", err)
+	}
+
+	// Sync period is 100ms in tests, need to wait for at least one sync period for tailer to be cleaned up
+	<-time.After(150 * time.Millisecond)
+
+	//Pull out some prometheus metrics before shutting down
+	metricsBytes, contentType := getPromMetrics(t)
 
 	p.Shutdown()
 
@@ -125,6 +142,21 @@ func TestPromtail(t *testing.T) {
 	if len(handler.receivedMap) != len(expectedCounts) {
 		t.Error("Somehow we ended up tailing more files than we were supposed to, this is likely a bug")
 	}
+
+	readBytesMetrics := parsePromMetrics(t, metricsBytes, contentType, "promtail_read_bytes_total", "path")
+	fileBytesMetrics := parsePromMetrics(t, metricsBytes, contentType, "promtail_file_bytes_total", "path")
+
+	verifyMetricAbsent(t, readBytesMetrics, "promtail_read_bytes_total", logFile1)
+	verifyMetricAbsent(t, fileBytesMetrics, "promtail_file_bytes_total", logFile1)
+
+	verifyMetric(t, readBytesMetrics, "promtail_read_bytes_total", logFile2, 800)
+	verifyMetric(t, fileBytesMetrics, "promtail_file_bytes_total", logFile2, 800)
+
+	verifyMetric(t, readBytesMetrics, "promtail_read_bytes_total", logFile3, 700)
+	verifyMetric(t, fileBytesMetrics, "promtail_file_bytes_total", logFile3, 700)
+
+	verifyMetric(t, readBytesMetrics, "promtail_read_bytes_total", logFile4, 590)
+	verifyMetric(t, fileBytesMetrics, "promtail_file_bytes_total", logFile4, 590)
 
 }
 
@@ -145,6 +177,22 @@ func verifyFile(t *testing.T, expected int, prefix string, entries []logproto.En
 		if entries[i].Line != fmt.Sprintf("%s%d", prefix, i) {
 			t.Errorf("Received out of order or incorrect log event, expected test%d, received %s", i, entries[i].Line)
 		}
+	}
+}
+
+func verifyMetricAbsent(t *testing.T, metrics map[string]float64, metric string, label string) {
+	if _, ok := metrics[label]; ok {
+		t.Error("Found metric", metric, "with label", label, "which was not expected, "+
+			"this metric should not be present")
+	}
+}
+
+func verifyMetric(t *testing.T, metrics map[string]float64, metric string, label string, expected float64) {
+	if _, ok := metrics[label]; !ok {
+		t.Error("Expected to find metric ", metric, " with", label, "but it was not present")
+	} else {
+		actualBytes := metrics[label]
+		assert.Equal(t, expected, actualBytes, "found incorrect value for metric %s and label %s", metric, label)
 	}
 }
 
@@ -294,9 +342,12 @@ func waitForEntries(timeoutSec int, handler *testServerHandler, expectedCounts m
 		for file, expectedCount := range expectedCounts {
 			if rcvd, ok := handler.receivedMap[file]; !ok || len(rcvd) != expectedCount {
 				waiting = waiting + " " + file
+				for _, e := range rcvd {
+					level.Info(util.Logger).Log("file", file, "entry", e.Line)
+				}
 			}
 		}
-		return errors.New("Did not receive the correct number of logs within timeout, still waiting for logs from" + waiting)
+		return errors.New("still waiting for logs from" + waiting)
 	}
 	return nil
 }
@@ -338,6 +389,55 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.recMtx.Unlock()
+}
+
+func getPromMetrics(t *testing.T) ([]byte, string) {
+	resp, err := http.Get("http://localhost:80/metrics")
+	if err != nil {
+		t.Fatal("Could not query metrics endpoint", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("Received a non 200 status code from /metrics endpoint", resp.StatusCode)
+	}
+
+	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal("Error reading response body from /metrics endpoint", err)
+	}
+	ct := resp.Header.Get("Content-Type")
+	return b, ct
+}
+
+func parsePromMetrics(t *testing.T, bytes []byte, contentType string, metricName string, label string) map[string]float64 {
+	rb := map[string]float64{}
+
+	pr := textparse.New(bytes, contentType)
+	for {
+		et, err := pr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal("Failed to parse prometheus metrics", err)
+		}
+		switch et {
+		case textparse.EntrySeries:
+			var res labels.Labels
+			_, _, v := pr.Series()
+			pr.Metric(&res)
+			switch res.Get(labels.MetricName) {
+			case metricName:
+				rb[res.Get(label)] = v
+				continue
+			default:
+				continue
+			}
+		default:
+			continue
+		}
+	}
+	return rb
 }
 
 func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) config.Config {

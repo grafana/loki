@@ -125,6 +125,9 @@ func (t *tailer) stop() error {
 	close(t.quit)
 	<-t.done
 	filesActive.Add(-1.)
+	// When we stop tailing the file, also un-export metrics related to the file
+	readBytes.DeleteLabelValues(t.path)
+	totalBytes.DeleteLabelValues(t.path)
 	level.Info(t.logger).Log("msg", "stopped tailing file", "path", t.path)
 	return err
 }
