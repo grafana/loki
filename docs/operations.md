@@ -12,6 +12,7 @@ You are expected to run an authenticating reverse proxy in front of your service
 Loki is a multitenant system; requests and data for tenant A are isolated from tenant B.
 Requests to the Loki API should include an HTTP header (`X-Scope-OrgID`) identifying the tenant for the request.
 Tenant IDs can be any alphanumeric string; limiting them to 20 bytes is reasonable.
+To run in multitenant mode, loki should be started with `auth_enabled: true`.
 
 Loki can be run in "single-tenant" mode where the `X-Scope-OrgID` header is not required.
 In this situation, the tenant ID is defaulted to be `fake`.
