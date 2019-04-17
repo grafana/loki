@@ -2,6 +2,10 @@ client:
   url: http://localhost:3100/api/prom/push
   batchwait: 10ms
   batchsize: 10240
+  backoff_config:
+    minbackoff: 100ms
+    maxbackoff: 5s
+    maxretries: 5
 
 positions:
   sync_period: 100ms
