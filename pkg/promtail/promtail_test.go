@@ -86,7 +86,7 @@ func TestPromtail(t *testing.T) {
 	expectedCounts[startupMarkerFile] = createStartupFile(t, startupMarkerFile)
 
 	// Wait for promtail to startup and send entry from our startup marker file.
-	if err := waitForEntries(20, handler, expectedCounts); err != nil {
+	if err := waitForEntries(200, handler, expectedCounts); err != nil {
 		t.Fatal("Timed out waiting for promtail to start")
 	}
 

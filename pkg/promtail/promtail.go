@@ -70,7 +70,7 @@ func (p *Promtail) Run() error {
 			if event.Op^fsnotify.Write == 0 {
 				errChan <- p.refresh()
 			}
-		case err := <- p.watcher.Errors:
+		case err := <-p.watcher.Errors:
 			errChan <- err
 		default:
 		}
@@ -83,7 +83,7 @@ func (p *Promtail) Run() error {
 		}
 	}()
 
-	return <- errChan
+	return <-errChan
 }
 
 // Shutdown the promtail.
