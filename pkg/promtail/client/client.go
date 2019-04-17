@@ -161,7 +161,10 @@ func (c *Client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 	encodedBytes.Add(bufBytes)
 
 	ctx := context.Background()
-	level.Info(c.logger).Log("msg", "print backoff config", "value", c.cfg.BackoffConfig)
+	level.Info(c.logger).Log("msg", "print backoff config", "value", c.cfg.BackoffConfig.MinBackoff)
+
+	level.Info(c.logger).Log("msg", "print ctx", "value", ctx)
+
 	backoff := util.NewBackoff(ctx, c.cfg.BackoffConfig)
 	var status int
 	for backoff.Ongoing() {
