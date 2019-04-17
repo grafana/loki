@@ -46,53 +46,98 @@ func TestLex(t *testing.T) {
 
 func TestParse(t *testing.T) {
 	for _, tc := range []struct {
-		input    string
-		expected Expr
+		in  string
+		exp Expr
+		err error
 	}{
 		{
-			`{foo="bar"}`,
-			&matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+			in:  `{foo="bar"}`,
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 		},
 		{
-			`{http.url=~"^/admin"}`,
-			&matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchRegexp, "http.url", "^/admin")}},
+			in:  `{http.url=~"^/admin"}`,
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchRegexp, "http.url", "^/admin")}},
 		},
 		{
-			`{ foo = "bar" }`,
-			&matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+			in:  `{ foo = "bar" }`,
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 		},
 		{
-			`{ foo != "bar" }`,
-			&matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotEqual, "foo", "bar")}},
+			in:  `{ foo != "bar" }`,
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotEqual, "foo", "bar")}},
 		},
 		{
-			`{ foo =~ "bar" }`,
-			&matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchRegexp, "foo", "bar")}},
+			in:  `{ foo =~ "bar" }`,
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchRegexp, "foo", "bar")}},
 		},
 		{
-			`{ foo !~ "bar" }`,
-			&matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+			in:  `{ foo !~ "bar" }`,
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
 		},
 		{
-			`{ foo = "bar", bar != "baz" }`,
-			&matchersExpr{matchers: []*labels.Matcher{
+			in: `{ foo = "bar", bar != "baz" }`,
+			exp: &matchersExpr{matchers: []*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "foo", "bar"),
 				mustNewMatcher(labels.MatchNotEqual, "bar", "baz"),
 			}},
 		},
 		{
-			`{foo="bar"} |= "baz"`,
-			&matchExpr{
+			in: `{foo="bar"} |= "baz"`,
+			exp: &matchExpr{
 				left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 				ty:    labels.MatchEqual,
 				match: "baz",
 			},
 		},
+		{
+			in: `{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap"`,
+			exp: &matchExpr{
+				left: &matchExpr{
+					left: &matchExpr{
+						left: &matchExpr{
+							left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+							ty:    labels.MatchEqual,
+							match: "baz",
+						},
+						ty:    labels.MatchRegexp,
+						match: "blip",
+					},
+					ty:    labels.MatchNotEqual,
+					match: "flip",
+				},
+				ty:    labels.MatchNotRegexp,
+				match: "flap",
+			},
+		},
+		{
+			in: `{foo="bar}`,
+			err: ParseError{
+				msg:  "literal not terminated",
+				line: 1,
+				col:  6,
+			},
+		},
+		{
+			in: `{foo="bar"} |~`,
+			err: ParseError{
+				msg:  "unexpected end of query, expected string",
+				line: 1,
+				col:  15,
+			},
+		},
+		{
+			in: `{foo="bar"} "foo"`,
+			err: ParseError{
+				msg:  "unexpected string, expected pipe",
+				line: 1,
+				col:  13,
+			},
+		},
 	} {
-		t.Run(tc.input, func(t *testing.T) {
-			matchers, err := ParseExpr(tc.input)
-			require.NoError(t, err)
-			require.Equal(t, tc.expected, matchers)
+		t.Run(tc.in, func(t *testing.T) {
+			ast, err := ParseExpr(tc.in)
+			require.Equal(t, tc.err, err)
+			require.Equal(t, tc.exp, ast)
 		})
 	}
 }

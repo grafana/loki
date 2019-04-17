@@ -293,6 +293,27 @@ func (i *queryClientIterator) Close() error {
 	return i.client.CloseSend()
 }
 
+type filter struct {
+	EntryIterator
+	f func(string) bool
+}
+
+func NewFilter(f func(string) bool, i EntryIterator) EntryIterator {
+	return &filter{
+		f:             f,
+		EntryIterator: i,
+	}
+}
+
+func (i *filter) Next() bool {
+	for i.EntryIterator.Next() {
+		if i.f(i.Entry().Line) {
+			return true
+		}
+	}
+	return false
+}
+
 type regexpFilter struct {
 	re *regexp.Regexp
 	EntryIterator

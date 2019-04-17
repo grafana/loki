@@ -4,8 +4,6 @@ import (
 	"context"
 	"sort"
 
-	"github.com/prometheus/prometheus/promql"
-
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
@@ -14,42 +12,64 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
 
-func (q Querier) queryStore(ctx context.Context, req *logproto.QueryRequest) ([]iter.EntryIterator, error) {
-	matchers, err := promql.ParseMetricSelector(req.Query)
+type querier struct {
+	q   *Querier
+	req *logproto.QueryRequest
+}
+
+type QuerierFunc func([]*labels.Matcher) (iter.EntryIterator, error)
+
+func (q QuerierFunc) Query(ms []*labels.Matcher) (iter.EntryIterator, error) {
+	return q(ms)
+}
+
+func (q Querier) queryStore(ctx context.Context, req *logproto.QueryRequest) (iter.EntryIterator, error) {
+	query, err := logql.ParseExpr(req.Query)
 	if err != nil {
 		return nil, err
 	}
 
-	nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, "logs")
-	if err != nil {
-		return nil, err
-	}
+	querier := QuerierFunc(func(matchers []*labels.Matcher) (iter.EntryIterator, error) {
+		nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, "logs")
+		if err != nil {
+			return nil, err
+		}
 
-	matchers = append(matchers, nameLabelMatcher)
-	from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
-	chks, fetchers, err := q.store.GetChunkRefs(ctx, from, through, matchers...)
-	if err != nil {
-		return nil, err
-	}
+		matchers = append(matchers, nameLabelMatcher)
+		from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
+		chks, fetchers, err := q.store.GetChunkRefs(ctx, from, through, matchers...)
+		if err != nil {
+			return nil, err
+		}
 
-	for i := range chks {
-		chks[i] = filterChunksByTime(from, through, chks[i])
-	}
+		for i := range chks {
+			chks[i] = filterChunksByTime(from, through, chks[i])
+		}
 
-	chksBySeries := partitionBySeriesChunks(chks, fetchers)
-	// Make sure the initial chunks are loaded. This is not one chunk
-	// per series, but rather a chunk per non-overlapping iterator.
-	if err := loadFirstChunks(ctx, chksBySeries); err != nil {
-		return nil, err
-	}
+		chksBySeries := partitionBySeriesChunks(chks, fetchers)
 
-	// Now that we have the first chunk for each series loaded,
-	// we can proceed to filter the series that don't match.
-	chksBySeries = filterSeriesByMatchers(chksBySeries, matchers)
+		// Make sure the initial chunks are loaded. This is not one chunk
+		// per series, but rather a chunk per non-overlapping iterator.
+		if err := loadFirstChunks(ctx, chksBySeries); err != nil {
+			return nil, err
+		}
 
-	return buildIterators(ctx, req, chksBySeries)
+		// Now that we have the first chunk for each series loaded,
+		// we can proceed to filter the series that don't match.
+		chksBySeries = filterSeriesByMatchers(chksBySeries, matchers)
+
+		iters, err := buildIterators(ctx, req, chksBySeries)
+		if err != nil {
+			return nil, err
+		}
+
+		return iter.NewHeapIterator(iters, req.Direction), nil
+	})
+
+	return query.Eval(querier)
 }
 
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
