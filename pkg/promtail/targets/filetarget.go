@@ -291,7 +291,8 @@ func (t *FileTarget) reportSizeAndRemoveMissing(ms []string) []string {
 	for _, m := range ms {
 		fi, err := os.Stat(m)
 		if err != nil {
-			//If we can't stat the file, skip it
+			level.Warn(t.logger).Log("msg", "failed to stat glob matched file, "+
+				"file will not be tailed", "file", m, "error", err)
 			continue
 		}
 		mso = append(mso, m)

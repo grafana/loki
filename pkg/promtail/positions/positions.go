@@ -127,15 +127,16 @@ func (p *Positions) save() {
 
 func (p *Positions) cleanup() {
 	for k := range p.positions {
-		if _, err := os.Stat(k); err == nil {
-			// File still exists.
-		} else if os.IsNotExist(err) {
-			// File no longer exists.
-			p.Remove(k)
-		} else {
+		if _, err := os.Stat(k); err != nil {
+			if os.IsNotExist(err) {
+				// File no longer exists.
+				p.Remove(k)
+				return
+			}
 			// Can't determine if file exists or not, some other error.
 			level.Warn(p.logger).Log("msg", "could not determine if log file "+
 				"still exists while cleaning positions file", "error", err)
+
 		}
 	}
 }
