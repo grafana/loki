@@ -9,13 +9,6 @@ import (
 	"github.com/grafana/loki/pkg/parser/entry/parsers"
 )
 
-// Parser takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
-// timestamp and log entry
-type Parser interface {
-	//TODO decide on how to handle labels as a pointer or not
-	Parse(labels model.LabelSet, time time.Time, entry string) (time.Time, string, error)
-}
-
 type Config struct {
 	//FIXME do we keep the yaml the same? we have to accommodate the kube label parsing happening first (so we can act on those labels)
 	ParserStages []map[interface{}]interface{} `yaml:"parser_stages"`
