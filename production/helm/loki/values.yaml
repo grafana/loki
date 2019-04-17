@@ -118,6 +118,8 @@ securityContext:
   runAsUser: 10001
 
 service:
+  type: ClusterIP
+  nodePort: 
   port: 3100
   annotations: {}
   labels: {}
@@ -131,4 +133,3 @@ terminationGracePeriodSeconds: 30
 ## Tolerations for pod assignment
 ## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
 tolerations: []
-
