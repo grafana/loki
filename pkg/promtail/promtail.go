@@ -62,22 +62,28 @@ func New(configFile string) (*Promtail, error) {
 
 // Run the promtail; will block until a signal is received or watcher failed.
 func (p *Promtail) Run() error {
-	defer p.Shutdown()
+	errChan := make(chan error, 1)
 
-	p.server.Run()
-
-	for {
+	go func() {
 		select {
 		case event := <-p.watcher.Events:
 			if event.Op^fsnotify.Write == 0 {
-				if err := p.refresh(); err != nil {
-					return err
-				}
+				errChan <- p.refresh()
 			}
-		case err := <-p.watcher.Errors:
-			return err
+		case err := <- p.watcher.Errors:
+			errChan <- err
+		default:
 		}
-	}
+	}()
+
+	go func() {
+		select {
+		case errChan <- p.server.Run():
+		default:
+		}
+	}()
+
+	return <- errChan
 }
 
 // Shutdown the promtail.
