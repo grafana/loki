@@ -107,6 +107,7 @@ func (p *Positions) run() {
 			return
 		case <-ticker.C:
 			p.save()
+			p.cleanup()
 		}
 	}
 }
@@ -121,6 +122,22 @@ func (p *Positions) save() {
 
 	if err := writePositionFile(p.cfg.PositionsFile, positions); err != nil {
 		level.Error(p.logger).Log("msg", "error writing positions file", "error", err)
+	}
+}
+
+func (p *Positions) cleanup() {
+	for k := range p.positions {
+		if _, err := os.Stat(k); err != nil {
+			if os.IsNotExist(err) {
+				// File no longer exists.
+				p.Remove(k)
+				return
+			}
+			// Can't determine if file exists or not, some other error.
+			level.Warn(p.logger).Log("msg", "could not determine if log file "+
+				"still exists while cleaning positions file", "error", err)
+
+		}
 	}
 }
 

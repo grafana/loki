@@ -17,6 +17,7 @@ annotations: {}
 config:
   auth_enabled: false
   ingester:
+    chunk_idle_period: 15m
     lifecycler:
       ring:
         store: inmemory
@@ -31,14 +32,19 @@ config:
       #     prefix: ""
       #     httpclienttimeout: "20s"
       #     consistentreads: true
-  schema_configs:
-  - from: 0
-    store: boltdb
-    object_store: filesystem
-    schema: v9
-    index:
-      prefix: index_
-      period: 168h
+  limits_config:
+    enforce_metric_name: false
+  schema_config:
+    configs:
+    - from: 0
+      store: boltdb
+      object_store: filesystem
+      schema: v9
+      index:
+        prefix: index_
+        period: 168h
+  server:
+    http_listen_port: 3100
   storage_config:
     boltdb:
       directory: /data/loki/index
@@ -86,8 +92,6 @@ podAnnotations: {}
 #  prometheus.io/scrape: "true"
 #  prometheus.io/port: "http-metrics"
 
-port: 3100
-
 ## Assign a PriorityClassName to pods if set
 # priorityClassName:
 
@@ -118,6 +122,8 @@ securityContext:
   runAsUser: 10001
 
 service:
+  type: ClusterIP
+  nodePort: 
   port: 3100
   annotations: {}
   labels: {}
@@ -131,4 +137,3 @@ terminationGracePeriodSeconds: 30
 ## Tolerations for pod assignment
 ## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
 tolerations: []
-

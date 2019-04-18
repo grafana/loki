@@ -135,13 +135,6 @@ func (t *FileTarget) run() {
 		case event := <-t.watcher.Events:
 			switch event.Op {
 			case fsnotify.Create:
-				// If the file was a symlink we don't get a Remove notification if the symlink resolves to a non watched directory.
-				// Close and re-open the tailer to make sure we tail the new file.
-				if tailer, ok := t.tails[event.Name]; ok {
-					level.Info(t.logger).Log("msg", "create for file being tailed. Will close and re-open", "filename", event.Name)
-					helpers.LogError("stopping tailer", tailer.stop)
-					delete(t.tails, event.Name)
-				}
 				matched, err := filepath.Match(t.path, event.Name)
 				if err != nil {
 					level.Error(t.logger).Log("msg", "failed to match file", "error", err, "filename", event.Name)
@@ -152,11 +145,6 @@ func (t *FileTarget) run() {
 					continue
 				}
 				t.startTailing([]string{event.Name})
-			case fsnotify.Remove:
-				t.stopTailing([]string{event.Name})
-			case fsnotify.Rename:
-				// Rename is only issued on the original file path; the new name receives a Create event
-				t.stopTailing([]string{event.Name})
 			default:
 				level.Debug(t.logger).Log("msg", "got unknown event", "event", event)
 			}
@@ -188,7 +176,7 @@ func (t *FileTarget) sync() error {
 	}
 
 	// Record the size of all the files matched by the Glob pattern.
-	t.updateTotalBytesMetric(matches)
+	matches = t.reportSizeAndRemoveMissing(matches)
 
 	// Get the current unique set of dirs to watch.
 	dirs := map[string]struct{}{}
@@ -298,15 +286,19 @@ func toStopTailing(nt []string, et map[string]*tailer) []string {
 	return ta
 }
 
-func (t *FileTarget) updateTotalBytesMetric(ms []string) {
+func (t *FileTarget) reportSizeAndRemoveMissing(ms []string) []string {
+	mso := ms[:0]
 	for _, m := range ms {
 		fi, err := os.Stat(m)
 		if err != nil {
-			level.Error(t.logger).Log("msg", "failed to stat matched file, cannot report size", m, "error", err)
+			level.Warn(t.logger).Log("msg", "failed to stat glob matched file, "+
+				"file will not be tailed", "file", m, "error", err)
 			continue
 		}
+		mso = append(mso, m)
 		totalBytes.WithLabelValues(m).Set(float64(fi.Size()))
 	}
+	return mso
 }
 
 // Returns the elements from set b which are missing from set a

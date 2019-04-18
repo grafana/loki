@@ -509,7 +509,8 @@
   version = "v0.8.1"
 
 [[projects]]
-  digest = "1:a1038ef593beb4771c8f0f9c26e8b00410acd800af5c6864651d9bf160ea1813"
+  branch = "master"
+  digest = "1:e7ce5eb68fc4693fd92736e4a3c1c1cf95bb7c9d72d7b6aa9feb7cafff0a8708"
   name = "github.com/hpcloud/tail"
   packages = [
     ".",
@@ -519,8 +520,8 @@
     "winfile",
   ]
   pruneopts = "UT"
-  revision = "a30252cb686a21eb2d0b98132633053ec2f7f1e5"
-  version = "v1.0.0"
+  revision = "5ab7a9e9e921267ac3efdb95cb194ba9fc216d13"
+  source = "github.com/grafana/tail"
 
 [[projects]]
   digest = "1:bb81097a5b62634f3e9fec1014657855610c82d19b9a40c17612e32651e35dca"

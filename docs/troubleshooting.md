@@ -1,5 +1,14 @@
 # Troubleshooting
 
+## "Loki: Bad Gateway. 502"
+This error can appear in Grafana when you add Loki as a datasource.
+It means that Grafana cannot connect to Loki. This can have several reasons:
+
+- If you deploy in docker env, Grafana and Loki are not in same node, check iptables or firewalls to ensure they can connect.
+- If you deploy in kubernetes env, please note:
+  - Grafana and Loki are in same namespace, set Loki url as "http://$LOKI_SERVICE_NAME:$LOKI_PORT".
+  - Grafana and Loki are in different namespace, set Loki url as "http://$LOKI_SERVICE_NAME.$LOKI_NAMESPACE:$LOKI_PORT".
+
 ## "Data source connected, but no labels received. Verify that Loki and Promtail is configured properly."
 
 This error can appear in Grafana when you add Loki as a datasource.
@@ -14,7 +23,8 @@ This can have several reasons:
   - Detect this by turning on debug logging and then look for `dropping target, no labels` or `ignoring target` messages.
 - Promtail cannot find the location of your log files. Check that the scrape_configs contains valid path setting for finding the logs in your worker nodes.
 - Your pods are running but not with the labels Promtail is expecting. Check the Promtail scape_configs.
-- Now default scape_configs not work for kubernetes 1.14 and above, if you use 1.14 or above version, need update scape_config from
+- Kubernetes 1.14+ and GKE 1.12+: the default scape_configs need to be adapted to work. 
+From
 ```
         - replacement: /var/log/pods/$1/*.log
           separator: /

@@ -13,12 +13,18 @@ metadata:
   annotations:
     {{- toYaml .Values.service.annotations | nindent 4 }}
 spec:
+  type: {{ .Values.service.type }}
+{{- if (and (eq .Values.service.type "ClusterIP") (not (empty .Values.service.clusterIP))) }}
+  clusterIP: {{ .Values.service.clusterIP }}
+{{- end }}
   ports:
-    - name: http-metrics
-      port: {{ .Values.service.port }}
+    - port: {{ .Values.service.port }}
       protocol: TCP
+      name: http-metrics
       targetPort: http-metrics
+{{- if (and (eq .Values.service.type "NodePort") (not (empty .Values.service.nodePort))) }}
+      nodePort: {{ .Values.service.nodePort }}
+{{- end }}
   selector:
     app: {{ template "loki.name" . }}
     release: {{ .Release.Name }}
-

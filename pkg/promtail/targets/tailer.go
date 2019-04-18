@@ -18,50 +18,30 @@ type tailer struct {
 	handler   api.EntryHandler
 	positions *positions.Positions
 
-	path     string
-	filename string
-	tail     *tail.Tail
+	path string
+	tail *tail.Tail
 
 	quit chan struct{}
 	done chan struct{}
 }
 
 func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions.Positions, path string) (*tailer, error) {
-	filename := path
-	var reOpen bool
-
-	// Check if the path requested is a symbolic link
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	if fi.Mode()&os.ModeSymlink == os.ModeSymlink {
-		filename, err = os.Readlink(path)
-		if err != nil {
-			return nil, err
-		}
-
-		// if we are tailing a symbolic link then we need to automatically re-open
-		// as we wont get a Create event when a file is rotated.
-		reOpen = true
-	}
-
 	// Simple check to make sure the file we are tailing doesn't
 	// have a position already saved which is past the end of the file.
-	fi, err = os.Stat(filename)
+	fi, err := os.Stat(path)
 	if err != nil {
 		return nil, err
 	}
-	if fi.Size() < positions.Get(filename) {
-		positions.Remove(filename)
+	if fi.Size() < positions.Get(path) {
+		positions.Remove(path)
 	}
 
-	tail, err := tail.TailFile(filename, tail.Config{
+	tail, err := tail.TailFile(path, tail.Config{
 		Follow: true,
 		Poll:   true,
-		ReOpen: reOpen,
+		ReOpen: true,
 		Location: &tail.SeekInfo{
-			Offset: positions.Get(filename),
+			Offset: positions.Get(path),
 			Whence: 0,
 		},
 	})
@@ -74,11 +54,10 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions
 		handler:   api.AddLabelsMiddleware(model.LabelSet{filenameLabel: model.LabelValue(path)}).Wrap(handler),
 		positions: positions,
 
-		path:     path,
-		filename: filename,
-		tail:     tail,
-		quit:     make(chan struct{}),
-		done:     make(chan struct{}),
+		path: path,
+		tail: tail,
+		quit: make(chan struct{}),
+		done: make(chan struct{}),
 	}
 	go tailer.run()
 	filesActive.Add(1.)
@@ -131,8 +110,8 @@ func (t *tailer) markPosition() error {
 	}
 
 	readBytes.WithLabelValues(t.path).Set(float64(pos))
-	level.Debug(t.logger).Log("path", t.path, "filename", t.filename, "current_position", pos)
-	t.positions.Put(t.filename, pos)
+	level.Debug(t.logger).Log("path", t.path, "current_position", pos)
+	t.positions.Put(t.path, pos)
 	return nil
 }
 
@@ -146,10 +125,13 @@ func (t *tailer) stop() error {
 	close(t.quit)
 	<-t.done
 	filesActive.Add(-1.)
+	// When we stop tailing the file, also un-export metrics related to the file
+	readBytes.DeleteLabelValues(t.path)
+	totalBytes.DeleteLabelValues(t.path)
 	level.Info(t.logger).Log("msg", "stopped tailing file", "path", t.path)
 	return err
 }
 
 func (t *tailer) cleanup() {
-	t.positions.Remove(t.filename)
+	t.positions.Remove(t.path)
 }
