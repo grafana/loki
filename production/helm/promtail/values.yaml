@@ -116,7 +116,7 @@ config:
     filename: /run/promtail/positions.yaml
   target_config:
     # Period to resync directories being watched and files being tailed
-    sync_period: 10ms
+    sync_period: 10s
   scrape_configs:
   - entry_parser: '{{ .Values.entryParser }}'
     job_name: kubernetes-pods-name
