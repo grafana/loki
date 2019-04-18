@@ -56,3 +56,15 @@ $ kubectl port-forward --namespace <YOUR-NAMESPACE> service/loki-grafana 3000:80
 
 Navigate to http://localhost:3000 and login with `admin` and the password output above.
 Then follow the [instructions for adding the loki datasource](/docs/usage.md), using the URL `http://loki:3100/`.
+
+## How to contribute
+
+If you want to add any feature to helm chart, you can follow as below:
+
+```bash
+$ cd production/helm
+$ # do some changes to loki/promtail in corresponding directory
+$ helm dependency update loki-stack
+$ helm install ./loki-stack --dry-run --debug # to see changes format as expected
+$ helm install ./loki-stack # to see changes work as expected
+```
