@@ -37,7 +37,11 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - "-config.file=/etc/promtail/promtail.yaml"
-            - "-client.url=http://{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/api/prom/push"
+            {{- if .Values.loki.useBasicAuth }}
+            - "-client.url={{ .Values.loki.serviceScheme }}://{{ .Values.loki.basicAuthUser }}:{{ .Values.loki.basicAuthPass }}@{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/api/prom/push"
+            {{- else }}
+            - "-client.url={{ .Values.loki.serviceScheme }}://{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/api/prom/push"
+            {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/promtail
