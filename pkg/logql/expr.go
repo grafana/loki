@@ -13,13 +13,12 @@ import (
 
 //line pkg/logql/expr.y:9
 type exprSymType struct {
-	yys        int
-	Expr       Expr
-	Matchers   []*labels.Matcher
-	Matcher    *labels.Matcher
-	str        string
-	int        int64
-	Identifier string
+	yys      int
+	Expr     Expr
+	Matchers []*labels.Matcher
+	Matcher  *labels.Matcher
+	str      string
+	int      int64
 }
 
 const IDENTIFIER = 57346
@@ -62,7 +61,7 @@ const exprEofCode = 1
 const exprErrCode = 2
 const exprInitialStackSize = 16
 
-//line pkg/logql/expr.y:58
+//line pkg/logql/expr.y:51
 
 //line yacctab:1
 var exprExca = [...]int{
@@ -73,45 +72,45 @@ var exprExca = [...]int{
 
 const exprPrivate = 57344
 
-const exprLast = 29
+const exprLast = 26
 
 var exprAct = [...]int{
 
-	8, 10, 17, 18, 7, 3, 6, 19, 20, 21,
-	22, 4, 5, 28, 23, 27, 26, 25, 16, 15,
-	24, 14, 13, 29, 12, 11, 9, 2, 1,
+	8, 10, 16, 17, 7, 3, 6, 18, 19, 20,
+	21, 4, 5, 26, 25, 24, 23, 15, 14, 22,
+	13, 12, 11, 9, 2, 1,
 }
 var exprPact = [...]int{
 
-	-7, -1000, -5, 20, 17, 16, 14, 13, -1000, -11,
-	-1000, -1, -1000, -1000, -1000, -1000, -1000, -1000, 20, 12,
-	11, 10, 8, 19, -1000, -1000, -1000, -1000, -1000, -1000,
+	-7, -1000, -5, 18, 16, 15, 13, 12, -1000, -11,
+	-1000, -1, -1000, -1000, -1000, -1000, -1000, 18, 11, 10,
+	9, 8, -1000, -1000, -1000, -1000, -1000,
 }
 var exprPgo = [...]int{
 
-	0, 28, 27, 26, 1, 25,
+	0, 25, 24, 23, 1,
 }
 var exprR1 = [...]int{
 
 	0, 1, 2, 2, 2, 2, 2, 2, 2, 3,
-	3, 4, 4, 4, 4, 5, 5,
+	3, 4, 4, 4, 4,
 }
 var exprR2 = [...]int{
 
 	0, 1, 3, 3, 3, 3, 3, 2, 2, 1,
-	3, 3, 3, 3, 3, 1, 3,
+	3, 3, 3, 3, 3,
 }
 var exprChk = [...]int{
 
 	-1000, -1, -2, 12, 16, 17, 11, 9, 5, -3,
-	-4, -5, 4, 5, 5, 5, 5, 13, 14, 8,
-	9, 10, 11, 15, -4, 5, 5, 5, 5, 4,
+	-4, 4, 5, 5, 5, 5, 13, 14, 8, 9,
+	10, 11, -4, 5, 5, 5, 5,
 }
 var exprDef = [...]int{
 
 	0, -2, 1, 0, 7, 0, 0, 0, 8, 0,
-	9, 0, 15, 3, 4, 5, 6, 2, 0, 0,
-	0, 0, 0, 0, 10, 11, 12, 13, 14, 16,
+	9, 0, 3, 4, 5, 6, 2, 0, 0, 0,
+	0, 0, 10, 11, 12, 13, 14,
 }
 var exprTok1 = [...]int{
 
@@ -465,99 +464,87 @@ exprdefault:
 
 	case 1:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:30
+//line pkg/logql/expr.y:28
 		{
 			exprlex.(*lexer).expr = exprDollar[1].Expr
 		}
 	case 2:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:33
+//line pkg/logql/expr.y:31
 		{
 			exprVAL.Expr = &matchersExpr{matchers: exprDollar[2].Matchers}
 		}
 	case 3:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:34
+//line pkg/logql/expr.y:32
 		{
-			exprVAL.Expr = &matchExpr{exprDollar[1].Expr, labels.MatchRegexp, exprDollar[3].str}
+			exprVAL.Expr = &filterExpr{exprDollar[1].Expr, labels.MatchRegexp, exprDollar[3].str}
 		}
 	case 4:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:35
+//line pkg/logql/expr.y:33
 		{
-			exprVAL.Expr = &matchExpr{exprDollar[1].Expr, labels.MatchEqual, exprDollar[3].str}
+			exprVAL.Expr = &filterExpr{exprDollar[1].Expr, labels.MatchEqual, exprDollar[3].str}
 		}
 	case 5:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:36
+//line pkg/logql/expr.y:34
 		{
-			exprVAL.Expr = &matchExpr{exprDollar[1].Expr, labels.MatchNotRegexp, exprDollar[3].str}
+			exprVAL.Expr = &filterExpr{exprDollar[1].Expr, labels.MatchNotRegexp, exprDollar[3].str}
 		}
 	case 6:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:37
+//line pkg/logql/expr.y:35
 		{
-			exprVAL.Expr = &matchExpr{exprDollar[1].Expr, labels.MatchNotEqual, exprDollar[3].str}
+			exprVAL.Expr = &filterExpr{exprDollar[1].Expr, labels.MatchNotEqual, exprDollar[3].str}
 		}
 	case 7:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
-//line pkg/logql/expr.y:38
+//line pkg/logql/expr.y:36
 		{
 			exprlex.(*lexer).Error("unexpected end of query, expected string")
 		}
 	case 8:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
-//line pkg/logql/expr.y:39
+//line pkg/logql/expr.y:37
 		{
 			exprlex.(*lexer).Error("unexpected string, expected pipe")
 		}
 	case 9:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:43
+//line pkg/logql/expr.y:41
 		{
 			exprVAL.Matchers = []*labels.Matcher{exprDollar[1].Matcher}
 		}
 	case 10:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:44
+//line pkg/logql/expr.y:42
 		{
 			exprVAL.Matchers = append(exprDollar[1].Matchers, exprDollar[3].Matcher)
 		}
 	case 11:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:48
+//line pkg/logql/expr.y:46
 		{
-			exprVAL.Matcher = mustNewMatcher(labels.MatchEqual, exprDollar[1].Identifier, exprDollar[3].str)
+			exprVAL.Matcher = mustNewMatcher(labels.MatchEqual, exprDollar[1].str, exprDollar[3].str)
 		}
 	case 12:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:49
+//line pkg/logql/expr.y:47
 		{
-			exprVAL.Matcher = mustNewMatcher(labels.MatchNotEqual, exprDollar[1].Identifier, exprDollar[3].str)
+			exprVAL.Matcher = mustNewMatcher(labels.MatchNotEqual, exprDollar[1].str, exprDollar[3].str)
 		}
 	case 13:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:50
+//line pkg/logql/expr.y:48
 		{
-			exprVAL.Matcher = mustNewMatcher(labels.MatchRegexp, exprDollar[1].Identifier, exprDollar[3].str)
+			exprVAL.Matcher = mustNewMatcher(labels.MatchRegexp, exprDollar[1].str, exprDollar[3].str)
 		}
 	case 14:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:51
+//line pkg/logql/expr.y:49
 		{
-			exprVAL.Matcher = mustNewMatcher(labels.MatchNotRegexp, exprDollar[1].Identifier, exprDollar[3].str)
-		}
-	case 15:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-//line pkg/logql/expr.y:55
-		{
-			exprVAL.Identifier = exprDollar[1].str
-		}
-	case 16:
-		exprDollar = exprS[exprpt-3 : exprpt+1]
-//line pkg/logql/expr.y:56
-		{
-			exprVAL.Identifier = exprDollar[1].Identifier + "." + exprDollar[3].str
+			exprVAL.Matcher = mustNewMatcher(labels.MatchNotRegexp, exprDollar[1].str, exprDollar[3].str)
 		}
 	}
 	goto exprstack /* stack new state and value */

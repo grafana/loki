@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/promql"
+
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
@@ -25,7 +27,6 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/parser"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/config"
 	"github.com/grafana/loki/pkg/promtail/scrape"
@@ -372,7 +373,7 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recMtx.Lock()
 	for _, s := range req.Streams {
-		labels, err := parser.Labels(s.Labels)
+		labels, err := promql.ParseMetric(s.Labels)
 		if err != nil {
 			h.t.Error("Failed to parse incoming labels", err)
 			return

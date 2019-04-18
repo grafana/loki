@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
@@ -17,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -98,28 +98,27 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 }
 
 func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
-	matchers, err := promql.ParseMetricSelector(req.Query)
+	expr, err := logql.ParseExpr(req.Query)
 	if err != nil {
 		return err
 	}
 
-	iterators, err := i.lookupStreams(req, matchers)
-	if err != nil {
-		return err
-	}
-
-	iterator := iter.NewHeapIterator(iterators, req.Direction)
-	defer helpers.LogError("closing iterator", iterator.Close)
-
-	if req.Regex != "" {
-		var err error
-		iterator, err = iter.NewRegexpFilter(req.Regex, iterator)
+	querier := logql.QuerierFunc(func(matchers []*labels.Matcher) (iter.EntryIterator, error) {
+		iters, err := i.lookupStreams(req, matchers)
 		if err != nil {
-			return err
+			return nil, err
 		}
-	}
 
-	return sendBatches(iterator, queryServer, req.Limit)
+		return iter.NewHeapIterator(iters, req.Direction), nil
+	})
+
+	iter, err := expr.Eval(querier)
+	if err != nil {
+		return err
+	}
+	defer helpers.LogError("closing iterator", iter.Close)
+
+	return sendBatches(iter, queryServer, req.Limit)
 }
 
 func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {

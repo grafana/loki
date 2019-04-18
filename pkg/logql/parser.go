@@ -2,13 +2,9 @@ package logql
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"text/scanner"
-
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 // ParseExpr parses a string and returns an Expr.
@@ -89,78 +85,7 @@ func (l *lexer) Error(msg string) {
 	}
 }
 
-// Expr is a LogQL expression.
-type Expr interface {
-	Eval(Querier) (iter.EntryIterator, error)
-}
-
-type Querier interface {
-	Query([]*labels.Matcher) (iter.EntryIterator, error)
-}
-
-type matchersExpr struct {
-	matchers []*labels.Matcher
-}
-
-func (e *matchersExpr) Eval(q Querier) (iter.EntryIterator, error) {
-	return q.Query(e.matchers)
-}
-
-type matchExpr struct {
-	left  Expr
-	ty    labels.MatchType
-	match string
-}
-
-func (e *matchExpr) Eval(q Querier) (iter.EntryIterator, error) {
-	var f func(string) bool
-	switch e.ty {
-	case labels.MatchRegexp:
-		re, err := regexp.Compile(e.match)
-		if err != nil {
-			return nil, err
-		}
-		f = re.MatchString
-
-	case labels.MatchNotRegexp:
-		re, err := regexp.Compile(e.match)
-		if err != nil {
-			return nil, err
-		}
-		f = func(line string) bool {
-			return !re.MatchString(line)
-		}
-
-	case labels.MatchEqual:
-		f = func(line string) bool {
-			return strings.Contains(line, e.match)
-		}
-
-	case labels.MatchNotEqual:
-		f = func(line string) bool {
-			return !strings.Contains(line, e.match)
-		}
-
-	default:
-		return nil, fmt.Errorf("unknow matcher: %v", e.match)
-	}
-
-	left, err := e.left.Eval(q)
-	if err != nil {
-		return nil, err
-	}
-
-	return iter.NewFilter(f, left), nil
-}
-
-func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
-	m, err := labels.NewMatcher(t, n, v)
-	if err != nil {
-		panic(err)
-	}
-	return m
-}
-
+// ParseError is what is returned when we failed to parse.
 type ParseError struct {
 	msg       string
 	line, col int
