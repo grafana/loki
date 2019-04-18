@@ -112,12 +112,6 @@ func buildHeapIterator(ctx context.Context, req *logproto.QueryRequest, chks [][
 			if err != nil {
 				return nil, err
 			}
-			if req.Regex != "" {
-				iterator, err = iter.NewRegexpFilter(req.Regex, iterator)
-				if err != nil {
-					return nil, err
-				}
-			}
 			iterators = append(iterators, iterator)
 		}
 
