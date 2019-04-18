@@ -89,12 +89,12 @@ func (c *Config) SetMaxRetriesBackoff(maxRetries int) {
 
 // SetMaxBackoff sets maximum backoff time between retries
 func (c *Config) SetMaxBackoff(maxBackoff int) {
-	c.BackoffConfig.MaxBackoff = maxBackoff * time.Second
+	c.BackoffConfig.MaxBackoff = time.Duration(maxBackoff) * time.Second
 }
 
 // SetMinBackoff sets initial backoff time between retries
 func (c *Config) SetMinBackoff(minBackoff int) {
-	c.BackoffConfig.MinBackoff = minBackoff * time.Millisecond
+	c.BackoffConfig.MinBackoff = time.Duration(minBackoff) * time.Millisecond
 }
 
 // SetExternalLabels sets client ExternalLabels
