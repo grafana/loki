@@ -95,3 +95,6 @@ Args:
   <query>    eg '{foo="bar",baz="blip"}'
   [<regex>]
 ```
+
+#### Defaults Query Value
+As default, `logcli` query data within the past hour and only print 30 lines of them.
