@@ -76,10 +76,11 @@ func BuildLabelSet(labels map[string]string) model.LabelSet {
 }
 
 // SetURL sets Loki URL
-func (c *Config) SetURL(url string) {
+func (c *Config) SetURL(url string) error {
 	urlValue := flagext.URLValue{}
-	urlValue.Set(url)
+	err := urlValue.Set(url)
 	c.URL = urlValue
+	return err
 }
 
 // SetMaxRetriesBackoff sets maximum number of retires when sending batches
