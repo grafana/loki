@@ -12,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/promql"
-
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
@@ -24,6 +22,7 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/pkg/logproto"
