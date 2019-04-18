@@ -68,3 +68,11 @@ $ helm dependency update loki-stack
 $ helm install ./loki-stack --dry-run --debug # to see changes format as expected
 $ helm install ./loki-stack # to see changes work as expected
 ```
+
+After verify changes, need to bump chart version.
+For example, if you update loki chart, you need bump version as following:
+
+```bash
+$ # update version loki/Chart.yaml
+$ # update version loki-stack/Chart.yaml
+```
