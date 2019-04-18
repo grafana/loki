@@ -4,7 +4,6 @@ import (
 	"container/heap"
 	"fmt"
 	"io"
-	"regexp"
 	"sort"
 	"time"
 
@@ -298,6 +297,7 @@ type filter struct {
 	f func(string) bool
 }
 
+// NewFilter builds a filtering iterator.
 func NewFilter(f func(string) bool, i EntryIterator) EntryIterator {
 	return &filter{
 		f:             f,
@@ -308,32 +308,6 @@ func NewFilter(f func(string) bool, i EntryIterator) EntryIterator {
 func (i *filter) Next() bool {
 	for i.EntryIterator.Next() {
 		if i.f(i.Entry().Line) {
-			return true
-		}
-	}
-	return false
-}
-
-type regexpFilter struct {
-	re *regexp.Regexp
-	EntryIterator
-}
-
-// NewRegexpFilter returns an iterator that filters entries by regexp.
-func NewRegexpFilter(r string, i EntryIterator) (EntryIterator, error) {
-	re, err := regexp.Compile(r)
-	if err != nil {
-		return nil, err
-	}
-	return &regexpFilter{
-		re:            re,
-		EntryIterator: i,
-	}, nil
-}
-
-func (i *regexpFilter) Next() bool {
-	for i.EntryIterator.Next() {
-		if i.re.MatchString(i.Entry().Line) {
 			return true
 		}
 	}
