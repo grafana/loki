@@ -64,6 +64,45 @@ type Config struct {
 	Timeout        time.Duration  `yaml:"timeout"`
 }
 
+// BuildLabelSet generates prometheus LabelSet form map
+func BuildLabelSet(labels map[string]string) model.LabelSet {
+	ls := model.LabelSet{}
+
+	for k, v := range labels {
+		ls[model.LabelName(k)] = model.LabelValue(v)
+	}
+
+	return ls
+}
+
+// SetURL sets Loki URL
+func (c *Config) SetURL(url string) {
+	urlValue := flagext.URLValue{}
+	urlValue.Set(url)
+	c.URL = urlValue
+}
+
+// SetMaxRetriesBackoff sets maximum number of retires when sending batches
+func (c *Config) SetMaxRetriesBackoff(maxRetries int) {
+	c.BackoffConfig.MaxRetries = maxRetries
+}
+
+// SetMaxBackoff sets maximum backoff time between retries
+func (c *Config) SetMaxBackoff(maxBackoff int) {
+	c.BackoffConfig.MaxBackoff = maxBackoff * time.Second
+}
+
+// SetMinBackoff sets initial backoff time between retries
+func (c *Config) SetMinBackoff(minBackoff int) {
+	c.BackoffConfig.MinBackoff = minBackoff * time.Millisecond
+}
+
+// SetExternalLabels sets client ExternalLabels
+func (c *Config) SetExternalLabels(labels map[string]string) {
+	ls := BuildLabelSet(labels)
+	c.ExternalLabels = ls
+}
+
 // RegisterFlags registers flags.
 func (c *Config) RegisterFlags(flags *flag.FlagSet) {
 	flags.Var(&c.URL, "client.url", "URL of log server")
