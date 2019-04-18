@@ -64,7 +64,7 @@ If you want to add any feature to helm chart, you can follow as below:
 ```bash
 $ cd production/helm
 $ # do some changes to loki/promtail in corresponding directory
-$ helm dependency update loki-stack
+$ helm dependency update loki-stack # run after do any changes
 $ helm install ./loki-stack --dry-run --debug # to see changes format as expected
 $ helm install ./loki-stack # to see changes work as expected
 ```
