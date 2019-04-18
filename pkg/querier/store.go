@@ -15,24 +15,13 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 )
 
-type querier struct {
-	q   *Querier
-	req *logproto.QueryRequest
-}
-
-type QuerierFunc func([]*labels.Matcher) (iter.EntryIterator, error)
-
-func (q QuerierFunc) Query(ms []*labels.Matcher) (iter.EntryIterator, error) {
-	return q(ms)
-}
-
 func (q Querier) queryStore(ctx context.Context, req *logproto.QueryRequest) (iter.EntryIterator, error) {
-	query, err := logql.ParseExpr(req.Query)
+	expr, err := logql.ParseExpr(req.Query)
 	if err != nil {
 		return nil, err
 	}
 
-	querier := QuerierFunc(func(matchers []*labels.Matcher) (iter.EntryIterator, error) {
+	querier := logql.QuerierFunc(func(matchers []*labels.Matcher) (iter.EntryIterator, error) {
 		nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, "logs")
 		if err != nil {
 			return nil, err
@@ -69,7 +58,7 @@ func (q Querier) queryStore(ctx context.Context, req *logproto.QueryRequest) (it
 		return iter.NewHeapIterator(iters, req.Direction), nil
 	})
 
-	return query.Eval(querier)
+	return expr.Eval(querier)
 }
 
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
