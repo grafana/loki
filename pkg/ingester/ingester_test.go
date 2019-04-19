@@ -59,8 +59,6 @@ func TestIngester(t *testing.T) {
 	_, err = i.Push(ctx, &req)
 	require.NoError(t, err)
 
-	fmt.Println("hehe")
-
 	result := mockQuerierServer{
 		ctx: ctx,
 	}
@@ -86,7 +84,7 @@ func TestIngester(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.resps, 1)
 	require.Len(t, result.resps[0].Streams, 1)
-	require.Equal(t, `{foo="bar", bar="baz1"}`, result.resps[0].Streams[0].Labels)
+	require.Equal(t, `{bar="baz1", foo="bar"}`, result.resps[0].Streams[0].Labels)
 
 	result = mockQuerierServer{
 		ctx: ctx,
@@ -100,7 +98,7 @@ func TestIngester(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.resps, 1)
 	require.Len(t, result.resps[0].Streams, 1)
-	require.Equal(t, `{foo="bar", bar="baz2"}`, result.resps[0].Streams[0].Labels)
+	require.Equal(t, `{bar="baz2", foo="bar"}`, result.resps[0].Streams[0].Labels)
 }
 
 type mockStore struct {
