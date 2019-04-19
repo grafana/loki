@@ -310,6 +310,118 @@ func TestChunkStore_Get(t *testing.T) {
 	}
 }
 
+func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+	now := model.Now()
+
+	fooMetric1 := model.Metric{
+		model.MetricNameLabel: "foo",
+		"bar":                 "baz",
+		"toms":                "code",
+		"flip":                "flop",
+	}
+	fooMetric2 := model.Metric{
+		model.MetricNameLabel: "foo",
+		"bar":                 "beep",
+		"toms":                "code",
+	}
+	fooMetric3 := model.Metric{
+		model.MetricNameLabel: "foo",
+		"flip":                "flap",
+		"bar":                 "bop",
+	}
+
+	// barMetric1 is a subset of barMetric2 to test over-matching bug.
+	barMetric1 := model.Metric{
+		model.MetricNameLabel: "bar",
+		"bar":                 "baz",
+	}
+	barMetric2 := model.Metric{
+		model.MetricNameLabel: "bar",
+		"bar":                 "baz",
+		"toms":                "code",
+	}
+
+	fooChunk1 := dummyChunkFor(now, fooMetric1)
+	fooChunk2 := dummyChunkFor(now, fooMetric2)
+	fooChunk3 := dummyChunkFor(now, fooMetric3)
+
+	barChunk1 := dummyChunkFor(now, barMetric1)
+	barChunk2 := dummyChunkFor(now, barMetric2)
+
+	for _, tc := range []struct {
+		metricName, labelName string
+		expect                []string
+	}{
+		{
+			`foo`, `bar`,
+			[]string{"baz", "beep", "bop"},
+		},
+		{
+			`bar`, `toms`,
+			[]string{"code"},
+		},
+		{
+			`bar`, `bar`,
+			[]string{"baz"},
+		},
+		{
+			`foo`, `foo`,
+			nil,
+		},
+		{
+			`foo`, `flip`,
+			[]string{"flap", "flop"},
+		},
+	} {
+		for _, schema := range schemas {
+			for _, storeCase := range stores {
+				t.Run(fmt.Sprintf("%s / %s / %s / %s", tc.metricName, tc.labelName, schema.name, storeCase.name), func(t *testing.T) {
+					t.Log("========= Running labelValues with metricName", tc.metricName, "with labelName", tc.labelName, "with schema", schema.name)
+					storeCfg := storeCase.configFn()
+					store := newTestChunkStoreConfig(t, schema.name, storeCfg)
+					defer store.Stop()
+
+					if err := store.Put(ctx, []Chunk{
+						fooChunk1,
+						fooChunk2,
+						fooChunk3,
+						barChunk1,
+						barChunk2,
+					}); err != nil {
+						t.Fatal(err)
+					}
+
+					// Query with ordinary time-range
+					labelValues1, err := store.LabelValuesForMetricName(ctx, now.Add(-time.Hour), now, tc.metricName, tc.labelName)
+					require.NoError(t, err)
+
+					if !reflect.DeepEqual(tc.expect, labelValues1) {
+						t.Fatalf("%s/%s: wrong label values - %s", tc.metricName, tc.labelName, test.Diff(tc.expect, labelValues1))
+					}
+
+					// Pushing end of time-range into future should yield exact same resultset
+					labelValues2, err := store.LabelValuesForMetricName(ctx, now.Add(-time.Hour), now.Add(time.Hour*24*10), tc.metricName, tc.labelName)
+					require.NoError(t, err)
+
+					if !reflect.DeepEqual(tc.expect, labelValues2) {
+						t.Fatalf("%s/%s: wrong label values - %s", tc.metricName, tc.labelName, test.Diff(tc.expect, labelValues2))
+					}
+
+					// Query with both begin & end of time-range in future should yield empty resultset
+					labelValues3, err := store.LabelValuesForMetricName(ctx, now.Add(time.Hour), now.Add(time.Hour*2), tc.metricName, tc.labelName)
+					require.NoError(t, err)
+					if len(labelValues3) != 0 {
+						t.Fatalf("%s/%s: future query should yield empty resultset ... actually got %v label values: %#v",
+							tc.metricName, tc.labelName, len(labelValues3), labelValues3)
+					}
+				})
+			}
+		}
+	}
+
+}
+
 // TestChunkStore_getMetricNameChunks tests if chunks are fetched correctly when we have the metric name
 func TestChunkStore_getMetricNameChunks(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
