@@ -99,7 +99,7 @@ type JSONParser struct {
 	logger      log.Logger
 }
 
-func NewJson(logger log.Logger, config interface{}) (Parser, error) {
+func NewJson(logger log.Logger, config interface{}) (Stage, error) {
 	cfg, err := newJSONConfig(config)
 	if err != nil {
 		return nil, err
@@ -148,7 +148,7 @@ func (j *JSONParser) getJSONValue(expr *string, data map[string]interface{}) (re
 	return
 }
 
-func (j *JSONParser) Parse(labels model.LabelSet, t *time.Time, entry *string) {
+func (j *JSONParser) Process(labels model.LabelSet, t *time.Time, entry *string) {
 	if entry == nil {
 		level.Warn(j.logger).Log("msg", "cannot parse a nil entry")
 	}
