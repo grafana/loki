@@ -29,10 +29,10 @@ root: expr { exprlex.(*lexer).expr = $1 };
 
 expr:
       OPEN_BRACE matchers CLOSE_BRACE  { $$ = &matchersExpr{ matchers: $2 } }
-    | expr PIPE_MATCH STRING           { $$ = &filterExpr{ $1, labels.MatchRegexp, $3 } }
-    | expr PIPE_EXACT STRING           { $$ = &filterExpr{ $1, labels.MatchEqual, $3 } }
-    | expr NRE STRING                  { $$ = &filterExpr{ $1, labels.MatchNotRegexp, $3 } }
-    | expr NEQ STRING                  { $$ = &filterExpr{ $1, labels.MatchNotEqual, $3 } }
+    | expr PIPE_MATCH STRING           { $$ = NewFilterExpr( $1, labels.MatchRegexp, $3 ) }
+    | expr PIPE_EXACT STRING           { $$ = NewFilterExpr( $1, labels.MatchEqual, $3 ) }
+    | expr NRE STRING                  { $$ = NewFilterExpr( $1, labels.MatchNotRegexp, $3 ) }
+    | expr NEQ STRING                  { $$ = NewFilterExpr( $1, labels.MatchNotEqual, $3 ) }
     | expr PIPE_MATCH                 { exprlex.(*lexer).Error("unexpected end of query, expected string") }
     | expr STRING                     { exprlex.(*lexer).Error("unexpected string, expected pipe") }
     ;

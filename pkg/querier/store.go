@@ -21,6 +21,10 @@ func (q Querier) queryStore(ctx context.Context, req *logproto.QueryRequest) (it
 		return nil, err
 	}
 
+	if req.Regex != "" {
+		expr = logql.NewFilterExpr(expr, labels.MatchRegexp, req.Regex)
+	}
+
 	querier := logql.QuerierFunc(func(matchers []*labels.Matcher) (iter.EntryIterator, error) {
 		nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, "logs")
 		if err != nil {

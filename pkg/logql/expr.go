@@ -478,25 +478,25 @@ exprdefault:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 //line pkg/logql/expr.y:32
 		{
-			exprVAL.Expr = &filterExpr{exprDollar[1].Expr, labels.MatchRegexp, exprDollar[3].str}
+			exprVAL.Expr = NewFilterExpr(exprDollar[1].Expr, labels.MatchRegexp, exprDollar[3].str)
 		}
 	case 4:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 //line pkg/logql/expr.y:33
 		{
-			exprVAL.Expr = &filterExpr{exprDollar[1].Expr, labels.MatchEqual, exprDollar[3].str}
+			exprVAL.Expr = NewFilterExpr(exprDollar[1].Expr, labels.MatchEqual, exprDollar[3].str)
 		}
 	case 5:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 //line pkg/logql/expr.y:34
 		{
-			exprVAL.Expr = &filterExpr{exprDollar[1].Expr, labels.MatchNotRegexp, exprDollar[3].str}
+			exprVAL.Expr = NewFilterExpr(exprDollar[1].Expr, labels.MatchNotRegexp, exprDollar[3].str)
 		}
 	case 6:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 //line pkg/logql/expr.y:35
 		{
-			exprVAL.Expr = &filterExpr{exprDollar[1].Expr, labels.MatchNotEqual, exprDollar[3].str}
+			exprVAL.Expr = NewFilterExpr(exprDollar[1].Expr, labels.MatchNotEqual, exprDollar[3].str)
 		}
 	case 7:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
