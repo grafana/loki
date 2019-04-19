@@ -62,15 +62,13 @@ Then follow the [instructions for adding the loki datasource](/docs/usage.md), u
 If you want to add any feature to helm chart, you can follow as below:
 
 ```bash
-$ cd production/helm
-$ # do some changes to loki/promtail in corresponding directory
-$ helm dependency update loki-stack # run after do any changes
-$ helm install ./loki-stack --dry-run --debug # to see changes format as expected
-$ helm install ./loki-stack # to see changes work as expected
+$ # do some changes to loki/promtail in the corresponding directory
+$ make helm
+$ helm upgrade --install loki ./loki-stack-*.tgz
 ```
 
 After verify changes, need to bump chart version.
-For example, if you update loki chart, you need bump version as following:
+For example, if you update the loki chart, you need to bump the version as following:
 
 ```bash
 $ # update version loki/Chart.yaml
