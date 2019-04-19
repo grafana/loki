@@ -74,7 +74,7 @@ func NewFileTargetManager(
 
 	config := map[string]sd_config.ServiceDiscoveryConfig{}
 	for _, cfg := range scrapeConfigs {
-		pipeline, err := logentry.NewPipeline(cfg.PipelineStages)
+		pipeline, err := logentry.NewPipeline(log.With(logger, "component", "pipeline"), cfg.PipelineStages)
 		if err != nil {
 			return nil, err
 		}

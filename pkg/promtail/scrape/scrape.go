@@ -12,7 +12,7 @@ import (
 // Config describes a job to scrape.
 type Config struct {
 	JobName                string                           `yaml:"job_name,omitempty"`
-	PipelineStages         []logentry.PipelineStage         `yaml:"pipeline_stages,omitempty"`
+	PipelineStages         logentry.PipelineStages         `yaml:"pipeline_stages,omitempty"`
 	RelabelConfigs         []*relabel.Config                `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
 }
