@@ -103,6 +103,10 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
+	if req.Regex != "" {
+		expr = logql.NewFilterExpr(expr, labels.MatchRegexp, req.Regex)
+	}
+
 	querier := logql.QuerierFunc(func(matchers []*labels.Matcher) (iter.EntryIterator, error) {
 		iters, err := i.lookupStreams(req, matchers)
 		if err != nil {

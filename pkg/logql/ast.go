@@ -42,6 +42,15 @@ type filterExpr struct {
 	match string
 }
 
+// NewFilterExpr wraps an existing Expr with a next filter expression.
+func NewFilterExpr(left Expr, ty labels.MatchType, match string) Expr {
+	return &filterExpr{
+		left:  left,
+		ty:    ty,
+		match: match,
+	}
+}
+
 func (e *filterExpr) Eval(q Querier) (iter.EntryIterator, error) {
 	var f func(string) bool
 	switch e.ty {
