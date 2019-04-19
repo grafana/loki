@@ -7,18 +7,28 @@ import (
 	"text/scanner"
 )
 
+func init() {
+	// Improve the error messages coming out of yacc.
+	exprErrorVerbose = true
+	for str, tok := range tokens {
+		exprToknames[tok-exprPrivate+1] = str
+	}
+}
+
 // ParseExpr parses a string and returns an Expr.
 func ParseExpr(input string) (Expr, error) {
-	var l lexer
+	var l = lexer{
+		parser: exprNewParser().(*exprParserImpl),
+	}
 	l.Init(strings.NewReader(input))
 	//l.Scanner.Mode = scanner.SkipComments | scanner.ScanStrings | scanner.ScanInts
 	l.Scanner.Error = func(_ *scanner.Scanner, msg string) {
 		l.Error(msg)
 	}
 
-	e := exprParse(&l)
-	if e != 0 || l.err != nil {
-		return nil, l.err
+	e := l.parser.Parse(&l)
+	if e != 0 || len(l.errs) > 0 {
+		return nil, l.errs[0]
 	}
 	return l.expr, nil
 }
@@ -38,8 +48,9 @@ var tokens = map[string]int{
 
 type lexer struct {
 	scanner.Scanner
-	err  error
-	expr Expr
+	errs   []ParseError
+	expr   Expr
+	parser *exprParserImpl
 }
 
 func (l *lexer) Lex(lval *exprSymType) int {
@@ -73,16 +84,11 @@ func (l *lexer) Lex(lval *exprSymType) int {
 }
 
 func (l *lexer) Error(msg string) {
-	// We want to return the first error (from the lexer), and ignore subsequent ones.
-	if l.err != nil {
-		return
-	}
-
-	l.err = ParseError{
+	l.errs = append(l.errs, ParseError{
 		msg:  msg,
 		line: l.Line,
 		col:  l.Column,
-	}
+	})
 }
 
 // ParseError is what is returned when we failed to parse.

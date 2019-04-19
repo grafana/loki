@@ -120,17 +120,35 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			in: `{foo="bar"`,
+			err: ParseError{
+				msg:  "syntax error: unexpected $end, expecting } or ,",
+				line: 1,
+				col:  11,
+			},
+		},
+
+		{
 			in: `{foo="bar"} |~`,
 			err: ParseError{
-				msg:  "unexpected end of query, expected string",
+				msg:  "syntax error: unexpected $end, expecting STRING",
 				line: 1,
 				col:  15,
 			},
 		},
+
 		{
 			in: `{foo="bar"} "foo"`,
 			err: ParseError{
-				msg:  "unexpected string, expected pipe",
+				msg:  "syntax error: unexpected STRING, expecting != or !~ or |~ or |=",
+				line: 1,
+				col:  13,
+			},
+		},
+		{
+			in: `{foo="bar"} foo`,
+			err: ParseError{
+				msg:  "syntax error: unexpected IDENTIFIER, expecting != or !~ or |~ or |=",
 				line: 1,
 				col:  13,
 			},

@@ -8,6 +8,8 @@ import (
 
 %union{
   Expr         Expr
+  Filter       labels.MatchType
+  Selector     []*labels.Matcher
   Matchers     []*labels.Matcher
   Matcher      *labels.Matcher
   str          string
@@ -16,9 +18,11 @@ import (
 
 %start root
 
-%type  <Expr>         expr
-%type  <Matchers>     matchers
-%type  <Matcher>      matcher
+%type <Expr>         expr
+%type <Filter>       filter
+%type <Selector>     selector
+%type <Matchers>     matchers
+%type <Matcher>      matcher
 
 %token <str>  IDENTIFIER STRING
 %token <val>  MATCHERS LABELS EQ NEQ RE NRE OPEN_BRACE CLOSE_BRACE COMMA DOT PIPE_MATCH PIPE_EXACT
@@ -28,13 +32,23 @@ import (
 root: expr { exprlex.(*lexer).expr = $1 };
 
 expr:
-      OPEN_BRACE matchers CLOSE_BRACE  { $$ = &matchersExpr{ matchers: $2 } }
-    | expr PIPE_MATCH STRING           { $$ = NewFilterExpr( $1, labels.MatchRegexp, $3 ) }
-    | expr PIPE_EXACT STRING           { $$ = NewFilterExpr( $1, labels.MatchEqual, $3 ) }
-    | expr NRE STRING                  { $$ = NewFilterExpr( $1, labels.MatchNotRegexp, $3 ) }
-    | expr NEQ STRING                  { $$ = NewFilterExpr( $1, labels.MatchNotEqual, $3 ) }
-    | expr PIPE_MATCH                 { exprlex.(*lexer).Error("unexpected end of query, expected string") }
-    | expr STRING                     { exprlex.(*lexer).Error("unexpected string, expected pipe") }
+      selector                         { $$ = &matchersExpr{ matchers: $1 } }
+    | expr filter STRING               { $$ = NewFilterExpr( $1, $2, $3 ) }
+    | expr filter error
+    | expr error
+    ;
+
+filter:
+      PIPE_MATCH                       { $$ = labels.MatchRegexp }
+    | PIPE_EXACT                       { $$ = labels.MatchEqual }
+    | NRE                              { $$ = labels.MatchNotRegexp }
+    | NEQ                              { $$ = labels.MatchNotEqual }
+    ;
+
+selector:
+      OPEN_BRACE matchers CLOSE_BRACE  { $$ = $2 }
+    | OPEN_BRACE matchers error        { $$ = $2 }
+    | OPEN_BRACE error CLOSE_BRACE     { }
     ;
 
 matchers:
