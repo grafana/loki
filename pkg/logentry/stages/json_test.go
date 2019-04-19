@@ -297,16 +297,29 @@ func TestJSONParser_Parse(t *testing.T) {
 			map[string]string{"stream": "stdout"},
 			map[string]string{"stream": "stdout"},
 		},
+		"string output": {
+			map[string]interface{}{
+				"output": map[string]interface{}{
+					"source": "message",
+				},
+			},
+			logFixture,
+			"this is a log line",
+			mustParseTime(time.RFC3339, "2019-03-28T11:29:10+07:00"),
+			mustParseTime(time.RFC3339, "2019-03-28T11:29:10+07:00"),
+			map[string]string{"stream": "stdout"},
+			map[string]string{"stream": "stdout"},
+		},
 	}
 	for tName, tt := range tests {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
-			p, err := NewJson(util.Logger, tt.config)
+			p, err := NewJSON(util.Logger, tt.config)
 			if err != nil {
 				t.Fatalf("failed to create json parser: %s", err)
 			}
 			lbs := toLabelSet(tt.labels)
-			p.Parse(lbs, &tt.t, &tt.entry)
+			p.Process(lbs, &tt.t, &tt.entry)
 
 			assertLabels(t, tt.expectedLabels, lbs)
 			if tt.entry != tt.expectedEntry {
