@@ -188,22 +188,22 @@ func (c *store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	return c.getMetricNameChunks(ctx, from, through, matchers, metricName)
 }
 
-func (c *store) validateQuery(ctx context.Context, from model.Time, through *model.Time, matchers []*labels.Matcher) (string, []*labels.Matcher, bool, error) {
-	log, ctx := spanlogger.New(ctx, "store.validateQuery")
+func (c *store) validateQueryTimeRange(ctx context.Context, from model.Time, through *model.Time) (bool, error) {
+	log, ctx := spanlogger.New(ctx, "store.validateQueryTimeRange")
 	defer log.Span.Finish()
 
 	if *through < from {
-		return "", nil, false, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", through, from)
+		return false, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", through, from)
 	}
 
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return "", nil, false, err
+		return false, err
 	}
 
 	maxQueryLength := c.limits.MaxQueryLength(userID)
 	if maxQueryLength > 0 && (*through).Sub(from) > maxQueryLength {
-		return "", nil, false, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, (*through).Sub(from), maxQueryLength)
+		return false, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, (*through).Sub(from), maxQueryLength)
 	}
 
 	now := model.Now()
@@ -211,18 +211,33 @@ func (c *store) validateQuery(ctx context.Context, from model.Time, through *mod
 	if from.After(now) {
 		// time-span start is in future ... regard as legal
 		level.Error(log).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
-		return "", nil, true, nil
+		return true, nil
 	}
 
 	if from.After(now.Add(-c.cfg.MinChunkAge)) {
 		// no data relevant to this query will have arrived at the store yet
-		return "", nil, true, nil
+		return true, nil
 	}
 
 	if through.After(now.Add(5 * time.Minute)) {
 		// time-span end is in future ... regard as legal
 		level.Error(log).Log("msg", "adjusting end timerange from future to now", "old_through", through, "new_through", now)
 		*through = now // Avoid processing future part - otherwise some schemas could fail with eg non-existent table gripes
+	}
+
+	return false, nil
+}
+
+func (c *store) validateQuery(ctx context.Context, from model.Time, through *model.Time, matchers []*labels.Matcher) (string, []*labels.Matcher, bool, error) {
+	log, ctx := spanlogger.New(ctx, "store.validateQuery")
+	defer log.Span.Finish()
+
+	shortcut, err := c.validateQueryTimeRange(ctx, from, through)
+	if err != nil {
+		return "", nil, false, err
+	}
+	if shortcut {
+		return "", nil, true, nil
 	}
 
 	// Check there is a metric name matcher of type equal,
