@@ -93,13 +93,14 @@ func (c *JSONConfig) validate() (map[string]*jmespath.JMESPath, error) {
 	return expressions, nil
 }
 
-type JSONParser struct {
+type jsonStage struct {
 	cfg         *JSONConfig
 	expressions map[string]*jmespath.JMESPath
 	logger      log.Logger
 }
 
-func NewJson(logger log.Logger, config interface{}) (Stage, error) {
+// NewJSON creates a new json stage from a config.
+func NewJSON(logger log.Logger, config interface{}) (Stage, error) {
 	cfg, err := newJSONConfig(config)
 	if err != nil {
 		return nil, err
@@ -108,53 +109,54 @@ func NewJson(logger log.Logger, config interface{}) (Stage, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &JSONParser{
+	return &jsonStage{
 		cfg:         cfg,
 		expressions: expressions,
 		logger:      log.With(logger, "component", "parser", "type", "json"),
 	}, nil
 }
 
-func (j *JSONParser) getJSONString(expr *string, fallback string, data map[string]interface{}) (result string, ok bool) {
+func (j *jsonStage) getJSONString(expr *string, fallback string, data map[string]interface{}) (result string, ok bool) {
 	if expr == nil {
 		result, ok = data[fallback].(string)
 		if !ok {
-			level.Warn(j.logger).Log("msg", "field is not a string", "field", fallback)
+			level.Debug(j.logger).Log("msg", "field is not a string", "field", fallback)
 		}
 	} else {
 		var searchResult interface{}
 		searchResult, ok = j.getJSONValue(expr, data)
 		if !ok {
-			level.Warn(j.logger).Log("msg", "failed to search with jmespath expression", "expr", expr)
+			level.Debug(j.logger).Log("msg", "failed to search with jmespath expression", "expr", expr)
 			return
 		}
 		result, ok = searchResult.(string)
 		if !ok {
-			level.Warn(j.logger).Log("msg", "search result is not a string", "expr", *expr)
+			level.Debug(j.logger).Log("msg", "search result is not a string", "expr", *expr)
 		}
 	}
 	return
 }
 
-func (j *JSONParser) getJSONValue(expr *string, data map[string]interface{}) (result interface{}, ok bool) {
+func (j *jsonStage) getJSONValue(expr *string, data map[string]interface{}) (result interface{}, ok bool) {
 	var err error
 	ok = true
 	result, err = j.expressions[*expr].Search(data)
 	if err != nil {
-		level.Warn(j.logger).Log("msg", "failed to search with jmespath expression", "expr", expr)
+		level.Debug(j.logger).Log("msg", "failed to search with jmespath expression", "expr", expr)
 		ok = false
 		return
 	}
 	return
 }
 
-func (j *JSONParser) Process(labels model.LabelSet, t *time.Time, entry *string) {
+// Process implement a pipeline stage
+func (j *jsonStage) Process(labels model.LabelSet, t *time.Time, entry *string) {
 	if entry == nil {
-		level.Warn(j.logger).Log("msg", "cannot parse a nil entry")
+		level.Debug(j.logger).Log("msg", "cannot parse a nil entry")
 	}
 	var data map[string]interface{}
 	if err := json.Unmarshal([]byte(*entry), &data); err != nil {
-		level.Warn(j.logger).Log("msg", "could not unmarshal json", "err", err)
+		level.Debug(j.logger).Log("msg", "could not unmarshal json", "err", err)
 		return
 	}
 
@@ -163,7 +165,7 @@ func (j *JSONParser) Process(labels model.LabelSet, t *time.Time, entry *string)
 		if ts, ok := j.getJSONString(j.cfg.Timestamp.Source, "timestamp", data); ok {
 			parsedTs, err := time.Parse(j.cfg.Timestamp.Format, ts)
 			if err != nil {
-				level.Warn(j.logger).Log("msg", "failed to parse time", "err", err, "format", j.cfg.Timestamp.Format, "value", ts)
+				level.Debug(j.logger).Log("msg", "failed to parse time", "err", err, "format", j.cfg.Timestamp.Format, "value", ts)
 			} else {
 				*t = parsedTs
 			}
@@ -183,7 +185,7 @@ func (j *JSONParser) Process(labels model.LabelSet, t *time.Time, entry *string)
 		labelValue := model.LabelValue(lValue)
 		// seems impossible as the json.Unmarshal would yield an error first.
 		if !labelValue.IsValid() {
-			level.Warn(j.logger).Log("msg", "invalid label value parsed", "value", labelValue)
+			level.Debug(j.logger).Log("msg", "invalid label value parsed", "value", labelValue)
 			continue
 		}
 		labels[model.LabelName(lName)] = labelValue
@@ -192,9 +194,13 @@ func (j *JSONParser) Process(labels model.LabelSet, t *time.Time, entry *string)
 	// parsing output
 	if j.cfg.Output != nil {
 		if jsonObj, ok := j.getJSONValue(j.cfg.Output.Source, data); ok && jsonObj != nil {
+			if s, ok := jsonObj.(string); ok {
+				*entry = s
+				return
+			}
 			b, err := json.Marshal(jsonObj)
 			if err != nil {
-				level.Warn(j.logger).Log("msg", "could not marshal output value", "err", err)
+				level.Debug(j.logger).Log("msg", "could not marshal output value", "err", err)
 				return
 			}
 			*entry = string(b)

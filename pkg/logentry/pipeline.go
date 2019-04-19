@@ -10,12 +10,15 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+// PipelineStages contains configuration for each stage within a pipeline
 type PipelineStages []interface{}
 
+// Pipeline pass down a log entry to each stage for mutation.
 type Pipeline struct {
 	stages []stages.Stage
 }
 
+// NewPipeline creates a new log entry pipeline from a configuration
 func NewPipeline(log log.Logger, stgs PipelineStages) (*Pipeline, error) {
 	st := []stages.Stage{}
 	for _, s := range stgs {
@@ -33,7 +36,7 @@ func NewPipeline(log log.Logger, stgs PipelineStages) (*Pipeline, error) {
 			}
 			switch name {
 			case "json":
-				json, err := stages.NewJson(log, config)
+				json, err := stages.NewJSON(log, config)
 				if err != nil {
 					return nil, errors.Wrap(err, "invalid json stage config")
 				}
@@ -47,6 +50,7 @@ func NewPipeline(log log.Logger, stgs PipelineStages) (*Pipeline, error) {
 	}, nil
 }
 
+// Process mutates an entry and its metadata by using multiple configure stage.
 func (p *Pipeline) Process(labels model.LabelSet, time *time.Time, entry *string) {
 	//debug log labels, time, and string
 	for _, stage := range p.stages {
@@ -55,6 +59,7 @@ func (p *Pipeline) Process(labels model.LabelSet, time *time.Time, entry *string
 	}
 }
 
+// Wrap implements EntryMiddleware
 func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 	return api.EntryHandlerFunc(func(labels model.LabelSet, timestamp time.Time, line string) error {
 		p.Process(labels, &timestamp, &line)
