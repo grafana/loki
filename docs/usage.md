@@ -21,7 +21,7 @@ Read more about the Explore feature in the [Grafana docs](http://docs.grafana.or
 
 ## Searching with Labels and Distributed Grep
 
-A log query consists of two parts: **log stream selector**, and a **search expression**. For performance reasons you need to start by choosing a log stream by selecting a log label.
+A log query consists of two parts: **log stream selector**, and a **filter expression**. For performance reasons you need to start by choosing a set of log streams using a Prometheus-style log stream selector.
 
 The log stream selector will reduce the number of log streams to a manageable volume and then the regex search expression is used to do a distributed grep over those log streams.
 
@@ -45,15 +45,26 @@ Examples:
 
 The [same rules that apply for Prometheus Label Selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors) apply for Loki Log Stream Selectors.
 
-### Regex Search Expression
+### Filter Expression
 
 After writing the Log Stream Selector, you can filter the results further by writing a search expression. The search expression can be just text or a regex expression.
 
 Example queries:
 
-- `{job="mysql"} error`
-- `{name="kafka"} tsdb-ops.*io:2003`
-- `{instance=~"kafka-[23]",name="kafka"} kafka.server:type=ReplicaManager`
+- `{job="mysql"} |= "error"`
+- `{name="kafka"} |~ "tsdb-ops.*io:2003"`
+- `{instance=~"kafka-[23]",name="kafka"} != kafka.server:type=ReplicaManager`
+
+Filter operators can be chained and will sequentially filter down the expression - resulting log lines will satisfy _every_ filter.  Eg:
+
+`{job="mysql"} |= "error" != "timeout"`
+
+The following filter types have been implemented:
+
+- `|=` line contains string.
+- `!=` line does not contain string.
+- `|~` line matches regular expression.
+- `!~` line does not match regular expression.
 
 ### Query Language Extensions
 
