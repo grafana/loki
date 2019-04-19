@@ -88,6 +88,7 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
   }
   ```
 
-## Example of using the API in a third-party client library
+## Examples of using the API in a third-party client library
 
-Take a look at this [client](https://github.com/afiskon/promtail-client), but be aware that the API is not stable yet.
+1) Take a look at this [client](https://github.com/afiskon/promtail-client), but be aware that the API is not stable yet (Golang).
+2) Example on Python(https://github.com/sleleko/devops-kb/blob/master/python/push-to-loki.py)
