@@ -15,8 +15,8 @@ affinity: {}
 annotations: {}
 
 # enable tracing for debug, need install jaeger and specify jaeger_agent_host
-trace_enabled: false
-jaeger_agent_host:
+traceEnabled: false
+jaegerAgentHost:
 
 config:
   auth_enabled: false
