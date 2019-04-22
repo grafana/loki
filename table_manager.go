@@ -333,8 +333,12 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []Table
 		// Ensure we only delete tables which have a prefix managed by Cortex.
 		tablePrefixes := map[string]struct{}{}
 		for _, cfg := range m.schemaCfg.Configs {
-			tablePrefixes[cfg.IndexTables.Prefix] = struct{}{}
-			tablePrefixes[cfg.ChunkTables.Prefix] = struct{}{}
+			if cfg.IndexTables.Prefix != "" {
+				tablePrefixes[cfg.IndexTables.Prefix] = struct{}{}
+			}
+			if cfg.ChunkTables.Prefix != "" {
+				tablePrefixes[cfg.ChunkTables.Prefix] = struct{}{}
+			}
 		}
 
 		for existingTable := range existingTables {
