@@ -58,6 +58,10 @@ image:
   tag: latest
   pullPolicy: Always # Always pull while in BETA
 
+## Additional Loki container arguments, e.g. log level (debug, info, warn, error) 
+extraArgs: {}
+  # log.level: debug
+
 livenessProbe:
   httpGet:
     path: /ready
