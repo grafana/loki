@@ -173,7 +173,7 @@ func TestChunkStore_Get(t *testing.T) {
 	barSampleStream2, err := createSampleStreamFrom(barChunk2)
 	require.NoError(t, err)
 
-	for _, tc := range []struct {
+	testCases := []struct {
 		query  string
 		expect model.Matrix
 	}{
@@ -245,24 +245,25 @@ func TestChunkStore_Get(t *testing.T) {
 			`{__name__=~"bar", bar="baz",toms!="code"}`,
 			model.Matrix{barSampleStream1},
 		},
-	} {
-		for _, schema := range schemas {
-			for _, storeCase := range stores {
+	}
+	for _, schema := range schemas {
+		for _, storeCase := range stores {
+			storeCfg := storeCase.configFn()
+			store := newTestChunkStoreConfig(t, schema.name, storeCfg)
+			defer store.Stop()
+
+			if err := store.Put(ctx, []Chunk{
+				fooChunk1,
+				fooChunk2,
+				barChunk1,
+				barChunk2,
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			for _, tc := range testCases {
 				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema.name, storeCase.name), func(t *testing.T) {
 					t.Log("========= Running query", tc.query, "with schema", schema.name)
-					storeCfg := storeCase.configFn()
-					store := newTestChunkStoreConfig(t, schema.name, storeCfg)
-					defer store.Stop()
-
-					if err := store.Put(ctx, []Chunk{
-						fooChunk1,
-						fooChunk2,
-						barChunk1,
-						barChunk2,
-					}); err != nil {
-						t.Fatal(err)
-					}
-
 					matchers, err := promql.ParseMetricSelector(tc.query)
 					if err != nil {
 						t.Fatal(err)
@@ -326,7 +327,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 		"toms":                "code",
 	})
 
-	for _, tc := range []struct {
+	testCases := []struct {
 		query  string
 		expect []Chunk
 	}{
@@ -366,19 +367,20 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 			`foo{toms="code", bar="baz"}`,
 			[]Chunk{chunk1},
 		},
-	} {
-		for _, schema := range schemas {
-			for _, storeCase := range stores {
+	}
+	for _, schema := range schemas {
+		for _, storeCase := range stores {
+			storeCfg := storeCase.configFn()
+			store := newTestChunkStoreConfig(t, schema.name, storeCfg)
+			defer store.Stop()
+
+			if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {
+				t.Fatal(err)
+			}
+
+			for _, tc := range testCases {
 				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema.name, storeCase.name), func(t *testing.T) {
 					t.Log("========= Running query", tc.query, "with schema", schema.name)
-					storeCfg := storeCase.configFn()
-					store := newTestChunkStoreConfig(t, schema.name, storeCfg)
-					defer store.Stop()
-
-					if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {
-						t.Fatal(err)
-					}
-
 					matchers, err := promql.ParseMetricSelector(tc.query)
 					if err != nil {
 						t.Fatal(err)
