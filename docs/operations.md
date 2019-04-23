@@ -141,7 +141,7 @@ The S3 configuration is setup with url format: `s3://access_key:secret_access_ke
 #### DynamoDB
 
 Loki uses DynamoDB for the index storage. It is used for querying logs, make
-sure you adjuest your throughput to your usage.
+sure you adjust your throughput to your usage.
 
 DynamoDB access is very similar to S3, however you do not need to specify a
 table name in the storage section, as Loki will calculate that for you.
