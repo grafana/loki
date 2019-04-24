@@ -46,7 +46,7 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
         "labels": "{instance=\"...\", job=\"...\", namespace=\"...\"}",
         "entries": [
           {
-            "timestamp": "2018-06-27T05:20:28.699492635Z",
+            "ts": "2018-06-27T05:20:28.699492635Z",
             "line": "..."
           },
           ...
