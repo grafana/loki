@@ -24,6 +24,9 @@ spec:
       labels:
         app: {{ template "promtail.name" . }}
         release: {{ .Release.Name }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}          
       annotations:
         {{ toYaml .Values.podAnnotations | nindent 8 }}
     spec:
