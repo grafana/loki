@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+// LazyChunk loads the chunk when it is accessed.
 type LazyChunk struct {
 	Chunk   chunk.Chunk
 	Fetcher *chunk.Fetcher
@@ -24,7 +25,14 @@ func (c *LazyChunk) getChunk(ctx context.Context) (Chunk, error) {
 	return chunks[0].Data.(*Facade).LokiChunk(), nil
 }
 
+// Iterator returns an entry iterator.
 func (c LazyChunk) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error) {
+	// If the chunk is already loaded, then use that.
+	if c.Chunk.Data != nil {
+		lokiChunk := c.Chunk.Data.(*Facade).LokiChunk()
+		return lokiChunk.Iterator(from, through, direction)
+	}
+
 	return &lazyIterator{
 		chunk: c,
 

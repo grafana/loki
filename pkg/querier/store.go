@@ -6,7 +6,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
@@ -35,7 +34,7 @@ func (q Querier) queryStore(ctx context.Context, req *logproto.QueryRequest) ([]
 	}
 
 	for i := range chks {
-		chks[i], _ = filterChunksByTime(from, through, chks[i])
+		chks[i] = filterChunksByTime(from, through, chks[i])
 	}
 
 	chksBySeries := partitionBySeriesChunks(chks, fetchers)
@@ -52,7 +51,7 @@ func (q Querier) queryStore(ctx context.Context, req *logproto.QueryRequest) ([]
 	return buildIterators(ctx, req, chksBySeries)
 }
 
-func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) ([]chunk.Chunk, []string) {
+func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
 	filtered := make([]chunk.Chunk, 0, len(chunks))
 	keys := make([]string, 0, len(chunks))
 	for _, chunk := range chunks {
@@ -62,7 +61,7 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) ([]chunk
 		filtered = append(filtered, chunk)
 		keys = append(keys, chunk.ExternalKey())
 	}
-	return filtered, keys
+	return filtered
 }
 
 func filterSeriesByMatchers(chks map[model.Fingerprint][][]chunkenc.LazyChunk, matchers []*labels.Matcher) map[model.Fingerprint][][]chunkenc.LazyChunk {
@@ -128,11 +127,12 @@ func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]chunken
 	chksByFetcher := map[*chunk.Fetcher][]*chunkenc.LazyChunk{}
 	for _, lchks := range chks {
 		for _, lchk := range lchks {
+			if len(lchk) == 0 {
+				continue
+			}
 			chksByFetcher[lchk[0].Fetcher] = append(chksByFetcher[lchk[0].Fetcher], &lchk[0])
 		}
 	}
-
-	sp.LogFields(otlog.Int("fetchers", len(chksByFetcher)))
 
 	errChan := make(chan error)
 	for fetcher, chunks := range chksByFetcher {
@@ -144,14 +144,16 @@ func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]chunken
 				chks = append(chks, chk.Chunk)
 			}
 			chks, err := fetcher.FetchChunks(ctx, chks, keys)
-			errChan <- err
 			if err != nil {
+				errChan <- err
 				return
 			}
 
 			for i, chk := range chks {
 				chunks[i].Chunk = chk
 			}
+
+			errChan <- nil
 		}(fetcher, chunks)
 	}
 
@@ -167,13 +169,11 @@ func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]chunken
 
 func partitionBySeriesChunks(chunks [][]chunk.Chunk, fetchers []*chunk.Fetcher) map[model.Fingerprint][][]chunkenc.LazyChunk {
 	chunksByFp := map[model.Fingerprint][]chunkenc.LazyChunk{}
-	metricByFp := map[model.Fingerprint]model.Metric{}
 	for i, chks := range chunks {
 		for _, c := range chks {
 			fp := c.Metric.Fingerprint()
 			chunksByFp[fp] = append(chunksByFp[fp], chunkenc.LazyChunk{Chunk: c, Fetcher: fetchers[i]})
 			delete(c.Metric, "__name__")
-			metricByFp[fp] = c.Metric
 		}
 	}
 
@@ -186,6 +186,7 @@ func partitionBySeriesChunks(chunks [][]chunk.Chunk, fetchers []*chunk.Fetcher) 
 	return result
 }
 
+// partitionOverlappingChunks splits the list of chunks into different non-overlapping lists.
 func partitionOverlappingChunks(chunks []chunkenc.LazyChunk) [][]chunkenc.LazyChunk {
 	sort.Slice(chunks, func(i, j int) bool {
 		return chunks[i].Chunk.From < chunks[i].Chunk.From
@@ -195,11 +196,13 @@ func partitionOverlappingChunks(chunks []chunkenc.LazyChunk) [][]chunkenc.LazyCh
 outer:
 	for _, c := range chunks {
 		for i, cs := range css {
+			// If the chunk doesn't overlap with the current list, then add it to it.
 			if cs[len(cs)-1].Chunk.Through.Before(c.Chunk.From) {
 				css[i] = append(css[i], c)
 				continue outer
 			}
 		}
+		// If the chunk overlaps with every existing list, then create a new list.
 		cs := make([]chunkenc.LazyChunk, 0, len(chunks)/(len(css)+1))
 		cs = append(cs, c)
 		css = append(css, cs)
@@ -207,9 +210,3 @@ outer:
 
 	return css
 }
-
-type byFrom []chunk.Chunk
-
-func (b byFrom) Len() int           { return len(b) }
-func (b byFrom) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
-func (b byFrom) Less(i, j int) bool { return b[i].From < b[j].From }
