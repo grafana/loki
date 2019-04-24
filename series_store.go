@@ -131,7 +131,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	}
 	level.Debug(log).Log("chunk-ids", len(chunkIDs))
 
-	chunks, err := c.convertChunkIDsToChunks(ctx, chunkIDs)
+	chunks, err := c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
 	if err != nil {
 		level.Error(log).Log("err", "convertChunkIDsToChunks", "err", err)
 		return nil, err
@@ -310,21 +310,16 @@ func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
 
 // PutOne implements ChunkStore
 func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return err
-	}
-
 	chunks := []Chunk{chunk}
 
-	err = c.storage.PutChunks(ctx, chunks)
+	err := c.storage.PutChunks(ctx, chunks)
 	if err != nil {
 		return err
 	}
 
 	c.writeBackCache(ctx, chunks)
 
-	writeReqs, keysToCache, err := c.calculateIndexEntries(userID, from, through, chunk)
+	writeReqs, keysToCache, err := c.calculateIndexEntries(from, through, chunk)
 	if err != nil {
 		return err
 	}
@@ -339,7 +334,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 }
 
 // calculateIndexEntries creates a set of batched WriteRequests for all the chunks it is given.
-func (c *seriesStore) calculateIndexEntries(userID string, from, through model.Time, chunk Chunk) (WriteBatch, []string, error) {
+func (c *seriesStore) calculateIndexEntries(from, through model.Time, chunk Chunk) (WriteBatch, []string, error) {
 	seenIndexEntries := map[string]struct{}{}
 	entries := []IndexEntry{}
 	keysToCache := []string{}
@@ -349,7 +344,7 @@ func (c *seriesStore) calculateIndexEntries(userID string, from, through model.T
 		return nil, nil, err
 	}
 
-	keys := c.schema.GetLabelEntryCacheKeys(from, through, userID, chunk.Metric)
+	keys := c.schema.GetLabelEntryCacheKeys(from, through, chunk.UserID, chunk.Metric)
 
 	cacheKeys := make([]string, 0, len(keys)) // Keys which translate to the strings stored in the cache.
 	for _, key := range keys {
@@ -360,7 +355,7 @@ func (c *seriesStore) calculateIndexEntries(userID string, from, through model.T
 
 	_, _, missing := c.writeDedupeCache.Fetch(context.Background(), cacheKeys)
 	if len(missing) != 0 {
-		labelEntries, err := c.schema.GetLabelWriteEntries(from, through, userID, metricName, chunk.Metric, chunk.ExternalKey())
+		labelEntries, err := c.schema.GetLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey())
 		if err != nil {
 			return nil, nil, err
 		}
@@ -369,7 +364,7 @@ func (c *seriesStore) calculateIndexEntries(userID string, from, through model.T
 		keysToCache = missing
 	}
 
-	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, userID, metricName, chunk.Metric, chunk.ExternalKey())
+	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey())
 	if err != nil {
 		return nil, nil, err
 	}
