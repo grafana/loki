@@ -91,6 +91,9 @@ persistence:
   # subPath: ""
   # existingClaim:
 
+## Pod Labels
+podLabels: {}
+
 ## Pod Annotations
 podAnnotations: {}
 #  prometheus.io/scrape: "true"

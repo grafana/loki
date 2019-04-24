@@ -27,6 +27,9 @@ spec:
         app: {{ template "loki.name" . }}
         name: {{ template "loki.name" . }}
         release: {{ .Release.Name }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}  
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         {{- with .Values.podAnnotations }}

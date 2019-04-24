@@ -25,6 +25,9 @@ nameOverride: promtail
 ## ref: https://kubernetes.io/docs/user-guide/node-selection/
 nodeSelector: {}
 
+## Pod Labels
+podLabels: {}
+
 podAnnotations: {}
 #  prometheus.io/scrape: "true"
 #  prometheus.io/port: "http-metrics"
