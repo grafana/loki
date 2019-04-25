@@ -56,3 +56,41 @@ $ kubectl port-forward --namespace <YOUR-NAMESPACE> service/loki-grafana 3000:80
 
 Navigate to http://localhost:3000 and login with `admin` and the password output above.
 Then follow the [instructions for adding the loki datasource](/docs/usage.md), using the URL `http://loki:3100/`.
+
+## Run Loki behind https ingress
+
+If Loki and Promtail are deployed on different clusters you can add an Ingress in front of Loki.
+By adding a certificate you create an https endpoint. For extra security enable basic authentication on the Ingress.
+
+In promtail set the following values to communicate with https and basic auth
+
+```
+loki:
+  serviceScheme: https
+  user: user
+  password: pass
+```
+
+Sample helm template for ingress:
+```
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+annotations:
+    kubernetes.io/ingress.class: {{ .Values.ingress.class }}
+    ingress.kubernetes.io/auth-type: "basic"
+    ingress.kubernetes.io/auth-secret: {{ .Values.ingress.basic.secret }}
+name: loki
+spec:
+rules:
+- host: {{ .Values.ingress.host }}
+    http:
+    paths:
+    - backend:
+        serviceName: loki
+        servicePort: 3100
+tls:
+- secretName: {{ .Values.ingress.cert }}
+    hosts:
+    - {{ .Values.ingress.host }}
+```
