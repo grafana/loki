@@ -42,3 +42,13 @@ Create the name of the service account
 {{- end -}}
 {{- end -}}
 
+{{/* Generate basic labels */}}
+{{- define "loki.labels" }}
+app: {{ template "loki.name" . }}
+heritage: {{ .Release.Service }}
+release: {{ .Release.Name }}
+chart: {{ template "sentry-kubernetes.chart" . }}
+{{- if .Values.podLabels }}
+{{ toYaml .Values.podLabels }}
+{{- end }}
+{{- end }}
