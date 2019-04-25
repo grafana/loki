@@ -69,11 +69,9 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
           securityContext:
             readOnlyRootFilesystem: true
-          {{- if .Values.traceEnabled }}
           env:
             - name: JAEGER_AGENT_HOST
-              value: "{{ .Values.jaegerAgentHost }}"
-          {{- end }}
+              value: "{{ .Values.tracing.jaegerAgentHost }}"
       nodeSelector:
         {{- toYaml .Values.nodeSelector | nindent 8 }}
       affinity:
