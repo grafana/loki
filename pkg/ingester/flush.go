@@ -283,7 +283,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		sizePerTenant.Add(float64(len(byt)))
 		countPerTenant.Inc()
 		firstTime, _ := cs[i].chunk.Bounds()
-		chunkAge.Observe(time.Now().Sub(firstTime).Seconds())
+		chunkAge.Observe(time.Since(firstTime).Seconds())
 	}
 
 	return nil
