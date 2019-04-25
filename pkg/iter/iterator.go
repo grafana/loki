@@ -352,11 +352,15 @@ func (i *nonOverlappingIterator) Entry() logproto.Entry {
 }
 
 func (i *nonOverlappingIterator) Labels() string {
-	return i.labels
+	if i.labels != "" {
+		return i.labels
+	}
+
+	return i.curr.Labels()
 }
 
 func (i *nonOverlappingIterator) Error() error {
-	return nil
+	return i.curr.Error()
 }
 
 func (i *nonOverlappingIterator) Close() error {
