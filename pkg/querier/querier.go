@@ -148,10 +148,36 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 		return nil, err
 	}
 
+	if req.End == nil {
+		now := time.Now()
+		req.End = &now
+	}
+
+	if req.Start == nil {
+		// by default will look for the last 6 hours
+		start := req.End.Add(-6 * time.Hour)
+		req.Start = &start
+	}
+
+	from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
+	var storeValues []string
+	if req.Values {
+		storeValues, err = q.store.LabelValuesForMetricName(ctx, from, through, "logs", req.Name)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		storeValues, err = q.store.LabelNamesForMetricName(ctx, from, through, "logs")
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	results := make([][]string, 0, len(resps))
 	for _, resp := range resps {
 		results = append(results, resp.response.(*logproto.LabelResponse).Values)
 	}
+	results = append(results, storeValues)
 
 	return &logproto.LabelResponse{
 		Values: mergeLists(results...),
