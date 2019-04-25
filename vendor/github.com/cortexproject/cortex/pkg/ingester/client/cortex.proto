@@ -104,7 +104,7 @@ message MetricsForLabelMatchersResponse {
 message TimeSeriesChunk {
   string from_ingester_id = 1;
   string user_id = 2;
-  repeated LabelPair labels = 3 [(gogoproto.nullable) = false];
+  repeated LabelPair labels = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];
   repeated Chunk chunks = 4 [(gogoproto.nullable) = false];
 }
 
@@ -119,14 +119,14 @@ message TransferChunksResponse {
 }
 
 message TimeSeries {
-  repeated LabelPair labels = 1 [(gogoproto.nullable) = false];
+  repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];
   // Sorted by time, oldest sample first.
   repeated Sample samples   = 2 [(gogoproto.nullable) = false];
 }
 
 message LabelPair {
-  bytes name  = 1 [(gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/util/wire.Bytes", (gogoproto.nullable) = false];
-  bytes value = 2 [(gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/util/wire.Bytes", (gogoproto.nullable) = false];
+  bytes name  = 1;
+  bytes value = 2;
 }
 
 message Sample {
@@ -139,7 +139,7 @@ message LabelMatchers {
 }
 
 message Metric {
-  repeated LabelPair labels = 1 [(gogoproto.nullable) = false];
+  repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];
 }
 
 enum MatchType {

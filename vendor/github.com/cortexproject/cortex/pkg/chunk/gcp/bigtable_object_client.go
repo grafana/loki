@@ -114,7 +114,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 				decodeContext := chunk.NewDecodeContext()
 
 				var processingErr error
-				var recievedChunks = 0
+				var receivedChunks = 0
 
 				// rows are returned in key order, not order in row list
 				err := table.ReadRows(ctx, page, func(row bigtable.Row) bool {
@@ -130,7 +130,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 						return false
 					}
 
-					recievedChunks++
+					receivedChunks++
 					outs <- chunk
 					return true
 				})
@@ -139,8 +139,8 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 					errs <- processingErr
 				} else if err != nil {
 					errs <- errors.WithStack(err)
-				} else if recievedChunks < len(page) {
-					errs <- errors.WithStack(fmt.Errorf("Asked for %d chunks for Bigtable, received %d", len(page), recievedChunks))
+				} else if receivedChunks < len(page) {
+					errs <- errors.WithStack(fmt.Errorf("Asked for %d chunks for Bigtable, received %d", len(page), receivedChunks))
 				}
 			}(page)
 		}

@@ -3,17 +3,15 @@
 
 package storage
 
-import proto "github.com/gogo/protobuf/proto"
-import fmt "fmt"
-import math "math"
-import _ "github.com/gogo/protobuf/gogoproto"
-
-import github_com_cortexproject_cortex_pkg_util_wire "github.com/cortexproject/cortex/pkg/util/wire"
-
-import strings "strings"
-import reflect "reflect"
-
-import io "io"
+import (
+	fmt "fmt"
+	_ "github.com/gogo/protobuf/gogoproto"
+	proto "github.com/gogo/protobuf/proto"
+	io "io"
+	math "math"
+	reflect "reflect"
+	strings "strings"
+)
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
@@ -27,14 +25,14 @@ var _ = math.Inf
 const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 
 type Entry struct {
-	Column github_com_cortexproject_cortex_pkg_util_wire.Bytes `protobuf:"bytes,1,opt,name=Column,json=column,proto3,customtype=github.com/cortexproject/cortex/pkg/util/wire.Bytes" json:"Column"`
-	Value  github_com_cortexproject_cortex_pkg_util_wire.Bytes `protobuf:"bytes,2,opt,name=Value,json=value,proto3,customtype=github.com/cortexproject/cortex/pkg/util/wire.Bytes" json:"Value"`
+	Column Bytes `protobuf:"bytes,1,opt,name=Column,json=column,proto3,customtype=Bytes" json:"Column"`
+	Value  Bytes `protobuf:"bytes,2,opt,name=Value,json=value,proto3,customtype=Bytes" json:"Value"`
 }
 
 func (m *Entry) Reset()      { *m = Entry{} }
 func (*Entry) ProtoMessage() {}
 func (*Entry) Descriptor() ([]byte, []int) {
-	return fileDescriptor_caching_index_client_2f4bf220288f700f, []int{0}
+	return fileDescriptor_a60039d4a2d816f6, []int{0}
 }
 func (m *Entry) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -51,8 +49,8 @@ func (m *Entry) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (dst *Entry) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Entry.Merge(dst, src)
+func (m *Entry) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Entry.Merge(m, src)
 }
 func (m *Entry) XXX_Size() int {
 	return m.Size()
@@ -64,16 +62,19 @@ func (m *Entry) XXX_DiscardUnknown() {
 var xxx_messageInfo_Entry proto.InternalMessageInfo
 
 type ReadBatch struct {
-	Entries []Entry `protobuf:"bytes,1,rep,name=entries" json:"entries"`
+	Entries []Entry `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries"`
 	Key     string  `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
 	// The time at which the key expires.
 	Expiry int64 `protobuf:"varint,3,opt,name=expiry,proto3" json:"expiry,omitempty"`
+	// The number of entries; used for cardinality limiting.
+	// entries will be empty when this is set.
+	Cardinality int32 `protobuf:"varint,4,opt,name=cardinality,proto3" json:"cardinality,omitempty"`
 }
 
 func (m *ReadBatch) Reset()      { *m = ReadBatch{} }
 func (*ReadBatch) ProtoMessage() {}
 func (*ReadBatch) Descriptor() ([]byte, []int) {
-	return fileDescriptor_caching_index_client_2f4bf220288f700f, []int{1}
+	return fileDescriptor_a60039d4a2d816f6, []int{1}
 }
 func (m *ReadBatch) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -90,8 +91,8 @@ func (m *ReadBatch) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (dst *ReadBatch) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ReadBatch.Merge(dst, src)
+func (m *ReadBatch) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ReadBatch.Merge(m, src)
 }
 func (m *ReadBatch) XXX_Size() int {
 	return m.Size()
@@ -123,10 +124,47 @@ func (m *ReadBatch) GetExpiry() int64 {
 	return 0
 }
 
+func (m *ReadBatch) GetCardinality() int32 {
+	if m != nil {
+		return m.Cardinality
+	}
+	return 0
+}
+
 func init() {
 	proto.RegisterType((*Entry)(nil), "storage.Entry")
 	proto.RegisterType((*ReadBatch)(nil), "storage.ReadBatch")
 }
+
+func init() {
+	proto.RegisterFile("github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.proto", fileDescriptor_a60039d4a2d816f6)
+}
+
+var fileDescriptor_a60039d4a2d816f6 = []byte{
+	// 335 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x6c, 0x90, 0xb1, 0x4e, 0xc3, 0x30,
+	0x00, 0x44, 0x63, 0xd2, 0xa4, 0xaa, 0x0b, 0x08, 0x65, 0x40, 0x11, 0x83, 0x1b, 0x15, 0x21, 0x65,
+	0x21, 0x91, 0x80, 0x2f, 0x08, 0x62, 0x63, 0x0a, 0x12, 0x6b, 0xe5, 0xba, 0x26, 0x31, 0x4d, 0xed,
+	0xc8, 0x75, 0x50, 0xb3, 0xb1, 0xb1, 0xf2, 0x19, 0x7c, 0x4a, 0xc7, 0x8e, 0x15, 0x43, 0x45, 0xdd,
+	0x85, 0xb1, 0x9f, 0x80, 0x6a, 0x82, 0xd4, 0x81, 0xed, 0x9e, 0xef, 0x7c, 0x67, 0x19, 0xde, 0x67,
+	0x4c, 0xe5, 0xd5, 0x30, 0x22, 0x62, 0x12, 0x13, 0x21, 0x15, 0x9d, 0x95, 0x52, 0x3c, 0x53, 0xa2,
+	0x1a, 0x8a, 0xcb, 0x71, 0x16, 0x93, 0xbc, 0xe2, 0xe3, 0x78, 0xaa, 0x84, 0xc4, 0x19, 0x8d, 0x09,
+	0x26, 0x39, 0xe3, 0xd9, 0x80, 0xf1, 0x11, 0x9d, 0x0d, 0x48, 0xc1, 0x28, 0x57, 0x51, 0x29, 0x85,
+	0x12, 0x5e, 0xbb, 0xc9, 0x9c, 0x5d, 0xee, 0xd5, 0x66, 0x22, 0x13, 0xb1, 0xf1, 0x87, 0xd5, 0x93,
+	0x21, 0x03, 0x46, 0xfd, 0xde, 0xeb, 0x3f, 0x40, 0xe7, 0x8e, 0x2b, 0x59, 0x7b, 0x17, 0xd0, 0xbd,
+	0x15, 0x45, 0x35, 0xe1, 0x3e, 0x08, 0x40, 0x78, 0x98, 0x1c, 0xcd, 0x57, 0x3d, 0xeb, 0x73, 0xd5,
+	0x73, 0x92, 0x5a, 0xd1, 0x69, 0xea, 0x12, 0x63, 0x7a, 0xe7, 0xd0, 0x79, 0xc4, 0x45, 0x45, 0xfd,
+	0x83, 0xff, 0x52, 0xce, 0xcb, 0xce, 0xeb, 0xbf, 0x01, 0xd8, 0x49, 0x29, 0x1e, 0x25, 0x58, 0x91,
+	0xdc, 0x8b, 0x60, 0x9b, 0x72, 0x25, 0x19, 0x9d, 0xfa, 0x20, 0xb0, 0xc3, 0xee, 0xd5, 0x71, 0xd4,
+	0x3c, 0x36, 0x32, 0xd3, 0x49, 0x6b, 0x57, 0x92, 0xfe, 0x85, 0xbc, 0x13, 0x68, 0x8f, 0x69, 0x6d,
+	0x06, 0x3a, 0xe9, 0x4e, 0x7a, 0xa7, 0xd0, 0xa5, 0xb3, 0x92, 0xc9, 0xda, 0xb7, 0x03, 0x10, 0xda,
+	0x69, 0x43, 0x5e, 0x00, 0xbb, 0x04, 0xcb, 0x11, 0xe3, 0xb8, 0x60, 0xaa, 0xf6, 0x5b, 0x01, 0x08,
+	0x9d, 0x74, 0xff, 0x28, 0xb9, 0x59, 0xac, 0x91, 0xb5, 0x5c, 0x23, 0x6b, 0xbb, 0x46, 0xe0, 0x55,
+	0x23, 0xf0, 0xa1, 0x11, 0x98, 0x6b, 0x04, 0x16, 0x1a, 0x81, 0x2f, 0x8d, 0xc0, 0xb7, 0x46, 0xd6,
+	0x56, 0x23, 0xf0, 0xbe, 0x41, 0xd6, 0x62, 0x83, 0xac, 0xe5, 0x06, 0x59, 0x43, 0xd7, 0xfc, 0xcd,
+	0xf5, 0x4f, 0x00, 0x00, 0x00, 0xff, 0xff, 0x4b, 0xd2, 0x5d, 0xd9, 0xa3, 0x01, 0x00, 0x00,
+}
+
 func (this *Entry) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -187,6 +225,9 @@ func (this *ReadBatch) Equal(that interface{}) bool {
 	if this.Expiry != that1.Expiry {
 		return false
 	}
+	if this.Cardinality != that1.Cardinality {
+		return false
+	}
 	return true
 }
 func (this *Entry) GoString() string {
@@ -204,7 +245,7 @@ func (this *ReadBatch) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 7)
+	s := make([]string, 0, 8)
 	s = append(s, "&storage.ReadBatch{")
 	if this.Entries != nil {
 		vs := make([]*Entry, len(this.Entries))
@@ -215,6 +256,7 @@ func (this *ReadBatch) GoString() string {
 	}
 	s = append(s, "Key: "+fmt.Sprintf("%#v", this.Key)+",\n")
 	s = append(s, "Expiry: "+fmt.Sprintf("%#v", this.Expiry)+",\n")
+	s = append(s, "Cardinality: "+fmt.Sprintf("%#v", this.Cardinality)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -244,17 +286,17 @@ func (m *Entry) MarshalTo(dAtA []byte) (int, error) {
 	dAtA[i] = 0xa
 	i++
 	i = encodeVarintCachingIndexClient(dAtA, i, uint64(m.Column.Size()))
-	n1, err := m.Column.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
+	n1, err1 := m.Column.MarshalTo(dAtA[i:])
+	if err1 != nil {
+		return 0, err1
 	}
 	i += n1
 	dAtA[i] = 0x12
 	i++
 	i = encodeVarintCachingIndexClient(dAtA, i, uint64(m.Value.Size()))
-	n2, err := m.Value.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
+	n2, err2 := m.Value.MarshalTo(dAtA[i:])
+	if err2 != nil {
+		return 0, err2
 	}
 	i += n2
 	return i, nil
@@ -297,6 +339,11 @@ func (m *ReadBatch) MarshalTo(dAtA []byte) (int, error) {
 		dAtA[i] = 0x18
 		i++
 		i = encodeVarintCachingIndexClient(dAtA, i, uint64(m.Expiry))
+	}
+	if m.Cardinality != 0 {
+		dAtA[i] = 0x20
+		i++
+		i = encodeVarintCachingIndexClient(dAtA, i, uint64(m.Cardinality))
 	}
 	return i, nil
 }
@@ -342,6 +389,9 @@ func (m *ReadBatch) Size() (n int) {
 	if m.Expiry != 0 {
 		n += 1 + sovCachingIndexClient(uint64(m.Expiry))
 	}
+	if m.Cardinality != 0 {
+		n += 1 + sovCachingIndexClient(uint64(m.Cardinality))
+	}
 	return n
 }
 
@@ -373,10 +423,16 @@ func (this *ReadBatch) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForEntries := "[]Entry{"
+	for _, f := range this.Entries {
+		repeatedStringForEntries += strings.Replace(strings.Replace(f.String(), "Entry", "Entry", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForEntries += "}"
 	s := strings.Join([]string{`&ReadBatch{`,
-		`Entries:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Entries), "Entry", "Entry", 1), `&`, ``, 1) + `,`,
+		`Entries:` + repeatedStringForEntries + `,`,
 		`Key:` + fmt.Sprintf("%v", this.Key) + `,`,
 		`Expiry:` + fmt.Sprintf("%v", this.Expiry) + `,`,
+		`Cardinality:` + fmt.Sprintf("%v", this.Cardinality) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -404,7 +460,7 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 			}
 			b := dAtA[iNdEx]
 			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
+			wire |= uint64(b&0x7F) << shift
 			if b < 0x80 {
 				break
 			}
@@ -432,7 +488,7 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
+				byteLen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -441,6 +497,9 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthCachingIndexClient
 			}
 			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthCachingIndexClient
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -462,7 +521,7 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
+				byteLen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -471,6 +530,9 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthCachingIndexClient
 			}
 			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthCachingIndexClient
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -485,6 +547,9 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			if skippy < 0 {
+				return ErrInvalidLengthCachingIndexClient
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthCachingIndexClient
 			}
 			if (iNdEx + skippy) > l {
@@ -514,7 +579,7 @@ func (m *ReadBatch) Unmarshal(dAtA []byte) error {
 			}
 			b := dAtA[iNdEx]
 			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
+			wire |= uint64(b&0x7F) << shift
 			if b < 0x80 {
 				break
 			}
@@ -542,7 +607,7 @@ func (m *ReadBatch) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -551,6 +616,9 @@ func (m *ReadBatch) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthCachingIndexClient
 			}
 			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthCachingIndexClient
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -573,7 +641,7 @@ func (m *ReadBatch) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
+				stringLen |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -583,6 +651,9 @@ func (m *ReadBatch) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthCachingIndexClient
 			}
 			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthCachingIndexClient
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -602,7 +673,26 @@ func (m *ReadBatch) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Expiry |= (int64(b) & 0x7F) << shift
+				m.Expiry |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Cardinality", wireType)
+			}
+			m.Cardinality = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCachingIndexClient
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Cardinality |= int32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -614,6 +704,9 @@ func (m *ReadBatch) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			if skippy < 0 {
+				return ErrInvalidLengthCachingIndexClient
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthCachingIndexClient
 			}
 			if (iNdEx + skippy) > l {
@@ -682,8 +775,11 @@ func skipCachingIndexClient(dAtA []byte) (n int, err error) {
 					break
 				}
 			}
-			iNdEx += length
 			if length < 0 {
+				return 0, ErrInvalidLengthCachingIndexClient
+			}
+			iNdEx += length
+			if iNdEx < 0 {
 				return 0, ErrInvalidLengthCachingIndexClient
 			}
 			return iNdEx, nil
@@ -714,6 +810,9 @@ func skipCachingIndexClient(dAtA []byte) (n int, err error) {
 					return 0, err
 				}
 				iNdEx = start + next
+				if iNdEx < 0 {
+					return 0, ErrInvalidLengthCachingIndexClient
+				}
 			}
 			return iNdEx, nil
 		case 4:
@@ -732,32 +831,3 @@ var (
 	ErrInvalidLengthCachingIndexClient = fmt.Errorf("proto: negative length found during unmarshaling")
 	ErrIntOverflowCachingIndexClient   = fmt.Errorf("proto: integer overflow")
 )
-
-func init() {
-	proto.RegisterFile("github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.proto", fileDescriptor_caching_index_client_2f4bf220288f700f)
-}
-
-var fileDescriptor_caching_index_client_2f4bf220288f700f = []byte{
-	// 331 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xa4, 0x90, 0xb1, 0x4e, 0xeb, 0x30,
-	0x14, 0x86, 0xe3, 0x9b, 0xdb, 0x54, 0x35, 0x08, 0xa1, 0x0c, 0x28, 0x62, 0x70, 0xab, 0x4e, 0x5d,
-	0x88, 0x25, 0xca, 0xc6, 0x16, 0xc4, 0xc6, 0x42, 0x90, 0x58, 0xab, 0xd4, 0x3d, 0x24, 0xa6, 0xa9,
-	0x1d, 0xb9, 0x0e, 0x34, 0x1b, 0x8f, 0xc0, 0x63, 0xb0, 0xf1, 0x1a, 0x1d, 0x3b, 0x56, 0x0c, 0x15,
-	0x75, 0x17, 0xc6, 0x3e, 0x02, 0xaa, 0x09, 0x12, 0x23, 0x12, 0xdb, 0xf9, 0xe4, 0xe3, 0xcf, 0xbf,
-	0x7f, 0x7c, 0x95, 0x72, 0x9d, 0x95, 0xc3, 0x90, 0xc9, 0x09, 0x65, 0x52, 0x69, 0x98, 0x15, 0x4a,
-	0xde, 0x03, 0xd3, 0x35, 0xd1, 0x62, 0x9c, 0x52, 0x96, 0x95, 0x62, 0x4c, 0xa7, 0x5a, 0xaa, 0x24,
-	0x05, 0xca, 0x12, 0x96, 0x71, 0x91, 0x0e, 0xb8, 0x18, 0xc1, 0x6c, 0xc0, 0x72, 0x0e, 0x42, 0x87,
-	0x85, 0x92, 0x5a, 0xfa, 0xcd, 0x7a, 0xe7, 0xf8, 0xe4, 0x87, 0x36, 0x95, 0xa9, 0xa4, 0xf6, 0x7c,
-	0x58, 0xde, 0x59, 0xb2, 0x60, 0xa7, 0xaf, 0x7b, 0xdd, 0x57, 0x84, 0x1b, 0x97, 0x42, 0xab, 0xca,
-	0xbf, 0xc1, 0xde, 0x85, 0xcc, 0xcb, 0x89, 0x08, 0x50, 0x07, 0xf5, 0xf6, 0xa3, 0xf3, 0xf9, 0xaa,
-	0xed, 0xbc, 0xad, 0xda, 0xfd, 0xdf, 0xe4, 0x2c, 0x35, 0xcf, 0xe9, 0x23, 0x57, 0x10, 0x46, 0x95,
-	0x86, 0x69, 0xec, 0x31, 0xab, 0xf2, 0xaf, 0x71, 0xe3, 0x36, 0xc9, 0x4b, 0x08, 0xfe, 0xfd, 0xdd,
-	0xd9, 0x78, 0xd8, 0x99, 0xba, 0x80, 0x5b, 0x31, 0x24, 0xa3, 0x28, 0xd1, 0x2c, 0xf3, 0x43, 0xdc,
-	0x04, 0xa1, 0x15, 0x87, 0x69, 0x80, 0x3a, 0x6e, 0x6f, 0xef, 0xf4, 0x20, 0xac, 0x8b, 0x08, 0xed,
-	0xaf, 0xa2, 0xff, 0xbb, 0x17, 0xe3, 0xef, 0x25, 0xff, 0x10, 0xbb, 0x63, 0xa8, 0x6c, 0x9a, 0x56,
-	0xbc, 0x1b, 0xfd, 0x23, 0xec, 0xc1, 0xac, 0xe0, 0xaa, 0x0a, 0xdc, 0x0e, 0xea, 0xb9, 0x71, 0x4d,
-	0xd1, 0xd9, 0x62, 0x4d, 0x9c, 0xe5, 0x9a, 0x38, 0xdb, 0x35, 0x41, 0x4f, 0x86, 0xa0, 0x17, 0x43,
-	0xd0, 0xdc, 0x10, 0xb4, 0x30, 0x04, 0xbd, 0x1b, 0x82, 0x3e, 0x0c, 0x71, 0xb6, 0x86, 0xa0, 0xe7,
-	0x0d, 0x71, 0x16, 0x1b, 0xe2, 0x2c, 0x37, 0xc4, 0x19, 0x7a, 0xb6, 0xd5, 0xfe, 0x67, 0x00, 0x00,
-	0x00, 0xff, 0xff, 0x95, 0x6d, 0x6d, 0xd0, 0xdd, 0x01, 0x00, 0x00,
-}
