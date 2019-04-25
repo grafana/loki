@@ -98,7 +98,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating index client")
 		}
-		index = newCachingIndexClient(index, tieredCache, cfg.IndexCacheValidity)
+		index = newCachingIndexClient(index, tieredCache, cfg.IndexCacheValidity, limits)
 
 		objectStoreType := s.ObjectType
 		if objectStoreType == "" {

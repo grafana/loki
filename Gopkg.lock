@@ -187,7 +187,7 @@
 
 [[projects]]
   branch = "lazy-load-chunks"
-  digest = "1:ec8e0308d1e557f50317a6437073a7a859d73e4cf8e4c20a60d7009e352353c6"
+  digest = "1:bf1fa66c54722bc8664f1465e427cd6fe7df52f2b6fd5ab996baf37601687b70"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/chunk",
@@ -211,10 +211,9 @@
     "pkg/util/middleware",
     "pkg/util/spanlogger",
     "pkg/util/validation",
-    "pkg/util/wire",
   ]
   pruneopts = "UT"
-  revision = "161f6716cba9a32f07f359c4f9f8578e0c5d5ae8"
+  revision = "95a3f308e95617732b76e337874e83ccf173cf14"
   source = "https://github.com/grafana/cortex"
 
 [[projects]]
@@ -1367,7 +1366,6 @@
     "github.com/cortexproject/cortex/pkg/util",
     "github.com/cortexproject/cortex/pkg/util/flagext",
     "github.com/cortexproject/cortex/pkg/util/validation",
-    "github.com/cortexproject/cortex/pkg/util/wire",
     "github.com/fatih/color",
     "github.com/go-kit/kit/log",
     "github.com/go-kit/kit/log/level",
@@ -1391,10 +1389,12 @@
     "github.com/prometheus/prometheus/discovery/targetgroup",
     "github.com/prometheus/prometheus/pkg/labels",
     "github.com/prometheus/prometheus/pkg/relabel",
+    "github.com/prometheus/prometheus/pkg/textparse",
     "github.com/prometheus/prometheus/relabel",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
     "github.com/weaveworks/common/httpgrpc",
+    "github.com/weaveworks/common/httpgrpc/server",
     "github.com/weaveworks/common/middleware",
     "github.com/weaveworks/common/server",
     "github.com/weaveworks/common/tracing",

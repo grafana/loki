@@ -23,7 +23,9 @@ import (
 )
 
 var (
-	errCardinalityExceeded = errors.New("cardinality limit exceeded")
+	// ErrCardinalityExceeded is returned when the user reads a row that
+	// is too large.
+	ErrCardinalityExceeded = errors.New("cardinality limit exceeded")
 
 	indexLookupsPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
@@ -57,8 +59,6 @@ var (
 // seriesStore implements Store
 type seriesStore struct {
 	store
-	cardinalityCache *cache.FifoCache
-
 	writeDedupeCache cache.Cache
 }
 
@@ -89,10 +89,6 @@ func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Ob
 			limits:  limits,
 			Fetcher: fetcher,
 		},
-		cardinalityCache: cache.NewFifoCache("cardinality", cache.FifoCacheConfig{
-			Size:     cfg.CardinalityCacheSize,
-			Validity: cfg.CardinalityCacheValidity,
-		}),
 		writeDedupeCache: writeDedupeCache,
 	}, nil
 }
@@ -229,15 +225,21 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 				ids = intersectStrings(ids, incoming)
 			}
 		case err := <-incomingErrors:
-			if err == errCardinalityExceeded {
+			// The idea is that if we have 2 matchers, and if one returns a lot of
+			// series and the other returns only 10 (a few), we don't lookup the first one at all.
+			// We just manually filter through the 10 series again using "filterChunksByMatchers",
+			// saving us from looking up and intersecting a lot of series.
+			if err == ErrCardinalityExceeded {
 				cardinalityExceededErrors++
 			} else {
 				lastErr = err
 			}
 		}
 	}
+
+	// But if every single matcher returns a lot of series, then it makes sense to abort the query.
 	if cardinalityExceededErrors == len(matchers) {
-		return nil, errCardinalityExceeded
+		return nil, ErrCardinalityExceeded
 	} else if lastErr != nil {
 		return nil, lastErr
 	}
@@ -270,35 +272,11 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	}
 	level.Debug(log).Log("queries", len(queries))
 
-	for _, query := range queries {
-		value, ok := c.cardinalityCache.Get(ctx, query.HashValue)
-		if !ok {
-			continue
-		}
-		cardinality := value.(int)
-		if cardinality > c.cfg.CardinalityLimit {
-			return nil, errCardinalityExceeded
-		}
-	}
-
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
 	if err != nil {
 		return nil, err
 	}
 	level.Debug(log).Log("entries", len(entries))
-
-	// TODO This is not correct, will overcount for queries > 24hrs
-	keys := make([]string, 0, len(queries))
-	values := make([]interface{}, 0, len(queries))
-	for _, query := range queries {
-		keys = append(keys, query.HashValue)
-		values = append(values, len(entries))
-	}
-	c.cardinalityCache.Put(ctx, keys, values)
-
-	if len(entries) > c.cfg.CardinalityLimit {
-		return nil, errCardinalityExceeded
-	}
 
 	ids, err := c.parseIndexEntries(ctx, entries, matcher)
 	if err != nil {

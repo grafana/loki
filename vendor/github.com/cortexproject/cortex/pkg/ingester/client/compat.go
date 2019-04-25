@@ -1,11 +1,11 @@
 package client
 
 import (
-	"bytes"
 	stdjson "encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -15,22 +15,6 @@ import (
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
-
-// FromWriteRequest converts a WriteRequest proto into an array of samples.
-func FromWriteRequest(req *WriteRequest) []model.Sample {
-	// Just guess that there is one sample per timeseries
-	samples := make([]model.Sample, 0, len(req.Timeseries))
-	for _, ts := range req.Timeseries {
-		for _, s := range ts.Samples {
-			samples = append(samples, model.Sample{
-				Metric:    FromLabelPairs(ts.Labels),
-				Value:     model.SampleValue(s.Value),
-				Timestamp: model.Time(s.TimestampMs),
-			})
-		}
-	}
-	return samples
-}
 
 // ToWriteRequest converts an array of samples into a WriteRequest proto.
 func ToWriteRequest(samples []model.Sample, source WriteRequest_SourceEnum) *WriteRequest {
@@ -42,7 +26,7 @@ func ToWriteRequest(samples []model.Sample, source WriteRequest_SourceEnum) *Wri
 	for _, s := range samples {
 		ts := PreallocTimeseries{
 			TimeSeries: TimeSeries{
-				Labels: ToLabelPairs(s.Metric),
+				Labels: FromMetricsToLabelAdapters(s.Metric),
 				Samples: []Sample{
 					{
 						Value:       float64(s.Value),
@@ -87,7 +71,7 @@ func ToQueryResponse(matrix model.Matrix) *QueryResponse {
 	resp := &QueryResponse{}
 	for _, ss := range matrix {
 		ts := TimeSeries{
-			Labels:  ToLabelPairs(ss.Metric),
+			Labels:  FromMetricsToLabelAdapters(ss.Metric),
 			Samples: make([]Sample, 0, len(ss.Values)),
 		}
 		for _, s := range ss.Values {
@@ -106,7 +90,7 @@ func FromQueryResponse(resp *QueryResponse) model.Matrix {
 	m := make(model.Matrix, 0, len(resp.Timeseries))
 	for _, ts := range resp.Timeseries {
 		var ss model.SampleStream
-		ss.Metric = FromLabelPairs(ts.Labels)
+		ss.Metric = FromLabelAdaptersToMetric(ts.Labels)
 		ss.Values = make([]model.SamplePair, 0, len(ts.Samples))
 		for _, s := range ts.Samples {
 			ss.Values = append(ss.Values, model.SamplePair{
@@ -153,7 +137,7 @@ func FromMetricsForLabelMatchersRequest(req *MetricsForLabelMatchersRequest) (mo
 func FromMetricsForLabelMatchersResponse(resp *MetricsForLabelMatchersResponse) []model.Metric {
 	metrics := []model.Metric{}
 	for _, m := range resp.Metric {
-		metrics = append(metrics, FromLabelPairs(m.Labels))
+		metrics = append(metrics, FromLabelAdaptersToMetric(m.Labels))
 	}
 	return metrics
 }
@@ -208,70 +192,63 @@ func fromLabelMatchers(matchers []*LabelMatcher) ([]*labels.Matcher, error) {
 	return result, nil
 }
 
-// ToLabelPairs builds a []LabelPair from a model.Metric
-func ToLabelPairs(metric model.Metric) []LabelPair {
-	labelPairs := make([]LabelPair, 0, len(metric))
-	for k, v := range metric {
-		labelPairs = append(labelPairs, LabelPair{
-			Name:  []byte(k),
-			Value: []byte(v),
-		})
-	}
-	sort.Sort(byLabel(labelPairs)) // The labels should be sorted upon initialisation.
-	return labelPairs
+// FromLabelAdaptersToLabels casts []LabelAdapter to labels.Labels.
+// It uses unsafe, but as LabelAdapter == labels.Label this should be safe.
+// This allows us to use labels.Labels directly in protos.
+func FromLabelAdaptersToLabels(ls []LabelAdapter) labels.Labels {
+	return *(*labels.Labels)(unsafe.Pointer(&ls))
 }
 
-type byLabel []LabelPair
+// FromLabelsToLabelAdapaters casts labels.Labels to []LabelAdapter.
+// It uses unsafe, but as LabelAdapter == labels.Label this should be safe.
+// This allows us to use labels.Labels directly in protos.
+func FromLabelsToLabelAdapaters(ls labels.Labels) []LabelAdapter {
+	return *(*[]LabelAdapter)(unsafe.Pointer(&ls))
+}
+
+// FromLabelAdaptersToMetric converts []LabelAdapter to a model.Metric.
+// Don't do this on any performance sensitive paths.
+func FromLabelAdaptersToMetric(ls []LabelAdapter) model.Metric {
+	result := make(model.Metric, len(ls))
+	for _, l := range ls {
+		result[model.LabelName(l.Name)] = model.LabelValue(l.Value)
+	}
+	return result
+}
+
+// FromMetricsToLabelAdapters converts model.Metric to []LabelAdapter.
+// Don't do this on any performance sensitive paths.
+// The result is sorted.
+func FromMetricsToLabelAdapters(metric model.Metric) []LabelAdapter {
+	result := make([]LabelAdapter, 0, len(metric))
+	for k, v := range metric {
+		result = append(result, LabelAdapter{
+			Name:  string(k),
+			Value: string(v),
+		})
+	}
+	sort.Sort(byLabel(result)) // The labels should be sorted upon initialisation.
+	return result
+}
+
+type byLabel []LabelAdapter
 
 func (s byLabel) Len() int           { return len(s) }
-func (s byLabel) Less(i, j int) bool { return bytes.Compare(s[i].Name, s[j].Name) < 0 }
+func (s byLabel) Less(i, j int) bool { return strings.Compare(s[i].Name, s[j].Name) < 0 }
 func (s byLabel) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
-// FromLabelPairs unpack a []LabelPair to a model.Metric
-func FromLabelPairs(labelPairs []LabelPair) model.Metric {
-	metric := make(model.Metric, len(labelPairs))
-	for _, l := range labelPairs {
-		metric[model.LabelName(l.Name)] = model.LabelValue(l.Value)
-	}
-	return metric
-}
-
-// FromLabelPairsToLabels unpack a []LabelPair to a labels.Labels
-func FromLabelPairsToLabels(labelPairs []LabelPair) labels.Labels {
-	ls := make(labels.Labels, 0, len(labelPairs))
-	for _, l := range labelPairs {
-		ls = append(ls, labels.Label{
-			Name:  string(l.Name),
-			Value: string(l.Value),
-		})
-	}
-	return ls
-}
-
-// FromLabelsToLabelPairs converts labels.Labels to []LabelPair
-func FromLabelsToLabelPairs(s labels.Labels) []LabelPair {
-	labelPairs := make([]LabelPair, 0, len(s))
-	for _, v := range s {
-		labelPairs = append(labelPairs, LabelPair{
-			Name:  []byte(v.Name),
-			Value: []byte(v.Value),
-		})
-	}
-	return labelPairs // note already sorted
-}
-
 // FastFingerprint runs the same algorithm as Prometheus labelSetToFastFingerprint()
-func FastFingerprint(labelPairs []LabelPair) model.Fingerprint {
-	if len(labelPairs) == 0 {
+func FastFingerprint(ls []LabelAdapter) model.Fingerprint {
+	if len(ls) == 0 {
 		return model.Metric(nil).FastFingerprint()
 	}
 
 	var result uint64
-	for _, pair := range labelPairs {
+	for _, l := range ls {
 		sum := hashNew()
-		sum = hashAdd(sum, pair.Name)
+		sum = hashAdd(sum, l.Name)
 		sum = hashAddByte(sum, model.SeparatorByte)
-		sum = hashAdd(sum, pair.Value)
+		sum = hashAdd(sum, l.Value)
 		result ^= sum
 	}
 	return model.Fingerprint(result)

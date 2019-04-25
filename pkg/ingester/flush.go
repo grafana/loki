@@ -154,7 +154,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	return nil
 }
 
-func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, []client.LabelPair) {
+func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, []client.LabelAdapter) {
 	instance.streamsMtx.Lock()
 	defer instance.streamsMtx.Unlock()
 
@@ -204,18 +204,18 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 
 	if len(stream.chunks) == 0 {
 		delete(instance.streams, stream.fp)
-		instance.index.Delete(client.FromLabelPairsToLabels(stream.labels), stream.fp)
+		instance.index.Delete(client.FromLabelAdaptersToLabels(stream.labels), stream.fp)
 		instance.streamsRemovedTotal.Inc()
 	}
 }
 
-func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs []client.LabelPair, cs []*chunkDesc) error {
+func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs []client.LabelAdapter, cs []*chunkDesc) error {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err
 	}
 
-	metric := fromLabelPairs(labelPairs)
+	metric := client.FromLabelAdaptersToMetric(labelPairs)
 	metric[nameLabel] = logsValue
 
 	wireChunks := make([]chunk.Chunk, 0, len(cs))
@@ -235,12 +235,4 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	}
 
 	return i.store.Put(ctx, wireChunks)
-}
-
-func fromLabelPairs(ls []client.LabelPair) model.Metric {
-	m := make(model.Metric, len(ls))
-	for _, l := range ls {
-		m[model.LabelName(l.Name)] = model.LabelValue(l.Value)
-	}
-	return m
 }

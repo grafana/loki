@@ -8,8 +8,8 @@ option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
 message Entry {
-    bytes Column = 1 [(gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/util/wire.Bytes", (gogoproto.nullable) = false];
-    bytes Value = 2 [(gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/util/wire.Bytes", (gogoproto.nullable) = false];
+    bytes Column = 1 [(gogoproto.customtype) = "Bytes", (gogoproto.nullable) = false];
+    bytes Value = 2 [(gogoproto.customtype) = "Bytes", (gogoproto.nullable) = false];
 }
 
 message ReadBatch {
@@ -18,4 +18,8 @@ message ReadBatch {
 
     // The time at which the key expires.
     int64 expiry = 3;
+
+    // The number of entries; used for cardinality limiting.
+    // entries will be empty when this is set.
+    int32 cardinality = 4;
 }
