@@ -29,10 +29,6 @@
         grpc_server_max_recv_msg_size: 1024 * 1024 * 64,
       },
 
-      limits_config: {
-        enforce_metric_name: false,
-      },
-
       ingester: {
         chunk_idle_period: '15m',
 
