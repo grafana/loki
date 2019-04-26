@@ -18,8 +18,16 @@ $ helm repo update
 
 ## Deploy Loki and Promtail to your cluster
 
+### Deploy with default config
+
 ```bash
 $ helm upgrade --install loki loki/loki-stack
+```
+
+### Deploy with custom config
+
+```bash
+$ helm upgrade --install loki loki/loki --set "key1=val1,key2=val2,..."
 ```
 
 ## Deploy Loki only
