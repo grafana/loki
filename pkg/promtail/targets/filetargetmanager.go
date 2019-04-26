@@ -42,8 +42,8 @@ var (
 
 // FileTargetManager manages a set of targets.
 type FileTargetManager struct {
-	log log.Logger
-
+	log     log.Logger
+	ctx     context.Context
 	quit    context.CancelFunc
 	syncers map[string]*syncer
 	manager *discovery.Manager
@@ -59,8 +59,8 @@ func NewFileTargetManager(
 ) (*FileTargetManager, error) {
 	ctx, quit := context.WithCancel(context.Background())
 	tm := &FileTargetManager{
-		log: logger,
-
+		log:     logger,
+		ctx:     ctx,
 		quit:    quit,
 		syncers: map[string]*syncer{},
 		manager: discovery.NewManager(ctx, log.With(logger, "component", "discovery")),

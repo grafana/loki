@@ -3,11 +3,10 @@ package config
 import (
 	"flag"
 
-	"github.com/weaveworks/common/server"
-
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/server"
 	"github.com/grafana/loki/pkg/promtail/targets"
 )
 

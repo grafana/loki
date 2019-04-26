@@ -90,6 +90,7 @@ vendor/github.com/cortexproject/cortex/pkg/ingester/client/cortex.pb.go: vendor/
 vendor/github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.pb.go: vendor/github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.proto
 pkg/parser/labels.go: pkg/parser/labels.y
 pkg/parser/matchers.go: pkg/parser/matchers.y
+pkg/promtail/ui/assets_vfsdata.go: assets
 all: $(UPTODATE_FILES)
 test: $(PROTO_GOS) $(YACC_GOS)
 debug: $(DEBUG_UPTODATE_FILES)
@@ -247,3 +248,16 @@ clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) $(DEBUG_IMAGE_NAMES) >/dev/null 2>&1 || true
 	rm -rf $(UPTODATE_FILES) $(EXES) $(DEBUG_UPTODATE_FILES) $(DEBUG_EXES) $(DEBUG_DLV_FILES) .cache
 	go clean ./...
+
+.PHONY: assets
+assets:
+	@echo ">> writing assets"
+	cd pkg/promtail/ui && go generate -x -v
+
+.PHONY: check_assets
+check_assets: assets
+	@echo ">> checking that assets are up-to-date"
+	@if ! (cd pkg/promtail/ui && git diff --exit-code); then \
+		echo "Run 'make assets' and commit the changes to fix the error."; \
+		exit 1; \
+	fi
