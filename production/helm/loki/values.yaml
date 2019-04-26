@@ -14,8 +14,13 @@ affinity: {}
 ## Deployment annotations
 annotations: {}
 
+# enable tracing for debug, need install jaeger and specify right jaeger_agent_host
+tracing:
+  jaegerAgentHost:
+
 config:
   auth_enabled: false
+
   ingester:
     chunk_idle_period: 15m
     lifecycler:
@@ -128,7 +133,7 @@ securityContext:
 
 service:
   type: ClusterIP
-  nodePort: 
+  nodePort:
   port: 3100
   annotations: {}
   labels: {}
