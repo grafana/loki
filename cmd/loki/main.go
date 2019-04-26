@@ -29,9 +29,6 @@ func main() {
 	flagext.RegisterFlags(&cfg)
 	flag.Parse()
 
-	// The flags set the EnforceMetricName to be true, but in loki it _should_ be false.
-	cfg.LimitsConfig.EnforceMetricName = false
-
 	util.InitLogger(&cfg.Server)
 
 	if configFile != "" {
