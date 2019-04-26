@@ -37,6 +37,8 @@ config:
       #     prefix: ""
       #     httpclienttimeout: "20s"
       #     consistentreads: true
+  limits_config:
+    enforce_metric_name: false
   schema_config:
     configs:
     - from: 0

@@ -14,6 +14,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func init() {
@@ -29,8 +30,14 @@ func main() {
 	flagext.RegisterFlags(&cfg)
 	flag.Parse()
 
-	// The flags set the EnforceMetricName to be true, but in loki it _should_ be false.
-	cfg.LimitsConfig.EnforceMetricName = false
+	// LimitsConfig has a customer UnmarshalYAML that will set the defaults to a global.
+	// This global is set to the config passed into the last call to `NewOverrides`. If we don't
+	// call it atleast once, the defaults are set to an empty struct.
+	// We call it with the flag values so that the config file unmarshalling only overrides the values set in the config.
+	if _, err := validation.NewOverrides(cfg.LimitsConfig); err != nil {
+		level.Error(util.Logger).Log("msg", "error loading limits", "err", err)
+		os.Exit(1)
+	}
 
 	util.InitLogger(&cfg.Server)
 
