@@ -73,7 +73,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 	)
 
 	mockProm.SetResponseForWrites(0, 100000, 100000, []int{0, 0}, []int{100, 20})
-	test(t, client, tableManager, "Queues but no errors",
+	test(t, client, tableManager, "Queues but no throttling",
 		startTime.Add(time.Minute*10),
 		append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, read, write, read, write)...), // - remain flat
@@ -94,14 +94,14 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 	)
 
 	mockProm.SetResponseForWrites(0, 5000000, 5000000, []int{1, 0}, []int{100, 20})
-	test(t, client, tableManager, "Large queues small errors",
+	test(t, client, tableManager, "Large queues small throtttling",
 		startTime.Add(time.Minute*40),
 		append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, read, 250, read, write)...), // - scale up index table
 	)
 
 	mockProm.SetResponseForWrites(0, 0, 0, []int{0, 0}, []int{120, 40})
-	test(t, client, tableManager, "No queues no errors",
+	test(t, client, tableManager, "No queues no throttling",
 		startTime.Add(time.Minute*100),
 		append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, read, 150, read, 50)...), // - scale down both tables
@@ -115,7 +115,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 	)
 
 	mockProm.SetResponseForWrites(0, 0, 0, []int{0, 0}, []int{90, 10})
-	test(t, client, tableManager, "No queues no errors",
+	test(t, client, tableManager, "No queues no throttling",
 		startTime.Add(time.Minute*200),
 		append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, read, 112, read, 20)...), // - scale down both again
@@ -137,7 +137,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 			staticTable(1, read, write, read, write)...),
 	)
 
-	// No errors on last week's index table, still some on chunk table
+	// No throttling on last week's index table, still some on chunk table
 	mockProm.SetResponseForWrites(0, 0, 0, []int{0, 30, 30, 30}, []int{10, 2, 100, 20})
 	test(t, client, tableManager, "Next week plus a bit",
 		startTime.Add(tablePeriod).Add(time.Minute*10),
@@ -146,7 +146,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 			staticTable(1, read, write, read, write)...),
 	)
 
-	// No errors on last week's tables but some queueing
+	// No throttling on last week's tables but some queueing
 	mockProm.SetResponseForWrites(20000, 20000, 20000, []int{0, 0, 1, 1}, []int{0, 0, 100, 20})
 	test(t, client, tableManager, "Next week plus a bit",
 		startTime.Add(tablePeriod).Add(time.Minute*20),
@@ -156,7 +156,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 	)
 
 	mockProm.SetResponseForWrites(120000, 130000, 140000, []int{0, 0, 1, 0}, []int{0, 0, 100, 20})
-	test(t, client, tableManager, "next week, queues building, errors on index table",
+	test(t, client, tableManager, "next week, queues building, throttling on index table",
 		startTime.Add(tablePeriod).Add(time.Minute*30),
 		append(append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, inactiveRead, 12, inactiveRead, 20)...), // no scaling back
@@ -164,7 +164,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 	)
 
 	mockProm.SetResponseForWrites(140000, 130000, 120000, []int{0, 0, 1, 0}, []int{0, 0, 100, 20})
-	test(t, client, tableManager, "next week, queues shrinking, errors on index table",
+	test(t, client, tableManager, "next week, queues shrinking, throttling on index table",
 		startTime.Add(tablePeriod).Add(time.Minute*40),
 		append(append(baseTable("a", inactiveRead, inactiveWrite),
 			staticTable(0, inactiveRead, 5, inactiveRead, 5)...), // scale right back
@@ -286,7 +286,7 @@ type mockPrometheus struct {
 	rangeValues []model.Value
 }
 
-func (m *mockPrometheus) SetResponseForWrites(q0, q1, q2 model.SampleValue, errorRates ...[]int) {
+func (m *mockPrometheus) SetResponseForWrites(q0, q1, q2 model.SampleValue, throttleRates ...[]int) {
 	// Mock metrics from Prometheus
 	m.rangeValues = []model.Value{
 		// Queue lengths
@@ -298,10 +298,10 @@ func (m *mockPrometheus) SetResponseForWrites(q0, q1, q2 model.SampleValue, erro
 			}},
 		},
 	}
-	for _, rates := range errorRates {
-		errorMatrix := model.Matrix{}
+	for _, rates := range throttleRates {
+		throttleMatrix := model.Matrix{}
 		for i := 0; i < len(rates)/2; i++ {
-			errorMatrix = append(errorMatrix,
+			throttleMatrix = append(throttleMatrix,
 				&model.SampleStream{
 					Metric: model.Metric{"table": model.LabelValue(fmt.Sprintf("%s%d", tablePrefix, i))},
 					Values: []model.SamplePair{{Timestamp: 30000, Value: model.SampleValue(rates[i*2])}},
@@ -311,10 +311,10 @@ func (m *mockPrometheus) SetResponseForWrites(q0, q1, q2 model.SampleValue, erro
 					Values: []model.SamplePair{{Timestamp: 30000, Value: model.SampleValue(rates[i*2+1])}},
 				})
 		}
-		m.rangeValues = append(m.rangeValues, errorMatrix)
+		m.rangeValues = append(m.rangeValues, throttleMatrix)
 	}
 	// stub response for usage queries (not used in write tests)
-	for _, rates := range errorRates {
+	for _, rates := range throttleRates {
 		readUsageMatrix := model.Matrix{}
 		for i := 0; i < len(rates)/2; i++ {
 
@@ -331,7 +331,7 @@ func (m *mockPrometheus) SetResponseForWrites(q0, q1, q2 model.SampleValue, erro
 		m.rangeValues = append(m.rangeValues, readUsageMatrix)
 	}
 	// stub response for usage error queries (not used in write tests)
-	for _, rates := range errorRates {
+	for _, rates := range throttleRates {
 		readErrorMatrix := model.Matrix{}
 		for i := 0; i < len(rates)/2; i++ {
 

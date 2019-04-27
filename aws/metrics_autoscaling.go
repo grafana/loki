@@ -18,18 +18,18 @@ import (
 )
 
 const (
-	cachePromDataFor       = 30 * time.Second
-	queueObservationPeriod = 2 * time.Minute
-	targetScaledown        = 0.1 // consider scaling down if queue smaller than this times target
-	targetMax              = 10  // always scale up if queue bigger than this times target
-	errorFractionScaledown = 0.1
-	minUsageForScaledown   = 100 // only scale down if usage is > this DynamoDB units/sec
+	cachePromDataFor          = 30 * time.Second
+	queueObservationPeriod    = 2 * time.Minute
+	targetScaledown           = 0.1 // consider scaling down if queue smaller than this times target
+	targetMax                 = 10  // always scale up if queue bigger than this times target
+	throttleFractionScaledown = 0.1
+	minUsageForScaledown      = 100 // only scale down if usage is > this DynamoDB units/sec
 
 	// fetch Ingester queue length
 	// average the queue length over 2 minutes to avoid aliasing with the 1-minute flush period
 	defaultQueueLenQuery = `sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))`
-	// fetch write error rate per DynamoDB table
-	defaultErrorRateQuery = `sum(rate(cortex_dynamo_failures_total{error="ProvisionedThroughputExceededException",operation=~".*Write.*"}[1m])) by (table) > 0`
+	// fetch write throttle rate per DynamoDB table
+	defaultThrottleRateQuery = `sum(rate(cortex_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m])) by (table) > 0`
 	// fetch write capacity usage per DynamoDB table
 	// use the rate over 15 minutes so we take a broad average
 	defaultUsageQuery = `sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m])) by (table) > 0`
@@ -45,7 +45,7 @@ type MetricsAutoScalingConfig struct {
 	TargetQueueLen   int64   // Queue length above which we will scale up capacity
 	ScaleUpFactor    float64 // Scale up capacity by this multiple
 	QueueLengthQuery string  // Promql query to fetch ingester queue length
-	ErrorRateQuery   string  // Promql query to fetch error rates per table
+	ThrottleQuery    string  // Promql query to fetch throttle rate per table
 	UsageQuery       string  // Promql query to fetch write capacity usage per table
 	ReadUsageQuery   string  // Promql query to fetch read usage per table
 	ReadErrorQuery   string  // Promql query to fetch read errors per table
@@ -57,7 +57,7 @@ func (cfg *MetricsAutoScalingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.TargetQueueLen, "metrics.target-queue-length", 100000, "Queue length above which we will scale up capacity")
 	f.Float64Var(&cfg.ScaleUpFactor, "metrics.scale-up-factor", 1.3, "Scale up capacity by this multiple")
 	f.StringVar(&cfg.QueueLengthQuery, "metrics.queue-length-query", defaultQueueLenQuery, "query to fetch ingester queue length")
-	f.StringVar(&cfg.ErrorRateQuery, "metrics.error-rate-query", defaultErrorRateQuery, "query to fetch error rates per table")
+	f.StringVar(&cfg.ThrottleQuery, "metrics.write-throttle-query", defaultThrottleRateQuery, "query to fetch throttle rates per table")
 	f.StringVar(&cfg.UsageQuery, "metrics.usage-query", defaultUsageQuery, "query to fetch write capacity usage per table")
 	f.StringVar(&cfg.ReadUsageQuery, "metrics.read-usage-query", defaultReadUsageQuery, "query to fetch read capacity usage per table")
 	f.StringVar(&cfg.ReadErrorQuery, "metrics.read-error-query", defaultReadErrorQuery, "query to fetch read errors per table")
@@ -70,7 +70,7 @@ type metricsData struct {
 	tableLastUpdated     map[string]time.Time
 	tableReadLastUpdated map[string]time.Time
 	queueLengths         []float64
-	errorRates           map[string]float64
+	throttleRates        map[string]float64
 	usageRates           map[string]float64
 	usageReadRates       map[string]float64
 	readErrorRates       map[string]float64
@@ -107,15 +107,15 @@ func (m *metricsData) UpdateTable(ctx context.Context, current chunk.TableDesc, 
 		// default if no action is taken is to use the currently provisioned setting
 		expected.ProvisionedWrite = current.ProvisionedWrite
 
-		errorRate := m.errorRates[expected.Name]
+		throttleRate := m.throttleRates[expected.Name]
 		usageRate := m.usageRates[expected.Name]
 
-		level.Info(util.Logger).Log("msg", "checking write metrics", "table", current.Name, "queueLengths", fmt.Sprint(m.queueLengths), "errorRate", errorRate, "usageRate", usageRate)
+		level.Info(util.Logger).Log("msg", "checking write metrics", "table", current.Name, "queueLengths", fmt.Sprint(m.queueLengths), "throttleRate", throttleRate, "usageRate", usageRate)
 
 		switch {
-		case errorRate < errorFractionScaledown*float64(current.ProvisionedWrite) &&
+		case throttleRate < throttleFractionScaledown*float64(current.ProvisionedWrite) &&
 			m.queueLengths[2] < float64(m.cfg.TargetQueueLen)*targetScaledown:
-			// No big queue, low errors -> scale down
+			// No big queue, low throttling -> scale down
 			expected.ProvisionedWrite = scaleDown(current.Name,
 				current.ProvisionedWrite,
 				expected.WriteScale.MinCapacity,
@@ -125,7 +125,7 @@ func (m *metricsData) UpdateTable(ctx context.Context, current chunk.TableDesc, 
 				"metrics scale-down",
 				"write",
 				m.usageRates)
-		case errorRate == 0 &&
+		case throttleRate == 0 &&
 			m.queueLengths[2] < m.queueLengths[1] && m.queueLengths[1] < m.queueLengths[0]:
 			// zero errors and falling queue -> scale down to current usage
 			expected.ProvisionedWrite = scaleDown(current.Name,
@@ -137,8 +137,8 @@ func (m *metricsData) UpdateTable(ctx context.Context, current chunk.TableDesc, 
 				"zero errors scale-down",
 				"write",
 				m.usageRates)
-		case errorRate > 0 && m.queueLengths[2] > float64(m.cfg.TargetQueueLen)*targetMax:
-			// Too big queue, some errors -> scale up
+		case throttleRate > 0 && m.queueLengths[2] > float64(m.cfg.TargetQueueLen)*targetMax:
+			// Too big queue, some throttling -> scale up
 			expected.ProvisionedWrite = scaleUp(current.Name,
 				current.ProvisionedWrite,
 				expected.WriteScale.MaxCapacity,
@@ -147,10 +147,10 @@ func (m *metricsData) UpdateTable(ctx context.Context, current chunk.TableDesc, 
 				expected.WriteScale.OutCooldown,
 				"metrics max queue scale-up",
 				"write")
-		case errorRate > 0 &&
+		case throttleRate > 0 &&
 			m.queueLengths[2] > float64(m.cfg.TargetQueueLen) &&
 			m.queueLengths[2] > m.queueLengths[1] && m.queueLengths[1] > m.queueLengths[0]:
-			// Growing queue, some errors -> scale up
+			// Growing queue, some throttling -> scale up
 			expected.ProvisionedWrite = scaleUp(current.Name,
 				current.ProvisionedWrite,
 				expected.WriteScale.MaxCapacity,
@@ -298,11 +298,11 @@ func (m *metricsData) update(ctx context.Context) error {
 		m.queueLengths[i] = float64(v.Value)
 	}
 
-	deMatrix, err := promQuery(ctx, m.promAPI, m.cfg.ErrorRateQuery, 0, time.Second)
+	deMatrix, err := promQuery(ctx, m.promAPI, m.cfg.ThrottleQuery, 0, time.Second)
 	if err != nil {
 		return err
 	}
-	if m.errorRates, err = extractRates(deMatrix); err != nil {
+	if m.throttleRates, err = extractRates(deMatrix); err != nil {
 		return err
 	}
 
