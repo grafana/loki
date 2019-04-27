@@ -62,6 +62,11 @@ var (
 		Name:      "dynamo_consumed_capacity_total",
 		Help:      "The capacity units consumed by operation.",
 	}, []string{"operation", tableNameLabel})
+	dynamoThrottled = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "dynamo_throttled_total",
+		Help:      "The total number of throttled events.",
+	}, []string{"operation", tableNameLabel})
 	dynamoFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "dynamo_failures_total",
@@ -85,6 +90,7 @@ var (
 func init() {
 	dynamoRequestDuration.Register()
 	prometheus.MustRegister(dynamoConsumedCapacity)
+	prometheus.MustRegister(dynamoThrottled)
 	prometheus.MustRegister(dynamoFailures)
 	prometheus.MustRegister(dynamoQueryPagesCount)
 	prometheus.MustRegister(dynamoDroppedRequests)
@@ -184,9 +190,10 @@ func (a dynamoDBStorageClient) NewWriteBatch() chunk.WriteBatch {
 	return dynamoDBWriteBatch(map[string][]*dynamodb.WriteRequest{})
 }
 
-func logRetry(ctx context.Context, unprocessed dynamoDBWriteBatch) {
+func logWriteRetry(ctx context.Context, unprocessed dynamoDBWriteBatch) {
 	userID, _ := user.ExtractOrgID(ctx)
 	for table, reqs := range unprocessed {
+		dynamoThrottled.WithLabelValues("DynamoDB.BatchWriteItem", table).Add(float64(len(reqs)))
 		for _, req := range reqs {
 			item := req.PutRequest.Item
 			var hash, rnge string
@@ -240,7 +247,7 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 			// If we get provisionedThroughputExceededException, then no items were processed,
 			// so back off and retry all.
 			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
-				logRetry(ctx, requests)
+				logWriteRetry(ctx, requests)
 				unprocessed.TakeReqs(requests, -1)
 				a.writeThrottle.WaitN(ctx, len(requests))
 				backoff.Wait()
@@ -264,7 +271,7 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 
 		// If there are unprocessed items, retry those items.
 		if unprocessedItems := resp.UnprocessedItems; unprocessedItems != nil && dynamoDBWriteBatch(unprocessedItems).Len() > 0 {
-			logRetry(ctx, dynamoDBWriteBatch(unprocessedItems))
+			logWriteRetry(ctx, dynamoDBWriteBatch(unprocessedItems))
 			a.writeThrottle.WaitN(ctx, len(unprocessedItems))
 			unprocessed.TakeReqs(unprocessedItems, -1)
 		}
