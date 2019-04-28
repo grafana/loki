@@ -77,7 +77,7 @@ kubectl exec -it promtail-bth9q -- /bin/ash
 
 Once connected, verify the config in `/etc/promtail/promtail.yml` is what you expected
 
-Also check `/var/log/positions.yaml` and make sure promtail is tailing the logs you would expect
+Also check `/var/run/promtail/positions.yaml` and make sure promtail is tailing the logs you would expect
 
 You can check the promtail log by looking in `/var/log/containers` at the promtail container log
 
