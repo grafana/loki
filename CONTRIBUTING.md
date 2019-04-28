@@ -22,4 +22,4 @@ Notice: `go get` return `package github.com/grafana/loki: no Go files in /go/src
 
 ## Contribute to helm
 
-Pleace follow [doc](./production/helm/README.md).
+Please follow [doc](./production/helm/README.md).
