@@ -3,8 +3,6 @@ package validation
 import (
 	"flag"
 	"time"
-
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -28,8 +26,10 @@ type Limits struct {
 	MaxSeriesPerMetric int `yaml:"max_series_per_metric"`
 
 	// Querier enforced limits.
-	MaxChunksPerQuery int           `yaml:"max_chunks_per_query"`
-	MaxQueryLength    time.Duration `yaml:"max_query_length"`
+	MaxChunksPerQuery   int           `yaml:"max_chunks_per_query"`
+	MaxQueryLength      time.Duration `yaml:"max_query_length"`
+	MaxQueryParallelism int           `yaml:"max_query_parallelism"`
+	CardinalityLimit    int           `yaml:"cardinality_limit"`
 
 	// Config for overrides, convenient if it goes here.
 	PerTenantOverrideConfig string
@@ -55,6 +55,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 	f.DurationVar(&l.MaxQueryLength, "store.max-query-length", 0, "Limit to length of chunk store queries, 0 to disable.")
+	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of queries will be scheduled in parallel by the frontend.")
+	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides.")
 	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with this to reload the overrides.")
@@ -65,7 +67,7 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// We want to set c to the defaults and then overwrite it with the input.
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
 	// again, we have to hide it using a type indirection.  See prometheus/config.
-	flagext.DefaultValues(l)
+	*l = defaultLimits
 	type plain Limits
 	return unmarshal((*plain)(l))
 }

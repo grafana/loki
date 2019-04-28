@@ -23,7 +23,9 @@ import (
 )
 
 var (
-	errCardinalityExceeded = errors.New("cardinality limit exceeded")
+	// ErrCardinalityExceeded is returned when the user reads a row that
+	// is too large.
+	ErrCardinalityExceeded = errors.New("cardinality limit exceeded")
 
 	indexLookupsPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
@@ -57,8 +59,6 @@ var (
 // seriesStore implements Store
 type seriesStore struct {
 	store
-	cardinalityCache *cache.FifoCache
-
 	writeDedupeCache cache.Cache
 }
 
@@ -89,10 +89,6 @@ func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Ob
 			limits:  limits,
 			Fetcher: fetcher,
 		},
-		cardinalityCache: cache.NewFifoCache("cardinality", cache.FifoCacheConfig{
-			Size:     cfg.CardinalityCacheSize,
-			Validity: cfg.CardinalityCacheValidity,
-		}),
 		writeDedupeCache: writeDedupeCache,
 	}, nil
 }
@@ -108,38 +104,17 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 		return nil, err
 	}
 
-	// Validate the query is within reasonable bounds.
-	metricName, matchers, shortcut, err := c.validateQuery(ctx, from, &through, allMatchers)
+	chks, _, err := c.GetChunkRefs(ctx, from, through, allMatchers...)
 	if err != nil {
 		return nil, err
-	} else if shortcut {
+	}
+
+	if len(chks) == 0 {
+		// Shortcut
 		return nil, nil
 	}
 
-	level.Debug(log).Log("metric", metricName)
-
-	// Fetch the series IDs from the index, based on non-empty matchers from
-	// the query.
-	_, matchers = util.SplitFiltersAndMatchers(matchers)
-	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, metricName, matchers)
-	if err != nil {
-		return nil, err
-	}
-	level.Debug(log).Log("series-ids", len(seriesIDs))
-
-	// Lookup the series in the index to get the chunks.
-	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, seriesIDs)
-	if err != nil {
-		level.Error(log).Log("msg", "lookupChunksBySeries", "err", err)
-		return nil, err
-	}
-	level.Debug(log).Log("chunk-ids", len(chunkIDs))
-
-	chunks, err := c.convertChunkIDsToChunks(ctx, chunkIDs)
-	if err != nil {
-		level.Error(log).Log("err", "convertChunkIDsToChunks", "err", err)
-		return nil, err
-	}
+	chunks := chks[0]
 	// Filter out chunks that are not in the selected time range.
 	filtered, keys := filterChunksByTime(from, through, chunks)
 	level.Debug(log).Log("chunks-post-filtering", len(chunks))
@@ -147,8 +122,8 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 
 	// Protect ourselves against OOMing.
 	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
-	if maxChunksPerQuery > 0 && len(chunkIDs) > maxChunksPerQuery {
-		err := httpgrpc.Errorf(http.StatusBadRequest, "Query %v fetched too many chunks (%d > %d)", allMatchers, len(chunkIDs), maxChunksPerQuery)
+	if maxChunksPerQuery > 0 && len(chunks) > maxChunksPerQuery {
+		err := httpgrpc.Errorf(http.StatusBadRequest, "Query %v fetched too many chunks (%d > %d)", allMatchers, len(chunks), maxChunksPerQuery)
 		level.Error(log).Log("err", err)
 		return nil, err
 	}
@@ -163,6 +138,46 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	// Filter out chunks based on the empty matchers in the query.
 	filteredChunks := filterChunksByMatchers(allChunks, allMatchers)
 	return filteredChunks, nil
+}
+
+func (c *seriesStore) GetChunkRefs(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
+	log, ctx := spanlogger.New(ctx, "SeriesStore.GetChunkRefs")
+	defer log.Span.Finish()
+
+	// Validate the query is within reasonable bounds.
+	metricName, matchers, shortcut, err := c.validateQuery(ctx, from, &through, allMatchers)
+	if err != nil {
+		return nil, nil, err
+	} else if shortcut {
+		return nil, nil, nil
+	}
+
+	level.Debug(log).Log("metric", metricName)
+
+	// Fetch the series IDs from the index, based on non-empty matchers from
+	// the query.
+	_, matchers = util.SplitFiltersAndMatchers(matchers)
+	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, metricName, matchers)
+	if err != nil {
+		return nil, nil, err
+	}
+	level.Debug(log).Log("series-ids", len(seriesIDs))
+
+	// Lookup the series in the index to get the chunks.
+	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, seriesIDs)
+	if err != nil {
+		level.Error(log).Log("msg", "lookupChunksBySeries", "err", err)
+		return nil, nil, err
+	}
+	level.Debug(log).Log("chunk-ids", len(chunkIDs))
+
+	chunks, err := c.convertChunkIDsToChunks(ctx, chunkIDs)
+	if err != nil {
+		level.Error(log).Log("op", "convertChunkIDsToChunks", "err", err)
+		return nil, nil, err
+	}
+
+	return [][]Chunk{chunks}, []*Fetcher{c.store.Fetcher}, nil
 }
 
 func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from, through model.Time, metricName string, matchers []*labels.Matcher) ([]string, error) {
@@ -210,15 +225,21 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 				ids = intersectStrings(ids, incoming)
 			}
 		case err := <-incomingErrors:
-			if err == errCardinalityExceeded {
+			// The idea is that if we have 2 matchers, and if one returns a lot of
+			// series and the other returns only 10 (a few), we don't lookup the first one at all.
+			// We just manually filter through the 10 series again using "filterChunksByMatchers",
+			// saving us from looking up and intersecting a lot of series.
+			if err == ErrCardinalityExceeded {
 				cardinalityExceededErrors++
 			} else {
 				lastErr = err
 			}
 		}
 	}
+
+	// But if every single matcher returns a lot of series, then it makes sense to abort the query.
 	if cardinalityExceededErrors == len(matchers) {
-		return nil, errCardinalityExceeded
+		return nil, ErrCardinalityExceeded
 	} else if lastErr != nil {
 		return nil, lastErr
 	}
@@ -251,35 +272,11 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	}
 	level.Debug(log).Log("queries", len(queries))
 
-	for _, query := range queries {
-		value, ok := c.cardinalityCache.Get(ctx, query.HashValue)
-		if !ok {
-			continue
-		}
-		cardinality := value.(int)
-		if cardinality > c.cfg.CardinalityLimit {
-			return nil, errCardinalityExceeded
-		}
-	}
-
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
 	if err != nil {
 		return nil, err
 	}
 	level.Debug(log).Log("entries", len(entries))
-
-	// TODO This is not correct, will overcount for queries > 24hrs
-	keys := make([]string, 0, len(queries))
-	values := make([]interface{}, 0, len(queries))
-	for _, query := range queries {
-		keys = append(keys, query.HashValue)
-		values = append(values, len(entries))
-	}
-	c.cardinalityCache.Put(ctx, keys, values)
-
-	if len(entries) > c.cfg.CardinalityLimit {
-		return nil, errCardinalityExceeded
-	}
 
 	ids, err := c.parseIndexEntries(ctx, entries, matcher)
 	if err != nil {

@@ -3,18 +3,17 @@
 
 package ring
 
-import proto "github.com/gogo/protobuf/proto"
-import fmt "fmt"
-import math "math"
-import _ "github.com/gogo/protobuf/gogoproto"
-
-import strconv "strconv"
-
-import strings "strings"
-import reflect "reflect"
-import github_com_gogo_protobuf_sortkeys "github.com/gogo/protobuf/sortkeys"
-
-import io "io"
+import (
+	fmt "fmt"
+	_ "github.com/gogo/protobuf/gogoproto"
+	proto "github.com/gogo/protobuf/proto"
+	github_com_gogo_protobuf_sortkeys "github.com/gogo/protobuf/sortkeys"
+	io "io"
+	math "math"
+	reflect "reflect"
+	strconv "strconv"
+	strings "strings"
+)
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
@@ -42,6 +41,7 @@ var IngesterState_name = map[int32]string{
 	2: "PENDING",
 	3: "JOINING",
 }
+
 var IngesterState_value = map[string]int32{
 	"ACTIVE":  0,
 	"LEAVING": 1,
@@ -50,18 +50,18 @@ var IngesterState_value = map[string]int32{
 }
 
 func (IngesterState) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_ring_35bba6cb303d16e3, []int{0}
+	return fileDescriptor_7ebe6ffe1686e76b, []int{0}
 }
 
 type Desc struct {
-	Ingesters map[string]IngesterDesc `protobuf:"bytes,1,rep,name=ingesters" json:"ingesters" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value"`
-	Tokens    []TokenDesc             `protobuf:"bytes,2,rep,name=tokens" json:"tokens"`
+	Ingesters map[string]IngesterDesc `protobuf:"bytes,1,rep,name=ingesters,proto3" json:"ingesters" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
+	Tokens    []TokenDesc             `protobuf:"bytes,2,rep,name=tokens,proto3" json:"tokens"`
 }
 
 func (m *Desc) Reset()      { *m = Desc{} }
 func (*Desc) ProtoMessage() {}
 func (*Desc) Descriptor() ([]byte, []int) {
-	return fileDescriptor_ring_35bba6cb303d16e3, []int{0}
+	return fileDescriptor_7ebe6ffe1686e76b, []int{0}
 }
 func (m *Desc) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -78,8 +78,8 @@ func (m *Desc) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (dst *Desc) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Desc.Merge(dst, src)
+func (m *Desc) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Desc.Merge(m, src)
 }
 func (m *Desc) XXX_Size() int {
 	return m.Size()
@@ -108,13 +108,13 @@ type IngesterDesc struct {
 	Addr      string        `protobuf:"bytes,1,opt,name=addr,proto3" json:"addr,omitempty"`
 	Timestamp int64         `protobuf:"varint,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	State     IngesterState `protobuf:"varint,3,opt,name=state,proto3,enum=ring.IngesterState" json:"state,omitempty"`
-	Tokens    []uint32      `protobuf:"varint,6,rep,packed,name=tokens" json:"tokens,omitempty"`
+	Tokens    []uint32      `protobuf:"varint,6,rep,packed,name=tokens,proto3" json:"tokens,omitempty"`
 }
 
 func (m *IngesterDesc) Reset()      { *m = IngesterDesc{} }
 func (*IngesterDesc) ProtoMessage() {}
 func (*IngesterDesc) Descriptor() ([]byte, []int) {
-	return fileDescriptor_ring_35bba6cb303d16e3, []int{1}
+	return fileDescriptor_7ebe6ffe1686e76b, []int{1}
 }
 func (m *IngesterDesc) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -131,8 +131,8 @@ func (m *IngesterDesc) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return b[:n], nil
 	}
 }
-func (dst *IngesterDesc) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_IngesterDesc.Merge(dst, src)
+func (m *IngesterDesc) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_IngesterDesc.Merge(m, src)
 }
 func (m *IngesterDesc) XXX_Size() int {
 	return m.Size()
@@ -179,7 +179,7 @@ type TokenDesc struct {
 func (m *TokenDesc) Reset()      { *m = TokenDesc{} }
 func (*TokenDesc) ProtoMessage() {}
 func (*TokenDesc) Descriptor() ([]byte, []int) {
-	return fileDescriptor_ring_35bba6cb303d16e3, []int{2}
+	return fileDescriptor_7ebe6ffe1686e76b, []int{2}
 }
 func (m *TokenDesc) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -196,8 +196,8 @@ func (m *TokenDesc) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (dst *TokenDesc) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_TokenDesc.Merge(dst, src)
+func (m *TokenDesc) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_TokenDesc.Merge(m, src)
 }
 func (m *TokenDesc) XXX_Size() int {
 	return m.Size()
@@ -223,12 +223,49 @@ func (m *TokenDesc) GetIngester() string {
 }
 
 func init() {
+	proto.RegisterEnum("ring.IngesterState", IngesterState_name, IngesterState_value)
 	proto.RegisterType((*Desc)(nil), "ring.Desc")
 	proto.RegisterMapType((map[string]IngesterDesc)(nil), "ring.Desc.IngestersEntry")
 	proto.RegisterType((*IngesterDesc)(nil), "ring.IngesterDesc")
 	proto.RegisterType((*TokenDesc)(nil), "ring.TokenDesc")
-	proto.RegisterEnum("ring.IngesterState", IngesterState_name, IngesterState_value)
 }
+
+func init() {
+	proto.RegisterFile("github.com/cortexproject/cortex/pkg/ring/ring.proto", fileDescriptor_7ebe6ffe1686e76b)
+}
+
+var fileDescriptor_7ebe6ffe1686e76b = []byte{
+	// 440 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x54, 0x92, 0xcf, 0x6e, 0xd3, 0x40,
+	0x10, 0xc6, 0x77, 0xe2, 0x3f, 0xc4, 0x13, 0x52, 0xac, 0x05, 0x21, 0x13, 0xa1, 0xc5, 0xca, 0xc9,
+	0x20, 0x35, 0x91, 0x52, 0x0e, 0x08, 0xa9, 0x87, 0x86, 0x46, 0x28, 0x11, 0x0a, 0x95, 0xa9, 0x7a,
+	0x4f, 0xd2, 0xc5, 0x84, 0x90, 0xac, 0x65, 0x6f, 0x10, 0xbd, 0xf1, 0x06, 0xf0, 0x18, 0x3c, 0x09,
+	0xea, 0x31, 0xc7, 0x9e, 0x10, 0x71, 0x2e, 0x1c, 0xfb, 0x08, 0x68, 0xd7, 0x76, 0x9a, 0x5c, 0xac,
+	0xf9, 0xed, 0x37, 0xdf, 0xb7, 0x33, 0xd6, 0xe2, 0x51, 0x34, 0x95, 0x9f, 0x96, 0xe3, 0xd6, 0x44,
+	0xcc, 0xdb, 0x13, 0x91, 0x48, 0xfe, 0x2d, 0x4e, 0xc4, 0x67, 0x3e, 0x91, 0x05, 0xb5, 0xe3, 0x59,
+	0xd4, 0x4e, 0xa6, 0x8b, 0xfc, 0xd3, 0x8a, 0x13, 0x21, 0x05, 0x35, 0x55, 0xdd, 0x38, 0xdc, 0xb1,
+	0x46, 0x22, 0x12, 0x6d, 0x2d, 0x8e, 0x97, 0x1f, 0x35, 0x69, 0xd0, 0x55, 0x6e, 0x6a, 0xfe, 0x06,
+	0x34, 0x4f, 0x79, 0x3a, 0xa1, 0xc7, 0xe8, 0x4c, 0x17, 0x11, 0x4f, 0x25, 0x4f, 0x52, 0x0f, 0x7c,
+	0x23, 0xa8, 0x75, 0x9e, 0xb4, 0x74, 0xba, 0x92, 0x5b, 0xfd, 0x52, 0xeb, 0x2d, 0x64, 0x72, 0xd5,
+	0x35, 0xaf, 0xff, 0x3c, 0x23, 0xe1, 0x9d, 0x83, 0x1e, 0xa2, 0x2d, 0xc5, 0x8c, 0x2f, 0x52, 0xaf,
+	0xa2, 0xbd, 0x0f, 0x72, 0xef, 0xb9, 0x3a, 0x53, 0x01, 0x85, 0xa3, 0x68, 0x6a, 0x9c, 0xe1, 0xc1,
+	0x7e, 0x22, 0x75, 0xd1, 0x98, 0xf1, 0x2b, 0x0f, 0x7c, 0x08, 0x9c, 0x50, 0x95, 0x34, 0x40, 0xeb,
+	0xeb, 0xe8, 0xcb, 0x92, 0x7b, 0x15, 0x1f, 0x82, 0x5a, 0x87, 0xe6, 0x89, 0xa5, 0x4d, 0x85, 0x86,
+	0x79, 0xc3, 0xeb, 0xca, 0x2b, 0x68, 0xfe, 0x00, 0xbc, 0xbf, 0xab, 0x51, 0x8a, 0xe6, 0xe8, 0xf2,
+	0x32, 0x29, 0x12, 0x75, 0x4d, 0x9f, 0xa2, 0x23, 0xa7, 0x73, 0x9e, 0xca, 0xd1, 0x3c, 0xd6, 0xb1,
+	0x46, 0x78, 0x77, 0x40, 0x9f, 0xa3, 0x95, 0xca, 0x91, 0xe4, 0x9e, 0xe1, 0x43, 0x70, 0xd0, 0x79,
+	0xb8, 0x7f, 0xe1, 0x07, 0x25, 0x85, 0x79, 0x07, 0x7d, 0xbc, 0x5d, 0xd7, 0xf6, 0x8d, 0xa0, 0x5e,
+	0xee, 0x35, 0x30, 0xab, 0xa6, 0x6b, 0x0d, 0xcc, 0xaa, 0xe5, 0xda, 0xcd, 0x63, 0x74, 0xb6, 0xeb,
+	0xd3, 0x47, 0x68, 0xe9, 0x16, 0x3d, 0x4e, 0x3d, 0xcc, 0x81, 0x36, 0xb0, 0x5a, 0xfe, 0x42, 0x3d,
+	0x8e, 0x13, 0x6e, 0xf9, 0x45, 0x17, 0xeb, 0x7b, 0x57, 0x53, 0x44, 0xfb, 0xe4, 0xcd, 0x79, 0xff,
+	0xa2, 0xe7, 0x12, 0x5a, 0xc3, 0x7b, 0xef, 0x7a, 0x27, 0x17, 0xfd, 0xe1, 0x5b, 0x17, 0x14, 0x9c,
+	0xf5, 0x86, 0xa7, 0x0a, 0x2a, 0x0a, 0x06, 0xef, 0xfb, 0x43, 0x05, 0x46, 0xf7, 0xe5, 0x6a, 0xcd,
+	0xc8, 0xcd, 0x9a, 0x91, 0xdb, 0x35, 0x83, 0xef, 0x19, 0x83, 0x5f, 0x19, 0x83, 0xeb, 0x8c, 0xc1,
+	0x2a, 0x63, 0xf0, 0x37, 0x63, 0xf0, 0x2f, 0x63, 0xe4, 0x36, 0x63, 0xf0, 0x73, 0xc3, 0xc8, 0x6a,
+	0xc3, 0xc8, 0xcd, 0x86, 0x91, 0xb1, 0xad, 0x9f, 0xc6, 0xd1, 0xff, 0x00, 0x00, 0x00, 0xff, 0xff,
+	0xab, 0x96, 0x85, 0x85, 0x86, 0x02, 0x00, 0x00,
+}
+
 func (x IngesterState) String() string {
 	s, ok := IngesterState_name[int32(x)]
 	if ok {
@@ -435,9 +472,9 @@ func (m *Desc) MarshalTo(dAtA []byte) (int, error) {
 			dAtA[i] = 0x12
 			i++
 			i = encodeVarintRing(dAtA, i, uint64((&v).Size()))
-			n1, err := (&v).MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+			n1, err1 := (&v).MarshalTo(dAtA[i:])
+			if err1 != nil {
+				return 0, err1
 			}
 			i += n1
 		}
@@ -629,6 +666,11 @@ func (this *Desc) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForTokens := "[]TokenDesc{"
+	for _, f := range this.Tokens {
+		repeatedStringForTokens += strings.Replace(strings.Replace(f.String(), "TokenDesc", "TokenDesc", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForTokens += "}"
 	keysForIngesters := make([]string, 0, len(this.Ingesters))
 	for k, _ := range this.Ingesters {
 		keysForIngesters = append(keysForIngesters, k)
@@ -641,7 +683,7 @@ func (this *Desc) String() string {
 	mapStringForIngesters += "}"
 	s := strings.Join([]string{`&Desc{`,
 		`Ingesters:` + mapStringForIngesters + `,`,
-		`Tokens:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Tokens), "TokenDesc", "TokenDesc", 1), `&`, ``, 1) + `,`,
+		`Tokens:` + repeatedStringForTokens + `,`,
 		`}`,
 	}, "")
 	return s
@@ -693,7 +735,7 @@ func (m *Desc) Unmarshal(dAtA []byte) error {
 			}
 			b := dAtA[iNdEx]
 			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
+			wire |= uint64(b&0x7F) << shift
 			if b < 0x80 {
 				break
 			}
@@ -721,7 +763,7 @@ func (m *Desc) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -730,6 +772,9 @@ func (m *Desc) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthRing
 			}
 			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthRing
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -750,7 +795,7 @@ func (m *Desc) Unmarshal(dAtA []byte) error {
 					}
 					b := dAtA[iNdEx]
 					iNdEx++
-					wire |= (uint64(b) & 0x7F) << shift
+					wire |= uint64(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
@@ -767,7 +812,7 @@ func (m *Desc) Unmarshal(dAtA []byte) error {
 						}
 						b := dAtA[iNdEx]
 						iNdEx++
-						stringLenmapkey |= (uint64(b) & 0x7F) << shift
+						stringLenmapkey |= uint64(b&0x7F) << shift
 						if b < 0x80 {
 							break
 						}
@@ -777,6 +822,9 @@ func (m *Desc) Unmarshal(dAtA []byte) error {
 						return ErrInvalidLengthRing
 					}
 					postStringIndexmapkey := iNdEx + intStringLenmapkey
+					if postStringIndexmapkey < 0 {
+						return ErrInvalidLengthRing
+					}
 					if postStringIndexmapkey > l {
 						return io.ErrUnexpectedEOF
 					}
@@ -793,7 +841,7 @@ func (m *Desc) Unmarshal(dAtA []byte) error {
 						}
 						b := dAtA[iNdEx]
 						iNdEx++
-						mapmsglen |= (int(b) & 0x7F) << shift
+						mapmsglen |= int(b&0x7F) << shift
 						if b < 0x80 {
 							break
 						}
@@ -802,7 +850,7 @@ func (m *Desc) Unmarshal(dAtA []byte) error {
 						return ErrInvalidLengthRing
 					}
 					postmsgIndex := iNdEx + mapmsglen
-					if mapmsglen < 0 {
+					if postmsgIndex < 0 {
 						return ErrInvalidLengthRing
 					}
 					if postmsgIndex > l {
@@ -844,7 +892,7 @@ func (m *Desc) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -853,6 +901,9 @@ func (m *Desc) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthRing
 			}
 			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthRing
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -868,6 +919,9 @@ func (m *Desc) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			if skippy < 0 {
+				return ErrInvalidLengthRing
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthRing
 			}
 			if (iNdEx + skippy) > l {
@@ -897,7 +951,7 @@ func (m *IngesterDesc) Unmarshal(dAtA []byte) error {
 			}
 			b := dAtA[iNdEx]
 			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
+			wire |= uint64(b&0x7F) << shift
 			if b < 0x80 {
 				break
 			}
@@ -925,7 +979,7 @@ func (m *IngesterDesc) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
+				stringLen |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -935,6 +989,9 @@ func (m *IngesterDesc) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthRing
 			}
 			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthRing
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -954,7 +1011,7 @@ func (m *IngesterDesc) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Timestamp |= (int64(b) & 0x7F) << shift
+				m.Timestamp |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -973,7 +1030,7 @@ func (m *IngesterDesc) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.State |= (IngesterState(b) & 0x7F) << shift
+				m.State |= IngesterState(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -990,7 +1047,7 @@ func (m *IngesterDesc) Unmarshal(dAtA []byte) error {
 					}
 					b := dAtA[iNdEx]
 					iNdEx++
-					v |= (uint32(b) & 0x7F) << shift
+					v |= uint32(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
@@ -1007,7 +1064,7 @@ func (m *IngesterDesc) Unmarshal(dAtA []byte) error {
 					}
 					b := dAtA[iNdEx]
 					iNdEx++
-					packedLen |= (int(b) & 0x7F) << shift
+					packedLen |= int(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
@@ -1016,12 +1073,15 @@ func (m *IngesterDesc) Unmarshal(dAtA []byte) error {
 					return ErrInvalidLengthRing
 				}
 				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return ErrInvalidLengthRing
+				}
 				if postIndex > l {
 					return io.ErrUnexpectedEOF
 				}
 				var elementCount int
 				var count int
-				for _, integer := range dAtA {
+				for _, integer := range dAtA[iNdEx:postIndex] {
 					if integer < 128 {
 						count++
 					}
@@ -1041,7 +1101,7 @@ func (m *IngesterDesc) Unmarshal(dAtA []byte) error {
 						}
 						b := dAtA[iNdEx]
 						iNdEx++
-						v |= (uint32(b) & 0x7F) << shift
+						v |= uint32(b&0x7F) << shift
 						if b < 0x80 {
 							break
 						}
@@ -1058,6 +1118,9 @@ func (m *IngesterDesc) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			if skippy < 0 {
+				return ErrInvalidLengthRing
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthRing
 			}
 			if (iNdEx + skippy) > l {
@@ -1087,7 +1150,7 @@ func (m *TokenDesc) Unmarshal(dAtA []byte) error {
 			}
 			b := dAtA[iNdEx]
 			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
+			wire |= uint64(b&0x7F) << shift
 			if b < 0x80 {
 				break
 			}
@@ -1115,7 +1178,7 @@ func (m *TokenDesc) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Token |= (uint32(b) & 0x7F) << shift
+				m.Token |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -1134,7 +1197,7 @@ func (m *TokenDesc) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
+				stringLen |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -1144,6 +1207,9 @@ func (m *TokenDesc) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthRing
 			}
 			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthRing
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -1156,6 +1222,9 @@ func (m *TokenDesc) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			if skippy < 0 {
+				return ErrInvalidLengthRing
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthRing
 			}
 			if (iNdEx + skippy) > l {
@@ -1224,8 +1293,11 @@ func skipRing(dAtA []byte) (n int, err error) {
 					break
 				}
 			}
-			iNdEx += length
 			if length < 0 {
+				return 0, ErrInvalidLengthRing
+			}
+			iNdEx += length
+			if iNdEx < 0 {
 				return 0, ErrInvalidLengthRing
 			}
 			return iNdEx, nil
@@ -1256,6 +1328,9 @@ func skipRing(dAtA []byte) (n int, err error) {
 					return 0, err
 				}
 				iNdEx = start + next
+				if iNdEx < 0 {
+					return 0, ErrInvalidLengthRing
+				}
 			}
 			return iNdEx, nil
 		case 4:
@@ -1274,39 +1349,3 @@ var (
 	ErrInvalidLengthRing = fmt.Errorf("proto: negative length found during unmarshaling")
 	ErrIntOverflowRing   = fmt.Errorf("proto: integer overflow")
 )
-
-func init() {
-	proto.RegisterFile("github.com/cortexproject/cortex/pkg/ring/ring.proto", fileDescriptor_ring_35bba6cb303d16e3)
-}
-
-var fileDescriptor_ring_35bba6cb303d16e3 = []byte{
-	// 440 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x54, 0x92, 0xcf, 0x6e, 0xd3, 0x40,
-	0x10, 0xc6, 0x77, 0xe2, 0x3f, 0xc4, 0x13, 0x52, 0xac, 0x05, 0x21, 0x13, 0xa1, 0xc5, 0xca, 0xc9,
-	0x20, 0x35, 0x91, 0x52, 0x0e, 0x08, 0xa9, 0x87, 0x86, 0x46, 0x28, 0x11, 0x0a, 0x95, 0xa9, 0x7a,
-	0x4f, 0xd2, 0xc5, 0x84, 0x90, 0xac, 0x65, 0x6f, 0x10, 0xbd, 0xf1, 0x06, 0xf0, 0x18, 0x3c, 0x09,
-	0xea, 0x31, 0xc7, 0x9e, 0x10, 0x71, 0x2e, 0x1c, 0xfb, 0x08, 0x68, 0xd7, 0x76, 0x9a, 0x5c, 0xac,
-	0xf9, 0xed, 0x37, 0xdf, 0xb7, 0x33, 0xd6, 0xe2, 0x51, 0x34, 0x95, 0x9f, 0x96, 0xe3, 0xd6, 0x44,
-	0xcc, 0xdb, 0x13, 0x91, 0x48, 0xfe, 0x2d, 0x4e, 0xc4, 0x67, 0x3e, 0x91, 0x05, 0xb5, 0xe3, 0x59,
-	0xd4, 0x4e, 0xa6, 0x8b, 0xfc, 0xd3, 0x8a, 0x13, 0x21, 0x05, 0x35, 0x55, 0xdd, 0x38, 0xdc, 0xb1,
-	0x46, 0x22, 0x12, 0x6d, 0x2d, 0x8e, 0x97, 0x1f, 0x35, 0x69, 0xd0, 0x55, 0x6e, 0x6a, 0xfe, 0x06,
-	0x34, 0x4f, 0x79, 0x3a, 0xa1, 0xc7, 0xe8, 0x4c, 0x17, 0x11, 0x4f, 0x25, 0x4f, 0x52, 0x0f, 0x7c,
-	0x23, 0xa8, 0x75, 0x9e, 0xb4, 0x74, 0xba, 0x92, 0x5b, 0xfd, 0x52, 0xeb, 0x2d, 0x64, 0x72, 0xd5,
-	0x35, 0xaf, 0xff, 0x3c, 0x23, 0xe1, 0x9d, 0x83, 0x1e, 0xa2, 0x2d, 0xc5, 0x8c, 0x2f, 0x52, 0xaf,
-	0xa2, 0xbd, 0x0f, 0x72, 0xef, 0xb9, 0x3a, 0x53, 0x01, 0x85, 0xa3, 0x68, 0x6a, 0x9c, 0xe1, 0xc1,
-	0x7e, 0x22, 0x75, 0xd1, 0x98, 0xf1, 0x2b, 0x0f, 0x7c, 0x08, 0x9c, 0x50, 0x95, 0x34, 0x40, 0xeb,
-	0xeb, 0xe8, 0xcb, 0x92, 0x7b, 0x15, 0x1f, 0x82, 0x5a, 0x87, 0xe6, 0x89, 0xa5, 0x4d, 0x85, 0x86,
-	0x79, 0xc3, 0xeb, 0xca, 0x2b, 0x68, 0xfe, 0x00, 0xbc, 0xbf, 0xab, 0x51, 0x8a, 0xe6, 0xe8, 0xf2,
-	0x32, 0x29, 0x12, 0x75, 0x4d, 0x9f, 0xa2, 0x23, 0xa7, 0x73, 0x9e, 0xca, 0xd1, 0x3c, 0xd6, 0xb1,
-	0x46, 0x78, 0x77, 0x40, 0x9f, 0xa3, 0x95, 0xca, 0x91, 0xe4, 0x9e, 0xe1, 0x43, 0x70, 0xd0, 0x79,
-	0xb8, 0x7f, 0xe1, 0x07, 0x25, 0x85, 0x79, 0x07, 0x7d, 0xbc, 0x5d, 0xd7, 0xf6, 0x8d, 0xa0, 0x5e,
-	0xee, 0x35, 0x30, 0xab, 0xa6, 0x6b, 0x0d, 0xcc, 0xaa, 0xe5, 0xda, 0xcd, 0x63, 0x74, 0xb6, 0xeb,
-	0xd3, 0x47, 0x68, 0xe9, 0x16, 0x3d, 0x4e, 0x3d, 0xcc, 0x81, 0x36, 0xb0, 0x5a, 0xfe, 0x42, 0x3d,
-	0x8e, 0x13, 0x6e, 0xf9, 0x45, 0x17, 0xeb, 0x7b, 0x57, 0x53, 0x44, 0xfb, 0xe4, 0xcd, 0x79, 0xff,
-	0xa2, 0xe7, 0x12, 0x5a, 0xc3, 0x7b, 0xef, 0x7a, 0x27, 0x17, 0xfd, 0xe1, 0x5b, 0x17, 0x14, 0x9c,
-	0xf5, 0x86, 0xa7, 0x0a, 0x2a, 0x0a, 0x06, 0xef, 0xfb, 0x43, 0x05, 0x46, 0xf7, 0xe5, 0x6a, 0xcd,
-	0xc8, 0xcd, 0x9a, 0x91, 0xdb, 0x35, 0x83, 0xef, 0x19, 0x83, 0x5f, 0x19, 0x83, 0xeb, 0x8c, 0xc1,
-	0x2a, 0x63, 0xf0, 0x37, 0x63, 0xf0, 0x2f, 0x63, 0xe4, 0x36, 0x63, 0xf0, 0x73, 0xc3, 0xc8, 0x6a,
-	0xc3, 0xc8, 0xcd, 0x86, 0x91, 0xb1, 0xad, 0x9f, 0xc6, 0xd1, 0xff, 0x00, 0x00, 0x00, 0xff, 0xff,
-	0xab, 0x96, 0x85, 0x85, 0x86, 0x02, 0x00, 0x00,
-}

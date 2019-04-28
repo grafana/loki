@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
@@ -27,60 +28,79 @@ func (q Querier) queryStore(ctx context.Context, req *logproto.QueryRequest) ([]
 
 	matchers = append(matchers, nameLabelMatcher)
 	from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
-	chunks, err := q.store.Get(ctx, from, through, matchers...)
+	chks, fetchers, err := q.store.GetChunkRefs(ctx, from, through, matchers...)
 	if err != nil {
 		return nil, err
 	}
 
-	return partitionBySeriesChunks(req, chunks)
-}
-
-func partitionBySeriesChunks(req *logproto.QueryRequest, chunks []chunk.Chunk) ([]iter.EntryIterator, error) {
-	chunksByFp := map[model.Fingerprint][]chunk.Chunk{}
-	metricByFp := map[model.Fingerprint]model.Metric{}
-	for _, c := range chunks {
-		fp := c.Metric.Fingerprint()
-		chunksByFp[fp] = append(chunksByFp[fp], c)
-		delete(c.Metric, "__name__")
-		metricByFp[fp] = c.Metric
+	for i := range chks {
+		chks[i] = filterChunksByTime(from, through, chks[i])
 	}
 
-	iters := make([]iter.EntryIterator, 0, len(chunksByFp))
-	for fp := range chunksByFp {
-		iterators, err := partitionOverlappingChunks(req, metricByFp[fp].String(), chunksByFp[fp])
-		if err != nil {
-			return nil, err
+	chksBySeries := partitionBySeriesChunks(chks, fetchers)
+	// Make sure the initial chunks are loaded. This is not one chunk
+	// per series, but rather a chunk per non-overlapping iterator.
+	if err := loadFirstChunks(ctx, chksBySeries); err != nil {
+		return nil, err
+	}
+
+	// Now that we have the first chunk for each series loaded,
+	// we can proceed to filter the series that don't match.
+	chksBySeries = filterSeriesByMatchers(chksBySeries, matchers)
+
+	return buildIterators(ctx, req, chksBySeries)
+}
+
+func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
+	filtered := make([]chunk.Chunk, 0, len(chunks))
+	keys := make([]string, 0, len(chunks))
+	for _, chunk := range chunks {
+		if chunk.Through < from || through < chunk.From {
+			continue
 		}
-		iterator := iter.NewHeapIterator(iterators, req.Direction)
-		iters = append(iters, iterator)
+		filtered = append(filtered, chunk)
+		keys = append(keys, chunk.ExternalKey())
 	}
-
-	return iters, nil
+	return filtered
 }
 
-func partitionOverlappingChunks(req *logproto.QueryRequest, labels string, chunks []chunk.Chunk) ([]iter.EntryIterator, error) {
-	sort.Sort(byFrom(chunks))
-
-	css := [][]chunk.Chunk{}
+func filterSeriesByMatchers(chks map[model.Fingerprint][][]chunkenc.LazyChunk, matchers []*labels.Matcher) map[model.Fingerprint][][]chunkenc.LazyChunk {
 outer:
-	for _, c := range chunks {
-		for i, cs := range css {
-			if cs[len(cs)-1].Through.Before(c.From) {
-				css[i] = append(css[i], c)
+	for fp, chunks := range chks {
+		for _, matcher := range matchers {
+			if !matcher.Matches(string(chunks[0][0].Chunk.Metric[model.LabelName(matcher.Name)])) {
+				delete(chks, fp)
 				continue outer
 			}
 		}
-		cs := make([]chunk.Chunk, 0, len(chunks)/(len(css)+1))
-		cs = append(cs, c)
-		css = append(css, cs)
 	}
 
-	result := make([]iter.EntryIterator, 0, len(css))
-	for i := range css {
-		iterators := make([]iter.EntryIterator, 0, len(css[i]))
-		for j := range css[i] {
-			lokiChunk := css[i][j].Data.(*chunkenc.Facade).LokiChunk()
-			iterator, err := lokiChunk.Iterator(req.Start, req.End, req.Direction)
+	return chks
+}
+
+func buildIterators(ctx context.Context, req *logproto.QueryRequest, chks map[model.Fingerprint][][]chunkenc.LazyChunk) ([]iter.EntryIterator, error) {
+	result := make([]iter.EntryIterator, 0, len(chks))
+	for _, chunks := range chks {
+		iterator, err := buildHeapIterator(ctx, req, chunks)
+		if err != nil {
+			return nil, err
+		}
+
+		result = append(result, iterator)
+	}
+
+	return result, nil
+}
+
+func buildHeapIterator(ctx context.Context, req *logproto.QueryRequest, chks [][]chunkenc.LazyChunk) (iter.EntryIterator, error) {
+	result := make([]iter.EntryIterator, 0, len(chks))
+
+	labels := chks[0][0].Chunk.Metric.String()
+
+	for i := range chks {
+		iterators := make([]iter.EntryIterator, 0, len(chks[i]))
+		for j := range chks[i] {
+			iterator, err := chks[i][j].Iterator(ctx, req.Start, req.End, req.Direction)
 			if err != nil {
 				return nil, err
 			}
@@ -92,13 +112,101 @@ outer:
 			}
 			iterators = append(iterators, iterator)
 		}
+
 		result = append(result, iter.NewNonOverlappingIterator(iterators, labels))
 	}
-	return result, nil
+
+	return iter.NewHeapIterator(result, req.Direction), nil
 }
 
-type byFrom []chunk.Chunk
+func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]chunkenc.LazyChunk) error {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "loadFirstChunks")
+	defer sp.Finish()
 
-func (b byFrom) Len() int           { return len(b) }
-func (b byFrom) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
-func (b byFrom) Less(i, j int) bool { return b[i].From < b[j].From }
+	// If chunks span buckets, then we'll have different fetchers for each bucket.
+	chksByFetcher := map[*chunk.Fetcher][]*chunkenc.LazyChunk{}
+	for _, lchks := range chks {
+		for _, lchk := range lchks {
+			if len(lchk) == 0 {
+				continue
+			}
+			chksByFetcher[lchk[0].Fetcher] = append(chksByFetcher[lchk[0].Fetcher], &lchk[0])
+		}
+	}
+
+	errChan := make(chan error)
+	for fetcher, chunks := range chksByFetcher {
+		go func(fetcher *chunk.Fetcher, chunks []*chunkenc.LazyChunk) {
+			keys := make([]string, 0, len(chunks))
+			chks := make([]chunk.Chunk, 0, len(chunks))
+			for _, chk := range chunks {
+				keys = append(keys, chk.Chunk.ExternalKey())
+				chks = append(chks, chk.Chunk)
+			}
+			chks, err := fetcher.FetchChunks(ctx, chks, keys)
+			if err != nil {
+				errChan <- err
+				return
+			}
+
+			for i, chk := range chks {
+				chunks[i].Chunk = chk
+			}
+
+			errChan <- nil
+		}(fetcher, chunks)
+	}
+
+	var lastErr error
+	for i := 0; i < len(chksByFetcher); i++ {
+		if err := <-errChan; err != nil {
+			lastErr = err
+		}
+	}
+
+	return lastErr
+}
+
+func partitionBySeriesChunks(chunks [][]chunk.Chunk, fetchers []*chunk.Fetcher) map[model.Fingerprint][][]chunkenc.LazyChunk {
+	chunksByFp := map[model.Fingerprint][]chunkenc.LazyChunk{}
+	for i, chks := range chunks {
+		for _, c := range chks {
+			fp := c.Metric.Fingerprint()
+			chunksByFp[fp] = append(chunksByFp[fp], chunkenc.LazyChunk{Chunk: c, Fetcher: fetchers[i]})
+			delete(c.Metric, "__name__")
+		}
+	}
+
+	result := make(map[model.Fingerprint][][]chunkenc.LazyChunk, len(chunksByFp))
+
+	for fp, chks := range chunksByFp {
+		result[fp] = partitionOverlappingChunks(chks)
+	}
+
+	return result
+}
+
+// partitionOverlappingChunks splits the list of chunks into different non-overlapping lists.
+func partitionOverlappingChunks(chunks []chunkenc.LazyChunk) [][]chunkenc.LazyChunk {
+	sort.Slice(chunks, func(i, j int) bool {
+		return chunks[i].Chunk.From < chunks[i].Chunk.From
+	})
+
+	css := [][]chunkenc.LazyChunk{}
+outer:
+	for _, c := range chunks {
+		for i, cs := range css {
+			// If the chunk doesn't overlap with the current list, then add it to it.
+			if cs[len(cs)-1].Chunk.Through.Before(c.Chunk.From) {
+				css[i] = append(css[i], c)
+				continue outer
+			}
+		}
+		// If the chunk overlaps with every existing list, then create a new list.
+		cs := make([]chunkenc.LazyChunk, 0, len(chunks)/(len(css)+1))
+		cs = append(cs, c)
+		css = append(css, cs)
+	}
+
+	return css
+}

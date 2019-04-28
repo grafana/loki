@@ -9,6 +9,6 @@ import "github.com/prometheus/common/model"
 // function we use is prone to only change a few bits for similar metrics. We
 // really want to make use of every change in the fingerprint to vary mutex
 // selection.)
-func HashFP(fp model.Fingerprint) uint {
-	return uint(fp ^ (fp >> 32) ^ (fp >> 16))
+func HashFP(fp model.Fingerprint) uint32 {
+	return uint32(fp ^ (fp >> 32) ^ (fp >> 16))
 }

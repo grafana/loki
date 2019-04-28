@@ -8,6 +8,8 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/user"
 
@@ -15,6 +17,34 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/grafana/loki/pkg/chunkenc"
+)
+
+var (
+	chunkEntries = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "loki_ingester_chunk_entries",
+		Help:    "Distribution of stored chunk entries (when stored).",
+		Buckets: prometheus.ExponentialBuckets(20, 2, 11), // biggest bucket is 5*2^(11-1) = 5120
+	})
+	chunkSize = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "loki_ingester_chunk_size_bytes",
+		Help:    "Distribution of stored chunk sizes (when stored).",
+		Buckets: prometheus.ExponentialBuckets(500, 2, 5), // biggest bucket is 500*2^(5-1) = 8000
+	})
+	chunksPerTenant = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "loki_ingester_chunks_stored_total",
+		Help: "Total stored chunks per tenant.",
+	}, []string{"tenant"})
+	chunkSizePerTenant = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "loki_ingester_chunk_stored_bytes_total",
+		Help: "Total bytes stored in chunks per tenant.",
+	}, []string{"tenant"})
+	chunkAge = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name: "loki_ingester_chunk_age_seconds",
+		Help: "Distribution of chunk ages (when stored).",
+		// with default settings chunks should flush between 5 min and 12 hours
+		// so buckets at 1min, 5min, 10min, 30min, 1hr, 2hr, 4hr, 10hr, 12hr, 16hr
+		Buckets: []float64{60, 300, 600, 1800, 3600, 7200, 14400, 36000, 43200, 57600},
+	})
 )
 
 const (
@@ -154,7 +184,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	return nil
 }
 
-func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, []client.LabelPair) {
+func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, []client.LabelAdapter) {
 	instance.streamsMtx.Lock()
 	defer instance.streamsMtx.Unlock()
 
@@ -204,18 +234,18 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 
 	if len(stream.chunks) == 0 {
 		delete(instance.streams, stream.fp)
-		instance.index.Delete(client.FromLabelPairsToLabels(stream.labels), stream.fp)
+		instance.index.Delete(client.FromLabelAdaptersToLabels(stream.labels), stream.fp)
 		instance.streamsRemovedTotal.Inc()
 	}
 }
 
-func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs []client.LabelPair, cs []*chunkDesc) error {
+func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs []client.LabelAdapter, cs []*chunkDesc) error {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err
 	}
 
-	metric := fromLabelPairs(labelPairs)
+	metric := client.FromLabelAdaptersToMetric(labelPairs)
 	metric[nameLabel] = logsValue
 
 	wireChunks := make([]chunk.Chunk, 0, len(cs))
@@ -234,13 +264,27 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		wireChunks = append(wireChunks, c)
 	}
 
-	return i.store.Put(ctx, wireChunks)
-}
-
-func fromLabelPairs(ls []client.LabelPair) model.Metric {
-	m := make(model.Metric, len(ls))
-	for _, l := range ls {
-		m[model.LabelName(l.Name)] = model.LabelValue(l.Value)
+	if err := i.store.Put(ctx, wireChunks); err != nil {
+		return err
 	}
-	return m
+
+	// Record statistsics only when actual put request did not return error.
+	sizePerTenant := chunkSizePerTenant.WithLabelValues(userID)
+	countPerTenant := chunksPerTenant.WithLabelValues(userID)
+	for i, wc := range wireChunks {
+		numEntries := cs[i].chunk.Size()
+		byt, err := wc.Encoded()
+		if err != nil {
+			continue
+		}
+
+		chunkEntries.Observe(float64(numEntries))
+		chunkSize.Observe(float64(len(byt)))
+		sizePerTenant.Add(float64(len(byt)))
+		countPerTenant.Inc()
+		firstTime, _ := cs[i].chunk.Bounds()
+		chunkAge.Observe(time.Since(firstTime).Seconds())
+	}
+
+	return nil
 }

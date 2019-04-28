@@ -30,6 +30,11 @@ var (
 		Name: "cortex_ingester_ring_tokens_to_own",
 		Help: "The number of tokens to own in the ring.",
 	})
+	shutdownDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "cortex_shutdown_duration_seconds",
+		Help:    "Duration (in seconds) of cortex shutdown procedure (ie transfer or flush).",
+		Buckets: prometheus.ExponentialBuckets(10, 2, 8), // Biggest bucket is 10*2^(9-1) = 2560, or 42 mins.
+	}, []string{"op", "status"})
 )
 
 // LifecyclerConfig is the config to build a Lifecycler.
@@ -45,6 +50,7 @@ type LifecyclerConfig struct {
 	ClaimOnRollout   bool          `yaml:"claim_on_rollout,omitempty"`
 	NormaliseTokens  bool          `yaml:"normalise_tokens,omitempty"`
 	InfNames         []string      `yaml:"interface_names"`
+	FinalSleep       time.Duration `yaml:"final_sleep"`
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string `yaml:"address"`
@@ -63,6 +69,7 @@ func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MinReadyDuration, "ingester.min-ready-duration", 1*time.Minute, "Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring.")
 	f.BoolVar(&cfg.ClaimOnRollout, "ingester.claim-on-rollout", false, "Send chunks to PENDING ingesters on exit.")
 	f.BoolVar(&cfg.NormaliseTokens, "ingester.normalise-tokens", false, "Store tokens in a normalised fashion to reduce allocations.")
+	f.DurationVar(&cfg.FinalSleep, "ingester.final-sleep", 30*time.Second, "Duration to sleep for before exiting, to ensure metrics are scraped.")
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -454,16 +461,24 @@ func (i *Lifecycler) changeState(ctx context.Context, state IngesterState) error
 func (i *Lifecycler) processShutdown(ctx context.Context) {
 	flushRequired := true
 	if i.cfg.ClaimOnRollout {
+		transferStart := time.Now()
 		if err := i.flushTransferer.TransferOut(ctx); err != nil {
 			level.Error(util.Logger).Log("msg", "Failed to transfer chunks to another ingester", "err", err)
+			shutdownDuration.WithLabelValues("transfer", "fail").Observe(time.Since(transferStart).Seconds())
 		} else {
 			flushRequired = false
+			shutdownDuration.WithLabelValues("transfer", "success").Observe(time.Since(transferStart).Seconds())
 		}
 	}
 
 	if flushRequired {
+		flushStart := time.Now()
 		i.flushTransferer.Flush()
+		shutdownDuration.WithLabelValues("flush", "success").Observe(time.Since(flushStart).Seconds())
 	}
+
+	// Sleep so the shutdownDuration metric can be collected.
+	time.Sleep(i.cfg.FinalSleep)
 }
 
 // unregister removes our entry from consul.

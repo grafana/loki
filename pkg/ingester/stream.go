@@ -47,7 +47,7 @@ type stream struct {
 	// Not thread-safe; assume accesses to this are locked by caller.
 	chunks []chunkDesc
 	fp     model.Fingerprint
-	labels []client.LabelPair
+	labels []client.LabelAdapter
 }
 
 type chunkDesc struct {
@@ -58,7 +58,7 @@ type chunkDesc struct {
 	lastUpdated time.Time
 }
 
-func newStream(fp model.Fingerprint, labels []client.LabelPair) *stream {
+func newStream(fp model.Fingerprint, labels []client.LabelAdapter) *stream {
 	return &stream{
 		fp:     fp,
 		labels: labels,
@@ -96,7 +96,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 	}
 
 	if appendErr == chunkenc.ErrOutOfOrder {
-		return httpgrpc.Errorf(http.StatusBadRequest, "entry out of order for stream: %s", client.FromLabelPairsToLabels(s.labels).String())
+		return httpgrpc.Errorf(http.StatusBadRequest, "entry out of order for stream: %s", client.FromLabelAdaptersToLabels(s.labels).String())
 	}
 
 	return appendErr
@@ -121,5 +121,5 @@ func (s *stream) Iterator(from, through time.Time, direction logproto.Direction)
 		}
 	}
 
-	return iter.NewNonOverlappingIterator(iterators, client.FromLabelPairsToLabels(s.labels).String()), nil
+	return iter.NewNonOverlappingIterator(iterators, client.FromLabelAdaptersToLabels(s.labels).String()), nil
 }

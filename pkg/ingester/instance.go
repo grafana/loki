@@ -121,16 +121,16 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	var labels []string
 	if req.Values {
-		values := i.index.LabelValues(model.LabelName(req.Name))
+		values := i.index.LabelValues(req.Name)
 		labels = make([]string, len(values))
 		for i := 0; i < len(values); i++ {
-			labels[i] = string(values[i])
+			labels[i] = values[i]
 		}
 	} else {
 		names := i.index.LabelNames()
 		labels = make([]string, len(names))
 		for i := 0; i < len(names); i++ {
-			labels[i] = string(names[i])
+			labels[i] = names[i]
 		}
 	}
 	return &logproto.LabelResponse{

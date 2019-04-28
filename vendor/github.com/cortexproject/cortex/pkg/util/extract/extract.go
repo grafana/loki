@@ -8,16 +8,14 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-var labelNameBytes = []byte(model.MetricNameLabel)
-
-// MetricNameFromLabelPairs extracts the metric name from a list of LabelPairs.
-func MetricNameFromLabelPairs(labels []client.LabelPair) ([]byte, error) {
+// MetricNameFromLabelAdapters extracts the metric name from a list of LabelPairs.
+func MetricNameFromLabelAdapters(labels []client.LabelAdapter) (string, error) {
 	for _, label := range labels {
-		if label.Name.Equal(labelNameBytes) {
+		if label.Name == model.MetricNameLabel {
 			return label.Value, nil
 		}
 	}
-	return nil, fmt.Errorf("No metric name label")
+	return "", fmt.Errorf("No metric name label")
 }
 
 // MetricNameFromMetric extract the metric name from a model.Metric

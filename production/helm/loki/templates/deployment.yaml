@@ -27,6 +27,9 @@ spec:
         app: {{ template "loki.name" . }}
         name: {{ template "loki.name" . }}
         release: {{ .Release.Name }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}  
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         {{- with .Values.podAnnotations }}
@@ -45,6 +48,9 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - "-config.file=/etc/loki/loki.yaml"
+          {{- range $key, $value := .Values.extraArgs }}
+            - "-{{ $key }}={{ $value }}"
+          {{- end }}            
           volumeMounts:
             - name: config
               mountPath: /etc/loki
@@ -63,6 +69,9 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
           securityContext:
             readOnlyRootFilesystem: true
+          env:
+            - name: JAEGER_AGENT_HOST
+              value: "{{ .Values.tracing.jaegerAgentHost }}"
       nodeSelector:
         {{- toYaml .Values.nodeSelector | nindent 8 }}
       affinity:
