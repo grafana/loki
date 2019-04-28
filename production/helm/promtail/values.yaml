@@ -18,12 +18,18 @@ livenessProbe: {}
 loki:
   serviceName: "" # Defaults to "${RELEASE}-loki" if not set
   servicePort: 3100
+  serviceScheme: http
+  # user: user
+  # password: pass
 
 nameOverride: promtail
 
 ## Node labels for pod assignment
 ## ref: https://kubernetes.io/docs/user-guide/node-selection/
 nodeSelector: {}
+
+## Pod Labels
+podLabels: {}
 
 podAnnotations: {}
 #  prometheus.io/scrape: "true"
@@ -111,6 +117,9 @@ config:
     http_listen_port: 3101
   positions:
     filename: /run/promtail/positions.yaml
+  target_config:
+    # Period to resync directories being watched and files being tailed
+    sync_period: 10s
   scrape_configs:
   - entry_parser: '{{ .Values.entryParser }}'
     job_name: kubernetes-pods-name

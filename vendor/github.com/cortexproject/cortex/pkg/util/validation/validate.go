@@ -22,6 +22,9 @@ const (
 	errTooOld            = "sample for '%s' has timestamp too old: %d"
 	errTooNew            = "sample for '%s' has timestamp too new: %d"
 
+	// ErrQueryTooLong is used in chunk store and query frontend.
+	ErrQueryTooLong = "invalid query, length > limit (%s > %s)"
+
 	greaterThanMaxSampleAge = "greater_than_max_sample_age"
 	maxLabelNamesPerSeries  = "max_label_names_per_series"
 	tooFarInFuture          = "too_far_in_future"
@@ -48,7 +51,7 @@ func init() {
 }
 
 // ValidateSample returns an err if the sample is invalid.
-func (cfg *Overrides) ValidateSample(userID string, metricName []byte, s client.Sample) error {
+func (cfg *Overrides) ValidateSample(userID string, metricName string, s client.Sample) error {
 	if cfg.RejectOldSamples(userID) && model.Time(s.TimestampMs) < model.Now().Add(-cfg.RejectOldSamplesMaxAge(userID)) {
 		DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errTooOld, metricName, model.Time(s.TimestampMs))
@@ -63,8 +66,8 @@ func (cfg *Overrides) ValidateSample(userID string, metricName []byte, s client.
 }
 
 // ValidateLabels returns an err if the labels are invalid.
-func (cfg *Overrides) ValidateLabels(userID string, ls []client.LabelPair) error {
-	metricName, err := extract.MetricNameFromLabelPairs(ls)
+func (cfg *Overrides) ValidateLabels(userID string, ls []client.LabelAdapter) error {
+	metricName, err := extract.MetricNameFromLabelAdapters(ls)
 	if cfg.EnforceMetricName(userID) {
 		if err != nil {
 			return httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName)
@@ -78,7 +81,7 @@ func (cfg *Overrides) ValidateLabels(userID string, ls []client.LabelPair) error
 	numLabelNames := len(ls)
 	if numLabelNames > cfg.MaxLabelNamesPerSeries(userID) {
 		DiscardedSamples.WithLabelValues(maxLabelNamesPerSeries, userID).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, client.FromLabelPairs(ls).String(), numLabelNames, cfg.MaxLabelNamesPerSeries(userID))
+		return httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, client.FromLabelAdaptersToMetric(ls).String(), numLabelNames, cfg.MaxLabelNamesPerSeries(userID))
 	}
 
 	maxLabelNameLength := cfg.MaxLabelNameLength(userID)
@@ -102,7 +105,7 @@ func (cfg *Overrides) ValidateLabels(userID string, ls []client.LabelPair) error
 		}
 		if errTemplate != "" {
 			DiscardedSamples.WithLabelValues(reason, userID).Inc()
-			return httpgrpc.Errorf(http.StatusBadRequest, errTemplate, cause, client.FromLabelPairs(ls).String())
+			return httpgrpc.Errorf(http.StatusBadRequest, errTemplate, cause, client.FromLabelAdaptersToMetric(ls).String())
 		}
 	}
 	return nil

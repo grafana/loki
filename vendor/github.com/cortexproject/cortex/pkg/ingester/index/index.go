@@ -24,7 +24,7 @@ type InvertedIndex struct {
 func New() *InvertedIndex {
 	shards := make([]indexShard, indexShards)
 	for i := 0; i < indexShards; i++ {
-		shards[i].idx = map[model.LabelName]map[model.LabelValue][]model.Fingerprint{}
+		shards[i].idx = map[string]indexEntry{}
 	}
 	return &InvertedIndex{
 		shards: shards,
@@ -32,9 +32,9 @@ func New() *InvertedIndex {
 }
 
 // Add a fingerprint under the specified labels.
-func (ii *InvertedIndex) Add(labels []client.LabelPair, fp model.Fingerprint) {
+func (ii *InvertedIndex) Add(labels []client.LabelAdapter, fp model.Fingerprint) labels.Labels {
 	shard := &ii.shards[util.HashFP(fp)%indexShards]
-	shard.add(labels, fp)
+	return shard.add(labels, fp)
 }
 
 // Lookup all fingerprints for the provided matchers.
@@ -49,32 +49,31 @@ func (ii *InvertedIndex) Lookup(matchers []*labels.Matcher) []model.Fingerprint 
 		result = append(result, fps...)
 	}
 
-	sort.Sort(fingerprints(result))
 	return result
 }
 
 // LabelNames returns all label names.
-func (ii *InvertedIndex) LabelNames() model.LabelNames {
-	results := make([]model.LabelNames, 0, indexShards)
+func (ii *InvertedIndex) LabelNames() []string {
+	results := make([][]string, 0, indexShards)
 
 	for i := range ii.shards {
 		shardResult := ii.shards[i].labelNames()
 		results = append(results, shardResult)
 	}
 
-	return mergeLabelNameLists(results)
+	return mergeStringSlices(results)
 }
 
 // LabelValues returns the values for the given label.
-func (ii *InvertedIndex) LabelValues(name model.LabelName) model.LabelValues {
-	results := make([]model.LabelValues, 0, indexShards)
+func (ii *InvertedIndex) LabelValues(name string) []string {
+	results := make([][]string, 0, indexShards)
 
 	for i := range ii.shards {
 		shardResult := ii.shards[i].labelValues(name)
 		results = append(results, shardResult)
 	}
 
-	return mergeLabelValueLists(results)
+	return mergeStringSlices(results)
 }
 
 // Delete a fingerprint with the given label pairs.
@@ -84,7 +83,17 @@ func (ii *InvertedIndex) Delete(labels labels.Labels, fp model.Fingerprint) {
 }
 
 // NB slice entries are sorted in fp order.
-type unlockIndex map[model.LabelName]map[model.LabelValue][]model.Fingerprint
+type indexEntry struct {
+	name string
+	fps  map[string]indexValueEntry
+}
+
+type indexValueEntry struct {
+	value string
+	fps   []model.Fingerprint
+}
+
+type unlockIndex map[string]indexEntry
 
 // This is the prevalent value for Intel and AMD CPUs as-at 2018.
 const cacheLineSize = 64
@@ -95,27 +104,44 @@ type indexShard struct {
 	pad [cacheLineSize - unsafe.Sizeof(sync.Mutex{}) - unsafe.Sizeof(unlockIndex{})]byte
 }
 
-func (shard *indexShard) add(metric []client.LabelPair, fp model.Fingerprint) {
+func copyString(s string) string {
+	return string([]byte(s))
+}
+
+// add metric to the index; return all the name/value pairs as strings from the index, sorted
+func (shard *indexShard) add(metric []client.LabelAdapter, fp model.Fingerprint) labels.Labels {
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
 
-	for _, pair := range metric {
-		value := model.LabelValue(pair.Value)
-		values, ok := shard.idx[model.LabelName(pair.Name)]
+	internedLabels := make(labels.Labels, len(metric))
+
+	for i, pair := range metric {
+		values, ok := shard.idx[pair.Name]
 		if !ok {
-			values = map[model.LabelValue][]model.Fingerprint{}
-			shard.idx[model.LabelName(pair.Name)] = values
+			values = indexEntry{
+				name: copyString(pair.Name),
+				fps:  map[string]indexValueEntry{},
+			}
+			shard.idx[values.name] = values
 		}
-		fingerprints := values[value]
+		fingerprints, ok := values.fps[pair.Value]
+		if !ok {
+			fingerprints = indexValueEntry{
+				value: copyString(pair.Value),
+			}
+		}
 		// Insert into the right position to keep fingerprints sorted
-		j := sort.Search(len(fingerprints), func(i int) bool {
-			return fingerprints[i] >= fp
+		j := sort.Search(len(fingerprints.fps), func(i int) bool {
+			return fingerprints.fps[i] >= fp
 		})
-		fingerprints = append(fingerprints, 0)
-		copy(fingerprints[j+1:], fingerprints[j:])
-		fingerprints[j] = fp
-		values[value] = fingerprints
+		fingerprints.fps = append(fingerprints.fps, 0)
+		copy(fingerprints.fps[j+1:], fingerprints.fps[j:])
+		fingerprints.fps[j] = fp
+		values.fps[fingerprints.value] = fingerprints
+		internedLabels[i] = labels.Label{Name: values.name, Value: fingerprints.value}
 	}
+	sort.Sort(internedLabels)
+	return internedLabels
 }
 
 func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint {
@@ -129,20 +155,20 @@ func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint 
 	// loop invariant: result is sorted
 	var result []model.Fingerprint
 	for _, matcher := range matchers {
-		values, ok := shard.idx[model.LabelName(matcher.Name)]
+		values, ok := shard.idx[matcher.Name]
 		if !ok {
 			return nil
 		}
 		var toIntersect model.Fingerprints
 		if matcher.Type == labels.MatchEqual {
-			fps := values[model.LabelValue(matcher.Value)]
-			toIntersect = append(toIntersect, fps...) // deliberate copy
+			fps := values.fps[matcher.Value]
+			toIntersect = append(toIntersect, fps.fps...) // deliberate copy
 		} else {
 			// accumulate the matching fingerprints (which are all distinct)
 			// then sort to maintain the invariant
-			for value, fps := range values {
-				if matcher.Matches(string(value)) {
-					toIntersect = append(toIntersect, fps...)
+			for value, fps := range values.fps {
+				if matcher.Matches(value) {
+					toIntersect = append(toIntersect, fps.fps...)
 				}
 			}
 			sort.Sort(toIntersect)
@@ -156,20 +182,20 @@ func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint 
 	return result
 }
 
-func (shard *indexShard) labelNames() model.LabelNames {
+func (shard *indexShard) labelNames() []string {
 	shard.mtx.RLock()
 	defer shard.mtx.RUnlock()
 
-	results := make(model.LabelNames, 0, len(shard.idx))
+	results := make([]string, 0, len(shard.idx))
 	for name := range shard.idx {
 		results = append(results, name)
 	}
 
-	sort.Sort(labelNames(results))
+	sort.Strings(results)
 	return results
 }
 
-func (shard *indexShard) labelValues(name model.LabelName) model.LabelValues {
+func (shard *indexShard) labelValues(name string) []string {
 	shard.mtx.RLock()
 	defer shard.mtx.RUnlock()
 
@@ -178,12 +204,12 @@ func (shard *indexShard) labelValues(name model.LabelName) model.LabelValues {
 		return nil
 	}
 
-	results := make(model.LabelValues, 0, len(values))
-	for val := range values {
+	results := make([]string, 0, len(values.fps))
+	for val := range values.fps {
 		results = append(results, val)
 	}
 
-	sort.Sort(labelValues(results))
+	sort.Strings(results)
 	return results
 }
 
@@ -192,28 +218,28 @@ func (shard *indexShard) delete(labels labels.Labels, fp model.Fingerprint) {
 	defer shard.mtx.Unlock()
 
 	for _, pair := range labels {
-		name, value := model.LabelName(pair.Name), model.LabelValue(pair.Value)
+		name, value := pair.Name, pair.Value
 		values, ok := shard.idx[name]
 		if !ok {
 			continue
 		}
-		fingerprints, ok := values[value]
+		fingerprints, ok := values.fps[value]
 		if !ok {
 			continue
 		}
 
-		j := sort.Search(len(fingerprints), func(i int) bool {
-			return fingerprints[i] >= fp
+		j := sort.Search(len(fingerprints.fps), func(i int) bool {
+			return fingerprints.fps[i] >= fp
 		})
-		fingerprints = fingerprints[:j+copy(fingerprints[j:], fingerprints[j+1:])]
+		fingerprints.fps = fingerprints.fps[:j+copy(fingerprints.fps[j:], fingerprints.fps[j+1:])]
 
-		if len(fingerprints) == 0 {
-			delete(values, value)
+		if len(fingerprints.fps) == 0 {
+			delete(values.fps, value)
 		} else {
-			values[value] = fingerprints
+			values.fps[value] = fingerprints
 		}
 
-		if len(values) == 0 {
+		if len(values.fps) == 0 {
 			delete(shard.idx, name)
 		} else {
 			shard.idx[name] = values
@@ -241,42 +267,31 @@ func intersect(a, b []model.Fingerprint) []model.Fingerprint {
 	return result
 }
 
-type labelValues model.LabelValues
-
-func (a labelValues) Len() int           { return len(a) }
-func (a labelValues) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a labelValues) Less(i, j int) bool { return a[i] < a[j] }
-
-type labelNames model.LabelNames
-
-func (a labelNames) Len() int           { return len(a) }
-func (a labelNames) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a labelNames) Less(i, j int) bool { return a[i] < a[j] }
-
 type fingerprints []model.Fingerprint
 
 func (a fingerprints) Len() int           { return len(a) }
 func (a fingerprints) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a fingerprints) Less(i, j int) bool { return a[i] < a[j] }
 
-func mergeLabelValueLists(lvss []model.LabelValues) model.LabelValues {
-	switch len(lvss) {
+func mergeStringSlices(ss [][]string) []string {
+	switch len(ss) {
 	case 0:
 		return nil
 	case 1:
-		return lvss[0]
+		return ss[0]
 	case 2:
-		return mergeTwoLabelValueLists(lvss[0], lvss[1])
+		return mergeTwoStringSlices(ss[0], ss[1])
 	default:
-		n := len(lvss) / 2
-		left := mergeLabelValueLists(lvss[:n])
-		right := mergeLabelValueLists(lvss[n:])
-		return mergeTwoLabelValueLists(left, right)
+		halfway := len(ss) / 2
+		return mergeTwoStringSlices(
+			mergeStringSlices(ss[:halfway]),
+			mergeStringSlices(ss[halfway:]),
+		)
 	}
 }
 
-func mergeTwoLabelValueLists(a, b model.LabelValues) model.LabelValues {
-	result := make(model.LabelValues, 0, len(a)+len(b))
+func mergeTwoStringSlices(a, b []string) []string {
+	result := make([]string, 0, len(a)+len(b))
 	i, j := 0, 0
 	for i < len(a) && j < len(b) {
 		if a[i] < b[j] {
@@ -286,44 +301,7 @@ func mergeTwoLabelValueLists(a, b model.LabelValues) model.LabelValues {
 			result = append(result, b[j])
 			j++
 		} else {
-			result = append(result, b[j])
-			i++
-			j++
-		}
-	}
-	result = append(result, a[i:]...)
-	result = append(result, b[j:]...)
-	return result
-}
-
-func mergeLabelNameLists(lnss []model.LabelNames) model.LabelNames {
-	switch len(lnss) {
-	case 0:
-		return nil
-	case 1:
-		return lnss[0]
-	case 2:
-		return mergeTwoLabelNameLists(lnss[0], lnss[1])
-	default:
-		n := len(lnss) / 2
-		left := mergeLabelNameLists(lnss[:n])
-		right := mergeLabelNameLists(lnss[n:])
-		return mergeTwoLabelNameLists(left, right)
-	}
-}
-
-func mergeTwoLabelNameLists(a, b model.LabelNames) model.LabelNames {
-	result := make(model.LabelNames, 0, len(a)+len(b))
-	i, j := 0, 0
-	for i < len(a) && j < len(b) {
-		if a[i] < b[j] {
 			result = append(result, a[i])
-			i++
-		} else if a[i] > b[j] {
-			result = append(result, b[j])
-			j++
-		} else {
-			result = append(result, b[j])
 			i++
 			j++
 		}

@@ -3,17 +3,17 @@ package chunk
 import (
 	"flag"
 	"fmt"
-	"github.com/go-kit/kit/log/level"
 	"os"
 	"strconv"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
+	"github.com/weaveworks/common/mtime"
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/weaveworks/common/mtime"
 )
 
 const (
@@ -32,6 +32,7 @@ type PeriodConfig struct {
 	Schema      string              `yaml:"schema"`
 	IndexTables PeriodicTableConfig `yaml:"index"`
 	ChunkTables PeriodicTableConfig `yaml:"chunks,omitempty"`
+	RowShards   uint32              `yaml:"row_shards"`
 }
 
 // SchemaConfig contains the config for our chunk index schemas
@@ -181,6 +182,15 @@ func (cfg PeriodConfig) createSchema() Schema {
 		s = schema{cfg.dailyBuckets, v6Entries{}}
 	case "v9":
 		s = schema{cfg.dailyBuckets, v9Entries{}}
+	case "v10":
+		rowShards := uint32(16)
+		if cfg.RowShards > 0 {
+			rowShards = cfg.RowShards
+		}
+
+		s = schema{cfg.dailyBuckets, v10Entries{
+			rowShards: rowShards,
+		}}
 	}
 	return s
 }
@@ -424,7 +434,7 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 // ChunkTableFor calculates the chunk table shard for a given point in time.
 func (cfg SchemaConfig) ChunkTableFor(t model.Time) (string, error) {
 	for i := range cfg.Configs {
-		if t > cfg.Configs[i].From && (i+1 == len(cfg.Configs) || t < cfg.Configs[i+1].From) {
+		if t >= cfg.Configs[i].From && (i+1 == len(cfg.Configs) || t < cfg.Configs[i+1].From) {
 			return cfg.Configs[i].ChunkTables.TableFor(t), nil
 		}
 	}

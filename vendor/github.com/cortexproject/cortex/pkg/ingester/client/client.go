@@ -27,6 +27,7 @@ var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.Histogra
 type HealthAndIngesterClient interface {
 	IngesterClient
 	grpc_health_v1.HealthClient
+	Close() error
 }
 
 type closableHealthAndIngesterClient struct {

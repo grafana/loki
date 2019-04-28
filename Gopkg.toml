@@ -26,7 +26,8 @@
 
 [[constraint]]
   name = "github.com/cortexproject/cortex"
-  branch = "master"
+  source = "https://github.com/grafana/cortex"
+  branch = "lazy-load-chunks"
 
 [[constraint]]
   name = "github.com/weaveworks/common"

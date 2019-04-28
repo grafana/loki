@@ -24,6 +24,9 @@ spec:
       labels:
         app: {{ template "promtail.name" . }}
         release: {{ .Release.Name }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}          
       annotations:
         {{ toYaml .Values.podAnnotations | nindent 8 }}
     spec:
@@ -37,7 +40,11 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - "-config.file=/etc/promtail/promtail.yaml"
-            - "-client.url=http://{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/api/prom/push"
+            {{- if and .Values.loki.user .Values.loki.password }}
+            - "-client.url={{ .Values.loki.serviceScheme }}://{{ .Values.loki.user }}:{{ .Values.loki.password }}@{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/api/prom/push"
+            {{- else }}
+            - "-client.url={{ .Values.loki.serviceScheme }}://{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/api/prom/push"
+            {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/promtail

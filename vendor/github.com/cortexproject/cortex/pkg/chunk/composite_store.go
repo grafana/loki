@@ -14,7 +14,8 @@ import (
 type Store interface {
 	Put(ctx context.Context, chunks []Chunk) error
 	PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error
-	Get(tx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error)
+	Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error)
+	GetChunkRefs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error)
 	Stop()
 }
 
@@ -45,7 +46,7 @@ func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index
 	var store Store
 	var err error
 	switch cfg.Schema {
-	case "v9":
+	case "v9", "v10":
 		store, err = newSeriesStore(storeCfg, schema, index, chunks, limits)
 	default:
 		store, err = newStore(storeCfg, schema, index, chunks, limits)
@@ -86,6 +87,22 @@ func (c compositeStore) Get(ctx context.Context, from, through model.Time, match
 		return nil
 	})
 	return results, err
+}
+
+func (c compositeStore) GetChunkRefs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
+	chunkIDs := [][]Chunk{}
+	fetchers := []*Fetcher{}
+	err := c.forStores(from, through, func(from, through model.Time, store Store) error {
+		ids, fetcher, err := store.GetChunkRefs(ctx, from, through, matchers...)
+		if err != nil {
+			return err
+		}
+
+		chunkIDs = append(chunkIDs, ids...)
+		fetchers = append(fetchers, fetcher...)
+		return nil
+	})
+	return chunkIDs, fetchers, err
 }
 
 func (c compositeStore) Stop() {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -19,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
@@ -57,25 +59,21 @@ type StoreConfig struct {
 	ChunkCacheConfig       cache.Config
 	WriteDedupeCacheConfig cache.Config
 
-	MinChunkAge              time.Duration
-	CardinalityCacheSize     int
-	CardinalityCacheValidity time.Duration
-	CardinalityLimit         int
-
+	MinChunkAge           time.Duration
 	CacheLookupsOlderThan time.Duration
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("", "Cache config for chunks. ", f)
-
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
 
 	f.DurationVar(&cfg.MinChunkAge, "store.min-chunk-age", 0, "Minimum time between chunk update and being saved to the store.")
-	f.IntVar(&cfg.CardinalityCacheSize, "store.cardinality-cache-size", 0, "Size of in-memory cardinality cache, 0 to disable.")
-	f.DurationVar(&cfg.CardinalityCacheValidity, "store.cardinality-cache-validity", 1*time.Hour, "Period for which entries in the cardinality cache are valid.")
-	f.IntVar(&cfg.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.DurationVar(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", 0, "Cache index entries older than this period. 0 to disable.")
+
+	// Deprecated.
+	flagext.DeprecatedFlag(f, "store.cardinality-cache-size", "DEPRECATED. Use store.index-cache-size.enable-fifocache and store.cardinality-cache.fifocache.size instead.")
+	flagext.DeprecatedFlag(f, "store.cardinality-cache-validity", "DEPRECATED. Use store.index-cache-size.enable-fifocache and store.cardinality-cache.fifocache.duration instead.")
 }
 
 // store implements Store
@@ -191,6 +189,10 @@ func (c *store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	return c.getMetricNameChunks(ctx, from, through, matchers, metricName)
 }
 
+func (c *store) GetChunkRefs(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
+	return nil, nil, errors.New("not implemented")
+}
+
 func (c *store) validateQuery(ctx context.Context, from model.Time, through *model.Time, matchers []*labels.Matcher) (string, []*labels.Matcher, bool, error) {
 	log, ctx := spanlogger.New(ctx, "store.validateQuery")
 	defer log.Span.Finish()
@@ -206,7 +208,7 @@ func (c *store) validateQuery(ctx context.Context, from model.Time, through *mod
 
 	maxQueryLength := c.limits.MaxQueryLength(userID)
 	if maxQueryLength > 0 && (*through).Sub(from) > maxQueryLength {
-		return "", nil, false, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, length > limit (%s > %s)", (*through).Sub(from), maxQueryLength)
+		return "", nil, false, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, (*through).Sub(from), maxQueryLength)
 	}
 
 	now := model.Now()

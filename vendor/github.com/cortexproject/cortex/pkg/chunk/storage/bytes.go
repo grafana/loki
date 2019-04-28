@@ -1,4 +1,4 @@
-package wire
+package storage
 
 import (
 	"bytes"
