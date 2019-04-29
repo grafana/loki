@@ -47,9 +47,7 @@ var stores = []struct {
 	{
 		name: "store",
 		configFn: func() StoreConfig {
-			var (
-				storeCfg StoreConfig
-			)
+			var storeCfg StoreConfig
 			flagext.DefaultValues(&storeCfg)
 			return storeCfg
 		},
@@ -57,15 +55,11 @@ var stores = []struct {
 	{
 		name: "cached_store",
 		configFn: func() StoreConfig {
-			var (
-				storeCfg StoreConfig
-			)
+			var storeCfg StoreConfig
 			flagext.DefaultValues(&storeCfg)
-
 			storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
 				Size: 500,
 			})
-
 			return storeCfg
 		},
 	},
@@ -73,9 +67,7 @@ var stores = []struct {
 
 // newTestStore creates a new Store for testing.
 func newTestChunkStore(t *testing.T, schemaName string) Store {
-	var (
-		storeCfg StoreConfig
-	)
+	var storeCfg StoreConfig
 	flagext.DefaultValues(&storeCfg)
 	return newTestChunkStoreConfig(t, schemaName, storeCfg)
 }
