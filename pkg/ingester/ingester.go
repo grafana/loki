@@ -203,6 +203,17 @@ func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// RootReadinessHandler is used to indicate to k8s when the ingesters are ready for
+// the addition removal of another ingester. Returns 200 when the ingester is
+// ready, 500 otherwise.
+func (i *Ingester) RootReadinessHandler(w http.ResponseWriter, r *http.Request) {
+	if err := i.lifecycler.CheckReady(r.Context()); err == nil {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
 func (i *Ingester) getInstanceByID(id string) (*instance, bool) {
 	i.instancesMtx.RLock()
 	defer i.instancesMtx.RUnlock()
