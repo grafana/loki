@@ -11,7 +11,9 @@ import (
 var testYaml = `
 pipeline_stages:
 - regex:
-    expr: "./*"
+    expression: "./*"
+    labels:
+      stream:
 - json: 
     timestamp:
       source: time
@@ -33,7 +35,7 @@ func TestNewPipeline(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	if len(p.stages) != 1 {
+	if len(p.stages) != 2 {
 		t.Fatal("missing stages")
 	}
 }

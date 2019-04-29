@@ -13,7 +13,7 @@ import (
 // PipelineStages contains configuration for each stage within a pipeline
 type PipelineStages []interface{}
 
-// Pipeline pass down a log entry to each stage for mutation.
+// Pipeline pass down a log entry to each stage for mutation and/or label extraction.
 type Pipeline struct {
 	stages []stages.Stage
 }
@@ -42,6 +42,11 @@ func NewPipeline(log log.Logger, stgs PipelineStages) (*Pipeline, error) {
 				}
 				st = append(st, json)
 			case "regex":
+				regex, err := stages.NewRegex(log, config)
+				if err != nil {
+					return nil, errors.Wrap(err, "invalid regex stage config")
+				}
+				st = append(st, regex)
 			}
 		}
 	}
