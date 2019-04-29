@@ -111,7 +111,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 		return nil, err
 	}
 
-	chks, _, err := c.GetChunkRefs(ctx, from, through, allMatchers...)
+	chks, fetchers, err := c.GetChunkRefs(ctx, from, through, allMatchers...)
 	if err != nil {
 		return nil, err
 	}
@@ -122,11 +122,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	}
 
 	chunks := chks[0]
-	// Filter out chunks that are not in the selected time range.
-	filtered, keys := filterChunksByTime(from, through, chunks)
-	level.Debug(log).Log("chunks-post-filtering", len(chunks))
-	chunksPerQuery.Observe(float64(len(filtered)))
-
+	fetcher := fetchers[0]
 	// Protect ourselves against OOMing.
 	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
 	if maxChunksPerQuery > 0 && len(chunks) > maxChunksPerQuery {
@@ -136,7 +132,8 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	}
 
 	// Now fetch the actual chunk data from Memcache / S3
-	allChunks, err := c.FetchChunks(ctx, filtered, keys)
+	keys := keysFromChunks(chunks)
+	allChunks, err := fetcher.FetchChunks(ctx, chunks, keys)
 	if err != nil {
 		level.Error(log).Log("msg", "FetchChunks", "err", err)
 		return nil, err
@@ -188,6 +185,10 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, from, through model.Time
 		level.Error(log).Log("op", "convertChunkIDsToChunks", "err", err)
 		return nil, nil, err
 	}
+
+	chunks = filterChunksByTime(from, through, chunks)
+	level.Debug(log).Log("chunks-post-filtering", len(chunks))
+	chunksPerQuery.Observe(float64(len(chunks)))
 
 	return [][]Chunk{chunks}, []*Fetcher{c.store.Fetcher}, nil
 }

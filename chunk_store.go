@@ -309,7 +309,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 	level.Debug(log).Log("Chunks in index", len(chunks))
 
 	// Filter out chunks that are not in the selected time range.
-	filtered, keys := filterChunksByTime(from, through, chunks)
+	filtered := filterChunksByTime(from, through, chunks)
 	level.Debug(log).Log("Chunks post filtering", len(chunks))
 
 	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
@@ -320,6 +320,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 	}
 
 	// Now fetch the actual chunk data from Memcache / S3
+	keys := keysFromChunks(filtered)
 	allChunks, err := c.FetchChunks(ctx, filtered, keys)
 	if err != nil {
 		return nil, promql.ErrStorage{Err: err}
