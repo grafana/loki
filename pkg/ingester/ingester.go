@@ -143,7 +143,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	err = instance.Push(ctx, req, i.cfg.blockSize)
+	err = instance.Push(ctx, req)
 	return &logproto.PushResponse{}, err
 }
 
@@ -157,7 +157,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(instanceID)
+		inst = newInstance(instanceID, i.cfg.blockSize)
 		i.instances[instanceID] = inst
 	}
 	return inst
