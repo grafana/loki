@@ -12,7 +12,7 @@ import (
 )
 
 var static http.FileSystem = filter.Keep(
-	http.Dir("./pkg/promtail/server/ui/static"),
+	http.Dir("./static"),
 	func(path string, fi os.FileInfo) bool {
 		return fi.IsDir() ||
 			(!strings.HasSuffix(path, "map.js") &&
@@ -23,13 +23,13 @@ var static http.FileSystem = filter.Keep(
 )
 
 var templates http.FileSystem = filter.Keep(
-	http.Dir("./pkg/promtail/server/ui/templates"),
+	http.Dir("./templates"),
 	func(path string, fi os.FileInfo) bool {
 		return fi.IsDir() || strings.HasSuffix(path, ".html")
 	},
 )
 
-// Assets contains the project's assets.
+// Assets contains the project's assets loaded from local file system when build with `-tags dev`
 var Assets http.FileSystem = union.New(map[string]http.FileSystem{
 	"/templates": templates,
 	"/static":    static,

@@ -10,7 +10,7 @@
         <script src="{{ pathPrefix }}/static/vendor/bootstrap-4.1.3/js/bootstrap.min.js?v={{ buildVersion }}"></script>
 
         <link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/vendor/bootstrap-4.1.3/css/bootstrap.min.css?v={{ buildVersion }}">
-        <link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/css/prometheus.css?v={{ buildVersion }}">
+        <link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/css/promtail.css?v={{ buildVersion }}">
         <link type="text/css" rel="stylesheet" href="{{ pathPrefix }}/static/vendor/bootstrap4-glyphicons/css/bootstrap-glyphicons.min.css?v={{ buildVersion }}">
 
         <script>
@@ -36,30 +36,14 @@
                         <span class="icon-bar"></span-->
                 </button>
 
-                <a class="navbar-brand" href="{{ pathPrefix }}/">Prometheus</a>
+                <a class="navbar-brand" href="{{ pathPrefix }}/">Promtail</a>
 
 
                 <div id="nav-content" class="navbar-collapse collapse">
                     <ul class="navbar-nav">
-                        {{$consoles := consolesPath}}
-                        {{if $consoles}}
-                        <li class="nav-item"><a class="nav-link" href="{{$consoles}}">Consoles</a></li>
-                        {{ end }}
-                        <li class="nav-item"><a class="nav-link" href="{{ pathPrefix }}/alerts">Alerts</a></li>
-                        <li class="nav-item"><a class="nav-link" href="{{ pathPrefix }}/graph">Graph</a></li>
-                        <li class="nav-item dropdown">
-                            <a href="#" class="nav-link dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Status <span class="caret"></span></a>
-                            <div class="dropdown-menu">
-                                <a class="dropdown-item" href="{{ pathPrefix }}/status">Runtime &amp; Build Information</a>
-                                <a class="dropdown-item" href="{{ pathPrefix }}/flags">Command-Line Flags</a>
-                                <a class="dropdown-item" href="{{ pathPrefix }}/config">Configuration</a>
-                                <a class="dropdown-item" href="{{ pathPrefix }}/rules">Rules</a>
-                                <a class="dropdown-item" href="{{ pathPrefix }}/targets">Targets</a>
-                                <a class="dropdown-item" href="{{ pathPrefix }}/service-discovery">Service Discovery</a>
-                            </div>
-                        </li>
+                        <li class="nav-item"><a class="nav-link" href="{{ pathPrefix }}/targets">Targets</a></li>
                         <li class= "nav-item" >
-                            <a class ="nav-link" href="https://prometheus.io/docs/prometheus/latest/getting_started/" target="_blank">Help</a>
+                            <a class ="nav-link" href="https://github.com/grafana/loki" target="_blank">Help</a>
                         </li>
                     </ul>
                 </div>

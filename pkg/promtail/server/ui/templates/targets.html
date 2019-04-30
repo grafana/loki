@@ -3,83 +3,79 @@
 <script src="{{ pathPrefix }}/static/js/targets.js?v={{ buildVersion }}"></script>
 {{end}}
 
-<style>
-  *[id]:before {
-    display: block;
-    content: " ";
-    margin-top: -65px;
-    height: 65px;
-    visibility: hidden;
-  }
-</style>
 
 {{define "content"}}
   <div class="container-fluid">
+    <h1>Targets</h1>
+    <div id="showTargets" class="btn-group btn-group-toggle" data-toggle="buttons">
+      <label class="btn btn-primary">
+        <input type="radio" name="targets" id="all-targets" autocomplete="off" checked> All
+      </label>
+      <label class="btn btn-primary">
+        <input type="radio" name="targets" id="unready-targets" autocomplete="off"> Unready
+      </label>
+      </br>
+  </div>
 
-    <h1>Service Discovery</h1>
-    <div>
-      <ul>
-        {{range $i, $job := .Index}}
-          <li>
-            <a href="#job-{{$job}}">{{$job}}</a> ({{ index $.Active $i }}/{{ index $.Total $i }} active targets)
-          </li>
-        {{end}}
-      </ul>
-    </div>
-
-    {{$targets := .Targets}}
-    {{range $i, $job := .Index}}
+    {{range $job, $pool := .TargetPools}}
+    {{$ready := numReady $pool}}
+    {{$total := len $pool}}
 
     <div class="table-container">
-      <h2 class="job_header" id="job-{{$job}}">
-        {{$job}}
-        <button type="button" class="targets collapsed-table btn btn-primary">show more</button>
+      <h2 class="job_header{{if lt $ready $total}} danger{{end}}">
+        <a id="job-{{$job}}" href="#job-{{$job}}">{{$job}} ({{$ready}}/{{$total}} ready)</a>
+        <button type="button" class="targets expanded-table btn btn-primary">show less</button>
       </h2>
-      {{with index $.Dropped $i}}
-      {{if gt . 100 }}
-      <div class="collapsed-element" style="display:none">
-        {{ . }} targets have been dropped, showing only the first 100 dropped targets as examples.
-      </div>
-      {{end}}
-      {{end}}
-      <table class="table table-sm table-bordered table-striped table-hover" style="display:none">
+      <table class="table table-sm table-bordered table-striped table-hover">
         <thead class="job_details">
           <tr>
-            <th>Discovered Labels</th>
-            <th>Target Labels</th>
+            <th>Type</th>
+            <th>Ready</th>
+            <th>Labels</th>
+            <th>Details</th>
           </tr>
         </thead>
         <tbody>
-
-        {{range index $targets $job}}
+        {{range $pool}}
           <tr>
-            <td class="labels">
-                {{$labels := .DiscoveredLabels.Map }}
-                <ul class="list-inline" style="list-style-type:none">
-                  {{range $label, $value := $labels}}
-                    <li>
-                      <span class="badge badge-primary">{{$label}}="{{$value}}"</span>
-                    </li>
-                  {{else}}
-                  <li>
-                    <span class="badge badge-default">none</span>
-                  </li>
-                  {{end}}
-                </ul>
+            <td class="type">
+              <span >{{.Type}}</a><br>
+            </td>
+            <td class="state">
+              <span class="alert alert-{{ if .Ready }}success{{else}}danger{{end}} state_indicator text-uppercase">
+                {{.Ready}}
+              </span>
             </td>
             <td class="labels">
-                {{$labels := .Labels.Map }}
-                <ul class="list-inline" style="list-style-type:none">
-                  {{range $label, $value := $labels}}
-                    <li>
-                      <span class="badge badge-primary">{{$label}}="{{$value}}"</span>
-                    </li>
-                  {{else}}
-                    <li>
-                      <span class="badge badge-default">Dropped</span>
-                    </li>
-                  {{end}}
-                </ul>
+              <span class="cursor-pointer" data-toggle="tooltip" title="" data-html=true data-original-title="<b>Before relabeling:</b>{{range $k, $v := .DiscoveredLabels}}<br>{{$ev := $v | html}}{{$k}}=&quot;{{$ev}}&quot;{{end}}">
+                {{range $label, $value := .Labels}}
+                  <span class="badge badge-primary">{{$label}}="{{$value}}"</span>
+                {{else}} 
+                  <span class="badge badge-default">none</span>
+                {{end}}
+              </span>
+            </td>
+            <td>
+              {{if eq .Type "File"}}
+              
+                {{$files := fileTargetDetails .Details}}
+                <table class="table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Path</th>
+                        <th scope="col">Position</th>
+                      </tr>
+                    </thead>
+                  <tbody>
+                {{range $path, $position := $files}}
+                  <tr>
+                    <td>{{$path}}</td>
+                    <td>{{$position}}</td>
+                  </tr>
+                {{end}}
+                </tbody>
+              </table>
+              {{end}}
             </td>
           </tr>
         {{end}}
@@ -88,5 +84,4 @@
     </div>
     {{ end }}
   </div>
-
 {{end}}

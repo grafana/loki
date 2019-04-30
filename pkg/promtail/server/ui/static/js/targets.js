@@ -15,18 +15,18 @@ function showAll(_, container) {
   $(container).show();
 }
 
-function showUnhealthy(_, container) {
-  const isHealthy = $(container).find("h2").attr("class").indexOf("danger") < 0;
-  if (isHealthy) { $(container).hide(); }
+function showUnready(_, container) {
+  const isReady = $(container).find("h2").attr("class").indexOf("danger") < 0;
+  if (isReady) { $(container).hide(); }
 }
 
 function init() {
   if (!localStorage.selectedTab || localStorage.selectedTab == "all-targets"){
     $("#all-targets").parent().addClass("active");
     $(".table-container").each(showAll);
-  } else if (localStorage.selectedTab == "unhealthy-targets") {
-    $("#unhealthy-targets").parent().addClass("active");
-    $(".table-container").each(showUnhealthy);
+  } else if (localStorage.selectedTab == "unready-targets") {
+    $("#unready-targets").parent().addClass("active");
+    $(".table-container").each(showUnready);
   }
 
   $("button.targets").click(function () {
@@ -54,9 +54,9 @@ function init() {
     if (target === "all-targets") {
       $(".table-container").each(showAll);
       localStorage.setItem("selectedTab", "all-targets");
-    } else if (target === "unhealthy-targets") {
-      $(".table-container").each(showUnhealthy);
-      localStorage.setItem("selectedTab", "unhealthy-targets");
+    } else if (target === "unready-targets") {
+      $(".table-container").each(showUnready);
+      localStorage.setItem("selectedTab", "unready-targets");
     }
   });
 }

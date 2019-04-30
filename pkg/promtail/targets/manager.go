@@ -12,6 +12,7 @@ import (
 type targetManager interface {
 	Ready() bool
 	Stop()
+	TargetsActive() map[string][]Target
 }
 
 // TargetManagers manages a list of target managers.
@@ -46,6 +47,17 @@ func NewTargetManagers(
 
 	return &TargetManagers{targetManagers: targetManagers}, nil
 
+}
+
+// TargetsActive returns active targets per jobs
+func (tm *TargetManagers) TargetsActive() map[string][]Target {
+	result := map[string][]Target{}
+	for _, t := range tm.targetManagers {
+		for job, targets := range t.TargetsActive() {
+			result[job] = append(result[job], targets...)
+		}
+	}
+	return result
 }
 
 // Ready if there's at least one ready FileTargetManager

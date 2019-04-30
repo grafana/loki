@@ -43,7 +43,6 @@ var (
 // FileTargetManager manages a set of targets.
 type FileTargetManager struct {
 	log     log.Logger
-	ctx     context.Context
 	quit    context.CancelFunc
 	syncers map[string]*syncer
 	manager *discovery.Manager
@@ -60,7 +59,6 @@ func NewFileTargetManager(
 	ctx, quit := context.WithCancel(context.Background())
 	tm := &FileTargetManager{
 		log:     logger,
-		ctx:     ctx,
 		quit:    quit,
 		syncers: map[string]*syncer{},
 		manager: discovery.NewManager(ctx, log.With(logger, "component", "discovery")),
@@ -120,6 +118,17 @@ func (tm *FileTargetManager) Stop() {
 
 }
 
+// TargetsActive returns the active targets currently being scraped.
+func (tm *FileTargetManager) TargetsActive() map[string][]Target {
+	result := map[string][]Target{}
+	for jobName, syncer := range tm.syncers {
+		for _, ft := range syncer.targets {
+			result[jobName] = append(result[jobName], ft)
+		}
+	}
+	return result
+}
+
 type syncer struct {
 	log          log.Logger
 	positions    *positions.Positions
@@ -139,8 +148,8 @@ func (s *syncer) sync(groups []*targetgroup.Group) {
 		for _, t := range group.Targets {
 			level.Debug(s.log).Log("msg", "new target", "labels", t)
 
-			labels := group.Labels.Merge(t)
-			labels = relabel.Process(labels, s.relabelConfig...)
+			discoveredLabels := group.Labels.Merge(t)
+			labels := relabel.Process(discoveredLabels.Clone(), s.relabelConfig...)
 
 			// Drop empty targets (drop in relabeling).
 			if labels == nil {
@@ -178,7 +187,7 @@ func (s *syncer) sync(groups []*targetgroup.Group) {
 			}
 
 			level.Info(s.log).Log("msg", "Adding target", "key", key)
-			t, err := s.newTarget(string(path), labels)
+			t, err := s.newTarget(string(path), labels, discoveredLabels)
 			if err != nil {
 				level.Error(s.log).Log("msg", "Failed to create target", "key", key, "error", err)
 				failedTargets.WithLabelValues("error").Inc()
@@ -200,8 +209,8 @@ func (s *syncer) sync(groups []*targetgroup.Group) {
 	}
 }
 
-func (s *syncer) newTarget(path string, labels model.LabelSet) (*FileTarget, error) {
-	return NewFileTarget(s.log, s.entryHandler, s.positions, path, labels, s.targetConfig)
+func (s *syncer) newTarget(path string, labels model.LabelSet, discoveredLabels model.LabelSet) (*FileTarget, error) {
+	return NewFileTarget(s.log, s.entryHandler, s.positions, path, labels, discoveredLabels, s.targetConfig)
 }
 
 func (s *syncer) ready() bool {

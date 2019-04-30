@@ -7,19 +7,24 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"text/template"
+
+	"github.com/pkg/errors"
+	"github.com/prometheus/common/version"
+	serverww "github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/pkg/promtail/server/ui"
 	"github.com/grafana/loki/pkg/promtail/targets"
-	"github.com/pkg/errors"
-	serverww "github.com/weaveworks/common/server"
 )
 
+// Server embed weaveworks server with static file and templating capability
 type Server struct {
 	*serverww.Server
 	tms         *targets.TargetManagers
 	externalURL *url.URL
 }
 
+// Config extends weaveworks server config
 type Config struct {
 	serverww.Config `yaml:",inline"`
 	ExternalURL     string `yaml:"external_url"`
@@ -44,16 +49,41 @@ func New(cfg Config, tms *targets.TargetManagers) (*Server, error) {
 
 	serv.HTTP.Path("/ready").Handler(http.HandlerFunc(serv.ready))
 	serv.HTTP.PathPrefix("/static/").Handler(http.FileServer(ui.Assets))
-	serv.HTTP.Path("/ready").Handler(http.HandlerFunc(serv.ready))
-	serv.HTTP.Path("/service-discovery").Handler(http.HandlerFunc(serv.targets))
+	serv.HTTP.Path("/targets").Handler(http.HandlerFunc(serv.targets))
 	return serv, nil
 
 }
 
+// targets serves the targets page.
 func (s *Server) targets(rw http.ResponseWriter, req *http.Request) {
-	executeTemplate(context.Background(), rw, s.externalURL, "targets.html", nil)
+	executeTemplate(context.Background(), rw, templateOptions{
+		Data: struct {
+			TargetPools map[string][]targets.Target
+		}{
+			TargetPools: s.tms.TargetsActive(),
+		},
+		BuildVersion: version.Info(),
+		Name:         "targets.html",
+		PageTitle:    "Targets",
+		ExternalURL:  s.externalURL,
+		TemplateFuncs: template.FuncMap{
+			"fileTargetDetails": func(details interface{}) map[string]int64 {
+				// you can't cast with a text template in go so this is a helper
+				return details.(map[string]int64)
+			},
+			"numReady": func(ts []targets.Target) (readies int) {
+				for _, t := range ts {
+					if t.Ready() {
+						readies++
+					}
+				}
+				return
+			},
+		},
+	})
 }
 
+// ready serves the ready endpoint
 func (s *Server) ready(rw http.ResponseWriter, req *http.Request) {
 	if s.tms.Ready() {
 		rw.WriteHeader(http.StatusNoContent)
