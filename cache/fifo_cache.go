@@ -56,8 +56,8 @@ var (
 
 // FifoCacheConfig holds config for the FifoCache.
 type FifoCacheConfig struct {
-	Size     int
-	Validity time.Duration
+	Size     int           `yaml:"size,omitempty"`
+	Validity time.Duration `yaml:"validity,omitempty"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet

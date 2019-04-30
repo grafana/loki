@@ -26,8 +26,8 @@ var (
 
 // BackgroundConfig is config for a Background Cache.
 type BackgroundConfig struct {
-	WriteBackGoroutines int
-	WriteBackBuffer     int
+	WriteBackGoroutines int `yaml:"writeback_goroutines,omitempty"`
+	WriteBackBuffer     int `yaml:"writeback_buffer,omitempty"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet

@@ -30,7 +30,7 @@ type Config struct {
 
 	IndexCacheValidity time.Duration
 
-	indexQueriesCacheConfig cache.Config
+	IndexQueriesCacheConfig cache.Config `yaml:"index_queries_cache_config,omitempty"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -42,15 +42,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
 
-	cfg.indexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
+	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
 }
 
 // NewStore makes the storage clients based on the configuration.
 func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits *validation.Overrides) (chunk.Store, error) {
-	var err error
-
-	tieredCache, err := cache.New(cfg.indexQueriesCacheConfig)
+	tieredCache, err := cache.New(cfg.IndexQueriesCacheConfig)
 	if err != nil {
 		return nil, err
 	}

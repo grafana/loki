@@ -55,11 +55,11 @@ func init() {
 
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
-	ChunkCacheConfig       cache.Config
-	WriteDedupeCacheConfig cache.Config
+	ChunkCacheConfig       cache.Config `yaml:"chunk_cache_config,omitempty"`
+	WriteDedupeCacheConfig cache.Config `yaml:"write_dedupe_cache_config,omitempty"`
 
-	MinChunkAge           time.Duration
-	CacheLookupsOlderThan time.Duration
+	MinChunkAge           time.Duration `yaml:"min_chunk_age,omitempty"`
+	CacheLookupsOlderThan time.Duration `yaml:"cache_lookups_older_than,omitempty"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
