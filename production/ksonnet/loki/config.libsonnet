@@ -35,6 +35,7 @@
 
       ingester: {
         chunk_idle_period: '15m',
+        chunk_block_size: 262144,
 
         lifecycler: {
           ring: {
