@@ -55,7 +55,7 @@ func New(cfg Config, tms *targets.TargetManagers) (*Server, error) {
 }
 
 // targets serves the targets page.
-func (s *Server) targets(rw http.ResponseWriter, req *http.Request) {
+func (s *Server) targets(rw http.ResponseWriter, _ *http.Request) {
 	executeTemplate(context.Background(), rw, templateOptions{
 		Data: struct {
 			TargetPools map[string][]targets.Target
@@ -84,7 +84,7 @@ func (s *Server) targets(rw http.ResponseWriter, req *http.Request) {
 }
 
 // ready serves the ready endpoint
-func (s *Server) ready(rw http.ResponseWriter, req *http.Request) {
+func (s *Server) ready(rw http.ResponseWriter, _ *http.Request) {
 	if s.tms.Ready() {
 		rw.WriteHeader(http.StatusNoContent)
 	} else {

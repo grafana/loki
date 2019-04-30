@@ -61,7 +61,7 @@ func executeTemplate(ctx context.Context, w http.ResponseWriter, tmplOpts templa
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	io.WriteString(w, result)
+	_, _ = io.WriteString(w, result)
 }
 
 func getTemplate(name string) (string, error) {
@@ -72,7 +72,9 @@ func getTemplate(name string) (string, error) {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
+		defer func() {
+			_ = f.Close()
+		}()
 		b, err := ioutil.ReadAll(f)
 		if err != nil {
 			return err
