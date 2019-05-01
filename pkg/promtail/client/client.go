@@ -76,7 +76,7 @@ type entry struct {
 }
 
 // New makes a new Client.
-func New(cfg Config, logger log.Logger) *client {
+func New(cfg Config, logger log.Logger) Client {
 	c := &client{
 		logger:  log.With(logger, "component", "client", "host", cfg.URL.Host),
 		cfg:     cfg,

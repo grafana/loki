@@ -14,7 +14,7 @@ func (es MultiError) Error() string {
 	var buf bytes.Buffer
 
 	if len(es) > 1 {
-		fmt.Fprintf(&buf, "%d errors: ", len(es))
+		_, _ = fmt.Fprintf(&buf, "%d errors: ", len(es))
 	}
 
 	for i, err := range es {
