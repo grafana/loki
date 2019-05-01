@@ -31,14 +31,11 @@ div#showTargets .btn {
     word-break: break-all;
 }
 
-td.type, td.labels {
-    width: 25%;
+
+td.labels, td.details {
+    width:40%;
 }
 
-td.state, td.last-scrape {
+td.type, td.state, td.last-scrape {
     width: 10%;
-}
-
-td.errors {
-    width: 30%;
 }
