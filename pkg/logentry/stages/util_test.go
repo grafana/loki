@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/assert"
 )
 
 func mustParseTime(layout, value string) time.Time {
@@ -32,8 +33,6 @@ func assertLabels(t *testing.T, expect map[string]string, got model.LabelSet) {
 		if !ok {
 			t.Fatalf("missing expected label key: %s", k)
 		}
-		if gotV != model.LabelValue(v) {
-			t.Fatalf("mismatch label value got: %s/%s want %s/%s", k, gotV, k, model.LabelValue(v))
-		}
+		assert.Equal(t, model.LabelValue(v), gotV, "mismatch label value")
 	}
 }

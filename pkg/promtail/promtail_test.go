@@ -25,7 +25,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/grafana/loki/pkg/logentry"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/parser"
 	"github.com/grafana/loki/pkg/promtail/api"

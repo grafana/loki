@@ -153,6 +153,7 @@ func (j *jsonStage) getJSONValue(expr *string, data map[string]interface{}) (res
 func (j *jsonStage) Process(labels model.LabelSet, t *time.Time, entry *string) {
 	if entry == nil {
 		level.Debug(j.logger).Log("msg", "cannot parse a nil entry")
+		return
 	}
 	var data map[string]interface{}
 	if err := json.Unmarshal([]byte(*entry), &data); err != nil {
