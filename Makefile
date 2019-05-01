@@ -127,7 +127,7 @@ $(EXES): loki-build-image/$(UPTODATE)
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
 
 lint: loki-build-image/$(UPTODATE)
-	gometalinter ./...
+	golangci-lint run
 
 check-generated-files: loki-build-image/$(UPTODATE) yacc protos
 	@git diff-files || (echo "changed files; failing check" && exit 1)

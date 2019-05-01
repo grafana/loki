@@ -32,7 +32,7 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dirName)
+	defer func() { _ = os.RemoveAll(dirName) }()
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
@@ -125,7 +125,7 @@ func TestWatchEntireDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dirName)
+	defer func() { _ = os.RemoveAll(dirName) }()
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
@@ -214,7 +214,7 @@ func TestFileRolls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dirName)
+	defer func() { _ = os.RemoveAll(dirName) }()
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
@@ -312,7 +312,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dirName)
+	defer func() { _ = os.RemoveAll(dirName) }()
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
@@ -421,7 +421,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dirName)
+	defer func() { _ = os.RemoveAll(dirName) }()
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
@@ -524,7 +524,7 @@ func TestFileTargetSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dirName)
+	defer func() { _ = os.RemoveAll(dirName) }()
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.

@@ -248,8 +248,8 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Ingester
 
 func tokenFor(userID, labels string) uint32 {
 	h := fnv.New32()
-	h.Write([]byte(userID))
-	h.Write([]byte(labels))
+	_, _ = h.Write([]byte(userID))
+	_, _ = h.Write([]byte(labels))
 	return h.Sum32()
 }
 

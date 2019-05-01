@@ -53,13 +53,11 @@ func (q Querier) queryStore(ctx context.Context, req *logproto.QueryRequest) ([]
 
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
 	filtered := make([]chunk.Chunk, 0, len(chunks))
-	keys := make([]string, 0, len(chunks))
 	for _, chunk := range chunks {
 		if chunk.Through < from || through < chunk.From {
 			continue
 		}
 		filtered = append(filtered, chunk)
-		keys = append(keys, chunk.ExternalKey())
 	}
 	return filtered
 }
@@ -189,7 +187,7 @@ func partitionBySeriesChunks(chunks [][]chunk.Chunk, fetchers []*chunk.Fetcher) 
 // partitionOverlappingChunks splits the list of chunks into different non-overlapping lists.
 func partitionOverlappingChunks(chunks []chunkenc.LazyChunk) [][]chunkenc.LazyChunk {
 	sort.Slice(chunks, func(i, j int) bool {
-		return chunks[i].Chunk.From < chunks[i].Chunk.From
+		return chunks[i].Chunk.From < chunks[j].Chunk.From
 	})
 
 	css := [][]chunkenc.LazyChunk{}

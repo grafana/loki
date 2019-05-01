@@ -154,9 +154,10 @@ func TestIteratorMultipleLabels(t *testing.T) {
 
 type generator func(i int64) logproto.Entry
 
+// nolint
 func mkStreamIterator(numEntries int64, f generator, labels string) EntryIterator {
 	entries := []logproto.Entry{}
-	for i := int64(0); i < numEntries; i++ {
+	for i := int64(0); i < 10; i++ {
 		entries = append(entries, f(i))
 	}
 	return newStreamIterator(&logproto.Stream{
@@ -178,6 +179,7 @@ func offset(j int64, g generator) generator {
 	}
 }
 
+// nolint
 func constant(t int64) generator {
 	return func(i int64) logproto.Entry {
 		return logproto.Entry{
