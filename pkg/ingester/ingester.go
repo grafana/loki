@@ -32,8 +32,7 @@ type Config struct {
 	FlushOpTimeout    time.Duration `yaml:"flush_op_timeout"`
 	RetainPeriod      time.Duration `yaml:"chunk_retain_period"`
 	MaxChunkIdle      time.Duration `yaml:"chunk_idle_period"`
-
-	blockSize int `yaml:"chunk_block_size"`
+	BlockSize         int           `yaml:"chunk_block_size"`
 }
 
 // RegisterFlags registers the flags.
@@ -45,7 +44,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Second, "")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 15*time.Minute, "")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "")
-	f.IntVar(&cfg.blockSize, "ingester.chunks-block-size", 256*1024, "")
+	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "")
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -157,7 +156,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(instanceID, i.cfg.blockSize)
+		inst = newInstance(instanceID, i.cfg.BlockSize)
 		i.instances[instanceID] = inst
 	}
 	return inst
