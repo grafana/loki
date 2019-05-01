@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 )
 
@@ -37,7 +38,7 @@ func TestYamlMapStructure(t *testing.T) {
 	}
 	want := &JSONConfig{
 		Labels: map[string]*JSONLabel{
-			"stream": &JSONLabel{
+			"stream": {
 				Source: String("json_key_name.json_sub_key_name"),
 			},
 		},
@@ -313,6 +314,7 @@ func TestJSONParser_Parse(t *testing.T) {
 	for tName, tt := range tests {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
+			t.Parallel()
 			p, err := NewJSON(util.Logger, tt.config)
 			if err != nil {
 				t.Fatalf("failed to create json parser: %s", err)
@@ -321,9 +323,7 @@ func TestJSONParser_Parse(t *testing.T) {
 			p.Process(lbs, &tt.t, &tt.entry)
 
 			assertLabels(t, tt.expectedLabels, lbs)
-			if tt.entry != tt.expectedEntry {
-				t.Fatalf("mismatch entry want: %s got:%s", tt.expectedEntry, tt.entry)
-			}
+			assert.Equal(t, tt.expectedEntry, tt.entry, "did not receive expected log entry")
 			if tt.t.Unix() != tt.expectedT.Unix() {
 				t.Fatalf("mismatch ts want: %s got:%s", tt.expectedT, tt.t)
 			}

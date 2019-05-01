@@ -20,6 +20,7 @@ import (
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logentry"
+	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/scrape"
@@ -74,10 +75,36 @@ func NewFileTargetManager(
 
 	config := map[string]sd_config.ServiceDiscoveryConfig{}
 	for _, cfg := range scrapeConfigs {
+
 		pipeline, err := logentry.NewPipeline(log.With(logger, "component", "pipeline"), cfg.PipelineStages)
 		if err != nil {
 			return nil, err
 		}
+
+		// Backwards compatibility with old EntryParser config
+		if pipeline.Size() == 0 {
+			switch cfg.EntryParser {
+			case api.CRI:
+				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
+				cri, err := stages.NewCri(logger)
+				if err != nil {
+					return nil, err
+				}
+				pipeline.AddStage(cri)
+			case api.Docker:
+				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
+				docker, err := stages.NewDocker(logger)
+				if err != nil {
+					return nil, err
+				}
+				pipeline.AddStage(docker)
+			case api.Raw:
+				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
+			default:
+
+			}
+		}
+
 		s := &targetSyncer{
 			log:            logger,
 			positions:      positions,

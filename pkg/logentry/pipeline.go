@@ -24,7 +24,8 @@ func NewPipeline(log log.Logger, stgs PipelineStages) (*Pipeline, error) {
 	for _, s := range stgs {
 		stage, ok := s.(map[interface{}]interface{})
 		if !ok {
-			return nil, errors.New("invalid YAML config")
+			return nil, errors.Errorf("invalid YAML config, "+
+				"make sure each stage of your pipeline is a YAML object (must end with a `:`), check stage `- %s`", s)
 		}
 		if len(stage) > 1 {
 			return nil, errors.New("pipeline stage must contain only one key")
@@ -47,6 +48,18 @@ func NewPipeline(log log.Logger, stgs PipelineStages) (*Pipeline, error) {
 					return nil, errors.Wrap(err, "invalid regex stage config")
 				}
 				st = append(st, regex)
+			case "docker":
+				docker, err := stages.NewDocker(log)
+				if err != nil {
+					return nil, errors.Wrap(err, "invalid docker stage config")
+				}
+				st = append(st, docker)
+			case "cri":
+				cri, err := stages.NewCri(log)
+				if err != nil {
+					return nil, errors.Wrap(err, "invalid cri stage config")
+				}
+				st = append(st, cri)
 			}
 		}
 	}
@@ -70,4 +83,14 @@ func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 		p.Process(labels, &timestamp, &line)
 		return next.Handle(labels, timestamp, line)
 	})
+}
+
+// AddStage adds a stage to the pipeline
+func (p *Pipeline) AddStage(stage stages.Stage) {
+	p.stages = append(p.stages, stage)
+}
+
+// Size gets the current number of stages in the pipeline
+func (p *Pipeline) Size() int {
+	return len(p.stages)
 }

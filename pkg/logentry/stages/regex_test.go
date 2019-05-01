@@ -8,6 +8,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 )
 
@@ -39,7 +40,7 @@ func TestRegexMapStructure(t *testing.T) {
 	}
 	want := &RegexConfig{
 		Labels: map[string]*RegexLabel{
-			"stream": &RegexLabel{
+			"stream": {
 				Source: String("stream"),
 			},
 		},
@@ -195,9 +196,11 @@ func TestRegexConfig_validate(t *testing.T) {
 	}
 }
 
-var regexLogFixture = `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`
-var regexLogFixture_missingLabel = `2016-10-06T00:17:09.669794202Z stdout k `
-var regexLogFixture_invalidTimestamp = `2016-10-06sfsT00:17:09.669794202Z stdout k `
+var (
+	regexLogFixture                 = `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`
+	regexLogFixtureMissingLabel     = `2016-10-06T00:17:09.669794202Z stdout k `
+	regexLogFixtureInvalidTimestamp = `2016-10-06sfsT00:17:09.669794202Z stdout k `
+)
 
 func TestRegexParser_Parse(t *testing.T) {
 	t.Parallel()
@@ -292,8 +295,8 @@ func TestRegexParser_Parse(t *testing.T) {
 					},
 				},
 			},
-			regexLogFixture_missingLabel,
-			regexLogFixture_missingLabel,
+			regexLogFixtureMissingLabel,
+			regexLogFixtureMissingLabel,
 			time.Now(),
 			time.Date(2016, 10, 06, 00, 17, 9, 669794202, utc),
 			nil,
@@ -315,8 +318,8 @@ func TestRegexParser_Parse(t *testing.T) {
 					},
 				},
 			},
-			regexLogFixture_missingLabel,
-			regexLogFixture_missingLabel,
+			regexLogFixtureInvalidTimestamp,
+			regexLogFixtureInvalidTimestamp,
 			time.Date(2019, 10, 06, 00, 17, 9, 0, utc),
 			time.Date(2019, 10, 06, 00, 17, 9, 0, utc),
 			nil,
@@ -352,6 +355,7 @@ func TestRegexParser_Parse(t *testing.T) {
 	for tName, tt := range tests {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
+			t.Parallel()
 			p, err := NewRegex(util.Logger, tt.config)
 			if err != nil {
 				t.Fatalf("failed to create regex parser: %s", err)
@@ -360,9 +364,7 @@ func TestRegexParser_Parse(t *testing.T) {
 			p.Process(lbs, &tt.t, &tt.entry)
 
 			assertLabels(t, tt.expectedLabels, lbs)
-			if tt.entry != tt.expectedEntry {
-				t.Fatalf("mismatch entry want: %s got:%s", tt.expectedEntry, tt.entry)
-			}
+			assert.Equal(t, tt.expectedEntry, tt.entry, "did not receive expected log entry")
 			if tt.t.Unix() != tt.expectedT.Unix() {
 				t.Fatalf("mismatch ts want: %s got:%s", tt.expectedT, tt.t)
 			}

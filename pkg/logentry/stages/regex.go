@@ -45,6 +45,7 @@ func newRegexConfig(config interface{}) (*RegexConfig, error) {
 	return cfg, nil
 }
 
+// Config Errors
 const (
 	ErrExpressionRequired      = "expression is required"
 	ErrCouldNotCompileRegex    = "could not compile regular expression"
@@ -116,6 +117,7 @@ type regexStage struct {
 	logger     log.Logger
 }
 
+// NewRegex creates a new regular expression based pipeline processing stage.
 func NewRegex(logger log.Logger, config interface{}) (Stage, error) {
 	cfg, err := newRegexConfig(config)
 	if err != nil {
@@ -132,6 +134,7 @@ func NewRegex(logger log.Logger, config interface{}) (Stage, error) {
 	}, nil
 }
 
+// Process implements a pipeline stage
 func (r *regexStage) Process(labels model.LabelSet, t *time.Time, entry *string) {
 	if entry == nil {
 		level.Debug(r.logger).Log("msg", "cannot parse a nil entry")
