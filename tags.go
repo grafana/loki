@@ -31,6 +31,16 @@ func (ts *Tags) Set(s string) error {
 	return nil
 }
 
+// UnmarshalYAML implements yaml.Unmarshaler.
+func (ts *Tags) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var m map[string]string
+	if err := unmarshal(&m); err != nil {
+		return err
+	}
+	*ts = Tags(m)
+	return nil
+}
+
 // Equals returns true is other matches ts.
 func (ts Tags) Equals(other Tags) bool {
 	if len(ts) != len(other) {
