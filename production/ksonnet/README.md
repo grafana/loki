@@ -40,15 +40,21 @@ promtail + {
   _config+:: {
     namespace: 'loki',
 
-    promtail_config: {
-      scheme: 'https',
-      hostname: 'logs-us-west1.grafana.net',
-      username: 'user-id',
-      password: 'password',
+    promtail_config+: {
+      clients: [
+        {
+          scheme:: 'https',
+          hostname:: 'logs-us-west1.grafana.net',
+          username:: 'user-id',
+          password:: 'password',
+          external_labels: {},
+        }
+      ],
       container_root_path: '/var/lib/docker',
     },
   },
 }
+
 ```
 Notice that `container_root_path` is your own data root for docker daemon, use `docker info | grep "Root Dir"` to get it.
 
