@@ -37,6 +37,7 @@ func (c *Config) RegisterFlags(flags *flag.FlagSet) {
 // UnmarshalYAML implement Yaml Unmarshaler
 func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type raw Config
+	// force sane defaults.
 	cfg := raw{
 		BackoffConfig: util.BackoffConfig{
 			MaxBackoff: 5 * time.Second,
@@ -47,7 +48,6 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		BatchWait: 1 * time.Second,
 		Timeout:   10 * time.Second,
 	}
-	// Put your defaults here
 	if err := unmarshal(&cfg); err != nil {
 		return err
 	}
