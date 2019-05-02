@@ -29,7 +29,6 @@ func TestFactoryStop(t *testing.T) {
 			IndexType: "inmemory",
 		},
 	}
-	cfg.memcacheClient.Host = "localhost" // Fake address that should at least resolve.
 
 	limits, err := validation.NewOverrides(defaults)
 	require.NoError(t, err)
