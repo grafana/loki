@@ -79,12 +79,6 @@ var (
 		// metric names.
 		Buckets: prometheus.ExponentialBuckets(1, 4, 6),
 	})
-	dynamoQueryRetryCount = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "dynamo_query_retry_count",
-		Help:      "Number of retries per DynamoDB operation.",
-		Buckets:   prometheus.LinearBuckets(0, 1, 21),
-	}, []string{"operation"})
 )
 
 func init() {
@@ -92,7 +86,6 @@ func init() {
 	prometheus.MustRegister(dynamoConsumedCapacity)
 	prometheus.MustRegister(dynamoFailures)
 	prometheus.MustRegister(dynamoQueryPagesCount)
-	prometheus.MustRegister(dynamoQueryRetryCount)
 	prometheus.MustRegister(dynamoDroppedRequests)
 }
 
@@ -212,9 +205,6 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 	unprocessed := dynamoDBWriteBatch{}
 
 	backoff := util.NewBackoff(ctx, a.cfg.backoffConfig)
-	defer func() {
-		dynamoQueryRetryCount.WithLabelValues("BatchWrite").Observe(float64(backoff.NumRetries()))
-	}()
 
 	for outstanding.Len()+unprocessed.Len() > 0 && backoff.Ongoing() {
 		requests := dynamoDBWriteBatch{}
@@ -354,9 +344,6 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery
 
 func (a dynamoDBStorageClient) queryPage(ctx context.Context, input *dynamodb.QueryInput, page dynamoDBRequest, hashValue string, pageCount int) (*dynamoDBReadResponse, error) {
 	backoff := util.NewBackoff(ctx, a.cfg.backoffConfig)
-	defer func() {
-		dynamoQueryRetryCount.WithLabelValues("queryPage").Observe(float64(backoff.NumRetries()))
-	}()
 
 	var err error
 	for backoff.Ongoing() {
@@ -530,9 +517,6 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 	result := []chunk.Chunk{}
 	unprocessed := dynamoDBReadRequest{}
 	backoff := util.NewBackoff(ctx, a.cfg.backoffConfig)
-	defer func() {
-		dynamoQueryRetryCount.WithLabelValues("getDynamoDBChunks").Observe(float64(backoff.NumRetries()))
-	}()
 
 	for outstanding.Len()+unprocessed.Len() > 0 && backoff.Ongoing() {
 		requests := dynamoDBReadRequest{}
