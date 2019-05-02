@@ -3,6 +3,8 @@ package querier
 import (
 	"context"
 	"flag"
+	"time"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -10,7 +12,6 @@ import (
 	token_util "github.com/grafana/loki/pkg/util"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"time"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -231,7 +232,8 @@ func mergePair(s1, s2 []string) []string {
 	return result
 }
 
-func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest, responseChan chan<- tailResponse, closeErrChan chan<- error) (*tailer, error) {
+// Tail keeps getting matching logs from all ingesters for given query
+func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest, responseChan chan<- tailResponse, closeErrChan chan<- error) (*Tailer, error) {
 	clients, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
 		return client.Tail(ctx, req)
 	})
@@ -291,20 +293,6 @@ func (q *Querier) queryDroppedStreams(ctx context.Context, req *logproto.TailReq
 
 	iterators := append(chunkStoreIterators, ingesterIterators...)
 	return iter.NewHeapIterator(iterators, query.Direction), nil
-}
-
-func (q *Querier) getAddressOfAllIngesters() ([]string, error) {
-	replicationSet, err := q.ring.GetAll()
-
-	if err != nil {
-		return nil, err
-	}
-	addresses := make([]string, len(replicationSet.Ingesters))
-	for i := range replicationSet.Ingesters {
-		addresses[i] = replicationSet.Ingesters[i].Addr
-	}
-
-	return addresses, nil
 }
 
 func (q *Querier) tailDisconnectedIngesteres(ctx context.Context, req *logproto.TailRequest, connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {

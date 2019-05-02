@@ -10,11 +10,11 @@ import (
 
 type droppedEntry struct {
 	Timestamp time.Time
-	Labels string
+	Labels    string
 }
 
 type tailResponse struct {
-	Stream logproto.Stream
+	Stream         logproto.Stream
 	DroppedEntries []droppedEntry
 }
 

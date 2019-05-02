@@ -51,7 +51,7 @@ type stream struct {
 	labels    []client.LabelAdapter
 	blockSize int
 
-	tailers map[uint32]*tailer
+	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
 }
 
@@ -68,7 +68,7 @@ func newStream(fp model.Fingerprint, labels []client.LabelAdapter, blockSize int
 		fp:        fp,
 		labels:    labels,
 		blockSize: blockSize,
-		tailers: map[uint32]*tailer{},
+		tailers:   map[uint32]*tailer{},
 	}
 }
 
@@ -108,7 +108,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 
 	if len(storedEntries) != 0 {
 		go func() {
-			stream := logproto.Stream{client.FromLabelAdaptersToLabels(s.labels).String(), storedEntries}
+			stream := logproto.Stream{Labels: client.FromLabelAdaptersToLabels(s.labels).String(), Entries: storedEntries}
 			for _, tailer := range s.tailers {
 				if tailer.isClosed() {
 					s.removeTailer(tailer)
@@ -152,14 +152,14 @@ func (s *stream) addTailer(t *tailer) {
 	s.tailerMtx.Lock()
 	defer s.tailerMtx.Unlock()
 
-	s.tailers[t.getId()] = t
+	s.tailers[t.getID()] = t
 }
 
 func (s *stream) removeTailer(t *tailer) {
 	s.tailerMtx.Lock()
 	defer s.tailerMtx.Unlock()
 
-	delete(s.tailers, t.getId())
+	delete(s.tailers, t.getID())
 }
 
 func (s *stream) matchesTailer(t *tailer) bool {

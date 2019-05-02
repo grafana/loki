@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	defaultQueryLimit = 100
-	defaulSince       = 1 * time.Hour
-	pingPeriod = 1 * time.Second
+	defaultQueryLimit         = 100
+	defaulSince               = 1 * time.Hour
+	pingPeriod                = 1 * time.Second
 	bufferSizeForTailResponse = 10
 )
 
@@ -155,11 +155,11 @@ func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 
 type droppedEntry struct {
 	Timestamp time.Time
-	Labels string
+	Labels    string
 }
 
 type tailResponse struct {
-	Stream logproto.Stream
+	Stream         logproto.Stream
 	DroppedEntries []droppedEntry
 }
 
@@ -200,12 +200,16 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	defer tailer.close()
+	defer func() {
+		if err := tailer.close(); err != nil {
+			level.Error(util.Logger).Log("Error closing Tailer", fmt.Sprintf("%v", err))
+		}
+	}()
 
 	ticker := time.NewTicker(pingPeriod)
 	defer ticker.Stop()
 
-	response := tailResponse{}
+	var response tailResponse
 
 	for {
 		select {
@@ -217,7 +221,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 					level.Error(util.Logger).Log("Error writing close message to websocket", fmt.Sprintf("%v", err))
 				}
 				if err := tailer.close(); err != nil {
-					level.Error(util.Logger).Log("Error closing tailer", fmt.Sprintf("%v", err))
+					level.Error(util.Logger).Log("Error closing Tailer", fmt.Sprintf("%v", err))
 				}
 				return
 			}

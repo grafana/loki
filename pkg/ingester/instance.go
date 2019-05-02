@@ -52,7 +52,7 @@ type instance struct {
 	streamsRemovedTotal prometheus.Counter
 
 	blockSize int
-	tailers map[uint32]*tailer
+	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
 }
 
@@ -66,7 +66,7 @@ func newInstance(instanceID string, blockSize int) *instance {
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
 
 		blockSize: blockSize,
-		tailers: map[uint32]*tailer{},
+		tailers:   map[uint32]*tailer{},
 	}
 }
 
@@ -166,29 +166,29 @@ func (i *instance) lookupStreams(req *logproto.QueryRequest, matchers []*labels.
 	return iterators, nil
 }
 
-func (i *instance) addTailer(t *tailer)  {
+func (i *instance) addTailer(t *tailer) {
 	i.tailerMtx.Lock()
 	defer i.tailerMtx.Unlock()
 
-	tailers := map[uint32]*tailer{t.getId(): t}
+	tailers := map[uint32]*tailer{t.getID(): t}
 	for _, stream := range i.streams {
 		i.addTailersToStream(tailers, stream)
 	}
-	i.tailers[t.getId()] = t
+	i.tailers[t.getID()] = t
 }
 
-func (i *instance) removeTailer(tailerId uint32) {
+func (i *instance) removeTailer(tailerID uint32) {
 	i.tailerMtx.Lock()
 	defer i.tailerMtx.Unlock()
 
-	delete(i.tailers, tailerId)
+	delete(i.tailers, tailerID)
 }
 
-func (i *instance) addTailersToStream(tailers map[uint32]*tailer, stream *stream)  {
+func (i *instance) addTailersToStream(tailers map[uint32]*tailer, stream *stream) {
 	closedTailers := []uint32{}
 	for _, t := range tailers {
 		if t.isClosed() {
-			closedTailers = append(closedTailers, t.getId())
+			closedTailers = append(closedTailers, t.getID())
 			continue
 		}
 

@@ -3,49 +3,50 @@ package querier
 import (
 	"container/heap"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/pkg/errors"
-	"sync"
-	"time"
 )
 
 const nextEntryWait = time.Second / 2
 
-type droppedStreamsIterator struct {
-	droppedStreams []logproto.DroppedStream
-	sync.Mutex
-}
+type droppedStreamsIterator []logproto.DroppedStream
 
-func (h droppedStreamsIterator) Len() int                     { return len(h.droppedStreams) }
-func (h droppedStreamsIterator) Swap(i, j int)                { h.droppedStreams[i], h.droppedStreams[j] = h.droppedStreams[j], h.droppedStreams[i] }
+func (h droppedStreamsIterator) Len() int { return len(h) }
+func (h droppedStreamsIterator) Swap(i, j int) {
+	h[i], h[j] = h[j], h[i]
+}
 func (h droppedStreamsIterator) Peek() time.Time {
-	return h.droppedStreams[0].From
+	return h[0].From
 }
 func (h *droppedStreamsIterator) Push(x interface{}) {
-	h.droppedStreams = append(h.droppedStreams, x.(logproto.DroppedStream))
+	*h = append(*h, x.(logproto.DroppedStream))
 }
 
 func (h *droppedStreamsIterator) Pop() interface{} {
-	old := h.droppedStreams
+	old := *h
 	n := len(old)
 	x := old[n-1]
-	h.droppedStreams = old[0 : n-1]
+	*h = old[0 : n-1]
 	return x
 }
 
 func (h droppedStreamsIterator) Less(i, j int) bool {
-	t1, t2 := h.droppedStreams[i].From, h.droppedStreams[j].From
+	t1, t2 := h[i].From, h[j].From
 	if !t1.Equal(t2) {
 		return t1.Before(t2)
 	}
-	return h.droppedStreams[i].Labels < h.droppedStreams[j].Labels
+	return h[i].Labels < h[j].Labels
 }
 
-type tailer struct {
-	openStreamIterator iter.HeapIterator
+// Tailer manages complete lifecycle of a tail request
+type Tailer struct {
+	openStreamIterator     iter.HeapIterator
 	droppedStreamsIterator interface {
 		heap.Interface
 		Peek() time.Time
@@ -55,29 +56,28 @@ type tailer struct {
 	currEntry  logproto.Entry
 	currLabels string
 
-	queryDroppedStreams func(from, to time.Time, labels string) (iter.EntryIterator, error)
+	queryDroppedStreams       func(from, to time.Time, labels string) (iter.EntryIterator, error)
 	tailDisconnectedIngesters func([]string) (map[string]logproto.Querier_TailClient, error)
 
-	querierTailClients map[string]logproto.Querier_TailClient
+	querierTailClients    map[string]logproto.Querier_TailClient
 	querierTailClientsMtx sync.Mutex
 
-	stopped bool
-	delayFor time.Duration
+	stopped      bool
+	delayFor     time.Duration
 	responseChan chan<- tailResponse
 	closeErrChan chan<- error
 
-	droppedEntries    []droppedEntry
-	droppedEntriesMtx sync.RWMutex
+	droppedEntries []droppedEntry
 }
 
-func (t *tailer) readTailClients() {
+func (t *Tailer) readTailClients() {
 	for addr, querierTailClient := range t.querierTailClients {
 		go t.readTailClient(addr, querierTailClient)
 	}
 }
 
-func (t *tailer) loop()  {
-	ticker := time.NewTicker(5*time.Second)
+func (t *Tailer) loop() {
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -103,7 +103,7 @@ func (t *tailer) loop()  {
 					continue
 				}
 				if err := t.close(); err != nil {
-					level.Error(util.Logger).Log("Error closing tailer", fmt.Sprintf("%v", err))
+					level.Error(util.Logger).Log("Error closing Tailer", fmt.Sprintf("%v", err))
 				}
 				t.closeErrChan <- errors.New("All ingesters closed the connection")
 				break
@@ -112,7 +112,7 @@ func (t *tailer) loop()  {
 			continue
 		}
 
-		response := tailResponse{logproto.Stream{t.currLabels, []logproto.Entry{t.currEntry}}, t.popDroppedEntries()}
+		response := tailResponse{Stream: logproto.Stream{Labels: t.currLabels, Entries: []logproto.Entry{t.currEntry}}, DroppedEntries: t.popDroppedEntries()}
 		select {
 		case t.responseChan <- response:
 		default:
@@ -121,7 +121,7 @@ func (t *tailer) loop()  {
 	}
 }
 
-func (t *tailer) checkIngesterConnections() error {
+func (t *Tailer) checkIngesterConnections() error {
 	connectedIngestersAddr := make([]string, 0, len(t.querierTailClients))
 	for addr := range t.querierTailClients {
 		connectedIngestersAddr = append(connectedIngestersAddr, addr)
@@ -141,14 +141,14 @@ func (t *tailer) checkIngesterConnections() error {
 	return nil
 }
 
-func (t *tailer) dropTailClient(addr string)  {
+func (t *Tailer) dropTailClient(addr string) {
 	t.querierTailClientsMtx.Lock()
 	defer t.querierTailClientsMtx.Unlock()
 
 	delete(t.querierTailClients, addr)
 }
 
-func (t *tailer) readTailClient(addr string, querierTailClient logproto.Querier_TailClient) {
+func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_TailClient) {
 	var resp *logproto.TailResponse
 	var err error
 	defer t.dropTailClient(addr)
@@ -168,9 +168,9 @@ func (t *tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 	}
 }
 
-func (t *tailer) pushTailResponseFromIngester(resp *logproto.TailResponse)  {
+func (t *Tailer) pushTailResponseFromIngester(resp *logproto.TailResponse) {
 	t.streamMtx.Lock()
-	defer 	t.streamMtx.Unlock()
+	defer t.streamMtx.Unlock()
 	t.openStreamIterator.Push(iter.NewStreamIterator(resp.Stream))
 	if resp.DroppedStreams != nil {
 		for idx := range resp.DroppedStreams {
@@ -179,7 +179,7 @@ func (t *tailer) pushTailResponseFromIngester(resp *logproto.TailResponse)  {
 	}
 }
 
-func (t *tailer) next() bool {
+func (t *Tailer) next() bool {
 	t.streamMtx.Lock()
 	defer t.streamMtx.Unlock()
 
@@ -211,7 +211,7 @@ func (t *tailer) next() bool {
 	return true
 }
 
-func (t *tailer) close() error {
+func (t *Tailer) close() error {
 	t.streamMtx.Lock()
 	defer t.streamMtx.Unlock()
 
@@ -219,11 +219,11 @@ func (t *tailer) close() error {
 	return t.openStreamIterator.Close()
 }
 
-func (t *tailer) dropEntry(timestamp time.Time, labels string)  {
+func (t *Tailer) dropEntry(timestamp time.Time, labels string) {
 	t.droppedEntries = append(t.droppedEntries, droppedEntry{timestamp, labels})
 }
 
-func (t *tailer) popDroppedEntries() []droppedEntry {
+func (t *Tailer) popDroppedEntries() []droppedEntry {
 	if len(t.droppedEntries) == 0 {
 		return nil
 	}
@@ -236,15 +236,15 @@ func (t *tailer) popDroppedEntries() []droppedEntry {
 func newTailer(delayFor time.Duration, querierTailClients map[string]logproto.Querier_TailClient,
 	responseChan chan<- tailResponse, closeErrChan chan<- error,
 	queryDroppedStreams func(from, to time.Time, labels string) (iter.EntryIterator, error),
-	tailDisconnectedIngesters func([]string) (map[string]logproto.Querier_TailClient, error)) *tailer {
-	t := tailer{
-		openStreamIterator: iter.NewHeapIterator([]iter.EntryIterator{}, logproto.FORWARD),
-		droppedStreamsIterator: &droppedStreamsIterator{},
-		querierTailClients: querierTailClients,
-		queryDroppedStreams: queryDroppedStreams,
-		delayFor: delayFor,
-		responseChan: responseChan,
-		closeErrChan: closeErrChan,
+	tailDisconnectedIngesters func([]string) (map[string]logproto.Querier_TailClient, error)) *Tailer {
+	t := Tailer{
+		openStreamIterator:        iter.NewHeapIterator([]iter.EntryIterator{}, logproto.FORWARD),
+		droppedStreamsIterator:    &droppedStreamsIterator{},
+		querierTailClients:        querierTailClients,
+		queryDroppedStreams:       queryDroppedStreams,
+		delayFor:                  delayFor,
+		responseChan:              responseChan,
+		closeErrChan:              closeErrChan,
 		tailDisconnectedIngesters: tailDisconnectedIngesters,
 	}
 

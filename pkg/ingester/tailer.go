@@ -3,37 +3,36 @@ package ingester
 import (
 	"encoding/binary"
 	"fmt"
+	"hash/fnv"
+	"regexp"
+	"sync"
+	"time"
+
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/parser"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"hash/fnv"
-	"regexp"
-	"sync"
-	"time"
 )
 
 const maxDroppedStreamSize = 3
 
 type tailer struct {
-	id uint32
-	orgId             string
-	matchers          []*labels.Matcher
-	regexp            *regexp.Regexp
-	c                 chan *logproto.Stream
-	lastDroppedEntry  *time.Time
-	closed            bool
-	blockedAt         *time.Time
-	blockedMtx        sync.RWMutex
-	droppedStreams    []*logproto.DroppedStream
-	droppedStreamsMtx sync.RWMutex
+	id             uint32
+	orgID          string
+	matchers       []*labels.Matcher
+	regexp         *regexp.Regexp
+	sendChan       chan *logproto.Stream
+	closed         bool
+	blockedAt      *time.Time
+	blockedMtx     sync.RWMutex
+	droppedStreams []*logproto.DroppedStream
 
 	conn logproto.Querier_TailServer
 }
 
-func newTailer(orgId, query, regex string, conn logproto.Querier_TailServer) (*tailer, error) {
+func newTailer(orgID, query, regex string, conn logproto.Querier_TailServer) (*tailer, error) {
 	matchers, err := parser.Matchers(query)
 	if err != nil {
 		return nil, err
@@ -48,13 +47,13 @@ func newTailer(orgId, query, regex string, conn logproto.Querier_TailServer) (*t
 	}
 
 	return &tailer{
-		orgId: orgId,
-		matchers: matchers,
-		regexp: re,
-		c: make(chan *logproto.Stream, 2),
-		conn: conn,
+		orgID:          orgID,
+		matchers:       matchers,
+		regexp:         re,
+		sendChan:       make(chan *logproto.Stream, 2),
+		conn:           conn,
 		droppedStreams: []*logproto.DroppedStream{},
-		id: generateUniqueId(orgId, query, regex),
+		id:             generateUniqueID(orgID, query, regex),
 	}, nil
 }
 
@@ -64,13 +63,13 @@ func (t *tailer) loop() {
 
 	for {
 		if t.closed {
-			break
+			return
 		}
 
-		stream = <- t.c
+		stream = <-t.sendChan
 		if stream == nil {
 			t.close()
-			break
+			return
 		}
 
 		tailResponse := logproto.TailResponse{Stream: stream, DroppedStreams: t.popDroppedStreams()}
@@ -78,7 +77,7 @@ func (t *tailer) loop() {
 		if err != nil {
 			level.Error(util.Logger).Log("Error writing to tail client", fmt.Sprintf("%v", err))
 			t.close()
-			break
+			return
 		}
 	}
 }
@@ -91,7 +90,7 @@ func (t *tailer) send(stream logproto.Stream) {
 	if blockedSince := t.blockedSince(); blockedSince != nil {
 		if blockedSince.Before(time.Now().Add(-time.Second * 15)) {
 			t.close()
-			close(t.c)
+			close(t.sendChan)
 			return
 		}
 		t.dropStream(stream)
@@ -105,7 +104,7 @@ func (t *tailer) send(stream logproto.Stream) {
 		}
 	}
 	select {
-	case t.c <- &stream:
+	case t.sendChan <- &stream:
 	default:
 		t.dropStream(stream)
 	}
@@ -123,13 +122,16 @@ func (t *tailer) filterEntriesInStream(stream *logproto.Stream) {
 }
 
 func (t *tailer) isWatchingLabels(metric model.Metric) bool {
+	var labelValue model.LabelValue
+	var ok bool
 	for _, matcher := range t.matchers {
-		if labelValue, ok := metric[model.LabelName(matcher.Name)]; !ok {
+		labelValue, ok = metric[model.LabelName(matcher.Name)]
+		if !ok {
 			return false
-		} else {
-			if !matcher.Matches(string(labelValue)) {
-				return false
-			}
+		}
+
+		if !matcher.Matches(string(labelValue)) {
+			return false
 		}
 	}
 
@@ -151,7 +153,7 @@ func (t *tailer) blockedSince() *time.Time {
 	return t.blockedAt
 }
 
-func (t *tailer) dropStream(stream logproto.Stream)  {
+func (t *tailer) dropStream(stream logproto.Stream) {
 	t.blockedMtx.Lock()
 	defer t.blockedMtx.Unlock()
 
@@ -176,7 +178,7 @@ func (t *tailer) popDroppedStreams() []*logproto.DroppedStream {
 	return droppedStreams
 }
 
-func (t *tailer) getId() uint32 {
+func (t *tailer) getID() uint32 {
 	return t.id
 }
 
@@ -184,11 +186,11 @@ func breakDroppedStream(stream logproto.Stream) []*logproto.DroppedStream {
 	streamLength := len(stream.Entries)
 	numberOfBreaks := streamLength / maxDroppedStreamSize
 
-	if streamLength % maxDroppedStreamSize != 0 {
-		numberOfBreaks += 1
+	if streamLength%maxDroppedStreamSize != 0 {
+		numberOfBreaks++
 	}
 	droppedStreams := make([]*logproto.DroppedStream, numberOfBreaks)
-	for i:=0; i<numberOfBreaks; i++ {
+	for i := 0; i < numberOfBreaks; i++ {
 		droppedStream := new(logproto.DroppedStream)
 		droppedStream.From = stream.Entries[i*maxDroppedStreamSize].Timestamp
 		droppedStream.To = stream.Entries[((i+1)*maxDroppedStreamSize)-1].Timestamp
@@ -196,7 +198,7 @@ func breakDroppedStream(stream logproto.Stream) []*logproto.DroppedStream {
 		droppedStreams[i] = droppedStream
 	}
 
-	if streamLength % maxDroppedStreamSize != 0 {
+	if streamLength%maxDroppedStreamSize != 0 {
 		droppedStream := new(logproto.DroppedStream)
 		droppedStream.From = stream.Entries[numberOfBreaks*maxDroppedStreamSize].Timestamp
 		droppedStream.To = stream.Entries[streamLength-1].Timestamp
@@ -205,13 +207,15 @@ func breakDroppedStream(stream logproto.Stream) []*logproto.DroppedStream {
 	return droppedStreams
 }
 
-func generateUniqueId(orgId, query, regex string) uint32 {
-	uniqueId := fnv.New32()
-	uniqueId.Write([]byte(orgId))
-	uniqueId.Write([]byte(query))
-	uniqueId.Write([]byte(regex))
+func generateUniqueID(orgID, query, regex string) uint32 {
+	uniqueID := fnv.New32()
+	uniqueID.Write([]byte(orgID))
+	uniqueID.Write([]byte(query))
+	uniqueID.Write([]byte(regex))
+
 	timeNow := make([]byte, 8)
 	binary.LittleEndian.PutUint64(timeNow, uint64(time.Now().UnixNano()))
-	uniqueId.Write(timeNow)
-	return uniqueId.Sum32()
+	uniqueID.Write(timeNow)
+
+	return uniqueID.Sum32()
 }
