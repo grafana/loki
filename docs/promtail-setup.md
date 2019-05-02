@@ -6,13 +6,14 @@
 
 ## Daemonset method
 
-Daemonset will deploy promtail on every node within the kubernetes cluster.
+Daemonset will deploy `promtail` on every node within the Kubernetes cluster.
 
 Daemonset deployment is great to collect all of the container logs within the
 cluster. It is great solution for single tenant.  All of the logs will send to a
 single Loki server.
 
 ### Example
+
 ```yaml
 ---Daemonset.yaml
 apiVersion: extensions/v1beta1
@@ -89,14 +90,15 @@ roleRef:
 
 ## Sidecar Method
 
-Sidecar method will deploy promtail as a container within a pod that
+Sidecar method will deploy `promtail` as a container within a pod that
 developer/devops create.
 
-This method will deploy promtail as a sidecar container within a pod.
+This method will deploy `promtail` as a sidecar container within a pod.
 In a multi-tenant environment, this enables teams to aggregate logs
 for specific pods and deployments for example for all pods in a namespace.
 
 ### Example
+
 ```yaml
 ---Deployment.yaml
 apiVersion: extensions/v1beta1
@@ -104,7 +106,7 @@ kind: Deployment
 metadata:
   name: my_test_app
   ...
-spec: 
+spec:
   ...
   template:
     spec:
@@ -135,7 +137,7 @@ spec:
 Sometime application create customized log files.  To collect those logs, you
 would need to have a customized `__path__` in your scrape_config.
 
-Right now, the best way to watch and tail custom log path is define log filepath
+Right now, the best way to watch and tail custom log path is define log file path
 as a label for the pod.
 
 #### Example
@@ -164,5 +166,21 @@ scrape_configs:
         source_labes:
         - __meta_kubernetes_pod_label_logFileName
         replacement: /your_log_file_dir/$1.log
+      ...
+```
+
+### Custom Client options
+
+If you put `loki` behind a reverse proxy to use https transport (either `TLS` or `MTLS`) you can use the following settings.
+
+```yaml
+---promtail_config.yaml
+...
+client:
+  ca: /path/to/ca/cert.pem # This is the Certificate Authority to verify the server certificate. [optional]
+  certificate: /path/to/ca/client-cert.pem # This is the client certificate that will be checked by the server [optional]
+  certificate-key: /path/to/ca/client-cert.key # This is the client certificate key [optional]
+  certificate-key-pass: password # This is the client certificate password key [optional]
+  tls-skip-verify: true # Never use that settings except for development [optional]
       ...
 ```

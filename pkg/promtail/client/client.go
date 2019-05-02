@@ -54,7 +54,14 @@ func init() {
 
 // Config describes configuration for a HTTP pusher client.
 type Config struct {
-	URL       flagext.URLValue
+	URL flagext.URLValue
+
+	TLSCACertPath               string `yaml:"ca,omitempty"`
+	TLSServerSkipVerify         bool   `yaml:"tls-skip-verify,omitempty"`
+	TLSClientCertificate        string `yaml:"certificate,omitempty"`
+	TLSClientCertificateKey     string `yaml:"certificate-key,omitempty"`
+	TLSClientCertificateKeyPass string `yaml:"certificate-key-pass,omitempty"`
+
 	BatchWait time.Duration
 	BatchSize int
 
@@ -67,6 +74,13 @@ type Config struct {
 // RegisterFlags registers flags.
 func (c *Config) RegisterFlags(flags *flag.FlagSet) {
 	flags.Var(&c.URL, "client.url", "URL of log server")
+
+	flags.StringVar(&c.TLSCACertPath, "client.ca", "", "Path to the server Certificate Authority")
+	flags.BoolVar(&c.TLSServerSkipVerify, "client.tls-skip-verify", false, "Server certificate TLS skip verify")
+	flags.StringVar(&c.TLSClientCertificate, "client.certificate", "", "Path to the client certificate")
+	flags.StringVar(&c.TLSClientCertificateKey, "client.certificate-key", "", "Path to the client certificate key")
+	flags.StringVar(&c.TLSClientCertificateKeyPass, "client.certificate-key-pass", "", "Client certificate key password")
+
 	flags.DurationVar(&c.BatchWait, "client.batch-wait", 1*time.Second, "Maximum wait period before sending batch.")
 	flags.IntVar(&c.BatchSize, "client.batch-size-bytes", 100*1024, "Maximum batch size to accrue before sending. ")
 
@@ -80,6 +94,7 @@ func (c *Config) RegisterFlags(flags *flag.FlagSet) {
 type Client struct {
 	logger  log.Logger
 	cfg     Config
+	client  *http.Client
 	quit    chan struct{}
 	entries chan entry
 	wg      sync.WaitGroup
@@ -102,6 +117,26 @@ func New(cfg Config, logger log.Logger) (*Client, error) {
 
 		externalLabels: cfg.ExternalLabels,
 	}
+
+	tlsConfig, err := helpers.NewTLSConfigFromOptions(
+		cfg.URL.String(),
+		cfg.TLSCACertPath,
+		cfg.TLSClientCertificate,
+		cfg.TLSClientCertificateKey,
+		cfg.TLSClientCertificateKeyPass,
+		cfg.TLSServerSkipVerify)
+
+	c.client = &http.Client{
+		Timeout: cfg.Timeout,
+		Transport: &http.Transport{
+			TLSClientConfig: tlsConfig,
+		},
+	}
+	if err != nil {
+		level.Error(c.logger).Log("msg", "error while creating http client", "error", err) //nolint
+		return nil, err
+	}
+
 	c.wg.Add(1)
 	go c.run()
 	return c, nil
@@ -154,7 +189,7 @@ func (c *Client) run() {
 func (c *Client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 	buf, err := encodeBatch(batch)
 	if err != nil {
-		level.Error(c.logger).Log("msg", "error encoding batch", "error", err)
+		level.Error(c.logger).Log("msg", "error encoding batch", "error", err) //nolint
 		return
 	}
 	bufBytes := float64(len(buf))
@@ -178,12 +213,12 @@ func (c *Client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 			break
 		}
 
-		level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err)
+		level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err) //nolint
 		backoff.Wait()
 	}
 
 	if err != nil {
-		level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "error", err)
+		level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "error", err) //nolint
 	}
 }
 
@@ -212,7 +247,7 @@ func (c *Client) send(ctx context.Context, buf []byte) (int, error) {
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", contentType)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return -1, err
 	}

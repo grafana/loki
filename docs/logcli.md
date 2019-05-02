@@ -44,8 +44,8 @@ Common labels: {job="cortex-ops/consul", namespace="cortex-ops"}
 
 ### Configuration
 
-
 Configuration values are considered in the following order (lowest to highest):
+
 - environment value
 - command line
 
@@ -53,17 +53,23 @@ The URLs of the requests are printed to help with integration work.
 
 ### Details
 
-```
+```console
 $ logcli help
 usage: logcli [<flags>] <command> [<args> ...]
 
 A command-line for loki.
 
 Flags:
-  --help         Show context-sensitive help (also try --help-long and --help-man).
-  --addr=""      Server address, need to specify.
-  --username=""  Username for HTTP basic auth.
-  --password=""  Password for HTTP basic auth.
+  --help             Show context-sensitive help (also try --help-long and --help-man).
+  --addr="https://logs-us-west1.grafana.net"
+                     Server address.
+  --username=""      Username for HTTP basic auth.
+  --password=""      Password for HTTP basic auth.
+  --ca-cert=""       Path to the server Certificate Authority.
+  --tls-skip-verify  Server certificate TLS skip verify.
+  --cert=""          Path to the client certificate.
+  --key=""           Path to the client certificate key.
+  --key-pass=""      Client certificate key password.
 
 Commands:
   help [<command>...]
@@ -72,7 +78,7 @@ Commands:
   query [<flags>] <query> [<regex>]
     Run a LogQL query.
 
-  labels <label>
+  labels [<label>]
     Find values for a given label.
 
 $ logcli help query

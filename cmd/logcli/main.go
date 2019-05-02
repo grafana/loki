@@ -14,6 +14,12 @@ var (
 	username = app.Flag("username", "Username for HTTP basic auth.").Default("").Envar("GRAFANA_USERNAME").String()
 	password = app.Flag("password", "Password for HTTP basic auth.").Default("").Envar("GRAFANA_PASSWORD").String()
 
+	tlsCACertPath        = app.Flag("ca-cert", "Path to the server Certificate Authority.").Default("").Envar("LOKI_CA_CERT_PATH").String()
+	tlsSkipVerify        = app.Flag("tls-skip-verify", "Server certificate TLS skip verify.").Default("false").Bool()
+	tlsClientCertPath    = app.Flag("cert", "Path to the client certificate.").Default("").Envar("LOKI_CLIENT_CERT_PATH").String()
+	tlsClientCertKeyPath = app.Flag("key", "Path to the client certificate key.").Default("").Envar("LOKI_CLIENT_KEY_PATH").String()
+	tlsClientCertKeyPass = app.Flag("key-pass", "Client certificate key password.").Default("").Envar("LOKI_CLIENT_KEY_PASS").String()
+
 	queryCmd  = app.Command("query", "Run a LogQL query.")
 	queryStr  = queryCmd.Arg("query", "eg '{foo=\"bar\",baz=\"blip\"}'").Required().String()
 	regexpStr = queryCmd.Arg("regex", "").String()

@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
 )
 
@@ -60,9 +61,27 @@ func doRequest(path string, out interface{}) error {
 	if err != nil {
 		return err
 	}
+
 	req.SetBasicAuth(*username, *password)
 
-	resp, err := http.DefaultClient.Do(req)
+	tlsConfig, err := helpers.NewTLSConfigFromOptions(
+		url,
+		*tlsCACertPath,
+		*tlsClientCertPath,
+		*tlsClientCertKeyPath,
+		*tlsClientCertKeyPass,
+		*tlsSkipVerify)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: tlsConfig,
+		},
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -86,6 +105,18 @@ func liveTailQueryConn() (*websocket.Conn, error) {
 }
 
 func wsConnect(path string) (*websocket.Conn, error) {
+
+	tlsConfig, err := helpers.NewTLSConfigFromOptions(
+		*addr,
+		*tlsCACertPath,
+		*tlsClientCertPath,
+		*tlsClientCertKeyPath,
+		*tlsClientCertKeyPass,
+		*tlsSkipVerify)
+	if err != nil {
+		return nil, err
+	}
+
 	url := *addr + path
 	if strings.HasPrefix(url, "https") {
 		url = strings.Replace(url, "https", "wss", 1)
@@ -95,7 +126,12 @@ func wsConnect(path string) (*websocket.Conn, error) {
 	fmt.Println(url)
 
 	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(*username+":"+*password))}}
-	c, resp, err := websocket.DefaultDialer.Dial(url, h)
+
+	ws := websocket.Dialer{
+		TLSClientConfig: tlsConfig,
+	}
+
+	c, resp, err := ws.Dial(url, h)
 
 	if err != nil {
 		if resp == nil {
