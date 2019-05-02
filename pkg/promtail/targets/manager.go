@@ -12,7 +12,8 @@ import (
 type targetManager interface {
 	Ready() bool
 	Stop()
-	TargetsActive() map[string][]Target
+	ActiveTargets() map[string][]Target
+	AllTargets() map[string][]Target
 }
 
 // TargetManagers manages a list of target managers.
@@ -49,11 +50,22 @@ func NewTargetManagers(
 
 }
 
-// TargetsActive returns active targets per jobs
-func (tm *TargetManagers) TargetsActive() map[string][]Target {
+// ActiveTargets returns active targets per jobs
+func (tm *TargetManagers) ActiveTargets() map[string][]Target {
 	result := map[string][]Target{}
 	for _, t := range tm.targetManagers {
-		for job, targets := range t.TargetsActive() {
+		for job, targets := range t.ActiveTargets() {
+			result[job] = append(result[job], targets...)
+		}
+	}
+	return result
+}
+
+// AllTargets returns all targets per jobs
+func (tm *TargetManagers) AllTargets() map[string][]Target {
+	result := map[string][]Target{}
+	for _, t := range tm.targetManagers {
+		for job, targets := range t.AllTargets() {
 			result[job] = append(result[job], targets...)
 		}
 	}

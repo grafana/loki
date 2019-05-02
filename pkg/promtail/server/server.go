@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"text/template"
 
@@ -49,9 +50,78 @@ func New(cfg Config, tms *targets.TargetManagers) (*Server, error) {
 
 	serv.HTTP.Path("/ready").Handler(http.HandlerFunc(serv.ready))
 	serv.HTTP.PathPrefix("/static/").Handler(http.FileServer(ui.Assets))
+	serv.HTTP.Path("/service-discovery").Handler(http.HandlerFunc(serv.serviceDiscovery))
 	serv.HTTP.Path("/targets").Handler(http.HandlerFunc(serv.targets))
 	return serv, nil
 
+}
+
+// serviceDiscovery serves the service discovery page.
+func (s *Server) serviceDiscovery(rw http.ResponseWriter, _ *http.Request) {
+	var index []string
+	allTarget := s.tms.AllTargets()
+	for job := range allTarget {
+		index = append(index, job)
+	}
+	sort.Strings(index)
+	scrapeConfigData := struct {
+		Index   []string
+		Targets map[string][]targets.Target
+		Active  []int
+		Dropped []int
+		Total   []int
+	}{
+		Index:   index,
+		Targets: make(map[string][]targets.Target),
+		Active:  make([]int, len(index)),
+		Dropped: make([]int, len(index)),
+		Total:   make([]int, len(index)),
+	}
+	for i, job := range scrapeConfigData.Index {
+		scrapeConfigData.Targets[job] = make([]targets.Target, 0, len(allTarget[job]))
+		scrapeConfigData.Total[i] = len(allTarget[job])
+		for _, target := range allTarget[job] {
+			// Do not display more than 100 dropped targets per job to avoid
+			// returning too much data to the clients.
+			if targets.IsDropped(target) {
+				scrapeConfigData.Dropped[i]++
+				if scrapeConfigData.Dropped[i] > 100 {
+					continue
+				}
+			} else {
+				scrapeConfigData.Active[i]++
+			}
+			scrapeConfigData.Targets[job] = append(scrapeConfigData.Targets[job], target)
+		}
+	}
+
+	executeTemplate(context.Background(), rw, templateOptions{
+		Data:         scrapeConfigData,
+		BuildVersion: version.Info(),
+		Name:         "service-discovery.html",
+		PageTitle:    "Service Discovery",
+		ExternalURL:  s.externalURL,
+		TemplateFuncs: template.FuncMap{
+			"fileTargetDetails": func(details interface{}) map[string]int64 {
+				// you can't cast with a text template in go so this is a helper
+				return details.(map[string]int64)
+			},
+			"dropReason": func(details interface{}) string {
+				if reason, ok := details.(string); ok {
+					return reason
+				}
+				return ""
+			},
+			"numReady": func(ts []targets.Target) (readies int) {
+				for _, t := range ts {
+					if t.Ready() {
+						readies++
+					}
+				}
+				return
+			},
+		},
+	})
 }
 
 // targets serves the targets page.
@@ -60,7 +130,7 @@ func (s *Server) targets(rw http.ResponseWriter, _ *http.Request) {
 		Data: struct {
 			TargetPools map[string][]targets.Target
 		}{
-			TargetPools: s.tms.TargetsActive(),
+			TargetPools: s.tms.ActiveTargets(),
 		},
 		BuildVersion: version.Info(),
 		Name:         "targets.html",
