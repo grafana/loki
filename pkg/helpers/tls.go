@@ -1,13 +1,12 @@
-
 package helpers
 
 import (
-  "io/ioutil"
-  "strings"
-  "crypto/tls"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"io/ioutil"
+	"strings"
 )
 
 // NewTLSConfigFromOptions return a tls.Config given parameters provided
@@ -18,7 +17,7 @@ func NewTLSConfigFromOptions(url, ca, cert, certKey, certKeyPass string, skipVer
 	// if url schme is https prefixed
 	if strings.HasPrefix(url, "https://") {
 
-    tlsConfig.InsecureSkipVerify = skipVerify
+		tlsConfig.InsecureSkipVerify = skipVerify
 
 		// Add any provided CA
 		if ca != "" {
