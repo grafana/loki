@@ -247,7 +247,7 @@ func (s *targetSyncer) DroppedTargets() []Target {
 func (s *targetSyncer) ActiveTargets() []Target {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	actives := make([]Target, len(s.targets))
+	actives := []Target{}
 	for _, t := range s.targets {
 		actives = append(actives, t)
 	}
