@@ -120,21 +120,16 @@ func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 
 // PutOne implements ChunkStore
 func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return err
-	}
-
 	chunks := []Chunk{chunk}
 
-	err = c.storage.PutChunks(ctx, chunks)
+	err := c.storage.PutChunks(ctx, chunks)
 	if err != nil {
 		return err
 	}
 
 	c.writeBackCache(ctx, chunks)
 
-	writeReqs, err := c.calculateIndexEntries(userID, from, through, chunk)
+	writeReqs, err := c.calculateIndexEntries(chunk.UserID, from, through, chunk)
 	if err != nil {
 		return err
 	}
@@ -302,7 +297,7 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, from, through mode
 		}
 		level.Debug(log).Log("chunkIDs", len(chunkIDs))
 
-		return c.convertChunkIDsToChunks(ctx, chunkIDs)
+		return c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
 	}
 
 	// Otherwise get chunks which include other matchers
@@ -364,7 +359,7 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, from, through mode
 	level.Debug(log).Log("msg", "post intersection", "chunkIDs", len(chunkIDs))
 
 	// Convert IndexEntry's into chunks
-	return c.convertChunkIDsToChunks(ctx, chunkIDs)
+	return c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
 }
 
 func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
@@ -411,12 +406,7 @@ func (c *store) parseIndexEntries(ctx context.Context, entries []IndexEntry, mat
 	return result, nil
 }
 
-func (c *store) convertChunkIDsToChunks(ctx context.Context, chunkIDs []string) ([]Chunk, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c *store) convertChunkIDsToChunks(ctx context.Context, userID string, chunkIDs []string) ([]Chunk, error) {
 	chunkSet := make([]Chunk, 0, len(chunkIDs))
 	for _, chunkID := range chunkIDs {
 		chunk, err := ParseExternalKey(userID, chunkID)
