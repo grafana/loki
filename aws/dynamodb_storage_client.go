@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -25,6 +24,7 @@ import (
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
@@ -464,9 +464,9 @@ type chunksPlusError struct {
 
 // GetChunks implements chunk.ObjectClient.
 func (a dynamoDBStorageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	sp, ctx := ot.StartSpanFromContext(ctx, "GetChunks.DynamoDB")
-	defer sp.Finish()
-	sp.LogFields(otlog.Int("chunks requested", len(chunks)))
+	log, ctx := spanlogger.New(ctx, "GetChunks.DynamoDB", ot.Tag{Key: "numChunks", Value: len(chunks)})
+	defer log.Span.Finish()
+	level.Debug(log).Log("chunks requested", len(chunks))
 
 	dynamoDBChunks := chunks
 	var err error
@@ -499,13 +499,10 @@ func (a dynamoDBStorageClient) GetChunks(ctx context.Context, chunks []chunk.Chu
 		}
 		finalChunks = append(finalChunks, in.chunks...)
 	}
-	sp.LogFields(otlog.Int("chunks fetched", len(finalChunks)))
-	if err != nil {
-		sp.LogFields(otlog.String("error", err.Error()))
-	}
+	level.Debug(log).Log("chunks fetched", len(finalChunks))
 
 	// Return any chunks we did receive: a partial result may be useful
-	return finalChunks, err
+	return finalChunks, log.Error(err)
 }
 
 // As we're re-using the DynamoDB schema from the index for the chunk tables,
@@ -516,8 +513,8 @@ var placeholder = []byte{'c'}
 // Structure is identical to BatchWrite(), but operating on different datatypes
 // so cannot share implementation.  If you fix a bug here fix it there too.
 func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	sp, ctx := ot.StartSpanFromContext(ctx, "getDynamoDBChunks", ot.Tag{Key: "numChunks", Value: len(chunks)})
-	defer sp.Finish()
+	log, ctx := spanlogger.New(ctx, "getDynamoDBChunks", ot.Tag{Key: "numChunks", Value: len(chunks)})
+	defer log.Span.Finish()
 	outstanding := dynamoDBReadRequest{}
 	chunksByKey := map[string]chunk.Chunk{}
 	for _, chunk := range chunks {
@@ -525,7 +522,7 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 		chunksByKey[key] = chunk
 		tableName, err := a.schemaCfg.ChunkTableFor(chunk.From)
 		if err != nil {
-			return nil, err
+			return nil, log.Error(err)
 		}
 		outstanding.Add(tableName, key, placeholder)
 	}
@@ -570,9 +567,8 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 				continue
 			} else if ok && awsErr.Code() == validationException {
 				// this read will never work, so the only option is to drop the offending request and continue.
-				level.Warn(util.Logger).Log("msg", "Error while fetching data from Dynamo", "err", awsErr)
-				level.Debug(util.Logger).Log("msg", "Dropped request details", "requests", requests)
-				util.Event().Log("msg", "ValidationException", "requests", requests)
+				level.Warn(log).Log("msg", "Error while fetching data from Dynamo", "err", awsErr)
+				level.Debug(log).Log("msg", "Dropped request details", "requests", requests)
 				// recording the drop counter separately from recordDynamoError(), as the error code alone may not provide enough context
 				// to determine if a request was dropped (or not)
 				for tableName := range requests {
@@ -587,7 +583,7 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 
 		processedChunks, err := processChunkResponse(response, chunksByKey)
 		if err != nil {
-			return nil, err
+			return nil, log.Error(err)
 		}
 		result = append(result, processedChunks...)
 
@@ -601,7 +597,7 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 
 	if valuesLeft := outstanding.Len() + unprocessed.Len(); valuesLeft > 0 {
 		// Return the chunks we did fetch, because partial results may be useful
-		return result, fmt.Errorf("failed to query chunks, %d values remaining: %s", valuesLeft, backoff.Err())
+		return result, log.Error(fmt.Errorf("failed to query chunks, %d values remaining: %s", valuesLeft, backoff.Err()))
 	}
 	return result, nil
 }
