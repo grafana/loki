@@ -126,7 +126,7 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	return sendBatches(iterator, queryServer, req.Limit)
 }
 
-func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	var labels []string
 	if req.Values {
 		values := i.index.LabelValues(req.Name)

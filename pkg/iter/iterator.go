@@ -28,6 +28,7 @@ type streamIterator struct {
 	labels  string
 }
 
+// NewStreamIterator iterates over entries in a stream.
 func NewStreamIterator(stream *logproto.Stream) EntryIterator {
 	return &streamIterator{
 		i:       -1,
@@ -98,6 +99,7 @@ func (h iteratorMaxHeap) Less(i, j int) bool {
 	return h.iteratorHeap[i].Labels() > h.iteratorHeap[j].Labels()
 }
 
+// HeapIterator iterates over a heap of iterators with ability to push new iterators and get some properties like time of entry at peek and len
 type HeapIterator interface {
 	EntryIterator
 	Peek() time.Time

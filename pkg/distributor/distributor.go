@@ -3,14 +3,13 @@ package distributor
 import (
 	"context"
 	"flag"
-	"hash/fnv"
 	"sync/atomic"
 
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/user"
@@ -244,13 +243,6 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Ingester
 		ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
 	}
 	return err
-}
-
-func tokenFor(userID, labels string) uint32 {
-	h := fnv.New32()
-	h.Write([]byte(userID))
-	h.Write([]byte(labels))
-	return h.Sum32()
 }
 
 // Check implements the grpc healthcheck
