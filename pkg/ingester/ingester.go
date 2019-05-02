@@ -223,3 +223,21 @@ func (i *Ingester) getInstances() []*instance {
 	}
 	return instances
 }
+
+// Tail logs matching given query
+func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
+	instanceID, err := user.ExtractOrgID(queryServer.Context())
+	if err != nil {
+		return err
+	}
+
+	instance := i.getOrCreateInstance(instanceID)
+	tailer, err := newTailer(instanceID, req.Query, req.Regex, queryServer)
+	if err != nil {
+		return err
+	}
+
+	instance.addTailer(tailer)
+	tailer.loop()
+	return nil
+}

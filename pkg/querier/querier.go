@@ -3,12 +3,14 @@ package querier
 import (
 	"context"
 	"flag"
-
 	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	token_util "github.com/grafana/loki/pkg/util"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"time"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -46,16 +48,32 @@ func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, store chunk.St
 	}, nil
 }
 
+type responseFromIngesters struct {
+	addr     string
+	response interface{}
+}
+
 // forAllIngesters runs f, in parallel, for all ingesters
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-func (q *Querier) forAllIngesters(f func(logproto.QuerierClient) (interface{}, error)) ([]interface{}, error) {
+func (q *Querier) forAllIngesters(f func(logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
 	replicationSet, err := q.ring.GetAll()
 	if err != nil {
 		return nil, err
 	}
 
-	resps, errs := make(chan interface{}), make(chan error)
-	for _, ingester := range replicationSet.Ingesters {
+	return q.forGivenIngesters(replicationSet.Ingesters, f)
+}
+
+// forGivenIngesters runs f, in parallel, for given ingesters
+// TODO taken from Cortex, see if we can refactor out an usable interface.
+func (q *Querier) forGivenIngesters(ingesters []ring.IngesterDesc, f func(logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
+	replicationSet, err := q.ring.GetAll()
+	if err != nil {
+		return nil, err
+	}
+
+	resps, errs := make(chan responseFromIngesters), make(chan error)
+	for _, ingester := range ingesters {
 		go func(ingester ring.IngesterDesc) {
 			client, err := q.pool.GetClientFor(ingester.Addr)
 			if err != nil {
@@ -67,13 +85,13 @@ func (q *Querier) forAllIngesters(f func(logproto.QuerierClient) (interface{}, e
 			if err != nil {
 				errs <- err
 			} else {
-				resps <- resp
+				resps <- responseFromIngesters{ingester.Addr, resp}
 			}
 		}(ingester)
 	}
 
 	var lastErr error
-	result, numErrs := []interface{}{}, 0
+	result, numErrs := []responseFromIngesters{}, 0
 	for range replicationSet.Ingesters {
 		select {
 		case resp := <-resps:
@@ -120,7 +138,7 @@ func (q *Querier) queryIngesters(ctx context.Context, req *logproto.QueryRequest
 
 	iterators := make([]iter.EntryIterator, len(clients))
 	for i := range clients {
-		iterators[i] = iter.NewQueryClientIterator(clients[i].(logproto.Querier_QueryClient), req.Direction)
+		iterators[i] = iter.NewQueryClientIterator(clients[i].response.(logproto.Querier_QueryClient), req.Direction)
 	}
 	return iterators, nil
 }
@@ -136,7 +154,7 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 
 	results := make([][]string, 0, len(resps))
 	for _, resp := range resps {
-		results = append(results, resp.(*logproto.LabelResponse).Values)
+		results = append(results, resp.response.(*logproto.LabelResponse).Values)
 	}
 
 	return &logproto.LabelResponse{
@@ -211,4 +229,113 @@ func mergePair(s1, s2 []string) []string {
 		result = append(result, s2[j])
 	}
 	return result
+}
+
+func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest, responseChan chan<- tailResponse, closeErrChan chan<- error) (*tailer, error) {
+	clients, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
+		return client.Tail(ctx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	tailClients := make(map[string]logproto.Querier_TailClient)
+	for i := range clients {
+		tailClients[clients[i].addr] = clients[i].response.(logproto.Querier_TailClient)
+	}
+
+	return newTailer(time.Duration(req.DelayFor)*time.Second, tailClients, responseChan, closeErrChan, func(from, to time.Time, labels string) (iterator iter.EntryIterator, e error) {
+		return q.queryDroppedStreams(ctx, req, from, to, labels)
+	}, func(connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
+		return q.tailDisconnectedIngesteres(ctx, req, connectedIngestersAddr)
+	}), nil
+}
+
+func (q *Querier) queryDroppedStreams(ctx context.Context, req *logproto.TailRequest, start, end time.Time, labels string) (iter.EntryIterator, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	key := token_util.TokenFor(userID, labels)
+	replicationSet, err := q.ring.Get(key, ring.Read)
+	if err != nil {
+		return nil, err
+	}
+
+	query := logproto.QueryRequest{
+		Direction: logproto.FORWARD,
+		Start:     start,
+		End:       end,
+		Query:     req.Query,
+		Regex:     req.Regex,
+		Limit:     10000,
+	}
+
+	clients, err := q.forGivenIngesters(replicationSet.Ingesters, func(client logproto.QuerierClient) (interface{}, error) {
+		return client.Query(ctx, &query)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	ingesterIterators := make([]iter.EntryIterator, len(clients))
+	for i := range clients {
+		ingesterIterators[i] = iter.NewQueryClientIterator(clients[i].response.(logproto.Querier_QueryClient), query.Direction)
+	}
+
+	chunkStoreIterators, err := q.queryStore(ctx, &query)
+	if err != nil {
+		return nil, err
+	}
+
+	iterators := append(chunkStoreIterators, ingesterIterators...)
+	return iter.NewHeapIterator(iterators, query.Direction), nil
+}
+
+func (q *Querier) getAddressOfAllIngesters() ([]string, error) {
+	replicationSet, err := q.ring.GetAll()
+
+	if err != nil {
+		return nil, err
+	}
+	addresses := make([]string, len(replicationSet.Ingesters))
+	for i := range replicationSet.Ingesters {
+		addresses[i] = replicationSet.Ingesters[i].Addr
+	}
+
+	return addresses, nil
+}
+
+func (q *Querier) tailDisconnectedIngesteres(ctx context.Context, req *logproto.TailRequest, connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
+	tailClients := make(map[string]logproto.Querier_TailClient)
+	for i := range connectedIngestersAddr {
+		tailClients[connectedIngestersAddr[i]] = nil
+	}
+
+	disconnectedIngesters := []ring.IngesterDesc{}
+	replicationSet, err := q.ring.GetAll()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ingester := range replicationSet.Ingesters {
+		if _, isOk := tailClients[ingester.Addr]; isOk {
+			delete(tailClients, ingester.Addr)
+		} else {
+			disconnectedIngesters = append(disconnectedIngesters, ingester)
+		}
+	}
+
+	clients, err := q.forGivenIngesters(disconnectedIngesters, func(client logproto.QuerierClient) (interface{}, error) {
+		return client.Tail(ctx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range clients {
+		tailClients[clients[i].addr] = clients[i].response.(logproto.Querier_TailClient)
+	}
+	return tailClients, nil
 }

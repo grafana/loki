@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -49,6 +50,9 @@ type stream struct {
 	fp        model.Fingerprint
 	labels    []client.LabelAdapter
 	blockSize int
+
+	tailers map[uint32]*tailer
+	tailerMtx sync.RWMutex
 }
 
 type chunkDesc struct {
@@ -64,6 +68,7 @@ func newStream(fp model.Fingerprint, labels []client.LabelAdapter, blockSize int
 		fp:        fp,
 		labels:    labels,
 		blockSize: blockSize,
+		tailers: map[uint32]*tailer{},
 	}
 }
 
@@ -74,6 +79,8 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 		})
 		chunksCreatedTotal.Inc()
 	}
+
+	storedEntries := []logproto.Entry{}
 
 	// Don't fail on the first append error - if samples are sent out of order,
 	// we still want to append the later ones.
@@ -93,8 +100,23 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 		}
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
 			appendErr = err
+		} else {
+			storedEntries = append(storedEntries, entries[i])
 		}
 		chunk.lastUpdated = entries[i].Timestamp
+	}
+
+	if len(storedEntries) != 0 {
+		go func() {
+			stream := logproto.Stream{client.FromLabelAdaptersToLabels(s.labels).String(), storedEntries}
+			for _, tailer := range s.tailers {
+				if tailer.isClosed() {
+					s.removeTailer(tailer)
+					continue
+				}
+				tailer.send(stream)
+			}
+		}()
 	}
 
 	if appendErr == chunkenc.ErrOutOfOrder {
@@ -108,12 +130,12 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 func (s *stream) Iterator(from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error) {
 	iterators := make([]iter.EntryIterator, 0, len(s.chunks))
 	for _, c := range s.chunks {
-		iter, err := c.chunk.Iterator(from, through, direction)
+		itr, err := c.chunk.Iterator(from, through, direction)
 		if err != nil {
 			return nil, err
 		}
-		if iter != nil {
-			iterators = append(iterators, iter)
+		if itr != nil {
+			iterators = append(iterators, itr)
 		}
 	}
 
@@ -124,4 +146,23 @@ func (s *stream) Iterator(from, through time.Time, direction logproto.Direction)
 	}
 
 	return iter.NewNonOverlappingIterator(iterators, client.FromLabelAdaptersToLabels(s.labels).String()), nil
+}
+
+func (s *stream) addTailer(t *tailer) {
+	s.tailerMtx.Lock()
+	defer s.tailerMtx.Unlock()
+
+	s.tailers[t.getId()] = t
+}
+
+func (s *stream) removeTailer(t *tailer) {
+	s.tailerMtx.Lock()
+	defer s.tailerMtx.Unlock()
+
+	delete(s.tailers, t.getId())
+}
+
+func (s *stream) matchesTailer(t *tailer) bool {
+	metric := client.FromLabelAdaptersToMetric(s.labels)
+	return t.isWatchingLabels(metric)
 }

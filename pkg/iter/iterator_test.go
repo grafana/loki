@@ -159,7 +159,7 @@ func mkStreamIterator(numEntries int64, f generator, labels string) EntryIterato
 	for i := int64(0); i < numEntries; i++ {
 		entries = append(entries, f(i))
 	}
-	return newStreamIterator(&logproto.Stream{
+	return NewStreamIterator(&logproto.Stream{
 		Entries: entries,
 		Labels:  labels,
 	})

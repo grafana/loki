@@ -23,6 +23,8 @@ import (
 const (
 	defaultQueryLimit = 100
 	defaulSince       = 1 * time.Hour
+	pingPeriod = 1 * time.Second
+	bufferSizeForTailResponse = 10
 )
 
 // nolint
@@ -95,6 +97,23 @@ func httpRequestToQueryRequest(httpRequest *http.Request) (*logproto.QueryReques
 	return &queryRequest, nil
 }
 
+func httpRequestToTailRequest(httpRequest *http.Request) (*logproto.TailRequest, error) {
+	params := httpRequest.URL.Query()
+	tailRequest := logproto.TailRequest{
+		Regex: params.Get("regexp"),
+		Query: params.Get("query"),
+	}
+
+	delayFor, err := intParam(params, "delay_for", 0)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	tailRequest.DelayFor = uint32(delayFor)
+
+	return &tailRequest, nil
+}
+
 // QueryHandler is a http.HandlerFunc for queries.
 func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
 	request, err := httpRequestToQueryRequest(r)
@@ -134,13 +153,23 @@ func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type droppedEntry struct {
+	Timestamp time.Time
+	Labels string
+}
+
+type tailResponse struct {
+	Stream logproto.Stream
+	DroppedEntries []droppedEntry
+}
+
 // TailHandler is a http.HandlerFunc for handling tail queries.
 func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
 
-	queryRequestPtr, err := httpRequestToQueryRequest(r)
+	tailRequestPtr, err := httpRequestToTailRequest(r)
 	if err != nil {
 		server.WriteError(w, err)
 		return
@@ -153,34 +182,60 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer func() {
-		err := conn.Close()
-		level.Error(util.Logger).Log("Error closing websocket", fmt.Sprintf("%v", err))
+		if err := conn.Close(); err != nil {
+			level.Error(util.Logger).Log("Error closing websocket", fmt.Sprintf("%v", err))
+		}
 	}()
 
 	// response from httpRequestToQueryRequest is a ptr, if we keep passing pointer down the call then it would stay on
 	// heap until connection to websocket stays open
-	queryRequest := *queryRequestPtr
-	itr := q.tailQuery(r.Context(), &queryRequest)
-	stream := logproto.Stream{}
+	tailRequest := *tailRequestPtr
+	responseChan := make(chan tailResponse, bufferSizeForTailResponse)
+	closeErrChan := make(chan error)
 
-	for itr.Next() {
-		stream.Entries = []logproto.Entry{itr.Entry()}
-		stream.Labels = itr.Labels()
+	tailer, err := q.Tail(r.Context(), &tailRequest, responseChan, closeErrChan)
+	if err != nil {
+		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
+			level.Error(util.Logger).Log("Error connecting to ingesters for tailing", fmt.Sprintf("%v", err))
+		}
+		return
+	}
+	defer tailer.close()
 
-		err := conn.WriteJSON(stream)
-		if err != nil {
-			level.Error(util.Logger).Log("Error writing to websocket", fmt.Sprintf("%v", err))
+	ticker := time.NewTicker(pingPeriod)
+	defer ticker.Stop()
+
+	response := tailResponse{}
+
+	for {
+		select {
+		case response = <-responseChan:
+			err := conn.WriteJSON(response)
+			if err != nil {
+				level.Error(util.Logger).Log("Error writing to websocket", fmt.Sprintf("%v", err))
+				if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
+					level.Error(util.Logger).Log("Error writing close message to websocket", fmt.Sprintf("%v", err))
+				}
+				if err := tailer.close(); err != nil {
+					level.Error(util.Logger).Log("Error closing tailer", fmt.Sprintf("%v", err))
+				}
+				return
+			}
+		case err := <-closeErrChan:
+			level.Error(util.Logger).Log("Error from iterator", fmt.Sprintf("%v", err))
 			if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
 				level.Error(util.Logger).Log("Error writing close message to websocket", fmt.Sprintf("%v", err))
 			}
-			break
-		}
-	}
-
-	if err := itr.Error(); err != nil {
-		level.Error(util.Logger).Log("Error from iterator", fmt.Sprintf("%v", err))
-		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-			level.Error(util.Logger).Log("Error writing close message to websocket", fmt.Sprintf("%v", err))
+			return
+		case <-ticker.C:
+			// This is to periodically check whether connection is active, useful to clean up dead connections when there are no entries to send
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				level.Error(util.Logger).Log("Error writing ping message to websocket", fmt.Sprintf("%v", err))
+				if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
+					level.Error(util.Logger).Log("Error writing close message to websocket", fmt.Sprintf("%v", err))
+				}
+				return
+			}
 		}
 	}
 }

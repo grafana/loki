@@ -1,10 +1,22 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
+
+type droppedEntry struct {
+	Timestamp time.Time
+	Labels string
+}
+
+type tailResponse struct {
+	Stream logproto.Stream
+	DroppedEntries []droppedEntry
+}
 
 func tailQuery() {
 	conn, err := liveTailQueryConn()
@@ -12,10 +24,10 @@ func tailQuery() {
 		log.Fatalf("Tailing logs failed: %+v", err)
 	}
 
-	stream := new(logproto.Stream)
+	resp := new(tailResponse)
 
 	for {
-		err := conn.ReadJSON(stream)
+		err := conn.ReadJSON(resp)
 		if err != nil {
 			log.Println("Error reading stream:", err)
 			return
@@ -23,10 +35,15 @@ func tailQuery() {
 
 		labels := ""
 		if !*noLabels {
-			labels = stream.Labels
+			labels = resp.Stream.Labels
 		}
-		for _, entry := range stream.Entries {
+		for _, entry := range resp.Stream.Entries {
 			printLogEntry(entry.Timestamp, labels, entry.Line)
+		}
+		if len(resp.DroppedEntries) != 0 {
+			for _, d := range resp.DroppedEntries {
+				fmt.Println(d.Timestamp, d.Labels)
+			}
 		}
 	}
 }

@@ -52,6 +52,8 @@ type instance struct {
 	streamsRemovedTotal prometheus.Counter
 
 	blockSize int
+	tailers map[uint32]*tailer
+	tailerMtx sync.RWMutex
 }
 
 func newInstance(instanceID string, blockSize int) *instance {
@@ -64,6 +66,7 @@ func newInstance(instanceID string, blockSize int) *instance {
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
 
 		blockSize: blockSize,
+		tailers: map[uint32]*tailer{},
 	}
 }
 
@@ -86,6 +89,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			i.index.Add(labels, fp)
 			i.streams[fp] = stream
 			i.streamsCreatedTotal.Inc()
+			i.addTailersToStream(i.tailers, stream)
 		}
 
 		if err := stream.Push(ctx, s.Entries); err != nil {
@@ -108,7 +112,7 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
-	iterator := iter.NewHeapIterator(iterators, req.Direction)
+	var iterator iter.EntryIterator = iter.NewHeapIterator(iterators, req.Direction)
 	defer helpers.LogError("closing iterator", iterator.Close)
 
 	if req.Regex != "" {
@@ -160,6 +164,42 @@ func (i *instance) lookupStreams(req *logproto.QueryRequest, matchers []*labels.
 		}
 	}
 	return iterators, nil
+}
+
+func (i *instance) addTailer(t *tailer)  {
+	i.tailerMtx.Lock()
+	defer i.tailerMtx.Unlock()
+
+	tailers := map[uint32]*tailer{t.getId(): t}
+	for _, stream := range i.streams {
+		i.addTailersToStream(tailers, stream)
+	}
+	i.tailers[t.getId()] = t
+}
+
+func (i *instance) removeTailer(tailerId uint32) {
+	i.tailerMtx.Lock()
+	defer i.tailerMtx.Unlock()
+
+	delete(i.tailers, tailerId)
+}
+
+func (i *instance) addTailersToStream(tailers map[uint32]*tailer, stream *stream)  {
+	closedTailers := []uint32{}
+	for _, t := range tailers {
+		if t.isClosed() {
+			closedTailers = append(closedTailers, t.getId())
+			continue
+		}
+
+		if stream.matchesTailer(t) {
+			stream.addTailer(t)
+		}
+	}
+
+	for idx := range closedTailers {
+		i.removeTailer(closedTailers[idx])
+	}
 }
 
 func isDone(ctx context.Context) bool {

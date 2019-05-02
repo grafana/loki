@@ -12,6 +12,7 @@ service Pusher {
 service Querier {
   rpc Query(QueryRequest) returns (stream QueryResponse) {};
   rpc Label(LabelRequest) returns (LabelResponse) {};
+  rpc Tail(TailRequest) returns (stream TailResponse) {};
 }
 
 message PushRequest {
@@ -56,4 +57,21 @@ message Stream {
 message Entry {
   google.protobuf.Timestamp timestamp = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false, (gogoproto.jsontag) = "ts"];
   string line = 2 [(gogoproto.jsontag) = "line"];
+}
+
+message TailRequest {
+  string query = 1;
+  string regex = 2;
+  uint32 delayFor = 3;
+}
+
+message TailResponse {
+  Stream stream = 1;
+  repeated DroppedStream droppedStreams = 2;
+}
+
+message DroppedStream {
+  google.protobuf.Timestamp from = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp to = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  string labels = 3;
 }
