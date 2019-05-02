@@ -138,12 +138,11 @@ func (p *Positions) cleanup() {
 			if os.IsNotExist(err) {
 				// File no longer exists.
 				toRemove = append(toRemove, k)
-				return
+			} else {
+				// Can't determine if file exists or not, some other error.
+				level.Warn(p.logger).Log("msg", "could not determine if log file "+
+					"still exists while cleaning positions file", "error", err)
 			}
-			// Can't determine if file exists or not, some other error.
-			level.Warn(p.logger).Log("msg", "could not determine if log file "+
-				"still exists while cleaning positions file", "error", err)
-
 		}
 	}
 	for _, tr := range toRemove {
