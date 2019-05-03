@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 
@@ -29,13 +31,18 @@ pipeline_stages:
         source: "status"
 `
 
-func TestNewPipeline(t *testing.T) {
+func loadConfig(yml string) PipelineStages {
 	var config map[string]interface{}
-	err := yaml.Unmarshal([]byte(testYaml), &config)
+	err := yaml.Unmarshal([]byte(yml), &config)
 	if err != nil {
 		panic(err)
 	}
-	p, err := NewPipeline(util.Logger, config["pipeline_stages"].([]interface{}))
+	return config["pipeline_stages"].([]interface{})
+}
+
+func TestNewPipeline(t *testing.T) {
+
+	p, err := NewPipeline(util.Logger, loadConfig(testYaml))
 	if err != nil {
 		panic(err)
 	}
@@ -96,6 +103,50 @@ func TestPipeline_MultiStage(t *testing.T) {
 			assert.Equal(t, tt.expectedEntry, tt.entry, "did not receive expected log entry")
 			if tt.t.Unix() != tt.expectedT.Unix() {
 				t.Fatalf("mismatch ts want: %s got:%s", tt.expectedT, tt.t)
+			}
+		})
+	}
+}
+
+var (
+	l = log.NewNopLogger()
+	//w = log.NewSyncWriter(os.Stdout)
+	//l = log.NewLogfmtLogger(w)
+	infoLogger  = level.NewFilter(l, level.AllowInfo())
+	debugLogger = level.NewFilter(l, level.AllowDebug())
+)
+
+func Benchmark(b *testing.B) {
+	benchmarks := []struct {
+		name   string
+		stgs   PipelineStages
+		logger log.Logger
+		entry  string
+	}{
+		{
+			"two stage info level",
+			loadConfig(testYaml),
+			infoLogger,
+			rawTestLine,
+		},
+		{
+			"two stage debug level",
+			loadConfig(testYaml),
+			debugLogger,
+			rawTestLine,
+		},
+	}
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			pl, err := NewPipeline(bm.logger, bm.stgs)
+			if err != nil {
+				panic(err)
+			}
+			lb := model.LabelSet{}
+			ts := time.Now()
+			for i := 0; i < b.N; i++ {
+				entry := bm.entry
+				pl.Process(lb, &ts, &entry)
 			}
 		})
 	}
