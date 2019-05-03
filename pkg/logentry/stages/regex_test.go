@@ -8,6 +8,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 )
@@ -367,6 +368,48 @@ func TestRegexParser_Parse(t *testing.T) {
 			assert.Equal(t, tt.expectedEntry, tt.entry, "did not receive expected log entry")
 			if tt.t.Unix() != tt.expectedT.Unix() {
 				t.Fatalf("mismatch ts want: %s got:%s", tt.expectedT, tt.t)
+			}
+		})
+	}
+}
+
+func Benchmark(b *testing.B) {
+	benchmarks := []struct {
+		name   string
+		config map[string]interface{}
+		entry  string
+	}{
+		{
+			"apache common log",
+			map[string]interface{}{
+				"expression": "^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<action>\\S+)\\s?(?P<path>\\S+)?\\s?(?P<protocol>\\S+)?\" (?P<status>\\d{3}|-) (?P<size>\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$",
+				"timestamp": map[string]interface{}{
+					"source": "timestamp",
+					"format": "02/Jan/2006:15:04:05 -0700",
+				},
+				"labels": map[string]interface{}{
+					"action": map[string]interface{}{
+						"source": "action",
+					},
+					"status_code": map[string]interface{}{
+						"source": "status",
+					},
+				},
+			},
+			regexLogFixture,
+		},
+	}
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			stage, err := NewRegex(util.Logger, bm.config)
+			if err != nil {
+				panic(err)
+			}
+			labels := model.LabelSet{}
+			ts := time.Now()
+			for i := 0; i < b.N; i++ {
+				entry := bm.entry
+				stage.Process(labels, &ts, &entry)
 			}
 		})
 	}
