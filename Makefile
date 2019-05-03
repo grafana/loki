@@ -258,3 +258,6 @@ check_assets: assets
 		echo "Run 'make assets' and commit the changes to fix the error."; \
 		exit 1; \
 	fi
+
+dev:
+	cat tools/dev.yaml.template | sed "s/{{TAG}}/$(IMAGE_TAG)/g" | kubectl apply -f -
