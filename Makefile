@@ -203,3 +203,6 @@ clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
 	rm -rf $(UPTODATE_FILES) $(EXES) .cache
 	go clean ./...
+
+dev:
+	cat tools/dev.yaml.template | sed "s/{{TAG}}/$(IMAGE_TAG)/g" | kubectl apply -f -
