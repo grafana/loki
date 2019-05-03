@@ -94,7 +94,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
 			appendErr = err
 		}
-		chunk.lastUpdated = entries[i].Timestamp
+		chunk.lastUpdated = time.Now()
 	}
 
 	if appendErr == chunkenc.ErrOutOfOrder {
