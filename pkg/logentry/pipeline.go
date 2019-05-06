@@ -6,6 +6,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logentry/stages"
@@ -19,10 +20,11 @@ type PipelineStages []interface{}
 type Pipeline struct {
 	logger log.Logger
 	stages []stages.Stage
+	plObs  *prometheus.Observer
 }
 
 // NewPipeline creates a new log entry pipeline from a configuration
-func NewPipeline(logger log.Logger, stgs PipelineStages) (*Pipeline, error) {
+func NewPipeline(logger log.Logger, stgs PipelineStages, plObserverMicroSeconds *prometheus.Observer) (*Pipeline, error) {
 	st := []stages.Stage{}
 	for _, s := range stgs {
 		stage, ok := s.(map[interface{}]interface{})
@@ -69,16 +71,22 @@ func NewPipeline(logger log.Logger, stgs PipelineStages) (*Pipeline, error) {
 	return &Pipeline{
 		logger: log.With(logger, "component", "pipeline"),
 		stages: st,
+		plObs:  plObserverMicroSeconds,
 	}, nil
 }
 
 // Process mutates an entry and its metadata by using multiple configure stage.
-func (p *Pipeline) Process(labels model.LabelSet, time *time.Time, entry *string) {
+func (p *Pipeline) Process(labels model.LabelSet, ts *time.Time, entry *string) {
+	start := time.Now()
 	for i, stage := range p.stages {
-		level.Debug(p.logger).Log("msg", "processing pipeline", "stage", i, "labels", labels, "time", time, "entry", entry)
-		stage.Process(labels, time, entry)
+		level.Debug(p.logger).Log("msg", "processing pipeline", "stage", i, "labels", labels, "time", ts, "entry", entry)
+		stage.Process(labels, ts, entry)
 	}
-	level.Debug(p.logger).Log("msg", "finished processing log line", "labels", labels, "time", time, "entry", entry)
+	durUs := float64(time.Since(start).Nanoseconds()) / 1000
+	level.Debug(p.logger).Log("msg", "finished processing log line", "labels", labels, "time", ts, "entry", entry, "duration_us", durUs)
+	if p.plObs != nil {
+		(*p.plObs).Observe(durUs)
+	}
 }
 
 // Wrap implements EntryMiddleware
