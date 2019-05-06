@@ -103,7 +103,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 		} else {
 			storedEntries = append(storedEntries, entries[i])
 		}
-		chunk.lastUpdated = entries[i].Timestamp
+		chunk.lastUpdated = time.Now()
 	}
 
 	if len(storedEntries) != 0 {
