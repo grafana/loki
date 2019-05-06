@@ -21,13 +21,13 @@ import (
 const maxDroppedStreamSize = 10000
 
 type tailer struct {
-	id             uint32
-	orgID          string
-	matchers       []*labels.Matcher
-	regexp         *regexp.Regexp
+	id       uint32
+	orgID    string
+	matchers []*labels.Matcher
+	regexp   *regexp.Regexp
 
-	sendChan       chan *logproto.Stream
-	closed         bool
+	sendChan chan *logproto.Stream
+	closed   bool
 
 	blockedAt      *time.Time
 	blockedMtx     sync.RWMutex
