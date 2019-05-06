@@ -18,11 +18,9 @@ RUN go get \
 		github.com/go-delve/delve/cmd/dlv \
 		golang.org/x/tools/cmd/goyacc && \
 		rm -rf /go/pkg /go/src
-ENV GOMETALINTER_VER="2.0.11"
-RUN curl -L -o /tmp/gometalinter-$GOMETALINTER_VER.tgz https://github.com/alecthomas/gometalinter/releases/download/v$GOMETALINTER_VER/gometalinter-$GOMETALINTER_VER-linux-amd64.tar.gz && \
-		tar -xz -C /tmp -f /tmp/gometalinter-$GOMETALINTER_VER.tgz && \
-		mv /tmp/gometalinter-$GOMETALINTER_VER-linux-amd64/* /usr/bin && \
-		rm /tmp/gometalinter-$GOMETALINTER_VER.tgz
+ENV GOLANGCI_LINT_VER="1.16.0"
+RUN curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $(go env GOPATH)/bin v${GOLANGCI_LINT_VER} && \
+	golangci-lint --version
 COPY build.sh /
 ENV GOCACHE=/go/cache
 ENTRYPOINT ["/build.sh"]

@@ -454,10 +454,6 @@ type listIterator struct {
 	cur entry
 }
 
-func (li *listIterator) Seek(int64) bool {
-	return false
-}
-
 func (li *listIterator) Next() bool {
 	if len(li.entries) > 0 {
 		li.cur = li.entries[0]
@@ -498,10 +494,6 @@ func newBufferedIterator(s *bufio.Reader) *bufferedIterator {
 		buf:    make([]byte, 1024),
 		decBuf: make([]byte, binary.MaxVarintLen64),
 	}
-}
-
-func (si *bufferedIterator) Seek(int64) bool {
-	return false
 }
 
 func (si *bufferedIterator) Next() bool {
