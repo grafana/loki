@@ -100,6 +100,7 @@ func (h iteratorMaxHeap) Less(i, j int) bool {
 }
 
 // HeapIterator iterates over a heap of iterators with ability to push new iterators and get some properties like time of entry at peek and len
+// Not safe for concurrent use
 type HeapIterator interface {
 	EntryIterator
 	Peek() time.Time

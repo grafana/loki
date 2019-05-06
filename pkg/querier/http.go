@@ -104,6 +104,8 @@ func httpRequestToTailRequest(httpRequest *http.Request) (*logproto.TailRequest,
 		Query: params.Get("query"),
 	}
 
+	// delay_for is used to allow server to let slow loggers catch up.
+	// Entries would be accumulated in a heap until they become older than now()-<delay_for>
 	delayFor, err := intParam(params, "delay_for", 0)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())

@@ -16,15 +16,19 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-const maxDroppedStreamSize = 3
+// This is to limit size of dropped stream to make it easier for querier to query.
+// While dropping stream we divide it into batches and use start and end time of each batch to build dropped stream metadata
+const maxDroppedStreamSize = 10000
 
 type tailer struct {
 	id             uint32
 	orgID          string
 	matchers       []*labels.Matcher
 	regexp         *regexp.Regexp
+
 	sendChan       chan *logproto.Stream
 	closed         bool
+
 	blockedAt      *time.Time
 	blockedMtx     sync.RWMutex
 	droppedStreams []*logproto.DroppedStream
@@ -72,6 +76,7 @@ func (t *tailer) loop() {
 			return
 		}
 
+		// while sending new stream pop lined up dropped streams metadata for sending to querier
 		tailResponse := logproto.TailResponse{Stream: stream, DroppedStreams: t.popDroppedStreams()}
 		err = t.conn.Send(&tailResponse)
 		if err != nil {
@@ -87,6 +92,7 @@ func (t *tailer) send(stream logproto.Stream) {
 		return
 	}
 
+	// if we are already dropping streams due to blocked connection, drop new streams directly to save some effort
 	if blockedSince := t.blockedSince(); blockedSince != nil {
 		if blockedSince.Before(time.Now().Add(-time.Second * 15)) {
 			t.close()
@@ -98,11 +104,13 @@ func (t *tailer) send(stream logproto.Stream) {
 	}
 
 	if t.regexp != nil {
+		// filter stream by regex from query
 		t.filterEntriesInStream(&stream)
 		if len(stream.Entries) == 0 {
 			return
 		}
 	}
+
 	select {
 	case t.sendChan <- &stream:
 	default:
@@ -124,6 +132,7 @@ func (t *tailer) filterEntriesInStream(stream *logproto.Stream) {
 func (t *tailer) isWatchingLabels(metric model.Metric) bool {
 	var labelValue model.LabelValue
 	var ok bool
+
 	for _, matcher := range t.matchers {
 		labelValue, ok = metric[model.LabelName(matcher.Name)]
 		if !ok {
@@ -207,6 +216,7 @@ func breakDroppedStream(stream logproto.Stream) []*logproto.DroppedStream {
 	return droppedStreams
 }
 
+// An id is useful in managing tailer instances
 func generateUniqueID(orgID, query, regex string) uint32 {
 	uniqueID := fnv.New32()
 	uniqueID.Write([]byte(orgID))

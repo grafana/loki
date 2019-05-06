@@ -253,6 +253,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest, responseC
 	}), nil
 }
 
+// passed to tailer for querying dropped streams
 func (q *Querier) queryDroppedStreams(ctx context.Context, req *logproto.TailRequest, start, end time.Time, labels string) (iter.EntryIterator, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -295,6 +296,7 @@ func (q *Querier) queryDroppedStreams(ctx context.Context, req *logproto.TailReq
 	return iter.NewHeapIterator(iterators, query.Direction), nil
 }
 
+// passed to tailer for (re)connecting to new or disconnected ingesters
 func (q *Querier) tailDisconnectedIngesteres(ctx context.Context, req *logproto.TailRequest, connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
 	tailClients := make(map[string]logproto.Querier_TailClient)
 	for i := range connectedIngestersAddr {

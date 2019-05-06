@@ -101,6 +101,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
 			appendErr = err
 		} else {
+			// send only stored entries to tailers
 			storedEntries = append(storedEntries, entries[i])
 		}
 		chunk.lastUpdated = time.Now()
