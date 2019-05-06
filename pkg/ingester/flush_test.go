@@ -68,6 +68,7 @@ func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
 	return store, ing
 }
 
+// nolint
 func defaultIngesterTestConfig() Config {
 	consul := ring.NewInMemoryKVClient()
 	cfg := Config{}
