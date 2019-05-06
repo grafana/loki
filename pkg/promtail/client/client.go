@@ -128,7 +128,7 @@ func New(cfg Config, logger log.Logger) (*Client, error) {
 	}
 
 	var err error
-	c.client, err = config.NewClientFromConfig(clientConfig, "logcli")
+	c.client, err = config.NewClientFromConfig(clientConfig, "promtail")
 	if err != nil {
 		level.Error(c.logger).Log("msg", "error while creating http client", "error", err) //nolint
 		return nil, err
