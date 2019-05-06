@@ -1,4 +1,4 @@
-FROM golang:1.11.2-stretch
+FROM golang:1.11.4-stretch
 RUN apt-get update && apt-get install -y file jq unzip protobuf-compiler libprotobuf-dev && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 ENV DOCKER_VER="17.03.0-ce"
@@ -18,9 +18,11 @@ RUN go get \
 		github.com/go-delve/delve/cmd/dlv \
 		golang.org/x/tools/cmd/goyacc && \
 		rm -rf /go/pkg /go/src
-ENV GOLANGCI_LINT_VER="1.16.0"
-RUN curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $(go env GOPATH)/bin v${GOLANGCI_LINT_VER} && \
-	golangci-lint --version
+ENV GOLANGCI_LINT_COMMIT="692dacb773b703162c091c2d8c59f9cd2d6801db"
+RUN mkdir -p $(go env GOPATH)/src/github.com/golangci/ && git clone https://github.com/golangci/golangci-lint.git $(go env GOPATH)/src/github.com/golangci/golangci-lint && \
+	cd $(go env GOPATH)/src/github.com/golangci/golangci-lint  && git checkout ${GOLANGCI_LINT_COMMIT} && cd cmd/golangci-lint/  &&\
+	GO111MODULE=on go install && \
+	golangci-lint help
 COPY build.sh /
 ENV GOCACHE=/go/cache
 ENTRYPOINT ["/build.sh"]
