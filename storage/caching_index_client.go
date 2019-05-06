@@ -88,7 +88,10 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 	batches, misses := s.cacheFetch(ctx, keys)
 	for _, batch := range batches {
 		if cardinalityLimit > 0 && batch.Cardinality > cardinalityLimit {
-			return chunk.ErrCardinalityExceeded
+			return chunk.CardinalityExceededError{
+				Size:  batch.Cardinality,
+				Limit: cardinalityLimit,
+			}
 		}
 
 		queries := queriesByKey[batch.Key]
@@ -156,7 +159,10 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 			if cardinalityLimit > 0 && cardinality > cardinalityLimit {
 				batch.Cardinality = cardinality
 				batch.Entries = nil
-				cardinalityErr = chunk.ErrCardinalityExceeded
+				cardinalityErr = chunk.CardinalityExceededError{
+					Size:  cardinality,
+					Limit: cardinalityLimit,
+				}
 			}
 
 			keys = append(keys, key)
@@ -276,7 +282,6 @@ func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (bat
 		}
 
 		if readBatch.Expiry != 0 && time.Now().After(time.Unix(0, readBatch.Expiry)) {
-			level.Debug(log).Log("msg", "dropping index cache entry due to expiration", "key", key, "readBatch.Key", readBatch.Key, "expiry", time.Unix(0, readBatch.Expiry))
 			continue
 		}
 
