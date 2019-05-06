@@ -18,7 +18,6 @@ var (
 	tlsSkipVerify        = app.Flag("tls-skip-verify", "Server certificate TLS skip verify.").Default("false").Bool()
 	tlsClientCertPath    = app.Flag("cert", "Path to the client certificate.").Default("").Envar("LOKI_CLIENT_CERT_PATH").String()
 	tlsClientCertKeyPath = app.Flag("key", "Path to the client certificate key.").Default("").Envar("LOKI_CLIENT_KEY_PATH").String()
-	tlsClientCertKeyPass = app.Flag("key-pass", "Client certificate key password.").Default("").Envar("LOKI_CLIENT_KEY_PASS").String()
 
 	queryCmd  = app.Command("query", "Run a LogQL query.")
 	queryStr  = queryCmd.Arg("query", "eg '{foo=\"bar\",baz=\"blip\"}'").Required().String()

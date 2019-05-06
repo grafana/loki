@@ -69,7 +69,6 @@ Flags:
   --tls-skip-verify  Server certificate TLS skip verify.
   --cert=""          Path to the client certificate.
   --key=""           Path to the client certificate key.
-  --key-pass=""      Client certificate key password.
 
 Commands:
   help [<command>...]

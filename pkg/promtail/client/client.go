@@ -19,6 +19,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/helpers"
@@ -56,11 +57,10 @@ func init() {
 type Config struct {
 	URL flagext.URLValue
 
-	TLSCACertPath               string `yaml:"ca,omitempty"`
-	TLSServerSkipVerify         bool   `yaml:"tls-skip-verify,omitempty"`
-	TLSClientCertificate        string `yaml:"certificate,omitempty"`
-	TLSClientCertificateKey     string `yaml:"certificate-key,omitempty"`
-	TLSClientCertificateKeyPass string `yaml:"certificate-key-pass,omitempty"`
+	TLSCACertPath           string `yaml:"ca,omitempty"`
+	TLSServerSkipVerify     bool   `yaml:"tls-skip-verify,omitempty"`
+	TLSClientCertificate    string `yaml:"certificate,omitempty"`
+	TLSClientCertificateKey string `yaml:"certificate-key,omitempty"`
 
 	BatchWait time.Duration
 	BatchSize int
@@ -79,7 +79,6 @@ func (c *Config) RegisterFlags(flags *flag.FlagSet) {
 	flags.BoolVar(&c.TLSServerSkipVerify, "client.tls-skip-verify", false, "Server certificate TLS skip verify")
 	flags.StringVar(&c.TLSClientCertificate, "client.certificate", "", "Path to the client certificate")
 	flags.StringVar(&c.TLSClientCertificateKey, "client.certificate-key", "", "Path to the client certificate key")
-	flags.StringVar(&c.TLSClientCertificateKeyPass, "client.certificate-key-pass", "", "Client certificate key password")
 
 	flags.DurationVar(&c.BatchWait, "client.batch-wait", 1*time.Second, "Maximum wait period before sending batch.")
 	flags.IntVar(&c.BatchSize, "client.batch-size-bytes", 100*1024, "Maximum batch size to accrue before sending. ")
@@ -118,24 +117,24 @@ func New(cfg Config, logger log.Logger) (*Client, error) {
 		externalLabels: cfg.ExternalLabels,
 	}
 
-	tlsConfig, err := helpers.NewTLSConfigFromOptions(
-		cfg.URL.String(),
-		cfg.TLSCACertPath,
-		cfg.TLSClientCertificate,
-		cfg.TLSClientCertificateKey,
-		cfg.TLSClientCertificateKeyPass,
-		cfg.TLSServerSkipVerify)
-
-	c.client = &http.Client{
-		Timeout: cfg.Timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: tlsConfig,
+	clientConfig := config.HTTPClientConfig{
+		TLSConfig: config.TLSConfig{
+			CAFile:             cfg.TLSCACertPath,
+			CertFile:           cfg.TLSClientCertificate,
+			KeyFile:            cfg.TLSClientCertificateKey,
+			ServerName:         cfg.URL.String(),
+			InsecureSkipVerify: cfg.TLSServerSkipVerify,
 		},
 	}
+
+	var err error
+	c.client, err = config.NewClientFromConfig(clientConfig, "logcli")
 	if err != nil {
 		level.Error(c.logger).Log("msg", "error while creating http client", "error", err) //nolint
 		return nil, err
 	}
+
+	c.client.Timeout = cfg.Timeout
 
 	c.wg.Add(1)
 	go c.run()

@@ -180,7 +180,6 @@ client:
   ca: /path/to/ca/cert.pem # This is the Certificate Authority to verify the server certificate. [optional]
   certificate: /path/to/ca/client-cert.pem # This is the client certificate that will be checked by the server [optional]
   certificate-key: /path/to/ca/client-cert.key # This is the client certificate key [optional]
-  certificate-key-pass: password # This is the client certificate password key [optional]
   tls-skip-verify: true # Never use that settings except for development [optional]
       ...
 ```

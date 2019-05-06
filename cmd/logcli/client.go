@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/common/config"
 
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
 )
 
@@ -64,21 +64,19 @@ func doRequest(path string, out interface{}) error {
 
 	req.SetBasicAuth(*username, *password)
 
-	tlsConfig, err := helpers.NewTLSConfigFromOptions(
-		url,
-		*tlsCACertPath,
-		*tlsClientCertPath,
-		*tlsClientCertKeyPath,
-		*tlsClientCertKeyPass,
-		*tlsSkipVerify)
-	if err != nil {
-		return err
+	clientConfig := config.HTTPClientConfig{
+		TLSConfig: config.TLSConfig{
+			CAFile:             *tlsCACertPath,
+			CertFile:           *tlsClientCertPath,
+			KeyFile:            *tlsClientCertKeyPath,
+			ServerName:         url,
+			InsecureSkipVerify: *tlsSkipVerify,
+		},
 	}
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: tlsConfig,
-		},
+	client, err := config.NewClientFromConfig(clientConfig, "logcli")
+	if err != nil {
+		return err
 	}
 
 	resp, err := client.Do(req)
@@ -106,13 +104,13 @@ func liveTailQueryConn() (*websocket.Conn, error) {
 
 func wsConnect(path string) (*websocket.Conn, error) {
 
-	tlsConfig, err := helpers.NewTLSConfigFromOptions(
-		*addr,
-		*tlsCACertPath,
-		*tlsClientCertPath,
-		*tlsClientCertKeyPath,
-		*tlsClientCertKeyPass,
-		*tlsSkipVerify)
+	tlsConfig, err := config.NewTLSConfig(&config.TLSConfig{
+		CAFile:             *tlsCACertPath,
+		CertFile:           *tlsClientCertPath,
+		KeyFile:            *tlsClientCertKeyPath,
+		ServerName:         *addr,
+		InsecureSkipVerify: *tlsSkipVerify,
+	})
 	if err != nil {
 		return nil, err
 	}
