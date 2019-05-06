@@ -20,6 +20,7 @@ var cfg = `json:
   output:
     source: log`
 
+// nolint
 func TestYamlMapStructure(t *testing.T) {
 	t.Parallel()
 

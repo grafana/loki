@@ -23,8 +23,8 @@ func NewDocker(logger log.Logger) (Stage, error) {
 	return NewJSON(logger, config)
 }
 
-// NewCri creates a CRI format specific pipeline stage
-func NewCri(logger log.Logger) (Stage, error) {
+// NewCRI creates a CRI format specific pipeline stage
+func NewCRI(logger log.Logger) (Stage, error) {
 	config := map[string]interface{}{
 		"expression": "^(?s)(?P<time>\\S+?) (?P<stream>stdout|stderr) (?P<flags>\\S+?) (?P<content>.*)$",
 		"timestamp": map[string]interface{}{
