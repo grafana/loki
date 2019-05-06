@@ -23,6 +23,7 @@ var regexCfg = `regex:
   output:
     source: log`
 
+// nolint
 func TestRegexMapStructure(t *testing.T) {
 	t.Parallel()
 

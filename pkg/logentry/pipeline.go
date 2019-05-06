@@ -60,7 +60,7 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, plObserverMicroSeconds 
 				}
 				st = append(st, docker)
 			case "cri":
-				cri, err := stages.NewCri(logger)
+				cri, err := stages.NewCRI(logger)
 				if err != nil {
 					return nil, errors.Wrap(err, "invalid cri stage config")
 				}

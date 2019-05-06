@@ -139,7 +139,7 @@ func TestNewCri(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			p, err := NewCri(util.Logger)
+			p, err := NewCRI(util.Logger)
 			if err != nil {
 				t.Fatalf("failed to create CRI parser: %s", err)
 			}

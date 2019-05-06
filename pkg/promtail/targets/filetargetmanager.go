@@ -92,7 +92,7 @@ func NewFileTargetManager(
 			switch cfg.EntryParser {
 			case api.CRI:
 				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
-				cri, err := stages.NewCri(logger)
+				cri, err := stages.NewCRI(logger)
 				if err != nil {
 					return nil, err
 				}

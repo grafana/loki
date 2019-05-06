@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// nolint
 func mustParseTime(layout, value string) time.Time {
 	t, err := time.Parse(layout, value)
 	if err != nil {
