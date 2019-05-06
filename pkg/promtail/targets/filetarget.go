@@ -63,8 +63,10 @@ func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
 type FileTarget struct {
 	logger log.Logger
 
-	handler   api.EntryHandler
-	positions *positions.Positions
+	handler          api.EntryHandler
+	positions        *positions.Positions
+	labels           model.LabelSet
+	discoveredLabels model.LabelSet
 
 	watcher *fsnotify.Watcher
 	watches map[string]struct{}
@@ -78,7 +80,7 @@ type FileTarget struct {
 }
 
 // NewFileTarget create a new FileTarget.
-func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions *positions.Positions, path string, labels model.LabelSet, targetConfig *Config) (*FileTarget, error) {
+func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions *positions.Positions, path string, labels model.LabelSet, discoveredLabels model.LabelSet, targetConfig *Config) (*FileTarget, error) {
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -86,15 +88,17 @@ func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions *posit
 	}
 
 	t := &FileTarget{
-		logger:       logger,
-		watcher:      watcher,
-		path:         path,
-		handler:      api.AddLabelsMiddleware(labels).Wrap(handler),
-		positions:    positions,
-		quit:         make(chan struct{}),
-		done:         make(chan struct{}),
-		tails:        map[string]*tailer{},
-		targetConfig: targetConfig,
+		logger:           logger,
+		watcher:          watcher,
+		path:             path,
+		labels:           labels,
+		discoveredLabels: discoveredLabels,
+		handler:          api.AddLabelsMiddleware(labels).Wrap(handler),
+		positions:        positions,
+		quit:             make(chan struct{}),
+		done:             make(chan struct{}),
+		tails:            map[string]*tailer{},
+		targetConfig:     targetConfig,
 	}
 
 	err = t.sync()
@@ -115,6 +119,30 @@ func (t *FileTarget) Ready() bool {
 func (t *FileTarget) Stop() {
 	close(t.quit)
 	<-t.done
+}
+
+// Type implements a Target
+func (t *FileTarget) Type() TargetType {
+	return FileTargetType
+}
+
+// DiscoveredLabels implements a Target
+func (t *FileTarget) DiscoveredLabels() model.LabelSet {
+	return t.discoveredLabels
+}
+
+// Labels implements a Target
+func (t *FileTarget) Labels() model.LabelSet {
+	return t.labels
+}
+
+// Details implements a Target
+func (t *FileTarget) Details() interface{} {
+	files := map[string]int64{}
+	for fileName := range t.tails {
+		files[fileName] = t.positions.Get(fileName)
+	}
+	return files
 }
 
 func (t *FileTarget) run() {

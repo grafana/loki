@@ -28,7 +28,7 @@ func main() {
 	flagext.RegisterFlags(&config)
 	flag.Parse()
 
-	util.InitLogger(&config.ServerConfig)
+	util.InitLogger(&config.ServerConfig.Config)
 
 	if configFile != "" {
 		if err := helpers.LoadConfig(configFile, &config); err != nil {
