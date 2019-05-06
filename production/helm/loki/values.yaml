@@ -145,6 +145,8 @@ terminationGracePeriodSeconds: 30
 ## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
 tolerations: []
 
-# The values to set in the PodDisruptionBudget spec (minAvailable/maxUnavailable)
+# The values to set in the PodDisruptionBudget spec
 # If not set then a PodDisruptionBudget will not be created
-podDisruptionBudget:
+podDisruptionBudget: {}
+# minAvailable: 1
+# maxUnavailable: 1
