@@ -380,13 +380,13 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		file := ""
 		for _, label := range labels {
-			if label.Name == "__filename__" {
+			if label.Name == "filename" {
 				file = label.Value
 				continue
 			}
 		}
 		if file == "" {
-			h.t.Error("Expected to find a label with name __filename__ but did not!")
+			h.t.Error("Expected to find a label with name `filename` but did not!")
 			return
 		}
 		if _, ok := h.receivedMap[file]; ok {
