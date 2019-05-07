@@ -152,7 +152,7 @@ metadata:
 
 ---promtail_config.yaml
 ...
-scrap_configs:
+scrape_configs:
    ...
    - job_name: job_name
       kubernetes_sd_config:

@@ -23,12 +23,12 @@ var (
 	chunkEntries = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "loki_ingester_chunk_entries",
 		Help:    "Distribution of stored chunk entries (when stored).",
-		Buckets: prometheus.ExponentialBuckets(20, 2, 11), // biggest bucket is 5*2^(11-1) = 5120
+		Buckets: prometheus.ExponentialBuckets(200, 2, 9), // biggest bucket is 200*2^(9-1) = 51200
 	})
 	chunkSize = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "loki_ingester_chunk_size_bytes",
 		Help:    "Distribution of stored chunk sizes (when stored).",
-		Buckets: prometheus.ExponentialBuckets(500, 2, 5), // biggest bucket is 500*2^(5-1) = 8000
+		Buckets: prometheus.ExponentialBuckets(10000, 2, 7), // biggest bucket is 10000*2^(7-1) = 640000 (~640KB)
 	})
 	chunksPerTenant = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "loki_ingester_chunks_stored_total",

@@ -1,14 +1,12 @@
 package promtail
 
 import (
-	"net/http"
-
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/config"
 	"github.com/grafana/loki/pkg/promtail/positions"
+	"github.com/grafana/loki/pkg/promtail/server"
 	"github.com/grafana/loki/pkg/promtail/targets"
 )
 
@@ -37,18 +35,10 @@ func New(cfg config.Config) (*Promtail, error) {
 		return nil, err
 	}
 
-	server, err := server.New(cfg.ServerConfig)
+	server, err := server.New(cfg.ServerConfig, tms)
 	if err != nil {
 		return nil, err
 	}
-
-	server.HTTP.Path("/ready").Handler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		if tms.Ready() {
-			rw.WriteHeader(http.StatusNoContent)
-		} else {
-			rw.WriteHeader(http.StatusInternalServerError)
-		}
-	}))
 
 	return &Promtail{
 		client:         client,

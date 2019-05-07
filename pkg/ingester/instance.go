@@ -50,9 +50,11 @@ type instance struct {
 
 	streamsCreatedTotal prometheus.Counter
 	streamsRemovedTotal prometheus.Counter
+
+	blockSize int
 }
 
-func newInstance(instanceID string) *instance {
+func newInstance(instanceID string, blockSize int) *instance {
 	return &instance{
 		streams:    map[model.Fingerprint]*stream{},
 		index:      index.New(),
@@ -60,6 +62,8 @@ func newInstance(instanceID string) *instance {
 
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
+
+		blockSize: blockSize,
 	}
 }
 
@@ -78,7 +82,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		fp := client.FastFingerprint(labels)
 		stream, ok := i.streams[fp]
 		if !ok {
-			stream = newStream(fp, labels)
+			stream = newStream(fp, labels, i.blockSize)
 			i.index.Add(labels, fp)
 			i.streams[fp] = stream
 			i.streamsCreatedTotal.Inc()

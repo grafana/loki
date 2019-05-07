@@ -84,8 +84,12 @@ func (p *Positions) Get(path string) int64 {
 // Remove removes the position tracking for a filepath
 func (p *Positions) Remove(path string) {
 	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	p.remove(path)
+}
+
+func (p *Positions) remove(path string) {
 	delete(p.positions, path)
-	p.mtx.Unlock()
 }
 
 // SyncPeriod returns how often the positions file gets resynced
@@ -126,18 +130,23 @@ func (p *Positions) save() {
 }
 
 func (p *Positions) cleanup() {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	toRemove := []string{}
 	for k := range p.positions {
 		if _, err := os.Stat(k); err != nil {
 			if os.IsNotExist(err) {
 				// File no longer exists.
-				p.Remove(k)
-				return
+				toRemove = append(toRemove, k)
+			} else {
+				// Can't determine if file exists or not, some other error.
+				level.Warn(p.logger).Log("msg", "could not determine if log file "+
+					"still exists while cleaning positions file", "error", err)
 			}
-			// Can't determine if file exists or not, some other error.
-			level.Warn(p.logger).Log("msg", "could not determine if log file "+
-				"still exists while cleaning positions file", "error", err)
-
 		}
+	}
+	for _, tr := range toRemove {
+		p.remove(tr)
 	}
 }
 

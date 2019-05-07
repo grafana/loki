@@ -1,7 +1,6 @@
 package promtail
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -17,6 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
@@ -49,7 +49,8 @@ func TestPromtail(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	defer os.RemoveAll(dirName)
+
+	defer func() { _ = os.RemoveAll(dirName) }()
 
 	testDir := dirName + "/logs"
 	err = os.MkdirAll(testDir, 0750)
@@ -64,9 +65,14 @@ func TestPromtail(t *testing.T) {
 		t:           t,
 	}
 	http.Handle("/api/prom/push", handler)
+	defer func() {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 	go func() {
-		if err := http.ListenAndServe("127.0.0.1:3100", nil); err != nil {
-			t.Fatal("Failed to start web server to receive logs", err)
+		if err = http.ListenAndServe("127.0.0.1:3100", nil); err != nil {
+			err = errors.Wrap(err, "Failed to start web server to receive logs")
 		}
 	}()
 
@@ -79,9 +85,9 @@ func TestPromtail(t *testing.T) {
 	}
 
 	go func() {
-		err := p.Run()
+		err = p.Run()
 		if err != nil {
-			t.Fatal("Failed to start promtail", err)
+			err = errors.Wrap(err, "Failed to start promtail")
 		}
 	}()
 
@@ -374,7 +380,7 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		file := ""
 		for _, label := range labels {
 			if label.Name == "__filename__" {
-				file = string(label.Value)
+				file = label.Value
 				continue
 			}
 		}

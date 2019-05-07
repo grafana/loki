@@ -23,7 +23,7 @@ func TestIterator(t *testing.T) {
 	}{
 		// Test basic identity.
 		{
-			iterator:  mkStreamIterator(testSize, identity, defaultLabels),
+			iterator:  mkStreamIterator(identity, defaultLabels),
 			generator: identity,
 			length:    testSize,
 			labels:    defaultLabels,
@@ -31,7 +31,7 @@ func TestIterator(t *testing.T) {
 
 		// Test basic identity (backwards).
 		{
-			iterator:  mkStreamIterator(testSize, inverse(identity), defaultLabels),
+			iterator:  mkStreamIterator(inverse(identity), defaultLabels),
 			generator: inverse(identity),
 			length:    testSize,
 			labels:    defaultLabels,
@@ -40,9 +40,9 @@ func TestIterator(t *testing.T) {
 		// Test dedupe of overlapping iterators with the heap iterator.
 		{
 			iterator: NewHeapIterator([]EntryIterator{
-				mkStreamIterator(testSize, offset(0, identity), defaultLabels),
-				mkStreamIterator(testSize, offset(testSize/2, identity), defaultLabels),
-				mkStreamIterator(testSize, offset(testSize, identity), defaultLabels),
+				mkStreamIterator(offset(0, identity), defaultLabels),
+				mkStreamIterator(offset(testSize/2, identity), defaultLabels),
+				mkStreamIterator(offset(testSize, identity), defaultLabels),
 			}, logproto.FORWARD),
 			generator: identity,
 			length:    2 * testSize,
@@ -52,9 +52,9 @@ func TestIterator(t *testing.T) {
 		// Test dedupe of overlapping iterators with the heap iterator (backward).
 		{
 			iterator: NewHeapIterator([]EntryIterator{
-				mkStreamIterator(testSize, inverse(offset(0, identity)), defaultLabels),
-				mkStreamIterator(testSize, inverse(offset(-testSize/2, identity)), defaultLabels),
-				mkStreamIterator(testSize, inverse(offset(-testSize, identity)), defaultLabels),
+				mkStreamIterator(inverse(offset(0, identity)), defaultLabels),
+				mkStreamIterator(inverse(offset(-testSize/2, identity)), defaultLabels),
+				mkStreamIterator(inverse(offset(-testSize, identity)), defaultLabels),
 			}, logproto.BACKWARD),
 			generator: inverse(identity),
 			length:    2 * testSize,
@@ -64,9 +64,9 @@ func TestIterator(t *testing.T) {
 		// Test dedupe of entries with the same timestamp but different entries.
 		{
 			iterator: NewHeapIterator([]EntryIterator{
-				mkStreamIterator(testSize, offset(0, constant(0)), defaultLabels),
-				mkStreamIterator(testSize, offset(0, constant(0)), defaultLabels),
-				mkStreamIterator(testSize, offset(testSize, constant(0)), defaultLabels),
+				mkStreamIterator(offset(0, constant(0)), defaultLabels),
+				mkStreamIterator(offset(0, constant(0)), defaultLabels),
+				mkStreamIterator(offset(testSize, constant(0)), defaultLabels),
 			}, logproto.FORWARD),
 			generator: constant(0),
 			length:    2 * testSize,
@@ -75,7 +75,7 @@ func TestIterator(t *testing.T) {
 
 		// Test basic identity with non-default labels.
 		{
-			iterator:  mkStreamIterator(testSize, identity, "{foobar: \"bazbar\"}"),
+			iterator:  mkStreamIterator(identity, "{foobar: \"bazbar\"}"),
 			generator: identity,
 			length:    testSize,
 			labels:    "{foobar: \"bazbar\"}",
@@ -105,8 +105,8 @@ func TestIteratorMultipleLabels(t *testing.T) {
 		// Test merging with differing labels but same timestamps and values.
 		{
 			iterator: NewHeapIterator([]EntryIterator{
-				mkStreamIterator(testSize, identity, "{foobar: \"baz1\"}"),
-				mkStreamIterator(testSize, identity, "{foobar: \"baz2\"}"),
+				mkStreamIterator(identity, "{foobar: \"baz1\"}"),
+				mkStreamIterator(identity, "{foobar: \"baz2\"}"),
 			}, logproto.FORWARD),
 			generator: func(i int64) logproto.Entry {
 				return identity(i / 2)
@@ -123,8 +123,8 @@ func TestIteratorMultipleLabels(t *testing.T) {
 		// Test merging with differing labels but all the same timestamps and different values.
 		{
 			iterator: NewHeapIterator([]EntryIterator{
-				mkStreamIterator(testSize, constant(0), "{foobar: \"baz1\"}"),
-				mkStreamIterator(testSize, constant(0), "{foobar: \"baz2\"}"),
+				mkStreamIterator(constant(0), "{foobar: \"baz1\"}"),
+				mkStreamIterator(constant(0), "{foobar: \"baz2\"}"),
 			}, logproto.FORWARD),
 			generator: func(i int64) logproto.Entry {
 				return constant(0)(i % testSize)
@@ -154,9 +154,9 @@ func TestIteratorMultipleLabels(t *testing.T) {
 
 type generator func(i int64) logproto.Entry
 
-func mkStreamIterator(numEntries int64, f generator, labels string) EntryIterator {
+func mkStreamIterator(f generator, labels string) EntryIterator {
 	entries := []logproto.Entry{}
-	for i := int64(0); i < numEntries; i++ {
+	for i := int64(0); i < testSize; i++ {
 		entries = append(entries, f(i))
 	}
 	return newStreamIterator(&logproto.Stream{
@@ -178,6 +178,7 @@ func offset(j int64, g generator) generator {
 	}
 }
 
+// nolint
 func constant(t int64) generator {
 	return func(i int64) logproto.Entry {
 		return logproto.Entry{
