@@ -32,7 +32,7 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dirName)
+	defer func() { _ = os.RemoveAll(dirName) }()
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
@@ -54,7 +54,7 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	target, err := NewFileTarget(logger, client, ps, logFile, nil, &Config{
+	target, err := NewFileTarget(logger, client, ps, logFile, nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
 	})
 	if err != nil {
@@ -125,7 +125,7 @@ func TestWatchEntireDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dirName)
+	defer func() { _ = os.RemoveAll(dirName) }()
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
@@ -147,7 +147,7 @@ func TestWatchEntireDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	target, err := NewFileTarget(logger, client, ps, logFileDir+"*", nil, &Config{
+	target, err := NewFileTarget(logger, client, ps, logFileDir+"*", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
 	})
 	if err != nil {
@@ -214,7 +214,7 @@ func TestFileRolls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dirName)
+	defer func() { _ = os.RemoveAll(dirName) }()
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
@@ -236,7 +236,7 @@ func TestFileRolls(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	target, err := NewFileTarget(logger, client, positions, dirName+"/*.log", nil, &Config{
+	target, err := NewFileTarget(logger, client, positions, dirName+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
 	})
 	if err != nil {
@@ -312,7 +312,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dirName)
+	defer func() { _ = os.RemoveAll(dirName) }()
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
@@ -334,7 +334,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	target, err := NewFileTarget(logger, client, ps, dirName+"/*.log", nil, &Config{
+	target, err := NewFileTarget(logger, client, ps, dirName+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
 	})
 	if err != nil {
@@ -368,7 +368,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	// Create a new target, keep the same client so we can track what was sent through the handler.
-	target2, err := NewFileTarget(logger, client, ps2, dirName+"/*.log", nil, &Config{
+	target2, err := NewFileTarget(logger, client, ps2, dirName+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
 	})
 	if err != nil {
@@ -421,7 +421,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dirName)
+	defer func() { _ = os.RemoveAll(dirName) }()
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
@@ -443,7 +443,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	target, err := NewFileTarget(logger, client, ps, dirName+"/*.log", nil, &Config{
+	target, err := NewFileTarget(logger, client, ps, dirName+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
 	})
 	if err != nil {
@@ -524,7 +524,7 @@ func TestFileTargetSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dirName)
+	defer func() { _ = os.RemoveAll(dirName) }()
 
 	// Set the sync period to a really long value, to guarantee the sync timer never runs, this way we know
 	// everything saved was done through channel notifications when target.stop() was called.
@@ -541,7 +541,7 @@ func TestFileTargetSync(t *testing.T) {
 		messages: make([]string, 0),
 	}
 
-	target, err := NewFileTarget(logger, client, ps, logDir1+"/*.log", nil, &Config{
+	target, err := NewFileTarget(logger, client, ps, logDir1+"/*.log", nil, nil, &Config{
 		SyncPeriod: 10 * time.Second,
 	})
 	if err != nil {

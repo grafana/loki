@@ -41,6 +41,18 @@ to
           target_label: __path__
 ```
 
+## Troubleshooting targets
+
+Promtail offers two pages that you can use to understand how service discovery works.
+The service discovery page (`/service-discovery`) shows all discovered targets with their labels before and after relabeling as well as the reason why the target has been dropped.
+The targets page (`/targets`) however displays only targets being actively scraped with their respective labels, files and positions.
+
+You can access those two pages by port-forwarding the promtail port (9080 or 3101 via helm) locally:
+
+```bash
+kubectl port-forward loki-promtail-jrfg7 9080
+```
+
 ## Debug output
 
 Both binaries support a log level parameter on the command-line, e.g.: `loki —log.level= debug ...`

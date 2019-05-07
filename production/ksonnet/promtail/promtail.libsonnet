@@ -17,9 +17,17 @@ k + config + scrape_config {
     ]),
 
   promtail_config+:: {
-    client: {
-      external_labels: $._config.promtail_config.external_labels,
+    local service_url(client) =
+      if std.objectHasAll(client, 'username') then
+        '%(scheme)s://%(username)s:%(password)s@%(hostname)s/api/prom/push' % client
+      else
+        '%(scheme)s://%(hostname)s/api/prom/push' % client,
+
+    local client_config(client) = client + {
+      url: service_url(client),
     },
+
+    clients: std.map(client_config,$._config.promtail_config.clients)
   },
 
   local configMap = $.core.v1.configMap,
@@ -31,7 +39,6 @@ k + config + scrape_config {
     }),
 
   promtail_args:: {
-    'client.url': $._config.service_url,
     'config.file': '/etc/promtail/promtail.yml',
   },
 

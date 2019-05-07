@@ -2,8 +2,10 @@ package targets
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -42,10 +44,9 @@ var (
 
 // FileTargetManager manages a set of targets.
 type FileTargetManager struct {
-	log log.Logger
-
+	log     log.Logger
 	quit    context.CancelFunc
-	syncers map[string]*syncer
+	syncers map[string]*targetSyncer
 	manager *discovery.Manager
 }
 
@@ -59,10 +60,9 @@ func NewFileTargetManager(
 ) (*FileTargetManager, error) {
 	ctx, quit := context.WithCancel(context.Background())
 	tm := &FileTargetManager{
-		log: logger,
-
+		log:     logger,
 		quit:    quit,
-		syncers: map[string]*syncer{},
+		syncers: map[string]*targetSyncer{},
 		manager: discovery.NewManager(ctx, log.With(logger, "component", "discovery")),
 	}
 
@@ -73,14 +73,15 @@ func NewFileTargetManager(
 
 	config := map[string]sd_config.ServiceDiscoveryConfig{}
 	for _, cfg := range scrapeConfigs {
-		s := &syncer{
-			log:           logger,
-			positions:     positions,
-			relabelConfig: cfg.RelabelConfigs,
-			targets:       map[string]*FileTarget{},
-			hostname:      hostname,
-			entryHandler:  cfg.EntryParser.Wrap(client),
-			targetConfig:  targetConfig,
+		s := &targetSyncer{
+			log:            logger,
+			positions:      positions,
+			relabelConfig:  cfg.RelabelConfigs,
+			targets:        map[string]*FileTarget{},
+			droppedTargets: []Target{},
+			hostname:       hostname,
+			entryHandler:   cfg.EntryParser.Wrap(client),
+			targetConfig:   targetConfig,
 		}
 		tm.syncers[cfg.JobName] = s
 		config[cfg.JobName] = cfg.ServiceDiscoveryConfig
@@ -120,30 +121,58 @@ func (tm *FileTargetManager) Stop() {
 
 }
 
-type syncer struct {
+// ActiveTargets returns the active targets currently being scraped.
+func (tm *FileTargetManager) ActiveTargets() map[string][]Target {
+	result := map[string][]Target{}
+	for jobName, syncer := range tm.syncers {
+		result[jobName] = append(result[jobName], syncer.ActiveTargets()...)
+	}
+	return result
+}
+
+// AllTargets returns all targets, active and dropped.
+func (tm *FileTargetManager) AllTargets() map[string][]Target {
+	result := map[string][]Target{}
+	for jobName, syncer := range tm.syncers {
+		result[jobName] = append(result[jobName], syncer.ActiveTargets()...)
+		result[jobName] = append(result[jobName], syncer.DroppedTargets()...)
+	}
+	return result
+}
+
+// targetSyncer sync targets based on service discovery changes.
+type targetSyncer struct {
 	log          log.Logger
 	positions    *positions.Positions
 	entryHandler api.EntryHandler
 	hostname     string
 
-	targets       map[string]*FileTarget
-	relabelConfig []*pkgrelabel.Config
+	droppedTargets []Target
+	targets        map[string]*FileTarget
+	mtx            sync.Mutex
 
-	targetConfig *Config
+	relabelConfig []*pkgrelabel.Config
+	targetConfig  *Config
 }
 
-func (s *syncer) sync(groups []*targetgroup.Group) {
+// sync synchronize target based on received target groups received by service discovery
+func (s *targetSyncer) sync(groups []*targetgroup.Group) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	targets := map[string]struct{}{}
+	dropped := []Target{}
 
 	for _, group := range groups {
 		for _, t := range group.Targets {
 			level.Debug(s.log).Log("msg", "new target", "labels", t)
 
-			labels := group.Labels.Merge(t)
-			labels = relabel.Process(labels, s.relabelConfig...)
+			discoveredLabels := group.Labels.Merge(t)
+			labels := relabel.Process(discoveredLabels.Clone(), s.relabelConfig...)
 
 			// Drop empty targets (drop in relabeling).
 			if labels == nil {
+				dropped = append(dropped, newDroppedTarget("dropping target, no labels", discoveredLabels))
 				level.Debug(s.log).Log("msg", "dropping target, no labels")
 				failedTargets.WithLabelValues("empty_labels").Inc()
 				continue
@@ -151,6 +180,7 @@ func (s *syncer) sync(groups []*targetgroup.Group) {
 
 			host, ok := labels[hostLabel]
 			if ok && string(host) != s.hostname {
+				dropped = append(dropped, newDroppedTarget(fmt.Sprintf("ignoring target, wrong host (labels:%s hostname:%s)", labels.String(), s.hostname), discoveredLabels))
 				level.Debug(s.log).Log("msg", "ignoring target, wrong host", "labels", labels.String(), "hostname", s.hostname)
 				failedTargets.WithLabelValues("wrong_host").Inc()
 				continue
@@ -158,6 +188,7 @@ func (s *syncer) sync(groups []*targetgroup.Group) {
 
 			path, ok := labels[pathLabel]
 			if !ok {
+				dropped = append(dropped, newDroppedTarget("no path for target", discoveredLabels))
 				level.Info(s.log).Log("msg", "no path for target", "labels", labels.String())
 				failedTargets.WithLabelValues("no_path").Inc()
 				continue
@@ -172,14 +203,16 @@ func (s *syncer) sync(groups []*targetgroup.Group) {
 			key := labels.String()
 			targets[key] = struct{}{}
 			if _, ok := s.targets[key]; ok {
+				dropped = append(dropped, newDroppedTarget("ignoring target, already exists", discoveredLabels))
 				level.Debug(s.log).Log("msg", "ignoring target, already exists", "labels", labels.String())
 				failedTargets.WithLabelValues("exists").Inc()
 				continue
 			}
 
 			level.Info(s.log).Log("msg", "Adding target", "key", key)
-			t, err := s.newTarget(string(path), labels)
+			t, err := s.newTarget(string(path), labels, discoveredLabels)
 			if err != nil {
+				dropped = append(dropped, newDroppedTarget(fmt.Sprintf("Failed to create target: %s", err.Error()), discoveredLabels))
 				level.Error(s.log).Log("msg", "Failed to create target", "key", key, "error", err)
 				failedTargets.WithLabelValues("error").Inc()
 				continue
@@ -198,13 +231,33 @@ func (s *syncer) sync(groups []*targetgroup.Group) {
 			delete(s.targets, key)
 		}
 	}
+	s.droppedTargets = dropped
 }
 
-func (s *syncer) newTarget(path string, labels model.LabelSet) (*FileTarget, error) {
-	return NewFileTarget(s.log, s.entryHandler, s.positions, path, labels, s.targetConfig)
+func (s *targetSyncer) newTarget(path string, labels model.LabelSet, discoveredLabels model.LabelSet) (*FileTarget, error) {
+	return NewFileTarget(s.log, s.entryHandler, s.positions, path, labels, discoveredLabels, s.targetConfig)
 }
 
-func (s *syncer) ready() bool {
+func (s *targetSyncer) DroppedTargets() []Target {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	return append([]Target(nil), s.droppedTargets...)
+}
+
+func (s *targetSyncer) ActiveTargets() []Target {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	actives := []Target{}
+	for _, t := range s.targets {
+		actives = append(actives, t)
+	}
+	return actives
+}
+
+func (s *targetSyncer) ready() bool {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	for _, target := range s.targets {
 		if target.Ready() {
 			return true
@@ -212,7 +265,10 @@ func (s *syncer) ready() bool {
 	}
 	return false
 }
-func (s *syncer) stop() {
+func (s *targetSyncer) stop() {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	for key, target := range s.targets {
 		level.Info(s.log).Log("msg", "Removing target", "key", key)
 		target.Stop()

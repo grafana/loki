@@ -68,10 +68,7 @@ func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
 	return store, ing
 }
 
-func newDefaultTestStore(t require.TestingT) (*testStore, *Ingester) {
-	return newTestStore(t, defaultIngesterTestConfig())
-}
-
+// nolint
 func defaultIngesterTestConfig() Config {
 	consul := ring.NewInMemoryKVClient()
 	cfg := Config{}
@@ -108,7 +105,7 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 
 func (s *testStore) Stop() {}
 
-func pushTestSamples(t *testing.T, ing *Ingester) ([]string, map[string][]*logproto.Stream) {
+func pushTestSamples(t *testing.T, ing logproto.PusherServer) ([]string, map[string][]*logproto.Stream) {
 	userIDs := []string{"1", "2", "3"}
 
 	// Create test samples.

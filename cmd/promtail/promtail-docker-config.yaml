@@ -5,8 +5,8 @@ server:
 positions:
   filename: /tmp/positions.yaml
 
-client:
-  url: http://loki:3100/api/prom/push
+clients:
+  - url: http://loki:3100/api/prom/push
 
 scrape_configs:
 - job_name: system
