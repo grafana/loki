@@ -39,7 +39,7 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type raw Config
 	var cfg raw
 	if c.URL.URL != nil {
-		// we used flags to set that value, it's the only way before
+		// we used flags to set that value, which already has sane default.
 		cfg = raw(*c)
 	} else {
 		// force sane defaults.
