@@ -53,40 +53,11 @@ func init() {
 	prometheus.MustRegister(requestDuration)
 }
 
-<<<<<<< HEAD
-// Config describes configuration for a HTTP pusher client.
-type Config struct {
-	URL flagext.URLValue
-
-	Client config.HTTPClientConfig `yaml:",inline"`
-
-	BatchWait time.Duration
-	BatchSize int
-
-	BackoffConfig util.BackoffConfig `yaml:"backoff_config"`
-	// The labels to add to any time series or alerts when communicating with loki
-	ExternalLabels model.LabelSet `yaml:"external_labels,omitempty"`
-	Timeout        time.Duration  `yaml:"timeout"`
-}
-
-// RegisterFlags registers flags.
-func (c *Config) RegisterFlags(flags *flag.FlagSet) {
-	flags.Var(&c.URL, "client.url", "URL of log server")
-
-	flags.DurationVar(&c.BatchWait, "client.batch-wait", 1*time.Second, "Maximum wait period before sending batch.")
-	flags.IntVar(&c.BatchSize, "client.batch-size-bytes", 100*1024, "Maximum batch size to accrue before sending. ")
-
-	flag.IntVar(&c.BackoffConfig.MaxRetries, "client.max-retries", 5, "Maximum number of retires when sending batches.")
-	flag.DurationVar(&c.BackoffConfig.MinBackoff, "client.min-backoff", 100*time.Millisecond, "Initial backoff time between retries.")
-	flag.DurationVar(&c.BackoffConfig.MaxBackoff, "client.max-backoff", 5*time.Second, "Maximum backoff time between retries.")
-	flag.DurationVar(&c.Timeout, "client.timeout", 10*time.Second, "Maximum time to wait for server to respond to a request")
-=======
 // Client pushes entries to Loki and can be stopped
 type Client interface {
 	api.EntryHandler
 	// Stop goroutine sending batch of entries.
 	Stop()
->>>>>>> 53075db577c72a5649fdb50020590382812bf0f9
 }
 
 // Client for pushing logs in snappy-compressed protos over HTTP.
@@ -107,7 +78,7 @@ type entry struct {
 }
 
 // New makes a new Client.
-func New(cfg Config, logger log.Logger) Client {
+func New(cfg Config, logger log.Logger) (Client, error) {
 	c := &client{
 		logger:  log.With(logger, "component", "client", "host", cfg.URL.Host),
 		cfg:     cfg,
@@ -128,7 +99,7 @@ func New(cfg Config, logger log.Logger) Client {
 
 	c.wg.Add(1)
 	go c.run()
-	return c
+	return c, nil
 }
 
 func (c *client) run() {

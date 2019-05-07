@@ -17,9 +17,13 @@ func NewMulti(logger log.Logger, cfgs ...Config) (Client, error) {
 	if len(cfgs) == 0 {
 		return nil, errors.New("at least one client config should be provided")
 	}
-	var clients []Client
+	clients := []Client{}
 	for _, cfg := range cfgs {
-		clients = append(clients, New(cfg, logger))
+		client, err := New(cfg, logger)
+		if err != nil {
+			return nil, err
+		}
+		clients = append(clients, client)
 	}
 	return MultiClient(clients), nil
 }

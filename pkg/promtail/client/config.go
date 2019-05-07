@@ -6,6 +6,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 )
 
@@ -14,6 +15,8 @@ type Config struct {
 	URL       flagext.URLValue
 	BatchWait time.Duration
 	BatchSize int
+
+	Client config.HTTPClientConfig `yaml:",inline"`
 
 	BackoffConfig util.BackoffConfig `yaml:"backoff_config"`
 	// The labels to add to any time series or alerts when communicating with loki
