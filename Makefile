@@ -90,7 +90,7 @@ vendor/github.com/cortexproject/cortex/pkg/ingester/client/cortex.pb.go: vendor/
 vendor/github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.pb.go: vendor/github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.proto
 pkg/parser/labels.go: pkg/parser/labels.y
 pkg/parser/matchers.go: pkg/parser/matchers.y
-pkg/promtail/server/ui/assets_vfsdata.go: assets
+pkg/promtail/server/server.go: assets
 all: $(UPTODATE_FILES)
 test: $(PROTO_GOS) $(YACC_GOS)
 debug: $(DEBUG_UPTODATE_FILES)
