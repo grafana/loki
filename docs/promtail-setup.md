@@ -141,6 +141,7 @@ Right now, the best way to watch and tail custom log path is define log file pat
 as a label for the pod.
 
 #### Example
+
 ```yaml
 ---Deployment.yaml
 apiVersion: extensions/v1beta1
@@ -171,15 +172,48 @@ scrape_configs:
 
 ### Custom Client options
 
-If you put `loki` behind a reverse proxy to use https transport (either `TLS` or `MTLS`) you can use the following settings.
+`promtail` client configuration uses the [prometheus http client](https://godoc.org/github.com/prometheus/common/config) implementation.
+Therefor you can configure the following parameters in the `client` section.
 
 ```yaml
 ---promtail_config.yaml
 ...
 client:
-  ca: /path/to/ca/cert.pem # This is the Certificate Authority to verify the server certificate. [optional]
-  certificate: /path/to/ca/client-cert.pem # This is the client certificate that will be checked by the server [optional]
-  certificate-key: /path/to/ca/client-cert.key # This is the client certificate key [optional]
-  tls-skip-verify: true # Never use that settings except for development [optional]
-      ...
+
+  # Sets the `Authorization` header on every promtail request with the
+  # configured username and password.
+  # password and password_file are mutually exclusive.
+  basic_auth:
+    username: <string>
+    password: <secret>
+    password_file: <string>
+
+  # Sets the `Authorization` header on every promtail request with
+  # the configured bearer token. It is mutually exclusive with `bearer_token_file`.
+  bearer_token: <secret>
+
+  # Sets the `Authorization` header on every promtail request with the bearer token
+  # read from the configured file. It is mutually exclusive with `bearer_token`.
+  bearer_token_file: /path/to/bearer/token/file
+
+  # Configures the promtail request's TLS settings.
+  tls_config:
+    # CA certificate to validate API server certificate with.
+    # If not provided Trusted CA from sytem will be used.
+    ca_file: <filename>
+
+    # Certificate and key files for client cert authentication to the server.
+    cert_file: <filename>
+    key_file: <filename>
+
+    # ServerName extension to indicate the name of the server.
+    # https://tools.ietf.org/html/rfc4366#section-3.1
+    server_name: <string>
+
+    # Disable validation of the server certificate.
+    insecure_skip_verify: <boolean>
+
+  # Optional proxy URL.
+  proxy_url: <string>
+
 ```

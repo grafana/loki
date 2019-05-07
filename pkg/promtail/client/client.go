@@ -57,10 +57,7 @@ func init() {
 type Config struct {
 	URL flagext.URLValue
 
-	TLSCACertPath           string `yaml:"ca,omitempty"`
-	TLSServerSkipVerify     bool   `yaml:"tls-skip-verify,omitempty"`
-	TLSClientCertificate    string `yaml:"certificate,omitempty"`
-	TLSClientCertificateKey string `yaml:"certificate-key,omitempty"`
+	Client config.HTTPClientConfig `yaml:",inline"`
 
 	BatchWait time.Duration
 	BatchSize int
@@ -74,11 +71,6 @@ type Config struct {
 // RegisterFlags registers flags.
 func (c *Config) RegisterFlags(flags *flag.FlagSet) {
 	flags.Var(&c.URL, "client.url", "URL of log server")
-
-	flags.StringVar(&c.TLSCACertPath, "client.ca", "", "Path to the server Certificate Authority")
-	flags.BoolVar(&c.TLSServerSkipVerify, "client.tls-skip-verify", false, "Server certificate TLS skip verify")
-	flags.StringVar(&c.TLSClientCertificate, "client.certificate", "", "Path to the client certificate")
-	flags.StringVar(&c.TLSClientCertificateKey, "client.certificate-key", "", "Path to the client certificate key")
 
 	flags.DurationVar(&c.BatchWait, "client.batch-wait", 1*time.Second, "Maximum wait period before sending batch.")
 	flags.IntVar(&c.BatchSize, "client.batch-size-bytes", 100*1024, "Maximum batch size to accrue before sending. ")
@@ -117,18 +109,8 @@ func New(cfg Config, logger log.Logger) (*Client, error) {
 		externalLabels: cfg.ExternalLabels,
 	}
 
-	clientConfig := config.HTTPClientConfig{
-		TLSConfig: config.TLSConfig{
-			CAFile:             cfg.TLSCACertPath,
-			CertFile:           cfg.TLSClientCertificate,
-			KeyFile:            cfg.TLSClientCertificateKey,
-			ServerName:         cfg.URL.String(),
-			InsecureSkipVerify: cfg.TLSServerSkipVerify,
-		},
-	}
-
 	var err error
-	c.client, err = config.NewClientFromConfig(clientConfig, "promtail")
+	c.client, err = config.NewClientFromConfig(cfg.Client, "promtail")
 	if err != nil {
 		level.Error(c.logger).Log("msg", "error while creating http client", "error", err) //nolint
 		return nil, err

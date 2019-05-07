@@ -37,6 +37,12 @@ func main() {
 		}
 	}
 
+	err := config.ClientConfig.Client.Validate()
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error validating client config", "error", err)
+		os.Exit(1)
+	}
+
 	p, err := promtail.New(config)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error creating promtail", "error", err)

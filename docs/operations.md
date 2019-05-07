@@ -5,7 +5,7 @@ This page lists operational aspects of running Loki in alphabetical order:
 ## Authentication
 
 Loki does not have an authentication layer.
-You are expected to run an authenticating reverse proxy in front of your services, such as an Nginx with basic auth or an OAuth2 proxy.
+You are expected to run an authenticating reverse proxy in front of your services, such as an Nginx with basic auth or an OAuth2 proxy, mutual TLS. See [here](promtail-setup.md#custom-client-options) for more details about supported authentication methods.
 
 ### Multi-tenancy
 
@@ -129,7 +129,6 @@ storage_config:
       dynamodb: dynamodb://region
 ```
 
-
 #### S3
 
 Loki is using S3 as object storage. It stores log within directories based on
@@ -158,4 +157,3 @@ create the table manually you cannot easily erase old data and your index just g
 If you set your DynamoDB table manually, ensure you set the primary index key to `h`
 (string) and use `r` (binary) as the sort key. Also set the "period" attribute in the yaml to zero.
 Make sure adjust your throughput base on your usage.
-
