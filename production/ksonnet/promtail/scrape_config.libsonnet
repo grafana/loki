@@ -64,7 +64,7 @@ config + {
         source_labels: [pod_uid, '__meta_kubernetes_pod_container_name'],
         target_label: '__path__',
         separator: '/',
-        replacement: '/var/log/pods/$1/*.log',
+        replacement: '/var/log/pods/*$1/*.log',
       },
     ],
   },
