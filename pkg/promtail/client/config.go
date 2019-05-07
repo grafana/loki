@@ -37,17 +37,24 @@ func (c *Config) RegisterFlags(flags *flag.FlagSet) {
 // UnmarshalYAML implement Yaml Unmarshaler
 func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type raw Config
-	// force sane defaults.
-	cfg := raw{
-		BackoffConfig: util.BackoffConfig{
-			MaxBackoff: 5 * time.Second,
-			MaxRetries: 5,
-			MinBackoff: 100 * time.Millisecond,
-		},
-		BatchSize: 100 * 1024,
-		BatchWait: 1 * time.Second,
-		Timeout:   10 * time.Second,
+	var cfg raw
+	if c.URL.URL != nil {
+		// we used flags to set that value, it's the only way before
+		cfg = raw(*c)
+	} else {
+		// force sane defaults.
+		cfg = raw{
+			BackoffConfig: util.BackoffConfig{
+				MaxBackoff: 5 * time.Second,
+				MaxRetries: 5,
+				MinBackoff: 100 * time.Millisecond,
+			},
+			BatchSize: 100 * 1024,
+			BatchWait: 1 * time.Second,
+			Timeout:   10 * time.Second,
+		}
 	}
+
 	if err := unmarshal(&cfg); err != nil {
 		return err
 	}
