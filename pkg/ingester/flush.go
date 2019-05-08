@@ -169,8 +169,6 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	}
 
 	ctx := user.InjectOrgID(context.Background(), userID)
-	ctx, cancel := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
-	defer cancel()
 	err := i.flushChunks(ctx, fp, labels, chunks)
 	if err != nil {
 		return err
@@ -263,6 +261,9 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		}
 		wireChunks = append(wireChunks, c)
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
+	defer cancel()
 
 	if err := i.store.Put(ctx, wireChunks); err != nil {
 		return err
