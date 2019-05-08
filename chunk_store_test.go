@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
-	"sort"
 	"testing"
 	"time"
 
@@ -17,7 +16,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -98,30 +96,6 @@ func newTestChunkStoreConfig(t *testing.T, schemaName string, storeCfg StoreConf
 	return store
 }
 
-func createSampleStreamFrom(chunk Chunk) (*model.SampleStream, error) {
-	samples, err := chunk.Samples(chunk.From, chunk.Through)
-	if err != nil {
-		return nil, err
-	}
-	return &model.SampleStream{
-		Metric: util.LabelsToMetric(chunk.Metric),
-		Values: samples,
-	}, nil
-}
-
-// Allow sorting of local.SeriesIterator by fingerprint (for comparisation tests)
-type ByFingerprint model.Matrix
-
-func (bfp ByFingerprint) Len() int {
-	return len(bfp)
-}
-func (bfp ByFingerprint) Swap(i, j int) {
-	bfp[i], bfp[j] = bfp[j], bfp[i]
-}
-func (bfp ByFingerprint) Less(i, j int) bool {
-	return bfp[i].Metric.Fingerprint() < bfp[j].Metric.Fingerprint()
-}
-
 // TestChunkStore_Get tests results are returned correctly depending on the type of query
 func TestChunkStore_Get(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
@@ -156,87 +130,77 @@ func TestChunkStore_Get(t *testing.T) {
 	barChunk1 := dummyChunkFor(now, barMetric1)
 	barChunk2 := dummyChunkFor(now, barMetric2)
 
-	fooSampleStream1, err := createSampleStreamFrom(fooChunk1)
-	require.NoError(t, err)
-	fooSampleStream2, err := createSampleStreamFrom(fooChunk2)
-	require.NoError(t, err)
-
-	barSampleStream1, err := createSampleStreamFrom(barChunk1)
-	require.NoError(t, err)
-	barSampleStream2, err := createSampleStreamFrom(barChunk2)
-	require.NoError(t, err)
-
 	testCases := []struct {
 		query  string
-		expect model.Matrix
+		expect []Chunk
 	}{
 		{
 			`foo`,
-			model.Matrix{fooSampleStream1, fooSampleStream2},
+			[]Chunk{fooChunk1, fooChunk2},
 		},
 		{
 			`foo{flip=""}`,
-			model.Matrix{fooSampleStream2},
+			[]Chunk{fooChunk2},
 		},
 		{
 			`foo{bar="baz"}`,
-			model.Matrix{fooSampleStream1},
+			[]Chunk{fooChunk1},
 		},
 		{
 			`foo{bar="beep"}`,
-			model.Matrix{fooSampleStream2},
+			[]Chunk{fooChunk2},
 		},
 		{
 			`foo{toms="code"}`,
-			model.Matrix{fooSampleStream1, fooSampleStream2},
+			[]Chunk{fooChunk1, fooChunk2},
 		},
 		{
 			`foo{bar!="baz"}`,
-			model.Matrix{fooSampleStream2},
+			[]Chunk{fooChunk2},
 		},
 		{
 			`foo{bar=~"beep|baz"}`,
-			model.Matrix{fooSampleStream1, fooSampleStream2},
+			[]Chunk{fooChunk1, fooChunk2},
 		},
 		{
 			`foo{toms="code", bar=~"beep|baz"}`,
-			model.Matrix{fooSampleStream1, fooSampleStream2},
+			[]Chunk{fooChunk1, fooChunk2},
 		},
 		{
 			`foo{toms="code", bar="baz"}`,
-			model.Matrix{fooSampleStream1},
+			[]Chunk{fooChunk1},
 		},
 		{
 			`{__name__=~"foo"}`,
-			model.Matrix{fooSampleStream1, fooSampleStream2},
+			[]Chunk{fooChunk1, fooChunk2},
 		},
 		{
 			`{__name__=~"foobar"}`,
-			model.Matrix{},
+			[]Chunk{},
 		},
 		{
 			`{__name__=~"fo.*"}`,
-			model.Matrix{fooSampleStream1, fooSampleStream2},
+			[]Chunk{fooChunk1, fooChunk2},
 		},
 		{
 			`{__name__=~"foo", toms="code"}`,
-			model.Matrix{fooSampleStream1, fooSampleStream2},
+			[]Chunk{fooChunk1, fooChunk2},
 		},
 		{
 			`{__name__!="foo", toms="code"}`,
-			model.Matrix{barSampleStream2},
+			[]Chunk{barChunk2},
 		},
 		{
 			`{__name__!="bar", toms="code"}`,
-			model.Matrix{fooSampleStream1, fooSampleStream2},
+			[]Chunk{fooChunk1, fooChunk2},
 		},
 		{
 			`{__name__=~"bar", bar="baz"}`,
-			model.Matrix{barSampleStream1, barSampleStream2},
+			[]Chunk{barChunk1, barChunk2},
 		},
 		{
 			`{__name__=~"bar", bar="baz",toms!="code"}`,
-			model.Matrix{barSampleStream1},
+			[]Chunk{barChunk1},
 		},
 	}
 	for _, schema := range schemas {
@@ -270,33 +234,23 @@ func TestChunkStore_Get(t *testing.T) {
 					// Query with ordinary time-range
 					chunks1, err := store.Get(ctx, now.Add(-time.Hour), now, matchers...)
 					require.NoError(t, err)
-
-					matrix1, err := ChunksToMatrix(ctx, chunks1, now.Add(-time.Hour), now)
-					require.NoError(t, err)
-
-					sort.Sort(ByFingerprint(matrix1))
-					if !reflect.DeepEqual(tc.expect, matrix1) {
-						t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, matrix1))
+					if !reflect.DeepEqual(tc.expect, chunks1) {
+						t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, chunks1))
 					}
 
 					// Pushing end of time-range into future should yield exact same resultset
 					chunks2, err := store.Get(ctx, now.Add(-time.Hour), now.Add(time.Hour*24*10), matchers...)
 					require.NoError(t, err)
-
-					matrix2, err := ChunksToMatrix(ctx, chunks2, now.Add(-time.Hour), now)
-					require.NoError(t, err)
-
-					sort.Sort(ByFingerprint(matrix2))
-					if !reflect.DeepEqual(tc.expect, matrix2) {
-						t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, matrix2))
+					if !reflect.DeepEqual(tc.expect, chunks2) {
+						t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, chunks2))
 					}
 
 					// Query with both begin & end of time-range in future should yield empty resultset
-					matrix3, err := store.Get(ctx, now.Add(time.Hour), now.Add(time.Hour*2), matchers...)
+					chunks3, err := store.Get(ctx, now.Add(time.Hour), now.Add(time.Hour*2), matchers...)
 					require.NoError(t, err)
-					if len(matrix3) != 0 {
+					if len(chunks3) != 0 {
 						t.Fatalf("%s: future query should yield empty resultset ... actually got %v chunks: %#v",
-							tc.query, len(matrix3), matrix3)
+							tc.query, len(chunks3), chunks3)
 					}
 				})
 			}
