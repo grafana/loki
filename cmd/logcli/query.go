@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,9 +22,8 @@ func doQuery() {
 	}
 
 	var (
-		i            iter.EntryIterator
-		common       labels.Labels
-		maxLabelsLen = 100
+		i      iter.EntryIterator
+		common labels.Labels
 	)
 
 	end := time.Now()
@@ -43,24 +43,43 @@ func doQuery() {
 	labelsCache := func(labels string) labels.Labels {
 		return cache[labels]
 	}
+
 	common = commonLabels(lss)
-	i = iter.NewQueryResponseIterator(resp, d)
+
+	// Remove the labels we want to show from common
+	if len(*showLabelsKey) > 0 {
+		common = common.MatchLabels(false, *showLabelsKey...)
+	}
 
 	if len(common) > 0 {
 		fmt.Println("Common labels:", color.RedString(common.String()))
 	}
 
+	if len(*ignoreLabelsKey) > 0 {
+		fmt.Println("Ignoring labels key:", color.RedString(strings.Join(*ignoreLabelsKey, ",")))
+	}
+
+	// Get the max size of labels
+	maxLabelsLen := 0
 	for _, ls := range cache {
 		ls = subtract(common, ls)
+		if len(*ignoreLabelsKey) > 0 {
+			ls = ls.MatchLabels(false, *ignoreLabelsKey...)
+		}
 		len := len(ls.String())
 		if maxLabelsLen < len {
 			maxLabelsLen = len
 		}
 	}
 
+	i = iter.NewQueryResponseIterator(resp, d)
+
 	for i.Next() {
 		ls := labelsCache(i.Labels())
 		ls = subtract(ls, common)
+		if len(*ignoreLabelsKey) > 0 {
+			ls = ls.MatchLabels(false, *ignoreLabelsKey...)
+		}
 
 		labels := ""
 		if !*noLabels {
@@ -122,47 +141,45 @@ func commonLabels(lss []labels.Labels) labels.Labels {
 	return result
 }
 
+// intersect two labels set
 func intersect(a, b labels.Labels) labels.Labels {
-	var result labels.Labels
-	for i, j := 0, 0; i < len(a) && j < len(b); {
-		k := strings.Compare(a[i].Name, b[j].Name)
-		switch {
-		case k == 0:
-			if a[i].Value == b[j].Value {
-				result = append(result, a[i])
+
+	set := labels.Labels{}
+	ma := a.Map()
+	mb := b.Map()
+
+	for ka, va := range ma {
+		if vb, ok := mb[ka]; ok {
+			if vb == va {
+				set = append(set, labels.Label{
+					Name:  ka,
+					Value: va,
+				})
 			}
-			i++
-			j++
-		case k < 0:
-			i++
-		case k > 0:
-			j++
 		}
 	}
-	return result
+	sort.Sort(set)
+	return set
 }
 
-// subtract b from a
+// subtract labels set b from labels set a
 func subtract(a, b labels.Labels) labels.Labels {
-	var result labels.Labels
-	i, j := 0, 0
-	for i < len(a) && j < len(b) {
-		k := strings.Compare(a[i].Name, b[j].Name)
-		if k != 0 || a[i].Value != b[j].Value {
-			result = append(result, a[i])
+
+	set := labels.Labels{}
+	ma := a.Map()
+	mb := b.Map()
+
+	for ka, va := range ma {
+		if vb, ok := mb[ka]; ok {
+			if vb == va {
+				continue
+			}
 		}
-		switch {
-		case k == 0:
-			i++
-			j++
-		case k < 0:
-			i++
-		case k > 0:
-			j++
-		}
+		set = append(set, labels.Label{
+			Name:  ka,
+			Value: va,
+		})
 	}
-	for ; i < len(a); i++ {
-		result = append(result, a[i])
-	}
-	return result
+	sort.Sort(set)
+	return set
 }
