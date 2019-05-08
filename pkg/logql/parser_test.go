@@ -54,12 +54,6 @@ func TestParse(t *testing.T) {
 			in:  `{foo="bar"}`,
 			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 		},
-		/*
-			{
-				in:  `{http.url=~"^/admin"}`,
-				exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchRegexp, "http.url", "^/admin")}},
-			},
-		*/
 		{
 			in:  `{ foo = "bar" }`,
 			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},

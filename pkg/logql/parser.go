@@ -17,11 +17,10 @@ func init() {
 
 // ParseExpr parses a string and returns an Expr.
 func ParseExpr(input string) (Expr, error) {
-	var l = lexer{
+	l := lexer{
 		parser: exprNewParser().(*exprParserImpl),
 	}
 	l.Init(strings.NewReader(input))
-	//l.Scanner.Mode = scanner.SkipComments | scanner.ScanStrings | scanner.ScanInts
 	l.Scanner.Error = func(_ *scanner.Scanner, msg string) {
 		l.Error(msg)
 	}
