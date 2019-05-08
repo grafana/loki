@@ -46,7 +46,7 @@ var (
 )
 
 const (
-	filenameLabel = "filename"
+	FilenameLabel = "filename"
 )
 
 // Config describes behavior for Target
