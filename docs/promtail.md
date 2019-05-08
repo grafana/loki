@@ -32,8 +32,8 @@ The term "label" here is used in more than one different way and they can be eas
   will have a label \_\_meta_kubernetes_pod_label_name with value set to "foobar".
 * There are other \_\_meta_kubernetes_* labels based on the Kubernetes metadadata, such as the namespace the pod is
   running (\_\_meta_kubernetes_namespace) or the name of the container inside the pod (\_\_meta_kubernetes_pod_container_name)
-* The label \_\_path\_\_ is a special label which Promtail will read to find out where the log files are to be read in,
-  it will be translated into a label named `filename` to ensure uniqueness of the streams.
+* The label \_\_path\_\_ is a special label which Promtail will read to find out where the log files are to be read in.
+* The label `filename` is added for every file found in \_\_path\_\_ to ensure uniqueness of the streams. It contains the absolute path of the file being tailed.
 
 The most important part of each entry is the *relabel_configs* which are a list of operations which creates,
 renames, modifies or alters labels. A single scrape_config can also reject logs by doing an "action: drop" if

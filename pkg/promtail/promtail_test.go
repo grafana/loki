@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/config"
 	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/targets"
 )
 
 const httpTestPort = 9080
@@ -380,7 +381,7 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		file := ""
 		for _, label := range labels {
-			if label.Name == "filename" {
+			if label.Name == targets.FilenameLabel {
 				file = label.Value
 				continue
 			}
