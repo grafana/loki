@@ -1,8 +1,12 @@
 package chunk
 
+// Chunk functions used only in tests
+
 import (
+	"context"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
@@ -45,4 +49,30 @@ func DefaultSchemaConfig(store, schema string, from model.Time) SchemaConfig {
 			},
 		}},
 	}
+}
+
+// ChunksToMatrix converts a set of chunks to a model.Matrix.
+func ChunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Time) (model.Matrix, error) {
+	// Group chunks by series, sort and dedupe samples.
+	metrics := map[model.Fingerprint]model.Metric{}
+	samplesBySeries := map[model.Fingerprint][][]model.SamplePair{}
+	for _, c := range chunks {
+		ss, err := c.Samples(from, through)
+		if err != nil {
+			return nil, err
+		}
+
+		metrics[c.Fingerprint] = util.LabelsToMetric(c.Metric)
+		samplesBySeries[c.Fingerprint] = append(samplesBySeries[c.Fingerprint], ss)
+	}
+
+	matrix := make(model.Matrix, 0, len(samplesBySeries))
+	for fp, ss := range samplesBySeries {
+		matrix = append(matrix, &model.SampleStream{
+			Metric: metrics[fp],
+			Values: util.MergeNSampleSets(ss...),
+		})
+	}
+
+	return matrix, nil
 }
