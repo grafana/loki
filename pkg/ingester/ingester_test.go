@@ -13,19 +13,10 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 func TestIngester(t *testing.T) {
-	var ingesterConfig Config
-	flagext.DefaultValues(&ingesterConfig)
-	ingesterConfig.LifecyclerConfig.RingConfig.Mock = ring.NewInMemoryKVClient()
-	ingesterConfig.LifecyclerConfig.NumTokens = 1
-	ingesterConfig.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
-	ingesterConfig.LifecyclerConfig.Addr = "localhost"
-	ingesterConfig.LifecyclerConfig.ID = "localhost"
-
+	ingesterConfig := defaultIngesterTestConfig()
 	store := &mockStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
