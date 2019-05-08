@@ -170,51 +170,86 @@ scrape_configs:
       ...
 ```
 
-### Custom Clients options
+### Custom Client options
 
-`promtail` clients configuration uses the [prometheus http client](https://godoc.org/github.com/prometheus/common/config) implementation.
-Therefor you can configure the following parameters in the `clients` section.
+`promtail` client configuration uses the [Prometheus http client](https://godoc.org/github.com/prometheus/common/config) implementation.
+Therefor you can configure the following authentication parameters in the `client` or `clients` section.
 
 ```yaml
 ---promtail_config.yaml
 ...
+
+# Simple client
+client:
+  [ <client_option> ]
+
+# Multiple clients
 clients:
-  - url: http://localhost:3100/api/prom/push
+  [ - <client_option> ]
+...
+```
 
-    # Sets the `Authorization` header on every promtail request with the
-    # configured username and password.
-    # password and password_file are mutually exclusive.
-    basic_auth:
-      username: <string>
-      password: <secret>
-      password_file: <string>
+>Note: Passing the `-client.url` from command line is only valid if you set the `client` section.
 
-    # Sets the `Authorization` header on every promtail request with
-    # the configured bearer token. It is mutually exclusive with `bearer_token_file`.
-    bearer_token: <secret>
+#### `<client_option>`
 
-    # Sets the `Authorization` header on every promtail request with the bearer token
-    # read from the configured file. It is mutually exclusive with `bearer_token`.
-    bearer_token_file: /path/to/bearer/token/file
+```yaml
+  # Sets the `url` of loki api push endpoint
+  url: http[s]://<host>:<port>/api/prom/push
 
-    # Configures the promtail request's TLS settings.
-    tls_config:
-      # CA certificate to validate API server certificate with.
-      # If not provided Trusted CA from sytem will be used.
-      ca_file: <filename>
+  # Sets the `Authorization` header on every promtail request with the
+  # configured username and password.
+  # password and password_file are mutually exclusive.
+  basic_auth:
+    username: <string>
+    password: <secret>
+    password_file: <string>
 
-      # Certificate and key files for client cert authentication to the server.
-      cert_file: <filename>
-      key_file: <filename>
+  # Sets the `Authorization` header on every promtail request with
+  # the configured bearer token. It is mutually exclusive with `bearer_token_file`.
+  bearer_token: <secret>
 
-      # ServerName extension to indicate the name of the server.
-      # https://tools.ietf.org/html/rfc4366#section-3.1
-      server_name: <string>
+  # Sets the `Authorization` header on every promtail request with the bearer token
+  # read from the configured file. It is mutually exclusive with `bearer_token`.
+  bearer_token_file: /path/to/bearer/token/file
 
-      # Disable validation of the server certificate.
-      insecure_skip_verify: <boolean>
+  # Configures the promtail request's TLS settings.
+  tls_config:
+    # CA certificate to validate API server certificate with.
+    # If not provided Trusted CA from sytem will be used.
+    ca_file: <filename>
 
-    # Optional proxy URL.
-    proxy_url: <string>
+    # Certificate and key files for client cert authentication to the server.
+    cert_file: <filename>
+    key_file: <filename>
 
+    # ServerName extension to indicate the name of the server.
+    # https://tools.ietf.org/html/rfc4366#section-3.1
+    server_name: <string>
+
+    # Disable validation of the server certificate.
+    insecure_skip_verify: <boolean>
+
+  # Optional proxy URL.
+  proxy_url: <string>
+
+  # Maximum wait period before sending batch
+  batchwait: 1s
+
+  # Maximum batch size to accrue before sending, unit is byte
+  batchsize: 102400
+
+  # Maximum time to wait for server to respond to a request
+  timeout: 10s
+
+  backoff_config:
+    # Initial backoff time between retries
+    minbackoff: 100ms
+    # Maximum backoff time between retries
+    maxbackoff: 5s
+    # Maximum number of retires when sending batches, 0 means infinite retries
+    maxretries: 5
+
+  # The labels to add to any time series or alerts when communicating with loki
+  external_labels: {}
 ```

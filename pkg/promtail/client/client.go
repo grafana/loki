@@ -88,10 +88,13 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 		externalLabels: cfg.ExternalLabels,
 	}
 
-	var err error
+	err := cfg.Client.Validate()
+	if err != nil {
+		return nil, err
+	}
+
 	c.client, err = config.NewClientFromConfig(cfg.Client, "promtail")
 	if err != nil {
-		level.Error(c.logger).Log("msg", "error while creating http client", "error", err) //nolint
 		return nil, err
 	}
 
@@ -149,7 +152,7 @@ func (c *client) run() {
 func (c *client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 	buf, err := encodeBatch(batch)
 	if err != nil {
-		level.Error(c.logger).Log("msg", "error encoding batch", "error", err) //nolint
+		level.Error(c.logger).Log("msg", "error encoding batch", "error", err)
 		return
 	}
 	bufBytes := float64(len(buf))
@@ -173,12 +176,12 @@ func (c *client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 			break
 		}
 
-		level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err) //nolint
+		level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err)
 		backoff.Wait()
 	}
 
 	if err != nil {
-		level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "error", err) //nolint
+		level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "error", err)
 	}
 }
 

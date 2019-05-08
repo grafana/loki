@@ -5,7 +5,8 @@ This page lists operational aspects of running Loki in alphabetical order:
 ## Authentication
 
 Loki does not have an authentication layer.
-You are expected to run an authenticating reverse proxy in front of your services, such as an Nginx with basic auth or an OAuth2 proxy, mutual TLS. See [here](promtail-setup.md#custom-clients-options) for more details about supported authentication methods.
+You are expected to run an authenticating reverse proxy in front of your services, such as an Nginx with basic auth or an OAuth2 proxy.
+See [client options](promtail-setup.md#custom-client-options) for more details about supported authentication methods.
 
 ### Multi-tenancy
 
