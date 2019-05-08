@@ -65,13 +65,13 @@ var stores = []struct {
 }
 
 // newTestStore creates a new Store for testing.
-func newTestChunkStore(t *testing.T, schemaName string) Store {
+func newTestChunkStore(t require.TestingT, schemaName string) Store {
 	var storeCfg StoreConfig
 	flagext.DefaultValues(&storeCfg)
 	return newTestChunkStoreConfig(t, schemaName, storeCfg)
 }
 
-func newTestChunkStoreConfig(t *testing.T, schemaName string, storeCfg StoreConfig) Store {
+func newTestChunkStoreConfig(t require.TestingT, schemaName string, storeCfg StoreConfig) Store {
 	var (
 		tbmConfig TableManagerConfig
 		schemaCfg = DefaultSchemaConfig("", schemaName, 0)
@@ -623,6 +623,23 @@ func TestIndexCachingWorks(t *testing.T) {
 	err = store.Put(ctx, []Chunk{fooChunk2})
 	require.NoError(t, err)
 	require.Equal(t, n+1, storage.numWrites)
+}
+
+func BenchmarkIndexCaching(b *testing.B) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+	storeMaker := stores[1]
+	storeCfg := storeMaker.configFn()
+
+	store := newTestChunkStoreConfig(b, "v9", storeCfg)
+	defer store.Stop()
+
+	fooChunk1 := dummyChunkFor(model.Time(0).Add(15*time.Second), BenchmarkLabels)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		store.Put(ctx, []Chunk{fooChunk1})
+	}
 }
 
 func TestChunkStoreError(t *testing.T) {
