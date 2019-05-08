@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
 )
@@ -61,9 +62,9 @@ func TestSchemaHashKeys(t *testing.T) {
 	hourlyBuckets := makeSchema("v1")
 	dailyBuckets := makeSchema("v3")
 	labelBuckets := makeSchema("v4")
-	metric := model.Metric{
-		model.MetricNameLabel: "foo",
-		"bar":                 "baz",
+	metric := labels.Labels{
+		{Name: model.MetricNameLabel, Value: "foo"},
+		{Name: "bar", Value: "baz"},
 	}
 	chunkID := "chunkID"
 
@@ -106,7 +107,7 @@ func TestSchemaHashKeys(t *testing.T) {
 		t.Run(fmt.Sprintf("TestSchemaHashKeys[%d]", i), func(t *testing.T) {
 			have, err := tc.Schema.GetWriteEntries(
 				model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through),
-				userID, model.LabelValue(tc.metricName),
+				userID, tc.metricName,
 				metric, chunkID,
 			)
 			if err != nil {
@@ -186,20 +187,20 @@ func TestSchemaRangeKey(t *testing.T) {
 		labelBuckets  = makeSchema("v4")
 		tsRangeKeys   = makeSchema("v5")
 		v6RangeKeys   = makeSchema("v6")
-		metric        = model.Metric{
-			model.MetricNameLabel: metricName,
-			"bar":                 "bary",
-			"baz":                 "bazy",
+		metric        = labels.Labels{
+			{Name: model.MetricNameLabel, Value: metricName},
+			{Name: "bar", Value: "bary"},
+			{Name: "baz", Value: "bazy"},
 		}
 	)
 
-	mkEntries := func(hashKey string, callback func(labelName model.LabelName, labelValue model.LabelValue) ([]byte, []byte)) []IndexEntry {
+	mkEntries := func(hashKey string, callback func(labelName, labelValue string) ([]byte, []byte)) []IndexEntry {
 		result := []IndexEntry{}
-		for labelName, labelValue := range metric {
-			if labelName == model.MetricNameLabel {
+		for _, label := range metric {
+			if label.Name == model.MetricNameLabel {
 				continue
 			}
-			rangeValue, value := callback(labelName, labelValue)
+			rangeValue, value := callback(label.Name, label.Value)
 			result = append(result, IndexEntry{
 				TableName:  table,
 				HashValue:  hashKey,
@@ -217,19 +218,19 @@ func TestSchemaRangeKey(t *testing.T) {
 		// Basic test case for the various bucketing schemes
 		{
 			hourlyBuckets,
-			mkEntries("userid:0:foo", func(labelName model.LabelName, labelValue model.LabelValue) ([]byte, []byte) {
+			mkEntries("userid:0:foo", func(labelName, labelValue string) ([]byte, []byte) {
 				return []byte(fmt.Sprintf("%s\x00%s\x00%s\x00", labelName, labelValue, chunkID)), nil
 			}),
 		},
 		{
 			dailyBuckets,
-			mkEntries("userid:d0:foo", func(labelName model.LabelName, labelValue model.LabelValue) ([]byte, []byte) {
+			mkEntries("userid:d0:foo", func(labelName, labelValue string) ([]byte, []byte) {
 				return []byte(fmt.Sprintf("%s\x00%s\x00%s\x00", labelName, labelValue, chunkID)), nil
 			}),
 		},
 		{
 			base64Keys,
-			mkEntries("userid:d0:foo", func(labelName model.LabelName, labelValue model.LabelValue) ([]byte, []byte) {
+			mkEntries("userid:d0:foo", func(labelName, labelValue string) ([]byte, []byte) {
 				encodedValue := base64.RawStdEncoding.EncodeToString([]byte(labelValue))
 				return []byte(fmt.Sprintf("%s\x00%s\x00%s\x001\x00", labelName, encodedValue, chunkID)), nil
 			}),
@@ -300,7 +301,7 @@ func TestSchemaRangeKey(t *testing.T) {
 		t.Run(fmt.Sprintf("TestSchameRangeKey[%d]", i), func(t *testing.T) {
 			have, err := tc.Schema.GetWriteEntries(
 				model.TimeFromUnix(0), model.TimeFromUnix(60*60)-1,
-				userID, model.LabelValue(metricName),
+				userID, metricName,
 				metric, chunkID,
 			)
 			if err != nil {

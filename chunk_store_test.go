@@ -17,6 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -103,7 +104,7 @@ func createSampleStreamFrom(chunk Chunk) (*model.SampleStream, error) {
 		return nil, err
 	}
 	return &model.SampleStream{
-		Metric: chunk.Metric,
+		Metric: util.LabelsToMetric(chunk.Metric),
 		Values: samples,
 	}, nil
 }
@@ -126,27 +127,27 @@ func TestChunkStore_Get(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	now := model.Now()
 
-	fooMetric1 := model.Metric{
-		model.MetricNameLabel: "foo",
-		"bar":                 "baz",
-		"toms":                "code",
-		"flip":                "flop",
+	fooMetric1 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "flip", Value: "flop"},
+		{Name: "toms", Value: "code"},
 	}
-	fooMetric2 := model.Metric{
-		model.MetricNameLabel: "foo",
-		"bar":                 "beep",
-		"toms":                "code",
+	fooMetric2 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "beep"},
+		{Name: "toms", Value: "code"},
 	}
 
 	// barMetric1 is a subset of barMetric2 to test over-matching bug.
-	barMetric1 := model.Metric{
-		model.MetricNameLabel: "bar",
-		"bar":                 "baz",
+	barMetric1 := labels.Labels{
+		{Name: labels.MetricName, Value: "bar"},
+		{Name: "bar", Value: "baz"},
 	}
-	barMetric2 := model.Metric{
-		model.MetricNameLabel: "bar",
-		"bar":                 "baz",
-		"toms":                "code",
+	barMetric2 := labels.Labels{
+		{Name: labels.MetricName, Value: "bar"},
+		{Name: "bar", Value: "baz"},
+		{Name: "toms", Value: "code"},
 	}
 
 	fooChunk1 := dummyChunkFor(now, fooMetric1)
@@ -307,32 +308,32 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	now := model.Now()
 
-	fooMetric1 := model.Metric{
-		model.MetricNameLabel: "foo",
-		"bar":                 "baz",
-		"toms":                "code",
-		"flip":                "flop",
+	fooMetric1 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "flip", Value: "flop"},
+		{Name: "toms", Value: "code"},
 	}
-	fooMetric2 := model.Metric{
-		model.MetricNameLabel: "foo",
-		"bar":                 "beep",
-		"toms":                "code",
+	fooMetric2 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "beep"},
+		{Name: "toms", Value: "code"},
 	}
-	fooMetric3 := model.Metric{
-		model.MetricNameLabel: "foo",
-		"flip":                "flap",
-		"bar":                 "bop",
+	fooMetric3 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "bop"},
+		{Name: "flip", Value: "flap"},
 	}
 
 	// barMetric1 is a subset of barMetric2 to test over-matching bug.
-	barMetric1 := model.Metric{
-		model.MetricNameLabel: "bar",
-		"bar":                 "baz",
+	barMetric1 := labels.Labels{
+		{Name: labels.MetricName, Value: "bar"},
+		{Name: "bar", Value: "baz"},
 	}
-	barMetric2 := model.Metric{
-		model.MetricNameLabel: "bar",
-		"bar":                 "baz",
-		"toms":                "code",
+	barMetric2 := labels.Labels{
+		{Name: labels.MetricName, Value: "bar"},
+		{Name: "bar", Value: "baz"},
+		{Name: "toms", Value: "code"},
 	}
 
 	fooChunk1 := dummyChunkFor(now, fooMetric1)
@@ -419,16 +420,16 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 func TestChunkStore_getMetricNameChunks(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	now := model.Now()
-	chunk1 := dummyChunkFor(now, model.Metric{
-		model.MetricNameLabel: "foo",
-		"bar":                 "baz",
-		"toms":                "code",
-		"flip":                "flop",
+	chunk1 := dummyChunkFor(now, labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "flip", Value: "flop"},
+		{Name: "toms", Value: "code"},
 	})
-	chunk2 := dummyChunkFor(now, model.Metric{
-		model.MetricNameLabel: "foo",
-		"bar":                 "beep",
-		"toms":                "code",
+	chunk2 := dummyChunkFor(now, labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "beep"},
+		{Name: "toms", Value: "code"},
 	})
 
 	testCases := []struct {
@@ -529,9 +530,9 @@ func TestChunkStoreRandom(t *testing.T) {
 				chunk := NewChunk(
 					userID,
 					model.Fingerprint(1),
-					model.Metric{
-						model.MetricNameLabel: "foo",
-						"bar":                 "baz",
+					labels.Labels{
+						{Name: labels.MetricName, Value: "foo"},
+						{Name: "bar", Value: "baz"},
 					},
 					chunks[0],
 					ts,
@@ -553,7 +554,7 @@ func TestChunkStoreRandom(t *testing.T) {
 				endTime := model.TimeFromUnix(end)
 
 				matchers := []*labels.Matcher{
-					mustNewLabelMatcher(labels.MatchEqual, model.MetricNameLabel, "foo"),
+					mustNewLabelMatcher(labels.MatchEqual, labels.MetricName, "foo"),
 					mustNewLabelMatcher(labels.MatchEqual, "bar", "baz"),
 				}
 				chunks, err := store.Get(ctx, startTime, endTime, matchers...)
@@ -594,9 +595,9 @@ func TestChunkStoreLeastRead(t *testing.T) {
 		chunk := NewChunk(
 			userID,
 			model.Fingerprint(1),
-			model.Metric{
-				model.MetricNameLabel: "foo",
-				"bar":                 "baz",
+			labels.Labels{
+				{Name: labels.MetricName, Value: "foo"},
+				{Name: "bar", Value: "baz"},
 			},
 			chunks[0],
 			ts,
@@ -618,7 +619,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 		startTime := model.TimeFromUnix(start)
 		endTime := model.TimeFromUnix(end)
 		matchers := []*labels.Matcher{
-			mustNewLabelMatcher(labels.MatchEqual, model.MetricNameLabel, "foo"),
+			mustNewLabelMatcher(labels.MatchEqual, labels.MetricName, "foo"),
 			mustNewLabelMatcher(labels.MatchEqual, "bar", "baz"),
 		}
 
@@ -642,9 +643,9 @@ func TestChunkStoreLeastRead(t *testing.T) {
 
 func TestIndexCachingWorks(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
-	metric := model.Metric{
-		model.MetricNameLabel: "foo",
-		"bar":                 "baz",
+	metric := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz"},
 	}
 	storeMaker := stores[1]
 	storeCfg := storeMaker.configFn()

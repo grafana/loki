@@ -18,6 +18,7 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	errs "github.com/weaveworks/common/errors"
@@ -45,9 +46,9 @@ type Chunk struct {
 	UserID      string            `json:"userID"`
 
 	// These fields will be in all chunks, including old ones.
-	From    model.Time   `json:"from"`
-	Through model.Time   `json:"through"`
-	Metric  model.Metric `json:"metric"`
+	From    model.Time    `json:"from"`
+	Through model.Time    `json:"through"`
+	Metric  labels.Labels `json:"metric"`
 
 	// The hash is not written to the external storage either.  We use
 	// crc32, Castagnoli table.  See http://www.evanjones.ca/crc32c.html.
@@ -69,7 +70,7 @@ type Chunk struct {
 }
 
 // NewChunk creates a new chunk
-func NewChunk(userID string, fp model.Fingerprint, metric model.Metric, c prom_chunk.Chunk, from, through model.Time) Chunk {
+func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c prom_chunk.Chunk, from, through model.Time) Chunk {
 	return Chunk{
 		Fingerprint: fp,
 		UserID:      userID,
@@ -352,7 +353,7 @@ func ChunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Tim
 			return nil, err
 		}
 
-		metrics[c.Fingerprint] = c.Metric
+		metrics[c.Fingerprint] = util.LabelsToMetric(c.Metric)
 		samplesBySeries[c.Fingerprint] = append(samplesBySeries[c.Fingerprint], ss)
 	}
 	sp.LogFields(otlog.Int("series", len(samplesBySeries)))

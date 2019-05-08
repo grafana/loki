@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,14 +23,14 @@ func init() {
 }
 
 func dummyChunk(now model.Time) Chunk {
-	return dummyChunkFor(now, model.Metric{
-		model.MetricNameLabel: "foo",
-		"bar":                 "baz",
-		"toms":                "code",
+	return dummyChunkFor(now, labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "toms", Value: "code"},
 	})
 }
 
-func dummyChunkForEncoding(now model.Time, metric model.Metric, enc encoding.Encoding, samples int) Chunk {
+func dummyChunkForEncoding(now model.Time, metric labels.Labels, enc encoding.Encoding, samples int) Chunk {
 	c, _ := encoding.NewForEncoding(enc)
 	for i := 0; i < samples; i++ {
 		t := time.Duration(i) * 15 * time.Second
@@ -40,7 +42,7 @@ func dummyChunkForEncoding(now model.Time, metric model.Metric, enc encoding.Enc
 	}
 	chunk := NewChunk(
 		userID,
-		metric.Fingerprint(),
+		client.Fingerprint(metric),
 		metric,
 		c,
 		now.Add(-time.Hour),
@@ -54,7 +56,7 @@ func dummyChunkForEncoding(now model.Time, metric model.Metric, enc encoding.Enc
 	return chunk
 }
 
-func dummyChunkFor(now model.Time, metric model.Metric) Chunk {
+func dummyChunkFor(now model.Time, metric labels.Labels) Chunk {
 	return dummyChunkForEncoding(now, metric, encoding.Varbit, 1)
 }
 
@@ -154,10 +156,10 @@ func TestParseExternalKey(t *testing.T) {
 
 func TestChunksToMatrix(t *testing.T) {
 	// Create 2 chunks which have the same metric
-	metric := model.Metric{
-		model.MetricNameLabel: "foo",
-		"bar":                 "baz",
-		"toms":                "code",
+	metric := labels.Labels{
+		{Name: model.MetricNameLabel, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "toms", Value: "code"},
 	}
 	now := model.Now()
 	chunk1 := dummyChunkFor(now, metric)
@@ -168,22 +170,22 @@ func TestChunksToMatrix(t *testing.T) {
 	require.NoError(t, err)
 
 	ss1 := &model.SampleStream{
-		Metric: chunk1.Metric,
+		Metric: util.LabelsToMetric(chunk1.Metric),
 		Values: util.MergeSampleSets(chunk1Samples, chunk2Samples),
 	}
 
 	// Create another chunk with a different metric
-	otherMetric := model.Metric{
-		model.MetricNameLabel: "foo2",
-		"bar":                 "baz",
-		"toms":                "code",
+	otherMetric := labels.Labels{
+		{Name: model.MetricNameLabel, Value: "foo2"},
+		{Name: "bar", Value: "baz"},
+		{Name: "toms", Value: "code"},
 	}
 	chunk3 := dummyChunkFor(now, otherMetric)
 	chunk3Samples, err := chunk3.Samples(chunk3.From, chunk3.Through)
 	require.NoError(t, err)
 
 	ss2 := &model.SampleStream{
-		Metric: chunk3.Metric,
+		Metric: util.LabelsToMetric(chunk3.Metric),
 		Values: chunk3Samples,
 	}
 
@@ -216,7 +218,7 @@ func TestChunksToMatrix(t *testing.T) {
 }
 
 func benchmarkChunk(now model.Time) Chunk {
-	return dummyChunkFor(now, BenchmarkMetric)
+	return dummyChunkFor(now, BenchmarkLabels)
 }
 
 func BenchmarkEncode(b *testing.B) {
