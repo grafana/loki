@@ -46,7 +46,7 @@ The promtail configuration contains a `__path__` entry to a directory that promt
 
 ## Connecting to a promtail pod to troubleshoot
 
-Say you are missing logs from your nginx pod and want to investigate promtail.
+First check *Troubleshooting targets* section above, if that doesn't help answer your questions you can connect to the promtail pod to further investigate.
 
 In your cluster if you are running promtail as a daemonset, you will have a promtail pod on each node, to figure out which promtail you want run:
 

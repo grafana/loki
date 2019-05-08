@@ -3,7 +3,7 @@ local config = import 'config.libsonnet';
 config + {
   local gen_scrape_config(job_name, pod_uid) = {
     job_name: job_name,
-    entry_parser: $._config.promtail_config.entry_parser,
+    pipeline_stages: $._config.promtail_config.pipeline_stages,
     kubernetes_sd_configs: [{
       role: 'pod',
     }],
