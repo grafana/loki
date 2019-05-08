@@ -1,20 +1,18 @@
 package promtail
 
 import (
-	"net/http"
-
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/config"
 	"github.com/grafana/loki/pkg/promtail/positions"
+	"github.com/grafana/loki/pkg/promtail/server"
 	"github.com/grafana/loki/pkg/promtail/targets"
 )
 
 // Promtail is the root struct for Promtail...
 type Promtail struct {
-	client         *client.Client
+	client         client.Client
 	positions      *positions.Positions
 	targetManagers *targets.TargetManagers
 	server         *server.Server
@@ -27,7 +25,12 @@ func New(cfg config.Config) (*Promtail, error) {
 		return nil, err
 	}
 
-	client, err := client.New(cfg.ClientConfig, util.Logger)
+	if cfg.ClientConfig.URL.URL != nil {
+		// if a single client config is used we add it to the multiple client config for backward compatibility
+		cfg.ClientConfigs = append(cfg.ClientConfigs, cfg.ClientConfig)
+	}
+
+	client, err := client.NewMulti(util.Logger, cfg.ClientConfigs...)
 	if err != nil {
 		return nil, err
 	}
@@ -37,18 +40,10 @@ func New(cfg config.Config) (*Promtail, error) {
 		return nil, err
 	}
 
-	server, err := server.New(cfg.ServerConfig)
+	server, err := server.New(cfg.ServerConfig, tms)
 	if err != nil {
 		return nil, err
 	}
-
-	server.HTTP.Path("/ready").Handler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		if tms.Ready() {
-			rw.WriteHeader(http.StatusNoContent)
-		} else {
-			rw.WriteHeader(http.StatusInternalServerError)
-		}
-	}))
 
 	return &Promtail{
 		client:         client,

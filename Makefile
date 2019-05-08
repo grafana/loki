@@ -1,4 +1,4 @@
-.PHONY: all test clean images protos
+.PHONY: all test clean images protos assets check_assets
 .DEFAULT_GOAL := all
 
 CHARTS := production/helm/loki production/helm/promtail production/helm/loki-stack
@@ -88,8 +88,8 @@ pkg/logproto/logproto.pb.go: pkg/logproto/logproto.proto
 vendor/github.com/cortexproject/cortex/pkg/ring/ring.pb.go: vendor/github.com/cortexproject/cortex/pkg/ring/ring.proto
 vendor/github.com/cortexproject/cortex/pkg/ingester/client/cortex.pb.go: vendor/github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto
 vendor/github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.pb.go: vendor/github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.proto
-pkg/parser/labels.go: pkg/parser/labels.y
-pkg/parser/matchers.go: pkg/parser/matchers.y
+pkg/promtail/server/server.go: assets
+pkg/logql/expr.go: pkg/logql/expr.y
 all: $(UPTODATE_FILES)
 test: $(PROTO_GOS) $(YACC_GOS)
 debug: $(DEBUG_UPTODATE_FILES)
@@ -171,7 +171,7 @@ $(EXES): loki-build-image/$(UPTODATE)
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
 
 lint: loki-build-image/$(UPTODATE)
-	gometalinter ./...
+	GOGC=20 golangci-lint run
 
 check-generated-files: loki-build-image/$(UPTODATE) yacc protos
 	@git diff-files || (echo "changed files; failing check" && exit 1)
@@ -245,5 +245,16 @@ helm-publish: helm
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) $(DEBUG_IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf $(UPTODATE_FILES) $(EXES) $(DEBUG_UPTODATE_FILES) $(DEBUG_EXES) $(DEBUG_DLV_FILES) .cache
+	rm -rf $(UPTODATE_FILES) $(EXES) $(DEBUG_UPTODATE_FILES) $(DEBUG_EXES) $(DEBUG_DLV_FILES) .cache pkg/promtail/server/ui/assets_vfsdata.go
 	go clean ./...
+
+assets:
+	@echo ">> writing assets"
+	go generate -x -v ./pkg/promtail/server/ui
+
+check_assets: assets
+	@echo ">> checking that assets are up-to-date"
+	@if ! (cd pkg/promtail/server/ui && git diff --exit-code); then \
+		echo "Run 'make assets' and commit the changes to fix the error."; \
+		exit 1; \
+	fi

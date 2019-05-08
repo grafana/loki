@@ -44,7 +44,7 @@ func TestStreamIterator(t *testing.T) {
 				require.NotNil(t, iter)
 				require.NoError(t, err)
 				testIteratorForward(t, iter, int64(from), int64(from+len))
-				iter.Close()
+				_ = iter.Close()
 			}
 
 			for i := 0; i < 100; i++ {
@@ -54,7 +54,7 @@ func TestStreamIterator(t *testing.T) {
 				require.NotNil(t, iter)
 				require.NoError(t, err)
 				testIteratorBackward(t, iter, int64(from), int64(from+len))
-				iter.Close()
+				_ = iter.Close()
 			}
 		})
 	}

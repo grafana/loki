@@ -1,4 +1,4 @@
-FROM golang:1.11.2-stretch
+FROM golang:1.11.4-stretch
 RUN apt-get update && apt-get install -y file jq unzip protobuf-compiler libprotobuf-dev && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 ENV DOCKER_VER="17.03.0-ce"
@@ -18,11 +18,11 @@ RUN go get \
 		github.com/go-delve/delve/cmd/dlv \
 		golang.org/x/tools/cmd/goyacc && \
 		rm -rf /go/pkg /go/src
-ENV GOMETALINTER_VER="2.0.11"
-RUN curl -L -o /tmp/gometalinter-$GOMETALINTER_VER.tgz https://github.com/alecthomas/gometalinter/releases/download/v$GOMETALINTER_VER/gometalinter-$GOMETALINTER_VER-linux-amd64.tar.gz && \
-		tar -xz -C /tmp -f /tmp/gometalinter-$GOMETALINTER_VER.tgz && \
-		mv /tmp/gometalinter-$GOMETALINTER_VER-linux-amd64/* /usr/bin && \
-		rm /tmp/gometalinter-$GOMETALINTER_VER.tgz
+ENV GOLANGCI_LINT_COMMIT="692dacb773b703162c091c2d8c59f9cd2d6801db"
+RUN mkdir -p $(go env GOPATH)/src/github.com/golangci/ && git clone https://github.com/golangci/golangci-lint.git $(go env GOPATH)/src/github.com/golangci/golangci-lint && \
+	cd $(go env GOPATH)/src/github.com/golangci/golangci-lint  && git checkout ${GOLANGCI_LINT_COMMIT} && cd cmd/golangci-lint/  &&\
+	GO111MODULE=on go install && \
+	golangci-lint help
 COPY build.sh /
 ENV GOCACHE=/go/cache
 ENTRYPOINT ["/build.sh"]

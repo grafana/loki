@@ -56,7 +56,7 @@ data:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: promtail-clusterole
+  name: promtail-clusterrole
 rules:
   - apiGroups:
      resources:

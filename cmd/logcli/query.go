@@ -8,10 +8,10 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/parser"
 )
 
 func doQuery() {
@@ -92,7 +92,7 @@ func padLabel(ls labels.Labels, maxLabelsLen int) string {
 }
 
 func mustParseLabels(labels string) labels.Labels {
-	ls, err := parser.Labels(labels)
+	ls, err := promql.ParseMetric(labels)
 	if err != nil {
 		log.Fatalf("Failed to parse labels: %+v", err)
 	}
