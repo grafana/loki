@@ -42,12 +42,6 @@ var (
 		Name:      "targets_active_total",
 		Help:      "Number of active total.",
 	})
-	pipelineDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "promtail",
-		Name:      "pipeline_duration_microseconds",
-		Help:      "Label extraction pipeline processing time, in microseconds",
-		Buckets:   []float64{5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000},
-	}, []string{"job_name"})
 )
 
 // FileTargetManager manages a set of targets.
@@ -81,8 +75,7 @@ func NewFileTargetManager(
 
 	config := map[string]sd_config.ServiceDiscoveryConfig{}
 	for _, cfg := range scrapeConfigs {
-		obs := pipelineDuration.WithLabelValues(cfg.JobName)
-		pipeline, err := logentry.NewPipeline(log.With(logger, "component", "pipeline"), cfg.PipelineStages, &obs)
+		pipeline, err := logentry.NewPipeline(log.With(logger, "component", "pipeline"), cfg.PipelineStages, cfg.JobName)
 		if err != nil {
 			return nil, err
 		}
