@@ -31,7 +31,11 @@ func (s GRPCServerLog) UnaryServerInterceptor(ctx context.Context, req interface
 		if s.WithRequest {
 			entry = entry.WithField("request", req)
 		}
-		entry.WithField(errorKey, err).Warnln(gRPC)
+		if err == context.Canceled {
+			entry.WithField(errorKey, err).Debugln(gRPC)
+		} else {
+			entry.WithField(errorKey, err).Warnln(gRPC)
+		}
 	} else {
 		entry.Debugf("%s (success)", gRPC)
 	}
@@ -44,7 +48,11 @@ func (s GRPCServerLog) StreamServerInterceptor(srv interface{}, ss grpc.ServerSt
 	err := handler(srv, ss)
 	entry := user.LogWith(ss.Context(), s.Log).WithFields(logging.Fields{"method": info.FullMethod, "duration": time.Since(begin)})
 	if err != nil {
-		entry.WithField(errorKey, err).Warnln(gRPC)
+		if err == context.Canceled {
+			entry.WithField(errorKey, err).Debugln(gRPC)
+		} else {
+			entry.WithField(errorKey, err).Warnln(gRPC)
+		}
 	} else {
 		entry.Debugf("%s (success)", gRPC)
 	}

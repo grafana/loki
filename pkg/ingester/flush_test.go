@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"sync"
 	"testing"
@@ -10,9 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/go-kit/kit/log"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
@@ -27,7 +24,7 @@ const (
 )
 
 func init() {
-	util.Logger = log.NewLogfmtLogger(os.Stdout)
+	//util.Logger = log.NewLogfmtLogger(os.Stdout)
 }
 
 func TestChunkFlushingIdle(t *testing.T) {
@@ -81,6 +78,7 @@ func defaultIngesterTestConfig() Config {
 	cfg.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
 	cfg.LifecyclerConfig.Addr = "localhost"
 	cfg.LifecyclerConfig.ID = "localhost"
+	cfg.LifecyclerConfig.FinalSleep = 0
 	return cfg
 }
 
