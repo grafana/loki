@@ -4,64 +4,68 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
-
 	"github.com/prometheus/client_golang/prometheus"
-	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/util"
 )
 
 type counters struct {
-	mtx      sync.Mutex
-	counters map[model.Fingerprint]prometheus.Counter
+	name, help string
+	mtx        sync.Mutex
+	counters   map[model.Fingerprint]prometheus.Counter
 }
 
-// newCounters Counts log entries by streams.
-func newCounters() *counters {
+func newCounters(name, help string) *counters {
 	return &counters{
 		counters: map[model.Fingerprint]prometheus.Counter{},
+		help:     help,
+		name:     name,
 	}
 }
 
-func (c *counters) Gather() ([]*dto.MetricFamily, error) {
+func (c *counters) Describe(ch chan<- *prometheus.Desc) {}
+
+func (c *counters) Collect(ch chan<- prometheus.Metric) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-
-	var result []*dto.MetricFamily
-	help := "the total count of log entries"
-	name := "log_entries_total"
-	mtype := dto.MetricType_COUNTER
-	counters := &dto.MetricFamily{
-		Help: &help,
-		Name: &name,
-		Type: &mtype,
-	}
-	result = append(result, counters)
 	for _, m := range c.counters {
-		metric := &dto.Metric{}
-		if err := m.Write(metric); err == nil {
-			counters.Metric = append(counters.Metric, metric)
-		}
+		ch <- m
 	}
-
-	return result, nil
 }
 
-func (c *counters) Handle(labels model.LabelSet, time time.Time, entry string) error {
+func (c *counters) With(labels model.LabelSet) prometheus.Counter {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-
 	fp := labels.Fingerprint()
 	var ok bool
 	var counter prometheus.Counter
 	if counter, ok = c.counters[fp]; !ok {
 		counter = prometheus.NewCounter(prometheus.CounterOpts{
-			Help:        "the total count of log entries",
-			Name:        "log_entries_total",
+			Help:        c.help,
+			Name:        c.name,
 			ConstLabels: util.ModelLabelSetToMap(labels),
 		})
 		c.counters[fp] = counter
 	}
-	counter.Inc()
-	return nil
+	return counter
+}
+
+func logCount(reg prometheus.Registerer) api.EntryHandler {
+	c := newCounters("log_entries_total", "the total count of log entries")
+	reg.MustRegister(c)
+	return api.EntryHandlerFunc(func(labels model.LabelSet, time time.Time, entry string) error {
+		c.With(labels).Inc()
+		return nil
+	})
+}
+
+func logSize(reg prometheus.Registerer) api.EntryHandler {
+	c := newCounters("log_entries_bytes", "the total count of bytes")
+	reg.MustRegister(c)
+	return api.EntryHandlerFunc(func(labels model.LabelSet, time time.Time, entry string) error {
+		c.With(labels).Add(float64(len(entry)))
+		return nil
+	})
 }
