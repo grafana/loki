@@ -168,7 +168,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if tailRequestPtr.DelayFor > maxDelayForInTailing {
-		server.WriteError(w, fmt.Errorf("delay_for can't be greater than %s", maxDelayForInTailing))
+		server.WriteError(w, fmt.Errorf("delay_for can't be greater than %d", maxDelayForInTailing))
 		level.Error(util.Logger).Log("Error in upgrading websocket", fmt.Sprintf("%v", err))
 		return
 	}
