@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 )
@@ -18,10 +20,11 @@ log_entries_total{bar="foo"} 5.0
 log_entries_total{bar="foo",foo="bar"} 5.0
 `
 
-func Test_newCounters(t *testing.T) {
+func Test_logCount(t *testing.T) {
 	t.Parallel()
 
-	handler := newCounters()
+	reg := prometheus.NewRegistry()
+	handler := logCount(reg)
 
 	workerCount := 5
 	var wg sync.WaitGroup
@@ -39,7 +42,7 @@ func Test_newCounters(t *testing.T) {
 	}
 	wg.Wait()
 
-	if err := testutil.GatherAndCompare(handler, strings.NewReader(expected), "log_entries_total"); err != nil {
+	if err := testutil.GatherAndCompare(reg, strings.NewReader(expected), "log_entries_total"); err != nil {
 		t.Fatalf("missmatch metrics: %v", err)
 	}
 
