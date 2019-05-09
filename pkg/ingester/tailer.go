@@ -206,13 +206,13 @@ func (t *tailer) getID() uint32 {
 // An id is useful in managing tailer instances
 func generateUniqueID(orgID, query, regex string) uint32 {
 	uniqueID := fnv.New32()
-	uniqueID.Write([]byte(orgID))
-	uniqueID.Write([]byte(query))
-	uniqueID.Write([]byte(regex))
+	_, _ = uniqueID.Write([]byte(orgID))
+	_, _ = uniqueID.Write([]byte(query))
+	_, _ = uniqueID.Write([]byte(regex))
 
 	timeNow := make([]byte, 8)
 	binary.LittleEndian.PutUint64(timeNow, uint64(time.Now().UnixNano()))
-	uniqueID.Write(timeNow)
+	_, _ = uniqueID.Write(timeNow)
 
 	return uniqueID.Sum32()
 }

@@ -2,6 +2,7 @@ package querier
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -21,9 +22,10 @@ import (
 )
 
 const (
-	defaultQueryLimit = 100
-	defaulSince       = 1 * time.Hour
-	pingPeriod        = 1 * time.Second
+	defaultQueryLimit    = 100
+	defaulSince          = 1 * time.Hour
+	wsPingPeriod         = 1 * time.Second
+	maxDelayForInTailing = 5
 )
 
 // nolint
@@ -166,6 +168,12 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if tailRequestPtr.DelayFor > maxDelayForInTailing {
+		server.WriteError(w, errors.New(fmt.Sprintf("delay_for can't be greater than %s", maxDelayForInTailing)))
+		level.Error(util.Logger).Log("Error in upgrading websocket", fmt.Sprintf("%v", err))
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		level.Error(util.Logger).Log("Error in upgrading websocket", fmt.Sprintf("%v", err))
@@ -195,7 +203,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	ticker := time.NewTicker(pingPeriod)
+	ticker := time.NewTicker(wsPingPeriod)
 	defer ticker.Stop()
 
 	var response *TailResponse
