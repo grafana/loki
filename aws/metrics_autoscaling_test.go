@@ -474,6 +474,10 @@ func (m *mockPrometheus) Snapshot(ctx context.Context, skipHead bool) (promV1.Sn
 	return promV1.SnapshotResult{}, errors.New("not implemented")
 }
 
+func (m *mockPrometheus) Rules(ctx context.Context) (promV1.RulesResult, error) {
+	return promV1.RulesResult{}, errors.New("not implemented")
+}
+
 func (m *mockPrometheus) Targets(ctx context.Context) (promV1.TargetsResult, error) {
 	return promV1.TargetsResult{}, errors.New("not implemented")
 }
