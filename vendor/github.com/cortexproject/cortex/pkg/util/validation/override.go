@@ -18,6 +18,10 @@ var overridesReloadSuccess = promauto.NewGauge(prometheus.GaugeOpts{
 	Help: "Whether the last overrides reload attempt was successful.",
 })
 
+func init() {
+	overridesReloadSuccess.Set(1) // Default to 1
+}
+
 // When we load YAML from disk, we want the various per-customer limits
 // to default to any values specified on the command line, not default
 // command line values.  This global contains those values.  I (Tom) cannot

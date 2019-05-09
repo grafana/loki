@@ -46,9 +46,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID.")
 
 	cfg.GRPCClientConfig.RegisterFlags("bigtable", f)
-
-	// Deprecated.
-	f.Int("bigtable.max-recv-msg-size", 100<<20, "DEPRECATED. Bigtable grpc max receive message size.")
 }
 
 // storageClientColumnKey implements chunk.storageClient for GCP.
