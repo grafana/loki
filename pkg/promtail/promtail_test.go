@@ -132,8 +132,8 @@ func TestPromtail(t *testing.T) {
 		t.Fatal("Could not delete a log file to verify metrics are removed: ", err)
 	}
 
-	// Sync period is 100ms in tests, need to wait for at least one sync period for tailer to be cleaned up
-	<-time.After(150 * time.Millisecond)
+	// Sync period is 500ms in tests, need to wait for at least one sync period for tailer to be cleaned up
+	<-time.After(500 * time.Millisecond)
 
 	//Pull out some prometheus metrics before shutting down
 	metricsBytes, contentType := getPromMetrics(t)
@@ -497,7 +497,9 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	}
 	cfg.ScrapeConfig = append(cfg.ScrapeConfig, scrapeConfig)
 
-	cfg.TargetConfig.SyncPeriod = 10 * time.Millisecond
+	// Make sure the SyncPeriod is fast for test purposes, but not faster than the poll interval (250ms)
+	// to avoid a race between the sync() function and the tailers noticing when files are deleted
+	cfg.TargetConfig.SyncPeriod = 500 * time.Millisecond
 
 	return cfg
 }
