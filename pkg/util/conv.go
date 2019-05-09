@@ -2,6 +2,7 @@ package util
 
 import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 )
 
@@ -13,4 +14,13 @@ func ToClientLabels(labels string) ([]client.LabelAdapter, error) {
 	}
 
 	return client.FromLabelsToLabelAdapaters(ls), nil
+}
+
+// ModelLabelSetToMap convert a model.LabelSet to a map[string]string
+func ModelLabelSetToMap(m model.LabelSet) map[string]string {
+	result := map[string]string{}
+	for k, v := range m {
+		result[string(k)] = string(v)
+	}
+	return result
 }
