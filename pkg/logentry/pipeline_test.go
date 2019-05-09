@@ -42,7 +42,7 @@ func loadConfig(yml string) PipelineStages {
 
 func TestNewPipeline(t *testing.T) {
 
-	p, err := NewPipeline(util.Logger, loadConfig(testYaml), nil)
+	p, err := NewPipeline(util.Logger, loadConfig(testYaml), "test")
 	if err != nil {
 		panic(err)
 	}
@@ -62,7 +62,7 @@ func TestPipeline_MultiStage(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	p, err := NewPipeline(util.Logger, config["pipeline_stages"].([]interface{}), nil)
+	p, err := NewPipeline(util.Logger, config["pipeline_stages"].([]interface{}), "test")
 	if err != nil {
 		panic(err)
 	}
@@ -138,7 +138,7 @@ func Benchmark(b *testing.B) {
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			pl, err := NewPipeline(bm.logger, bm.stgs, nil)
+			pl, err := NewPipeline(bm.logger, bm.stgs, "test")
 			if err != nil {
 				panic(err)
 			}
