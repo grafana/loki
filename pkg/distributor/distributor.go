@@ -129,7 +129,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			continue
 		}
 
-		keys = append(keys, tokenFor(userID, stream.Labels))
+		keys = append(keys, util.TokenFor(userID, stream.Labels))
 		streams = append(streams, streamTracker{
 			stream: stream,
 		})

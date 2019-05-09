@@ -11,14 +11,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/parser"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-// This is to limit size of dropped stream to make it easier for querier to query.
-// While dropping stream we divide it into batches and use start and end time of each batch to build dropped stream metadata
-const maxDroppedStreamSize = 10000
+const bufferSizeForTailResponse = 5
 
 type tailer struct {
 	id       uint32
@@ -26,8 +24,9 @@ type tailer struct {
 	matchers []*labels.Matcher
 	regexp   *regexp.Regexp
 
-	sendChan chan *logproto.Stream
-	closed   bool
+	sendChan  chan *logproto.Stream
+	closed    bool
+	closedMtx sync.RWMutex
 
 	blockedAt      *time.Time
 	blockedMtx     sync.RWMutex
@@ -37,12 +36,14 @@ type tailer struct {
 }
 
 func newTailer(orgID, query, regex string, conn logproto.Querier_TailServer) (*tailer, error) {
-	matchers, err := parser.Matchers(query)
+	expr, err := logql.ParseExpr(query)
 	if err != nil {
 		return nil, err
 	}
 
+	matchers := expr.Matchers()
 	var re *regexp.Regexp
+
 	if regex != "" {
 		re, err = regexp.Compile(regex)
 		if err != nil {
@@ -54,7 +55,7 @@ func newTailer(orgID, query, regex string, conn logproto.Querier_TailServer) (*t
 		orgID:          orgID,
 		matchers:       matchers,
 		regexp:         re,
-		sendChan:       make(chan *logproto.Stream, 2),
+		sendChan:       make(chan *logproto.Stream, bufferSizeForTailResponse),
 		conn:           conn,
 		droppedStreams: []*logproto.DroppedStream{},
 		id:             generateUniqueID(orgID, query, regex),
@@ -64,16 +65,19 @@ func newTailer(orgID, query, regex string, conn logproto.Querier_TailServer) (*t
 func (t *tailer) loop() {
 	var stream *logproto.Stream
 	var err error
+	var ok bool
 
 	for {
-		if t.closed {
+		if t.isClosed() {
 			return
 		}
 
-		stream = <-t.sendChan
-		if stream == nil {
+		stream, ok = <-t.sendChan
+		if !ok {
 			t.close()
 			return
+		} else if stream == nil {
+			continue
 		}
 
 		// while sending new stream pop lined up dropped streams metadata for sending to querier
@@ -88,7 +92,7 @@ func (t *tailer) loop() {
 }
 
 func (t *tailer) send(stream logproto.Stream) {
-	if t.closed {
+	if t.isClosed() {
 		return
 	}
 
@@ -130,16 +134,8 @@ func (t *tailer) filterEntriesInStream(stream *logproto.Stream) {
 }
 
 func (t *tailer) isWatchingLabels(metric model.Metric) bool {
-	var labelValue model.LabelValue
-	var ok bool
-
 	for _, matcher := range t.matchers {
-		labelValue, ok = metric[model.LabelName(matcher.Name)]
-		if !ok {
-			return false
-		}
-
-		if !matcher.Matches(string(labelValue)) {
+		if !matcher.Matches(string(metric[model.LabelName(matcher.Name)])) {
 			return false
 		}
 	}
@@ -148,10 +144,16 @@ func (t *tailer) isWatchingLabels(metric model.Metric) bool {
 }
 
 func (t *tailer) isClosed() bool {
+	t.closedMtx.RLock()
+	defer t.closedMtx.RUnlock()
+
 	return t.closed
 }
 
 func (t *tailer) close() {
+	t.closedMtx.Lock()
+	defer t.closedMtx.Unlock()
+
 	t.closed = true
 }
 
@@ -163,13 +165,23 @@ func (t *tailer) blockedSince() *time.Time {
 }
 
 func (t *tailer) dropStream(stream logproto.Stream) {
+	if len(stream.Entries) == 0 {
+		return
+	}
+
 	t.blockedMtx.Lock()
 	defer t.blockedMtx.Unlock()
 
-	blockedAt := new(time.Time)
-	*blockedAt = time.Now()
-	t.blockedAt = blockedAt
-	t.droppedStreams = append(t.droppedStreams, breakDroppedStream(stream)...)
+	if t.blockedAt == nil {
+		blockedAt := time.Now()
+		t.blockedAt = &blockedAt
+	}
+	droppedStream := logproto.DroppedStream{
+		From:   stream.Entries[0].Timestamp,
+		To:     stream.Entries[len(stream.Entries)-1].Timestamp,
+		Labels: stream.Labels,
+	}
+	t.droppedStreams = append(t.droppedStreams, &droppedStream)
 }
 
 func (t *tailer) popDroppedStreams() []*logproto.DroppedStream {
@@ -189,31 +201,6 @@ func (t *tailer) popDroppedStreams() []*logproto.DroppedStream {
 
 func (t *tailer) getID() uint32 {
 	return t.id
-}
-
-func breakDroppedStream(stream logproto.Stream) []*logproto.DroppedStream {
-	streamLength := len(stream.Entries)
-	numberOfBreaks := streamLength / maxDroppedStreamSize
-
-	if streamLength%maxDroppedStreamSize != 0 {
-		numberOfBreaks++
-	}
-	droppedStreams := make([]*logproto.DroppedStream, numberOfBreaks)
-	for i := 0; i < numberOfBreaks; i++ {
-		droppedStream := new(logproto.DroppedStream)
-		droppedStream.From = stream.Entries[i*maxDroppedStreamSize].Timestamp
-		droppedStream.To = stream.Entries[((i+1)*maxDroppedStreamSize)-1].Timestamp
-		droppedStream.Labels = stream.Labels
-		droppedStreams[i] = droppedStream
-	}
-
-	if streamLength%maxDroppedStreamSize != 0 {
-		droppedStream := new(logproto.DroppedStream)
-		droppedStream.From = stream.Entries[numberOfBreaks*maxDroppedStreamSize].Timestamp
-		droppedStream.To = stream.Entries[streamLength-1].Timestamp
-		droppedStreams[numberOfBreaks] = droppedStream
-	}
-	return droppedStreams
 }
 
 // An id is useful in managing tailer instances

@@ -1,7 +1,6 @@
 package querier
 
 import (
-	"container/heap"
 	"fmt"
 	"sync"
 	"time"
@@ -13,13 +12,28 @@ import (
 	"github.com/pkg/errors"
 )
 
-// if we are not seeing any response from ingester, how long do we want to wait by going into sleep
-const nextEntryWait = time.Second / 2
+const (
+	// if we are not seeing any response from ingester, how long do we want to wait by going into sleep
+	nextEntryWait = time.Second / 2
 
-// keep checking connections with ingesters in duration
-const checkConnectionsWithIngestersPeriod = time.Second * 5
+	// keep checking connections with ingesters in duration
+	checkConnectionsWithIngestersPeriod = time.Second * 5
 
-// dropped streams are collected into a heap to quickly find dropped stream which has oldest timestamp
+	bufferSizeForTailResponse = 10
+)
+
+type droppedEntry struct {
+	Timestamp time.Time
+	Labels    string
+}
+
+// TailResponse holds response sent by tailer
+type TailResponse struct {
+	Stream         []logproto.Stream
+	DroppedEntries []droppedEntry
+}
+
+/*// dropped streams are collected into a heap to quickly find dropped stream which has oldest timestamp
 type droppedStreamsIterator []logproto.DroppedStream
 
 func (h droppedStreamsIterator) Len() int { return len(h) }
@@ -47,17 +61,17 @@ func (h droppedStreamsIterator) Less(i, j int) bool {
 		return t1.Before(t2)
 	}
 	return h[i].Labels < h[j].Labels
-}
+}*/
 
 // Tailer manages complete lifecycle of a tail request
 type Tailer struct {
 	// openStreamIterator is for streams already open which can be complete streams returned by ingester or
 	// dropped streams queried from ingester and store
-	openStreamIterator     iter.HeapIterator
-	droppedStreamsIterator interface { // for holding dropped stream metadata
+	openStreamIterator iter.HeapIterator
+	/*droppedStreamsIterator interface { // for holding dropped stream metadata
 		heap.Interface
 		Peek() time.Time
-	}
+	}*/
 	streamMtx sync.Mutex // for synchronizing access to openStreamIterator and droppedStreamsIterator
 
 	currEntry  logproto.Entry
@@ -71,9 +85,10 @@ type Tailer struct {
 
 	stopped      bool
 	blocked      bool
+	blockedMtx   sync.RWMutex
 	delayFor     time.Duration
-	responseChan chan<- tailResponse
-	closeErrChan chan<- error
+	responseChan chan *TailResponse
+	closeErrChan chan error
 
 	// when tail client is slow, drop entry and store its details in droppedEntries to notify client
 	droppedEntries []droppedEntry
@@ -91,6 +106,8 @@ func (t *Tailer) loop() {
 	ticker := time.NewTicker(checkConnectionsWithIngestersPeriod)
 	defer ticker.Stop()
 
+	tailResponse := new(TailResponse)
+
 	for {
 		if t.stopped {
 			break
@@ -106,37 +123,44 @@ func (t *Tailer) loop() {
 		}
 
 		if !t.next() {
-			if len(t.querierTailClients) == 0 {
-				// All the connections to ingesters are dropped, try reconnecting or return error
-				if err := t.checkIngesterConnections(); err != nil {
-					level.Error(util.Logger).Log("Error reconnecting to ingesters", fmt.Sprintf("%v", err))
-				} else {
-					continue
+			if len(tailResponse.Stream) == 0 {
+				if len(t.querierTailClients) == 0 {
+					// All the connections to ingesters are dropped, try reconnecting or return error
+					if err := t.checkIngesterConnections(); err != nil {
+						level.Error(util.Logger).Log("Error reconnecting to ingesters", fmt.Sprintf("%v", err))
+					} else {
+						continue
+					}
+					if err := t.close(); err != nil {
+						level.Error(util.Logger).Log("Error closing Tailer", fmt.Sprintf("%v", err))
+					}
+					t.closeErrChan <- errors.New("All ingesters closed the connection")
+					break
 				}
-				if err := t.close(); err != nil {
-					level.Error(util.Logger).Log("Error closing Tailer", fmt.Sprintf("%v", err))
-				}
-				t.closeErrChan <- errors.New("All ingesters closed the connection")
-				break
+				time.Sleep(nextEntryWait)
+				continue
 			}
-			time.Sleep(nextEntryWait)
-			continue
+		} else {
+			// If channel is blocked already, drop current entry directly to save the effort
+			if t.isBlocked() {
+				t.dropEntry(t.currEntry.Timestamp, t.currLabels, nil)
+				continue
+			}
+
+			tailResponse.Stream = append(tailResponse.Stream, logproto.Stream{Labels: t.currLabels, Entries: []logproto.Entry{t.currEntry}})
+			if len(tailResponse.Stream) != 100 {
+				continue
+			}
+			tailResponse.DroppedEntries = t.popDroppedEntries()
 		}
 
-		// If channel is blocked already, drop current entry directly to save the effort
-		if t.blocked {
-			t.dropEntry(t.currEntry.Timestamp, t.currLabels)
-			continue
-		}
-
-		response := tailResponse{Stream: logproto.Stream{Labels: t.currLabels, Entries: []logproto.Entry{t.currEntry}}, DroppedEntries: t.popDroppedEntries()}
+		//response := []tailResponse{{Stream: logproto.Stream{Labels: t.currLabels, Entries: responses[t.currLabels]}, DroppedEntries: t.popDroppedEntries()}}
 		select {
-		case t.responseChan <- response:
-			t.blocked = false
+		case t.responseChan <- tailResponse:
 		default:
-			t.blocked = true
-			t.dropEntry(t.currEntry.Timestamp, t.currLabels)
+			t.dropEntry(t.currEntry.Timestamp, t.currLabels, tailResponse.DroppedEntries)
 		}
+		tailResponse = new(TailResponse)
 	}
 }
 
@@ -197,11 +221,11 @@ func (t *Tailer) pushTailResponseFromIngester(resp *logproto.TailResponse) {
 	defer t.streamMtx.Unlock()
 
 	t.openStreamIterator.Push(iter.NewStreamIterator(resp.Stream))
-	if resp.DroppedStreams != nil {
+	/*if resp.DroppedStreams != nil {
 		for idx := range resp.DroppedStreams {
 			heap.Push(t.droppedStreamsIterator, *resp.DroppedStreams[idx])
 		}
-	}
+	}*/
 }
 
 // finds oldest entry by peeking at open stream iterator and dropped stream iterator.
@@ -212,7 +236,10 @@ func (t *Tailer) next() bool {
 	t.streamMtx.Lock()
 	defer t.streamMtx.Unlock()
 
-	// if we don't have any entries or any of the entries are not older than now()-delay then return false
+	if t.openStreamIterator.Len() == 0 || !time.Now().After(t.openStreamIterator.Peek().Add(t.delayFor)) || !t.openStreamIterator.Next() {
+		return false
+	}
+	/*// if we don't have any entries or any of the entries are not older than now()-delay then return false
 	if !((t.openStreamIterator.Len() != 0 && time.Now().After(t.openStreamIterator.Peek().Add(t.delayFor))) || (t.droppedStreamsIterator.Len() != 0 && time.Now().After(t.droppedStreamsIterator.Peek().Add(t.delayFor)))) {
 		return false
 	}
@@ -235,7 +262,7 @@ func (t *Tailer) next() bool {
 
 	if !t.openStreamIterator.Next() {
 		return false
-	}
+	}*/
 
 	t.currEntry = t.openStreamIterator.Entry()
 	t.currLabels = t.openStreamIterator.Labels()
@@ -250,11 +277,26 @@ func (t *Tailer) close() error {
 	return t.openStreamIterator.Close()
 }
 
-func (t *Tailer) dropEntry(timestamp time.Time, labels string) {
+func (t *Tailer) dropEntry(timestamp time.Time, labels string, alreadyDroppedEntries []droppedEntry) {
+	t.blockedMtx.Lock()
+	defer t.blockedMtx.Unlock()
+
+	t.droppedEntries = append(t.droppedEntries, alreadyDroppedEntries...)
 	t.droppedEntries = append(t.droppedEntries, droppedEntry{timestamp, labels})
 }
 
+func (t *Tailer) isBlocked() bool {
+	t.blockedMtx.RLock()
+	defer t.blockedMtx.RUnlock()
+
+	return t.blocked
+}
+
 func (t *Tailer) popDroppedEntries() []droppedEntry {
+	t.blockedMtx.Lock()
+	defer t.blockedMtx.Unlock()
+
+	t.blocked = false
 	if len(t.droppedEntries) == 0 {
 		return nil
 	}
@@ -264,18 +306,25 @@ func (t *Tailer) popDroppedEntries() []droppedEntry {
 	return droppedEntries
 }
 
+func (t *Tailer) getResponseChan() <-chan *TailResponse {
+	return t.responseChan
+}
+
+func (t *Tailer) getCloseErrorChan() <-chan error {
+	return t.closeErrChan
+}
+
 func newTailer(delayFor time.Duration, querierTailClients map[string]logproto.Querier_TailClient,
-	responseChan chan<- tailResponse, closeErrChan chan<- error,
 	queryDroppedStreams func(from, to time.Time, labels string) (iter.EntryIterator, error),
 	tailDisconnectedIngesters func([]string) (map[string]logproto.Querier_TailClient, error)) *Tailer {
 	t := Tailer{
-		openStreamIterator:        iter.NewHeapIterator([]iter.EntryIterator{}, logproto.FORWARD),
-		droppedStreamsIterator:    &droppedStreamsIterator{},
+		openStreamIterator: iter.NewHeapIterator([]iter.EntryIterator{}, logproto.FORWARD),
+		//droppedStreamsIterator:    &droppedStreamsIterator{},
 		querierTailClients:        querierTailClients,
 		queryDroppedStreams:       queryDroppedStreams,
 		delayFor:                  delayFor,
-		responseChan:              responseChan,
-		closeErrChan:              closeErrChan,
+		responseChan:              make(chan *TailResponse, bufferSizeForTailResponse),
+		closeErrChan:              make(chan error),
 		tailDisconnectedIngesters: tailDisconnectedIngesters,
 	}
 

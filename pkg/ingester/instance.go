@@ -170,13 +170,13 @@ func (i *instance) lookupStreams(req *logproto.QueryRequest, matchers []*labels.
 }
 
 func (i *instance) addTailer(t *tailer) {
-	i.tailerMtx.Lock()
-	defer i.tailerMtx.Unlock()
-
 	tailers := map[uint32]*tailer{t.getID(): t}
 	for _, stream := range i.streams {
 		i.addTailersToStream(tailers, stream)
 	}
+
+	i.tailerMtx.Lock()
+	defer i.tailerMtx.Unlock()
 	i.tailers[t.getID()] = t
 }
 

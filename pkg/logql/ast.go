@@ -26,6 +26,7 @@ type Querier interface {
 // Expr is a LogQL expression.
 type Expr interface {
 	Eval(Querier) (iter.EntryIterator, error)
+	Matchers() []*labels.Matcher
 }
 
 type matchersExpr struct {
@@ -36,10 +37,18 @@ func (e *matchersExpr) Eval(q Querier) (iter.EntryIterator, error) {
 	return q.Query(e.matchers)
 }
 
+func (e *matchersExpr) Matchers() []*labels.Matcher {
+	return e.matchers
+}
+
 type filterExpr struct {
 	left  Expr
 	ty    labels.MatchType
 	match string
+}
+
+func (e *filterExpr) Matchers() []*labels.Matcher {
+	return e.left.Matchers()
 }
 
 // NewFilterExpr wraps an existing Expr with a next filter expression.
