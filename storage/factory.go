@@ -167,7 +167,7 @@ func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 	case "cassandra":
 		return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig)
 	case "boltdb":
-		return local.NewTableClient()
+		return local.NewTableClient(cfg.BoltDBConfig.Directory)
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
 	}

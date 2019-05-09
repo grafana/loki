@@ -43,7 +43,7 @@ func (f *fixture) Clients() (
 		return
 	}
 
-	tableClient, err = NewTableClient()
+	tableClient, err = NewTableClient(f.dirname)
 	if err != nil {
 		return
 	}

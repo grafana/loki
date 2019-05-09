@@ -8,6 +8,10 @@ import (
 	"os"
 	"path"
 	"sync"
+	"time"
+
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
 
 	"github.com/etcd-io/bbolt"
 
@@ -18,8 +22,9 @@ import (
 var bucketName = []byte("index")
 
 const (
-	separator = "\000"
-	null      = string('\xff')
+	separator      = "\000"
+	null           = string('\xff')
+	dbReloadPeriod = 1 * time.Minute
 )
 
 // BoltDBConfig for a BoltDB index client.
@@ -37,6 +42,8 @@ type boltIndexClient struct {
 
 	dbsMtx sync.RWMutex
 	dbs    map[string]*bbolt.DB
+	done   chan struct{}
+	wait   sync.WaitGroup
 }
 
 // NewBoltDBIndexClient creates a new IndexClient that used BoltDB.
@@ -45,10 +52,57 @@ func NewBoltDBIndexClient(cfg BoltDBConfig) (chunk.IndexClient, error) {
 		return nil, err
 	}
 
-	return &boltIndexClient{
+	indexClient := &boltIndexClient{
 		cfg: cfg,
 		dbs: map[string]*bbolt.DB{},
-	}, nil
+	}
+
+	go indexClient.loop()
+	return indexClient, nil
+}
+
+func (b *boltIndexClient) loop() {
+	defer b.wait.Done()
+
+	ticker := time.NewTicker(dbReloadPeriod)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			b.reload()
+		case <-b.done:
+			return
+		}
+	}
+}
+
+func (b *boltIndexClient) reload() {
+	b.dbsMtx.Lock()
+	defer b.dbsMtx.Unlock()
+
+	dbsFailedToOpen := []string{}
+	for name, db := range b.dbs {
+		db.Close()
+
+		if _, err := os.Stat(path.Join(b.cfg.Directory, name)); err != nil && os.IsNotExist(err) {
+			dbsFailedToOpen = append(dbsFailedToOpen, name)
+			level.Debug(util.Logger).Log("msg", "boltdb file got removed", "filename", name)
+			continue
+		}
+
+		db, err := bbolt.Open(path.Join(b.cfg.Directory, name), 0666, nil)
+		if err != nil {
+			dbsFailedToOpen = append(dbsFailedToOpen, name)
+			level.Error(util.Logger).Log("msg", "failed to open boltdb", "filename", name)
+			continue
+		}
+		b.dbs[name] = db
+	}
+
+	for _, name := range dbsFailedToOpen {
+		delete(b.dbs, name)
+	}
 }
 
 func (b *boltIndexClient) Stop() {
@@ -57,6 +111,8 @@ func (b *boltIndexClient) Stop() {
 	for _, db := range b.dbs {
 		db.Close()
 	}
+
+	b.wait.Wait()
 }
 
 func (b *boltIndexClient) NewWriteBatch() chunk.WriteBatch {
