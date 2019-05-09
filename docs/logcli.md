@@ -90,8 +90,11 @@ Flags:
   --forward                Scan forwards through logs.
   -t, --tail               Tail the logs
   --no-labels              Do not print any labels
-  --no-label=NO-LABEL ...  Do not print labels given the provided key
-  --label=LABEL ...        Do print labels given the provided key
+  --exclude-label=EXCLUDE-LABEL ...
+                           Exclude labels given the provided key during output.
+  --include-label=INCLUDE-LABEL ...
+                           Include labels given the provided key during output.
+  --labels-length=0        Set a fixed padding to labels
 
 Args:
   <query>    eg '{foo="bar",baz="blip"}'
