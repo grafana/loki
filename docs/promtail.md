@@ -1,3 +1,14 @@
+# Promtail
+
+* [Deployment Methods](./promtail-setup.md)
+* [Config and Usage Examples](./promtail-examples.md)
+* [Troubleshooting](./troubleshooting.md)
+
+
+## Design Documentation
+   
+   * [Extracting labels from logs](./design/labels.md)
+
 ## Promtail and scrape_configs
 
 Promtail is an agent which reads log files and sends streams of log data to

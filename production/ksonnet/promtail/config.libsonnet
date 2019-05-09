@@ -14,7 +14,9 @@
         external_labels: {},
       }],
       container_root_path: '/var/lib/docker',
-      entry_parser: 'docker',
+      pipeline_stages: [{
+        docker: {},
+      }],
     },
   },
 }

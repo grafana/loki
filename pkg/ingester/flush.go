@@ -196,17 +196,20 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 	var result []*chunkDesc
 	for j := range stream.chunks {
 		if immediate || i.shouldFlushChunk(&stream.chunks[j]) {
-			result = append(result, &stream.chunks[j])
+			// Ensure no more writes happen to this chunk.
+			if !stream.chunks[j].closed {
+				stream.chunks[j].closed = true
+			}
+			// Flush this chunk if it hasn't already been successfully flushed.
+			if stream.chunks[j].flushed.IsZero() {
+				result = append(result, &stream.chunks[j])
+			}
 		}
 	}
 	return result, stream.labels
 }
 
 func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) bool {
-	if !chunk.flushed.IsZero() {
-		return false
-	}
-
 	// Append should close the chunk when the a new one is added.
 	if chunk.closed {
 		return true

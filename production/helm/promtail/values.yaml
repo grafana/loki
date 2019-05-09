@@ -6,8 +6,6 @@ annotations: {}
 
 deploymentStrategy: RollingUpdate
 
-entryParser: docker
-
 image:
   repository: grafana/promtail
   tag: latest
@@ -124,8 +122,9 @@ config:
     # Period to resync directories being watched and files being tailed
     sync_period: 10s
   scrape_configs:
-  - entry_parser: '{{ .Values.entryParser }}'
-    job_name: kubernetes-pods-name
+  - job_name: kubernetes-pods-name
+    pipeline_stages:
+      - docker: {}
     kubernetes_sd_configs:
     - role: pod
     relabel_configs:
@@ -166,8 +165,9 @@ config:
       - __meta_kubernetes_pod_uid
       - __meta_kubernetes_pod_container_name
       target_label: __path__
-  - entry_parser: '{{ .Values.entryParser }}'
-    job_name: kubernetes-pods-app
+  - job_name: kubernetes-pods-app
+    pipeline_stages:
+      - docker: {}
     kubernetes_sd_configs:
     - role: pod
     relabel_configs:
@@ -212,8 +212,9 @@ config:
       - __meta_kubernetes_pod_uid
       - __meta_kubernetes_pod_container_name
       target_label: __path__
-  - entry_parser: '{{ .Values.entryParser }}'
-    job_name: kubernetes-pods-direct-controllers
+  - job_name: kubernetes-pods-direct-controllers
+    pipeline_stages:
+      - docker: {}
     kubernetes_sd_configs:
     - role: pod
     relabel_configs:
@@ -264,8 +265,9 @@ config:
       - __meta_kubernetes_pod_uid
       - __meta_kubernetes_pod_container_name
       target_label: __path__
-  - entry_parser: '{{ .Values.entryParser }}'
-    job_name: kubernetes-pods-indirect-controller
+  - job_name: kubernetes-pods-indirect-controller
+    pipeline_stages:
+      - docker: {}
     kubernetes_sd_configs:
     - role: pod
     relabel_configs:
@@ -318,8 +320,9 @@ config:
       - __meta_kubernetes_pod_uid
       - __meta_kubernetes_pod_container_name
       target_label: __path__
-  - entry_parser: '{{ .Values.entryParser }}'
-    job_name: kubernetes-pods-static
+  - job_name: kubernetes-pods-static
+    pipeline_stages:
+      - docker: {}
     kubernetes_sd_configs:
     - role: pod
     relabel_configs:
