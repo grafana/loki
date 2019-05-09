@@ -900,8 +900,8 @@
   version = "v2.0.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:81403343bc9a102e3c924f87ad81e5a13bb7c36211714475c906853f4e887933"
+  branch = "server-listen-addr"
+  digest = "1:0184d699d4cbbbc3073fbbdd7cc0c8592d484c6f23914c89fb6d218e90de171a"
   name = "github.com/weaveworks/common"
   packages = [
     "aws",
@@ -918,7 +918,8 @@
     "user",
   ]
   pruneopts = "UT"
-  revision = "81a1a4d158e60de72dbead600ec011fb90344f8c"
+  revision = "5bf824591a6567784789cf9b2169f74f162bf80d"
+  source = "https://github.com/tomwilkie/weaveworks-common"
 
 [[projects]]
   digest = "1:bb40f7ff970145324f2a2acafdff3a23ed3f05db49cb5eb519b3d6bee86a5887"
@@ -1413,6 +1414,7 @@
     "github.com/prometheus/prometheus/pkg/modtimevfs",
     "github.com/prometheus/prometheus/pkg/relabel",
     "github.com/prometheus/prometheus/pkg/textparse",
+    "github.com/prometheus/prometheus/promql",
     "github.com/prometheus/prometheus/relabel",
     "github.com/prometheus/prometheus/template",
     "github.com/shurcooL/httpfs/filter",

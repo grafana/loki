@@ -22,19 +22,21 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/parser"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/config"
 	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/targets"
 )
+
+const httpTestPort = 9080
 
 func TestPromtail(t *testing.T) {
 
 	// Setup.
-
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 	logger = level.NewFilter(logger, level.AllowInfo())
@@ -71,7 +73,7 @@ func TestPromtail(t *testing.T) {
 		}
 	}()
 	go func() {
-		if err = http.ListenAndServe("127.0.0.1:3100", nil); err != nil {
+		if err = http.ListenAndServe("localhost:3100", nil); err != nil {
 			err = errors.Wrap(err, "Failed to start web server to receive logs")
 		}
 	}()
@@ -372,20 +374,20 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recMtx.Lock()
 	for _, s := range req.Streams {
-		labels, err := parser.Labels(s.Labels)
+		labels, err := promql.ParseMetric(s.Labels)
 		if err != nil {
 			h.t.Error("Failed to parse incoming labels", err)
 			return
 		}
 		file := ""
 		for _, label := range labels {
-			if label.Name == "__filename__" {
+			if label.Name == targets.FilenameLabel {
 				file = label.Value
 				continue
 			}
 		}
 		if file == "" {
-			h.t.Error("Expected to find a label with name __filename__ but did not!")
+			h.t.Error("Expected to find a label with name `filename` but did not!")
 			return
 		}
 		if _, ok := h.receivedMap[file]; ok {
@@ -398,7 +400,7 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func getPromMetrics(t *testing.T) ([]byte, string) {
-	resp, err := http.Get("http://localhost:80/metrics")
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/metrics", httpTestPort))
 	if err != nil {
 		t.Fatal("Could not query metrics endpoint", err)
 	}
@@ -456,6 +458,11 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	cfg := config.Config{}
 	// Init everything with default values.
 	flagext.RegisterFlags(&cfg)
+
+	// Make promtail listen on localhost to avoid prompts on MacOS.
+	cfg.ServerConfig.HTTPListenHost = "localhost"
+	cfg.ServerConfig.HTTPListenPort = httpTestPort
+	cfg.ServerConfig.GRPCListenHost = "localhost"
 
 	// Override some of those defaults
 	cfg.ClientConfig.URL = clientURL

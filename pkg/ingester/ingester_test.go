@@ -13,19 +13,10 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 func TestIngester(t *testing.T) {
-	var ingesterConfig Config
-	flagext.DefaultValues(&ingesterConfig)
-	ingesterConfig.LifecyclerConfig.RingConfig.Mock = ring.NewInMemoryKVClient()
-	ingesterConfig.LifecyclerConfig.NumTokens = 1
-	ingesterConfig.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
-	ingesterConfig.LifecyclerConfig.Addr = "localhost"
-	ingesterConfig.LifecyclerConfig.ID = "localhost"
-
+	ingesterConfig := defaultIngesterTestConfig()
 	store := &mockStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
@@ -59,8 +50,6 @@ func TestIngester(t *testing.T) {
 	_, err = i.Push(ctx, &req)
 	require.NoError(t, err)
 
-	fmt.Println("hehe")
-
 	result := mockQuerierServer{
 		ctx: ctx,
 	}
@@ -86,7 +75,7 @@ func TestIngester(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.resps, 1)
 	require.Len(t, result.resps[0].Streams, 1)
-	require.Equal(t, `{foo="bar", bar="baz1"}`, result.resps[0].Streams[0].Labels)
+	require.Equal(t, `{bar="baz1", foo="bar"}`, result.resps[0].Streams[0].Labels)
 
 	result = mockQuerierServer{
 		ctx: ctx,
@@ -100,7 +89,7 @@ func TestIngester(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.resps, 1)
 	require.Len(t, result.resps[0].Streams, 1)
-	require.Equal(t, `{foo="bar", bar="baz2"}`, result.resps[0].Streams[0].Labels)
+	require.Equal(t, `{bar="baz2", foo="bar"}`, result.resps[0].Streams[0].Labels)
 }
 
 type mockStore struct {

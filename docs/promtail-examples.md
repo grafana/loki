@@ -1,7 +1,12 @@
-# promtail examples
-#### In this file you can see simple examples of configure promtail
+# Promtail Config Examples
 
-* This example of config promtail based on original docker [config](https://github.com/grafana/loki/blob/master/cmd/promtail/promtail-docker-config.yaml)
+## Pipeline Examples
+
+TODO Need pipeline examples
+
+## Simple Docker Config
+
+This example of config promtail based on original docker [config](https://github.com/grafana/loki/blob/master/cmd/promtail/promtail-docker-config.yaml)
 and show how work with 2 and more sources:
 
 Filename for example: my-docker-config.yaml
@@ -38,18 +43,19 @@ scrape_configs:
       __path__: /srv/log/someone_service/*.log
 
 ```
-##### Description
-Scrape_config section of config.yaml contents are various jobs for parsing your logs on current host
+#### Description
 
-`job` and `host` these are tags on which you can filter parsed logs date on Grafana later
+Scrape_config section of config.yaml contents contains various jobs for parsing your logs
+
+`job` and `host` are examples of static labels added to all logs, labels are indexed by Loki and are used to help search logs.
 
 `__path__` it is path to directory where stored your logs.
 
 If you run promtail and this config.yaml in Docker container, don't forget use docker volumes for mapping real directories
 with log to those folders in the container. 
 
-* See next example of Dockerfile, who use our modified promtail config (my-docker-config.yaml)
-1) Create folder, for example `promtail`, then new folder build and in this filder conf and place there `my-docker-config.yaml`.
+#### Example Use
+1) Create folder, for example `promtail`, then new sub directory `build/conf` and place there `my-docker-config.yaml`.
 2) Create new Dockerfile in root folder `promtail`, with contents
 ```
 FROM grafana/promtail:latest

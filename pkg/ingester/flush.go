@@ -45,6 +45,12 @@ var (
 		// so buckets at 1min, 5min, 10min, 30min, 1hr, 2hr, 4hr, 10hr, 12hr, 16hr
 		Buckets: []float64{60, 300, 600, 1800, 3600, 7200, 14400, 36000, 43200, 57600},
 	})
+	chunkEncodeTime = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name: "loki_ingester_chunk_encode_time_seconds",
+		Help: "Distribution of chunk encode times.",
+		// 10ms to 10s.
+		Buckets: prometheus.ExponentialBuckets(0.01, 4, 6),
+	})
 )
 
 const (
@@ -196,17 +202,20 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 	var result []*chunkDesc
 	for j := range stream.chunks {
 		if immediate || i.shouldFlushChunk(&stream.chunks[j]) {
-			result = append(result, &stream.chunks[j])
+			// Ensure no more writes happen to this chunk.
+			if !stream.chunks[j].closed {
+				stream.chunks[j].closed = true
+			}
+			// Flush this chunk if it hasn't already been successfully flushed.
+			if stream.chunks[j].flushed.IsZero() {
+				result = append(result, &stream.chunks[j])
+			}
 		}
 	}
 	return result, stream.labels
 }
 
 func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) bool {
-	if !chunk.flushed.IsZero() {
-		return false
-	}
-
 	// Append should close the chunk when the a new one is added.
 	if chunk.closed {
 		return true
@@ -258,9 +267,11 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			model.TimeFromUnixNano(lastTime.UnixNano()),
 		)
 
+		start := time.Now()
 		if err := c.Encode(); err != nil {
 			return err
 		}
+		chunkEncodeTime.Observe(time.Since(start).Seconds())
 		wireChunks = append(wireChunks, c)
 	}
 

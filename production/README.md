@@ -46,7 +46,7 @@ For instructions on how to query Loki, see [our usage docs](../docs/usage.md).
 
 ## Using Helm to deploy on Kubernetes
 
-There is a [Helm chart](helm/loki) to deploy Loki and promtail to Kubernetes.
+There is a [Helm chart](helm) to deploy Loki and promtail to Kubernetes.
 
 ## Build and Run From Source
 

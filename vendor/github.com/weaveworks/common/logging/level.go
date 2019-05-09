@@ -49,6 +49,11 @@ func (l *Level) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return l.Set(level)
 }
 
+// MarshalYAML implements yaml.Marshaler.
+func (l Level) MarshalYAML() (interface{}, error) {
+	return l.String(), nil
+}
+
 // Set updates the value of the allowed level.  Implments flag.Value.
 func (l *Level) Set(s string) error {
 	switch s {
