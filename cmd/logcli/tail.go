@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"strings"
 
@@ -19,11 +18,11 @@ func tailQuery() {
 	stream := new(logproto.Stream)
 
 	if len(*ignoreLabelsKey) > 0 {
-		fmt.Println("Ingoring labels key:", color.RedString(strings.Join(*ignoreLabelsKey, ",")))
+		log.Println("Ingoring labels key:", color.RedString(strings.Join(*ignoreLabelsKey, ",")))
 	}
 
 	if len(*showLabelsKey) > 0 {
-		fmt.Println("Print only labels key:", color.RedString(strings.Join(*showLabelsKey, ",")))
+		log.Println("Print only labels key:", color.RedString(strings.Join(*showLabelsKey, ",")))
 	}
 
 	for {

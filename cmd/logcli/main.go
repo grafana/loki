@@ -22,8 +22,9 @@ var (
 	forward         = queryCmd.Flag("forward", "Scan forwards through logs.").Default("false").Bool()
 	tail            = queryCmd.Flag("tail", "Tail the logs").Short('t').Default("false").Bool()
 	noLabels        = queryCmd.Flag("no-labels", "Do not print any labels").Default("false").Bool()
-	ignoreLabelsKey = queryCmd.Flag("no-label", "Do not print labels given the provided key").Strings()
-	showLabelsKey   = queryCmd.Flag("label", "Do print labels given the provided key").Strings()
+	ignoreLabelsKey = queryCmd.Flag("exclude-label", "Exclude labels given the provided key during output.").Strings()
+	showLabelsKey   = queryCmd.Flag("include-label", "Include labels given the provided key during output.").Strings()
+	fixedLabelsLen  = queryCmd.Flag("labels-length", "Set a fixed padding to labels").Default("0").Int()
 
 	labelsCmd = app.Command("labels", "Find values for a given label.")
 	labelName = labelsCmd.Arg("label", "The name of the label.").HintAction(listLabels).String()
