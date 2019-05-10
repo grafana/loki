@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	testKey  = []byte("test-key")
-	testValue  = []byte("test-value")
+	testKey   = []byte("test-key")
+	testValue = []byte("test-value")
 )
 
 func setupDb(t *testing.T, boltdbIndexClient *boltIndexClient, dbname string) {

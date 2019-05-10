@@ -4,6 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -21,6 +23,8 @@ import (
 const (
 	readLabel  = "read"
 	writeLabel = "write"
+
+	fsRetentionEnforcementInterval = 12 * time.Hour
 )
 
 var (
@@ -112,22 +116,24 @@ func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
 type TableManager struct {
-	client      TableClient
-	cfg         TableManagerConfig
-	schemaCfg   SchemaConfig
-	maxChunkAge time.Duration
-	done        chan struct{}
-	wait        sync.WaitGroup
+	client                TableClient
+	cfg                   TableManagerConfig
+	schemaCfg             SchemaConfig
+	maxChunkAge           time.Duration
+	done                  chan struct{}
+	wait                  sync.WaitGroup
+	directoryFromFsConfig string
 }
 
 // NewTableManager makes a new TableManager
-func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient) (*TableManager, error) {
+func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient, directoryFromFsConfig string) (*TableManager, error) {
 	return &TableManager{
-		cfg:         cfg,
-		schemaCfg:   schemaCfg,
-		maxChunkAge: maxChunkAge,
-		client:      tableClient,
-		done:        make(chan struct{}),
+		cfg:                   cfg,
+		schemaCfg:             schemaCfg,
+		maxChunkAge:           maxChunkAge,
+		client:                tableClient,
+		done:                  make(chan struct{}),
+		directoryFromFsConfig: directoryFromFsConfig,
 	}, nil
 }
 
@@ -135,6 +141,15 @@ func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge
 func (m *TableManager) Start() {
 	m.wait.Add(1)
 	go m.loop()
+
+	if m.isFSRetentionEnforcementRequired() {
+		if m.directoryFromFsConfig == "" {
+			level.Error(util.Logger).Log("msg", "can't enforce filesystem retention with empty diretory path in config")
+			return
+		}
+		m.wait.Add(1)
+		go m.fsRetentionEnforcementLoop()
+	}
 }
 
 // Stop the TableManager
@@ -167,6 +182,55 @@ func (m *TableManager) loop() {
 			return
 		}
 	}
+}
+
+func (m *TableManager) fsRetentionEnforcementLoop() {
+	defer m.wait.Done()
+
+	ticker := time.NewTicker(fsRetentionEnforcementInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			err := m.enforceFSRetention()
+
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
+			}
+		case <-m.done:
+			return
+		}
+	}
+}
+
+func (m *TableManager) isFSRetentionEnforcementRequired() bool {
+	if m.cfg.RetentionPeriod == 0 || m.cfg.RetentionDeletesEnabled {
+		return false
+	}
+
+	for _, config := range m.schemaCfg.Configs {
+		if config.ObjectType == "filesystem" {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (m *TableManager) enforceFSRetention() error {
+	if m.isFSRetentionEnforcementRequired() {
+		return nil
+	}
+	return filepath.Walk(m.directoryFromFsConfig, func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() && info.ModTime().Before(mtime.Now().Add(-m.cfg.RetentionPeriod)) {
+			level.Info(util.Logger).Log("msg", "file has exceeded the retention period, removing it", "filepath", info.Name())
+			if err := os.Remove(path); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // SyncTables will calculate the tables expected to exist, create those that do

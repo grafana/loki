@@ -79,7 +79,7 @@ func newTestChunkStoreConfig(t *testing.T, schemaName string, storeCfg StoreConf
 	)
 	flagext.DefaultValues(&tbmConfig)
 	storage := NewMockStorage()
-	tableManager, err := NewTableManager(tbmConfig, schemaCfg, maxChunkAge, storage)
+	tableManager, err := NewTableManager(tbmConfig, schemaCfg, maxChunkAge, storage, "")
 	require.NoError(t, err)
 
 	err = tableManager.SyncTables(context.Background())
