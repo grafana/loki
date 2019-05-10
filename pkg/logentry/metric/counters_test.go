@@ -1,4 +1,4 @@
-package logentry
+package metric
 
 import (
 	"strings"
@@ -22,9 +22,8 @@ log_entries_total{bar="foo",foo="bar"} 5.0
 
 func Test_logCount(t *testing.T) {
 	t.Parallel()
-
 	reg := prometheus.NewRegistry()
-	handler := logCount(reg)
+	handler := LogCount(reg)
 
 	workerCount := 5
 	var wg sync.WaitGroup
