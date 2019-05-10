@@ -1,6 +1,9 @@
 package stages
 
 import (
+	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -80,24 +83,79 @@ type metricStage struct {
 func (m *metricStage) process(v Valuer, labels model.LabelSet) {
 	for name, collector := range m.metrics {
 		switch vec := collector.(type) {
-		case metric.Counters:
+		case *metric.Counters:
 			recordCounter(vec.With(labels), v, m.cfg[name])
-		case metric.Gauges:
+		case *metric.Gauges:
 			recordGauge(vec.With(labels), v, m.cfg[name])
-		case metric.Histograms:
+		case *metric.Histograms:
 			recordHistogram(vec.With(labels), v, m.cfg[name])
 		}
 	}
 }
 
 func recordCounter(counter prometheus.Counter, v Valuer, cfg MetricConfig) {
-
+	unk, err := v.Value(cfg.Source)
+	if err != nil {
+		return
+	}
+	f, err := getFloat(unk)
+	if err != nil || f < 0 {
+		return
+	}
+	counter.Add(f)
 }
 
-func recordGauge(counter prometheus.Gauge, v Valuer, cfg MetricConfig) {
-
+func recordGauge(gauge prometheus.Gauge, v Valuer, cfg MetricConfig) {
+	unk, err := v.Value(cfg.Source)
+	if err != nil {
+		return
+	}
+	f, err := getFloat(unk)
+	if err != nil {
+		return
+	}
+	gauge.Add(f)
 }
 
-func recordHistogram(counter prometheus.Histogram, v Valuer, cfg MetricConfig) {
+func recordHistogram(histogram prometheus.Histogram, v Valuer, cfg MetricConfig) {
+	unk, err := v.Value(cfg.Source)
+	if err != nil {
+		return
+	}
+	f, err := getFloat(unk)
+	if err != nil {
+		return
+	}
+	histogram.Observe(f)
+}
 
+func getFloat(unk interface{}) (float64, error) {
+
+	switch i := unk.(type) {
+	case float64:
+		return i, nil
+	case float32:
+		return float64(i), nil
+	case int64:
+		return float64(i), nil
+	case int32:
+		return float64(i), nil
+	case int:
+		return float64(i), nil
+	case uint64:
+		return float64(i), nil
+	case uint32:
+		return float64(i), nil
+	case uint:
+		return float64(i), nil
+	case string:
+		return strconv.ParseFloat(i, 64)
+	case bool:
+		if i {
+			return float64(1), nil
+		}
+		return float64(0), nil
+	default:
+		return math.NaN(), fmt.Errorf("Can't convert %v to float64", unk)
+	}
 }

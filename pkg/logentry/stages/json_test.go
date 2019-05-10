@@ -189,6 +189,11 @@ var logFixture = `
 	"app":"loki",
 	"component": ["parser","type"],
 	"level" : "WARN",
+	"numeric": {
+		"float": 12.34,
+		"integer": 123,
+		"string": "123"
+	},
 	"nested" : {"child":"value"},
 	"message" : "this is a log line",
 	"complex" : {

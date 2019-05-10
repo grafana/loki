@@ -49,7 +49,7 @@ func newJSONConfig(config interface{}) (*JSONConfig, error) {
 
 // validate the config and returns a map of necessary jmespath expressions.
 func (c *JSONConfig) validate() (map[string]*jmespath.JMESPath, error) {
-	if c.Output == nil && len(c.Labels) == 0 && c.Timestamp == nil {
+	if c.Output == nil && len(c.Labels) == 0 && c.Timestamp == nil && len(c.Metrics) == 0 {
 		return nil, errors.New("empty json parser configuration")
 	}
 
