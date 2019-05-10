@@ -53,10 +53,12 @@ func NewBoltDBIndexClient(cfg BoltDBConfig) (chunk.IndexClient, error) {
 	}
 
 	indexClient := &boltIndexClient{
-		cfg: cfg,
-		dbs: map[string]*bbolt.DB{},
+		cfg:  cfg,
+		dbs:  map[string]*bbolt.DB{},
+		done: make(chan struct{}),
 	}
 
+	indexClient.wait.Add(1)
 	go indexClient.loop()
 	return indexClient, nil
 }
@@ -106,6 +108,8 @@ func (b *boltIndexClient) reload() {
 }
 
 func (b *boltIndexClient) Stop() {
+	close(b.done)
+
 	b.dbsMtx.Lock()
 	defer b.dbsMtx.Unlock()
 	for _, db := range b.dbs {
