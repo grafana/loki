@@ -20,7 +20,7 @@ func NewDocker(logger log.Logger) (Stage, error) {
 			"source": "log",
 		},
 	}
-	return NewJSON(logger, config)
+	return NewJSON(logger, config, nil)
 }
 
 // NewCRI creates a CRI format specific pipeline stage
