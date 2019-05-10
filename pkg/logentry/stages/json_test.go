@@ -54,10 +54,6 @@ func TestYamlMapStructure(t *testing.T) {
 	}
 }
 
-func String(s string) *string {
-	return &s
-}
-
 func TestJSONConfig_validate(t *testing.T) {
 	t.Parallel()
 	tests := map[string]struct {
@@ -316,7 +312,7 @@ func TestJSONParser_Parse(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			p, err := NewJSON(util.Logger, tt.config)
+			p, err := NewJSON(util.Logger, tt.config, nil)
 			if err != nil {
 				t.Fatalf("failed to create json parser: %s", err)
 			}

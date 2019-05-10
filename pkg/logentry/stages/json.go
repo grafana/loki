@@ -10,6 +10,7 @@ import (
 	"github.com/jmespath/go-jmespath"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 )
 
@@ -34,6 +35,7 @@ type JSONConfig struct {
 	Timestamp *JSONTimestamp        `mapstructure:"timestamp"`
 	Output    *JSONOutput           `mapstructure:"output"`
 	Labels    map[string]*JSONLabel `mapstructure:"labels"`
+	Metrics   MetricsConfig         `mapstructure:"metrics"`
 }
 
 func newJSONConfig(config interface{}) (*JSONConfig, error) {
@@ -90,6 +92,16 @@ func (c *JSONConfig) validate() (map[string]*jmespath.JMESPath, error) {
 			}
 		}
 	}
+
+	// metrics expressions.
+	for _, mcfg := range c.Metrics {
+		if mcfg.Source != nil {
+			expressions[*mcfg.Source], err = jmespath.Compile(*mcfg.Source)
+			if err != nil {
+				return nil, errors.Wrap(err, "could not compile output source jmespath expression")
+			}
+		}
+	}
 	return expressions, nil
 }
 
@@ -100,7 +112,7 @@ type jsonStage struct {
 }
 
 // NewJSON creates a new json stage from a config.
-func NewJSON(logger log.Logger, config interface{}) (Stage, error) {
+func NewJSON(logger log.Logger, config interface{}, registerer prometheus.Registerer) (Stage, error) {
 	cfg, err := newJSONConfig(config)
 	if err != nil {
 		return nil, err
@@ -109,67 +121,32 @@ func NewJSON(logger log.Logger, config interface{}) (Stage, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &jsonStage{
+	return withMetric(&jsonStage{
 		cfg:         cfg,
 		expressions: expressions,
 		logger:      log.With(logger, "component", "parser", "type", "json"),
-	}, nil
-}
-
-func (j *jsonStage) getJSONString(expr *string, fallback string, data map[string]interface{}) (result string, ok bool) {
-	if expr == nil {
-		result, ok = data[fallback].(string)
-		if !ok {
-			level.Debug(j.logger).Log("msg", "field is not a string", "field", fallback)
-		}
-	} else {
-		var searchResult interface{}
-		searchResult, ok = j.getJSONValue(expr, data)
-		if !ok {
-			level.Debug(j.logger).Log("msg", "failed to search with jmespath expression", "expr", expr)
-			return
-		}
-		result, ok = searchResult.(string)
-		if !ok {
-			level.Debug(j.logger).Log("msg", "search result is not a string", "expr", *expr)
-		}
-	}
-	return
-}
-
-func (j *jsonStage) getJSONValue(expr *string, data map[string]interface{}) (result interface{}, ok bool) {
-	var err error
-	ok = true
-	result, err = j.expressions[*expr].Search(data)
-	if err != nil {
-		level.Debug(j.logger).Log("msg", "failed to search with jmespath expression", "expr", expr)
-		ok = false
-		return
-	}
-	return
+	}, cfg.Metrics, registerer), nil
 }
 
 // Process implement a pipeline stage
-func (j *jsonStage) Process(labels model.LabelSet, t *time.Time, entry *string) {
+func (j *jsonStage) Process(labels model.LabelSet, t *time.Time, entry *string) Valuer {
 	if entry == nil {
 		level.Debug(j.logger).Log("msg", "cannot parse a nil entry")
-		return
+		return nil
 	}
-	var data map[string]interface{}
-	if err := json.Unmarshal([]byte(*entry), &data); err != nil {
-		level.Debug(j.logger).Log("msg", "could not unmarshal json", "err", err)
-		return
+	valuer, err := newJSONValuer(*entry, j.expressions)
+	if err != nil {
+		level.Debug(j.logger).Log("msg", "failed to create json valuer", "err", err)
+		return nil
 	}
 
 	// parsing ts
 	if j.cfg.Timestamp != nil {
-		if ts, ok := j.getJSONString(j.cfg.Timestamp.Source, "timestamp", data); ok {
-			parsedTs, err := time.Parse(j.cfg.Timestamp.Format, ts)
-			if err != nil {
-				level.Debug(j.logger).Log("msg", "failed to parse time", "err", err, "format", j.cfg.Timestamp.Format, "value", ts)
-			} else {
-				*t = parsedTs
-			}
+		ts, err := parseTimestamp(valuer, j.cfg.Timestamp)
+		if err != nil {
+			level.Debug(j.logger).Log("msg", "failed to parse timestamp", "err", err)
+		} else {
+			*t = ts
 		}
 	}
 
@@ -179,8 +156,9 @@ func (j *jsonStage) Process(labels model.LabelSet, t *time.Time, entry *string) 
 		if lSrc != nil {
 			src = lSrc.Source
 		}
-		lValue, ok := j.getJSONString(src, lName, data)
-		if !ok {
+		lValue, err := valuer.getJSONString(src, lName)
+		if err != nil {
+			level.Debug(j.logger).Log("msg", "failed to get json string", "err", err)
 			continue
 		}
 		labelValue := model.LabelValue(lValue)
@@ -194,17 +172,82 @@ func (j *jsonStage) Process(labels model.LabelSet, t *time.Time, entry *string) 
 
 	// parsing output
 	if j.cfg.Output != nil {
-		if jsonObj, ok := j.getJSONValue(j.cfg.Output.Source, data); ok && jsonObj != nil {
-			if s, ok := jsonObj.(string); ok {
-				*entry = s
-				return
-			}
-			b, err := json.Marshal(jsonObj)
-			if err != nil {
-				level.Debug(j.logger).Log("msg", "could not marshal output value", "err", err)
-				return
-			}
-			*entry = string(b)
+		output, err := parseOutput(valuer, j.cfg.Output)
+		if err != nil {
+			level.Debug(j.logger).Log("msg", "failed to parse output", "err", err)
+		} else {
+			*entry = output
 		}
 	}
+	return valuer
+}
+
+type jsonValuer struct {
+	exprmap map[string]*jmespath.JMESPath
+	data    map[string]interface{}
+}
+
+func newJSONValuer(entry string, exprmap map[string]*jmespath.JMESPath) (*jsonValuer, error) {
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(entry), &data); err != nil {
+		return nil, err
+	}
+	return &jsonValuer{
+		data:    data,
+		exprmap: exprmap,
+	}, nil
+}
+
+func (v *jsonValuer) Value(expr *string) (interface{}, error) {
+	return v.exprmap[*expr].Search(v.data)
+}
+
+func (v *jsonValuer) getJSONString(expr *string, fallback string) (result string, err error) {
+	var ok bool
+	if expr == nil {
+		result, ok = v.data[fallback].(string)
+		if !ok {
+			return result, fmt.Errorf("%s is not a string but %T", fallback, v.data[fallback])
+		}
+		return
+	}
+	var searchResult interface{}
+	if searchResult, err = v.Value(expr); err != nil {
+		return
+	}
+	if result, ok = searchResult.(string); !ok {
+		return result, fmt.Errorf("%s is not a string but %T", *expr, searchResult)
+	}
+
+	return
+}
+
+func parseOutput(v Valuer, cfg *JSONOutput) (string, error) {
+	jsonObj, err := v.Value(cfg.Source)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to fetch json value")
+	}
+	if jsonObj == nil {
+		return "", errors.New("json value is nil")
+	}
+	if s, ok := jsonObj.(string); ok {
+		return s, nil
+	}
+	b, err := json.Marshal(jsonObj)
+	if err != nil {
+		return "", errors.Wrap(err, "could not marshal output value")
+	}
+	return string(b), nil
+}
+
+func parseTimestamp(v *jsonValuer, cfg *JSONTimestamp) (time.Time, error) {
+	ts, err := v.getJSONString(cfg.Source, "timestamp")
+	if err != nil {
+		return time.Time{}, err
+	}
+	parsedTs, err := time.Parse(cfg.Format, ts)
+	if err != nil {
+		return time.Time{}, errors.Wrapf(err, "failed to parse time format:%s value:%s", cfg.Format, ts)
+	}
+	return parsedTs, nil
 }

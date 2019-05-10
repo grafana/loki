@@ -37,3 +37,7 @@ func assertLabels(t *testing.T, expect map[string]string, got model.LabelSet) {
 		assert.Equal(t, model.LabelValue(v), gotV, "mismatch label value")
 	}
 }
+
+func String(s string) *string {
+	return &s
+}
