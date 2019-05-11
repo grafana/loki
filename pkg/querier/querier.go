@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"flag"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -18,10 +19,12 @@ import (
 
 // Config for a querier.
 type Config struct {
+	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
 }
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.DurationVar(&cfg.MaxLookBackPeriod, "querier.max-look_back_period", 0, "")
 }
 
 // Querier handlers queries.
@@ -92,6 +95,11 @@ func (q *Querier) forAllIngesters(f func(logproto.QuerierClient) (interface{}, e
 
 // Query does the heavy lifting for an actual query.
 func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logproto.QueryResponse, error) {
+	oldestStartTime := time.Now().Add(-q.cfg.MaxLookBackPeriod)
+	if oldestStartTime.After(req.Start) {
+		req.Start = oldestStartTime
+	}
+
 	ingesterIterators, err := q.queryIngesters(ctx, req)
 	if err != nil {
 		return nil, err
