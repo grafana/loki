@@ -1,6 +1,7 @@
 package chunk
 
 import (
+	"sort"
 	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
@@ -24,6 +25,9 @@ func decodeLabels(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 		*labelsPtr = append(*labelsPtr, labels.Label{Name: key, Value: value})
 		return true
 	})
+	// Labels are always sorted, but earlier Cortex using a map would
+	// output in any order so we have to sort on read in
+	sort.Sort(*labelsPtr)
 }
 
 // Override Prometheus' labels.Labels encoder which goes via a map
