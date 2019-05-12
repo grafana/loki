@@ -22,12 +22,14 @@ func init() {
 	encoding.DefaultEncoding = encoding.Varbit
 }
 
+var labelsForDummyChunks = labels.Labels{
+	{Name: labels.MetricName, Value: "foo"},
+	{Name: "bar", Value: "baz"},
+	{Name: "toms", Value: "code"},
+}
+
 func dummyChunk(now model.Time) Chunk {
-	return dummyChunkFor(now, labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "baz"},
-		{Name: "toms", Value: "code"},
-	})
+	return dummyChunkFor(now, labelsForDummyChunks)
 }
 
 func dummyChunkForEncoding(now model.Time, metric labels.Labels, enc encoding.Encoding, samples int) Chunk {
@@ -156,16 +158,11 @@ func TestParseExternalKey(t *testing.T) {
 
 func TestChunksToMatrix(t *testing.T) {
 	// Create 2 chunks which have the same metric
-	metric := labels.Labels{
-		{Name: model.MetricNameLabel, Value: "foo"},
-		{Name: "bar", Value: "baz"},
-		{Name: "toms", Value: "code"},
-	}
 	now := model.Now()
-	chunk1 := dummyChunkFor(now, metric)
+	chunk1 := dummyChunkFor(now, labelsForDummyChunks)
 	chunk1Samples, err := chunk1.Samples(chunk1.From, chunk1.Through)
 	require.NoError(t, err)
-	chunk2 := dummyChunkFor(now, metric)
+	chunk2 := dummyChunkFor(now, labelsForDummyChunks)
 	chunk2Samples, err := chunk2.Samples(chunk2.From, chunk2.Through)
 	require.NoError(t, err)
 
