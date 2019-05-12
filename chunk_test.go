@@ -126,6 +126,33 @@ func TestChunkCodec(t *testing.T) {
 	}
 }
 
+const fixedTimestamp = model.Time(1557654321000)
+
+func encodeForCompatibilityTest(t *testing.T) {
+	dummy := dummyChunkForEncoding(fixedTimestamp, labelsForDummyChunks, encoding.Bigchunk, 1)
+	encoded, err := dummy.Encoded()
+	require.NoError(t, err)
+	fmt.Printf("%q\n%q\n", dummy.ExternalKey(), encoded)
+}
+
+func TestChunkDecodeBackwardsCompatibility(t *testing.T) {
+	// Chunk encoded using code at commit b1777a50ab19
+	rawData := []byte("\x00\x00\x00\xb7\xff\x06\x00\x00sNaPpY\x01\xa5\x00\x00\x04\xc7a\xba{\"fingerprint\":18245339272195143978,\"userID\":\"userID\",\"from\":1557650721,\"through\":1557654321,\"metric\":{\"bar\":\"baz\",\"toms\":\"code\",\"__name__\":\"foo\"},\"encoding\":3}\n\x00\x00\x00\x15\x01\x00\x11\x00\x00\x01\xd0\xdd\xf5\xb6\xd5Z\x00\x00\x00\x00\x00\x00\x00\x00\x00")
+	decodeContext := NewDecodeContext()
+	have, err := ParseExternalKey(userID, "userID/fd3477666dacf92a:16aab37c8e8:16aab6eb768:38eb373c")
+	require.NoError(t, err)
+	require.NoError(t, have.Decode(decodeContext, rawData))
+	want := dummyChunkForEncoding(fixedTimestamp, labelsForDummyChunks, encoding.Bigchunk, 1)
+	// We can't just compare these two chunks, since the Bigchunk internals are different on construction and read-in.
+	// Compare the serialised version instead
+	require.NoError(t, have.Encode())
+	require.NoError(t, want.Encode())
+	haveEncoded, _ := have.Encoded()
+	wantEncoded, _ := want.Encoded()
+	require.Equal(t, haveEncoded, wantEncoded)
+	require.Equal(t, have.ExternalKey(), want.ExternalKey())
+}
+
 func TestParseExternalKey(t *testing.T) {
 	for _, c := range []struct {
 		key   string
