@@ -9,34 +9,10 @@ import (
 
 	"github.com/grafana/loki/pkg/logentry/metric"
 	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/prometheus/common/model"
 )
 
-const (
-	MetricTypeCounter   = "counter"
-	MetricTypeGauge     = "gauge"
-	MetricTypeHistogram = "histogram"
-)
-
-type MetricConfig struct {
-	MetricType  string    `mapstructure:"type"`
-	Description string    `mapstructure:"description"`
-	Source      *string   `mapstructure:"source"`
-	Buckets     []float64 `mapstructure:"buckets"`
-}
-
-type MetricsConfig map[string]MetricConfig
-
-type Valuer interface {
-	Value(source *string) (interface{}, error)
-}
-
-type StageValuer interface {
-	Process(labels model.LabelSet, time *time.Time, entry *string) Valuer
-}
-
-func withMetric(s StageValuer, cfg MetricsConfig, registry prometheus.Registerer) Stage {
+func withMetric(s Mutator, cfg MetricsConfig, registry prometheus.Registerer) Stage {
 	if registry == nil {
 		return StageFunc(func(labels model.LabelSet, time *time.Time, entry *string) {
 			_ = s.Process(labels, time, entry)
@@ -53,16 +29,16 @@ func withMetric(s StageValuer, cfg MetricsConfig, registry prometheus.Registerer
 
 func newMetric(cfgs MetricsConfig, registry prometheus.Registerer) *metricStage {
 	metrics := map[string]prometheus.Collector{}
-	for name, config := range cfgs {
+	for name, cfg := range cfgs {
 		var collector prometheus.Collector
 
-		switch strings.ToLower(config.MetricType) {
+		switch strings.ToLower(cfg.MetricType) {
 		case MetricTypeCounter:
-			collector = metric.NewCounters(name, config.Description)
+			collector = metric.NewCounters(name, cfg.Description)
 		case MetricTypeGauge:
-			collector = metric.NewGauges(name, config.Description)
+			collector = metric.NewGauges(name, cfg.Description)
 		case MetricTypeHistogram:
-			collector = metric.NewHistograms(name, config.Description, config.Buckets)
+			collector = metric.NewHistograms(name, cfg.Description, cfg.Buckets)
 		}
 		if collector != nil {
 			registry.MustRegister(collector)
@@ -80,7 +56,7 @@ type metricStage struct {
 	metrics map[string]prometheus.Collector
 }
 
-func (m *metricStage) process(v Valuer, labels model.LabelSet) {
+func (m *metricStage) process(v Extractor, labels model.LabelSet) {
 	for name, collector := range m.metrics {
 		switch vec := collector.(type) {
 		case *metric.Counters:
@@ -93,8 +69,8 @@ func (m *metricStage) process(v Valuer, labels model.LabelSet) {
 	}
 }
 
-func recordCounter(counter prometheus.Counter, v Valuer, cfg MetricConfig) {
-	unk, err := v.Value(cfg.Source)
+func recordCounter(counter prometheus.Counter, e Extractor, cfg MetricConfig) {
+	unk, err := e.Value(cfg.Source)
 	if err != nil {
 		return
 	}
@@ -105,8 +81,8 @@ func recordCounter(counter prometheus.Counter, v Valuer, cfg MetricConfig) {
 	counter.Add(f)
 }
 
-func recordGauge(gauge prometheus.Gauge, v Valuer, cfg MetricConfig) {
-	unk, err := v.Value(cfg.Source)
+func recordGauge(gauge prometheus.Gauge, e Extractor, cfg MetricConfig) {
+	unk, err := e.Value(cfg.Source)
 	if err != nil {
 		return
 	}
@@ -114,11 +90,12 @@ func recordGauge(gauge prometheus.Gauge, v Valuer, cfg MetricConfig) {
 	if err != nil {
 		return
 	}
+	//todo Gauge we be able to add,inc,dec,set
 	gauge.Add(f)
 }
 
-func recordHistogram(histogram prometheus.Histogram, v Valuer, cfg MetricConfig) {
-	unk, err := v.Value(cfg.Source)
+func recordHistogram(histogram prometheus.Histogram, e Extractor, cfg MetricConfig) {
+	unk, err := e.Value(cfg.Source)
 	if err != nil {
 		return
 	}

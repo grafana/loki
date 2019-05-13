@@ -34,7 +34,7 @@ type Pipeline struct {
 }
 
 // NewPipeline creates a new log entry pipeline from a configuration
-func NewPipeline(logger log.Logger, stgs PipelineStages, jobName string) (*Pipeline, error) {
+func NewPipeline(logger log.Logger, stgs PipelineStages, jobName string, logRegistry prometheus.Registerer) (*Pipeline, error) {
 	st := []stages.Stage{}
 	for _, s := range stgs {
 		stage, ok := s.(map[interface{}]interface{})
@@ -50,32 +50,11 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName string) (*Pipel
 			if !ok {
 				return nil, errors.New("pipeline stage key must be a string")
 			}
-			switch name {
-			case "json":
-				json, err := stages.NewJSON(logger, config)
-				if err != nil {
-					return nil, errors.Wrap(err, "invalid json stage config")
-				}
-				st = append(st, json)
-			case "regex":
-				regex, err := stages.NewRegex(logger, config)
-				if err != nil {
-					return nil, errors.Wrap(err, "invalid regex stage config")
-				}
-				st = append(st, regex)
-			case "docker":
-				docker, err := stages.NewDocker(logger)
-				if err != nil {
-					return nil, errors.Wrap(err, "invalid docker stage config")
-				}
-				st = append(st, docker)
-			case "cri":
-				cri, err := stages.NewCRI(logger)
-				if err != nil {
-					return nil, errors.Wrap(err, "invalid cri stage config")
-				}
-				st = append(st, cri)
+			newStage, err := stages.New(logger, name, config, logRegistry)
+			if err != nil {
+				return nil, errors.Wrapf(err, "invalid %s stage config", name)
 			}
+			st = append(st, newStage)
 		}
 	}
 	return &Pipeline{

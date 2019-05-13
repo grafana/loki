@@ -6,7 +6,7 @@ import (
 
 // NewDocker creates a Docker json log format specific pipeline stage.
 func NewDocker(logger log.Logger) (Stage, error) {
-	config := map[string]interface{}{
+	cfg := map[string]interface{}{
 		"timestamp": map[string]interface{}{
 			"source": "time",
 			"format": "RFC3339",
@@ -20,12 +20,12 @@ func NewDocker(logger log.Logger) (Stage, error) {
 			"source": "log",
 		},
 	}
-	return NewJSON(logger, config, nil)
+	return New(logger, StageTypeJSON, cfg, nil)
 }
 
 // NewCRI creates a CRI format specific pipeline stage
 func NewCRI(logger log.Logger) (Stage, error) {
-	config := map[string]interface{}{
+	cfg := map[string]interface{}{
 		"expression": "^(?s)(?P<time>\\S+?) (?P<stream>stdout|stderr) (?P<flags>\\S+?) (?P<content>.*)$",
 		"timestamp": map[string]interface{}{
 			"source": "time",
@@ -40,5 +40,5 @@ func NewCRI(logger log.Logger) (Stage, error) {
 			"source": "content",
 		},
 	}
-	return NewRegex(logger, config)
+	return New(logger, StageTypeRegex, cfg, nil)
 }

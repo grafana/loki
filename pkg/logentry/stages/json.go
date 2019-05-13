@@ -8,47 +8,12 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/jmespath/go-jmespath"
-	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 )
 
-// JSONTimestamp configures timestamp extraction
-type JSONTimestamp struct {
-	Source *string `mapstructure:"source"`
-	Format string  `mapstructure:"format"`
-}
-
-// JSONLabel configures a labels value extraction
-type JSONLabel struct {
-	Source *string `mapstructure:"source"`
-}
-
-// JSONOutput configures output value extraction
-type JSONOutput struct {
-	Source *string `mapstructure:"source"`
-}
-
-// JSONConfig configures the log entry parser to extract value from json
-type JSONConfig struct {
-	Timestamp *JSONTimestamp        `mapstructure:"timestamp"`
-	Output    *JSONOutput           `mapstructure:"output"`
-	Labels    map[string]*JSONLabel `mapstructure:"labels"`
-	Metrics   MetricsConfig         `mapstructure:"metrics"`
-}
-
-func newJSONConfig(config interface{}) (*JSONConfig, error) {
-	cfg := &JSONConfig{}
-	err := mapstructure.Decode(config, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return cfg, nil
-}
-
-// validate the config and returns a map of necessary jmespath expressions.
-func (c *JSONConfig) validate() (map[string]*jmespath.JMESPath, error) {
+// validateJsonConfig a json config and returns a map of necessary jmespath expressions.
+func validateJsonConfig(c *StageConfig) (map[string]*jmespath.JMESPath, error) {
 	if c.Output == nil && len(c.Labels) == 0 && c.Timestamp == nil && len(c.Metrics) == 0 {
 		return nil, errors.New("empty json parser configuration")
 	}
@@ -105,44 +70,40 @@ func (c *JSONConfig) validate() (map[string]*jmespath.JMESPath, error) {
 	return expressions, nil
 }
 
-type jsonStage struct {
-	cfg         *JSONConfig
+type jsonMutator struct {
+	cfg         *StageConfig
 	expressions map[string]*jmespath.JMESPath
 	logger      log.Logger
 }
 
-// NewJSON creates a new json stage from a config.
-func NewJSON(logger log.Logger, config interface{}, registerer prometheus.Registerer) (Stage, error) {
-	cfg, err := newJSONConfig(config)
+// newJSONMutator creates a new json stage from a config.
+func newJSONMutator(logger log.Logger, cfg *StageConfig) (*jsonMutator, error) {
+	expressions, err := validateJsonConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
-	expressions, err := cfg.validate()
-	if err != nil {
-		return nil, err
-	}
-	return withMetric(&jsonStage{
+	return &jsonMutator{
 		cfg:         cfg,
 		expressions: expressions,
-		logger:      log.With(logger, "component", "parser", "type", "json"),
-	}, cfg.Metrics, registerer), nil
+		logger:      log.With(logger, "component", "mutator", "type", "json"),
+	}, nil
 }
 
-// Process implement a pipeline stage
-func (j *jsonStage) Process(labels model.LabelSet, t *time.Time, entry *string) Valuer {
+// Process implements Mutator
+func (j *jsonMutator) Process(labels model.LabelSet, t *time.Time, entry *string) Extractor {
 	if entry == nil {
 		level.Debug(j.logger).Log("msg", "cannot parse a nil entry")
 		return nil
 	}
-	valuer, err := newJSONValuer(*entry, j.expressions)
+	extractor, err := newJSONExtractor(*entry, j.expressions)
 	if err != nil {
-		level.Debug(j.logger).Log("msg", "failed to create json valuer", "err", err)
+		level.Debug(j.logger).Log("msg", "failed to create json extractor", "err", err)
 		return nil
 	}
 
 	// parsing ts
 	if j.cfg.Timestamp != nil {
-		ts, err := parseTimestamp(valuer, j.cfg.Timestamp)
+		ts, err := parseTimestamp(extractor, j.cfg.Timestamp)
 		if err != nil {
 			level.Debug(j.logger).Log("msg", "failed to parse timestamp", "err", err)
 		} else {
@@ -156,7 +117,7 @@ func (j *jsonStage) Process(labels model.LabelSet, t *time.Time, entry *string) 
 		if lSrc != nil {
 			src = lSrc.Source
 		}
-		lValue, err := valuer.getJSONString(src, lName)
+		lValue, err := extractor.getJSONString(src, lName)
 		if err != nil {
 			level.Debug(j.logger).Log("msg", "failed to get json string", "err", err)
 			continue
@@ -172,47 +133,48 @@ func (j *jsonStage) Process(labels model.LabelSet, t *time.Time, entry *string) 
 
 	// parsing output
 	if j.cfg.Output != nil {
-		output, err := parseOutput(valuer, j.cfg.Output)
+		output, err := parseOutput(extractor, j.cfg.Output)
 		if err != nil {
 			level.Debug(j.logger).Log("msg", "failed to parse output", "err", err)
 		} else {
 			*entry = output
 		}
 	}
-	return valuer
+	return extractor
 }
 
-type jsonValuer struct {
+type jsonExtractor struct {
 	exprmap map[string]*jmespath.JMESPath
 	data    map[string]interface{}
 }
 
-func newJSONValuer(entry string, exprmap map[string]*jmespath.JMESPath) (*jsonValuer, error) {
+func newJSONExtractor(entry string, exprmap map[string]*jmespath.JMESPath) (*jsonExtractor, error) {
 	var data map[string]interface{}
 	if err := json.Unmarshal([]byte(entry), &data); err != nil {
 		return nil, err
 	}
-	return &jsonValuer{
+	return &jsonExtractor{
 		data:    data,
 		exprmap: exprmap,
 	}, nil
 }
 
-func (v *jsonValuer) Value(expr *string) (interface{}, error) {
-	return v.exprmap[*expr].Search(v.data)
+// Value implements Extractor
+func (e *jsonExtractor) Value(expr *string) (interface{}, error) {
+	return e.exprmap[*expr].Search(e.data)
 }
 
-func (v *jsonValuer) getJSONString(expr *string, fallback string) (result string, err error) {
+func (e *jsonExtractor) getJSONString(expr *string, fallback string) (result string, err error) {
 	var ok bool
 	if expr == nil {
-		result, ok = v.data[fallback].(string)
+		result, ok = e.data[fallback].(string)
 		if !ok {
-			return result, fmt.Errorf("%s is not a string but %T", fallback, v.data[fallback])
+			return result, fmt.Errorf("%s is not a string but %T", fallback, e.data[fallback])
 		}
 		return
 	}
 	var searchResult interface{}
-	if searchResult, err = v.Value(expr); err != nil {
+	if searchResult, err = e.Value(expr); err != nil {
 		return
 	}
 	if result, ok = searchResult.(string); !ok {
@@ -222,8 +184,8 @@ func (v *jsonValuer) getJSONString(expr *string, fallback string) (result string
 	return
 }
 
-func parseOutput(v Valuer, cfg *JSONOutput) (string, error) {
-	jsonObj, err := v.Value(cfg.Source)
+func parseOutput(e Extractor, cfg *OutputConfig) (string, error) {
+	jsonObj, err := e.Value(cfg.Source)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to fetch json value")
 	}
@@ -240,8 +202,8 @@ func parseOutput(v Valuer, cfg *JSONOutput) (string, error) {
 	return string(b), nil
 }
 
-func parseTimestamp(v *jsonValuer, cfg *JSONTimestamp) (time.Time, error) {
-	ts, err := v.getJSONString(cfg.Source, "timestamp")
+func parseTimestamp(e *jsonExtractor, cfg *TimestampConfig) (time.Time, error) {
+	ts, err := e.getJSONString(cfg.Source, "timestamp")
 	if err != nil {
 		return time.Time{}, err
 	}
