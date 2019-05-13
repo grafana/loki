@@ -4,6 +4,7 @@ server:
 
 positions:
   filename: /tmp/positions.yaml
+  sync_period: 10ms
 
 clients:
   - url: http://localhost:3100/api/prom/push
