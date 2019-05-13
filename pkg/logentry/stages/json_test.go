@@ -171,7 +171,7 @@ func TestJSONConfig_validate(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create config: %s", err)
 			}
-			got, err := validateJsonConfig(c)
+			got, err := validateJSONConfig(c)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("JSONConfig.validate() error = %v, wantErr %v", err, tt.wantErr)
 				return

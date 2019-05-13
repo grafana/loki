@@ -5,10 +5,12 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+// Counters is a vector of counters for a each log stream.
 type Counters struct {
 	*metricVec
 }
 
+// NewCounters creates a new counter vec.
 func NewCounters(name, help string) *Counters {
 	return &Counters{
 		metricVec: newMetricVec(func(labels map[string]string) prometheus.Metric {
@@ -20,6 +22,7 @@ func NewCounters(name, help string) *Counters {
 		})}
 }
 
+// With returns the counter associated with a stream labelset.
 func (c *Counters) With(labels model.LabelSet) prometheus.Counter {
 	return c.metricVec.With(labels).(prometheus.Counter)
 }

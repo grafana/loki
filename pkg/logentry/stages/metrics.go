@@ -12,21 +12,23 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+// withMetric mutates a log line using a Mutator and records metrics from Extractor.
 func withMetric(s Mutator, cfg MetricsConfig, registry prometheus.Registerer) Stage {
 	if registry == nil {
 		return StageFunc(func(labels model.LabelSet, time *time.Time, entry *string) {
 			_ = s.Process(labels, time, entry)
 		})
 	}
-	metricStage := newMetric(cfg, registry)
+	metrics := newMetric(cfg, registry)
 	return StageFunc(func(labels model.LabelSet, time *time.Time, entry *string) {
-		valuer := s.Process(labels, time, entry)
-		if valuer != nil {
-			metricStage.process(valuer, labels)
+		extractor := s.Process(labels, time, entry)
+		if extractor != nil {
+			metrics.process(extractor, labels)
 		}
 	})
 }
 
+// newMetric creates a new set of metrics to process for each log entry
 func newMetric(cfgs MetricsConfig, registry prometheus.Registerer) *metricStage {
 	metrics := map[string]prometheus.Collector{}
 	for name, cfg := range cfgs {

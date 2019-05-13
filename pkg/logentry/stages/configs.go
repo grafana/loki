@@ -13,6 +13,7 @@ const (
 	StageTypeRegex = "regex"
 )
 
+// MetricConfig is a single metrics configuration.
 type MetricConfig struct {
 	MetricType  string    `mapstructure:"type"`
 	Description string    `mapstructure:"description"`
@@ -20,25 +21,26 @@ type MetricConfig struct {
 	Buckets     []float64 `mapstructure:"buckets"`
 }
 
+// MetricsConfig is a set of configured metrics.
 type MetricsConfig map[string]MetricConfig
 
-// JSONTimestamp configures timestamp extraction
+// TimestampConfig configures timestamp extraction
 type TimestampConfig struct {
 	Source *string `mapstructure:"source"`
 	Format string  `mapstructure:"format"`
 }
 
-// JSONLabel configures a labels value extraction
+// LabelConfig configures a labels value extraction
 type LabelConfig struct {
 	Source *string `mapstructure:"source"`
 }
 
-// JSONOutput configures output value extraction
+// OutputConfig configures output value extraction
 type OutputConfig struct {
 	Source *string `mapstructure:"source"`
 }
 
-// JSONConfig configures the log entry parser to extract value from json
+// StageConfig configures the log entry parser to extract value from
 type StageConfig struct {
 	Timestamp  *TimestampConfig        `mapstructure:"timestamp"`
 	Output     *OutputConfig           `mapstructure:"output"`
@@ -48,6 +50,7 @@ type StageConfig struct {
 	Expression string                  `mapstructure:"expression"`
 }
 
+// NewConfig creates a new config from an interface using mapstructure
 func NewConfig(config interface{}) (*StageConfig, error) {
 	cfg := &StageConfig{}
 	err := mapstructure.Decode(config, cfg)

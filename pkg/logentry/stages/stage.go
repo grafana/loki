@@ -22,6 +22,7 @@ func (s StageFunc) Process(labels model.LabelSet, time *time.Time, entry *string
 	s(labels, time, entry)
 }
 
+// New creates a new stage for the given type and configuration.
 func New(logger log.Logger, stageType string, cfg interface{}, registerer prometheus.Registerer) (Stage, error) {
 	switch stageType {
 	case "docker":
