@@ -36,18 +36,18 @@ func TestRegexMapStructure(t *testing.T) {
 	if !ok {
 		t.Fatalf("could not read parser %+v", mapstruct["regex"])
 	}
-	got, err := newRegexConfig(p)
+	got, err := NewConfig(p)
 	if err != nil {
 		t.Fatalf("could not create parser from yaml: %s", err)
 	}
-	want := &RegexConfig{
-		Labels: map[string]*RegexLabel{
+	want := &StageConfig{
+		Labels: map[string]*LabelConfig{
 			"stream": {
 				Source: String("stream"),
 			},
 		},
-		Output: &RegexOutput{Source: String("log")},
-		Timestamp: &RegexTimestamp{
+		Output: &OutputConfig{Source: String("log")},
+		Timestamp: &TimestampConfig{
 			Format: "RFC3339",
 			Source: String("time"),
 		},
@@ -181,11 +181,11 @@ func TestRegexConfig_validate(t *testing.T) {
 	for tName, tt := range tests {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
-			c, err := newRegexConfig(tt.config)
+			c, err := NewConfig(tt.config)
 			if err != nil {
 				t.Fatalf("failed to create config: %s", err)
 			}
-			_, err = c.validate()
+			_, err = validateRegexConfig(c)
 			if (err != nil) != (tt.err != nil) {
 				t.Errorf("RegexConfig.validate() expected error = %v, actual error = %v", tt.err, err)
 				return
@@ -358,7 +358,7 @@ func TestRegexParser_Parse(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			p, err := NewRegex(util.Logger, tt.config)
+			p, err := New(util.Logger, StageTypeRegex, tt.config, nil)
 			if err != nil {
 				t.Fatalf("failed to create regex parser: %s", err)
 			}
@@ -402,7 +402,7 @@ func Benchmark(b *testing.B) {
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			stage, err := NewRegex(util.Logger, bm.config)
+			stage, err := New(util.Logger, StageTypeRegex, bm.config, nil)
 			if err != nil {
 				panic(err)
 			}

@@ -703,7 +703,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:ad2a544bc4bc4fcaa6f0b1622c4f8652da6e74b101925c263b912232e1b68cf2"
+  digest = "1:dff66fce6bb8fa6111998bf3575e22aa3d0fd2560712a83de3390236d3cd1f6b"
   name = "github.com/prometheus/client_golang"
   packages = [
     "api",
@@ -711,6 +711,7 @@
     "prometheus",
     "prometheus/internal",
     "prometheus/promauto",
+    "prometheus/promhttp",
     "prometheus/testutil",
   ]
   pruneopts = "UT"
@@ -1407,6 +1408,7 @@
     "github.com/pkg/errors",
     "github.com/prometheus/client_golang/prometheus",
     "github.com/prometheus/client_golang/prometheus/promauto",
+    "github.com/prometheus/client_golang/prometheus/promhttp",
     "github.com/prometheus/client_golang/prometheus/testutil",
     "github.com/prometheus/common/config",
     "github.com/prometheus/common/model",

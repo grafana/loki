@@ -33,18 +33,18 @@ func TestYamlMapStructure(t *testing.T) {
 	if !ok {
 		t.Fatalf("could not read parser %+v", mapstruct["json"])
 	}
-	got, err := newJSONConfig(p)
+	got, err := NewConfig(p)
 	if err != nil {
 		t.Fatalf("could not create parser from yaml: %s", err)
 	}
-	want := &JSONConfig{
-		Labels: map[string]*JSONLabel{
+	want := &StageConfig{
+		Labels: map[string]*LabelConfig{
 			"stream": {
 				Source: String("json_key_name.json_sub_key_name"),
 			},
 		},
-		Output: &JSONOutput{Source: String("log")},
-		Timestamp: &JSONTimestamp{
+		Output: &OutputConfig{Source: String("log")},
+		Timestamp: &TimestampConfig{
 			Format: "RFC3339",
 			Source: String("time"),
 		},
@@ -167,11 +167,11 @@ func TestJSONConfig_validate(t *testing.T) {
 	for tName, tt := range tests {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
-			c, err := newJSONConfig(tt.config)
+			c, err := NewConfig(tt.config)
 			if err != nil {
 				t.Fatalf("failed to create config: %s", err)
 			}
-			got, err := c.validate()
+			got, err := validateJsonConfig(c)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("JSONConfig.validate() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -317,7 +317,7 @@ func TestJSONParser_Parse(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			p, err := NewJSON(util.Logger, tt.config, nil)
+			p, err := New(util.Logger, StageTypeJSON, tt.config, nil)
 			if err != nil {
 				t.Fatalf("failed to create json parser: %s", err)
 			}

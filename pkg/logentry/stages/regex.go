@@ -7,43 +7,9 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 )
-
-// RegexTimestamp configures timestamp extraction
-type RegexTimestamp struct {
-	Source *string `mapstructure:"source"`
-	Format string  `mapstructure:"format"`
-}
-
-// RegexLabel configures a labels value extraction
-type RegexLabel struct {
-	Source *string `mapstructure:"source"`
-}
-
-// RegexOutput configures output value extraction
-type RegexOutput struct {
-	Source *string `mapstructure:"source"`
-}
-
-// RegexConfig configures the log entry parser to extract value from regex
-type RegexConfig struct {
-	Timestamp  *RegexTimestamp        `mapstructure:"timestamp"`
-	Expression string                 `mapstructure:"expression"`
-	Output     *RegexOutput           `mapstructure:"output"`
-	Labels     map[string]*RegexLabel `mapstructure:"labels"`
-}
-
-func newRegexConfig(config interface{}) (*RegexConfig, error) {
-	cfg := &RegexConfig{}
-	err := mapstructure.Decode(config, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return cfg, nil
-}
 
 // Config Errors
 const (
@@ -58,7 +24,7 @@ const (
 )
 
 // validate the config and return a
-func (c *RegexConfig) validate() (*regexp.Regexp, error) {
+func validateRegexConfig(c *StageConfig) (*regexp.Regexp, error) {
 
 	if c.Output == nil && len(c.Labels) == 0 && c.Timestamp == nil {
 		return nil, errors.New(ErrEmptyRegexStageConfig)
@@ -102,7 +68,7 @@ func (c *RegexConfig) validate() (*regexp.Regexp, error) {
 		}
 		if labelSrc == nil || *labelSrc.Source == "" {
 			lName := labelName
-			c.Labels[labelName] = &RegexLabel{
+			c.Labels[labelName] = &LabelConfig{
 				&lName,
 			}
 		}
@@ -111,51 +77,41 @@ func (c *RegexConfig) validate() (*regexp.Regexp, error) {
 	return expr, nil
 }
 
-type regexStage struct {
-	cfg        *RegexConfig
+type regexMutator struct {
+	cfg        *StageConfig
 	expression *regexp.Regexp
 	logger     log.Logger
 }
 
 // NewRegex creates a new regular expression based pipeline processing stage.
-func NewRegex(logger log.Logger, config interface{}) (Stage, error) {
-	cfg, err := newRegexConfig(config)
+func newRegexMutator(logger log.Logger, cfg *StageConfig) (Mutator, error) {
+	expression, err := validateRegexConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
-	expression, err := cfg.validate()
-	if err != nil {
-		return nil, err
-	}
-	return &regexStage{
+	return &regexMutator{
 		cfg:        cfg,
 		expression: expression,
-		logger:     log.With(logger, "component", "parser", "type", "regex"),
+		logger:     log.With(logger, "component", "mutator", "type", "regex"),
 	}, nil
 }
 
-// Process implements a pipeline stage
-func (r *regexStage) Process(labels model.LabelSet, t *time.Time, entry *string) {
+// Process implements Mutator
+func (r *regexMutator) Process(labels model.LabelSet, t *time.Time, entry *string) Extractor {
 	if entry == nil {
 		level.Debug(r.logger).Log("msg", "cannot parse a nil entry")
-		return
+		return nil
 	}
 
-	match := r.expression.FindStringSubmatch(*entry)
-	if match == nil {
-		level.Debug(r.logger).Log("msg", "regex failed to match")
-		return
-	}
-	groups := make(map[string]string)
-	for i, name := range r.expression.SubexpNames() {
-		if i != 0 && name != "" {
-			groups[name] = match[i]
-		}
+	extractor, err := newRegexExtractor(*entry, r.expression)
+	if err != nil {
+		level.Debug(r.logger).Log("msg", "failed to create regex extractor", "err", err)
+		return nil
 	}
 
 	// Parsing timestamp.
 	if r.cfg.Timestamp != nil {
-		if ts, ok := groups[*r.cfg.Timestamp.Source]; ok {
+		if ts, ok := extractor.groups[*r.cfg.Timestamp.Source]; ok {
 			parsedTs, err := time.Parse(r.cfg.Timestamp.Format, ts)
 			if err != nil {
 				level.Debug(r.logger).Log("msg", "failed to parse time", "err", err, "format", r.cfg.Timestamp.Format, "value", ts)
@@ -169,7 +125,7 @@ func (r *regexStage) Process(labels model.LabelSet, t *time.Time, entry *string)
 
 	// Parsing labels.
 	for lName, lSrc := range r.cfg.Labels {
-		lValue, ok := groups[*lSrc.Source]
+		lValue, ok := extractor.groups[*lSrc.Source]
 		if !ok {
 			continue
 		}
@@ -183,11 +139,41 @@ func (r *regexStage) Process(labels model.LabelSet, t *time.Time, entry *string)
 
 	// Parsing output.
 	if r.cfg.Output != nil {
-		if o, ok := groups[*r.cfg.Output.Source]; ok {
+		if o, ok := extractor.groups[*r.cfg.Output.Source]; ok {
 			*entry = o
 		} else {
 			level.Debug(r.logger).Log("msg", "regex didn't match output source")
 		}
 	}
 
+	return extractor
+}
+
+type regexExtractor struct {
+	groups map[string]string
+}
+
+func newRegexExtractor(entry string, expression *regexp.Regexp) (*regexExtractor, error) {
+	match := expression.FindStringSubmatch(entry)
+	if match == nil {
+		return nil, errors.New("regex failed to match")
+	}
+	groups := make(map[string]string)
+	for i, name := range expression.SubexpNames() {
+		if i != 0 && name != "" {
+			groups[name] = match[i]
+		}
+	}
+	return &regexExtractor{groups: groups}, nil
+}
+
+// Value implements Extractor
+func (e *regexExtractor) Value(expr *string) (interface{}, error) {
+	if expr == nil {
+		return len(e.groups), nil
+	}
+	if value, ok := e.groups[*expr]; ok {
+		return value, nil
+	}
+	return nil, fmt.Errorf("expression not matched: %s", *expr)
 }
