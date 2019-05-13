@@ -2,6 +2,7 @@ package promtail
 
 import (
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/config"
@@ -35,12 +36,15 @@ func New(cfg config.Config) (*Promtail, error) {
 		return nil, err
 	}
 
-	tms, err := targets.NewTargetManagers(util.Logger, positions, client, cfg.ScrapeConfig, &cfg.TargetConfig)
+	// metrics from logs will be collected inside this registry
+	logRegistry := prometheus.NewRegistry()
+
+	tms, err := targets.NewTargetManagers(util.Logger, positions, client, cfg.ScrapeConfig, &cfg.TargetConfig, logRegistry)
 	if err != nil {
 		return nil, err
 	}
 
-	server, err := server.New(cfg.ServerConfig, tms)
+	server, err := server.New(cfg.ServerConfig, tms, logRegistry)
 	if err != nil {
 		return nil, err
 	}

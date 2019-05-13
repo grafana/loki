@@ -3,6 +3,7 @@ package targets
 import (
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
@@ -28,6 +29,7 @@ func NewTargetManagers(
 	client api.EntryHandler,
 	scrapeConfigs []scrape.Config,
 	targetConfig *Config,
+	logRegistry prometheus.Registerer,
 ) (*TargetManagers, error) {
 	var targetManagers []targetManager
 	var fileScrapeConfigs []scrape.Config
@@ -40,6 +42,7 @@ func NewTargetManagers(
 		client,
 		fileScrapeConfigs,
 		targetConfig,
+		logRegistry,
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to make file target manager")
