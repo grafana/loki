@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+// withMatcher runs a stage if matcher matches an entry labelset.
 func withMatcher(s Stage, matcher string) (Stage, error) {
 	if matcher == "" {
 		return s, nil

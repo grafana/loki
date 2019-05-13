@@ -22,8 +22,11 @@ func newMetricVec(factory func(labels map[string]string) prometheus.Metric) *met
 	}
 }
 
+// Describe implements prometheus.Collector and doesn't declare any metrics on purpose to bypass prometheus validation.
+// see https://godoc.org/github.com/prometheus/client_golang/prometheus#hdr-Custom_Collectors_and_constant_Metrics search for "unchecked"
 func (c *metricVec) Describe(ch chan<- *prometheus.Desc) {}
 
+// Collect implements prometheus.Collector
 func (c *metricVec) Collect(ch chan<- prometheus.Metric) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
@@ -32,6 +35,7 @@ func (c *metricVec) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
+// With returns the metric associated with the labelset.
 func (c *metricVec) With(labels model.LabelSet) prometheus.Metric {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()

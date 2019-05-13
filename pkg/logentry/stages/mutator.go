@@ -8,15 +8,17 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+// Extractor knows how to extract a value from a log line using an expression (e.g. regex and json)
 type Extractor interface {
-	Value(source *string) (interface{}, error)
+	Value(expression *string) (interface{}, error)
 }
 
-// return for other part of the stage.
+// Mutator mutates log entries and returns an Extractor for other part of the stage to extract values.
 type Mutator interface {
 	Process(labels model.LabelSet, time *time.Time, entry *string) Extractor
 }
 
+// newMutator creates a new Mutator for a given stage type.
 func newMutator(logger log.Logger, stageType string, cfg *StageConfig) (Mutator, error) {
 	switch stageType {
 	case StageTypeJSON:
