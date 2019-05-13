@@ -23,10 +23,10 @@ const (
 	ErrInvalidLabelName        = "invalid label name: %s"
 )
 
-// validate the config and return a
+// validateRegexConfig validates the config and return a regex
 func validateRegexConfig(c *StageConfig) (*regexp.Regexp, error) {
 
-	if c.Output == nil && len(c.Labels) == 0 && c.Timestamp == nil {
+	if c.Output == nil && len(c.Labels) == 0 && c.Timestamp == nil && len(c.Metrics) == 0 {
 		return nil, errors.New(ErrEmptyRegexStageConfig)
 	}
 
@@ -77,13 +77,14 @@ func validateRegexConfig(c *StageConfig) (*regexp.Regexp, error) {
 	return expr, nil
 }
 
+// regexMutator mutates log entries using regex
 type regexMutator struct {
 	cfg        *StageConfig
 	expression *regexp.Regexp
 	logger     log.Logger
 }
 
-// NewRegex creates a new regular expression based pipeline processing stage.
+// newRegexMutator creates a new regular expression Mutator.
 func newRegexMutator(logger log.Logger, cfg *StageConfig) (Mutator, error) {
 	expression, err := validateRegexConfig(cfg)
 	if err != nil {
@@ -149,10 +150,12 @@ func (r *regexMutator) Process(labels model.LabelSet, t *time.Time, entry *strin
 	return extractor
 }
 
+// regexExtractor extracts value from regular expressions.
 type regexExtractor struct {
 	groups map[string]string
 }
 
+// newRegexExtractor creates a new regexExtractor
 func newRegexExtractor(entry string, expression *regexp.Regexp) (*regexExtractor, error) {
 	match := expression.FindStringSubmatch(entry)
 	if match == nil {
@@ -167,7 +170,7 @@ func newRegexExtractor(entry string, expression *regexp.Regexp) (*regexExtractor
 	return &regexExtractor{groups: groups}, nil
 }
 
-// Value implements Extractor
+// Value implements Extractor, if expr is nil it returns the count of matched values.
 func (e *regexExtractor) Value(expr *string) (interface{}, error) {
 	if expr == nil {
 		return len(e.groups), nil
@@ -175,5 +178,5 @@ func (e *regexExtractor) Value(expr *string) (interface{}, error) {
 	if value, ok := e.groups[*expr]; ok {
 		return value, nil
 	}
-	return nil, fmt.Errorf("expression not matched: %s", *expr)
+	return nil, fmt.Errorf("group %s not matched", *expr)
 }

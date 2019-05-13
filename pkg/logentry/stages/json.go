@@ -12,8 +12,8 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-// validateJsonConfig a json config and returns a map of necessary jmespath expressions.
-func validateJsonConfig(c *StageConfig) (map[string]*jmespath.JMESPath, error) {
+// validateJSONConfig validates a json config and returns a map of necessary jmespath expressions.
+func validateJSONConfig(c *StageConfig) (map[string]*jmespath.JMESPath, error) {
 	if c.Output == nil && len(c.Labels) == 0 && c.Timestamp == nil && len(c.Metrics) == 0 {
 		return nil, errors.New("empty json parser configuration")
 	}
@@ -70,15 +70,16 @@ func validateJsonConfig(c *StageConfig) (map[string]*jmespath.JMESPath, error) {
 	return expressions, nil
 }
 
+// jsonMutator mutates log entries via json parsing.
 type jsonMutator struct {
 	cfg         *StageConfig
 	expressions map[string]*jmespath.JMESPath
 	logger      log.Logger
 }
 
-// newJSONMutator creates a new json stage from a config.
+// newJSONMutator creates a new json mutator from a config.
 func newJSONMutator(logger log.Logger, cfg *StageConfig) (*jsonMutator, error) {
-	expressions, err := validateJsonConfig(cfg)
+	expressions, err := validateJSONConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -143,11 +144,13 @@ func (j *jsonMutator) Process(labels model.LabelSet, t *time.Time, entry *string
 	return extractor
 }
 
+// jsonExtractor extracts value from log line via http://jmespath.org/ .
 type jsonExtractor struct {
 	exprmap map[string]*jmespath.JMESPath
 	data    map[string]interface{}
 }
 
+// newJSONExtractor creates a new Extractor.
 func newJSONExtractor(entry string, exprmap map[string]*jmespath.JMESPath) (*jsonExtractor, error) {
 	var data map[string]interface{}
 	if err := json.Unmarshal([]byte(entry), &data); err != nil {
