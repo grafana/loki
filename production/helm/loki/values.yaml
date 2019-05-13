@@ -57,7 +57,7 @@ config:
     filesystem:
       directory: /data/loki/chunks
   querier:
-    max_look_back_period: '720h'
+    max_look_back_period: '672h'
 
 deploymentStrategy: RollingUpdate
 
