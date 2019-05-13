@@ -47,7 +47,6 @@ defaults: &defaults
 jobs:
   test:
     <<: *defaults
-    resource_class: medium+
     steps:
       - checkout
 
