@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-// LogCount counts logs line for each stream.
+// LogCount counts log line for each stream.
 func LogCount(reg prometheus.Registerer, next api.EntryHandler) api.EntryHandler {
 	c := NewCounters("log_entries_total", "the total count of log entries")
 	reg.MustRegister(c)
@@ -21,7 +21,7 @@ func LogCount(reg prometheus.Registerer, next api.EntryHandler) api.EntryHandler
 	})
 }
 
-// LogSize observes log size for each stream.
+// LogSize observes log line size for each stream.
 func LogSize(reg prometheus.Registerer, next api.EntryHandler) api.EntryHandler {
 	c := NewHistograms("log_entries_bytes", "the total count of bytes", prometheus.ExponentialBuckets(16, 2, 8))
 	reg.MustRegister(c)
