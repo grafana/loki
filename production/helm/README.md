@@ -102,3 +102,20 @@ tls:
     hosts:
     - {{ .Values.ingress.host }}
 ```
+
+## How to contribute
+
+If you want to add any feature to helm chart, you can follow as below:
+
+```bash
+$ # do some changes to loki/promtail in the corresponding directory
+$ make helm
+$ helm upgrade --install loki ./loki-stack-*.tgz
+```
+
+After verify changes, need to bump chart version.
+For example, if you update the loki chart, you need to bump the version as following:
+
+```bash
+$ # update version loki/Chart.yaml
+$ # update version loki-stack/Chart.yaml
