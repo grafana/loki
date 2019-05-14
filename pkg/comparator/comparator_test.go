@@ -3,13 +3,20 @@ package comparator
 import (
 	"bytes"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestComparatorEntryReceivedOutOfOrder(t *testing.T) {
+	outOfOrderEntries = &mockCounter{}
+	missingEntries = &mockCounter{}
+	unexpectedEntries = &mockCounter{}
+
 	actual := &bytes.Buffer{}
 	c := NewComparator(actual, 1*time.Hour, 1*time.Hour)
 
@@ -24,13 +31,26 @@ func TestComparatorEntryReceivedOutOfOrder(t *testing.T) {
 	c.EntrySent(t4)
 
 	c.EntryReceived(t1)
+	assert.Equal(t, 3, c.Size())
 	c.EntryReceived(t4)
-	expected := fmt.Sprintf(ErrOutOfOrderEntry, t4, []time.Time{t2, t3})
+	assert.Equal(t, 2, c.Size())
+	c.EntryReceived(t2)
+	c.EntryReceived(t3)
+	assert.Equal(t, 0, c.Size())
 
+	expected := fmt.Sprintf(ErrOutOfOrderEntry, t4, []time.Time{t2, t3})
 	assert.Equal(t, expected, actual.String())
+
+	assert.Equal(t, 1, outOfOrderEntries.(*mockCounter).count)
+	assert.Equal(t, 0, unexpectedEntries.(*mockCounter).count)
+	assert.Equal(t, 0, missingEntries.(*mockCounter).count)
 }
 
 func TestComparatorEntryReceivedNotExpected(t *testing.T) {
+	outOfOrderEntries = &mockCounter{}
+	missingEntries = &mockCounter{}
+	unexpectedEntries = &mockCounter{}
+
 	actual := &bytes.Buffer{}
 	c := NewComparator(actual, 1*time.Hour, 1*time.Hour)
 
@@ -51,12 +71,19 @@ func TestComparatorEntryReceivedNotExpected(t *testing.T) {
 	assert.Equal(t, 1, c.Size())
 	c.EntryReceived(t4)
 	assert.Equal(t, 0, c.Size())
-	expected := ""
 
+	expected := ""
 	assert.Equal(t, expected, actual.String())
+
+	assert.Equal(t, 0, outOfOrderEntries.(*mockCounter).count)
+	assert.Equal(t, 1, unexpectedEntries.(*mockCounter).count)
+	assert.Equal(t, 0, missingEntries.(*mockCounter).count)
 }
 
 func TestEntryNeverReceived(t *testing.T) {
+	outOfOrderEntries = &mockCounter{}
+	missingEntries = &mockCounter{}
+	unexpectedEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
 	c := NewComparator(actual, 5*time.Millisecond, 2*time.Millisecond)
@@ -86,4 +113,39 @@ func TestEntryNeverReceived(t *testing.T) {
 	assert.Equal(t, expected, actual.String())
 	assert.Equal(t, 0, c.Size())
 
+	assert.Equal(t, 0, outOfOrderEntries.(*mockCounter).count)
+	assert.Equal(t, 0, unexpectedEntries.(*mockCounter).count)
+	assert.Equal(t, 1, missingEntries.(*mockCounter).count)
+
+}
+
+type mockCounter struct {
+	cLck  sync.Mutex
+	count int
+}
+
+func (m *mockCounter) Desc() *prometheus.Desc {
+	panic("implement me")
+}
+
+func (m *mockCounter) Write(*io_prometheus_client.Metric) error {
+	panic("implement me")
+}
+
+func (m *mockCounter) Describe(chan<- *prometheus.Desc) {
+	panic("implement me")
+}
+
+func (m *mockCounter) Collect(chan<- prometheus.Metric) {
+	panic("implement me")
+}
+
+func (m *mockCounter) Add(float64) {
+	panic("implement me")
+}
+
+func (m *mockCounter) Inc() {
+	m.cLck.Lock()
+	defer m.cLck.Unlock()
+	m.count++
 }

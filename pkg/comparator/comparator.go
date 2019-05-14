@@ -16,13 +16,31 @@ const (
 )
 
 var (
-	outOfOrderEntry = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "out_of_order_entry",
-		Help: "The total number of processed events",
+	totalEntries = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki_canary",
+		Name:      "total_entries",
+		Help:      "counts log entries written to the file",
 	})
-	missingEntry = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "missing_entry",
-		Help: "The total number of processed events",
+	outOfOrderEntries = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki_canary",
+		Name:      "out_of_order_entries",
+		Help:      "counts log entries received with a timestamp more recent than the others in the queue",
+	})
+	missingEntries = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki_canary",
+		Name:      "missing_entries",
+		Help:      "counts log entries not received within the maxWait duration and is reported as missing",
+	})
+	unexpectedEntries = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki_canary",
+		Name:      "unexpected_entries",
+		Help:      "counts a log entry received which was not expected (e.g. duplicate, received after reported missing)",
+	})
+	responseLatency = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "loki_canary",
+		Name:      "response_latency",
+		Help:      "is how long it takes for log lines to be returned from Loki in seconds.",
+		Buckets:   []float64{0.5, 1, 2.5, 5, 10, 30, 60},
 	})
 )
 
@@ -60,21 +78,26 @@ func (c *Comparator) EntrySent(time time.Time) {
 	c.entMtx.Lock()
 	defer c.entMtx.Unlock()
 	c.entries = append(c.entries, &time)
+	totalEntries.Inc()
 }
 
+// EntryReceived removes the received entry from the buffer if it exists, reports on out of order entries received
 func (c *Comparator) EntryReceived(ts time.Time) {
 	c.entMtx.Lock()
 	defer c.entMtx.Unlock()
 
 	// Output index
 	k := 0
+	matched := false
 	for i, e := range c.entries {
 		if ts.Equal(*e) {
+			matched = true
 			// If this isn't the first item in the list we received it out of order
 			if i != 0 {
-				outOfOrderEntry.Inc()
+				outOfOrderEntries.Inc()
 				_, _ = fmt.Fprintf(c.w, ErrOutOfOrderEntry, e, c.entries[:i])
 			}
+			responseLatency.Observe(time.Now().Sub(ts).Seconds())
 			// Do not increment output index, effectively causing this element to be dropped
 		} else {
 			// If the current index doesn't match the output index, update the array with the correct position
@@ -83,6 +106,9 @@ func (c *Comparator) EntryReceived(ts time.Time) {
 			}
 			k++
 		}
+	}
+	if !matched {
+		unexpectedEntries.Inc()
 	}
 	// Nil out the pointers to any trailing elements which were removed from the slice
 	for i := k; i < len(c.entries); i++ {
@@ -120,7 +146,7 @@ func (c *Comparator) pruneEntries() {
 	for i, e := range c.entries {
 		// If the time is outside our range, assume the entry has been lost report and remove it
 		if e.Before(time.Now().Add(-c.maxWait)) {
-			missingEntry.Inc()
+			missingEntries.Inc()
 			_, _ = fmt.Fprintf(c.w, ErrEntryNotReceived, e, c.maxWait.Seconds())
 		} else {
 			if i != k {
