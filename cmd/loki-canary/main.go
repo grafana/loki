@@ -37,11 +37,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	var ui *url.Userinfo
-	if *user != "" {
-		ui = url.UserPassword(*user, *pass)
-	}
-
 	scheme := "ws"
 	if *tls {
 		scheme = "wss"
@@ -50,7 +45,6 @@ func main() {
 	u := url.URL{
 		Scheme:   scheme,
 		Host:     *addr,
-		User:     ui,
 		Path:     "/api/prom/tail",
 		RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("{stream=\"stdout\",%v=\"%v\"}", *lName, *lVal)),
 	}
@@ -59,7 +53,7 @@ func main() {
 
 	c := comparator.NewComparator(os.Stderr, *wait, 1*time.Second)
 	w := writer.NewWriter(os.Stdout, c, *interval, *size)
-	r := reader.NewReader(os.Stderr, c, u, "", "")
+	r := reader.NewReader(os.Stderr, c, u, *user, *pass)
 
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
