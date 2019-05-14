@@ -105,20 +105,17 @@ tls:
 
 ## How to contribute
 
-If you want to add any feature to helm chart, you can follow as below:
+After adding your new feature to the appropriate chart, you can build and deploy it locally to test:
 
 ```bash
-$ # do some changes to loki/promtail in the corresponding directory
 $ make helm
 $ helm upgrade --install loki ./loki-stack-*.tgz
 ```
 
-After verify changes, need to bump chart version.
-For example, if you update the loki chart, you need to bump the version as following:
+After verifying your changes, you need to bump the chart version following [semantic versioning](https://semver.org) rules.
+For example, if you update the loki chart, you need to bump the versions as follows:
 
-```bash
-$ # update version loki/Chart.yaml
-$ # update version loki-stack/Chart.yaml
-```
+- Update version loki/Chart.yaml
+- Update version loki-stack/Chart.yaml
 
 You can use the `make helm-debug` to test and print out all chart templates. If you want to install helm (tiller) in your cluster use `make helm-install`, to install the current build in your Kubernetes cluster run `make helm-upgrade`.
