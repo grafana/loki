@@ -1,4 +1,4 @@
-local memcached = 'memcached/memcached.libsonnet';
+local memcached = import 'memcached/memcached.libsonnet';
 
 memcached {
   // Memcached instance used to cache chunks.

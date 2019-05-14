@@ -4,6 +4,8 @@
     cluster: error 'must define cluster',
     replication_factor: 3,
 
+    memcached_replicas: 3,
+
     table_prefix: $._config.namespace,
     bigtable_instance: error 'must specify bigtable instance',
     bigtable_project: error 'must specify bigtable project',
