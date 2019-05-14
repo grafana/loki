@@ -15,7 +15,10 @@ type Store interface {
 	Put(ctx context.Context, chunks []Chunk) error
 	PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error
 	Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error)
+	// GetChunkRefs returns the un-loaded chunks and the fetchers to be used to load them. You can load each slice of chunks ([]Chunk),
+	// using the corresponding Fetcher (fetchers[i].FetchChunks(ctx, chunks[i], ...)
 	GetChunkRefs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error)
+	LabelValuesForMetricName(ctx context.Context, from, through model.Time, metricName string, labelName string) ([]string, error)
 	Stop()
 }
 
@@ -87,6 +90,20 @@ func (c compositeStore) Get(ctx context.Context, from, through model.Time, match
 		return nil
 	})
 	return results, err
+}
+
+// LabelValuesForMetricName retrieves all label values for a single label name and metric name.
+func (c compositeStore) LabelValuesForMetricName(ctx context.Context, from, through model.Time, metricName string, labelName string) ([]string, error) {
+	var result []string
+	err := c.forStores(from, through, func(from, through model.Time, store Store) error {
+		labelValues, err := store.LabelValuesForMetricName(ctx, from, through, metricName, labelName)
+		if err != nil {
+			return err
+		}
+		result = append(result, labelValues...)
+		return nil
+	})
+	return result, err
 }
 
 func (c compositeStore) GetChunkRefs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {

@@ -187,7 +187,7 @@
 
 [[projects]]
   branch = "lazy-load-chunks"
-  digest = "1:bf1fa66c54722bc8664f1465e427cd6fe7df52f2b6fd5ab996baf37601687b70"
+  digest = "1:a999c29b3a215dfc12d374a9aac09c94c1b72ef530f4e39d9ab3ae1468cfe8e8"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/chunk",
@@ -213,7 +213,7 @@
     "pkg/util/validation",
   ]
   pruneopts = "UT"
-  revision = "95a3f308e95617732b76e337874e83ccf173cf14"
+  revision = "61b92520b0c1afdef6e42b7a27cca6c715e9f386"
   source = "https://github.com/grafana/cortex"
 
 [[projects]]
