@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,7 +21,6 @@ func main() {
 
 	lName := flag.String("labelname", "name", "The label name for this instance of loki-canary to use in the log selector")
 	lVal := flag.String("labelvalue", "loki-canary", "The unique label value for this instance of loki-canary to use in the log selector")
-	usePodName := flag.Bool("usepod", false, "If true, loki-canary will read the pod name from /etc/loki-canary/pod_name as the unique label value")
 	port := flag.Int("port", 3500, "Port which loki-canary should expose metrics")
 	addr := flag.String("addr", "", "The Loki server URL:Port, e.g. loki:3100")
 	tls := flag.Bool("tls", false, "Does the loki connection use TLS?")
@@ -34,17 +32,9 @@ func main() {
 	wait := flag.Duration("wait", 60*time.Second, "Duration to wait for log entries before reporting them lost")
 	flag.Parse()
 
-	val := *lVal
-	if *usePodName {
-		data, err := ioutil.ReadFile("/etc/loki-canary/name")
-		if err != nil {
-			panic(err)
-		}
-		val = string(data)
-	}
-
 	if *addr == "" {
-		panic("Must specify a Loki address with -addr")
+		_, _ = fmt.Fprintf(os.Stderr, "Must specify a Loki address with -addr\n")
+		os.Exit(1)
 	}
 
 	var ui *url.Userinfo
@@ -62,10 +52,10 @@ func main() {
 		Host:     *addr,
 		User:     ui,
 		Path:     "/api/prom/tail",
-		RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("{stream=\"stdout\",%v=\"%v\"}", *lName, val)),
+		RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("{stream=\"stdout\",%v=\"%v\"}", *lName, *lVal)),
 	}
 
-	_, _ = fmt.Fprintf(os.Stderr, "Connecting to loki at %v, querying for label '%v' with value '%v'\n", u.String(), *lName, val)
+	_, _ = fmt.Fprintf(os.Stderr, "Connecting to loki at %v, querying for label '%v' with value '%v'\n", u.String(), *lName, *lVal)
 
 	c := comparator.NewComparator(os.Stderr, *wait, 1*time.Second)
 	w := writer.NewWriter(os.Stdout, c, *interval, *size)
