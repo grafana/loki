@@ -4,8 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -24,7 +22,7 @@ const (
 	readLabel  = "read"
 	writeLabel = "write"
 
-	fsRetentionEnforcementInterval = 12 * time.Hour
+	bucketRetentionEnforcementInterval = 12 * time.Hour
 )
 
 var (
@@ -116,24 +114,25 @@ func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
 type TableManager struct {
-	client                TableClient
-	cfg                   TableManagerConfig
-	schemaCfg             SchemaConfig
-	maxChunkAge           time.Duration
-	done                  chan struct{}
-	wait                  sync.WaitGroup
-	directoryFromFsConfig string
+	client       TableClient
+	cfg          TableManagerConfig
+	schemaCfg    SchemaConfig
+	maxChunkAge  time.Duration
+	done         chan struct{}
+	wait         sync.WaitGroup
+	bucketClient BucketClient
 }
 
 // NewTableManager makes a new TableManager
-func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient, directoryFromFsConfig string) (*TableManager, error) {
+func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient,
+	objectClient BucketClient) (*TableManager, error) {
 	return &TableManager{
-		cfg:                   cfg,
-		schemaCfg:             schemaCfg,
-		maxChunkAge:           maxChunkAge,
-		client:                tableClient,
-		done:                  make(chan struct{}),
-		directoryFromFsConfig: directoryFromFsConfig,
+		cfg:          cfg,
+		schemaCfg:    schemaCfg,
+		maxChunkAge:  maxChunkAge,
+		client:       tableClient,
+		done:         make(chan struct{}),
+		bucketClient: objectClient,
 	}, nil
 }
 
@@ -142,13 +141,9 @@ func (m *TableManager) Start() {
 	m.wait.Add(1)
 	go m.loop()
 
-	if m.isFSRetentionEnforcementRequired() {
-		if m.directoryFromFsConfig == "" {
-			level.Error(util.Logger).Log("msg", "can't enforce filesystem retention with empty diretory path in config")
-			return
-		}
+	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled == true {
 		m.wait.Add(1)
-		go m.fsRetentionEnforcementLoop()
+		go m.bucketRetentionLoop()
 	}
 }
 
@@ -184,16 +179,16 @@ func (m *TableManager) loop() {
 	}
 }
 
-func (m *TableManager) fsRetentionEnforcementLoop() {
+func (m *TableManager) bucketRetentionLoop() {
 	defer m.wait.Done()
 
-	ticker := time.NewTicker(fsRetentionEnforcementInterval)
+	ticker := time.NewTicker(bucketRetentionEnforcementInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			err := m.enforceFSRetention()
+			err := m.bucketClient.DeleteChunksBefore(context.Background(), mtime.Now().Add(-m.cfg.RetentionPeriod))
 
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
@@ -202,35 +197,6 @@ func (m *TableManager) fsRetentionEnforcementLoop() {
 			return
 		}
 	}
-}
-
-func (m *TableManager) isFSRetentionEnforcementRequired() bool {
-	if m.cfg.RetentionPeriod == 0 || m.cfg.RetentionDeletesEnabled {
-		return false
-	}
-
-	for _, config := range m.schemaCfg.Configs {
-		if config.ObjectType == "filesystem" {
-			return true
-		}
-	}
-
-	return false
-}
-
-func (m *TableManager) enforceFSRetention() error {
-	if m.isFSRetentionEnforcementRequired() {
-		return nil
-	}
-	return filepath.Walk(m.directoryFromFsConfig, func(path string, info os.FileInfo, err error) error {
-		if !info.IsDir() && info.ModTime().Before(mtime.Now().Add(-m.cfg.RetentionPeriod)) {
-			level.Info(util.Logger).Log("msg", "file has exceeded the retention period, removing it", "filepath", info.Name())
-			if err := os.Remove(path); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
 }
 
 // SyncTables will calculate the tables expected to exist, create those that do

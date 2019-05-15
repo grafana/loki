@@ -5,10 +5,16 @@ import (
 	"encoding/base64"
 	"flag"
 	"io/ioutil"
+	"os"
 	"path"
+	"path/filepath"
+	"time"
+
+	"github.com/go-kit/kit/log/level"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
+	pkgUtil "github.com/cortexproject/cortex/pkg/util"
 )
 
 // FSConfig is the config for a fsObjectClient.
@@ -69,4 +75,26 @@ func (f *fsObjectClient) getChunk(_ context.Context, decodeContext *chunk.Decode
 	}
 
 	return c, nil
+}
+
+// NewBucketClient makes a chunk.BucketClient which stores chunks as files in the local filesystem.
+func NewBucketClient(cfg FSConfig) (chunk.BucketClient, error) {
+	bucketClient, err := NewFSObjectClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return bucketClient.(*fsObjectClient), nil
+}
+
+func (f *fsObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) error {
+	return filepath.Walk(f.cfg.Directory, func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() && info.ModTime().Before(ts) {
+			level.Info(pkgUtil.Logger).Log("msg", "file has exceeded the retention period, removing it", "filepath", info.Name())
+			if err := os.Remove(path); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

@@ -19,12 +19,19 @@ func NewTableClient(directory string) (chunk.TableClient, error) {
 
 func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 	boltDbFiles := []string{}
-	_ = filepath.Walk(c.directory, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(c.directory, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
 		if !info.IsDir() {
 			boltDbFiles = append(boltDbFiles, info.Name())
 		}
 		return nil
 	})
+
+	if err != nil {
+		return nil, err
+	}
 	return boltDbFiles, nil
 }
 

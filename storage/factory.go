@@ -172,3 +172,13 @@ func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
 	}
 }
+
+// NewBucketClient makes a new bucket client based on the configuration.
+func NewBucketClient(name string, storageConfig Config) (chunk.BucketClient, error) {
+	switch name {
+	case "filesystem":
+		return local.NewBucketClient(storageConfig.FSConfig)
+	default:
+		return nil, fmt.Errorf("Unrecognized bucket client %v, choose one of: filesystem", name)
+	}
+}

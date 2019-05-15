@@ -2,8 +2,6 @@ package chunk
 
 import (
 	"context"
-	"io/ioutil"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -176,7 +174,7 @@ func TestTableManager(t *testing.T) {
 			InactiveReadThroughput:     inactiveRead,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, "")
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +344,7 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 			InactiveReadThroughput:     inactiveRead,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, "")
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,7 +432,7 @@ func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
 			InactiveThroughputOnDemandMode: true,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, "")
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -517,7 +515,7 @@ func TestTableManagerTags(t *testing.T) {
 				IndexTables: PeriodicTableConfig{},
 			}},
 		}
-		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, "")
+		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -541,7 +539,7 @@ func TestTableManagerTags(t *testing.T) {
 				},
 			}},
 		}
-		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, "")
+		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -595,7 +593,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 			InactiveReadThroughput:     inactiveRead,
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, "")
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -693,73 +691,4 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 			{Name: chunkTablePrefix + "3", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)
-}
-
-func TestTableManagerFSRetention(t *testing.T) {
-	fsChunksDir, err := ioutil.TempDir(os.TempDir(), "fs-chunks")
-	require.NoError(t, err)
-
-	defer func() {
-		require.NoError(t, os.RemoveAll(fsChunksDir))
-	}()
-
-	file1 := "file1"
-	file2 := "file2"
-
-	tbmConfig := TableManagerConfig{
-		RetentionPeriod:         tableRetention,
-		RetentionDeletesEnabled: true,
-	}
-
-	cfg := SchemaConfig{
-		Configs: []PeriodConfig{
-			{
-				From:       model.TimeFromUnix(baseTableStart.Unix()),
-				ObjectType: "filesystem",
-			},
-		},
-	}
-
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, newMockTableClient(), fsChunksDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tableManager.cfg.RetentionPeriod = tableRetention
-	tableManager.cfg.RetentionDeletesEnabled = true
-
-	// Creating dummy files
-	require.NoError(t, os.Chdir(fsChunksDir))
-
-	f, err := os.Create(file1)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-
-	f, err = os.Create(file2)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-
-	// Verify whether all files are created
-	files, _ := ioutil.ReadDir(".")
-	require.Equal(t, 2, len(files), "Number of files should be 2")
-
-	// No files should be deleted after enforcing retention
-	require.NoError(t, tableManager.enforceFSRetention())
-	files, _ = ioutil.ReadDir(".")
-	require.Equal(t, 2, len(files), "Number of files should be 2")
-
-	// Changing mtime of file to expire them
-	require.NoError(t, os.Chtimes(file1, time.Now().Add(-tableRetention), time.Now().Add(-tableRetention)))
-	require.NoError(t, tableManager.enforceFSRetention())
-
-	// Verifying whether expired file got deleted
-	files, _ = ioutil.ReadDir(".")
-	require.Equal(t, 1, len(files), "Number of files should be 1 after enforcing retention")
-
-	// Disabling retention deletes and checking whether retention deletes file
-	tableManager.cfg.RetentionDeletesEnabled = false
-	require.NoError(t, os.Chtimes(file2, time.Now().Add(-tableRetention), time.Now().Add(-tableRetention)))
-	require.NoError(t, tableManager.enforceFSRetention())
-	files, _ = ioutil.ReadDir(".")
-	require.Equal(t, 1, len(files), "Number of files should be 1 after enforcing retention")
-
 }
