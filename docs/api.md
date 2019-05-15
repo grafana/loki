@@ -39,7 +39,7 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
 
   Responses looks like this:
 
-  ```
+  ```json
   {
     "streams": [
       {
@@ -59,11 +59,14 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
 
 - `GET /api/prom/label`
 
-  For retrieving the names of the labels one can query on.
+  For doing label name queries, accepts the following parameters in the query-string:
+
+  - `start`: the start time for the query, as a nanosecond Unix epoch (nanoseconds since 1970). Default is always 6 hour ago.
+  - `end`: the end time for the query, as a nanosecond Unix epoch (nanoseconds since 1970). Default is current time.
 
   Responses looks like this:
 
-  ```
+  ```json
   {
     "values": [
       "instance",
@@ -74,11 +77,15 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
   ```
 
 - `GET /api/prom/label/<name>/values`
-  For retrieving the label values one can query on.
+
+  For doing label values queries, accepts the following parameters in the query-string:
+
+  - `start`: the start time for the query, as a nanosecond Unix epoch (nanoseconds since 1970). Default is always 6 hour ago.
+  - `end`: the end time for the query, as a nanosecond Unix epoch (nanoseconds since 1970). Default is current time.
 
   Responses looks like this:
 
-  ```
+  ```json
   {
     "values": [
       "default",

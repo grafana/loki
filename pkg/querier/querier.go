@@ -148,17 +148,6 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 		return nil, err
 	}
 
-	if req.End == nil {
-		now := time.Now()
-		req.End = &now
-	}
-
-	if req.Start == nil {
-		// by default will look for the last 6 hours
-		start := req.End.Add(-6 * time.Hour)
-		req.Start = &start
-	}
-
 	from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
 	var storeValues []string
 	if req.Values {

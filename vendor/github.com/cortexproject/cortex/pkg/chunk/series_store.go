@@ -148,6 +148,11 @@ func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, from, through
 	log, ctx := spanlogger.New(ctx, "SeriesStore.LabelNamesForMetricName")
 	defer log.Span.Finish()
 
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	shortcut, err := c.validateQueryTimeRange(ctx, from, &through)
 	if err != nil {
 		return nil, err
@@ -171,14 +176,14 @@ func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, from, through
 	}
 	level.Debug(log).Log("chunk-ids", len(chunkIDs))
 
-	chunks, err := c.convertChunkIDsToChunks(ctx, chunkIDs)
+	chunks, err := c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
 	if err != nil {
 		level.Error(log).Log("err", "convertChunkIDsToChunks", "err", err)
 		return nil, err
 	}
 
 	// Filter out chunks that are not in the selected time range and keep a single chunk per fingerprint
-	filtered, _ := filterChunksByTime(from, through, chunks)
+	filtered := filterChunksByTime(from, through, chunks)
 	filtered, keys := filterChunksByUniqueFingerPrint(filtered)
 	level.Debug(log).Log("Chunks post filtering", len(chunks))
 
