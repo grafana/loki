@@ -172,7 +172,7 @@ In the example above we could have omitted the source property or replaced the `
 
 #### Metrics
 
-Each stage can also extract a set of Prometheus metrics. Metrics are exposed on the path `/logmetrics` in promtail. By default a counter of log entries and a log size histogram per stream is computed. This means you don't need to create metrics to count status code or log level, simply mutate the log entry and add them to the labels.
+Each stage can also extract a set of Prometheus metrics. Metrics are exposed on the path `/metrics` in promtail. By default a counter of log entries (`log_entries_total`) and a log size histogram (`log_entries_bytes_bucket`) per stream is computed. This means you don't need to create metrics to count status code or log level, simply mutate the log entry and add them to the labels. All custom metrics are prefixed with `promtail_custom_`.
 
 To define metrics you need to add a `metrics` map in your stage where the key should be the unique name for the metric and the value should be its configuration. The configuration contains the `type` of the metrics, the `description`, and the `source` to record the value from. (Optionally for histograms a `buckets` property should be provided).
 
