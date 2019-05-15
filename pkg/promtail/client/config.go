@@ -7,6 +7,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
+	"github.com/prometheus/common/config"
 )
 
 // Config describes configuration for a HTTP pusher client.
@@ -14,6 +15,8 @@ type Config struct {
 	URL       flagext.URLValue
 	BatchWait time.Duration
 	BatchSize int
+
+	Client config.HTTPClientConfig `yaml:",inline"`
 
 	BackoffConfig util.BackoffConfig `yaml:"backoff_config"`
 	// The labels to add to any time series or alerts when communicating with loki
