@@ -171,7 +171,7 @@ scrape_configs:
 ### Custom Client options
 
 `promtail` client configuration uses the [Prometheus http client](https://godoc.org/github.com/prometheus/common/config) implementation.
-Therefor you can configure the following authentication parameters in the `client` or `clients` section.
+Therefore you can configure the following authentication parameters in the `client` or `clients` section.
 
 ```yaml
 ---promtail_config.yaml
