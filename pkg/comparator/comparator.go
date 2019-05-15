@@ -36,12 +36,7 @@ var (
 		Name:      "unexpected_entries",
 		Help:      "counts a log entry received which was not expected (e.g. duplicate, received after reported missing)",
 	})
-	responseLatency = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "loki_canary",
-		Name:      "response_latency",
-		Help:      "is how long it takes for log lines to be returned from Loki in seconds.",
-		Buckets:   []float64{1, 5, 10, 30, 60, 90, 120, 300},
-	})
+	responseLatency prometheus.Histogram
 )
 
 type Comparator struct {
@@ -54,7 +49,7 @@ type Comparator struct {
 	done          chan struct{}
 }
 
-func NewComparator(writer io.Writer, maxWait time.Duration, pruneInterval time.Duration) *Comparator {
+func NewComparator(writer io.Writer, maxWait time.Duration, pruneInterval time.Duration, buckets int) *Comparator {
 	c := &Comparator{
 		w:             writer,
 		entries:       []*time.Time{},
@@ -63,6 +58,13 @@ func NewComparator(writer io.Writer, maxWait time.Duration, pruneInterval time.D
 		quit:          make(chan struct{}),
 		done:          make(chan struct{}),
 	}
+
+	responseLatency = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "loki_canary",
+		Name:      "response_latency",
+		Help:      "is how long it takes for log lines to be returned from Loki in seconds.",
+		Buckets:   prometheus.ExponentialBuckets(0.5, 2, buckets),
+	})
 
 	go c.run()
 

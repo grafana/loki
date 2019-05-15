@@ -18,7 +18,7 @@ func TestComparatorEntryReceivedOutOfOrder(t *testing.T) {
 	unexpectedEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Second)
@@ -44,6 +44,11 @@ func TestComparatorEntryReceivedOutOfOrder(t *testing.T) {
 	assert.Equal(t, 1, outOfOrderEntries.(*mockCounter).count)
 	assert.Equal(t, 0, unexpectedEntries.(*mockCounter).count)
 	assert.Equal(t, 0, missingEntries.(*mockCounter).count)
+
+	// This avoids a panic on subsequent test execution,
+	// seems ugly but was easy, and multiple instantiations
+	// of the comparator should be an error
+	prometheus.Unregister(responseLatency)
 }
 
 func TestComparatorEntryReceivedNotExpected(t *testing.T) {
@@ -52,7 +57,7 @@ func TestComparatorEntryReceivedNotExpected(t *testing.T) {
 	unexpectedEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Second)
@@ -78,6 +83,11 @@ func TestComparatorEntryReceivedNotExpected(t *testing.T) {
 	assert.Equal(t, 0, outOfOrderEntries.(*mockCounter).count)
 	assert.Equal(t, 1, unexpectedEntries.(*mockCounter).count)
 	assert.Equal(t, 0, missingEntries.(*mockCounter).count)
+
+	// This avoids a panic on subsequent test execution,
+	// seems ugly but was easy, and multiple instantiations
+	// of the comparator should be an error
+	prometheus.Unregister(responseLatency)
 }
 
 func TestEntryNeverReceived(t *testing.T) {
@@ -86,7 +96,7 @@ func TestEntryNeverReceived(t *testing.T) {
 	unexpectedEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 5*time.Millisecond, 2*time.Millisecond)
+	c := NewComparator(actual, 5*time.Millisecond, 2*time.Millisecond, 1)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Millisecond)
@@ -116,6 +126,11 @@ func TestEntryNeverReceived(t *testing.T) {
 	assert.Equal(t, 0, outOfOrderEntries.(*mockCounter).count)
 	assert.Equal(t, 0, unexpectedEntries.(*mockCounter).count)
 	assert.Equal(t, 1, missingEntries.(*mockCounter).count)
+
+	// This avoids a panic on subsequent test execution,
+	// seems ugly but was easy, and multiple instantiations
+	// of the comparator should be an error
+	prometheus.Unregister(responseLatency)
 
 }
 

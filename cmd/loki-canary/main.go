@@ -30,6 +30,7 @@ func main() {
 	interval := flag.Duration("interval", 1000*time.Millisecond, "Duration between log entries")
 	size := flag.Int("size", 100, "Size in bytes of each log line")
 	wait := flag.Duration("wait", 60*time.Second, "Duration to wait for log entries before reporting them lost")
+	buckets := flag.Int("buckets", 10, "Number of buckets in the response_latency histogram")
 	flag.Parse()
 
 	if *addr == "" {
@@ -51,7 +52,7 @@ func main() {
 
 	_, _ = fmt.Fprintf(os.Stderr, "Connecting to loki at %v, querying for label '%v' with value '%v'\n", u.String(), *lName, *lVal)
 
-	c := comparator.NewComparator(os.Stderr, *wait, 1*time.Second)
+	c := comparator.NewComparator(os.Stderr, *wait, 1*time.Second, *buckets)
 	w := writer.NewWriter(os.Stdout, c, *interval, *size)
 	r := reader.NewReader(os.Stderr, c, u, *user, *pass)
 
