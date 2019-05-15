@@ -33,11 +33,11 @@ type memcachedClient struct {
 
 // MemcachedClientConfig defines how a MemcachedClient should be constructed.
 type MemcachedClientConfig struct {
-	Host           string
-	Service        string
-	Timeout        time.Duration
-	MaxIdleConns   int
-	UpdateInterval time.Duration
+	Host           string        `yaml:"host,omitempty"`
+	Service        string        `yaml:"service,omitempty"`
+	Timeout        time.Duration `yaml:"timeout,omitempty"`
+	MaxIdleConns   int           `yaml:"max_idle_conns,omitempty"`
+	UpdateInterval time.Duration `yaml:"update_interval,omitempty"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet

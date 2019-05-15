@@ -33,9 +33,9 @@ var (
 		Name:      "gcs_request_duration_seconds",
 		Help:      "Time spent doing GCS requests.",
 
-		// Bigtable latency seems to range from a few ms to a few hundred ms and is
-		// important.  So use 6 buckets from 1ms to 1s.
-		Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
+		// GCS latency seems to range from a few ms to a few secs and is
+		// important.  So use 6 buckets from 5ms to 5s.
+		Buckets: prometheus.ExponentialBuckets(0.005, 4, 6),
 	}, []string{"operation", "status_code"})
 )
 

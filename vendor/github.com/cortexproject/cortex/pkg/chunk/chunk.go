@@ -269,7 +269,7 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 			return err
 		}
 		c.encoded = input
-		return c.Data.UnmarshalFromBuf(input)
+		return errors.Wrap(c.Data.UnmarshalFromBuf(input), "when unmarshalling legacy chunk")
 	}
 
 	// First, calculate the checksum of the chunk and confirm it matches
@@ -282,14 +282,14 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	r := bytes.NewReader(input)
 	var metadataLen uint32
 	if err := binary.Read(r, binary.BigEndian, &metadataLen); err != nil {
-		return err
+		return errors.Wrap(err, "when reading metadata length from chunk")
 	}
 	var tempMetadata Chunk
 	decodeContext.reader.Reset(r)
 	json := jsoniter.ConfigFastest
 	err := json.NewDecoder(decodeContext.reader).Decode(&tempMetadata)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "when decoding chunk metadata")
 	}
 	if len(input)-r.Len() != int(metadataLen) {
 		return ErrMetadataLength
@@ -315,12 +315,12 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	// Finally, unmarshal the actual chunk data.
 	c.Data, err = prom_chunk.NewForEncoding(c.Encoding)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "when creating new chunk")
 	}
 
 	var dataLen uint32
 	if err := binary.Read(r, binary.BigEndian, &dataLen); err != nil {
-		return err
+		return errors.Wrap(err, "when reading data length from chunk")
 	}
 
 	c.encoded = input

@@ -195,14 +195,6 @@ func (cfg PeriodConfig) createSchema() Schema {
 	return s
 }
 
-func (cfg *PeriodConfig) tableForBucket(bucketStart int64) string {
-	if cfg.IndexTables.Period == 0 {
-		return cfg.IndexTables.Prefix
-	}
-	// TODO remove reference to time package here
-	return cfg.IndexTables.Prefix + strconv.Itoa(int(bucketStart/int64(cfg.IndexTables.Period/time.Second)))
-}
-
 // Load the yaml file, or build the config from legacy command-line flags
 func (cfg *SchemaConfig) Load() error {
 	if len(cfg.Configs) > 0 {
@@ -268,7 +260,7 @@ func (cfg *PeriodConfig) hourlyBuckets(from, through model.Time, userID string) 
 		result = append(result, Bucket{
 			from:      uint32(relativeFrom),
 			through:   uint32(relativeThrough),
-			tableName: cfg.tableForBucket(i * secondsInHour),
+			tableName: cfg.IndexTables.TableFor(model.TimeFromUnix(i * secondsInHour)),
 			hashKey:   fmt.Sprintf("%s:%d", userID, i),
 		})
 	}
@@ -303,7 +295,7 @@ func (cfg *PeriodConfig) dailyBuckets(from, through model.Time, userID string) [
 		result = append(result, Bucket{
 			from:      uint32(relativeFrom),
 			through:   uint32(relativeThrough),
-			tableName: cfg.tableForBucket(i * secondsInDay),
+			tableName: cfg.IndexTables.TableFor(model.TimeFromUnix(i * secondsInDay)),
 			hashKey:   fmt.Sprintf("%s:d%d", userID, i),
 		})
 	}
@@ -368,8 +360,7 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 	}
 	for i := firstTable; i <= lastTable; i++ {
 		table := TableDesc{
-			// Name construction needs to be consistent with chunk_store.bigBuckets
-			Name:              cfg.Prefix + strconv.Itoa(int(i)),
+			Name:              cfg.tableForPeriod(i),
 			ProvisionedRead:   pCfg.InactiveReadThroughput,
 			ProvisionedWrite:  pCfg.InactiveWriteThroughput,
 			UseOnDemandIOMode: pCfg.InactiveThroughputOnDemandMode,
@@ -443,9 +434,13 @@ func (cfg SchemaConfig) ChunkTableFor(t model.Time) (string, error) {
 
 // TableFor calculates the table shard for a given point in time.
 func (cfg *PeriodicTableConfig) TableFor(t model.Time) string {
-	var (
-		periodSecs = int64(cfg.Period / time.Second)
-		table      = t.Unix() / periodSecs
-	)
-	return cfg.Prefix + strconv.Itoa(int(table))
+	if cfg.Period == 0 { // non-periodic
+		return cfg.Prefix
+	}
+	periodSecs := int64(cfg.Period / time.Second)
+	return cfg.tableForPeriod(t.Unix() / periodSecs)
+}
+
+func (cfg *PeriodicTableConfig) tableForPeriod(i int64) string {
+	return cfg.Prefix + strconv.Itoa(int(i))
 }
