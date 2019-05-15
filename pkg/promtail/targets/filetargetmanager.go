@@ -61,7 +61,6 @@ func NewFileTargetManager(
 	client api.EntryHandler,
 	scrapeConfigs []scrape.Config,
 	targetConfig *Config,
-	logRegistry prometheus.Registerer,
 ) (*FileTargetManager, error) {
 	ctx, quit := context.WithCancel(context.Background())
 	tm := &FileTargetManager{
@@ -78,7 +77,7 @@ func NewFileTargetManager(
 
 	config := map[string]sd_config.ServiceDiscoveryConfig{}
 	for _, cfg := range scrapeConfigs {
-		pipeline, err := logentry.NewPipeline(log.With(logger, "component", "pipeline"), cfg.PipelineStages, cfg.JobName, logRegistry)
+		pipeline, err := logentry.NewPipeline(log.With(logger, "component", "pipeline"), cfg.PipelineStages, cfg.JobName)
 		if err != nil {
 			return nil, err
 		}
@@ -114,7 +113,7 @@ func NewFileTargetManager(
 			targets:        map[string]*FileTarget{},
 			droppedTargets: []Target{},
 			hostname:       hostname,
-			entryHandler:   pipeline.Wrap(metric.LogSize(logRegistry, metric.LogCount(logRegistry, client))),
+			entryHandler:   pipeline.Wrap(metric.LogSize(prometheus.DefaultRegisterer, metric.LogCount(prometheus.DefaultRegisterer, client))),
 			targetConfig:   targetConfig,
 		}
 		tm.syncers[cfg.JobName] = s
