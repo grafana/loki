@@ -23,23 +23,6 @@ This can have several reasons:
   - Detect this by turning on debug logging and then look for `dropping target, no labels` or `ignoring target` messages.
 - Promtail cannot find the location of your log files. Check that the scrape_configs contains valid path setting for finding the logs in your worker nodes.
 - Your pods are running but not with the labels Promtail is expecting. Check the Promtail scape_configs.
-- Kubernetes 1.14+ and GKE 1.12+: the default scape_configs need to be adapted to work. 
-From
-```
-        - replacement: /var/log/pods/$1/*.log
-          separator: /
-          source_labels:
-          - __meta_kubernetes_pod_uid
-          - __meta_kubernetes_pod_container_name
-          target_label: __path__
-```
-to
-```
-        - replacement: /var/log/pods/*$1*/*/*.log
-          source_labels:
-          - __meta_kubernetes_pod_uid
-          target_label: __path__
-```
 
 ## Troubleshooting targets
 
@@ -63,7 +46,7 @@ The promtail configuration contains a `__path__` entry to a directory that promt
 
 ## Connecting to a promtail pod to troubleshoot
 
-Say you are missing logs from your nginx pod and want to investigate promtail.
+First check *Troubleshooting targets* section above, if that doesn't help answer your questions you can connect to the promtail pod to further investigate.
 
 In your cluster if you are running promtail as a daemonset, you will have a promtail pod on each node, to figure out which promtail you want run:
 

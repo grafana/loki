@@ -37,6 +37,9 @@ func main() {
 		}
 	}
 
+	// Re-init the logger which will now honor a different log level set in ServerConfig.Config
+	util.InitLogger(&config.ServerConfig.Config)
+
 	p, err := promtail.New(config)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error creating promtail", "error", err)

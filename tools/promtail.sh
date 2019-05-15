@@ -53,7 +53,7 @@ data:
         target_label: container_name
       - action: labelmap
         regex: __meta_kubernetes_pod_label_(.+)
-      - replacement: /var/log/pods/$1/*.log
+      - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
         - __meta_kubernetes_pod_uid
@@ -99,7 +99,7 @@ data:
         target_label: container_name
       - action: labelmap
         regex: __meta_kubernetes_pod_label_(.+)
-      - replacement: /var/log/pods/$1/*.log
+      - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
         - __meta_kubernetes_pod_uid
@@ -151,7 +151,7 @@ data:
         target_label: container_name
       - action: labelmap
         regex: __meta_kubernetes_pod_label_(.+)
-      - replacement: /var/log/pods/$1/*.log
+      - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
         - __meta_kubernetes_pod_uid
@@ -205,7 +205,7 @@ data:
         target_label: container_name
       - action: labelmap
         regex: __meta_kubernetes_pod_label_(.+)
-      - replacement: /var/log/pods/$1/*.log
+      - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
         - __meta_kubernetes_pod_uid
@@ -252,7 +252,7 @@ data:
         target_label: container_name
       - action: labelmap
         regex: __meta_kubernetes_pod_label_(.+)
-      - replacement: /var/log/pods/$1/*.log
+      - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
         - __meta_kubernetes_pod_annotation_kubernetes_io_config_mirror

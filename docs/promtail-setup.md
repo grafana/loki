@@ -1,9 +1,5 @@
 # Promtail Setups
 
-## Design Documentation
-
-* [Extracting labels from logs](./design/labels.md)
-
 ## Daemonset method
 
 Daemonset will deploy `promtail` on every node within the Kubernetes cluster.
@@ -11,6 +7,8 @@ Daemonset will deploy `promtail` on every node within the Kubernetes cluster.
 Daemonset deployment is great to collect all of the container logs within the
 cluster. It is great solution for single tenant.  All of the logs will send to a
 single Loki server.
+
+Check the `production` folder for examples of a daemonset deployment for kubernetes using both helm and ksonnet.
 
 ### Example
 
@@ -57,7 +55,7 @@ data:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: promtail-clusterole
+  name: promtail-clusterrole
 rules:
   - apiGroups:
      resources:

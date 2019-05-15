@@ -87,6 +87,6 @@ func (t *tailIterator) query() (iter.EntryIterator, error) {
 		return nil, err
 	}
 
-	iterators := append(chunkStoreIterators, ingesterIterators...)
+	iterators := append(ingesterIterators, chunkStoreIterators)
 	return iter.NewHeapIterator(iterators, t.queryRequest.Direction), nil
 }

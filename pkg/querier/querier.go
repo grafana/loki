@@ -102,7 +102,7 @@ func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logpr
 		return nil, err
 	}
 
-	iterators := append(chunkStoreIterators, ingesterIterators...)
+	iterators := append(ingesterIterators, chunkStoreIterators)
 	iterator := iter.NewHeapIterator(iterators, req.Direction)
 	defer helpers.LogError("closing iterator", iterator.Close)
 

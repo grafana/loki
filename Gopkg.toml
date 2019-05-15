@@ -31,7 +31,8 @@
 
 [[constraint]]
   name = "github.com/weaveworks/common"
-  branch = "master"
+  source = "https://github.com/tomwilkie/weaveworks-common"
+  branch = "server-listen-addr"
 
 [[constraint]]
   name = "gopkg.in/fsnotify.v1"
