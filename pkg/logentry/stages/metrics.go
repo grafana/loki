@@ -12,6 +12,8 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+const customPrefix = "promtail_custom_"
+
 // withMetric mutates a log line using a Mutator and records metrics from Extractor.
 func withMetric(s Mutator, cfg MetricsConfig, registry prometheus.Registerer) Stage {
 	if registry == nil {
@@ -36,11 +38,11 @@ func newMetric(cfgs MetricsConfig, registry prometheus.Registerer) *metricStage 
 
 		switch strings.ToLower(cfg.MetricType) {
 		case MetricTypeCounter:
-			collector = metric.NewCounters(name, cfg.Description)
+			collector = metric.NewCounters(customPrefix+name, cfg.Description)
 		case MetricTypeGauge:
-			collector = metric.NewGauges(name, cfg.Description)
+			collector = metric.NewGauges(customPrefix+name, cfg.Description)
 		case MetricTypeHistogram:
-			collector = metric.NewHistograms(name, cfg.Description, cfg.Buckets)
+			collector = metric.NewHistograms(customPrefix+name, cfg.Description, cfg.Buckets)
 		}
 		if collector != nil {
 			registry.MustRegister(collector)
