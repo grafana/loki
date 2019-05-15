@@ -2,10 +2,10 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ template "loki.fullname" . }}
+  name: {{ template "loki-stack.fullname" . }}
   labels:
-    app: {{ template "loki.name" . }}
-    chart: {{ template "loki.chart" . }}
+    app: {{ template "loki-stack.name" . }}
+    chart: {{ template "loki-stack.chart" . }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
     grafana_datasource: "1"

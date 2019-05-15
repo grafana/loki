@@ -262,14 +262,14 @@ check_assets: assets
 
 helm-install:
 	kubectl apply -f tools/helm.yaml
-	helm init --service-account helm --upgrade
+	helm init --wait --service-account helm --upgrade
 	$(MAKE) upgrade-helm
 
-helm-test: ARGS=--dry-run --debug
-helm-test: helm-upgrade
+helm-debug: ARGS=--dry-run --debug
+helm-debug: helm-upgrade
 
 helm-upgrade: helm
-	helm upgrade --install $(ARGS) loki-stack ./production/helm/loki-stack \
+	helm upgrade --wait --install $(ARGS) loki-stack ./production/helm/loki-stack \
 	--set promtail.image.tag=$(IMAGE_TAG) --set loki.image.tag=$(IMAGE_TAG) -f tools/dev.values.yaml
 
 
