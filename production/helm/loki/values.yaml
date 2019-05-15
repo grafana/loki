@@ -56,6 +56,8 @@ config:
       directory: /data/loki/index
     filesystem:
       directory: /data/loki/chunks
+  querier:
+    max_look_back_period: 0
 
 deploymentStrategy: RollingUpdate
 
