@@ -222,6 +222,7 @@ push-latest:
 	done
 
 helm:
+	-rm -f production/helm/*/requirements.lock
 	@set -e; \
 	helm init -c; \
 	for chart in $(CHARTS); do \
@@ -259,5 +260,18 @@ check_assets: assets
 		exit 1; \
 	fi
 
-dev:
-	cat tools/dev.yaml.template | sed "s/{{TAG}}/$(IMAGE_TAG)/g" | kubectl apply -f -
+helm-install:
+	kubectl apply -f tools/helm.yaml
+	helm init --service-account helm --upgrade
+	$(MAKE) upgrade-helm
+
+helm-test: ARGS=--dry-run --debug
+helm-test: helm-upgrade
+
+helm-upgrade: helm
+	helm upgrade --install $(ARGS) loki-stack ./production/helm/loki-stack \
+	--set promtail.image.tag=$(IMAGE_TAG) --set loki.image.tag=$(IMAGE_TAG) -f tools/dev.values.yaml
+
+
+helm-clean:
+	-helm delete --purge loki-stack
