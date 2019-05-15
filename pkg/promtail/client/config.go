@@ -6,7 +6,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/prometheus/common/model"
+	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
 
 // Config describes configuration for a HTTP pusher client.
@@ -17,8 +17,8 @@ type Config struct {
 
 	BackoffConfig util.BackoffConfig `yaml:"backoff_config"`
 	// The labels to add to any time series or alerts when communicating with loki
-	ExternalLabels model.LabelSet `yaml:"external_labels,omitempty"`
-	Timeout        time.Duration  `yaml:"timeout"`
+	ExternalLabels lokiflag.LabelSet `yaml:"external_labels,omitempty"`
+	Timeout        time.Duration     `yaml:"timeout"`
 }
 
 // RegisterFlags registers flags.
@@ -31,7 +31,7 @@ func (c *Config) RegisterFlags(flags *flag.FlagSet) {
 	flag.DurationVar(&c.BackoffConfig.MinBackoff, "client.min-backoff", 100*time.Millisecond, "Initial backoff time between retries.")
 	flag.DurationVar(&c.BackoffConfig.MaxBackoff, "client.max-backoff", 5*time.Second, "Maximum backoff time between retries.")
 	flag.DurationVar(&c.Timeout, "client.timeout", 10*time.Second, "Maximum time to wait for server to respond to a request")
-
+	flags.Var(&c.ExternalLabels, "client.external-labels", "list of external labels to add to each log (e.g: --client.external-labels=lb1=v1,lb2=v2)")
 }
 
 // UnmarshalYAML implement Yaml Unmarshaler
