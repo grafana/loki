@@ -18,9 +18,11 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 )
 
@@ -62,6 +64,7 @@ type Client interface {
 type client struct {
 	logger  log.Logger
 	cfg     Config
+	client  *http.Client
 	quit    chan struct{}
 	entries chan entry
 	wg      sync.WaitGroup
@@ -75,7 +78,7 @@ type entry struct {
 }
 
 // New makes a new Client.
-func New(cfg Config, logger log.Logger) Client {
+func New(cfg Config, logger log.Logger) (Client, error) {
 	c := &client{
 		logger:  log.With(logger, "component", "client", "host", cfg.URL.Host),
 		cfg:     cfg,
@@ -84,9 +87,22 @@ func New(cfg Config, logger log.Logger) Client {
 
 		externalLabels: cfg.ExternalLabels.LabelSet,
 	}
+
+	err := cfg.Client.Validate()
+	if err != nil {
+		return nil, err
+	}
+
+	c.client, err = config.NewClientFromConfig(cfg.Client, "promtail")
+	if err != nil {
+		return nil, err
+	}
+
+	c.client.Timeout = cfg.Timeout
+
 	c.wg.Add(1)
 	go c.run()
-	return c
+	return c, nil
 }
 
 func (c *client) run() {
@@ -194,7 +210,7 @@ func (c *client) send(ctx context.Context, buf []byte) (int, error) {
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", contentType)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return -1, err
 	}
