@@ -39,9 +39,9 @@ spec:
       serviceAccountName: {{ template "loki.serviceAccountName" . }}
     {{- if .Values.priorityClassName }}
       priorityClassName: {{ .Values.priorityClassName }}
+    {{- end }}
       securityContext:
         {{- toYaml .Values.securityContext | nindent 8 }}
-    {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"

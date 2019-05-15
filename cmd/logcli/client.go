@@ -85,7 +85,7 @@ func doRequest(path string, out interface{}) error {
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			fmt.Println("error closing body", err)
+			log.Println("error closing body", err)
 		}
 	}()
 
@@ -121,7 +121,7 @@ func wsConnect(path string) (*websocket.Conn, error) {
 	} else if strings.HasPrefix(url, "http") {
 		url = strings.Replace(url, "http", "ws", 1)
 	}
-	fmt.Println(url)
+	log.Println(url)
 
 	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(*username+":"+*password))}}
 

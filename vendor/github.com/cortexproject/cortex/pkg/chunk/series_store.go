@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -22,11 +21,19 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-var (
-	// ErrCardinalityExceeded is returned when the user reads a row that
-	// is too large.
-	ErrCardinalityExceeded = errors.New("cardinality limit exceeded")
+// CardinalityExceededError is returned when the user reads a row that
+// is too large.
+type CardinalityExceededError struct {
+	MetricName, LabelName string
+	Size, Limit           int32
+}
 
+func (e CardinalityExceededError) Error() string {
+	return fmt.Sprintf("cardinality limit exceeded for %s{%s}; %d entries, more than limit of %d",
+		e.MetricName, e.LabelName, e.Size, e.Limit)
+}
+
+var (
 	indexLookupsPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "chunk_store_index_lookups_per_query",
@@ -104,7 +111,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 		return nil, err
 	}
 
-	chks, _, err := c.GetChunkRefs(ctx, from, through, allMatchers...)
+	chks, fetchers, err := c.GetChunkRefs(ctx, from, through, allMatchers...)
 	if err != nil {
 		return nil, err
 	}
@@ -115,11 +122,7 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	}
 
 	chunks := chks[0]
-	// Filter out chunks that are not in the selected time range.
-	filtered, keys := filterChunksByTime(from, through, chunks)
-	level.Debug(log).Log("chunks-post-filtering", len(chunks))
-	chunksPerQuery.Observe(float64(len(filtered)))
-
+	fetcher := fetchers[0]
 	// Protect ourselves against OOMing.
 	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
 	if maxChunksPerQuery > 0 && len(chunks) > maxChunksPerQuery {
@@ -129,7 +132,8 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	}
 
 	// Now fetch the actual chunk data from Memcache / S3
-	allChunks, err := c.FetchChunks(ctx, filtered, keys)
+	keys := keysFromChunks(chunks)
+	allChunks, err := fetcher.FetchChunks(ctx, chunks, keys)
 	if err != nil {
 		level.Error(log).Log("msg", "FetchChunks", "err", err)
 		return nil, err
@@ -143,6 +147,11 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 func (c *seriesStore) GetChunkRefs(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.GetChunkRefs")
 	defer log.Span.Finish()
+
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	// Validate the query is within reasonable bounds.
 	metricName, matchers, shortcut, err := c.validateQuery(ctx, from, &through, allMatchers)
@@ -171,11 +180,15 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, from, through model.Time
 	}
 	level.Debug(log).Log("chunk-ids", len(chunkIDs))
 
-	chunks, err := c.convertChunkIDsToChunks(ctx, chunkIDs)
+	chunks, err := c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
 	if err != nil {
 		level.Error(log).Log("op", "convertChunkIDsToChunks", "err", err)
 		return nil, nil, err
 	}
+
+	chunks = filterChunksByTime(from, through, chunks)
+	level.Debug(log).Log("chunks-post-filtering", len(chunks))
+	chunksPerQuery.Observe(float64(len(chunks)))
 
 	return [][]Chunk{chunks}, []*Fetcher{c.store.Fetcher}, nil
 }
@@ -215,6 +228,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	var preIntersectionCount int
 	var lastErr error
 	var cardinalityExceededErrors int
+	var cardinalityExceededError CardinalityExceededError
 	for i := 0; i < len(matchers); i++ {
 		select {
 		case incoming := <-incomingIDs:
@@ -229,8 +243,9 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 			// series and the other returns only 10 (a few), we don't lookup the first one at all.
 			// We just manually filter through the 10 series again using "filterChunksByMatchers",
 			// saving us from looking up and intersecting a lot of series.
-			if err == ErrCardinalityExceeded {
+			if e, ok := err.(CardinalityExceededError); ok {
 				cardinalityExceededErrors++
+				cardinalityExceededError = e
 			} else {
 				lastErr = err
 			}
@@ -239,7 +254,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 
 	// But if every single matcher returns a lot of series, then it makes sense to abort the query.
 	if cardinalityExceededErrors == len(matchers) {
-		return nil, ErrCardinalityExceeded
+		return nil, cardinalityExceededError
 	} else if lastErr != nil {
 		return nil, lastErr
 	}
@@ -260,11 +275,14 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	}
 
 	var queries []IndexQuery
+	var labelName string
 	if matcher == nil {
 		queries, err = c.schema.GetReadQueriesForMetric(from, through, userID, model.LabelValue(metricName))
 	} else if matcher.Type != labels.MatchEqual {
+		labelName = matcher.Name
 		queries, err = c.schema.GetReadQueriesForMetricLabel(from, through, userID, model.LabelValue(metricName), model.LabelName(matcher.Name))
 	} else {
+		labelName = matcher.Name
 		queries, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, model.LabelValue(metricName), model.LabelName(matcher.Name), model.LabelValue(matcher.Value))
 	}
 	if err != nil {
@@ -273,7 +291,11 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	level.Debug(log).Log("queries", len(queries))
 
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
-	if err != nil {
+	if e, ok := err.(CardinalityExceededError); ok {
+		e.MetricName = metricName
+		e.LabelName = labelName
+		return nil, e
+	} else if err != nil {
 		return nil, err
 	}
 	level.Debug(log).Log("entries", len(entries))
@@ -329,21 +351,16 @@ func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
 
 // PutOne implements ChunkStore
 func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return err
-	}
-
 	chunks := []Chunk{chunk}
 
-	err = c.storage.PutChunks(ctx, chunks)
+	err := c.storage.PutChunks(ctx, chunks)
 	if err != nil {
 		return err
 	}
 
 	c.writeBackCache(ctx, chunks)
 
-	writeReqs, keysToCache, err := c.calculateIndexEntries(userID, from, through, chunk)
+	writeReqs, keysToCache, err := c.calculateIndexEntries(from, through, chunk)
 	if err != nil {
 		return err
 	}
@@ -358,7 +375,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 }
 
 // calculateIndexEntries creates a set of batched WriteRequests for all the chunks it is given.
-func (c *seriesStore) calculateIndexEntries(userID string, from, through model.Time, chunk Chunk) (WriteBatch, []string, error) {
+func (c *seriesStore) calculateIndexEntries(from, through model.Time, chunk Chunk) (WriteBatch, []string, error) {
 	seenIndexEntries := map[string]struct{}{}
 	entries := []IndexEntry{}
 	keysToCache := []string{}
@@ -368,7 +385,7 @@ func (c *seriesStore) calculateIndexEntries(userID string, from, through model.T
 		return nil, nil, err
 	}
 
-	keys := c.schema.GetLabelEntryCacheKeys(from, through, userID, chunk.Metric)
+	keys := c.schema.GetLabelEntryCacheKeys(from, through, chunk.UserID, chunk.Metric)
 
 	cacheKeys := make([]string, 0, len(keys)) // Keys which translate to the strings stored in the cache.
 	for _, key := range keys {
@@ -379,7 +396,7 @@ func (c *seriesStore) calculateIndexEntries(userID string, from, through model.T
 
 	_, _, missing := c.writeDedupeCache.Fetch(context.Background(), cacheKeys)
 	if len(missing) != 0 {
-		labelEntries, err := c.schema.GetLabelWriteEntries(from, through, userID, metricName, chunk.Metric, chunk.ExternalKey())
+		labelEntries, err := c.schema.GetLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey())
 		if err != nil {
 			return nil, nil, err
 		}
@@ -388,7 +405,7 @@ func (c *seriesStore) calculateIndexEntries(userID string, from, through model.T
 		keysToCache = missing
 	}
 
-	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, userID, metricName, chunk.Metric, chunk.ExternalKey())
+	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey())
 	if err != nil {
 		return nil, nil, err
 	}

@@ -18,12 +18,12 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/config"
-	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/config"
+	"github.com/prometheus/common/model"
 )
 
 const contentType = "application/x-protobuf"
@@ -85,7 +85,7 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 		quit:    make(chan struct{}),
 		entries: make(chan entry),
 
-		externalLabels: cfg.ExternalLabels,
+		externalLabels: cfg.ExternalLabels.LabelSet,
 	}
 
 	err := cfg.Client.Validate()

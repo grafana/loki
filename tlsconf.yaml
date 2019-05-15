@@ -1,0 +1,41 @@
+client:
+  external_labels: {}
+  # The labels to add to any time series or alerts when communicating with loki
+
+  # Maximum wait period before sending batch
+  batchwait: 1s
+  # Maximum batch size to accrue before sending, unit is byte
+  batchsize: 102400
+  # Maximum time to wait for server to respond to a request
+  timeout: 10s
+
+  backoff_config:
+    # Initial backoff time between retries
+    minbackoff: 100ms
+    # Maximum backoff time between retries
+    maxbackoff: 5s
+    # Maximum number of retires when sending batches, 0 means infinite retries
+    maxretries: 5
+
+server:
+  http_listen_port: 3101
+
+positions:
+  filename: /run/promtail/positions.yaml
+
+target_config:
+  # Period to resync directories being watched and files being tailed
+  sync_period: 10s
+
+scrape_configs:
+- job_name: containers
+  entry_parser: docker
+  file_sd_configs:
+  - files:
+    - /etc/promtail/promtail-targets.json
+  relabel_configs:
+  - source_labels: [__address__]
+    target_label: container_id
+  - source_labels: [container_id]
+    target_label: __path__
+    replacement: /var/lib/docker/containers/$1*/*.log
