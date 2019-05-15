@@ -13,8 +13,6 @@ import (
 	logutil "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/version"
 	serverww "github.com/weaveworks/common/server"
 
@@ -41,7 +39,7 @@ type Config struct {
 }
 
 // New makes a new Server
-func New(cfg Config, tms *targets.TargetManagers, logRegistry prometheus.Gatherer) (*Server, error) {
+func New(cfg Config, tms *targets.TargetManagers) (*Server, error) {
 	wws, err := serverww.New(cfg.Config)
 	if err != nil {
 		return nil, err
@@ -61,8 +59,6 @@ func New(cfg Config, tms *targets.TargetManagers, logRegistry prometheus.Gathere
 	serv.HTTP.PathPrefix("/static/").Handler(http.FileServer(ui.Assets))
 	serv.HTTP.Path("/service-discovery").Handler(http.HandlerFunc(serv.serviceDiscovery))
 	serv.HTTP.Path("/targets").Handler(http.HandlerFunc(serv.targets))
-	serv.HTTP.Path("/logmetrics").Handler(promhttp.HandlerFor(logRegistry, promhttp.HandlerOpts{}))
-
 	return serv, nil
 
 }
