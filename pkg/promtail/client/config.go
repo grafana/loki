@@ -6,9 +6,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/prometheus/common/config"
-	"github.com/prometheus/common/model"
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
+	"github.com/prometheus/common/config"
 )
 
 // Config describes configuration for a HTTP pusher client.
