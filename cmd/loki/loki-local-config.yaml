@@ -32,4 +32,4 @@ limits_config:
   enforce_metric_name: false
 
 querier:
-  max_look_back_period: 672h
+  max_look_back_period: 0

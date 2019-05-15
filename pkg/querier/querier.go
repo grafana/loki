@@ -19,7 +19,7 @@ import (
 
 // Config for a querier.
 type Config struct {
-	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set
+	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
 }
 
