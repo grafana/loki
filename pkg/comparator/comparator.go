@@ -40,7 +40,7 @@ var (
 		Namespace: "loki_canary",
 		Name:      "response_latency",
 		Help:      "is how long it takes for log lines to be returned from Loki in seconds.",
-		Buckets:   []float64{0.5, 1, 2.5, 5, 10, 30, 60},
+		Buckets:   []float64{1, 5, 10, 30, 60, 90, 120, 300},
 	})
 )
 
