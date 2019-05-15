@@ -5,7 +5,7 @@
     memcachedExporter: 'prom/memcached-exporter:v0.4.1',
 
     // Our services.
-    tableManager: 'grafana/cortex-table-manager:r47-06f3294e',
+    tableManager: 'grafana/cortex-table-manager:r56-bd83f04a',
 
     loki: 'grafana/loki:latest',
 
