@@ -1,6 +1,6 @@
-{{- if eq .Values.mode "standalone" }}
-apiVersion: apps/v1
-kind: Deployment
+{{- if eq .Values.mode "distributed" }}
+apiVersion: apps/v1beta1
+kind: StatefulSet
 metadata:
   name: {{ template "loki.fullname" . }}
   labels:
@@ -72,7 +72,7 @@ spec:
             readOnlyRootFilesystem: true
           env:
             - name: JAEGER_AGENT_HOST
-              value: "{{ .Values.tracing.jaegerAgentHost }}"
+              value: "{{ .Values.tracing.jaegerAgentHost }}"      
       nodeSelector:
         {{- toYaml .Values.nodeSelector | nindent 8 }}
       affinity:

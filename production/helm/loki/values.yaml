@@ -61,6 +61,9 @@ config:
 
 deploymentStrategy: RollingUpdate
 
+## Use a deployment (standalone mode) or use a statefulset (distributed mode) as Kubernetes workload
+mode: standalone
+
 image:
   repository: grafana/loki
   tag: latest
