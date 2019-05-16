@@ -125,13 +125,13 @@ func TestTableManager(t *testing.T) {
 	cfg := SchemaConfig{
 		Configs: []PeriodConfig{
 			{
-				From: model.TimeFromUnix(baseTableStart.Unix()),
+				From: DayTime{model.TimeFromUnix(baseTableStart.Unix())},
 				IndexTables: PeriodicTableConfig{
 					Prefix: baseTableName,
 				},
 			},
 			{
-				From: model.TimeFromUnix(weeklyTableStart.Unix()),
+				From: DayTime{model.TimeFromUnix(weeklyTableStart.Unix())},
 				IndexTables: PeriodicTableConfig{
 					Prefix: tablePrefix,
 					Period: tablePeriod,
@@ -143,7 +143,7 @@ func TestTableManager(t *testing.T) {
 				},
 			},
 			{
-				From: model.TimeFromUnix(weeklyTable2Start.Unix()),
+				From: DayTime{model.TimeFromUnix(weeklyTable2Start.Unix())},
 				IndexTables: PeriodicTableConfig{
 					Prefix: table2Prefix,
 					Period: tablePeriod,
@@ -308,13 +308,13 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 	cfg := SchemaConfig{
 		Configs: []PeriodConfig{
 			{
-				From: model.TimeFromUnix(baseTableStart.Unix()),
+				From: DayTime{model.TimeFromUnix(baseTableStart.Unix())},
 				IndexTables: PeriodicTableConfig{
 					Prefix: baseTableName,
 				},
 			},
 			{
-				From: model.TimeFromUnix(weeklyTableStart.Unix()),
+				From: DayTime{model.TimeFromUnix(weeklyTableStart.Unix())},
 				IndexTables: PeriodicTableConfig{
 					Prefix: tablePrefix,
 					Period: tablePeriod,
@@ -394,13 +394,13 @@ func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
 	cfg := SchemaConfig{
 		Configs: []PeriodConfig{
 			{
-				From: model.TimeFromUnix(baseTableStart.Unix()),
+				From: DayTime{model.TimeFromUnix(baseTableStart.Unix())},
 				IndexTables: PeriodicTableConfig{
 					Prefix: baseTableName,
 				},
 			},
 			{
-				From: model.TimeFromUnix(weeklyTableStart.Unix()),
+				From: DayTime{model.TimeFromUnix(weeklyTableStart.Unix())},
 				IndexTables: PeriodicTableConfig{
 					Prefix: tablePrefix,
 					Period: tablePeriod,
@@ -561,7 +561,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 	cfg := SchemaConfig{
 		Configs: []PeriodConfig{
 			{
-				From: model.TimeFromUnix(baseTableStart.Unix()),
+				From: DayTime{model.TimeFromUnix(baseTableStart.Unix())},
 				IndexTables: PeriodicTableConfig{
 					Prefix: tablePrefix,
 					Period: tablePeriod,
@@ -673,7 +673,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 
 	// Verify that with a retention period of zero no tables outside the configs 'From' range are removed
 	tableManager.cfg.RetentionPeriod = 0
-	tableManager.schemaCfg.Configs[0].From = model.TimeFromUnix(baseTableStart.Add(tablePeriod).Unix())
+	tableManager.schemaCfg.Configs[0].From = DayTime{model.TimeFromUnix(baseTableStart.Add(tablePeriod).Unix())}
 	// Retention > 0 will prevent older tables from being created so we need to create the old tables manually for the test
 	client.CreateTable(nil, TableDesc{Name: tablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig})
 	client.CreateTable(nil, TableDesc{Name: chunkTablePrefix + "0", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite})
