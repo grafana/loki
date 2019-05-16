@@ -25,6 +25,11 @@ const (
 	defaulSince       = 1 * time.Hour
 )
 
+// TailResponse represents response for tail query
+type TailResponse struct {
+	Streams []*logproto.Stream `json:"streams"`
+}
+
 // nolint
 func intParam(values url.Values, name string, def int) (int, error) {
 	value := values.Get(name)
@@ -161,13 +166,17 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	// heap until connection to websocket stays open
 	queryRequest := *queryRequestPtr
 	itr := q.tailQuery(r.Context(), &queryRequest)
+
 	stream := logproto.Stream{}
+	tailResponse := TailResponse{[]*logproto.Stream{
+		&stream,
+	}}
 
 	for itr.Next() {
 		stream.Entries = []logproto.Entry{itr.Entry()}
 		stream.Labels = itr.Labels()
 
-		err := conn.WriteJSON(stream)
+		err := conn.WriteJSON(tailResponse)
 		if err != nil {
 			level.Error(util.Logger).Log("Error writing to websocket", fmt.Sprintf("%v", err))
 			if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
