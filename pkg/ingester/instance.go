@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"net/http"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -9,10 +10,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
 	cutil "github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
@@ -46,6 +49,7 @@ type instance struct {
 	streamsMtx sync.RWMutex
 	streams    map[model.Fingerprint]*stream
 	index      *index.InvertedIndex
+	limits     *validation.Overrides
 
 	instanceID string
 
@@ -55,10 +59,11 @@ type instance struct {
 	blockSize int
 }
 
-func newInstance(instanceID string, blockSize int) *instance {
+func newInstance(instanceID string, blockSize int, limits *validation.Overrides) *instance {
 	return &instance{
 		streams:    map[model.Fingerprint]*stream{},
 		index:      index.New(),
+		limits:     limits,
 		instanceID: instanceID,
 
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
@@ -112,6 +117,10 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		iters, err := i.lookupStreams(req, matchers)
 		if err != nil {
 			return nil, err
+		}
+
+		if len(iters) > i.limits.MaxSeriesPerQuery(i.instanceID) {
+			return nil, httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "exceeded maximum number of series in a query")
 		}
 
 		return iter.NewHeapIterator(iters, req.Direction), nil

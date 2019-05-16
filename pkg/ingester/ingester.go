@@ -16,6 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/grafana/loki/pkg/logproto"
 )
 
@@ -56,6 +57,7 @@ type Ingester struct {
 
 	instancesMtx sync.RWMutex
 	instances    map[string]*instance
+	limits       *validation.Overrides
 
 	lifecycler *ring.Lifecycler
 	store      ChunkStore
@@ -75,10 +77,11 @@ type ChunkStore interface {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, store ChunkStore) (*Ingester, error) {
+func New(cfg Config, store ChunkStore, limits *validation.Overrides) (*Ingester, error) {
 	i := &Ingester{
 		cfg:         cfg,
 		instances:   map[string]*instance{},
+		limits:      limits,
 		store:       store,
 		quit:        make(chan struct{}),
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
@@ -159,7 +162,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(instanceID, i.cfg.BlockSize)
+		inst = newInstance(instanceID, i.cfg.BlockSize, i.limits)
 		i.instances[instanceID] = inst
 	}
 	return inst

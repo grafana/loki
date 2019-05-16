@@ -13,6 +13,8 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestIngester(t *testing.T) {
@@ -20,8 +22,12 @@ func TestIngester(t *testing.T) {
 	store := &mockStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
+	limitsConfig := defaultLimitsTestConfig()
 
-	i, err := New(ingesterConfig, store)
+	limits, err := validation.NewOverrides(limitsConfig)
+	require.NoError(t, err)
+
+	i, err := New(ingesterConfig, store, limits)
 	require.NoError(t, err)
 	defer i.Shutdown()
 
@@ -123,4 +129,10 @@ func (m *mockQuerierServer) Send(resp *logproto.QueryResponse) error {
 
 func (m *mockQuerierServer) Context() context.Context {
 	return m.ctx
+}
+
+func defaultLimitsTestConfig() validation.Limits {
+	limits := validation.Limits{}
+	flagext.DefaultValues(&limits)
+	return limits
 }

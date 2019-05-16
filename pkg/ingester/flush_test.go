@@ -10,6 +10,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
@@ -59,8 +60,12 @@ func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
+	limitsConfig := defaultLimitsTestConfig()
 
-	ing, err := New(cfg, store)
+	limits, err := validation.NewOverrides(limitsConfig)
+	require.NoError(t, err)
+
+	ing, err := New(cfg, store, limits)
 	require.NoError(t, err)
 
 	return store, ing

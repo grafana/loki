@@ -150,7 +150,7 @@ func (t *Loki) initQuerier() (err error) {
 
 func (t *Loki) initIngester() (err error) {
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = &t.cfg.Server.GRPCListenPort
-	t.ingester, err = ingester.New(t.cfg.Ingester, t.store)
+	t.ingester, err = ingester.New(t.cfg.Ingester, t.store, t.overrides)
 	if err != nil {
 		return
 	}
@@ -300,7 +300,7 @@ var modules = map[moduleName]module{
 	},
 
 	Ingester: {
-		deps: []moduleName{Store, Server},
+		deps: []moduleName{Store, Server, Overrides},
 		init: (*Loki).initIngester,
 		stop: (*Loki).stopIngester,
 	},
