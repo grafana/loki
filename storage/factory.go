@@ -174,11 +174,10 @@ func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 }
 
 // NewBucketClient makes a new bucket client based on the configuration.
-func NewBucketClient(name string, storageConfig Config) (chunk.BucketClient, error) {
-	switch name {
-	case "filesystem":
-		return local.NewBucketClient(storageConfig.FSConfig)
-	default:
-		return nil, fmt.Errorf("Unrecognized bucket client %v, choose one of: filesystem", name)
+func NewBucketClient(storageConfig Config) (chunk.BucketClient, error) {
+	if storageConfig.FSConfig.Directory != "" {
+		return local.NewFSObjectClient(storageConfig.FSConfig)
 	}
+
+	return nil, nil
 }

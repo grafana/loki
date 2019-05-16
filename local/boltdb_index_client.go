@@ -10,13 +10,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log/level"
-
 	"github.com/etcd-io/bbolt"
+	"github.com/go-kit/kit/log/level"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var bucketName = []byte("index")

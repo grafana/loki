@@ -16,7 +16,7 @@ func TestFsObjectClient_DeleteChunksBefore(t *testing.T) {
 	fsChunksDir, err := ioutil.TempDir(os.TempDir(), "fs-chunks")
 	require.NoError(t, err)
 
-	bucketClient, err := NewBucketClient(FSConfig{
+	bucketClient, err := NewFSObjectClient(FSConfig{
 		Directory: fsChunksDir,
 	})
 	require.NoError(t, err)

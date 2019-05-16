@@ -17,7 +17,7 @@ import (
 	pkgUtil "github.com/cortexproject/cortex/pkg/util"
 )
 
-// FSConfig is the config for a fsObjectClient.
+// FSConfig is the config for a FSObjectClient.
 type FSConfig struct {
 	Directory string `yaml:"directory"`
 }
@@ -27,24 +27,27 @@ func (cfg *FSConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Directory, "local.chunk-directory", "", "Directory to store chunks in.")
 }
 
-type fsObjectClient struct {
+// FSObjectClient holds config for filesystem as object store
+type FSObjectClient struct {
 	cfg FSConfig
 }
 
 // NewFSObjectClient makes a chunk.ObjectClient which stores chunks as files in the local filesystem.
-func NewFSObjectClient(cfg FSConfig) (chunk.ObjectClient, error) {
+func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 	if err := ensureDirectory(cfg.Directory); err != nil {
 		return nil, err
 	}
 
-	return &fsObjectClient{
+	return &FSObjectClient{
 		cfg: cfg,
 	}, nil
 }
 
-func (fsObjectClient) Stop() {}
+// Stop implements ObjectClient
+func (FSObjectClient) Stop() {}
 
-func (f *fsObjectClient) PutChunks(_ context.Context, chunks []chunk.Chunk) error {
+// PutChunks implements ObjectClient
+func (f *FSObjectClient) PutChunks(_ context.Context, chunks []chunk.Chunk) error {
 	for i := range chunks {
 		buf, err := chunks[i].Encoded()
 		if err != nil {
@@ -59,11 +62,12 @@ func (f *fsObjectClient) PutChunks(_ context.Context, chunks []chunk.Chunk) erro
 	return nil
 }
 
-func (f *fsObjectClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+// GetChunks implements ObjectClient
+func (f *FSObjectClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	return util.GetParallelChunks(ctx, chunks, f.getChunk)
 }
 
-func (f *fsObjectClient) getChunk(_ context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
+func (f *FSObjectClient) getChunk(_ context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
 	filename := base64.StdEncoding.EncodeToString([]byte(c.ExternalKey()))
 	buf, err := ioutil.ReadFile(path.Join(f.cfg.Directory, filename))
 	if err != nil {
@@ -77,17 +81,8 @@ func (f *fsObjectClient) getChunk(_ context.Context, decodeContext *chunk.Decode
 	return c, nil
 }
 
-// NewBucketClient makes a chunk.BucketClient which stores chunks as files in the local filesystem.
-func NewBucketClient(cfg FSConfig) (chunk.BucketClient, error) {
-	bucketClient, err := NewFSObjectClient(cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	return bucketClient.(*fsObjectClient), nil
-}
-
-func (f *fsObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) error {
+// DeleteChunksBefore implements BucketClient
+func (f *FSObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) error {
 	return filepath.Walk(f.cfg.Directory, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() && info.ModTime().Before(ts) {
 			level.Info(pkgUtil.Logger).Log("msg", "file has exceeded the retention period, removing it", "filepath", info.Name())
