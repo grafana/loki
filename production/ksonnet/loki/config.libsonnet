@@ -17,6 +17,7 @@
 
     commonArgs: {
       'config.file': '/etc/loki/config.yaml',
+      'limits.per-user-override-config': '/etc/loki/overrides/overrides.yaml',
     },
 
     ingester_client_config: {
@@ -143,6 +144,10 @@
         },
       },
     },
+
+    overrides: {
+
+    },
   },
 
   local configMap = $.core.v1.configMap,
@@ -151,6 +156,14 @@
     configMap.new('loki') +
     configMap.withData({
       'config.yaml': $.util.manifestYaml($._config.loki),
+    }),
+
+  overrides_config:
+    configMap.new('overrides') +
+    configMap.withData({
+      'overrides.yaml': $.util.manifestYaml({
+        overrides: $._config.overrides,
+      }),
     }),
 
   local deployment = $.apps.v1beta1.deployment,
