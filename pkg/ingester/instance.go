@@ -30,6 +30,8 @@ const queryBatchSize = 128
 // Errors returned on Query.
 var (
 	ErrStreamMissing = errors.New("Stream missing")
+
+	perUserSeriesLimit = "per_user_series_limit"
 )
 
 var (
@@ -88,6 +90,12 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		fp := client.FastFingerprint(labels)
 		stream, ok := i.streams[fp]
 		if !ok {
+			if len(i.streams) > i.limits.MaxSeriesPerUser(i.instanceID) {
+				validation.DiscardedSamples.WithLabelValues(perUserSeriesLimit, i.instanceID).Inc()
+				appendErr = httpgrpc.Errorf(http.StatusTooManyRequests, "per-instance series limit (%d) exceeded", i.limits.MaxSeriesPerUser(i.instanceID))
+				continue
+			}
+
 			stream = newStream(fp, labels, i.blockSize)
 			i.index.Add(labels, fp)
 			i.streams[fp] = stream
