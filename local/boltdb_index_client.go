@@ -24,7 +24,7 @@ var bucketName = []byte("index")
 const (
 	separator      = "\000"
 	null           = string('\xff')
-	dbReloadPeriod = 1 * time.Minute
+	dbReloadPeriod = 10 * time.Minute
 )
 
 // BoltDBConfig for a BoltDB index client.
@@ -80,31 +80,31 @@ func (b *boltIndexClient) loop() {
 }
 
 func (b *boltIndexClient) reload() {
-	b.dbsMtx.Lock()
-	defer b.dbsMtx.Unlock()
+	b.dbsMtx.RLock()
 
-	dbsFailedToOpen := []string{}
-	for name, db := range b.dbs {
-		db.Close()
-
+	removedDBs := []string{}
+	for name := range b.dbs {
 		if _, err := os.Stat(path.Join(b.cfg.Directory, name)); err != nil && os.IsNotExist(err) {
-			dbsFailedToOpen = append(dbsFailedToOpen, name)
+			removedDBs = append(removedDBs, name)
 			level.Debug(util.Logger).Log("msg", "boltdb file got removed", "filename", name)
 			continue
 		}
+	}
+	b.dbsMtx.RUnlock()
 
-		db, err := bbolt.Open(path.Join(b.cfg.Directory, name), 0666, nil)
-		if err != nil {
-			dbsFailedToOpen = append(dbsFailedToOpen, name)
-			level.Error(util.Logger).Log("msg", "failed to open boltdb", "filename", name)
-			continue
+	if len(removedDBs) != 0 {
+		b.dbsMtx.Lock()
+		defer b.dbsMtx.Unlock()
+
+		for _, name := range removedDBs {
+			if err := b.dbs[name].Close(); err != nil {
+				level.Error(util.Logger).Log("msg", "failed to close removed boltdb", "filename", name, "err", err)
+				continue
+			}
+			delete(b.dbs, name)
 		}
-		b.dbs[name] = db
 	}
 
-	for _, name := range dbsFailedToOpen {
-		delete(b.dbs, name)
-	}
 }
 
 func (b *boltIndexClient) Stop() {
