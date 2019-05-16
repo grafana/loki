@@ -15,6 +15,12 @@ import (
 	"github.com/grafana/loki-canary/pkg/comparator"
 )
 
+// FIXME this is copied and modified a little from the querier package in Loki to avoid importing Loki which indirectly imports cortex which won't build :(
+// TailResponse represents response for tail query
+type TailResponse struct {
+	Streams []*Stream `json:"streams"`
+}
+
 type Reader struct {
 	url          url.URL
 	header       http.Header
@@ -66,10 +72,10 @@ func (r *Reader) run() {
 
 	r.closeAndReconnect()
 
-	stream := &Stream{}
+	tailResponse := &TailResponse{}
 
 	for {
-		err := r.conn.ReadJSON(stream)
+		err := r.conn.ReadJSON(tailResponse)
 		if err != nil {
 			if r.shuttingDown {
 				close(r.done)
@@ -79,19 +85,20 @@ func (r *Reader) run() {
 			r.closeAndReconnect()
 			continue
 		}
-
-		for _, entry := range stream.Entries {
-			sp := strings.Split(entry.Line, " ")
-			if len(sp) != 2 {
-				_, _ = fmt.Fprintf(r.w, "received invalid entry: %s\n", entry.Line)
-				continue
+		for _, stream := range tailResponse.Streams {
+			for _, entry := range stream.Entries {
+				sp := strings.Split(entry.Line, " ")
+				if len(sp) != 2 {
+					_, _ = fmt.Fprintf(r.w, "received invalid entry: %s\n", entry.Line)
+					continue
+				}
+				ts, err := strconv.ParseInt(sp[0], 10, 64)
+				if err != nil {
+					_, _ = fmt.Fprintf(r.w, "failed to parse timestamp: %s\n", sp[0])
+					continue
+				}
+				r.cm.EntryReceived(time.Unix(0, ts))
 			}
-			ts, err := strconv.ParseInt(sp[0], 10, 64)
-			if err != nil {
-				_, _ = fmt.Fprintf(r.w, "failed to parse timestamp: %s\n", sp[0])
-				continue
-			}
-			r.cm.EntryReceived(time.Unix(0, ts))
 		}
 	}
 }
