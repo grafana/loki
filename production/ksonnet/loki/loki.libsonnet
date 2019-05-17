@@ -4,8 +4,11 @@
 (import 'config.libsonnet') +
 (import 'consul/consul.libsonnet') +
 
-// Cortex services
+// Loki services
 (import 'distributor.libsonnet') +
 (import 'ingester.libsonnet') +
 (import 'querier.libsonnet') +
-(import 'table-manager.libsonnet')
+(import 'table-manager.libsonnet') +
+
+// Supporting services
+(import 'memcached.libsonnet')

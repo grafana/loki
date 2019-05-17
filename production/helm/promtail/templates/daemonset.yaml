@@ -28,7 +28,10 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}          
       annotations:
-        {{ toYaml .Values.podAnnotations | nindent 8 }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ template "promtail.serviceAccountName" . }}
     {{- if .Values.priorityClassName }}

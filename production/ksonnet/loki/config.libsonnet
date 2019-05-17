@@ -4,6 +4,8 @@
     cluster: error 'must define cluster',
     replication_factor: 3,
 
+    memcached_replicas: 3,
+
     table_prefix: $._config.namespace,
     bigtable_instance: error 'must specify bigtable instance',
     bigtable_project: error 'must specify bigtable project',
@@ -35,6 +37,7 @@
 
       ingester: {
         chunk_idle_period: '15m',
+        chunk_block_size: 262144,
 
         lifecycler: {
           ring: {
@@ -65,6 +68,44 @@
         },
         gcs: {
           bucket_name: $._config.gcs_bucket_name,
+        },
+
+        index_queries_cache_config: {
+          memcached: {
+            batch_size: 100,
+            parallelism: 100,
+          },
+
+          memcached_client: {
+            host: 'memcached-index-queries.%s.svc.cluster.local' % $._config.namespace,
+            service: 'memcached-client',
+          },
+        },
+      },
+
+      chunk_store_config: {
+        chunk_cache_config: {
+          memcached: {
+            batch_size: 100,
+            parallelism: 100,
+          },
+
+          memcached_client: {
+            host: 'memcached.%s.svc.cluster.local' % $._config.namespace,
+            service: 'memcached-client',
+          },
+        },
+
+        write_dedupe_cache_config: {
+          memcached: {
+            batch_size: 100,
+            parallelism: 100,
+          },
+
+          memcached_client: {
+            host: 'memcached-index-writes.%s.svc.cluster.local' % $._config.namespace,
+            service: 'memcached-client',
+          },
         },
       },
 

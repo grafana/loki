@@ -51,7 +51,7 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions
 
 	tailer := &tailer{
 		logger:    logger,
-		handler:   api.AddLabelsMiddleware(model.LabelSet{filenameLabel: model.LabelValue(path)}).Wrap(handler),
+		handler:   api.AddLabelsMiddleware(model.LabelSet{FilenameLabel: model.LabelValue(path)}).Wrap(handler),
 		positions: positions,
 
 		path: path,

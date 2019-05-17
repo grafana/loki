@@ -45,9 +45,10 @@ func init() {
 type stream struct {
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
-	chunks []chunkDesc
-	fp     model.Fingerprint
-	labels []client.LabelAdapter
+	chunks    []chunkDesc
+	fp        model.Fingerprint
+	labels    []client.LabelAdapter
+	blockSize int
 }
 
 type chunkDesc struct {
@@ -58,17 +59,18 @@ type chunkDesc struct {
 	lastUpdated time.Time
 }
 
-func newStream(fp model.Fingerprint, labels []client.LabelAdapter) *stream {
+func newStream(fp model.Fingerprint, labels []client.LabelAdapter, blockSize int) *stream {
 	return &stream{
-		fp:     fp,
-		labels: labels,
+		fp:        fp,
+		labels:    labels,
+		blockSize: blockSize,
 	}
 }
 
 func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 	if len(s.chunks) == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
-			chunk: chunkenc.NewMemChunk(chunkenc.EncGZIP),
+			chunk: chunkenc.NewMemChunkSize(chunkenc.EncGZIP, s.blockSize),
 		})
 		chunksCreatedTotal.Inc()
 	}
@@ -85,14 +87,14 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 			chunksCreatedTotal.Inc()
 
 			s.chunks = append(s.chunks, chunkDesc{
-				chunk: chunkenc.NewMemChunk(chunkenc.EncGZIP),
+				chunk: chunkenc.NewMemChunkSize(chunkenc.EncGZIP, s.blockSize),
 			})
 			chunk = &s.chunks[len(s.chunks)-1]
 		}
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
 			appendErr = err
 		}
-		chunk.lastUpdated = entries[i].Timestamp
+		chunk.lastUpdated = time.Now()
 	}
 
 	if appendErr == chunkenc.ErrOutOfOrder {

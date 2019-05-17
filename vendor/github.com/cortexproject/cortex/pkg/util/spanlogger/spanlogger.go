@@ -6,6 +6,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
 	otlog "github.com/opentracing/opentracing-go/log"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -40,4 +41,14 @@ func (s *SpanLogger) Log(kvps ...interface{}) error {
 	}
 	s.Span.LogFields(fields...)
 	return nil
+}
+
+// Error sets error flag and logs the error, if non-nil.  Returns the err passed in.
+func (s *SpanLogger) Error(err error) error {
+	if err == nil {
+		return nil
+	}
+	ext.Error.Set(s.Span, true)
+	s.Span.LogFields(otlog.Error(err))
+	return err
 }

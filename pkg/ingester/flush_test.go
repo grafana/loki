@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"sync"
 	"testing"
@@ -10,9 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/go-kit/kit/log"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
@@ -27,7 +24,7 @@ const (
 )
 
 func init() {
-	util.Logger = log.NewLogfmtLogger(os.Stdout)
+	//util.Logger = log.NewLogfmtLogger(os.Stdout)
 }
 
 func TestChunkFlushingIdle(t *testing.T) {
@@ -68,10 +65,7 @@ func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
 	return store, ing
 }
 
-func newDefaultTestStore(t require.TestingT) (*testStore, *Ingester) {
-	return newTestStore(t, defaultIngesterTestConfig())
-}
-
+// nolint
 func defaultIngesterTestConfig() Config {
 	consul := ring.NewInMemoryKVClient()
 	cfg := Config{}
@@ -84,6 +78,7 @@ func defaultIngesterTestConfig() Config {
 	cfg.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
 	cfg.LifecyclerConfig.Addr = "localhost"
 	cfg.LifecyclerConfig.ID = "localhost"
+	cfg.LifecyclerConfig.FinalSleep = 0
 	return cfg
 }
 
@@ -108,7 +103,7 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 
 func (s *testStore) Stop() {}
 
-func pushTestSamples(t *testing.T, ing *Ingester) ([]string, map[string][]*logproto.Stream) {
+func pushTestSamples(t *testing.T, ing logproto.PusherServer) ([]string, map[string][]*logproto.Stream) {
 	userIDs := []string{"1", "2", "3"}
 
 	// Create test samples.

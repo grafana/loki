@@ -28,7 +28,7 @@ func main() {
 	flagext.RegisterFlags(&config)
 	flag.Parse()
 
-	util.InitLogger(&config.ServerConfig)
+	util.InitLogger(&config.ServerConfig.Config)
 
 	if configFile != "" {
 		if err := helpers.LoadConfig(configFile, &config); err != nil {
@@ -36,6 +36,9 @@ func main() {
 			os.Exit(1)
 		}
 	}
+
+	// Re-init the logger which will now honor a different log level set in ServerConfig.Config
+	util.InitLogger(&config.ServerConfig.Config)
 
 	p, err := promtail.New(config)
 	if err != nil {

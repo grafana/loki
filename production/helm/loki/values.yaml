@@ -23,6 +23,7 @@ config:
 
   ingester:
     chunk_idle_period: 15m
+    chunk_block_size: 262144
     lifecycler:
       ring:
         store: inmemory
@@ -55,6 +56,8 @@ config:
       directory: /data/loki/index
     filesystem:
       directory: /data/loki/chunks
+  querier:
+    max_look_back_period: 0
 
 deploymentStrategy: RollingUpdate
 
@@ -63,7 +66,7 @@ image:
   tag: latest
   pullPolicy: Always # Always pull while in BETA
 
-## Additional Loki container arguments, e.g. log level (debug, info, warn, error) 
+## Additional Loki container arguments, e.g. log level (debug, info, warn, error)
 extraArgs: {}
   # log.level: debug
 
@@ -149,3 +152,9 @@ terminationGracePeriodSeconds: 30
 ## Tolerations for pod assignment
 ## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
 tolerations: []
+
+# The values to set in the PodDisruptionBudget spec
+# If not set then a PodDisruptionBudget will not be created
+podDisruptionBudget: {}
+# minAvailable: 1
+# maxUnavailable: 1

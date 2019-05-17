@@ -187,7 +187,7 @@
 
 [[projects]]
   branch = "lazy-load-chunks"
-  digest = "1:bf1fa66c54722bc8664f1465e427cd6fe7df52f2b6fd5ab996baf37601687b70"
+  digest = "1:a999c29b3a215dfc12d374a9aac09c94c1b72ef530f4e39d9ab3ae1468cfe8e8"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/chunk",
@@ -213,7 +213,7 @@
     "pkg/util/validation",
   ]
   pruneopts = "UT"
-  revision = "95a3f308e95617732b76e337874e83ccf173cf14"
+  revision = "61b92520b0c1afdef6e42b7a27cca6c715e9f386"
   source = "https://github.com/grafana/cortex"
 
 [[projects]]
@@ -753,7 +753,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:c270fde3390cf824f004853135a8cb6347d013eab2d31e129bbae66219284284"
+  digest = "1:21e3d654236698240f954c8637759ba64af9b942e38a808579b8352772aa4ea6"
   name = "github.com/prometheus/prometheus"
   packages = [
     "discovery",
@@ -772,6 +772,7 @@
     "discovery/zookeeper",
     "pkg/gate",
     "pkg/labels",
+    "pkg/modtimevfs",
     "pkg/relabel",
     "pkg/textparse",
     "pkg/timestamp",
@@ -780,6 +781,7 @@
     "relabel",
     "storage",
     "storage/tsdb",
+    "template",
     "util/stats",
     "util/strutil",
     "util/testutil",
@@ -820,6 +822,26 @@
   pruneopts = "UT"
   revision = "f0a61d5e8ca1bcc7a607d6de3dfd51467791db88"
   version = "v2.1.0"
+
+[[projects]]
+  branch = "master"
+  digest = "1:d716544630de6b0d07c24bd4690547b6db84a8f62f71939a2957aec1a7b824d2"
+  name = "github.com/shurcooL/httpfs"
+  packages = [
+    "filter",
+    "union",
+    "vfsutil",
+  ]
+  pruneopts = "UT"
+  revision = "74dc9339e414ad069a8d04bba7e7aafd08043a25"
+
+[[projects]]
+  branch = "master"
+  digest = "1:98450c86949b8cdc4637b80c1c686ca955e503d3fbae9296d1f49c532895d281"
+  name = "github.com/shurcooL/vfsgen"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "6a9ea43bcacdf716a5c1b38efff722c07adf0069"
 
 [[projects]]
   digest = "1:87c2e02fb01c27060ccc5ba7c5a407cc91147726f8f40b70cceeedbc52b1f3a8"
@@ -878,8 +900,8 @@
   version = "v2.0.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:81403343bc9a102e3c924f87ad81e5a13bb7c36211714475c906853f4e887933"
+  branch = "server-listen-addr"
+  digest = "1:0184d699d4cbbbc3073fbbdd7cc0c8592d484c6f23914c89fb6d218e90de171a"
   name = "github.com/weaveworks/common"
   packages = [
     "aws",
@@ -896,7 +918,8 @@
     "user",
   ]
   pruneopts = "UT"
-  revision = "81a1a4d158e60de72dbead600ec011fb90344f8c"
+  revision = "5bf824591a6567784789cf9b2169f74f162bf80d"
+  source = "https://github.com/tomwilkie/weaveworks-common"
 
 [[projects]]
   digest = "1:bb40f7ff970145324f2a2acafdff3a23ed3f05db49cb5eb519b3d6bee86a5887"
@@ -1388,9 +1411,15 @@
     "github.com/prometheus/prometheus/discovery/config",
     "github.com/prometheus/prometheus/discovery/targetgroup",
     "github.com/prometheus/prometheus/pkg/labels",
+    "github.com/prometheus/prometheus/pkg/modtimevfs",
     "github.com/prometheus/prometheus/pkg/relabel",
     "github.com/prometheus/prometheus/pkg/textparse",
+    "github.com/prometheus/prometheus/promql",
     "github.com/prometheus/prometheus/relabel",
+    "github.com/prometheus/prometheus/template",
+    "github.com/shurcooL/httpfs/filter",
+    "github.com/shurcooL/httpfs/union",
+    "github.com/shurcooL/vfsgen",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
     "github.com/weaveworks/common/httpgrpc",

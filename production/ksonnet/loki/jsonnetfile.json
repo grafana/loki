@@ -19,6 +19,16 @@
                 }
             },
             "version": "master"
+        },
+        {
+            "name": "memcached",
+            "source": {
+                "git": {
+                    "remote": "https://github.com/grafana/jsonnet-libs",
+                    "subdir": "memcached"
+                }
+            },
+            "version": "master"
         }
     ]
 }

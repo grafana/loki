@@ -16,7 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/parser"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -50,9 +50,11 @@ type instance struct {
 
 	streamsCreatedTotal prometheus.Counter
 	streamsRemovedTotal prometheus.Counter
+
+	blockSize int
 }
 
-func newInstance(instanceID string) *instance {
+func newInstance(instanceID string, blockSize int) *instance {
 	return &instance{
 		streams:    map[model.Fingerprint]*stream{},
 		index:      index.New(),
@@ -60,6 +62,8 @@ func newInstance(instanceID string) *instance {
 
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
+
+		blockSize: blockSize,
 	}
 }
 
@@ -78,7 +82,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		fp := client.FastFingerprint(labels)
 		stream, ok := i.streams[fp]
 		if !ok {
-			stream = newStream(fp, labels)
+			stream = newStream(fp, labels, i.blockSize)
 			i.index.Add(labels, fp)
 			i.streams[fp] = stream
 			i.streamsCreatedTotal.Inc()
@@ -94,28 +98,31 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 }
 
 func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
-	matchers, err := parser.Matchers(req.Query)
+	expr, err := logql.ParseExpr(req.Query)
 	if err != nil {
 		return err
 	}
-
-	iterators, err := i.lookupStreams(req, matchers)
-	if err != nil {
-		return err
-	}
-
-	iterator := iter.NewHeapIterator(iterators, req.Direction)
-	defer helpers.LogError("closing iterator", iterator.Close)
 
 	if req.Regex != "" {
-		var err error
-		iterator, err = iter.NewRegexpFilter(req.Regex, iterator)
-		if err != nil {
-			return err
-		}
+		expr = logql.NewFilterExpr(expr, labels.MatchRegexp, req.Regex)
 	}
 
-	return sendBatches(iterator, queryServer, req.Limit)
+	querier := logql.QuerierFunc(func(matchers []*labels.Matcher) (iter.EntryIterator, error) {
+		iters, err := i.lookupStreams(req, matchers)
+		if err != nil {
+			return nil, err
+		}
+
+		return iter.NewHeapIterator(iters, req.Direction), nil
+	})
+
+	iter, err := expr.Eval(querier)
+	if err != nil {
+		return err
+	}
+	defer helpers.LogError("closing iterator", iter.Close)
+
+	return sendBatches(iter, queryServer, req.Limit)
 }
 
 func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {

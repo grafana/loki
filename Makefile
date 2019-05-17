@@ -1,4 +1,4 @@
-.PHONY: all test clean images protos
+.PHONY: all test clean images protos assets check_assets
 .DEFAULT_GOAL := all
 
 CHARTS := production/helm/loki production/helm/promtail production/helm/loki-stack
@@ -8,6 +8,7 @@ CHARTS := production/helm/loki production/helm/promtail production/helm/loki-sta
 IMAGE_PREFIX ?= grafana/
 IMAGE_TAG := $(shell ./tools/image-tag)
 UPTODATE := .uptodate
+DEBUG_UPTODATE := .uptodate-debug
 GIT_REVISION := $(shell git rev-parse --short HEAD)
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 
@@ -21,6 +22,11 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 	$(SUDO) docker tag $(IMAGE_PREFIX)$(shell basename $(@D)) $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)
 	touch $@
 
+%/$(DEBUG_UPTODATE): %/Dockerfile.debug
+	$(SUDO) docker build -f $(@D)/Dockerfile.debug -t $(IMAGE_PREFIX)$(shell basename $(@D))-debug $(@D)/
+	$(SUDO) docker tag $(IMAGE_PREFIX)$(shell basename $(@D))-debug $(IMAGE_PREFIX)$(shell basename $(@D))-debug:$(IMAGE_TAG)
+	touch $@
+
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/go/src/github.com/grafana/loki' phase.
 DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
@@ -28,8 +34,13 @@ DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -
 # Get a list of directories containing Dockerfiles
 DOCKERFILES := $(shell find . $(DONT_FIND) -type f -name 'Dockerfile' -print)
 UPTODATE_FILES := $(patsubst %/Dockerfile,%/$(UPTODATE),$(DOCKERFILES))
+DEBUG_DOCKERFILES := $(shell find . $(DONT_FIND) -type f -name 'Dockerfile.debug' -print)
+DEBUG_UPTODATE_FILES := $(patsubst %/Dockerfile.debug,%/$(DEBUG_UPTODATE),$(DEBUG_DOCKERFILES))
+DEBUG_DLV_FILES := $(patsubst %/Dockerfile.debug,%/dlv,$(DEBUG_DOCKERFILES))
 DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,$(shell basename $(dir))))
+DEBUG_DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile.debug,%,$(DEBUG_DOCKERFILES))
+DEBUG_IMAGE_NAMES := $(foreach dir,$(DEBUG_DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,$(shell basename $(dir))-debug))
 images:
 	$(info $(patsubst %,%:$(IMAGE_TAG),$(IMAGE_NAMES)))
 	@echo > /dev/null
@@ -49,22 +60,39 @@ YACC_GOS := $(patsubst %.y,%.go,$(YACC_DEFS))
 # for every directory with main.go in it, in the ./cmd directory.
 MAIN_GO := $(shell find . $(DONT_FIND) -type f -name 'main.go' -print)
 EXES := $(foreach exe, $(patsubst ./cmd/%/main.go, %, $(MAIN_GO)), ./cmd/$(exe)/$(exe))
+DEBUG_EXES := $(foreach exe, $(patsubst ./cmd/%/main.go, %, $(MAIN_GO)), ./cmd/$(exe)/$(exe)-debug)
 GO_FILES := $(shell find . $(DONT_FIND) -name cmd -prune -o -type f -name '*.go' -print)
+
+# This is the important part of how `make all` enters this file
+# the above EXES finds all the main.go files and for each of them
+# it creates the dep_exe targets which look like this:
+#   cmd/promtail/promtail: loki-build-image/.uptodate cmd/promtail//main.go pkg/loki/loki.go pkg/loki/fake_auth.go ...
+#   cmd/promtail/.uptodate: cmd/promtail/promtail
+# Then when `make all` expands `$(UPTODATE_FILES)` it will call the second generated target and initiate the build process
 define dep_exe
 $(1): $(dir $(1))/main.go $(GO_FILES) $(PROTO_GOS) $(YACC_GOS)
 $(dir $(1))$(UPTODATE): $(1)
 endef
 $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 
+# Everything is basically duplicated for debug builds,
+# but with a different set of Dockerfiles and binaries appended with -debug.
+define debug_dep_exe
+$(1): $(dir $(1))/main.go $(GO_FILES) $(PROTO_GOS) $(YACC_GOS)
+$(dir $(1))$(DEBUG_UPTODATE): $(1)
+endef
+$(foreach exe, $(DEBUG_EXES), $(eval $(call debug_dep_exe, $(exe))))
+
 # Manually declared dependancies and what goes into each exe
 pkg/logproto/logproto.pb.go: pkg/logproto/logproto.proto
 vendor/github.com/cortexproject/cortex/pkg/ring/ring.pb.go: vendor/github.com/cortexproject/cortex/pkg/ring/ring.proto
 vendor/github.com/cortexproject/cortex/pkg/ingester/client/cortex.pb.go: vendor/github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto
 vendor/github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.pb.go: vendor/github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.proto
-pkg/parser/labels.go: pkg/parser/labels.y
-pkg/parser/matchers.go: pkg/parser/matchers.y
+pkg/promtail/server/server.go: assets
+pkg/logql/expr.go: pkg/logql/expr.y
 all: $(UPTODATE_FILES)
 test: $(PROTO_GOS) $(YACC_GOS)
+debug: $(DEBUG_UPTODATE_FILES)
 yacc: $(YACC_GOS)
 protos: $(PROTO_GOS)
 yacc: $(YACC_GOS)
@@ -86,6 +114,10 @@ TTY := --tty
 
 VPREFIX := github.com/grafana/loki/vendor/github.com/prometheus/common/version
 GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION)" -tags netgo
+# Per some websites I've seen to add `-gcflags "all=-N -l"`, the gcflags seem poorly if at all documented
+# the best I could dig up is -N disables optimizations and -l disables inlining which should make debugging match source better.
+# Also remove the -s and -w flags present in the normal build which strip the symbol table and the DWARF symbol table.
+DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION)" -tags netgo
 
 NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
        rm $@; \
@@ -96,9 +128,15 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
        false; \
 }
 
+# If BUILD_IN_CONTAINER is true, the build image is run which launches
+# an image that mounts this project as a volume.  The image invokes a build.sh script
+# which essentially re-enters this file with BUILD_IN_CONTAINER=FALSE
+# causing the else block target below to be called and the files to be built.
+# If BUILD_IN_CONTAINER were false to begin with, the else block is
+# executed and the binaries are built without ever launching the build container.
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-$(EXES) $(PROTO_GOS) $(YACC_GOS) lint test shell check-generated-files: loki-build-image/$(UPTODATE)
+$(EXES) $(DEBUG_EXES) $(PROTO_GOS) $(YACC_GOS) lint test shell check-generated-files: loki-build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) docker run $(RM) $(TTY) -i \
@@ -108,6 +146,12 @@ $(EXES) $(PROTO_GOS) $(YACC_GOS) lint test shell check-generated-files: loki-bui
 		$(IMAGE_PREFIX)loki-build-image $@;
 
 else
+
+$(DEBUG_EXES): loki-build-image/$(UPTODATE)
+	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
+	$(NETGO_CHECK)
+	# Copy the delve binary to make it easily available to put in the binary's container.
+	[ -f "/go/bin/dlv" ] && mv "/go/bin/dlv" $(@D)/dlv
 
 $(EXES): loki-build-image/$(UPTODATE)
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
@@ -127,13 +171,13 @@ $(EXES): loki-build-image/$(UPTODATE)
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
 
 lint: loki-build-image/$(UPTODATE)
-	gometalinter ./...
+	GOGC=20 golangci-lint run
 
 check-generated-files: loki-build-image/$(UPTODATE) yacc protos
 	@git diff-files || (echo "changed files; failing check" && exit 1)
 
 test: loki-build-image/$(UPTODATE)
-	go test ./...
+	go test -p=8 ./...
 
 shell: loki-build-image/$(UPTODATE)
 	bash
@@ -200,6 +244,17 @@ helm-publish: helm
 	git push origin gh-pages
 
 clean:
-	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf $(UPTODATE_FILES) $(EXES) .cache
+	$(SUDO) docker rmi $(IMAGE_NAMES) $(DEBUG_IMAGE_NAMES) >/dev/null 2>&1 || true
+	rm -rf $(UPTODATE_FILES) $(EXES) $(DEBUG_UPTODATE_FILES) $(DEBUG_EXES) $(DEBUG_DLV_FILES) .cache pkg/promtail/server/ui/assets_vfsdata.go
 	go clean ./...
+
+assets:
+	@echo ">> writing assets"
+	go generate -x -v ./pkg/promtail/server/ui
+
+check_assets: assets
+	@echo ">> checking that assets are up-to-date"
+	@if ! (cd pkg/promtail/server/ui && git diff --exit-code); then \
+		echo "Run 'make assets' and commit the changes to fix the error."; \
+		exit 1; \
+	fi

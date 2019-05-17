@@ -40,5 +40,6 @@ var Fixtures = []testutils.Fixture{
 func defaultLimits() (*validation.Overrides, error) {
 	var defaults validation.Limits
 	flagext.DefaultValues(&defaults)
+	defaults.CardinalityLimit = 5
 	return validation.NewOverrides(defaults)
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/common/config"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -60,15 +61,31 @@ func doRequest(path string, out interface{}) error {
 	if err != nil {
 		return err
 	}
+
 	req.SetBasicAuth(*username, *password)
 
-	resp, err := http.DefaultClient.Do(req)
+	clientConfig := config.HTTPClientConfig{
+		TLSConfig: config.TLSConfig{
+			CAFile:             *tlsCACertPath,
+			CertFile:           *tlsClientCertPath,
+			KeyFile:            *tlsClientCertKeyPath,
+			ServerName:         url,
+			InsecureSkipVerify: *tlsSkipVerify,
+		},
+	}
+
+	client, err := config.NewClientFromConfig(clientConfig, "logcli")
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			fmt.Println("error closing body", err)
+			log.Println("error closing body", err)
 		}
 	}()
 
@@ -86,16 +103,33 @@ func liveTailQueryConn() (*websocket.Conn, error) {
 }
 
 func wsConnect(path string) (*websocket.Conn, error) {
+
+	tlsConfig, err := config.NewTLSConfig(&config.TLSConfig{
+		CAFile:             *tlsCACertPath,
+		CertFile:           *tlsClientCertPath,
+		KeyFile:            *tlsClientCertKeyPath,
+		ServerName:         *addr,
+		InsecureSkipVerify: *tlsSkipVerify,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	url := *addr + path
 	if strings.HasPrefix(url, "https") {
 		url = strings.Replace(url, "https", "wss", 1)
 	} else if strings.HasPrefix(url, "http") {
 		url = strings.Replace(url, "http", "ws", 1)
 	}
-	fmt.Println(url)
+	log.Println(url)
 
 	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(*username+":"+*password))}}
-	c, resp, err := websocket.DefaultDialer.Dial(url, h)
+
+	ws := websocket.Dialer{
+		TLSClientConfig: tlsConfig,
+	}
+
+	c, resp, err := ws.Dial(url, h)
 
 	if err != nil {
 		if resp == nil {

@@ -1,9 +1,9 @@
 local config = import 'config.libsonnet';
 
 config + {
-  local gen_scrape_config(job_name) = {
+  local gen_scrape_config(job_name, pod_uid) = {
     job_name: job_name,
-    entry_parser: $._config.promtail_config.entry_parser,
+    pipeline_stages: $._config.promtail_config.pipeline_stages,
     kubernetes_sd_configs: [{
       role: 'pod',
     }],
@@ -61,10 +61,10 @@ config + {
 
       // Kubernetes puts logs under subdirectories keyed pod UID and container_name.
       {
-        source_labels: ['__meta_kubernetes_pod_uid', '__meta_kubernetes_pod_container_name'],
+        source_labels: [pod_uid, '__meta_kubernetes_pod_container_name'],
         target_label: '__path__',
         separator: '/',
-        replacement: '/var/log/pods/$1/*.log',
+        replacement: '/var/log/pods/*$1/*.log',
       },
     ],
   },
@@ -72,7 +72,7 @@ config + {
   promtail_config:: {
     scrape_configs: [
       // Scrape config to scrape any pods with a 'name' label.
-      gen_scrape_config('kubernetes-pods-name') {
+      gen_scrape_config('kubernetes-pods-name', '__meta_kubernetes_pod_uid') {
         prelabel_config:: [
 
           // Use name label as __service__.
@@ -84,7 +84,7 @@ config + {
       },
 
       // Scrape config to scrape any pods with a 'app' label.
-      gen_scrape_config('kubernetes-pods-app') {
+      gen_scrape_config('kubernetes-pods-app', '__meta_kubernetes_pod_uid') {
         prelabel_config:: [
           // Drop pods with a 'name' label.  They will have already been added by
           // the scrape_config that matches on the 'name' label
@@ -104,7 +104,7 @@ config + {
 
       // Scrape config to scrape any pods with a direct controller (eg
       // StatefulSets).
-      gen_scrape_config('kubernetes-pods-direct-controllers') {
+      gen_scrape_config('kubernetes-pods-direct-controllers', '__meta_kubernetes_pod_uid') {
         prelabel_config:: [
           // Drop pods with a 'name' or 'app' label.  They will have already been added by
           // the scrape_config that matches above.
@@ -133,7 +133,7 @@ config + {
 
       // Scrape config to scrape any pods with an indirect controller (eg
       // Deployments).
-      gen_scrape_config('kubernetes-pods-indirect-controller') {
+      gen_scrape_config('kubernetes-pods-indirect-controller', '__meta_kubernetes_pod_uid') {
         prelabel_config:: [
           // Drop pods with a 'name' or 'app' label.  They will have already been added by
           // the scrape_config that matches above.
@@ -156,6 +156,26 @@ config + {
             source_labels: ['__meta_kubernetes_pod_controller_name'],
             action: 'replace',
             regex: '^([0-9a-z-.]+)(-[0-9a-f]{8,10})$',
+            target_label: '__service__',
+          },
+        ]
+      },
+
+      // Scrape config to scrape any control plane static pods (e.g. kube-apiserver
+      // etcd, kube-controller-manager & kube-scheduler)
+      gen_scrape_config('kubernetes-pods-static', '__meta_kubernetes_pod_annotation_kubernetes_io_config_mirror') {
+        prelabel_config:: [
+          // Ignore pods that aren't mirror pods
+          {
+            action: 'drop',
+            source_labels: ['__meta_kubernetes_pod_annotation_kubernetes_io_config_mirror'],
+            regex: '^$',
+          },
+
+          // Static control plane pods usually have a component label that identifies them
+          {
+            action: 'replace',
+            source_labels: ['__meta_kubernetes_pod_label_component'],
             target_label: '__service__',
           },
         ]

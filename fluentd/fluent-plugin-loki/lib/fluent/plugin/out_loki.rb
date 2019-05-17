@@ -90,7 +90,7 @@ module Fluent
           use_ssl: uri.scheme == 'https'
         }
         log.info "sending #{req.body.length} bytes"
-        res = Net::HTTP.start(uri.host, uri.port, **opts) { |http| http.request(req) }
+        res = Net::HTTP.start(uri.hostname, uri.port, **opts) { |http| http.request(req) }
         unless res && res.is_a?(Net::HTTPSuccess)
           res_summary = if res
                           "#{res.code} #{res.message} #{res.body}"

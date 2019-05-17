@@ -129,10 +129,11 @@ type entry struct {
 	s string
 }
 
-// NewMemChunk returns a new in-mem chunk.
-func NewMemChunk(enc Encoding) *MemChunk {
+// NewMemChunkSize returns a new in-mem chunk.
+// Mainly for config push size.
+func NewMemChunkSize(enc Encoding, blockSize int) *MemChunk {
 	c := &MemChunk{
-		blockSize: 256 * 1024, // The blockSize in bytes.
+		blockSize: blockSize, // The blockSize in bytes.
 		blocks:    []block{},
 
 		head: &headBlock{
@@ -152,6 +153,11 @@ func NewMemChunk(enc Encoding) *MemChunk {
 	}
 
 	return c
+}
+
+// NewMemChunk returns a new in-mem chunk for query.
+func NewMemChunk(enc Encoding) *MemChunk {
+	return NewMemChunkSize(enc, 256*1024)
 }
 
 // NewByteChunk returns a MemChunk on the passed bytes.
@@ -448,10 +454,6 @@ type listIterator struct {
 	cur entry
 }
 
-func (li *listIterator) Seek(int64) bool {
-	return false
-}
-
 func (li *listIterator) Next() bool {
 	if len(li.entries) > 0 {
 		li.cur = li.entries[0]
@@ -492,10 +494,6 @@ func newBufferedIterator(s *bufio.Reader) *bufferedIterator {
 		buf:    make([]byte, 1024),
 		decBuf: make([]byte, binary.MaxVarintLen64),
 	}
-}
-
-func (si *bufferedIterator) Seek(int64) bool {
-	return false
 }
 
 func (si *bufferedIterator) Next() bool {

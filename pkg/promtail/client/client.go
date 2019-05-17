@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,38 +11,40 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/pkg/promtail/api"
+
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/config"
+	"github.com/prometheus/common/model"
 )
 
 const contentType = "application/x-protobuf"
 const maxErrMsgLen = 1024
 
 var (
-	encodedBytes = prometheus.NewCounter(prometheus.CounterOpts{
+	encodedBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "encoded_bytes_total",
 		Help:      "Number of bytes encoded and ready to send.",
-	})
-	sentBytes = prometheus.NewCounter(prometheus.CounterOpts{
+	}, []string{"host"})
+	sentBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "sent_bytes_total",
 		Help:      "Number of bytes sent.",
-	})
+	}, []string{"host"})
 	requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "promtail",
 		Name:      "request_duration_seconds",
 		Help:      "Duration of send requests.",
-	}, []string{"status_code"})
+	}, []string{"status_code", "host"})
 )
 
 func init() {
@@ -52,34 +53,18 @@ func init() {
 	prometheus.MustRegister(requestDuration)
 }
 
-// Config describes configuration for a HTTP pusher client.
-type Config struct {
-	URL       flagext.URLValue
-	BatchWait time.Duration
-	BatchSize int
-
-	BackoffConfig util.BackoffConfig `yaml:"backoff_config"`
-	// The labels to add to any time series or alerts when communicating with loki
-	ExternalLabels model.LabelSet `yaml:"external_labels,omitempty"`
-	Timeout        time.Duration  `yaml:"timeout"`
-}
-
-// RegisterFlags registers flags.
-func (c *Config) RegisterFlags(flags *flag.FlagSet) {
-	flags.Var(&c.URL, "client.url", "URL of log server")
-	flags.DurationVar(&c.BatchWait, "client.batch-wait", 1*time.Second, "Maximum wait period before sending batch.")
-	flags.IntVar(&c.BatchSize, "client.batch-size-bytes", 100*1024, "Maximum batch size to accrue before sending. ")
-
-	flag.IntVar(&c.BackoffConfig.MaxRetries, "client.max-retries", 5, "Maximum number of retires when sending batches.")
-	flag.DurationVar(&c.BackoffConfig.MinBackoff, "client.min-backoff", 100*time.Millisecond, "Initial backoff time between retries.")
-	flag.DurationVar(&c.BackoffConfig.MaxBackoff, "client.max-backoff", 5*time.Second, "Maximum backoff time between retries.")
-	flag.DurationVar(&c.Timeout, "client.timeout", 10*time.Second, "Maximum time to wait for server to respond to a request")
+// Client pushes entries to Loki and can be stopped
+type Client interface {
+	api.EntryHandler
+	// Stop goroutine sending batch of entries.
+	Stop()
 }
 
 // Client for pushing logs in snappy-compressed protos over HTTP.
-type Client struct {
+type client struct {
 	logger  log.Logger
 	cfg     Config
+	client  *http.Client
 	quit    chan struct{}
 	entries chan entry
 	wg      sync.WaitGroup
@@ -93,21 +78,34 @@ type entry struct {
 }
 
 // New makes a new Client.
-func New(cfg Config, logger log.Logger) (*Client, error) {
-	c := &Client{
-		logger:  logger,
+func New(cfg Config, logger log.Logger) (Client, error) {
+	c := &client{
+		logger:  log.With(logger, "component", "client", "host", cfg.URL.Host),
 		cfg:     cfg,
 		quit:    make(chan struct{}),
 		entries: make(chan entry),
 
-		externalLabels: cfg.ExternalLabels,
+		externalLabels: cfg.ExternalLabels.LabelSet,
 	}
+
+	err := cfg.Client.Validate()
+	if err != nil {
+		return nil, err
+	}
+
+	c.client, err = config.NewClientFromConfig(cfg.Client, "promtail")
+	if err != nil {
+		return nil, err
+	}
+
+	c.client.Timeout = cfg.Timeout
+
 	c.wg.Add(1)
 	go c.run()
 	return c, nil
 }
 
-func (c *Client) run() {
+func (c *client) run() {
 	batch := map[model.Fingerprint]*logproto.Stream{}
 	batchSize := 0
 	maxWait := time.NewTimer(c.cfg.BatchWait)
@@ -151,14 +149,14 @@ func (c *Client) run() {
 	}
 }
 
-func (c *Client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
+func (c *client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 	buf, err := encodeBatch(batch)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "error encoding batch", "error", err)
 		return
 	}
 	bufBytes := float64(len(buf))
-	encodedBytes.Add(bufBytes)
+	encodedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
 
 	ctx := context.Background()
 	backoff := util.NewBackoff(ctx, c.cfg.BackoffConfig)
@@ -166,10 +164,10 @@ func (c *Client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 	for backoff.Ongoing() {
 		start := time.Now()
 		status, err = c.send(ctx, buf)
-		requestDuration.WithLabelValues(strconv.Itoa(status)).Observe(time.Since(start).Seconds())
+		requestDuration.WithLabelValues(strconv.Itoa(status), c.cfg.URL.Host).Observe(time.Since(start).Seconds())
 
 		if err == nil {
-			sentBytes.Add(bufBytes)
+			sentBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
 			return
 		}
 
@@ -202,7 +200,7 @@ func encodeBatch(batch map[model.Fingerprint]*logproto.Stream) ([]byte, error) {
 	return buf, nil
 }
 
-func (c *Client) send(ctx context.Context, buf []byte) (int, error) {
+func (c *client) send(ctx context.Context, buf []byte) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
 	req, err := http.NewRequest("POST", c.cfg.URL.String(), bytes.NewReader(buf))
@@ -212,7 +210,7 @@ func (c *Client) send(ctx context.Context, buf []byte) (int, error) {
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", contentType)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return -1, err
 	}
@@ -230,13 +228,13 @@ func (c *Client) send(ctx context.Context, buf []byte) (int, error) {
 }
 
 // Stop the client.
-func (c *Client) Stop() {
+func (c *client) Stop() {
 	close(c.quit)
 	c.wg.Wait()
 }
 
 // Handle implement EntryHandler; adds a new line to the next batch; send is async.
-func (c *Client) Handle(ls model.LabelSet, t time.Time, s string) error {
+func (c *client) Handle(ls model.LabelSet, t time.Time, s string) error {
 	if len(c.externalLabels) > 0 {
 		ls = c.externalLabels.Merge(ls)
 	}

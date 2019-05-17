@@ -1,7 +1,6 @@
 package promtail
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -17,24 +16,27 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/parser"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/config"
 	"github.com/grafana/loki/pkg/promtail/scrape"
+	"github.com/grafana/loki/pkg/promtail/targets"
 )
+
+const httpTestPort = 9080
 
 func TestPromtail(t *testing.T) {
 
 	// Setup.
-
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 	logger = level.NewFilter(logger, level.AllowInfo())
@@ -49,7 +51,8 @@ func TestPromtail(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	defer os.RemoveAll(dirName)
+
+	defer func() { _ = os.RemoveAll(dirName) }()
 
 	testDir := dirName + "/logs"
 	err = os.MkdirAll(testDir, 0750)
@@ -64,9 +67,14 @@ func TestPromtail(t *testing.T) {
 		t:           t,
 	}
 	http.Handle("/api/prom/push", handler)
+	defer func() {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 	go func() {
-		if err := http.ListenAndServe("127.0.0.1:3100", nil); err != nil {
-			t.Fatal("Failed to start web server to receive logs", err)
+		if err = http.ListenAndServe("localhost:3100", nil); err != nil {
+			err = errors.Wrap(err, "Failed to start web server to receive logs")
 		}
 	}()
 
@@ -79,9 +87,9 @@ func TestPromtail(t *testing.T) {
 	}
 
 	go func() {
-		err := p.Run()
+		err = p.Run()
 		if err != nil {
-			t.Fatal("Failed to start promtail", err)
+			err = errors.Wrap(err, "Failed to start promtail")
 		}
 	}()
 
@@ -124,8 +132,8 @@ func TestPromtail(t *testing.T) {
 		t.Fatal("Could not delete a log file to verify metrics are removed: ", err)
 	}
 
-	// Sync period is 100ms in tests, need to wait for at least one sync period for tailer to be cleaned up
-	<-time.After(150 * time.Millisecond)
+	// Sync period is 500ms in tests, need to wait for at least one sync period for tailer to be cleaned up
+	<-time.After(500 * time.Millisecond)
 
 	//Pull out some prometheus metrics before shutting down
 	metricsBytes, contentType := getPromMetrics(t)
@@ -366,20 +374,20 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recMtx.Lock()
 	for _, s := range req.Streams {
-		labels, err := parser.Labels(s.Labels)
+		labels, err := promql.ParseMetric(s.Labels)
 		if err != nil {
 			h.t.Error("Failed to parse incoming labels", err)
 			return
 		}
 		file := ""
 		for _, label := range labels {
-			if label.Name == "__filename__" {
-				file = string(label.Value)
+			if label.Name == targets.FilenameLabel {
+				file = label.Value
 				continue
 			}
 		}
 		if file == "" {
-			h.t.Error("Expected to find a label with name __filename__ but did not!")
+			h.t.Error("Expected to find a label with name `filename` but did not!")
 			return
 		}
 		if _, ok := h.receivedMap[file]; ok {
@@ -392,7 +400,7 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func getPromMetrics(t *testing.T) ([]byte, string) {
-	resp, err := http.Get("http://localhost:80/metrics")
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/metrics", httpTestPort))
 	if err != nil {
 		t.Fatal("Could not query metrics endpoint", err)
 	}
@@ -451,6 +459,11 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	// Init everything with default values.
 	flagext.RegisterFlags(&cfg)
 
+	// Make promtail listen on localhost to avoid prompts on MacOS.
+	cfg.ServerConfig.HTTPListenHost = "localhost"
+	cfg.ServerConfig.HTTPListenPort = httpTestPort
+	cfg.ServerConfig.GRPCListenHost = "localhost"
+
 	// Override some of those defaults
 	cfg.ClientConfig.URL = clientURL
 	cfg.ClientConfig.BatchWait = 10 * time.Millisecond
@@ -484,7 +497,9 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	}
 	cfg.ScrapeConfig = append(cfg.ScrapeConfig, scrapeConfig)
 
-	cfg.TargetConfig.SyncPeriod = 10 * time.Millisecond
+	// Make sure the SyncPeriod is fast for test purposes, but not faster than the poll interval (250ms)
+	// to avoid a race between the sync() function and the tailers noticing when files are deleted
+	cfg.TargetConfig.SyncPeriod = 500 * time.Millisecond
 
 	return cfg
 }
