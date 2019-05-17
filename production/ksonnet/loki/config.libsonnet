@@ -111,7 +111,7 @@
 
       schema_config: {
         configs: [{
-          from: '0',
+          from: '2018-04-15',
           store: 'bigtable',
           object_store: 'gcs',
           schema: 'v9',
