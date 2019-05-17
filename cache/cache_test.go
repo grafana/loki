@@ -14,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,9 +36,9 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
 		c := chunk.NewChunk(
 			userID,
 			model.Fingerprint(1),
-			model.Metric{
-				model.MetricNameLabel: "foo",
-				"bar":                 "baz",
+			labels.Labels{
+				{Name: model.MetricNameLabel, Value: "foo"},
+				{Name: "bar", Value: "baz"},
 			},
 			promChunk[0],
 			ts,

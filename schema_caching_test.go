@@ -58,7 +58,7 @@ func TestCachingSchema(t *testing.T) {
 	} {
 		have, err := schema.GetReadQueriesForMetric(
 			model.TimeFromUnix(tc.from.Unix()), model.TimeFromUnix(tc.through.Unix()),
-			userID, model.LabelValue("foo"),
+			userID, "foo",
 		)
 		if err != nil {
 			t.Fatal(err)

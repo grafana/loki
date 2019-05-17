@@ -16,7 +16,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -277,13 +276,13 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	var queries []IndexQuery
 	var labelName string
 	if matcher == nil {
-		queries, err = c.schema.GetReadQueriesForMetric(from, through, userID, model.LabelValue(metricName))
+		queries, err = c.schema.GetReadQueriesForMetric(from, through, userID, metricName)
 	} else if matcher.Type != labels.MatchEqual {
 		labelName = matcher.Name
-		queries, err = c.schema.GetReadQueriesForMetricLabel(from, through, userID, model.LabelValue(metricName), model.LabelName(matcher.Name))
+		queries, err = c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, matcher.Name)
 	} else {
 		labelName = matcher.Name
-		queries, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, model.LabelValue(metricName), model.LabelName(matcher.Name), model.LabelValue(matcher.Value))
+		queries, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, matcher.Value)
 	}
 	if err != nil {
 		return nil, err
@@ -384,11 +383,10 @@ func (c *seriesStore) calculateIndexEntries(from, through model.Time, chunk Chun
 	entries := []IndexEntry{}
 	keysToCache := []string{}
 
-	metricName, err := extract.MetricNameFromMetric(chunk.Metric)
-	if err != nil {
-		return nil, nil, err
+	metricName := chunk.Metric.Get(labels.MetricName)
+	if metricName == "" {
+		return nil, nil, fmt.Errorf("no MetricNameLabel for chunk")
 	}
-
 	keys := c.schema.GetLabelEntryCacheKeys(from, through, chunk.UserID, chunk.Metric)
 
 	cacheKeys := make([]string, 0, len(keys)) // Keys which translate to the strings stored in the cache.

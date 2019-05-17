@@ -142,9 +142,9 @@ func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chun
 func (c *store) calculateIndexEntries(userID string, from, through model.Time, chunk Chunk) (WriteBatch, error) {
 	seenIndexEntries := map[string]struct{}{}
 
-	metricName, err := extract.MetricNameFromMetric(chunk.Metric)
-	if err != nil {
-		return nil, err
+	metricName := chunk.Metric.Get(labels.MetricName)
+	if metricName == "" {
+		return nil, fmt.Errorf("no MetricNameLabel for chunk")
 	}
 
 	entries, err := c.schema.GetWriteEntries(from, through, userID, metricName, chunk.Metric, chunk.ExternalKey())
@@ -206,7 +206,7 @@ func (c *store) LabelValuesForMetricName(ctx context.Context, from, through mode
 		return nil, nil
 	}
 
-	queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, model.LabelValue(metricName), model.LabelName(labelName))
+	queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +342,7 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, from, through mode
 
 	// Just get chunks for metric if there are no matchers
 	if len(matchers) == 0 {
-		queries, err := c.schema.GetReadQueriesForMetric(from, through, userID, model.LabelValue(metricName))
+		queries, err := c.schema.GetReadQueriesForMetric(from, through, userID, metricName)
 		if err != nil {
 			return nil, err
 		}
@@ -372,9 +372,9 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, from, through mode
 			var queries []IndexQuery
 			var err error
 			if matcher.Type != labels.MatchEqual {
-				queries, err = c.schema.GetReadQueriesForMetricLabel(from, through, userID, model.LabelValue(metricName), model.LabelName(matcher.Name))
+				queries, err = c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, matcher.Name)
 			} else {
-				queries, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, model.LabelValue(metricName), model.LabelName(matcher.Name), model.LabelValue(matcher.Value))
+				queries, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, matcher.Value)
 			}
 			if err != nil {
 				incomingErrors <- err

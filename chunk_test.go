@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,15 +22,17 @@ func init() {
 	encoding.DefaultEncoding = encoding.Varbit
 }
 
-func dummyChunk(now model.Time) Chunk {
-	return dummyChunkFor(now, model.Metric{
-		model.MetricNameLabel: "foo",
-		"bar":                 "baz",
-		"toms":                "code",
-	})
+var labelsForDummyChunks = labels.Labels{
+	{Name: labels.MetricName, Value: "foo"},
+	{Name: "bar", Value: "baz"},
+	{Name: "toms", Value: "code"},
 }
 
-func dummyChunkForEncoding(now model.Time, metric model.Metric, enc encoding.Encoding, samples int) Chunk {
+func dummyChunk(now model.Time) Chunk {
+	return dummyChunkFor(now, labelsForDummyChunks)
+}
+
+func dummyChunkForEncoding(now model.Time, metric labels.Labels, enc encoding.Encoding, samples int) Chunk {
 	c, _ := encoding.NewForEncoding(enc)
 	for i := 0; i < samples; i++ {
 		t := time.Duration(i) * 15 * time.Second
@@ -40,7 +44,7 @@ func dummyChunkForEncoding(now model.Time, metric model.Metric, enc encoding.Enc
 	}
 	chunk := NewChunk(
 		userID,
-		metric.Fingerprint(),
+		client.Fingerprint(metric),
 		metric,
 		c,
 		now.Add(-time.Hour),
@@ -54,7 +58,7 @@ func dummyChunkForEncoding(now model.Time, metric model.Metric, enc encoding.Enc
 	return chunk
 }
 
-func dummyChunkFor(now model.Time, metric model.Metric) Chunk {
+func dummyChunkFor(now model.Time, metric labels.Labels) Chunk {
 	return dummyChunkForEncoding(now, metric, encoding.Varbit, 1)
 }
 
@@ -122,6 +126,33 @@ func TestChunkCodec(t *testing.T) {
 	}
 }
 
+const fixedTimestamp = model.Time(1557654321000)
+
+func encodeForCompatibilityTest(t *testing.T) {
+	dummy := dummyChunkForEncoding(fixedTimestamp, labelsForDummyChunks, encoding.Bigchunk, 1)
+	encoded, err := dummy.Encoded()
+	require.NoError(t, err)
+	fmt.Printf("%q\n%q\n", dummy.ExternalKey(), encoded)
+}
+
+func TestChunkDecodeBackwardsCompatibility(t *testing.T) {
+	// Chunk encoded using code at commit b1777a50ab19
+	rawData := []byte("\x00\x00\x00\xb7\xff\x06\x00\x00sNaPpY\x01\xa5\x00\x00\x04\xc7a\xba{\"fingerprint\":18245339272195143978,\"userID\":\"userID\",\"from\":1557650721,\"through\":1557654321,\"metric\":{\"bar\":\"baz\",\"toms\":\"code\",\"__name__\":\"foo\"},\"encoding\":3}\n\x00\x00\x00\x15\x01\x00\x11\x00\x00\x01\xd0\xdd\xf5\xb6\xd5Z\x00\x00\x00\x00\x00\x00\x00\x00\x00")
+	decodeContext := NewDecodeContext()
+	have, err := ParseExternalKey(userID, "userID/fd3477666dacf92a:16aab37c8e8:16aab6eb768:38eb373c")
+	require.NoError(t, err)
+	require.NoError(t, have.Decode(decodeContext, rawData))
+	want := dummyChunkForEncoding(fixedTimestamp, labelsForDummyChunks, encoding.Bigchunk, 1)
+	// We can't just compare these two chunks, since the Bigchunk internals are different on construction and read-in.
+	// Compare the serialised version instead
+	require.NoError(t, have.Encode())
+	require.NoError(t, want.Encode())
+	haveEncoded, _ := have.Encoded()
+	wantEncoded, _ := want.Encoded()
+	require.Equal(t, haveEncoded, wantEncoded)
+	require.Equal(t, have.ExternalKey(), want.ExternalKey())
+}
+
 func TestParseExternalKey(t *testing.T) {
 	for _, c := range []struct {
 		key   string
@@ -154,36 +185,31 @@ func TestParseExternalKey(t *testing.T) {
 
 func TestChunksToMatrix(t *testing.T) {
 	// Create 2 chunks which have the same metric
-	metric := model.Metric{
-		model.MetricNameLabel: "foo",
-		"bar":                 "baz",
-		"toms":                "code",
-	}
 	now := model.Now()
-	chunk1 := dummyChunkFor(now, metric)
+	chunk1 := dummyChunkFor(now, labelsForDummyChunks)
 	chunk1Samples, err := chunk1.Samples(chunk1.From, chunk1.Through)
 	require.NoError(t, err)
-	chunk2 := dummyChunkFor(now, metric)
+	chunk2 := dummyChunkFor(now, labelsForDummyChunks)
 	chunk2Samples, err := chunk2.Samples(chunk2.From, chunk2.Through)
 	require.NoError(t, err)
 
 	ss1 := &model.SampleStream{
-		Metric: chunk1.Metric,
+		Metric: util.LabelsToMetric(chunk1.Metric),
 		Values: util.MergeSampleSets(chunk1Samples, chunk2Samples),
 	}
 
 	// Create another chunk with a different metric
-	otherMetric := model.Metric{
-		model.MetricNameLabel: "foo2",
-		"bar":                 "baz",
-		"toms":                "code",
+	otherMetric := labels.Labels{
+		{Name: model.MetricNameLabel, Value: "foo2"},
+		{Name: "bar", Value: "baz"},
+		{Name: "toms", Value: "code"},
 	}
 	chunk3 := dummyChunkFor(now, otherMetric)
 	chunk3Samples, err := chunk3.Samples(chunk3.From, chunk3.Through)
 	require.NoError(t, err)
 
 	ss2 := &model.SampleStream{
-		Metric: chunk3.Metric,
+		Metric: util.LabelsToMetric(chunk3.Metric),
 		Values: chunk3Samples,
 	}
 
@@ -216,7 +242,7 @@ func TestChunksToMatrix(t *testing.T) {
 }
 
 func benchmarkChunk(now model.Time) Chunk {
-	return dummyChunkFor(now, BenchmarkMetric)
+	return dummyChunkFor(now, BenchmarkLabels)
 }
 
 func BenchmarkEncode(b *testing.B) {
