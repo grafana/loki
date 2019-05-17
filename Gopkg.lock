@@ -186,8 +186,8 @@
   version = "v2.0.0"
 
 [[projects]]
-  branch = "lazy-load-chunks"
-  digest = "1:a999c29b3a215dfc12d374a9aac09c94c1b72ef530f4e39d9ab3ae1468cfe8e8"
+  branch = "master"
+  digest = "1:d9488f98e486896b56f406cfa36bf8f0b9f049bdfa6c67b28cc2b20328010adc"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/chunk",
@@ -213,8 +213,7 @@
     "pkg/util/validation",
   ]
   pruneopts = "UT"
-  revision = "61b92520b0c1afdef6e42b7a27cca6c715e9f386"
-  source = "https://github.com/grafana/cortex"
+  revision = "be63a81445db6e9481a577a70ca0623ef6f97873"
 
 [[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
@@ -1400,11 +1399,14 @@
     "github.com/gorilla/websocket",
     "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
     "github.com/hpcloud/tail",
+    "github.com/jmespath/go-jmespath",
+    "github.com/mitchellh/mapstructure",
     "github.com/mwitkow/go-grpc-middleware",
     "github.com/opentracing/opentracing-go",
     "github.com/pkg/errors",
     "github.com/prometheus/client_golang/prometheus",
     "github.com/prometheus/client_golang/prometheus/promauto",
+    "github.com/prometheus/common/config",
     "github.com/prometheus/common/model",
     "github.com/prometheus/common/version",
     "github.com/prometheus/prometheus/discovery",

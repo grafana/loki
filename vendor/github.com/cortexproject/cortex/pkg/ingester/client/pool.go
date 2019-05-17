@@ -30,8 +30,8 @@ type Factory func(addr string) (grpc_health_v1.HealthClient, error)
 
 // PoolConfig is config for creating a Pool.
 type PoolConfig struct {
-	ClientCleanupPeriod  time.Duration
-	HealthCheckIngesters bool
+	ClientCleanupPeriod  time.Duration `yaml:"client_cleanup_period,omitempty"`
+	HealthCheckIngesters bool          `yaml:"health_check_ingesters,omitempty"`
 	RemoteTimeout        time.Duration
 }
 

@@ -616,8 +616,27 @@ func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map
 	return result, nil
 }
 
+// PutChunkAndIndex implements chunk.ObjectAndIndexClient
+// Combine both sets of writes before sending to DynamoDB, for performance
+func (a dynamoDBStorageClient) PutChunkAndIndex(ctx context.Context, c chunk.Chunk, index chunk.WriteBatch) error {
+	dynamoDBWrites, err := a.writesForChunks([]chunk.Chunk{c})
+	if err != nil {
+		return err
+	}
+	dynamoDBWrites.TakeReqs(index.(dynamoDBWriteBatch), 0)
+	return a.BatchWrite(ctx, dynamoDBWrites)
+}
+
 // PutChunks implements chunk.ObjectClient.
 func (a dynamoDBStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+	dynamoDBWrites, err := a.writesForChunks(chunks)
+	if err != nil {
+		return err
+	}
+	return a.BatchWrite(ctx, dynamoDBWrites)
+}
+
+func (a dynamoDBStorageClient) writesForChunks(chunks []chunk.Chunk) (dynamoDBWriteBatch, error) {
 	var (
 		dynamoDBWrites = dynamoDBWriteBatch{}
 	)
@@ -625,19 +644,19 @@ func (a dynamoDBStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 	for i := range chunks {
 		buf, err := chunks[i].Encoded()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		key := chunks[i].ExternalKey()
 
 		table, err := a.schemaCfg.ChunkTableFor(chunks[i].From)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		dynamoDBWrites.Add(table, key, placeholder, buf)
 	}
 
-	return a.BatchWrite(ctx, dynamoDBWrites)
+	return dynamoDBWrites, nil
 }
 
 // Slice of values returned; map key is attribute name
