@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/user"
@@ -17,6 +18,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/grafana/loki/pkg/logproto"
 )
+
+var readinessProbeSuccess = []byte("Ready")
 
 var flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
 	Name: "cortex_ingester_flush_queue_length",
@@ -195,13 +198,17 @@ func (*Ingester) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health
 }
 
 // ReadinessHandler is used to indicate to k8s when the ingesters are ready for
-// the addition removal of another ingester. Returns 204 when the ingester is
+// the addition removal of another ingester. Returns 200 when the ingester is
 // ready, 500 otherwise.
 func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	if err := i.lifecycler.CheckReady(r.Context()); err == nil {
-		w.WriteHeader(http.StatusNoContent)
-	} else {
-		w.WriteHeader(http.StatusInternalServerError)
+	if err := i.lifecycler.CheckReady(r.Context()); err != nil {
+		http.Error(w, "Not ready: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(readinessProbeSuccess); err != nil {
+		level.Error(util.Logger).Log("msg", "error writing success message", "error", err)
 	}
 }
 

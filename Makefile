@@ -177,7 +177,7 @@ check-generated-files: loki-build-image/$(UPTODATE) yacc protos
 	@git diff-files || (echo "changed files; failing check" && exit 1)
 
 test: loki-build-image/$(UPTODATE)
-	go test ./...
+	go test -p=8 ./...
 
 shell: loki-build-image/$(UPTODATE)
 	bash

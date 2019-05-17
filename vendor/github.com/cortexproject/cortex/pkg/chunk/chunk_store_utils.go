@@ -16,17 +16,24 @@ import (
 
 const chunkDecodeParallelism = 16
 
-func filterChunksByTime(from, through model.Time, chunks []Chunk) ([]Chunk, []string) {
+func filterChunksByTime(from, through model.Time, chunks []Chunk) []Chunk {
 	filtered := make([]Chunk, 0, len(chunks))
-	keys := make([]string, 0, len(chunks))
 	for _, chunk := range chunks {
 		if chunk.Through < from || through < chunk.From {
 			continue
 		}
 		filtered = append(filtered, chunk)
-		keys = append(keys, chunk.ExternalKey())
 	}
-	return filtered, keys
+	return filtered
+}
+
+func keysFromChunks(chunks []Chunk) []string {
+	keys := make([]string, 0, len(chunks))
+	for _, chk := range chunks {
+		keys = append(keys, chk.ExternalKey())
+	}
+
+	return keys
 }
 
 func filterChunksByMatchers(chunks []Chunk, filters []*labels.Matcher) []Chunk {

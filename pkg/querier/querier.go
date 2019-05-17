@@ -21,10 +21,13 @@ import (
 
 // Config for a querier.
 type Config struct {
+	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
+	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
 }
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.DurationVar(&cfg.MaxLookBackPeriod, "querier.max_look_back_period", 0, "Limit how long back data can be queried")
 }
 
 // Querier handlers queries.
@@ -106,6 +109,13 @@ func (q *Querier) forGivenIngesters(replicationSet ring.ReplicationSet, f func(l
 
 // Query does the heavy lifting for an actual query.
 func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logproto.QueryResponse, error) {
+	if q.cfg.MaxLookBackPeriod != 0 {
+		oldestStartTime := time.Now().Add(-q.cfg.MaxLookBackPeriod)
+		if oldestStartTime.After(req.Start) {
+			req.Start = oldestStartTime
+		}
+	}
+
 	ingesterIterators, err := q.queryIngesters(ctx, req)
 	if err != nil {
 		return nil, err

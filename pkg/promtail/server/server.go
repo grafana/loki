@@ -10,12 +10,19 @@ import (
 	"strings"
 	"text/template"
 
+	logutil "github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
 	serverww "github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/pkg/promtail/server/ui"
 	"github.com/grafana/loki/pkg/promtail/targets"
+)
+
+var (
+	readinessProbeFailure = "Not ready: Unable to find any logs to tail. Please verify permissions, volumes, scrape_config, etc."
+	readinessProbeSuccess = []byte("Ready")
 )
 
 // Server embed weaveworks server with static file and templating capability
@@ -155,10 +162,14 @@ func (s *Server) targets(rw http.ResponseWriter, _ *http.Request) {
 
 // ready serves the ready endpoint
 func (s *Server) ready(rw http.ResponseWriter, _ *http.Request) {
-	if s.tms.Ready() {
-		rw.WriteHeader(http.StatusNoContent)
-	} else {
-		rw.WriteHeader(http.StatusInternalServerError)
+	if !s.tms.Ready() {
+		http.Error(rw, readinessProbeFailure, http.StatusInternalServerError)
+		return
+	}
+
+	rw.WriteHeader(http.StatusOK)
+	if _, err := rw.Write(readinessProbeSuccess); err != nil {
+		level.Error(logutil.Logger).Log("msg", "error writing success message", "error", err)
 	}
 }
 

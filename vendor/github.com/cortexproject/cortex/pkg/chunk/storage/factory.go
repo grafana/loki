@@ -28,11 +28,9 @@ type Config struct {
 	BoltDBConfig           local.BoltDBConfig `yaml:"boltdb"`
 	FSConfig               local.FSConfig     `yaml:"filesystem"`
 
-	IndexCacheSize     int
 	IndexCacheValidity time.Duration
-	memcacheClient     cache.MemcachedClientConfig
 
-	indexQueriesCacheConfig cache.Config
+	IndexQueriesCacheConfig cache.Config `yaml:"index_queries_cache_config,omitempty"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -44,43 +42,15 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
 
-	// Deprecated flags!!
-	f.IntVar(&cfg.IndexCacheSize, "store.index-cache-size", 0, "Deprecated: Use -store.index-cache-read.*; Size of in-memory index cache, 0 to disable.")
-	cfg.memcacheClient.RegisterFlagsWithPrefix("index.", "Deprecated: Use -store.index-cache-read.*;", f)
-
-	cfg.indexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
+	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
 }
 
 // NewStore makes the storage clients based on the configuration.
 func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits *validation.Overrides) (chunk.Store, error) {
-	var err error
-
-	// Building up from deprecated flags.
-	var caches []cache.Cache
-	if cfg.IndexCacheSize > 0 {
-		fifocache := cache.Instrument("fifo-index", cache.NewFifoCache("index", cache.FifoCacheConfig{Size: cfg.IndexCacheSize}))
-		caches = append(caches, fifocache)
-	}
-	if cfg.memcacheClient.Host != "" {
-		client := cache.NewMemcachedClient(cfg.memcacheClient)
-		memcache := cache.Instrument("memcache-index", cache.NewMemcached(cache.MemcachedConfig{
-			Expiration: cfg.IndexCacheValidity,
-		}, client, "memcache-index"))
-		caches = append(caches, cache.NewBackground("memcache-index", cache.BackgroundConfig{
-			WriteBackGoroutines: 10,
-			WriteBackBuffer:     100,
-		}, memcache))
-	}
-
-	var tieredCache cache.Cache
-	if len(caches) > 0 {
-		tieredCache = cache.NewTiered(caches)
-	} else {
-		tieredCache, err = cache.New(cfg.indexQueriesCacheConfig)
-		if err != nil {
-			return nil, err
-		}
+	tieredCache, err := cache.New(cfg.IndexQueriesCacheConfig)
+	if err != nil {
+		return nil, err
 	}
 
 	// Cache is shared by multiple stores, which means they will try and Stop

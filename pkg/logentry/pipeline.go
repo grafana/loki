@@ -7,10 +7,20 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/api"
+)
+
+var (
+	pipelineDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "logentry",
+		Name:      "pipeline_duration_seconds",
+		Help:      "Label and metric extraction pipeline processing time, in seconds",
+		Buckets:   []float64{.000005, .000010, .000025, .000050, .000100, .000250, .000500, .001000, .002500, .005000, .010000, .025000},
+	}, []string{"job_name"})
 )
 
 // PipelineStages contains configuration for each stage within a pipeline
@@ -18,13 +28,13 @@ type PipelineStages []interface{}
 
 // Pipeline pass down a log entry to each stage for mutation and/or label extraction.
 type Pipeline struct {
-	logger log.Logger
-	stages []stages.Stage
-	plObs  *prometheus.Observer
+	logger  log.Logger
+	stages  []stages.Stage
+	jobName string
 }
 
 // NewPipeline creates a new log entry pipeline from a configuration
-func NewPipeline(logger log.Logger, stgs PipelineStages, plObserverMicroSeconds *prometheus.Observer) (*Pipeline, error) {
+func NewPipeline(logger log.Logger, stgs PipelineStages, jobName string) (*Pipeline, error) {
 	st := []stages.Stage{}
 	for _, s := range stgs {
 		stage, ok := s.(map[interface{}]interface{})
@@ -69,9 +79,9 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, plObserverMicroSeconds 
 		}
 	}
 	return &Pipeline{
-		logger: log.With(logger, "component", "pipeline"),
-		stages: st,
-		plObs:  plObserverMicroSeconds,
+		logger:  log.With(logger, "component", "pipeline"),
+		stages:  st,
+		jobName: jobName,
 	}, nil
 }
 
@@ -82,11 +92,9 @@ func (p *Pipeline) Process(labels model.LabelSet, ts *time.Time, entry *string) 
 		level.Debug(p.logger).Log("msg", "processing pipeline", "stage", i, "labels", labels, "time", ts, "entry", entry)
 		stage.Process(labels, ts, entry)
 	}
-	durUs := float64(time.Since(start).Nanoseconds()) / 1000
-	level.Debug(p.logger).Log("msg", "finished processing log line", "labels", labels, "time", ts, "entry", entry, "duration_us", durUs)
-	if p.plObs != nil {
-		(*p.plObs).Observe(durUs)
-	}
+	dur := time.Since(start).Seconds()
+	level.Debug(p.logger).Log("msg", "finished processing log line", "labels", labels, "time", ts, "entry", entry, "duration_s", dur)
+	pipelineDuration.WithLabelValues(p.jobName).Observe(dur)
 }
 
 // Wrap implements EntryMiddleware

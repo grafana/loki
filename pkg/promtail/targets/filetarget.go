@@ -46,7 +46,7 @@ var (
 )
 
 const (
-	filenameLabel = "__filename__"
+	FilenameLabel = "filename"
 )
 
 // Config describes behavior for Target
@@ -163,7 +163,7 @@ func (t *FileTarget) run() {
 		case event := <-t.watcher.Events:
 			switch event.Op {
 			case fsnotify.Create:
-				matched, err := filepath.Match(t.path, event.Name)
+				matched, err := doublestar.Match(t.path, event.Name)
 				if err != nil {
 					level.Error(t.logger).Log("msg", "failed to match file", "error", err, "filename", event.Name)
 					continue
