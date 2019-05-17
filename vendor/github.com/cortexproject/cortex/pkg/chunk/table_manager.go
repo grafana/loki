@@ -195,7 +195,7 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 	result := []TableDesc{}
 
 	for i, config := range m.schemaCfg.Configs {
-		if config.From.Time().After(mtime.Now()) {
+		if config.From.Time.Time().After(mtime.Now()) {
 			continue
 		}
 		if config.IndexTables.Period == 0 { // non-periodic table
@@ -240,18 +240,18 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 		} else {
 			endTime := mtime.Now().Add(m.cfg.CreationGracePeriod)
 			if i+1 < len(m.schemaCfg.Configs) {
-				nextFrom := m.schemaCfg.Configs[i+1].From.Time()
+				nextFrom := m.schemaCfg.Configs[i+1].From.Time.Time()
 				if endTime.After(nextFrom) {
 					endTime = nextFrom
 				}
 			}
 			endModelTime := model.TimeFromUnix(endTime.Unix())
 			result = append(result, config.IndexTables.periodicTables(
-				config.From, endModelTime, m.cfg.IndexTables, m.cfg.CreationGracePeriod, m.maxChunkAge, m.cfg.RetentionPeriod,
+				config.From.Time, endModelTime, m.cfg.IndexTables, m.cfg.CreationGracePeriod, m.maxChunkAge, m.cfg.RetentionPeriod,
 			)...)
 			if config.ChunkTables.Prefix != "" {
 				result = append(result, config.ChunkTables.periodicTables(
-					config.From, endModelTime, m.cfg.ChunkTables, m.cfg.CreationGracePeriod, m.maxChunkAge, m.cfg.RetentionPeriod,
+					config.From.Time, endModelTime, m.cfg.ChunkTables, m.cfg.CreationGracePeriod, m.maxChunkAge, m.cfg.RetentionPeriod,
 				)...)
 			}
 		}
