@@ -29,8 +29,8 @@ type droppedEntry struct {
 
 // TailResponse holds response sent by tailer
 type TailResponse struct {
-	Stream         []logproto.Stream
-	DroppedEntries []droppedEntry
+	Streams        []logproto.Stream `json:"streams"`
+	DroppedEntries []droppedEntry `json:"dropped_entries"`
 }
 
 /*// dropped streams are collected into a heap to quickly find dropped stream which has oldest timestamp
@@ -123,7 +123,7 @@ func (t *Tailer) loop() {
 		}
 
 		if !t.next() {
-			if len(tailResponse.Stream) == 0 {
+			if len(tailResponse.Streams) == 0 {
 				if len(t.querierTailClients) == 0 {
 					// All the connections to ingesters are dropped, try reconnecting or return error
 					if err := t.checkIngesterConnections(); err != nil {
@@ -147,8 +147,8 @@ func (t *Tailer) loop() {
 				continue
 			}
 
-			tailResponse.Stream = append(tailResponse.Stream, logproto.Stream{Labels: t.currLabels, Entries: []logproto.Entry{t.currEntry}})
-			if len(tailResponse.Stream) != 100 {
+			tailResponse.Streams = append(tailResponse.Streams, logproto.Stream{Labels: t.currLabels, Entries: []logproto.Entry{t.currEntry}})
+			if len(tailResponse.Streams) != 100 {
 				continue
 			}
 			tailResponse.DroppedEntries = t.popDroppedEntries()

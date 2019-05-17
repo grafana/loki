@@ -13,15 +13,15 @@ func tailQuery() {
 		log.Fatalf("Tailing logs failed: %+v", err)
 	}
 
-	resp := new(querier.TailResponse)
+	tailReponse := new(querier.TailResponse)
 
 	for {
-		err := conn.ReadJSON(resp)
+		err := conn.ReadJSON(tailReponse)
 		if err != nil {
 			log.Println("Error reading stream:", err)
 			return
 		}
-		for _, stream := range resp.Stream {
+		for _, stream := range tailReponse.Streams {
 
 			labels := ""
 			if !*noLabels {
@@ -31,8 +31,8 @@ func tailQuery() {
 				printLogEntry(entry.Timestamp, labels, entry.Line)
 			}
 		}
-		if len(resp.DroppedEntries) != 0 {
-			for _, d := range resp.DroppedEntries {
+		if len(tailReponse.DroppedEntries) != 0 {
+			for _, d := range tailReponse.DroppedEntries {
 				fmt.Println(d.Timestamp, d.Labels)
 			}
 		}
