@@ -129,7 +129,7 @@ The regular expression stage works by evaluating matches from the provided `expr
       timestamp:
         format: RFC3339Nano
         source: ts
-      match: { name="promtail" }
+      match: '{name="promtail"}'
 ```
 
 This stage adds level and component labels and will rewrite the timestamp ([see](#timestamp) for format)
@@ -148,7 +148,7 @@ The json stage load the log entry using a json parser and can then be queried fo
         level:
         component:
           source: join(`,`,component)
-      match: { app="json-log-app" }
+      match: '{app="json-log-app"}'
 ```
 
 Like the regex parser the source property can be omitted if the target property name (here `level`) is the same name of a root property. Value won't be replaced if the query doesn't return a valid value for the given property.
@@ -165,7 +165,7 @@ Timestamp extraction requires to define a format property which is the [Go's `ti
       timestamp:
         format: RFC3339Nano
         source: timestamp
-      match: { name="promtail" }
+      match: '{name="promtail"}'
 ```
 
 In the example above we could have omitted the source property or replaced the `RFC3339Nano` by its linux time representation `2006-01-02T15:04:05.999999999Z07:00`.
@@ -186,7 +186,7 @@ Stream labels are automatically added to each metrics as they appear after `labe
 pipeline_stages:
   - regex:
       expression: "\"(?P<request_method>.*?) (?P<path>.*?)(?P<request_version> HTTP/.*)?\" (?P<status>.*?) (?P<length>.*?) (?P<time_taken>.*?)"
-      match: {component=~"http.*"}
+      match: '{component=~"http.*"}'
       labels:
         status:
       metrics:
@@ -211,7 +211,7 @@ You can use the `match` property with a [log stream selector](usage.md#log-strea
 This allows you to run stages for only specific clusters, nodes, applications, components or even levels.
 
 ```yaml
-match: {cluster="us-east1", level=~"WARN|ERROR|FATAL"}
+match: '{cluster="us-east1", level=~"WARN|ERROR|FATAL"}'
 ```
 
 ### Full Example
@@ -230,15 +230,15 @@ scrape_configs:
         component:
       timestamp:
         format: RFC3339Nano
-      match: {name="promtail"}
+      match: '{name="promtail"}'
   - regex:
       expression: \w{1,3}.\w{1,3}.\w{1,3}.\w{1,3}(?P<output>.*)
       output:
-      match: {name="nginx"}
+      match: '{name="nginx"}'
   - json:
       labels:
         level:
-      match: {name="jaeger-agent"}
+      match: '{name="jaeger-agent"}'
 - job_name: kubernetes-pods-app
   kubernetes_sd_configs: ....
   pipeline_stages:
@@ -247,10 +247,10 @@ scrape_configs:
       labels:
         level:
         component:
-      match: {app=~"grafana|prometheus"}
+      match: '{app=~"grafana|prometheus"}'
   - regex:
-      expression: .*(?P<panic>panic: .*)
-      match: {app="some-app"}
+      expression: ".*(?P<panic>panic: .*)"
+      match:' {app="some-app"}'
       metrics:
       - panic_total:
           type: Counter
