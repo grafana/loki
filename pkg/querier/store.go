@@ -143,20 +143,25 @@ func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]chunken
 	errChan := make(chan error)
 	for fetcher, chunks := range chksByFetcher {
 		go func(fetcher *chunk.Fetcher, chunks []*chunkenc.LazyChunk) {
+
 			keys := make([]string, 0, len(chunks))
 			chks := make([]chunk.Chunk, 0, len(chunks))
+			index := make(map[string]*chunkenc.LazyChunk, len(chunks))
+
 			for _, chk := range chunks {
-				keys = append(keys, chk.Chunk.ExternalKey())
+				key := chk.Chunk.ExternalKey()
+				keys = append(keys, key)
 				chks = append(chks, chk.Chunk)
+				index[key] = chk
 			}
 			chks, err := fetcher.FetchChunks(ctx, chks, keys)
 			if err != nil {
 				errChan <- err
 				return
 			}
-
-			for i, chk := range chks {
-				chunks[i].Chunk = chk
+			// assign fetched chunk by key as FetchChunks doesn't guarantee the order.
+			for _, chk := range chks {
+				index[chk.ExternalKey()].Chunk = chk
 			}
 
 			errChan <- nil
@@ -177,7 +182,7 @@ func partitionBySeriesChunks(chunks [][]chunk.Chunk, fetchers []*chunk.Fetcher) 
 	chunksByFp := map[model.Fingerprint][]chunkenc.LazyChunk{}
 	for i, chks := range chunks {
 		for _, c := range chks {
-			fp := c.Metric.Fingerprint()
+			fp := c.Fingerprint
 			chunksByFp[fp] = append(chunksByFp[fp], chunkenc.LazyChunk{Chunk: c, Fetcher: fetchers[i]})
 			delete(c.Metric, "__name__")
 		}
