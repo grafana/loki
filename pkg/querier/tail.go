@@ -30,7 +30,7 @@ type droppedEntry struct {
 // TailResponse holds response sent by tailer
 type TailResponse struct {
 	Streams        []logproto.Stream `json:"streams"`
-	DroppedEntries []droppedEntry `json:"dropped_entries"`
+	DroppedEntries []droppedEntry    `json:"dropped_entries"`
 }
 
 /*// dropped streams are collected into a heap to quickly find dropped stream which has oldest timestamp
