@@ -51,7 +51,7 @@ func (f *fixture) Clients() (
 	schemaConfig = chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{{
 			IndexType: "boltdb",
-			From:      model.Now(),
+			From:      chunk.DayTime{Time: model.Now()},
 			ChunkTables: chunk.PeriodicTableConfig{
 				Prefix: "chunks",
 				Period: 10 * time.Minute,

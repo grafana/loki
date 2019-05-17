@@ -32,8 +32,8 @@ type Limits struct {
 	CardinalityLimit    int           `yaml:"cardinality_limit"`
 
 	// Config for overrides, convenient if it goes here.
-	PerTenantOverrideConfig string
-	PerTenantOverridePeriod time.Duration
+	PerTenantOverrideConfig string        `yaml:"per_tenant_override_config"`
+	PerTenantOverridePeriod time.Duration `yaml:"per_tenant_override_period"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
