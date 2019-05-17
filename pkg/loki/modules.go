@@ -132,6 +132,10 @@ func (t *Loki) initQuerier() (err error) {
 	t.server.HTTP.Handle("/api/prom/label", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
 	t.server.HTTP.Handle("/api/prom/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
 	t.server.HTTP.Handle("/api/prom/tail", httpMiddleware.Wrap(http.HandlerFunc(t.querier.TailHandler)))
+
+	// metrics are forwarded to prometheus endpoints
+	t.server.HTTP.Handle("/api/prom/metrics_query", httpMiddleware.Wrap(querier.Forward(t.cfg.Querier.Metric.QueryURL.URL)))
+	t.server.HTTP.Handle("/api/prom/metrics_query_range", httpMiddleware.Wrap(querier.Forward(t.cfg.Querier.Metric.RangeQueryURL.URL)))
 	return
 }
 

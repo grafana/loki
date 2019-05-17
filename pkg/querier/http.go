@@ -1,8 +1,11 @@
 package querier
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -192,4 +195,47 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 			level.Error(util.Logger).Log("Error writing close message to websocket", fmt.Sprintf("%v", err))
 		}
 	}
+}
+
+// Forward return an handler that can forward request `to` (only RawQuery request is forwarded)
+func Forward(to *url.URL) http.Handler {
+	if to == nil {
+		return http.HandlerFunc(http.NotFound)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		r.Body = ioutil.NopCloser(bytes.NewReader(body))
+		url := *to
+		url.Path, url.RawQuery = to.Path, r.URL.RawQuery
+		proxyReq, err := http.NewRequest(r.Method, url.String(), bytes.NewReader(body))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		proxyReq.Header.Set("Host", r.Host)
+		proxyReq.Header.Set("X-Forwarded-For", r.RemoteAddr)
+
+		for header, values := range r.Header {
+			for _, value := range values {
+				proxyReq.Header.Add(header, value)
+			}
+		}
+
+		resp, err := http.DefaultClient.Do(proxyReq)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		for name, values := range resp.Header {
+			w.Header()[name] = values
+		}
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	})
 }

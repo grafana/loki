@@ -5,6 +5,8 @@ import (
 	"flag"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -21,6 +23,13 @@ import (
 type Config struct {
 	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
+	// Prometheus endpoints configuration
+	Metric MetricConfig `yaml:"metric"`
+}
+
+type MetricConfig struct {
+	QueryURL      flagext.URLValue `yaml:"query_url"`
+	RangeQueryURL flagext.URLValue `yaml:"range_query_url"`
 }
 
 // RegisterFlags register flags.
