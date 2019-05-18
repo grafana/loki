@@ -197,7 +197,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Forward return an handler that can forward request `to` (only RawQuery request is forwarded)
+// Forward return an handler that can forward request `to`, request scheme, host and path are overwritten.
 func Forward(to *url.URL) http.Handler {
 	if to == nil {
 		return http.HandlerFunc(http.NotFound)
