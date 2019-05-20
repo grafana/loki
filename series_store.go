@@ -153,7 +153,7 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, from, through model.Time
 	}
 
 	// Validate the query is within reasonable bounds.
-	metricName, matchers, shortcut, err := c.validateQuery(ctx, from, &through, allMatchers)
+	metricName, matchers, shortcut, err := c.validateQuery(ctx, &from, &through, allMatchers)
 	if err != nil {
 		return nil, nil, err
 	} else if shortcut {
