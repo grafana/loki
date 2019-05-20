@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,18 +18,13 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
-	sd_config "github.com/prometheus/prometheus/discovery/config"
-	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/config"
-	"github.com/grafana/loki/pkg/promtail/scrape"
 	"github.com/grafana/loki/pkg/promtail/targets"
 )
 
@@ -79,15 +75,24 @@ func TestPromtail(t *testing.T) {
 	}()
 
 	// Run.
+	configFile, err := buildTestConfig(t, positionsFileName, testDir)
+	if err != nil {
+		t.Error("error creating configfile", err)
+		return
+	}
 
-	p, err := New(buildTestConfig(t, positionsFileName, testDir))
+	cfg := config.Config{}
+	// config with default values
+	flagext.RegisterFlags(&cfg)
+
+	m, err := InitMaster(configFile, cfg)
 	if err != nil {
 		t.Error("error creating promtail", err)
 		return
 	}
 
 	go func() {
-		err = p.Run()
+		err = m.Promtail.Run()
 		if err != nil {
 			err = errors.Wrap(err, "Failed to start promtail")
 		}
@@ -138,7 +143,16 @@ func TestPromtail(t *testing.T) {
 	//Pull out some prometheus metrics before shutting down
 	metricsBytes, contentType := getPromMetrics(t)
 
-	p.Shutdown()
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/reload", httpTestPort))
+	if err != nil {
+		t.Fatal("Could not touch reload endpoint", err)
+	}
+
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatal("Received a non 204 status code from /reload endpoint", resp.StatusCode)
+	}
+
+	m.Promtail.Shutdown()
 
 	// Verify.
 
@@ -419,7 +433,6 @@ func getPromMetrics(t *testing.T) ([]byte, string) {
 
 func parsePromMetrics(t *testing.T, bytes []byte, contentType string, metricName string, label string) map[string]float64 {
 	rb := map[string]float64{}
-
 	pr := textparse.New(bytes, contentType)
 	for {
 		et, err := pr.Next()
@@ -448,60 +461,30 @@ func parsePromMetrics(t *testing.T, bytes []byte, contentType string, metricName
 	return rb
 }
 
-func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) config.Config {
-	var clientURL flagext.URLValue
-	err := clientURL.Set("http://localhost:3100/api/prom/push")
+func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) (string, error) {
+	configFile := "./promtail-test-config.yaml"
+	input, err := ioutil.ReadFile(configFile)
 	if err != nil {
-		t.Fatal("Failed to parse client URL")
+		t.Fatal(err)
 	}
 
-	cfg := config.Config{}
-	// Init everything with default values.
-	flagext.RegisterFlags(&cfg)
-
-	// Make promtail listen on localhost to avoid prompts on MacOS.
-	cfg.ServerConfig.HTTPListenHost = "localhost"
-	cfg.ServerConfig.HTTPListenPort = httpTestPort
-	cfg.ServerConfig.GRPCListenHost = "localhost"
-
-	// Override some of those defaults
-	cfg.ClientConfig.URL = clientURL
-	cfg.ClientConfig.BatchWait = 10 * time.Millisecond
-	cfg.ClientConfig.BatchSize = 10 * 1024
-
-	cfg.PositionsConfig.SyncPeriod = 100 * time.Millisecond
-	cfg.PositionsConfig.PositionsFile = positionsFileName
-
-	targetGroup := targetgroup.Group{
-		Targets: []model.LabelSet{{
-			"localhost": "",
-		}},
-		Labels: model.LabelSet{
-			"job":      "varlogs",
-			"__path__": model.LabelValue(logDirName + "/**/*.log"),
-		},
-		Source: "",
+	lines := strings.Split(string(input), "\n")
+	for i, line := range lines {
+		if strings.Contains(line, "varLogsPath") {
+			lines[i] = strings.Replace(line, "varLogsPath", logDirName+"/**/*.log", 1)
+		}
+		if strings.Contains(line, "positionsFileName") {
+			lines[i] = strings.Replace(line, "positionsFileName", positionsFileName, 1)
+		}
 	}
 
-	serviceConfig := sd_config.ServiceDiscoveryConfig{
-		StaticConfigs: []*targetgroup.Group{
-			&targetGroup,
-		},
+	output := strings.Join(lines, "\n")
+	err = ioutil.WriteFile(configFile, []byte(output), 0644)
+	if err != nil {
+		return "", err
 	}
 
-	scrapeConfig := scrape.Config{
-		JobName:                "",
-		EntryParser:            api.Raw,
-		RelabelConfigs:         nil,
-		ServiceDiscoveryConfig: serviceConfig,
-	}
-	cfg.ScrapeConfig = append(cfg.ScrapeConfig, scrapeConfig)
-
-	// Make sure the SyncPeriod is fast for test purposes, but not faster than the poll interval (250ms)
-	// to avoid a race between the sync() function and the tailers noticing when files are deleted
-	cfg.TargetConfig.SyncPeriod = 500 * time.Millisecond
-
-	return cfg
+	return configFile, err
 }
 
 func initRandom() {

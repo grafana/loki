@@ -1,0 +1,32 @@
+server:
+  http_listen_host: localhost
+  http_listen_port: 9080
+  grpc_listen_host: localhost
+
+client:
+  url: http://localhost:3100/api/prom/push
+  batchwait: 10ms
+  batchsize: 10240
+  backoff_config:
+    minbackoff: 100ms
+    maxbackoff: 5s
+    maxretries: 5
+
+positions:
+  sync_period: 100ms
+  filename: positionsFileName
+
+target_config:
+  # Make sure the SyncPeriod is fast for test purposes, but not faster than the poll interval (250ms)
+  # to avoid a race between the sync() function and the tailers noticing when files are deleted
+  sync_period: 500ms
+
+scrape_configs:
+  - job_name: system
+    entry_parser: raw
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: varlogs
+          __path__: varLogsPath
