@@ -10,9 +10,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/promtail"
 	"github.com/grafana/loki/pkg/promtail/config"
+)
+
+var (
+	configFile = "cmd/promtail/promtail-local-config.yaml"
+	cfg        config.Config
 )
 
 func init() {
@@ -20,38 +24,30 @@ func init() {
 }
 
 func main() {
-	var (
-		configFile = "cmd/promtail/promtail-local-config.yaml"
-		config     config.Config
-	)
 	flag.StringVar(&configFile, "config.file", "promtail.yml", "The config file.")
-	flagext.RegisterFlags(&config)
+	flagext.RegisterFlags(&cfg)
 	flag.Parse()
 
-	util.InitLogger(&config.ServerConfig.Config)
+	util.InitLogger(&cfg.ServerConfig.Config)
 
 	if configFile != "" {
-		if err := helpers.LoadConfig(configFile, &config); err != nil {
-			level.Error(util.Logger).Log("msg", "error loading config", "filename", configFile, "err", err)
-			os.Exit(1)
+		errChan := make(chan error, 1)
+
+		m, err := promtail.InitMaster(configFile, cfg)
+		if err != nil {
+			errChan <- err
+		} else {
+			// Re-init the logger which will now honor a different log level set in ServerConfig.Config
+			util.InitLogger(&m.Promtail.Cfg.ServerConfig.Config)
+			if err := m.Promtail.Run(); err != nil {
+				level.Error(util.Logger).Log("msg", "error starting promtail", "error", err)
+				errChan <- err
+			}
 		}
-	}
 
-	// Re-init the logger which will now honor a different log level set in ServerConfig.Config
-	util.InitLogger(&config.ServerConfig.Config)
-
-	p, err := promtail.New(config)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "error creating promtail", "error", err)
+		m.WaitSignals(errChan)
+	} else {
+		level.Error(util.Logger).Log("msg", "config file not found", "error", nil)
 		os.Exit(1)
 	}
-
-	level.Info(util.Logger).Log("msg", "Starting Promtail", "version", version.Info())
-
-	if err := p.Run(); err != nil {
-		level.Error(util.Logger).Log("msg", "error starting promtail", "error", err)
-		os.Exit(1)
-	}
-
-	p.Shutdown()
 }

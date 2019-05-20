@@ -1,8 +1,15 @@
 package promtail
 
 import (
-	"github.com/cortexproject/cortex/pkg/util"
+	"net/http"
+	"os"
+	"os/signal"
+	"runtime"
+	"syscall"
 
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/config"
 	"github.com/grafana/loki/pkg/promtail/positions"
@@ -12,14 +19,97 @@ import (
 
 // Promtail is the root struct for Promtail...
 type Promtail struct {
-	client         client.Client
-	positions      *positions.Positions
-	targetManagers *targets.TargetManagers
-	server         *server.Server
+	Client         client.Client
+	Positions      *positions.Positions
+	TargetManagers *targets.TargetManagers
+	Server         *server.Server
+
+	configFile string
+	Cfg        *config.Config
 }
 
-// New makes a new Promtail.
-func New(cfg config.Config) (*Promtail, error) {
+type Master struct {
+	Promtail   *Promtail
+	defaultCfg *config.Config
+}
+
+func InitMaster(configFile string, cfg config.Config) (*Master, error) {
+	p, err := New(configFile, cfg)
+	if err != nil {
+		//level.Error(util.Logger).Log("msg", "error creating promtail", "error", err)
+		return nil, err
+	}
+
+	m := &Master{
+		Promtail:   p,
+		defaultCfg: &cfg,
+	}
+
+	p.Server.HTTP.Path("/reload").Handler(http.HandlerFunc(m.Reload))
+
+	return m, nil
+}
+
+func (m *Master) Reload(rw http.ResponseWriter, _ *http.Request) {
+	go m.DoReload()
+	rw.WriteHeader(http.StatusNoContent)
+}
+
+func (m *Master) DoReload() {
+	errChan := make(chan error, 1)
+
+	level.Info(util.Logger).Log("msg", "=== received RELOAD ===\n*** reloading")
+	m.Promtail.Shutdown()
+
+	p, err := New(m.Promtail.configFile, *m.defaultCfg)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error reloading new promtail", "error", err)
+		errChan <- err
+	}
+	// Re-init the logger which will now honor a different log level set in ServerConfig.Config
+	util.InitLogger(&m.Promtail.Cfg.ServerConfig.Config)
+
+	p.Server.HTTP.Path("/reload").Handler(http.HandlerFunc(m.Reload))
+
+	m.Promtail = p
+
+	err = m.Promtail.Run()
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error starting new promtail", "error", err)
+		errChan <- err
+	}
+
+	m.WaitSignals(errChan)
+}
+
+func (m *Master) WaitSignals(errChan chan error) {
+	// can not directly use m.promtail.Run() to handler signals since reload call Shutdown() too
+	// avoid close of closed channel panic
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
+	buf := make([]byte, 1<<20)
+	select {
+	case <-errChan:
+		os.Exit(1)
+	case sig := <-sigs:
+		switch sig {
+		case syscall.SIGINT, syscall.SIGTERM:
+			level.Info(util.Logger).Log("msg", "=== received SIGINT/SIGTERM ===\n*** exiting")
+			m.Promtail.Shutdown()
+			return
+		case syscall.SIGQUIT:
+			stacklen := runtime.Stack(buf, true)
+			level.Info(util.Logger).Log("msg", "=== received SIGQUIT ===\n*** goroutine dump...\n%s\n*** end", buf[:stacklen])
+		}
+	}
+}
+
+// New promtail from config file
+func New(configFile string, cfg config.Config) (*Promtail, error) {
+	if err := helpers.LoadConfig(configFile, &cfg); err != nil {
+		return nil, err
+	}
+
 	positions, err := positions.New(util.Logger, cfg.PositionsConfig)
 	if err != nil {
 		return nil, err
@@ -46,22 +136,24 @@ func New(cfg config.Config) (*Promtail, error) {
 	}
 
 	return &Promtail{
-		client:         client,
-		positions:      positions,
-		targetManagers: tms,
-		server:         server,
+		Client:         client,
+		Positions:      positions,
+		TargetManagers: tms,
+		Server:         server,
+		configFile:     configFile,
+		Cfg:            &cfg,
 	}, nil
 }
 
 // Run the promtail; will block until a signal is received.
 func (p *Promtail) Run() error {
-	return p.server.Run()
+	return p.Server.Run()
 }
 
 // Shutdown the promtail.
 func (p *Promtail) Shutdown() {
-	p.server.Shutdown()
-	p.targetManagers.Stop()
-	p.positions.Stop()
-	p.client.Stop()
+	p.Server.Shutdown()
+	p.TargetManagers.Stop()
+	p.Positions.Stop()
+	p.Client.Stop()
 }
