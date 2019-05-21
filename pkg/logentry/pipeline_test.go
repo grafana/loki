@@ -18,17 +18,25 @@ var processedTestLine = `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /
 
 var testYaml = `
 pipeline_stages:
+- match:
+    selector:
+    stages:
+    - match:
+       matchers:
+       stages:
+       - json:
+    - docker:
+    - regex:
 - docker:
 - regex:
     expression: "^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<action>\\S+)\\s?(?P<path>\\S+)?\\s?(?P<protocol>\\S+)?\" (?P<status>\\d{3}|-) (?P<size>\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$"
-    timestamp:
-      source: timestamp
-      format: "02/Jan/2006:15:04:05 -0700"
-    labels:
-      action:
-        source: "action"
-      status_code:
-        source: "status"
+- timestamp:
+    source: timestamp
+    format: "02/Jan/2006:15:04:05 -0700"
+- labels:
+    action:
+    status_code: "status"
+- metrics:
 `
 
 func loadConfig(yml string) PipelineStages {
@@ -106,6 +114,106 @@ func TestPipeline_MultiStage(t *testing.T) {
 			}
 		})
 	}
+}
+
+var testOutputLogLine = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"app":"loki",
+	"component": ["parser","type"],
+	"level" : "WARN",
+	"nested" : {"child":"value"},
+	"message" : "this is a log line"
+}
+`
+
+var testOutputYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      out:  message
+- output:
+    source: out
+`
+
+func TestPipeline_Output(t *testing.T) {
+	pl, err := NewPipeline(util.Logger, loadConfig(testOutputYaml), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	ts := time.Now()
+	entry := testOutputLogLine
+	pl.Process(lbls, &ts, &entry)
+	assert.Equal(t, "this is a log line", entry)
+}
+
+var testLabelsLogLine = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"app":"loki",
+	"component": ["parser","type"],
+	"level" : "WARN"
+}
+`
+
+var testLabelsYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      out:  message
+      level:
+      app_rename: app
+- labels:
+    level:
+    app: app_rename
+`
+
+func TestPipeline_Labels(t *testing.T) {
+	pl, err := NewPipeline(util.Logger, loadConfig(testLabelsYaml), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	expectedLbls := model.LabelSet{
+		"level": "WARN",
+		"app":   "loki",
+	}
+	ts := time.Now()
+	entry := testLabelsLogLine
+	pl.Process(lbls, &ts, &entry)
+	assert.Equal(t, expectedLbls, lbls)
+}
+
+var testTimestampLogLine = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"app":"loki",
+	"component": ["parser","type"],
+	"level" : "WARN"
+}
+`
+
+var testTimestampYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      ts: time
+- timestamp:
+    source: ts
+    format: RFC3339
+`
+
+func TestPipeline_Timestamp(t *testing.T) {
+	pl, err := NewPipeline(util.Logger, loadConfig(testTimestampYaml), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	ts := time.Now()
+	entry := testTimestampLogLine
+	pl.Process(lbls, &ts, &entry)
+	assert.Equal(t, time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", 0)), ts)
 }
 
 var (
