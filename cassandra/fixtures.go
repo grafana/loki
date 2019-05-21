@@ -41,10 +41,10 @@ func Fixtures() ([]testutils.Fixture, error) {
 	}
 
 	cfg := Config{
-		addresses:         addresses,
-		keyspace:          "test",
-		consistency:       "QUORUM",
-		replicationFactor: 1,
+		Addresses:         addresses,
+		Keyspace:          "test",
+		Consistency:       "QUORUM",
+		ReplicationFactor: 1,
 	}
 
 	// Get a SchemaConfig with the defaults.
