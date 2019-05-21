@@ -2,40 +2,86 @@
 package logql
 
 import (
+  "time"
   "github.com/prometheus/prometheus/pkg/labels"
 )
 %}
 
 %union{
-  Expr         Expr
-  Filter       labels.MatchType
-  Selector     []*labels.Matcher
-  Matchers     []*labels.Matcher
-  Matcher      *labels.Matcher
-  str          string
-  int          int64
+  Expr                    Expr
+  LogExpr                 LogSelectorExpr
+  RangeAggregationExpr    SampleExpr
+  VectorAggregationExpr   SampleExpr
+  LogRangeExpr            *logRange
+  Filter                  labels.MatchType
+  Selector                []*labels.Matcher
+  Matchers                []*labels.Matcher
+  Matcher                 *labels.Matcher
+  Grouping                *grouping
+  Labels                  []string
+  VectorOp                string
+  RangeOp                 string
+  str                     string
+  duration                time.Duration
+  int                     int64
 }
 
 %start root
 
-%type <Expr>         expr
-%type <Filter>       filter
-%type <Selector>     selector
-%type <Matchers>     matchers
-%type <Matcher>      matcher
+%type <Expr>                  expr
+%type <Filter>                filter
+%type <Selector>              selector
+%type <Matchers>              matchers
+%type <Matcher>               matcher
+%type <VectorOp>              vectorOp
+%type <RangeOp>               rangeOp
+%type <Labels>                labels
+%type <Grouping>              grouping
+%type <LogExpr>               logExpr
+%type <RangeAggregationExpr>  rangeAggregationExpr
+%type <VectorAggregationExpr> vectorAggregationExpr
+%type <LogRangeExpr>          logRangeExpr
 
-%token <str>  IDENTIFIER STRING
-%token <val>  MATCHERS LABELS EQ NEQ RE NRE OPEN_BRACE CLOSE_BRACE COMMA DOT PIPE_MATCH PIPE_EXACT
+%token <str>      IDENTIFIER STRING
+%token <duration> DURATION
+%token <val>      MATCHERS LABELS EQ NEQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
+                  OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
 
 %%
 
 root: expr { exprlex.(*lexer).expr = $1 };
 
 expr:
-      selector                         { $$ = &matchersExpr{ matchers: $1 } }
-    | expr filter STRING               { $$ = NewFilterExpr( $1, $2, $3 ) }
-    | expr filter error
-    | expr error
+      logExpr                    { $$ = $1 }
+    | rangeAggregationExpr       { $$ = $1 }
+    | vectorAggregationExpr      { $$ = $1 }
+    ;
+
+logExpr:
+      selector                                    { $$ = newMatcherExpr($1)}
+    | logExpr filter STRING                       { $$ = NewFilterExpr( $1, $2, $3 ) }
+    | OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS  { $$ = $2}
+    | logExpr filter error
+    | logExpr error
+    ;
+
+
+logRangeExpr: logExpr DURATION { $$ = mustNewRange($1, $2) };
+
+
+rangeAggregationExpr: rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS { $$ = newRangeAggregationExpr($3,$1) };
+
+vectorAggregationExpr:
+      vectorOp OPEN_PARENTHESIS rangeAggregationExpr CLOSE_PARENTHESIS                               { $$ = mustNewVectorAggregationExpr($3, $1, nil, nil) }
+    | vectorOp grouping OPEN_PARENTHESIS rangeAggregationExpr CLOSE_PARENTHESIS                      { $$ = mustNewVectorAggregationExpr($4, $1, $2, nil,) }
+    | vectorOp OPEN_PARENTHESIS rangeAggregationExpr CLOSE_PARENTHESIS grouping                      { $$ = mustNewVectorAggregationExpr($3, $1, $5, nil) }
+    | vectorOp OPEN_PARENTHESIS IDENTIFIER COMMA rangeAggregationExpr CLOSE_PARENTHESIS              { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
+    | vectorOp OPEN_PARENTHESIS IDENTIFIER COMMA rangeAggregationExpr CLOSE_PARENTHESIS grouping     { $$ = mustNewVectorAggregationExpr($5, $1, $7, &$3) }
+    | vectorOp OPEN_PARENTHESIS vectorAggregationExpr CLOSE_PARENTHESIS                              { $$ = mustNewVectorAggregationExpr($3, $1, nil, nil) }
+    | vectorOp grouping OPEN_PARENTHESIS vectorAggregationExpr CLOSE_PARENTHESIS                     { $$ = mustNewVectorAggregationExpr($4, $1, $2, nil,) }
+    | vectorOp OPEN_PARENTHESIS vectorAggregationExpr CLOSE_PARENTHESIS grouping                     { $$ = mustNewVectorAggregationExpr($3, $1, $5, nil) }
+    | vectorOp OPEN_PARENTHESIS IDENTIFIER COMMA vectorAggregationExpr CLOSE_PARENTHESIS             { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
+    | vectorOp OPEN_PARENTHESIS IDENTIFIER COMMA vectorAggregationExpr CLOSE_PARENTHESIS grouping    { $$ = mustNewVectorAggregationExpr($5, $1, $7, &$3) }
     ;
 
 filter:
@@ -61,5 +107,32 @@ matcher:
     | IDENTIFIER NEQ STRING            { $$ = mustNewMatcher(labels.MatchNotEqual, $1, $3) }
     | IDENTIFIER RE STRING             { $$ = mustNewMatcher(labels.MatchRegexp, $1, $3) }
     | IDENTIFIER NRE STRING            { $$ = mustNewMatcher(labels.MatchNotRegexp, $1, $3) }
+    ;
+
+vectorOp:
+        SUM     { $$ = OpTypeSum }
+      | AVG     { $$ = OpTypeAvg }
+      | COUNT   { $$ = OpTypeCount }
+      | MAX     { $$ = OpTypeMax }
+      | MIN     { $$ = OpTypeMin }
+      | STDDEV  { $$ = OpTypeStddev }
+      | STDVAR  { $$ = OpTypeStdvar }
+      | BOTTOMK { $$ = OpTypeBottomK }
+      | TOPK    { $$ = OpTypeTopK }
+      ;
+
+rangeOp:
+      COUNT_OVER_TIME { $$ = OpTypeCountOverTime }
+    | RATE            { $$ = OpTypeRate }
+
+
+labels:
+      IDENTIFIER                 { $$ = []string{ $1 } }
+    | labels COMMA IDENTIFIER    { $$ = append($1, $3) }
+    ;
+
+grouping:
+      BY OPEN_PARENTHESIS labels CLOSE_PARENTHESIS        { $$ = &grouping{ without: false , groups: $3 } }
+    | WITHOUT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS   { $$ = &grouping{ without: true , groups: $3 } }
     ;
 %%

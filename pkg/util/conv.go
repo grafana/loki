@@ -9,6 +9,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 type byLabel []client.LabelAdapter
@@ -19,11 +20,10 @@ func (s byLabel) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 // ToClientLabels parses the labels and converts them to the Cortex type.
 func ToClientLabels(labels string) ([]client.LabelAdapter, error) {
-	ls, err := logql.ParseExpr(labels)
+	matchers, err := logql.ParseMatchers(labels)
 	if err != nil {
 		return nil, err
 	}
-	matchers := ls.Matchers()
 	result := make([]client.LabelAdapter, 0, len(matchers))
 	for _, m := range matchers {
 		result = append(result, client.LabelAdapter{
@@ -49,4 +49,14 @@ func ModelLabelSetToMap(m model.LabelSet) map[string]string {
 func RoundToMilliseconds(from, through time.Time) (model.Time, model.Time) {
 	return model.Time(int64(math.Floor(float64(from.UnixNano()) / float64(time.Millisecond)))),
 		model.Time(int64(math.Ceil(float64(through.UnixNano()) / float64(time.Millisecond))))
+}
+
+// LabelsToMetric converts a Labels to Metric
+// Don't do this on any performance sensitive paths.
+func LabelsToMetric(ls labels.Labels) model.Metric {
+	m := make(model.Metric, len(ls))
+	for _, l := range ls {
+		m[model.LabelName(l.Name)] = model.LabelValue(l.Value)
+	}
+	return m
 }
