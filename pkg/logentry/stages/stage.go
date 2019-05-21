@@ -18,6 +18,7 @@ const (
 	StageTypeOutput    = "output"
 	StageTypeDocker    = "docker"
 	StageTypeCRI       = "cri"
+	StageTypeMatch     = "match"
 )
 
 // Stage takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
@@ -35,17 +36,18 @@ func (s StageFunc) Process(labels model.LabelSet, extracted map[string]interface
 }
 
 // New creates a new stage for the given type and configuration.
-func New(logger log.Logger, stageType string, cfg interface{}, registerer prometheus.Registerer) (Stage, error) {
+func New(logger log.Logger, jobName string, stageType string,
+	cfg interface{}, registerer prometheus.Registerer) (Stage, error) {
 	var s Stage
 	var err error
 	switch stageType {
 	case StageTypeDocker:
-		s, err = NewDocker(logger)
+		s, err = NewDocker(logger, jobName)
 		if err != nil {
 			return nil, err
 		}
 	case StageTypeCRI:
-		s, err = NewCRI(logger)
+		s, err = NewCRI(logger, jobName)
 		if err != nil {
 			return nil, err
 		}
@@ -76,6 +78,11 @@ func New(logger log.Logger, stageType string, cfg interface{}, registerer promet
 		}
 	case StageTypeOutput:
 		s, err = newOutput(logger, cfg)
+		if err != nil {
+			return nil, err
+		}
+	case StageTypeMatch:
+		s, err = newMatcherStage(logger, cfg)
 		if err != nil {
 			return nil, err
 		}
