@@ -1,4 +1,4 @@
-package logentry
+package stages
 
 import (
 	"time"
@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/api"
 )
 
@@ -24,20 +23,23 @@ var (
 )
 
 // PipelineStages contains configuration for each stage within a pipeline
-type PipelineStages []interface{}
+type PipelineStages = []interface{}
+
+// PipelineStage contains configuration for a single pipeline stage
+type PipelineStage = map[interface{}]interface{}
 
 // Pipeline pass down a log entry to each stage for mutation and/or label extraction.
 type Pipeline struct {
 	logger  log.Logger
-	stages  []stages.Stage
+	stages  []Stage
 	jobName string
 }
 
 // NewPipeline creates a new log entry pipeline from a configuration
 func NewPipeline(logger log.Logger, stgs PipelineStages, jobName string) (*Pipeline, error) {
-	st := []stages.Stage{}
+	st := []Stage{}
 	for _, s := range stgs {
-		stage, ok := s.(map[interface{}]interface{})
+		stage, ok := s.(PipelineStage)
 		if !ok {
 			return nil, errors.Errorf("invalid YAML config, "+
 				"make sure each stage of your pipeline is a YAML object (must end with a `:`), check stage `- %s`", s)
@@ -50,7 +52,7 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName string) (*Pipel
 			if !ok {
 				return nil, errors.New("pipeline stage key must be a string")
 			}
-			newStage, err := stages.New(logger, name, config, prometheus.DefaultRegisterer)
+			newStage, err := New(logger, jobName, name, config, prometheus.DefaultRegisterer)
 			if err != nil {
 				return nil, errors.Wrapf(err, "invalid %s stage config", name)
 			}
@@ -64,10 +66,9 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName string) (*Pipel
 	}, nil
 }
 
-// Process mutates an entry and its metadata by using multiple configure stage.
-func (p *Pipeline) Process(labels model.LabelSet, ts *time.Time, entry *string) {
+// Process implements Stage allowing a pipeline stage to also be an entire pipeline
+func (p *Pipeline) Process(labels model.LabelSet, extracted map[string]interface{}, ts *time.Time, entry *string) {
 	start := time.Now()
-	extracted := map[string]interface{}{}
 	for i, stage := range p.stages {
 		level.Debug(p.logger).Log("msg", "processing pipeline", "stage", i, "labels", labels, "time", ts, "entry", entry)
 		stage.Process(labels, extracted, ts, entry)
@@ -80,13 +81,14 @@ func (p *Pipeline) Process(labels model.LabelSet, ts *time.Time, entry *string) 
 // Wrap implements EntryMiddleware
 func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 	return api.EntryHandlerFunc(func(labels model.LabelSet, timestamp time.Time, line string) error {
-		p.Process(labels, &timestamp, &line)
+		extracted := map[string]interface{}{}
+		p.Process(labels, extracted, &timestamp, &line)
 		return next.Handle(labels, timestamp, line)
 	})
 }
 
 // AddStage adds a stage to the pipeline
-func (p *Pipeline) AddStage(stage stages.Stage) {
+func (p *Pipeline) AddStage(stage Stage) {
 	p.stages = append(p.stages, stage)
 }
 

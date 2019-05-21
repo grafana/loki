@@ -129,7 +129,7 @@ func TestRegexParser_Parse(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			p, err := New(util.Logger, StageTypeRegex, tt.config, nil)
+			p, err := New(util.Logger, "test", StageTypeRegex, tt.config, nil)
 			if err != nil {
 				t.Fatalf("failed to create regex parser: %s", err)
 			}
@@ -143,7 +143,7 @@ func TestRegexParser_Parse(t *testing.T) {
 	}
 }
 
-func Benchmark(b *testing.B) {
+func BenchmarkRegexStage(b *testing.B) {
 	benchmarks := []struct {
 		name   string
 		config map[string]interface{}
@@ -171,7 +171,7 @@ func Benchmark(b *testing.B) {
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			stage, err := New(util.Logger, StageTypeRegex, bm.config, nil)
+			stage, err := New(util.Logger, "test", StageTypeRegex, bm.config, nil)
 			if err != nil {
 				panic(err)
 			}

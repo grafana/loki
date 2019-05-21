@@ -64,7 +64,7 @@ func TestNewDocker(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			p, err := NewDocker(util.Logger)
+			p, err := NewDocker(util.Logger, "test")
 			if err != nil {
 				t.Fatalf("failed to create Docker parser: %s", err)
 			}
@@ -140,7 +140,7 @@ func TestNewCri(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			p, err := NewCRI(util.Logger)
+			p, err := NewCRI(util.Logger, "test")
 			if err != nil {
 				t.Fatalf("failed to create CRI parser: %s", err)
 			}
