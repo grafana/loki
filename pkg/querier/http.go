@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc/server"
 
 	"github.com/weaveworks/common/httpgrpc"
@@ -18,6 +19,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 const (
@@ -25,6 +27,7 @@ const (
 	defaultSince         = 1 * time.Hour
 	wsPingPeriod         = 1 * time.Second
 	maxDelayForInTailing = 5
+	defaultStep          = 1 // 1 seconds
 )
 
 // nolint
@@ -68,19 +71,48 @@ func directionParam(values url.Values, name string, def logproto.Direction) (log
 	return logproto.Direction(d), nil
 }
 
-func httpRequestToQueryRequest(httpRequest *http.Request) (*logproto.QueryRequest, error) {
+func httpRequestToInstantQueryRequest(httpRequest *http.Request) (*instantQueryRequest, error) {
 	params := httpRequest.URL.Query()
-	queryRequest := logproto.QueryRequest{
-		Regex: params.Get("regexp"),
-		Query: params.Get("query"),
+	queryRequest := instantQueryRequest{
+		query: params.Get("query"),
 	}
 
-	var err error
-	queryRequest.Limit, queryRequest.Start, queryRequest.End, err = httpRequestToLookback(httpRequest)
+	limit, err := intParam(params, "limit", defaultQueryLimit)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+	queryRequest.limit = uint32(limit)
+
+	queryRequest.ts, err = unixNanoTimeParam(params, "time", time.Now())
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	queryRequest.direction, err = directionParam(params, "direction", logproto.BACKWARD)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	return &queryRequest, nil
+}
+
+func httpRequestToRangeQueryRequest(httpRequest *http.Request) (*rangeQueryRequest, error) {
+	params := httpRequest.URL.Query()
+	queryRequest := rangeQueryRequest{
+		query: params.Get("query"),
+	}
+
+	step, err := intParam(params, "step", defaultStep)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+	queryRequest.step = time.Duration(step) * time.Second
+
+	queryRequest.limit, queryRequest.start, queryRequest.end, err = httpRequestToLookback(httpRequest)
 	if err != nil {
 		return nil, err
 	}
-	queryRequest.Direction, err = directionParam(params, "direction", logproto.BACKWARD)
+	queryRequest.direction, err = directionParam(params, "direction", logproto.BACKWARD)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
@@ -91,7 +123,6 @@ func httpRequestToQueryRequest(httpRequest *http.Request) (*logproto.QueryReques
 func httpRequestToTailRequest(httpRequest *http.Request) (*logproto.TailRequest, error) {
 	params := httpRequest.URL.Query()
 	tailRequest := logproto.TailRequest{
-		Regex: params.Get("regexp"),
 		Query: params.Get("query"),
 	}
 	var err error
@@ -134,22 +165,102 @@ func httpRequestToLookback(httpRequest *http.Request) (limit uint32, start, end 
 	return
 }
 
-// QueryHandler is a http.HandlerFunc for queries.
-func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
-	request, err := httpRequestToQueryRequest(r)
+type QueryResponse struct {
+	ResultType promql.ValueType `json:"resultType"`
+	Result     promql.Value     `json:"result"`
+}
+
+type rangeQueryRequest struct {
+	query      string
+	start, end time.Time
+	step       time.Duration
+	limit      uint32
+	direction  logproto.Direction
+}
+
+type instantQueryRequest struct {
+	query     string
+	ts        time.Time
+	limit     uint32
+	direction logproto.Direction
+}
+
+// RangeQueryHandler is a http.HandlerFunc for range queries.
+func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
+	request, err := httpRequestToRangeQueryRequest(r)
 	if err != nil {
 		server.WriteError(w, err)
 		return
 	}
-
-	level.Debug(util.Logger).Log("request", fmt.Sprintf("%+v", request))
-	result, err := q.Query(r.Context(), request)
+	query := q.engine.NewRangeQuery(q, request.query, request.start, request.end, request.step, request.direction, request.limit)
+	result, err := query.Exec(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err := json.NewEncoder(w).Encode(result); err != nil {
+	response := &QueryResponse{
+		ResultType: result.Type(),
+		Result:     result,
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+// InstantQueryHandler is a http.HandlerFunc for instant queries.
+func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
+	request, err := httpRequestToInstantQueryRequest(r)
+	if err != nil {
+		server.WriteError(w, err)
+		return
+	}
+	query := q.engine.NewInstantQuery(q, request.query, request.ts, request.direction, request.limit)
+	result, err := query.Exec(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	response := &QueryResponse{
+		ResultType: result.Type(),
+		Result:     result,
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+// LogQueryHandler is a http.HandlerFunc for log only queries.
+func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
+	request, err := httpRequestToRangeQueryRequest(r)
+	if err != nil {
+		server.WriteError(w, err)
+		return
+	}
+	query := q.engine.NewRangeQuery(q, request.query, request.start, request.end, request.step, request.direction, request.limit)
+	result, err := query.Exec(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if result.Type() != logql.ValueTypeStreams {
+		http.Error(w, fmt.Sprintf("log query only support %s result type, current type is %s", logql.ValueTypeStreams, result.Type()), http.StatusBadRequest)
+		return
+	}
+
+	if err := json.NewEncoder(w).Encode(
+		struct {
+			Streams promql.Value `json:"streams"`
+		}{
+			Streams: result,
+		},
+	); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

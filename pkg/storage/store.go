@@ -9,7 +9,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/common/model"
@@ -31,7 +30,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Store is the Loki chunk store to retrieve and save chunks.
 type Store interface {
 	chunk.Store
-	LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter.EntryIterator, error)
+	LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error)
 }
 
 type store struct {
@@ -53,45 +52,44 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 
 // LazyQuery returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
 // for that request.
-func (s *store) LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter.EntryIterator, error) {
-	expr, err := logql.ParseExpr(req.Query)
+func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error) {
+	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, err
 	}
 
-	if req.Regex != "" {
-		expr = logql.NewFilterExpr(expr, labels.MatchRegexp, req.Regex)
+	filter, err := expr.Filter()
+	if err != nil {
+		return nil, err
 	}
 
-	querier := logql.QuerierFunc(func(matchers []*labels.Matcher, filter logql.Filter) (iter.EntryIterator, error) {
-		nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, "logs")
-		if err != nil {
-			return nil, err
-		}
+	matchers := expr.Matchers()
+	nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, "logs")
+	if err != nil {
+		return nil, err
+	}
 
-		matchers = append(matchers, nameLabelMatcher)
-		from, through := util.RoundToMilliseconds(req.Start, req.End)
-		chks, fetchers, err := s.GetChunkRefs(ctx, from, through, matchers...)
-		if err != nil {
-			return nil, err
-		}
+	matchers = append(matchers, nameLabelMatcher)
+	from, through := util.RoundToMilliseconds(req.Start, req.End)
+	chks, fetchers, err := s.GetChunkRefs(ctx, from, through, matchers...)
+	if err != nil {
+		return nil, err
+	}
 
-		var totalChunks int
-		for i := range chks {
-			chks[i] = filterChunksByTime(from, through, chks[i])
-			totalChunks += len(chks[i])
+	var totalChunks int
+	for i := range chks {
+		chks[i] = filterChunksByTime(from, through, chks[i])
+		totalChunks += len(chks[i])
+	}
+	// creates lazychunks with chunks ref.
+	lazyChunks := make([]*chunkenc.LazyChunk, 0, totalChunks)
+	for i := range chks {
+		for _, c := range chks[i] {
+			lazyChunks = append(lazyChunks, &chunkenc.LazyChunk{Chunk: c, Fetcher: fetchers[i]})
 		}
-		// creates lazychunks with chunks ref.
-		lazyChunks := make([]*chunkenc.LazyChunk, 0, totalChunks)
-		for i := range chks {
-			for _, c := range chks[i] {
-				lazyChunks = append(lazyChunks, &chunkenc.LazyChunk{Chunk: c, Fetcher: fetchers[i]})
-			}
-		}
-		return newBatchChunkIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req), nil
-	})
+	}
+	return newBatchChunkIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req.QueryRequest), nil
 
-	return expr.Eval(querier)
 }
 
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {

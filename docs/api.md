@@ -20,6 +20,180 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
       }
     ]
   }
+
+  ```
+
+- `GET /api/v1/query`
+
+  For doing instant queries at a single point in time, accepts the following parameters in the query-string:
+
+  - `query`: a logQL query
+  - `limit`: max number of entries to return (not used for sample expression)
+  - `time`: the evaluation time for the query, as a nanosecond Unix epoch (nanoseconds since 1970). Default is always now.
+  - `direction`: `forward` or `backward`, useful when specifying a limit. Default is backward.
+
+  Loki needs to query the index store in order to find log streams for particular labels and the store is spread out by time,
+  so you need to specify the time and labels accordingly. Querying a long time into the history will cause additional
+  load to the index server and make the query slower.
+
+  Responses looks like this:
+
+  ```json
+  {
+    "resultType": "vector" | "streams",
+    "result": <value>
+  }
+  ```
+
+  Examples:
+
+  ```bash
+  $ curl -G -s  "http://localhost:3100/api/v1/query" --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
+  {
+    "resultType": "vector",
+    "result": [
+      {
+        "metric": {},
+        "value": [
+          1559848867745737,
+          "1267.1266666666666"
+        ]
+      },
+      {
+        "metric": {
+          "level": "warn"
+        },
+        "value": [
+          1559848867745737,
+          "37.77166666666667"
+        ]
+      },
+      {
+        "metric": {
+          "level": "info"
+        },
+        "value": [
+          1559848867745737,
+          "37.69"
+        ]
+      }
+    ]
+  }
+  ```
+
+  ```bash
+  curl -G -s  "http://localhost:3100/api/v1/query" --data-urlencode 'query={job="varlogs"}' | jq
+  {
+    "resultType": "streams",
+    "result": [
+      {
+        "labels": "{filename=\"/var/log/myproject.log\", job=\"varlogs\", level=\"info\"}",
+        "entries": [
+          {
+            "ts": "2019-06-06T19:25:41.972739Z",
+            "line": "foo"
+          },
+          {
+            "ts": "2019-06-06T19:25:41.972722Z",
+            "line": "bar"
+          }
+        ]
+      }
+    ]
+  ```
+
+- `GET /api/v1/query_range`
+
+  For doing queries over a range of time, accepts the following parameters in the query-string:
+
+  - `query`: a logQL query
+  - `limit`: max number of entries to return (not used for sample expression)
+  - `start`: the start time for the query, as a nanosecond Unix epoch (nanoseconds since 1970). Default is always one hour ago.
+  - `end`: the end time for the query, as a nanosecond Unix epoch (nanoseconds since 1970). Default is always now.
+  - `step`: query resolution step width in seconds. Default 1 second.
+  - `direction`: `forward` or `backward`, useful when specifying a limit. Default is backward.
+
+  Loki needs to query the index store in order to find log streams for particular labels and the store is spread out by time,
+  so you need to specify the time and labels accordingly. Querying a long time into the history will cause additional
+  load to the index server and make the query slower.
+
+  Responses looks like this:
+
+  ```json
+  {
+    "resultType": "matrix" | "streams",
+    "result": <value>
+  }
+  ```
+
+  Examples:
+
+  ```bash
+  $ curl -G -s  "http://localhost:3100/api/v1/query_range" --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' --data-urlencode 'step=300' | jq
+  {
+    "resultType": "matrix",
+    "result": [
+    {
+       "metric": {
+          "level": "info"
+        },
+        "values": [
+          [
+            1559848958663735,
+            "137.95"
+          ],
+          [
+            1559849258663735,
+            "467.115"
+          ],
+          [
+            1559849558663735,
+            "658.8516666666667"
+          ]
+        ]
+      },
+      {
+        "metric": {
+          "level": "warn"
+        },
+        "values": [
+          [
+            1559848958663735,
+            "137.27833333333334"
+          ],
+          [
+            1559849258663735,
+            "467.69"
+          ],
+          [
+            1559849558663735,
+            "660.6933333333334"
+          ]
+        ]
+      }
+    ]
+  }
+  ```
+
+  ```bash
+  curl -G -s  "http://localhost:3100/api/v1/query_range" --data-urlencode 'query={job="varlogs"}' | jq
+  {
+    "resultType": "streams",
+    "result": [
+      {
+        "labels": "{filename=\"/var/log/myproject.log\", job=\"varlogs\", level=\"info\"}",
+        "entries": [
+          {
+            "ts": "2019-06-06T19:25:41.972739Z",
+            "line": "foo"
+          },
+          {
+            "ts": "2019-06-06T19:25:41.972722Z",
+            "line": "bar"
+          }
+        ]
+      }
+    ]
   ```
 
 - `GET /api/prom/query`
@@ -36,6 +210,8 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
   Loki needs to query the index store in order to find log streams for particular labels and the store is spread out by time,
   so you need to specify the start and end labels accordingly. Querying a long time into the history will cause additional
   load to the index server and make the query slower.
+
+  > This endpoint doesn't accept [sample query](./usage.md#counting-logs).
 
   Responses looks like this:
 

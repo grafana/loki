@@ -13,10 +13,10 @@ import (
 	"github.com/prometheus/common/model"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
 )
 
@@ -31,8 +31,9 @@ var readinessProbeSuccess = []byte("Ready")
 
 // Config for a querier.
 type Config struct {
-	TailMaxDuration time.Duration `yaml:"tail_max_duration"`
-	QueryTimeout    time.Duration `yaml:"query_timeout"`
+	QueryTimeout    time.Duration    `yaml:"query_timeout"`
+	TailMaxDuration time.Duration    `yaml:"tail_max_duration"`
+	Engine          logql.EngineOpts `yaml:"engine,omitempty"`
 }
 
 // RegisterFlags register flags.
@@ -43,10 +44,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Querier handlers queries.
 type Querier struct {
-	cfg   Config
-	ring  ring.ReadRing
-	pool  *cortex_client.Pool
-	store storage.Store
+	cfg    Config
+	ring   ring.ReadRing
+	pool   *cortex_client.Pool
+	store  storage.Store
+	engine *logql.Engine
 }
 
 // New makes a new Querier.
@@ -62,10 +64,11 @@ func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, store storage.
 // used for testing purposes
 func newQuerier(cfg Config, clientCfg client.Config, clientFactory cortex_client.Factory, ring ring.ReadRing, store storage.Store) (*Querier, error) {
 	return &Querier{
-		cfg:   cfg,
-		ring:  ring,
-		pool:  cortex_client.NewPool(clientCfg.PoolConfig, ring, clientFactory, util.Logger),
-		store: store,
+		cfg:    cfg,
+		ring:   ring,
+		pool:   cortex_client.NewPool(clientCfg.PoolConfig, ring, clientFactory, util.Logger),
+		store:  store,
+		engine: logql.NewEngine(cfg.Engine),
 	}, nil
 }
 
@@ -139,42 +142,27 @@ func (q *Querier) forGivenIngesters(replicationSet ring.ReplicationSet, f func(l
 	return result, nil
 }
 
-// Query does the heavy lifting for an actual query.
-func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logproto.QueryResponse, error) {
+// Select Implements logql.Querier
+func (q *Querier) Select(ctx context.Context, params logql.SelectParams) (iter.EntryIterator, error) {
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
 
-	iterators, err := q.getQueryIterators(ctx, req)
+	ingesterIterators, err := q.queryIngesters(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-
-	iterator := iter.NewHeapIterator(iterators, req.Direction)
-	defer helpers.LogError("closing iterator", iterator.Close)
-
-	resp, _, err := iter.ReadBatch(iterator, req.Limit)
-	return resp, err
-}
-
-func (q *Querier) getQueryIterators(ctx context.Context, req *logproto.QueryRequest) ([]iter.EntryIterator, error) {
-	ingesterIterators, err := q.queryIngesters(ctx, req)
+	chunkStoreIterators, err := q.store.LazyQuery(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-
-	chunkStoreIterators, err := q.store.LazyQuery(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
 	iterators := append(ingesterIterators, chunkStoreIterators)
-	return iterators, nil
+	return iter.NewHeapIterator(iterators, params.Direction), nil
 }
 
-func (q *Querier) queryIngesters(ctx context.Context, req *logproto.QueryRequest) ([]iter.EntryIterator, error) {
+func (q *Querier) queryIngesters(ctx context.Context, params logql.SelectParams) ([]iter.EntryIterator, error) {
 	clients, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
-		return client.Query(ctx, req)
+		return client.Query(ctx, params.QueryRequest)
 	})
 	if err != nil {
 		return nil, err
@@ -182,7 +170,7 @@ func (q *Querier) queryIngesters(ctx context.Context, req *logproto.QueryRequest
 
 	iterators := make([]iter.EntryIterator, len(clients))
 	for i := range clients {
-		iterators[i] = iter.NewQueryClientIterator(clients[i].response.(logproto.Querier_QueryClient), req.Direction)
+		iterators[i] = iter.NewQueryClientIterator(clients[i].response.(logproto.Querier_QueryClient), params.Direction)
 	}
 	return iterators, nil
 }
@@ -289,20 +277,21 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		tailClients[clients[i].addr] = clients[i].response.(logproto.Querier_TailClient)
 	}
 
-	histReq := logproto.QueryRequest{
-		Query:     req.Query,
-		Start:     req.Start,
-		End:       time.Now(),
-		Limit:     req.Limit,
-		Direction: logproto.BACKWARD,
-		Regex:     req.Regex,
+	histReq := logql.SelectParams{
+		QueryRequest: &logproto.QueryRequest{
+			Selector:  req.Query,
+			Start:     req.Start,
+			End:       time.Now(),
+			Limit:     req.Limit,
+			Direction: logproto.BACKWARD,
+		},
 	}
-	histIterators, err := q.getQueryIterators(queryCtx, &histReq)
+	histIterators, err := q.Select(queryCtx, histReq)
 	if err != nil {
 		return nil, err
 	}
 
-	reversedIterator, err := iter.NewEntryIteratorForward(iter.NewHeapIterator(histIterators, logproto.BACKWARD), req.Limit, true)
+	reversedIterator, err := iter.NewEntryIteratorForward(histIterators, req.Limit, true)
 	if err != nil {
 		return nil, err
 	}
