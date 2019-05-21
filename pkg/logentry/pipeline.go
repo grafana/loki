@@ -67,9 +67,10 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName string) (*Pipel
 // Process mutates an entry and its metadata by using multiple configure stage.
 func (p *Pipeline) Process(labels model.LabelSet, ts *time.Time, entry *string) {
 	start := time.Now()
+	extracted := map[string]interface{}{}
 	for i, stage := range p.stages {
 		level.Debug(p.logger).Log("msg", "processing pipeline", "stage", i, "labels", labels, "time", ts, "entry", entry)
-		stage.Process(labels, ts, entry)
+		stage.Process(labels, extracted, ts, entry)
 	}
 	dur := time.Since(start).Seconds()
 	level.Debug(p.logger).Log("msg", "finished processing log line", "labels", labels, "time", ts, "entry", entry, "duration_s", dur)

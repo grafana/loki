@@ -10,7 +10,7 @@ import (
 
 type hasRunStage bool
 
-func (h *hasRunStage) Process(labels model.LabelSet, t *time.Time, entry *string) {
+func (h *hasRunStage) Process(labels model.LabelSet, exctracted map[string]interface{}, t *time.Time, entry *string) {
 	*h = true
 }
 
@@ -48,7 +48,7 @@ func Test_withMatcher(t *testing.T) {
 			}
 			if s != nil {
 				ts, entry := time.Now(), ""
-				s.Process(toLabelSet(tt.labels), &ts, &entry)
+				s.Process(toLabelSet(tt.labels), map[string]interface{}{}, &ts, &entry)
 
 				if bool(hasRun) != tt.shouldRun {
 					t.Error("stage ran but should have not")

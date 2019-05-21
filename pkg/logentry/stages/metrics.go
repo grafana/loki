@@ -7,33 +7,60 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/logentry/metric"
+	"github.com/mitchellh/mapstructure"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logentry/metric"
 )
 
 const customPrefix = "promtail_custom_"
 
-// withMetric mutates a log line using a Mutator and records metrics from Extractor.
-func withMetric(s Mutator, cfg MetricsConfig, registry prometheus.Registerer) Stage {
-	if registry == nil {
-		return StageFunc(func(labels model.LabelSet, time *time.Time, entry *string) {
-			_ = s.Process(labels, time, entry)
-		})
+const (
+	ErrEmptyMetricsStageConfig = "empty metric stage configuration"
+)
+
+// MetricConfig is a single metrics configuration.
+type MetricConfig struct {
+	MetricType  string    `mapstructure:"type"`
+	Description string    `mapstructure:"description"`
+	Source      *string   `mapstructure:"source"`
+	Buckets     []float64 `mapstructure:"buckets"`
+}
+
+// MetricsConfig is a set of configured metrics.
+type MetricsConfig map[string]MetricConfig
+
+func validateMetricsConfig(cfg MetricsConfig) error {
+	if cfg == nil {
+		return errors.New(ErrEmptyMetricsStageConfig)
 	}
-	metrics := newMetric(cfg, registry)
-	return StageFunc(func(labels model.LabelSet, time *time.Time, entry *string) {
-		extractor := s.Process(labels, time, entry)
-		if extractor != nil {
-			metrics.process(extractor, labels)
+	for name, config := range cfg {
+		//If the source is not defined, default to the metric name
+		if config.Source == nil {
+			cp := config
+			nm := name
+			cp.Source = &nm
+			cfg[name] = cp
 		}
-	})
+	}
+	return nil
 }
 
 // newMetric creates a new set of metrics to process for each log entry
-func newMetric(cfgs MetricsConfig, registry prometheus.Registerer) *metricStage {
+func newMetric(config interface{}, registry prometheus.Registerer) (*metricStage, error) {
+	cfgs := &MetricsConfig{}
+	err := mapstructure.Decode(config, cfgs)
+	if err != nil {
+		return nil, err
+	}
+	err = validateMetricsConfig(*cfgs)
+	if err != nil {
+		return nil, err
+	}
 	metrics := map[string]prometheus.Collector{}
-	for name, cfg := range cfgs {
+	for name, cfg := range *cfgs {
 		var collector prometheus.Collector
 
 		switch strings.ToLower(cfg.MetricType) {
@@ -50,9 +77,9 @@ func newMetric(cfgs MetricsConfig, registry prometheus.Registerer) *metricStage 
 		}
 	}
 	return &metricStage{
-		cfg:     cfgs,
+		cfg:     *cfgs,
 		metrics: metrics,
-	}
+	}, nil
 }
 
 type metricStage struct {
@@ -60,37 +87,31 @@ type metricStage struct {
 	metrics map[string]prometheus.Collector
 }
 
-func (m *metricStage) process(v Extractor, labels model.LabelSet) {
+func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	for name, collector := range m.metrics {
-		switch vec := collector.(type) {
-		case *metric.Counters:
-			recordCounter(vec.With(labels), v, m.cfg[name])
-		case *metric.Gauges:
-			recordGauge(vec.With(labels), v, m.cfg[name])
-		case *metric.Histograms:
-			recordHistogram(vec.With(labels), v, m.cfg[name])
+		if v, ok := extracted[*m.cfg[name].Source]; ok {
+			switch vec := collector.(type) {
+			case *metric.Counters:
+				recordCounter(vec.With(labels), v)
+			case *metric.Gauges:
+				recordGauge(vec.With(labels), v)
+			case *metric.Histograms:
+				recordHistogram(vec.With(labels), v)
+			}
 		}
 	}
 }
 
-func recordCounter(counter prometheus.Counter, e Extractor, cfg MetricConfig) {
-	unk, err := e.Value(cfg.Source)
-	if err != nil {
-		return
-	}
-	f, err := getFloat(unk)
+func recordCounter(counter prometheus.Counter, v interface{}) {
+	f, err := getFloat(v)
 	if err != nil || f < 0 {
 		return
 	}
 	counter.Add(f)
 }
 
-func recordGauge(gauge prometheus.Gauge, e Extractor, cfg MetricConfig) {
-	unk, err := e.Value(cfg.Source)
-	if err != nil {
-		return
-	}
-	f, err := getFloat(unk)
+func recordGauge(gauge prometheus.Gauge, v interface{}) {
+	f, err := getFloat(v)
 	if err != nil {
 		return
 	}
@@ -98,12 +119,8 @@ func recordGauge(gauge prometheus.Gauge, e Extractor, cfg MetricConfig) {
 	gauge.Add(f)
 }
 
-func recordHistogram(histogram prometheus.Histogram, e Extractor, cfg MetricConfig) {
-	unk, err := e.Value(cfg.Source)
-	if err != nil {
-		return
-	}
-	f, err := getFloat(unk)
+func recordHistogram(histogram prometheus.Histogram, v interface{}) {
+	f, err := getFloat(v)
 	if err != nil {
 		return
 	}

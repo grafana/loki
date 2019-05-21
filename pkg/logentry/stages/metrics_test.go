@@ -7,7 +7,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
-	testutil "github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 )
 
@@ -15,66 +15,70 @@ var labelFoo = model.LabelSet(map[model.LabelName]model.LabelValue{"foo": "bar",
 var labelFu = model.LabelSet(map[model.LabelName]model.LabelValue{"fu": "baz", "baz": "fu"})
 
 func Test_withMetric(t *testing.T) {
-	jsonConfig := map[string]interface{}{
-		"metrics": map[string]interface{}{
-			"total_keys": map[string]interface{}{
-				"type":        "Counter",
-				"source":      "length(keys(@))",
-				"description": "the total keys per doc",
-			},
-			"keys_per_line": map[string]interface{}{
-				"type":        "Histogram",
-				"source":      "length(keys(@))",
-				"description": "keys per doc",
-				"buckets":     []float64{1, 3, 5, 10},
-			},
-			"numeric_float": map[string]interface{}{
-				"type":        "Gauge",
-				"source":      "numeric.float",
-				"description": "numeric_float",
-			},
-			"numeric_integer": map[string]interface{}{
-				"type":        "Gauge",
-				"source":      "numeric.integer",
-				"description": "numeric.integer",
-			},
-			"numeric_string": map[string]interface{}{
-				"type":        "Gauge",
-				"source":      "numeric.string",
-				"description": "numeric.string",
-			},
-			"contains_warn": map[string]interface{}{
-				"type":        "Counter",
-				"source":      "contains(values(@),'WARN')",
-				"description": "contains_warn",
-			},
-			"contains_false": map[string]interface{}{
-				"type":        "Counter",
-				"source":      "contains(keys(@),'nope')",
-				"description": "contains_false",
-			},
-			"unconvertible": map[string]interface{}{
-				"type":        "Counter",
-				"source":      "values(@)",
-				"description": "unconvertible",
-			},
+	jsonConfig := JSONConfig{
+		Expressions: map[string]string{
+			"total_keys":      "length(keys(@))",
+			"keys_per_line":   "length(keys(@))",
+			"numeric_float":   "numeric.float",
+			"numeric_integer": "numeric.integer",
+			"numeric_string":  "numeric.string",
+			"contains_warn":   "contains(values(@),'WARN')",
+			"contains_false":  "contains(keys(@),'nope')",
+			"unconvertable":   "values(@)",
 		},
 	}
 	regexConfig := map[string]interface{}{
 		"expression": "(?P<get>\"GET).*HTTP/1.1\" (?P<status>\\d*) (?P<time>\\d*) ",
-		"metrics": map[string]interface{}{
-			"matches": map[string]interface{}{
-				"type":        "Counter",
-				"description": "all matches",
-			},
-			"response_time_ms": map[string]interface{}{
-				"type":        "Histogram",
-				"source":      "time",
-				"description": "response time in ms",
-				"buckets":     []float64{1, 2, 3},
-			},
+	}
+	timeSource := "time"
+	metricsConfig := MetricsConfig{
+		"total_keys": MetricConfig{
+			MetricType:  "Counter",
+			Description: "the total keys per doc",
+		},
+		"keys_per_line": MetricConfig{
+			MetricType:  "Histogram",
+			Description: "keys per doc",
+			Buckets:     []float64{1, 3, 5, 10},
+		},
+		"numeric_float": MetricConfig{
+			MetricType:  "Gauge",
+			Description: "numeric_float",
+		},
+		"numeric_integer": MetricConfig{
+			MetricType:  "Gauge",
+			Description: "numeric.integer",
+		},
+		"numeric_string": MetricConfig{
+			MetricType:  "Gauge",
+			Description: "numeric.string",
+		},
+		"contains_warn": MetricConfig{
+			MetricType:  "Counter",
+			Description: "contains_warn",
+		},
+		"contains_false": MetricConfig{
+			MetricType:  "Counter",
+			Description: "contains_false",
+		},
+		// FIXME Not showing results currently if there are no counts, this doesn't make it into the output
+		"unconvertible": MetricConfig{
+			MetricType:  "Counter",
+			Description: "unconvertible",
+		},
+		// FIXME Not entirely sure how we want to implement this one?
+		"matches": MetricConfig{
+			MetricType:  "Counter",
+			Description: "all matches",
+		},
+		"response_time_ms": MetricConfig{
+			MetricType:  "Histogram",
+			Source:      &timeSource,
+			Description: "response time in ms",
+			Buckets:     []float64{1, 2, 3},
 		},
 	}
+
 	registry := prometheus.NewRegistry()
 	jsonStage, err := New(util.Logger, StageTypeJSON, jsonConfig, registry)
 	if err != nil {
@@ -84,27 +88,31 @@ func Test_withMetric(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create stage with metrics: %v", err)
 	}
+	metricStage, err := New(util.Logger, StageTypeMetric, metricsConfig, registry)
+	if err != nil {
+		t.Fatalf("failed to create stage with metrics: %v", err)
+	}
 	var ts = time.Now()
 	var entry = logFixture
+	extr := map[string]interface{}{}
+	jsonStage.Process(labelFoo, extr, &ts, &entry)
+	regexStage.Process(labelFoo, extr, &ts, &regexLogFixture)
+	metricStage.Process(labelFoo, extr, &ts, &entry)
 
-	jsonStage.Process(labelFoo, &ts, &entry)
-	jsonStage.Process(labelFu, &ts, &entry)
-	regexStage.Process(labelFoo, &ts, &regexLogFixture)
-	regexStage.Process(labelFu, &ts, &regexLogFixture)
+	//jsonStage.Process(labelFu, extr, &ts, &entry)
+	//regexStage.Process(labelFu, extr, &ts, &regexLogFixture)
+	metricStage.Process(labelFu, extr, &ts, &entry)
 
-	var names []string
-	names = append(names, metricNames(jsonConfig)...)
-	names = append(names, metricNames(regexConfig)...)
+	names := metricNames(metricsConfig)
 	if err := testutil.GatherAndCompare(registry,
 		strings.NewReader(goldenMetrics), names...); err != nil {
 		t.Fatalf("missmatch metrics: %v", err)
 	}
 }
 
-func metricNames(cfg map[string]interface{}) []string {
-	metrics := cfg["metrics"].(map[string]interface{})
+func metricNames(cfg MetricsConfig) []string {
 	result := make([]string, 0, len(cfg))
-	for name := range metrics {
+	for name := range cfg {
 		result = append(result, customPrefix+name)
 	}
 	return result

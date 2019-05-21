@@ -18,12 +18,12 @@ func withMatcher(s Stage, matcher string) (Stage, error) {
 		return nil, err
 	}
 
-	return StageFunc(func(labels model.LabelSet, t *time.Time, entry *string) {
+	return StageFunc(func(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 		for _, filter := range matchers {
 			if !filter.Matches(string(labels[model.LabelName(filter.Name)])) {
 				return
 			}
 		}
-		s.Process(labels, t, entry)
+		s.Process(labels, extracted, t, entry)
 	}), nil
 }
