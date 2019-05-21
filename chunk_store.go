@@ -61,6 +61,9 @@ type StoreConfig struct {
 
 	MinChunkAge           time.Duration `yaml:"min_chunk_age,omitempty"`
 	CacheLookupsOlderThan time.Duration `yaml:"cache_lookups_older_than,omitempty"`
+
+	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
+	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -70,6 +73,7 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 
 	f.DurationVar(&cfg.MinChunkAge, "store.min-chunk-age", 0, "Minimum time between chunk update and being saved to the store.")
 	f.DurationVar(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", 0, "Cache index entries older than this period. 0 to disable.")
+	f.DurationVar(&cfg.MaxLookBackPeriod, "store.max-look-back-period", 0, "Limit how long back data can be queried")
 
 	// Deprecated.
 	flagext.DeprecatedFlag(f, "store.cardinality-cache-size", "DEPRECATED. Use store.index-cache-read.enable-fifocache and store.index-cache-read.fifocache.size instead.")
@@ -173,7 +177,7 @@ func (c *store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	level.Debug(log).Log("from", from, "through", through, "matchers", len(allMatchers))
 
 	// Validate the query is within reasonable bounds.
-	metricName, matchers, shortcut, err := c.validateQuery(ctx, from, &through, allMatchers)
+	metricName, matchers, shortcut, err := c.validateQuery(ctx, &from, &through, allMatchers)
 	if err != nil {
 		return nil, err
 	} else if shortcut {
@@ -199,7 +203,7 @@ func (c *store) LabelValuesForMetricName(ctx context.Context, from, through mode
 		return nil, err
 	}
 
-	shortcut, err := c.validateQueryTimeRange(ctx, from, &through)
+	shortcut, err := c.validateQueryTimeRange(ctx, &from, &through)
 	if err != nil {
 		return nil, err
 	} else if shortcut {
@@ -230,11 +234,11 @@ func (c *store) LabelValuesForMetricName(ctx context.Context, from, through mode
 	return result, nil
 }
 
-func (c *store) validateQueryTimeRange(ctx context.Context, from model.Time, through *model.Time) (bool, error) {
+func (c *store) validateQueryTimeRange(ctx context.Context, from *model.Time, through *model.Time) (bool, error) {
 	log, ctx := spanlogger.New(ctx, "store.validateQueryTimeRange")
 	defer log.Span.Finish()
 
-	if *through < from {
+	if *through < *from {
 		return false, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", through, from)
 	}
 
@@ -244,8 +248,8 @@ func (c *store) validateQueryTimeRange(ctx context.Context, from model.Time, thr
 	}
 
 	maxQueryLength := c.limits.MaxQueryLength(userID)
-	if maxQueryLength > 0 && (*through).Sub(from) > maxQueryLength {
-		return false, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, (*through).Sub(from), maxQueryLength)
+	if maxQueryLength > 0 && (*through).Sub(*from) > maxQueryLength {
+		return false, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, (*through).Sub(*from), maxQueryLength)
 	}
 
 	now := model.Now()
@@ -261,6 +265,13 @@ func (c *store) validateQueryTimeRange(ctx context.Context, from model.Time, thr
 		return true, nil
 	}
 
+	if c.cfg.MaxLookBackPeriod != 0 {
+		oldestStartTime := model.Now().Add(-c.cfg.MaxLookBackPeriod)
+		if oldestStartTime.After(*from) {
+			*from = oldestStartTime
+		}
+	}
+
 	if through.After(now.Add(5 * time.Minute)) {
 		// time-span end is in future ... regard as legal
 		level.Error(log).Log("msg", "adjusting end timerange from future to now", "old_through", through, "new_through", now)
@@ -270,7 +281,7 @@ func (c *store) validateQueryTimeRange(ctx context.Context, from model.Time, thr
 	return false, nil
 }
 
-func (c *store) validateQuery(ctx context.Context, from model.Time, through *model.Time, matchers []*labels.Matcher) (string, []*labels.Matcher, bool, error) {
+func (c *store) validateQuery(ctx context.Context, from *model.Time, through *model.Time, matchers []*labels.Matcher) (string, []*labels.Matcher, bool, error) {
 	log, ctx := spanlogger.New(ctx, "store.validateQuery")
 	defer log.Span.Finish()
 
