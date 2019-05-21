@@ -15,7 +15,6 @@ const (
 	ErrEmptyTimestampStageConfig = "timestamp stage config cannot be empty"
 	ErrTimestampSourceRequired   = "timestamp source value is required if timestamp is specified"
 	ErrTimestampFormatRequired   = "timestamp format is required"
-	ErrInvalidTimestampFormat    = "failed to parse timestamp format: %s"
 )
 
 // TimestampConfig configures timestamp extraction

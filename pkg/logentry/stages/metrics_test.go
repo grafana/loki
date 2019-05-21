@@ -80,15 +80,15 @@ func Test_withMetric(t *testing.T) {
 	}
 
 	registry := prometheus.NewRegistry()
-	jsonStage, err := New(util.Logger, StageTypeJSON, jsonConfig, registry)
+	jsonStage, err := New(util.Logger, "test", StageTypeJSON, jsonConfig, registry)
 	if err != nil {
 		t.Fatalf("failed to create stage with metrics: %v", err)
 	}
-	regexStage, err := New(util.Logger, StageTypeRegex, regexConfig, registry)
+	regexStage, err := New(util.Logger, "test", StageTypeRegex, regexConfig, registry)
 	if err != nil {
 		t.Fatalf("failed to create stage with metrics: %v", err)
 	}
-	metricStage, err := New(util.Logger, StageTypeMetric, metricsConfig, registry)
+	metricStage, err := New(util.Logger, "test", StageTypeMetric, metricsConfig, registry)
 	if err != nil {
 		t.Fatalf("failed to create stage with metrics: %v", err)
 	}

@@ -5,16 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/common/model"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
-type hasRunStage bool
+var pipelineName = "pl_name"
 
-func (h *hasRunStage) Process(labels model.LabelSet, exctracted map[string]interface{}, t *time.Time, entry *string) {
-	*h = true
-}
-
-func Test_withMatcher(t *testing.T) {
+func TestMatcher(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		matcher string
@@ -28,7 +24,7 @@ func Test_withMatcher(t *testing.T) {
 		{"foo", map[string]string{"foo": "bar"}, false, true},
 		{"{}", map[string]string{"foo": "bar"}, false, true},
 		{"{", map[string]string{"foo": "bar"}, false, true},
-		{"", map[string]string{"foo": "bar"}, true, false},
+		{"", map[string]string{"foo": "bar"}, true, true},
 		{"{foo=\"bar\"}", map[string]string{"foo": "bar"}, true, false},
 		{"{foo=\"\"}", map[string]string{"foo": "bar"}, false, false},
 		{"{foo=\"\"}", map[string]string{}, true, false},
@@ -38,20 +34,40 @@ func Test_withMatcher(t *testing.T) {
 		{"{foo=\"bar\",bar=~\"te.*\"}", map[string]string{"foo": "bar", "bar": "test"}, true, false},
 		{"{foo=\"bar\",bar!~\"te.*\"}", map[string]string{"foo": "bar", "bar": "test"}, false, false},
 	}
+
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s/%s", tt.matcher, tt.labels), func(t *testing.T) {
-			hasRun := hasRunStage(false)
-			s, err := withMatcher(&hasRun, tt.matcher)
+			// Build a match config which has a simple label stage that when matched will add the test_label to
+			// the labels in the pipeline.
+			matchConfig := MatcherConfig{
+				&pipelineName,
+				&tt.matcher,
+				PipelineStages{
+					PipelineStage{
+						StageTypeLabel: LabelsConfig{
+							"test_label": nil,
+						},
+					},
+				},
+			}
+			s, err := newMatcherStage(util.Logger, matchConfig)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("withMatcher() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if s != nil {
 				ts, entry := time.Now(), ""
-				s.Process(toLabelSet(tt.labels), map[string]interface{}{}, &ts, &entry)
+				extracted := map[string]interface{}{
+					"test_label": "unimportant value",
+				}
+				labels := toLabelSet(tt.labels)
+				s.Process(labels, extracted, &ts, &entry)
 
-				if bool(hasRun) != tt.shouldRun {
-					t.Error("stage ran but should have not")
+				// test_label should only be in the label set if the stage ran
+				if _, ok := labels["test_label"]; ok {
+					if !tt.shouldRun {
+						t.Error("stage ran but should have not")
+					}
 				}
 			}
 		})
