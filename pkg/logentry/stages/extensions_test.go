@@ -69,7 +69,8 @@ func TestNewDocker(t *testing.T) {
 				t.Fatalf("failed to create Docker parser: %s", err)
 			}
 			lbs := toLabelSet(tt.labels)
-			p.Process(lbs, &tt.t, &tt.entry)
+			extr := map[string]interface{}{}
+			p.Process(lbs, extr, &tt.t, &tt.entry)
 
 			assertLabels(t, tt.expectedLabels, lbs)
 			assert.Equal(t, tt.expectedEntry, tt.entry, "did not receive expected log entry")
@@ -144,7 +145,8 @@ func TestNewCri(t *testing.T) {
 				t.Fatalf("failed to create CRI parser: %s", err)
 			}
 			lbs := toLabelSet(tt.labels)
-			p.Process(lbs, &tt.t, &tt.entry)
+			extr := map[string]interface{}{}
+			p.Process(lbs, extr, &tt.t, &tt.entry)
 
 			assertLabels(t, tt.expectedLabels, lbs)
 			assert.Equal(t, tt.expectedEntry, tt.entry, "did not receive expected log entry")
