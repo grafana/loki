@@ -267,7 +267,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	tailer, err := newTailer(instanceID, req.Query, req.Regex, queryServer)
+	tailer, err := newTailer(instanceID, req.Query, queryServer)
 	if err != nil {
 		return err
 	}

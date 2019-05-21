@@ -18,20 +18,19 @@ import (
 )
 
 const (
-	queryPath       = "/api/prom/query?query=%s&limit=%d&start=%d&end=%d&direction=%s&regexp=%s"
+	queryPath       = "/api/prom/query?query=%s&limit=%d&start=%d&end=%d&direction=%s"
 	labelsPath      = "/api/prom/label"
 	labelValuesPath = "/api/prom/label/%s/values"
-	tailPath        = "/api/prom/tail?query=%s&regexp=%s&delay_for=%d&limit=%d&start=%d"
+	tailPath        = "/api/prom/tail?query=%s&delay_for=%d&limit=%d&start=%d"
 )
 
 func query(from, through time.Time, direction logproto.Direction) (*logproto.QueryResponse, error) {
 	path := fmt.Sprintf(queryPath,
-		url.QueryEscape(*queryStr),  // query
-		*limit,                      // limit
-		from.UnixNano(),             // start
-		through.UnixNano(),          // end
-		direction.String(),          // direction
-		url.QueryEscape(*regexpStr), // regexp
+		url.QueryEscape(*queryStr), // query
+		*limit,                     // limit
+		from.UnixNano(),            // start
+		through.UnixNano(),         // end
+		direction.String(),         // direction
 	)
 
 	var resp logproto.QueryResponse
@@ -113,7 +112,6 @@ func doRequest(path string, out interface{}) error {
 func liveTailQueryConn() (*websocket.Conn, error) {
 	path := fmt.Sprintf(tailPath,
 		url.QueryEscape(*queryStr),      // query
-		url.QueryEscape(*regexpStr),     // regexp
 		*delayFor,                       // delay_for
 		*limit,                          // limit
 		getStart(time.Now()).UnixNano(), // start

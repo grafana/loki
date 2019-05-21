@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -20,13 +22,15 @@ const (
 )
 
 func TestQuerier_Query_QueryTimeoutConfigFlag(t *testing.T) {
-	request := logproto.QueryRequest{
-		Query:     "{type=\"test\"}",
+	query := &logproto.QueryRequest{
+		Selector:  "{type=\"test\"}",
 		Limit:     10,
 		Start:     time.Now().Add(-1 * time.Minute),
 		End:       time.Now(),
 		Direction: logproto.FORWARD,
-		Regex:     "",
+	}
+	request := logql.SelectParams{
+		QueryRequest: query,
 	}
 
 	store := newStoreMock()
@@ -36,7 +40,7 @@ func TestQuerier_Query_QueryTimeoutConfigFlag(t *testing.T) {
 	queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream(1, 2)}), nil)
 
 	ingesterClient := newQuerierClientMock()
-	ingesterClient.On("Query", mock.Anything, &request, mock.Anything).Return(queryClient, nil)
+	ingesterClient.On("Query", mock.Anything, query, mock.Anything).Return(queryClient, nil)
 
 	q, err := newQuerier(
 		mockQuerierConfig(),
@@ -47,7 +51,7 @@ func TestQuerier_Query_QueryTimeoutConfigFlag(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
-	_, err = q.Query(ctx, &request)
+	_, err = q.Select(ctx, request)
 	require.NoError(t, err)
 
 	calls := ingesterClient.GetMockedCallsByMethod("Query")
@@ -112,7 +116,6 @@ func TestQuerier_Label_QueryTimeoutConfigFlag(t *testing.T) {
 func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	request := logproto.TailRequest{
 		Query:    "{type=\"test\"}",
-		Regex:    "",
 		DelayFor: 0,
 		Limit:    10,
 		Start:    time.Now(),

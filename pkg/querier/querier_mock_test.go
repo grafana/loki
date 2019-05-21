@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -166,7 +167,7 @@ func newStoreMock() *storeMock {
 	return &storeMock{}
 }
 
-func (s *storeMock) LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter.EntryIterator, error) {
+func (s *storeMock) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error) {
 	args := s.Called(ctx, req)
 	return args.Get(0).(iter.EntryIterator), args.Error(1)
 }

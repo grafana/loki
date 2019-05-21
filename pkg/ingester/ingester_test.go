@@ -55,10 +55,10 @@ func TestIngester(t *testing.T) {
 		ctx: ctx,
 	}
 	err = i.Query(&logproto.QueryRequest{
-		Query: `{foo="bar"}`,
-		Limit: 100,
-		Start: time.Unix(0, 0),
-		End:   time.Unix(1, 0),
+		Selector: `{foo="bar"}`,
+		Limit:    100,
+		Start:    time.Unix(0, 0),
+		End:      time.Unix(1, 0),
 	}, &result)
 	require.NoError(t, err)
 	require.Len(t, result.resps, 1)
@@ -68,10 +68,10 @@ func TestIngester(t *testing.T) {
 		ctx: ctx,
 	}
 	err = i.Query(&logproto.QueryRequest{
-		Query: `{foo="bar",bar="baz1"}`,
-		Limit: 100,
-		Start: time.Unix(0, 0),
-		End:   time.Unix(1, 0),
+		Selector: `{foo="bar",bar="baz1"}`,
+		Limit:    100,
+		Start:    time.Unix(0, 0),
+		End:      time.Unix(1, 0),
 	}, &result)
 	require.NoError(t, err)
 	require.Len(t, result.resps, 1)
@@ -82,10 +82,10 @@ func TestIngester(t *testing.T) {
 		ctx: ctx,
 	}
 	err = i.Query(&logproto.QueryRequest{
-		Query: `{foo="bar",bar="baz2"}`,
-		Limit: 100,
-		Start: time.Unix(0, 0),
-		End:   time.Unix(1, 0),
+		Selector: `{foo="bar",bar="baz2"}`,
+		Limit:    100,
+		Start:    time.Unix(0, 0),
+		End:      time.Unix(1, 0),
 	}, &result)
 	require.NoError(t, err)
 	require.Len(t, result.resps, 1)

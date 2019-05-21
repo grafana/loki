@@ -27,7 +27,6 @@ var (
 
 	queryCmd        = app.Command("query", "Run a LogQL query.")
 	queryStr        = queryCmd.Arg("query", "eg '{foo=\"bar\",baz=\"blip\"}'").Required().String()
-	regexpStr       = queryCmd.Arg("regex", "").String()
 	limit           = queryCmd.Flag("limit", "Limit on number of entries to print.").Default("30").Int()
 	since           = queryCmd.Flag("since", "Lookback window.").Default("1h").Duration()
 	from            = queryCmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").String()

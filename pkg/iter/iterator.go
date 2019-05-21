@@ -574,3 +574,93 @@ func (i *entryIteratorForward) Error() error { return nil }
 func (i *entryIteratorForward) Labels() string {
 	return i.cur.labels
 }
+
+type peekingEntryIterator struct {
+	iter EntryIterator
+
+	cache *entryWithLabels
+	next  *entryWithLabels
+}
+
+// PeekingEntryIterator is an entry iterator that can look ahead an entry
+// using `Peek` without advancing its cursor.
+type PeekingEntryIterator interface {
+	EntryIterator
+	Peek() (string, logproto.Entry, bool)
+}
+
+// NewPeekingIterator creates a new peeking iterator.
+func NewPeekingIterator(iter EntryIterator) PeekingEntryIterator {
+	// initialize the next entry so we can peek right from the start.
+	var cache *entryWithLabels
+	if iter.Next() {
+		cache = &entryWithLabels{
+			entry:  iter.Entry(),
+			labels: iter.Labels(),
+		}
+	}
+	return &peekingEntryIterator{
+		iter:  iter,
+		cache: cache,
+		next:  cache,
+	}
+}
+
+// Next implements `EntryIterator`
+func (it *peekingEntryIterator) Next() bool {
+	if it.cache != nil {
+		it.next = &entryWithLabels{
+			entry:  it.cache.entry,
+			labels: it.cache.labels,
+		}
+		return it.cacheNext()
+	}
+	return false
+}
+
+// cacheNext caches the next element if it exists.
+func (it *peekingEntryIterator) cacheNext() bool {
+	if it.iter.Next() {
+		it.cache = &entryWithLabels{
+			entry:  it.iter.Entry(),
+			labels: it.iter.Labels(),
+		}
+		return true
+	}
+	it.cache = nil
+	return false
+}
+
+// Peek implements `PeekingEntryIterator`
+func (it *peekingEntryIterator) Peek() (string, logproto.Entry, bool) {
+	if it.cache != nil {
+		return it.cache.labels, it.cache.entry, true
+	}
+	return "", logproto.Entry{}, false
+}
+
+// Labels implements `EntryIterator`
+func (it *peekingEntryIterator) Labels() string {
+	if it.next != nil {
+		return it.next.labels
+	}
+	return ""
+}
+
+// Entry implements `EntryIterator`
+func (it *peekingEntryIterator) Entry() logproto.Entry {
+	if it.next != nil {
+		return it.next.entry
+	}
+	return logproto.Entry{}
+}
+
+// Error implements `EntryIterator`
+func (it *peekingEntryIterator) Error() error {
+	return it.iter.Error()
+}
+
+// Close implements `EntryIterator`
+func (it *peekingEntryIterator) Close() error {
+	return it.iter.Close()
+}

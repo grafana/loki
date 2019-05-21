@@ -21,7 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-const queryBatchSize = 128
+const queryBatchSize = 8192
 
 // Errors returned on Query.
 var (
@@ -121,28 +121,20 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 }
 
 func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
-	expr, err := logql.ParseExpr(req.Query)
+	expr, err := (logql.SelectParams{QueryRequest: req}).LogSelector()
+	if err != nil {
+		return err
+	}
+	filter, err := expr.Filter()
+	if err != nil {
+		return err
+	}
+	iters, err := i.lookupStreams(req, expr.Matchers(), filter)
 	if err != nil {
 		return err
 	}
 
-	if req.Regex != "" {
-		expr = logql.NewFilterExpr(expr, labels.MatchRegexp, req.Regex)
-	}
-
-	querier := logql.QuerierFunc(func(matchers []*labels.Matcher, filter logql.Filter) (iter.EntryIterator, error) {
-		iters, err := i.lookupStreams(req, matchers, filter)
-		if err != nil {
-			return nil, err
-		}
-
-		return iter.NewHeapIterator(iters, req.Direction), nil
-	})
-
-	iter, err := expr.Eval(querier)
-	if err != nil {
-		return err
-	}
+	iter := iter.NewHeapIterator(iters, req.Direction)
 	defer helpers.LogError("closing iterator", iter.Close)
 
 	return sendBatches(iter, queryServer, req.Limit)
@@ -254,6 +246,9 @@ func isDone(ctx context.Context) bool {
 }
 
 func sendBatches(i iter.EntryIterator, queryServer logproto.Querier_QueryServer, limit uint32) error {
+	if limit <= 0 {
+		return sendAllBatches(i, queryServer)
+	}
 	sent := uint32(0)
 	for sent < limit && !isDone(queryServer.Context()) {
 		batch, batchSize, err := iter.ReadBatch(i, helpers.MinUint32(queryBatchSize, limit-sent))
@@ -262,6 +257,23 @@ func sendBatches(i iter.EntryIterator, queryServer logproto.Querier_QueryServer,
 		}
 		sent += batchSize
 
+		if len(batch.Streams) == 0 {
+			return nil
+		}
+
+		if err := queryServer.Send(batch); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func sendAllBatches(i iter.EntryIterator, queryServer logproto.Querier_QueryServer) error {
+	for !isDone(queryServer.Context()) {
+		batch, _, err := iter.ReadBatch(i, queryBatchSize)
+		if err != nil {
+			return err
+		}
 		if len(batch.Streams) == 0 {
 			return nil
 		}
