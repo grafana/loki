@@ -80,7 +80,7 @@ func filterSeriesByMatchers(chks map[model.Fingerprint][][]chunkenc.LazyChunk, m
 outer:
 	for fp, chunks := range chks {
 		for _, matcher := range matchers {
-			if !matcher.Matches(string(chunks[0][0].Chunk.Metric.Get(matcher.Name))) {
+			if !matcher.Matches(chunks[0][0].Chunk.Metric.Get(matcher.Name)) {
 				delete(chks, fp)
 				continue outer
 			}
