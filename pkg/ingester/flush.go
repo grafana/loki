@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -58,8 +59,8 @@ const (
 	// position, not wallclock time.
 	flushBackoff = 1 * time.Second
 
-	nameLabel = model.LabelName("__name__")
-	logsValue = model.LabelValue("logs")
+	nameLabel = "__name__"
+	logsValue = "logs"
 )
 
 // Flush triggers a flush of all the chunks and closes the flush queues.
@@ -254,8 +255,9 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		return err
 	}
 
-	metric := client.FromLabelAdaptersToMetric(labelPairs)
-	metric[nameLabel] = logsValue
+	labelsBuilder := labels.NewBuilder(client.FromLabelAdaptersToLabels(labelPairs))
+	labelsBuilder.Set(nameLabel, logsValue)
+	metric := labelsBuilder.Labels()
 
 	wireChunks := make([]chunk.Chunk, 0, len(cs))
 	for _, c := range cs {

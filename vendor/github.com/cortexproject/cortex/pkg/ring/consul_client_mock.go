@@ -18,7 +18,7 @@ type mockKV struct {
 }
 
 // NewInMemoryKVClient makes a new mock consul client.
-func NewInMemoryKVClient() KVClient {
+func NewInMemoryKVClient(codec Codec) KVClient {
 	m := mockKV{
 		kvps: map[string]*consul.KVPair{},
 	}
@@ -26,7 +26,7 @@ func NewInMemoryKVClient() KVClient {
 	go m.loop()
 	return &consulClient{
 		kv:    &m,
-		codec: ProtoCodec{Factory: ProtoDescFactory},
+		codec: codec,
 	}
 }
 

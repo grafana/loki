@@ -93,7 +93,7 @@ func (t *Loki) initServer() (err error) {
 }
 
 func (t *Loki) initRing() (err error) {
-	t.ring, err = ring.New(t.cfg.Ingester.LifecyclerConfig.RingConfig)
+	t.ring, err = ring.New(t.cfg.Ingester.LifecyclerConfig.RingConfig, "ingester")
 	if err != nil {
 		return
 	}
