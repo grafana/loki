@@ -150,7 +150,7 @@ and ensure the `index.prefix` table exists.
 
 You can setup DynamoDB by yourself, or have `table-manager` setup for you.
 You can find out more info about table manager at
-[Cortex project](https://github.com/cortexproject/cortex)(https://github.com/cortexproject/cortex).
+[Cortex project](https://github.com/cortexproject/cortex).
 There is an example table manager deployment inside the ksonnet deployment method. You can find it [here](../production/ksonnet/loki/table-manager.libsonnet)
 The table-manager allows deleting old indices by rotating a number of different dynamodb tables and deleting the oldest one. If you choose to
 create the table manually you cannot easily erase old data and your index just grows indefinitely.
