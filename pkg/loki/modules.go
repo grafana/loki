@@ -3,12 +3,17 @@ package loki
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -18,6 +23,8 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier"
 )
+
+const maxChunkAgeForTableManager = 12 * time.Hour
 
 type moduleName int
 
@@ -30,6 +37,7 @@ const (
 	Ingester
 	Querier
 	Store
+	TableManager
 	All
 )
 
@@ -49,6 +57,8 @@ func (m moduleName) String() string {
 		return "ingester"
 	case Querier:
 		return "querier"
+	case TableManager:
+		return "table-manager"
 	case All:
 		return "all"
 	default:
@@ -78,6 +88,9 @@ func (m *moduleName) Set(s string) error {
 		return nil
 	case "querier":
 		*m = Querier
+		return nil
+	case "table-manager":
+		*m = TableManager
 		return nil
 	case "all":
 		*m = All
@@ -152,6 +165,50 @@ func (t *Loki) initIngester() (err error) {
 
 func (t *Loki) stopIngester() error {
 	t.ingester.Shutdown()
+	return nil
+}
+
+func (t *Loki) initTableManager() error {
+	err := t.cfg.SchemaConfig.Load()
+	if err != nil {
+		return err
+	}
+
+	// Assume the newest config is the one to use
+	lastConfig := &t.cfg.SchemaConfig.Configs[len(t.cfg.SchemaConfig.Configs)-1]
+
+	if (t.cfg.TableManager.ChunkTables.WriteScale.Enabled ||
+		t.cfg.TableManager.IndexTables.WriteScale.Enabled ||
+		t.cfg.TableManager.ChunkTables.InactiveWriteScale.Enabled ||
+		t.cfg.TableManager.IndexTables.InactiveWriteScale.Enabled ||
+		t.cfg.TableManager.ChunkTables.ReadScale.Enabled ||
+		t.cfg.TableManager.IndexTables.ReadScale.Enabled ||
+		t.cfg.TableManager.ChunkTables.InactiveReadScale.Enabled ||
+		t.cfg.TableManager.IndexTables.InactiveReadScale.Enabled) &&
+		(t.cfg.StorageConfig.AWSStorageConfig.ApplicationAutoScaling.URL == nil && t.cfg.StorageConfig.AWSStorageConfig.Metrics.URL == "") {
+		level.Error(util.Logger).Log("msg", "WriteScale is enabled but no ApplicationAutoScaling or Metrics URL has been provided")
+		os.Exit(1)
+	}
+
+	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.cfg.StorageConfig)
+	if err != nil {
+		return err
+	}
+
+	bucketClient, err := storage.NewBucketClient(t.cfg.StorageConfig)
+	util.CheckFatal("initializing bucket client", err)
+
+	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient)
+	if err != nil {
+		return err
+	}
+
+	t.tableManager.Start()
+	return nil
+}
+
+func (t *Loki) stopTableManager() error {
+	t.tableManager.Stop()
 	return nil
 }
 
@@ -253,7 +310,13 @@ var modules = map[moduleName]module{
 		init: (*Loki).initQuerier,
 	},
 
+	TableManager: {
+		deps: []moduleName{Server},
+		init: (*Loki).initTableManager,
+		stop: (*Loki).stopTableManager,
+	},
+
 	All: {
-		deps: []moduleName{Querier, Ingester, Distributor},
+		deps: []moduleName{Querier, Ingester, Distributor, TableManager},
 	},
 }
