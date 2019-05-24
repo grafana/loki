@@ -10,6 +10,7 @@ Key features:
 
 ## Installation
 
+Please note that currently installation using official gem repositories is **not** possible since there is a [naming conflict](https://github.com/grafana/loki/issues/535) that is being investigated.
 ```
 $ gem install fluent-plugin-loki
 ```
