@@ -119,3 +119,6 @@ For example, if you update the loki chart, you need to bump the version as follo
 ```bash
 $ # update version loki/Chart.yaml
 $ # update version loki-stack/Chart.yaml
+```
+
+You can use the `make helm-debug` to test and print out all chart templates. If you want to install helm (tiller) in your cluster use `make helm-install`, to install the current build in your Kubernetes cluster run `make helm-upgrade`.
