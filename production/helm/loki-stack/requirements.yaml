@@ -7,4 +7,11 @@ dependencies:
   condition: promtail.enabled
   repository: "file://../promtail"
   version: "^0.6.0"
-
+- name: "grafana"
+  condition: grafana.enabled
+  version: "~3.3.7"
+  repository:  "https://kubernetes-charts.storage.googleapis.com/"
+- name: "prometheus"
+  condition: prometheus.enabled
+  version: "~8.11.2"
+  repository:  "https://kubernetes-charts.storage.googleapis.com/"

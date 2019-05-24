@@ -222,6 +222,7 @@ push-latest:
 	done
 
 helm:
+	-rm -f production/helm/*/requirements.lock
 	@set -e; \
 	helm init -c; \
 	for chart in $(CHARTS); do \
@@ -258,3 +259,19 @@ check_assets: assets
 		echo "Run 'make assets' and commit the changes to fix the error."; \
 		exit 1; \
 	fi
+
+helm-install:
+	kubectl apply -f tools/helm.yaml
+	helm init --wait --service-account helm --upgrade
+	$(MAKE) upgrade-helm
+
+helm-debug: ARGS=--dry-run --debug
+helm-debug: helm-upgrade
+
+helm-upgrade: helm
+	helm upgrade --wait --install $(ARGS) loki-stack ./production/helm/loki-stack \
+	--set promtail.image.tag=$(IMAGE_TAG) --set loki.image.tag=$(IMAGE_TAG) -f tools/dev.values.yaml
+
+
+helm-clean:
+	-helm delete --purge loki-stack

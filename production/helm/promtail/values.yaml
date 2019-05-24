@@ -32,9 +32,9 @@ pipelineStages:
 ## Pod Labels
 podLabels: {}
 
-podAnnotations: {}
-#  prometheus.io/scrape: "true"
-#  prometheus.io/port: "http-metrics"
+podAnnotations: 
+ prometheus.io/scrape: "true"
+ prometheus.io/port: "http-metrics"
 
 # This should match config.server.http_listen_port
 port: 3101

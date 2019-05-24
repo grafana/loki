@@ -103,9 +103,9 @@ persistence:
 podLabels: {}
 
 ## Pod Annotations
-podAnnotations: {}
-#  prometheus.io/scrape: "true"
-#  prometheus.io/port: "http-metrics"
+podAnnotations:
+ prometheus.io/scrape: "true"
+ prometheus.io/port: "http-metrics"
 
 ## Assign a PriorityClassName to pods if set
 # priorityClassName:
