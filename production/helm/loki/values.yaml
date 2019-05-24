@@ -26,7 +26,8 @@ config:
     chunk_block_size: 262144
     lifecycler:
       ring:
-        store: inmemory
+        kvstore:
+          store: inmemory
         replication_factor: 1
 
       ## Different ring configs can be used. E.g. Consul
@@ -56,7 +57,7 @@ config:
       directory: /data/loki/index
     filesystem:
       directory: /data/loki/chunks
-  querier:
+  chunk_store_config:
     max_look_back_period: 0
 
 deploymentStrategy: RollingUpdate

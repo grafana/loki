@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -12,6 +13,7 @@ import (
 	cleanhttp "github.com/hashicorp/go-cleanhttp"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 )
 
@@ -29,12 +31,13 @@ type ConsulConfig struct {
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
-func (cfg *ConsulConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.Host, "consul.hostname", "localhost:8500", "Hostname and port of Consul.")
-	f.StringVar(&cfg.Prefix, "consul.prefix", "collectors/", "Prefix for keys in Consul.")
-	f.StringVar(&cfg.ACLToken, "consul.acltoken", "", "ACL Token used to interact with Consul.")
-	f.DurationVar(&cfg.HTTPClientTimeout, "consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to consul")
-	f.BoolVar(&cfg.ConsistentReads, "consul.consistent-reads", true, "Enable consistent reads to consul.")
+// If prefix is not an empty string it should end with a period.
+func (cfg *ConsulConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
+	f.StringVar(&cfg.Host, prefix+"consul.hostname", "localhost:8500", "Hostname and port of Consul.")
+	f.StringVar(&cfg.Prefix, prefix+"consul.prefix", "collectors/", "Prefix for keys in Consul. Should end with a /.")
+	f.StringVar(&cfg.ACLToken, prefix+"consul.acltoken", "", "ACL Token used to interact with Consul.")
+	f.DurationVar(&cfg.HTTPClientTimeout, prefix+"consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to consul")
+	f.BoolVar(&cfg.ConsistentReads, prefix+"consul.consistent-reads", true, "Enable consistent reads to consul.")
 }
 
 type kv interface {
@@ -120,15 +123,19 @@ func (c *consulClient) cas(ctx context.Context, key string, f CASCallback) error
 
 		intermediate, retry, err = f(intermediate)
 		if err != nil {
-			level.Error(util.Logger).Log("msg", "error CASing", "key", key, "err", err)
 			if !retry {
+				if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() != 202 {
+					level.Error(util.Logger).Log("msg", "error CASing", "key", key, "err", err)
+				}
 				return err
 			}
 			continue
 		}
 
+		// Treat the callback returning nil for intermediate as a decision to
+		// not actually write to Consul, but this is not an error.
 		if intermediate == nil {
-			panic("Callback must instantiate value!")
+			return nil
 		}
 
 		bytes, err := c.codec.Encode(intermediate)
@@ -203,6 +210,50 @@ func (c *consulClient) WatchKey(ctx context.Context, key string, f func(interfac
 	}
 }
 
+// WatchPrefix will watch a given prefix in Consul for new keys and changes to existing keys under that prefix.
+// When the value under said key changes, the f callback is called with the deserialised value.
+// Values in Consul are assumed to be JSON. This function blocks until the context is cancelled.
+func (c *consulClient) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
+	var (
+		backoff = util.NewBackoff(ctx, backoffConfig)
+		index   = uint64(0)
+	)
+	for backoff.Ongoing() {
+		queryOptions := &consul.QueryOptions{
+			RequireConsistent: true,
+			WaitIndex:         index,
+			WaitTime:          longPollDuration,
+		}
+
+		kvps, meta, err := c.kv.List(prefix, queryOptions.WithContext(ctx))
+		if err != nil || kvps == nil {
+			level.Error(util.Logger).Log("msg", "error getting path", "prefix", prefix, "err", err)
+			backoff.Wait()
+			continue
+		}
+		backoff.Reset()
+		// Skip if the index is the same as last time, because the key value is
+		// guaranteed to be the same as last time
+		if index == meta.LastIndex {
+			continue
+		}
+
+		index = meta.LastIndex
+		for _, kvp := range kvps {
+			out, err := c.codec.Decode(kvp.Value)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "error decoding list of values for prefix:key", "prefix", prefix, "key", kvp.Key, "err", err)
+				continue
+			}
+			// We should strip the prefix from the front of the key.
+			key := strings.TrimPrefix(kvp.Key, prefix)
+			if !f(key, out) {
+				return
+			}
+		}
+	}
+}
+
 func (c *consulClient) PutBytes(ctx context.Context, key string, buf []byte) error {
 	_, err := c.kv.Put(&consul.KVPair{
 		Key:   key,
@@ -243,6 +294,13 @@ func (c *prefixedConsulClient) CAS(ctx context.Context, key string, f CASCallbac
 // WatchKey watches a key.
 func (c *prefixedConsulClient) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
 	c.consul.WatchKey(ctx, c.prefix+key, f)
+}
+
+// WatchPrefix watches a prefix. For a prefix client it appends the prefix argument to the clients prefix.
+func (c *prefixedConsulClient) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
+	c.consul.WatchPrefix(ctx, fmt.Sprintf("%s%s", c.prefix, prefix), func(k string, i interface{}) bool {
+		return f(strings.TrimPrefix(k, c.prefix), i)
+	})
 }
 
 // PutBytes writes bytes to Consul.

@@ -2,7 +2,6 @@ package chunk
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
@@ -14,12 +13,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/golang/snappy"
 	jsoniter "github.com/json-iterator/go"
-	ot "github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	errs "github.com/weaveworks/common/errors"
 )
 
@@ -45,9 +42,9 @@ type Chunk struct {
 	UserID      string            `json:"userID"`
 
 	// These fields will be in all chunks, including old ones.
-	From    model.Time   `json:"from"`
-	Through model.Time   `json:"through"`
-	Metric  model.Metric `json:"metric"`
+	From    model.Time    `json:"from"`
+	Through model.Time    `json:"through"`
+	Metric  labels.Labels `json:"metric"`
 
 	// The hash is not written to the external storage either.  We use
 	// crc32, Castagnoli table.  See http://www.evanjones.ca/crc32c.html.
@@ -69,7 +66,7 @@ type Chunk struct {
 }
 
 // NewChunk creates a new chunk
-func NewChunk(userID string, fp model.Fingerprint, metric model.Metric, c prom_chunk.Chunk, from, through model.Time) Chunk {
+func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c prom_chunk.Chunk, from, through model.Time) Chunk {
 	return Chunk{
 		Fingerprint: fp,
 		UserID:      userID,
@@ -335,37 +332,6 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 func equalByKey(a, b Chunk) bool {
 	return a.UserID == b.UserID && a.Fingerprint == b.Fingerprint &&
 		a.From == b.From && a.Through == b.Through && a.Checksum == b.Checksum
-}
-
-// ChunksToMatrix converts a set of chunks to a model.Matrix.
-func ChunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Time) (model.Matrix, error) {
-	sp, ctx := ot.StartSpanFromContext(ctx, "chunksToMatrix")
-	defer sp.Finish()
-	sp.LogFields(otlog.Int("chunks", len(chunks)))
-
-	// Group chunks by series, sort and dedupe samples.
-	metrics := map[model.Fingerprint]model.Metric{}
-	samplesBySeries := map[model.Fingerprint][][]model.SamplePair{}
-	for _, c := range chunks {
-		ss, err := c.Samples(from, through)
-		if err != nil {
-			return nil, err
-		}
-
-		metrics[c.Fingerprint] = c.Metric
-		samplesBySeries[c.Fingerprint] = append(samplesBySeries[c.Fingerprint], ss)
-	}
-	sp.LogFields(otlog.Int("series", len(samplesBySeries)))
-
-	matrix := make(model.Matrix, 0, len(samplesBySeries))
-	for fp, ss := range samplesBySeries {
-		matrix = append(matrix, &model.SampleStream{
-			Metric: metrics[fp],
-			Values: util.MergeNSampleSets(ss...),
-		})
-	}
-
-	return matrix, nil
 }
 
 // Samples returns all SamplePairs for the chunk.

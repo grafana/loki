@@ -187,7 +187,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:d9488f98e486896b56f406cfa36bf8f0b9f049bdfa6c67b28cc2b20328010adc"
+  digest = "1:2b1af99463a6c3c85f5f7716fb013bec568ff2187eab6e4658b06d73e2c41a8b"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/chunk",
@@ -213,7 +213,7 @@
     "pkg/util/validation",
   ]
   pruneopts = "UT"
-  revision = "be63a81445db6e9481a577a70ca0623ef6f97873"
+  revision = "88541de7a8aafbf501395ec767f059421c25d4c9"
 
 [[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
