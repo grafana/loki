@@ -41,15 +41,16 @@
 
         lifecycler: {
           ring: {
-            store: 'consul',
             heartbeat_timeout: '1m',
             replication_factor: 3,
-
-            consul: {
-              host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
-              prefix: '',
-              httpclienttimeout: '20s',
-              consistentreads: true,
+            kvstore: {
+              store: 'consul',
+              consul: {
+                host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
+                prefix: '',
+                httpclienttimeout: '20s',
+                consistentreads: true,
+              },
             },
           },
 

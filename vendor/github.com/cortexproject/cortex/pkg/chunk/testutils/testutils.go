@@ -8,8 +8,10 @@ import (
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 const (
@@ -38,7 +40,7 @@ func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.ObjectCl
 		return nil, nil, err
 	}
 
-	tableManager, err := chunk.NewTableManager(tbmConfig, schemaConfig, 12*time.Hour, tableClient)
+	tableManager, err := chunk.NewTableManager(tbmConfig, schemaConfig, 12*time.Hour, tableClient, nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -59,9 +61,9 @@ func CreateChunks(startIndex, batchSize int, start model.Time) ([]string, []chun
 	keys := []string{}
 	chunks := []chunk.Chunk{}
 	for j := 0; j < batchSize; j++ {
-		chunk := dummyChunkFor(start, model.Metric{
-			model.MetricNameLabel: "foo",
-			"index":               model.LabelValue(strconv.Itoa(startIndex*batchSize + j)),
+		chunk := dummyChunkFor(start, labels.Labels{
+			{Name: model.MetricNameLabel, Value: "foo"},
+			{Name: "index", Value: strconv.Itoa(startIndex*batchSize + j)},
 		})
 		chunks = append(chunks, chunk)
 		keys = append(keys, chunk.ExternalKey())
@@ -70,18 +72,18 @@ func CreateChunks(startIndex, batchSize int, start model.Time) ([]string, []chun
 }
 
 func dummyChunk(now model.Time) chunk.Chunk {
-	return dummyChunkFor(now, model.Metric{
-		model.MetricNameLabel: "foo",
-		"bar":                 "baz",
-		"toms":                "code",
+	return dummyChunkFor(now, labels.Labels{
+		{Name: model.MetricNameLabel, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "toms", Value: "code"},
 	})
 }
 
-func dummyChunkFor(now model.Time, metric model.Metric) chunk.Chunk {
+func dummyChunkFor(now model.Time, metric labels.Labels) chunk.Chunk {
 	cs, _ := promchunk.New().Add(model.SamplePair{Timestamp: now, Value: 0})
 	chunk := chunk.NewChunk(
 		userID,
-		metric.Fingerprint(),
+		client.Fingerprint(metric),
 		metric,
 		cs[0],
 		now.Add(-time.Hour),

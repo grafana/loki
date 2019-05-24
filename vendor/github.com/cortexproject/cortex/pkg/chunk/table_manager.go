@@ -21,6 +21,8 @@ import (
 const (
 	readLabel  = "read"
 	writeLabel = "write"
+
+	bucketRetentionEnforcementInterval = 12 * time.Hour
 )
 
 var (
@@ -45,39 +47,39 @@ func init() {
 // TableManagerConfig holds config for a TableManager
 type TableManagerConfig struct {
 	// Master 'off-switch' for table capacity updates, e.g. when troubleshooting
-	ThroughputUpdatesDisabled bool
+	ThroughputUpdatesDisabled bool `yaml:"throughput_updates_disabled"`
 
 	// Master 'on-switch' for table retention deletions
-	RetentionDeletesEnabled bool
+	RetentionDeletesEnabled bool `yaml:"retention_deletes_enabled"`
 
 	// How far back tables will be kept before they are deleted
-	RetentionPeriod time.Duration
+	RetentionPeriod time.Duration `yaml:"retention_period"`
 
 	// Period with which the table manager will poll for tables.
-	DynamoDBPollInterval time.Duration
+	DynamoDBPollInterval time.Duration `yaml:"dynamodb_poll_interval"`
 
 	// duration a table will be created before it is needed.
-	CreationGracePeriod time.Duration
+	CreationGracePeriod time.Duration `yaml:"creation_grace_period"`
 
-	IndexTables ProvisionConfig
-	ChunkTables ProvisionConfig
+	IndexTables ProvisionConfig `yaml:"index_tables_provisioning"`
+	ChunkTables ProvisionConfig `yaml:"chunk_tables_provisioning"`
 }
 
 // ProvisionConfig holds config for provisioning capacity (on DynamoDB)
 type ProvisionConfig struct {
-	ProvisionedThroughputOnDemandMode bool
-	ProvisionedWriteThroughput        int64
-	ProvisionedReadThroughput         int64
-	InactiveThroughputOnDemandMode    bool
-	InactiveWriteThroughput           int64
-	InactiveReadThroughput            int64
+	ProvisionedThroughputOnDemandMode bool  `yaml:"provisioned_throughput_on_demand_mode"`
+	ProvisionedWriteThroughput        int64 `yaml:"provisioned_write_throughput"`
+	ProvisionedReadThroughput         int64 `yaml:"provisioned_read_throughput"`
+	InactiveThroughputOnDemandMode    bool  `yaml:"inactive_throughput_on_demand_mode"`
+	InactiveWriteThroughput           int64 `yaml:"inactive_write_throughput"`
+	InactiveReadThroughput            int64 `yaml:"inactive_read_throughput"`
 
-	WriteScale              AutoScalingConfig
-	InactiveWriteScale      AutoScalingConfig
-	InactiveWriteScaleLastN int64
-	ReadScale               AutoScalingConfig
-	InactiveReadScale       AutoScalingConfig
-	InactiveReadScaleLastN  int64
+	WriteScale              AutoScalingConfig `yaml:"write_scale"`
+	InactiveWriteScale      AutoScalingConfig `yaml:"inactive_write_scale"`
+	InactiveWriteScaleLastN int64             `yaml:"inactive_write_scale_lastn"`
+	ReadScale               AutoScalingConfig `yaml:"read_scale"`
+	InactiveReadScale       AutoScalingConfig `yaml:"inactive_read_scale"`
+	InactiveReadScaleLastN  int64             `yaml:"inactive_read_scale_lastn"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -112,22 +114,25 @@ func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
 type TableManager struct {
-	client      TableClient
-	cfg         TableManagerConfig
-	schemaCfg   SchemaConfig
-	maxChunkAge time.Duration
-	done        chan struct{}
-	wait        sync.WaitGroup
+	client       TableClient
+	cfg          TableManagerConfig
+	schemaCfg    SchemaConfig
+	maxChunkAge  time.Duration
+	done         chan struct{}
+	wait         sync.WaitGroup
+	bucketClient BucketClient
 }
 
 // NewTableManager makes a new TableManager
-func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient) (*TableManager, error) {
+func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient,
+	objectClient BucketClient) (*TableManager, error) {
 	return &TableManager{
-		cfg:         cfg,
-		schemaCfg:   schemaCfg,
-		maxChunkAge: maxChunkAge,
-		client:      tableClient,
-		done:        make(chan struct{}),
+		cfg:          cfg,
+		schemaCfg:    schemaCfg,
+		maxChunkAge:  maxChunkAge,
+		client:       tableClient,
+		done:         make(chan struct{}),
+		bucketClient: objectClient,
 	}, nil
 }
 
@@ -135,6 +140,11 @@ func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge
 func (m *TableManager) Start() {
 	m.wait.Add(1)
 	go m.loop()
+
+	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled == true {
+		m.wait.Add(1)
+		go m.bucketRetentionLoop()
+	}
 }
 
 // Stop the TableManager
@@ -162,6 +172,26 @@ func (m *TableManager) loop() {
 				return m.SyncTables(ctx)
 			}); err != nil {
 				level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
+			}
+		case <-m.done:
+			return
+		}
+	}
+}
+
+func (m *TableManager) bucketRetentionLoop() {
+	defer m.wait.Done()
+
+	ticker := time.NewTicker(bucketRetentionEnforcementInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			err := m.bucketClient.DeleteChunksBefore(context.Background(), mtime.Now().Add(-m.cfg.RetentionPeriod))
+
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
 			}
 		case <-m.done:
 			return
