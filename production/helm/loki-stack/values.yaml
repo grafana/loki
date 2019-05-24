@@ -4,3 +4,13 @@ loki:
 promtail:
   enabled: true
 
+grafana:
+  enabled: false
+  sidecar:
+    datasources:
+      enabled: true
+
+prometheus:
+  enabled: false
+  server:
+    fullnameOverride: prometheus-server
