@@ -1,5 +1,5 @@
 name: promtail
-version: 0.7.2
+version: 0.7.3
 appVersion: 0.0.1
 kubeVersion: "^1.10.0-0"
 description: "Responsible for gathering logs and sending them to Loki"
