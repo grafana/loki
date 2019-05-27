@@ -3,8 +3,8 @@
 
   table_manager_args::
   $._config.commonArgs {
-          target: 'table-manager',
-        },
+    target: 'table-manager',
+  },
 
   table_manager_container::
     container.new('table-manager', $._images.tableManager) +
