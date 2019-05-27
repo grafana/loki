@@ -31,7 +31,7 @@ type Promtail struct {
 type Master struct {
 	Promtail   *Promtail
 	defaultCfg *config.Config
-	Cancel chan struct{}
+	Cancel     chan struct{}
 }
 
 func InitMaster(configFile string, cfg config.Config) (*Master, error) {
@@ -46,7 +46,7 @@ func InitMaster(configFile string, cfg config.Config) (*Master, error) {
 	m := &Master{
 		Promtail:   p,
 		defaultCfg: &cfg,
-		Cancel:cancel,
+		Cancel:     cancel,
 	}
 
 	p.Server.HTTP.Path("/reload").Handler(http.HandlerFunc(m.Reload))
@@ -67,7 +67,7 @@ func (m *Master) DoReload() {
 	m.Promtail.Server.Stop()
 
 	// wait old promtail shutdown
-	<- m.Cancel
+	<-m.Cancel
 
 	p, err := New(m.Promtail.configFile, *m.defaultCfg)
 	if err != nil {

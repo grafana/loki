@@ -47,13 +47,9 @@ func main() {
 			m.Cancel <- struct{}{}
 		}
 
-		select {
-		case <- errChan:
-			m.Promtail.Shutdown()
-			os.Exit(1)
-		}
-
-		//m.WaitSignals(errChan)
+		<-errChan
+		m.Promtail.Shutdown()
+		os.Exit(1)
 	} else {
 		level.Error(util.Logger).Log("msg", "config file not found", "error", nil)
 		os.Exit(1)
