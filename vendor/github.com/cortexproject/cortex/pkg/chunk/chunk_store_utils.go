@@ -41,7 +41,7 @@ func filterChunksByMatchers(chunks []Chunk, filters []*labels.Matcher) []Chunk {
 outer:
 	for _, chunk := range chunks {
 		for _, filter := range filters {
-			if !filter.Matches(string(chunk.Metric[model.LabelName(filter.Name)])) {
+			if !filter.Matches(chunk.Metric.Get(filter.Name)) {
 				continue outer
 			}
 		}

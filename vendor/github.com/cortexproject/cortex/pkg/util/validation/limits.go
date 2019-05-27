@@ -11,6 +11,9 @@ type Limits struct {
 	// Distributor enforced limits.
 	IngestionRate          float64       `yaml:"ingestion_rate"`
 	IngestionBurstSize     int           `yaml:"ingestion_burst_size"`
+	AcceptHASamples        bool          `yaml:"accept_ha_samples"`
+	HAClusterLabel         string        `yaml:"ha_cluster_label"`
+	HAReplicaLabel         string        `yaml:"ha_replica_label"`
 	MaxLabelNameLength     int           `yaml:"max_label_name_length"`
 	MaxLabelValueLength    int           `yaml:"max_label_value_length"`
 	MaxLabelNamesPerSeries int           `yaml:"max_label_names_per_series"`
@@ -32,14 +35,17 @@ type Limits struct {
 	CardinalityLimit    int           `yaml:"cardinality_limit"`
 
 	// Config for overrides, convenient if it goes here.
-	PerTenantOverrideConfig string
-	PerTenantOverridePeriod time.Duration
+	PerTenantOverrideConfig string        `yaml:"per_tenant_override_config"`
+	PerTenantOverridePeriod time.Duration `yaml:"per_tenant_override_period"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	f.IntVar(&l.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples). Warning, very high limits will be reset every -distributor.limiter-reload-period.")
+	f.BoolVar(&l.AcceptHASamples, "distributor.accept-ha-samples", false, "Per-user flag to enable handling of samples with external labels for identifying replicas in an HA Prometheus setup.")
+	f.StringVar(&l.HAReplicaLabel, "ha-tracker.replica", "__replica__", "Prometheus label to look for in samples to identify a Proemtheus HA replica.")
+	f.StringVar(&l.HAClusterLabel, "ha-tracker.cluster", "cluster", "Prometheus label to look for in samples to identify a Poemtheus HA cluster.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")

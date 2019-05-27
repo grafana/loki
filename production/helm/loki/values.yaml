@@ -26,7 +26,8 @@ config:
     chunk_block_size: 262144
     lifecycler:
       ring:
-        store: inmemory
+        kvstore:
+          store: inmemory
         replication_factor: 1
 
       ## Different ring configs can be used. E.g. Consul
@@ -42,7 +43,7 @@ config:
     enforce_metric_name: false
   schema_config:
     configs:
-    - from: 0
+    - from: 2018-04-15
       store: boltdb
       object_store: filesystem
       schema: v9
@@ -56,7 +57,7 @@ config:
       directory: /data/loki/index
     filesystem:
       directory: /data/loki/chunks
-  querier:
+  chunk_store_config:
     max_look_back_period: 0
 
 deploymentStrategy: RollingUpdate
@@ -103,9 +104,9 @@ persistence:
 podLabels: {}
 
 ## Pod Annotations
-podAnnotations: {}
-#  prometheus.io/scrape: "true"
-#  prometheus.io/port: "http-metrics"
+podAnnotations:
+ prometheus.io/scrape: "true"
+ prometheus.io/port: "http-metrics"
 
 ## Assign a PriorityClassName to pods if set
 # priorityClassName:

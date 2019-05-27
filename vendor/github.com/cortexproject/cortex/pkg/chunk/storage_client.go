@@ -22,6 +22,11 @@ type ObjectClient interface {
 	GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error)
 }
 
+// ObjectAndIndexClient allows optimisations where the same client handles both
+type ObjectAndIndexClient interface {
+	PutChunkAndIndex(ctx context.Context, c Chunk, index WriteBatch) error
+}
+
 // WriteBatch represents a batch of writes.
 type WriteBatch interface {
 	Add(tableName, hashValue string, rangeValue []byte, value []byte)
