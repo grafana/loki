@@ -40,12 +40,20 @@ func main() {
 			// Re-init the logger which will now honor a different log level set in ServerConfig.Config
 			util.InitLogger(&m.Promtail.Cfg.ServerConfig.Config)
 			if err := m.Promtail.Run(); err != nil {
-				level.Error(util.Logger).Log("msg", "error starting promtail", "error", err)
+				level.Error(util.Logger).Log("msg", "error running promtail", "error", err)
 				errChan <- err
 			}
+			m.Promtail.Shutdown()
+			m.Cancel <- struct{}{}
 		}
 
-		m.WaitSignals(errChan)
+		select {
+		case <- errChan:
+			m.Promtail.Shutdown()
+			os.Exit(1)
+		}
+
+		//m.WaitSignals(errChan)
 	} else {
 		level.Error(util.Logger).Log("msg", "config file not found", "error", nil)
 		os.Exit(1)
