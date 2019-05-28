@@ -26,6 +26,12 @@ A Loki-based logging stack consists of 3 components:
 Loki is like Prometheus, but for logs: we prefer a multidimensional label-based approach to indexing, and want a single-binary, easy to operate system with no dependencies.
 Loki differs from Prometheus by focussing on logs instead of metrics, and delivering logs via push, instead of pull.
 
+This stack is lightweight, can be used as a simple alternative to super-heavy and full-featured search stacks such as ELK or EFK:
+- compared with elasticsearch, loki is not based on Lucene, with Golang language, it is easier to add new feature and cost less resources(whatever cpu or memory).
+- compared with logstash, promtail is not C/S architecture, it directly gathers logs and push to loki.
+- compared with fluentd, promtail does not use plugins but scrape configs to handle different log sources and output which mean you do not need to learn ruby and fluentd plguin standard.
+- compared with kibana, grafana is a more common open platform for beautiful analytics and monitoring. It supports dozens of databases, natively.
+
 ## Getting started
 
 The [getting started docs](./production/README.md) have instructions on how to install Loki via Docker images, Helm charts, Jsonnet, or from source.
