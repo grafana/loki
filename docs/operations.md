@@ -98,6 +98,33 @@ The chunks are stored under `/tmp/loki/chunks`.
 Loki has support for Google Cloud storage.
 Take a look at our [production setup](https://github.com/grafana/loki/blob/a422f394bb4660c98f7d692e16c3cc28747b7abd/production/ksonnet/loki/config.libsonnet#L55) for the relevant configuration fields.
 
+### Cassandra
+
+Loki can use Cassandra for the index storage. Please pull the **latest** Loki docker image or build from **latest** source code. Example config for using Cassandra:
+
+```yaml
+schema_config:
+  configs:
+  - from: 2018-04-15
+    store: cassandra
+    object_store: filesystem
+    schema: v9
+    index:
+      prefix: cassandra_table
+      period: 168h
+
+storage_config:
+  cassandra:
+    username: cassandra
+    password: cassandra
+    addresses: 127.0.0.1
+    auth: true
+    keyspace: lokiindex
+
+  filesystem:
+    directory: /tmp/loki/chunks
+```
+
 ### AWS S3 & DynamoDB
 
 Example config for using S3 & DynamoDB:
