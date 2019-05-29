@@ -76,7 +76,8 @@ func NewFileTargetManager(
 
 	config := map[string]sd_config.ServiceDiscoveryConfig{}
 	for _, cfg := range scrapeConfigs {
-		pipeline, err := stages.NewPipeline(log.With(logger, "component", "pipeline"), cfg.PipelineStages, cfg.JobName)
+		registerer := prometheus.DefaultRegisterer
+		pipeline, err := stages.NewPipeline(log.With(logger, "component", "pipeline"), cfg.PipelineStages, cfg.JobName, registerer)
 		if err != nil {
 			return nil, err
 		}
@@ -86,14 +87,14 @@ func NewFileTargetManager(
 			switch cfg.EntryParser {
 			case api.CRI:
 				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
-				cri, err := stages.NewCRI(logger, cfg.JobName)
+				cri, err := stages.NewCRI(logger, cfg.JobName, registerer)
 				if err != nil {
 					return nil, err
 				}
 				pipeline.AddStage(cri)
 			case api.Docker:
 				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
-				docker, err := stages.NewDocker(logger, cfg.JobName)
+				docker, err := stages.NewDocker(logger, cfg.JobName, registerer)
 				if err != nil {
 					return nil, err
 				}

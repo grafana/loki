@@ -9,6 +9,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logentry/metric"
 )
 
 var labelFoo = model.LabelSet(map[model.LabelName]model.LabelValue{"foo": "bar", "bar": "foo"})
@@ -31,51 +33,82 @@ func Test_withMetric(t *testing.T) {
 		"expression": "(?P<get>\"GET).*HTTP/1.1\" (?P<status>\\d*) (?P<time>\\d*) ",
 	}
 	timeSource := "time"
+	true := "true"
 	metricsConfig := MetricsConfig{
 		"total_keys": MetricConfig{
 			MetricType:  "Counter",
 			Description: "the total keys per doc",
+			Config: metric.CounterConfig{
+				Action: metric.CounterAdd,
+			},
 		},
 		"keys_per_line": MetricConfig{
 			MetricType:  "Histogram",
 			Description: "keys per doc",
-			Buckets:     []float64{1, 3, 5, 10},
+			Config: metric.HistogramConfig{
+				Buckets: []float64{1, 3, 5, 10},
+			},
 		},
 		"numeric_float": MetricConfig{
 			MetricType:  "Gauge",
 			Description: "numeric_float",
+			Config: metric.GaugeConfig{
+				Action: metric.GaugeAdd,
+			},
 		},
 		"numeric_integer": MetricConfig{
 			MetricType:  "Gauge",
 			Description: "numeric.integer",
+			Config: metric.GaugeConfig{
+				Action: metric.GaugeAdd,
+			},
 		},
 		"numeric_string": MetricConfig{
 			MetricType:  "Gauge",
 			Description: "numeric.string",
+			Config: metric.GaugeConfig{
+				Action: metric.GaugeAdd,
+			},
 		},
 		"contains_warn": MetricConfig{
 			MetricType:  "Counter",
 			Description: "contains_warn",
+			Config: metric.CounterConfig{
+				Value:  &true,
+				Action: metric.CounterInc,
+			},
 		},
 		"contains_false": MetricConfig{
 			MetricType:  "Counter",
 			Description: "contains_false",
+			Config: metric.CounterConfig{
+				Value:  &true,
+				Action: metric.CounterInc,
+			},
 		},
 		// FIXME Not showing results currently if there are no counts, this doesn't make it into the output
 		"unconvertible": MetricConfig{
 			MetricType:  "Counter",
 			Description: "unconvertible",
+			Config: metric.CounterConfig{
+				Action: metric.CounterInc,
+			},
 		},
-		// FIXME Not entirely sure how we want to implement this one?
 		"matches": MetricConfig{
 			MetricType:  "Counter",
+			Source:      &timeSource,
 			Description: "all matches",
+			Config: metric.CounterConfig{
+				Action: metric.CounterInc,
+			},
 		},
 		"response_time_ms": MetricConfig{
 			MetricType:  "Histogram",
 			Source:      &timeSource,
 			Description: "response time in ms",
-			Buckets:     []float64{1, 2, 3},
+			Config: metric.HistogramConfig{
+				Buckets: []float64{1, 2, 3},
+			},
 		},
 	}
 
@@ -98,9 +131,7 @@ func Test_withMetric(t *testing.T) {
 	jsonStage.Process(labelFoo, extr, &ts, &entry)
 	regexStage.Process(labelFoo, extr, &ts, &regexLogFixture)
 	metricStage.Process(labelFoo, extr, &ts, &entry)
-
-	//jsonStage.Process(labelFu, extr, &ts, &entry)
-	//regexStage.Process(labelFu, extr, &ts, &regexLogFixture)
+	// Process the same extracted values again with different labels so we can verify proper metric/label assignments
 	metricStage.Process(labelFu, extr, &ts, &entry)
 
 	names := metricNames(metricsConfig)
@@ -144,8 +175,8 @@ promtail_custom_keys_per_line_sum{baz="fu",fu="baz"} 8.0
 promtail_custom_keys_per_line_count{baz="fu",fu="baz"} 1.0
 # HELP promtail_custom_matches all matches
 # TYPE promtail_custom_matches counter
-promtail_custom_matches{bar="foo",foo="bar"} 3.0
-promtail_custom_matches{baz="fu",fu="baz"} 3.0
+promtail_custom_matches{bar="foo",foo="bar"} 1.0
+promtail_custom_matches{baz="fu",fu="baz"} 1.0
 # HELP promtail_custom_numeric_float numeric_float
 # TYPE promtail_custom_numeric_float gauge
 promtail_custom_numeric_float{bar="foo",foo="bar"} 12.34

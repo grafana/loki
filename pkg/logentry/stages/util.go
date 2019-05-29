@@ -61,6 +61,6 @@ func getString(unk interface{}) (string, error) {
 		}
 		return "false", nil
 	default:
-		return "", fmt.Errorf("Can't convert %v to float64", unk)
+		return "", fmt.Errorf("Can't convert %v to string", unk)
 	}
 }

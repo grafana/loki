@@ -1,12 +1,15 @@
 package stages
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,7 +51,7 @@ func loadConfig(yml string) PipelineStages {
 
 func TestNewPipeline(t *testing.T) {
 
-	p, err := NewPipeline(util.Logger, loadConfig(testYaml), "test")
+	p, err := NewPipeline(util.Logger, loadConfig(testYaml), "test", prometheus.DefaultRegisterer)
 	if err != nil {
 		panic(err)
 	}
@@ -66,7 +69,7 @@ func TestPipeline_MultiStage(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	p, err := NewPipeline(util.Logger, config["pipeline_stages"].([]interface{}), "test")
+	p, err := NewPipeline(util.Logger, config["pipeline_stages"].([]interface{}), "test", prometheus.DefaultRegisterer)
 	if err != nil {
 		panic(err)
 	}
@@ -145,7 +148,7 @@ pipeline_stages:
 `
 
 func TestPipeline_Output(t *testing.T) {
-	pl, err := NewPipeline(util.Logger, loadConfig(testOutputYaml), "test")
+	pl, err := NewPipeline(util.Logger, loadConfig(testOutputYaml), "test", prometheus.DefaultRegisterer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +182,7 @@ pipeline_stages:
 `
 
 func TestPipeline_Labels(t *testing.T) {
-	pl, err := NewPipeline(util.Logger, loadConfig(testLabelsYaml), "test")
+	pl, err := NewPipeline(util.Logger, loadConfig(testLabelsYaml), "test", prometheus.DefaultRegisterer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +218,7 @@ pipeline_stages:
 `
 
 func TestPipeline_Timestamp(t *testing.T) {
-	pl, err := NewPipeline(util.Logger, loadConfig(testTimestampYaml), "test")
+	pl, err := NewPipeline(util.Logger, loadConfig(testTimestampYaml), "test", prometheus.DefaultRegisterer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,6 +228,52 @@ func TestPipeline_Timestamp(t *testing.T) {
 	extracted := map[string]interface{}{}
 	pl.Process(lbls, extracted, &ts, &entry)
 	assert.Equal(t, time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", 0)), ts)
+}
+
+var testMetricLogLine = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"app":"loki",
+	"component": ["parser","type"],
+	"level" : "WARN"
+}
+`
+
+var testMetricYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      app: app
+- metric:
+    loki_count:
+      type: Counter
+      description: uhhhhhhh
+      source: app
+      config:
+        value: loki
+        action: inc
+`
+
+const expectedMetrics = `# HELP promtail_custom_loki_count uhhhhhhh
+# TYPE promtail_custom_loki_count counter
+promtail_custom_loki_count 1.0
+`
+
+func TestPipeline_Metrics(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	pl, err := NewPipeline(util.Logger, loadConfig(testMetricYaml), "test", registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	ts := time.Now()
+	entry := testMetricLogLine
+	extracted := map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	if err := testutil.GatherAndCompare(registry,
+		strings.NewReader(expectedMetrics)); err != nil {
+		t.Fatalf("missmatch metrics: %v", err)
+	}
 }
 
 var (
@@ -257,7 +306,7 @@ func BenchmarkPipeline(b *testing.B) {
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			pl, err := NewPipeline(bm.logger, bm.stgs, "test")
+			pl, err := NewPipeline(bm.logger, bm.stgs, "test", prometheus.DefaultRegisterer)
 			if err != nil {
 				panic(err)
 			}

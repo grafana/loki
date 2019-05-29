@@ -2,12 +2,13 @@ package stages
 
 import (
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const RFC3339Nano = "RFC3339Nano"
 
 // NewDocker creates a Docker json log format specific pipeline stage.
-func NewDocker(logger log.Logger, jobName string) (Stage, error) {
+func NewDocker(logger log.Logger, jobName string, registerer prometheus.Registerer) (Stage, error) {
 	t := "timestamp"
 	f := RFC3339Nano
 	o := "output"
@@ -35,11 +36,11 @@ func NewDocker(logger log.Logger, jobName string) (Stage, error) {
 			},
 		}}
 
-	return NewPipeline(logger, stages, jobName+"_docker")
+	return NewPipeline(logger, stages, jobName+"_docker", registerer)
 }
 
 // NewCRI creates a CRI format specific pipeline stage
-func NewCRI(logger log.Logger, jobName string) (Stage, error) {
+func NewCRI(logger log.Logger, jobName string, registerer prometheus.Registerer) (Stage, error) {
 	t := "time"
 	f := RFC3339Nano
 	o := "content"
@@ -66,5 +67,5 @@ func NewCRI(logger log.Logger, jobName string) (Stage, error) {
 			},
 		},
 	}
-	return NewPipeline(logger, stages, jobName+"_cri")
+	return NewPipeline(logger, stages, jobName+"_cri", registerer)
 }
