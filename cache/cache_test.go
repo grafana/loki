@@ -3,8 +3,6 @@ package cache_test
 import (
 	"context"
 	"math/rand"
-	"os"
-	"path"
 	"sort"
 	"strconv"
 	"testing"
@@ -154,19 +152,6 @@ func TestMemcache(t *testing.T) {
 		}, newMockMemcache(), "test")
 		testCache(t, cache)
 	})
-}
-
-func TestDiskcache(t *testing.T) {
-	dirname := os.TempDir()
-	filename := path.Join(dirname, "diskcache")
-	defer os.RemoveAll(filename)
-
-	cache, err := cache.NewDiskcache(cache.DiskcacheConfig{
-		Path: filename,
-		Size: 100 * 1024 * 1024,
-	})
-	require.NoError(t, err)
-	testCache(t, cache)
 }
 
 func TestFifoCache(t *testing.T) {
