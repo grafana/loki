@@ -4,15 +4,44 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 )
 
-var (
-	source1 = "source1"
-	rfc3339 = time.RFC3339
-	custom  = "2006-01-23"
-)
+var testTimestampYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      ts: time
+- timestamp:
+    source: ts
+    format: RFC3339
+`
+
+var testTimestampLogLine = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"app":"loki",
+	"component": ["parser","type"],
+	"level" : "WARN"
+}
+`
+
+func TestTimestampPipeline(t *testing.T) {
+	pl, err := NewPipeline(util.Logger, loadConfig(testTimestampYaml), "test", prometheus.DefaultRegisterer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	ts := time.Now()
+	entry := testTimestampLogLine
+	extracted := map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	assert.Equal(t, time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", 0)), ts)
+}
 
 func TestTimestampValidation(t *testing.T) {
 	tests := map[string]struct {
@@ -30,22 +59,22 @@ func TestTimestampValidation(t *testing.T) {
 		},
 		"missing format": {
 			config: &TimestampConfig{
-				Source: &source1,
+				Source: "source1",
 			},
 			err: errors.New(ErrTimestampFormatRequired),
 		},
 		"standard format": {
 			config: &TimestampConfig{
-				Source: &source1,
-				Format: &rfc3339,
+				Source: "source1",
+				Format: time.RFC3339,
 			},
 			err:            nil,
 			expectedFormat: time.RFC3339,
 		},
 		"custom format": {
 			config: &TimestampConfig{
-				Source: &source1,
-				Format: &custom,
+				Source: "source1",
+				Format: "2006-01-23",
 			},
 			err:            nil,
 			expectedFormat: "2006-01-23",

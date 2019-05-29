@@ -22,8 +22,8 @@ const (
 )
 
 type MatcherConfig struct {
-	PipelineName *string        `mapstructure:"pipeline_name"`
-	Selector     *string        `mapstructure:"selector"`
+	PipelineName string         `mapstructure:"pipeline_name"`
+	Selector     string         `mapstructure:"selector"`
 	Stages       PipelineStages `mapstructure:"stages"`
 }
 
@@ -31,18 +31,16 @@ func validateMatcherConfig(cfg *MatcherConfig) ([]*labels.Matcher, error) {
 	if cfg == nil {
 		return nil, errors.New(ErrEmptyMatchStageConfig)
 	}
-	//FIXME PipelineName does not need to be a pointer
-	if cfg.PipelineName == nil || *cfg.PipelineName == "" {
+	if cfg.PipelineName == "" {
 		return nil, errors.New(ErrPipelineNameRequired)
 	}
-	//FIXME selector does not need to be a pointer
-	if cfg.Selector == nil || *cfg.Selector == "" {
+	if cfg.Selector == "" {
 		return nil, errors.New(ErrSelectorRequired)
 	}
 	if cfg.Stages == nil || len(cfg.Stages) == 0 {
 		return nil, errors.New(ErrMatchRequiresStages)
 	}
-	matchers, err := logql.ParseMatchers(*cfg.Selector)
+	matchers, err := logql.ParseMatchers(cfg.Selector)
 	if err != nil {
 		return nil, errors.Wrap(err, ErrSelectorSyntax)
 	}
@@ -60,9 +58,9 @@ func newMatcherStage(logger log.Logger, config interface{}, registerer prometheu
 		return nil, err
 	}
 
-	pl, err := NewPipeline(logger, cfg.Stages, *cfg.PipelineName, registerer)
+	pl, err := NewPipeline(logger, cfg.Stages, cfg.PipelineName, registerer)
 	if err != nil {
-		return nil, errors.Wrapf(err, "match stage %s failed to create pipeline", *cfg.PipelineName)
+		return nil, errors.Wrapf(err, "match stage %s failed to create pipeline", cfg.PipelineName)
 	}
 
 	return &matcherStage{

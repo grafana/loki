@@ -1,6 +1,8 @@
 package metric
 
 import (
+	"strings"
+
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -24,6 +26,7 @@ func validateCounterConfig(config *CounterConfig) error {
 	if config.Action == "" {
 		return errors.New(ErrCounterActionRequired)
 	}
+	config.Action = strings.ToLower(config.Action)
 	if config.Action != CounterInc && config.Action != CounterAdd {
 		return errors.Errorf(ErrCounterInvalidAction, config.Action)
 	}

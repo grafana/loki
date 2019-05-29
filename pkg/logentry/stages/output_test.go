@@ -2,9 +2,47 @@ package stages
 
 import (
 	"testing"
+	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/assert"
 )
+
+var testOutputYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      out:  message
+- output:
+    source: out
+`
+
+var testOutputLogLine = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"app":"loki",
+	"component": ["parser","type"],
+	"level" : "WARN",
+	"nested" : {"child":"value"},
+	"message" : "this is a log line"
+}
+`
+
+func TestPipeline_Output(t *testing.T) {
+	pl, err := NewPipeline(util.Logger, loadConfig(testOutputYaml), "test", prometheus.DefaultRegisterer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	ts := time.Now()
+	entry := testOutputLogLine
+	extracted := map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	assert.Equal(t, "this is a log line", entry)
+}
 
 func TestOutputValidation(t *testing.T) {
 	tests := map[string]struct {
@@ -17,7 +55,7 @@ func TestOutputValidation(t *testing.T) {
 		},
 		"missing source": {
 			config: &OutputConfig{
-				Source: nil,
+				Source: "",
 			},
 			err: errors.New(ErrOutputSourceRequired),
 		},

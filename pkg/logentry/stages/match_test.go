@@ -7,9 +7,71 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/assert"
 )
 
-var pipelineName = "pl_name"
+var testMatchYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      app:
+- labels:
+    app:
+- match:
+    pipeline_name: "app1"
+    selector: "{app=\"loki\"}"
+    stages:
+    - json:
+        expressions:
+          msg: message
+- match:
+    pipeline_name: "app2"
+    selector: "{app=\"poki\"}"
+    stages:
+    - json:
+        expressions:
+          msg: msg
+- output:
+    source: msg
+`
+
+var testMatchLogLineApp1 = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"app":"loki",
+	"component": ["parser","type"],
+	"level" : "WARN",
+	"message" : "app1 log line"
+}
+`
+
+var testMatchLogLineApp2 = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"app":"poki",
+	"component": ["parser","type"],
+	"level" : "WARN",
+	"msg" : "app2 log line"
+}
+`
+
+func TestMatchPipeline(t *testing.T) {
+	pl, err := NewPipeline(util.Logger, loadConfig(testMatchYaml), "test", prometheus.DefaultRegisterer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	ts := time.Now()
+	entry := testMatchLogLineApp1
+	extracted := map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	assert.Equal(t, "app1 log line", entry)
+	entry = testMatchLogLineApp2
+	extracted = map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	assert.Equal(t, "app2 log line", entry)
+}
 
 func TestMatcher(t *testing.T) {
 	t.Parallel()
@@ -41,8 +103,8 @@ func TestMatcher(t *testing.T) {
 			// Build a match config which has a simple label stage that when matched will add the test_label to
 			// the labels in the pipeline.
 			matchConfig := MatcherConfig{
-				&pipelineName,
-				&tt.matcher,
+				"pl_name",
+				tt.matcher,
 				PipelineStages{
 					PipelineStage{
 						StageTypeLabel: LabelsConfig{
