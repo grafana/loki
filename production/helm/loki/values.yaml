@@ -11,7 +11,7 @@ affinity: {}
 #         - loki
 #     topologyKey: "kubernetes.io/hostname"
 
-## Deployment annotations
+## StatefulSet annotations
 annotations: {}
 
 # enable tracing for debug, need install jaeger and specify right jaeger_agent_host
@@ -20,7 +20,6 @@ tracing:
 
 config:
   auth_enabled: false
-
   ingester:
     chunk_idle_period: 15m
     chunk_block_size: 262144
@@ -63,8 +62,6 @@ config:
     retention_deletes_enabled: false
     retention_period: 0
 
-deploymentStrategy: RollingUpdate
-
 image:
   repository: grafana/loki
   tag: latest
@@ -79,8 +76,6 @@ livenessProbe:
     path: /ready
     port: http-metrics
   initialDelaySeconds: 45
-
-minReadySeconds: 0
 
 ## Enable persistence using Persistent Volume Claims
 networkPolicy:
@@ -110,6 +105,8 @@ podLabels: {}
 podAnnotations:
  prometheus.io/scrape: "true"
  prometheus.io/port: "http-metrics"
+
+podManagementPolicy: OrderedReady
 
 ## Assign a PriorityClassName to pods if set
 # priorityClassName:
@@ -162,3 +159,6 @@ tolerations: []
 podDisruptionBudget: {}
 # minAvailable: 1
 # maxUnavailable: 1
+
+updateStrategy:
+  type: RollingUpdate
