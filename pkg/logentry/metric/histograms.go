@@ -12,7 +12,6 @@ type HistogramConfig struct {
 }
 
 func validateHistogramConfig(config *HistogramConfig) error {
-	//TODO is there any validation required?
 	return nil
 }
 

@@ -1,7 +1,6 @@
 package stages
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -9,7 +8,6 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -124,155 +122,6 @@ func TestPipeline_MultiStage(t *testing.T) {
 				t.Fatalf("mismatch ts want: %s got:%s", tt.expectedT, tt.t)
 			}
 		})
-	}
-}
-
-var testOutputLogLine = `
-{
-	"time":"2012-11-01T22:08:41+00:00",
-	"app":"loki",
-	"component": ["parser","type"],
-	"level" : "WARN",
-	"nested" : {"child":"value"},
-	"message" : "this is a log line"
-}
-`
-
-var testOutputYaml = `
-pipeline_stages:
-- json:
-    expressions:
-      out:  message
-- output:
-    source: out
-`
-
-func TestPipeline_Output(t *testing.T) {
-	pl, err := NewPipeline(util.Logger, loadConfig(testOutputYaml), "test", prometheus.DefaultRegisterer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	lbls := model.LabelSet{}
-	ts := time.Now()
-	entry := testOutputLogLine
-	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	assert.Equal(t, "this is a log line", entry)
-}
-
-var testLabelsLogLine = `
-{
-	"time":"2012-11-01T22:08:41+00:00",
-	"app":"loki",
-	"component": ["parser","type"],
-	"level" : "WARN"
-}
-`
-
-var testLabelsYaml = `
-pipeline_stages:
-- json:
-    expressions:
-      out:  message
-      level:
-      app_rename: app
-- labels:
-    level:
-    app: app_rename
-`
-
-func TestPipeline_Labels(t *testing.T) {
-	pl, err := NewPipeline(util.Logger, loadConfig(testLabelsYaml), "test", prometheus.DefaultRegisterer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	lbls := model.LabelSet{}
-	expectedLbls := model.LabelSet{
-		"level": "WARN",
-		"app":   "loki",
-	}
-	ts := time.Now()
-	entry := testLabelsLogLine
-	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	assert.Equal(t, expectedLbls, lbls)
-}
-
-var testTimestampLogLine = `
-{
-	"time":"2012-11-01T22:08:41+00:00",
-	"app":"loki",
-	"component": ["parser","type"],
-	"level" : "WARN"
-}
-`
-
-var testTimestampYaml = `
-pipeline_stages:
-- json:
-    expressions:
-      ts: time
-- timestamp:
-    source: ts
-    format: RFC3339
-`
-
-func TestPipeline_Timestamp(t *testing.T) {
-	pl, err := NewPipeline(util.Logger, loadConfig(testTimestampYaml), "test", prometheus.DefaultRegisterer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	lbls := model.LabelSet{}
-	ts := time.Now()
-	entry := testTimestampLogLine
-	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	assert.Equal(t, time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", 0)), ts)
-}
-
-var testMetricLogLine = `
-{
-	"time":"2012-11-01T22:08:41+00:00",
-	"app":"loki",
-	"component": ["parser","type"],
-	"level" : "WARN"
-}
-`
-
-var testMetricYaml = `
-pipeline_stages:
-- json:
-    expressions:
-      app: app
-- metric:
-    loki_count:
-      type: Counter
-      description: uhhhhhhh
-      source: app
-      config:
-        value: loki
-        action: inc
-`
-
-const expectedMetrics = `# HELP promtail_custom_loki_count uhhhhhhh
-# TYPE promtail_custom_loki_count counter
-promtail_custom_loki_count 1.0
-`
-
-func TestPipeline_Metrics(t *testing.T) {
-	registry := prometheus.NewRegistry()
-	pl, err := NewPipeline(util.Logger, loadConfig(testMetricYaml), "test", registry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	lbls := model.LabelSet{}
-	ts := time.Now()
-	entry := testMetricLogLine
-	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	if err := testutil.GatherAndCompare(registry,
-		strings.NewReader(expectedMetrics)); err != nil {
-		t.Fatalf("missmatch metrics: %v", err)
 	}
 }
 

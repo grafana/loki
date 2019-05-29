@@ -3,10 +3,13 @@ package stages
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -49,7 +52,7 @@ func validateMetricsConfig(cfg MetricsConfig) error {
 }
 
 // newMetric creates a new set of metrics to process for each log entry
-func newMetric(config interface{}, registry prometheus.Registerer) (*metricStage, error) {
+func newMetric(logger log.Logger, config interface{}, registry prometheus.Registerer) (*metricStage, error) {
 	cfgs := &MetricsConfig{}
 	err := mapstructure.Decode(config, cfgs)
 	if err != nil {
@@ -86,12 +89,14 @@ func newMetric(config interface{}, registry prometheus.Registerer) (*metricStage
 		}
 	}
 	return &metricStage{
+		logger:  logger,
 		cfg:     *cfgs,
 		metrics: metrics,
 	}, nil
 }
 
 type metricStage struct {
+	logger  log.Logger
 	cfg     MetricsConfig
 	metrics map[string]prometheus.Collector
 }
@@ -101,22 +106,24 @@ func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interf
 		if v, ok := extracted[*m.cfg[name].Source]; ok {
 			switch vec := collector.(type) {
 			case *metric.Counters:
-				recordCounter(vec, labels, v)
+				m.recordCounter(name, vec, labels, v)
 			case *metric.Gauges:
-				recordGauge(vec, labels, v)
+				m.recordGauge(name, vec, labels, v)
 			case *metric.Histograms:
-				recordHistogram(vec, labels, v)
+				m.recordHistogram(name, vec, labels, v)
 			}
 		}
 	}
 }
 
-func recordCounter(counter *metric.Counters, labels model.LabelSet, v interface{}) {
+func (m *metricStage) recordCounter(name string, counter *metric.Counters, labels model.LabelSet, v interface{}) {
 	// If value matching is defined, make sure value matches.
 	if counter.Cfg.Value != nil {
 		stringVal, err := getString(v)
 		if err != nil {
-			//TODO need logger
+			level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
+				"can't perform value comparison", "metric", name, "err",
+				fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v).String()))
 			return
 		}
 		if *counter.Cfg.Value != stringVal {
@@ -130,19 +137,21 @@ func recordCounter(counter *metric.Counters, labels model.LabelSet, v interface{
 	case metric.CounterAdd:
 		f, err := getFloat(v)
 		if err != nil || f < 0 {
-			//TODO need logger
+			level.Debug(m.logger).Log("msg", "failed to convert extracted value to float", "metric", name, "err", err)
 			return
 		}
 		counter.With(labels).Add(f)
 	}
 }
 
-func recordGauge(gauge *metric.Gauges, labels model.LabelSet, v interface{}) {
+func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels model.LabelSet, v interface{}) {
 	// If value matching is defined, make sure value matches.
 	if gauge.Cfg.Value != nil {
 		stringVal, err := getString(v)
 		if err != nil {
-			//TODO need logger
+			level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
+				"can't perform value comparison", "metric", name, "err",
+				fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v).String()))
 			return
 		}
 		if *gauge.Cfg.Value != stringVal {
@@ -154,7 +163,7 @@ func recordGauge(gauge *metric.Gauges, labels model.LabelSet, v interface{}) {
 	case metric.GaugeSet:
 		f, err := getFloat(v)
 		if err != nil || f < 0 {
-			//TODO need logger
+			level.Debug(m.logger).Log("msg", "failed to convert extracted value to float", "metric", name, "err", err)
 			return
 		}
 		gauge.With(labels).Set(f)
@@ -165,26 +174,28 @@ func recordGauge(gauge *metric.Gauges, labels model.LabelSet, v interface{}) {
 	case metric.GaugeAdd:
 		f, err := getFloat(v)
 		if err != nil || f < 0 {
-			//TODO need logger
+			level.Debug(m.logger).Log("msg", "failed to convert extracted value to float", "metric", name, "err", err)
 			return
 		}
 		gauge.With(labels).Add(f)
 	case metric.GaugeSub:
 		f, err := getFloat(v)
 		if err != nil || f < 0 {
-			//TODO need logger
+			level.Debug(m.logger).Log("msg", "failed to convert extracted value to float", "metric", name, "err", err)
 			return
 		}
 		gauge.With(labels).Sub(f)
 	}
 }
 
-func recordHistogram(histogram *metric.Histograms, labels model.LabelSet, v interface{}) {
+func (m *metricStage) recordHistogram(name string, histogram *metric.Histograms, labels model.LabelSet, v interface{}) {
 	// If value matching is defined, make sure value matches.
 	if histogram.Cfg.Value != nil {
 		stringVal, err := getString(v)
 		if err != nil {
-			//TODO need logger
+			level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
+				"can't perform value comparison", "metric", name, "err",
+				fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v).String()))
 			return
 		}
 		if *histogram.Cfg.Value != stringVal {
@@ -193,7 +204,7 @@ func recordHistogram(histogram *metric.Histograms, labels model.LabelSet, v inte
 	}
 	f, err := getFloat(v)
 	if err != nil {
-		//TODO need logger
+		level.Debug(m.logger).Log("msg", "failed to convert extracted value to float", "metric", name, "err", err)
 		return
 	}
 	histogram.With(labels).Observe(f)
@@ -226,6 +237,6 @@ func getFloat(unk interface{}) (float64, error) {
 		}
 		return float64(0), nil
 	default:
-		return math.NaN(), fmt.Errorf("Can't convert %v to float64", unk)
+		return math.NaN(), fmt.Errorf("can't convert %v to float64", unk)
 	}
 }

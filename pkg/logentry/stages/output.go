@@ -19,15 +19,14 @@ const (
 
 // OutputConfig configures output value extraction
 type OutputConfig struct {
-	Source *string `mapstructure:"source"`
+	Source string `mapstructure:"source"`
 }
 
 func validateOutputConfig(cfg *OutputConfig) error {
 	if cfg == nil {
 		return errors.New(ErrEmptyOutputStageConfig)
 	}
-	//FIXME Source does not need to be a pointer
-	if cfg.Source == nil || *cfg.Source == "" {
+	if cfg.Source == "" {
 		return errors.New(ErrOutputSourceRequired)
 	}
 	return nil
@@ -59,7 +58,7 @@ func (o *outputStage) Process(labels model.LabelSet, extracted map[string]interf
 	if o.cfgs == nil {
 		return
 	}
-	if v, ok := extracted[*o.cfgs.Source]; ok {
+	if v, ok := extracted[o.cfgs.Source]; ok {
 		s, err := getString(v)
 		if err != nil {
 			level.Debug(o.logger).Log("msg", "extracted output could not be converted to a string", "err", err, "type", reflect.TypeOf(v).String())
@@ -67,7 +66,6 @@ func (o *outputStage) Process(labels model.LabelSet, extracted map[string]interf
 		}
 		*entry = s
 	} else {
-		//FIXME should this be warn?
 		level.Debug(o.logger).Log("msg", "extracted data did not contain output source")
 	}
 }

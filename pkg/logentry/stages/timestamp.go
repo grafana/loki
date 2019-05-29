@@ -19,23 +19,21 @@ const (
 
 // TimestampConfig configures timestamp extraction
 type TimestampConfig struct {
-	Source *string `mapstructure:"source"`
-	Format *string `mapstructure:"format"`
+	Source string `mapstructure:"source"`
+	Format string `mapstructure:"format"`
 }
 
 func validateTimestampConfig(cfg *TimestampConfig) (string, error) {
 	if cfg == nil {
 		return "", errors.New(ErrEmptyTimestampStageConfig)
 	}
-	//FIXME Source does not need to be a pointer
-	if cfg.Source == nil || *cfg.Source == "" {
+	if cfg.Source == "" {
 		return "", errors.New(ErrTimestampSourceRequired)
 	}
-	//FIXME Format does not need to be a pointer
-	if cfg.Format == nil || *cfg.Format == "" {
+	if cfg.Format == "" {
 		return "", errors.New(ErrTimestampFormatRequired)
 	}
-	return convertDateLayout(*cfg.Format), nil
+	return convertDateLayout(cfg.Format), nil
 
 }
 
@@ -67,8 +65,7 @@ func (ts *timestampStage) Process(labels model.LabelSet, extracted map[string]in
 	if ts.cfgs == nil {
 		return
 	}
-	//FIXME should these be warnings instead of debug??
-	if v, ok := extracted[*ts.cfgs.Source]; ok {
+	if v, ok := extracted[ts.cfgs.Source]; ok {
 		s, err := getString(v)
 		if err != nil {
 			level.Debug(ts.logger).Log("msg", "failed to convert extracted time to string", "err", err, "type", reflect.TypeOf(v).String())

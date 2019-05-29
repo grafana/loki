@@ -106,7 +106,6 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 			continue
 		}
 
-		//TODO do we want to pass arrays out in a non-marshaled format? Downstream stages would need to be updated to accept this
 		switch r.(type) {
 		case float64:
 			// All numbers in JSON are unmarshaled to float64.
