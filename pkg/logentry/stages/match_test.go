@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var pipelineName = "pl_name"
@@ -50,7 +51,7 @@ func TestMatcher(t *testing.T) {
 					},
 				},
 			}
-			s, err := newMatcherStage(util.Logger, matchConfig)
+			s, err := newMatcherStage(util.Logger, matchConfig, prometheus.DefaultRegisterer)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("withMatcher() error = %v, wantErr %v", err, tt.wantErr)
 				return

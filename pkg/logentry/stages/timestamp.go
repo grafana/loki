@@ -27,9 +27,11 @@ func validateTimestampConfig(cfg *TimestampConfig) (string, error) {
 	if cfg == nil {
 		return "", errors.New(ErrEmptyTimestampStageConfig)
 	}
+	//FIXME Source does not need to be a pointer
 	if cfg.Source == nil || *cfg.Source == "" {
 		return "", errors.New(ErrTimestampSourceRequired)
 	}
+	//FIXME Format does not need to be a pointer
 	if cfg.Format == nil || *cfg.Format == "" {
 		return "", errors.New(ErrTimestampFormatRequired)
 	}
@@ -37,7 +39,7 @@ func validateTimestampConfig(cfg *TimestampConfig) (string, error) {
 
 }
 
-// newLabel creates a new set of metrics to process for each log entry
+// newTimestamp creates a new timestamp extraction pipeline stage.
 func newTimestamp(logger log.Logger, config interface{}) (*timestampStage, error) {
 	cfg := &TimestampConfig{}
 	err := mapstructure.Decode(config, cfg)

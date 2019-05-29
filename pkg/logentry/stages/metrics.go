@@ -23,10 +23,10 @@ const (
 
 // MetricConfig is a single metrics configuration.
 type MetricConfig struct {
-	MetricType  string    `mapstructure:"type"`
-	Description string    `mapstructure:"description"`
-	Source      *string   `mapstructure:"source"`
-	Buckets     []float64 `mapstructure:"buckets"`
+	MetricType  string      `mapstructure:"type"`
+	Description string      `mapstructure:"description"`
+	Source      *string     `mapstructure:"source"`
+	Config      interface{} `mapstructure:"config"`
 }
 
 // MetricsConfig is a set of configured metrics.
@@ -65,11 +65,20 @@ func newMetric(config interface{}, registry prometheus.Registerer) (*metricStage
 
 		switch strings.ToLower(cfg.MetricType) {
 		case MetricTypeCounter:
-			collector = metric.NewCounters(customPrefix+name, cfg.Description)
+			collector, err = metric.NewCounters(customPrefix+name, cfg.Description, cfg.Config)
+			if err != nil {
+				return nil, err
+			}
 		case MetricTypeGauge:
-			collector = metric.NewGauges(customPrefix+name, cfg.Description)
+			collector, err = metric.NewGauges(customPrefix+name, cfg.Description, cfg.Config)
+			if err != nil {
+				return nil, err
+			}
 		case MetricTypeHistogram:
-			collector = metric.NewHistograms(customPrefix+name, cfg.Description, cfg.Buckets)
+			collector, err = metric.NewHistograms(customPrefix+name, cfg.Description, cfg.Config)
+			if err != nil {
+				return nil, err
+			}
 		}
 		if collector != nil {
 			registry.MustRegister(collector)
@@ -92,39 +101,102 @@ func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interf
 		if v, ok := extracted[*m.cfg[name].Source]; ok {
 			switch vec := collector.(type) {
 			case *metric.Counters:
-				recordCounter(vec.With(labels), v)
+				recordCounter(vec, labels, v)
 			case *metric.Gauges:
-				recordGauge(vec.With(labels), v)
+				recordGauge(vec, labels, v)
 			case *metric.Histograms:
-				recordHistogram(vec.With(labels), v)
+				recordHistogram(vec, labels, v)
 			}
 		}
 	}
 }
 
-func recordCounter(counter prometheus.Counter, v interface{}) {
-	f, err := getFloat(v)
-	if err != nil || f < 0 {
-		return
+func recordCounter(counter *metric.Counters, labels model.LabelSet, v interface{}) {
+	// If value matching is defined, make sure value matches.
+	if counter.Cfg.Value != nil {
+		stringVal, err := getString(v)
+		if err != nil {
+			//TODO need logger
+			return
+		}
+		if *counter.Cfg.Value != stringVal {
+			return
+		}
 	}
-	counter.Add(f)
+
+	switch counter.Cfg.Action {
+	case metric.CounterInc:
+		counter.With(labels).Inc()
+	case metric.CounterAdd:
+		f, err := getFloat(v)
+		if err != nil || f < 0 {
+			//TODO need logger
+			return
+		}
+		counter.With(labels).Add(f)
+	}
 }
 
-func recordGauge(gauge prometheus.Gauge, v interface{}) {
-	f, err := getFloat(v)
-	if err != nil {
-		return
+func recordGauge(gauge *metric.Gauges, labels model.LabelSet, v interface{}) {
+	// If value matching is defined, make sure value matches.
+	if gauge.Cfg.Value != nil {
+		stringVal, err := getString(v)
+		if err != nil {
+			//TODO need logger
+			return
+		}
+		if *gauge.Cfg.Value != stringVal {
+			return
+		}
 	}
-	//todo Gauge we be able to add,inc,dec,set
-	gauge.Add(f)
+
+	switch gauge.Cfg.Action {
+	case metric.GaugeSet:
+		f, err := getFloat(v)
+		if err != nil || f < 0 {
+			//TODO need logger
+			return
+		}
+		gauge.With(labels).Set(f)
+	case metric.GaugeInc:
+		gauge.With(labels).Inc()
+	case metric.GaugeDec:
+		gauge.With(labels).Dec()
+	case metric.GaugeAdd:
+		f, err := getFloat(v)
+		if err != nil || f < 0 {
+			//TODO need logger
+			return
+		}
+		gauge.With(labels).Add(f)
+	case metric.GaugeSub:
+		f, err := getFloat(v)
+		if err != nil || f < 0 {
+			//TODO need logger
+			return
+		}
+		gauge.With(labels).Sub(f)
+	}
 }
 
-func recordHistogram(histogram prometheus.Histogram, v interface{}) {
+func recordHistogram(histogram *metric.Histograms, labels model.LabelSet, v interface{}) {
+	// If value matching is defined, make sure value matches.
+	if histogram.Cfg.Value != nil {
+		stringVal, err := getString(v)
+		if err != nil {
+			//TODO need logger
+			return
+		}
+		if *histogram.Cfg.Value != stringVal {
+			return
+		}
+	}
 	f, err := getFloat(v)
 	if err != nil {
+		//TODO need logger
 		return
 	}
-	histogram.Observe(f)
+	histogram.With(labels).Observe(f)
 }
 
 func getFloat(unk interface{}) (float64, error) {

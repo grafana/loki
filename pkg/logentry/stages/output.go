@@ -26,6 +26,7 @@ func validateOutputConfig(cfg *OutputConfig) error {
 	if cfg == nil {
 		return errors.New(ErrEmptyOutputStageConfig)
 	}
+	//FIXME Source does not need to be a pointer
 	if cfg.Source == nil || *cfg.Source == "" {
 		return errors.New(ErrOutputSourceRequired)
 	}
