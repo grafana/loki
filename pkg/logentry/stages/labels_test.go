@@ -4,9 +4,50 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 )
+
+var testLabelsYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      level:
+      app_rename: app
+- labels:
+    level:
+    app: app_rename
+`
+
+var testLabelsLogLine = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"app":"loki",
+	"component": ["parser","type"],
+	"level" : "WARN"
+}
+`
+
+func TestLabelsPipeline_Labels(t *testing.T) {
+	pl, err := NewPipeline(util.Logger, loadConfig(testLabelsYaml), "test", prometheus.DefaultRegisterer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	expectedLbls := model.LabelSet{
+		"level": "WARN",
+		"app":   "loki",
+	}
+	ts := time.Now()
+	entry := testLabelsLogLine
+	extracted := map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	assert.Equal(t, expectedLbls, lbls)
+}
 
 var (
 	lv1  = "lv1"
@@ -15,7 +56,7 @@ var (
 	lv3c = "l3"
 )
 
-func Test(t *testing.T) {
+func TestLabels(t *testing.T) {
 	tests := map[string]struct {
 		config       LabelsConfig
 		err          error

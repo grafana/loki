@@ -13,10 +13,56 @@ import (
 	"github.com/grafana/loki/pkg/logentry/metric"
 )
 
+var testMetricYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      app: app
+- metric:
+    loki_count:
+      type: Counter
+      description: uhhhhhhh
+      source: app
+      config:
+        value: loki
+        action: inc
+`
+
+var testMetricLogLine = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"app":"loki",
+	"component": ["parser","type"],
+	"level" : "WARN"
+}
+`
+
+const expectedMetrics = `# HELP promtail_custom_loki_count uhhhhhhh
+# TYPE promtail_custom_loki_count counter
+promtail_custom_loki_count 1.0
+`
+
+func TestMetricsPipeline(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	pl, err := NewPipeline(util.Logger, loadConfig(testMetricYaml), "test", registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	ts := time.Now()
+	entry := testMetricLogLine
+	extracted := map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	if err := testutil.GatherAndCompare(registry,
+		strings.NewReader(expectedMetrics)); err != nil {
+		t.Fatalf("missmatch metrics: %v", err)
+	}
+}
+
 var labelFoo = model.LabelSet(map[model.LabelName]model.LabelValue{"foo": "bar", "bar": "foo"})
 var labelFu = model.LabelSet(map[model.LabelName]model.LabelValue{"fu": "baz", "baz": "fu"})
 
-func Test_withMetric(t *testing.T) {
+func TestMetricStage_Process(t *testing.T) {
 	jsonConfig := JSONConfig{
 		Expressions: map[string]string{
 			"total_keys":      "length(keys(@))",
@@ -26,7 +72,6 @@ func Test_withMetric(t *testing.T) {
 			"numeric_string":  "numeric.string",
 			"contains_warn":   "contains(values(@),'WARN')",
 			"contains_false":  "contains(keys(@),'nope')",
-			"unconvertable":   "values(@)",
 		},
 	}
 	regexConfig := map[string]interface{}{
@@ -83,15 +128,7 @@ func Test_withMetric(t *testing.T) {
 			Description: "contains_false",
 			Config: metric.CounterConfig{
 				Value:  &true,
-				Action: metric.CounterInc,
-			},
-		},
-		// FIXME Not showing results currently if there are no counts, this doesn't make it into the output
-		"unconvertible": MetricConfig{
-			MetricType:  "Counter",
-			Description: "unconvertible",
-			Config: metric.CounterConfig{
-				Action: metric.CounterInc,
+				Action: metric.CounterAdd,
 			},
 		},
 		"matches": MetricConfig{
@@ -149,11 +186,7 @@ func metricNames(cfg MetricsConfig) []string {
 	return result
 }
 
-const goldenMetrics = `# HELP promtail_custom_contains_false contains_false
-# TYPE promtail_custom_contains_false counter
-promtail_custom_contains_false{bar="foo",foo="bar"} 0.0
-promtail_custom_contains_false{baz="fu",fu="baz"} 0.0
-# HELP promtail_custom_contains_warn contains_warn
+const goldenMetrics = `# HELP promtail_custom_contains_warn contains_warn
 # TYPE promtail_custom_contains_warn counter
 promtail_custom_contains_warn{bar="foo",foo="bar"} 1.0
 promtail_custom_contains_warn{baz="fu",fu="baz"} 1.0
@@ -207,8 +240,4 @@ promtail_custom_response_time_ms_count{baz="fu",fu="baz"} 1.0
 # TYPE promtail_custom_total_keys counter
 promtail_custom_total_keys{bar="foo",foo="bar"} 8.0
 promtail_custom_total_keys{baz="fu",fu="baz"} 8.0
-# HELP promtail_custom_unconvertible unconvertible
-# TYPE promtail_custom_unconvertible counter
-promtail_custom_unconvertible{bar="foo",foo="bar"} 0.0
-promtail_custom_unconvertible{baz="fu",fu="baz"} 0.0
 `

@@ -1,6 +1,8 @@
 package metric
 
 import (
+	"strings"
+
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -27,6 +29,7 @@ func validateGaugeConfig(config *GaugeConfig) error {
 	if config.Action == "" {
 		return errors.New(ErrGaugeActionRequired)
 	}
+	config.Action = strings.ToLower(config.Action)
 	if config.Action != GaugeSet &&
 		config.Action != GaugeInc &&
 		config.Action != GaugeDec &&

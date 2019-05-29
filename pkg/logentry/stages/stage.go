@@ -62,7 +62,7 @@ func New(logger log.Logger, jobName string, stageType string,
 			return nil, err
 		}
 	case StageTypeMetric:
-		s, err = newMetric(cfg, registerer)
+		s, err = newMetric(logger, cfg, registerer)
 		if err != nil {
 			return nil, err
 		}

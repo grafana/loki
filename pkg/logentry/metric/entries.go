@@ -16,7 +16,7 @@ func LogCount(reg prometheus.Registerer, next api.EntryHandler) api.EntryHandler
 	}
 	c, err := NewCounters("log_entries_total", "the total count of log entries", cfg)
 	if err != nil {
-		//TODO what do we want to do with this??
+		panic(err)
 	}
 	reg.MustRegister(c)
 	return api.EntryHandlerFunc(func(labels model.LabelSet, time time.Time, entry string) error {
@@ -35,7 +35,7 @@ func LogSize(reg prometheus.Registerer, next api.EntryHandler) api.EntryHandler 
 	}
 	c, err := NewHistograms("log_entries_bytes", "the total count of bytes", cfg)
 	if err != nil {
-		//TODO what do we want to do with this??
+		panic(err)
 	}
 	reg.MustRegister(c)
 	return api.EntryHandlerFunc(func(labels model.LabelSet, time time.Time, entry string) error {
