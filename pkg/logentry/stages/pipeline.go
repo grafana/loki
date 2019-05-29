@@ -36,7 +36,7 @@ type Pipeline struct {
 }
 
 // NewPipeline creates a new log entry pipeline from a configuration
-func NewPipeline(logger log.Logger, stgs PipelineStages, jobName string) (*Pipeline, error) {
+func NewPipeline(logger log.Logger, stgs PipelineStages, jobName string, registerer prometheus.Registerer) (*Pipeline, error) {
 	st := []Stage{}
 	for _, s := range stgs {
 		stage, ok := s.(PipelineStage)
@@ -52,7 +52,7 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName string) (*Pipel
 			if !ok {
 				return nil, errors.New("pipeline stage key must be a string")
 			}
-			newStage, err := New(logger, jobName, name, config, prometheus.DefaultRegisterer)
+			newStage, err := New(logger, jobName, name, config, registerer)
 			if err != nil {
 				return nil, errors.Wrapf(err, "invalid %s stage config", name)
 			}

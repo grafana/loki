@@ -6,6 +6,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
@@ -30,9 +31,11 @@ func validateMatcherConfig(cfg *MatcherConfig) ([]*labels.Matcher, error) {
 	if cfg == nil {
 		return nil, errors.New(ErrEmptyMatchStageConfig)
 	}
+	//FIXME PipelineName does not need to be a pointer
 	if cfg.PipelineName == nil || *cfg.PipelineName == "" {
 		return nil, errors.New(ErrPipelineNameRequired)
 	}
+	//FIXME selector does not need to be a pointer
 	if cfg.Selector == nil || *cfg.Selector == "" {
 		return nil, errors.New(ErrSelectorRequired)
 	}
@@ -46,7 +49,7 @@ func validateMatcherConfig(cfg *MatcherConfig) ([]*labels.Matcher, error) {
 	return matchers, nil
 }
 
-func newMatcherStage(logger log.Logger, config interface{}) (Stage, error) {
+func newMatcherStage(logger log.Logger, config interface{}, registerer prometheus.Registerer) (Stage, error) {
 	cfg := &MatcherConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -57,7 +60,7 @@ func newMatcherStage(logger log.Logger, config interface{}) (Stage, error) {
 		return nil, err
 	}
 
-	pl, err := NewPipeline(logger, cfg.Stages, *cfg.PipelineName)
+	pl, err := NewPipeline(logger, cfg.Stages, *cfg.PipelineName, registerer)
 	if err != nil {
 		return nil, errors.Wrapf(err, "match stage %s failed to create pipeline", *cfg.PipelineName)
 	}

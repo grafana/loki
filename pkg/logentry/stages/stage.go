@@ -42,12 +42,12 @@ func New(logger log.Logger, jobName string, stageType string,
 	var err error
 	switch stageType {
 	case StageTypeDocker:
-		s, err = NewDocker(logger, jobName)
+		s, err = NewDocker(logger, jobName, registerer)
 		if err != nil {
 			return nil, err
 		}
 	case StageTypeCRI:
-		s, err = NewCRI(logger, jobName)
+		s, err = NewCRI(logger, jobName, registerer)
 		if err != nil {
 			return nil, err
 		}
@@ -82,7 +82,7 @@ func New(logger log.Logger, jobName string, stageType string,
 			return nil, err
 		}
 	case StageTypeMatch:
-		s, err = newMatcherStage(logger, cfg)
+		s, err = newMatcherStage(logger, cfg, registerer)
 		if err != nil {
 			return nil, err
 		}
