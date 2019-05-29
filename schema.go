@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -133,6 +134,9 @@ func (s schema) GetLabelEntryCacheKeys(from, through model.Time, userID string, 
 		},
 			"-",
 		)
+		// This is just encoding to remove invalid characters so that we can put them in memcache.
+		// We're not hashing them as the length of the key is well within memcache bounds. tableName + userid + day + 32Byte(seriesID)
+		key = hex.EncodeToString([]byte(key))
 
 		result = append(result, key)
 	}

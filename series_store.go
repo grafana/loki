@@ -2,7 +2,6 @@ package chunk
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 
@@ -362,14 +361,7 @@ func (c *seriesStore) calculateIndexEntries(from, through model.Time, chunk Chun
 
 	keys := c.schema.GetLabelEntryCacheKeys(from, through, chunk.UserID, chunk.Metric)
 
-	cacheKeys := make([]string, 0, len(keys)) // Keys which translate to the strings stored in the cache.
-	for _, key := range keys {
-		// This is just encoding to remove invalid characters so that we can put them in memcache.
-		// We're not hashing them as the length of the key is well within memcache bounds. tableName + userid + day + 32Byte(seriesID)
-		cacheKeys = append(cacheKeys, hex.EncodeToString([]byte(key)))
-	}
-
-	_, _, missing := c.writeDedupeCache.Fetch(context.Background(), cacheKeys)
+	_, _, missing := c.writeDedupeCache.Fetch(context.Background(), keys)
 	if len(missing) != 0 {
 		labelEntries, err := c.schema.GetLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey())
 		if err != nil {
