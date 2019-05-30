@@ -32,7 +32,7 @@ var testOutputLogLine = `
 `
 
 func TestPipeline_Output(t *testing.T) {
-	pl, err := NewPipeline(util.Logger, loadConfig(testOutputYaml), "test", prometheus.DefaultRegisterer)
+	pl, err := NewPipeline(util.Logger, loadConfig(testOutputYaml), nil, prometheus.DefaultRegisterer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,4 +77,35 @@ func TestOutputValidation(t *testing.T) {
 	}
 }
 
-//TODO test label processing
+func TestOutputStage_Process(t *testing.T) {
+	tests := map[string]struct {
+		config         OutputConfig
+		extracted      map[string]interface{}
+		expectedOutput string
+	}{
+		"sets output": {
+			OutputConfig{
+				Source: "out",
+			},
+			map[string]interface{}{
+				"something": "notimportant",
+				"out":       "outmessage",
+			},
+			"outmessage",
+		},
+	}
+	for name, test := range tests {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			st, err := newOutputStage(util.Logger, test.config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lbls := model.LabelSet{}
+			entry := "replaceme"
+			st.Process(lbls, test.extracted, nil, &entry)
+			assert.Equal(t, test.expectedOutput, entry)
+		})
+	}
+}

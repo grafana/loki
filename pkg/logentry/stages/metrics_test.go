@@ -44,7 +44,7 @@ promtail_custom_loki_count 1.0
 
 func TestMetricsPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
-	pl, err := NewPipeline(util.Logger, loadConfig(testMetricYaml), "test", registry)
+	pl, err := NewPipeline(util.Logger, loadConfig(testMetricYaml), nil, registry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,15 +150,15 @@ func TestMetricStage_Process(t *testing.T) {
 	}
 
 	registry := prometheus.NewRegistry()
-	jsonStage, err := New(util.Logger, "test", StageTypeJSON, jsonConfig, registry)
+	jsonStage, err := New(util.Logger, nil, StageTypeJSON, jsonConfig, registry)
 	if err != nil {
 		t.Fatalf("failed to create stage with metrics: %v", err)
 	}
-	regexStage, err := New(util.Logger, "test", StageTypeRegex, regexConfig, registry)
+	regexStage, err := New(util.Logger, nil, StageTypeRegex, regexConfig, registry)
 	if err != nil {
 		t.Fatalf("failed to create stage with metrics: %v", err)
 	}
-	metricStage, err := New(util.Logger, "test", StageTypeMetric, metricsConfig, registry)
+	metricStage, err := New(util.Logger, nil, StageTypeMetric, metricsConfig, registry)
 	if err != nil {
 		t.Fatalf("failed to create stage with metrics: %v", err)
 	}

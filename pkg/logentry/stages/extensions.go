@@ -8,7 +8,7 @@ import (
 const RFC3339Nano = "RFC3339Nano"
 
 // NewDocker creates a Docker json log format specific pipeline stage.
-func NewDocker(logger log.Logger, jobName string, registerer prometheus.Registerer) (Stage, error) {
+func NewDocker(logger log.Logger, registerer prometheus.Registerer) (Stage, error) {
 	stages := PipelineStages{
 		PipelineStage{
 			StageTypeJSON: JSONConfig{
@@ -32,12 +32,11 @@ func NewDocker(logger log.Logger, jobName string, registerer prometheus.Register
 				"output",
 			},
 		}}
-
-	return NewPipeline(logger, stages, jobName+"_docker", registerer)
+	return NewPipeline(logger, stages, nil, registerer)
 }
 
 // NewCRI creates a CRI format specific pipeline stage
-func NewCRI(logger log.Logger, jobName string, registerer prometheus.Registerer) (Stage, error) {
+func NewCRI(logger log.Logger, registerer prometheus.Registerer) (Stage, error) {
 	stages := PipelineStages{
 		PipelineStage{
 			StageTypeRegex: RegexConfig{
@@ -61,5 +60,5 @@ func NewCRI(logger log.Logger, jobName string, registerer prometheus.Registerer)
 			},
 		},
 	}
-	return NewPipeline(logger, stages, jobName+"_cri", registerer)
+	return NewPipeline(logger, stages, nil, registerer)
 }

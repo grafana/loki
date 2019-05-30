@@ -7,19 +7,9 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/promtail/api"
-)
-
-var (
-	pipelineDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "logentry",
-		Name:      "pipeline_duration_seconds",
-		Help:      "Label and metric extraction pipeline processing time, in seconds",
-		Buckets:   []float64{.000005, .000010, .000025, .000050, .000100, .000250, .000500, .001000, .002500, .005000, .010000, .025000},
-	}, []string{"job_name"})
 )
 
 // PipelineStages contains configuration for each stage within a pipeline
@@ -30,13 +20,30 @@ type PipelineStage = map[interface{}]interface{}
 
 // Pipeline pass down a log entry to each stage for mutation and/or label extraction.
 type Pipeline struct {
-	logger  log.Logger
-	stages  []Stage
-	jobName string
+	logger     log.Logger
+	stages     []Stage
+	jobName    *string
+	plDuration *prometheus.HistogramVec
 }
 
 // NewPipeline creates a new log entry pipeline from a configuration
-func NewPipeline(logger log.Logger, stgs PipelineStages, jobName string, registerer prometheus.Registerer) (*Pipeline, error) {
+func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, registerer prometheus.Registerer) (*Pipeline, error) {
+	hist := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "logentry",
+		Name:      "pipeline_duration_seconds",
+		Help:      "Label and metric extraction pipeline processing time, in seconds",
+		Buckets:   []float64{.000005, .000010, .000025, .000050, .000100, .000250, .000500, .001000, .002500, .005000, .010000, .025000},
+	}, []string{"job_name"})
+	err := registerer.Register(hist)
+	if err != nil {
+		if existing, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			hist = existing.ExistingCollector.(*prometheus.HistogramVec)
+		} else {
+			// Same behavior as MustRegister if the error is not for AlreadyRegistered
+			panic(err)
+		}
+	}
+
 	st := []Stage{}
 	for _, s := range stgs {
 		stage, ok := s.(PipelineStage)
@@ -60,9 +67,10 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName string, registe
 		}
 	}
 	return &Pipeline{
-		logger:  log.With(logger, "component", "pipeline"),
-		stages:  st,
-		jobName: jobName,
+		logger:     log.With(logger, "component", "pipeline"),
+		stages:     st,
+		jobName:    jobName,
+		plDuration: hist,
 	}, nil
 }
 
@@ -75,7 +83,9 @@ func (p *Pipeline) Process(labels model.LabelSet, extracted map[string]interface
 	}
 	dur := time.Since(start).Seconds()
 	level.Debug(p.logger).Log("msg", "finished processing log line", "labels", labels, "time", ts, "entry", entry, "duration_s", dur)
-	pipelineDuration.WithLabelValues(p.jobName).Observe(dur)
+	if p.jobName != nil {
+		p.plDuration.WithLabelValues(*p.jobName).Observe(dur)
+	}
 }
 
 // Wrap implements EntryMiddleware

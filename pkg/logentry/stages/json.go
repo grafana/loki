@@ -21,6 +21,7 @@ const (
 	ErrEmptyJSONStageConfig = "empty json stage configuration"
 )
 
+// JSONConfig represents a JSON Stage configuration
 type JSONConfig struct {
 	Expressions map[string]string `mapstructure:"expressions"`
 }
@@ -52,14 +53,14 @@ func validateJSONConfig(c *JSONConfig) (map[string]*jmespath.JMESPath, error) {
 	return expressions, nil
 }
 
-// jsonStage extracts log data via json parsing.
+// jsonStage sets extracted data using JMESPath expressions
 type jsonStage struct {
 	cfg         *JSONConfig
 	expressions map[string]*jmespath.JMESPath
 	logger      log.Logger
 }
 
-// newJSONStage creates a new json mutator from a config.
+// newJSONStage creates a new json pipeline stage from a config.
 func newJSONStage(logger log.Logger, config interface{}) (*jsonStage, error) {
 	cfg, err := parseJSONConfig(config)
 	if err != nil {
@@ -85,7 +86,7 @@ func parseJSONConfig(config interface{}) (*JSONConfig, error) {
 	return cfg, nil
 }
 
-// Process implements Mutator
+// Process implements Stage
 func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	if entry == nil {
 		level.Debug(j.logger).Log("msg", "cannot parse a nil entry")
