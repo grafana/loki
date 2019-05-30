@@ -18,6 +18,7 @@ const (
 	ErrEmptyRegexStageConfig = "empty regex stage configuration"
 )
 
+// RegexConfig contains a regexStage configuration
 type RegexConfig struct {
 	Expression string `mapstructure:"expression"`
 }
@@ -40,14 +41,14 @@ func validateRegexConfig(c *RegexConfig) (*regexp.Regexp, error) {
 	return expr, nil
 }
 
-// regexStage mutates log entries using regex
+// regexStage sets extracted data using regular expressions
 type regexStage struct {
 	cfg        *RegexConfig
 	expression *regexp.Regexp
 	logger     log.Logger
 }
 
-// newRegexStage creates a new regular expression Mutator.
+// newRegexStage creates a newRegexStage
 func newRegexStage(logger log.Logger, config interface{}) (Stage, error) {
 	cfg, err := parseRegexConfig(config)
 	if err != nil {
@@ -64,6 +65,7 @@ func newRegexStage(logger log.Logger, config interface{}) (Stage, error) {
 	}, nil
 }
 
+// parseRegexConfig processes an incoming configuration into a RegexConfig
 func parseRegexConfig(config interface{}) (*RegexConfig, error) {
 	cfg := &RegexConfig{}
 	err := mapstructure.Decode(config, cfg)

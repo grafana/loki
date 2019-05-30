@@ -22,6 +22,7 @@ type OutputConfig struct {
 	Source string `mapstructure:"source"`
 }
 
+// validateOutput validates the outputStage config
 func validateOutputConfig(cfg *OutputConfig) error {
 	if cfg == nil {
 		return errors.New(ErrEmptyOutputStageConfig)
@@ -32,8 +33,8 @@ func validateOutputConfig(cfg *OutputConfig) error {
 	return nil
 }
 
-// newLabel creates a new set of metrics to process for each log entry
-func newOutput(logger log.Logger, config interface{}) (*outputStage, error) {
+// newOutputStage creates a new outputStage
+func newOutputStage(logger log.Logger, config interface{}) (*outputStage, error) {
 	cfg := &OutputConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -49,11 +50,13 @@ func newOutput(logger log.Logger, config interface{}) (*outputStage, error) {
 	}, nil
 }
 
+// outputStage will mutate the incoming entry and set it from extracted data
 type outputStage struct {
 	cfgs   *OutputConfig
 	logger log.Logger
 }
 
+// Process implements Stage
 func (o *outputStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	if o.cfgs == nil {
 		return

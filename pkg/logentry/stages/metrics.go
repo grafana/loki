@@ -21,6 +21,10 @@ import (
 const customPrefix = "promtail_custom_"
 
 const (
+	MetricTypeCounter   = "counter"
+	MetricTypeGauge     = "gauge"
+	MetricTypeHistogram = "histogram"
+
 	ErrEmptyMetricsStageConfig = "empty metric stage configuration"
 )
 
@@ -51,8 +55,8 @@ func validateMetricsConfig(cfg MetricsConfig) error {
 	return nil
 }
 
-// newMetric creates a new set of metrics to process for each log entry
-func newMetric(logger log.Logger, config interface{}, registry prometheus.Registerer) (*metricStage, error) {
+// newMetricStage creates a new set of metrics to process for each log entry
+func newMetricStage(logger log.Logger, config interface{}, registry prometheus.Registerer) (*metricStage, error) {
 	cfgs := &MetricsConfig{}
 	err := mapstructure.Decode(config, cfgs)
 	if err != nil {
@@ -95,12 +99,14 @@ func newMetric(logger log.Logger, config interface{}, registry prometheus.Regist
 	}, nil
 }
 
+// metricStage creates and updates prometheus metrics based on extracted pipeline data
 type metricStage struct {
 	logger  log.Logger
 	cfg     MetricsConfig
 	metrics map[string]prometheus.Collector
 }
 
+// Process implements Stage
 func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	for name, collector := range m.metrics {
 		if v, ok := extracted[*m.cfg[name].Source]; ok {
@@ -116,6 +122,7 @@ func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interf
 	}
 }
 
+// recordCounter will update a counter metric
 func (m *metricStage) recordCounter(name string, counter *metric.Counters, labels model.LabelSet, v interface{}) {
 	// If value matching is defined, make sure value matches.
 	if counter.Cfg.Value != nil {
@@ -144,6 +151,7 @@ func (m *metricStage) recordCounter(name string, counter *metric.Counters, label
 	}
 }
 
+// recordGauge will update a gauge metric
 func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels model.LabelSet, v interface{}) {
 	// If value matching is defined, make sure value matches.
 	if gauge.Cfg.Value != nil {
@@ -188,6 +196,7 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 	}
 }
 
+// recordHistogram will update a Histogram metric
 func (m *metricStage) recordHistogram(name string, histogram *metric.Histograms, labels model.LabelSet, v interface{}) {
 	// If value matching is defined, make sure value matches.
 	if histogram.Cfg.Value != nil {
@@ -210,6 +219,7 @@ func (m *metricStage) recordHistogram(name string, histogram *metric.Histograms,
 	histogram.With(labels).Observe(f)
 }
 
+// getFloat will take the provided value and return a float64 if possible
 func getFloat(unk interface{}) (float64, error) {
 
 	switch i := unk.(type) {

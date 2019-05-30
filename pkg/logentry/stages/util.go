@@ -34,6 +34,7 @@ func convertDateLayout(predef string) string {
 	}
 }
 
+// getString will convert the input variable to a string if possible
 func getString(unk interface{}) (string, error) {
 
 	switch i := unk.(type) {

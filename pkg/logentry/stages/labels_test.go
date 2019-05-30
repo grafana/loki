@@ -33,7 +33,7 @@ var testLabelsLogLine = `
 `
 
 func TestLabelsPipeline_Labels(t *testing.T) {
-	pl, err := NewPipeline(util.Logger, loadConfig(testLabelsYaml), "test", prometheus.DefaultRegisterer)
+	pl, err := NewPipeline(util.Logger, loadConfig(testLabelsYaml), nil, prometheus.DefaultRegisterer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,4 +108,49 @@ func TestLabels(t *testing.T) {
 	}
 }
 
-//TODO test label processing
+func TestLabelStage_Process(t *testing.T) {
+	sourceName := "diff_source"
+	tests := map[string]struct {
+		config         LabelsConfig
+		extractedData  map[string]interface{}
+		inputLabels    model.LabelSet
+		expectedLabels model.LabelSet
+	}{
+		"extract_success": {
+			LabelsConfig{
+				"testLabel": nil,
+			},
+			map[string]interface{}{
+				"testLabel": "testValue",
+			},
+			model.LabelSet{},
+			model.LabelSet{
+				"testLabel": "testValue",
+			},
+		},
+		"different_source_name": {
+			LabelsConfig{
+				"testLabel": &sourceName,
+			},
+			map[string]interface{}{
+				sourceName: "testValue",
+			},
+			model.LabelSet{},
+			model.LabelSet{
+				"testLabel": "testValue",
+			},
+		},
+	}
+	for name, test := range tests {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			st, err := newLabelStage(util.Logger, test.config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			st.Process(test.inputLabels, test.extractedData, nil, nil)
+			assert.Equal(t, test.expectedLabels, test.expectedLabels)
+		})
+	}
+}

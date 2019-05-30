@@ -174,7 +174,7 @@ func TestJSONParser_Parse(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			p, err := New(util.Logger, "test", StageTypeJSON, tt.config, nil)
+			p, err := New(util.Logger, nil, StageTypeJSON, tt.config, nil)
 			if err != nil {
 				t.Fatalf("failed to create json parser: %s", err)
 			}
