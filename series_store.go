@@ -164,14 +164,14 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, from, through model.Time
 	// Fetch the series IDs from the index, based on non-empty matchers from
 	// the query.
 	_, matchers = util.SplitFiltersAndMatchers(matchers)
-	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, metricName, matchers)
+	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, matchers)
 	if err != nil {
 		return nil, nil, err
 	}
 	level.Debug(log).Log("series-ids", len(seriesIDs))
 
 	// Lookup the series in the index to get the chunks.
-	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, seriesIDs)
+	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, userID, seriesIDs)
 	if err != nil {
 		level.Error(log).Log("msg", "lookupChunksBySeries", "err", err)
 		return nil, nil, err
@@ -191,14 +191,14 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, from, through model.Time
 	return [][]Chunk{chunks}, []*Fetcher{c.store.Fetcher}, nil
 }
 
-func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from, through model.Time, metricName string, matchers []*labels.Matcher) ([]string, error) {
+func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from, through model.Time, userID, metricName string, matchers []*labels.Matcher) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupSeriesByMetricNameMatchers", "metricName", metricName, "matchers", len(matchers))
 	defer log.Span.Finish()
 
 	// Just get series for metric if there are no matchers
 	if len(matchers) == 0 {
 		indexLookupsPerQuery.Observe(1)
-		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, metricName, nil)
+		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil)
 		if err != nil {
 			preIntersectionPerQuery.Observe(float64(len(series)))
 			postIntersectionPerQuery.Observe(float64(len(series)))
@@ -212,7 +212,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	indexLookupsPerQuery.Observe(float64(len(matchers)))
 	for _, matcher := range matchers {
 		go func(matcher *labels.Matcher) {
-			ids, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, metricName, matcher)
+			ids, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, matcher)
 			if err != nil {
 				incomingErrors <- err
 				return
@@ -263,15 +263,11 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	return ids, nil
 }
 
-func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, metricName string, matcher *labels.Matcher) ([]string, error) {
+func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupSeriesByMetricNameMatcher", "metricName", metricName, "matcher", matcher)
 	defer log.Span.Finish()
 
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+	var err error
 	var queries []IndexQuery
 	var labelName string
 	if matcher == nil {
@@ -307,14 +303,10 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 	return ids, nil
 }
 
-func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through model.Time, seriesIDs []string) ([]string, error) {
+func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupChunksBySeries")
 	defer log.Span.Finish()
 
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
 	level.Debug(log).Log("seriesIDs", len(seriesIDs))
 
 	queries := make([]IndexQuery, 0, len(seriesIDs))
