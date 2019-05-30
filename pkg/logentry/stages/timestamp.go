@@ -23,6 +23,7 @@ type TimestampConfig struct {
 	Format string `mapstructure:"format"`
 }
 
+// validateTimestampConfig validates a timestampStage configuration
 func validateTimestampConfig(cfg *TimestampConfig) (string, error) {
 	if cfg == nil {
 		return "", errors.New(ErrEmptyTimestampStageConfig)
@@ -37,8 +38,8 @@ func validateTimestampConfig(cfg *TimestampConfig) (string, error) {
 
 }
 
-// newTimestamp creates a new timestamp extraction pipeline stage.
-func newTimestamp(logger log.Logger, config interface{}) (*timestampStage, error) {
+// newTimestampStage creates a new timestamp extraction pipeline stage.
+func newTimestampStage(logger log.Logger, config interface{}) (*timestampStage, error) {
 	cfg := &TimestampConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -55,12 +56,14 @@ func newTimestamp(logger log.Logger, config interface{}) (*timestampStage, error
 	}, nil
 }
 
+// timestampStage will set the timestamp using extracted data
 type timestampStage struct {
 	cfgs   *TimestampConfig
 	logger log.Logger
 	format string
 }
 
+// Process implements Stage
 func (ts *timestampStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	if ts.cfgs == nil {
 		return

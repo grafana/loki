@@ -23,7 +23,7 @@ pipeline_stages:
 
 var testTimestampLogLine = `
 {
-	"time":"2012-11-01T22:08:41+00:00",
+	"time":"2012-11-01T22:08:41-04:00",
 	"app":"loki",
 	"component": ["parser","type"],
 	"level" : "WARN"
@@ -31,7 +31,7 @@ var testTimestampLogLine = `
 `
 
 func TestTimestampPipeline(t *testing.T) {
-	pl, err := NewPipeline(util.Logger, loadConfig(testTimestampYaml), "test", prometheus.DefaultRegisterer)
+	pl, err := NewPipeline(util.Logger, loadConfig(testTimestampYaml), nil, prometheus.DefaultRegisterer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestTimestampPipeline(t *testing.T) {
 	entry := testTimestampLogLine
 	extracted := map[string]interface{}{}
 	pl.Process(lbls, extracted, &ts, &entry)
-	assert.Equal(t, time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", 0)), ts)
+	assert.Equal(t, time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", -4*60*60)), ts)
 }
 
 func TestTimestampValidation(t *testing.T) {
@@ -100,4 +100,37 @@ func TestTimestampValidation(t *testing.T) {
 	}
 }
 
-//TODO process tests
+func TestTimestampStage_Process(t *testing.T) {
+	tests := map[string]struct {
+		config    TimestampConfig
+		extracted map[string]interface{}
+		expected  time.Time
+	}{
+		"set success": {
+			TimestampConfig{
+				Source: "ts",
+				Format: time.RFC3339,
+			},
+			map[string]interface{}{
+				"somethigelse": "notimportant",
+				"ts":           "2106-01-02T23:04:05-04:00",
+			},
+			time.Date(2106, 01, 02, 23, 04, 05, 0, time.FixedZone("", -4*60*60)),
+		},
+	}
+	for name, test := range tests {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			st, err := newTimestampStage(util.Logger, test.config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ts := time.Now()
+			lbls := model.LabelSet{}
+			st.Process(lbls, test.extracted, &ts, nil)
+			assert.Equal(t, test.expected, ts)
+
+		})
+	}
+}

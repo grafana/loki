@@ -15,23 +15,25 @@ import (
 
 const (
 	ErrEmptyMatchStageConfig = "match stage config cannot be empty"
-	ErrPipelineNameRequired  = "match stage must specify a pipeline name which is used in the exported metrics"
+	ErrPipelineNameRequired  = "match stage pipeline name can be omitted but cannot be an empty string"
 	ErrSelectorRequired      = "selector statement required for match stage"
 	ErrMatchRequiresStages   = "match stage requires at least one additional stage to be defined in '- stages'"
 	ErrSelectorSyntax        = "invalid selector syntax for match stage"
 )
 
+// MatcherConfig contains the configuration for a matcherStage
 type MatcherConfig struct {
-	PipelineName string         `mapstructure:"pipeline_name"`
+	PipelineName *string        `mapstructure:"pipeline_name"`
 	Selector     string         `mapstructure:"selector"`
 	Stages       PipelineStages `mapstructure:"stages"`
 }
 
+// validateMatcherConfig validates the MatcherConfig for the matcherStage
 func validateMatcherConfig(cfg *MatcherConfig) ([]*labels.Matcher, error) {
 	if cfg == nil {
 		return nil, errors.New(ErrEmptyMatchStageConfig)
 	}
-	if cfg.PipelineName == "" {
+	if cfg.PipelineName != nil && *cfg.PipelineName == "" {
 		return nil, errors.New(ErrPipelineNameRequired)
 	}
 	if cfg.Selector == "" {
@@ -47,7 +49,8 @@ func validateMatcherConfig(cfg *MatcherConfig) ([]*labels.Matcher, error) {
 	return matchers, nil
 }
 
-func newMatcherStage(logger log.Logger, config interface{}, registerer prometheus.Registerer) (Stage, error) {
+// newMatcherStage creates a new matcherStage from config
+func newMatcherStage(logger log.Logger, jobName *string, config interface{}, registerer prometheus.Registerer) (Stage, error) {
 	cfg := &MatcherConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -58,9 +61,15 @@ func newMatcherStage(logger log.Logger, config interface{}, registerer prometheu
 		return nil, err
 	}
 
-	pl, err := NewPipeline(logger, cfg.Stages, cfg.PipelineName, registerer)
+	var nPtr *string
+	if cfg.PipelineName != nil && jobName != nil {
+		name := *jobName + "_" + *cfg.PipelineName
+		nPtr = &name
+	}
+
+	pl, err := NewPipeline(logger, cfg.Stages, nPtr, registerer)
 	if err != nil {
-		return nil, errors.Wrapf(err, "match stage %s failed to create pipeline", cfg.PipelineName)
+		return nil, errors.Wrapf(err, "match stage failed to create pipeline from config: %v", config)
 	}
 
 	return &matcherStage{
@@ -71,6 +80,7 @@ func newMatcherStage(logger log.Logger, config interface{}, registerer prometheu
 	}, nil
 }
 
+// matcherStage applies Label matchers to determine if the include stages should be run
 type matcherStage struct {
 	cfgs     *MatcherConfig
 	matchers []*labels.Matcher
@@ -78,6 +88,7 @@ type matcherStage struct {
 	pipeline Stage
 }
 
+// Process implements Stage
 func (m *matcherStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	for _, filter := range m.matchers {
 		if !filter.Matches(string(labels[model.LabelName(filter.Name)])) {

@@ -36,18 +36,18 @@ func (s StageFunc) Process(labels model.LabelSet, extracted map[string]interface
 }
 
 // New creates a new stage for the given type and configuration.
-func New(logger log.Logger, jobName string, stageType string,
+func New(logger log.Logger, jobName *string, stageType string,
 	cfg interface{}, registerer prometheus.Registerer) (Stage, error) {
 	var s Stage
 	var err error
 	switch stageType {
 	case StageTypeDocker:
-		s, err = NewDocker(logger, jobName, registerer)
+		s, err = NewDocker(logger, registerer)
 		if err != nil {
 			return nil, err
 		}
 	case StageTypeCRI:
-		s, err = NewCRI(logger, jobName, registerer)
+		s, err = NewCRI(logger, registerer)
 		if err != nil {
 			return nil, err
 		}
@@ -62,27 +62,27 @@ func New(logger log.Logger, jobName string, stageType string,
 			return nil, err
 		}
 	case StageTypeMetric:
-		s, err = newMetric(logger, cfg, registerer)
+		s, err = newMetricStage(logger, cfg, registerer)
 		if err != nil {
 			return nil, err
 		}
 	case StageTypeLabel:
-		s, err = newLabel(logger, cfg)
+		s, err = newLabelStage(logger, cfg)
 		if err != nil {
 			return nil, err
 		}
 	case StageTypeTimestamp:
-		s, err = newTimestamp(logger, cfg)
+		s, err = newTimestampStage(logger, cfg)
 		if err != nil {
 			return nil, err
 		}
 	case StageTypeOutput:
-		s, err = newOutput(logger, cfg)
+		s, err = newOutputStage(logger, cfg)
 		if err != nil {
 			return nil, err
 		}
 	case StageTypeMatch:
-		s, err = newMatcherStage(logger, cfg, registerer)
+		s, err = newMatcherStage(logger, jobName, cfg, registerer)
 		if err != nil {
 			return nil, err
 		}
