@@ -40,7 +40,7 @@ func TestTimestampPipeline(t *testing.T) {
 	entry := testTimestampLogLine
 	extracted := map[string]interface{}{}
 	pl.Process(lbls, extracted, &ts, &entry)
-	assert.Equal(t, time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", -4*60*60)), ts)
+	assert.Equal(t, time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", -4*60*60)).Unix(), ts.Unix())
 }
 
 func TestTimestampValidation(t *testing.T) {
