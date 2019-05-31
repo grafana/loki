@@ -19,28 +19,62 @@ pipeline_stages:
 - json:
     expressions:
       app: app
+      payload: payload
 - metrics:
-    loki_count:
+    loki_count_total:
       type: Counter
       description: uhhhhhhh
       source: app
       config:
         value: loki
         action: inc
+    bloki_count_total:
+      type: Gauge
+      description: blerrrgh
+      source: app
+      config:
+        value: bloki
+        action: dec
+    payload_size:
+      type: Histogram
+      description: grrrragh
+      source: payload
+      config:
+        buckets: [10, 20]
 `
 
-var testMetricLogLine = `
+var testMetricLogLine1 = `
 {
 	"time":"2012-11-01T22:08:41+00:00",
 	"app":"loki",
+    "payload": 10,
+	"component": ["parser","type"],
+	"level" : "WARN"
+}
+`
+var testMetricLogLine2 = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"app":"bloki",
+    "payload": 20,
 	"component": ["parser","type"],
 	"level" : "WARN"
 }
 `
 
-const expectedMetrics = `# HELP promtail_custom_loki_count uhhhhhhh
-# TYPE promtail_custom_loki_count counter
-promtail_custom_loki_count 1.0
+const expectedMetrics = `# HELP promtail_custom_bloki_count_total blerrrgh
+# TYPE promtail_custom_bloki_count_total gauge
+promtail_custom_bloki_count_total -1.0
+# HELP promtail_custom_loki_count_total uhhhhhhh
+# TYPE promtail_custom_loki_count_total counter
+promtail_custom_loki_count_total 1.0
+# HELP promtail_custom_payload_size grrrragh
+# TYPE promtail_custom_payload_size histogram
+promtail_custom_payload_size_bucket{le="10.0"} 1.0
+promtail_custom_payload_size_bucket{le="20.0"} 2.0
+promtail_custom_payload_size_bucket{le="+Inf"} 2.0
+promtail_custom_payload_size_sum 30.0
+promtail_custom_payload_size_count 2.0
 `
 
 func TestMetricsPipeline(t *testing.T) {
@@ -51,9 +85,12 @@ func TestMetricsPipeline(t *testing.T) {
 	}
 	lbls := model.LabelSet{}
 	ts := time.Now()
-	entry := testMetricLogLine
 	extracted := map[string]interface{}{}
+	entry := testMetricLogLine1
 	pl.Process(lbls, extracted, &ts, &entry)
+	entry = testMetricLogLine2
+	pl.Process(lbls, extracted, &ts, &entry)
+
 	if err := testutil.GatherAndCompare(registry,
 		strings.NewReader(expectedMetrics)); err != nil {
 		t.Fatalf("missmatch metrics: %v", err)
