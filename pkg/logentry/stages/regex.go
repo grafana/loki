@@ -61,7 +61,7 @@ func newRegexStage(logger log.Logger, config interface{}) (Stage, error) {
 	return &regexStage{
 		cfg:        cfg,
 		expression: expression,
-		logger:     log.With(logger, "component", "mutator", "type", "regex"),
+		logger:     log.With(logger, "component", "stage", "type", "regex"),
 	}, nil
 }
 

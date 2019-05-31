@@ -73,8 +73,6 @@ func newMatcherStage(logger log.Logger, jobName *string, config interface{}, reg
 	}
 
 	return &matcherStage{
-		cfgs:     cfg,
-		logger:   logger,
 		matchers: matchers,
 		pipeline: pl,
 	}, nil
@@ -82,9 +80,7 @@ func newMatcherStage(logger log.Logger, jobName *string, config interface{}, reg
 
 // matcherStage applies Label matchers to determine if the include stages should be run
 type matcherStage struct {
-	cfgs     *MatcherConfig
 	matchers []*labels.Matcher
-	logger   log.Logger
 	pipeline Stage
 }
 
