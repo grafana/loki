@@ -73,7 +73,7 @@ func newJSONStage(logger log.Logger, config interface{}) (*jsonStage, error) {
 	return &jsonStage{
 		cfg:         cfg,
 		expressions: expressions,
-		logger:      log.With(logger, "component", "mutator", "type", "json"),
+		logger:      log.With(logger, "component", "stage", "type", "json"),
 	}, nil
 }
 

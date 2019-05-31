@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -56,6 +57,50 @@ func TestMetricsPipeline(t *testing.T) {
 	if err := testutil.GatherAndCompare(registry,
 		strings.NewReader(expectedMetrics)); err != nil {
 		t.Fatalf("missmatch metrics: %v", err)
+	}
+}
+
+func Test(t *testing.T) {
+	tests := map[string]struct {
+		config MetricsConfig
+		err    error
+	}{
+		"empty": {
+			nil,
+			errors.New(ErrEmptyMetricsStageConfig),
+		},
+		"invalid metric type": {
+			MetricsConfig{
+				"metric1": MetricConfig{
+					MetricType: "Piplne",
+				},
+			},
+			errors.Errorf(ErrMetricsStageInvalidType, "piplne"),
+		},
+		"valid": {
+			MetricsConfig{
+				"metric1": MetricConfig{
+					MetricType:  "Counter",
+					Description: "some description",
+					Config: metric.CounterConfig{
+						Action: "inc",
+					},
+				},
+			},
+			nil,
+		},
+	}
+
+	for name, test := range tests {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			err := validateMetricsConfig(test.config)
+			if (err != nil) && (err.Error() != test.err.Error()) {
+				t.Errorf("Metrics stage validation error, expected error = %v, actual error = %v", test.err, err)
+				return
+			}
+		})
 	}
 }
 

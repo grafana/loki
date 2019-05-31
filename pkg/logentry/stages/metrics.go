@@ -26,6 +26,7 @@ const (
 	MetricTypeHistogram = "histogram"
 
 	ErrEmptyMetricsStageConfig = "empty metric stage configuration"
+	ErrMetricsStageInvalidType = "invalid metric type '%s', metric type must be one of 'counter', 'gauge', or 'histogram'"
 )
 
 // MetricConfig is a single metrics configuration.
@@ -50,6 +51,13 @@ func validateMetricsConfig(cfg MetricsConfig) error {
 			nm := name
 			cp.Source = &nm
 			cfg[name] = cp
+		}
+
+		config.MetricType = strings.ToLower(config.MetricType)
+		if config.MetricType != MetricTypeCounter &&
+			config.MetricType != MetricTypeGauge &&
+			config.MetricType != MetricTypeHistogram {
+			return errors.Errorf(ErrMetricsStageInvalidType, config.MetricType)
 		}
 	}
 	return nil
@@ -144,7 +152,7 @@ func (m *metricStage) recordCounter(name string, counter *metric.Counters, label
 	case metric.CounterAdd:
 		f, err := getFloat(v)
 		if err != nil || f < 0 {
-			level.Debug(m.logger).Log("msg", "failed to convert extracted value to float", "metric", name, "err", err)
+			level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
 			return
 		}
 		counter.With(labels).Add(f)
@@ -171,7 +179,7 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 	case metric.GaugeSet:
 		f, err := getFloat(v)
 		if err != nil || f < 0 {
-			level.Debug(m.logger).Log("msg", "failed to convert extracted value to float", "metric", name, "err", err)
+			level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
 			return
 		}
 		gauge.With(labels).Set(f)
@@ -182,14 +190,14 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 	case metric.GaugeAdd:
 		f, err := getFloat(v)
 		if err != nil || f < 0 {
-			level.Debug(m.logger).Log("msg", "failed to convert extracted value to float", "metric", name, "err", err)
+			level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
 			return
 		}
 		gauge.With(labels).Add(f)
 	case metric.GaugeSub:
 		f, err := getFloat(v)
 		if err != nil || f < 0 {
-			level.Debug(m.logger).Log("msg", "failed to convert extracted value to float", "metric", name, "err", err)
+			level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
 			return
 		}
 		gauge.With(labels).Sub(f)
