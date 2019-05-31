@@ -7,10 +7,46 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 )
+
+var testRegexYaml = `
+pipeline_stages:
+- regex:
+    expression: "^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<action>\\S+)\\s?(?P<path>\\S+)?\\s?(?P<protocol>\\S+)?\" (?P<status>\\d{3}|-) (?P<size>\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$"
+`
+
+var testRegexLogLine = `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`
+
+func TestPipeline_Regex(t *testing.T) {
+	expected := map[string]interface{}{
+		"ip":        "11.11.11.11",
+		"identd":    "-",
+		"user":      "frank",
+		"timestamp": "25/Jan/2000:14:00:01 -0500",
+		"action":    "GET",
+		"path":      "/1986.js",
+		"protocol":  "HTTP/1.1",
+		"status":    "200",
+		"size":      "932",
+		"referer":   "-",
+		"useragent": "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6",
+	}
+
+	pl, err := NewPipeline(util.Logger, loadConfig(testRegexYaml), nil, prometheus.DefaultRegisterer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	ts := time.Now()
+	entry := testRegexLogLine
+	extracted := map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	assert.Equal(t, expected, extracted)
+}
 
 var regexCfg = `regex: 
   expression: "regexexpression"`
