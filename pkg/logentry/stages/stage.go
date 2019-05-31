@@ -12,7 +12,7 @@ import (
 const (
 	StageTypeJSON      = "json"
 	StageTypeRegex     = "regex"
-	StageTypeMetric    = "metric"
+	StageTypeMetric    = "metrics"
 	StageTypeLabel     = "labels"
 	StageTypeTimestamp = "timestamp"
 	StageTypeOutput    = "output"

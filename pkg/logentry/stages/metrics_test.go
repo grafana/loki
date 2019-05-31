@@ -19,7 +19,7 @@ pipeline_stages:
 - json:
     expressions:
       app: app
-- metric:
+- metrics:
     loki_count:
       type: Counter
       description: uhhhhhhh

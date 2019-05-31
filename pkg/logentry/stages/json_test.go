@@ -7,10 +7,53 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 )
+
+var testJSONYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      out:  message
+      app:
+      nested:
+      duration:
+`
+
+var testJSONLogLine = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"app":"loki",
+	"component": ["parser","type"],
+	"level" : "WARN",
+	"nested" : {"child":"value"},
+    "duration" : 125,
+	"message" : "this is a log line"
+}
+`
+
+func TestPipeline_JSON(t *testing.T) {
+	expected := map[string]interface{}{
+		"out":      "this is a log line",
+		"app":      "loki",
+		"nested":   "{\"child\":\"value\"}",
+		"duration": float64(125),
+	}
+
+	pl, err := NewPipeline(util.Logger, loadConfig(testJSONYaml), nil, prometheus.DefaultRegisterer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	ts := time.Now()
+	entry := testJSONLogLine
+	extracted := map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	assert.Equal(t, expected, extracted)
+}
 
 var cfg = `json:
   expressions:
