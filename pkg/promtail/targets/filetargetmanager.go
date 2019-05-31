@@ -113,7 +113,7 @@ func NewFileTargetManager(
 			targets:        map[string]*FileTarget{},
 			droppedTargets: []Target{},
 			hostname:       hostname,
-			entryHandler:   pipeline.Wrap(metric.LogSize(prometheus.DefaultRegisterer, metric.LogCount(prometheus.DefaultRegisterer, client))),
+			entryHandler:   pipeline.Wrap(metric.LogSize(prometheus.DefaultRegisterer, client)),
 			targetConfig:   targetConfig,
 		}
 		tm.syncers[cfg.JobName] = s
