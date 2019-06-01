@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/grafana/loki/pkg/logentry/metric"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,7 +21,6 @@ import (
 	"github.com/prometheus/prometheus/relabel"
 
 	"github.com/grafana/loki/pkg/helpers"
-	"github.com/grafana/loki/pkg/logentry"
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
@@ -75,7 +76,8 @@ func NewFileTargetManager(
 
 	config := map[string]sd_config.ServiceDiscoveryConfig{}
 	for _, cfg := range scrapeConfigs {
-		pipeline, err := logentry.NewPipeline(log.With(logger, "component", "pipeline"), cfg.PipelineStages, cfg.JobName)
+		registerer := prometheus.DefaultRegisterer
+		pipeline, err := stages.NewPipeline(log.With(logger, "component", "pipeline"), cfg.PipelineStages, &cfg.JobName, registerer)
 		if err != nil {
 			return nil, err
 		}
@@ -85,14 +87,14 @@ func NewFileTargetManager(
 			switch cfg.EntryParser {
 			case api.CRI:
 				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
-				cri, err := stages.NewCRI(logger)
+				cri, err := stages.NewCRI(logger, registerer)
 				if err != nil {
 					return nil, err
 				}
 				pipeline.AddStage(cri)
 			case api.Docker:
 				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
-				docker, err := stages.NewDocker(logger)
+				docker, err := stages.NewDocker(logger, registerer)
 				if err != nil {
 					return nil, err
 				}
@@ -111,7 +113,7 @@ func NewFileTargetManager(
 			targets:        map[string]*FileTarget{},
 			droppedTargets: []Target{},
 			hostname:       hostname,
-			entryHandler:   pipeline.Wrap(client),
+			entryHandler:   pipeline.Wrap(metric.LogSize(prometheus.DefaultRegisterer, client)),
 			targetConfig:   targetConfig,
 		}
 		tm.syncers[cfg.JobName] = s

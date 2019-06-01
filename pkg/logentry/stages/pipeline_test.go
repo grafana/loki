@@ -1,4 +1,4 @@
-package logentry
+package stages
 
 import (
 	"testing"
@@ -7,28 +7,34 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"gopkg.in/yaml.v2"
 )
 
-var rawTestLine = `{"log":"11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] \"GET /1986.js HTTP/1.1\" 200 932 \"-\" \"Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6\"","stream":"stderr","time":"2019-04-30T02:12:41.8443515Z"}`
-var processedTestLine = `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`
+var (
+	ct                = time.Now()
+	rawTestLine       = `{"log":"11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] \"GET /1986.js HTTP/1.1\" 200 932 \"-\" \"Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6\"","stream":"stderr","time":"2019-04-30T02:12:41.8443515Z"}`
+	processedTestLine = `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`
+)
 
 var testYaml = `
 pipeline_stages:
-- docker:
-- regex:
-    expression: "^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<action>\\S+)\\s?(?P<path>\\S+)?\\s?(?P<protocol>\\S+)?\" (?P<status>\\d{3}|-) (?P<size>\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$"
-    timestamp:
-      source: timestamp
-      format: "02/Jan/2006:15:04:05 -0700"
-    labels:
-      action:
-        source: "action"
-      status_code:
-        source: "status"
+- match:
+    selector: "{match=\"true\"}"
+    stages:
+    - docker:
+    - regex:
+        expression: "^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<action>\\S+)\\s?(?P<path>\\S+)?\\s?(?P<protocol>\\S+)?\" (?P<status>\\d{3}|-) (?P<size>\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$"
+    - timestamp:
+        source: timestamp
+        format: "02/Jan/2006:15:04:05 -0700"
+    - labels:
+        action:
+        status_code: "status"
 `
 
 func loadConfig(yml string) PipelineStages {
@@ -42,13 +48,11 @@ func loadConfig(yml string) PipelineStages {
 
 func TestNewPipeline(t *testing.T) {
 
-	p, err := NewPipeline(util.Logger, loadConfig(testYaml), "test")
+	p, err := NewPipeline(util.Logger, loadConfig(testYaml), nil, prometheus.DefaultRegisterer)
 	if err != nil {
 		panic(err)
 	}
-	if len(p.stages) != 2 {
-		t.Fatal("missing stages")
-	}
+	require.Equal(t, 1, len(p.stages))
 }
 
 func TestPipeline_MultiStage(t *testing.T) {
@@ -62,7 +66,7 @@ func TestPipeline_MultiStage(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	p, err := NewPipeline(util.Logger, config["pipeline_stages"].([]interface{}), "test")
+	p, err := NewPipeline(util.Logger, config["pipeline_stages"].([]interface{}), nil, prometheus.DefaultRegisterer)
 	if err != nil {
 		panic(err)
 	}
@@ -81,13 +85,25 @@ func TestPipeline_MultiStage(t *testing.T) {
 			time.Now(),
 			time.Date(2000, 01, 25, 14, 00, 01, 0, est),
 			map[model.LabelName]model.LabelValue{
-				"test": "test",
+				"match": "true",
 			},
 			map[model.LabelName]model.LabelValue{
-				"test":        "test",
+				"match":       "true",
 				"stream":      "stderr",
 				"action":      "GET",
 				"status_code": "200",
+			},
+		},
+		"no match": {
+			rawTestLine,
+			rawTestLine,
+			ct,
+			ct,
+			map[model.LabelName]model.LabelValue{
+				"nomatch": "true",
+			},
+			map[model.LabelName]model.LabelValue{
+				"nomatch": "true",
 			},
 		},
 	}
@@ -96,8 +112,8 @@ func TestPipeline_MultiStage(t *testing.T) {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-
-			p.Process(tt.labels, &tt.t, &tt.entry)
+			extracted := map[string]interface{}{}
+			p.Process(tt.labels, extracted, &tt.t, &tt.entry)
 
 			assert.Equal(t, tt.expectedLabels, tt.labels, "did not get expected labels")
 			assert.Equal(t, tt.expectedEntry, tt.entry, "did not receive expected log entry")
@@ -116,7 +132,7 @@ var (
 	debugLogger = level.NewFilter(l, level.AllowDebug())
 )
 
-func Benchmark(b *testing.B) {
+func BenchmarkPipeline(b *testing.B) {
 	benchmarks := []struct {
 		name   string
 		stgs   PipelineStages
@@ -138,7 +154,7 @@ func Benchmark(b *testing.B) {
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			pl, err := NewPipeline(bm.logger, bm.stgs, "test")
+			pl, err := NewPipeline(bm.logger, bm.stgs, nil, prometheus.DefaultRegisterer)
 			if err != nil {
 				panic(err)
 			}
@@ -146,7 +162,8 @@ func Benchmark(b *testing.B) {
 			ts := time.Now()
 			for i := 0; i < b.N; i++ {
 				entry := bm.entry
-				pl.Process(lb, &ts, &entry)
+				extracted := map[string]interface{}{}
+				pl.Process(lb, extracted, &ts, &entry)
 			}
 		})
 	}
