@@ -8,45 +8,38 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/prometheus/prometheus/pkg/labels"
+
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestMetricSeriesID(t *testing.T) {
+func TestLabelSeriesID(t *testing.T) {
 	for _, c := range []struct {
-		metric   model.Metric
+		lbls     labels.Labels
 		expected string
 	}{
 		{
-			model.Metric{model.MetricNameLabel: "foo"},
+			labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}},
 			"LCa0a2j/xo/5m0U8HTBBNBNCLXBkg7+g+YpeiGJm564",
 		},
 		{
-			model.Metric{
-				model.MetricNameLabel: "foo",
-				"bar":                 "baz",
-				"toms":                "code",
-				"flip":                "flop",
+			labels.Labels{
+				{Name: model.MetricNameLabel, Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "flip", Value: "flop"},
+				{Name: "toms", Value: "code"},
 			},
 			"KrbXMezYneba+o7wfEdtzOdAWhbfWcDrlVfs1uOCX3M",
 		},
 		{
-			model.Metric{
-				"flip":                "flop",
-				"bar":                 "baz",
-				model.MetricNameLabel: "foo",
-				"toms":                "code",
-			},
-			"KrbXMezYneba+o7wfEdtzOdAWhbfWcDrlVfs1uOCX3M",
-		},
-		{
-			model.Metric{},
+			labels.Labels{},
 			"RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o",
 		},
 	} {
-		seriesID := metricSeriesID(c.metric)
-		assert.Equal(t, c.expected, seriesID)
+		seriesID := string(labelsSeriesID(c.lbls))
+		assert.Equal(t, c.expected, seriesID, labelsString(c.lbls))
 	}
 }
 
