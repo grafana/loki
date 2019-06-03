@@ -37,15 +37,6 @@ workflows:
         filters:
           branches:
             only: master
-  release:
-    jobs:
-    - release:
-        filters:
-          tags:
-            # Matches tags pushed such as v0.1.0, matches anything after the patch to also allow v0.2.0-beta or v0.2.0-rc.1
-            only: /^v\d+\.\d+\.\d+.*$/
-          branches:
-            only: master
 
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
