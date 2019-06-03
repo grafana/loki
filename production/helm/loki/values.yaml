@@ -64,6 +64,11 @@ config:
     retention_deletes_enabled: false
     retention_period: 0
 
+overrides:
+  #overrides:
+     #1234:
+       #max_series_per_user: 10000
+       #max_series_per_query: 500
 image:
   repository: grafana/loki
   tag: latest

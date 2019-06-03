@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "loki.fullname" . }}-overrides
+  labels:
+    app: {{ template "loki.name" . }}
+    chart: {{ template "loki.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+data:
+  overrides.yaml: 
+  {{ if .Values.overrides }}  
+    {{ tpl (toYaml .Values.overrides) . }}
+  {{ end }}

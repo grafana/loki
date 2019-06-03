@@ -46,12 +46,15 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - "-config.file=/etc/loki/loki.yaml"
+            - "-limits.per-user-override-config=/etc/loki/overrides/overrides.yaml"
           {{- range $key, $value := .Values.extraArgs }}
             - "-{{ $key }}={{ $value }}"
           {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki
+            - name: overrides
+              mountPath: /etc/loki/overrides
             - name: storage
               mountPath: "/data"
               subPath: {{ .Values.persistence.subPath }}
@@ -83,6 +86,9 @@ spec:
         - name: config
           secret:
             secretName: {{ template "loki.fullname" . }}
+        - name: overrides
+          configMap:
+            name: {{ template "loki.fullname" . }}-overrides
   {{- if not .Values.persistence.enabled }}
         - name: storage
           emptyDir: {}
