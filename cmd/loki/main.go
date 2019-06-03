@@ -26,7 +26,7 @@ func main() {
 		cfg        loki.Config
 		configFile = ""
 	)
-	flag.StringVar(&configFile, "config.file", "", "Configuration file to load.")
+	flag.StringVar(&configFile, "config.file", "", "Configuration file to load, if specified, all other flags do not work.")
 	flagext.RegisterFlags(&cfg)
 	flag.Parse()
 

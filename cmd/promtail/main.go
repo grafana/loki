@@ -24,7 +24,7 @@ func main() {
 		configFile = "cmd/promtail/promtail-local-config.yaml"
 		config     config.Config
 	)
-	flag.StringVar(&configFile, "config.file", "promtail.yml", "The config file.")
+	flag.StringVar(&configFile, "config.file", "promtail.yml", "The config file, if specified, all other flags do not work.")
 	flagext.RegisterFlags(&config)
 	flag.Parse()
 
