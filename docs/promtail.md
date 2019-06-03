@@ -104,7 +104,7 @@ See the [pipeline label docs](./logentry/processing-log-lines.md#labels) for mor
 
 #### Metrics
 
-Metrics can also be extracted from log line content as a set of Prometheus metrics. Metrics are exposed on the path `/metrics` in promtail. By default a counter of log entries (`log_entries_total`) and a log size histogram (`log_entries_bytes_bucket`) per stream is computed. This means you don't need to create metrics to count status code or log level, simply parse the log entry and add them to the labels. All custom metrics are prefixed with `promtail_custom_`.
+Metrics can also be extracted from log line content as a set of Prometheus metrics. Metrics are exposed on the path `/metrics` in promtail. By default a log size histogram (`log_entries_bytes_bucket`) per stream is computed. This means you don't need to create metrics to count status code or log level, simply parse the log entry and add them to the labels. All custom metrics are prefixed with `promtail_custom_`.
 
 There are three [Prometheus metric types](https://prometheus.io/docs/concepts/metric_types/) available.
 
