@@ -37,6 +37,13 @@ workflows:
         filters:
           branches:
             only: master
+  release:
+    jobs:
+    - release:
+        filters:
+          tags:
+            # Matches tags pushed such as v0.1.0, matches anything after the patch to also allow v0.2.0-beta or v0.2.0-rc.1
+            only: /^v\d+\.\d+\.\d+.*$/
 
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
@@ -159,3 +166,24 @@ jobs:
             --data "{\"build_parameters\": {\"CIRCLE_JOB\": \"deploy\", \"IMAGE_NAMES\": \"$(make images)\"}}" \
             --request POST \
             https://circleci.com/api/v1.1/project/github/raintank/deployment_tools/tree/master?circle-token=$CIRCLE_TOKEN
+
+  release:
+    <<: *defaults
+    steps:
+      - checkout
+      - setup_remote_docker
+      - restore_cache:
+          key: v1-loki-{{ .Branch }}-{{ .Revision }}
+      - run:
+          name: Load Images
+          command: |
+            touch loki-build-image/.uptodate &&
+            make BUILD_IN_CONTAINER=false load-images
+      - run:
+          name: "Print Tag"
+          command: echo ${CIRCLE_TAG}
+      - run:
+          name: "Release"
+          command: |
+            docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
+            make VERSION=${CIRCLE_TAG} release-perform
