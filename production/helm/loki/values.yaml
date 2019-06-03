@@ -67,7 +67,7 @@ config:
 image:
   repository: grafana/loki
   tag: latest
-  pullPolicy: Always # Always pull while in BETA
+  pullPolicy: IfNotPresent
 
 ## Additional Loki container arguments, e.g. log level (debug, info, warn, error)
 extraArgs: {}

@@ -9,7 +9,7 @@ deploymentStrategy: RollingUpdate
 image:
   repository: grafana/promtail
   tag: latest
-  pullPolicy: Always # Always pull while in BETA
+  pullPolicy: IfNotPresent
 
 livenessProbe: {}
 
