@@ -21,21 +21,21 @@ pipeline_stages:
       app: app
       payload: payload
 - metrics:
-    loki_count_total:
+    loki_count:
       type: Counter
       description: uhhhhhhh
       source: app
       config:
         value: loki
         action: inc
-    bloki_count_total:
+    bloki_count:
       type: Gauge
       description: blerrrgh
       source: app
       config:
         value: bloki
         action: dec
-    payload_size:
+    payload_size_bytes:
       type: Histogram
       description: grrrragh
       source: payload
@@ -62,19 +62,19 @@ var testMetricLogLine2 = `
 }
 `
 
-const expectedMetrics = `# HELP promtail_custom_bloki_count_total blerrrgh
-# TYPE promtail_custom_bloki_count_total gauge
-promtail_custom_bloki_count_total -1.0
-# HELP promtail_custom_loki_count_total uhhhhhhh
-# TYPE promtail_custom_loki_count_total counter
-promtail_custom_loki_count_total 1.0
-# HELP promtail_custom_payload_size grrrragh
-# TYPE promtail_custom_payload_size histogram
-promtail_custom_payload_size_bucket{le="10.0"} 1.0
-promtail_custom_payload_size_bucket{le="20.0"} 2.0
-promtail_custom_payload_size_bucket{le="+Inf"} 2.0
-promtail_custom_payload_size_sum 30.0
-promtail_custom_payload_size_count 2.0
+const expectedMetrics = `# HELP promtail_custom_bloki_count blerrrgh
+# TYPE promtail_custom_bloki_count gauge
+promtail_custom_bloki_count -1.0
+# HELP promtail_custom_loki_count uhhhhhhh
+# TYPE promtail_custom_loki_count counter
+promtail_custom_loki_count 1.0
+# HELP promtail_custom_payload_size_bytes grrrragh
+# TYPE promtail_custom_payload_size_bytes histogram
+promtail_custom_payload_size_bytes_bucket{le="10.0"} 1.0
+promtail_custom_payload_size_bytes_bucket{le="20.0"} 2.0
+promtail_custom_payload_size_bytes_bucket{le="+Inf"} 2.0
+promtail_custom_payload_size_bytes_sum 30.0
+promtail_custom_payload_size_bytes_count 2.0
 `
 
 func TestMetricsPipeline(t *testing.T) {
