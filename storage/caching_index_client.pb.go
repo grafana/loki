@@ -283,17 +283,17 @@ func (m *Entry) MarshalTo(dAtA []byte) (int, error) {
 	dAtA[i] = 0xa
 	i++
 	i = encodeVarintCachingIndexClient(dAtA, i, uint64(m.Column.Size()))
-	n1, err1 := m.Column.MarshalTo(dAtA[i:])
-	if err1 != nil {
-		return 0, err1
+	n1, err := m.Column.MarshalTo(dAtA[i:])
+	if err != nil {
+		return 0, err
 	}
 	i += n1
 	dAtA[i] = 0x12
 	i++
 	i = encodeVarintCachingIndexClient(dAtA, i, uint64(m.Value.Size()))
-	n2, err2 := m.Value.MarshalTo(dAtA[i:])
-	if err2 != nil {
-		return 0, err2
+	n2, err := m.Value.MarshalTo(dAtA[i:])
+	if err != nil {
+		return 0, err
 	}
 	i += n2
 	return i, nil
@@ -420,13 +420,8 @@ func (this *ReadBatch) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForEntries := "[]Entry{"
-	for _, f := range this.Entries {
-		repeatedStringForEntries += strings.Replace(strings.Replace(f.String(), "Entry", "Entry", 1), `&`, ``, 1) + ","
-	}
-	repeatedStringForEntries += "}"
 	s := strings.Join([]string{`&ReadBatch{`,
-		`Entries:` + repeatedStringForEntries + `,`,
+		`Entries:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Entries), "Entry", "Entry", 1), `&`, ``, 1) + `,`,
 		`Key:` + fmt.Sprintf("%v", this.Key) + `,`,
 		`Expiry:` + fmt.Sprintf("%v", this.Expiry) + `,`,
 		`Cardinality:` + fmt.Sprintf("%v", this.Cardinality) + `,`,
