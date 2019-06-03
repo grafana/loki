@@ -1,5 +1,8 @@
 # Troubleshooting
 
+## cmd flag not work
+If you specify `-- config.file` and any other flag at same time, it is the expected behaviour.
+
 ## "Loki: Bad Gateway. 502"
 This error can appear in Grafana when you add Loki as a datasource.
 It means that Grafana cannot connect to Loki. This can have several reasons:
