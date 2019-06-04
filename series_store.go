@@ -372,23 +372,25 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 func (c *seriesStore) calculateIndexEntries(from, through model.Time, chunk Chunk) (WriteBatch, []string, error) {
 	seenIndexEntries := map[string]struct{}{}
 	entries := []IndexEntry{}
-	keysToCache := []string{}
 
 	metricName := chunk.Metric.Get(labels.MetricName)
 	if metricName == "" {
 		return nil, nil, fmt.Errorf("no MetricNameLabel for chunk")
 	}
-	keys := c.schema.GetLabelEntryCacheKeys(from, through, chunk.UserID, chunk.Metric)
 
+	keys, labelEntries, err := c.schema.GetCacheKeysAndLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey())
+	if err != nil {
+		return nil, nil, err
+	}
 	_, _, missing := c.writeDedupeCache.Fetch(context.Background(), keys)
-	if len(missing) != 0 {
-		labelEntries, err := c.schema.GetLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey())
-		if err != nil {
-			return nil, nil, err
+	// keys and labelEntries are matched in order, but Fetch() may
+	// return missing keys in any order so check against all of them.
+	for _, missingKey := range missing {
+		for i, key := range keys {
+			if key == missingKey {
+				entries = append(entries, labelEntries[i]...)
+			}
 		}
-
-		entries = append(entries, labelEntries...)
-		keysToCache = missing
 	}
 
 	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey())
@@ -410,5 +412,5 @@ func (c *seriesStore) calculateIndexEntries(from, through model.Time, chunk Chun
 		}
 	}
 
-	return result, keysToCache, nil
+	return result, missing, nil
 }
