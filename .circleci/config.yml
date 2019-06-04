@@ -80,6 +80,14 @@ jobs:
       - setup_remote_docker
 
       - run:
+          name: Promtail cross platform
+          command: |
+            touch loki-build-image/.uptodate &&
+            make GOOS=linux   BUILD_IN_CONTAINER=false cmd/promtail/promtail
+            rm cmd/promtail/promtail
+            make GOOS=windows BUILD_IN_CONTAINER=false cmd/promtail/promtail
+
+      - run:
           name: Build Images
           command: |
             touch loki-build-image/.uptodate &&
