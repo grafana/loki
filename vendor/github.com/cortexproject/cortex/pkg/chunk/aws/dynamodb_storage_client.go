@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
+	"golang.org/x/time/rate"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -61,6 +62,11 @@ var (
 		Name:      "dynamo_consumed_capacity_total",
 		Help:      "The capacity units consumed by operation.",
 	}, []string{"operation", tableNameLabel})
+	dynamoThrottled = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "dynamo_throttled_total",
+		Help:      "The total number of throttled events.",
+	}, []string{"operation", tableNameLabel})
 	dynamoFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "dynamo_failures_total",
@@ -84,6 +90,7 @@ var (
 func init() {
 	dynamoRequestDuration.Register()
 	prometheus.MustRegister(dynamoConsumedCapacity)
+	prometheus.MustRegister(dynamoThrottled)
 	prometheus.MustRegister(dynamoFailures)
 	prometheus.MustRegister(dynamoQueryPagesCount)
 	prometheus.MustRegister(dynamoDroppedRequests)
@@ -93,6 +100,7 @@ func init() {
 type DynamoDBConfig struct {
 	DynamoDB               flagext.URLValue
 	APILimit               float64
+	ThrottleLimit          float64
 	ApplicationAutoScaling flagext.URLValue
 	Metrics                MetricsAutoScalingConfig
 	ChunkGangSize          int
@@ -105,6 +113,7 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.DynamoDB, "dynamodb.url", "DynamoDB endpoint URL with escaped Key and Secret encoded. "+
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<table-name> to use a mock in-memory implementation.")
 	f.Float64Var(&cfg.APILimit, "dynamodb.api-limit", 2.0, "DynamoDB table management requests per second limit.")
+	f.Float64Var(&cfg.ThrottleLimit, "dynamodb.throttle-limit", 10.0, "DynamoDB rate cap to back off when throttled.")
 	f.Var(&cfg.ApplicationAutoScaling, "applicationautoscaling.url", "ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.")
 	f.IntVar(&cfg.ChunkGangSize, "dynamodb.chunk.gang.size", 10, "Number of chunks to group together to parallelise fetches (zero to disable)")
 	f.IntVar(&cfg.ChunkGetMaxParallelism, "dynamodb.chunk.get.max.parallelism", 32, "Max number of chunk-get operations to start in parallel")
@@ -133,6 +142,8 @@ type dynamoDBStorageClient struct {
 	schemaCfg chunk.SchemaConfig
 
 	DynamoDB dynamodbiface.DynamoDBAPI
+	// These rate-limiters let us slow down when DynamoDB signals provision limits.
+	writeThrottle *rate.Limiter
 
 	// These functions exists for mocking, so we don't have to write a whole load
 	// of boilerplate.
@@ -159,9 +170,10 @@ func newDynamoDBStorageClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) 
 	}
 
 	client := &dynamoDBStorageClient{
-		cfg:       cfg,
-		schemaCfg: schemaCfg,
-		DynamoDB:  dynamoDB,
+		cfg:           cfg,
+		schemaCfg:     schemaCfg,
+		DynamoDB:      dynamoDB,
+		writeThrottle: rate.NewLimiter(rate.Limit(cfg.ThrottleLimit), dynamoDBMaxWriteBatchSize),
 	}
 	client.queryRequestFn = client.queryRequest
 	client.batchGetItemRequestFn = client.batchGetItemRequest
@@ -178,9 +190,10 @@ func (a dynamoDBStorageClient) NewWriteBatch() chunk.WriteBatch {
 	return dynamoDBWriteBatch(map[string][]*dynamodb.WriteRequest{})
 }
 
-func logRetry(ctx context.Context, unprocessed dynamoDBWriteBatch) {
+func logWriteRetry(ctx context.Context, unprocessed dynamoDBWriteBatch) {
 	userID, _ := user.ExtractOrgID(ctx)
 	for table, reqs := range unprocessed {
+		dynamoThrottled.WithLabelValues("DynamoDB.BatchWriteItem", table).Add(float64(len(reqs)))
 		for _, req := range reqs {
 			item := req.PutRequest.Item
 			var hash, rnge string
@@ -234,8 +247,9 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 			// If we get provisionedThroughputExceededException, then no items were processed,
 			// so back off and retry all.
 			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
-				logRetry(ctx, requests)
+				logWriteRetry(ctx, requests)
 				unprocessed.TakeReqs(requests, -1)
+				a.writeThrottle.WaitN(ctx, len(requests))
 				backoff.Wait()
 				continue
 			} else if ok && awsErr.Code() == validationException {
@@ -257,7 +271,8 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 
 		// If there are unprocessed items, retry those items.
 		if unprocessedItems := resp.UnprocessedItems; unprocessedItems != nil && dynamoDBWriteBatch(unprocessedItems).Len() > 0 {
-			logRetry(ctx, dynamoDBWriteBatch(unprocessedItems))
+			logWriteRetry(ctx, dynamoDBWriteBatch(unprocessedItems))
+			a.writeThrottle.WaitN(ctx, len(unprocessedItems))
 			unprocessed.TakeReqs(unprocessedItems, -1)
 		}
 
