@@ -266,7 +266,7 @@ clean:
 
 assets:
 	@echo ">> writing assets"
-	go generate -x -v ./pkg/promtail/server/ui
+	GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
 
 check_assets: assets
 	@echo ">> checking that assets are up-to-date"
