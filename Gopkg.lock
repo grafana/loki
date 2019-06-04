@@ -187,7 +187,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:2b1af99463a6c3c85f5f7716fb013bec568ff2187eab6e4658b06d73e2c41a8b"
+  digest = "1:960e80517f3751439c5304aa501a68dcc81f4e70a7cfa84ff658f5fc939a0c0f"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/chunk",
@@ -213,7 +213,7 @@
     "pkg/util/validation",
   ]
   pruneopts = "UT"
-  revision = "88541de7a8aafbf501395ec767f059421c25d4c9"
+  revision = "5612c6ff1c3142583ae18f47e7af99b1827f758e"
 
 [[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
@@ -703,7 +703,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:dff66fce6bb8fa6111998bf3575e22aa3d0fd2560712a83de3390236d3cd1f6b"
+  digest = "1:ad2a544bc4bc4fcaa6f0b1622c4f8652da6e74b101925c263b912232e1b68cf2"
   name = "github.com/prometheus/client_golang"
   packages = [
     "api",
@@ -711,7 +711,6 @@
     "prometheus",
     "prometheus/internal",
     "prometheus/promauto",
-    "prometheus/promhttp",
     "prometheus/testutil",
   ]
   pruneopts = "UT"
@@ -1408,9 +1407,9 @@
     "github.com/pkg/errors",
     "github.com/prometheus/client_golang/prometheus",
     "github.com/prometheus/client_golang/prometheus/promauto",
-    "github.com/prometheus/client_golang/prometheus/promhttp",
     "github.com/prometheus/client_golang/prometheus/testutil",
     "github.com/prometheus/common/config",
+    "github.com/prometheus/common/expfmt",
     "github.com/prometheus/common/model",
     "github.com/prometheus/common/version",
     "github.com/prometheus/prometheus/discovery",

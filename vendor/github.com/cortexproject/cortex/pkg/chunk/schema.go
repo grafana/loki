@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -130,10 +131,13 @@ func (s schema) GetLabelEntryCacheKeys(from, through model.Time, userID string, 
 		key := strings.Join([]string{
 			bucket.tableName,
 			bucket.hashKey,
-			string(sha256bytes(labels.String())),
+			string(labelsSeriesID(labels)),
 		},
 			"-",
 		)
+		// This is just encoding to remove invalid characters so that we can put them in memcache.
+		// We're not hashing them as the length of the key is well within memcache bounds. tableName + userid + day + 32Byte(seriesID)
+		key = hex.EncodeToString([]byte(key))
 
 		result = append(result, key)
 	}
@@ -547,7 +551,7 @@ func (v9Entries) GetWriteEntries(bucket Bucket, metricName string, labels labels
 }
 
 func (v9Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	seriesID := sha256bytes(labels.String())
+	seriesID := labelsSeriesID(labels)
 
 	entries := []IndexEntry{
 		// Entry for metricName -> seriesID
@@ -577,7 +581,7 @@ func (v9Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels l
 }
 
 func (v9Entries) GetChunkWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	seriesID := sha256bytes(labels.String())
+	seriesID := labelsSeriesID(labels)
 	encodedThroughBytes := encodeTime(bucket.through)
 
 	entries := []IndexEntry{
@@ -643,7 +647,7 @@ func (v10Entries) GetWriteEntries(bucket Bucket, metricName string, labels label
 }
 
 func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	seriesID := sha256bytes(labels.String())
+	seriesID := labelsSeriesID(labels)
 
 	// read first 32 bits of the hash and use this to calculate the shard
 	shard := binary.BigEndian.Uint32(seriesID) % s.rowShards
@@ -676,7 +680,7 @@ func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName string, label
 }
 
 func (v10Entries) GetChunkWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	seriesID := sha256bytes(labels.String())
+	seriesID := labelsSeriesID(labels)
 	encodedThroughBytes := encodeTime(bucket.through)
 
 	entries := []IndexEntry{
