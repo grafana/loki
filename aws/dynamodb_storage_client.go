@@ -270,9 +270,10 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 		}
 
 		// If there are unprocessed items, retry those items.
-		if unprocessedItems := resp.UnprocessedItems; unprocessedItems != nil && dynamoDBWriteBatch(unprocessedItems).Len() > 0 {
-			logWriteRetry(ctx, dynamoDBWriteBatch(unprocessedItems))
-			a.writeThrottle.WaitN(ctx, len(unprocessedItems))
+		unprocessedItems := dynamoDBWriteBatch(resp.UnprocessedItems)
+		if unprocessedItems != nil && len(unprocessedItems) > 0 {
+			logWriteRetry(ctx, unprocessedItems)
+			a.writeThrottle.WaitN(ctx, unprocessedItems.Len())
 			unprocessed.TakeReqs(unprocessedItems, -1)
 		}
 
