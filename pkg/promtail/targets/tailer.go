@@ -1,9 +1,7 @@
 package targets
 
 import (
-	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -13,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
+	"github.com/grafana/loki/pkg/util"
 )
 
 type tailer struct {
@@ -51,8 +50,9 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions
 		return nil, err
 	}
 
+	logger = log.With(logger, "component", "tailer")
 	tailer := &tailer{
-		logger:    log.With(logger, "component", "tailer"),
+		logger:    logger,
 		handler:   api.AddLabelsMiddleware(model.LabelSet{FilenameLabel: model.LabelValue(path)}).Wrap(handler),
 		positions: positions,
 
@@ -61,7 +61,7 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions
 		quit: make(chan struct{}),
 		done: make(chan struct{}),
 	}
-	tail.Logger = tailer
+	tail.Logger = util.NewLogAdapater(logger)
 
 	go tailer.run()
 	filesActive.Add(1.)
@@ -138,58 +138,4 @@ func (t *tailer) stop() error {
 
 func (t *tailer) cleanup() {
 	t.positions.Remove(t.path)
-}
-
-// Fatal implements tail.logger
-func (t *tailer) Fatal(v ...interface{}) {
-	level.Error(t.logger).Log("msg", fmt.Sprint(v...))
-	os.Exit(1)
-}
-
-// Fatalf implements tail.logger
-func (t *tailer) Fatalf(format string, v ...interface{}) {
-	level.Error(t.logger).Log("msg", fmt.Sprintf(strings.TrimSuffix(format, "\n"), v...))
-	os.Exit(1)
-}
-
-// Fatalln implements tail.logger
-func (t *tailer) Fatalln(v ...interface{}) {
-	level.Error(t.logger).Log("msg", fmt.Sprint(v...))
-	os.Exit(1)
-}
-
-// Panic implements tail.logger
-func (t *tailer) Panic(v ...interface{}) {
-	s := fmt.Sprint(v...)
-	level.Error(t.logger).Log("msg", s)
-	panic(s)
-}
-
-// Panicf implements tail.logger
-func (t *tailer) Panicf(format string, v ...interface{}) {
-	s := fmt.Sprintf(strings.TrimSuffix(format, "\n"), v...)
-	level.Error(t.logger).Log("msg", s)
-	panic(s)
-}
-
-// Panicln implements tail.logger
-func (t *tailer) Panicln(v ...interface{}) {
-	s := fmt.Sprint(v...)
-	level.Error(t.logger).Log("msg", s)
-	panic(s)
-}
-
-// Print implements tail.logger
-func (t *tailer) Print(v ...interface{}) {
-	level.Info(t.logger).Log("msg", fmt.Sprint(v...))
-}
-
-// Printf implements tail.logger
-func (t *tailer) Printf(format string, v ...interface{}) {
-	level.Info(t.logger).Log("msg", fmt.Sprintf(strings.TrimSuffix(format, "\n"), v...))
-}
-
-// Println implements tail.logger
-func (t *tailer) Println(v ...interface{}) {
-	level.Info(t.logger).Log("msg", fmt.Sprint(v...))
 }
