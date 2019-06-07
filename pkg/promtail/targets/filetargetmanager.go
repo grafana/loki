@@ -17,8 +17,8 @@ import (
 	"github.com/prometheus/prometheus/discovery"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
-	pkgrelabel "github.com/prometheus/prometheus/pkg/relabel"
-	"github.com/prometheus/prometheus/relabel"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logentry/stages"
@@ -184,7 +184,7 @@ type targetSyncer struct {
 	targets        map[string]*FileTarget
 	mtx            sync.Mutex
 
-	relabelConfig []*pkgrelabel.Config
+	relabelConfig []*relabel.Config
 	targetConfig  *Config
 }
 
@@ -201,10 +201,20 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 			level.Debug(s.log).Log("msg", "new target", "labels", t)
 
 			discoveredLabels := group.Labels.Merge(t)
-			labels := relabel.Process(discoveredLabels.Clone(), s.relabelConfig...)
+			var labelMap = make(map[string]string)
+			for k, v := range discoveredLabels.Clone() {
+				labelMap[string(k)] = string(v)
+			}
+
+			processedLabels := relabel.Process(labels.FromMap(labelMap), s.relabelConfig...)
+
+			var labels = make(model.LabelSet)
+			for k, v := range processedLabels.Map() {
+				labels[model.LabelName(k)] = model.LabelValue(v)
+			}
 
 			// Drop empty targets (drop in relabeling).
-			if labels == nil {
+			if processedLabels == nil {
 				dropped = append(dropped, newDroppedTarget("dropping target, no labels", discoveredLabels))
 				level.Debug(s.log).Log("msg", "dropping target, no labels")
 				failedTargets.WithLabelValues("empty_labels").Inc()
