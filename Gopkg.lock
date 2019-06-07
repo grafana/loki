@@ -753,7 +753,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:21e3d654236698240f954c8637759ba64af9b942e38a808579b8352772aa4ea6"
+  digest = "1:5fc7e79142258f1ce47429c00fedb9ee04d8562e7fd477f2d9ae28a692e80969"
   name = "github.com/prometheus/prometheus"
   packages = [
     "discovery",
@@ -767,6 +767,7 @@
     "discovery/kubernetes",
     "discovery/marathon",
     "discovery/openstack",
+    "discovery/refresh",
     "discovery/targetgroup",
     "discovery/triton",
     "discovery/zookeeper",
@@ -778,7 +779,6 @@
     "pkg/timestamp",
     "pkg/value",
     "promql",
-    "relabel",
     "storage",
     "storage/tsdb",
     "template",
@@ -788,7 +788,7 @@
     "util/treecache",
   ]
   pruneopts = "UT"
-  revision = "0d1a69353e2864f9498e50fa51fa22bfb8346dcc"
+  revision = "e23fa22233cfbaa4fcea7abcd4e191ce5258870b"
 
 [[projects]]
   digest = "1:7aa5ae0ef5452ce26522f16677edee5016afeaa689f77e62e6b46374463b1884"
@@ -1420,7 +1420,6 @@
     "github.com/prometheus/prometheus/pkg/relabel",
     "github.com/prometheus/prometheus/pkg/textparse",
     "github.com/prometheus/prometheus/promql",
-    "github.com/prometheus/prometheus/relabel",
     "github.com/prometheus/prometheus/template",
     "github.com/shurcooL/httpfs/filter",
     "github.com/shurcooL/httpfs/union",
