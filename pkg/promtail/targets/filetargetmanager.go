@@ -214,7 +214,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 			}
 
 			// Drop empty targets (drop in relabeling).
-			if labels == nil {
+			if processedLabels == nil {
 				dropped = append(dropped, newDroppedTarget("dropping target, no labels", discoveredLabels))
 				level.Debug(s.log).Log("msg", "dropping target, no labels")
 				failedTargets.WithLabelValues("empty_labels").Inc()
