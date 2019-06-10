@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"flag"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
