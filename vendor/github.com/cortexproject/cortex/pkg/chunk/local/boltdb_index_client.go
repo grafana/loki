@@ -8,18 +8,22 @@ import (
 	"os"
 	"path"
 	"sync"
+	"time"
 
 	"github.com/etcd-io/bbolt"
+	"github.com/go-kit/kit/log/level"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var bucketName = []byte("index")
 
 const (
-	separator = "\000"
-	null      = string('\xff')
+	separator      = "\000"
+	null           = string('\xff')
+	dbReloadPeriod = 10 * time.Minute
 )
 
 // BoltDBConfig for a BoltDB index client.
@@ -37,6 +41,8 @@ type boltIndexClient struct {
 
 	dbsMtx sync.RWMutex
 	dbs    map[string]*bbolt.DB
+	done   chan struct{}
+	wait   sync.WaitGroup
 }
 
 // NewBoltDBIndexClient creates a new IndexClient that used BoltDB.
@@ -45,18 +51,71 @@ func NewBoltDBIndexClient(cfg BoltDBConfig) (chunk.IndexClient, error) {
 		return nil, err
 	}
 
-	return &boltIndexClient{
-		cfg: cfg,
-		dbs: map[string]*bbolt.DB{},
-	}, nil
+	indexClient := &boltIndexClient{
+		cfg:  cfg,
+		dbs:  map[string]*bbolt.DB{},
+		done: make(chan struct{}),
+	}
+
+	indexClient.wait.Add(1)
+	go indexClient.loop()
+	return indexClient, nil
+}
+
+func (b *boltIndexClient) loop() {
+	defer b.wait.Done()
+
+	ticker := time.NewTicker(dbReloadPeriod)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			b.reload()
+		case <-b.done:
+			return
+		}
+	}
+}
+
+func (b *boltIndexClient) reload() {
+	b.dbsMtx.RLock()
+
+	removedDBs := []string{}
+	for name := range b.dbs {
+		if _, err := os.Stat(path.Join(b.cfg.Directory, name)); err != nil && os.IsNotExist(err) {
+			removedDBs = append(removedDBs, name)
+			level.Debug(util.Logger).Log("msg", "boltdb file got removed", "filename", name)
+			continue
+		}
+	}
+	b.dbsMtx.RUnlock()
+
+	if len(removedDBs) != 0 {
+		b.dbsMtx.Lock()
+		defer b.dbsMtx.Unlock()
+
+		for _, name := range removedDBs {
+			if err := b.dbs[name].Close(); err != nil {
+				level.Error(util.Logger).Log("msg", "failed to close removed boltdb", "filename", name, "err", err)
+				continue
+			}
+			delete(b.dbs, name)
+		}
+	}
+
 }
 
 func (b *boltIndexClient) Stop() {
+	close(b.done)
+
 	b.dbsMtx.Lock()
 	defer b.dbsMtx.Unlock()
 	for _, db := range b.dbs {
 		db.Close()
 	}
+
+	b.wait.Wait()
 }
 
 func (b *boltIndexClient) NewWriteBatch() chunk.WriteBatch {

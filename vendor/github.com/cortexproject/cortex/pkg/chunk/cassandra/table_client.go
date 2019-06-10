@@ -28,7 +28,7 @@ func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) 
 }
 
 func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
-	md, err := c.session.KeyspaceMetadata(c.cfg.keyspace)
+	md, err := c.session.KeyspaceMetadata(c.cfg.Keyspace)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

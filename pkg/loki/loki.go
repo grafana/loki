@@ -27,15 +27,16 @@ type Config struct {
 	Target      moduleName `yaml:"target,omitempty"`
 	AuthEnabled bool       `yaml:"auth_enabled,omitempty"`
 
-	Server           server.Config      `yaml:"server,omitempty"`
-	Distributor      distributor.Config `yaml:"distributor,omitempty"`
-	Querier          querier.Config     `yaml:"querier,omitempty"`
-	IngesterClient   client.Config      `yaml:"ingester_client,omitempty"`
-	Ingester         ingester.Config    `yaml:"ingester,omitempty"`
-	StorageConfig    storage.Config     `yaml:"storage_config,omitempty"`
-	ChunkStoreConfig chunk.StoreConfig  `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig     chunk.SchemaConfig `yaml:"schema_config,omitempty"`
-	LimitsConfig     validation.Limits  `yaml:"limits_config,omitempty"`
+	Server           server.Config            `yaml:"server,omitempty"`
+	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
+	Querier          querier.Config           `yaml:"querier,omitempty"`
+	IngesterClient   client.Config            `yaml:"ingester_client,omitempty"`
+	Ingester         ingester.Config          `yaml:"ingester,omitempty"`
+	StorageConfig    storage.Config           `yaml:"storage_config,omitempty"`
+	ChunkStoreConfig chunk.StoreConfig        `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig     chunk.SchemaConfig       `yaml:"schema_config,omitempty"`
+	LimitsConfig     validation.Limits        `yaml:"limits_config,omitempty"`
+	TableManager     chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
 }
 
 // RegisterFlags registers flag.
@@ -55,19 +56,21 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.ChunkStoreConfig.RegisterFlags(f)
 	c.SchemaConfig.RegisterFlags(f)
 	c.LimitsConfig.RegisterFlags(f)
+	c.TableManager.RegisterFlags(f)
 }
 
 // Loki is the root datastructure for Loki.
 type Loki struct {
 	cfg Config
 
-	server      *server.Server
-	ring        *ring.Ring
-	overrides   *validation.Overrides
-	distributor *distributor.Distributor
-	ingester    *ingester.Ingester
-	querier     *querier.Querier
-	store       chunk.Store
+	server       *server.Server
+	ring         *ring.Ring
+	overrides    *validation.Overrides
+	distributor  *distributor.Distributor
+	ingester     *ingester.Ingester
+	querier      *querier.Querier
+	store        chunk.Store
+	tableManager *chunk.TableManager
 
 	httpAuthMiddleware middleware.Interface
 }

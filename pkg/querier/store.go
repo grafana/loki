@@ -80,7 +80,7 @@ func filterSeriesByMatchers(chks map[model.Fingerprint][][]chunkenc.LazyChunk, m
 outer:
 	for fp, chunks := range chks {
 		for _, matcher := range matchers {
-			if !matcher.Matches(string(chunks[0][0].Chunk.Metric[model.LabelName(matcher.Name)])) {
+			if !matcher.Matches(chunks[0][0].Chunk.Metric.Get(matcher.Name)) {
 				delete(chks, fp)
 				continue outer
 			}
@@ -184,7 +184,11 @@ func partitionBySeriesChunks(chunks [][]chunk.Chunk, fetchers []*chunk.Fetcher) 
 		for _, c := range chks {
 			fp := c.Fingerprint
 			chunksByFp[fp] = append(chunksByFp[fp], chunkenc.LazyChunk{Chunk: c, Fetcher: fetchers[i]})
-			delete(c.Metric, "__name__")
+			if c.Metric.Has("__name__") {
+				labelsBuilder := labels.NewBuilder(c.Metric)
+				labelsBuilder.Del("__name__")
+				c.Metric = labelsBuilder.Labels()
+			}
 		}
 	}
 

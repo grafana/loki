@@ -41,15 +41,16 @@
 
         lifecycler: {
           ring: {
-            store: 'consul',
             heartbeat_timeout: '1m',
             replication_factor: 3,
-
-            consul: {
-              host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
-              prefix: '',
-              httpclienttimeout: '20s',
-              consistentreads: true,
+            kvstore: {
+              store: 'consul',
+              consul: {
+                host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
+                prefix: '',
+                httpclienttimeout: '20s',
+                consistentreads: true,
+              },
             },
           },
 
@@ -107,11 +108,12 @@
             service: 'memcached-client',
           },
         },
+        max_look_back_period: 0,
       },
 
       schema_config: {
         configs: [{
-          from: '0',
+          from: '2018-04-15',
           store: 'bigtable',
           object_store: 'gcs',
           schema: 'v9',
@@ -120,6 +122,23 @@
             period: '168h',
           },
         }],
+      },
+
+      table_manager: {
+        retention_period: 0,
+        retention_deletes_enabled: false,
+        index_tables_provisioning: {
+          inactive_read_throughput: 0,
+          inactive_write_throughput: 0,
+          provisioned_read_throughput: 0,
+          provisioned_write_throughput: 0,
+        },
+        chunk_tables_provisioning: {
+          inactive_read_throughput: 0,
+          inactive_write_throughput: 0,
+          provisioned_read_throughput: 0,
+          provisioned_write_throughput: 0,
+        },
       },
     },
   },

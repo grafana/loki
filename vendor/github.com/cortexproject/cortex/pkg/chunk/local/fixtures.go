@@ -43,7 +43,7 @@ func (f *fixture) Clients() (
 		return
 	}
 
-	tableClient, err = NewTableClient()
+	tableClient, err = NewTableClient(f.dirname)
 	if err != nil {
 		return
 	}
@@ -51,7 +51,7 @@ func (f *fixture) Clients() (
 	schemaConfig = chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{{
 			IndexType: "boltdb",
-			From:      model.Now(),
+			From:      chunk.DayTime{Time: model.Now()},
 			ChunkTables: chunk.PeriodicTableConfig{
 				Prefix: "chunks",
 				Period: 10 * time.Minute,

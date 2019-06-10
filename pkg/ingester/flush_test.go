@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
@@ -67,13 +68,13 @@ func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
 
 // nolint
 func defaultIngesterTestConfig() Config {
-	consul := ring.NewInMemoryKVClient()
+	consul := ring.NewInMemoryKVClient(ring.ProtoCodec{Factory: ring.ProtoDescFactory})
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	cfg.FlushCheckPeriod = 99999 * time.Hour
 	cfg.MaxChunkIdle = 99999 * time.Hour
 	cfg.ConcurrentFlushes = 1
-	cfg.LifecyclerConfig.RingConfig.Mock = consul
+	cfg.LifecyclerConfig.RingConfig.KVStore.Mock = consul
 	cfg.LifecyclerConfig.NumTokens = 1
 	cfg.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
 	cfg.LifecyclerConfig.Addr = "localhost"
@@ -91,9 +92,9 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 		return err
 	}
 	for _, chunk := range chunks {
-		for k, v := range chunk.Metric {
-			if v == "" {
-				return fmt.Errorf("Chunk has blank label %q", k)
+		for _, label := range chunk.Metric {
+			if label.Value == "" {
+				return fmt.Errorf("Chunk has blank label %q", label.Name)
 			}
 		}
 	}
@@ -157,7 +158,11 @@ func (s *testStore) checkData(t *testing.T, userIDs []string, testData map[strin
 		streams := []*logproto.Stream{}
 		for _, chunk := range chunks {
 			lokiChunk := chunk.Data.(*chunkenc.Facade).LokiChunk()
-			delete(chunk.Metric, nameLabel)
+			if chunk.Metric.Has("__name__") {
+				labelsBuilder := labels.NewBuilder(chunk.Metric)
+				labelsBuilder.Del("__name__")
+				chunk.Metric = labelsBuilder.Labels()
+			}
 			labels := chunk.Metric.String()
 			streams = append(streams, buildStreamsFromChunk(t, labels, lokiChunk))
 		}

@@ -18,23 +18,23 @@ import (
 )
 
 var (
-	consulHeartbeats = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ingester_consul_heartbeats_total",
+	consulHeartbeats = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_member_consul_heartbeats_total",
 		Help: "The total number of heartbeats sent to consul.",
-	})
-	tokensOwned = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_ingester_ring_tokens_owned",
+	}, []string{"name"})
+	tokensOwned = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cortex_member_ring_tokens_owned",
 		Help: "The number of tokens owned in the ring.",
-	})
-	tokensToOwn = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_ingester_ring_tokens_to_own",
+	}, []string{"name"})
+	tokensToOwn = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cortex_member_ring_tokens_to_own",
 		Help: "The number of tokens to own in the ring.",
-	})
+	}, []string{"name"})
 	shutdownDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "cortex_shutdown_duration_seconds",
 		Help:    "Duration (in seconds) of cortex shutdown procedure (ie transfer or flush).",
 		Buckets: prometheus.ExponentialBuckets(10, 2, 8), // Biggest bucket is 10*2^(9-1) = 2560, or 42 mins.
-	}, []string{"op", "status"})
+	}, []string{"op", "status", "name"})
 )
 
 // LifecyclerConfig is the config to build a Lifecycler.
@@ -61,15 +61,20 @@ type LifecyclerConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.RingConfig.RegisterFlags(f)
+	cfg.RegisterFlagsWithPrefix("", f)
+}
 
-	f.IntVar(&cfg.NumTokens, "ingester.num-tokens", 128, "Number of tokens for each ingester.")
-	f.DurationVar(&cfg.HeartbeatPeriod, "ingester.heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul.")
-	f.DurationVar(&cfg.JoinAfter, "ingester.join-after", 0*time.Second, "Period to wait for a claim from another ingester; will join automatically after this.")
-	f.DurationVar(&cfg.MinReadyDuration, "ingester.min-ready-duration", 1*time.Minute, "Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring.")
-	f.BoolVar(&cfg.ClaimOnRollout, "ingester.claim-on-rollout", false, "Send chunks to PENDING ingesters on exit.")
-	f.BoolVar(&cfg.NormaliseTokens, "ingester.normalise-tokens", false, "Store tokens in a normalised fashion to reduce allocations.")
-	f.DurationVar(&cfg.FinalSleep, "ingester.final-sleep", 30*time.Second, "Duration to sleep for before exiting, to ensure metrics are scraped.")
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
+func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.RingConfig.RegisterFlagsWithPrefix(prefix, f)
+
+	f.IntVar(&cfg.NumTokens, prefix+"num-tokens", 128, "Number of tokens for each ingester.")
+	f.DurationVar(&cfg.HeartbeatPeriod, prefix+"heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul.")
+	f.DurationVar(&cfg.JoinAfter, prefix+"join-after", 0*time.Second, "Period to wait for a claim from another member; will join automatically after this.")
+	f.DurationVar(&cfg.MinReadyDuration, prefix+"min-ready-duration", 1*time.Minute, "Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring.")
+	f.BoolVar(&cfg.ClaimOnRollout, prefix+"claim-on-rollout", false, "Send chunks to PENDING ingesters on exit.")
+	f.BoolVar(&cfg.NormaliseTokens, prefix+"normalise-tokens", false, "Store tokens in a normalised fashion to reduce allocations.")
+	f.DurationVar(&cfg.FinalSleep, prefix+"final-sleep", 30*time.Second, "Duration to sleep for before exiting, to ensure metrics are scraped.")
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -78,10 +83,10 @@ func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
 	}
 
 	cfg.InfNames = []string{"eth0", "en0"}
-	f.Var((*flagext.Strings)(&cfg.InfNames), "ingester.interface", "Name of network interface to read address from.")
-	f.StringVar(&cfg.Addr, "ingester.addr", "", "IP address to advertise in consul.")
-	f.IntVar(&cfg.Port, "ingester.port", 0, "port to advertise in consul (defaults to server.grpc-listen-port).")
-	f.StringVar(&cfg.ID, "ingester.ID", hostname, "ID to register into consul.")
+	f.Var((*flagext.Strings)(&cfg.InfNames), prefix+"lifecycler.interface", "Name of network interface to read address from.")
+	f.StringVar(&cfg.Addr, prefix+"lifecycler.addr", "", "IP address to advertise in consul.")
+	f.IntVar(&cfg.Port, prefix+"lifecycler.port", 0, "port to advertise in consul (defaults to server.grpc-listen-port).")
+	f.StringVar(&cfg.ID, prefix+"lifecycler.ID", hostname, "ID to register into consul.")
 }
 
 // FlushTransferer controls the shutdown of an ingester.
@@ -103,8 +108,9 @@ type Lifecycler struct {
 	actorChan chan func()
 
 	// These values are initialised at startup, and never change
-	ID   string
-	addr string
+	ID       string
+	Addr     string
+	RingName string
 
 	// We need to remember the ingester state just in case consul goes away and comes
 	// back empty.  And it changes during lifecycle of ingester.
@@ -119,7 +125,7 @@ type Lifecycler struct {
 }
 
 // NewLifecycler makes and starts a new Lifecycler.
-func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Lifecycler, error) {
+func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name string) (*Lifecycler, error) {
 	addr := cfg.Addr
 	if addr == "" {
 		var err error
@@ -132,8 +138,8 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Life
 	if port == 0 {
 		port = *cfg.ListenPort
 	}
-
-	store, err := newKVStore(cfg.RingConfig)
+	codec := ProtoCodec{Factory: ProtoDescFactory}
+	store, err := NewKVStore(cfg.RingConfig.KVStore, codec)
 	if err != nil {
 		return nil, err
 	}
@@ -143,8 +149,9 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Life
 		flushTransferer: flushTransferer,
 		KVStore:         store,
 
-		addr: fmt.Sprintf("%s:%d", addr, port),
-		ID:   cfg.ID,
+		Addr:     fmt.Sprintf("%s:%d", addr, port),
+		ID:       cfg.ID,
+		RingName: name,
 
 		quit:      make(chan struct{}),
 		actorChan: make(chan func()),
@@ -153,7 +160,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Life
 		startTime: time.Now(),
 	}
 
-	tokensToOwn.Set(float64(cfg.NumTokens))
+	tokensToOwn.WithLabelValues(l.RingName).Set(float64(cfg.NumTokens))
 
 	l.done.Add(1)
 	go l.loop()
@@ -223,7 +230,7 @@ func (i *Lifecycler) getTokens() []uint32 {
 }
 
 func (i *Lifecycler) setTokens(tokens []uint32) {
-	tokensOwned.Set(float64(len(tokens)))
+	tokensOwned.WithLabelValues(i.RingName).Set(float64(len(tokens)))
 
 	i.stateMtx.Lock()
 	defer i.stateMtx.Unlock()
@@ -275,7 +282,7 @@ func (i *Lifecycler) Shutdown() {
 
 func (i *Lifecycler) loop() {
 	defer func() {
-		level.Info(util.Logger).Log("msg", "Ingester.loop() exited gracefully")
+		level.Info(util.Logger).Log("msg", "member.loop() exited gracefully")
 		i.done.Done()
 	}()
 
@@ -308,7 +315,7 @@ loop:
 			}
 
 		case <-heartbeatTicker.C:
-			consulHeartbeats.Inc()
+			consulHeartbeats.WithLabelValues(i.RingName).Inc()
 			if err := i.updateConsul(context.Background()); err != nil {
 				level.Error(util.Logger).Log("msg", "failed to write to consul, sleeping", "err", err)
 			}
@@ -336,7 +343,7 @@ heartbeatLoop:
 	for {
 		select {
 		case <-heartbeatTicker.C:
-			consulHeartbeats.Inc()
+			consulHeartbeats.WithLabelValues(i.RingName).Inc()
 			if err := i.updateConsul(context.Background()); err != nil {
 				level.Error(util.Logger).Log("msg", "failed to write to consul, sleeping", "err", err)
 			}
@@ -371,7 +378,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		if !ok {
 			// Either we are a new ingester, or consul must have restarted
 			level.Info(util.Logger).Log("msg", "entry not found in ring, adding with no tokens")
-			ringDesc.AddIngester(i.ID, i.addr, []uint32{}, i.GetState(), i.cfg.NormaliseTokens)
+			ringDesc.AddIngester(i.ID, i.Addr, []uint32{}, i.GetState(), i.cfg.NormaliseTokens)
 			return ringDesc, true, nil
 		}
 
@@ -403,7 +410,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context) error {
 
 		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
 		i.setState(ACTIVE)
-		ringDesc.AddIngester(i.ID, i.addr, newTokens, i.GetState(), i.cfg.NormaliseTokens)
+		ringDesc.AddIngester(i.ID, i.Addr, newTokens, i.GetState(), i.cfg.NormaliseTokens)
 
 		tokens := append(myTokens, newTokens...)
 		sort.Sort(sortableUint32(tokens))
@@ -428,11 +435,11 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 		if !ok {
 			// consul must have restarted
 			level.Info(util.Logger).Log("msg", "found empty ring, inserting tokens")
-			ringDesc.AddIngester(i.ID, i.addr, i.getTokens(), i.GetState(), i.cfg.NormaliseTokens)
+			ringDesc.AddIngester(i.ID, i.Addr, i.getTokens(), i.GetState(), i.cfg.NormaliseTokens)
 		} else {
 			ingesterDesc.Timestamp = time.Now().Unix()
 			ingesterDesc.State = i.GetState()
-			ingesterDesc.Addr = i.addr
+			ingesterDesc.Addr = i.Addr
 			ringDesc.Ingesters[i.ID] = ingesterDesc
 		}
 
@@ -464,17 +471,17 @@ func (i *Lifecycler) processShutdown(ctx context.Context) {
 		transferStart := time.Now()
 		if err := i.flushTransferer.TransferOut(ctx); err != nil {
 			level.Error(util.Logger).Log("msg", "Failed to transfer chunks to another ingester", "err", err)
-			shutdownDuration.WithLabelValues("transfer", "fail").Observe(time.Since(transferStart).Seconds())
+			shutdownDuration.WithLabelValues("transfer", "fail", i.RingName).Observe(time.Since(transferStart).Seconds())
 		} else {
 			flushRequired = false
-			shutdownDuration.WithLabelValues("transfer", "success").Observe(time.Since(transferStart).Seconds())
+			shutdownDuration.WithLabelValues("transfer", "success", i.RingName).Observe(time.Since(transferStart).Seconds())
 		}
 	}
 
 	if flushRequired {
 		flushStart := time.Now()
 		i.flushTransferer.Flush()
-		shutdownDuration.WithLabelValues("flush", "success").Observe(time.Since(flushStart).Seconds())
+		shutdownDuration.WithLabelValues("flush", "success", i.RingName).Observe(time.Since(flushStart).Seconds())
 	}
 
 	// Sleep so the shutdownDuration metric can be collected.
@@ -483,6 +490,8 @@ func (i *Lifecycler) processShutdown(ctx context.Context) {
 
 // unregister removes our entry from consul.
 func (i *Lifecycler) unregister(ctx context.Context) error {
+	level.Debug(util.Logger).Log("msg", "unregistering member from ring")
+
 	return i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			return nil, false, fmt.Errorf("found empty ring when trying to unregister")

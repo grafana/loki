@@ -91,7 +91,7 @@ func New(cfg Config, store ChunkStore) (*Ingester, error) {
 	}
 
 	var err error
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i)
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester")
 	if err != nil {
 		return nil, err
 	}

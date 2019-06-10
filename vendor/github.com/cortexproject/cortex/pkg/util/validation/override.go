@@ -156,6 +156,16 @@ func (o *Overrides) getDuration(userID string, f func(*Limits) time.Duration) ti
 	return f(override)
 }
 
+func (o *Overrides) getString(userID string, f func(*Limits) string) string {
+	o.overridesMtx.RLock()
+	defer o.overridesMtx.RUnlock()
+	override, ok := o.overrides[userID]
+	if !ok {
+		return f(&o.Defaults)
+	}
+	return f(override)
+}
+
 // IngestionRate returns the limit on ingester rate (samples per second).
 func (o *Overrides) IngestionRate(userID string) float64 {
 	return o.getFloat(userID, func(l *Limits) float64 {
@@ -167,6 +177,27 @@ func (o *Overrides) IngestionRate(userID string) float64 {
 func (o *Overrides) IngestionBurstSize(userID string) int {
 	return o.getInt(userID, func(l *Limits) int {
 		return l.IngestionBurstSize
+	})
+}
+
+// AcceptHASamples returns whether the distributor should track and accept samples from HA replicas for this user.
+func (o *Overrides) AcceptHASamples(userID string) bool {
+	return o.getBool(userID, func(l *Limits) bool {
+		return l.AcceptHASamples
+	})
+}
+
+// HAReplicaLabel returns the replica label to look for when deciding whether to accept a sample from a Prometheus HA replica.
+func (o *Overrides) HAReplicaLabel(userID string) string {
+	return o.getString(userID, func(l *Limits) string {
+		return l.HAReplicaLabel
+	})
+}
+
+// HAClusterLabel returns the cluster label to look for when deciding whether to accept a sample from a Prometheus HA replica.
+func (o *Overrides) HAClusterLabel(userID string) string {
+	return o.getString(userID, func(l *Limits) string {
+		return l.HAClusterLabel
 	})
 }
 

@@ -59,7 +59,7 @@ func encodeBase64Bytes(bytes []byte) []byte {
 	return encoded
 }
 
-func encodeBase64Value(value model.LabelValue) []byte {
+func encodeBase64Value(value string) []byte {
 	encodedLen := base64.RawStdEncoding.EncodedLen(len(value))
 	encoded := make([]byte, encodedLen, encodedLen)
 	base64.RawStdEncoding.Encode(encoded, []byte(value))
