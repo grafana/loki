@@ -83,5 +83,5 @@ We support (jaeger)[https://www.jaegertracing.io/] to trace loki, just add env `
 If you deploy with helm, refer to following command:
 
 ```bash
-$ helm upgrade --install loki loki/loki --set "loki.jaegerAgentHost=YOUR_JAEGER_AGENT_HOST"
+$ helm upgrade --install loki loki/loki --set "loki.tracing.jaegerAgentHost=YOUR_JAEGER_AGENT_HOST"
 ```

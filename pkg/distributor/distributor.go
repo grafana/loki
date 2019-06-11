@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"sync/atomic"
+	"time"
 
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -19,6 +20,8 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 )
+
+const metricName = "logs"
 
 var (
 	ingesterAppends = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -129,6 +132,21 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			continue
 		}
 
+		entries := make([]logproto.Entry, 0, len(stream.Entries))
+		for _, entry := range stream.Entries {
+			if err := d.overrides.ValidateSample(userID, metricName, cortex_client.Sample{
+				TimestampMs: entry.Timestamp.UnixNano() / int64(time.Millisecond),
+			}); err != nil {
+				validationErr = err
+				continue
+			}
+			entries = append(entries, entry)
+		}
+
+		if len(entries) == 0 {
+			continue
+		}
+		stream.Entries = entries
 		keys = append(keys, util.TokenFor(userID, stream.Labels))
 		streams = append(streams, streamTracker{
 			stream: stream,

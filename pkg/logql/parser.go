@@ -1,10 +1,13 @@
 package logql
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"text/scanner"
+
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 func init() {
@@ -30,6 +33,20 @@ func ParseExpr(input string) (Expr, error) {
 		return nil, l.errs[0]
 	}
 	return l.expr, nil
+}
+
+// ParseMatchers parses a string and returns labels matchers, if the expression contains
+// anything else it will return an error.
+func ParseMatchers(input string) ([]*labels.Matcher, error) {
+	expr, err := ParseExpr(input)
+	if err != nil {
+		return nil, err
+	}
+	matcherExpr, ok := expr.(*matchersExpr)
+	if !ok {
+		return nil, errors.New("only label matchers is supported")
+	}
+	return matcherExpr.matchers, nil
 }
 
 var tokens = map[string]int{

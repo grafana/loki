@@ -1,6 +1,10 @@
 package stages
 
-import "time"
+import (
+	"fmt"
+	"strconv"
+	"time"
+)
 
 // convertDateLayout converts pre-defined date format layout into date format
 func convertDateLayout(predef string) string {
@@ -27,5 +31,37 @@ func convertDateLayout(predef string) string {
 		return time.RFC3339Nano
 	default:
 		return predef
+	}
+}
+
+// getString will convert the input variable to a string if possible
+func getString(unk interface{}) (string, error) {
+
+	switch i := unk.(type) {
+	case float64:
+		return fmt.Sprintf("%f", i), nil
+	case float32:
+		return fmt.Sprintf("%f", i), nil
+	case int64:
+		return strconv.FormatInt(i, 10), nil
+	case int32:
+		return strconv.FormatInt(int64(i), 10), nil
+	case int:
+		return strconv.Itoa(i), nil
+	case uint64:
+		return strconv.FormatUint(i, 10), nil
+	case uint32:
+		return strconv.FormatUint(uint64(i), 10), nil
+	case uint:
+		return strconv.FormatUint(uint64(i), 10), nil
+	case string:
+		return unk.(string), nil
+	case bool:
+		if i {
+			return "true", nil
+		}
+		return "false", nil
+	default:
+		return "", fmt.Errorf("Can't convert %v to string", unk)
 	}
 }

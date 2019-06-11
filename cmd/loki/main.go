@@ -48,6 +48,9 @@ func main() {
 		}
 	}
 
+	// Re-init the logger which will now honor a different log level set in cfg.Server
+	util.InitLogger(&cfg.Server)
+
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	trace := tracing.NewFromEnv(fmt.Sprintf("loki-%s", cfg.Target))
 	defer func() {
