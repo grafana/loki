@@ -181,9 +181,12 @@ outer:
 
 func (i *instance) addTailer(t *tailer) {
 	tailers := map[uint32]*tailer{t.getID(): t}
+
+	i.streamsMtx.RLock()
 	for _, stream := range i.streams {
 		i.addTailersToStream(tailers, stream)
 	}
+	i.streamsMtx.RUnlock()
 
 	i.tailerMtx.Lock()
 	defer i.tailerMtx.Unlock()

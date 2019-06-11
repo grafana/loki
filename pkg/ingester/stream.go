@@ -110,9 +110,13 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 	if len(storedEntries) != 0 {
 		go func() {
 			stream := logproto.Stream{Labels: client.FromLabelAdaptersToLabels(s.labels).String(), Entries: storedEntries}
+
+			s.tailerMtx.Lock()
+			defer s.tailerMtx.Unlock()
+
 			for _, tailer := range s.tailers {
 				if tailer.isClosed() {
-					s.removeTailer(tailer)
+					delete(s.tailers, tailer.getID())
 					continue
 				}
 				tailer.send(stream)
@@ -154,13 +158,6 @@ func (s *stream) addTailer(t *tailer) {
 	defer s.tailerMtx.Unlock()
 
 	s.tailers[t.getID()] = t
-}
-
-func (s *stream) removeTailer(t *tailer) {
-	s.tailerMtx.Lock()
-	defer s.tailerMtx.Unlock()
-
-	delete(s.tailers, t.getID())
 }
 
 func (s *stream) matchesTailer(t *tailer) bool {
