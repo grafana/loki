@@ -13,6 +13,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/templates"
+	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/targets"
 	"github.com/prometheus/common/model"
@@ -21,20 +23,21 @@ import (
 const (
 	driverName = "loki"
 
-	cfgExternalLabelsKey = "external-labels"
-	cfgURLKey            = "url"
-	cfgTLSCAFileKey      = "tls-ca-file"
-	cfgTLSCertFileKey    = "tls-cert-file"
-	cfgTLSKeyFileKey     = "tls-key-file"
-	cfgTLSServerNameKey  = "tls-server-name"
-	cfgTLSInsecure       = "tls-insecure-skip-verify"
-	cfgProxyURLKey       = "proxy-url"
-	cfgTimeoutKey        = "timeout"
-	cfgBatchWaitKey      = "batch-wait"
-	cfgBatchSizeKey      = "batch-size"
-	cfgMinBackoffKey     = "min-backoff"
-	cfgMaxBackoffKey     = "max-backoff"
-	cfgMaxRetriesKey     = "max-retries"
+	cfgExternalLabelsKey = "loki-external-labels"
+	cfgURLKey            = "loki-url"
+	cfgTLSCAFileKey      = "loki-tls-ca-file"
+	cfgTLSCertFileKey    = "loki-tls-cert-file"
+	cfgTLSKeyFileKey     = "loki-tls-key-file"
+	cfgTLSServerNameKey  = "loki-tls-server-name"
+	cfgTLSInsecure       = "loki-tls-insecure-skip-verify"
+	cfgProxyURLKey       = "loki-proxy-url"
+	cfgTimeoutKey        = "loki-timeout"
+	cfgBatchWaitKey      = "loki-batch-wait"
+	cfgBatchSizeKey      = "loki-batch-size"
+	cfgMinBackoffKey     = "loki-min-backoff"
+	cfgMaxBackoffKey     = "loki-max-backoff"
+	cfgMaxRetriesKey     = "loki-retries"
+	cfgPipelineStagesKey = "loki-pipeline-stage-file"
 
 	defaultExternalLabels = "container_name={{.Name}}"
 	defaultHostLabelName  = model.LabelName("host")
@@ -56,6 +59,11 @@ var (
 type config struct {
 	labels       model.LabelSet
 	clientConfig client.Config
+	pipeline     PipelineConfig
+}
+
+type PipelineConfig struct {
+	PipelineStages stages.PipelineStages `yaml:"pipeline_stages,omitempty"`
 }
 
 func parseConfig(logCtx logger.Info) (*config, error) {
@@ -181,9 +189,19 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	}
 	labels[targets.FilenameLabel] = model.LabelValue(logCtx.LogPath)
 
+	// parse pipeline stages
+	var pipeline PipelineConfig
+	pipelineFile, ok := logCtx.Config[cfgPipelineStagesKey]
+	if ok {
+		if err := helpers.LoadConfig(pipelineFile, &pipeline); err != nil {
+			return nil, fmt.Errorf("%s: error loading config file %s: %s", driverName, pipelineFile, err)
+		}
+	}
+
 	return &config{
 		labels:       labels,
 		clientConfig: clientConfig,
+		pipeline:     pipeline,
 	}, nil
 }
 

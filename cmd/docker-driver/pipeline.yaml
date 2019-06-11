@@ -1,0 +1,5 @@
+pipeline_stages:
+- regex:
+     expression: '(level|lvl|severity)=(?P<level>\\w+)'
+- labels:
+    level:

@@ -290,3 +290,18 @@ helm-upgrade: helm
 
 helm-clean:
 	-helm delete --purge loki-stack
+
+PLUGIN_FOLDER = ./cmd/docker-driver
+
+create-plugin: $(PLUGIN_FOLDER)/docker-driver
+	-docker plugin disable grafana/loki-docker-driver:$(IMAGE_TAG)
+	-docker plugin rm grafana/loki-docker-driver:$(IMAGE_TAG)
+	-rm -rf $(PLUGIN_FOLDER)/rootfs
+	mkdir $(PLUGIN_FOLDER)/rootfs
+	docker build -t rootfsimage $(PLUGIN_FOLDER)
+	ID=$$(docker create rootfsimage true) && \
+	(docker export $$ID | tar -x -C $(PLUGIN_FOLDER)/rootfs) && \
+	docker rm -vf $$ID
+	docker rmi rootfsimage -f
+	docker plugin create grafana/loki-docker-driver:$(IMAGE_TAG) $(PLUGIN_FOLDER)
+	docker plugin enable grafana/loki-docker-driver:$(IMAGE_TAG)

@@ -6,14 +6,20 @@ import (
 	"github.com/docker/docker/daemon/logger"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/loki/pkg/logentry/stages"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/client"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 )
 
+var jobName = "docker"
+
 type loki struct {
-	client client.Client
-	labels model.LabelSet
-	logger log.Logger
+	client  client.Client
+	handler api.EntryHandler
+	labels  model.LabelSet
+	logger  log.Logger
 }
 
 func New(logCtx logger.Info, logger log.Logger) (logger.Logger, error) {
@@ -26,19 +32,28 @@ func New(logCtx logger.Info, logger log.Logger) (logger.Logger, error) {
 	if err != nil {
 		return nil, err
 	}
+	var handler api.EntryHandler = c
+	if len(cfg.pipeline.PipelineStages) != 0 {
+		pipeline, err := stages.NewPipeline(logger, cfg.pipeline.PipelineStages, &jobName, prometheus.DefaultRegisterer)
+		if err != nil {
+			return nil, err
+		}
+		handler = pipeline.Wrap(c)
+	}
 	return &loki{
-		client: c,
-		labels: cfg.labels,
-		logger: logger,
+		client:  c,
+		labels:  cfg.labels,
+		logger:  logger,
+		handler: handler,
 	}, nil
 }
 
 func (l *loki) Log(m *logger.Message) error {
 	if len(bytes.Fields(m.Line)) == 0 {
-		level.Info(l.logger).Log("msg", "ignoring empty line")
+		level.Info(l.logger).Log("msg", "ignoring empty line", "line", string(m.Line))
 		return nil
 	}
-	return l.client.Handle(l.labels.Clone(), m.Timestamp, string(m.Line))
+	return l.handler.Handle(l.labels.Clone(), m.Timestamp, string(m.Line))
 }
 func (l *loki) Name() string {
 	return driverName

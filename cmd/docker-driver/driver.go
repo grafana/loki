@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -37,14 +38,14 @@ type logPair struct {
 }
 
 func (l *logPair) Close() {
-	if err := l.jsonl.Close(); err != nil {
-		level.Error(l.logger).Log("msg", "error while closing json logger", "err", err)
+	if err := l.stream.Close(); err != nil {
+		level.Error(l.logger).Log("msg", "error while closing fifo stream", "err", err)
 	}
 	if err := l.lokil.Close(); err != nil {
 		level.Error(l.logger).Log("msg", "error while closing loki logger", "err", err)
 	}
-	if err := l.stream.Close(); err != nil {
-		level.Error(l.logger).Log("msg", "error while closing fifo stream", "err", err)
+	if err := l.jsonl.Close(); err != nil {
+		level.Error(l.logger).Log("msg", "error while closing json logger", "err", err)
 	}
 }
 
@@ -114,7 +115,7 @@ func consumeLog(lf *logPair) {
 	var buf logdriver.LogEntry
 	for {
 		if err := dec.ReadMsg(&buf); err != nil {
-			if err == io.EOF {
+			if err == io.EOF || err == os.ErrClosed || strings.Contains(err.Error(), "file already closed") {
 				level.Debug(lf.logger).Log("msg", "shutting down log logger", "id", lf.info.ContainerID, "err", err)
 				return
 			}
@@ -130,13 +131,14 @@ func consumeLog(lf *logPair) {
 		}
 		msg.Timestamp = time.Unix(0, buf.TimeNano)
 
-		if err := lf.jsonl.Log(&msg); err != nil {
-			level.Error(lf.logger).Log("msg", "error writing log message", "id", lf.info.ContainerID, "err", err, "message", msg)
+		// loki goes first as the json logger reset the message on completion.
+		if err := lf.lokil.Log(&msg); err != nil {
+			level.Error(lf.logger).Log("msg", "error pushing message to loki", "id", lf.info.ContainerID, "err", err, "message", msg)
 			continue
 		}
 
-		if err := lf.lokil.Log(&msg); err != nil {
-			level.Error(lf.logger).Log("msg", "error pushing message to loki", "id", lf.info.ContainerID, "err", err, "message", msg)
+		if err := lf.jsonl.Log(&msg); err != nil {
+			level.Error(lf.logger).Log("msg", "error writing log message", "id", lf.info.ContainerID, "err", err, "message", msg)
 			continue
 		}
 
