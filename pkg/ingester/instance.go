@@ -90,7 +90,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			i.index.Add(labels, fp)
 			i.streams[fp] = stream
 			i.streamsCreatedTotal.Inc()
-			i.addTailersToStream(i.tailers, stream)
+			i.addTailersToNewStream(stream)
 		}
 
 		if err := stream.Push(ctx, s.Entries); err != nil {
@@ -179,12 +179,12 @@ outer:
 	return iterators, nil
 }
 
-func (i *instance) addTailer(t *tailer) {
-	tailers := map[uint32]*tailer{t.getID(): t}
-
+func (i *instance) addNewTailer(t *tailer) {
 	i.streamsMtx.RLock()
 	for _, stream := range i.streams {
-		i.addTailersToStream(tailers, stream)
+		if stream.matchesTailer(t) {
+			stream.addTailer(t)
+		}
 	}
 	i.streamsMtx.RUnlock()
 
@@ -193,16 +193,11 @@ func (i *instance) addTailer(t *tailer) {
 	i.tailers[t.getID()] = t
 }
 
-func (i *instance) removeTailer(tailerID uint32) {
-	i.tailerMtx.Lock()
-	defer i.tailerMtx.Unlock()
-
-	delete(i.tailers, tailerID)
-}
-
-func (i *instance) addTailersToStream(tailers map[uint32]*tailer, stream *stream) {
+func (i *instance) addTailersToNewStream(stream *stream) {
 	closedTailers := []uint32{}
-	for _, t := range tailers {
+
+	i.tailerMtx.RLock()
+	for _, t := range i.tailers {
 		if t.isClosed() {
 			closedTailers = append(closedTailers, t.getID())
 			continue
@@ -212,9 +207,14 @@ func (i *instance) addTailersToStream(tailers map[uint32]*tailer, stream *stream
 			stream.addTailer(t)
 		}
 	}
+	i.tailerMtx.RUnlock()
 
-	for idx := range closedTailers {
-		i.removeTailer(closedTailers[idx])
+	if len(closedTailers) != 0 {
+		i.tailerMtx.Lock()
+		defer i.tailerMtx.Unlock()
+		for _, closedTailer := range closedTailers {
+			delete(i.tailers, closedTailer)
+		}
 	}
 }
 

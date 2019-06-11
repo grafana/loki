@@ -111,15 +111,25 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 		go func() {
 			stream := logproto.Stream{Labels: client.FromLabelAdaptersToLabels(s.labels).String(), Entries: storedEntries}
 
-			s.tailerMtx.Lock()
-			defer s.tailerMtx.Unlock()
+			closedTailers := []uint32{}
 
+			s.tailerMtx.RLock()
 			for _, tailer := range s.tailers {
 				if tailer.isClosed() {
-					delete(s.tailers, tailer.getID())
+					closedTailers = append(closedTailers, tailer.getID())
 					continue
 				}
 				tailer.send(stream)
+			}
+			s.tailerMtx.RUnlock()
+
+			if len(closedTailers) != 0 {
+				s.tailerMtx.Lock()
+				defer s.tailerMtx.Unlock()
+
+				for _, closedTailerID := range closedTailers {
+					delete(s.tailers, closedTailerID)
+				}
 			}
 		}()
 	}

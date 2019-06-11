@@ -244,7 +244,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 		return err
 	}
 
-	instance.addTailer(tailer)
+	instance.addNewTailer(tailer)
 	tailer.loop()
 	return nil
 }
