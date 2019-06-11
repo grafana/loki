@@ -15,18 +15,17 @@ import (
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/jsonfilelog"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	protoio "github.com/gogo/protobuf/io"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"github.com/tonistiigi/fifo"
 )
 
 type driver struct {
-	mu           sync.Mutex
-	logs         map[string]*logPair
-	idx          map[string]*logPair
-	logger       logger.Logger
-	driverLogger log.Logger
+	mu     sync.Mutex
+	logs   map[string]*logPair
+	idx    map[string]*logPair
+	logger log.Logger
 }
 
 type logPair struct {
@@ -34,13 +33,26 @@ type logPair struct {
 	lokil  logger.Logger
 	stream io.ReadCloser
 	info   logger.Info
+	logger log.Logger
+}
+
+func (l *logPair) Close() {
+	if err := l.jsonl.Close(); err != nil {
+		level.Error(l.logger).Log("msg", "error while closing json logger", "err", err)
+	}
+	if err := l.lokil.Close(); err != nil {
+		level.Error(l.logger).Log("msg", "error while closing loki logger", "err", err)
+	}
+	if err := l.stream.Close(); err != nil {
+		level.Error(l.logger).Log("msg", "error while closing fifo stream", "err", err)
+	}
 }
 
 func newDriver(logger log.Logger) *driver {
 	return &driver{
-		logs:         make(map[string]*logPair),
-		idx:          make(map[string]*logPair),
-		driverLogger: logger,
+		logs:   make(map[string]*logPair),
+		idx:    make(map[string]*logPair),
+		logger: logger,
 	}
 }
 
@@ -63,19 +75,18 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 		return errors.Wrap(err, "error creating jsonfile logger")
 	}
 
-	lokil, err := New(logCtx, d.driverLogger)
+	lokil, err := New(logCtx, d.logger)
 	if err != nil {
 		return errors.Wrap(err, "error creating loki logger")
 	}
-
-	logrus.WithField("id", logCtx.ContainerID).WithField("file", file).WithField("logpath", logCtx.LogPath).Debugf("Start logging")
+	level.Debug(d.logger).Log("msg", "Start logging", "id", logCtx.ContainerID, "file", file, "logpath", logCtx.LogPath)
 	f, err := fifo.OpenFifo(context.Background(), file, syscall.O_RDONLY, 0700)
 	if err != nil {
 		return errors.Wrapf(err, "error opening logger fifo: %q", file)
 	}
 
 	d.mu.Lock()
-	lf := &logPair{jsonl, lokil, f, logCtx}
+	lf := &logPair{jsonl, lokil, f, logCtx, d.logger}
 	d.logs[file] = lf
 	d.idx[logCtx.ContainerID] = lf
 	d.mu.Unlock()
@@ -85,13 +96,11 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 }
 
 func (d *driver) StopLogging(file string) error {
-	logrus.WithField("file", file).Debugf("Stop logging")
+	level.Debug(d.logger).Log("msg", "Stop logging", "file", file)
 	d.mu.Lock()
 	lf, ok := d.logs[file]
 	if ok {
-		lf.jsonl.Close()
-		lf.lokil.Close()
-		lf.stream.Close()
+		lf.Close()
 		delete(d.logs, file)
 	}
 	d.mu.Unlock()
@@ -101,12 +110,12 @@ func (d *driver) StopLogging(file string) error {
 func consumeLog(lf *logPair) {
 	dec := protoio.NewUint32DelimitedReader(lf.stream, binary.BigEndian, 1e6)
 	defer dec.Close()
+	defer lf.Close()
 	var buf logdriver.LogEntry
 	for {
 		if err := dec.ReadMsg(&buf); err != nil {
 			if err == io.EOF {
-				logrus.WithField("id", lf.info.ContainerID).WithError(err).Debug("shutting down log logger")
-				lf.stream.Close()
+				level.Debug(lf.logger).Log("msg", "shutting down log logger", "id", lf.info.ContainerID, "err", err)
 				return
 			}
 			dec = protoio.NewUint32DelimitedReader(lf.stream, binary.BigEndian, 1e6)
@@ -122,12 +131,12 @@ func consumeLog(lf *logPair) {
 		msg.Timestamp = time.Unix(0, buf.TimeNano)
 
 		if err := lf.jsonl.Log(&msg); err != nil {
-			logrus.WithField("id", lf.info.ContainerID).WithError(err).WithField("message", msg).Error("error writing log message")
+			level.Error(lf.logger).Log("msg", "error writing log message", "id", lf.info.ContainerID, "err", err, "message", msg)
 			continue
 		}
 
 		if err := lf.lokil.Log(&msg); err != nil {
-			logrus.WithField("id", lf.info.ContainerID).WithError(err).WithField("message", msg).Error("error pushing message to loki")
+			level.Error(lf.logger).Log("msg", "error pushing message to loki", "id", lf.info.ContainerID, "err", err, "message", msg)
 			continue
 		}
 
@@ -171,11 +180,11 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 				buf.Source = msg.Source
 
 				if err := enc.WriteMsg(&buf); err != nil {
-					w.CloseWithError(err)
+					_ = w.CloseWithError(err)
 					return
 				}
 			case err := <-watcher.Err:
-				w.CloseWithError(err)
+				_ = w.CloseWithError(err)
 				return
 			}
 

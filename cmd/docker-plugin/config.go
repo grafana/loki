@@ -71,7 +71,7 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: option %s is invalid %s", driverName, cfgURLKey, err)
 	}
-	clientConfig.URL = flagext.URLValue{url}
+	clientConfig.URL = flagext.URLValue{URL: url}
 
 	// parse timeout
 	if err := parseDuration(cfgTimeoutKey, logCtx, func(d time.Duration) { clientConfig.Timeout = d }); err != nil {

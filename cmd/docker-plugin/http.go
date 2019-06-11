@@ -57,7 +57,7 @@ func handlers(h *sdk.Handler, d *driver) {
 	})
 
 	h.HandleFunc("/LogDriver.Capabilities", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(&CapabilitiesResponse{
+		_ = json.NewEncoder(w).Encode(&CapabilitiesResponse{
 			Cap: logger.Capability{ReadLogs: true},
 		})
 	})
@@ -78,7 +78,7 @@ func handlers(h *sdk.Handler, d *driver) {
 
 		w.Header().Set("Content-Type", "application/x-json-stream")
 		wf := ioutils.NewWriteFlusher(w)
-		io.Copy(wf, stream)
+		_, _ = io.Copy(wf, stream)
 	})
 }
 
@@ -91,5 +91,5 @@ func respond(err error, w http.ResponseWriter) {
 	if err != nil {
 		res.Err = err.Error()
 	}
-	json.NewEncoder(w).Encode(&res)
+	_ = json.NewEncoder(w).Encode(&res)
 }
