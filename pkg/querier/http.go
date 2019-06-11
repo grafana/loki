@@ -48,6 +48,9 @@ func unixNanoTimeParam(values url.Values, name string, def time.Time) (time.Time
 
 	nanos, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
+		if ts, err := time.Parse(time.RFC3339Nano, value); err == nil {
+			return ts, nil
+		}
 		return time.Time{}, err
 	}
 

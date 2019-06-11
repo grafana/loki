@@ -3,10 +3,11 @@ apiVersion: policy/v1beta1
 kind: PodDisruptionBudget
 metadata:
   name: {{ template "loki.fullname" . }}
-  app: {{ template "loki.name" . }}
-  heritage: {{ .Release.Service }}
-  release: {{ .Release.Name }}
-  chart: {{ template "loki.chart" . }}
+  labels:
+    app: {{ template "loki.name" . }}
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    chart: {{ template "loki.chart" . }}
 spec:
   selector:
     matchLabels:

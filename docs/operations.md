@@ -59,11 +59,14 @@ For more information about mixins, take a look at the [mixins project docs](http
 
 ## Retention/Deleting old data
 
-A retention policy and API to delete ingested logs is still under development.
+Retention in Loki can be done by configuring Table Manager. You need to set a retention period and enable deletes for retention using yaml config as seen [here](https://github.com/grafana/loki/blob/39bbd733be4a0d430986d9513476a91334485e9f/production/ksonnet/loki/config.libsonnet#L128-L129) or using `table-manager.retention-period` and `table-manager.retention-deletes-enabled` command line args. Retention period needs to be a duration in string format that can be parsed using [time.Duration](https://golang.org/pkg/time/#ParseDuration).
+
+In the case of chunks retention when using S3 or GCS, you need to set the expiry policy on the bucket that is configured for storing chunks. For more details check [this](https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lifecycle-mgmt.html) for S3 and [this](https://cloud.google.com/storage/docs/managing-lifecycles) for GCS.
+
+Currently we only support global retention policy. A per user retention policy and API to delete ingested logs is still under development.
 Feel free to add your use case to this [GitHub issue](https://github.com/grafana/loki/issues/162).
 
 A design goal of Loki is that storing logs should be cheap, hence a volume-based deletion API was deprioritized.
-But we realize that time-based retention could be a compliance issue.
 
 Until this feature is released: If you suddenly must delete ingested logs, you can delete old chunks in your object store.
 Note that this will only delete the log content while keeping the label index intact.
@@ -97,6 +100,33 @@ The chunks are stored under `/tmp/loki/chunks`.
 
 Loki has support for Google Cloud storage.
 Take a look at our [production setup](https://github.com/grafana/loki/blob/a422f394bb4660c98f7d692e16c3cc28747b7abd/production/ksonnet/loki/config.libsonnet#L55) for the relevant configuration fields.
+
+### Cassandra
+
+Loki can use Cassandra for the index storage. Please pull the **latest** Loki docker image or build from **latest** source code. Example config for using Cassandra:
+
+```yaml
+schema_config:
+  configs:
+  - from: 2018-04-15
+    store: cassandra
+    object_store: filesystem
+    schema: v9
+    index:
+      prefix: cassandra_table
+      period: 168h
+
+storage_config:
+  cassandra:
+    username: cassandra
+    password: cassandra
+    addresses: 127.0.0.1
+    auth: true
+    keyspace: lokiindex
+
+  filesystem:
+    directory: /tmp/loki/chunks
+```
 
 ### AWS S3 & DynamoDB
 

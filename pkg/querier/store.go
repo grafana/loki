@@ -106,7 +106,11 @@ func buildIterators(ctx context.Context, req *logproto.QueryRequest, chks map[mo
 
 func buildHeapIterator(ctx context.Context, req *logproto.QueryRequest, chks [][]chunkenc.LazyChunk) (iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
-
+	if chks[0][0].Chunk.Metric.Has("__name__") {
+		labelsBuilder := labels.NewBuilder(chks[0][0].Chunk.Metric)
+		labelsBuilder.Del("__name__")
+		chks[0][0].Chunk.Metric = labelsBuilder.Labels()
+	}
 	labels := chks[0][0].Chunk.Metric.String()
 
 	for i := range chks {
@@ -184,11 +188,6 @@ func partitionBySeriesChunks(chunks [][]chunk.Chunk, fetchers []*chunk.Fetcher) 
 		for _, c := range chks {
 			fp := c.Fingerprint
 			chunksByFp[fp] = append(chunksByFp[fp], chunkenc.LazyChunk{Chunk: c, Fetcher: fetchers[i]})
-			if c.Metric.Has("__name__") {
-				labelsBuilder := labels.NewBuilder(c.Metric)
-				labelsBuilder.Del("__name__")
-				c.Metric = labelsBuilder.Labels()
-			}
 		}
 	}
 
