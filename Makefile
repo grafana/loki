@@ -1,3 +1,4 @@
+
 .PHONY: all test clean images protos assets check_assets release-prepare release-perform
 .DEFAULT_GOAL := all
 
@@ -292,6 +293,7 @@ helm-clean:
 	-helm delete --purge loki-stack
 
 PLUGIN_FOLDER = ./cmd/docker-driver
+PLUGIN_TAG ?= $(IMAGE_TAG)
 
 build-plugin: $(PLUGIN_FOLDER)/docker-driver
 	-docker plugin disable grafana/loki-docker-driver:$(IMAGE_TAG)
@@ -303,10 +305,10 @@ build-plugin: $(PLUGIN_FOLDER)/docker-driver
 	(docker export $$ID | tar -x -C $(PLUGIN_FOLDER)/rootfs) && \
 	docker rm -vf $$ID
 	docker rmi rootfsimage -f
-	docker plugin create grafana/loki-docker-driver:$(IMAGE_TAG) $(PLUGIN_FOLDER)
+	docker plugin create grafana/loki-docker-driver:$(PLUGIN_TAG) $(PLUGIN_FOLDER)
 
-push-plugin:
-	docker plugin push grafana/loki-docker-driver:$(IMAGE_TAG)
+push-plugin: build-plugin
+	docker plugin push grafana/loki-docker-driver:$(PLUGIN_TAG)
 
 enable-plugin:
-	docker plugin enable grafana/loki-docker-driver:$(IMAGE_TAG)
+	docker plugin enable grafana/loki-docker-driver:$(PLUGIN_TAG)
