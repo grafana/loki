@@ -182,7 +182,7 @@ jobs:
           name: Run Chart Tests
           command: |
             ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
-            ct install --build-id=${CIRCLE_BUILD_NUM} --charts production/helm/loki-stack --upgrade
+            ct install --build-id=${CIRCLE_BUILD_NUM} --charts production/helm/loki-stack
 
   publish-helm:
     <<: *defaults
