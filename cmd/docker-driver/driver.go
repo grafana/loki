@@ -96,7 +96,7 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 	return nil
 }
 
-func (d *driver) StopLogging(file string) error {
+func (d *driver) StopLogging(file string) {
 	level.Debug(d.logger).Log("msg", "Stop logging", "file", file)
 	d.mu.Lock()
 	lf, ok := d.logs[file]
@@ -105,7 +105,6 @@ func (d *driver) StopLogging(file string) error {
 		delete(d.logs, file)
 	}
 	d.mu.Unlock()
-	return nil
 }
 
 func consumeLog(lf *logPair) {

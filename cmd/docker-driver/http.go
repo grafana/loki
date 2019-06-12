@@ -52,8 +52,8 @@ func handlers(h *sdk.Handler, d *driver) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		err := d.StopLogging(req.File)
-		respond(err, w)
+		d.StopLogging(req.File)
+		respond(nil, w)
 	})
 
 	h.HandleFunc("/LogDriver.Capabilities", func(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +86,7 @@ type response struct {
 	Err string
 }
 
-func respond(err error, w http.ResponseWriter) {
+func respond(err error, w io.Writer) {
 	var res response
 	if err != nil {
 		res.Err = err.Error()

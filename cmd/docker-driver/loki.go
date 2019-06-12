@@ -22,6 +22,7 @@ type loki struct {
 	logger  log.Logger
 }
 
+// New create a new Loki logger that forward logs to Loki instance
 func New(logCtx logger.Info, logger log.Logger) (logger.Logger, error) {
 	logger = log.With(logger, "container_id", logCtx.ContainerID)
 	cfg, err := parseConfig(logCtx)
@@ -48,6 +49,7 @@ func New(logCtx logger.Info, logger log.Logger) (logger.Logger, error) {
 	}, nil
 }
 
+// Log implements `logger.Logger`
 func (l *loki) Log(m *logger.Message) error {
 	if len(bytes.Fields(m.Line)) == 0 {
 		level.Info(l.logger).Log("msg", "ignoring empty line", "line", string(m.Line))
@@ -55,9 +57,13 @@ func (l *loki) Log(m *logger.Message) error {
 	}
 	return l.handler.Handle(l.labels.Clone(), m.Timestamp, string(m.Line))
 }
+
+// Log implements `logger.Logger`
 func (l *loki) Name() string {
 	return driverName
 }
+
+// Log implements `logger.Logger`
 func (l *loki) Close() error {
 	l.client.Stop()
 	return nil
