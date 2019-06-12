@@ -2,9 +2,9 @@
 	"description": "Loki Logging Driver",
 	"documentation": "https://github.com/grafana/loki",
 	"entrypoint": ["/bin/docker-driver"],
-    "network": {
-        "type": "host"
-    },
+	"network": {
+		"type": "host"
+	},
 	"interface": {
 		"types": ["docker.logdriver/1.0"],
 		"socket": "loki.sock"
