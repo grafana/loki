@@ -28,7 +28,6 @@ func main() {
 	}
 	logger := newLogger(logLevel)
 	level.Info(util.Logger).Log("msg", "Starting docker-plugin", "version", version.Info())
-
 	h := sdk.NewHandler(`{"Implements": ["LoggingDriver"]}`)
 	handlers(&h, newDriver(logger))
 	if err := h.ServeUnix(socketAddress, 0); err != nil {

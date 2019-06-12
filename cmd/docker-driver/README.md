@@ -2,11 +2,4 @@
 
 
 
-## File configuration
-
-
-```
-rm -rf rootfs/
-mkdir rootfs/
-docker build -t rootfsimage Dockfile.custom
-```
+## Swarn mode

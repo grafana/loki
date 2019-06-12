@@ -39,6 +39,12 @@ const (
 	cfgMaxRetriesKey     = "loki-retries"
 	cfgPipelineStagesKey = "loki-pipeline-stage-file"
 
+	swarmServiceLabelKey = "com.docker.swarm.service.name"
+	swarmStackLabelKey   = "com.docker.stack.namespace"
+
+	swarmServiceLabelName = "swarm_service"
+	swarmStackLabelName   = "swarm_task"
+
 	defaultExternalLabels = "container_name={{.Name}}"
 	defaultHostLabelName  = model.LabelName("host")
 )
@@ -66,7 +72,46 @@ type PipelineConfig struct {
 	PipelineStages stages.PipelineStages `yaml:"pipeline_stages,omitempty"`
 }
 
+func validateDriverOpt(loggerInfo logger.Info) error {
+	config := loggerInfo.Config
+
+	for opt := range config {
+		switch opt {
+		case cfgURLKey:
+		case cfgExternalLabelsKey:
+		case cfgTLSCAFileKey:
+		case cfgTLSCertFileKey:
+		case cfgTLSKeyFileKey:
+		case cfgTLSServerNameKey:
+		case cfgTLSInsecure:
+		case cfgTimeoutKey:
+		case cfgProxyURLKey:
+		case cfgBatchWaitKey:
+		case cfgBatchSizeKey:
+		case cfgMinBackoffKey:
+		case cfgMaxBackoffKey:
+		case cfgMaxRetriesKey:
+		case cfgPipelineStagesKey:
+		case "labels":
+		case "env":
+		case "env-regex":
+		default:
+			return fmt.Errorf("%s: wrong log-opt: '%s' - %s\n", driverName, opt, loggerInfo.ContainerID)
+		}
+	}
+	_, ok := config[cfgURLKey]
+	if !ok {
+		return fmt.Errorf("%s: %s is required in the config", driverName, cfgURLKey)
+	}
+
+	return nil
+}
+
 func parseConfig(logCtx logger.Info) (*config, error) {
+	if err := validateDriverOpt(logCtx); err != nil {
+		return nil, err
+	}
+
 	clientConfig := defaultClientConfig
 	labels := model.LabelSet{}
 
@@ -168,6 +213,16 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	attrs, err := logCtx.ExtraAttributes(nil)
 	if err != nil {
 		return nil, err
+	}
+
+	// parse docker swarms labels and adds them automatically to attrs
+	swarmService := logCtx.ContainerLabels[swarmServiceLabelKey]
+	if swarmService != "" {
+		attrs[swarmServiceLabelName] = swarmService
+	}
+	swarmStack := logCtx.ContainerLabels[swarmStackLabelKey]
+	if swarmStack != "" {
+		attrs[swarmStackLabelName] = swarmStack
 	}
 
 	for key, value := range attrs {
