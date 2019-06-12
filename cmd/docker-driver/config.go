@@ -43,7 +43,7 @@ const (
 	swarmStackLabelKey   = "com.docker.stack.namespace"
 
 	swarmServiceLabelName = "swarm_service"
-	swarmStackLabelName   = "swarm_task"
+	swarmStackLabelName   = "swarm_stack"
 
 	defaultExternalLabels = "container_name={{.Name}}"
 	defaultHostLabelName  = model.LabelName("host")
@@ -96,7 +96,7 @@ func validateDriverOpt(loggerInfo logger.Info) error {
 		case "env":
 		case "env-regex":
 		default:
-			return fmt.Errorf("%s: wrong log-opt: '%s' - %s\n", driverName, opt, loggerInfo.ContainerID)
+			return fmt.Errorf("%s: wrong log-opt: '%s' - %s", driverName, opt, loggerInfo.ContainerID)
 		}
 	}
 	_, ok := config[cfgURLKey]
