@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/grafana/loki-canary/pkg/comparator"
 )
 
 const (
@@ -16,7 +14,7 @@ const (
 
 type Writer struct {
 	w         io.Writer
-	cm        *comparator.Comparator
+	sent      chan time.Time
 	interval  time.Duration
 	size      int
 	prevTsLen int
@@ -25,11 +23,11 @@ type Writer struct {
 	done      chan struct{}
 }
 
-func NewWriter(writer io.Writer, comparator *comparator.Comparator, entryInterval time.Duration, entrySize int) *Writer {
+func NewWriter(writer io.Writer, sentChan chan time.Time, entryInterval time.Duration, entrySize int) *Writer {
 
 	w := &Writer{
 		w:         writer,
-		cm:        comparator,
+		sent:      sentChan,
 		interval:  entryInterval,
 		size:      entrySize,
 		prevTsLen: 0,
@@ -72,7 +70,7 @@ func (w *Writer) run() {
 			}
 
 			_, _ = fmt.Fprintf(w.w, LogEntry, ts, w.pad)
-			w.cm.EntrySent(t)
+			w.sent <- t
 		case <-w.quit:
 			return
 		}

@@ -8,11 +8,14 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki-canary/pkg/reader"
 )
 
 const (
-	ErrOutOfOrderEntry  = "entry %s was received before entries: %v\n"
-	ErrEntryNotReceived = "failed to receive entry %s within %f seconds\n"
+	ErrOutOfOrderEntry    = "out of order entry %s was received before entries: %v\n"
+	ErrEntryNotReceivedWs = "websocket failed to receive entry %v within %f seconds\n"
+	ErrEntryNotReceived   = "failed to receive entry %v within %f seconds\n"
 )
 
 var (
@@ -26,10 +29,15 @@ var (
 		Name:      "out_of_order_entries",
 		Help:      "counts log entries received with a timestamp more recent than the others in the queue",
 	})
+	wsMissingEntries = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki_canary",
+		Name:      "websocket_missing_entries",
+		Help:      "counts log entries not received within the maxWait duration via the websocket connection",
+	})
 	missingEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
 		Name:      "missing_entries",
-		Help:      "counts log entries not received within the maxWait duration and is reported as missing",
+		Help:      "counts log entries not received within the maxWait duration via both websocket and direct query",
 	})
 	unexpectedEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
@@ -45,16 +53,23 @@ type Comparator struct {
 	entries       []*time.Time
 	maxWait       time.Duration
 	pruneInterval time.Duration
+	sent          chan time.Time
+	recv          chan time.Time
+	rdr           reader.LokiReader
 	quit          chan struct{}
 	done          chan struct{}
 }
 
-func NewComparator(writer io.Writer, maxWait time.Duration, pruneInterval time.Duration, buckets int) *Comparator {
+func NewComparator(writer io.Writer, maxWait time.Duration, pruneInterval time.Duration,
+	buckets int, sentChan chan time.Time, receivedChan chan time.Time, reader reader.LokiReader) *Comparator {
 	c := &Comparator{
 		w:             writer,
 		entries:       []*time.Time{},
 		maxWait:       maxWait,
 		pruneInterval: pruneInterval,
+		sent:          sentChan,
+		recv:          receivedChan,
+		rdr:           reader,
 		quit:          make(chan struct{}),
 		done:          make(chan struct{}),
 	}
@@ -76,15 +91,15 @@ func (c *Comparator) Stop() {
 	<-c.done
 }
 
-func (c *Comparator) EntrySent(time time.Time) {
+func (c *Comparator) entrySent(time time.Time) {
 	c.entMtx.Lock()
 	defer c.entMtx.Unlock()
 	c.entries = append(c.entries, &time)
 	totalEntries.Inc()
 }
 
-// EntryReceived removes the received entry from the buffer if it exists, reports on out of order entries received
-func (c *Comparator) EntryReceived(ts time.Time) {
+// entryReceived removes the received entry from the buffer if it exists, reports on out of order entries received
+func (c *Comparator) entryReceived(ts time.Time) {
 	c.entMtx.Lock()
 	defer c.entMtx.Unlock()
 
@@ -132,6 +147,10 @@ func (c *Comparator) run() {
 
 	for {
 		select {
+		case e := <-c.recv:
+			c.entryReceived(e)
+		case e := <-c.sent:
+			c.entrySent(e)
 		case <-t.C:
 			c.pruneEntries()
 		case <-c.quit:
@@ -144,12 +163,14 @@ func (c *Comparator) pruneEntries() {
 	c.entMtx.Lock()
 	defer c.entMtx.Unlock()
 
+	missing := []*time.Time{}
 	k := 0
 	for i, e := range c.entries {
 		// If the time is outside our range, assume the entry has been lost report and remove it
 		if e.Before(time.Now().Add(-c.maxWait)) {
-			missingEntries.Inc()
-			_, _ = fmt.Fprintf(c.w, ErrEntryNotReceived, e, c.maxWait.Seconds())
+			missing = append(missing, e)
+			wsMissingEntries.Inc()
+			_, _ = fmt.Fprintf(c.w, ErrEntryNotReceivedWs, e.UnixNano(), c.maxWait.Seconds())
 		} else {
 			if i != k {
 				c.entries[k] = c.entries[i]
@@ -162,4 +183,48 @@ func (c *Comparator) pruneEntries() {
 		c.entries[i] = nil // or the zero value of T
 	}
 	c.entries = c.entries[:k]
+	if len(missing) > 0 {
+		go c.confirmMissing(missing)
+	}
+}
+
+func (c *Comparator) confirmMissing(missing []*time.Time) {
+	// Because we are querying loki timestamps vs the timestamp in the log,
+	// make the range +/- 10 seconds to allow for clock inaccuracies
+	start := *missing[0]
+	start = start.Add(-10 * time.Second)
+	end := *missing[len(missing)-1]
+	end = end.Add(10 * time.Second)
+	recvd, err := c.rdr.Query(start, end)
+	if err != nil {
+		_, _ = fmt.Fprintf(c.w, "error querying loki: %s", err)
+		return
+	}
+	k := 0
+	for i, m := range missing {
+		found := false
+		for _, r := range recvd {
+			if (*m).Equal(r) {
+				// Entry was found in loki, this can be dropped from the list of missing
+				// which is done by NOT incrementing the output index k
+				found = true
+			}
+		}
+		if !found {
+			// Item is still missing
+			if i != k {
+				missing[k] = missing[i]
+			}
+			k++
+		}
+	}
+	// Nil out the pointers to any trailing elements which were removed from the slice
+	for i := k; i < len(missing); i++ {
+		missing[i] = nil // or the zero value of T
+	}
+	missing = missing[:k]
+	for _, e := range missing {
+		missingEntries.Inc()
+		_, _ = fmt.Fprintf(c.w, ErrEntryNotReceived, e.UnixNano(), c.maxWait.Seconds())
+	}
 }

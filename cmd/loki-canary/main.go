@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -38,23 +37,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	scheme := "ws"
-	if *tls {
-		scheme = "wss"
-	}
+	sentChan := make(chan time.Time)
+	receivedChan := make(chan time.Time)
 
-	u := url.URL{
-		Scheme:   scheme,
-		Host:     *addr,
-		Path:     "/api/prom/tail",
-		RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("{stream=\"stdout\",%v=\"%v\"}", *lName, *lVal)),
-	}
-
-	_, _ = fmt.Fprintf(os.Stderr, "Connecting to loki at %v, querying for label '%v' with value '%v'\n", u.String(), *lName, *lVal)
-
-	c := comparator.NewComparator(os.Stderr, *wait, 1*time.Second, *buckets)
-	w := writer.NewWriter(os.Stdout, c, *interval, *size)
-	r := reader.NewReader(os.Stderr, c, u, *user, *pass)
+	w := writer.NewWriter(os.Stdout, sentChan, *interval, *size)
+	r := reader.NewReader(os.Stderr, receivedChan, *tls, *addr, *user, *pass, *lName, *lVal)
+	c := comparator.NewComparator(os.Stderr, *wait, 1*time.Second, *buckets, sentChan, receivedChan, r)
 
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
