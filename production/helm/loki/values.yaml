@@ -105,8 +105,8 @@ podLabels: {}
 
 ## Pod Annotations
 podAnnotations:
- prometheus.io/scrape: "true"
- prometheus.io/port: "http-metrics"
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "http-metrics"
 
 podManagementPolicy: OrderedReady
 
