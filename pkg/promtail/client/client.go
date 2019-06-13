@@ -66,6 +66,7 @@ type client struct {
 	cfg     Config
 	client  *http.Client
 	quit    chan struct{}
+	once    sync.Once
 	entries chan entry
 	wg      sync.WaitGroup
 
@@ -229,7 +230,7 @@ func (c *client) send(ctx context.Context, buf []byte) (int, error) {
 
 // Stop the client.
 func (c *client) Stop() {
-	close(c.quit)
+	c.once.Do(func() { close(c.quit) })
 	c.wg.Wait()
 }
 

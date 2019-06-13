@@ -131,6 +131,14 @@ jobs:
               make push-images
             fi
 
+      - run:
+          name: Push Docker Plugin
+          command: |
+            if [ -n "$DOCKER_USER" ]; then
+              docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
+              make push-plugin
+            fi
+
   publish-master:
     <<: *defaults
     steps:
@@ -151,6 +159,14 @@ jobs:
           command: |
             docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
             make push-latest
+      
+      - run:
+          name: Push Docker Plugin
+          command: |
+            if [ -n "$DOCKER_USER" ]; then
+              docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
+              PLUGIN_TAG=master make push-plugin && PLUGIN_TAG=latest make push-plugin
+            fi
 
   test-helm:
     environment:
