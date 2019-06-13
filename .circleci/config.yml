@@ -136,7 +136,7 @@ jobs:
           command: |
             if [ -n "$DOCKER_USER" ]; then
               docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
-              make push-plugin
+              make BUILD_IN_CONTAINER=false push-plugin
             fi
 
   publish-master:
@@ -165,7 +165,7 @@ jobs:
           command: |
             if [ -n "$DOCKER_USER" ]; then
               docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
-              PLUGIN_TAG=master make push-plugin && PLUGIN_TAG=latest make push-plugin
+              PLUGIN_TAG=master make BUILD_IN_CONTAINER=false push-plugin && PLUGIN_TAG=latest make BUILD_IN_CONTAINER=false push-plugin
             fi
 
   test-helm:
