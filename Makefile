@@ -242,8 +242,8 @@ helm:
 	@set -e; \
 	helm init -c; \
 	for chart in $(CHARTS); do \
-		helm lint $$chart; \
 		helm dependency build $$chart; \
+		helm lint $$chart; \
 		helm package $$chart; \
 	done
 	rm -f production/helm/*/requirements.lock
