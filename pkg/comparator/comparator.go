@@ -16,6 +16,8 @@ const (
 	ErrOutOfOrderEntry    = "out of order entry %s was received before entries: %v\n"
 	ErrEntryNotReceivedWs = "websocket failed to receive entry %v within %f seconds\n"
 	ErrEntryNotReceived   = "failed to receive entry %v within %f seconds\n"
+	ErrDuplicateEntry     = "received a duplicate entry for ts %v\n"
+	ErrUnexpectedEntry    = "received an unexpected entry with ts %v\n"
 )
 
 var (
@@ -42,7 +44,12 @@ var (
 	unexpectedEntries = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki_canary",
 		Name:      "unexpected_entries",
-		Help:      "counts a log entry received which was not expected (e.g. duplicate, received after reported missing)",
+		Help:      "counts a log entry received which was not expected (e.g. received after reported missing)",
+	})
+	duplicateEntries = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki_canary",
+		Name:      "duplicate_entries",
+		Help:      "counts a log entry received more than one time",
 	})
 	responseLatency prometheus.Histogram
 )
@@ -51,6 +58,7 @@ type Comparator struct {
 	entMtx        sync.Mutex
 	w             io.Writer
 	entries       []*time.Time
+	ackdEntries   []*time.Time
 	maxWait       time.Duration
 	pruneInterval time.Duration
 	sent          chan time.Time
@@ -115,6 +123,8 @@ func (c *Comparator) entryReceived(ts time.Time) {
 				_, _ = fmt.Fprintf(c.w, ErrOutOfOrderEntry, e, c.entries[:i])
 			}
 			responseLatency.Observe(time.Now().Sub(ts).Seconds())
+			// Put this element in the acknowledged entries list so we can use it to check for duplicates
+			c.ackdEntries = append(c.ackdEntries, c.entries[i])
 			// Do not increment output index, effectively causing this element to be dropped
 		} else {
 			// If the current index doesn't match the output index, update the array with the correct position
@@ -125,7 +135,19 @@ func (c *Comparator) entryReceived(ts time.Time) {
 		}
 	}
 	if !matched {
-		unexpectedEntries.Inc()
+		duplicate := false
+		for _, e := range c.ackdEntries {
+			if ts.Equal(*e) {
+				duplicate = true
+				duplicateEntries.Inc()
+				_, _ = fmt.Fprintf(c.w, ErrDuplicateEntry, ts.UnixNano())
+				break
+			}
+		}
+		if !duplicate {
+			_, _ = fmt.Fprintf(c.w, ErrUnexpectedEntry, ts.UnixNano())
+			unexpectedEntries.Inc()
+		}
 	}
 	// Nil out the pointers to any trailing elements which were removed from the slice
 	for i := k; i < len(c.entries); i++ {
@@ -186,6 +208,24 @@ func (c *Comparator) pruneEntries() {
 	if len(missing) > 0 {
 		go c.confirmMissing(missing)
 	}
+
+	// Prune the acknowledged list, remove anything older than our maxwait
+	k = 0
+	for i, e := range c.ackdEntries {
+		if e.Before(time.Now().Add(-c.maxWait)) {
+			// Do nothing, if we don't increment the output index k, this will be dropped
+		} else {
+			if i != k {
+				c.ackdEntries[k] = c.ackdEntries[i]
+			}
+			k++
+		}
+	}
+	// Nil out the pointers to any trailing elements which were removed from the slice
+	for i := k; i < len(c.ackdEntries); i++ {
+		c.ackdEntries[i] = nil // or the zero value of T
+	}
+	c.ackdEntries = c.ackdEntries[:k]
 }
 
 func (c *Comparator) confirmMissing(missing []*time.Time) {
