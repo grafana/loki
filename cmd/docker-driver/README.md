@@ -71,7 +71,7 @@ The logging driver has configurable options, you can set them in the `daemon.jso
 }
 ```
 
-> **Note**: log-opt configuration options in the daemon.json configuration file must be provided as strings. Boolean and numeric values (such as the value for max-file in the example above) must therefore be enclosed in quotes (").
+> **Note**: log-opt configuration options in the daemon.json configuration file must be provided as strings. Boolean and numeric values (such as the value for loki-batch-size in the example above) must therefore be enclosed in quotes (").
 
 Restart the Docker daemon and it will be configured with Loki logging driver, all containers from that host will send logs to Loki instance.
 
@@ -140,6 +140,16 @@ To cleanly disable and remove the plugin, run:
 ```bash
 docker plugin disable loki
 docker plugin rm loki
+```
+
+## Upgrade the plugin
+
+To upgrade the plugin to the last version, run:
+
+```bash
+docker plugin disable loki
+docker plugin upgrade loki grafana/loki-docker-driver:master
+docker plugin enable loki
 ```
 
 ## Troubleshooting

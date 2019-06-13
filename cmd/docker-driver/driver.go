@@ -133,7 +133,6 @@ func consumeLog(lf *logPair) {
 		// loki goes first as the json logger reset the message on completion.
 		if err := lf.lokil.Log(&msg); err != nil {
 			level.Error(lf.logger).Log("msg", "error pushing message to loki", "id", lf.info.ContainerID, "err", err, "message", msg)
-			continue
 		}
 
 		if err := lf.jsonl.Log(&msg); err != nil {
