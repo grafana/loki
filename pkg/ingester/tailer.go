@@ -25,9 +25,8 @@ type tailer struct {
 	regexp   *regexp.Regexp
 
 	sendChan         chan *logproto.Stream
-	closed           chan struct{}
+	done             chan struct{}
 	ingesterQuitting chan struct{}
-	closedMtx        sync.RWMutex
 
 	blockedAt      *time.Time
 	blockedMtx     sync.RWMutex
@@ -60,7 +59,7 @@ func newTailer(orgID, query, regex string, conn logproto.Querier_TailServer, ing
 		conn:             conn,
 		droppedStreams:   []*logproto.DroppedStream{},
 		id:               generateUniqueID(orgID, query, regex),
-		closed:           make(chan struct{}),
+		done:             make(chan struct{}),
 		ingesterQuitting: ingesterQuitting,
 	}, nil
 }
@@ -84,7 +83,7 @@ func (t *tailer) loop() {
 		case <-t.ingesterQuitting:
 			t.close()
 			return
-		case <-t.closed:
+		case <-t.done:
 			return
 		case stream, ok = <-t.sendChan:
 			if !ok {
@@ -159,7 +158,7 @@ func (t *tailer) isWatchingLabels(metric model.Metric) bool {
 
 func (t *tailer) isClosed() bool {
 	select {
-	case <-t.closed:
+	case <-t.done:
 		return true
 	default:
 		return false
@@ -167,7 +166,7 @@ func (t *tailer) isClosed() bool {
 }
 
 func (t *tailer) close() {
-	close(t.closed)
+	close(t.done)
 	close(t.sendChan)
 }
 

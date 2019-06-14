@@ -2,7 +2,6 @@ package querier
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"testing"
 	"time"
