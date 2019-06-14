@@ -47,7 +47,7 @@ func (m *mockQuerierTailClient) Recv() (*logproto.TailResponse, error) {
 		tailResponse := logproto.TailResponse{
 			Stream: &m.streams[m.index],
 		}
-		m.index += 1
+		m.index++
 		return &tailResponse, nil
 	}
 
@@ -67,11 +67,11 @@ func TestQuerier_Tail(t *testing.T) {
 							Entries: []logproto.Entry{
 								{
 									Timestamp: time.Unix(0, 0),
-									Line: "foo line 1",
+									Line:      "foo line 1",
 								},
 								{
 									Timestamp: time.Unix(0, 5),
-									Line: "foo line 2",
+									Line:      "foo line 2",
 								},
 							},
 						},
@@ -84,11 +84,11 @@ func TestQuerier_Tail(t *testing.T) {
 							Entries: []logproto.Entry{
 								{
 									Timestamp: time.Unix(0, 0),
-									Line: "foobar line 1",
+									Line:      "foobar line 1",
 								},
 								{
 									Timestamp: time.Unix(0, 1),
-									Line: "foobar line 2",
+									Line:      "foobar line 2",
 								},
 							},
 						},
