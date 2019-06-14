@@ -24,9 +24,10 @@ type tailer struct {
 	matchers []*labels.Matcher
 	regexp   *regexp.Regexp
 
-	sendChan  chan *logproto.Stream
-	closed    bool
-	closedMtx sync.RWMutex
+	sendChan         chan *logproto.Stream
+	closed           chan struct{}
+	ingesterQuitting chan struct{}
+	closedMtx        sync.RWMutex
 
 	blockedAt      *time.Time
 	blockedMtx     sync.RWMutex
@@ -35,7 +36,7 @@ type tailer struct {
 	conn logproto.Querier_TailServer
 }
 
-func newTailer(orgID, query, regex string, conn logproto.Querier_TailServer) (*tailer, error) {
+func newTailer(orgID, query, regex string, conn logproto.Querier_TailServer, ingesterQuitting chan struct{}) (*tailer, error) {
 	expr, err := logql.ParseExpr(query)
 	if err != nil {
 		return nil, err
@@ -52,13 +53,15 @@ func newTailer(orgID, query, regex string, conn logproto.Querier_TailServer) (*t
 	}
 
 	return &tailer{
-		orgID:          orgID,
-		matchers:       matchers,
-		regexp:         re,
-		sendChan:       make(chan *logproto.Stream, bufferSizeForTailResponse),
-		conn:           conn,
-		droppedStreams: []*logproto.DroppedStream{},
-		id:             generateUniqueID(orgID, query, regex),
+		orgID:            orgID,
+		matchers:         matchers,
+		regexp:           re,
+		sendChan:         make(chan *logproto.Stream, bufferSizeForTailResponse),
+		conn:             conn,
+		droppedStreams:   []*logproto.DroppedStream{},
+		id:               generateUniqueID(orgID, query, regex),
+		closed:           make(chan struct{}),
+		ingesterQuitting: ingesterQuitting,
 	}, nil
 }
 
@@ -67,26 +70,37 @@ func (t *tailer) loop() {
 	var err error
 	var ok bool
 
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
 	for {
-		if t.isClosed() {
-			return
-		}
-
-		stream, ok = <-t.sendChan
-		if !ok {
+		select {
+		case <-ticker.C:
+			err := t.conn.Context().Err()
+			if err != nil {
+				t.close()
+				return
+			}
+		case <-t.ingesterQuitting:
 			t.close()
 			return
-		} else if stream == nil {
-			continue
-		}
-
-		// while sending new stream pop lined up dropped streams metadata for sending to querier
-		tailResponse := logproto.TailResponse{Stream: stream, DroppedStreams: t.popDroppedStreams()}
-		err = t.conn.Send(&tailResponse)
-		if err != nil {
-			level.Error(util.Logger).Log("Error writing to tail client", fmt.Sprintf("%v", err))
-			t.close()
+		case <-t.closed:
 			return
+		case stream, ok = <-t.sendChan:
+			if !ok {
+				return
+			} else if stream == nil {
+				continue
+			}
+
+			// while sending new stream pop lined up dropped streams metadata for sending to querier
+			tailResponse := logproto.TailResponse{Stream: stream, DroppedStreams: t.popDroppedStreams()}
+			err = t.conn.Send(&tailResponse)
+			if err != nil {
+				level.Error(util.Logger).Log("Error writing to tail client", fmt.Sprintf("%v", err))
+				t.close()
+				return
+			}
 		}
 	}
 }
@@ -144,17 +158,17 @@ func (t *tailer) isWatchingLabels(metric model.Metric) bool {
 }
 
 func (t *tailer) isClosed() bool {
-	t.closedMtx.RLock()
-	defer t.closedMtx.RUnlock()
-
-	return t.closed
+	select {
+	case <-t.closed:
+		return true
+	default:
+		return false
+	}
 }
 
 func (t *tailer) close() {
-	t.closedMtx.Lock()
-	defer t.closedMtx.Unlock()
-
-	t.closed = true
+	close(t.closed)
+	close(t.sendChan)
 }
 
 func (t *tailer) blockedSince() *time.Time {
