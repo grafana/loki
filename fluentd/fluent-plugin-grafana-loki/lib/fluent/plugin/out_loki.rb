@@ -48,6 +48,9 @@ module Fluent
       # comma separated list of keys to use as stream lables.  All other keys will be placed into the log line
       config_param :label_keys, :string, default: 'job,instance'
 
+      # comma separated list of needless record keys to remove
+      config_param :remove_keys, :string, default: nil
+
       # if a record only has 1 key, then just set the log line to the value and discard the key.
       config_param :drop_single_key, :bool, default: false
 
@@ -61,6 +64,7 @@ module Fluent
         super
 
         @label_keys = @label_keys.split(/\s*,\s*/) if @label_keys
+        @remove_keys = @remove_keys.split(',').map(&:strip) if @remove_keys
       end
 
       def http_opts(uri)
@@ -172,6 +176,10 @@ module Fluent
         chunk_labels = {}
         line = ''
         if record.is_a?(Hash)
+          # remove needless keys.
+          @remove_keys.each { |v|
+            record.delete(v)
+          }
           # extract white listed record keys into labels.
           @label_keys.each do |k|
             if record.key?(k)
