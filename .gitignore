@@ -10,7 +10,9 @@ cmd/loki/loki
 cmd/promtail/promtail
 cmd/loki/loki-debug
 cmd/promtail/promtail-debug
+cmd/docker-driver/docker-driver
 /loki
 /promtail
 /logcli
 dlv
+rootfs/

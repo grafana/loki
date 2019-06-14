@@ -108,6 +108,11 @@ jobs:
           paths:
           - images/
 
+      - save_cache:
+          key: v1-loki-plugin-{{ .Branch }}-{{ .Revision }}
+          paths:
+          - cmd/docker-driver/docker-driver
+
   publish:
     <<: *defaults
     steps:
@@ -116,6 +121,8 @@ jobs:
 
       - restore_cache:
           key: v1-loki-{{ .Branch }}-{{ .Revision }}
+      - restore_cache:
+          key: v1-loki-plugin-{{ .Branch }}-{{ .Revision }}
 
       - run:
           name: Load Images
@@ -131,6 +138,14 @@ jobs:
               make push-images
             fi
 
+      - run:
+          name: Push Docker Plugin
+          command: |
+            if [ -n "$DOCKER_USER" ]; then
+              docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
+              make BUILD_IN_CONTAINER=false push-plugin
+            fi
+
   publish-master:
     <<: *defaults
     steps:
@@ -139,7 +154,9 @@ jobs:
 
       - restore_cache:
           key: v1-loki-{{ .Branch }}-{{ .Revision }}
-
+      - restore_cache:
+          key: v1-loki-plugin-{{ .Branch }}-{{ .Revision }}
+          
       - run:
           name: Load Images
           command: |
@@ -151,6 +168,14 @@ jobs:
           command: |
             docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
             make push-latest
+      
+      - run:
+          name: Push Docker Plugin
+          command: |
+            if [ -n "$DOCKER_USER" ]; then
+              docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
+              PLUGIN_TAG=master make BUILD_IN_CONTAINER=false push-plugin && PLUGIN_TAG=latest make BUILD_IN_CONTAINER=false push-plugin
+            fi
 
   test-helm:
     environment:
