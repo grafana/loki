@@ -13,36 +13,36 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-type mockQuerier_TailClient struct {
+type mockQuerierTailClient struct {
 	streams []logproto.Stream
 	index   int
 }
 
-func (m mockQuerier_TailClient) Header() (metadata.MD, error) {
+func (mockQuerierTailClient) Header() (metadata.MD, error) {
 	return nil, nil
 }
 
-func (m mockQuerier_TailClient) Trailer() metadata.MD {
+func (mockQuerierTailClient) Trailer() metadata.MD {
 	return nil
 }
 
-func (m mockQuerier_TailClient) CloseSend() error {
+func (mockQuerierTailClient) CloseSend() error {
 	return nil
 }
 
-func (m mockQuerier_TailClient) Context() context.Context {
+func (mockQuerierTailClient) Context() context.Context {
 	return nil
 }
 
-func (m mockQuerier_TailClient) SendMsg(i interface{}) error {
+func (mockQuerierTailClient) SendMsg(i interface{}) error {
 	return nil
 }
 
-func (m mockQuerier_TailClient) RecvMsg(i interface{}) error {
+func (mockQuerierTailClient) RecvMsg(i interface{}) error {
 	return nil
 }
 
-func (m *mockQuerier_TailClient) Recv() (*logproto.TailResponse, error) {
+func (m *mockQuerierTailClient) Recv() (*logproto.TailResponse, error) {
 	if m.index < len(m.streams) {
 		tailResponse := logproto.TailResponse{
 			Stream: &m.streams[m.index],
@@ -57,39 +57,38 @@ func (m *mockQuerier_TailClient) Recv() (*logproto.TailResponse, error) {
 func TestQuerier_Tail(t *testing.T) {
 	testCases := []struct {
 		tailClients map[string]logproto.Querier_TailClient
-		expected    TailResponse
 	}{
 		{
 			tailClients: map[string]logproto.Querier_TailClient{
-				"1": &mockQuerier_TailClient{
+				"1": &mockQuerierTailClient{
 					streams: []logproto.Stream{
 						{
-							"foo=1",
-							[]logproto.Entry{
+							Labels: "foo=1",
+							Entries: []logproto.Entry{
 								{
-									time.Unix(0, 0),
-									"foo line 1",
+									Timestamp: time.Unix(0, 0),
+									Line: "foo line 1",
 								},
 								{
-									time.Unix(0, 5),
-									"foo line 2",
+									Timestamp: time.Unix(0, 5),
+									Line: "foo line 2",
 								},
 							},
 						},
 					},
 				},
-				"2": &mockQuerier_TailClient{
+				"2": &mockQuerierTailClient{
 					streams: []logproto.Stream{
 						{
-							"foo=1&bar=1",
-							[]logproto.Entry{
+							Labels: "foo=1&bar=1",
+							Entries: []logproto.Entry{
 								{
-									time.Unix(0, 0),
-									"foobar line 1",
+									Timestamp: time.Unix(0, 0),
+									Line: "foobar line 1",
 								},
 								{
-									time.Unix(0, 1),
-									"foobar line 2",
+									Timestamp: time.Unix(0, 1),
+									Line: "foobar line 2",
 								},
 							},
 						},
@@ -104,10 +103,10 @@ func TestQuerier_Tail(t *testing.T) {
 			Streams: []logproto.Stream{},
 		}
 		for i := range testCase.tailClients {
-			tailClient := testCase.tailClients[i].(*mockQuerier_TailClient)
+			tailClient := testCase.tailClients[i].(*mockQuerierTailClient)
 			for _, stream := range tailClient.streams {
 				for _, entry := range stream.Entries {
-					expected.Streams = append(expected.Streams, logproto.Stream{stream.Labels, []logproto.Entry{entry}})
+					expected.Streams = append(expected.Streams, logproto.Stream{Labels: stream.Labels, Entries: []logproto.Entry{entry}})
 				}
 			}
 		}

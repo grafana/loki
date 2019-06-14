@@ -60,8 +60,8 @@ type Ingester struct {
 	lifecycler *ring.Lifecycler
 	store      ChunkStore
 
-	done sync.WaitGroup
-	quit chan struct{}
+	done     sync.WaitGroup
+	quit     chan struct{}
 	quitting chan struct{}
 
 	// One queue per flush thread.  Fingerprint is used to
@@ -83,7 +83,7 @@ func New(cfg Config, store ChunkStore) (*Ingester, error) {
 		store:       store,
 		quit:        make(chan struct{}),
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		quitting: make(chan struct{}),
+		quitting:    make(chan struct{}),
 	}
 
 	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
@@ -130,7 +130,7 @@ func (i *Ingester) Shutdown() {
 }
 
 // Stopping helps cleaning up resources before actual shutdown
-func (i *Ingester) Stopping()  {
+func (i *Ingester) Stopping() {
 	close(i.quitting)
 }
 
