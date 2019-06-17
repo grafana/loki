@@ -11,11 +11,11 @@ local utils = import "mixin-utils/utils.libsonnet";
         g.row('Frontend (cortex_gw)')
         .addPanel(
           g.panel('QPS') +
-          g.qpsPanel('cortex_gw_request_duration_seconds_count{cluster=~"$cluster", job=~"($namespace)/cortex-gw", route="cortex-write"}')
+          g.qpsPanel('loki_request_duration_seconds_count{cluster=~"$cluster", job=~"($namespace)/cortex-gw", route="api_prom_push"}')
         )
         .addPanel(
           g.panel('Latency') +
-          utils.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [utils.selector.re('job', '($namespace)/cortex-gw'), utils.selector.eq('route', 'cortex-write')], extra_selectors=[utils.selector.re('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.re('job', '($namespace)/cortex-gw'), utils.selector.eq('route', 'api_prom_push')], extra_selectors=[utils.selector.re('cluster', '$cluster')])
         )
       )
       .addRow(
@@ -49,11 +49,11 @@ local utils = import "mixin-utils/utils.libsonnet";
         g.row('Frontend (cortex_gw)')
         .addPanel(
           g.panel('QPS') +
-          g.qpsPanel('cortex_gw_request_duration_seconds_count{cluster="$cluster", job="$namespace/cortex-gw", route="cortex-read"}')
+          g.qpsPanel('loki_request_duration_seconds_count{cluster="$cluster", job="$namespace/cortex-gw", route="api_prom_query"}')
         )
         .addPanel(
           g.panel('Latency') +
-          utils.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [utils.selector.eq('job', '$namespace/cortex-gw'), utils.selector.eq('route', 'cortex-read')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/cortex-gw'), utils.selector.eq('route', 'api_prom_query')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
         )
       )
       .addRow(
@@ -139,11 +139,11 @@ local utils = import "mixin-utils/utils.libsonnet";
         g.row('loki Reqs (cortex_gw)')
         .addPanel(
           g.panel('QPS') +
-          g.qpsPanel('cortex_gw_request_duration_seconds_count{cluster="$cluster", job="$namespace/cortex-gw"}')
+          g.qpsPanel('loki_request_duration_seconds_count{cluster="$cluster", job="$namespace/cortex-gw"}')
         )
         .addPanel(
           g.panel('Latency') +
-          utils.latencyRecordingRulePanel('cortex_gw_request_duration_seconds', [utils.selector.eq('job', '$namespace/cortex-gw')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/cortex-gw')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
         )
       ),
 
