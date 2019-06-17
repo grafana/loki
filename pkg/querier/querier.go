@@ -244,7 +244,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 	return newTailer(time.Duration(req.DelayFor)*time.Second, tailClients, func(from, to time.Time, labels string) (iterator iter.EntryIterator, e error) {
 		return q.queryDroppedStreams(ctx, req, from, to, labels)
 	}, func(connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
-		return q.tailDisconnectedIngesteres(ctx, req, connectedIngestersAddr)
+		return q.tailDisconnectedIngesters(ctx, req, connectedIngestersAddr)
 	}), nil
 }
 
@@ -292,7 +292,7 @@ func (q *Querier) queryDroppedStreams(ctx context.Context, req *logproto.TailReq
 }
 
 // passed to tailer for (re)connecting to new or disconnected ingesters
-func (q *Querier) tailDisconnectedIngesteres(ctx context.Context, req *logproto.TailRequest, connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
+func (q *Querier) tailDisconnectedIngesters(ctx context.Context, req *logproto.TailRequest, connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
 	tailClients := make(map[string]logproto.Querier_TailClient)
 	for i := range connectedIngestersAddr {
 		tailClients[connectedIngestersAddr[i]] = nil
