@@ -231,7 +231,8 @@ release-perform:
 	@set -e; \
 	for image_name in $(IMAGE_NAMES); do \
 		if ! echo $$image_name | grep build; then \
-			docker tag $$image_name:$(IMAGE_TAG) $$image_name:$(VERSION); \
+			docker pull $$image_name:master; \
+			docker tag $$image_name:master $$image_name:$(VERSION); \
 			docker push $$image_name:$(VERSION); \
 		fi \
 	done
@@ -296,8 +297,8 @@ PLUGIN_FOLDER = ./cmd/docker-driver
 PLUGIN_TAG ?= $(IMAGE_TAG)
 
 build-plugin: $(PLUGIN_FOLDER)/docker-driver
-	-docker plugin disable grafana/loki-docker-driver:$(IMAGE_TAG)
-	-docker plugin rm grafana/loki-docker-driver:$(IMAGE_TAG)
+	-docker plugin disable ${IMAGE_PREFIX}loki-docker-driver:$(IMAGE_TAG)
+	-docker plugin rm ${IMAGE_PREFIX}loki-docker-driver:$(IMAGE_TAG)
 	-rm -rf $(PLUGIN_FOLDER)/rootfs
 	mkdir $(PLUGIN_FOLDER)/rootfs
 	docker build -t rootfsimage $(PLUGIN_FOLDER)
@@ -305,10 +306,10 @@ build-plugin: $(PLUGIN_FOLDER)/docker-driver
 	(docker export $$ID | tar -x -C $(PLUGIN_FOLDER)/rootfs) && \
 	docker rm -vf $$ID
 	docker rmi rootfsimage -f
-	docker plugin create grafana/loki-docker-driver:$(PLUGIN_TAG) $(PLUGIN_FOLDER)
+	docker plugin create ${IMAGE_PREFIX}loki-docker-driver:$(PLUGIN_TAG) $(PLUGIN_FOLDER)
 
 push-plugin: build-plugin
-	docker plugin push grafana/loki-docker-driver:$(PLUGIN_TAG)
+	docker plugin push ${IMAGE_PREFIX}loki-docker-driver:$(PLUGIN_TAG)
 
 enable-plugin:
-	docker plugin enable grafana/loki-docker-driver:$(PLUGIN_TAG)
+	docker plugin enable ${IMAGE_PREFIX}loki-docker-driver:$(PLUGIN_TAG)

@@ -26,21 +26,28 @@ workflows:
         filters:
           branches:
             only: master
-    - publish-helm:
-        requires:
-        - test
-        - test-helm
-        - build
-        - lint
-        filters:
-          branches:
-            only: master
     - deploy:
         requires:
         - publish
         filters:
           branches:
             only: master
+  release:
+    jobs:
+    - release:
+        filters:
+          branches:
+            ignore: /.*/
+          tags:
+            only: /.+/
+    - publish-helm:
+        requires:
+        - release
+        filters:
+          branches:
+            ignore: /.*/
+          tags:
+            only: /.+/
 
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
@@ -156,7 +163,7 @@ jobs:
           key: v1-loki-{{ .Branch }}-{{ .Revision }}
       - restore_cache:
           key: v1-loki-plugin-{{ .Branch }}-{{ .Revision }}
-          
+
       - run:
           name: Load Images
           command: |
@@ -168,7 +175,7 @@ jobs:
           command: |
             docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
             make push-latest
-      
+
       - run:
           name: Push Docker Plugin
           command: |
@@ -234,18 +241,9 @@ jobs:
     steps:
       - checkout
       - setup_remote_docker
-      - restore_cache:
-          key: v1-loki-{{ .Branch }}-{{ .Revision }}
-      - run:
-          name: Load Images
-          command: |
-            touch loki-build-image/.uptodate &&
-            make BUILD_IN_CONTAINER=false load-images
-      - run:
-          name: "Print Tag"
-          command: echo ${CIRCLE_TAG}
       - run:
           name: "Release"
           command: |
             docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
             make VERSION=${CIRCLE_TAG} release-perform
+
