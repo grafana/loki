@@ -97,7 +97,7 @@ func (hb *headBlock) append(ts int64, line string) error {
 }
 
 func (hb *headBlock) serialise(cw func(w io.Writer) CompressionWriter) ([]byte, error) {
-	buf := bytes.NewBuffer(make([]byte, 0, 1<<15)) // 32K. Pool it later.
+	buf := &bytes.Buffer{}
 	encBuf := make([]byte, binary.MaxVarintLen64)
 	compressedWriter := cw(buf)
 	for _, logEntry := range hb.entries {
