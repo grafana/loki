@@ -36,7 +36,7 @@ type tailer struct {
 	conn logproto.Querier_TailServer
 }
 
-func newTailer(orgID, query, regex string, conn logproto.Querier_TailServer, ingesterQuitting chan struct{}) (*tailer, error) {
+func newTailer(orgID, query, regex string, conn logproto.Querier_TailServer) (*tailer, error) {
 	expr, err := logql.ParseExpr(query)
 	if err != nil {
 		return nil, err
