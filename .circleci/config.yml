@@ -5,11 +5,13 @@ workflows:
   test-build-deploy:
     jobs:
     - test
+    - test-helm
     - build
     - lint
     - publish:
         requires:
         - test
+        - test-helm
         - build
         - lint
         filters:
@@ -18,6 +20,7 @@ workflows:
     - publish-master:
         requires:
         - test
+        - test-helm
         - build
         - lint
         filters:
@@ -26,6 +29,7 @@ workflows:
     - publish-helm:
         requires:
         - test
+        - test-helm
         - build
         - lint
         filters:
@@ -80,6 +84,14 @@ jobs:
       - setup_remote_docker
 
       - run:
+          name: Promtail cross platform
+          command: |
+            touch loki-build-image/.uptodate &&
+            make GOOS=linux   BUILD_IN_CONTAINER=false cmd/promtail/promtail
+            rm cmd/promtail/promtail
+            make GOOS=windows BUILD_IN_CONTAINER=false cmd/promtail/promtail
+
+      - run:
           name: Build Images
           command: |
             touch loki-build-image/.uptodate &&
@@ -96,6 +108,11 @@ jobs:
           paths:
           - images/
 
+      - save_cache:
+          key: v1-loki-plugin-{{ .Branch }}-{{ .Revision }}
+          paths:
+          - cmd/docker-driver/docker-driver
+
   publish:
     <<: *defaults
     steps:
@@ -104,6 +121,8 @@ jobs:
 
       - restore_cache:
           key: v1-loki-{{ .Branch }}-{{ .Revision }}
+      - restore_cache:
+          key: v1-loki-plugin-{{ .Branch }}-{{ .Revision }}
 
       - run:
           name: Load Images
@@ -119,6 +138,14 @@ jobs:
               make push-images
             fi
 
+      - run:
+          name: Push Docker Plugin
+          command: |
+            if [ -n "$DOCKER_USER" ]; then
+              docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
+              make BUILD_IN_CONTAINER=false push-plugin
+            fi
+
   publish-master:
     <<: *defaults
     steps:
@@ -127,7 +154,9 @@ jobs:
 
       - restore_cache:
           key: v1-loki-{{ .Branch }}-{{ .Revision }}
-
+      - restore_cache:
+          key: v1-loki-plugin-{{ .Branch }}-{{ .Revision }}
+          
       - run:
           name: Load Images
           command: |
@@ -139,6 +168,46 @@ jobs:
           command: |
             docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
             make push-latest
+      
+      - run:
+          name: Push Docker Plugin
+          command: |
+            if [ -n "$DOCKER_USER" ]; then
+              docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
+              PLUGIN_TAG=master make BUILD_IN_CONTAINER=false push-plugin && PLUGIN_TAG=latest make BUILD_IN_CONTAINER=false push-plugin
+            fi
+
+  test-helm:
+    environment:
+      CT_VERSION: 2.3.3
+    machine:
+      image: ubuntu-1604:201903-01
+    steps:
+      - checkout
+      - run:
+          name: Install k3s
+          command: |
+            curl -sfL https://get.k3s.io | sh -
+            mkdir -p ~/.kube
+            cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - run:
+          name: Install Helm
+          command: |
+            curl -L https://git.io/get_helm.sh | bash
+            kubectl apply -f tools/helm.yaml
+            helm init --service-account helm --wait
+      - run:
+          name: Install Chart Testing tool
+          command: |
+            pip install yamale yamllint
+            curl -Lo ct.tgz https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz
+            sudo tar -C /usr/local/bin -xvf ct.tgz
+            sudo mv /usr/local/bin/etc /etc/ct/
+      - run:
+          name: Run Chart Tests
+          command: |
+            ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
+            ct install --build-id=${CIRCLE_BUILD_NUM} --charts production/helm/loki-stack
 
   publish-helm:
     <<: *defaults
@@ -159,3 +228,24 @@ jobs:
             --data "{\"build_parameters\": {\"CIRCLE_JOB\": \"deploy\", \"IMAGE_NAMES\": \"$(make images)\"}}" \
             --request POST \
             https://circleci.com/api/v1.1/project/github/raintank/deployment_tools/tree/master?circle-token=$CIRCLE_TOKEN
+
+  release:
+    <<: *defaults
+    steps:
+      - checkout
+      - setup_remote_docker
+      - restore_cache:
+          key: v1-loki-{{ .Branch }}-{{ .Revision }}
+      - run:
+          name: Load Images
+          command: |
+            touch loki-build-image/.uptodate &&
+            make BUILD_IN_CONTAINER=false load-images
+      - run:
+          name: "Print Tag"
+          command: echo ${CIRCLE_TAG}
+      - run:
+          name: "Release"
+          command: |
+            docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
+            make VERSION=${CIRCLE_TAG} release-perform

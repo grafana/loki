@@ -15,7 +15,6 @@ type Cache interface {
 
 // Config for building Caches.
 type Config struct {
-	EnableDiskcache bool `yaml:"enable_diskcache,omitempty"`
 	EnableFifoCache bool `yaml:"enable_fifocache,omitempty"`
 
 	DefaultValidity time.Duration `yaml:"defaul_validity,omitempty"`
@@ -23,7 +22,6 @@ type Config struct {
 	Background     BackgroundConfig      `yaml:"background,omitempty"`
 	Memcache       MemcachedConfig       `yaml:"memcached,omitempty"`
 	MemcacheClient MemcachedClientConfig `yaml:"memcached_client,omitempty"`
-	Diskcache      DiskcacheConfig       `yaml:"diskcache,omitempty"`
 	Fifocache      FifoCacheConfig       `yaml:"fifocache,omitempty"`
 
 	// This is to name the cache metrics properly.
@@ -38,10 +36,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	cfg.Background.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Memcache.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.MemcacheClient.RegisterFlagsWithPrefix(prefix, description, f)
-	cfg.Diskcache.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Fifocache.RegisterFlagsWithPrefix(prefix, description, f)
 
-	f.BoolVar(&cfg.EnableDiskcache, prefix+"cache.enable-diskcache", false, description+"Enable on-disk cache.")
 	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"Enable in-memory cache.")
 	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", 0, description+"The default validity of entries for caches unless overridden.")
 
@@ -63,16 +59,6 @@ func New(cfg Config) (Cache, error) {
 
 		cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache)
 		caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache))
-	}
-
-	if cfg.EnableDiskcache {
-		cache, err := NewDiskcache(cfg.Diskcache)
-		if err != nil {
-			return nil, err
-		}
-
-		cacheName := cfg.Prefix + "diskcache"
-		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache)))
 	}
 
 	if cfg.MemcacheClient.Host != "" {

@@ -2,7 +2,7 @@
 
 ## Pipeline Examples
 
-TODO Need pipeline examples
+[Pipeline Docs](./logentry/processing-log-lines.md) contains detailed documentation of the pipeline stages
 
 ## Simple Docker Config
 
@@ -23,7 +23,8 @@ client:
 
 scrape_configs:
  - job_name: system
-   entry_parser: raw
+   pipeline_stages:
+   - docker:
    static_configs:
    - targets:
       - localhost
@@ -33,7 +34,8 @@ scrape_configs:
       __path__: /var/log/*.log
 
  - job_name: someone_service
-   entry_parser: raw
+   pipeline_stages:
+   - docker:
    static_configs:
    - targets:
       - localhost

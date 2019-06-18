@@ -189,3 +189,15 @@ If you set your DynamoDB table manually, ensure you set the primary index key to
 (string) and use `r` (binary) as the sort key. Also set the "period" attribute in the yaml to zero.
 Make sure adjust your throughput base on your usage.
 
+DynamoDB's table manager client defaults provisioning capacity units read to 300 and writes to 3000.
+If you wish to override these defaults the config section should include:
+
+```yaml
+table_manager:
+  index_tables_provisioning:
+    provisioned_write_throughput: 10
+    provisioned_read_throughput: 10
+  chunk_tables_provisioning:
+    provisioned_write_throughput: 10
+    provisioned_read_throughput: 10
+```

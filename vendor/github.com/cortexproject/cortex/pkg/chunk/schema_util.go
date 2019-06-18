@@ -7,16 +7,50 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"strconv"
+	"strings"
 
 	"fmt"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-func metricSeriesID(m model.Metric) string {
-	h := sha256.Sum256([]byte(m.String()))
-	return string(encodeBase64Bytes(h[:]))
+// Backwards-compatible with model.Metric.String()
+func labelsString(ls labels.Labels) string {
+	metricName := ls.Get(labels.MetricName)
+	if metricName != "" && len(ls) == 1 {
+		return metricName
+	}
+	var b strings.Builder
+	b.Grow(1000)
+
+	b.WriteString(metricName)
+	b.WriteByte('{')
+	i := 0
+	for _, l := range ls {
+		if l.Name == labels.MetricName {
+			continue
+		}
+		if i > 0 {
+			b.WriteByte(',')
+			b.WriteByte(' ')
+		}
+		b.WriteString(l.Name)
+		b.WriteByte('=')
+		var buf [1000]byte
+		b.Write(strconv.AppendQuote(buf[:0], l.Value))
+		i++
+	}
+	b.WriteByte('}')
+
+	return b.String()
+}
+
+func labelsSeriesID(ls labels.Labels) []byte {
+	h := sha256.Sum256([]byte(labelsString(ls)))
+	return encodeBase64Bytes(h[:])
 }
 
 func sha256bytes(s string) []byte {

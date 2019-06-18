@@ -6,19 +6,59 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 )
 
-var cfg = `json: 
-  timestamp:
-    source: time
-    format: RFC3339
-  labels:
-    stream:
-      source: json_key_name.json_sub_key_name
-  output:
-    source: log`
+var testJSONYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      out:  message
+      app:
+      nested:
+      duration:
+`
+
+var testJSONLogLine = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"app":"loki",
+	"component": ["parser","type"],
+	"level" : "WARN",
+	"nested" : {"child":"value"},
+    "duration" : 125,
+	"message" : "this is a log line"
+}
+`
+
+func TestPipeline_JSON(t *testing.T) {
+	expected := map[string]interface{}{
+		"out":      "this is a log line",
+		"app":      "loki",
+		"nested":   "{\"child\":\"value\"}",
+		"duration": float64(125),
+	}
+
+	pl, err := NewPipeline(util.Logger, loadConfig(testJSONYaml), nil, prometheus.DefaultRegisterer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	ts := time.Now()
+	entry := testJSONLogLine
+	extracted := map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	assert.Equal(t, expected, extracted)
+}
+
+var cfg = `json:
+  expressions:
+    key1: expression1
+    key2: expression2.expression2`
 
 // nolint
 func TestYamlMapStructure(t *testing.T) {
@@ -33,20 +73,14 @@ func TestYamlMapStructure(t *testing.T) {
 	if !ok {
 		t.Fatalf("could not read parser %+v", mapstruct["json"])
 	}
-	got, err := newJSONConfig(p)
+	got, err := parseJSONConfig(p)
 	if err != nil {
 		t.Fatalf("could not create parser from yaml: %s", err)
 	}
 	want := &JSONConfig{
-		Labels: map[string]*JSONLabel{
-			"stream": {
-				Source: String("json_key_name.json_sub_key_name"),
-			},
-		},
-		Output: &JSONOutput{Source: String("log")},
-		Timestamp: &JSONTimestamp{
-			Format: "RFC3339",
-			Source: String("time"),
+		Expressions: map[string]string{
+			"key1": "expression1",
+			"key2": "expression2.expression2",
 		},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -54,135 +88,61 @@ func TestYamlMapStructure(t *testing.T) {
 	}
 }
 
-func String(s string) *string {
-	return &s
-}
-
 func TestJSONConfig_validate(t *testing.T) {
 	t.Parallel()
 	tests := map[string]struct {
-		config        interface{}
+		config        *JSONConfig
 		wantExprCount int
-		wantErr       bool
+		err           error
 	}{
 		"empty": {
-			map[string]interface{}{},
+			nil,
 			0,
-			true,
+			errors.New(ErrExpressionsRequired),
 		},
-		"missing output info": {
-			map[string]interface{}{
-				"output": map[string]interface{}{},
-			},
+		"no expressions": {
+			&JSONConfig{},
 			0,
-			true,
+			errors.New(ErrExpressionsRequired),
 		},
-		"missing output source": {
-			map[string]interface{}{
-				"output": map[string]interface{}{
-					"source": "",
+		"invalid expression": {
+			&JSONConfig{
+				Expressions: map[string]string{
+					"extr1": "3##@$#33",
 				},
 			},
 			0,
-			true,
-		},
-		"invalid output source": {
-			map[string]interface{}{
-				"output": map[string]interface{}{
-					"source": "[",
-				},
-			},
-			0,
-			true,
-		},
-		"missing timestamp source": {
-			map[string]interface{}{
-				"timestamp": map[string]interface{}{
-					"source": "",
-					"format": "ANSIC",
-				},
-			},
-			0,
-			true,
-		},
-		"invalid timestamp source": {
-			map[string]interface{}{
-				"timestamp": map[string]interface{}{
-					"source": "[",
-					"format": "ANSIC",
-				},
-			},
-			0,
-			true,
-		},
-		"missing timestamp format": {
-			map[string]interface{}{
-				"timestamp": map[string]interface{}{
-					"source": "test",
-					"format": "",
-				},
-			},
-			0,
-			true,
-		},
-		"invalid label name": {
-			map[string]interface{}{
-				"labels": map[string]interface{}{
-					"": map[string]interface{}{},
-				},
-			},
-			0,
-			true,
-		},
-		"invalid label source": {
-			map[string]interface{}{
-				"labels": map[string]interface{}{
-					"stream": map[string]interface{}{
-						"source": "]",
-					},
-				},
-			},
-			0,
-			true,
+			errors.Wrap(errors.New("SyntaxError: Unknown char: '#'"), ErrCouldNotCompileJMES),
 		},
 		"valid": {
-			map[string]interface{}{
-				"output": map[string]interface{}{
-					"source": "log.msg[0]",
-				},
-				"timestamp": map[string]interface{}{
-					"source": "log.ts",
-					"format": "RFC3339",
-				},
-				"labels": map[string]interface{}{
-					"stream": map[string]interface{}{
-						"source": "test",
-					},
-					"app": map[string]interface{}{
-						"source": "component.app",
-					},
-					"level": nil,
+			&JSONConfig{
+				Expressions: map[string]string{
+					"expr1": "expr",
+					"expr2": "",
+					"expr3": "expr1.expr2",
 				},
 			},
-			4,
-			false,
+			3,
+			nil,
 		},
 	}
 	for tName, tt := range tests {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
-			c, err := newJSONConfig(tt.config)
+			c, err := parseJSONConfig(tt.config)
 			if err != nil {
 				t.Fatalf("failed to create config: %s", err)
 			}
-			got, err := c.validate()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("JSONConfig.validate() error = %v, wantErr %v", err, tt.wantErr)
+			got, err := validateJSONConfig(c)
+			if (err != nil) != (tt.err != nil) {
+				t.Errorf("JSONConfig.validate() expected error = %v, actual error = %v", tt.err, err)
 				return
 			}
-			if len(got) != tt.wantExprCount {
-				t.Errorf("expressions count = %v, want %v", len(got), tt.wantExprCount)
+			if (err != nil) && (err.Error() != tt.err.Error()) {
+				t.Errorf("JSONConfig.validate() expected error = %v, actual error = %v", tt.err, err)
+				return
 			}
+			assert.Equal(t, tt.wantExprCount, len(got))
 		})
 	}
 }
@@ -193,6 +153,11 @@ var logFixture = `
 	"app":"loki",
 	"component": ["parser","type"],
 	"level" : "WARN",
+	"numeric": {
+		"float": 12.34,
+		"integer": 123,
+		"string": "123"
+	},
 	"nested" : {"child":"value"},
 	"message" : "this is a log line",
 	"complex" : {
@@ -205,129 +170,63 @@ func TestJSONParser_Parse(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		config         interface{}
-		entry          string
-		expectedEntry  string
-		t              time.Time
-		expectedT      time.Time
-		labels         map[string]string
-		expectedLabels map[string]string
+		config          *JSONConfig
+		entry           string
+		expectedExtract map[string]interface{}
 	}{
-		"replace all": {
-			map[string]interface{}{
-				"labels": map[string]interface{}{
-					"level": nil,
-					"component": map[string]interface{}{
-						"source": "component[0]",
-					},
-					"module": map[string]interface{}{
-						"source": "app",
-					},
-				},
-				"output": map[string]interface{}{
-					"source": "complex.log",
-				},
-				"timestamp": map[string]interface{}{
-					"source": "time",
-					"format": "RFC3339",
+		"extract all": {
+			&JSONConfig{
+				Expressions: map[string]string{
+					"time":      "",
+					"app":       "",
+					"component": "",
+					"level":     "",
+					"float":     "numeric.float",
+					"integer":   "numeric.integer",
+					"string":    "numeric.string",
+					"nested":    "",
+					"message":   "",
+					"complex":   "complex.log.array[1].test3",
 				},
 			},
 			logFixture,
-			`{"array":[{"test1":"test2"},{"test3":"test4"}],"prop":"value","prop2":"val2"}`,
-			mustParseTime(time.RFC3339, "2019-03-28T11:29:10+07:00"),
-			mustParseTime(time.RFC3339, "2012-11-01T22:08:41+00:00"),
-			map[string]string{"stream": "stdout"},
-			map[string]string{"stream": "stdout", "level": "WARN", "component": "parser", "module": "loki"},
+			map[string]interface{}{
+				"time":      "2012-11-01T22:08:41+00:00",
+				"app":       "loki",
+				"component": "[\"parser\",\"type\"]",
+				"level":     "WARN",
+				"float":     12.34,
+				"integer":   123.0,
+				"string":    "123",
+				"nested":    "{\"child\":\"value\"}",
+				"message":   "this is a log line",
+				"complex":   "test4",
+			},
 		},
 		"invalid json": {
-			map[string]interface{}{
-				"labels": map[string]interface{}{
-					"level": nil,
+			&JSONConfig{
+				Expressions: map[string]string{
+					"expr1": "",
 				},
 			},
 			"ts=now log=notjson",
-			"ts=now log=notjson",
-			mustParseTime(time.RFC3339, "2019-03-28T11:29:10+07:00"),
-			mustParseTime(time.RFC3339, "2019-03-28T11:29:10+07:00"),
-			map[string]string{"stream": "stdout"},
-			map[string]string{"stream": "stdout"},
-		},
-		"invalid timestamp skipped": {
-			map[string]interface{}{
-				"labels": map[string]interface{}{
-					"level": nil,
-				},
-				"timestamp": map[string]interface{}{
-					"source": "time",
-					"format": "invalid",
-				},
-			},
-			logFixture,
-			logFixture,
-			mustParseTime(time.RFC3339, "2019-03-28T11:29:10+07:00"),
-			mustParseTime(time.RFC3339, "2019-03-28T11:29:10+07:00"),
-			map[string]string{"stream": "stdout"},
-			map[string]string{"stream": "stdout", "level": "WARN"},
-		},
-		"invalid labels skipped": {
-			map[string]interface{}{
-				"labels": map[string]interface{}{
-					"notexisting": nil,
-					"level": map[string]interface{}{
-						"source": "doesnotexist",
-					},
-				},
-			},
-			logFixture,
-			logFixture,
-			mustParseTime(time.RFC3339, "2019-03-28T11:29:10+07:00"),
-			mustParseTime(time.RFC3339, "2019-03-28T11:29:10+07:00"),
-			map[string]string{"stream": "stdout"},
-			map[string]string{"stream": "stdout"},
-		},
-		"invalid output skipped": {
-			map[string]interface{}{
-				"output": map[string]interface{}{
-					"source": "doesnotexist",
-				},
-			},
-			logFixture,
-			logFixture,
-			mustParseTime(time.RFC3339, "2019-03-28T11:29:10+07:00"),
-			mustParseTime(time.RFC3339, "2019-03-28T11:29:10+07:00"),
-			map[string]string{"stream": "stdout"},
-			map[string]string{"stream": "stdout"},
-		},
-		"string output": {
-			map[string]interface{}{
-				"output": map[string]interface{}{
-					"source": "message",
-				},
-			},
-			logFixture,
-			"this is a log line",
-			mustParseTime(time.RFC3339, "2019-03-28T11:29:10+07:00"),
-			mustParseTime(time.RFC3339, "2019-03-28T11:29:10+07:00"),
-			map[string]string{"stream": "stdout"},
-			map[string]string{"stream": "stdout"},
+			map[string]interface{}{},
 		},
 	}
 	for tName, tt := range tests {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			p, err := NewJSON(util.Logger, tt.config)
+			p, err := New(util.Logger, nil, StageTypeJSON, tt.config, nil)
 			if err != nil {
 				t.Fatalf("failed to create json parser: %s", err)
 			}
-			lbs := toLabelSet(tt.labels)
-			p.Process(lbs, &tt.t, &tt.entry)
+			lbs := model.LabelSet{}
+			extr := map[string]interface{}{}
+			ts := time.Now()
+			p.Process(lbs, extr, &ts, &tt.entry)
 
-			assertLabels(t, tt.expectedLabels, lbs)
-			assert.Equal(t, tt.expectedEntry, tt.entry, "did not receive expected log entry")
-			if tt.t.Unix() != tt.expectedT.Unix() {
-				t.Fatalf("mismatch ts want: %s got:%s", tt.expectedT, tt.t)
-			}
+			assert.Equal(t, tt.expectedExtract, extr)
 		})
 	}
 }
