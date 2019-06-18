@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "loki.fullname" . }}-consul
+  labels:
+    name: consul
+    app: {{ template "loki.name" . }}
+    chart: {{ template "loki.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+  annotations:
+    {{- toYaml .Values.consul.annotations | nindent 4 }}
+spec:
+  minReadySeconds: 10
+  replicas: {{ .Values.consul.replicas }}
+  selector:
+    matchLabels:
+      name: consul
+      app: {{ template "loki.name" . }}
+      release: {{ .Release.Name }}
+  strategy:
+    {{- toYaml .Values.consul.updateStrategy | nindent 4 }}
+  template:
+    metadata:
+      labels:
+        name: consul
+        app: {{ template "loki.name" . }}
+        release: {{ .Release.Name }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/consul/configmap.yaml") . | sha256sum }}
+        {{- with .Values.consul.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      affinity:
+        {{- toYaml .Values.consul.affinity | nindent 8 }}
+      nodeSelector:
+        {{- toYaml .Values.consul.nodeSelector | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.consul.tolerations | nindent 8 }}
+      containers:
+      - name: consul
+        args:
+        - agent
+        - -ui
+        - -server
+        - -client=0.0.0.0
+        - -config-file=/etc/config/consul-config.json
+        - -bootstrap-expect=1
+        env:
+        - name: CHECKPOINT_DISABLE
+          value: "1"
+        image: "{{ .Values.consul.image.repository }}:{{ .Values.consul.image.tag }}"
+        imagePullPolicy: {{ .Values.consul.image.pullPolicy }}
+        ports:
+        - containerPort: 8300
+          name: server
+          protocol: TCP
+        - containerPort: 8301
+          name: serf
+          protocol: TCP
+        - containerPort: 8400
+          name: client
+          protocol: TCP
+        - containerPort: 8500
+          name: api
+          protocol: TCP
+        resources:
+          {{- toYaml .Values.consul.resources | nindent 10 }}
+        volumeMounts:
+        - mountPath: /etc/config
+          name: consul
+      - args:
+        - --namespace=$(POD_NAMESPACE)
+        - --pod-name=$(POD_NAME)
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        image: weaveworks/consul-sidekick:master-f18ad13
+        imagePullPolicy: IfNotPresent
+        name: sidekick
+        resources: {}
+        volumeMounts:
+        - mountPath: /etc/config
+          name: consul
+      - args:
+        - --web.listen-address=:8000
+        - --statsd.mapping-config=/etc/config/mapping
+        image: prom/statsd-exporter:v0.8.1
+        imagePullPolicy: IfNotPresent
+        name: statsd-exporter
+        ports:
+        - containerPort: 8000
+          name: http-metrics
+          protocol: TCP
+        resources: {}
+        volumeMounts:
+        - mountPath: /etc/config
+          name: consul
+      - args:
+        - --consul.server=localhost:8500
+        - --web.listen-address=:9107
+        - --consul.timeout=1s
+        image: prom/consul-exporter:v0.4.0
+        imagePullPolicy: IfNotPresent
+        name: consul-exporter
+        ports:
+        - containerPort: 9107
+          name: http-metrics
+          protocol: TCP
+        resources: {}
+        volumeMounts:
+        - mountPath: /etc/config
+          name: consul
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: {{ template "loki.fullname" . }}-consul-config
+        name: consul
