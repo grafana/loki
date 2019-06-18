@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"net/http"
 	"sync"
@@ -132,6 +133,9 @@ func (i *Ingester) Shutdown() {
 // Stopping helps cleaning up resources before actual shutdown
 func (i *Ingester) Stopping() {
 	close(i.quitting)
+	for _, instance := range i.getInstances() {
+		instance.closeTailers()
+	}
 }
 
 // StopIncomingRequests implements ring.Lifecycler.
@@ -240,6 +244,12 @@ func (i *Ingester) getInstances() []*instance {
 
 // Tail logs matching given query
 func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
+	select {
+	case <-i.quitting:
+		return errors.New("Ingester is stopping")
+	default:
+	}
+
 	instanceID, err := user.ExtractOrgID(queryServer.Context())
 	if err != nil {
 		return err

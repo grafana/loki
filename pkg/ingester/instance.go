@@ -218,6 +218,14 @@ func (i *instance) addTailersToNewStream(stream *stream) {
 	}
 }
 
+func (i *instance) closeTailers() {
+	i.tailerMtx.Lock()
+	defer i.tailerMtx.Unlock()
+	for _, t := range i.tailers {
+		t.close()
+	}
+}
+
 func isDone(ctx context.Context) bool {
 	select {
 	case <-ctx.Done():

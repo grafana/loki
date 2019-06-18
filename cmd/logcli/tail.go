@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"strings"
 
@@ -61,8 +60,9 @@ func tailQuery() {
 			}
 		}
 		if len(tailReponse.DroppedEntries) != 0 {
+			log.Println("Server dropped following entries due to slow client")
 			for _, d := range tailReponse.DroppedEntries {
-				fmt.Println(d.Timestamp, d.Labels)
+				log.Println(d.Timestamp, d.Labels)
 			}
 		}
 	}

@@ -4,9 +4,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/fnv"
-	"regexp"
 	"sync"
 	"time"
+
+	"github.com/grafana/loki/pkg/iter"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
@@ -22,11 +23,11 @@ type tailer struct {
 	id       uint32
 	orgID    string
 	matchers []*labels.Matcher
-	regexp   *regexp.Regexp
+	expr     logql.Expr
 
-	sendChan         chan *logproto.Stream
-	done             chan struct{}
-	ingesterQuitting chan struct{}
+	sendChan chan *logproto.Stream
+	done     chan struct{}
+	closeMtx sync.Mutex
 
 	blockedAt      *time.Time
 	blockedMtx     sync.RWMutex
@@ -42,25 +43,19 @@ func newTailer(orgID, query, regex string, conn logproto.Querier_TailServer, ing
 	}
 
 	matchers := expr.Matchers()
-	var re *regexp.Regexp
-
 	if regex != "" {
-		re, err = regexp.Compile(regex)
-		if err != nil {
-			return nil, err
-		}
+		expr = logql.NewFilterExpr(expr, labels.MatchRegexp, regex)
 	}
 
 	return &tailer{
-		orgID:            orgID,
-		matchers:         matchers,
-		regexp:           re,
-		sendChan:         make(chan *logproto.Stream, bufferSizeForTailResponse),
-		conn:             conn,
-		droppedStreams:   []*logproto.DroppedStream{},
-		id:               generateUniqueID(orgID, query, regex),
-		done:             make(chan struct{}),
-		ingesterQuitting: ingesterQuitting,
+		orgID:          orgID,
+		matchers:       matchers,
+		sendChan:       make(chan *logproto.Stream, bufferSizeForTailResponse),
+		conn:           conn,
+		droppedStreams: []*logproto.DroppedStream{},
+		id:             generateUniqueID(orgID, query, regex),
+		done:           make(chan struct{}),
+		expr:           expr,
 	}, nil
 }
 
@@ -80,9 +75,6 @@ func (t *tailer) loop() {
 				t.close()
 				return
 			}
-		case <-t.ingesterQuitting:
-			t.close()
-			return
 		case <-t.done:
 			return
 		case stream, ok = <-t.sendChan:
@@ -113,19 +105,20 @@ func (t *tailer) send(stream logproto.Stream) {
 	if blockedSince := t.blockedSince(); blockedSince != nil {
 		if blockedSince.Before(time.Now().Add(-time.Second * 15)) {
 			t.close()
-			close(t.sendChan)
 			return
 		}
 		t.dropStream(stream)
 		return
 	}
 
-	if t.regexp != nil {
-		// filter stream by regex from query
-		t.filterEntriesInStream(&stream)
-		if len(stream.Entries) == 0 {
-			return
-		}
+	err := t.filterEntriesInStream(&stream)
+	if err != nil {
+		t.dropStream(stream)
+		return
+	}
+
+	if len(stream.Entries) == 0 {
+		return
 	}
 
 	select {
@@ -135,17 +128,26 @@ func (t *tailer) send(stream logproto.Stream) {
 	}
 }
 
-func (t *tailer) filterEntriesInStream(stream *logproto.Stream) {
+func (t *tailer) filterEntriesInStream(stream *logproto.Stream) error {
+	querier := logql.QuerierFunc(func(matchers []*labels.Matcher) (iter.EntryIterator, error) {
+		return iter.NewStreamIterator(stream), nil
+	})
+
+	itr, err := t.expr.Eval(querier)
+	if err != nil {
+		return err
+	}
+
 	filteredEntries := new([]logproto.Entry)
-	for _, entry := range stream.Entries {
-		if t.regexp.MatchString(entry.Line) {
-			*filteredEntries = append(*filteredEntries, entry)
-		}
+	for itr.Next() {
+		*filteredEntries = append(*filteredEntries, itr.Entry())
 	}
 
 	stream.Entries = *filteredEntries
+	return nil
 }
 
+// Returns true if tailer is interested in the passed labelset
 func (t *tailer) isWatchingLabels(metric model.Metric) bool {
 	for _, matcher := range t.matchers {
 		if !matcher.Matches(string(metric[model.LabelName(matcher.Name)])) {
@@ -166,6 +168,16 @@ func (t *tailer) isClosed() bool {
 }
 
 func (t *tailer) close() {
+	if t.isClosed() {
+		return
+	}
+
+	t.closeMtx.Lock()
+	defer t.closeMtx.Unlock()
+
+	if t.isClosed() {
+		return
+	}
 	close(t.done)
 	close(t.sendChan)
 }
