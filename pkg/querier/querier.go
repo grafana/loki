@@ -129,7 +129,7 @@ func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logpr
 	iterator := iter.NewHeapIterator(iterators, req.Direction)
 	defer helpers.LogError("closing iterator", iterator.Close)
 
-	resp, _, err := ReadBatch(iterator, req.Limit)
+	resp, _, err := iter.ReadBatch(iterator, req.Limit)
 	return resp, err
 }
 
@@ -199,31 +199,6 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 	return &logproto.LabelResponse{
 		Values: mergeLists(results...),
 	}, nil
-}
-
-// ReadBatch reads a set of entries off an iterator.
-func ReadBatch(i iter.EntryIterator, size uint32) (*logproto.QueryResponse, uint32, error) {
-	streams := map[string]*logproto.Stream{}
-	respSize := uint32(0)
-	for ; respSize < size && i.Next(); respSize++ {
-		labels, entry := i.Labels(), i.Entry()
-		stream, ok := streams[labels]
-		if !ok {
-			stream = &logproto.Stream{
-				Labels: labels,
-			}
-			streams[labels] = stream
-		}
-		stream.Entries = append(stream.Entries, entry)
-	}
-
-	result := logproto.QueryResponse{
-		Streams: make([]*logproto.Stream, 0, len(streams)),
-	}
-	for _, stream := range streams {
-		result.Streams = append(result.Streams, stream)
-	}
-	return &result, respSize, i.Error()
 }
 
 // Check implements the grpc healthcheck

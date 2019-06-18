@@ -9,7 +9,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -20,7 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/querier"
-	loki_storage "github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage"
 )
 
 // Config is the root config for Loki.
@@ -70,7 +69,7 @@ type Loki struct {
 	distributor  *distributor.Distributor
 	ingester     *ingester.Ingester
 	querier      *querier.Querier
-	store        loki_storage.Store
+	store        storage.Store
 	tableManager *chunk.TableManager
 
 	httpAuthMiddleware middleware.Interface

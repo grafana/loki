@@ -466,3 +466,28 @@ func (i *entryIteratorBackward) Error() error { return nil }
 func (i *entryIteratorBackward) Labels() string {
 	return ""
 }
+
+// ReadBatch reads a set of entries off an iterator.
+func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, error) {
+	streams := map[string]*logproto.Stream{}
+	respSize := uint32(0)
+	for ; respSize < size && i.Next(); respSize++ {
+		labels, entry := i.Labels(), i.Entry()
+		stream, ok := streams[labels]
+		if !ok {
+			stream = &logproto.Stream{
+				Labels: labels,
+			}
+			streams[labels] = stream
+		}
+		stream.Entries = append(stream.Entries, entry)
+	}
+
+	result := logproto.QueryResponse{
+		Streams: make([]*logproto.Stream, 0, len(streams)),
+	}
+	for _, stream := range streams {
+		result.Streams = append(result.Streams, stream)
+	}
+	return &result, respSize, i.Error()
+}

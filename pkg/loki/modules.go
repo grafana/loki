@@ -197,12 +197,12 @@ func (t *Loki) initTableManager() error {
 		os.Exit(1)
 	}
 
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.cfg.StorageConfig)
+	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.cfg.StorageConfig.Config)
 	if err != nil {
 		return err
 	}
 
-	bucketClient, err := storage.NewBucketClient(t.cfg.StorageConfig)
+	bucketClient, err := storage.NewBucketClient(t.cfg.StorageConfig.Config)
 	util.CheckFatal("initializing bucket client", err)
 
 	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient)
