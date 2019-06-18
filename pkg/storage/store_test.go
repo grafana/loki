@@ -3,17 +3,17 @@ package storage
 import (
 	"context"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"runtime"
 	"testing"
 	"time"
-
-	"net/http"
-	_ "net/http/pprof"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/user"
@@ -23,7 +23,7 @@ var (
 	start      = model.Time(1523750400000)
 	m          runtime.MemStats
 	ctx        = user.InjectOrgID(context.Background(), "fake")
-	chunkStore = getStore()
+	chunkStore = getLocalStore()
 )
 
 //go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
@@ -107,7 +107,7 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 			b.Fatal(err)
 		}
 		res := []logproto.Entry{}
-		printHeap(b, false)
+		printHeap(b, true)
 		j := uint32(0)
 		for iter.Next() {
 			j++
@@ -138,10 +138,13 @@ func printHeap(b *testing.B, show bool) {
 	}
 }
 
-func getStore() Store {
-	store, err := NewStore(storage.Config{
-		BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
-		FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
+func getLocalStore() Store {
+	store, err := NewStore(Config{
+		Config: storage.Config{
+			BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
+			FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
+		},
+		MaxChunkBatchSize: 10,
 	}, chunk.StoreConfig{}, chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
 			{
@@ -160,4 +163,188 @@ func getStore() Store {
 		panic(err)
 	}
 	return store
+}
+
+func Test_store_LazyQuery(t *testing.T) {
+
+	tests := []struct {
+		name     string
+		req      *logproto.QueryRequest
+		expected []*logproto.Stream
+	}{
+		{
+			"all",
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD),
+			[]*logproto.Stream{
+				{
+					Labels: "{foo=\"bar\"}",
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+
+						{
+							Timestamp: from.Add(4 * time.Millisecond),
+							Line:      "5",
+						},
+						{
+							Timestamp: from.Add(5 * time.Millisecond),
+							Line:      "6",
+						},
+					},
+				},
+				{
+					Labels: "{foo=\"bazz\"}",
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+
+						{
+							Timestamp: from.Add(4 * time.Millisecond),
+							Line:      "5",
+						},
+						{
+							Timestamp: from.Add(5 * time.Millisecond),
+							Line:      "6",
+						},
+					},
+				},
+			},
+		},
+		{
+			"filter regex",
+			newQuery("{foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"", from, from.Add(6*time.Millisecond), logproto.FORWARD),
+			[]*logproto.Stream{
+				{
+					Labels: "{foo=\"bar\"}",
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+					},
+				},
+				{
+					Labels: "{foo=\"bazz\"}",
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+					},
+				},
+			},
+		},
+		{
+			"filter matcher",
+			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD),
+			[]*logproto.Stream{
+				{
+					Labels: "{foo=\"bar\"}",
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+						{
+							Timestamp: from.Add(3 * time.Millisecond),
+							Line:      "4",
+						},
+
+						{
+							Timestamp: from.Add(4 * time.Millisecond),
+							Line:      "5",
+						},
+						{
+							Timestamp: from.Add(5 * time.Millisecond),
+							Line:      "6",
+						},
+					},
+				},
+			},
+		},
+		{
+			"filter time",
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(time.Millisecond), logproto.FORWARD),
+			[]*logproto.Stream{
+				{
+					Labels: "{foo=\"bar\"}",
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+					},
+				},
+				{
+					Labels: "{foo=\"bazz\"}",
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &store{
+				Store: storeFixture,
+				cfg: Config{
+					MaxChunkBatchSize: 10,
+				},
+			}
+			it, err := s.LazyQuery(context.Background(), tt.req)
+			if err != nil {
+				t.Errorf("store.LazyQuery() error = %v", err)
+				return
+			}
+			streams, _, err := iter.ReadBatch(it, tt.req.Limit)
+			_ = it.Close()
+			if err != nil {
+				t.Fatalf("error reading batch %s", err)
+			}
+			assertStream(t, tt.expected, streams.Streams)
+		})
+	}
 }
