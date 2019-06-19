@@ -21,6 +21,7 @@ const (
 	StageTypeMatch     = "match"
 	StageTypeTemplate  = "template"
 	StageTypePipeline  = "pipeline"
+	StageTypeLogfmt    = "logfmt"
 )
 
 // Stage takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
@@ -91,6 +92,8 @@ func New(logger log.Logger, jobName *string, stageType string,
 		}
 	case StageTypeTemplate:
 		s, err = newTemplateStage(logger, cfg)
+	case StageTypeLogfmt:
+		s, err = newLogfmtStage(logger)
 		if err != nil {
 			return nil, err
 		}
