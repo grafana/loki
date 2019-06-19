@@ -9,6 +9,7 @@ import (
 	"hash/crc32"
 	"io"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -96,8 +97,18 @@ func (hb *headBlock) append(ts int64, line string) error {
 	return nil
 }
 
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		return new(bytes.Buffer)
+	},
+}
+
 func (hb *headBlock) serialise(cw func(w io.Writer) CompressionWriter) ([]byte, error) {
-	buf := &bytes.Buffer{}
+	buf := bufferPool.Get().(*bytes.Buffer)
+	defer func() {
+		buf.Reset()
+		bufferPool.Put(buf)
+	}()
 	encBuf := make([]byte, binary.MaxVarintLen64)
 	compressedWriter := cw(buf)
 	for _, logEntry := range hb.entries {

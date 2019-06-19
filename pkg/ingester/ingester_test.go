@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -108,6 +109,13 @@ func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 
 	s.chunks[userid] = append(s.chunks[userid], chunks...)
 	return nil
+}
+
+func (s *mockStore) IsLocal() bool {
+	return false
+}
+func (s *mockStore) LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter.EntryIterator, error) {
+	return nil, nil
 }
 
 type mockQuerierServer struct {

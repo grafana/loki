@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier"
+	loki_storage "github.com/grafana/loki/pkg/storage"
 )
 
 const maxChunkAgeForTableManager = 12 * time.Hour
@@ -218,7 +219,7 @@ func (t *Loki) stopTableManager() error {
 }
 
 func (t *Loki) initStore() (err error) {
-	t.store, err = storage.NewStore(t.cfg.StorageConfig, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig, t.overrides)
+	t.store, err = loki_storage.NewStore(t.cfg.StorageConfig, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig, t.overrides)
 	return
 }
 

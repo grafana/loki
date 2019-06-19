@@ -41,3 +41,23 @@ Create the name of the service account
     {{ default "default" .Values.serviceAccount.name }}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Create a config to merge with the current loki config to overrides values
+*/}}
+{{- define "loki.config.overrides" -}}
+ingester:
+    lifecycler:
+        ring:
+            kvstore:
+            {{ if (include "loki.deployConsul" .)}}
+                consul:
+                    host: {{ printf "%s-consul-svc.%s.svc.cluster.local:8500" (include "loki.fullname" .) .Release.Namespace}}
+            {{end}}
+{{- end -}}
+
+{{- define "loki.deployConsul" -}}
+    {{- if and (eq .Values.config.ingester.lifecycler.ring.kvstore.store "consul") .Values.consul.enabled -}}
+        {{true}}
+    {{- end -}}
+{{- end -}}

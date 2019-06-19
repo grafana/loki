@@ -26,5 +26,6 @@ spec:
       nodePort: {{ .Values.service.nodePort }}
 {{- end }}
   selector:
+    name: loki
     app: {{ template "loki.name" . }}
     release: {{ .Release.Name }}

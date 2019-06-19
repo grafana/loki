@@ -1,3 +1,4 @@
+ {{- if (include "loki.deployConsul" .) }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -125,3 +126,4 @@ spec:
           defaultMode: 420
           name: {{ template "loki.fullname" . }}-consul-config
         name: consul
+{{- end }}

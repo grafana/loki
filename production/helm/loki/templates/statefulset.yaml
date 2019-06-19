@@ -3,6 +3,7 @@ kind: StatefulSet
 metadata:
   name: {{ template "loki.fullname" . }}
   labels:
+    name: loki
     app: {{ template "loki.name" . }}
     chart: {{ template "loki.chart" . }}
     release: {{ .Release.Name }}
@@ -14,6 +15,7 @@ spec:
   replicas: {{ .Values.replicas }}
   selector:
     matchLabels:
+      name: loki
       app: {{ template "loki.name" . }}
       release: {{ .Release.Name }}
   serviceName: {{ template "loki.fullname" . }}-headless
@@ -22,6 +24,7 @@ spec:
   template:
     metadata:
       labels:
+        name: loki
         app: {{ template "loki.name" . }}
         name: {{ template "loki.name" . }}
         release: {{ .Release.Name }}

@@ -17,6 +17,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 )
 
@@ -74,6 +76,8 @@ type Ingester struct {
 // ChunkStore is the interface we need to store chunks.
 type ChunkStore interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
+	IsLocal() bool
+	LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter.EntryIterator, error)
 }
 
 // New makes a new Ingester.
@@ -183,8 +187,30 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
+	iters := []iter.EntryIterator{}
 	instance := i.getOrCreateInstance(instanceID)
-	return instance.Query(req, queryServer)
+	instanceIter, err := instance.Query(req)
+	if err != nil {
+		return err
+	}
+	iters = append(iters, instanceIter)
+
+	// we should also query the store if:
+	// - it is local to the ingester
+	// - the request is beyond what the ingester has in memory
+	if i.store.IsLocal() && req.End.After(instance.createdAt.Add(i.cfg.RetainPeriod)) {
+		req.Start = instance.createdAt.Add(i.cfg.RetainPeriod)
+		lazyIter, err := i.store.LazyQuery(queryServer.Context(), req)
+		if err != nil {
+			return err
+		}
+		iters = append(iters, lazyIter)
+	}
+
+	iter := iter.NewHeapIterator(iters, req.Direction)
+	defer helpers.LogError("closing iterator", iter.Close)
+
+	return sendBatches(iter, queryServer, req.Limit)
 }
 
 // Label returns the set of labels for the stream this ingester knows about.

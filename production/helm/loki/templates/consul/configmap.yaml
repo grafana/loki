@@ -1,3 +1,4 @@
+ {{- if (include "loki.deployConsul" .) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -215,3 +216,4 @@ data:
     - match: consul.consul.leader.reapTombstones
       name: consul_leader_reapTombstones
       labels: {}
+{{- end }}

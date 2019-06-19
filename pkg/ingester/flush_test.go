@@ -11,6 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -100,6 +101,14 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	}
 	s.chunks[userID] = append(s.chunks[userID], chunks...)
 	return nil
+}
+
+func (s *testStore) IsLocal() bool {
+	return false
+}
+
+func (s *testStore) LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter.EntryIterator, error) {
+	return nil, nil
 }
 
 func (s *testStore) Stop() {}

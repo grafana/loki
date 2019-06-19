@@ -1,3 +1,4 @@
+ {{- if (include "loki.deployConsul" .) }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -39,3 +40,4 @@ spec:
     name: consul
     app: {{ template "loki.name" . }}
     release: {{ .Release.Name }}
+{{- end }}

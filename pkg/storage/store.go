@@ -1,21 +1,56 @@
-package querier
+package storage
 
 import (
 	"context"
 	"sort"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/opentracing/opentracing-go"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
-
+	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-func (q Querier) queryStore(ctx context.Context, req *logproto.QueryRequest) (iter.EntryIterator, error) {
+type Store interface {
+	chunk.Store
+	IsLocal() bool
+	LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter.EntryIterator, error)
+}
+
+type store struct {
+	chunk.Store
+	isLocal bool
+}
+
+func NewStore(cfg storage.Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits *validation.Overrides) (Store, error) {
+	s, err := storage.NewStore(cfg, storeCfg, schemaCfg, limits)
+	if err != nil {
+		return nil, err
+	}
+	var isLocal bool
+	for _, cfg := range schemaCfg.Configs {
+		if cfg.ObjectType == "filesystem" || cfg.IndexType == "boltdb" {
+			isLocal = true
+			break
+		}
+	}
+	return &store{
+		Store:   s,
+		isLocal: isLocal,
+	}, nil
+}
+
+// IsLocal tells if the storage for chunks and indexes is local.
+func (s *store) IsLocal() bool {
+	return s.isLocal
+}
+
+func (s *store) LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter.EntryIterator, error) {
 	expr, err := logql.ParseExpr(req.Query)
 	if err != nil {
 		return nil, err
@@ -33,7 +68,7 @@ func (q Querier) queryStore(ctx context.Context, req *logproto.QueryRequest) (it
 
 		matchers = append(matchers, nameLabelMatcher)
 		from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
-		chks, fetchers, err := q.store.GetChunkRefs(ctx, from, through, matchers...)
+		chks, fetchers, err := s.GetChunkRefs(ctx, from, through, matchers...)
 		if err != nil {
 			return nil, err
 		}

@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/querier"
+	loki_storage "github.com/grafana/loki/pkg/storage"
 )
 
 // Config is the root config for Loki.
@@ -69,7 +70,7 @@ type Loki struct {
 	distributor  *distributor.Distributor
 	ingester     *ingester.Ingester
 	querier      *querier.Querier
-	store        chunk.Store
+	store        loki_storage.Store
 	tableManager *chunk.TableManager
 
 	httpAuthMiddleware middleware.Interface
