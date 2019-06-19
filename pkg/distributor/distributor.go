@@ -3,7 +3,6 @@ package distributor
 import (
 	"context"
 	"flag"
-	"hash/fnv"
 	"sync/atomic"
 	"time"
 
@@ -148,7 +147,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			continue
 		}
 		stream.Entries = entries
-		keys = append(keys, tokenFor(userID, stream.Labels))
+		keys = append(keys, util.TokenFor(userID, stream.Labels))
 		streams = append(streams, streamTracker{
 			stream: stream,
 		})
@@ -262,13 +261,6 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Ingester
 		ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
 	}
 	return err
-}
-
-func tokenFor(userID, labels string) uint32 {
-	h := fnv.New32()
-	_, _ = h.Write([]byte(userID))
-	_, _ = h.Write([]byte(labels))
-	return h.Sum32()
 }
 
 // Check implements the grpc healthcheck

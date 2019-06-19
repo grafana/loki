@@ -188,6 +188,7 @@ jobs:
           name: Install k3s
           command: |
             curl -sfL https://get.k3s.io | sh -
+            sudo chmod 755 /etc/rancher/k3s/k3s.yaml
             mkdir -p ~/.kube
             cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - run:

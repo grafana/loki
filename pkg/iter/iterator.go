@@ -27,7 +27,8 @@ type streamIterator struct {
 	labels  string
 }
 
-func newStreamIterator(stream *logproto.Stream) EntryIterator {
+// NewStreamIterator iterates over entries in a stream.
+func NewStreamIterator(stream *logproto.Stream) EntryIterator {
 	return &streamIterator{
 		i:       -1,
 		entries: stream.Entries,
@@ -97,6 +98,15 @@ func (h iteratorMaxHeap) Less(i, j int) bool {
 	return h.iteratorHeap[i].Labels() > h.iteratorHeap[j].Labels()
 }
 
+// HeapIterator iterates over a heap of iterators with ability to push new iterators and get some properties like time of entry at peek and len
+// Not safe for concurrent use
+type HeapIterator interface {
+	EntryIterator
+	Peek() time.Time
+	Len() int
+	Push(EntryIterator)
+}
+
 // heapIterator iterates over a heap of iterators.
 type heapIterator struct {
 	heap interface {
@@ -110,7 +120,7 @@ type heapIterator struct {
 
 // NewHeapIterator returns a new iterator which uses a heap to merge together
 // entries for multiple interators.
-func NewHeapIterator(is []EntryIterator, direction logproto.Direction) EntryIterator {
+func NewHeapIterator(is []EntryIterator, direction logproto.Direction) HeapIterator {
 	result := &heapIterator{}
 	switch direction {
 	case logproto.BACKWARD:
@@ -139,6 +149,10 @@ func (i *heapIterator) requeue(ei EntryIterator, advanced bool) {
 		i.errs = append(i.errs, err)
 	}
 	helpers.LogError("closing iterator", ei.Close)
+}
+
+func (i *heapIterator) Push(ei EntryIterator) {
+	i.requeue(ei, false)
 }
 
 type tuple struct {
@@ -236,11 +250,19 @@ func (i *heapIterator) Close() error {
 	return nil
 }
 
+func (i *heapIterator) Peek() time.Time {
+	return i.heap.Peek().Entry().Timestamp
+}
+
+func (i *heapIterator) Len() int {
+	return i.heap.Len()
+}
+
 // NewQueryResponseIterator returns an iterator over a QueryResponse.
 func NewQueryResponseIterator(resp *logproto.QueryResponse, direction logproto.Direction) EntryIterator {
 	is := make([]EntryIterator, 0, len(resp.Streams))
 	for i := range resp.Streams {
-		is = append(is, newStreamIterator(resp.Streams[i]))
+		is = append(is, NewStreamIterator(resp.Streams[i]))
 	}
 	return NewHeapIterator(is, direction)
 }
