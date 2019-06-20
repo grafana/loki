@@ -71,7 +71,7 @@ livenessProbe:
   httpGet:
     path: /ready
     port: http-metrics
-  initialDelaySeconds: 45
+  initialDelaySeconds: 90
 
 ## Enable persistence using Persistent Volume Claims
 networkPolicy:
@@ -115,7 +115,7 @@ readinessProbe:
   httpGet:
     path: /ready
     port: http-metrics
-  initialDelaySeconds: 45
+  initialDelaySeconds: 90
 
 replicas: 3
 

@@ -195,11 +195,21 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	}
 	iters = append(iters, instanceIter)
 
+	// last sample in memory is either now minus retain period
+	// or since the instance was created.
+	lastInmemory := time.Now().Add(-i.cfg.RetainPeriod)
+	if instance.createdAt.After(lastInmemory) {
+		lastInmemory = instance.createdAt
+	}
+
 	// we should also query the store if:
 	// - it is local to the ingester
 	// - the request is beyond what the ingester has in memory
-	if i.store.IsLocal() && req.End.After(instance.createdAt.Add(i.cfg.RetainPeriod)) {
-		req.Start = instance.createdAt.Add(i.cfg.RetainPeriod)
+	if i.store.IsLocal() && req.Start.Before(lastInmemory) {
+		// we query the remaining data from the store.
+		if req.End.After(lastInmemory) {
+			req.End = lastInmemory
+		}
 		lazyIter, err := i.store.LazyQuery(queryServer.Context(), req)
 		if err != nil {
 			return err
