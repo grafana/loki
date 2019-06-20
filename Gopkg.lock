@@ -674,6 +674,17 @@
   revision = "b84e30acd515aadc4b783ad4ff83aff3299bdfe0"
 
 [[projects]]
+  digest = "1:2d0b44ee6208d256e29f55764db1fa41e3ae33fac6cef138acae6a79c3bd748e"
+  name = "github.com/magefile/mage"
+  packages = [
+    "mg",
+    "sh",
+  ]
+  pruneopts = "UT"
+  revision = "aedfce64c122eef47009b7f80c9771044753215d"
+  version = "v1.8.0"
+
+[[projects]]
   digest = "1:c658e84ad3916da105a761660dcaeb01e63416c8ec7bc62256a9b411a05fcd67"
   name = "github.com/mattn/go-colorable"
   packages = ["."]
@@ -1573,6 +1584,7 @@
     "github.com/docker/docker/api/types/plugins/logdriver",
     "github.com/docker/docker/daemon/logger",
     "github.com/docker/docker/daemon/logger/jsonfilelog",
+    "github.com/docker/docker/daemon/logger/templates",
     "github.com/docker/docker/pkg/ioutils",
     "github.com/docker/go-plugins-helpers/sdk",
     "github.com/fatih/color",
@@ -1588,6 +1600,8 @@
     "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
     "github.com/hpcloud/tail",
     "github.com/jmespath/go-jmespath",
+    "github.com/magefile/mage/mg",
+    "github.com/magefile/mage/sh",
     "github.com/mitchellh/mapstructure",
     "github.com/mwitkow/go-grpc-middleware",
     "github.com/opentracing/opentracing-go",
@@ -1611,12 +1625,12 @@
     "github.com/shurcooL/httpfs/filter",
     "github.com/shurcooL/httpfs/union",
     "github.com/shurcooL/vfsgen",
-    "github.com/sirupsen/logrus",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
     "github.com/tonistiigi/fifo",
     "github.com/weaveworks/common/httpgrpc",
     "github.com/weaveworks/common/httpgrpc/server",
+    "github.com/weaveworks/common/logging",
     "github.com/weaveworks/common/middleware",
     "github.com/weaveworks/common/server",
     "github.com/weaveworks/common/tracing",
@@ -1624,6 +1638,7 @@
     "golang.org/x/net/context",
     "google.golang.org/grpc",
     "google.golang.org/grpc/health/grpc_health_v1",
+    "google.golang.org/grpc/metadata",
     "gopkg.in/alecthomas/kingpin.v2",
     "gopkg.in/fsnotify.v1",
     "gopkg.in/yaml.v2",
