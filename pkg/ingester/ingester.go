@@ -43,12 +43,12 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
 
-	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushed", 16, "")
-	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "")
-	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Second, "")
-	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 15*time.Minute, "")
-	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "")
-	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "")
+	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 16, "Number of concurrent goroutines used for flushing.")
+	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "Period with which to attempt to flush chunks.")
+	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Second, "Timeout for individual flush operations.")
+	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 15*time.Minute, "Period chunks will remain in memory after flushing.")
+	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "Maximum chunk idle time before flushing.")
+	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "Size of a chunk used for holding logs.")
 }
 
 // Ingester builds chunks for incoming log streams.
