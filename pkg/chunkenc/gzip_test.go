@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -213,6 +214,78 @@ func TestGZIPChunkFilling(t *testing.T) {
 	}
 
 	require.Equal(t, int64(lines), i)
+}
+
+var result []Chunk
+
+func BenchmarkWriteGZIP(b *testing.B) {
+	chunks := []Chunk{}
+
+	entry := &logproto.Entry{
+		Timestamp: time.Unix(0, 0),
+		Line:      RandString(512),
+	}
+	i := int64(0)
+
+	for n := 0; n < b.N; n++ {
+		c := NewMemChunk(EncGZIP)
+		// adds until full so we trigger cut which serialize using gzip
+		for c.SpaceFor(entry) {
+			c.Append(entry)
+			entry.Timestamp = time.Unix(0, i)
+			i++
+		}
+		chunks = append(chunks, c)
+	}
+	result = chunks
+}
+
+func BenchmarkReadGZIP(b *testing.B) {
+	chunks := []Chunk{}
+
+	entry := &logproto.Entry{
+		Timestamp: time.Unix(0, 0),
+		Line:      RandString(512),
+	}
+	i := int64(0)
+
+	for n := 0; n < 100; n++ {
+		c := NewMemChunk(EncGZIP)
+		// adds until full so we trigger cut which serialize using gzip
+		for c.SpaceFor(entry) {
+			c.Append(entry)
+			entry.Timestamp = time.Unix(0, i)
+			i++
+		}
+		chunks = append(chunks, c)
+	}
+	for n := 0; n < b.N; n++ {
+		for _, c := range chunks {
+			iter, err := c.Iterator(time.Unix(0, 0), time.Unix(0, 100), logproto.BACKWARD)
+			if err != nil {
+				b.Fatal(err)
+			}
+			for iter.Next() {
+
+			}
+		}
+	}
+
+}
+
+const charset = "abcdefghijklmnopqrstuvwxyz" +
+	"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+func RandStringWithCharset(length int, charset string) string {
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset)-1)]
+	}
+	return string(b)
+}
+
+func RandString(length int) string {
+	return RandStringWithCharset(length, charset)
 }
 
 func logprotoEntry(ts int64, line string) *logproto.Entry {

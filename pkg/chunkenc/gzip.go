@@ -9,6 +9,7 @@ import (
 	"hash/crc32"
 	"io"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -41,6 +42,26 @@ func newCRC32() hash.Hash32 {
 	return crc32.New(castagnoliTable)
 }
 
+type compressionPool struct {
+	sync.Pool
+}
+
+func (p *compressionPool) Get() CompressionWriter {
+	return p.Pool.Get().(CompressionWriter)
+}
+
+func (p *compressionPool) Put(cw CompressionWriter) {
+	p.Pool.Put(cw)
+}
+
+var compressionWriters = map[Encoding]CompressionWriterPool{
+	EncGZIP: &compressionPool{Pool: sync.Pool{
+		New: func() interface{} {
+			return gzip.NewWriter(nil)
+		},
+	}},
+}
+
 // MemChunk implements compressed log chunks.
 type MemChunk struct {
 	// The number of uncompressed bytes per block.
@@ -53,7 +74,7 @@ type MemChunk struct {
 	head *headBlock
 
 	encoding Encoding
-	cw       func(w io.Writer) CompressionWriter
+	cw       CompressionWriterPool
 	cr       func(r io.Reader) (CompressionReader, error)
 }
 
@@ -96,10 +117,11 @@ func (hb *headBlock) append(ts int64, line string) error {
 	return nil
 }
 
-func (hb *headBlock) serialise(cw func(w io.Writer) CompressionWriter) ([]byte, error) {
+func (hb *headBlock) serialise(pool CompressionWriterPool) ([]byte, error) {
 	buf := &bytes.Buffer{}
 	encBuf := make([]byte, binary.MaxVarintLen64)
-	compressedWriter := cw(buf)
+	compressedWriter := pool.Get()
+	compressedWriter.Reset(buf)
 	for _, logEntry := range hb.entries {
 		n := binary.PutVarint(encBuf, logEntry.t)
 		_, err := compressedWriter.Write(encBuf[:n])
@@ -117,10 +139,10 @@ func (hb *headBlock) serialise(cw func(w io.Writer) CompressionWriter) ([]byte, 
 			return nil, errors.Wrap(err, "appending entry")
 		}
 	}
-	if err := compressedWriter.Close(); err != nil {
+	if err := compressedWriter.Flush(); err != nil {
 		return nil, errors.Wrap(err, "flushing pending compress buffer")
 	}
-
+	pool.Put(compressedWriter)
 	return buf.Bytes(), nil
 }
 
@@ -146,7 +168,7 @@ func NewMemChunkSize(enc Encoding, blockSize int) *MemChunk {
 
 	switch enc {
 	case EncGZIP:
-		c.cw = func(w io.Writer) CompressionWriter { return gzip.NewWriter(w) }
+		c.cw = compressionWriters[EncGZIP]
 		c.cr = func(r io.Reader) (CompressionReader, error) { return gzip.NewReader(r) }
 	default:
 		panic("unknown encoding")

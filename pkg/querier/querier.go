@@ -114,7 +114,8 @@ func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logpr
 	}
 	iterators = append(iterators, ingesterIterators...)
 
-	// if the store is local to ingester, we want to query it from the ingester not from the querier
+	// if the store is local to ingester, we want to query it from the ingester only
+	// the querier doesn't have access.
 	if !q.store.IsLocal() {
 		chunkStoreIterators, err := q.store.LazyQuery(ctx, req)
 		if err != nil {
