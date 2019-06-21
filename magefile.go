@@ -3,10 +3,23 @@
 package main
 
 import (
-	// mage:import
-	_ "github.com/grafana/loki/mage"
+	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
+
+	// mage:import
+	"github.com/grafana/loki/mage"
 )
+
+func All() error {
+	mg.Deps(
+		magefile.Build.Promtail,
+		magefile.Build.Logcli,
+		magefile.Build.Loki,
+		Lint,
+		Test,
+	)
+	return nil
+}
 
 func Lint() error {
 	return sh.RunWith(map[string]string{"GOGC": "20"}, "golangci-lint", "run")

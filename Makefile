@@ -1,5 +1,5 @@
 
-.PHONY: all test clean images protos assets check_assets release-prepare release-perform
+.PHONY: all test clean images protos assets check_assets release-prepare release-perform mage mage-remove mage-upgrade
 .DEFAULT_GOAL := all
 
 CHARTS := production/helm/loki production/helm/promtail production/helm/loki-stack
@@ -312,3 +312,16 @@ push-plugin: build-plugin
 
 enable-plugin:
 	docker plugin enable grafana/loki-docker-driver:$(PLUGIN_TAG)
+
+$(GOPATH)/bin/mage:
+	go get -u -d github.com/magefile/mage
+	cd $(GOPATH)/src/github.com/magefile/mage && go run bootstrap.go
+
+mage: $(GOPATH)/bin/mage
+	@echo "\n>> MAGE VERSION"
+	mage -version
+
+mage-remove:
+	rm $(GOPATH)/bin/mage
+
+mage-upgrade: mage-remove mage
