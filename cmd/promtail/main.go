@@ -3,12 +3,14 @@ package main
 import (
 	"flag"
 	"os"
+	"reflect"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
+	"github.com/weaveworks/common/logging"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/promtail"
@@ -38,6 +40,10 @@ func main() {
 	}
 
 	// Re-init the logger which will now honor a different log level set in ServerConfig.Config
+	if reflect.DeepEqual(&config.ServerConfig.Config.LogLevel, &logging.Level{}) {
+		level.Error(util.Logger).Log("msg", "invalid log level")
+		os.Exit(1)
+	}
 	util.InitLogger(&config.ServerConfig.Config)
 
 	p, err := promtail.New(config)
