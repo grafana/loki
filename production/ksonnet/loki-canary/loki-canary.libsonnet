@@ -12,6 +12,7 @@ k + config {
 
   loki_canary_container::
     container.new('loki-canary', $._images.loki_canary) +
+    $.util.resourcesRequests('10m', '20Mi') +
     container.withPorts($.core.v1.containerPort.new('http-metrics', 80)) +
     container.withArgsMixin($.util.mapToFlags($.loki_canary_args)) +
     container.withEnv([
