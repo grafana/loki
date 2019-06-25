@@ -341,6 +341,12 @@ func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
 
 // PutOne implements ChunkStore
 func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
+	// If this chunk is in cache it must already be in the database so we don't need to write it again
+	found, _, _ := c.cache.Fetch(ctx, []string{chunk.ExternalKey()})
+	if len(found) > 0 {
+		return nil
+	}
+
 	chunks := []Chunk{chunk}
 
 	writeReqs, keysToCache, err := c.calculateIndexEntries(from, through, chunk)
