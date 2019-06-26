@@ -42,7 +42,7 @@ func main() {
 
 	w := writer.NewWriter(os.Stdout, sentChan, *interval, *size)
 	r := reader.NewReader(os.Stderr, receivedChan, *tls, *addr, *user, *pass, *lName, *lVal)
-	c := comparator.NewComparator(os.Stderr, *wait, 1*time.Second, *buckets, sentChan, receivedChan, r)
+	c := comparator.NewComparator(os.Stderr, *wait, 60*time.Second, *buckets, sentChan, receivedChan, r)
 
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
