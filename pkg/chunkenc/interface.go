@@ -63,9 +63,5 @@ type CompressionWriter interface {
 type CompressionReader interface {
 	Read(p []byte) (int, error)
 	Reset(r io.Reader) error
-}
-
-type CompressionWriterPool interface {
-	Get() CompressionWriter
-	Put(CompressionWriter)
+	Close() error
 }

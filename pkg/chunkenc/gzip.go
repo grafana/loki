@@ -3,13 +3,11 @@ package chunkenc
 import (
 	"bufio"
 	"bytes"
-	"compress/gzip"
 	"encoding/binary"
 	"hash"
 	"hash/crc32"
 	"io"
 	"math"
-	"sync"
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -42,26 +40,6 @@ func newCRC32() hash.Hash32 {
 	return crc32.New(castagnoliTable)
 }
 
-type compressionPool struct {
-	sync.Pool
-}
-
-func (p *compressionPool) Get() CompressionWriter {
-	return p.Pool.Get().(CompressionWriter)
-}
-
-func (p *compressionPool) Put(cw CompressionWriter) {
-	p.Pool.Put(cw)
-}
-
-var compressionWriters = map[Encoding]CompressionWriterPool{
-	EncGZIP: &compressionPool{Pool: sync.Pool{
-		New: func() interface{} {
-			return gzip.NewWriter(nil)
-		},
-	}},
-}
-
 // MemChunk implements compressed log chunks.
 type MemChunk struct {
 	// The number of uncompressed bytes per block.
@@ -74,8 +52,7 @@ type MemChunk struct {
 	head *headBlock
 
 	encoding Encoding
-	cw       CompressionWriterPool
-	cr       func(r io.Reader) (CompressionReader, error)
+	cPool    CompressionPool
 }
 
 type block struct {
@@ -117,11 +94,10 @@ func (hb *headBlock) append(ts int64, line string) error {
 	return nil
 }
 
-func (hb *headBlock) serialise(pool CompressionWriterPool) ([]byte, error) {
+func (hb *headBlock) serialise(pool CompressionPool) ([]byte, error) {
 	buf := &bytes.Buffer{}
 	encBuf := make([]byte, binary.MaxVarintLen64)
-	compressedWriter := pool.Get()
-	compressedWriter.Reset(buf)
+	compressedWriter := pool.GetWriter(buf)
 	for _, logEntry := range hb.entries {
 		n := binary.PutVarint(encBuf, logEntry.t)
 		_, err := compressedWriter.Write(encBuf[:n])
@@ -139,10 +115,10 @@ func (hb *headBlock) serialise(pool CompressionWriterPool) ([]byte, error) {
 			return nil, errors.Wrap(err, "appending entry")
 		}
 	}
-	if err := compressedWriter.Flush(); err != nil {
+	if err := compressedWriter.Close(); err != nil {
 		return nil, errors.Wrap(err, "flushing pending compress buffer")
 	}
-	pool.Put(compressedWriter)
+	pool.PutWriter(compressedWriter)
 	return buf.Bytes(), nil
 }
 
@@ -168,8 +144,7 @@ func NewMemChunkSize(enc Encoding, blockSize int) *MemChunk {
 
 	switch enc {
 	case EncGZIP:
-		c.cw = compressionWriters[EncGZIP]
-		c.cr = func(r io.Reader) (CompressionReader, error) { return gzip.NewReader(r) }
+		c.cPool = &Gzip
 	default:
 		panic("unknown encoding")
 	}
@@ -185,8 +160,8 @@ func NewMemChunk(enc Encoding) *MemChunk {
 // NewByteChunk returns a MemChunk on the passed bytes.
 func NewByteChunk(b []byte) (*MemChunk, error) {
 	bc := &MemChunk{
-		cr:   func(r io.Reader) (CompressionReader, error) { return gzip.NewReader(r) },
-		head: &headBlock{}, // Dummy, empty headblock.
+		cPool: &Gzip,
+		head:  &headBlock{}, // Dummy, empty headblock.
 	}
 
 	db := decbuf{b: b}
@@ -365,7 +340,7 @@ func (c *MemChunk) cut() error {
 		return nil
 	}
 
-	b, err := c.head.serialise(c.cw)
+	b, err := c.head.serialise(c.cPool)
 	if err != nil {
 		return err
 	}
@@ -412,7 +387,7 @@ func (c *MemChunk) Iterator(mintT, maxtT time.Time, direction logproto.Direction
 
 	for _, b := range c.blocks {
 		if maxt > b.mint && b.maxt > mint {
-			it, err := b.iterator(c.cr)
+			it, err := b.iterator(c.cPool)
 			if err != nil {
 				return nil, err
 			}
@@ -436,18 +411,11 @@ func (c *MemChunk) Iterator(mintT, maxtT time.Time, direction logproto.Direction
 	return iter.NewEntryIteratorBackward(iterForward)
 }
 
-func (b block) iterator(cr func(io.Reader) (CompressionReader, error)) (iter.EntryIterator, error) {
+func (b block) iterator(pool CompressionPool) (iter.EntryIterator, error) {
 	if len(b.b) == 0 {
 		return emptyIterator, nil
 	}
-
-	r, err := cr(bytes.NewBuffer(b.b))
-	if err != nil {
-		return nil, err
-	}
-
-	s := bufio.NewReader(r)
-	return newBufferedIterator(s), nil
+	return newBufferedIterator(pool, b.b), nil
 }
 
 func (hb *headBlock) iterator(mint, maxt int64) iter.EntryIterator {
@@ -499,22 +467,32 @@ func (li *listIterator) Close() error   { return nil }
 func (li *listIterator) Labels() string { return "" }
 
 type bufferedIterator struct {
-	s *bufio.Reader
+	s      *bufio.Reader
+	reader CompressionReader
+	pool   CompressionPool
 
-	curT   int64
-	curLog string
+	curT int64
+	l    uint64
 
 	err error
 
 	buf    []byte // The buffer a single entry.
 	decBuf []byte // The buffer for decoding the lengths.
+
+	closed bool
 }
 
-func newBufferedIterator(s *bufio.Reader) *bufferedIterator {
+func newBufferedIterator(pool CompressionPool, b []byte) *bufferedIterator {
+	buf := bytes.NewBuffer(b)
+
+	r := pool.GetReader(buf)
+
 	return &bufferedIterator{
-		s:      s,
-		buf:    make([]byte, 1024),
-		decBuf: make([]byte, binary.MaxVarintLen64),
+		s:      BufReaderPool.Get(r),
+		reader: r,
+		pool:   pool,
+		buf:    LineBufferPool.Get(),
+		decBuf: IntBinBufferPool.Get(),
 	}
 }
 
@@ -524,48 +502,59 @@ func (si *bufferedIterator) Next() bool {
 		if err != io.EOF {
 			si.err = err
 		}
+		si.Close()
 		return false
 	}
 
-	l, err := binary.ReadUvarint(si.s)
+	si.l, err = binary.ReadUvarint(si.s)
 	if err != nil {
 		if err != io.EOF {
 			si.err = err
-
+			si.Close()
 			return false
 		}
 	}
 
-	for len(si.buf) < int(l) {
+	for len(si.buf) < int(si.l) {
 		si.buf = append(si.buf, make([]byte, 1024)...)
 	}
 
-	n, err := si.s.Read(si.buf[:l])
+	n, err := si.s.Read(si.buf[:si.l])
 	if err != nil && err != io.EOF {
 		si.err = err
+		si.Close()
 		return false
 	}
-	if n < int(l) {
-		_, err = si.s.Read(si.buf[n:l])
+	if n < int(si.l) {
+		_, err = si.s.Read(si.buf[n:si.l])
 		if err != nil {
 			si.err = err
+			si.Close()
 			return false
 		}
 	}
 
 	si.curT = ts
-	si.curLog = string(si.buf[:l])
-
 	return true
 }
 
 func (si *bufferedIterator) Entry() logproto.Entry {
 	return logproto.Entry{
 		Timestamp: time.Unix(0, si.curT),
-		Line:      si.curLog,
+		Line:      string(si.buf[:si.l]),
 	}
 }
 
-func (si *bufferedIterator) Error() error   { return si.err }
-func (si *bufferedIterator) Close() error   { return si.err }
+func (si *bufferedIterator) Error() error { return si.err }
+func (si *bufferedIterator) Close() error {
+	if !si.closed {
+		si.closed = true
+		si.pool.PutReader(si.reader)
+		BufReaderPool.Put(si.s)
+		LineBufferPool.Put(si.buf)
+		IntBinBufferPool.Put(si.decBuf)
+		return si.err
+	}
+	return si.err
+}
 func (si *bufferedIterator) Labels() string { return "" }

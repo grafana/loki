@@ -52,6 +52,8 @@ type lazyIterator struct {
 	from, through time.Time
 	direction     logproto.Direction
 	context       context.Context
+
+	closed bool
 }
 
 func (it *lazyIterator) Next() bool {
@@ -59,8 +61,16 @@ func (it *lazyIterator) Next() bool {
 		return false
 	}
 
+	if it.closed {
+		return false
+	}
+
 	if it.EntryIterator != nil {
-		return it.EntryIterator.Next()
+		next := it.EntryIterator.Next()
+		if !next {
+			it.Close()
+		}
+		return next
 	}
 
 	chk, err := it.chunk.getChunk(it.context)
@@ -70,7 +80,6 @@ func (it *lazyIterator) Next() bool {
 	}
 
 	it.EntryIterator, it.err = chk.Iterator(it.from, it.through, it.direction)
-
 	return it.Next()
 }
 
@@ -82,6 +91,19 @@ func (it *lazyIterator) Error() error {
 	if it.err != nil {
 		return it.err
 	}
+	if it.EntryIterator != nil {
+		return it.EntryIterator.Error()
+	}
+	return nil
+}
 
-	return it.EntryIterator.Error()
+func (it *lazyIterator) Close() error {
+	if it.EntryIterator != nil {
+		it.chunk.Chunk.Data = nil
+		it.closed = true
+		err := it.EntryIterator.Close()
+		it.EntryIterator = nil
+		return err
+	}
+	return nil
 }

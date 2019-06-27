@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"math"
 	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -249,7 +250,7 @@ func BenchmarkReadGZIP(b *testing.B) {
 	}
 	i := int64(0)
 
-	for n := 0; n < 100; n++ {
+	for n := 0; n < 50; n++ {
 		c := NewMemChunk(EncGZIP)
 		// adds until full so we trigger cut which serialize using gzip
 		for c.SpaceFor(entry) {
@@ -259,16 +260,24 @@ func BenchmarkReadGZIP(b *testing.B) {
 		}
 		chunks = append(chunks, c)
 	}
+	entries := []logproto.Entry{}
 	for n := 0; n < b.N; n++ {
+		var wg sync.WaitGroup
 		for _, c := range chunks {
-			iter, err := c.Iterator(time.Unix(0, 0), time.Unix(0, 100), logproto.BACKWARD)
-			if err != nil {
-				b.Fatal(err)
-			}
-			for iter.Next() {
-
-			}
+			wg.Add(1)
+			go func(c Chunk) {
+				iterator, err := c.Iterator(time.Unix(0, 0), time.Unix(0, 10), logproto.BACKWARD)
+				if err != nil {
+					b.Fatal(err)
+				}
+				for iterator.Next() {
+					entries = append(entries, iterator.Entry())
+				}
+				iterator.Close()
+				wg.Done()
+			}(c)
 		}
+		wg.Wait()
 	}
 
 }
