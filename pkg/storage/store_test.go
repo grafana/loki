@@ -25,14 +25,14 @@ var (
 //go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
 func Benchmark_store_LazyQuery(b *testing.B) {
 
-	store, err := getStore()
-	if err != nil {
-		b.Fatal(err)
-	}
 	for i := 0; i < b.N; i++ {
+		store, err := getStore()
+		if err != nil {
+			b.Fatal(err)
+		}
 		iter, err := store.LazyQuery(ctx, &logproto.QueryRequest{
 			Query:     "{foo=\"bar\"}",
-			Regex:     "fizz",
+			Regex:     "fuzz",
 			Limit:     1000,
 			Start:     time.Unix(0, start.UnixNano()),
 			End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
@@ -42,19 +42,27 @@ func Benchmark_store_LazyQuery(b *testing.B) {
 			b.Fatal(err)
 		}
 		res := []logproto.Entry{}
-		printHeap()
+		printHeap(b)
+		j := 0
 		for iter.Next() {
-			printHeap()
+			j++
+			printHeap(b)
 			res = append(res, iter.Entry())
+			// todo this should be done in the store.
+			if j == 1000 {
+				break
+			}
 		}
 		iter.Close()
-		printHeap()
+		printHeap(b)
+		log.Println("line fetched", len(res))
+		store.Stop()
 	}
 }
 
-func printHeap() {
+func printHeap(b *testing.B) {
 	runtime.ReadMemStats(&m)
-	log.Printf("HeapInuse: %d Mbytes\n", m.HeapInuse/1024/1024)
+	log.Printf("Benchmark %d HeapInuse: %d Mbytes\n", b.N, m.HeapInuse/1024/1024)
 }
 
 func getStore() (Store, error) {
