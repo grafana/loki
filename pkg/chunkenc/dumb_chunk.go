@@ -19,7 +19,7 @@ func NewDumbChunk() Chunk {
 }
 
 type dumbChunk struct {
-	entries []*logproto.Entry
+	entries []logproto.Entry
 }
 
 func (c *dumbChunk) Bounds() (time.Time, time.Time) {
@@ -42,7 +42,7 @@ func (c *dumbChunk) Append(entry *logproto.Entry) error {
 		return ErrOutOfOrder
 	}
 
-	c.entries = append(c.entries, entry)
+	c.entries = append(c.entries, *entry)
 	return nil
 }
 
@@ -84,7 +84,7 @@ func (c *dumbChunk) Bytes() ([]byte, error) {
 type dumbChunkIterator struct {
 	direction logproto.Direction
 	i         int
-	entries   []*logproto.Entry
+	entries   []logproto.Entry
 }
 
 func (i *dumbChunkIterator) Next() bool {
@@ -100,7 +100,7 @@ func (i *dumbChunkIterator) Next() bool {
 	}
 }
 
-func (i *dumbChunkIterator) Entry() *logproto.Entry {
+func (i *dumbChunkIterator) Entry() logproto.Entry {
 	return i.entries[i.i]
 }
 

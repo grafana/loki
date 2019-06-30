@@ -14,7 +14,7 @@ import (
 // EntryIterator iterates over entries in time-order.
 type EntryIterator interface {
 	Next() bool
-	Entry() *logproto.Entry
+	Entry() logproto.Entry
 	Labels() string
 	Error() error
 	Close() error
@@ -49,8 +49,8 @@ func (i *streamIterator) Labels() string {
 	return i.labels
 }
 
-func (i *streamIterator) Entry() *logproto.Entry {
-	return &i.entries[i.i]
+func (i *streamIterator) Entry() logproto.Entry {
+	return i.entries[i.i]
 }
 
 func (i *streamIterator) Close() error {
@@ -117,7 +117,7 @@ type heapIterator struct {
 	prenext bool
 
 	tuples     tuples
-	currEntry  *logproto.Entry
+	currEntry  logproto.Entry
 	currLabels string
 	errs       []error
 }
@@ -156,7 +156,7 @@ func (i *heapIterator) Push(ei EntryIterator) {
 }
 
 type tuple struct {
-	*logproto.Entry
+	logproto.Entry
 	EntryIterator
 }
 
@@ -233,7 +233,7 @@ func mostCommon(tuples tuples) tuple {
 	return result
 }
 
-func (i *heapIterator) Entry() *logproto.Entry {
+func (i *heapIterator) Entry() logproto.Entry {
 	return i.currEntry
 }
 
@@ -310,7 +310,7 @@ func (i *queryClientIterator) Next() bool {
 	return true
 }
 
-func (i *queryClientIterator) Entry() *logproto.Entry {
+func (i *queryClientIterator) Entry() logproto.Entry {
 	return i.curr.Entry()
 }
 
@@ -330,7 +330,7 @@ type filter struct {
 	EntryIterator
 	f func(string) bool
 
-	curr *logproto.Entry
+	curr logproto.Entry
 }
 
 // NewFilter builds a filtering iterator.
@@ -353,7 +353,7 @@ func (i *filter) Next() bool {
 	return false
 }
 
-func (i *filter) Entry() *logproto.Entry {
+func (i *filter) Entry() logproto.Entry {
 	return i.curr
 }
 
@@ -392,7 +392,7 @@ func (i *nonOverlappingIterator) Next() bool {
 	return true
 }
 
-func (i *nonOverlappingIterator) Entry() *logproto.Entry {
+func (i *nonOverlappingIterator) Entry() logproto.Entry {
 	return i.curr.Entry()
 }
 
@@ -457,8 +457,8 @@ func (i *timeRangedIterator) Next() bool {
 
 type entryIteratorBackward struct {
 	forwardIter EntryIterator
-	cur         *logproto.Entry
-	entries     []*logproto.Entry
+	cur         logproto.Entry
+	entries     []logproto.Entry
 	loaded      bool
 
 	forward bool
@@ -467,13 +467,13 @@ type entryIteratorBackward struct {
 // NewEntryIteratorBackward returns an iterator which loads all the entries
 // of an existing iterator, and then iterates over them backward.
 func NewEntryIteratorBackward(it EntryIterator) (EntryIterator, error) {
-	return &entryIteratorBackward{entries: make([]*logproto.Entry, 0, 128), forwardIter: it}, it.Error()
+	return &entryIteratorBackward{entries: make([]logproto.Entry, 0, 128), forwardIter: it}, it.Error()
 }
 
 // NewEntryIteratorForward returns an iterator which loads all the entries
 // of an existing iterator, and then iterates over them backward.
 func NewEntryIteratorForward(it EntryIterator) (EntryIterator, error) {
-	return &entryIteratorBackward{entries: make([]*logproto.Entry, 0, 128), forwardIter: it}, it.Error()
+	return &entryIteratorBackward{entries: make([]logproto.Entry, 0, 128), forwardIter: it}, it.Error()
 }
 
 func (i *entryIteratorBackward) load() {
@@ -502,7 +502,7 @@ func (i *entryIteratorBackward) Next() bool {
 	return true
 }
 
-func (i *entryIteratorBackward) Entry() *logproto.Entry {
+func (i *entryIteratorBackward) Entry() logproto.Entry {
 	return i.cur
 }
 

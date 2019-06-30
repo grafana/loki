@@ -465,8 +465,8 @@ func (li *listIterator) Next() bool {
 	return false
 }
 
-func (li *listIterator) Entry() *logproto.Entry {
-	return &logproto.Entry{
+func (li *listIterator) Entry() logproto.Entry {
+	return logproto.Entry{
 		Timestamp: time.Unix(0, li.cur.t),
 		Line:      li.cur.s,
 	}
@@ -554,9 +554,9 @@ func (si *bufferedIterator) Next() bool {
 	return true
 }
 
-func (si *bufferedIterator) Entry() *logproto.Entry {
+func (si *bufferedIterator) Entry() logproto.Entry {
 	// log.Println("lineParsed", atomic.AddInt64(&lineParsed, 1))
-	return &si.cur
+	return si.cur
 }
 
 func (si *bufferedIterator) Error() error { return si.err }

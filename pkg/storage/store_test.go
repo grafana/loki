@@ -107,7 +107,7 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		res := []*logproto.Entry{}
+		res := []logproto.Entry{}
 		printHeap(b, true)
 		j := 0
 		for iter.Next() {
