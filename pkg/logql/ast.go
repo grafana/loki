@@ -1,26 +1,28 @@
 package logql
 
 import (
+	"bytes"
 	"fmt"
 	"regexp"
-	"strings"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
+type Filter func([]byte) bool
+
 // QuerierFunc implements Querier.
-type QuerierFunc func([]*labels.Matcher) (iter.EntryIterator, error)
+type QuerierFunc func([]*labels.Matcher, Filter) (iter.EntryIterator, error)
 
 // Query implements Querier.
-func (q QuerierFunc) Query(ms []*labels.Matcher) (iter.EntryIterator, error) {
-	return q(ms)
+func (q QuerierFunc) Query(ms []*labels.Matcher, entryFilter Filter) (iter.EntryIterator, error) {
+	return q(ms, entryFilter)
 }
 
 // Querier allows a LogQL expression to fetch an EntryIterator for a
 // set of matchers.
 type Querier interface {
-	Query([]*labels.Matcher) (iter.EntryIterator, error)
+	Query([]*labels.Matcher, Filter) (iter.EntryIterator, error)
 }
 
 // Expr is a LogQL expression.
@@ -34,7 +36,7 @@ type matchersExpr struct {
 }
 
 func (e *matchersExpr) Eval(q Querier) (iter.EntryIterator, error) {
-	return q.Query(e.matchers)
+	return q.Query(e.matchers, nil)
 }
 
 func (e *matchersExpr) Matchers() []*labels.Matcher {
@@ -60,45 +62,52 @@ func NewFilterExpr(left Expr, ty labels.MatchType, match string) Expr {
 	}
 }
 
-func (e *filterExpr) Eval(q Querier) (iter.EntryIterator, error) {
-	var f func(string) bool
+// todo recursion
+func (e *filterExpr) filter() (func([]byte) bool, error) {
+	var f func([]byte) bool
 	switch e.ty {
 	case labels.MatchRegexp:
 		re, err := regexp.Compile(e.match)
 		if err != nil {
 			return nil, err
 		}
-		f = re.MatchString
+		f = re.Match
 
 	case labels.MatchNotRegexp:
 		re, err := regexp.Compile(e.match)
 		if err != nil {
 			return nil, err
 		}
-		f = func(line string) bool {
-			return !re.MatchString(line)
+		f = func(line []byte) bool {
+			return !re.Match(line)
 		}
 
 	case labels.MatchEqual:
-		f = func(line string) bool {
-			return strings.Contains(line, e.match)
+		f = func(line []byte) bool {
+			return bytes.Contains(line, []byte(e.match))
 		}
 
 	case labels.MatchNotEqual:
-		f = func(line string) bool {
-			return !strings.Contains(line, e.match)
+		f = func(line []byte) bool {
+			return bytes.Contains(line, []byte(e.match))
 		}
 
 	default:
 		return nil, fmt.Errorf("unknow matcher: %v", e.match)
 	}
+	return f, nil
+}
 
-	left, err := e.left.Eval(q)
+func (e *filterExpr) Eval(q Querier) (iter.EntryIterator, error) {
+	f, err := e.filter()
 	if err != nil {
 		return nil, err
 	}
-
-	return iter.NewFilter(f, left), nil
+	next, err := q.Query(e.left.Matchers(), f)
+	if err != nil {
+		return nil, err
+	}
+	return next, nil
 }
 
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {

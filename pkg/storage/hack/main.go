@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"os"
 	"sync"
 	"time"
 
@@ -22,13 +23,17 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-var start = model.Time(1523750400000)
+var (
+	start     = model.Time(1523750400000)
+	ctx       = user.InjectOrgID(context.Background(), "fake")
+	maxChunks = 600 // 600 chunks is 1.2bib of data enough to run benchmark
+)
 
-var ctx = user.InjectOrgID(context.Background(), "fake")
-
+// fill up the local filesystem store with 1gib of data to run benchmark
 func main() {
-	// fill up the store with 1gib of data to run benchmark
-	fillStore()
+	if _, err := os.Stat("/tmp/benchmark/chunks"); os.IsNotExist(err) {
+		fillStore()
+	}
 }
 
 func getStore() (lstore.Store, error) {
@@ -65,9 +70,9 @@ func fillStore() error {
 
 	var wgPush sync.WaitGroup
 	var flushCount int
-	// insert 5 streams with a random logs every seconds for an hour
+	// insert 5 streams with a random logs every nanoseconds
 	// the string is randomize so chunks are big ~2mb
-	// take ~2min to build 1gib of data
+	// take ~1min to build 1gib of data
 	for i := 0; i < 5; i++ {
 		wgPush.Add(1)
 		go func(j int) {
@@ -80,7 +85,7 @@ func fillStore() error {
 			labelsBuilder.Set(labels.MetricName, "logs")
 			metric := labelsBuilder.Labels()
 			fp := client.FastFingerprint(lbs)
-			chunkEnc := chunkenc.NewMemChunkSize(chunkenc.EncGZIP, 262144)
+			chunkEnc := chunkenc.NewMemChunkSize(chunkenc.EncGZIP, 262144, true)
 			for ts := start.UnixNano(); ts < start.UnixNano()+time.Hour.Nanoseconds(); ts = ts + time.Millisecond.Nanoseconds() {
 				entry := &logproto.Entry{
 					Timestamp: time.Unix(0, ts),
@@ -100,11 +105,10 @@ func fillStore() error {
 					}
 					flushCount++
 					log.Println("flushed ", flushCount, from.UnixNano(), to.UnixNano(), metric)
-					if flushCount >= 600 {
-						// 600 chunk is enough data ~1gib
+					if flushCount >= maxChunks {
 						return
 					}
-					chunkEnc = chunkenc.NewMemChunkSize(chunkenc.EncGZIP, 262144)
+					chunkEnc = chunkenc.NewMemChunkSize(chunkenc.EncGZIP, 262144, true)
 				}
 			}
 

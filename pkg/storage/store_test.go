@@ -4,8 +4,12 @@ import (
 	"context"
 	"log"
 	"runtime"
+	"runtime/debug"
 	"testing"
 	"time"
+
+	"net/http"
+	_ "net/http/pprof"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
@@ -17,36 +21,98 @@ import (
 )
 
 var (
-	start = model.Time(1523750400000)
-	m     runtime.MemStats
-	ctx   = user.InjectOrgID(context.Background(), "fake")
+	start      = model.Time(1523750400000)
+	m          runtime.MemStats
+	ctx        = user.InjectOrgID(context.Background(), "fake")
+	chunkStore = getStore()
 )
 
 //go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
-func Benchmark_store_LazyQuery(b *testing.B) {
+func Benchmark_store_LazyQueryRegexBackward(b *testing.B) {
+	benchmarkStoreQuery(b, &logproto.QueryRequest{
+		Query:     "{foo=\"bar\"}",
+		Regex:     "fuzz",
+		Limit:     1000,
+		Start:     time.Unix(0, start.UnixNano()),
+		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
+		Direction: logproto.BACKWARD,
+	})
+}
 
+func Benchmark_store_LazyQueryLogQLBackward(b *testing.B) {
+	benchmarkStoreQuery(b, &logproto.QueryRequest{
+		Query:     "{foo=\"bar\"} |= \"test\" != \"toto\"",
+		Regex:     "fuzz",
+		Limit:     1000,
+		Start:     time.Unix(0, start.UnixNano()),
+		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
+		Direction: logproto.BACKWARD,
+	})
+}
+
+func Benchmark_store_LazyQueryRegexForward(b *testing.B) {
+	benchmarkStoreQuery(b, &logproto.QueryRequest{
+		Query:     "{foo=\"bar\"}",
+		Regex:     "fuzz",
+		Limit:     1000,
+		Start:     time.Unix(0, start.UnixNano()),
+		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
+		Direction: logproto.FORWARD,
+	})
+}
+
+func Benchmark_store_LazyQueryForward(b *testing.B) {
+	benchmarkStoreQuery(b, &logproto.QueryRequest{
+		Query:     "{foo=\"bar\"}",
+		Limit:     1000,
+		Start:     time.Unix(0, start.UnixNano()),
+		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
+		Direction: logproto.FORWARD,
+	})
+}
+
+func Benchmark_store_LazyQueryBackward(b *testing.B) {
+	benchmarkStoreQuery(b, &logproto.QueryRequest{
+		Query:     "{foo=\"bar\"}",
+		Limit:     1000,
+		Start:     time.Unix(0, start.UnixNano()),
+		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
+		Direction: logproto.BACKWARD,
+	})
+}
+
+func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
+	b.ReportAllocs()
+	// force to run gc 10x more often
+	debug.SetGCPercent(10)
+	stop := make(chan struct{})
+	go func() {
+		http.ListenAndServe(":6060", http.DefaultServeMux)
+	}()
+	go func() {
+		ticker := time.NewTicker(time.Millisecond)
+		for {
+			select {
+			case <-ticker.C:
+				// print and capture the max in use heap size
+				printHeap(b, false)
+			case <-stop:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
 	for i := 0; i < b.N; i++ {
-		store, err := getStore()
+		iter, err := chunkStore.LazyQuery(ctx, query)
 		if err != nil {
 			b.Fatal(err)
 		}
-		iter, err := store.LazyQuery(ctx, &logproto.QueryRequest{
-			Query:     "{foo=\"bar\"}",
-			Regex:     "fuzz",
-			Limit:     1000,
-			Start:     time.Unix(0, start.UnixNano()),
-			End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
-			Direction: logproto.BACKWARD,
-		})
-		if err != nil {
-			b.Fatal(err)
-		}
-		res := []logproto.Entry{}
-		printHeap(b)
+		res := []*logproto.Entry{}
+		printHeap(b, true)
 		j := 0
 		for iter.Next() {
 			j++
-			printHeap(b)
+			printHeap(b, false)
 			res = append(res, iter.Entry())
 			// todo this should be done in the store.
 			if j == 1000 {
@@ -54,18 +120,25 @@ func Benchmark_store_LazyQuery(b *testing.B) {
 			}
 		}
 		iter.Close()
-		printHeap(b)
+		printHeap(b, true)
 		log.Println("line fetched", len(res))
-		store.Stop()
+	}
+	close(stop)
+}
+
+var maxHeapInuse uint64
+
+func printHeap(b *testing.B, show bool) {
+	runtime.ReadMemStats(&m)
+	if m.HeapInuse > maxHeapInuse {
+		maxHeapInuse = m.HeapInuse
+	}
+	if show {
+		log.Printf("Benchmark %d maxHeapInuse: %d Mbytes\n", b.N, maxHeapInuse/1024/1024)
 	}
 }
 
-func printHeap(b *testing.B) {
-	runtime.ReadMemStats(&m)
-	log.Printf("Benchmark %d HeapInuse: %d Mbytes\n", b.N, m.HeapInuse/1024/1024)
-}
-
-func getStore() (Store, error) {
+func getStore() Store {
 	store, err := NewStore(storage.Config{
 		BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
 		FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
@@ -84,7 +157,7 @@ func getStore() (Store, error) {
 		},
 	}, &validation.Overrides{})
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
-	return store, nil
+	return store
 }

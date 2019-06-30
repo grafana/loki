@@ -2,9 +2,8 @@ package chunkenc
 
 import (
 	"bufio"
-	"bytes"
 	"compress/gzip"
-	"encoding/binary"
+
 	"io"
 	"sync"
 )
@@ -23,14 +22,6 @@ var (
 			New: func() interface{} { return bufio.NewReader(nil) },
 		},
 	}
-	ByteBufferPool = sync.Pool{
-		// New is called when a new instance is needed
-		New: func() interface{} {
-			return new(bytes.Buffer)
-		},
-	}
-	LineBufferPool   = newBufferPoolWithSize(1024)
-	IntBinBufferPool = newBufferPoolWithSize(binary.MaxVarintLen64)
 )
 
 type GzipPool struct {
@@ -87,26 +78,5 @@ func (bufPool *BufioReaderPool) Get(r io.Reader) *bufio.Reader {
 
 // Put puts the bufio.Reader back into the pool.
 func (bufPool *BufioReaderPool) Put(b *bufio.Reader) {
-	b.Reset(nil)
 	bufPool.pool.Put(b)
-}
-
-type bufferPool struct {
-	pool sync.Pool
-}
-
-func newBufferPoolWithSize(size int) *bufferPool {
-	return &bufferPool{
-		pool: sync.Pool{
-			New: func() interface{} { return make([]byte, size) },
-		},
-	}
-}
-
-func (bp *bufferPool) Get() []byte {
-	return bp.pool.Get().([]byte)
-}
-
-func (bp *bufferPool) Put(b []byte) {
-	bp.pool.Put(b)
 }

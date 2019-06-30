@@ -14,7 +14,7 @@ import (
 // EntryIterator iterates over entries in time-order.
 type EntryIterator interface {
 	Next() bool
-	Entry() logproto.Entry
+	Entry() *logproto.Entry
 	Labels() string
 	Error() error
 	Close() error
@@ -49,8 +49,8 @@ func (i *streamIterator) Labels() string {
 	return i.labels
 }
 
-func (i *streamIterator) Entry() logproto.Entry {
-	return i.entries[i.i]
+func (i *streamIterator) Entry() *logproto.Entry {
+	return &i.entries[i.i]
 }
 
 func (i *streamIterator) Close() error {
@@ -117,7 +117,7 @@ type heapIterator struct {
 	prenext bool
 
 	tuples     tuples
-	currEntry  logproto.Entry
+	currEntry  *logproto.Entry
 	currLabels string
 	errs       []error
 }
@@ -156,7 +156,7 @@ func (i *heapIterator) Push(ei EntryIterator) {
 }
 
 type tuple struct {
-	logproto.Entry
+	*logproto.Entry
 	EntryIterator
 }
 
@@ -173,6 +173,7 @@ func (i *heapIterator) Next() bool {
 		for _, it := range i.is {
 			i.requeue(it, false)
 		}
+		i.is = nil
 	}
 	if i.heap.Len() == 0 {
 		return false
@@ -232,7 +233,7 @@ func mostCommon(tuples tuples) tuple {
 	return result
 }
 
-func (i *heapIterator) Entry() logproto.Entry {
+func (i *heapIterator) Entry() *logproto.Entry {
 	return i.currEntry
 }
 
@@ -309,7 +310,7 @@ func (i *queryClientIterator) Next() bool {
 	return true
 }
 
-func (i *queryClientIterator) Entry() logproto.Entry {
+func (i *queryClientIterator) Entry() *logproto.Entry {
 	return i.curr.Entry()
 }
 
@@ -328,6 +329,8 @@ func (i *queryClientIterator) Close() error {
 type filter struct {
 	EntryIterator
 	f func(string) bool
+
+	curr *logproto.Entry
 }
 
 // NewFilter builds a filtering iterator.
@@ -340,11 +343,18 @@ func NewFilter(f func(string) bool, i EntryIterator) EntryIterator {
 
 func (i *filter) Next() bool {
 	for i.EntryIterator.Next() {
-		if i.f(i.Entry().Line) {
+		curr := i.EntryIterator.Entry()
+		if i.f(curr.Line) {
+			i.curr = curr
 			return true
 		}
 	}
+	i.EntryIterator.Close()
 	return false
+}
+
+func (i *filter) Entry() *logproto.Entry {
+	return i.curr
 }
 
 type nonOverlappingIterator struct {
@@ -364,21 +374,25 @@ func NewNonOverlappingIterator(iterators []EntryIterator, labels string) EntryIt
 
 func (i *nonOverlappingIterator) Next() bool {
 	for i.curr == nil || !i.curr.Next() {
-		if i.curr != nil {
-			// close the previous iterator if any
-			i.curr.Close()
-		}
-		if i.i >= len(i.iterators) {
+		if len(i.iterators) == 0 {
+			if i.curr != nil {
+				i.curr.Close()
+				i.curr = nil
+			}
 			return false
 		}
-		i.curr = i.iterators[i.i]
+		if i.curr != nil {
+			i.curr.Close()
+			i.curr = nil
+		}
 		i.i++
+		i.curr, i.iterators = i.iterators[0], i.iterators[1:]
 	}
 
 	return true
 }
 
-func (i *nonOverlappingIterator) Entry() logproto.Entry {
+func (i *nonOverlappingIterator) Entry() *logproto.Entry {
 	return i.curr.Entry()
 }
 
@@ -398,6 +412,11 @@ func (i *nonOverlappingIterator) Error() error {
 }
 
 func (i *nonOverlappingIterator) Close() error {
+	for _, iter := range i.iterators {
+		iter.Close()
+	}
+	i.iterators = nil
+	i.curr = nil
 	return nil
 }
 
@@ -417,7 +436,10 @@ func NewTimeRangedIterator(it EntryIterator, mint, maxt time.Time) EntryIterator
 
 func (i *timeRangedIterator) Next() bool {
 	ok := i.EntryIterator.Next()
-
+	if !ok {
+		i.EntryIterator.Close()
+		return ok
+	}
 	ts := i.EntryIterator.Entry().Timestamp
 	for ok && i.mint.After(ts) {
 		ok = i.EntryIterator.Next()
@@ -427,21 +449,31 @@ func (i *timeRangedIterator) Next() bool {
 	if ok && (i.maxt.Before(ts) || i.maxt.Equal(ts)) { // The maxt is exclusive.
 		ok = false
 	}
-
+	if !ok {
+		i.EntryIterator.Close()
+	}
 	return ok
 }
 
 type entryIteratorBackward struct {
 	forwardIter EntryIterator
-	cur         logproto.Entry
-	entries     []logproto.Entry
+	cur         *logproto.Entry
+	entries     []*logproto.Entry
 	loaded      bool
+
+	forward bool
 }
 
 // NewEntryIteratorBackward returns an iterator which loads all the entries
 // of an existing iterator, and then iterates over them backward.
 func NewEntryIteratorBackward(it EntryIterator) (EntryIterator, error) {
-	return &entryIteratorBackward{entries: make([]logproto.Entry, 0, 128), forwardIter: it}, it.Error()
+	return &entryIteratorBackward{entries: make([]*logproto.Entry, 0, 128), forwardIter: it}, it.Error()
+}
+
+// NewEntryIteratorForward returns an iterator which loads all the entries
+// of an existing iterator, and then iterates over them backward.
+func NewEntryIteratorForward(it EntryIterator) (EntryIterator, error) {
+	return &entryIteratorBackward{entries: make([]*logproto.Entry, 0, 128), forwardIter: it}, it.Error()
 }
 
 func (i *entryIteratorBackward) load() {
@@ -461,13 +493,16 @@ func (i *entryIteratorBackward) Next() bool {
 		return false
 	}
 
-	i.cur = i.entries[len(i.entries)-1]
-	i.entries = i.entries[:len(i.entries)-1]
+	if i.forward {
+		i.cur, i.entries = i.entries[0], i.entries[1:]
+	} else {
+		i.cur, i.entries = i.entries[len(i.entries)-1], i.entries[:len(i.entries)-1]
+	}
 
 	return true
 }
 
-func (i *entryIteratorBackward) Entry() logproto.Entry {
+func (i *entryIteratorBackward) Entry() *logproto.Entry {
 	return i.cur
 }
 

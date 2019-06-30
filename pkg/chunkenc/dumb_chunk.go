@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 const (
@@ -18,7 +19,7 @@ func NewDumbChunk() Chunk {
 }
 
 type dumbChunk struct {
-	entries []logproto.Entry
+	entries []*logproto.Entry
 }
 
 func (c *dumbChunk) Bounds() (time.Time, time.Time) {
@@ -41,7 +42,7 @@ func (c *dumbChunk) Append(entry *logproto.Entry) error {
 		return ErrOutOfOrder
 	}
 
-	c.entries = append(c.entries, *entry)
+	c.entries = append(c.entries, entry)
 	return nil
 }
 
@@ -51,7 +52,7 @@ func (c *dumbChunk) Size() int {
 
 // Returns an iterator that goes from _most_ recent to _least_ recent (ie,
 // backwards).
-func (c *dumbChunk) Iterator(from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error) {
+func (c *dumbChunk) Iterator(from, through time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error) {
 	i := sort.Search(len(c.entries), func(i int) bool {
 		return !from.After(c.entries[i].Timestamp)
 	})
@@ -83,7 +84,7 @@ func (c *dumbChunk) Bytes() ([]byte, error) {
 type dumbChunkIterator struct {
 	direction logproto.Direction
 	i         int
-	entries   []logproto.Entry
+	entries   []*logproto.Entry
 }
 
 func (i *dumbChunkIterator) Next() bool {
@@ -99,7 +100,7 @@ func (i *dumbChunkIterator) Next() bool {
 	}
 }
 
-func (i *dumbChunkIterator) Entry() logproto.Entry {
+func (i *dumbChunkIterator) Entry() *logproto.Entry {
 	return i.entries[i.i]
 }
 

@@ -7,6 +7,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 // LazyChunk loads the chunk when it is accessed.
@@ -26,15 +27,16 @@ func (c *LazyChunk) getChunk(ctx context.Context) (Chunk, error) {
 }
 
 // Iterator returns an entry iterator.
-func (c LazyChunk) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error) {
+func (c *LazyChunk) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error) {
 	// If the chunk is already loaded, then use that.
 	if c.Chunk.Data != nil {
 		lokiChunk := c.Chunk.Data.(*Facade).LokiChunk()
-		return lokiChunk.Iterator(from, through, direction)
+		return lokiChunk.Iterator(from, through, direction, filter)
 	}
 
 	return &lazyIterator{
-		chunk: c,
+		chunk:  c,
+		filter: filter,
 
 		from:      from,
 		through:   through,
@@ -46,15 +48,19 @@ func (c LazyChunk) Iterator(ctx context.Context, from, through time.Time, direct
 type lazyIterator struct {
 	iter.EntryIterator
 
-	chunk LazyChunk
+	chunk *LazyChunk
 	err   error
 
 	from, through time.Time
 	direction     logproto.Direction
 	context       context.Context
+	filter        logql.Filter
 
 	closed bool
 }
+
+var chunksOpen int64
+var chunksTotal int64
 
 func (it *lazyIterator) Next() bool {
 	if it.err != nil {
@@ -78,8 +84,8 @@ func (it *lazyIterator) Next() bool {
 		it.err = err
 		return false
 	}
-
-	it.EntryIterator, it.err = chk.Iterator(it.from, it.through, it.direction)
+	it.EntryIterator, it.err = chk.Iterator(it.from, it.through, it.direction, it.filter)
+	it.chunk = nil
 	return it.Next()
 }
 
@@ -99,7 +105,8 @@ func (it *lazyIterator) Error() error {
 
 func (it *lazyIterator) Close() error {
 	if it.EntryIterator != nil {
-		it.chunk.Chunk.Data = nil
+		// log.Println("Chunk Open", atomic.AddInt64(&chunksOpen, -1))
+		it.chunk = nil
 		it.closed = true
 		err := it.EntryIterator.Close()
 		it.EntryIterator = nil

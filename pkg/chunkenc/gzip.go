@@ -7,10 +7,10 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"math"
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 
 	"github.com/grafana/loki/pkg/iter"
 
@@ -129,17 +129,18 @@ type entry struct {
 
 // NewMemChunkSize returns a new in-mem chunk.
 // Mainly for config push size.
-func NewMemChunkSize(enc Encoding, blockSize int) *MemChunk {
+func NewMemChunkSize(enc Encoding, blockSize int, head bool) *MemChunk {
 	c := &MemChunk{
 		blockSize: blockSize, // The blockSize in bytes.
 		blocks:    []block{},
 
-		head: &headBlock{
-			mint: math.MaxInt64,
-			maxt: math.MinInt64,
-		},
+		head: nil,
 
 		encoding: enc,
+	}
+
+	if head {
+		c.head = &headBlock{}
 	}
 
 	switch enc {
@@ -153,15 +154,15 @@ func NewMemChunkSize(enc Encoding, blockSize int) *MemChunk {
 }
 
 // NewMemChunk returns a new in-mem chunk for query.
-func NewMemChunk(enc Encoding) *MemChunk {
-	return NewMemChunkSize(enc, 256*1024)
+func NewMemChunk(enc Encoding, head bool) *MemChunk {
+	return NewMemChunkSize(enc, 256*1024, head)
 }
 
 // NewByteChunk returns a MemChunk on the passed bytes.
 func NewByteChunk(b []byte) (*MemChunk, error) {
 	bc := &MemChunk{
 		cPool: &Gzip,
-		head:  &headBlock{}, // Dummy, empty headblock.
+		head:  nil, // Dummy, empty headblock.
 	}
 
 	db := decbuf{b: b}
@@ -189,6 +190,7 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 
 	// Read the number of blocks.
 	num := db.uvarint()
+	bc.blocks = make([]block, num)
 
 	for i := 0; i < num; i++ {
 		blk := block{}
@@ -303,7 +305,7 @@ func (c *MemChunk) Size() int {
 		ne += blk.numEntries
 	}
 
-	if !c.head.isEmpty() {
+	if c.head != nil && !c.head.isEmpty() {
 		ne += len(c.head.entries)
 	}
 
@@ -367,7 +369,7 @@ func (c *MemChunk) Bounds() (fromT, toT time.Time) {
 		to = c.blocks[len(c.blocks)-1].maxt
 	}
 
-	if !c.head.isEmpty() {
+	if c.head != nil && !c.head.isEmpty() {
 		if from == 0 || from > c.head.mint {
 			from = c.head.mint
 		}
@@ -381,22 +383,30 @@ func (c *MemChunk) Bounds() (fromT, toT time.Time) {
 }
 
 // Iterator implements Chunk.
-func (c *MemChunk) Iterator(mintT, maxtT time.Time, direction logproto.Direction) (iter.EntryIterator, error) {
+func (c *MemChunk) Iterator(mintT, maxtT time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error) {
 	mint, maxt := mintT.UnixNano(), maxtT.UnixNano()
-	its := make([]iter.EntryIterator, 0, len(c.blocks))
+	its := make([]iter.EntryIterator, 0, len(c.blocks)+1)
 
 	for _, b := range c.blocks {
 		if maxt > b.mint && b.maxt > mint {
-			it, err := b.iterator(c.cPool)
+			it, err := b.iterator(c.cPool, filter)
 			if err != nil {
 				return nil, err
 			}
-
 			its = append(its, it)
 		}
 	}
 
-	its = append(its, c.head.iterator(mint, maxt))
+	if c.head != nil {
+		// todo filter
+		its = append(its, c.head.iterator(mint, maxt))
+	}
+
+	if direction == logproto.FORWARD {
+		for i, j := 0, len(its)-1; i < j; i, j = i+1, j-1 {
+			its[i], its[j] = its[j], its[i]
+		}
+	}
 
 	iterForward := iter.NewTimeRangedIterator(
 		iter.NewNonOverlappingIterator(its, ""),
@@ -411,11 +421,11 @@ func (c *MemChunk) Iterator(mintT, maxtT time.Time, direction logproto.Direction
 	return iter.NewEntryIteratorBackward(iterForward)
 }
 
-func (b block) iterator(pool CompressionPool) (iter.EntryIterator, error) {
+func (b block) iterator(pool CompressionPool, filter logql.Filter) (iter.EntryIterator, error) {
 	if len(b.b) == 0 {
 		return emptyIterator, nil
 	}
-	return newBufferedIterator(pool, b.b), nil
+	return newBufferedIterator(pool, b.b, filter), nil
 }
 
 func (hb *headBlock) iterator(mint, maxt int64) iter.EntryIterator {
@@ -455,8 +465,8 @@ func (li *listIterator) Next() bool {
 	return false
 }
 
-func (li *listIterator) Entry() logproto.Entry {
-	return logproto.Entry{
+func (li *listIterator) Entry() *logproto.Entry {
+	return &logproto.Entry{
 		Timestamp: time.Unix(0, li.cur.t),
 		Line:      li.cur.s,
 	}
@@ -471,8 +481,8 @@ type bufferedIterator struct {
 	reader CompressionReader
 	pool   CompressionPool
 
-	curT int64
-	l    uint64
+	cur logproto.Entry
+	l   uint64
 
 	err error
 
@@ -480,19 +490,21 @@ type bufferedIterator struct {
 	decBuf []byte // The buffer for decoding the lengths.
 
 	closed bool
+
+	filter logql.Filter
 }
 
-func newBufferedIterator(pool CompressionPool, b []byte) *bufferedIterator {
-	buf := bytes.NewBuffer(b)
+var lineParsed int64
 
-	r := pool.GetReader(buf)
-
+func newBufferedIterator(pool CompressionPool, b []byte, filter logql.Filter) *bufferedIterator {
+	r := pool.GetReader(bytes.NewBuffer(b))
 	return &bufferedIterator{
 		s:      BufReaderPool.Get(r),
 		reader: r,
 		pool:   pool,
-		buf:    LineBufferPool.Get(),
-		decBuf: IntBinBufferPool.Get(),
+		filter: filter,
+		buf:    make([]byte, 256),
+		decBuf: make([]byte, binary.MaxVarintLen64),
 	}
 }
 
@@ -516,7 +528,7 @@ func (si *bufferedIterator) Next() bool {
 	}
 
 	for len(si.buf) < int(si.l) {
-		si.buf = append(si.buf, make([]byte, 1024)...)
+		si.buf = append(si.buf, make([]byte, 256)...)
 	}
 
 	n, err := si.s.Read(si.buf[:si.l])
@@ -534,15 +546,17 @@ func (si *bufferedIterator) Next() bool {
 		}
 	}
 
-	si.curT = ts
+	if si.filter != nil && !si.filter(si.buf[:si.l]) {
+		return si.Next()
+	}
+	si.cur.Line = string(si.buf[:si.l])
+	si.cur.Timestamp = time.Unix(0, ts)
 	return true
 }
 
-func (si *bufferedIterator) Entry() logproto.Entry {
-	return logproto.Entry{
-		Timestamp: time.Unix(0, si.curT),
-		Line:      string(si.buf[:si.l]),
-	}
+func (si *bufferedIterator) Entry() *logproto.Entry {
+	// log.Println("lineParsed", atomic.AddInt64(&lineParsed, 1))
+	return &si.cur
 }
 
 func (si *bufferedIterator) Error() error { return si.err }
@@ -551,8 +565,10 @@ func (si *bufferedIterator) Close() error {
 		si.closed = true
 		si.pool.PutReader(si.reader)
 		BufReaderPool.Put(si.s)
-		LineBufferPool.Put(si.buf)
-		IntBinBufferPool.Put(si.decBuf)
+		si.s = nil
+		si.buf = nil
+		si.decBuf = nil
+		si.reader = nil
 		return si.err
 	}
 	return si.err

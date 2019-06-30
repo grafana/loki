@@ -229,7 +229,7 @@ func BenchmarkWriteGZIP(b *testing.B) {
 	i := int64(0)
 
 	for n := 0; n < b.N; n++ {
-		c := NewMemChunk(EncGZIP)
+		c := NewMemChunk(EncGZIP, true)
 		// adds until full so we trigger cut which serialize using gzip
 		for c.SpaceFor(entry) {
 			c.Append(entry)
@@ -251,7 +251,7 @@ func BenchmarkReadGZIP(b *testing.B) {
 	i := int64(0)
 
 	for n := 0; n < 50; n++ {
-		c := NewMemChunk(EncGZIP)
+		c := NewMemChunk(EncGZIP, true)
 		// adds until full so we trigger cut which serialize using gzip
 		for c.SpaceFor(entry) {
 			c.Append(entry)

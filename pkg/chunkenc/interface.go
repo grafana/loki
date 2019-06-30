@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 // Errors returned by the chunk interface.
@@ -46,7 +47,7 @@ type Chunk interface {
 	Bounds() (time.Time, time.Time)
 	SpaceFor(*logproto.Entry) bool
 	Append(*logproto.Entry) error
-	Iterator(from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error)
+	Iterator(from, through time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error)
 	Size() int
 	Bytes() ([]byte, error)
 }

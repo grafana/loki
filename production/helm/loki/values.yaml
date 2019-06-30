@@ -21,7 +21,8 @@ tracing:
 config:
   auth_enabled: false
   ingester:
-    chunk_idle_period: 15m
+    chunk_idle_period: 5m
+    chunk_retain_period: 30s
     chunk_block_size: 262144
     lifecycler:
       ring:

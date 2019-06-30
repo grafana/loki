@@ -60,7 +60,7 @@ func (s *store) LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter
 		expr = logql.NewFilterExpr(expr, labels.MatchRegexp, req.Regex)
 	}
 
-	querier := logql.QuerierFunc(func(matchers []*labels.Matcher) (iter.EntryIterator, error) {
+	querier := logql.QuerierFunc(func(matchers []*labels.Matcher, filter logql.Filter) (iter.EntryIterator, error) {
 		nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, "logs")
 		if err != nil {
 			return nil, err
@@ -89,7 +89,7 @@ func (s *store) LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter
 		// we can proceed to filter the series that don't match.
 		chksBySeries = filterSeriesByMatchers(chksBySeries, matchers)
 
-		iters, err := buildIterators(ctx, req, chksBySeries)
+		iters, err := buildIterators(ctx, req, chksBySeries, filter)
 		if err != nil {
 			return nil, err
 		}
@@ -125,21 +125,21 @@ outer:
 	return chks
 }
 
-func buildIterators(ctx context.Context, req *logproto.QueryRequest, chks map[model.Fingerprint][][]chunkenc.LazyChunk) ([]iter.EntryIterator, error) {
+func buildIterators(ctx context.Context, req *logproto.QueryRequest, chks map[model.Fingerprint][][]chunkenc.LazyChunk, filter logql.Filter) ([]iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 	for _, chunks := range chks {
-		iterator, err := buildHeapIterator(ctx, req, chunks)
+		iterator, err := buildHeapIterator(ctx, req, chunks, filter)
 		if err != nil {
 			return nil, err
 		}
 
-		result = append(result, iterator)
+		result = append(result, iterator...)
 	}
 
 	return result, nil
 }
 
-func buildHeapIterator(ctx context.Context, req *logproto.QueryRequest, chks [][]chunkenc.LazyChunk) (iter.EntryIterator, error) {
+func buildHeapIterator(ctx context.Context, req *logproto.QueryRequest, chks [][]chunkenc.LazyChunk, filter logql.Filter) ([]iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 	if chks[0][0].Chunk.Metric.Has("__name__") {
 		labelsBuilder := labels.NewBuilder(chks[0][0].Chunk.Metric)
@@ -151,17 +151,21 @@ func buildHeapIterator(ctx context.Context, req *logproto.QueryRequest, chks [][
 	for i := range chks {
 		iterators := make([]iter.EntryIterator, 0, len(chks[i]))
 		for j := range chks[i] {
-			iterator, err := chks[i][j].Iterator(ctx, req.Start, req.End, req.Direction)
+			iterator, err := chks[i][j].Iterator(ctx, req.Start, req.End, req.Direction, filter)
 			if err != nil {
 				return nil, err
 			}
 			iterators = append(iterators, iterator)
 		}
-
+		if req.Direction == logproto.FORWARD {
+			for i, j := 0, len(iterators)-1; i < j; i, j = i+1, j-1 {
+				iterators[i], iterators[j] = iterators[j], iterators[i]
+			}
+		}
 		result = append(result, iter.NewNonOverlappingIterator(iterators, labels))
 	}
 
-	return iter.NewHeapIterator(result, req.Direction), nil
+	return result, nil
 }
 
 func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]chunkenc.LazyChunk) error {
