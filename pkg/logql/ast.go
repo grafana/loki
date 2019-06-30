@@ -62,7 +62,6 @@ func NewFilterExpr(left Expr, ty labels.MatchType, match string) Expr {
 	}
 }
 
-// todo recursion
 func (e *filterExpr) filter() (func([]byte) bool, error) {
 	var f func([]byte) bool
 	switch e.ty {
@@ -94,6 +93,16 @@ func (e *filterExpr) filter() (func([]byte) bool, error) {
 
 	default:
 		return nil, fmt.Errorf("unknow matcher: %v", e.match)
+	}
+	next, ok := e.left.(*filterExpr)
+	if ok {
+		nextFilter, err := next.filter()
+		if err != nil {
+			return nil, err
+		}
+		return func(line []byte) bool {
+			return nextFilter(line) && f(line)
+		}, nil
 	}
 	return f, nil
 }

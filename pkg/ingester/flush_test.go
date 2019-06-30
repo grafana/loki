@@ -183,7 +183,7 @@ func (s *testStore) checkData(t *testing.T, userIDs []string, testData map[strin
 }
 
 func buildStreamsFromChunk(t *testing.T, labels string, chk chunkenc.Chunk) *logproto.Stream {
-	it, err := chk.Iterator(time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD)
+	it, err := chk.Iterator(time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, nil)
 	require.NoError(t, err)
 
 	stream := &logproto.Stream{

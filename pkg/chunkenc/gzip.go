@@ -129,7 +129,7 @@ type entry struct {
 
 // NewMemChunkSize returns a new in-mem chunk.
 // Mainly for config push size.
-func NewMemChunkSize(enc Encoding, blockSize int, head bool) *MemChunk {
+func NewMemChunkSize(enc Encoding, blockSize int) *MemChunk {
 	c := &MemChunk{
 		blockSize: blockSize, // The blockSize in bytes.
 		blocks:    []block{},
@@ -139,9 +139,7 @@ func NewMemChunkSize(enc Encoding, blockSize int, head bool) *MemChunk {
 		encoding: enc,
 	}
 
-	if head {
-		c.head = &headBlock{}
-	}
+	c.head = &headBlock{}
 
 	switch enc {
 	case EncGZIP:
@@ -154,8 +152,8 @@ func NewMemChunkSize(enc Encoding, blockSize int, head bool) *MemChunk {
 }
 
 // NewMemChunk returns a new in-mem chunk for query.
-func NewMemChunk(enc Encoding, head bool) *MemChunk {
-	return NewMemChunkSize(enc, 256*1024, head)
+func NewMemChunk(enc Encoding) *MemChunk {
+	return NewMemChunkSize(enc, 256*1024)
 }
 
 // NewByteChunk returns a MemChunk on the passed bytes.
@@ -398,8 +396,7 @@ func (c *MemChunk) Iterator(mintT, maxtT time.Time, direction logproto.Direction
 	}
 
 	if c.head != nil {
-		// todo filter
-		its = append(its, c.head.iterator(mint, maxt))
+		its = append(its, c.head.iterator(mint, maxt, filter))
 	}
 
 	if direction == logproto.FORWARD {
@@ -428,7 +425,7 @@ func (b block) iterator(pool CompressionPool, filter logql.Filter) (iter.EntryIt
 	return newBufferedIterator(pool, b.b, filter), nil
 }
 
-func (hb *headBlock) iterator(mint, maxt int64) iter.EntryIterator {
+func (hb *headBlock) iterator(mint, maxt int64, filter logql.Filter) iter.EntryIterator {
 	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return emptyIterator
 	}
@@ -438,8 +435,12 @@ func (hb *headBlock) iterator(mint, maxt int64) iter.EntryIterator {
 	// but the tradeoff is that queries to near-realtime data would be much lower than
 	// cutting of blocks.
 
-	entries := make([]entry, len(hb.entries))
-	copy(entries, hb.entries)
+	entries := make([]entry, 0, len(hb.entries))
+	for _, e := range entries {
+		if filter == nil || filter([]byte(e.s)) {
+			entries = append(entries, e)
+		}
+	}
 
 	return &listIterator{
 		entries: entries,
@@ -555,7 +556,6 @@ func (si *bufferedIterator) Next() bool {
 }
 
 func (si *bufferedIterator) Entry() logproto.Entry {
-	// log.Println("lineParsed", atomic.AddInt64(&lineParsed, 1))
 	return si.cur
 }
 

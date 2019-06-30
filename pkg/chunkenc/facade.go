@@ -12,7 +12,7 @@ const GzipLogChunk = encoding.Encoding(128)
 func init() {
 	encoding.MustRegisterEncoding(GzipLogChunk, "GzipLogChunk", func() encoding.Chunk {
 		return &Facade{
-			c: NewMemChunk(EncGZIP, false),
+			c: NewMemChunk(EncGZIP),
 		}
 	})
 }

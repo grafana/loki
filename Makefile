@@ -313,8 +313,6 @@ push-plugin: build-plugin
 enable-plugin:
 	docker plugin enable grafana/loki-docker-driver:$(PLUGIN_TAG)
 
-fill-store:
+benchmark-store:
 	go run ./pkg/storage/hack/main.go
-
-benchmark-store: fill-store
 	go test ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
