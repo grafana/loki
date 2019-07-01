@@ -63,6 +63,10 @@ module Fluent
         @label_keys = @label_keys.split(/\s*,\s*/) if @label_keys
       end
 
+      def multi_workers_ready?
+        true
+      end
+
       def http_opts(uri)
         opts = {
           use_ssl: uri.scheme == 'https'
