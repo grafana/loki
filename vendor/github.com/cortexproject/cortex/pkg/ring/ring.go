@@ -150,7 +150,7 @@ func (r *Ring) loop(ctx context.Context) {
 		}
 
 		ringDesc := value.(*Desc)
-		ringDesc = r.migrateRing(ringDesc)
+		ringDesc.Tokens = migrateRing(ringDesc)
 		r.mtx.Lock()
 		defer r.mtx.Unlock()
 		r.ringDesc = ringDesc
@@ -159,7 +159,7 @@ func (r *Ring) loop(ctx context.Context) {
 }
 
 // migrateRing will denormalise the ring's tokens if stored in normal form.
-func (r *Ring) migrateRing(desc *Desc) *Desc {
+func migrateRing(desc *Desc) []TokenDesc {
 	numTokens := len(desc.Tokens)
 	for _, ing := range desc.Ingesters {
 		numTokens += len(ing.Tokens)
@@ -175,8 +175,7 @@ func (r *Ring) migrateRing(desc *Desc) *Desc {
 		}
 	}
 	sort.Sort(ByToken(tokens))
-	desc.Tokens = tokens
-	return desc
+	return tokens
 }
 
 // Get returns n (or more) ingesters which form the replicas for the given key.

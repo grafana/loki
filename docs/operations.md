@@ -168,6 +168,16 @@ will stored in `s3://BUCKET_NAME/faker/`.
 
 The S3 configuration is setup with url format: `s3://access_key:secret_access_key@region/bucket_name`.
 
+For custom S3 endpoint (like Ceph Object Storage with S3 Compatible API), if it's using path-style url rather than 
+virtual hosted bucket addressing, please set config like below: 
+
+```yaml
+storage_config:
+  aws:
+    s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
+    s3forcepathstyle: true
+```
+
 #### DynamoDB
 
 Loki uses DynamoDB for the index storage. It is used for querying logs, make

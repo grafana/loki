@@ -3311,9 +3311,9 @@ func (m *UserIDStatsResponse) MarshalTo(dAtA []byte) (int, error) {
 		dAtA[i] = 0x12
 		i++
 		i = encodeVarintCortex(dAtA, i, uint64(m.Data.Size()))
-		n1, err1 := m.Data.MarshalTo(dAtA[i:])
-		if err1 != nil {
-			return 0, err1
+		n1, err := m.Data.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
 		}
 		i += n1
 	}
@@ -4194,13 +4194,8 @@ func (this *ReadRequest) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForQueries := "[]*QueryRequest{"
-	for _, f := range this.Queries {
-		repeatedStringForQueries += strings.Replace(f.String(), "QueryRequest", "QueryRequest", 1) + ","
-	}
-	repeatedStringForQueries += "}"
 	s := strings.Join([]string{`&ReadRequest{`,
-		`Queries:` + repeatedStringForQueries + `,`,
+		`Queries:` + strings.Replace(fmt.Sprintf("%v", this.Queries), "QueryRequest", "QueryRequest", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4209,13 +4204,8 @@ func (this *ReadResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForResults := "[]*QueryResponse{"
-	for _, f := range this.Results {
-		repeatedStringForResults += strings.Replace(f.String(), "QueryResponse", "QueryResponse", 1) + ","
-	}
-	repeatedStringForResults += "}"
 	s := strings.Join([]string{`&ReadResponse{`,
-		`Results:` + repeatedStringForResults + `,`,
+		`Results:` + strings.Replace(fmt.Sprintf("%v", this.Results), "QueryResponse", "QueryResponse", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4224,15 +4214,10 @@ func (this *QueryRequest) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForMatchers := "[]*LabelMatcher{"
-	for _, f := range this.Matchers {
-		repeatedStringForMatchers += strings.Replace(f.String(), "LabelMatcher", "LabelMatcher", 1) + ","
-	}
-	repeatedStringForMatchers += "}"
 	s := strings.Join([]string{`&QueryRequest{`,
 		`StartTimestampMs:` + fmt.Sprintf("%v", this.StartTimestampMs) + `,`,
 		`EndTimestampMs:` + fmt.Sprintf("%v", this.EndTimestampMs) + `,`,
-		`Matchers:` + repeatedStringForMatchers + `,`,
+		`Matchers:` + strings.Replace(fmt.Sprintf("%v", this.Matchers), "LabelMatcher", "LabelMatcher", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4241,13 +4226,8 @@ func (this *QueryResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForTimeseries := "[]TimeSeries{"
-	for _, f := range this.Timeseries {
-		repeatedStringForTimeseries += strings.Replace(strings.Replace(f.String(), "TimeSeries", "TimeSeries", 1), `&`, ``, 1) + ","
-	}
-	repeatedStringForTimeseries += "}"
 	s := strings.Join([]string{`&QueryResponse{`,
-		`Timeseries:` + repeatedStringForTimeseries + `,`,
+		`Timeseries:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Timeseries), "TimeSeries", "TimeSeries", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4256,13 +4236,8 @@ func (this *QueryStreamResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForTimeseries := "[]TimeSeriesChunk{"
-	for _, f := range this.Timeseries {
-		repeatedStringForTimeseries += strings.Replace(strings.Replace(f.String(), "TimeSeriesChunk", "TimeSeriesChunk", 1), `&`, ``, 1) + ","
-	}
-	repeatedStringForTimeseries += "}"
 	s := strings.Join([]string{`&QueryStreamResponse{`,
-		`Timeseries:` + repeatedStringForTimeseries + `,`,
+		`Timeseries:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Timeseries), "TimeSeriesChunk", "TimeSeriesChunk", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4334,7 +4309,7 @@ func (this *UserIDStatsResponse) String() string {
 	}
 	s := strings.Join([]string{`&UserIDStatsResponse{`,
 		`UserId:` + fmt.Sprintf("%v", this.UserId) + `,`,
-		`Data:` + strings.Replace(this.Data.String(), "UserStatsResponse", "UserStatsResponse", 1) + `,`,
+		`Data:` + strings.Replace(fmt.Sprintf("%v", this.Data), "UserStatsResponse", "UserStatsResponse", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4343,13 +4318,8 @@ func (this *UsersStatsResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForStats := "[]*UserIDStatsResponse{"
-	for _, f := range this.Stats {
-		repeatedStringForStats += strings.Replace(f.String(), "UserIDStatsResponse", "UserIDStatsResponse", 1) + ","
-	}
-	repeatedStringForStats += "}"
 	s := strings.Join([]string{`&UsersStatsResponse{`,
-		`Stats:` + repeatedStringForStats + `,`,
+		`Stats:` + strings.Replace(fmt.Sprintf("%v", this.Stats), "UserIDStatsResponse", "UserIDStatsResponse", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4358,15 +4328,10 @@ func (this *MetricsForLabelMatchersRequest) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForMatchersSet := "[]*LabelMatchers{"
-	for _, f := range this.MatchersSet {
-		repeatedStringForMatchersSet += strings.Replace(f.String(), "LabelMatchers", "LabelMatchers", 1) + ","
-	}
-	repeatedStringForMatchersSet += "}"
 	s := strings.Join([]string{`&MetricsForLabelMatchersRequest{`,
 		`StartTimestampMs:` + fmt.Sprintf("%v", this.StartTimestampMs) + `,`,
 		`EndTimestampMs:` + fmt.Sprintf("%v", this.EndTimestampMs) + `,`,
-		`MatchersSet:` + repeatedStringForMatchersSet + `,`,
+		`MatchersSet:` + strings.Replace(fmt.Sprintf("%v", this.MatchersSet), "LabelMatchers", "LabelMatchers", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4375,13 +4340,8 @@ func (this *MetricsForLabelMatchersResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForMetric := "[]*Metric{"
-	for _, f := range this.Metric {
-		repeatedStringForMetric += strings.Replace(f.String(), "Metric", "Metric", 1) + ","
-	}
-	repeatedStringForMetric += "}"
 	s := strings.Join([]string{`&MetricsForLabelMatchersResponse{`,
-		`Metric:` + repeatedStringForMetric + `,`,
+		`Metric:` + strings.Replace(fmt.Sprintf("%v", this.Metric), "Metric", "Metric", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4390,16 +4350,11 @@ func (this *TimeSeriesChunk) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForChunks := "[]Chunk{"
-	for _, f := range this.Chunks {
-		repeatedStringForChunks += strings.Replace(strings.Replace(f.String(), "Chunk", "Chunk", 1), `&`, ``, 1) + ","
-	}
-	repeatedStringForChunks += "}"
 	s := strings.Join([]string{`&TimeSeriesChunk{`,
 		`FromIngesterId:` + fmt.Sprintf("%v", this.FromIngesterId) + `,`,
 		`UserId:` + fmt.Sprintf("%v", this.UserId) + `,`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
-		`Chunks:` + repeatedStringForChunks + `,`,
+		`Chunks:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Chunks), "Chunk", "Chunk", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4430,14 +4385,9 @@ func (this *TimeSeries) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForSamples := "[]Sample{"
-	for _, f := range this.Samples {
-		repeatedStringForSamples += strings.Replace(strings.Replace(f.String(), "Sample", "Sample", 1), `&`, ``, 1) + ","
-	}
-	repeatedStringForSamples += "}"
 	s := strings.Join([]string{`&TimeSeries{`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
-		`Samples:` + repeatedStringForSamples + `,`,
+		`Samples:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Samples), "Sample", "Sample", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4468,13 +4418,8 @@ func (this *LabelMatchers) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForMatchers := "[]*LabelMatcher{"
-	for _, f := range this.Matchers {
-		repeatedStringForMatchers += strings.Replace(f.String(), "LabelMatcher", "LabelMatcher", 1) + ","
-	}
-	repeatedStringForMatchers += "}"
 	s := strings.Join([]string{`&LabelMatchers{`,
-		`Matchers:` + repeatedStringForMatchers + `,`,
+		`Matchers:` + strings.Replace(fmt.Sprintf("%v", this.Matchers), "LabelMatcher", "LabelMatcher", 1) + `,`,
 		`}`,
 	}, "")
 	return s
