@@ -31,18 +31,22 @@ var (
 		Name:      "file_bytes_total",
 		Help:      "Number of bytes total.",
 	}, []string{"path"})
-
 	readLines = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "promtail",
 		Name:      "read_lines_total",
 		Help:      "Number of lines read.",
 	}, []string{"path"})
-
 	filesActive = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "promtail",
 		Name:      "files_active_total",
 		Help:      "Number of active files.",
 	})
+	logLengthHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "promtail",
+		Name:      "log_entries_bytes",
+		Help:      "the total count of bytes",
+		Buckets:   prometheus.ExponentialBuckets(16, 2, 8),
+	}, []string{"path"})
 )
 
 const (

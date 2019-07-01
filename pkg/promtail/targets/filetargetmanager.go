@@ -7,8 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/grafana/loki/pkg/logentry/metric"
-
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -113,7 +111,7 @@ func NewFileTargetManager(
 			targets:        map[string]*FileTarget{},
 			droppedTargets: []Target{},
 			hostname:       hostname,
-			entryHandler:   pipeline.Wrap(metric.LogSize(prometheus.DefaultRegisterer, client)),
+			entryHandler:   pipeline.Wrap(client),
 			targetConfig:   targetConfig,
 		}
 		tm.syncers[cfg.JobName] = s
