@@ -16,7 +16,7 @@ $ go get github.com/grafana/loki/cmd/logcli
 
 ```
 $ go get github.com/grafana/loki
-$ cd $GOPATH/github.com/grafana/loki
+$ cd $GOPATH/src/github.com/grafana/loki
 $ go build ./cmd/logcli
 ```
 
