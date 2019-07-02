@@ -436,7 +436,7 @@ func (hb *headBlock) iterator(mint, maxt int64, filter logql.Filter) iter.EntryI
 	// cutting of blocks.
 
 	entries := make([]entry, 0, len(hb.entries))
-	for _, e := range entries {
+	for _, e := range hb.entries {
 		if filter == nil || filter([]byte(e.s)) {
 			entries = append(entries, e)
 		}
