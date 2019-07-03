@@ -82,7 +82,7 @@ func Benchmark_store_LazyQueryBackward(b *testing.B) {
 
 func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 	b.ReportAllocs()
-	// force to run gc 10x more often this can be usefull to detect fast allocation vs leak.
+	// force to run gc 10x more often this can be useful to detect fast allocation vs leak.
 	//debug.SetGCPercent(10)
 	stop := make(chan struct{})
 	go func() {
