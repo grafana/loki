@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"runtime"
-	"runtime/debug"
 	"testing"
 	"time"
 
@@ -83,11 +82,11 @@ func Benchmark_store_LazyQueryBackward(b *testing.B) {
 
 func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 	b.ReportAllocs()
-	// force to run gc 10x more often
-	debug.SetGCPercent(10)
+	// force to run gc 10x more often this can be usefull to detect fast allocation vs leak.
+	//debug.SetGCPercent(10)
 	stop := make(chan struct{})
 	go func() {
-		http.ListenAndServe(":6060", http.DefaultServeMux)
+		_ = http.ListenAndServe(":6060", http.DefaultServeMux)
 	}()
 	go func() {
 		ticker := time.NewTicker(time.Millisecond)
@@ -114,7 +113,7 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 			j++
 			printHeap(b, false)
 			res = append(res, iter.Entry())
-			// todo this should be done in the store.
+			// limit result by 1000 like the querier would do.
 			if j == 1000 {
 				break
 			}
@@ -144,7 +143,7 @@ func getStore() Store {
 		FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
 	}, chunk.StoreConfig{}, chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
-			chunk.PeriodConfig{
+			{
 				From:       chunk.DayTime{Time: start},
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",

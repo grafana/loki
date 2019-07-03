@@ -134,12 +134,10 @@ func NewMemChunkSize(enc Encoding, blockSize int) *MemChunk {
 		blockSize: blockSize, // The blockSize in bytes.
 		blocks:    []block{},
 
-		head: nil,
+		head: &headBlock{},
 
 		encoding: enc,
 	}
-
-	c.head = &headBlock{}
 
 	switch enc {
 	case EncGZIP:
@@ -160,7 +158,7 @@ func NewMemChunk(enc Encoding) *MemChunk {
 func NewByteChunk(b []byte) (*MemChunk, error) {
 	bc := &MemChunk{
 		cPool: &Gzip,
-		head:  nil, // Dummy, empty headblock.
+		head:  &headBlock{}, // Dummy, empty headblock.
 	}
 
 	db := decbuf{b: b}
@@ -303,7 +301,7 @@ func (c *MemChunk) Size() int {
 		ne += blk.numEntries
 	}
 
-	if c.head != nil && !c.head.isEmpty() {
+	if !c.head.isEmpty() {
 		ne += len(c.head.entries)
 	}
 
@@ -367,7 +365,7 @@ func (c *MemChunk) Bounds() (fromT, toT time.Time) {
 		to = c.blocks[len(c.blocks)-1].maxt
 	}
 
-	if c.head != nil && !c.head.isEmpty() {
+	if !c.head.isEmpty() {
 		if from == 0 || from > c.head.mint {
 			from = c.head.mint
 		}
@@ -387,22 +385,12 @@ func (c *MemChunk) Iterator(mintT, maxtT time.Time, direction logproto.Direction
 
 	for _, b := range c.blocks {
 		if maxt > b.mint && b.maxt > mint {
-			it, err := b.iterator(c.cPool, filter)
-			if err != nil {
-				return nil, err
-			}
-			its = append(its, it)
+			its = append(its, b.iterator(c.cPool, filter))
 		}
 	}
 
-	if c.head != nil {
+	if !c.head.isEmpty() {
 		its = append(its, c.head.iterator(mint, maxt, filter))
-	}
-
-	if direction == logproto.FORWARD {
-		for i, j := 0, len(its)-1; i < j; i, j = i+1, j-1 {
-			its[i], its[j] = its[j], its[i]
-		}
 	}
 
 	iterForward := iter.NewTimeRangedIterator(
@@ -418,11 +406,11 @@ func (c *MemChunk) Iterator(mintT, maxtT time.Time, direction logproto.Direction
 	return iter.NewEntryIteratorBackward(iterForward)
 }
 
-func (b block) iterator(pool CompressionPool, filter logql.Filter) (iter.EntryIterator, error) {
+func (b block) iterator(pool CompressionPool, filter logql.Filter) iter.EntryIterator {
 	if len(b.b) == 0 {
-		return emptyIterator, nil
+		return emptyIterator
 	}
-	return newBufferedIterator(pool, b.b, filter), nil
+	return newBufferedIterator(pool, b.b, filter)
 }
 
 func (hb *headBlock) iterator(mint, maxt int64, filter logql.Filter) iter.EntryIterator {
@@ -483,7 +471,6 @@ type bufferedIterator struct {
 	pool   CompressionPool
 
 	cur logproto.Entry
-	l   uint64
 
 	err error
 
@@ -494,8 +481,6 @@ type bufferedIterator struct {
 
 	filter logql.Filter
 }
-
-var lineParsed int64
 
 func newBufferedIterator(pool CompressionPool, b []byte, filter logql.Filter) *bufferedIterator {
 	r := pool.GetReader(bytes.NewBuffer(b))
@@ -510,49 +495,57 @@ func newBufferedIterator(pool CompressionPool, b []byte, filter logql.Filter) *b
 }
 
 func (si *bufferedIterator) Next() bool {
+	for {
+		ts, line, ok := si.moveNext()
+		if !ok {
+			si.Close()
+			return false
+		}
+		if si.filter != nil && !si.filter(line) {
+			continue
+		}
+		si.cur.Line = string(line)
+		si.cur.Timestamp = time.Unix(0, ts)
+		return true
+	}
+}
+
+// moveNext moves the buffer to the next entry
+func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 	ts, err := binary.ReadVarint(si.s)
 	if err != nil {
 		if err != io.EOF {
 			si.err = err
 		}
-		si.Close()
-		return false
+		return 0, nil, false
 	}
 
-	si.l, err = binary.ReadUvarint(si.s)
+	l, err := binary.ReadUvarint(si.s)
 	if err != nil {
 		if err != io.EOF {
 			si.err = err
-			si.Close()
-			return false
+			return 0, nil, false
 		}
 	}
 
-	for len(si.buf) < int(si.l) {
+	for len(si.buf) < int(l) {
 		si.buf = append(si.buf, make([]byte, 256)...)
 	}
 
-	n, err := si.s.Read(si.buf[:si.l])
+	n, err := si.s.Read(si.buf[:l])
 	if err != nil && err != io.EOF {
 		si.err = err
-		si.Close()
-		return false
+		return 0, nil, false
 	}
-	if n < int(si.l) {
-		_, err = si.s.Read(si.buf[n:si.l])
+	if n < int(l) {
+		_, err = si.s.Read(si.buf[n:l])
 		if err != nil {
 			si.err = err
-			si.Close()
-			return false
+			return 0, nil, false
 		}
 	}
 
-	if si.filter != nil && !si.filter(si.buf[:si.l]) {
-		return si.Next()
-	}
-	si.cur.Line = string(si.buf[:si.l])
-	si.cur.Timestamp = time.Unix(0, ts)
-	return true
+	return ts, si.buf[:l], true
 }
 
 func (si *bufferedIterator) Entry() logproto.Entry {

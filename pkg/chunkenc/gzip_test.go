@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
-
 	"github.com/stretchr/testify/require"
 )
 
@@ -77,7 +76,7 @@ func TestGZIPBlock(t *testing.T) {
 		}
 	}
 
-	it, err := chk.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD)
+	it, err := chk.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
 	require.NoError(t, err)
 
 	idx := 0
@@ -92,7 +91,7 @@ func TestGZIPBlock(t *testing.T) {
 	require.Equal(t, len(cases), idx)
 
 	t.Run("bounded-iteration", func(t *testing.T) {
-		it, err := chk.Iterator(time.Unix(0, 3), time.Unix(0, 7), logproto.FORWARD)
+		it, err := chk.Iterator(time.Unix(0, 3), time.Unix(0, 7), logproto.FORWARD, nil)
 		require.NoError(t, err)
 
 		idx := 2
@@ -134,7 +133,7 @@ func TestGZIPCompression(t *testing.T) {
 			require.NoError(t, err)
 			fmt.Println(float64(len(b))/(1024*1024), float64(len(b2))/(1024*1024), float64(len(b2))/float64(len(chk.blocks)))
 
-			it, err := chk.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD)
+			it, err := chk.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
 			require.NoError(t, err)
 
 			for i, l := range lines {
@@ -164,7 +163,7 @@ func TestGZIPSerialisation(t *testing.T) {
 	bc, err := NewByteChunk(byt)
 	require.NoError(t, err)
 
-	it, err := bc.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD)
+	it, err := bc.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
 	require.NoError(t, err)
 	for i := 0; i < numSamples; i++ {
 		require.True(t, it.Next())
@@ -205,7 +204,7 @@ func TestGZIPChunkFilling(t *testing.T) {
 
 	require.Equal(t, int64(lines), i)
 
-	it, err := chk.Iterator(time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD)
+	it, err := chk.Iterator(time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, nil)
 	require.NoError(t, err)
 	i = 0
 	for it.Next() {
@@ -229,10 +228,10 @@ func BenchmarkWriteGZIP(b *testing.B) {
 	i := int64(0)
 
 	for n := 0; n < b.N; n++ {
-		c := NewMemChunk(EncGZIP, true)
+		c := NewMemChunk(EncGZIP)
 		// adds until full so we trigger cut which serialize using gzip
 		for c.SpaceFor(entry) {
-			c.Append(entry)
+			_ = c.Append(entry)
 			entry.Timestamp = time.Unix(0, i)
 			i++
 		}
@@ -251,10 +250,10 @@ func BenchmarkReadGZIP(b *testing.B) {
 	i := int64(0)
 
 	for n := 0; n < 50; n++ {
-		c := NewMemChunk(EncGZIP, true)
+		c := NewMemChunk(EncGZIP)
 		// adds until full so we trigger cut which serialize using gzip
 		for c.SpaceFor(entry) {
-			c.Append(entry)
+			_ = c.Append(entry)
 			entry.Timestamp = time.Unix(0, i)
 			i++
 		}
@@ -266,9 +265,9 @@ func BenchmarkReadGZIP(b *testing.B) {
 		for _, c := range chunks {
 			wg.Add(1)
 			go func(c Chunk) {
-				iterator, err := c.Iterator(time.Unix(0, 0), time.Unix(0, 10), logproto.BACKWARD)
+				iterator, err := c.Iterator(time.Unix(0, 0), time.Unix(0, 10), logproto.BACKWARD, nil)
 				if err != nil {
-					b.Fatal(err)
+					panic(err)
 				}
 				for iterator.Next() {
 					entries = append(entries, iterator.Entry())

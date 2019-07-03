@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
+// Filter is a line filter sent to a querier to filter out log line.
 type Filter func([]byte) bool
 
 // QuerierFunc implements Querier.

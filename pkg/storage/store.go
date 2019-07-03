@@ -157,6 +157,7 @@ func buildHeapIterator(ctx context.Context, req *logproto.QueryRequest, chks [][
 			}
 			iterators = append(iterators, iterator)
 		}
+		// reduce swap in the heap iterator.
 		if req.Direction == logproto.FORWARD {
 			for i, j := 0, len(iterators)-1; i < j; i, j = i+1, j-1 {
 				iterators[i], iterators[j] = iterators[j], iterators[i]

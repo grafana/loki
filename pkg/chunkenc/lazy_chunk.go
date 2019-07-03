@@ -59,9 +59,6 @@ type lazyIterator struct {
 	closed bool
 }
 
-var chunksOpen int64
-var chunksTotal int64
-
 func (it *lazyIterator) Next() bool {
 	if it.err != nil {
 		return false
@@ -105,7 +102,6 @@ func (it *lazyIterator) Error() error {
 
 func (it *lazyIterator) Close() error {
 	if it.EntryIterator != nil {
-		// log.Println("Chunk Open", atomic.AddInt64(&chunksOpen, -1))
 		it.chunk = nil
 		it.closed = true
 		err := it.EntryIterator.Close()

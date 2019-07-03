@@ -32,28 +32,35 @@ var (
 // fill up the local filesystem store with 1gib of data to run benchmark
 func main() {
 	if _, err := os.Stat("/tmp/benchmark/chunks"); os.IsNotExist(err) {
-		fillStore()
+		if err := fillStore(); err != nil {
+			log.Fatal("error filling up storage:", err)
+		}
 	}
 }
 
 func getStore() (lstore.Store, error) {
-	store, err := lstore.NewStore(storage.Config{
-		BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
-		FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
-	}, chunk.StoreConfig{}, chunk.SchemaConfig{
-		Configs: []chunk.PeriodConfig{
-			chunk.PeriodConfig{
-				From:       chunk.DayTime{Time: start},
-				IndexType:  "boltdb",
-				ObjectType: "filesystem",
-				Schema:     "v9",
-				IndexTables: chunk.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 168,
+	store, err := lstore.NewStore(
+		storage.Config{
+			BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
+			FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
+		},
+		chunk.StoreConfig{},
+		chunk.SchemaConfig{
+			Configs: []chunk.PeriodConfig{
+				{
+					From:       chunk.DayTime{Time: start},
+					IndexType:  "boltdb",
+					ObjectType: "filesystem",
+					Schema:     "v9",
+					IndexTables: chunk.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 168,
+					},
 				},
 			},
 		},
-	}, &validation.Overrides{})
+		&validation.Overrides{},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +99,7 @@ func fillStore() error {
 					Line:      randString(250),
 				}
 				if chunkEnc.SpaceFor(entry) {
-					chunkEnc.Append(entry)
+					_ = chunkEnc.Append(entry)
 				} else {
 					from, to := chunkEnc.Bounds()
 					c := chunk.NewChunk("fake", fp, metric, chunkenc.NewFacade(chunkEnc), model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(to.UnixNano()))

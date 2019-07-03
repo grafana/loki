@@ -326,42 +326,13 @@ func (i *queryClientIterator) Close() error {
 	return i.client.CloseSend()
 }
 
-type filter struct {
-	EntryIterator
-	f func(string) bool
-
-	curr logproto.Entry
-}
-
-// NewFilter builds a filtering iterator.
-func NewFilter(f func(string) bool, i EntryIterator) EntryIterator {
-	return &filter{
-		f:             f,
-		EntryIterator: i,
-	}
-}
-
-func (i *filter) Next() bool {
-	for i.EntryIterator.Next() {
-		curr := i.EntryIterator.Entry()
-		if i.f(curr.Line) {
-			i.curr = curr
-			return true
-		}
-	}
-	i.EntryIterator.Close()
-	return false
-}
-
-func (i *filter) Entry() logproto.Entry {
-	return i.curr
-}
-
 type nonOverlappingIterator struct {
 	labels    string
 	i         int
 	iterators []EntryIterator
 	curr      EntryIterator
+
+	lastEntry *logproto.Entry
 }
 
 // NewNonOverlappingIterator gives a chained iterator over a list of iterators.
@@ -393,7 +364,12 @@ func (i *nonOverlappingIterator) Next() bool {
 }
 
 func (i *nonOverlappingIterator) Entry() logproto.Entry {
-	return i.curr.Entry()
+	if i.curr == nil {
+		return *i.lastEntry
+	}
+	entry := i.curr.Entry()
+	i.lastEntry = &entry
+	return *i.lastEntry
 }
 
 func (i *nonOverlappingIterator) Labels() string {
@@ -460,19 +436,11 @@ type entryIteratorBackward struct {
 	cur         logproto.Entry
 	entries     []logproto.Entry
 	loaded      bool
-
-	forward bool
 }
 
 // NewEntryIteratorBackward returns an iterator which loads all the entries
 // of an existing iterator, and then iterates over them backward.
 func NewEntryIteratorBackward(it EntryIterator) (EntryIterator, error) {
-	return &entryIteratorBackward{entries: make([]logproto.Entry, 0, 128), forwardIter: it}, it.Error()
-}
-
-// NewEntryIteratorForward returns an iterator which loads all the entries
-// of an existing iterator, and then iterates over them backward.
-func NewEntryIteratorForward(it EntryIterator) (EntryIterator, error) {
 	return &entryIteratorBackward{entries: make([]logproto.Entry, 0, 128), forwardIter: it}, it.Error()
 }
 
@@ -492,13 +460,7 @@ func (i *entryIteratorBackward) Next() bool {
 		i.entries = nil
 		return false
 	}
-
-	if i.forward {
-		i.cur, i.entries = i.entries[0], i.entries[1:]
-	} else {
-		i.cur, i.entries = i.entries[len(i.entries)-1], i.entries[:len(i.entries)-1]
-	}
-
+	i.cur, i.entries = i.entries[len(i.entries)-1], i.entries[:len(i.entries)-1]
 	return true
 }
 

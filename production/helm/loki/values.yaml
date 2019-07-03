@@ -14,6 +14,8 @@ affinity: {}
 ## StatefulSet annotations
 annotations: {}
 
+goGC: 100
+
 # enable tracing for debug, need install jaeger and specify right jaeger_agent_host
 tracing:
   jaegerAgentHost:
@@ -118,7 +120,7 @@ readinessProbe:
     port: http-metrics
   initialDelaySeconds: 90
 
-replicas: 3
+replicas: 1
 
 resources: {}
 # limits:
