@@ -81,13 +81,13 @@ func (s *store) LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter
 
 		// Make sure the initial chunks are loaded. This is not one chunk
 		// per series, but rather a chunk per non-overlapping iterator.
-		if err := loadFirstChunks(ctx, chksBySeries); err != nil {
+		if err := loadFirstChunks(ctx, chksBySeries, req); err != nil {
 			return nil, err
 		}
 
 		// Now that we have the first chunk for each series loaded,
 		// we can proceed to filter the series that don't match.
-		chksBySeries = filterSeriesByMatchers(chksBySeries, matchers)
+		chksBySeries = filterSeriesByMatchers(chksBySeries, matchers, req)
 
 		iters, err := buildIterators(ctx, req, chksBySeries, filter)
 		if err != nil {
@@ -111,14 +111,23 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 	return filtered
 }
 
-func filterSeriesByMatchers(chks map[model.Fingerprint][][]chunkenc.LazyChunk, matchers []*labels.Matcher) map[model.Fingerprint][][]chunkenc.LazyChunk {
+func filterSeriesByMatchers(chks map[model.Fingerprint][][]chunkenc.LazyChunk, matchers []*labels.Matcher, req *logproto.QueryRequest) map[model.Fingerprint][][]chunkenc.LazyChunk {
 outer:
 	for fp, chunks := range chks {
 		for _, matcher := range matchers {
-			if !matcher.Matches(chunks[0][0].Chunk.Metric.Get(matcher.Name)) {
-				delete(chks, fp)
-				continue outer
+			// checks matchers against the last chunk if we're doing BACKWARD
+			if req.Direction == logproto.BACKWARD {
+				if !matcher.Matches(chunks[0][len(chunks[0])-1].Chunk.Metric.Get(matcher.Name)) {
+					delete(chks, fp)
+					continue outer
+				}
+			} else {
+				if !matcher.Matches(chunks[0][0].Chunk.Metric.Get(matcher.Name)) {
+					delete(chks, fp)
+					continue outer
+				}
 			}
+
 		}
 	}
 
@@ -132,21 +141,24 @@ func buildIterators(ctx context.Context, req *logproto.QueryRequest, chks map[mo
 		if err != nil {
 			return nil, err
 		}
-
-		result = append(result, iterator...)
+		result = append(result, iterator)
 	}
 
 	return result, nil
 }
 
-func buildHeapIterator(ctx context.Context, req *logproto.QueryRequest, chks [][]chunkenc.LazyChunk, filter logql.Filter) ([]iter.EntryIterator, error) {
+func buildHeapIterator(ctx context.Context, req *logproto.QueryRequest, chks [][]chunkenc.LazyChunk, filter logql.Filter) (iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
-	if chks[0][0].Chunk.Metric.Has("__name__") {
-		labelsBuilder := labels.NewBuilder(chks[0][0].Chunk.Metric)
-		labelsBuilder.Del("__name__")
-		chks[0][0].Chunk.Metric = labelsBuilder.Labels()
+	var fetchedChunkIndex int
+	if req.Direction == logproto.BACKWARD {
+		fetchedChunkIndex = len(chks[0]) - 1
 	}
-	labels := chks[0][0].Chunk.Metric.String()
+	if chks[0][fetchedChunkIndex].Chunk.Metric.Has("__name__") {
+		labelsBuilder := labels.NewBuilder(chks[0][fetchedChunkIndex].Chunk.Metric)
+		labelsBuilder.Del("__name__")
+		chks[0][fetchedChunkIndex].Chunk.Metric = labelsBuilder.Labels()
+	}
+	labels := chks[0][fetchedChunkIndex].Chunk.Metric.String()
 
 	for i := range chks {
 		iterators := make([]iter.EntryIterator, 0, len(chks[i]))
@@ -157,8 +169,8 @@ func buildHeapIterator(ctx context.Context, req *logproto.QueryRequest, chks [][
 			}
 			iterators = append(iterators, iterator)
 		}
-		// reduce swap in the heap iterator.
-		if req.Direction == logproto.FORWARD {
+		// reverse chunks to start with the last one.
+		if req.Direction == logproto.BACKWARD {
 			for i, j := 0, len(iterators)-1; i < j; i, j = i+1, j-1 {
 				iterators[i], iterators[j] = iterators[j], iterators[i]
 			}
@@ -166,10 +178,10 @@ func buildHeapIterator(ctx context.Context, req *logproto.QueryRequest, chks [][
 		result = append(result, iter.NewNonOverlappingIterator(iterators, labels))
 	}
 
-	return result, nil
+	return iter.NewHeapIterator(result, req.Direction), nil
 }
 
-func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]chunkenc.LazyChunk) error {
+func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]chunkenc.LazyChunk, req *logproto.QueryRequest) error {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "loadFirstChunks")
 	defer sp.Finish()
 
@@ -180,7 +192,12 @@ func loadFirstChunks(ctx context.Context, chks map[model.Fingerprint][][]chunken
 			if len(lchk) == 0 {
 				continue
 			}
-			chksByFetcher[lchk[0].Fetcher] = append(chksByFetcher[lchk[0].Fetcher], &lchk[0])
+			// load the last chunk if we're doing BACKWARD
+			if req.Direction == logproto.BACKWARD {
+				chksByFetcher[lchk[0].Fetcher] = append(chksByFetcher[lchk[0].Fetcher], &lchk[len(lchk)-1])
+			} else {
+				chksByFetcher[lchk[0].Fetcher] = append(chksByFetcher[lchk[0].Fetcher], &lchk[0])
+			}
 		}
 	}
 

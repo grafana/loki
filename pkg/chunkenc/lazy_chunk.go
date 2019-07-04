@@ -21,8 +21,6 @@ func (c *LazyChunk) getChunk(ctx context.Context) (Chunk, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	c.Chunk = chunks[0]
 	return chunks[0].Data.(*Facade).LokiChunk(), nil
 }
 
@@ -82,7 +80,6 @@ func (it *lazyIterator) Next() bool {
 		return false
 	}
 	it.EntryIterator, it.err = chk.Iterator(it.from, it.through, it.direction, it.filter)
-	it.chunk = nil
 	return it.Next()
 }
 
@@ -102,7 +99,6 @@ func (it *lazyIterator) Error() error {
 
 func (it *lazyIterator) Close() error {
 	if it.EntryIterator != nil {
-		it.chunk = nil
 		it.closed = true
 		err := it.EntryIterator.Close()
 		it.EntryIterator = nil

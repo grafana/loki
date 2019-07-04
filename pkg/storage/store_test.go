@@ -108,13 +108,13 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 		}
 		res := []logproto.Entry{}
 		printHeap(b, true)
-		j := 0
+		j := uint32(0)
 		for iter.Next() {
 			j++
 			printHeap(b, false)
 			res = append(res, iter.Entry())
-			// limit result by 1000 like the querier would do.
-			if j == 1000 {
+			// limit result like the querier would do.
+			if j == query.Limit {
 				break
 			}
 		}
@@ -134,6 +134,7 @@ func printHeap(b *testing.B, show bool) {
 	}
 	if show {
 		log.Printf("Benchmark %d maxHeapInuse: %d Mbytes\n", b.N, maxHeapInuse/1024/1024)
+		log.Printf("Benchmark %d currentHeapInuse: %d Mbytes\n", b.N, m.HeapInuse/1024/1024)
 	}
 }
 

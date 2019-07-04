@@ -430,6 +430,10 @@ func (hb *headBlock) iterator(mint, maxt int64, filter logql.Filter) iter.EntryI
 		}
 	}
 
+	if len(entries) == 0 {
+		return emptyIterator
+	}
+
 	return &listIterator{
 		entries: entries,
 	}
@@ -553,6 +557,7 @@ func (si *bufferedIterator) Entry() logproto.Entry {
 }
 
 func (si *bufferedIterator) Error() error { return si.err }
+
 func (si *bufferedIterator) Close() error {
 	if !si.closed {
 		si.closed = true
@@ -566,4 +571,5 @@ func (si *bufferedIterator) Close() error {
 	}
 	return si.err
 }
+
 func (si *bufferedIterator) Labels() string { return "" }
