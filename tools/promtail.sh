@@ -274,6 +274,9 @@ metadata:
   name: promtail
 spec:
   minReadySeconds: 10
+  selector:
+    matchLabels:
+      name: promtail
   template:
     metadata:
       labels:
