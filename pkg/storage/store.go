@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
+// Store is the Loki chunk store to retrieve and save chunks.
 type Store interface {
 	chunk.Store
 	IsLocal() bool
@@ -27,6 +28,7 @@ type store struct {
 	isLocal bool
 }
 
+// NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg storage.Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits *validation.Overrides) (Store, error) {
 	s, err := storage.NewStore(cfg, storeCfg, schemaCfg, limits)
 	if err != nil {
@@ -50,6 +52,8 @@ func (s *store) IsLocal() bool {
 	return s.isLocal
 }
 
+// LazyQuery returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
+// for that request.
 func (s *store) LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter.EntryIterator, error) {
 	expr, err := logql.ParseExpr(req.Query)
 	if err != nil {
