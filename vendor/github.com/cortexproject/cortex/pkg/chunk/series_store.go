@@ -42,22 +42,22 @@ var (
 		Namespace: "cortex",
 		Name:      "chunk_store_series_pre_intersection_per_query",
 		Help:      "Distribution of #series (pre intersection) per query.",
-		// A reasonable upper bound is around 100k - 10*(8^5) = 327k.
-		Buckets: prometheus.ExponentialBuckets(10, 8, 5),
+		// A reasonable upper bound is around 100k - 10*(8^(6-1)) = 327k.
+		Buckets: prometheus.ExponentialBuckets(10, 8, 6),
 	})
 	postIntersectionPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "chunk_store_series_post_intersection_per_query",
 		Help:      "Distribution of #series (post intersection) per query.",
-		// A reasonable upper bound is around 100k - 10*(8^5) = 327k.
-		Buckets: prometheus.ExponentialBuckets(10, 8, 5),
+		// A reasonable upper bound is around 100k - 10*(8^(6-1)) = 327k.
+		Buckets: prometheus.ExponentialBuckets(10, 8, 6),
 	})
 	chunksPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "chunk_store_chunks_per_query",
 		Help:      "Distribution of #chunks per query.",
-		// For 100k series for 7 week, could be 1.2m - 10*(8^6) = 2.6m.
-		Buckets: prometheus.ExponentialBuckets(10, 8, 6),
+		// For 100k series for 7 week, could be 1.2m - 10*(8^(7-1)) = 2.6m.
+		Buckets: prometheus.ExponentialBuckets(10, 8, 7),
 	})
 )
 
@@ -341,6 +341,12 @@ func (c *seriesStore) Put(ctx context.Context, chunks []Chunk) error {
 
 // PutOne implements ChunkStore
 func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
+	// If this chunk is in cache it must already be in the database so we don't need to write it again
+	found, _, _ := c.cache.Fetch(ctx, []string{chunk.ExternalKey()})
+	if len(found) > 0 {
+		return nil
+	}
+
 	chunks := []Chunk{chunk}
 
 	writeReqs, keysToCache, err := c.calculateIndexEntries(from, through, chunk)
@@ -372,23 +378,25 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 func (c *seriesStore) calculateIndexEntries(from, through model.Time, chunk Chunk) (WriteBatch, []string, error) {
 	seenIndexEntries := map[string]struct{}{}
 	entries := []IndexEntry{}
-	keysToCache := []string{}
 
 	metricName := chunk.Metric.Get(labels.MetricName)
 	if metricName == "" {
 		return nil, nil, fmt.Errorf("no MetricNameLabel for chunk")
 	}
-	keys := c.schema.GetLabelEntryCacheKeys(from, through, chunk.UserID, chunk.Metric)
 
+	keys, labelEntries, err := c.schema.GetCacheKeysAndLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey())
+	if err != nil {
+		return nil, nil, err
+	}
 	_, _, missing := c.writeDedupeCache.Fetch(context.Background(), keys)
-	if len(missing) != 0 {
-		labelEntries, err := c.schema.GetLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey())
-		if err != nil {
-			return nil, nil, err
+	// keys and labelEntries are matched in order, but Fetch() may
+	// return missing keys in any order so check against all of them.
+	for _, missingKey := range missing {
+		for i, key := range keys {
+			if key == missingKey {
+				entries = append(entries, labelEntries[i]...)
+			}
 		}
-
-		entries = append(entries, labelEntries...)
-		keysToCache = missing
 	}
 
 	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, chunk.ExternalKey())
@@ -410,5 +418,5 @@ func (c *seriesStore) calculateIndexEntries(from, through model.Time, chunk Chun
 		}
 	}
 
-	return result, keysToCache, nil
+	return result, missing, nil
 }

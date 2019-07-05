@@ -222,7 +222,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:960e80517f3751439c5304aa501a68dcc81f4e70a7cfa84ff658f5fc939a0c0f"
+  digest = "1:2f0846dd85df3365a80c32ff994eb1fcee5eec2c51a812ceec182398f3ef85f4"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/chunk",
@@ -248,7 +248,7 @@
     "pkg/util/validation",
   ]
   pruneopts = "UT"
-  revision = "5612c6ff1c3142583ae18f47e7af99b1827f758e"
+  revision = "e1ab5495e8a846891e3b6b8e757e63201b886bec"
 
 [[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
@@ -559,6 +559,39 @@
   pruneopts = "UT"
   revision = "66b9c49e59c6c48f0ffce28c2d8b8a5678502c6d"
   version = "v1.4.0"
+
+[[projects]]
+  branch = "master"
+  digest = "1:1f4181cfeacebef71babf22e99d727c1667e1f620982787c7035653d6e887dbb"
+  name = "github.com/grafana/loki"
+  packages = [
+    "pkg/chunkenc",
+    "pkg/distributor",
+    "pkg/helpers",
+    "pkg/ingester",
+    "pkg/ingester/client",
+    "pkg/iter",
+    "pkg/logentry/metric",
+    "pkg/logentry/stages",
+    "pkg/logproto",
+    "pkg/logql",
+    "pkg/loki",
+    "pkg/promtail",
+    "pkg/promtail/api",
+    "pkg/promtail/client",
+    "pkg/promtail/client/fake",
+    "pkg/promtail/config",
+    "pkg/promtail/positions",
+    "pkg/promtail/scrape",
+    "pkg/promtail/server",
+    "pkg/promtail/server/ui",
+    "pkg/promtail/targets",
+    "pkg/querier",
+    "pkg/util",
+    "pkg/util/flagext",
+  ]
+  pruneopts = "UT"
+  revision = "4c7138231f77997909564616efc5d0cdbcb1ead8"
 
 [[projects]]
   digest = "1:1168584a5881d371e96cb0e66ef6db71d7cef0856cc7f311490bc856627f8328"
@@ -1573,6 +1606,7 @@
     "github.com/docker/docker/api/types/plugins/logdriver",
     "github.com/docker/docker/daemon/logger",
     "github.com/docker/docker/daemon/logger/jsonfilelog",
+    "github.com/docker/docker/daemon/logger/templates",
     "github.com/docker/docker/pkg/ioutils",
     "github.com/docker/go-plugins-helpers/sdk",
     "github.com/fatih/color",
@@ -1585,6 +1619,30 @@
     "github.com/golang/snappy",
     "github.com/gorilla/mux",
     "github.com/gorilla/websocket",
+    "github.com/grafana/loki/pkg/chunkenc",
+    "github.com/grafana/loki/pkg/distributor",
+    "github.com/grafana/loki/pkg/helpers",
+    "github.com/grafana/loki/pkg/ingester",
+    "github.com/grafana/loki/pkg/ingester/client",
+    "github.com/grafana/loki/pkg/iter",
+    "github.com/grafana/loki/pkg/logentry/metric",
+    "github.com/grafana/loki/pkg/logentry/stages",
+    "github.com/grafana/loki/pkg/logproto",
+    "github.com/grafana/loki/pkg/logql",
+    "github.com/grafana/loki/pkg/loki",
+    "github.com/grafana/loki/pkg/promtail",
+    "github.com/grafana/loki/pkg/promtail/api",
+    "github.com/grafana/loki/pkg/promtail/client",
+    "github.com/grafana/loki/pkg/promtail/client/fake",
+    "github.com/grafana/loki/pkg/promtail/config",
+    "github.com/grafana/loki/pkg/promtail/positions",
+    "github.com/grafana/loki/pkg/promtail/scrape",
+    "github.com/grafana/loki/pkg/promtail/server",
+    "github.com/grafana/loki/pkg/promtail/server/ui",
+    "github.com/grafana/loki/pkg/promtail/targets",
+    "github.com/grafana/loki/pkg/querier",
+    "github.com/grafana/loki/pkg/util",
+    "github.com/grafana/loki/pkg/util/flagext",
     "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
     "github.com/hpcloud/tail",
     "github.com/jmespath/go-jmespath",
@@ -1611,12 +1669,12 @@
     "github.com/shurcooL/httpfs/filter",
     "github.com/shurcooL/httpfs/union",
     "github.com/shurcooL/vfsgen",
-    "github.com/sirupsen/logrus",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
     "github.com/tonistiigi/fifo",
     "github.com/weaveworks/common/httpgrpc",
     "github.com/weaveworks/common/httpgrpc/server",
+    "github.com/weaveworks/common/logging",
     "github.com/weaveworks/common/middleware",
     "github.com/weaveworks/common/server",
     "github.com/weaveworks/common/tracing",
