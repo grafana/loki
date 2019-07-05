@@ -89,7 +89,7 @@ func (e *filterExpr) filter() (func([]byte) bool, error) {
 
 	case labels.MatchNotEqual:
 		f = func(line []byte) bool {
-			return bytes.Contains(line, []byte(e.match))
+			return !bytes.Contains(line, []byte(e.match))
 		}
 
 	default:
