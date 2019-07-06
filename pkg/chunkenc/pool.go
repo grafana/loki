@@ -2,6 +2,7 @@ package chunkenc
 
 import (
 	"bufio"
+	"bytes"
 	"compress/gzip"
 
 	"io"
@@ -27,7 +28,7 @@ var (
 		},
 	}
 	// BytesBufferPool is a bytes buffer used for lines decompressed.
-	BytesBufferPool   = newBufferPoolWithSize(1024)
+	BytesBufferPool = newBufferPoolWithSize(1024)
 )
 
 // GzipPool is a gun zip compression pool
@@ -92,7 +93,6 @@ func (bufPool *BufioReaderPool) Put(b *bufio.Reader) {
 	bufPool.pool.Put(b)
 }
 
-
 type bufferPool struct {
 	pool sync.Pool
 }
@@ -100,15 +100,15 @@ type bufferPool struct {
 func newBufferPoolWithSize(size int) *bufferPool {
 	return &bufferPool{
 		pool: sync.Pool{
-			New: func() interface{} { return make([]byte, size) },
+			New: func() interface{} { return bytes.NewBuffer(make([]byte, size)) },
 		},
 	}
 }
 
-func (bp *bufferPool) Get() []byte {
-	return bp.pool.Get().([]byte)
+func (bp *bufferPool) Get() *bytes.Buffer {
+	return bp.pool.Get().(*bytes.Buffer)
 }
 
-func (bp *bufferPool) Put(b []byte) {
+func (bp *bufferPool) Put(b *bytes.Buffer) {
 	bp.pool.Put(b)
 }

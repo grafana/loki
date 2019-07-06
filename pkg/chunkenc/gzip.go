@@ -478,8 +478,8 @@ type bufferedIterator struct {
 
 	err error
 
-	buf    []byte // The buffer a single entry.
-	decBuf []byte // The buffer for decoding the lengths.
+	buf    *bytes.Buffer // The buffer a single entry.
+	decBuf []byte        // The buffer for decoding the lengths.
 
 	closed bool
 
@@ -532,24 +532,24 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 		}
 	}
 
-	for len(si.buf) < int(l) {
-		si.buf = append(si.buf, make([]byte, 1024)...)
+	for si.buf.Cap() < int(l) {
+		si.buf.Grow(1024)
 	}
 
-	n, err := si.s.Read(si.buf[:l])
+	n, err := si.s.Read(si.buf.Bytes()[:l])
 	if err != nil && err != io.EOF {
 		si.err = err
 		return 0, nil, false
 	}
 	if n < int(l) {
-		_, err = si.s.Read(si.buf[n:l])
+		_, err = si.s.Read(si.buf.Bytes()[n:l])
 		if err != nil {
 			si.err = err
 			return 0, nil, false
 		}
 	}
 
-	return ts, si.buf[:l], true
+	return ts, si.buf.Bytes()[:l], true
 }
 
 func (si *bufferedIterator) Entry() logproto.Entry {
