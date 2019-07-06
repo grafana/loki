@@ -493,7 +493,7 @@ func newBufferedIterator(pool CompressionPool, b []byte, filter logql.Filter) *b
 		reader: r,
 		pool:   pool,
 		filter: filter,
-		buf:    make([]byte, 256),
+		buf:    BytesBufferPool.Get(),
 		decBuf: make([]byte, binary.MaxVarintLen64),
 	}
 }
@@ -533,7 +533,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 	}
 
 	for len(si.buf) < int(l) {
-		si.buf = append(si.buf, make([]byte, 256)...)
+		si.buf = append(si.buf, make([]byte, 1024)...)
 	}
 
 	n, err := si.s.Read(si.buf[:l])
@@ -563,6 +563,7 @@ func (si *bufferedIterator) Close() error {
 		si.closed = true
 		si.pool.PutReader(si.reader)
 		BufReaderPool.Put(si.s)
+		BytesBufferPool.Put(si.buf)
 		si.s = nil
 		si.buf = nil
 		si.decBuf = nil

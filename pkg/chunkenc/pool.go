@@ -26,6 +26,8 @@ var (
 			New: func() interface{} { return bufio.NewReader(nil) },
 		},
 	}
+	// BytesBufferPool is a bytes buffer used for lines decompressed.
+	BytesBufferPool   = newBufferPoolWithSize(1024)
 )
 
 // GzipPool is a gun zip compression pool
@@ -88,4 +90,25 @@ func (bufPool *BufioReaderPool) Get(r io.Reader) *bufio.Reader {
 // Put puts the bufio.Reader back into the pool.
 func (bufPool *BufioReaderPool) Put(b *bufio.Reader) {
 	bufPool.pool.Put(b)
+}
+
+
+type bufferPool struct {
+	pool sync.Pool
+}
+
+func newBufferPoolWithSize(size int) *bufferPool {
+	return &bufferPool{
+		pool: sync.Pool{
+			New: func() interface{} { return make([]byte, size) },
+		},
+	}
+}
+
+func (bp *bufferPool) Get() []byte {
+	return bp.pool.Get().([]byte)
+}
+
+func (bp *bufferPool) Put(b []byte) {
+	bp.pool.Put(b)
 }
