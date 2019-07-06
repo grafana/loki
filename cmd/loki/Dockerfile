@@ -4,3 +4,4 @@ COPY       loki /bin/loki
 COPY       loki-local-config.yaml /etc/loki/local-config.yaml
 EXPOSE     80
 ENTRYPOINT [ "/bin/loki" ]
+CMD        ["-config.file=/etc/loki/local-config.yaml"]
