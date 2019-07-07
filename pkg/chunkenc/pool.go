@@ -28,7 +28,7 @@ var (
 		},
 	}
 	// BytesBufferPool is a bytes buffer used for lines decompressed.
-	BytesBufferPool = newBufferPoolWithSize(1024)
+	BytesBufferPool = newBufferPoolWithSize(4096)
 )
 
 // GzipPool is a gun zip compression pool

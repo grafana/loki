@@ -9,11 +9,9 @@ import (
 	"io"
 	"time"
 
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-
-	"github.com/grafana/loki/pkg/iter"
-
 	"github.com/pkg/errors"
 )
 
@@ -493,7 +491,6 @@ func newBufferedIterator(pool CompressionPool, b []byte, filter logql.Filter) *b
 		reader: r,
 		pool:   pool,
 		filter: filter,
-		buf:    BytesBufferPool.Get(),
 		decBuf: make([]byte, binary.MaxVarintLen64),
 	}
 }
@@ -532,8 +529,12 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 		}
 	}
 
+	if si.buf == nil {
+		si.buf = BytesBufferPool.Get()
+	}
+
 	for si.buf.Cap() < int(l) {
-		si.buf.Grow(1024)
+		si.buf.Grow(int(l) - si.buf.Cap())
 	}
 
 	n, err := si.s.Read(si.buf.Bytes()[:l])
@@ -548,7 +549,6 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 			return 0, nil, false
 		}
 	}
-
 	return ts, si.buf.Bytes()[:l], true
 }
 
