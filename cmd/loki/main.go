@@ -43,9 +43,11 @@ func main() {
 
 	util.InitLogger(&cfg.Server)
 
-	if err := helpers.LoadConfig(configFile, &cfg); err != nil {
-		level.Error(util.Logger).Log("msg", "error loading config", "filename", configFile, "err", err)
-		os.Exit(1)
+	if configFile != "" {
+		if err := helpers.LoadConfig(configFile, &cfg); err != nil {
+			level.Error(util.Logger).Log("msg", "error loading config", "filename", configFile, "err", err)
+			os.Exit(1)
+		}
 	}
 
 	// Re-init the logger which will now honor a different log level set in cfg.Server
