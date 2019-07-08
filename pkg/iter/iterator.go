@@ -348,13 +348,11 @@ func (i *nonOverlappingIterator) Next() bool {
 		if len(i.iterators) == 0 {
 			if i.curr != nil {
 				i.curr.Close()
-				i.curr = nil
 			}
 			return false
 		}
 		if i.curr != nil {
 			i.curr.Close()
-			i.curr = nil
 		}
 		i.i++
 		i.curr, i.iterators = i.iterators[0], i.iterators[1:]
@@ -364,12 +362,7 @@ func (i *nonOverlappingIterator) Next() bool {
 }
 
 func (i *nonOverlappingIterator) Entry() logproto.Entry {
-	if i.curr == nil {
-		return *i.lastEntry
-	}
-	entry := i.curr.Entry()
-	i.lastEntry = &entry
-	return *i.lastEntry
+	return i.curr.Entry()
 }
 
 func (i *nonOverlappingIterator) Labels() string {
@@ -392,7 +385,6 @@ func (i *nonOverlappingIterator) Close() error {
 		iter.Close()
 	}
 	i.iterators = nil
-	i.curr = nil
 	return nil
 }
 
@@ -441,14 +433,15 @@ type entryIteratorBackward struct {
 // NewEntryIteratorBackward returns an iterator which loads all the entries
 // of an existing iterator, and then iterates over them backward.
 func NewEntryIteratorBackward(it EntryIterator) (EntryIterator, error) {
-	return &entryIteratorBackward{entries: make([]logproto.Entry, 0, 128), forwardIter: it}, it.Error()
+	return &entryIteratorBackward{entries: make([]logproto.Entry, 0, 1024), forwardIter: it}, it.Error()
 }
 
 func (i *entryIteratorBackward) load() {
 	if !i.loaded {
 		i.loaded = true
 		for i.forwardIter.Next() {
-			i.entries = append(i.entries, i.forwardIter.Entry())
+			entry := i.forwardIter.Entry()
+			i.entries = append(i.entries, entry)
 		}
 		i.forwardIter.Close()
 	}
