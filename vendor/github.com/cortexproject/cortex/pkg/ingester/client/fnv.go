@@ -63,9 +63,8 @@ func HashNew32() uint32 {
 // Note this is the same algorithm as Go stdlib `sum32.Write()`
 func HashAdd32(h uint32, s string) uint32 {
 	for i := 0; i < len(s); i++ {
-		h ^= uint32(s[i])
 		h *= prime32
-
+		h ^= uint32(s[i])
 	}
 	return h
 }

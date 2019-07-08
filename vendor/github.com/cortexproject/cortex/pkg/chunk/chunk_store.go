@@ -64,11 +64,18 @@ type StoreConfig struct {
 
 	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
+<<<<<<< HEAD
+=======
+
+	// Not visible in yaml because the setting shouldn't be common between ingesters and queriers
+	chunkCacheStubs bool // don't write the full chunk to cache, just a stub entry
+>>>>>>> update vendor
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("", "Cache config for chunks. ", f)
+	f.BoolVar(&cfg.chunkCacheStubs, "store.chunk-cache-stubs", false, "If true, don't write the full chunk to cache, just a stub entry.")
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
 
 	f.DurationVar(&cfg.MinChunkAge, "store.min-chunk-age", 0, "Minimum time between chunk update and being saved to the store.")
@@ -92,7 +99,7 @@ type store struct {
 }
 
 func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectClient, limits *validation.Overrides) (Store, error) {
-	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, chunks)
+	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, cfg.chunkCacheStubs, chunks)
 	if err != nil {
 		return nil, err
 	}
@@ -188,47 +195,8 @@ func (c *store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	return c.getMetricNameChunks(ctx, from, through, matchers, metricName)
 }
 
-// LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *store) LabelNamesForMetricName(ctx context.Context, from, through model.Time, metricName string) ([]string, error) {
-	log, ctx := spanlogger.New(ctx, "ChunkStore.LabelNamesForMetricName")
-	defer log.Span.Finish()
-	level.Debug(log).Log("from", from, "through", through, "metricName", metricName)
-
-	shortcut, err := c.validateQueryTimeRange(ctx, from, &through)
-	if err != nil {
-		return nil, err
-	} else if shortcut {
-		return nil, nil
-	}
-
-	chunks, err := c.lookupChunksByMetricName(ctx, from, through, nil, metricName)
-	if err != nil {
-		return nil, err
-	}
-	level.Debug(log).Log("Chunks in index", len(chunks))
-
-	// Filter out chunks that are not in the selected time range and keep a single chunk per fingerprint
-	filtered := filterChunksByTime(from, through, chunks)
-	filtered, keys := filterChunksByUniqueFingerPrint(filtered)
-	level.Debug(log).Log("Chunks post filtering", len(chunks))
-
-	// Now fetch the actual chunk data from Memcache / S3
-	allChunks, err := c.FetchChunks(ctx, filtered, keys)
-	if err != nil {
-		level.Error(log).Log("msg", "FetchChunks", "err", err)
-		return nil, err
-	}
-	var result []string
-	for _, c := range allChunks {
-		for labelName := range c.Metric {
-			if labelName != model.MetricNameLabel {
-				result = append(result, string(labelName))
-			}
-		}
-	}
-	sort.Strings(result)
-	result = uniqueStrings(result)
-	return result, nil
+func (c *store) GetChunkRefs(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
+	return nil, nil, errors.New("not implemented")
 }
 
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
@@ -242,14 +210,14 @@ func (c *store) LabelValuesForMetricName(ctx context.Context, from, through mode
 		return nil, err
 	}
 
-	shortcut, err := c.validateQueryTimeRange(ctx, from, &through)
+	shortcut, err := c.validateQueryTimeRange(ctx, &from, &through)
 	if err != nil {
 		return nil, err
 	} else if shortcut {
 		return nil, nil
 	}
 
-	queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, model.LabelValue(metricName), model.LabelName(labelName))
+	queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
 	if err != nil {
 		return nil, err
 	}
@@ -267,16 +235,45 @@ func (c *store) LabelValuesForMetricName(ctx context.Context, from, through mode
 		}
 		result = append(result, string(labelValue))
 	}
-
 	sort.Strings(result)
 	result = uniqueStrings(result)
 	return result, nil
 }
 
-func (c *store) GetChunkRefs(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
-	return nil, nil, errors.New("not implemented")
+// LabelNamesForMetricName retrieves all label names for a metric name.
+func (c *store) LabelNamesForMetricName(ctx context.Context, from, through model.Time, metricName string) ([]string, error) {
+	log, ctx := spanlogger.New(ctx, "ChunkStore.LabelNamesForMetricName")
+	defer log.Span.Finish()
+	level.Debug(log).Log("from", from, "through", through, "metricName", metricName)
+
+	shortcut, err := c.validateQueryTimeRange(ctx, &from, &through)
+	if err != nil {
+		return nil, err
+	} else if shortcut {
+		return nil, nil
+	}
+
+	chunks, err := c.lookupChunksByMetricName(ctx, from, through, nil, metricName)
+	if err != nil {
+		return nil, err
+	}
+	level.Debug(log).Log("msg", "Chunks in index", "chunks", len(chunks))
+
+	// Filter out chunks that are not in the selected time range and keep a single chunk per fingerprint
+	filtered := filterChunksByTime(from, through, chunks)
+	filtered, keys := filterChunksByUniqueFingerprint(filtered)
+	level.Debug(log).Log("msg", "Chunks post filtering", "chunks", len(chunks))
+
+	// Now fetch the actual chunk data from Memcache / S3
+	allChunks, err := c.FetchChunks(ctx, filtered, keys)
+	if err != nil {
+		level.Error(log).Log("msg", "FetchChunks", "err", err)
+		return nil, err
+	}
+	return labelNamesFromChunks(allChunks), nil
 }
 
+<<<<<<< HEAD
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
 func (c *store) LabelValuesForMetricName(ctx context.Context, from, through model.Time, metricName, labelName string) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.LabelValues")
@@ -319,6 +316,8 @@ func (c *store) LabelValuesForMetricName(ctx context.Context, from, through mode
 	return result, nil
 }
 
+=======
+>>>>>>> update vendor
 func (c *store) validateQueryTimeRange(ctx context.Context, from *model.Time, through *model.Time) (bool, error) {
 	log, ctx := spanlogger.New(ctx, "store.validateQueryTimeRange")
 	defer log.Span.Finish()

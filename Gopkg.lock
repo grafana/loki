@@ -249,11 +249,15 @@
   ]
   pruneopts = "UT"
 <<<<<<< HEAD
+<<<<<<< HEAD
   revision = "e1ab5495e8a846891e3b6b8e757e63201b886bec"
 =======
   revision = "823897b6a214f4db92d611fcd76331ff68b1791f"
   source = "https://github.com/grafana/cortex"
 >>>>>>> Query label values and names are now fetched from the store.
+=======
+  revision = "ef492f6bbafb185bbe61ae7a6955b7a4af5f3d9a"
+>>>>>>> update vendor
 
 [[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
