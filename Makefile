@@ -30,7 +30,7 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/go/src/github.com/grafana/loki' phase.
-DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
+DONT_FIND := -name build -prune -o -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # Get a list of directories containing Dockerfiles
 DOCKERFILES := $(shell find . -name docker-driver -prune -o $(DONT_FIND) -type f -name 'Dockerfile' -print)
