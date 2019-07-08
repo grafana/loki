@@ -184,7 +184,7 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 
 	// Read the number of blocks.
 	num := db.uvarint()
-	bc.blocks = make([]block, num)
+	bc.blocks = make([]block, 0, num)
 
 	for i := 0; i < num; i++ {
 		blk := block{}
