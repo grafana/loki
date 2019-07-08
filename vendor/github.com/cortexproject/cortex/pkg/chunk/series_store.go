@@ -201,8 +201,7 @@ func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, from, through
 		return nil, err
 	}
 
-	// Validate the query is within reasonable bounds.
-	metricName, matchers, shortcut, err := c.validateQuery(ctx, &from, &through, allMatchers)
+	shortcut, err := c.validateQueryTimeRange(ctx, &from, &through)
 	if err != nil {
 		return nil, err
 	} else if shortcut {
@@ -210,10 +209,8 @@ func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, from, through
 	}
 	level.Debug(log).Log("metric", metricName)
 
-	// Fetch the series IDs from the index, based on non-empty matchers from
-	// the query.
-	_, matchers = util.SplitFiltersAndMatchers(matchers)
-	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, matchers)
+	// Fetch the series IDs from the index
+	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, nil)
 	if err != nil {
 		return nil, err
 	}

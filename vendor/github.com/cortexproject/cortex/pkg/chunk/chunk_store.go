@@ -64,12 +64,9 @@ type StoreConfig struct {
 
 	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
-<<<<<<< HEAD
-=======
 
 	// Not visible in yaml because the setting shouldn't be common between ingesters and queriers
 	chunkCacheStubs bool // don't write the full chunk to cache, just a stub entry
->>>>>>> update vendor
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -273,51 +270,6 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, from, through model
 	return labelNamesFromChunks(allChunks), nil
 }
 
-<<<<<<< HEAD
-// LabelValuesForMetricName retrieves all label values for a single label name and metric name.
-func (c *store) LabelValuesForMetricName(ctx context.Context, from, through model.Time, metricName, labelName string) ([]string, error) {
-	log, ctx := spanlogger.New(ctx, "ChunkStore.LabelValues")
-	defer log.Span.Finish()
-	level.Debug(log).Log("from", from, "through", through, "metricName", metricName, "labelName", labelName)
-
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	shortcut, err := c.validateQueryTimeRange(ctx, &from, &through)
-	if err != nil {
-		return nil, err
-	} else if shortcut {
-		return nil, nil
-	}
-
-	queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
-	if err != nil {
-		return nil, err
-	}
-
-	entries, err := c.lookupEntriesByQueries(ctx, queries)
-	if err != nil {
-		return nil, err
-	}
-
-	var result []string
-	for _, entry := range entries {
-		_, labelValue, _, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, string(labelValue))
-	}
-
-	sort.Strings(result)
-	result = uniqueStrings(result)
-	return result, nil
-}
-
-=======
->>>>>>> update vendor
 func (c *store) validateQueryTimeRange(ctx context.Context, from *model.Time, through *model.Time) (bool, error) {
 	log, ctx := spanlogger.New(ctx, "store.validateQueryTimeRange")
 	defer log.Span.Finish()
