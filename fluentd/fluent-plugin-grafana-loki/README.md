@@ -110,10 +110,11 @@ Loki is a multi-tenant log storage platform and all requests sent must include a
 ### output format
 Loki is intended to index and group log streams using only a small set of labels.  It is not intended for full-text indexing.  When sending logs to Loki the majority of log message will be sent as a single log "line".
 
-There are 3 configurations settings to control the output format.
+There are few configurations settings to control the output format.
  - extra_labels: (default: nil) set of labels to include with every Loki stream. eg `{"env":"dev", "datacenter": "dc1"}`
- - label_keys: (default: "job,instance") comma separated list of keys to use as stream labels.  All other keys will be placed into the log line
- - line_format: format to use when flattening the record to a log line. Valid values are "json" or "key_value".  If set to "json" the log line sent to Loki will be the fluentd record (excluding any keys extracted out as labels) dumped as json.  If set to "key_value", the log line will be each item in the record concatenated together (separated by a single space) in the format `<key>=<value>`.
+ - remove_keys: (default: nil) comma separated list of needless record keys to remove. All other keys will be placed into the log line
+ - label_keys: (default: "job,instance") comma separated list of keys to use as stream labels. All other keys will be placed into the log line
+ - line_format: format to use when flattening the record to a log line. Valid values are "json" or "key_value". If set to "json" the log line sent to Loki will be the fluentd record (excluding any keys extracted out as labels) dumped as json. If set to "key_value", the log line will be each item in the record concatenated together (separated by a single space) in the format `<key>=<value>`.
  - drop_single_key: if set to true and after extracting label_keys a record only has a single key remaining, the log line sent to Loki will just be the value of the record key.
 
 ### Buffer options
