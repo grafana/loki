@@ -331,8 +331,6 @@ type nonOverlappingIterator struct {
 	i         int
 	iterators []EntryIterator
 	curr      EntryIterator
-
-	lastEntry *logproto.Entry
 }
 
 // NewNonOverlappingIterator gives a chained iterator over a list of iterators.
