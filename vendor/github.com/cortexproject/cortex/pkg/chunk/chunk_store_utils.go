@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"context"
+	"sort"
 	"sync"
 
 	"github.com/go-kit/kit/log/level"
@@ -36,6 +37,39 @@ func keysFromChunks(chunks []Chunk) []string {
 	return keys
 }
 
+func labelNamesFromChunks(chunks []Chunk) []string {
+	keys := map[string]struct{}{}
+	var result []string
+	for _, c := range chunks {
+		for _, l := range c.Metric {
+			if l.Name != model.MetricNameLabel {
+				if _, ok := keys[string(l.Name)]; !ok {
+					keys[string(l.Name)] = struct{}{}
+					result = append(result, string(l.Name))
+				}
+			}
+		}
+	}
+	sort.Strings(result)
+	return result
+}
+
+func filterChunksByUniqueFingerprint(chunks []Chunk) ([]Chunk, []string) {
+	filtered := make([]Chunk, 0, len(chunks))
+	keys := make([]string, 0, len(chunks))
+	uniqueFp := map[model.Fingerprint]struct{}{}
+
+	for _, chunk := range chunks {
+		if _, ok := uniqueFp[chunk.Fingerprint]; ok {
+			continue
+		}
+		filtered = append(filtered, chunk)
+		keys = append(keys, chunk.ExternalKey())
+		uniqueFp[chunk.Fingerprint] = struct{}{}
+	}
+	return filtered, keys
+}
+
 func filterChunksByMatchers(chunks []Chunk, filters []*labels.Matcher) []Chunk {
 	filteredChunks := make([]Chunk, 0, len(chunks))
 outer:
@@ -54,8 +88,9 @@ outer:
 // and writing back any misses to the cache.  Also responsible for decoding
 // chunks from the cache, in parallel.
 type Fetcher struct {
-	storage ObjectClient
-	cache   cache.Cache
+	storage    ObjectClient
+	cache      cache.Cache
+	cacheStubs bool
 
 	wait           sync.WaitGroup
 	decodeRequests chan decodeRequest
@@ -72,7 +107,7 @@ type decodeResponse struct {
 }
 
 // NewChunkFetcher makes a new ChunkFetcher.
-func NewChunkFetcher(cfg cache.Config, storage ObjectClient) (*Fetcher, error) {
+func NewChunkFetcher(cfg cache.Config, cacheStubs bool, storage ObjectClient) (*Fetcher, error) {
 	cache, err := cache.New(cfg)
 	if err != nil {
 		return nil, err
@@ -81,6 +116,7 @@ func NewChunkFetcher(cfg cache.Config, storage ObjectClient) (*Fetcher, error) {
 	c := &Fetcher{
 		storage:        storage,
 		cache:          cache,
+		cacheStubs:     cacheStubs,
 		decodeRequests: make(chan decodeRequest),
 	}
 
@@ -149,10 +185,14 @@ func (c *Fetcher) writeBackCache(ctx context.Context, chunks []Chunk) error {
 	keys := make([]string, 0, len(chunks))
 	bufs := make([][]byte, 0, len(chunks))
 	for i := range chunks {
-		encoded, err := chunks[i].Encoded()
-		// TODO don't fail, just log and conitnue?
-		if err != nil {
-			return err
+		var encoded []byte
+		var err error
+		if !c.cacheStubs {
+			encoded, err = chunks[i].Encoded()
+			// TODO don't fail, just log and conitnue?
+			if err != nil {
+				return err
+			}
 		}
 
 		keys = append(keys, chunks[i].ExternalKey())

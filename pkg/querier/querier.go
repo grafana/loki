@@ -10,6 +10,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	token_util "github.com/grafana/loki/pkg/util"
+	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -148,10 +149,25 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 		return nil, err
 	}
 
+	from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
+	var storeValues []string
+	if req.Values {
+		storeValues, err = q.store.LabelValuesForMetricName(ctx, from, through, "logs", req.Name)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		storeValues, err = q.store.LabelNamesForMetricName(ctx, from, through, "logs")
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	results := make([][]string, 0, len(resps))
 	for _, resp := range resps {
 		results = append(results, resp.response.(*logproto.LabelResponse).Values)
 	}
+	results = append(results, storeValues)
 
 	return &logproto.LabelResponse{
 		Values: mergeLists(results...),

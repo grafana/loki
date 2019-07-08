@@ -143,10 +143,27 @@ func (q *Querier) QueryHandler(w http.ResponseWriter, r *http.Request) {
 // LabelHandler is a http.HandlerFunc for handling label queries.
 func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	name, ok := mux.Vars(r)["name"]
+	params := r.URL.Query()
+	now := time.Now()
 	req := &logproto.LabelRequest{
 		Values: ok,
 		Name:   name,
 	}
+
+	end, err := unixNanoTimeParam(params, "end", now)
+	if err != nil {
+		http.Error(w, httpgrpc.Errorf(http.StatusBadRequest, err.Error()).Error(), http.StatusBadRequest)
+		return
+	}
+	req.End = &end
+
+	start, err := unixNanoTimeParam(params, "start", end.Add(-6*time.Hour))
+	if err != nil {
+		http.Error(w, httpgrpc.Errorf(http.StatusBadRequest, err.Error()).Error(), http.StatusBadRequest)
+		return
+	}
+	req.Start = &start
+
 	resp, err := q.Label(r.Context(), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -43,6 +43,8 @@ message QueryResponse {
 message LabelRequest {
   string name = 1;
   bool values = 2; // True to fetch label values, false for fetch labels names.
+  google.protobuf.Timestamp start = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = true];
+  google.protobuf.Timestamp end = 4 [(gogoproto.stdtime) = true, (gogoproto.nullable) = true];
 }
 
 message LabelResponse {
