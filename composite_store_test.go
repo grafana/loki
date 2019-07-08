@@ -32,6 +32,10 @@ func (m mockStore) GetChunkRefs(tx context.Context, from, through model.Time, ma
 	return nil, nil, nil
 }
 
+func (m mockStore) LabelNamesForMetricName(ctx context.Context, from, through model.Time, metricName string) ([]string, error) {
+	return nil, nil
+}
+
 func (m mockStore) Stop() {}
 
 func TestCompositeStore(t *testing.T) {

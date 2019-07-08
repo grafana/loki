@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"context"
+	"sort"
 	"sync"
 
 	"github.com/go-kit/kit/log/level"
@@ -34,6 +35,39 @@ func keysFromChunks(chunks []Chunk) []string {
 	}
 
 	return keys
+}
+
+func labelNamesFromChunks(chunks []Chunk) []string {
+	keys := map[string]struct{}{}
+	var result []string
+	for _, c := range chunks {
+		for _, l := range c.Metric {
+			if l.Name != model.MetricNameLabel {
+				if _, ok := keys[string(l.Name)]; !ok {
+					keys[string(l.Name)] = struct{}{}
+					result = append(result, string(l.Name))
+				}
+			}
+		}
+	}
+	sort.Strings(result)
+	return result
+}
+
+func filterChunksByUniqueFingerprint(chunks []Chunk) ([]Chunk, []string) {
+	filtered := make([]Chunk, 0, len(chunks))
+	keys := make([]string, 0, len(chunks))
+	uniqueFp := map[model.Fingerprint]struct{}{}
+
+	for _, chunk := range chunks {
+		if _, ok := uniqueFp[chunk.Fingerprint]; ok {
+			continue
+		}
+		filtered = append(filtered, chunk)
+		keys = append(keys, chunk.ExternalKey())
+		uniqueFp[chunk.Fingerprint] = struct{}{}
+	}
+	return filtered, keys
 }
 
 func filterChunksByMatchers(chunks []Chunk, filters []*labels.Matcher) []Chunk {

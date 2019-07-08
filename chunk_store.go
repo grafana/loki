@@ -232,10 +232,42 @@ func (c *store) LabelValuesForMetricName(ctx context.Context, from, through mode
 		}
 		result = append(result, string(labelValue))
 	}
-
 	sort.Strings(result)
 	result = uniqueStrings(result)
 	return result, nil
+}
+
+// LabelNamesForMetricName retrieves all label names for a metric name.
+func (c *store) LabelNamesForMetricName(ctx context.Context, from, through model.Time, metricName string) ([]string, error) {
+	log, ctx := spanlogger.New(ctx, "ChunkStore.LabelNamesForMetricName")
+	defer log.Span.Finish()
+	level.Debug(log).Log("from", from, "through", through, "metricName", metricName)
+
+	shortcut, err := c.validateQueryTimeRange(ctx, &from, &through)
+	if err != nil {
+		return nil, err
+	} else if shortcut {
+		return nil, nil
+	}
+
+	chunks, err := c.lookupChunksByMetricName(ctx, from, through, nil, metricName)
+	if err != nil {
+		return nil, err
+	}
+	level.Debug(log).Log("msg", "Chunks in index", "chunks", len(chunks))
+
+	// Filter out chunks that are not in the selected time range and keep a single chunk per fingerprint
+	filtered := filterChunksByTime(from, through, chunks)
+	filtered, keys := filterChunksByUniqueFingerprint(filtered)
+	level.Debug(log).Log("msg", "Chunks post filtering", "chunks", len(chunks))
+
+	// Now fetch the actual chunk data from Memcache / S3
+	allChunks, err := c.FetchChunks(ctx, filtered, keys)
+	if err != nil {
+		level.Error(log).Log("msg", "FetchChunks", "err", err)
+		return nil, err
+	}
+	return labelNamesFromChunks(allChunks), nil
 }
 
 func (c *store) validateQueryTimeRange(ctx context.Context, from *model.Time, through *model.Time) (bool, error) {
