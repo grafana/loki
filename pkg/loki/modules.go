@@ -238,38 +238,50 @@ func listDeps(m moduleName) []moduleName {
 
 // orderedDeps gets a list of all dependencies ordered so that items are always after any of their dependencies.
 func orderedDeps(m moduleName) []moduleName {
-	deps := listDeps(m)
+	// get a unique list of dependencies and init a map to keep whether they have been added to our result
+	deps := uniqueDeps(listDeps(m))
+	added := map[moduleName]bool{}
 
-	// get a unique list of moduleNames, with a flag for whether they have been added to our result
-	uniq := map[moduleName]bool{}
-	for _, dep := range deps {
-		uniq[dep] = false
-	}
-
-	result := make([]moduleName, 0, len(uniq))
+	result := make([]moduleName, 0, len(deps))
 
 	// keep looping through all modules until they have all been added to the result.
-
-	for len(result) < len(uniq) {
+	for len(result) < len(deps) {
 	OUTER:
-		for name, added := range uniq {
-			if added {
+		for _, name := range deps {
+			if added[name] {
 				continue
 			}
+
 			for _, dep := range modules[name].deps {
 				// stop processing this module if one of its dependencies has
 				// not been added to the result yet.
-				if !uniq[dep] {
+				if !added[dep] {
 					continue OUTER
 				}
 			}
 
 			// if all of the module's dependencies have been added to the result slice,
 			// then we can safely add this module to the result slice as well.
-			uniq[name] = true
+			added[name] = true
 			result = append(result, name)
 		}
 	}
+
+	return result
+}
+
+// uniqueDeps returns the unique list of input dependencies, guaranteeing input order stability
+func uniqueDeps(deps []moduleName) []moduleName {
+	result := make([]moduleName, 0, len(deps))
+	uniq := map[moduleName]bool{}
+
+	for _, dep := range deps {
+		if !uniq[dep] {
+			result = append(result, dep)
+			uniq[dep] = true
+		}
+	}
+
 	return result
 }
 
