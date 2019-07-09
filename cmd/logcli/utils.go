@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"sort"
@@ -20,6 +21,20 @@ func printLogEntry(ts time.Time, lbls string, line string) {
 		color.RedString(lbls),
 		strings.TrimSpace(line),
 	)
+}
+
+// print a log entry as json line
+func printLogEntryJSONL(ts time.Time, lbls labels.Labels, line string) {
+	entry := map[string]interface{}{
+		"timestamp": ts,
+		"labels":    lbls,
+		"line":      line,
+	}
+	out, err := json.Marshal(entry)
+	if err != nil {
+		log.Fatalf("error marshalling entry: %s", err)
+	}
+	fmt.Println(string(out))
 }
 
 // add some padding after labels

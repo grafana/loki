@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -72,8 +73,8 @@ func doQuery() {
 	i = iter.NewQueryResponseIterator(resp, d)
 
 	for i.Next() {
-		ls := labelsCache(i.Labels())
-		ls = subtract(ls, common)
+		fullls := labelsCache(i.Labels())
+		ls := subtract(fullls, common)
 		if len(*ignoreLabelsKey) > 0 {
 			ls = ls.MatchLabels(false, *ignoreLabelsKey...)
 		}
@@ -83,7 +84,14 @@ func doQuery() {
 			labels = padLabel(ls, maxLabelsLen)
 		}
 
-		printLogEntry(i.Entry().Timestamp, labels, i.Entry().Line)
+		switch *outputMode {
+		case "jsonl":
+			printLogEntryJSONL(i.Entry().Timestamp, fullls, i.Entry().Line)
+		case "raw":
+			fmt.Println(i.Entry().Line)
+		default:
+			printLogEntry(i.Entry().Timestamp, labels, i.Entry().Line)
+		}
 	}
 
 	if err := i.Error(); err != nil {
