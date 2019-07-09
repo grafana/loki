@@ -64,8 +64,19 @@ func NewJournalTarget(
 		until: until,
 	}
 
+	// Default to system path if not defined. Passing an empty string to
+	// sdjournal is valid but forces reads from the journal to be from
+	// the local machine id only, which contradicts the default behavior
+	// of when a path is specified. To standardize, we manually default the
+	// path here.
+	journalPath := targetConfig.Path
+	if journalPath == "" {
+		journalPath = "/var/log/journal"
+	}
+
 	var err error
 	t.r, err = sdjournal.NewJournalReader(sdjournal.JournalReaderConfig{
+		Path:      journalPath,
 		Since:     targetConfig.Since,
 		Formatter: t.formatter,
 	})
