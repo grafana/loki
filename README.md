@@ -25,9 +25,9 @@ If the received log is:
 
   * The next in the array to be received, it is removed from the array and the (current time - log timestamp) is recorded in the `response_latency` histogram, this is the expected behavior for well behaving logs
   * Not the next in the array received, is is removed from the array, the response time is recorded in the `response_latency` histogram, and the `out_of_order_entries` counter is incremented
-  * Not in the array at all, the `unexpected_entries` counter is incremented
+  * Not in the array at all, it is checked against a separate list of received logs to either increment the `duplicate_entries` counter or the `unexpected_entries` counter.
 
-In the background, loki-canary also runs a timer which iterates through all the entries in the internal array, if any are older than the duration specified by the `-wait` flag (default 60s), they are removed from the array and the `missing_entries` counter is incremented
+In the background, loki-canary also runs a timer which iterates through all the entries in the internal array, if any are older than the duration specified by the `-wait` flag (default 60s), they are removed from the array and the `websocket_missing_entries` counter is incremented.  Then an additional query is made directly to loki for these missing entries to determine if they were actually missing or just didn't make it down the websocket.  If they are not found in the followup query the `missing_entries` counter is incremented.
 
 ## building and running
 
@@ -74,6 +74,10 @@ You should also pass the `-labelname` and `-labelvalue` flags, these are used by
 
 If you get a high number of `unexpected_entries` you may not be waiting long enough and should increase `-wait` from 60s to something larger.
 
+__Be cognizant__ of the relationship between `pruneinterval` and the `interval`.  For example, with an interval of 10ms (100 logs per second) and a prune interval of 60s, you will write 6000 logs per minute, if those logs were not received over the websocket, the canary will attempt to query loki directly to see if they are completely lost.  __However__ the query return is limited to 1000 results so you will not be able to return all the logs even if they did make it to Loki.
+
+__Likewise__, if you lower the `pruneinterval` you risk causing a denial of service attack as all your canaries attempt to query for missing logs at whatever your `pruneinterval` is defined at.
+
 All options:
 
 ```nohighlight
@@ -91,6 +95,8 @@ All options:
         Loki password
   -port int
         Port which loki-canary should expose metrics (default 3500)
+  -pruneinterval duration
+        Frequency to check sent vs received logs, also the frequency which queries for missing logs will be dispatched to loki (default 1m0s)
   -size int
         Size in bytes of each log line (default 100)
   -tls

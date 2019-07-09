@@ -41,8 +41,11 @@ func NewWriter(writer io.Writer, sentChan chan time.Time, entryInterval time.Dur
 }
 
 func (w *Writer) Stop() {
-	close(w.quit)
-	<-w.done
+	if w.quit != nil {
+		close(w.quit)
+		<-w.done
+		w.quit = nil
+	}
 }
 
 func (w *Writer) run() {

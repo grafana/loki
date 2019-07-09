@@ -92,8 +92,11 @@ func NewReader(writer io.Writer, receivedChan chan time.Time, tls bool,
 }
 
 func (r *Reader) Stop() {
-	close(r.quit)
-	<-r.done
+	if r.quit != nil {
+		close(r.quit)
+		<-r.done
+		r.quit = nil
+	}
 }
 
 func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
@@ -105,8 +108,9 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 		Scheme: scheme,
 		Host:   r.addr,
 		Path:   "/api/prom/query",
-		RawQuery: fmt.Sprintf("start=%d&end=%d", start.UnixNano(), end.UnixNano()) + "&query=" +
-			url.QueryEscape(fmt.Sprintf("{stream=\"stdout\",%v=\"%v\"}", r.lName, r.lVal)),
+		RawQuery: fmt.Sprintf("start=%d&end=%d", start.UnixNano(), end.UnixNano()) +
+			"&query=" + url.QueryEscape(fmt.Sprintf("{stream=\"stdout\",%v=\"%v\"}", r.lName, r.lVal)) +
+			"&limit=1000",
 	}
 	_, _ = fmt.Fprintf(r.w, "Querying loki for missing values with query: %v\n", u.String())
 

@@ -95,8 +95,11 @@ func NewComparator(writer io.Writer, maxWait time.Duration, pruneInterval time.D
 }
 
 func (c *Comparator) Stop() {
-	close(c.quit)
-	<-c.done
+	if c.quit != nil {
+		close(c.quit)
+		<-c.done
+		c.quit = nil
+	}
 }
 
 func (c *Comparator) entrySent(time time.Time) {
