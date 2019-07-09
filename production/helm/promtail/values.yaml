@@ -111,7 +111,7 @@ config:
       minbackoff: 100ms
       # Maximum backoff time between retries
       maxbackoff: 5s
-      # Maximum number of retires when sending batches, 0 means infinite retries
+      # Maximum number of retries when sending batches, 0 means infinite retries
       maxretries: 5
 
     # The labels to add to any time series or alerts when communicating with loki
