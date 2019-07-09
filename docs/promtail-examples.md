@@ -127,15 +127,13 @@ in Loki. All other labels from the journal entry are dropped.
 
 ### Example Use
 
-`promtail` must have access to both the journald socket
-(`/var/run/systemd/journal/socket`) and the journal path (`/var/log/journal`)
-for journal support to work correctly.
+`promtail` must have access to the journal path (`/var/log/journal`)
+where journal entries are stored for journal support to work correctly.
 
-If running with Docker, that means to bind those two paths:
+If running with Docker, that means to bind that path:
 
 ```bash
 docker run -d --name promtail --network loki_network -p 9080:9080 \
   -v /var/log/journal:/var/log/journal \
-  -v /var/run/systemd/journal/socket:/var/run/systemd/journal/socket \
   mypromtail-image -config.file=/etc/promtail/my-systemd-journal-config.yaml
 ```

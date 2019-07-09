@@ -2,6 +2,7 @@ package scrape
 
 import (
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -42,6 +43,12 @@ type JournalTargetConfig struct {
 // DefaultScrapeConfig is the default Config.
 var DefaultScrapeConfig = Config{
 	EntryParser: api.Docker,
+}
+
+// HasServiceDiscoveryConfig checks to see if the service discovery used for
+// file targets is non-zero.
+func (c *Config) HasServiceDiscoveryConfig() bool {
+	return !reflect.DeepEqual(c.ServiceDiscoveryConfig, sd_config.ServiceDiscoveryConfig{})
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.

@@ -33,35 +33,42 @@ func NewTargetManagers(
 	var fileScrapeConfigs []scrape.Config
 	var journalScrapeConfigs []scrape.Config
 
-	// for now every scrape config is a file target
-	fileScrapeConfigs = append(fileScrapeConfigs, scrapeConfigs...)
-	fileTargetManager, err := NewFileTargetManager(
-		logger,
-		positions,
-		client,
-		fileScrapeConfigs,
-		targetConfig,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to make file target manager")
+	for _, cfg := range scrapeConfigs {
+		if cfg.HasServiceDiscoveryConfig() {
+			fileScrapeConfigs = append(fileScrapeConfigs, cfg)
+		}
 	}
-	targetManagers = append(targetManagers, fileTargetManager)
+	if len(fileScrapeConfigs) > 0 {
+		fileTargetManager, err := NewFileTargetManager(
+			logger,
+			positions,
+			client,
+			fileScrapeConfigs,
+			targetConfig,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to make file target manager")
+		}
+		targetManagers = append(targetManagers, fileTargetManager)
+	}
 
 	for _, cfg := range scrapeConfigs {
 		if cfg.JournalConfig != nil {
 			journalScrapeConfigs = append(journalScrapeConfigs, cfg)
 		}
 	}
-	journalTargetManager, err := NewJournalTargetManager(
-		logger,
-		positions,
-		client,
-		journalScrapeConfigs,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to make journal target manager")
+	if len(journalScrapeConfigs) > 0 {
+		journalTargetManager, err := NewJournalTargetManager(
+			logger,
+			positions,
+			client,
+			journalScrapeConfigs,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to make journal target manager")
+		}
+		targetManagers = append(targetManagers, journalTargetManager)
 	}
-	targetManagers = append(targetManagers, journalTargetManager)
 
 	return &TargetManagers{targetManagers: targetManagers}, nil
 

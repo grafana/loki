@@ -2,7 +2,6 @@ package targets
 
 import (
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
@@ -31,35 +30,10 @@ func NewJournalTargetManager(
 			continue
 		}
 
-		// TODO(rfratto): DRY the duplicate code from NewFileTargetManager?
 		registerer := prometheus.DefaultRegisterer
-		pipeline, err := stages.NewPipeline(log.With(logger, "component", "pipeline"), cfg.PipelineStages, &cfg.JobName, registerer)
+		pipeline, err := stages.NewPipeline(log.With(logger, "component", "journal_pipeline"), cfg.PipelineStages, &cfg.JobName, registerer)
 		if err != nil {
 			return nil, err
-		}
-
-		// Backwards compatibility with old EntryParser config
-		if pipeline.Size() == 0 {
-			switch cfg.EntryParser {
-			case api.CRI:
-				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
-				cri, err := stages.NewCRI(logger, registerer)
-				if err != nil {
-					return nil, err
-				}
-				pipeline.AddStage(cri)
-			case api.Docker:
-				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
-				docker, err := stages.NewDocker(logger, registerer)
-				if err != nil {
-					return nil, err
-				}
-				pipeline.AddStage(docker)
-			case api.Raw:
-				level.Warn(logger).Log("msg", "WARNING!!! entry_parser config is deprecated, please change to pipeline_stages")
-			default:
-
-			}
 		}
 
 		t, err := NewJournalTarget(
