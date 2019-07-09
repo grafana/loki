@@ -3,6 +3,7 @@
 .PHONY: helm helm-install helm-upgrade helm-publish helm-debug helm-clean
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
+.PHONY: bigtable-backup-tool, push-bigtable-backup-tool
 .PHONY: benchmark-store
 #############
 # Variables #
@@ -315,6 +316,19 @@ docker-driver-clean:
 	-docker plugin rm grafana/loki-docker-driver:$(IMAGE_TAG)
 	rm -rf cmd/docker-driver/rootfs
 
+########################
+# Bigtable Backup Tool #
+########################
+
+BIGTABLE_BACKUP_TOOL_FOLDER = ./tools/bigtable-backup
+BIGTABLE_BACKUP_TOOL_TAG ?= $(IMAGE_TAG)
+
+bigtable-backup-tool:
+	docker build -t $(IMAGE_PREFIX)/$(shell basename $(BIGTABLE_BACKUP_TOOL_FOLDER)) $(BIGTABLE_BACKUP_TOOL_FOLDER)
+	docker tag $(IMAGE_PREFIX)/$(shell basename $(BIGTABLE_BACKUP_TOOL_FOLDER)) $(IMAGE_PREFIX)/loki-bigtable-backup-tool:$(BIGTABLE_BACKUP_TOOL_TAG)
+
+push-bigtable-backup-tool: bigtable-backup-tool
+	docker push $(IMAGE_PREFIX)loki-bigtable-backup-tool:$(BIGTABLE_BACKUP_TOOL_TAG)
 
 ##########
 # Images #
