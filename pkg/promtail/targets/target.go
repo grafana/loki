@@ -8,8 +8,11 @@ import (
 type TargetType string
 
 const (
-	// FileTargetType a file target
+	// FileTargetType is a file target
 	FileTargetType = TargetType("File")
+
+	// JournalTargetType is a journalctl target
+	JournalTargetType = TargetType("Journal")
 )
 
 // Target is a promtail scrape target

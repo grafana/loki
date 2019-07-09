@@ -213,12 +213,24 @@
   revision = "a9fb20d87448d386e6d50b1f2e1fa70dcf0de43c"
 
 [[projects]]
-  digest = "1:5155f7153c694dc8e2efd74d799a27fd54e65778fa3f0c3e17626df724857db9"
+  digest = "1:971a6c7e578f323beb97deeecefe8dca02bacba70d675d3d14284f7467a45151"
   name = "github.com/coreos/go-systemd"
-  packages = ["activation"]
+  packages = [
+    "activation",
+    "journal",
+    "sdjournal",
+  ]
   pruneopts = "UT"
   revision = "95778dfbb74eb7e4dbaf43bf7d71809650ef8076"
   version = "v19"
+
+[[projects]]
+  digest = "1:6e2ff82d2fe11ee35ec8dceb4346b8144a761f1c8655592c4ebe99a92fcec327"
+  name = "github.com/coreos/pkg"
+  packages = ["dlopen"]
+  pruneopts = "UT"
+  revision = "97fdf19511ea361ae1c100dd393cc47f8dcfa1e1"
+  version = "v4"
 
 [[projects]]
   branch = "master"
@@ -1561,6 +1573,8 @@
   analyzer-version = 1
   input-imports = [
     "github.com/bmatcuk/doublestar",
+    "github.com/coreos/go-systemd/journal",
+    "github.com/coreos/go-systemd/sdjournal",
     "github.com/cortexproject/cortex/pkg/chunk",
     "github.com/cortexproject/cortex/pkg/chunk/encoding",
     "github.com/cortexproject/cortex/pkg/chunk/storage",
