@@ -48,11 +48,11 @@ func doQuery() {
 		common = common.MatchLabels(false, *showLabelsKey...)
 	}
 
-	if len(common) > 0 {
+	if len(common) > 0 && !*quiet {
 		log.Println("Common labels:", color.RedString(common.String()))
 	}
 
-	if len(*ignoreLabelsKey) > 0 {
+	if len(*ignoreLabelsKey) > 0 && !*quiet {
 		log.Println("Ignoring labels key:", color.RedString(strings.Join(*ignoreLabelsKey, ",")))
 	}
 

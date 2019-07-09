@@ -55,7 +55,9 @@ func listLabelValues(name string) (*logproto.LabelResponse, error) {
 
 func doRequest(path string, out interface{}) error {
 	url := *addr + path
-	log.Print(url)
+	if !*quiet {
+		log.Print(url)
+	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
