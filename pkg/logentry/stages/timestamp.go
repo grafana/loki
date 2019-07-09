@@ -15,6 +15,10 @@ const (
 	ErrEmptyTimestampStageConfig = "timestamp stage config cannot be empty"
 	ErrTimestampSourceRequired   = "timestamp source value is required if timestamp is specified"
 	ErrTimestampFormatRequired   = "timestamp format is required"
+
+	Unix   = "Unix"
+	UnixMs = "UnixMs"
+	UnixNs = "UnixNs"
 )
 
 // TimestampConfig configures timestamp extraction
@@ -23,16 +27,19 @@ type TimestampConfig struct {
 	Format string `mapstructure:"format"`
 }
 
+// parser can convert the time string into a time.Time value
+type parser func(string) (time.Time, error)
+
 // validateTimestampConfig validates a timestampStage configuration
-func validateTimestampConfig(cfg *TimestampConfig) (string, error) {
+func validateTimestampConfig(cfg *TimestampConfig) (parser, error) {
 	if cfg == nil {
-		return "", errors.New(ErrEmptyTimestampStageConfig)
+		return nil, errors.New(ErrEmptyTimestampStageConfig)
 	}
 	if cfg.Source == "" {
-		return "", errors.New(ErrTimestampSourceRequired)
+		return nil, errors.New(ErrTimestampSourceRequired)
 	}
 	if cfg.Format == "" {
-		return "", errors.New(ErrTimestampFormatRequired)
+		return nil, errors.New(ErrTimestampFormatRequired)
 	}
 	return convertDateLayout(cfg.Format), nil
 
@@ -45,14 +52,14 @@ func newTimestampStage(logger log.Logger, config interface{}) (*timestampStage, 
 	if err != nil {
 		return nil, err
 	}
-	format, err := validateTimestampConfig(cfg)
+	parser, err := validateTimestampConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 	return &timestampStage{
 		cfgs:   cfg,
 		logger: logger,
-		format: format,
+		parser: parser,
 	}, nil
 }
 
@@ -60,7 +67,7 @@ func newTimestampStage(logger log.Logger, config interface{}) (*timestampStage, 
 type timestampStage struct {
 	cfgs   *TimestampConfig
 	logger log.Logger
-	format string
+	parser parser
 }
 
 // Process implements Stage
@@ -73,7 +80,8 @@ func (ts *timestampStage) Process(labels model.LabelSet, extracted map[string]in
 		if err != nil {
 			level.Debug(ts.logger).Log("msg", "failed to convert extracted time to string", "err", err, "type", reflect.TypeOf(v).String())
 		}
-		parsedTs, err := time.Parse(ts.format, s)
+
+		parsedTs, err := ts.parser(s)
 		if err != nil {
 			level.Debug(ts.logger).Log("msg", "failed to parse time", "err", err, "format", ts.cfgs.Format, "value", s)
 		} else {

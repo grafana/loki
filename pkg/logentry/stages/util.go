@@ -7,30 +7,76 @@ import (
 )
 
 // convertDateLayout converts pre-defined date format layout into date format
-func convertDateLayout(predef string) string {
+func convertDateLayout(predef string) parser {
 	switch predef {
 	case "ANSIC":
-		return time.ANSIC
+		return func(t string) (time.Time, error) {
+			return time.Parse(time.ANSIC, t)
+		}
 	case "UnixDate":
-		return time.UnixDate
+		return func(t string) (time.Time, error) {
+			return time.Parse(time.UnixDate, t)
+		}
 	case "RubyDate":
-		return time.RubyDate
+		return func(t string) (time.Time, error) {
+			return time.Parse(time.RubyDate, t)
+		}
 	case "RFC822":
-		return time.RFC822
+		return func(t string) (time.Time, error) {
+			return time.Parse(time.RFC822, t)
+		}
 	case "RFC822Z":
-		return time.RFC822Z
+		return func(t string) (time.Time, error) {
+			return time.Parse(time.RFC822Z, t)
+		}
 	case "RFC850":
-		return time.RFC850
+		return func(t string) (time.Time, error) {
+			return time.Parse(time.RFC850, t)
+		}
 	case "RFC1123":
-		return time.RFC1123
+		return func(t string) (time.Time, error) {
+			return time.Parse(time.RFC1123, t)
+		}
 	case "RFC1123Z":
-		return time.RFC1123Z
+		return func(t string) (time.Time, error) {
+			return time.Parse(time.RFC1123Z, t)
+		}
 	case "RFC3339":
-		return time.RFC3339
+		return func(t string) (time.Time, error) {
+			return time.Parse(time.RFC3339, t)
+		}
 	case "RFC3339Nano":
-		return time.RFC3339Nano
+		return func(t string) (time.Time, error) {
+			return time.Parse(time.RFC3339Nano, t)
+		}
+	case "Unix":
+		return func(t string) (time.Time, error) {
+			i, err := strconv.ParseInt(t, 10, 64)
+			if err != nil {
+				return time.Time{}, err
+			}
+			return time.Unix(i, 0), nil
+		}
+	case "UnixMs":
+		return func(t string) (time.Time, error) {
+			i, err := strconv.ParseInt(t, 10, 64)
+			if err != nil {
+				return time.Time{}, err
+			}
+			return time.Unix(0, i*int64(time.Millisecond)), nil
+		}
+	case "UnixNs":
+		return func(t string) (time.Time, error) {
+			i, err := strconv.ParseInt(t, 10, 64)
+			if err != nil {
+				return time.Time{}, err
+			}
+			return time.Unix(0, i), nil
+		}
 	default:
-		return predef
+		return func(t string) (time.Time, error) {
+			return time.Parse(predef, t)
+		}
 	}
 }
 
