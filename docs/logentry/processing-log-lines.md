@@ -254,6 +254,18 @@ RFC3339     = "2006-01-02T15:04:05Z07:00"
 RFC3339Nano = "2006-01-02T15:04:05.999999999Z07:00"
 ```
 
+Additionally support for common Unix timestamps is supported:
+
+```go
+Unix   = 1562708916
+UnixMs = 1562708916414
+UnixNs = 1562708916000000123
+```
+
+Finally any custom format can be supplied, and will be passed directly in as the layout parameter in time.Parse()
+
+__Read the [time.parse](https://golang.org/pkg/time/#Parse) docs closely if passing a custom format and make sure your custom format uses the special date they specify: `Mon Jan 2 15:04:05 -0700 MST 2006`__
+
 ##### Example:
 
 ```yaml
