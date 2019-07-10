@@ -13,11 +13,6 @@ import (
 )
 
 func doQuery() {
-	if *tail {
-		tailQuery()
-		return
-	}
-
 	var (
 		i      iter.EntryIterator
 		common labels.Labels
@@ -88,5 +83,9 @@ func doQuery() {
 
 	if err := i.Error(); err != nil {
 		log.Fatalf("Error from iterator: %v", err)
+	}
+
+	if *tail {
+		tailQuery()
 	}
 }
