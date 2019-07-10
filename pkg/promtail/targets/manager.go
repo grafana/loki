@@ -96,7 +96,7 @@ func (tm *TargetManagers) AllTargets() map[string][]Target {
 	return result
 }
 
-// Ready if there's at least one ready FileTargetManager
+// Ready if there's at least one ready target manager.
 func (tm *TargetManagers) Ready() bool {
 	for _, t := range tm.targetManagers {
 		if t.Ready() {

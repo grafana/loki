@@ -1,3 +1,5 @@
+// +build linux,cgo
+
 package targets
 
 import (
@@ -53,7 +55,6 @@ type JournalTarget struct {
 
 	r     journalReader
 	until chan time.Time
-	last  uint64
 }
 
 // NewJournalTarget configures a new JournalTarget.
@@ -122,7 +123,7 @@ func journalTargetWithReader(
 
 	go func() {
 		err := t.r.Follow(until, ioutil.Discard)
-		if err != sdjournal.ErrExpired {
+		if err != nil && err != sdjournal.ErrExpired {
 			level.Error(t.logger).Log("msg", "received error during sdjournal follow", "err", err.Error())
 		}
 	}()
@@ -139,12 +140,6 @@ func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error)
 		return journalEmptyStr, nil
 	}
 	entryLabels := makeJournalFields(entry.Fields)
-	fmt.Printf("%s: %s\n", ts, msg)
-
-	if entry.RealtimeTimestamp < t.last {
-		panic("UNORDERED")
-	}
-	t.last = entry.RealtimeTimestamp
 
 	// Add constant labels
 	for k, v := range t.labels {
