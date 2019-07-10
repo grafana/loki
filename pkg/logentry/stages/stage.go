@@ -19,6 +19,7 @@ const (
 	StageTypeDocker    = "docker"
 	StageTypeCRI       = "cri"
 	StageTypeMatch     = "match"
+	StageTypeTemplate  = "template"
 )
 
 // Stage takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
@@ -83,6 +84,11 @@ func New(logger log.Logger, jobName *string, stageType string,
 		}
 	case StageTypeMatch:
 		s, err = newMatcherStage(logger, jobName, cfg, registerer)
+		if err != nil {
+			return nil, err
+		}
+	case StageTypeTemplate:
+		s, err = newTemplateStage(logger, cfg)
 		if err != nil {
 			return nil, err
 		}

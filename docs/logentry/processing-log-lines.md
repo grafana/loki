@@ -116,6 +116,10 @@ Extracting data (for use by other stages)
   * [regex](#regex) - use regex to extract data
   * [json](#json) - parse a JSON log and extract data
 
+Modifying extracted data
+
+  * [template](#template) - use Go templates to modify extracted data
+
 Filtering stages
 
   * [match](#match) - apply selectors to conditionally run stages based on labels
@@ -207,6 +211,76 @@ Would create the following `extracted` map:
 }
 ```
 [Example in unit test](../../pkg/logentry/stages/json_test.go)
+
+#### template
+
+A template stage lets you manipulate the values in the `extracted` data map using [Go's template package](https://golang.org/pkg/text/template/).  This can be useful if you want to manipulate data extracted by regex or json stages before setting label values.  Maybe to replace all spaces with underscores or make everything lowercase, or append some values to the extracted data.
+
+You can set values in the extracted map for keys that did not previously exist.
+
+```yaml
+- template:
+    source:    ①
+    template:  ②
+```
+
+① `source` is **required** and is the key to the value in the `extracted` data map you wish to modify, this key does __not__ have to be present and will be added if missing.  
+② `template` is **required** and is a [Go template string](https://golang.org/pkg/text/template/)
+
+The value of the extracted data map is accessed by using `.Value` in your template
+
+In addition to normal template syntax, several functions have also been mapped to use directly or in a pipe configuration:
+
+```go
+"ToLower":    strings.ToLower,
+"ToUpper":    strings.ToUpper,
+"Replace":    strings.Replace,
+"Trim":       strings.Trim,
+"TrimLeft":   strings.TrimLeft,
+"TrimRight":  strings.TrimRight,
+"TrimPrefix": strings.TrimPrefix,
+"TrimSuffix": strings.TrimSuffix,
+"TrimSpace":  strings.TrimSpace,
+``` 
+
+##### Example
+
+```yaml
+- template:
+    source: app
+    template: '{{ .Value }}_some_suffix'
+```
+
+This would take the value of the `app` key in the `extracted` data map and append `_some_suffix` to it.  For example, if `app=loki` the new value for `app` in the map would be `loki_some_suffix`
+
+```yaml
+- template:
+    source: app
+    template: '{{ ToLower .Value }}'
+```
+
+This would take the value of `app` from `extracted` data and lowercase all the letters.  If `app=LOKI` the new value for `app` would be `loki`.  
+
+The template syntax passes paramters to functions using space delimiters, functions only taking a single argument can also use the pipe syntax:
+
+```yaml
+- template:
+    source: app
+    template: '{{ .Value | ToLower }}'
+```
+
+A more complicated function example:
+
+```yaml
+- template:
+    source: app
+    template: '{{ Replace .Value "loki" "bloki" 1 }}'
+```
+
+The arguments here as described for the [Replace function](https://golang.org/pkg/strings/#Replace), in this example we are saying to Replace in the string `.Value` (which is our extracted value for the `app` key) the occurrence of the string "loki" with the string "bloki" exactly 1 time.
+
+[More examples in unit test](../../pkg/logentry/stages/template_test.go)
+
 
 ### match
 

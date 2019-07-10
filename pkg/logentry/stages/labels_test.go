@@ -140,6 +140,14 @@ func TestLabelStage_Process(t *testing.T) {
 				"testLabel": "testValue",
 			},
 		},
+		"empty_extracted_data": {
+			LabelsConfig{
+				"testLabel": &sourceName,
+			},
+			map[string]interface{}{},
+			model.LabelSet{},
+			model.LabelSet{},
+		},
 	}
 	for name, test := range tests {
 		test := test
