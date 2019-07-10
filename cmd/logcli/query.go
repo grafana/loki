@@ -86,7 +86,7 @@ func doQuery() {
 
 		switch *outputMode {
 		case "jsonl":
-			printLogEntryJSONL(i.Entry().Timestamp, fullls, i.Entry().Line)
+			printLogEntryJSONL(i.Entry().Timestamp, &fullls, i.Entry().Line)
 		case "raw":
 			fmt.Println(i.Entry().Line)
 		default:

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"strings"
 
@@ -55,9 +56,19 @@ func tailQuery() {
 					labels = stream.Labels
 				}
 			}
+
 			for _, entry := range stream.Entries {
-				printLogEntry(entry.Timestamp, labels, entry.Line)
+				switch *outputMode {
+				case "jsonl":
+					// TODO: include labels as a map[string]string
+					printLogEntryJSONL(entry.Timestamp, nil, entry.Line)
+				case "raw":
+					fmt.Println(entry.Line)
+				default:
+					printLogEntry(entry.Timestamp, labels, entry.Line)
+				}
 			}
+
 		}
 		if len(tailReponse.DroppedEntries) != 0 {
 			log.Println("Server dropped following entries due to slow client")

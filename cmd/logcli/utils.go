@@ -24,7 +24,7 @@ func printLogEntry(ts time.Time, lbls string, line string) {
 }
 
 // print a log entry as json line
-func printLogEntryJSONL(ts time.Time, lbls labels.Labels, line string) {
+func printLogEntryJSONL(ts time.Time, lbls *labels.Labels, line string) {
 	entry := map[string]interface{}{
 		"timestamp": ts,
 		"labels":    lbls,
