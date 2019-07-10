@@ -45,7 +45,7 @@ workflows:
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
   docker:
-    - image: grafana/loki-build-image:0.2.1
+    - image: grafana/loki-build-image:0.3.0
   working_directory: /go/src/github.com/grafana/loki
 
 jobs:
@@ -156,7 +156,7 @@ jobs:
           key: v1-loki-{{ .Branch }}-{{ .Revision }}
       - restore_cache:
           key: v1-loki-plugin-{{ .Branch }}-{{ .Revision }}
-          
+
       - run:
           name: Load Images
           command: |
@@ -168,7 +168,7 @@ jobs:
           command: |
             docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
             make push-latest
-      
+
       - run:
           name: Push Docker Plugin
           command: |
