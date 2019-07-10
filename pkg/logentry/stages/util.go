@@ -85,9 +85,9 @@ func getString(unk interface{}) (string, error) {
 
 	switch i := unk.(type) {
 	case float64:
-		return fmt.Sprintf("%f", i), nil
+		return strconv.FormatFloat(i, 'f', -1, 64), nil
 	case float32:
-		return fmt.Sprintf("%f", i), nil
+		return strconv.FormatFloat(float64(i), 'f', -1, 32), nil
 	case int64:
 		return strconv.FormatInt(i, 10), nil
 	case int32:
