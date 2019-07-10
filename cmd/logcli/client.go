@@ -123,7 +123,9 @@ func wsConnect(path string) (*websocket.Conn, error) {
 	} else if strings.HasPrefix(url, "http") {
 		url = strings.Replace(url, "http", "ws", 1)
 	}
-	log.Println(url)
+	if !*quiet {
+		log.Println(url)
+	}
 
 	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(*username+":"+*password))}}
 
