@@ -32,7 +32,12 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions
 	if err != nil {
 		return nil, err
 	}
-	if fi.Size() < positions.Get(path) {
+	pos, err := positions.Get(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if fi.Size() < pos {
 		positions.Remove(path)
 	}
 
@@ -41,7 +46,7 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions
 		Poll:   true,
 		ReOpen: true,
 		Location: &tail.SeekInfo{
-			Offset: positions.Get(path),
+			Offset: pos,
 			Whence: 0,
 		},
 	})

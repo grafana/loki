@@ -93,7 +93,7 @@ func TestJournalTarget(t *testing.T) {
 	err = yaml.Unmarshal([]byte(relabelCfg), &relabels)
 	require.NoError(t, err)
 
-	jt, err := journalTargetWithReader(logger, client, ps, relabels,
+	jt, err := journalTargetWithReader(logger, client, ps, "test", relabels,
 		&scrape.JournalTargetConfig{}, newMockJournalReader)
 	require.NoError(t, err)
 

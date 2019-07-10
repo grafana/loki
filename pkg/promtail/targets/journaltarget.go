@@ -49,6 +49,7 @@ type JournalTarget struct {
 	logger        log.Logger
 	handler       api.EntryHandler
 	positions     *positions.Positions
+	positionPath  string
 	relabelConfig []*relabel.Config
 	config        *scrape.JournalTargetConfig
 	labels        model.LabelSet
@@ -62,6 +63,7 @@ func NewJournalTarget(
 	logger log.Logger,
 	handler api.EntryHandler,
 	positions *positions.Positions,
+	jobName string,
 	relabelConfig []*relabel.Config,
 	targetConfig *scrape.JournalTargetConfig,
 ) (*JournalTarget, error) {
@@ -70,6 +72,7 @@ func NewJournalTarget(
 		logger,
 		handler,
 		positions,
+		jobName,
 		relabelConfig,
 		targetConfig,
 		defaultJournalReaderFunc,
@@ -80,10 +83,14 @@ func journalTargetWithReader(
 	logger log.Logger,
 	handler api.EntryHandler,
 	positions *positions.Positions,
+	jobName string,
 	relabelConfig []*relabel.Config,
 	targetConfig *scrape.JournalTargetConfig,
 	readerFunc journalReaderFunc,
 ) (*JournalTarget, error) {
+
+	positionPath := fmt.Sprintf("journal-%s", jobName)
+	position := positions.GetString(positionPath)
 
 	if readerFunc == nil {
 		readerFunc = defaultJournalReaderFunc
@@ -94,6 +101,7 @@ func journalTargetWithReader(
 		logger:        logger,
 		handler:       handler,
 		positions:     positions,
+		positionPath:  positionPath,
 		relabelConfig: relabelConfig,
 		labels:        targetConfig.Labels,
 		config:        targetConfig,
@@ -114,6 +122,7 @@ func journalTargetWithReader(
 	var err error
 	t.r, err = readerFunc(sdjournal.JournalReaderConfig{
 		Path:      journalPath,
+		Cursor:    position,
 		Since:     targetConfig.Since,
 		Formatter: t.formatter,
 	})
@@ -162,23 +171,7 @@ func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error)
 		return journalEmptyStr, nil
 	}
 
-	// TODO(rfratto): positions support? There are two ways to be able to
-	// uniquely identify the offset from a journal entry: monotonic timestamps
-	// and the cursor position.
-	//
-	// The monotonic timestamp is a tuple of a 128-bit boot ID and a 64-bit
-	// nanosecond timestamp. The sdjournal library currently does not expose
-	// the seek functionality for monotonic timestamps.
-	//
-	// The cursor position is an arbtirary string identifying the offset
-	// in a journal. The documentation for systemd declares the cursor
-	// string as opaque and shouldn't be parsed by users. The sdjournal
-	// library *does* expose the seek funcationlity using the cursor
-	// position.
-	//
-	// With either solution, the current positions.Positions is unable
-	// to handle the timestamps as it is only equipped to handle int64 ts.
-
+	t.positions.PutString(t.positionPath, entry.Cursor)
 	err := t.handler.Handle(labels, ts, msg)
 	return journalEmptyStr, err
 }
