@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-var testJSONYaml = `
+var testJSONYamlSingleStageWithoutSource = `
 pipeline_stages:
 - json:
     expressions:
@@ -21,6 +21,17 @@ pipeline_stages:
       app:
       nested:
       duration:
+`
+
+var testJSONYamlMultiStageWithSource = `
+pipeline_stages:
+- json:
+    expressions:
+      extra:
+- json:
+    expressions:
+      user:
+    source: extra
 `
 
 var testJSONLogLine = `
@@ -31,28 +42,51 @@ var testJSONLogLine = `
 	"level" : "WARN",
 	"nested" : {"child":"value"},
     "duration" : 125,
-	"message" : "this is a log line"
+	"message" : "this is a log line",
+	"extra": "{\"user\":\"marco\"}"
 }
 `
 
 func TestPipeline_JSON(t *testing.T) {
-	expected := map[string]interface{}{
-		"out":      "this is a log line",
-		"app":      "loki",
-		"nested":   "{\"child\":\"value\"}",
-		"duration": float64(125),
+	tests := map[string]struct {
+		config          string
+		entry           string
+		expectedExtract map[string]interface{}
+	}{
+		"successfully run a pipeline with 1 json stage without source": {
+			testJSONYamlSingleStageWithoutSource,
+			testJSONLogLine,
+			map[string]interface{}{
+				"out":      "this is a log line",
+				"app":      "loki",
+				"nested":   "{\"child\":\"value\"}",
+				"duration": float64(125),
+			},
+		},
+		"successfully run a pipeline with 2 json stages with source": {
+			testJSONYamlMultiStageWithSource,
+			testJSONLogLine,
+			map[string]interface{}{
+				"extra": "{\"user\":\"marco\"}",
+				"user":  "marco",
+			},
+		},
 	}
 
-	pl, err := NewPipeline(util.Logger, loadConfig(testJSONYaml), nil, prometheus.DefaultRegisterer)
-	if err != nil {
-		t.Fatal(err)
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			pl, err := NewPipeline(util.Logger, loadConfig(testData.config), nil, prometheus.DefaultRegisterer)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lbls := model.LabelSet{}
+			ts := time.Now()
+			entry := testData.entry
+			extracted := map[string]interface{}{}
+			pl.Process(lbls, extracted, &ts, &entry)
+			assert.Equal(t, testData.expectedExtract, extracted)
+		})
 	}
-	lbls := model.LabelSet{}
-	ts := time.Now()
-	entry := testJSONLogLine
-	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	assert.Equal(t, expected, extracted)
 }
 
 var cfg = `json:
@@ -114,13 +148,25 @@ func TestJSONConfig_validate(t *testing.T) {
 			0,
 			errors.Wrap(errors.New("SyntaxError: Unknown char: '#'"), ErrCouldNotCompileJMES),
 		},
-		"valid": {
+		"valid without source": {
 			&JSONConfig{
 				Expressions: map[string]string{
 					"expr1": "expr",
 					"expr2": "",
 					"expr3": "expr1.expr2",
 				},
+			},
+			3,
+			nil,
+		},
+		"valid with source": {
+			&JSONConfig{
+				Expressions: map[string]string{
+					"expr1": "expr",
+					"expr2": "",
+					"expr3": "expr1.expr2",
+				},
+				Source: "log",
 			},
 			3,
 			nil,
@@ -171,10 +217,11 @@ func TestJSONParser_Parse(t *testing.T) {
 
 	tests := map[string]struct {
 		config          *JSONConfig
+		extracted       map[string]interface{}
 		entry           string
 		expectedExtract map[string]interface{}
 	}{
-		"extract all": {
+		"successfully decode json on entry": {
 			&JSONConfig{
 				Expressions: map[string]string{
 					"time":      "",
@@ -189,6 +236,7 @@ func TestJSONParser_Parse(t *testing.T) {
 					"complex":   "complex.log.array[1].test3",
 				},
 			},
+			map[string]interface{}{},
 			logFixture,
 			map[string]interface{}{
 				"time":      "2012-11-01T22:08:41+00:00",
@@ -203,14 +251,75 @@ func TestJSONParser_Parse(t *testing.T) {
 				"complex":   "test4",
 			},
 		},
-		"invalid json": {
+		"successfully decode json on extracted[source]": {
+			&JSONConfig{
+				Expressions: map[string]string{
+					"time":      "",
+					"app":       "",
+					"component": "",
+					"level":     "",
+					"float":     "numeric.float",
+					"integer":   "numeric.integer",
+					"string":    "numeric.string",
+					"nested":    "",
+					"message":   "",
+					"complex":   "complex.log.array[1].test3",
+				},
+				Source: "log",
+			},
+			map[string]interface{}{
+				"log": logFixture,
+			},
+			"{}",
+			map[string]interface{}{
+				"time":      "2012-11-01T22:08:41+00:00",
+				"app":       "loki",
+				"component": "[\"parser\",\"type\"]",
+				"level":     "WARN",
+				"float":     12.34,
+				"integer":   123.0,
+				"string":    "123",
+				"nested":    "{\"child\":\"value\"}",
+				"message":   "this is a log line",
+				"complex":   "test4",
+				"log":       logFixture,
+			},
+		},
+		"missing extracted[source]": {
+			&JSONConfig{
+				Expressions: map[string]string{
+					"app": "",
+				},
+				Source: "log",
+			},
+			map[string]interface{}{},
+			logFixture,
+			map[string]interface{}{},
+		},
+		"invalid json on entry": {
 			&JSONConfig{
 				Expressions: map[string]string{
 					"expr1": "",
 				},
 			},
+			map[string]interface{}{},
 			"ts=now log=notjson",
 			map[string]interface{}{},
+		},
+		"invalid json on extracted[source]": {
+			&JSONConfig{
+				Expressions: map[string]string{
+					"app": "",
+				},
+				Source: "log",
+			},
+			map[string]interface{}{
+				"log": "not a json",
+			},
+			logFixture,
+			map[string]interface{}{
+				"log": "not a json",
+			},
 		},
 	}
 	for tName, tt := range tests {
@@ -222,7 +331,7 @@ func TestJSONParser_Parse(t *testing.T) {
 				t.Fatalf("failed to create json parser: %s", err)
 			}
 			lbs := model.LabelSet{}
-			extr := map[string]interface{}{}
+			extr := tt.extracted
 			ts := time.Now()
 			p.Process(lbs, extr, &ts, &tt.entry)
 

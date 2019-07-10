@@ -144,17 +144,19 @@ A regex stage will take the provided regex and set the named groups as data in t
 ```yaml
 - regex:
     expression:  ①
+    source:      ②
 ```
 
 ① `expression` is **required** and needs to be a [golang RE2 regex string](https://github.com/google/re2/wiki/Syntax). Every capture group `(re)` will be set into the `extracted` map, every capture group **must be named:** `(?P<name>re)`, the name will be used as the key in the map.
+② `source` is optional and contains the name of key in the `extracted` map containing the data to parse. If omitted, the regex stage will parse the log `entry`.
 
-##### Example:
+##### Example (without source):
 
 ```yaml
 - regex:
     expression: "^(?s)(?P<time>\\S+?) (?P<stream>stdout|stderr) (?P<flags>\\S+?) (?P<content>.*)$"
 ```
-  
+
 Log line: `2019-01-01T01:00:00.000000001Z stderr P i'm a log message!`
 
 Would create the following `extracted` map:
@@ -168,9 +170,33 @@ Would create the following `extracted` map:
 }
 ```
 
-These map entries can then be used by other pipeline stages such as [timestamp](#timestamp) and/or [output](#output) 
+These map entries can then be used by other pipeline stages such as [timestamp](#timestamp) and/or [output](#output)
 
 [Example in unit test](../../pkg/logentry/stages/regex_test.go)
+
+##### Example (with source):
+
+```yaml
+- json:
+    expressions:
+      time:
+- regex:
+    expression: "^(?P<year>\\d+)"
+    source:     "time"
+```
+
+Log line: `{"time":"2019-01-01T01:00:00.000000001Z"}`
+
+Would create the following `extracted` map:
+
+```go
+{
+    "time": "2019-01-01T01:00:00.000000001Z",
+    "year": "2019"
+}
+```
+
+These map entries can then be used by other pipeline stages such as [timestamp](#timestamp) and/or [output](#output)
 
 ### json
 
@@ -180,16 +206,18 @@ A json stage will take the provided [JMESPath expressions](http://jmespath.org/)
 - json:
     expressions:        ①
       key: expression   ②
+    source:             ③
 ```
 
-① `expressions` is a required yaml object containing key/value pairs of JMESPath expressions  
+① `expressions` is a required yaml object containing key/value pairs of JMESPath expressions
 ② `key: expression` where `key` will be the key in the `extracted` map, and the value will be the evaluated JMESPath expression.
+③ `source` is optional and contains the name of key in the `extracted` map containing the json to parse. If omitted, the json stage will parse the log `entry`.
 
 This stage uses the Go JSON unmarshaller, which means non string types like numbers or booleans will be unmarshalled into those types.  The `extracted` map will accept non-string values and this stage will keep primitive types as they are unmarshalled (e.g. bool or float64).  Downstream stages will need to perform correct type conversion of these values as necessary.
 
 If the value is a complex type, for example a JSON object, it will be marshalled back to JSON before being put in the `extracted` map.
 
-##### Example:
+##### Example (without source):
 
 ```yaml
 - json:
@@ -211,6 +239,36 @@ Would create the following `extracted` map:
 }
 ```
 [Example in unit test](../../pkg/logentry/stages/json_test.go)
+
+##### Example (with source):
+
+```yaml
+- json:
+    expressions:
+      output:    log
+      stream:    stream
+      timestamp: time
+      extra:
+- json:
+    expressions:
+      user:
+    source: extra
+```
+
+Log line: `{"log":"log message\n","stream":"stderr","time":"2019-04-30T02:12:41.8443515Z","extra":"{\"user\":\"marco\"}"}`
+
+Would create the following `extracted` map:
+
+```go
+{
+    "output":    "log message\n",
+    "stream":    "stderr",
+    "timestamp": "2019-04-30T02:12:41.8443515",
+    "extra":     "{\"user\":\"marco\"}",
+    "user":      "marco"
+}
+```
+
 
 #### template
 
