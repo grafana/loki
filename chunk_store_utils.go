@@ -150,7 +150,8 @@ func (c *Fetcher) worker() {
 	}
 }
 
-// FetchChunks fetchers a set of chunks from cache and store.
+// FetchChunks fetches a set of chunks from cache and store. Note that the keys passed in must be
+// lexicographically sorted, while the returned chunks are not in the same order as the passed in chunks.
 func (c *Fetcher) FetchChunks(ctx context.Context, chunks []Chunk, keys []string) ([]Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.fetchChunks")
 	defer log.Span.Finish()
