@@ -2,6 +2,7 @@ package targets
 
 import (
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
@@ -11,6 +12,7 @@ import (
 
 // JournalTargetManager manages a series of JournalTargets.
 type JournalTargetManager struct {
+	logger  log.Logger
 	targets map[string]*JournalTarget
 }
 
@@ -22,6 +24,7 @@ func NewJournalTargetManager(
 	scrapeConfigs []scrape.Config,
 ) (*JournalTargetManager, error) {
 	tm := &JournalTargetManager{
+		logger:  logger,
 		targets: make(map[string]*JournalTarget),
 	}
 
@@ -66,7 +69,9 @@ func (tm *JournalTargetManager) Ready() bool {
 // Stop stops the JournalTargetManager and all of its JournalTargets.
 func (tm *JournalTargetManager) Stop() {
 	for _, t := range tm.targets {
-		t.Stop()
+		if err := t.Stop(); err != nil {
+			level.Error(t.logger).Log("msg", "error stopping JournalTarget", "err", err.Error())
+		}
 	}
 }
 

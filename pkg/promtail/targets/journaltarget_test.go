@@ -3,9 +3,12 @@
 package targets
 
 import (
+	"io"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/coreos/go-systemd/sdjournal"
 
 	"gopkg.in/yaml.v2"
 
@@ -15,11 +18,45 @@ import (
 
 	"github.com/grafana/loki/pkg/promtail/scrape"
 
-	"github.com/coreos/go-systemd/journal"
 	"github.com/go-kit/kit/log"
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/stretchr/testify/require"
 )
+
+type mockJournalReader struct {
+	config sdjournal.JournalReaderConfig
+	t      *testing.T
+}
+
+func newMockJournalReader(c sdjournal.JournalReaderConfig) (journalReader, error) {
+	return &mockJournalReader{config: c}, nil
+}
+
+func (r *mockJournalReader) Close() error {
+	return nil
+}
+
+func (r *mockJournalReader) Follow(until <-chan time.Time, writer io.Writer) error {
+	<-until
+	return nil
+}
+
+func (r *mockJournalReader) Write(msg string, fields map[string]string) {
+	allFields := make(map[string]string, len(fields))
+	for k, v := range fields {
+		allFields[k] = v
+	}
+	allFields["MESSAGE"] = msg
+
+	ts := uint64(time.Now().UnixNano())
+
+	_, err := r.config.Formatter(&sdjournal.JournalEntry{
+		Fields:             allFields,
+		MonotonicTimestamp: ts,
+		RealtimeTimestamp:  ts,
+	})
+	assert.NoError(r.t, err)
+}
 
 func TestJournalTarget(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
@@ -56,19 +93,20 @@ func TestJournalTarget(t *testing.T) {
 	err = yaml.Unmarshal([]byte(relabelCfg), &relabels)
 	require.NoError(t, err)
 
-	jt, err := NewJournalTarget(logger, client, ps, relabels, &scrape.JournalTargetConfig{
-		Since: time.Duration(1),
-	})
+	jt, err := journalTargetWithReader(logger, client, ps, relabels,
+		&scrape.JournalTargetConfig{}, newMockJournalReader)
 	require.NoError(t, err)
 
+	r := jt.r.(*mockJournalReader)
+	r.t = t
+
 	for i := 0; i < 10; i++ {
-		journal.Send("ping", journal.PriInfo, map[string]string{
+		r.Write("ping", map[string]string{
 			"CODE_FILE": "journaltarget_test.go",
 		})
+		assert.NoError(t, err)
 	}
 
-	// Give time for messages to be processed
-	time.Sleep(time.Millisecond * 500)
 	assert.Len(t, client.messages, 10)
 	require.NoError(t, jt.Stop())
 }

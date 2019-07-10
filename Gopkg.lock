@@ -213,11 +213,10 @@
   revision = "a9fb20d87448d386e6d50b1f2e1fa70dcf0de43c"
 
 [[projects]]
-  digest = "1:971a6c7e578f323beb97deeecefe8dca02bacba70d675d3d14284f7467a45151"
+  digest = "1:bc38b83376aa09bdc1e889c00ce73cb748b2140d535bb5c76cb9823da6c7a98a"
   name = "github.com/coreos/go-systemd"
   packages = [
     "activation",
-    "journal",
     "sdjournal",
   ]
   pruneopts = "UT"
@@ -1573,7 +1572,6 @@
   analyzer-version = 1
   input-imports = [
     "github.com/bmatcuk/doublestar",
-    "github.com/coreos/go-systemd/journal",
     "github.com/coreos/go-systemd/sdjournal",
     "github.com/cortexproject/cortex/pkg/chunk",
     "github.com/cortexproject/cortex/pkg/chunk/encoding",

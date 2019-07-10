@@ -2,6 +2,7 @@ package targets
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"strings"
 	"time"
@@ -30,6 +31,17 @@ const (
 	journalEmptyStr = " "
 )
 
+type journalReader interface {
+	io.Closer
+	Follow(until <-chan time.Time, writer io.Writer) error
+}
+
+type journalReaderFunc func(sdjournal.JournalReaderConfig) (journalReader, error)
+
+var defaultJournalReaderFunc = func(c sdjournal.JournalReaderConfig) (journalReader, error) {
+	return sdjournal.NewJournalReader(c)
+}
+
 // JournalTarget tails systemd journal entries.
 type JournalTarget struct {
 	logger        log.Logger
@@ -39,8 +51,9 @@ type JournalTarget struct {
 	config        *scrape.JournalTargetConfig
 	labels        model.LabelSet
 
-	r     *sdjournal.JournalReader
+	r     journalReader
 	until chan time.Time
+	last  uint64
 }
 
 // NewJournalTarget configures a new JournalTarget.
@@ -51,6 +64,29 @@ func NewJournalTarget(
 	relabelConfig []*relabel.Config,
 	targetConfig *scrape.JournalTargetConfig,
 ) (*JournalTarget, error) {
+
+	return journalTargetWithReader(
+		logger,
+		handler,
+		positions,
+		relabelConfig,
+		targetConfig,
+		defaultJournalReaderFunc,
+	)
+}
+
+func journalTargetWithReader(
+	logger log.Logger,
+	handler api.EntryHandler,
+	positions *positions.Positions,
+	relabelConfig []*relabel.Config,
+	targetConfig *scrape.JournalTargetConfig,
+	readerFunc journalReaderFunc,
+) (*JournalTarget, error) {
+
+	if readerFunc == nil {
+		readerFunc = defaultJournalReaderFunc
+	}
 
 	until := make(chan time.Time)
 	t := &JournalTarget{
@@ -75,7 +111,7 @@ func NewJournalTarget(
 	}
 
 	var err error
-	t.r, err = sdjournal.NewJournalReader(sdjournal.JournalReaderConfig{
+	t.r, err = readerFunc(sdjournal.JournalReaderConfig{
 		Path:      journalPath,
 		Since:     targetConfig.Since,
 		Formatter: t.formatter,
@@ -96,12 +132,19 @@ func NewJournalTarget(
 
 func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error) {
 	ts := time.Unix(0, int64(entry.RealtimeTimestamp)*int64(time.Microsecond))
+
 	msg, ok := entry.Fields["MESSAGE"]
 	if !ok {
 		level.Debug(t.logger).Log("msg", "received journal entry with no MESSAGE field")
 		return journalEmptyStr, nil
 	}
 	entryLabels := makeJournalFields(entry.Fields)
+	fmt.Printf("%s: %s\n", ts, msg)
+
+	if entry.RealtimeTimestamp < t.last {
+		panic("UNORDERED")
+	}
+	t.last = entry.RealtimeTimestamp
 
 	// Add constant labels
 	for k, v := range t.labels {
