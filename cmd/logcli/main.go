@@ -24,6 +24,7 @@ var (
 	regexpStr       = queryCmd.Arg("regex", "").String()
 	limit           = queryCmd.Flag("limit", "Limit on number of entries to print.").Default("30").Int()
 	since           = queryCmd.Flag("since", "Lookback window.").Default("1h").Duration()
+	from            = queryCmd.Flag("from", "Start looking for logs at this absolute time").String()
 	forward         = queryCmd.Flag("forward", "Scan forwards through logs.").Default("false").Bool()
 	tail            = queryCmd.Flag("tail", "Tail the logs").Short('t').Default("false").Bool()
 	delayFor        = queryCmd.Flag("delay-for", "Delay in tailing by number of seconds to accumulate logs").Default("0").Int()
