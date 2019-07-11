@@ -130,7 +130,7 @@ func TestJSONConfig_validate(t *testing.T) {
 		wantExprCount int
 		err           error
 	}{
-		"empty": {
+		"empty config": {
 			nil,
 			0,
 			errors.New(ErrExpressionsRequired),
@@ -148,6 +148,16 @@ func TestJSONConfig_validate(t *testing.T) {
 			},
 			0,
 			errors.Wrap(errors.New("SyntaxError: Unknown char: '#'"), ErrCouldNotCompileJMES),
+		},
+		"empty source": {
+			map[string]interface{}{
+				"expressions": map[string]interface{}{
+					"extr1": "expr",
+				},
+				"source": "",
+			},
+			0,
+			errors.New(ErrEmptyJSONStageSource),
 		},
 		"valid without source": {
 			map[string]interface{}{

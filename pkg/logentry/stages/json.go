@@ -20,6 +20,7 @@ const (
 	ErrExpressionsRequired  = "JMES expression is required"
 	ErrCouldNotCompileJMES  = "could not compile JMES expression"
 	ErrEmptyJSONStageConfig = "empty json stage configuration"
+	ErrEmptyJSONStageSource = "empty source"
 )
 
 // JSONConfig represents a JSON Stage configuration
@@ -36,6 +37,10 @@ func validateJSONConfig(c *JSONConfig) (map[string]*jmespath.JMESPath, error) {
 
 	if len(c.Expressions) == 0 {
 		return nil, errors.New(ErrExpressionsRequired)
+	}
+
+	if c.Source != nil && *c.Source == "" {
+		return nil, errors.New(ErrEmptyJSONStageSource)
 	}
 
 	expressions := map[string]*jmespath.JMESPath{}

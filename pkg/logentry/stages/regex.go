@@ -17,6 +17,7 @@ const (
 	ErrExpressionRequired    = "expression is required"
 	ErrCouldNotCompileRegex  = "could not compile regular expression"
 	ErrEmptyRegexStageConfig = "empty regex stage configuration"
+	ErrEmptyRegexStageSource = "empty source"
 )
 
 // RegexConfig contains a regexStage configuration
@@ -33,6 +34,10 @@ func validateRegexConfig(c *RegexConfig) (*regexp.Regexp, error) {
 
 	if c.Expression == "" {
 		return nil, errors.New(ErrExpressionRequired)
+	}
+
+	if c.Source != nil && *c.Source == "" {
+		return nil, errors.New(ErrEmptyRegexStageSource)
 	}
 
 	expr, err := regexp.Compile(c.Expression)
