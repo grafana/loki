@@ -26,12 +26,12 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
 
   For doing queries, accepts the following parameters in the query-string:
 
-  - `query`: a logQL query
+  - `query`: a [logQL query](./usage.md) (eg: `{name=~"mysql.+"}` or `{name=~"mysql.+"} |= "error"`)
   - `limit`: max number of entries to return
-  - `start`: the start time for the query, as a nanosecond Unix epoch (nanoseconds since 1970) or as RFC3339Nano (eg: "2006-01-02T15:04:05.999999999Z07:00"). Default is always one hour ago.
-  - `end`: the end time for the query, as a nanosecond Unix epoch (nanoseconds since 1970) or as RFC3339Nano (eg: "2006-01-02T15:04:05.999999999Z07:00"). Default is current time.
+  - `start`: the start time for the query, as a nanosecond Unix epoch (nanoseconds since 1970) or as RFC3339Nano (eg: "2006-01-02T15:04:05.999999999-07:00"). Default is always one hour ago.
+  - `end`: the end time for the query, as a nanosecond Unix epoch (nanoseconds since 1970) or as RFC3339Nano (eg: "2006-01-02T15:04:05.999999999-07:00"). Default is current time.
   - `direction`: `forward` or `backward`, useful when specifying a limit. Default is backward.
-  - `regexp`: a regex to filter the returned results, will eventually be rolled into the query language
+  - `regexp`: a regex to filter the returned results
 
   Loki needs to query the index store in order to find log streams for particular labels and the store is spread out by time,
   so you need to specify the start and end labels accordingly. Querying a long time into the history will cause additional
