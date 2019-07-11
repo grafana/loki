@@ -25,7 +25,7 @@ const (
 // JSONConfig represents a JSON Stage configuration
 type JSONConfig struct {
 	Expressions map[string]string `mapstructure:"expressions"`
-	Source      string            `mapstructure:"source"`
+	Source      *string           `mapstructure:"source"`
 }
 
 // validateJSONConfig validates a json config and returns a map of necessary jmespath expressions.
@@ -94,15 +94,15 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 	// from the exctracted map, otherwise should fallback to the entry
 	input := entry
 
-	if j.cfg.Source != "" {
-		if _, ok := extracted[j.cfg.Source]; !ok {
-			level.Debug(j.logger).Log("msg", "source does not exist in the set of extracted values", "source", j.cfg.Source)
+	if j.cfg.Source != nil {
+		if _, ok := extracted[*j.cfg.Source]; !ok {
+			level.Debug(j.logger).Log("msg", "source does not exist in the set of extracted values", "source", *j.cfg.Source)
 			return
 		}
 
-		value, err := getString(extracted[j.cfg.Source])
+		value, err := getString(extracted[*j.cfg.Source])
 		if err != nil {
-			level.Debug(j.logger).Log("msg", "failed to convert source value to string", "source", j.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[j.cfg.Source]).String())
+			level.Debug(j.logger).Log("msg", "failed to convert source value to string", "source", *j.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*j.cfg.Source]).String())
 			return
 		}
 
