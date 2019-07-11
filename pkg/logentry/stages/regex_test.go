@@ -124,7 +124,7 @@ func TestRegexConfig_validate(t *testing.T) {
 		config interface{}
 		err    error
 	}{
-		"empty": {
+		"empty config": {
 			nil,
 			errors.New(ErrExpressionRequired),
 		},
@@ -137,6 +137,13 @@ func TestRegexConfig_validate(t *testing.T) {
 				"expression": "(?P<ts[0-9]+).*",
 			},
 			errors.New(ErrCouldNotCompileRegex + ": error parsing regexp: invalid named capture: `(?P<ts[0-9]+).*`"),
+		},
+		"empty source": {
+			map[string]interface{}{
+				"expression": "(?P<ts>[0-9]+).*",
+				"source":     "",
+			},
+			errors.New(ErrEmptyRegexStageSource),
 		},
 		"valid without source": {
 			map[string]interface{}{
