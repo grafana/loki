@@ -75,7 +75,3 @@
 [[override]]
   name = "k8s.io/client-go"
   revision = "1a26190bd76a9017e289958b9fba936430aa3704"
-
-[[constraint]]
-  name = "github.com/coreos/go-systemd"
-  version = "19.0.0"
