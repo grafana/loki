@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/etcd-io/bbolt"
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/bbolt"
 )
 
 var (
