@@ -48,6 +48,8 @@ var testJSONLogLine = `
 `
 
 func TestPipeline_JSON(t *testing.T) {
+	t.Parallel()
+
 	tests := map[string]struct {
 		config          string
 		entry           string
@@ -74,7 +76,11 @@ func TestPipeline_JSON(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
+
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
 			pl, err := NewPipeline(util.Logger, loadConfig(testData.config), nil, prometheus.DefaultRegisterer)
 			if err != nil {
 				t.Fatal(err)
