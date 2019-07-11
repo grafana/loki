@@ -2,12 +2,14 @@ package aws
 
 import (
 	"context"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -182,7 +184,10 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc chunk.TableDesc
 					ResourceArn: tableARN,
 					Tags:        tags,
 				})
-				return err
+				if relevantError(err) {
+					return err
+				}
+				return nil
 			})
 		})
 	}
@@ -247,14 +252,14 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 			out, err := d.DynamoDB.ListTagsOfResourceWithContext(ctx, &dynamodb.ListTagsOfResourceInput{
 				ResourceArn: tableARN,
 			})
-			if err != nil {
+			if relevantError(err) {
 				return err
 			}
 			desc.Tags = make(map[string]string, len(out.Tags))
 			for _, tag := range out.Tags {
 				desc.Tags[*tag.Key] = *tag.Value
 			}
-			return err
+			return nil
 		})
 	})
 
@@ -262,6 +267,18 @@ func (d dynamoTableClient) DescribeTable(ctx context.Context, name string) (desc
 		err = d.autoscale.DescribeTable(ctx, &desc)
 	}
 	return
+}
+
+// Filter out errors that we don't want to see
+// (currently only relevant in integration tests)
+func relevantError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if strings.Contains(err.Error(), "Tagging is not currently supported in DynamoDB Local.") {
+		return false
+	}
+	return true
 }
 
 func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected chunk.TableDesc) error {
@@ -355,7 +372,10 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected ch
 					ResourceArn: tableARN,
 					Tags:        chunkTagsToDynamoDB(expected.Tags),
 				})
-				return err
+				if relevantError(err) {
+					return errors.Wrap(err, "applying tags")
+				}
+				return nil
 			})
 		})
 	}
