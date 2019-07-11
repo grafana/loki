@@ -21,8 +21,8 @@ const (
 
 // RegexConfig contains a regexStage configuration
 type RegexConfig struct {
-	Expression string `mapstructure:"expression"`
-	Source     string `mapstructure:"source"`
+	Expression string  `mapstructure:"expression"`
+	Source     *string `mapstructure:"source"`
 }
 
 // validateRegexConfig validates the config and return a regex
@@ -83,15 +83,15 @@ func (r *regexStage) Process(labels model.LabelSet, extracted map[string]interfa
 	// from the exctracted map, otherwise should fallback to the entry
 	input := entry
 
-	if r.cfg.Source != "" {
-		if _, ok := extracted[r.cfg.Source]; !ok {
-			level.Debug(r.logger).Log("msg", "source does not exist in the set of extracted values", "source", r.cfg.Source)
+	if r.cfg.Source != nil {
+		if _, ok := extracted[*r.cfg.Source]; !ok {
+			level.Debug(r.logger).Log("msg", "source does not exist in the set of extracted values", "source", *r.cfg.Source)
 			return
 		}
 
-		value, err := getString(extracted[r.cfg.Source])
+		value, err := getString(extracted[*r.cfg.Source])
 		if err != nil {
-			level.Debug(r.logger).Log("msg", "failed to convert source value to string", "source", r.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[r.cfg.Source]).String())
+			level.Debug(r.logger).Log("msg", "failed to convert source value to string", "source", *r.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*r.cfg.Source]).String())
 			return
 		}
 

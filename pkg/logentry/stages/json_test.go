@@ -124,8 +124,9 @@ func TestYamlMapStructure(t *testing.T) {
 
 func TestJSONConfig_validate(t *testing.T) {
 	t.Parallel()
+
 	tests := map[string]struct {
-		config        *JSONConfig
+		config        interface{}
 		wantExprCount int
 		err           error
 	}{
@@ -135,13 +136,13 @@ func TestJSONConfig_validate(t *testing.T) {
 			errors.New(ErrExpressionsRequired),
 		},
 		"no expressions": {
-			&JSONConfig{},
+			map[string]interface{}{},
 			0,
 			errors.New(ErrExpressionsRequired),
 		},
 		"invalid expression": {
-			&JSONConfig{
-				Expressions: map[string]string{
+			map[string]interface{}{
+				"expressions": map[string]interface{}{
 					"extr1": "3##@$#33",
 				},
 			},
@@ -149,8 +150,8 @@ func TestJSONConfig_validate(t *testing.T) {
 			errors.Wrap(errors.New("SyntaxError: Unknown char: '#'"), ErrCouldNotCompileJMES),
 		},
 		"valid without source": {
-			&JSONConfig{
-				Expressions: map[string]string{
+			map[string]interface{}{
+				"expressions": map[string]string{
 					"expr1": "expr",
 					"expr2": "",
 					"expr3": "expr1.expr2",
@@ -160,13 +161,13 @@ func TestJSONConfig_validate(t *testing.T) {
 			nil,
 		},
 		"valid with source": {
-			&JSONConfig{
-				Expressions: map[string]string{
+			map[string]interface{}{
+				"expressions": map[string]string{
 					"expr1": "expr",
 					"expr2": "",
 					"expr3": "expr1.expr2",
 				},
-				Source: "log",
+				"source": "log",
 			},
 			3,
 			nil,
@@ -216,14 +217,14 @@ func TestJSONParser_Parse(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		config          *JSONConfig
+		config          interface{}
 		extracted       map[string]interface{}
 		entry           string
 		expectedExtract map[string]interface{}
 	}{
 		"successfully decode json on entry": {
-			&JSONConfig{
-				Expressions: map[string]string{
+			map[string]interface{}{
+				"expressions": map[string]string{
 					"time":      "",
 					"app":       "",
 					"component": "",
@@ -252,8 +253,8 @@ func TestJSONParser_Parse(t *testing.T) {
 			},
 		},
 		"successfully decode json on extracted[source]": {
-			&JSONConfig{
-				Expressions: map[string]string{
+			map[string]interface{}{
+				"expressions": map[string]string{
 					"time":      "",
 					"app":       "",
 					"component": "",
@@ -265,7 +266,7 @@ func TestJSONParser_Parse(t *testing.T) {
 					"message":   "",
 					"complex":   "complex.log.array[1].test3",
 				},
-				Source: "log",
+				"source": "log",
 			},
 			map[string]interface{}{
 				"log": logFixture,
@@ -286,19 +287,19 @@ func TestJSONParser_Parse(t *testing.T) {
 			},
 		},
 		"missing extracted[source]": {
-			&JSONConfig{
-				Expressions: map[string]string{
+			map[string]interface{}{
+				"expressions": map[string]string{
 					"app": "",
 				},
-				Source: "log",
+				"source": "log",
 			},
 			map[string]interface{}{},
 			logFixture,
 			map[string]interface{}{},
 		},
 		"invalid json on entry": {
-			&JSONConfig{
-				Expressions: map[string]string{
+			map[string]interface{}{
+				"expressions": map[string]string{
 					"expr1": "",
 				},
 			},
@@ -307,11 +308,11 @@ func TestJSONParser_Parse(t *testing.T) {
 			map[string]interface{}{},
 		},
 		"invalid json on extracted[source]": {
-			&JSONConfig{
-				Expressions: map[string]string{
+			map[string]interface{}{
+				"expressions": map[string]string{
 					"app": "",
 				},
-				Source: "log",
+				"source": "log",
 			},
 			map[string]interface{}{
 				"log": "not a json",
