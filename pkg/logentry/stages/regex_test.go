@@ -31,6 +31,8 @@ pipeline_stages:
 var testRegexLogLine = `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`
 
 func TestPipeline_Regex(t *testing.T) {
+	t.Parallel()
+
 	tests := map[string]struct {
 		config          string
 		entry           string
@@ -74,7 +76,11 @@ func TestPipeline_Regex(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
+
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
 			pl, err := NewPipeline(util.Logger, loadConfig(testData.config), nil, prometheus.DefaultRegisterer)
 			if err != nil {
 				t.Fatal(err)
