@@ -66,6 +66,8 @@ The following filter types have been implemented:
 - `|~` line matches regular expression.
 - `!~` line does not match regular expression.
 
+The regex expression accepts [RE2 syntax](https://github.com/google/re2/wiki/Syntax). The matching is case-sensitive by default and can be switched to case-insensitive prefixing the regex with `(?i)`.
+
 ### Query Language Extensions
 
 The query language is still under development to support more features, e.g.,:
