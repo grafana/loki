@@ -5,7 +5,7 @@ APIKEY="${2:-}"
 INSTANCEURL="${3:-}"
 NAMESPACE="${4:-default}"
 CONTAINERROOT="${5:-/var/lib/docker}"
-PARSER="${6:-docker}"
+PARSER="${6:-- docker:}"
 
 if [ -z "$INSTANCEID" -o -z "$APIKEY" -o -z "$INSTANCEURL" -o -z "$NAMESPACE" -o -z "$CONTAINERROOT" -o -z "$PARSER" ]; then
     echo "usage: $0 <instanceId> <apiKey> <url> [<namespace>[<container_root_path>[<parser>]]]"
@@ -17,7 +17,8 @@ apiVersion: v1
 data:
   promtail.yml: |
     scrape_configs:
-    - entry_parser: <parser>
+    - pipeline_stages:
+      <parser>
       job_name: kubernetes-pods-name
       kubernetes_sd_configs:
       - role: pod
@@ -59,7 +60,8 @@ data:
         - __meta_kubernetes_pod_uid
         - __meta_kubernetes_pod_container_name
         target_label: __path__
-    - entry_parser: <parser>
+    - pipeline_stages:
+      <parser>
       job_name: kubernetes-pods-app
       kubernetes_sd_configs:
       - role: pod
@@ -105,7 +107,8 @@ data:
         - __meta_kubernetes_pod_uid
         - __meta_kubernetes_pod_container_name
         target_label: __path__
-    - entry_parser: <parser>
+    - pipeline_stages:
+      <parser>
       job_name: kubernetes-pods-direct-controllers
       kubernetes_sd_configs:
       - role: pod
@@ -157,7 +160,8 @@ data:
         - __meta_kubernetes_pod_uid
         - __meta_kubernetes_pod_container_name
         target_label: __path__
-    - entry_parser: <parser>
+    - pipeline_stages:
+      <parser>
       job_name: kubernetes-pods-indirect-controller
       kubernetes_sd_configs:
       - role: pod
@@ -211,7 +215,8 @@ data:
         - __meta_kubernetes_pod_uid
         - __meta_kubernetes_pod_container_name
         target_label: __path__
-    - entry_parser: <parser>
+    - pipeline_stages:
+      <parser>
       job_name: kubernetes-pods-static
       kubernetes_sd_configs:
       - role: pod
@@ -269,6 +274,9 @@ metadata:
   name: promtail
 spec:
   minReadySeconds: 10
+  selector:
+    matchLabels:
+      name: promtail
   template:
     metadata:
       labels:

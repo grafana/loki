@@ -33,6 +33,7 @@ type Config struct {
 	Username                 string        `yaml:"username,omitempty"`
 	Password                 string        `yaml:"password,omitempty"`
 	Timeout                  time.Duration `yaml:"timeout,omitempty"`
+	ConnectTimeout           time.Duration `yaml:"connect_timeout,omitempty"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -50,6 +51,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Username, "cassandra.username", "", "Username to use when connecting to cassandra.")
 	f.StringVar(&cfg.Password, "cassandra.password", "", "Password to use when connecting to cassandra.")
 	f.DurationVar(&cfg.Timeout, "cassandra.timeout", 600*time.Millisecond, "Timeout when connecting to cassandra.")
+	f.DurationVar(&cfg.ConnectTimeout, "cassandra.connect-timeout", 600*time.Millisecond, "Initial connection timeout, used during initial dial to server.")
 }
 
 func (cfg *Config) session() (*gocql.Session, error) {
@@ -69,6 +71,7 @@ func (cfg *Config) session() (*gocql.Session, error) {
 	cluster.BatchObserver = observer{}
 	cluster.QueryObserver = observer{}
 	cluster.Timeout = cfg.Timeout
+	cluster.ConnectTimeout = cfg.ConnectTimeout
 	cfg.setClusterConfig(cluster)
 
 	return cluster.CreateSession()
@@ -98,6 +101,7 @@ func (cfg *Config) createKeyspace() error {
 	cluster.Port = cfg.Port
 	cluster.Keyspace = "system"
 	cluster.Timeout = 20 * time.Second
+	cluster.ConnectTimeout = 20 * time.Second
 
 	cfg.setClusterConfig(cluster)
 

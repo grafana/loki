@@ -33,6 +33,8 @@
 
       limits_config: {
         enforce_metric_name: false,
+        reject_old_samples: true,
+        reject_old_samples_max_age: '168h',
       },
 
       ingester: {
@@ -108,6 +110,7 @@
             service: 'memcached-client',
           },
         },
+        max_look_back_period: 0,
       },
 
       schema_config: {
@@ -121,6 +124,23 @@
             period: '168h',
           },
         }],
+      },
+
+      table_manager: {
+        retention_period: 0,
+        retention_deletes_enabled: false,
+        index_tables_provisioning: {
+          inactive_read_throughput: 0,
+          inactive_write_throughput: 0,
+          provisioned_read_throughput: 0,
+          provisioned_write_throughput: 0,
+        },
+        chunk_tables_provisioning: {
+          inactive_read_throughput: 0,
+          inactive_write_throughput: 0,
+          provisioned_read_throughput: 0,
+          provisioned_write_throughput: 0,
+        },
       },
     },
   },

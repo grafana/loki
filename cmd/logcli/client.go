@@ -21,7 +21,7 @@ const (
 	queryPath       = "/api/prom/query?query=%s&limit=%d&start=%d&end=%d&direction=%s&regexp=%s"
 	labelsPath      = "/api/prom/label"
 	labelValuesPath = "/api/prom/label/%s/values"
-	tailPath        = "/api/prom/tail?query=%s&regexp=%s"
+	tailPath        = "/api/prom/tail?query=%s&regexp=%s&delay_for=%d"
 )
 
 func query(from, through time.Time, direction logproto.Direction) (*logproto.QueryResponse, error) {
@@ -98,7 +98,7 @@ func doRequest(path string, out interface{}) error {
 }
 
 func liveTailQueryConn() (*websocket.Conn, error) {
-	path := fmt.Sprintf(tailPath, url.QueryEscape(*queryStr), url.QueryEscape(*regexpStr))
+	path := fmt.Sprintf(tailPath, url.QueryEscape(*queryStr), url.QueryEscape(*regexpStr), *delayFor)
 	return wsConnect(path)
 }
 

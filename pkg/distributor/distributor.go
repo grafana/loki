@@ -3,8 +3,8 @@ package distributor
 import (
 	"context"
 	"flag"
-	"hash/fnv"
 	"sync/atomic"
+	"time"
 
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -20,6 +20,8 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 )
+
+const metricName = "logs"
 
 var (
 	ingesterAppends = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -130,7 +132,22 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			continue
 		}
 
-		keys = append(keys, tokenFor(userID, stream.Labels))
+		entries := make([]logproto.Entry, 0, len(stream.Entries))
+		for _, entry := range stream.Entries {
+			if err := d.overrides.ValidateSample(userID, metricName, cortex_client.Sample{
+				TimestampMs: entry.Timestamp.UnixNano() / int64(time.Millisecond),
+			}); err != nil {
+				validationErr = err
+				continue
+			}
+			entries = append(entries, entry)
+		}
+
+		if len(entries) == 0 {
+			continue
+		}
+		stream.Entries = entries
+		keys = append(keys, util.TokenFor(userID, stream.Labels))
 		streams = append(streams, streamTracker{
 			stream: stream,
 		})
@@ -244,13 +261,6 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Ingester
 		ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
 	}
 	return err
-}
-
-func tokenFor(userID, labels string) uint32 {
-	h := fnv.New32()
-	_, _ = h.Write([]byte(userID))
-	_, _ = h.Write([]byte(labels))
-	return h.Sum32()
 }
 
 // Check implements the grpc healthcheck

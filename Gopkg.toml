@@ -71,3 +71,7 @@
   name = "github.com/hpcloud/tail"
   source = "github.com/grafana/tail"
   branch = "master"
+
+[[override]]
+  name = "k8s.io/client-go"
+  revision = "1a26190bd76a9017e289958b9fba936430aa3704"

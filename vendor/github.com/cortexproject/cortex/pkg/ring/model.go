@@ -143,7 +143,7 @@ func (d *Desc) Ready(heartbeatTimeout time.Duration) error {
 // TokensFor partitions the tokens into those for the given ID, and those for others.
 func (d *Desc) TokensFor(id string) (tokens, other []uint32) {
 	var takenTokens, myTokens []uint32
-	for _, token := range d.Tokens {
+	for _, token := range migrateRing(d) {
 		takenTokens = append(takenTokens, token.Token)
 		if token.Ingester == id {
 			myTokens = append(myTokens, token.Token)

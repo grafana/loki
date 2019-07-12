@@ -170,9 +170,15 @@ func (b *bigchunk) Size() int {
 }
 
 func (b *bigchunk) NewIterator() Iterator {
+	var it chunkenc.Iterator
+	if len(b.chunks) > 0 {
+		it = b.chunks[0].Iterator()
+	} else {
+		it = chunkenc.NewNopIterator()
+	}
 	return &bigchunkIterator{
 		bigchunk: b,
-		curr:     b.chunks[0].Iterator(),
+		curr:     it,
 	}
 }
 

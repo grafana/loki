@@ -62,7 +62,7 @@ spec:
               fieldRef:
                 fieldPath: spec.nodeName
           ports:
-            - containerPort: {{ .Values.port }}
+            - containerPort: {{ .Values.config.server.http_listen_port }}
               name: http-metrics
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}

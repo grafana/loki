@@ -1,4 +1,5 @@
-.PHONY: all test clean images protos assets check_assets
+
+.PHONY: all test clean images protos assets check_assets release-prepare release-perform
 .DEFAULT_GOAL := all
 
 CHARTS := production/helm/loki production/helm/promtail production/helm/loki-stack
@@ -29,10 +30,10 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/go/src/github.com/grafana/loki' phase.
-DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
+DONT_FIND := -name build -prune -o -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # Get a list of directories containing Dockerfiles
-DOCKERFILES := $(shell find . $(DONT_FIND) -type f -name 'Dockerfile' -print)
+DOCKERFILES := $(shell find . -name docker-driver -prune -o $(DONT_FIND) -type f -name 'Dockerfile' -print)
 UPTODATE_FILES := $(patsubst %/Dockerfile,%/$(UPTODATE),$(DOCKERFILES))
 DEBUG_DOCKERFILES := $(shell find . $(DONT_FIND) -type f -name 'Dockerfile.debug' -print)
 DEBUG_UPTODATE_FILES := $(patsubst %/Dockerfile.debug,%/$(DEBUG_UPTODATE),$(DEBUG_DOCKERFILES))
@@ -90,7 +91,7 @@ vendor/github.com/cortexproject/cortex/pkg/ingester/client/cortex.pb.go: vendor/
 vendor/github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.pb.go: vendor/github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.proto
 pkg/promtail/server/server.go: assets
 pkg/logql/expr.go: pkg/logql/expr.y
-all: $(UPTODATE_FILES)
+all: $(UPTODATE_FILES) build-plugin
 test: $(PROTO_GOS) $(YACC_GOS)
 debug: $(DEBUG_UPTODATE_FILES)
 yacc: $(YACC_GOS)
@@ -221,13 +222,28 @@ push-latest:
 		fi \
 	done
 
+release-prepare:
+	@set -e; ./tools/release_prepare.sh
+
+release-perform:
+	@[ "${VERSION}" ] || ( echo ">> VERSION env var must be set to create a release"; exit 1 )
+	@echo ">> Pushing docker images with tag for version $(VERSION)"
+	@set -e; \
+	for image_name in $(IMAGE_NAMES); do \
+		if ! echo $$image_name | grep build; then \
+			docker tag $$image_name:$(IMAGE_TAG) $$image_name:$(VERSION); \
+			docker push $$image_name:$(VERSION); \
+		fi \
+	done
+
+
 helm:
 	-rm -f production/helm/*/requirements.lock
 	@set -e; \
 	helm init -c; \
 	for chart in $(CHARTS); do \
-		helm lint $$chart; \
 		helm dependency build $$chart; \
+		helm lint $$chart; \
 		helm package $$chart; \
 	done
 	rm -f production/helm/*/requirements.lock
@@ -251,7 +267,7 @@ clean:
 
 assets:
 	@echo ">> writing assets"
-	go generate -x -v ./pkg/promtail/server/ui
+	GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
 
 check_assets: assets
 	@echo ">> checking that assets are up-to-date"
@@ -275,3 +291,24 @@ helm-upgrade: helm
 
 helm-clean:
 	-helm delete --purge loki-stack
+
+PLUGIN_FOLDER = ./cmd/docker-driver
+PLUGIN_TAG ?= $(IMAGE_TAG)
+
+build-plugin: $(PLUGIN_FOLDER)/docker-driver
+	-docker plugin disable grafana/loki-docker-driver:$(IMAGE_TAG)
+	-docker plugin rm grafana/loki-docker-driver:$(IMAGE_TAG)
+	-rm -rf $(PLUGIN_FOLDER)/rootfs
+	mkdir $(PLUGIN_FOLDER)/rootfs
+	docker build -t rootfsimage $(PLUGIN_FOLDER)
+	ID=$$(docker create rootfsimage true) && \
+	(docker export $$ID | tar -x -C $(PLUGIN_FOLDER)/rootfs) && \
+	docker rm -vf $$ID
+	docker rmi rootfsimage -f
+	docker plugin create grafana/loki-docker-driver:$(PLUGIN_TAG) $(PLUGIN_FOLDER)
+
+push-plugin: build-plugin
+	docker plugin push grafana/loki-docker-driver:$(PLUGIN_TAG)
+
+enable-plugin:
+	docker plugin enable grafana/loki-docker-driver:$(PLUGIN_TAG)

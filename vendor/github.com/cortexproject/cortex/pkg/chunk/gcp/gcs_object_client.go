@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"io/ioutil"
+	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/pkg/errors"
@@ -21,14 +22,16 @@ type gcsObjectClient struct {
 
 // GCSConfig is config for the GCS Chunk Client.
 type GCSConfig struct {
-	BucketName      string `yaml:"bucket_name"`
-	ChunkBufferSize int    `yaml:"chunk_buffer_size"`
+	BucketName      string        `yaml:"bucket_name"`
+	ChunkBufferSize int           `yaml:"chunk_buffer_size"`
+	RequestTimeout  time.Duration `yaml:"request_timeout"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *GCSConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.BucketName, "gcs.bucketname", "", "Name of GCS bucket to put chunks in.")
 	f.IntVar(&cfg.ChunkBufferSize, "gcs.chunk-buffer-size", 0, "The size of the buffer that GCS client for each PUT request. 0 to disable buffering.")
+	f.DurationVar(&cfg.RequestTimeout, "gcs.request-timeout", 0, "The duration after which the requests to GCS should be timed out.")
 }
 
 // NewGCSObjectClient makes a new chunk.ObjectClient that writes chunks to GCS.
@@ -86,6 +89,13 @@ func (s *gcsObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([
 }
 
 func (s *gcsObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
+	if s.cfg.RequestTimeout > 0 {
+		// The context will be cancelled with the timeout or when the parent context is cancelled, whichever occurs first.
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.cfg.RequestTimeout)
+		defer cancel()
+	}
+
 	reader, err := s.bucket.Object(input.ExternalKey()).NewReader(ctx)
 	if err != nil {
 		return chunk.Chunk{}, errors.WithStack(err)

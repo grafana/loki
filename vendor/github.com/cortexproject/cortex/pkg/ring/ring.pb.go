@@ -469,9 +469,9 @@ func (m *Desc) MarshalTo(dAtA []byte) (int, error) {
 			dAtA[i] = 0x12
 			i++
 			i = encodeVarintRing(dAtA, i, uint64((&v).Size()))
-			n1, err1 := (&v).MarshalTo(dAtA[i:])
-			if err1 != nil {
-				return 0, err1
+			n1, err := (&v).MarshalTo(dAtA[i:])
+			if err != nil {
+				return 0, err
 			}
 			i += n1
 		}
@@ -663,11 +663,6 @@ func (this *Desc) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForTokens := "[]TokenDesc{"
-	for _, f := range this.Tokens {
-		repeatedStringForTokens += strings.Replace(strings.Replace(f.String(), "TokenDesc", "TokenDesc", 1), `&`, ``, 1) + ","
-	}
-	repeatedStringForTokens += "}"
 	keysForIngesters := make([]string, 0, len(this.Ingesters))
 	for k, _ := range this.Ingesters {
 		keysForIngesters = append(keysForIngesters, k)
@@ -680,7 +675,7 @@ func (this *Desc) String() string {
 	mapStringForIngesters += "}"
 	s := strings.Join([]string{`&Desc{`,
 		`Ingesters:` + mapStringForIngesters + `,`,
-		`Tokens:` + repeatedStringForTokens + `,`,
+		`Tokens:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Tokens), "TokenDesc", "TokenDesc", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s

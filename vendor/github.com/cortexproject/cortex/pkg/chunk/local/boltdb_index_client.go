@@ -140,7 +140,8 @@ func (b *boltIndexClient) getDB(name string) (*bbolt.DB, error) {
 	}
 
 	// Open the database.
-	db, err := bbolt.Open(path.Join(b.cfg.Directory, name), 0666, nil)
+	// Set Timeout to avoid obtaining file lock wait indefinitely.
+	db, err := bbolt.Open(path.Join(b.cfg.Directory, name), 0666, &bbolt.Options{Timeout: 5 * time.Second})
 	if err != nil {
 		return nil, err
 	}

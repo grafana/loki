@@ -55,6 +55,7 @@ func New(cfg Config, tms *targets.TargetManagers) (*Server, error) {
 		externalURL: externalURL,
 	}
 
+	serv.HTTP.Path("/").Handler(http.RedirectHandler("/targets", 303))
 	serv.HTTP.Path("/ready").Handler(http.HandlerFunc(serv.ready))
 	serv.HTTP.PathPrefix("/static/").Handler(http.FileServer(ui.Assets))
 	serv.HTTP.Path("/service-discovery").Handler(http.HandlerFunc(serv.serviceDiscovery))

@@ -59,5 +59,11 @@ func tailQuery() {
 				printLogEntry(entry.Timestamp, labels, entry.Line)
 			}
 		}
+		if len(tailReponse.DroppedEntries) != 0 {
+			log.Println("Server dropped following entries due to slow client")
+			for _, d := range tailReponse.DroppedEntries {
+				log.Println(d.Timestamp, d.Labels)
+			}
+		}
 	}
 }

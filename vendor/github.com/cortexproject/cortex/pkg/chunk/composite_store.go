@@ -19,6 +19,7 @@ type Store interface {
 	// using the corresponding Fetcher (fetchers[i].FetchChunks(ctx, chunks[i], ...)
 	GetChunkRefs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error)
 	LabelValuesForMetricName(ctx context.Context, from, through model.Time, metricName string, labelName string) ([]string, error)
+	LabelNamesForMetricName(ctx context.Context, from, through model.Time, metricName string) ([]string, error)
 	Stop()
 }
 
@@ -101,6 +102,20 @@ func (c compositeStore) LabelValuesForMetricName(ctx context.Context, from, thro
 			return err
 		}
 		result = append(result, labelValues...)
+		return nil
+	})
+	return result, err
+}
+
+// LabelNamesForMetricName retrieves all label names for a metric name.
+func (c compositeStore) LabelNamesForMetricName(ctx context.Context, from, through model.Time, metricName string) ([]string, error) {
+	var result []string
+	err := c.forStores(from, through, func(from, through model.Time, store Store) error {
+		labelNames, err := store.LabelNamesForMetricName(ctx, from, through, metricName)
+		if err != nil {
+			return err
+		}
+		result = append(result, labelNames...)
 		return nil
 	})
 	return result, err
