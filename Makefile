@@ -173,7 +173,7 @@ $(EXES): loki-build-image/$(UPTODATE)
 
 lint: loki-build-image/$(UPTODATE)
 	GOGC=20 golangci-lint run
-	@git diff --name-only HEAD master | xargs -n1 sed -i 's/[ \t]*$//'
+	@git diff --name-only HEAD master | xargs --no-run-if-empty -n1 sed -i "s#[ \t]*$##"
 	@git diff-files || (echo "empty lines or linebreaks exist; failing check" && exit 1)
 
 check-generated-files: loki-build-image/$(UPTODATE) yacc protos
