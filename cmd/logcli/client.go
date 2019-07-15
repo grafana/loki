@@ -55,7 +55,9 @@ func listLabelValues(name string) (*logproto.LabelResponse, error) {
 
 func doRequest(path string, out interface{}) error {
 	url := *addr + path
-	log.Print(url)
+	if !*quiet {
+		log.Print(url)
+	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -121,7 +123,9 @@ func wsConnect(path string) (*websocket.Conn, error) {
 	} else if strings.HasPrefix(url, "http") {
 		url = strings.Replace(url, "http", "ws", 1)
 	}
-	log.Println(url)
+	if !*quiet {
+		log.Println(url)
+	}
 
 	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(*username+":"+*password))}}
 

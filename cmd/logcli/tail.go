@@ -55,9 +55,12 @@ func tailQuery() {
 					labels = stream.Labels
 				}
 			}
+
 			for _, entry := range stream.Entries {
-				printLogEntry(entry.Timestamp, labels, entry.Line)
+				lbls := mustParseLabels(labels)
+				Outputs[*outputMode].Print(entry.Timestamp, &lbls, entry.Line)
 			}
+
 		}
 		if len(tailReponse.DroppedEntries) != 0 {
 			log.Println("Server dropped following entries due to slow client")

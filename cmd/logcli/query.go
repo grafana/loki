@@ -56,11 +56,11 @@ func doQuery() {
 		common = common.MatchLabels(false, *showLabelsKey...)
 	}
 
-	if len(common) > 0 {
+	if len(common) > 0 && !*quiet {
 		log.Println("Common labels:", color.RedString(common.String()))
 	}
 
-	if len(*ignoreLabelsKey) > 0 {
+	if len(*ignoreLabelsKey) > 0 && !*quiet {
 		log.Println("Ignoring labels key:", color.RedString(strings.Join(*ignoreLabelsKey, ",")))
 	}
 
@@ -79,19 +79,14 @@ func doQuery() {
 
 	i = iter.NewQueryResponseIterator(resp, d)
 
+	Outputs["default"] = DefaultOutput{
+		MaxLabelsLen: maxLabelsLen,
+		CommonLabels: common,
+	}
+
 	for i.Next() {
 		ls := labelsCache(i.Labels())
-		ls = subtract(ls, common)
-		if len(*ignoreLabelsKey) > 0 {
-			ls = ls.MatchLabels(false, *ignoreLabelsKey...)
-		}
-
-		labels := ""
-		if !*noLabels {
-			labels = padLabel(ls, maxLabelsLen)
-		}
-
-		printLogEntry(i.Entry().Timestamp, labels, i.Entry().Line)
+		Outputs[*outputMode].Print(i.Entry().Timestamp, &ls, i.Entry().Line)
 	}
 
 	if err := i.Error(); err != nil {

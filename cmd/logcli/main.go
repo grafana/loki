@@ -8,7 +8,9 @@ import (
 )
 
 var (
-	app = kingpin.New("logcli", "A command-line for loki.")
+	app        = kingpin.New("logcli", "A command-line for loki.")
+	quiet      = app.Flag("quiet", "suppress everything but log lines").Default("false").Short('q').Bool()
+	outputMode = app.Flag("output", "specify output mode [default, raw, jsonl]").Default("default").Short('o').Enum("default", "raw", "jsonl")
 
 	addr     = app.Flag("addr", "Server address.").Default("https://logs-us-west1.grafana.net").Envar("GRAFANA_ADDR").String()
 	username = app.Flag("username", "Username for HTTP basic auth.").Default("").Envar("GRAFANA_USERNAME").String()
