@@ -89,7 +89,6 @@ clients:
 scrape_configs:
   - job_name: journal
     journal:
-      since: 0
       path: /var/log/journal
       labels:
         job: systemd-journal
@@ -103,11 +102,6 @@ scrape_configs:
 Just like the Docker example, the `scrape_configs` sections holds various
 jobs for parsing logs. A job with a `journal` key configures it for systemd
 journal reading.
-
-`since` is an optional unsigned integer value determining the earliest
-log that should be read. If nonzero, the integer is read as a nanosecond
-offset from the current system time when the reader is initialized. Zero
-is the default value, indicating that all journal entries should be read.
 
 `path` is an optional string specifying the path to read journal entries
 from. If unspecified, defaults to the system default (`/var/log/journal`).

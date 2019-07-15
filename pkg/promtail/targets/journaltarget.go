@@ -123,7 +123,6 @@ func journalTargetWithReader(
 	t.r, err = readerFunc(sdjournal.JournalReaderConfig{
 		Path:      journalPath,
 		Cursor:    position,
-		Since:     targetConfig.Since,
 		Formatter: t.formatter,
 	})
 	if err != nil {
@@ -185,23 +184,6 @@ func (t *JournalTarget) Type() TargetType {
 // read from.
 func (t *JournalTarget) Ready() bool {
 	return true
-}
-
-// TODO(rfratto): Perhaps the Target interface should remove DiscoveredLabels
-// and Labels and instead have a Dropped method.
-
-// DiscoveredLabels satisfies the Target interface. Returns nil for
-// JournalTarget as there are no discovered labels present as a
-// JournalTarget processes.
-func (t *JournalTarget) DiscoveredLabels() model.LabelSet {
-	return nil
-}
-
-// Labels satisfies the Target interface. Returns nil for JournalTarget
-// as there are is no guaranteed constant list of labels present as a
-// JournalTarget processes.
-func (t *JournalTarget) Labels() model.LabelSet {
-	return nil
 }
 
 // Details returns target-specific details (currently nil).

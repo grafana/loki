@@ -3,7 +3,6 @@ package scrape
 import (
 	"fmt"
 	"reflect"
-	"time"
 
 	"github.com/prometheus/common/model"
 
@@ -26,11 +25,6 @@ type Config struct {
 
 // JournalTargetConfig describes systemd journal records to scrape.
 type JournalTargetConfig struct {
-	// Since holds the time after time.Now() to start retrieving records
-	// for. If 0, records will be retrieved from the earliest entry in
-	// the journal.
-	Since time.Duration `yaml:"since,omitempty"`
-
 	// Labels optionally holds labels to associate with each record coming out
 	// of the journal.
 	Labels model.LabelSet `yaml:"labels"`
