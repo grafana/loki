@@ -60,8 +60,8 @@ func tailQuery() {
 			for _, entry := range stream.Entries {
 				switch *outputMode {
 				case "jsonl":
-					// TODO: include labels as a map[string]string
-					printLogEntryJSONL(entry.Timestamp, nil, entry.Line)
+					lbls := mustParseLabels(labels)
+					printLogEntryJSONL(entry.Timestamp, &lbls, entry.Line)
 				case "raw":
 					fmt.Println(entry.Line)
 				default:
