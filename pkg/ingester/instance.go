@@ -3,7 +3,6 @@ package ingester
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -56,7 +55,6 @@ type instance struct {
 	blockSize int
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
-	createdAt time.Time
 }
 
 func newInstance(instanceID string, blockSize int) *instance {
@@ -70,7 +68,6 @@ func newInstance(instanceID string, blockSize int) *instance {
 
 		blockSize: blockSize,
 		tailers:   map[uint32]*tailer{},
-		createdAt: time.Now(),
 	}
 }
 
@@ -105,10 +102,10 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr
 }
 
-func (i *instance) Query(req *logproto.QueryRequest) (iter.EntryIterator, error) {
+func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
 	expr, err := logql.ParseExpr(req.Query)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if req.Regex != "" {
@@ -126,9 +123,11 @@ func (i *instance) Query(req *logproto.QueryRequest) (iter.EntryIterator, error)
 
 	iter, err := expr.Eval(querier)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return iter, nil
+	defer helpers.LogError("closing iterator", iter.Close)
+
+	return sendBatches(iter, queryServer, req.Limit)
 }
 
 func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {

@@ -106,24 +106,18 @@ func (q *Querier) forGivenIngesters(replicationSet ring.ReplicationSet, f func(l
 
 // Query does the heavy lifting for an actual query.
 func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logproto.QueryResponse, error) {
-	var iterators []iter.EntryIterator
 
 	ingesterIterators, err := q.queryIngesters(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	iterators = append(iterators, ingesterIterators...)
 
-	// if the store is local to ingester, we want to query it from the ingester only
-	// the querier doesn't have access.
-	if !q.store.IsLocal() {
-		chunkStoreIterators, err := q.store.LazyQuery(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		iterators = append(iterators, chunkStoreIterators)
+	chunkStoreIterators, err := q.store.LazyQuery(ctx, req)
+	if err != nil {
+		return nil, err
 	}
 
+	iterators := append(ingesterIterators, chunkStoreIterators)
 	iterator := iter.NewHeapIterator(iterators, req.Direction)
 	defer helpers.LogError("closing iterator", iterator.Close)
 
@@ -284,22 +278,17 @@ func (q *Querier) queryDroppedStreams(ctx context.Context, req *logproto.TailReq
 		return nil, err
 	}
 
-	var iterators []iter.EntryIterator
 	ingesterIterators := make([]iter.EntryIterator, len(clients))
 	for i := range clients {
 		ingesterIterators[i] = iter.NewQueryClientIterator(clients[i].response.(logproto.Querier_QueryClient), query.Direction)
 	}
-	iterators = append(iterators, ingesterIterators...)
 
-	// if the store is local to ingester, we want to query it from the ingester not from the querier
-	if !q.store.IsLocal() {
-		chunkStoreIterators, err := q.store.LazyQuery(ctx, &query)
-		if err != nil {
-			return nil, err
-		}
-		iterators = append(iterators, chunkStoreIterators)
+	chunkStoreIterators, err := q.store.LazyQuery(ctx, &query)
+	if err != nil {
+		return nil, err
 	}
 
+	iterators := append(ingesterIterators, chunkStoreIterators)
 	return iter.NewHeapIterator(iterators, query.Direction), nil
 }
 

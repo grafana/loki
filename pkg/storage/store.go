@@ -19,13 +19,11 @@ import (
 // Store is the Loki chunk store to retrieve and save chunks.
 type Store interface {
 	chunk.Store
-	IsLocal() bool
 	LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter.EntryIterator, error)
 }
 
 type store struct {
 	chunk.Store
-	isLocal bool
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -34,22 +32,9 @@ func NewStore(cfg storage.Config, storeCfg chunk.StoreConfig, schemaCfg chunk.Sc
 	if err != nil {
 		return nil, err
 	}
-	var isLocal bool
-	for _, cfg := range schemaCfg.Configs {
-		if cfg.ObjectType == "filesystem" || cfg.IndexType == "boltdb" {
-			isLocal = true
-			break
-		}
-	}
 	return &store{
-		Store:   s,
-		isLocal: isLocal,
+		Store: s,
 	}, nil
-}
-
-// IsLocal tells if the storage for chunks and indexes is local.
-func (s *store) IsLocal() bool {
-	return s.isLocal
 }
 
 // LazyQuery returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
