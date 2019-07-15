@@ -27,7 +27,7 @@ func doQuery() {
 	start := end.Add(-*since)
 	if *from != "" {
 		var err error
-		start, err = time.Parse(time.RFC3339, *from)
+		start, err = time.Parse(time.RFC3339Nano, *from)
 		if err != nil {
 			log.Fatalf("error parsing date '%s': %s", *from, err)
 		}
