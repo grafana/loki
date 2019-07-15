@@ -1,41 +1,14 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
 	"log"
 	"sort"
 	"strings"
-	"time"
 
-	"github.com/fatih/color"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 )
-
-// print a log entry
-func printLogEntry(ts time.Time, lbls string, line string) {
-	fmt.Println(
-		color.BlueString(ts.Format(time.RFC3339)),
-		color.RedString(lbls),
-		strings.TrimSpace(line),
-	)
-}
-
-// print a log entry as json line
-func printLogEntryJSONL(ts time.Time, lbls *labels.Labels, line string) {
-	entry := map[string]interface{}{
-		"timestamp": ts,
-		"labels":    lbls,
-		"line":      line,
-	}
-	out, err := json.Marshal(entry)
-	if err != nil {
-		log.Fatalf("error marshalling entry: %s", err)
-	}
-	fmt.Println(string(out))
-}
 
 // add some padding after labels
 func padLabel(ls labels.Labels, maxLabelsLen int) string {
@@ -67,7 +40,7 @@ func parseLabels(resp *logproto.QueryResponse) (map[string]labels.Labels, []labe
 	return cache, lss
 }
 
-// return common labels between given lavels set
+// return commonLabels labels between given lavels set
 func commonLabels(lss []labels.Labels) labels.Labels {
 	if len(lss) == 0 {
 		return nil

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"strings"
 
@@ -58,15 +57,8 @@ func tailQuery() {
 			}
 
 			for _, entry := range stream.Entries {
-				switch *outputMode {
-				case "jsonl":
-					lbls := mustParseLabels(labels)
-					printLogEntryJSONL(entry.Timestamp, &lbls, entry.Line)
-				case "raw":
-					fmt.Println(entry.Line)
-				default:
-					printLogEntry(entry.Timestamp, labels, entry.Line)
-				}
+				lbls := mustParseLabels(labels)
+				Outputs[*outputMode].Print(entry.Timestamp, &lbls, entry.Line)
 			}
 
 		}
