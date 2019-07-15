@@ -183,14 +183,14 @@ module Fluent
           # remove needless keys.
           @remove_keys.each { |v|
             record.delete(v)
-          }
+          } if @remove_keys
           # extract white listed record keys into labels.
           @label_keys.each do |k|
             if record.key?(k)
               chunk_labels[k] = record[k]
               record.delete(k)
             end
-          end
+          end if @label_keys
           line = record_to_line(record)
         else
           line = record.to_s
