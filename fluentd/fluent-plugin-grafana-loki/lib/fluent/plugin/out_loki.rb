@@ -97,7 +97,7 @@ module Fluent
         opts = {
           use_ssl: uri.scheme == 'https'
         }
-        log.info "sending #{req.body.length} bytes"
+        log.debug "sending #{req.body.length} bytes to loki"
         res = Net::HTTP.start(uri.hostname, uri.port, **opts) { |http| http.request(req) }
         unless res && res.is_a?(Net::HTTPSuccess)
           res_summary = if res
