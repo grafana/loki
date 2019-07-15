@@ -104,7 +104,6 @@ loki-build-image/$(UPTODATE): loki-build-image/*
 # All the boiler plate for building golang follows:
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
 BUILD_IN_CONTAINER := true
-CGO_ENABLED := 0
 # RM is parameterized to allow CircleCI to run builds, as it
 # currently disallows `docker run --rm`. This value is overridden
 # in circle.yml
@@ -150,13 +149,13 @@ $(EXES) $(DEBUG_EXES) $(PROTO_GOS) $(YACC_GOS) lint test shell check-generated-f
 else
 
 $(DEBUG_EXES): loki-build-image/$(UPTODATE)
-	CGO_ENABLED=$(CGO_ENABLED) go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 	# Copy the delve binary to make it easily available to put in the binary's container.
 	[ -f "/go/bin/dlv" ] && mv "/go/bin/dlv" $(@D)/dlv
 
 $(EXES): loki-build-image/$(UPTODATE)
-	CGO_ENABLED=$(CGO_ENABLED) go build $(GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 %.pb.go: loki-build-image/$(UPTODATE)
