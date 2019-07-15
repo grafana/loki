@@ -17,7 +17,7 @@ RUN touch loki-build-image/.uptodate &&\
 # production image
 FROM golang as builder-production
 ARG APP
-RUN make CGO_ENABLED=1 BUILD_IN_CONTAINER=false cmd/${APP}/${APP} &&\
+RUN make BUILD_IN_CONTAINER=false cmd/${APP}/${APP} &&\
   mv cmd/${APP}/${APP} /build/${APP}
 
 FROM scratch as production
@@ -28,7 +28,7 @@ COPY --from=builder-production /build/${APP} /usr/bin/${APP}
 FROM golang as builder-debug
 ARG APP
 RUN go get github.com/go-delve/delve/cmd/dlv &&\
-  make CGO_ENBALED=1 BUILD_IN_CONTAINER=false cmd/promtail/promtail-debug &&\
+  make BUILD_IN_CONTAINER=false cmd/promtail/promtail-debug &&\
   mv cmd/${APP}/${APP}-debug /build/app-debug &&\
   mv cmd/${APP}/dlv /build/dlv
 
