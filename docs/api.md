@@ -95,6 +95,19 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
   }
   ```
 
+- `GET /ready`
+
+  This endpoint returns 200 when Loki ingester is ready to accept traffic. If you're running Loki on Kubernetes, this endpoint can be used as readiness probe.
+
+- `GET /flush`
+
+  This endpoint triggers a flush of all in memory chunks in the ingester. Mainly used for local testing.
+
+- `GET /metrics`
+
+  This endpoint returns Loki metrics for Prometheus. See "[Operations > Observability > Metrics](./operations.md)" to have a list of exported metrics.
+
+
 ## Examples of using the API in a third-party client library
 
 1) Take a look at this [client](https://github.com/afiskon/promtail-client), but be aware that the API is not stable yet (Golang).
