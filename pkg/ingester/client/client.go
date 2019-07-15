@@ -6,9 +6,9 @@ import (
 	"time"
 
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
-	grpc_middleware "github.com/mwitkow/go-grpc-middleware"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/weaveworks/common/middleware"
 	"google.golang.org/grpc"
@@ -17,16 +17,16 @@ import (
 
 // Config for an ingester client.
 type Config struct {
-	PoolConfig     cortex_client.PoolConfig `yaml:"pool_config,omitempty"`
-	MaxRecvMsgSize int                      `yaml:"max_recv_msg_size,omitempty"`
-	RemoteTimeout  time.Duration            `yaml:"remote_timeout,omitempty"`
+	PoolConfig       cortex_client.PoolConfig `yaml:"pool_config,omitempty"`
+	RemoteTimeout    time.Duration            `yaml:"remote_timeout,omitempty"`
+	GRPCClientConfig grpcclient.Config        `yaml:"grpc_client_config"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.GRPCClientConfig.RegisterFlags("ingester.client", f)
 	cfg.PoolConfig.RegisterFlags(f)
 
-	f.IntVar(&cfg.MaxRecvMsgSize, "ingester.client.max-recv-message-size", 64*1024*1024, "Maximum message size, in bytes, this client will receive.")
 	f.DurationVar(&cfg.PoolConfig.RemoteTimeout, "ingester.client.healthcheck-timeout", 1*time.Second, "Timeout for healthcheck rpcs.")
 	f.DurationVar(&cfg.RemoteTimeout, "ingester.client.timeout", 5*time.Second, "Timeout for ingester client RPCs.")
 }
@@ -35,19 +35,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func New(cfg Config, addr string) (grpc_health_v1.HealthClient, error) {
 	opts := []grpc.DialOption{
 		grpc.WithInsecure(),
-		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(
-			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-			middleware.ClientUserHeaderInterceptor,
-		)),
-		grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(
-			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
-			middleware.StreamClientUserHeaderInterceptor,
-		)),
 		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(cfg.MaxRecvMsgSize),
 			grpc.UseCompressor("gzip"),
 		),
 	}
+	opts = append(opts, cfg.GRPCClientConfig.DialOption(instrumentation())...)
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {
 		return nil, err
@@ -64,4 +56,14 @@ func New(cfg Config, addr string) (grpc_health_v1.HealthClient, error) {
 		IngesterClient: logproto.NewIngesterClient(conn),
 		Closer:         conn,
 	}, nil
+}
+
+func instrumentation() ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
+	return []grpc.UnaryClientInterceptor{
+			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+			middleware.ClientUserHeaderInterceptor,
+		}, []grpc.StreamClientInterceptor{
+			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
+			middleware.StreamClientUserHeaderInterceptor,
+		}
 }

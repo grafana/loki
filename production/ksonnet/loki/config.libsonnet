@@ -88,7 +88,9 @@
     },
 
     ingester_client_config: {
-      max_recv_msg_size: 1024 * 1024 * 64,
+      grpc_client_config: {
+        max_recv_msg_size: 1024 * 1024 * 64,
+      },
       remote_timeout: '1s',
     },
 
