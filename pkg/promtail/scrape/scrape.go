@@ -2,6 +2,9 @@ package scrape
 
 import (
 	"fmt"
+	"reflect"
+
+	"github.com/prometheus/common/model"
 
 	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/pkg/relabel"
@@ -15,13 +18,31 @@ type Config struct {
 	JobName                string                           `yaml:"job_name,omitempty"`
 	EntryParser            api.EntryParser                  `yaml:"entry_parser"`
 	PipelineStages         stages.PipelineStages            `yaml:"pipeline_stages,omitempty"`
+	JournalConfig          *JournalTargetConfig             `yaml:"journal,omitempty"`
 	RelabelConfigs         []*relabel.Config                `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
+}
+
+// JournalTargetConfig describes systemd journal records to scrape.
+type JournalTargetConfig struct {
+	// Labels optionally holds labels to associate with each record coming out
+	// of the journal.
+	Labels model.LabelSet `yaml:"labels"`
+
+	// Path to a directory to read journal entries from. Defaults to system path
+	// if empty.
+	Path string `yaml:"path"`
 }
 
 // DefaultScrapeConfig is the default Config.
 var DefaultScrapeConfig = Config{
 	EntryParser: api.Docker,
+}
+
+// HasServiceDiscoveryConfig checks to see if the service discovery used for
+// file targets is non-zero.
+func (c *Config) HasServiceDiscoveryConfig() bool {
+	return !reflect.DeepEqual(c.ServiceDiscoveryConfig, sd_config.ServiceDiscoveryConfig{})
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
