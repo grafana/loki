@@ -252,6 +252,7 @@ func BenchmarkReadGZIP(b *testing.B) {
 			i++
 			entry = randSizeEntry(i)
 		}
+		c.Close()
 		chunks = append(chunks, c)
 	}
 	entries := []logproto.Entry{}

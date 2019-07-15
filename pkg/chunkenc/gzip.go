@@ -539,12 +539,13 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 		si.err = err
 		return 0, nil, false
 	}
-	if n < int(l) {
-		_, err = si.s.Read(si.buf.Bytes()[n:l])
+	for n < int(l) {
+		r, err := si.s.Read(si.buf.Bytes()[n:l])
 		if err != nil {
 			si.err = err
 			return 0, nil, false
 		}
+		n += r
 	}
 	return ts, si.buf.Bytes()[:l], true
 }
