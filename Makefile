@@ -42,6 +42,15 @@ IMAGE_TAG := $(shell ./tools/image-tag)
 #GIT_REVISION := $(shell git rev-parse --short HEAD)
 #GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 
+# RM is parameterized to allow CircleCI to run builds, as it
+# currently disallows `docker run --rm`. This value is overridden
+# in circle.yml
+RM := --rm
+# TTY is parameterized to allow Google Cloud Builder to run builds,
+# as it currently disallows TTY devices. This value needs to be overridden
+# in any custom cloudbuild.yaml files
+TTY := --tty
+
 ###################
 # Primary Targets #
 ###################
@@ -74,8 +83,8 @@ loki-debug-image:
 	$(SUDO) docker tag $(IMAGE_PREFIX)/loki $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
 
 build-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki -f loki-build-image/Dockerfile .
-	$(SUDO) docker tag $(IMAGE_PREFIX)/loki $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-build-image -f loki-build-image/Dockerfile .
+	$(SUDO) docker tag $(IMAGE_PREFIX)/loki-build-image $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG)
 
 # Other builds
 protos: $(PROTO_GOS)
@@ -142,12 +151,30 @@ cmd/loki/loki-debug: $(APP_GO_FILES) cmd/loki/main.go
 lint:
 	GOGC=20 golangci-lint run
 
+lint-in-image:
+	@mkdir -p $(shell pwd)/.pkg
+	@mkdir -p $(shell pwd)/.cache
+	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd)/.cache:/go/cache \
+		-v $(shell pwd)/.pkg:/go/pkg \
+		-v $(shell pwd):/go/src/github.com/grafana/loki \
+		$(IMAGE_PREFIX)/loki-build-image make -C /go/src/github.com/grafana/loki lint;
+
 ########
 # Test #
 ########
 
 test:
 	go test -p=8 ./...
+
+test-in-image:
+	@mkdir -p $(shell pwd)/.pkg
+	@mkdir -p $(shell pwd)/.cache
+	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd)/.cache:/go/cache \
+		-v $(shell pwd)/.pkg:/go/pkg \
+		-v $(shell pwd):/go/src/github.com/grafana/loki \
+		$(IMAGE_PREFIX)/loki-build-image make -C /go/src/github.com/grafana/loki test;
 
 #########
 # Clean #

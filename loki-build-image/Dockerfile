@@ -23,6 +23,6 @@ RUN mkdir -p $(go env GOPATH)/src/github.com/golangci/ && git clone https://gith
 	cd $(go env GOPATH)/src/github.com/golangci/golangci-lint  && git checkout ${GOLANGCI_LINT_COMMIT} && cd cmd/golangci-lint/  &&\
 	GO111MODULE=on go install && \
 	golangci-lint help
-COPY build.sh /
+#COPY build.sh /
 ENV GOCACHE=/go/cache
-ENTRYPOINT ["/build.sh"]
+#ENTRYPOINT ["/build.sh"]
