@@ -242,20 +242,15 @@ func BenchmarkWriteGZIP(b *testing.B) {
 
 func BenchmarkReadGZIP(b *testing.B) {
 	chunks := []Chunk{}
-
-	entry := &logproto.Entry{
-		Timestamp: time.Unix(0, 0),
-		Line:      RandString(512),
-	}
 	i := int64(0)
-
 	for n := 0; n < 50; n++ {
+		entry := randSizeEntry(0)
 		c := NewMemChunk(EncGZIP)
 		// adds until full so we trigger cut which serialize using gzip
 		for c.SpaceFor(entry) {
 			_ = c.Append(entry)
-			entry.Timestamp = time.Unix(0, i)
 			i++
+			entry = randSizeEntry(i)
 		}
 		chunks = append(chunks, c)
 	}
@@ -266,7 +261,7 @@ func BenchmarkReadGZIP(b *testing.B) {
 		for _, c := range chunks {
 			wg.Add(1)
 			go func(c Chunk) {
-				iterator, err := c.Iterator(time.Unix(0, 0), time.Unix(0, 10), logproto.BACKWARD, nil)
+				iterator, err := c.Iterator(time.Unix(0, 0), time.Now(), logproto.BACKWARD, nil)
 				if err != nil {
 					panic(err)
 				}
@@ -280,6 +275,24 @@ func BenchmarkReadGZIP(b *testing.B) {
 		wg.Wait()
 	}
 
+}
+
+func randSizeEntry(ts int64) *logproto.Entry {
+	var line string
+	switch ts % 10 {
+	case 0:
+		line = RandString(27000)
+	case 1:
+		line = RandString(10000)
+	case 2, 3, 4, 5:
+		line = RandString(2048)
+	default:
+		line = RandString(4096)
+	}
+	return &logproto.Entry{
+		Timestamp: time.Unix(0, ts),
+		Line:      line,
+	}
 }
 
 const charset = "abcdefghijklmnopqrstuvwxyz" +
