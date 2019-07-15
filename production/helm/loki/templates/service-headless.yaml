@@ -15,6 +15,5 @@ spec:
       name: http-metrics
       targetPort: http-metrics
   selector:
-    name: loki
     app: {{ template "loki.name" . }}
     release: {{ .Release.Name }}

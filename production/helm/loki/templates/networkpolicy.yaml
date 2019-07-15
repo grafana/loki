@@ -11,7 +11,6 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      name: loki
       name: {{ template "loki.fullname" . }}
       app: {{ template "loki.name" . }}
       release: {{ .Release.Name }}
@@ -19,7 +18,6 @@ spec:
     - from:
       - podSelector:
           matchLabels:
-            name: loki
             app: {{ template "promtail.name" . }}
             release: {{ .Release.Name }}
     - ports:

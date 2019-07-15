@@ -14,8 +14,6 @@ affinity: {}
 ## StatefulSet annotations
 annotations: {}
 
-goGC: 100
-
 # enable tracing for debug, need install jaeger and specify right jaeger_agent_host
 tracing:
   jaegerAgentHost:
@@ -23,18 +21,23 @@ tracing:
 config:
   auth_enabled: false
   ingester:
-    chunk_idle_period: 5m
-    chunk_retain_period: 30s
+    chunk_idle_period: 15m
     chunk_block_size: 262144
     lifecycler:
       ring:
         kvstore:
-          store: consul
-          consul:
-            consistentreads: true
-            httpclienttimeout: 20s
-            prefix: ""
+          store: inmemory
         replication_factor: 1
+
+      ## Different ring configs can be used. E.g. Consul
+      # ring:
+      #   store: consul
+      #   replication_factor: 1
+      #   consul:
+      #     host: "consul:8500"
+      #     prefix: ""
+      #     httpclienttimeout: "20s"
+      #     consistentreads: true
   limits_config:
     enforce_metric_name: false
     reject_old_samples: true
@@ -74,7 +77,7 @@ livenessProbe:
   httpGet:
     path: /ready
     port: http-metrics
-  initialDelaySeconds: 90
+  initialDelaySeconds: 45
 
 ## Enable persistence using Persistent Volume Claims
 networkPolicy:
@@ -118,7 +121,7 @@ readinessProbe:
   httpGet:
     path: /ready
     port: http-metrics
-  initialDelaySeconds: 90
+  initialDelaySeconds: 45
 
 replicas: 1
 
@@ -161,36 +164,3 @@ podDisruptionBudget: {}
 
 updateStrategy:
   type: RollingUpdate
-
-# consul configuration used by the ring if consul is selected
-consul:
-  # deploy consul if the kvstore is consul, set to false to use your own consul instance.
-  # The host can be set by using config.ingester.lifecycler.ring.kvstore.consul.host
-  enabled: true
-  annotations: {}
-  replicas: 1
-  resources:
-    requests:
-      cpu: 100m
-      memory: 500Mi
-  updateStrategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 25%
-      maxUnavailable: 25%
-  nodeSelector: {}
-  tolerations: []
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-      - labelSelector:
-          matchLabels:
-            name: consul
-        topologyKey: kubernetes.io/hostname
-  podAnnotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: "http-metrics"
-  image:
-    repository: consul
-    tag: 1.4.0
-    pullPolicy: IfNotPresent

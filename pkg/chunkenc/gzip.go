@@ -476,7 +476,7 @@ type bufferedIterator struct {
 
 	err error
 
-	buf    *bytes.Buffer // The buffer a single entry.
+	buf    *bytes.Buffer // The buffer for a single entry.
 	decBuf []byte        // The buffer for decoding the lengths.
 
 	closed bool
@@ -491,6 +491,7 @@ func newBufferedIterator(pool CompressionPool, b []byte, filter logql.Filter) *b
 		reader: r,
 		pool:   pool,
 		filter: filter,
+		buf:    BytesBufferPool.Get(),
 		decBuf: make([]byte, binary.MaxVarintLen64),
 	}
 }
@@ -529,11 +530,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 		}
 	}
 
-	if si.buf == nil {
-		si.buf = BytesBufferPool.Get()
-	}
-
-	for si.buf.Cap() < int(l) {
+	if si.buf.Cap() < int(l) {
 		si.buf.Grow(int(l) - si.buf.Cap())
 	}
 

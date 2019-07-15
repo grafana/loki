@@ -260,6 +260,7 @@ func BenchmarkReadGZIP(b *testing.B) {
 		chunks = append(chunks, c)
 	}
 	entries := []logproto.Entry{}
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		var wg sync.WaitGroup
 		for _, c := range chunks {
