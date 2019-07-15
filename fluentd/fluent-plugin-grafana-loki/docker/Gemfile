@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 source 'https://rubygems.org'
 
 gem 'fluent-plugin-kubernetes_metadata_filter', '~> 0.7.0'

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 #
 # Copyright 2018- Grafana Labs
 #
@@ -27,7 +29,7 @@ module Fluent
 
       helpers :compat_parameters
 
-      DEFAULT_BUFFER_TYPE = 'memory'.freeze
+      DEFAULT_BUFFER_TYPE = 'memory'
 
       # url of loki server
       config_param :url, :string, default: 'https://logs-us-west1.grafana.net'
