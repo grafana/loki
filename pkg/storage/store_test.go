@@ -29,53 +29,63 @@ var (
 //go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
 func Benchmark_store_LazyQueryRegexBackward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Query:     "{foo=\"bar\"}",
-		Regex:     "fuzz",
-		Limit:     1000,
-		Start:     time.Unix(0, start.UnixNano()),
-		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
+		Query: "{foo=\"bar\"}",
+		Regex: "fuzz",
+		Lookback: &logproto.Lookback{
+			Limit: 1000,
+			Start: time.Unix(0, start.UnixNano()),
+			End:   time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
+		},
 		Direction: logproto.BACKWARD,
 	})
 }
 
 func Benchmark_store_LazyQueryLogQLBackward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Query:     "{foo=\"bar\"} |= \"test\" != \"toto\"",
-		Regex:     "fuzz",
-		Limit:     1000,
-		Start:     time.Unix(0, start.UnixNano()),
-		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
+		Query: "{foo=\"bar\"} |= \"test\" != \"toto\"",
+		Regex: "fuzz",
+		Lookback: &logproto.Lookback{
+			Limit: 1000,
+			Start: time.Unix(0, start.UnixNano()),
+			End:   time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
+		},
 		Direction: logproto.BACKWARD,
 	})
 }
 
 func Benchmark_store_LazyQueryRegexForward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Query:     "{foo=\"bar\"}",
-		Regex:     "fuzz",
-		Limit:     1000,
-		Start:     time.Unix(0, start.UnixNano()),
-		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
+		Query: "{foo=\"bar\"}",
+		Regex: "fuzz",
+		Lookback: &logproto.Lookback{
+			Limit: 1000,
+			Start: time.Unix(0, start.UnixNano()),
+			End:   time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
+		},
 		Direction: logproto.FORWARD,
 	})
 }
 
 func Benchmark_store_LazyQueryForward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Query:     "{foo=\"bar\"}",
-		Limit:     1000,
-		Start:     time.Unix(0, start.UnixNano()),
-		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
+		Query: "{foo=\"bar\"}",
+		Lookback: &logproto.Lookback{
+			Limit: 1000,
+			Start: time.Unix(0, start.UnixNano()),
+			End:   time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
+		},
 		Direction: logproto.FORWARD,
 	})
 }
 
 func Benchmark_store_LazyQueryBackward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Query:     "{foo=\"bar\"}",
-		Limit:     1000,
-		Start:     time.Unix(0, start.UnixNano()),
-		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
+		Query: "{foo=\"bar\"}",
+		Lookback: &logproto.Lookback{
+			Limit: 1000,
+			Start: time.Unix(0, start.UnixNano()),
+			End:   time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
+		},
 		Direction: logproto.BACKWARD,
 	})
 }
@@ -114,7 +124,7 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 			printHeap(b, false)
 			res = append(res, iter.Entry())
 			// limit result like the querier would do.
-			if j == query.Limit {
+			if j == query.Lookback.Limit {
 				break
 			}
 		}
