@@ -396,7 +396,24 @@ UnixNs = 1562708916000000123
 
 Finally any custom format can be supplied, and will be passed directly in as the layout parameter in `time.Parse()`. If the custom format has no year component specified (ie. syslog's default logs), promtail will assume the current year should be used, correctly handling the edge cases around new year's eve.
 
-__Read the [time.parse](https://golang.org/pkg/time/#Parse) docs closely if passing a custom format and make sure your custom format uses the special date they specify: `Mon Jan 2 15:04:05 -0700 MST 2006`__
+The syntax used by the custom format defines the reference date and time using specific values for each component of the timestamp (ie. `Mon Jan 2 15:04:05 -0700 MST 2006`). The following table shows supported reference values which should be used in the custom format.
+
+| Timestamp component | Format value |
+| ------------------- | ------------ |
+| Year                | `06`, `2006` |
+| Month               | `1`, `01`, `Jan`, `January` |
+| Day                 | `2`, `02`, `_2` (two digits right justified) |
+| Day of the week     | `Mon`, `Monday` |
+| Hour                | `3` (12-hour), `03` (12-hour zero prefixed), `15` (24-hour) |
+| Minute              | `4`, `04` |
+| Second              | `5`, `05` |
+| Fraction of second  | `.000` (ms zero prefixed), `.000000` (μs), `.000000000` (ns), `.999` (ms without trailing zeroes), `.999999` (μs), `.999999999` (ns) |
+| 12-hour period      | `pm`, `PM` |
+| Timezone name       | `MST` |
+| Timezone offset     | `-0700`, `-070000` (with seconds), `-07`, `07:00`, `-07:00:00` (with seconds) |
+| Timezone ISO-8601   | `Z0700` (Z for UTC or time offset), `Z070000`, `Z07`, `Z07:00`, `Z07:00:00`
+
+_For more details, read the [`time.Parse()`](https://golang.org/pkg/time/#Parse) docs and [`format.go`](https://golang.org/src/time/format.go) sources._
 
 ##### Example:
 
