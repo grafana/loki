@@ -12,6 +12,18 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+func getStart(end time.Time) time.Time {
+	start := end.Add(-*since)
+	if *from != "" {
+		var err error
+		start, err = time.Parse(time.RFC3339Nano, *from)
+		if err != nil {
+			log.Fatalf("error parsing date '%s': %s", *from, err)
+		}
+	}
+	return start
+}
+
 func doQuery() {
 	if *tail {
 		tailQuery()
@@ -24,14 +36,7 @@ func doQuery() {
 	)
 
 	end := time.Now()
-	start := end.Add(-*since)
-	if *from != "" {
-		var err error
-		start, err = time.Parse(time.RFC3339Nano, *from)
-		if err != nil {
-			log.Fatalf("error parsing date '%s': %s", *from, err)
-		}
-	}
+	start := getStart(end)
 
 	d := logproto.BACKWARD
 	if *forward {
