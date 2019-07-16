@@ -56,7 +56,7 @@ func (s *store) LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter
 		}
 
 		matchers = append(matchers, nameLabelMatcher)
-		from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
+		from, through := model.TimeFromUnixNano(req.Lookback.Start.UnixNano()), model.TimeFromUnixNano(req.Lookback.End.UnixNano())
 		chks, fetchers, err := s.GetChunkRefs(ctx, from, through, matchers...)
 		if err != nil {
 			return nil, err
@@ -152,7 +152,7 @@ func buildHeapIterator(ctx context.Context, req *logproto.QueryRequest, chks [][
 	for i := range chks {
 		iterators := make([]iter.EntryIterator, 0, len(chks[i]))
 		for j := range chks[i] {
-			iterator, err := chks[i][j].Iterator(ctx, req.Start, req.End, req.Direction, filter)
+			iterator, err := chks[i][j].Iterator(ctx, req.Lookback.Start, req.Lookback.End, req.Direction, filter)
 			if err != nil {
 				return nil, err
 			}

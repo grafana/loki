@@ -72,22 +72,23 @@ func httpRequestToQueryRequest(httpRequest *http.Request) (*logproto.QueryReques
 	params := httpRequest.URL.Query()
 	now := time.Now()
 	queryRequest := logproto.QueryRequest{
-		Regex: params.Get("regexp"),
-		Query: params.Get("query"),
+		Regex:    params.Get("regexp"),
+		Query:    params.Get("query"),
+		Lookback: &logproto.Lookback{},
 	}
 
 	limit, err := intParam(params, "limit", defaultQueryLimit)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
-	queryRequest.Limit = uint32(limit)
+	queryRequest.Lookback.Limit = uint32(limit)
 
-	queryRequest.Start, err = unixNanoTimeParam(params, "start", now.Add(-defaulSince))
+	queryRequest.Lookback.Start, err = unixNanoTimeParam(params, "start", now.Add(-defaulSince))
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	queryRequest.End, err = unixNanoTimeParam(params, "end", now)
+	queryRequest.Lookback.End, err = unixNanoTimeParam(params, "end", now)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}

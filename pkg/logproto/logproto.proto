@@ -24,11 +24,15 @@ message PushResponse {
 
 message QueryRequest {
   string query = 1;
-  uint32 limit = 2;
-  google.protobuf.Timestamp start = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
-  google.protobuf.Timestamp end = 4 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
-  Direction direction = 5;
-  string regex = 6;
+  Lookback lookback = 2;
+  Direction direction = 3;
+  string regex = 4;
+}
+
+message Lookback {
+  uint32 limit = 1;
+  google.protobuf.Timestamp start = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp end = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
 }
 
 enum Direction {
@@ -65,6 +69,8 @@ message TailRequest {
   string query = 1;
   string regex = 2;
   uint32 delayFor = 3;
+
+  Lookback lookback = 4;
 }
 
 message TailResponse {

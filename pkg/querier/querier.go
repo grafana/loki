@@ -124,7 +124,7 @@ func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logpr
 	iterator := iter.NewHeapIterator(iterators, req.Direction)
 	defer helpers.LogError("closing iterator", iterator.Close)
 
-	resp, _, err := ReadBatch(iterator, req.Limit)
+	resp, _, err := ReadBatch(iterator, req.Lookback.Limit)
 	return resp, err
 }
 
@@ -282,11 +282,13 @@ func (q *Querier) queryDroppedStreams(ctx context.Context, req *logproto.TailReq
 
 	query := logproto.QueryRequest{
 		Direction: logproto.FORWARD,
-		Start:     start,
-		End:       end,
-		Query:     req.Query,
-		Regex:     req.Regex,
-		Limit:     10000,
+		Lookback: &logproto.Lookback{
+			Start: start,
+			End:   end,
+			Limit: 10000,
+		},
+		Query: req.Query,
+		Regex: req.Regex,
 	}
 
 	clients, err := q.forGivenIngesters(replicationSet, func(client logproto.QuerierClient) (interface{}, error) {
