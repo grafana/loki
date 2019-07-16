@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 var (
@@ -142,10 +143,10 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 }
 
 // Returns an iterator.
-func (s *stream) Iterator(from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error) {
+func (s *stream) Iterator(from, through time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error) {
 	iterators := make([]iter.EntryIterator, 0, len(s.chunks))
 	for _, c := range s.chunks {
-		itr, err := c.chunk.Iterator(from, through, direction)
+		itr, err := c.chunk.Iterator(from, through, direction, filter)
 		if err != nil {
 			return nil, err
 		}

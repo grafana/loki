@@ -113,6 +113,10 @@ type heapIterator struct {
 		heap.Interface
 		Peek() EntryIterator
 	}
+	is      []EntryIterator
+	prenext bool
+
+	tuples     tuples
 	currEntry  logproto.Entry
 	currLabels string
 	errs       []error
@@ -121,7 +125,7 @@ type heapIterator struct {
 // NewHeapIterator returns a new iterator which uses a heap to merge together
 // entries for multiple interators.
 func NewHeapIterator(is []EntryIterator, direction logproto.Direction) HeapIterator {
-	result := &heapIterator{}
+	result := &heapIterator{is: is}
 	switch direction {
 	case logproto.BACKWARD:
 		result.heap = &iteratorMaxHeap{}
@@ -131,11 +135,7 @@ func NewHeapIterator(is []EntryIterator, direction logproto.Direction) HeapItera
 		panic("bad direction")
 	}
 
-	// pre-next each iterator, drop empty.
-	for _, i := range is {
-		result.requeue(i, false)
-	}
-
+	result.tuples = make([]tuple, 0, len(is))
 	return result
 }
 
@@ -160,7 +160,21 @@ type tuple struct {
 	EntryIterator
 }
 
+type tuples []tuple
+
+func (t tuples) Len() int           { return len(t) }
+func (t tuples) Swap(i, j int)      { t[i], t[j] = t[j], t[i] }
+func (t tuples) Less(i, j int) bool { return t[i].Line < t[j].Line }
+
 func (i *heapIterator) Next() bool {
+	if !i.prenext {
+		i.prenext = true
+		// pre-next each iterator, drop empty.
+		for _, it := range i.is {
+			i.requeue(it, false)
+		}
+		i.is = nil
+	}
 	if i.heap.Len() == 0 {
 		return false
 	}
@@ -170,16 +184,15 @@ func (i *heapIterator) Next() bool {
 	// heap with the same timestamp, and pop the ones whose common value
 	// occurs most often.
 
-	tuples := make([]tuple, 0, i.heap.Len())
 	for i.heap.Len() > 0 {
 		next := i.heap.Peek()
 		entry := next.Entry()
-		if len(tuples) > 0 && (tuples[0].Labels() != next.Labels() || !tuples[0].Timestamp.Equal(entry.Timestamp)) {
+		if len(i.tuples) > 0 && (i.tuples[0].Labels() != next.Labels() || !i.tuples[0].Timestamp.Equal(entry.Timestamp)) {
 			break
 		}
 
 		heap.Pop(i.heap)
-		tuples = append(tuples, tuple{
+		i.tuples = append(i.tuples, tuple{
 			Entry:         entry,
 			EntryIterator: next,
 		})
@@ -187,22 +200,20 @@ func (i *heapIterator) Next() bool {
 
 	// Find in entry which occurs most often which, due to quorum based
 	// replication, is guaranteed to be the correct next entry.
-	t := mostCommon(tuples)
+	t := mostCommon(i.tuples)
 	i.currEntry = t.Entry
 	i.currLabels = t.Labels()
 
 	// Requeue the iterators, advancing them if they were consumed.
-	for j := range tuples {
-		i.requeue(tuples[j].EntryIterator, tuples[j].Line != i.currEntry.Line)
+	for j := range i.tuples {
+		i.requeue(i.tuples[j].EntryIterator, i.tuples[j].Line != i.currEntry.Line)
 	}
-
+	i.tuples = i.tuples[:0]
 	return true
 }
 
-func mostCommon(tuples []tuple) tuple {
-	sort.Slice(tuples, func(i, j int) bool {
-		return tuples[i].Line < tuples[j].Line
-	})
+func mostCommon(tuples tuples) tuple {
+	sort.Sort(tuples)
 	result := tuples[0]
 	count, max := 0, 0
 	for i := 0; i < len(tuples)-1; i++ {
@@ -247,6 +258,7 @@ func (i *heapIterator) Close() error {
 			return err
 		}
 	}
+	i.tuples = nil
 	return nil
 }
 
@@ -314,28 +326,6 @@ func (i *queryClientIterator) Close() error {
 	return i.client.CloseSend()
 }
 
-type filter struct {
-	EntryIterator
-	f func(string) bool
-}
-
-// NewFilter builds a filtering iterator.
-func NewFilter(f func(string) bool, i EntryIterator) EntryIterator {
-	return &filter{
-		f:             f,
-		EntryIterator: i,
-	}
-}
-
-func (i *filter) Next() bool {
-	for i.EntryIterator.Next() {
-		if i.f(i.Entry().Line) {
-			return true
-		}
-	}
-	return false
-}
-
 type nonOverlappingIterator struct {
 	labels    string
 	i         int
@@ -353,12 +343,17 @@ func NewNonOverlappingIterator(iterators []EntryIterator, labels string) EntryIt
 
 func (i *nonOverlappingIterator) Next() bool {
 	for i.curr == nil || !i.curr.Next() {
-		if i.i >= len(i.iterators) {
+		if len(i.iterators) == 0 {
+			if i.curr != nil {
+				i.curr.Close()
+			}
 			return false
 		}
-
-		i.curr = i.iterators[i.i]
+		if i.curr != nil {
+			i.curr.Close()
+		}
 		i.i++
+		i.curr, i.iterators = i.iterators[0], i.iterators[1:]
 	}
 
 	return true
@@ -377,10 +372,17 @@ func (i *nonOverlappingIterator) Labels() string {
 }
 
 func (i *nonOverlappingIterator) Error() error {
-	return i.curr.Error()
+	if i.curr != nil {
+		return i.curr.Error()
+	}
+	return nil
 }
 
 func (i *nonOverlappingIterator) Close() error {
+	for _, iter := range i.iterators {
+		iter.Close()
+	}
+	i.iterators = nil
 	return nil
 }
 
@@ -400,7 +402,10 @@ func NewTimeRangedIterator(it EntryIterator, mint, maxt time.Time) EntryIterator
 
 func (i *timeRangedIterator) Next() bool {
 	ok := i.EntryIterator.Next()
-
+	if !ok {
+		i.EntryIterator.Close()
+		return ok
+	}
 	ts := i.EntryIterator.Entry().Timestamp
 	for ok && i.mint.After(ts) {
 		ok = i.EntryIterator.Next()
@@ -410,34 +415,43 @@ func (i *timeRangedIterator) Next() bool {
 	if ok && (i.maxt.Before(ts) || i.maxt.Equal(ts)) { // The maxt is exclusive.
 		ok = false
 	}
-
+	if !ok {
+		i.EntryIterator.Close()
+	}
 	return ok
 }
 
 type entryIteratorBackward struct {
-	cur     logproto.Entry
-	entries []logproto.Entry
+	forwardIter EntryIterator
+	cur         logproto.Entry
+	entries     []logproto.Entry
+	loaded      bool
 }
 
 // NewEntryIteratorBackward returns an iterator which loads all the entries
 // of an existing iterator, and then iterates over them backward.
 func NewEntryIteratorBackward(it EntryIterator) (EntryIterator, error) {
-	entries := make([]logproto.Entry, 0, 128)
-	for it.Next() {
-		entries = append(entries, it.Entry())
-	}
+	return &entryIteratorBackward{entries: make([]logproto.Entry, 0, 1024), forwardIter: it}, it.Error()
+}
 
-	return &entryIteratorBackward{entries: entries}, it.Error()
+func (i *entryIteratorBackward) load() {
+	if !i.loaded {
+		i.loaded = true
+		for i.forwardIter.Next() {
+			entry := i.forwardIter.Entry()
+			i.entries = append(i.entries, entry)
+		}
+		i.forwardIter.Close()
+	}
 }
 
 func (i *entryIteratorBackward) Next() bool {
+	i.load()
 	if len(i.entries) == 0 {
+		i.entries = nil
 		return false
 	}
-
-	i.cur = i.entries[len(i.entries)-1]
-	i.entries = i.entries[:len(i.entries)-1]
-
+	i.cur, i.entries = i.entries[len(i.entries)-1], i.entries[:len(i.entries)-1]
 	return true
 }
 

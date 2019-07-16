@@ -17,7 +17,7 @@ func init() {
 	})
 }
 
-// Facade for compatibility with cortex chunk type, so we can use it's chunk store.
+// Facade for compatibility with cortex chunk type, so we can use its chunk store.
 type Facade struct {
 	c Chunk
 	encoding.Chunk

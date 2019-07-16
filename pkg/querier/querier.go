@@ -5,7 +5,6 @@ import (
 	"flag"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -18,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage"
 )
 
 // Config for a querier.
@@ -33,11 +33,11 @@ type Querier struct {
 	cfg   Config
 	ring  ring.ReadRing
 	pool  *cortex_client.Pool
-	store chunk.Store
+	store storage.Store
 }
 
 // New makes a new Querier.
-func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, store chunk.Store) (*Querier, error) {
+func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, store storage.Store) (*Querier, error) {
 	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
 		return client.New(clientCfg, addr)
 	}
@@ -107,12 +107,13 @@ func (q *Querier) forGivenIngesters(replicationSet ring.ReplicationSet, f func(l
 
 // Query does the heavy lifting for an actual query.
 func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logproto.QueryResponse, error) {
+
 	ingesterIterators, err := q.queryIngesters(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	chunkStoreIterators, err := q.queryStore(ctx, req)
+	chunkStoreIterators, err := q.store.LazyQuery(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -298,7 +299,7 @@ func (q *Querier) queryDroppedStreams(ctx context.Context, req *logproto.TailReq
 		ingesterIterators[i] = iter.NewQueryClientIterator(clients[i].response.(logproto.Querier_QueryClient), query.Direction)
 	}
 
-	chunkStoreIterators, err := q.queryStore(ctx, &query)
+	chunkStoreIterators, err := q.store.LazyQuery(ctx, &query)
 	if err != nil {
 		return nil, err
 	}

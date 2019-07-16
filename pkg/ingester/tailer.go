@@ -129,21 +129,22 @@ func (t *tailer) send(stream logproto.Stream) {
 }
 
 func (t *tailer) filterEntriesInStream(stream *logproto.Stream) error {
-	querier := logql.QuerierFunc(func(matchers []*labels.Matcher) (iter.EntryIterator, error) {
-		return iter.NewStreamIterator(stream), nil
+	querier := logql.QuerierFunc(func(matchers []*labels.Matcher, filter logql.Filter) (iter.EntryIterator, error) {
+		var filteredEntries []logproto.Entry
+		for _, e := range stream.Entries {
+			if filter == nil || filter([]byte(e.Line)) {
+				filteredEntries = append(filteredEntries, e)
+			}
+		}
+		stream.Entries = filteredEntries
+		return nil, nil
 	})
 
-	itr, err := t.expr.Eval(querier)
+	_, err := t.expr.Eval(querier)
 	if err != nil {
 		return err
 	}
 
-	filteredEntries := new([]logproto.Entry)
-	for itr.Next() {
-		*filteredEntries = append(*filteredEntries, itr.Entry())
-	}
-
-	stream.Entries = *filteredEntries
 	return nil
 }
 

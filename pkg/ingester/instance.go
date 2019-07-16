@@ -112,8 +112,8 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		expr = logql.NewFilterExpr(expr, labels.MatchRegexp, req.Regex)
 	}
 
-	querier := logql.QuerierFunc(func(matchers []*labels.Matcher) (iter.EntryIterator, error) {
-		iters, err := i.lookupStreams(req, matchers)
+	querier := logql.QuerierFunc(func(matchers []*labels.Matcher, filter logql.Filter) (iter.EntryIterator, error) {
+		iters, err := i.lookupStreams(req, matchers, filter)
 		if err != nil {
 			return nil, err
 		}
@@ -150,7 +150,7 @@ func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logpro
 	}, nil
 }
 
-func (i *instance) lookupStreams(req *logproto.QueryRequest, matchers []*labels.Matcher) ([]iter.EntryIterator, error) {
+func (i *instance) lookupStreams(req *logproto.QueryRequest, matchers []*labels.Matcher, filter logql.Filter) ([]iter.EntryIterator, error) {
 	i.streamsMtx.RLock()
 	defer i.streamsMtx.RUnlock()
 
@@ -170,7 +170,7 @@ outer:
 				continue outer
 			}
 		}
-		iter, err := stream.Iterator(req.Start, req.End, req.Direction)
+		iter, err := stream.Iterator(req.Start, req.End, req.Direction, filter)
 		if err != nil {
 			return nil, err
 		}
