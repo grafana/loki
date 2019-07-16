@@ -78,6 +78,9 @@ func httpRequestToQueryRequest(httpRequest *http.Request) (*logproto.QueryReques
 
 	var err error
 	queryRequest.Lookback, err = httpRequestToLookback(httpRequest)
+	if err != nil {
+		return nil, err
+	}
 	queryRequest.Direction, err = directionParam(params, "direction", logproto.BACKWARD)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -94,6 +97,9 @@ func httpRequestToTailRequest(httpRequest *http.Request) (*logproto.TailRequest,
 	}
 	var err error
 	tailRequest.Lookback, err = httpRequestToLookback(httpRequest)
+	if err != nil {
+		return nil, err
+	}
 
 	// delay_for is used to allow server to let slow loggers catch up.
 	// Entries would be accumulated in a heap until they become older than now()-<delay_for>
