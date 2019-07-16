@@ -360,7 +360,7 @@ A match stage will take the provided label `selector` and determine if a group o
 
 ### timestamp
 
-A timestamp stage will parse data from the `extracted` map and set the `time` value which will be stored by Loki.
+A timestamp stage will parse data from the `extracted` map and set the `time` value which will be stored by Loki. The timestamp stage is important for having log entries in the correct order. In the absence of this stage, promtail will associate the current timestamp to the log entry.
 
 ```yaml
 - timestamp:
@@ -394,7 +394,7 @@ UnixMs = 1562708916414
 UnixNs = 1562708916000000123
 ```
 
-Finally any custom format can be supplied, and will be passed directly in as the layout parameter in time.Parse()
+Finally any custom format can be supplied, and will be passed directly in as the layout parameter in `time.Parse()`. If the custom format has no year component specified (ie. syslog's default logs), promtail will assume the current year should be used, correctly handling the edge cases around new year's eve.
 
 __Read the [time.parse](https://golang.org/pkg/time/#Parse) docs closely if passing a custom format and make sure your custom format uses the special date they specify: `Mon Jan 2 15:04:05 -0700 MST 2006`__
 
