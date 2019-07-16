@@ -109,7 +109,19 @@ func (q *Querier) forGivenIngesters(replicationSet ring.ReplicationSet, f func(l
 
 // Query does the heavy lifting for an actual query.
 func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logproto.QueryResponse, error) {
+	iterators, err := q.getQueryIterators(ctx, req)
+	if err != nil {
+		return nil, err
+	}
 
+	iterator := iter.NewHeapIterator(iterators, req.Direction)
+	defer helpers.LogError("closing iterator", iterator.Close)
+
+	resp, _, err := ReadBatch(iterator, req.Lookback.Limit)
+	return resp, err
+}
+
+func (q *Querier) getQueryIterators(ctx context.Context, req *logproto.QueryRequest) ([]iter.EntryIterator, error) {
 	ingesterIterators, err := q.queryIngesters(ctx, req)
 	if err != nil {
 		return nil, err
@@ -121,11 +133,7 @@ func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logpr
 	}
 
 	iterators := append(ingesterIterators, chunkStoreIterators)
-	iterator := iter.NewHeapIterator(iterators, req.Direction)
-	defer helpers.LogError("closing iterator", iterator.Close)
-
-	resp, _, err := ReadBatch(iterator, req.Lookback.Limit)
-	return resp, err
+	return iterators, nil
 }
 
 func (q *Querier) queryIngesters(ctx context.Context, req *logproto.QueryRequest) ([]iter.EntryIterator, error) {
@@ -260,11 +268,22 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		tailClients[clients[i].addr] = clients[i].response.(logproto.Querier_TailClient)
 	}
 
+	histReq := logproto.QueryRequest{
+		Query:     req.Query,
+		Lookback:  req.Lookback,
+		Direction: logproto.FORWARD,
+		Regex:     req.Regex,
+	}
+	histIterators, err := q.getQueryIterators(ctx, &histReq)
+	if err != nil {
+		return nil, err
+	}
+
 	return newTailer(time.Duration(req.DelayFor)*time.Second, tailClients, func(from, to time.Time, labels string) (iterator iter.EntryIterator, e error) {
 		return q.queryDroppedStreams(ctx, req, from, to, labels)
 	}, func(connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
 		return q.tailDisconnectedIngesters(ctx, req, connectedIngestersAddr)
-	}, q.cfg.TailMaxDuration), nil
+	}, q.cfg.TailMaxDuration, histIterators), nil
 }
 
 // passed to tailer for querying dropped streams
