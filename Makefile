@@ -91,6 +91,28 @@ protos: $(PROTO_GOS)
 yacc: $(YACC_GOS)
 
 
+# If BUILD_IN_CONTAINER is true, the build image is run which launches
+# an image that mounts this project as a volume.  The image invokes a build.sh script
+# which essentially re-enters this file with BUILD_IN_CONTAINER=FALSE
+# causing the else block target below to be called and the files to be built.
+# If BUILD_IN_CONTAINER were false to begin with, the else block is
+# executed and the binaries are built without ever launching the build container.
+ifeq ($(BUILD_IN_CONTAINER),true)
+
+cmd/promtail/promtail  $(PROTO_GOS) $(YACC_GOS) lint test:
+	@mkdir -p $(shell pwd)/.pkg
+	@mkdir -p $(shell pwd)/.cache
+	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd)/.cache:/go/cache \
+		-v $(shell pwd)/.pkg:/go/pkg \
+		-v $(shell pwd):/go/src/github.com/grafana/loki \
+		$(IMAGE_PREFIX)loki-build-image $@;
+
+else
+
+
+
+
 # Target to build yacc files
 %.y.go: %.y
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
@@ -151,15 +173,6 @@ cmd/loki/loki-debug: $(APP_GO_FILES) cmd/loki/main.go
 lint:
 	GOGC=20 golangci-lint run
 
-lint-in-image:
-	@mkdir -p $(shell pwd)/.pkg
-	@mkdir -p $(shell pwd)/.cache
-	$(SUDO) docker run $(RM) $(TTY) -i \
-		-v $(shell pwd)/.cache:/go/cache \
-		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/grafana/loki \
-		$(IMAGE_PREFIX)/loki-build-image make -C /go/src/github.com/grafana/loki lint;
-
 ########
 # Test #
 ########
@@ -167,14 +180,7 @@ lint-in-image:
 test:
 	go test -p=8 ./...
 
-test-in-image:
-	@mkdir -p $(shell pwd)/.pkg
-	@mkdir -p $(shell pwd)/.cache
-	$(SUDO) docker run $(RM) $(TTY) -i \
-		-v $(shell pwd)/.cache:/go/cache \
-		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/grafana/loki \
-		$(IMAGE_PREFIX)/loki-build-image make -C /go/src/github.com/grafana/loki test;
+endif
 
 #########
 # Clean #
