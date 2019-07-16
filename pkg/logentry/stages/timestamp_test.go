@@ -73,7 +73,7 @@ func TestTimestampValidation(t *testing.T) {
 			testString:   "2012-11-01T22:08:41-04:00",
 			expectedTime: time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", -4*60*60)),
 		},
-		"custom format": {
+		"custom format with year": {
 			config: &TimestampConfig{
 				Source: "source1",
 				Format: "2006-01-02",
@@ -81,6 +81,15 @@ func TestTimestampValidation(t *testing.T) {
 			err:          nil,
 			testString:   "2009-01-01",
 			expectedTime: time.Date(2009, 01, 01, 00, 00, 00, 0, time.UTC),
+		},
+		"custom format without year": {
+			config: &TimestampConfig{
+				Source: "source1",
+				Format: "Jan 02 15:04:05",
+			},
+			err:          nil,
+			testString:   "Jul 15 01:02:03",
+			expectedTime: time.Date(time.Now().Year(), 7, 15, 1, 2, 3, 0, time.UTC),
 		},
 		"unix_ms": {
 			config: &TimestampConfig{

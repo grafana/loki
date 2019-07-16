@@ -3,7 +3,12 @@ package stages
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
+)
+
+const (
+	ErrTimestampContainsYear = "timestamp '%s' is expected to not contain the year date component"
 )
 
 // convertDateLayout converts pre-defined date format layout into date format
@@ -74,10 +79,42 @@ func convertDateLayout(predef string) parser {
 			return time.Unix(0, i), nil
 		}
 	default:
+		if !strings.Contains(predef, "2006") {
+			return func(t string) (time.Time, error) {
+				return parseTimestampWithoutYear(predef, t, time.Now())
+			}
+		}
 		return func(t string) (time.Time, error) {
 			return time.Parse(predef, t)
 		}
 	}
+}
+
+// parseTimestampWithoutYear parses the input timestamp without the year component,
+// assuming the timestamp is related to a point in time close to "now", and correctly
+// handling the edge cases around new year's eve
+func parseTimestampWithoutYear(layout string, timestamp string, now time.Time) (time.Time, error) {
+	parsedTime, err := time.Parse(layout, timestamp)
+	if err != nil {
+		return parsedTime, err
+	}
+
+	// Ensure the year component of the input date string has not been
+	// parsed for real
+	if parsedTime.Year() != 0 {
+		return parsedTime, fmt.Errorf(ErrTimestampContainsYear, timestamp)
+	}
+
+	// Handle the case we're crossing the new year's eve midnight
+	if parsedTime.Month() == 12 && now.Month() == 1 {
+		parsedTime = parsedTime.AddDate(now.Year()-1, 0, 0)
+	} else if parsedTime.Month() == 1 && now.Month() == 12 {
+		parsedTime = parsedTime.AddDate(now.Year()+1, 0, 0)
+	} else {
+		parsedTime = parsedTime.AddDate(now.Year(), 0, 0)
+	}
+
+	return parsedTime, nil
 }
 
 // getString will convert the input variable to a string if possible
