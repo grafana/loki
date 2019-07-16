@@ -59,6 +59,11 @@ PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
 YACC_DEFS := $(shell find . $(DONT_FIND) -type f -name *.y -print)
 YACC_GOS := $(patsubst %.y,%.y.go,$(YACC_DEFS))
 
+
+##########
+# Docker #
+##########
+
 # RM is parameterized to allow CircleCI to run builds, as it
 # currently disallows `docker run --rm`. This value is overridden
 # in circle.yml
@@ -68,12 +73,23 @@ RM := --rm
 # in any custom cloudbuild.yaml files
 TTY := --tty
 
+DOCKER_BUILDKIT=1
+OCI_PLATFORMS=--platform=linux/amd64 --platform=linux/arm64 --platform=linux/arm/7
+ifeq ($(CI), true)
+	BUILD_OCI=img build $(OCI_PLATFORMS)
+	PUSH_OCI=img push
+else
+	BUILD_OCI=docker build
+	PUSH_OCI=img push
+endif
+
+binfmt:
+	$(SUDO) docker run --privileged linuxkit/binfmt:v0.6
+
 ################
 # Main Targets #
 ################
-
 all: promtail logcli loki loki-canary check-generated-files
-
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
 check-generated-files: yacc protos
@@ -329,28 +345,30 @@ push-latest:
 	done
 
 
+# promtail
 promtail-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/promtail -f cmd/promtail/Dockerfile .
-	$(SUDO) docker tag $(IMAGE_PREFIX)/promtail $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f cmd/promtail/Dockerfile .
+
+promtail-debug-image: OCI_PLATFORMS=
 promtail-debug-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/promtail -f cmd/promtail/Dockerfile.debug .
-	$(SUDO) docker tag $(IMAGE_PREFIX)/promtail-debug $(IMAGE_PREFIX)/promtail-debug:$(IMAGE_TAG)
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)-debug -f cmd/promtail/Dockerfile.debug .
 
+# loki
 loki-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki -f cmd/loki/Dockerfile .
-	$(SUDO) docker tag $(IMAGE_PREFIX)/loki $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile .
+
+loki-debug-image: OCI_PLATFORMS=
 loki-debug-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki -f cmd/loki/Dockerfile.debug .
-	$(SUDO) docker tag $(IMAGE_PREFIX)/loki-debug $(IMAGE_PREFIX)/loki-debug:$(IMAGE_TAG)
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
 
+# loki-canary
 loki-canary-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-canary -f cmd/loki-canary/Dockerfile .
-	$(SUDO) docker tag $(IMAGE_PREFIX)/loki-canary $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile .
 
+# build-image (only amd64)
+build-image: OCI_PLATFORMS=
 build-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-build-image -f loki-build-image/Dockerfile .
-	$(SUDO) docker tag $(IMAGE_PREFIX)/loki-build-image $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG)
-
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
 
 ########
 # Misc #
