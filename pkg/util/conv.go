@@ -1,8 +1,10 @@
 package util
 
 import (
+	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logql"
@@ -40,4 +42,11 @@ func ModelLabelSetToMap(m model.LabelSet) map[string]string {
 		result[string(k)] = string(v)
 	}
 	return result
+}
+
+// RoundToMilliseconds returns milliseconds precision time from nanoseconds.
+// from will be rounded down to the nearest milliseconds while through is rounded up.
+func RoundToMilliseconds(from, through time.Time) (model.Time, model.Time) {
+	return model.Time(int64(math.Floor(float64(from.UnixNano()) / float64(time.Millisecond)))),
+		model.Time(int64(math.Ceil(float64(through.UnixNano()) / float64(time.Millisecond))))
 }
