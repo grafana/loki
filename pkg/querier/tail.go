@@ -89,7 +89,7 @@ type Tailer struct {
 	delayFor        time.Duration
 	responseChan    chan *TailResponse
 	closeErrChan    chan error
-	tailLengthLimit time.Duration
+	tailMaxDuration time.Duration
 
 	// when tail client is slow, drop entry and store its details in droppedEntries to notify client
 	droppedEntries []droppedEntry
@@ -107,15 +107,14 @@ func (t *Tailer) loop() {
 	checkConnectionTicker := time.NewTicker(checkConnectionsWithIngestersPeriod)
 	defer checkConnectionTicker.Stop()
 
-	tailLengthLimitTicker := time.NewTicker(t.tailLengthLimit)
-	defer tailLengthLimitTicker.Stop()
+	tailMaxDurationTicker := time.NewTicker(t.tailMaxDuration)
+	defer tailMaxDurationTicker.Stop()
 
 	tailResponse := new(TailResponse)
 
-outer:
 	for {
 		if t.stopped {
-			break
+			return
 		}
 
 		select {
@@ -124,12 +123,12 @@ outer:
 			if err := t.checkIngesterConnections(); err != nil {
 				level.Error(util.Logger).Log("Error reconnecting to disconnected ingesters", fmt.Sprintf("%v", err))
 			}
-		case <-tailLengthLimitTicker.C:
+		case <-tailMaxDurationTicker.C:
 			if err := t.close(); err != nil {
 				level.Error(util.Logger).Log("Error closing Tailer", fmt.Sprintf("%v", err))
 			}
-			t.closeErrChan <- errors.New("Reached tail length limit")
-			break outer
+			t.closeErrChan <- errors.New("Reached tail max duration limit")
+			return
 		default:
 		}
 
@@ -146,7 +145,7 @@ outer:
 						level.Error(util.Logger).Log("Error closing Tailer", fmt.Sprintf("%v", err))
 					}
 					t.closeErrChan <- errors.New("All ingesters closed the connection")
-					break
+					return
 				}
 				time.Sleep(nextEntryWait)
 				continue
@@ -327,7 +326,7 @@ func (t *Tailer) getCloseErrorChan() <-chan error {
 
 func newTailer(delayFor time.Duration, querierTailClients map[string]logproto.Querier_TailClient,
 	queryDroppedStreams func(from, to time.Time, labels string) (iter.EntryIterator, error),
-	tailDisconnectedIngesters func([]string) (map[string]logproto.Querier_TailClient, error), tailLengthLimit time.Duration) *Tailer {
+	tailDisconnectedIngesters func([]string) (map[string]logproto.Querier_TailClient, error), tailMaxDuration time.Duration) *Tailer {
 	t := Tailer{
 		openStreamIterator: iter.NewHeapIterator([]iter.EntryIterator{}, logproto.FORWARD),
 		//droppedStreamsIterator:    &droppedStreamsIterator{},
@@ -337,7 +336,7 @@ func newTailer(delayFor time.Duration, querierTailClients map[string]logproto.Qu
 		responseChan:              make(chan *TailResponse, bufferSizeForTailResponse),
 		closeErrChan:              make(chan error),
 		tailDisconnectedIngesters: tailDisconnectedIngesters,
-		tailLengthLimit:           tailLengthLimit,
+		tailMaxDuration:           tailMaxDuration,
 	}
 
 	t.readTailClients()
