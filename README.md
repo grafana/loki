@@ -39,6 +39,7 @@ Once you have promtail, Loki, and Grafana running, continue with [our usage docs
 - [Promtail](./docs/promtail.md) is an agent which can tail your log files and push them to Loki.
 - [Docker Logging Driver](./cmd/docker-driver/README.md) is a docker plugin to send logs directly to Loki from Docker containers.
 - [Logcli](./docs/logcli.md) on how to query your logs without Grafana.
+- [Loki Canary](./docs/canary/README.md) for monitoring your Loki installation for missing logs.
 - [Troubleshooting](./docs/troubleshooting.md) for help around frequent error messages.
 - [Usage](./docs/usage.md) for how to set up a Loki datasource in Grafana and query your logs.
 
