@@ -5,7 +5,7 @@ A standalone app to audit the log capturing performance of Loki.
 
 ## how it works
 
-![block_diagram](docs/block.png)
+![block_diagram](block.png)
 
 loki-canary writes a log to a file and stores the timestamp in an internal array, the contents look something like this:
 
