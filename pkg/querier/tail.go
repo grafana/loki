@@ -121,11 +121,11 @@ func (t *Tailer) loop() {
 		case <-checkConnectionTicker.C:
 			// Try to reconnect dropped ingesters and connect to new ingesters
 			if err := t.checkIngesterConnections(); err != nil {
-				level.Error(util.Logger).Log("msg","Error reconnecting to disconnected ingesters", "err",err)
+				level.Error(util.Logger).Log("msg", "Error reconnecting to disconnected ingesters", "err", err)
 			}
 		case <-tailMaxDurationTicker.C:
 			if err := t.close(); err != nil {
-				level.Error(util.Logger).Log("msg","Error closing Tailer", "err", err)
+				level.Error(util.Logger).Log("msg", "Error closing Tailer", "err", err)
 			}
 			t.closeErrChan <- errors.New("reached tail max duration limit")
 			return
