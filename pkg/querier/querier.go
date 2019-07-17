@@ -117,7 +117,7 @@ func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logpr
 	iterator := iter.NewHeapIterator(iterators, req.Direction)
 	defer helpers.LogError("closing iterator", iterator.Close)
 
-	resp, _, err := ReadBatch(iterator, req.Lookback.Limit)
+	resp, _, err := ReadBatch(iterator, req.Limit)
 	return resp, err
 }
 
@@ -270,7 +270,9 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 
 	histReq := logproto.QueryRequest{
 		Query:     req.Query,
-		Lookback:  req.Lookback,
+		Start:     req.Start,
+		End:       time.Now(),
+		Limit:     req.Limit,
 		Direction: logproto.FORWARD,
 		Regex:     req.Regex,
 	}
@@ -279,11 +281,18 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		return nil, err
 	}
 
-	return newTailer(time.Duration(req.DelayFor)*time.Second, tailClients, func(from, to time.Time, labels string) (iterator iter.EntryIterator, e error) {
-		return q.queryDroppedStreams(ctx, req, from, to, labels)
-	}, func(connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
-		return q.tailDisconnectedIngesters(ctx, req, connectedIngestersAddr)
-	}, q.cfg.TailMaxDuration, histIterators), nil
+	return newTailer(
+		time.Duration(req.DelayFor)*time.Second,
+		tailClients,
+		histIterators,
+		func(from, to time.Time, labels string) (iterator iter.EntryIterator, e error) {
+			return q.queryDroppedStreams(ctx, req, from, to, labels)
+		},
+		func(connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
+			return q.tailDisconnectedIngesters(ctx, req, connectedIngestersAddr)
+		},
+		q.cfg.TailMaxDuration,
+	), nil
 }
 
 // passed to tailer for querying dropped streams
@@ -301,13 +310,11 @@ func (q *Querier) queryDroppedStreams(ctx context.Context, req *logproto.TailReq
 
 	query := logproto.QueryRequest{
 		Direction: logproto.FORWARD,
-		Lookback: &logproto.Lookback{
-			Start: start,
-			End:   end,
-			Limit: 10000,
-		},
-		Query: req.Query,
-		Regex: req.Regex,
+		Start:     start,
+		End:       end,
+		Limit:     10000,
+		Query:     req.Query,
+		Regex:     req.Regex,
 	}
 
 	clients, err := q.forGivenIngesters(replicationSet, func(client logproto.QuerierClient) (interface{}, error) {

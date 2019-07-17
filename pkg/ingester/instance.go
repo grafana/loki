@@ -127,7 +127,7 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	}
 	defer helpers.LogError("closing iterator", iter.Close)
 
-	return sendBatches(iter, queryServer, req.Lookback.Limit)
+	return sendBatches(iter, queryServer, req.Limit)
 }
 
 func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
@@ -170,7 +170,7 @@ outer:
 				continue outer
 			}
 		}
-		iter, err := stream.Iterator(req.Lookback.Start, req.Lookback.End, req.Direction, filter)
+		iter, err := stream.Iterator(req.Start, req.End, req.Direction, filter)
 		if err != nil {
 			return nil, err
 		}
