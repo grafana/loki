@@ -37,7 +37,7 @@ In the background, loki-canary also runs a timer which iterates through all the 
 
 To run the image, you can do something simple like:
 
-`kubectl run loki-canary --generator=run-pod/v1 --image=grafana/loki-canary:latest --restart=Never --image-pull-policy=Never  --labels=name=loki-canary`
+`kubectl run loki-canary --generator=run-pod/v1 --image=grafana/loki-canary:latest --restart=Never --image-pull-policy=Never --labels=name=loki-canary -- -addr=loki:3100`
 
 Or you can do something more complex like deploy it as a daemonset, there is a ksonnet setup for this in the `production` folder, you can import it using jsonnet-bundler:
 

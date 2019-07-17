@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki-canary/pkg/canary/reader"
+	"github.com/grafana/loki/pkg/canary/reader"
 )
 
 const (
@@ -125,7 +125,7 @@ func (c *Comparator) entryReceived(ts time.Time) {
 				outOfOrderEntries.Inc()
 				_, _ = fmt.Fprintf(c.w, ErrOutOfOrderEntry, e, c.entries[:i])
 			}
-			responseLatency.Observe(time.Now().Sub(ts).Seconds())
+			responseLatency.Observe(time.Since(ts).Seconds())
 			// Put this element in the acknowledged entries list so we can use it to check for duplicates
 			c.ackdEntries = append(c.ackdEntries, c.entries[i])
 			// Do not increment output index, effectively causing this element to be dropped

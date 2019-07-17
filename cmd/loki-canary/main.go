@@ -12,9 +12,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/grafana/loki-canary/pkg/canary/comparator"
-	"github.com/grafana/loki-canary/pkg/canary/reader"
-	"github.com/grafana/loki-canary/pkg/canary/writer"
+	"github.com/grafana/loki/pkg/canary/comparator"
+	"github.com/grafana/loki/pkg/canary/reader"
+	"github.com/grafana/loki/pkg/canary/writer"
 )
 
 func main() {

@@ -17,6 +17,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/querier"
 )
 
 var (
@@ -26,12 +29,6 @@ var (
 		Help:      "counts every time the websocket connection has to reconnect",
 	})
 )
-
-// FIXME this is copied and modified a little from the querier package in Loki to avoid importing Loki which indirectly imports cortex which won't build :(
-// TailResponse represents response for tail query
-type TailResponse struct {
-	Streams []*Stream `json:"streams"`
-}
 
 type LokiReader interface {
 	Query(start time.Time, end time.Time) ([]time.Time, error)
@@ -78,13 +75,11 @@ func NewReader(writer io.Writer, receivedChan chan time.Time, tls bool,
 	go rd.run()
 
 	go func() {
-		select {
-		case <-rd.quit:
-			if rd.conn != nil {
-				_, _ = fmt.Fprintf(rd.w, "shutting down reader\n")
-				rd.shuttingDown = true
-				_ = rd.conn.Close()
-			}
+		<-rd.quit
+		if rd.conn != nil {
+			_, _ = fmt.Fprintf(rd.w, "shutting down reader\n")
+			rd.shuttingDown = true
+			_ = rd.conn.Close()
 		}
 	}()
 
@@ -137,8 +132,11 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 		buf, _ := ioutil.ReadAll(resp.Body)
 		return nil, fmt.Errorf("error response from server: %s (%v)", string(buf), err)
 	}
-	var decoded QueryResponse
+	var decoded logproto.QueryResponse
 	err = json.NewDecoder(resp.Body).Decode(&decoded)
+	if err != nil {
+		return nil, err
+	}
 
 	tss := []time.Time{}
 
@@ -161,7 +159,7 @@ func (r *Reader) run() {
 
 	r.closeAndReconnect()
 
-	tailResponse := &TailResponse{}
+	tailResponse := &querier.TailResponse{}
 
 	for {
 		err := r.conn.ReadJSON(tailResponse)
@@ -219,7 +217,7 @@ func (r *Reader) closeAndReconnect() {
 	}
 }
 
-func parseResponse(entry *Entry) (*time.Time, error) {
+func parseResponse(entry *logproto.Entry) (*time.Time, error) {
 	sp := strings.Split(entry.Line, " ")
 	if len(sp) != 2 {
 		return nil, errors.Errorf("received invalid entry: %s\n", entry.Line)
