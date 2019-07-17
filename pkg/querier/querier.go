@@ -22,10 +22,12 @@ import (
 
 // Config for a querier.
 type Config struct {
+	TailMaxDuration time.Duration `yaml:"tail_max_duration"`
 }
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.DurationVar(&cfg.TailMaxDuration, "querier.tail-max-duration", 1*time.Hour, "Limit the duration for which live tailing request would be served")
 }
 
 // Querier handlers queries.
@@ -262,7 +264,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		return q.queryDroppedStreams(ctx, req, from, to, labels)
 	}, func(connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
 		return q.tailDisconnectedIngesters(ctx, req, connectedIngestersAddr)
-	}), nil
+	}, q.cfg.TailMaxDuration), nil
 }
 
 // passed to tailer for querying dropped streams
