@@ -400,7 +400,7 @@ The syntax used by the custom format defines the reference date and time using s
 
 | Timestamp component | Format value |
 | ------------------- | ------------ |
-| Year                | `06`, `2006` |
+| Year                | `2006` |
 | Month               | `1`, `01`, `Jan`, `January` |
 | Day                 | `2`, `02`, `_2` (two digits right justified) |
 | Day of the week     | `Mon`, `Monday` |
