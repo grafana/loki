@@ -121,13 +121,13 @@ func (t *Tailer) loop() {
 		case <-checkConnectionTicker.C:
 			// Try to reconnect dropped ingesters and connect to new ingesters
 			if err := t.checkIngesterConnections(); err != nil {
-				level.Error(util.Logger).Log("Error reconnecting to disconnected ingesters", fmt.Sprintf("%v", err))
+				level.Error(util.Logger).Log("msg","Error reconnecting to disconnected ingesters", "err",err)
 			}
 		case <-tailMaxDurationTicker.C:
 			if err := t.close(); err != nil {
-				level.Error(util.Logger).Log("Error closing Tailer", fmt.Sprintf("%v", err))
+				level.Error(util.Logger).Log("msg","Error closing Tailer", "err", err)
 			}
-			t.closeErrChan <- errors.New("Reached tail max duration limit")
+			t.closeErrChan <- errors.New("reached tail max duration limit")
 			return
 		default:
 		}
@@ -144,7 +144,7 @@ func (t *Tailer) loop() {
 					if err := t.close(); err != nil {
 						level.Error(util.Logger).Log("Error closing Tailer", fmt.Sprintf("%v", err))
 					}
-					t.closeErrChan <- errors.New("All ingesters closed the connection")
+					t.closeErrChan <- errors.New("all ingesters closed the connection")
 					return
 				}
 				time.Sleep(nextEntryWait)
