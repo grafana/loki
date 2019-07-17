@@ -154,7 +154,7 @@ docker plugin enable loki
 
 ## Troubleshooting
 
-Plugin logs can be found as docker daemon log. To enable debug mode, export environment variable LOGGIN_LEVEL=DEBUG in docker engine environment. See the Docker documentation for information about how to enable debug mode in your docker environment: https://docs.docker.com/config/daemon/
+Plugin logs can be found as docker daemon log. To enable debug mode, export environment variable LOGGING_LEVEL=DEBUG in docker engine environment. See the Docker documentation for information about how to enable debug mode in your docker environment: https://docs.docker.com/config/daemon/
 
 Stdout of a plugin is redirected to Docker logs. Such entries have a plugin= suffix.
 
