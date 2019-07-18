@@ -29,7 +29,15 @@ func doQuery() {
 		var err error
 		start, err = time.Parse(time.RFC3339Nano, *from)
 		if err != nil {
-			log.Fatalf("error parsing date '%s': %s", *from, err)
+			log.Fatalf("error parsing --from date '%s': %s", *from, err)
+		}
+	}
+
+	if *to != "" {
+		var err error
+		end, err = time.Parse(time.RFC3339Nano, *to)
+		if err != nil {
+			log.Fatalf("error parsing --to date '%s': %s", *to, err)
 		}
 	}
 
