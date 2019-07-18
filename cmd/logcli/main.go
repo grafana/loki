@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"net/url"
 	"os"
 
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -13,8 +12,7 @@ var (
 	quiet      = app.Flag("quiet", "suppress everything but log lines").Default("false").Short('q').Bool()
 	outputMode = app.Flag("output", "specify output mode [default, raw, jsonl]").Default("default").Short('o').Enum("default", "raw", "jsonl")
 
-	addr    = app.Flag("addr", "Server address.").Default("https://logs-us-west1.grafana.net").Envar("GRAFANA_ADDR").String()
-	addrURL url.URL
+	addr = app.Flag("addr", "Server address.").Default("https://logs-us-west1.grafana.net").Envar("GRAFANA_ADDR").String()
 
 	username = app.Flag("username", "Username for HTTP basic auth.").Default("").Envar("GRAFANA_USERNAME").String()
 	password = app.Flag("password", "Password for HTTP basic auth.").Default("").Envar("GRAFANA_PASSWORD").String()
@@ -50,12 +48,6 @@ func main() {
 	if *addr == "" {
 		log.Fatalln("Server address cannot be empty")
 	}
-
-	u, err := url.Parse(*addr)
-	if err != nil {
-		log.Fatalf("Failed to parse addr into URL: %v", err)
-	}
-	addrURL = *u
 
 	switch cmd {
 	case queryCmd.FullCommand():
