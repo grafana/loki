@@ -18,6 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/grafana/loki/pkg/chunkenc"
+	loki_util "github.com/grafana/loki/pkg/util"
 )
 
 var (
@@ -261,12 +262,12 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 
 	wireChunks := make([]chunk.Chunk, 0, len(cs))
 	for _, c := range cs {
-		firstTime, lastTime := c.chunk.Bounds()
+		firstTime, lastTime := loki_util.RoundToMilliseconds(c.chunk.Bounds())
 		c := chunk.NewChunk(
 			userID, fp, metric,
 			chunkenc.NewFacade(c.chunk),
-			model.TimeFromUnixNano(firstTime.UnixNano()),
-			model.TimeFromUnixNano(lastTime.UnixNano()),
+			firstTime,
+			lastTime,
 		)
 
 		start := time.Now()
