@@ -54,8 +54,11 @@ func listLabelValues(name string) (*logproto.LabelResponse, error) {
 }
 
 func doRequest(path string, out interface{}) error {
-	addrURL.Path = path
-	url := addrURL.String()
+	fullURL, err := url.Parse(addrURL.String() + path)
+	if err != nil {
+		return err
+	}
+	url := fullURL.String()
 	if !*quiet {
 		log.Print(url)
 	}
@@ -72,7 +75,7 @@ func doRequest(path string, out interface{}) error {
 			CAFile:             *tlsCACertPath,
 			CertFile:           *tlsClientCertPath,
 			KeyFile:            *tlsClientCertKeyPath,
-			ServerName:         addrURL.Host,
+			ServerName:         fullURL.Host,
 			InsecureSkipVerify: *tlsSkipVerify,
 		},
 	}
