@@ -54,7 +54,8 @@ func listLabelValues(name string) (*logproto.LabelResponse, error) {
 }
 
 func doRequest(path string, out interface{}) error {
-	url := *addr + path
+	addrURL.Path = path
+	url := addrURL.String()
 	if !*quiet {
 		log.Print(url)
 	}
@@ -71,7 +72,7 @@ func doRequest(path string, out interface{}) error {
 			CAFile:             *tlsCACertPath,
 			CertFile:           *tlsClientCertPath,
 			KeyFile:            *tlsClientCertKeyPath,
-			ServerName:         url,
+			ServerName:         addrURL.Host,
 			InsecureSkipVerify: *tlsSkipVerify,
 		},
 	}
@@ -110,14 +111,15 @@ func wsConnect(path string) (*websocket.Conn, error) {
 		CAFile:             *tlsCACertPath,
 		CertFile:           *tlsClientCertPath,
 		KeyFile:            *tlsClientCertKeyPath,
-		ServerName:         *addr,
+		ServerName:         addrURL.Host,
 		InsecureSkipVerify: *tlsSkipVerify,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	url := *addr + path
+	addrURL.Path = path
+	url := addrURL.String()
 	if strings.HasPrefix(url, "https") {
 		url = strings.Replace(url, "https", "wss", 1)
 	} else if strings.HasPrefix(url, "http") {
