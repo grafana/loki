@@ -29,7 +29,7 @@ var (
 	}
 	// BytesBufferPool is a bytes buffer used for lines decompressed.
 	// Buckets [0.5KB,1KB,2KB,4KB,8KB]
-	BytesBufferPool = pool.New(1<<10, 1<<13, 2, func(size int) interface{} { return make([]byte, 0, size) })
+	BytesBufferPool = pool.New(1<<9, 1<<13, 2, func(size int) interface{} { return make([]byte, 0, size) })
 )
 
 // GzipPool is a gun zip compression pool
