@@ -23,11 +23,13 @@ import (
 // Config for a querier.
 type Config struct {
 	TailMaxDuration time.Duration `yaml:"tail_max_duration"`
+	QueryTimeout    time.Duration `yaml:"query_timeout"`
 }
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.TailMaxDuration, "querier.tail-max-duration", 1*time.Hour, "Limit the duration for which live tailing request would be served")
+	f.DurationVar(&cfg.QueryTimeout, "querier.query_timeout", 1*time.Minute, "Timeout when querying backends (ingesters or storage) during the execution of a query request")
 }
 
 // Querier handlers queries.
@@ -44,10 +46,16 @@ func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, store storage.
 		return client.New(clientCfg, addr)
 	}
 
+	return newQuerier(cfg, clientCfg, factory, ring, store)
+}
+
+// newQuerier creates a new Querier and allows to pass a custom ingester client factory
+// used for testing purposes
+func newQuerier(cfg Config, clientCfg client.Config, clientFactory cortex_client.Factory, ring ring.ReadRing, store storage.Store) (*Querier, error) {
 	return &Querier{
 		cfg:   cfg,
 		ring:  ring,
-		pool:  cortex_client.NewPool(clientCfg.PoolConfig, ring, factory, util.Logger),
+		pool:  cortex_client.NewPool(clientCfg.PoolConfig, ring, clientFactory, util.Logger),
 		store: store,
 	}, nil
 }
@@ -109,6 +117,10 @@ func (q *Querier) forGivenIngesters(replicationSet ring.ReplicationSet, f func(l
 
 // Query does the heavy lifting for an actual query.
 func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logproto.QueryResponse, error) {
+	// Enforce the query timeout while querying backends
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
+	defer cancel()
+
 	iterators, err := q.getQueryIterators(ctx, req)
 	if err != nil {
 		return nil, err
@@ -153,6 +165,10 @@ func (q *Querier) queryIngesters(ctx context.Context, req *logproto.QueryRequest
 
 // Label does the heavy lifting for a Label query.
 func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+	// Enforce the query timeout while querying backends
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
+	defer cancel()
+
 	resps, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
 		return client.Label(ctx, req)
 	})
@@ -256,8 +272,14 @@ func mergePair(s1, s2 []string) []string {
 
 // Tail keeps getting matching logs from all ingesters for given query
 func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
+	// Enforce the query timeout except when tailing, otherwise the tailing
+	// will be terminated once the query timeout is reached
+	tailCtx := ctx
+	queryCtx, cancelQuery := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
+	defer cancelQuery()
+
 	clients, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
-		return client.Tail(ctx, req)
+		return client.Tail(tailCtx, req)
 	})
 	if err != nil {
 		return nil, err
@@ -276,7 +298,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		Direction: logproto.FORWARD,
 		Regex:     req.Regex,
 	}
-	histIterators, err := q.getQueryIterators(ctx, &histReq)
+	histIterators, err := q.getQueryIterators(queryCtx, &histReq)
 	if err != nil {
 		return nil, err
 	}
@@ -286,10 +308,10 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		tailClients,
 		histIterators,
 		func(from, to time.Time, labels string) (iterator iter.EntryIterator, e error) {
-			return q.queryDroppedStreams(ctx, req, from, to, labels)
+			return q.queryDroppedStreams(queryCtx, req, from, to, labels)
 		},
 		func(connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
-			return q.tailDisconnectedIngesters(ctx, req, connectedIngestersAddr)
+			return q.tailDisconnectedIngesters(tailCtx, req, connectedIngestersAddr)
 		},
 		q.cfg.TailMaxDuration,
 	), nil
