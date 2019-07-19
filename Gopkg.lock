@@ -904,7 +904,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:5fc7e79142258f1ce47429c00fedb9ee04d8562e7fd477f2d9ae28a692e80969"
+  digest = "1:43edb14ccbe0d18f38bd55511250c39ccc3917c64a514a0e791408ac19a71558"
   name = "github.com/prometheus/prometheus"
   packages = [
     "discovery",
@@ -925,6 +925,7 @@
     "pkg/gate",
     "pkg/labels",
     "pkg/modtimevfs",
+    "pkg/pool",
     "pkg/relabel",
     "pkg/textparse",
     "pkg/timestamp",
@@ -1608,7 +1609,9 @@
     "github.com/pkg/errors",
     "github.com/prometheus/client_golang/prometheus",
     "github.com/prometheus/client_golang/prometheus/promauto",
+    "github.com/prometheus/client_golang/prometheus/promhttp",
     "github.com/prometheus/client_golang/prometheus/testutil",
+    "github.com/prometheus/client_model/go",
     "github.com/prometheus/common/config",
     "github.com/prometheus/common/expfmt",
     "github.com/prometheus/common/model",
@@ -1618,6 +1621,7 @@
     "github.com/prometheus/prometheus/discovery/targetgroup",
     "github.com/prometheus/prometheus/pkg/labels",
     "github.com/prometheus/prometheus/pkg/modtimevfs",
+    "github.com/prometheus/prometheus/pkg/pool",
     "github.com/prometheus/prometheus/pkg/relabel",
     "github.com/prometheus/prometheus/pkg/textparse",
     "github.com/prometheus/prometheus/promql",
@@ -1637,8 +1641,9 @@
     "github.com/weaveworks/common/user",
     "golang.org/x/net/context",
     "google.golang.org/grpc",
+    "google.golang.org/grpc/codes",
     "google.golang.org/grpc/health/grpc_health_v1",
-    "google.golang.org/grpc/metadata",
+    "google.golang.org/grpc/status",
     "gopkg.in/alecthomas/kingpin.v2",
     "gopkg.in/fsnotify.v1",
     "gopkg.in/yaml.v2",

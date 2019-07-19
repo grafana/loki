@@ -2,11 +2,11 @@ package chunkenc
 
 import (
 	"bufio"
-	"bytes"
 	"compress/gzip"
-
 	"io"
 	"sync"
+
+	"github.com/prometheus/prometheus/pkg/pool"
 )
 
 // CompressionPool is a pool of CompressionWriter and CompressionReader
@@ -28,7 +28,8 @@ var (
 		},
 	}
 	// BytesBufferPool is a bytes buffer used for lines decompressed.
-	BytesBufferPool = newBufferPoolWithSize(4096)
+	// Buckets [0.5KB,1KB,2KB,4KB,8KB]
+	BytesBufferPool = pool.New(1<<9, 1<<13, 2, func(size int) interface{} { return make([]byte, 0, size) })
 )
 
 // GzipPool is a gun zip compression pool
@@ -91,24 +92,4 @@ func (bufPool *BufioReaderPool) Get(r io.Reader) *bufio.Reader {
 // Put puts the bufio.Reader back into the pool.
 func (bufPool *BufioReaderPool) Put(b *bufio.Reader) {
 	bufPool.pool.Put(b)
-}
-
-type bufferPool struct {
-	pool sync.Pool
-}
-
-func newBufferPoolWithSize(size int) *bufferPool {
-	return &bufferPool{
-		pool: sync.Pool{
-			New: func() interface{} { return bytes.NewBuffer(make([]byte, size)) },
-		},
-	}
-}
-
-func (bp *bufferPool) Get() *bytes.Buffer {
-	return bp.pool.Get().(*bytes.Buffer)
-}
-
-func (bp *bufferPool) Put(b *bytes.Buffer) {
-	bp.pool.Put(b)
 }
