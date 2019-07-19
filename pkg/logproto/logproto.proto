@@ -65,6 +65,8 @@ message TailRequest {
   string query = 1;
   string regex = 2;
   uint32 delayFor = 3;
+  uint32 limit = 4;
+  google.protobuf.Timestamp start = 5 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
 }
 
 message TailResponse {

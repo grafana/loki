@@ -22,7 +22,7 @@ import (
 
 const (
 	defaultQueryLimit    = 100
-	defaulSince          = 1 * time.Hour
+	defaultSince         = 1 * time.Hour
 	wsPingPeriod         = 1 * time.Second
 	maxDelayForInTailing = 5
 )
@@ -70,28 +70,16 @@ func directionParam(values url.Values, name string, def logproto.Direction) (log
 
 func httpRequestToQueryRequest(httpRequest *http.Request) (*logproto.QueryRequest, error) {
 	params := httpRequest.URL.Query()
-	now := time.Now()
 	queryRequest := logproto.QueryRequest{
 		Regex: params.Get("regexp"),
 		Query: params.Get("query"),
 	}
 
-	limit, err := intParam(params, "limit", defaultQueryLimit)
+	var err error
+	queryRequest.Limit, queryRequest.Start, queryRequest.End, err = httpRequestToLookback(httpRequest)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, err
 	}
-	queryRequest.Limit = uint32(limit)
-
-	queryRequest.Start, err = unixNanoTimeParam(params, "start", now.Add(-defaulSince))
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
-	queryRequest.End, err = unixNanoTimeParam(params, "end", now)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
 	queryRequest.Direction, err = directionParam(params, "direction", logproto.BACKWARD)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -106,6 +94,11 @@ func httpRequestToTailRequest(httpRequest *http.Request) (*logproto.TailRequest,
 		Regex: params.Get("regexp"),
 		Query: params.Get("query"),
 	}
+	var err error
+	tailRequest.Limit, tailRequest.Start, _, err = httpRequestToLookback(httpRequest)
+	if err != nil {
+		return nil, err
+	}
 
 	// delay_for is used to allow server to let slow loggers catch up.
 	// Entries would be accumulated in a heap until they become older than now()-<delay_for>
@@ -117,6 +110,28 @@ func httpRequestToTailRequest(httpRequest *http.Request) (*logproto.TailRequest,
 	tailRequest.DelayFor = uint32(delayFor)
 
 	return &tailRequest, nil
+}
+
+func httpRequestToLookback(httpRequest *http.Request) (limit uint32, start, end time.Time, err error) {
+	params := httpRequest.URL.Query()
+	now := time.Now()
+
+	lim, err := intParam(params, "limit", defaultQueryLimit)
+	if err != nil {
+		return 0, time.Now(), time.Now(), httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+	limit = uint32(lim)
+
+	start, err = unixNanoTimeParam(params, "start", now.Add(-defaultSince))
+	if err != nil {
+		return 0, time.Now(), time.Now(), httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	end, err = unixNanoTimeParam(params, "end", now)
+	if err != nil {
+		return 0, time.Now(), time.Now(), httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+	return
 }
 
 // QueryHandler is a http.HandlerFunc for queries.

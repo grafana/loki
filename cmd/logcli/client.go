@@ -21,12 +21,18 @@ const (
 	queryPath       = "/api/prom/query?query=%s&limit=%d&start=%d&end=%d&direction=%s&regexp=%s"
 	labelsPath      = "/api/prom/label"
 	labelValuesPath = "/api/prom/label/%s/values"
-	tailPath        = "/api/prom/tail?query=%s&regexp=%s&delay_for=%d"
+	tailPath        = "/api/prom/tail?query=%s&regexp=%s&delay_for=%d&limit=%d&start=%d"
 )
 
 func query(from, through time.Time, direction logproto.Direction) (*logproto.QueryResponse, error) {
-	path := fmt.Sprintf(queryPath, url.QueryEscape(*queryStr), *limit, from.UnixNano(),
-		through.UnixNano(), direction.String(), url.QueryEscape(*regexpStr))
+	path := fmt.Sprintf(queryPath,
+		url.QueryEscape(*queryStr),  // query
+		*limit,                      // limit
+		from.UnixNano(),             // start
+		through.UnixNano(),          // end
+		direction.String(),          // direction
+		url.QueryEscape(*regexpStr), // regexp
+	)
 
 	var resp logproto.QueryResponse
 	if err := doRequest(path, &resp); err != nil {
@@ -105,7 +111,13 @@ func doRequest(path string, out interface{}) error {
 }
 
 func liveTailQueryConn() (*websocket.Conn, error) {
-	path := fmt.Sprintf(tailPath, url.QueryEscape(*queryStr), url.QueryEscape(*regexpStr), *delayFor)
+	path := fmt.Sprintf(tailPath,
+		url.QueryEscape(*queryStr),      // query
+		url.QueryEscape(*regexpStr),     // regexp
+		*delayFor,                       // delay_for
+		*limit,                          // limit
+		getStart(time.Now()).UnixNano(), // start
+	)
 	return wsConnect(path)
 }
 
