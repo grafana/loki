@@ -64,10 +64,31 @@ $ ./loki -config.file=./cmd/loki/loki-local-config.yaml
 ...
 ```
 
-To run Promtail, use the following commands:
+To build Promtail on non-Linux platforms, use the following command:
 
 ```bash
 $ go build ./cmd/promtail
+```
+
+On Linux, promtail requires the systemd headers to be installed for
+Journal support. Promtail can be built with Journal support on Ubuntu
+with the following commands:
+
+```bash
+$ sudo apt install libsystemd-dev
+$ go build ./cmd/promtail
+```
+
+Otherwise, to build promtail without Journal support, run `go build`
+with CGO disabled:
+
+```bash
+$ CGO_ENABLED=0 go build ./cmd/promtail
+```
+
+Once Promtail is built, to run Promtail, use the following command:
+
+```bash
 $ ./promtail -config.file=./cmd/promtail/promtail-local-config.yaml
 ...
 ```
