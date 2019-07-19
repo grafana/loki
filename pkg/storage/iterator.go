@@ -127,7 +127,7 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 	if it.chunks.Len() > 0 {
 		nextChunk := it.chunks.Peek()
 		// we max out our iterator boundaries to the next chunks in the queue
-		// so that overlapping chunks together
+		// so that overlapping chunks are together
 		if it.req.Direction == logproto.BACKWARD {
 			from = time.Unix(0, nextChunk.Chunk.Through.UnixNano())
 		} else {
@@ -206,7 +206,7 @@ func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matche
 		}
 	}
 
-	// load all chunks not already loaded
+	// Finally we load all chunks not already loaded
 	if err := fetchLazyChunks(ctx, allChunks); err != nil {
 		return nil, err
 	}
@@ -299,6 +299,7 @@ func fetchLazyChunks(ctx context.Context, chunks []*chunkenc.LazyChunk) error {
 			chks := make([]chunk.Chunk, 0, len(chunks))
 			index := make(map[string]*chunkenc.LazyChunk, len(chunks))
 
+			// FetchChunks requires chunks to be ordered by external key.
 			sort.Slice(chunks, func(i, j int) bool { return chunks[i].Chunk.ExternalKey() < chunks[j].Chunk.ExternalKey() })
 			for _, chk := range chunks {
 				key := chk.Chunk.ExternalKey()

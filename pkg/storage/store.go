@@ -81,6 +81,7 @@ func (s *store) LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter
 			chks[i] = filterChunksByTime(from, through, chks[i])
 			totalChunks += len(chks[i])
 		}
+		// creates lazychunks with chunks ref.
 		lazyChunks := make([]*chunkenc.LazyChunk, 0, totalChunks)
 		for i := range chks {
 			for _, c := range chks[i] {
