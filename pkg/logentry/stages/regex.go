@@ -1,6 +1,7 @@
 package stages
 
 import (
+	"reflect"
 	"regexp"
 	"time"
 
@@ -16,11 +17,13 @@ const (
 	ErrExpressionRequired    = "expression is required"
 	ErrCouldNotCompileRegex  = "could not compile regular expression"
 	ErrEmptyRegexStageConfig = "empty regex stage configuration"
+	ErrEmptyRegexStageSource = "empty source"
 )
 
 // RegexConfig contains a regexStage configuration
 type RegexConfig struct {
-	Expression string `mapstructure:"expression"`
+	Expression string  `mapstructure:"expression"`
+	Source     *string `mapstructure:"source"`
 }
 
 // validateRegexConfig validates the config and return a regex
@@ -31,6 +34,10 @@ func validateRegexConfig(c *RegexConfig) (*regexp.Regexp, error) {
 
 	if c.Expression == "" {
 		return nil, errors.New(ErrExpressionRequired)
+	}
+
+	if c.Source != nil && *c.Source == "" {
+		return nil, errors.New(ErrEmptyRegexStageSource)
 	}
 
 	expr, err := regexp.Compile(c.Expression)
@@ -77,12 +84,31 @@ func parseRegexConfig(config interface{}) (*RegexConfig, error) {
 
 // Process implements Stage
 func (r *regexStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
-	if entry == nil {
+	// If a source key is provided, the regex stage should process it
+	// from the exctracted map, otherwise should fallback to the entry
+	input := entry
+
+	if r.cfg.Source != nil {
+		if _, ok := extracted[*r.cfg.Source]; !ok {
+			level.Debug(r.logger).Log("msg", "source does not exist in the set of extracted values", "source", *r.cfg.Source)
+			return
+		}
+
+		value, err := getString(extracted[*r.cfg.Source])
+		if err != nil {
+			level.Debug(r.logger).Log("msg", "failed to convert source value to string", "source", *r.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*r.cfg.Source]).String())
+			return
+		}
+
+		input = &value
+	}
+
+	if input == nil {
 		level.Debug(r.logger).Log("msg", "cannot parse a nil entry")
 		return
 	}
 
-	match := r.expression.FindStringSubmatch(*entry)
+	match := r.expression.FindStringSubmatch(*input)
 	if match == nil {
 		level.Debug(r.logger).Log("msg", "regex did not match")
 		return

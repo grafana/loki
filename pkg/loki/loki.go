@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/querier"
+	loki_storage "github.com/grafana/loki/pkg/storage"
 )
 
 // Config is the root config for Loki.
@@ -69,7 +70,7 @@ type Loki struct {
 	distributor  *distributor.Distributor
 	ingester     *ingester.Ingester
 	querier      *querier.Querier
-	store        chunk.Store
+	store        loki_storage.Store
 	tableManager *chunk.TableManager
 
 	httpAuthMiddleware middleware.Interface
@@ -138,6 +139,7 @@ func (t *Loki) Run() error {
 
 // Stop gracefully stops a Loki.
 func (t *Loki) Stop() error {
+	t.stopping(t.cfg.Target)
 	t.server.Shutdown()
 	t.stop(t.cfg.Target)
 	return nil
@@ -156,6 +158,24 @@ func (t *Loki) stopModule(m moduleName) {
 	level.Info(util.Logger).Log("msg", "stopping", "module", m)
 	if modules[m].stop != nil {
 		if err := modules[m].stop(t); err != nil {
+			level.Error(util.Logger).Log("msg", "error stopping", "module", m, "err", err)
+		}
+	}
+}
+
+func (t *Loki) stopping(m moduleName) {
+	t.stoppingModule(m)
+	deps := orderedDeps(m)
+	// iterate over our deps in reverse order and call stoppingModule
+	for i := len(deps) - 1; i >= 0; i-- {
+		t.stoppingModule(deps[i])
+	}
+}
+
+func (t *Loki) stoppingModule(m moduleName) {
+	level.Info(util.Logger).Log("msg", "notifying module about stopping", "module", m)
+	if modules[m].stopping != nil {
+		if err := modules[m].stopping(t); err != nil {
 			level.Error(util.Logger).Log("msg", "error stopping", "module", m, "err", err)
 		}
 	}

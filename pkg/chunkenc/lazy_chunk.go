@@ -7,6 +7,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 // LazyChunk loads the chunk when it is accessed.
@@ -20,21 +21,20 @@ func (c *LazyChunk) getChunk(ctx context.Context) (Chunk, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	c.Chunk = chunks[0]
 	return chunks[0].Data.(*Facade).LokiChunk(), nil
 }
 
 // Iterator returns an entry iterator.
-func (c LazyChunk) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction) (iter.EntryIterator, error) {
+func (c *LazyChunk) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error) {
 	// If the chunk is already loaded, then use that.
 	if c.Chunk.Data != nil {
 		lokiChunk := c.Chunk.Data.(*Facade).LokiChunk()
-		return lokiChunk.Iterator(from, through, direction)
+		return lokiChunk.Iterator(from, through, direction, filter)
 	}
 
 	return &lazyIterator{
-		chunk: c,
+		chunk:  c,
+		filter: filter,
 
 		from:      from,
 		through:   through,
@@ -46,12 +46,15 @@ func (c LazyChunk) Iterator(ctx context.Context, from, through time.Time, direct
 type lazyIterator struct {
 	iter.EntryIterator
 
-	chunk LazyChunk
+	chunk *LazyChunk
 	err   error
 
 	from, through time.Time
 	direction     logproto.Direction
 	context       context.Context
+	filter        logql.Filter
+
+	closed bool
 }
 
 func (it *lazyIterator) Next() bool {
@@ -59,8 +62,16 @@ func (it *lazyIterator) Next() bool {
 		return false
 	}
 
+	if it.closed {
+		return false
+	}
+
 	if it.EntryIterator != nil {
-		return it.EntryIterator.Next()
+		next := it.EntryIterator.Next()
+		if !next {
+			it.Close()
+		}
+		return next
 	}
 
 	chk, err := it.chunk.getChunk(it.context)
@@ -68,9 +79,7 @@ func (it *lazyIterator) Next() bool {
 		it.err = err
 		return false
 	}
-
-	it.EntryIterator, it.err = chk.Iterator(it.from, it.through, it.direction)
-
+	it.EntryIterator, it.err = chk.Iterator(it.from, it.through, it.direction, it.filter)
 	return it.Next()
 }
 
@@ -82,6 +91,18 @@ func (it *lazyIterator) Error() error {
 	if it.err != nil {
 		return it.err
 	}
+	if it.EntryIterator != nil {
+		return it.EntryIterator.Error()
+	}
+	return nil
+}
 
-	return it.EntryIterator.Error()
+func (it *lazyIterator) Close() error {
+	if it.EntryIterator != nil {
+		it.closed = true
+		err := it.EntryIterator.Close()
+		it.EntryIterator = nil
+		return err
+	}
+	return nil
 }

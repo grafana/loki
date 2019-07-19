@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 #
 # Copyright 2018- Grafana Labs
 #
@@ -27,7 +29,7 @@ module Fluent
 
       helpers :compat_parameters
 
-      DEFAULT_BUFFER_TYPE = 'memory'.freeze
+      DEFAULT_BUFFER_TYPE = 'memory'
 
       # url of loki server
       config_param :url, :string, default: 'https://logs-us-west1.grafana.net'
@@ -48,6 +50,9 @@ module Fluent
       # comma separated list of keys to use as stream lables.  All other keys will be placed into the log line
       config_param :label_keys, :string, default: 'job,instance'
 
+      # comma separated list of needless record keys to remove
+      config_param :remove_keys, :string, default: nil
+
       # if a record only has 1 key, then just set the log line to the value and discard the key.
       config_param :drop_single_key, :bool, default: false
 
@@ -61,6 +66,11 @@ module Fluent
         super
 
         @label_keys = @label_keys.split(/\s*,\s*/) if @label_keys
+        @remove_keys = @remove_keys.split(',').map(&:strip) if @remove_keys
+      end
+
+      def multi_workers_ready?
+        true
       end
 
       def http_opts(uri)
@@ -89,7 +99,7 @@ module Fluent
         opts = {
           use_ssl: uri.scheme == 'https'
         }
-        log.info "sending #{req.body.length} bytes"
+        log.debug "sending #{req.body.length} bytes to loki"
         res = Net::HTTP.start(uri.hostname, uri.port, **opts) { |http| http.request(req) }
         unless res && res.is_a?(Net::HTTPSuccess)
           res_summary = if res
@@ -172,13 +182,17 @@ module Fluent
         chunk_labels = {}
         line = ''
         if record.is_a?(Hash)
+          # remove needless keys.
+          @remove_keys.each { |v|
+            record.delete(v)
+          } if @remove_keys
           # extract white listed record keys into labels.
           @label_keys.each do |k|
             if record.key?(k)
               chunk_labels[k] = record[k]
               record.delete(k)
             end
-          end
+          end if @label_keys
           line = record_to_line(record)
         else
           line = record.to_s

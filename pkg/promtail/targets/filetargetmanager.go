@@ -7,8 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/grafana/loki/pkg/logentry/metric"
-
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -76,8 +74,12 @@ func NewFileTargetManager(
 
 	config := map[string]sd_config.ServiceDiscoveryConfig{}
 	for _, cfg := range scrapeConfigs {
+		if !cfg.HasServiceDiscoveryConfig() {
+			continue
+		}
+
 		registerer := prometheus.DefaultRegisterer
-		pipeline, err := stages.NewPipeline(log.With(logger, "component", "pipeline"), cfg.PipelineStages, &cfg.JobName, registerer)
+		pipeline, err := stages.NewPipeline(log.With(logger, "component", "file_pipeline"), cfg.PipelineStages, &cfg.JobName, registerer)
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +115,7 @@ func NewFileTargetManager(
 			targets:        map[string]*FileTarget{},
 			droppedTargets: []Target{},
 			hostname:       hostname,
-			entryHandler:   pipeline.Wrap(metric.LogSize(prometheus.DefaultRegisterer, client)),
+			entryHandler:   pipeline.Wrap(client),
 			targetConfig:   targetConfig,
 		}
 		tm.syncers[cfg.JobName] = s

@@ -4,13 +4,16 @@ import (
 	"log"
 	"os"
 
-	kingpin "gopkg.in/alecthomas/kingpin.v2"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
-	app = kingpin.New("logcli", "A command-line for loki.")
+	app        = kingpin.New("logcli", "A command-line for loki.")
+	quiet      = app.Flag("quiet", "suppress everything but log lines").Default("false").Short('q').Bool()
+	outputMode = app.Flag("output", "specify output mode [default, raw, jsonl]").Default("default").Short('o').Enum("default", "raw", "jsonl")
 
-	addr     = app.Flag("addr", "Server address.").Default("https://logs-us-west1.grafana.net").Envar("GRAFANA_ADDR").String()
+	addr = app.Flag("addr", "Server address.").Default("https://logs-us-west1.grafana.net").Envar("GRAFANA_ADDR").String()
+
 	username = app.Flag("username", "Username for HTTP basic auth.").Default("").Envar("GRAFANA_USERNAME").String()
 	password = app.Flag("password", "Password for HTTP basic auth.").Default("").Envar("GRAFANA_PASSWORD").String()
 
@@ -24,25 +27,30 @@ var (
 	regexpStr       = queryCmd.Arg("regex", "").String()
 	limit           = queryCmd.Flag("limit", "Limit on number of entries to print.").Default("30").Int()
 	since           = queryCmd.Flag("since", "Lookback window.").Default("1h").Duration()
+	from            = queryCmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").String()
+	to              = queryCmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").String()
 	forward         = queryCmd.Flag("forward", "Scan forwards through logs.").Default("false").Bool()
 	tail            = queryCmd.Flag("tail", "Tail the logs").Short('t').Default("false").Bool()
+	delayFor        = queryCmd.Flag("delay-for", "Delay in tailing by number of seconds to accumulate logs").Default("0").Int()
 	noLabels        = queryCmd.Flag("no-labels", "Do not print any labels").Default("false").Bool()
 	ignoreLabelsKey = queryCmd.Flag("exclude-label", "Exclude labels given the provided key during output.").Strings()
 	showLabelsKey   = queryCmd.Flag("include-label", "Include labels given the provided key during output.").Strings()
 	fixedLabelsLen  = queryCmd.Flag("labels-length", "Set a fixed padding to labels").Default("0").Int()
-
-	labelsCmd = app.Command("labels", "Find values for a given label.")
-	labelName = labelsCmd.Arg("label", "The name of the label.").HintAction(listLabels).String()
+	labelsCmd       = app.Command("labels", "Find values for a given label.")
+	labelName       = labelsCmd.Arg("label", "The name of the label.").HintAction(listLabels).String()
 )
 
 func main() {
 	log.SetOutput(os.Stderr)
 
-	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
+	cmd := kingpin.MustParse(app.Parse(os.Args[1:]))
+
+	if *addr == "" {
+		log.Fatalln("Server address cannot be empty")
+	}
+
+	switch cmd {
 	case queryCmd.FullCommand():
-		if *addr == "" {
-			log.Fatalln("Server address cannot be empty")
-		}
 		doQuery()
 	case labelsCmd.FullCommand():
 		doLabels()

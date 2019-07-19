@@ -40,7 +40,7 @@ func NewCRI(logger log.Logger, registerer prometheus.Registerer) (Stage, error) 
 	stages := PipelineStages{
 		PipelineStage{
 			StageTypeRegex: RegexConfig{
-				"^(?s)(?P<time>\\S+?) (?P<stream>stdout|stderr) (?P<flags>\\S+?) (?P<content>.*)$",
+				Expression: "^(?s)(?P<time>\\S+?) (?P<stream>stdout|stderr) (?P<flags>\\S+?) (?P<content>.*)$",
 			},
 		},
 		PipelineStage{

@@ -45,9 +45,10 @@ func TestTimestampPipeline(t *testing.T) {
 
 func TestTimestampValidation(t *testing.T) {
 	tests := map[string]struct {
-		config         *TimestampConfig
-		err            error
-		expectedFormat string
+		config       *TimestampConfig
+		err          error
+		testString   string
+		expectedTime time.Time
 	}{
 		"missing config": {
 			config: nil,
@@ -68,23 +69,43 @@ func TestTimestampValidation(t *testing.T) {
 				Source: "source1",
 				Format: time.RFC3339,
 			},
-			err:            nil,
-			expectedFormat: time.RFC3339,
+			err:          nil,
+			testString:   "2012-11-01T22:08:41-04:00",
+			expectedTime: time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", -4*60*60)),
 		},
-		"custom format": {
+		"custom format with year": {
 			config: &TimestampConfig{
 				Source: "source1",
-				Format: "2006-01-23",
+				Format: "2006-01-02",
 			},
-			err:            nil,
-			expectedFormat: "2006-01-23",
+			err:          nil,
+			testString:   "2009-01-01",
+			expectedTime: time.Date(2009, 01, 01, 00, 00, 00, 0, time.UTC),
+		},
+		"custom format without year": {
+			config: &TimestampConfig{
+				Source: "source1",
+				Format: "Jan 02 15:04:05",
+			},
+			err:          nil,
+			testString:   "Jul 15 01:02:03",
+			expectedTime: time.Date(time.Now().Year(), 7, 15, 1, 2, 3, 0, time.UTC),
+		},
+		"unix_ms": {
+			config: &TimestampConfig{
+				Source: "source1",
+				Format: "UnixMs",
+			},
+			err:          nil,
+			testString:   "1562708916919",
+			expectedTime: time.Date(2019, 7, 9, 21, 48, 36, 919*1000000, time.UTC),
 		},
 	}
 	for name, test := range tests {
 		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			format, err := validateTimestampConfig(test.config)
+			parser, err := validateTimestampConfig(test.config)
 			if (err != nil) != (test.err != nil) {
 				t.Errorf("validateOutputConfig() expected error = %v, actual error = %v", test.err, err)
 				return
@@ -93,8 +114,13 @@ func TestTimestampValidation(t *testing.T) {
 				t.Errorf("validateOutputConfig() expected error = %v, actual error = %v", test.err, err)
 				return
 			}
-			if test.expectedFormat != "" {
-				assert.Equal(t, test.expectedFormat, format)
+			if test.testString != "" {
+				ts, err := parser(test.testString)
+				if err != nil {
+					t.Errorf("validateOutputConfig() unexpected error parsing test time: %v", err)
+					return
+				}
+				assert.Equal(t, test.expectedTime.UnixNano(), ts.UnixNano())
 			}
 		})
 	}
@@ -117,6 +143,39 @@ func TestTimestampStage_Process(t *testing.T) {
 			},
 			time.Date(2106, 01, 02, 23, 04, 05, 0, time.FixedZone("", -4*60*60)),
 		},
+		"unix success": {
+			TimestampConfig{
+				Source: "ts",
+				Format: "Unix",
+			},
+			map[string]interface{}{
+				"somethigelse": "notimportant",
+				"ts":           "1562708916",
+			},
+			time.Date(2019, 7, 9, 21, 48, 36, 0, time.UTC),
+		},
+		"unix millisecond success": {
+			TimestampConfig{
+				Source: "ts",
+				Format: "UnixMs",
+			},
+			map[string]interface{}{
+				"somethigelse": "notimportant",
+				"ts":           "1562708916414",
+			},
+			time.Date(2019, 7, 9, 21, 48, 36, 414*1000000, time.UTC),
+		},
+		"unix nano success": {
+			TimestampConfig{
+				Source: "ts",
+				Format: "UnixNs",
+			},
+			map[string]interface{}{
+				"somethigelse": "notimportant",
+				"ts":           "1562708916000000123",
+			},
+			time.Date(2019, 7, 9, 21, 48, 36, 123, time.UTC),
+		},
 	}
 	for name, test := range tests {
 		test := test
@@ -129,7 +188,7 @@ func TestTimestampStage_Process(t *testing.T) {
 			ts := time.Now()
 			lbls := model.LabelSet{}
 			st.Process(lbls, test.extracted, &ts, nil)
-			assert.Equal(t, test.expected, ts)
+			assert.Equal(t, test.expected.UnixNano(), ts.UnixNano())
 
 		})
 	}

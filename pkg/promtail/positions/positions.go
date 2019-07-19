@@ -5,6 +5,8 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,14 +34,14 @@ type Positions struct {
 	logger    log.Logger
 	cfg       Config
 	mtx       sync.Mutex
-	positions map[string]int64
+	positions map[string]string
 	quit      chan struct{}
 	done      chan struct{}
 }
 
 // File format for the positions data.
 type File struct {
-	Positions map[string]int64 `yaml:"positions"`
+	Positions map[string]string `yaml:"positions"`
 }
 
 // New makes a new Positions.
@@ -67,18 +69,40 @@ func (p *Positions) Stop() {
 	<-p.done
 }
 
-// Put records (asynchronously) how far we've read through a file.
-func (p *Positions) Put(path string, pos int64) {
+// PutString records (asynchronsouly) how far we've read through a file.
+// Unlike Put, it records a string offset and is only useful for
+// JournalTargets which doesn't have integer offsets.
+func (p *Positions) PutString(path string, pos string) {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	p.positions[path] = pos
 }
 
-// Get returns how far we've read through a file.
-func (p *Positions) Get(path string) int64 {
+// Put records (asynchronously) how far we've read through a file.
+func (p *Positions) Put(path string, pos int64) {
+	p.PutString(path, strconv.FormatInt(pos, 10))
+}
+
+// GetString returns how far we've through a file as a string.
+// JournalTarget writes a journal cursor to the positions file, while
+// FileTarget writes an integer offset. Use Get to read the integer
+// offset.
+func (p *Positions) GetString(path string) string {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	return p.positions[path]
+}
+
+// Get returns how far we've read through a file. Returns an error
+// if the value stored for the file is not an integer.
+func (p *Positions) Get(path string) (int64, error) {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	pos, ok := p.positions[path]
+	if !ok {
+		return 0, nil
+	}
+	return strconv.ParseInt(pos, 10, 64)
 }
 
 // Remove removes the position tracking for a filepath
@@ -118,7 +142,7 @@ func (p *Positions) run() {
 
 func (p *Positions) save() {
 	p.mtx.Lock()
-	positions := make(map[string]int64, len(p.positions))
+	positions := make(map[string]string, len(p.positions))
 	for k, v := range p.positions {
 		positions[k] = v
 	}
@@ -134,6 +158,12 @@ func (p *Positions) cleanup() {
 	defer p.mtx.Unlock()
 	toRemove := []string{}
 	for k := range p.positions {
+		// If the position file is prefixed with journal, it's a
+		// JournalTarget cursor and not a file on disk.
+		if strings.HasPrefix(k, "journal-") {
+			continue
+		}
+
 		if _, err := os.Stat(k); err != nil {
 			if os.IsNotExist(err) {
 				// File no longer exists.
@@ -150,11 +180,11 @@ func (p *Positions) cleanup() {
 	}
 }
 
-func readPositionsFile(filename string) (map[string]int64, error) {
+func readPositionsFile(filename string) (map[string]string, error) {
 	buf, err := ioutil.ReadFile(filepath.Clean(filename))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return map[string]int64{}, nil
+			return map[string]string{}, nil
 		}
 		return nil, err
 	}
@@ -167,7 +197,7 @@ func readPositionsFile(filename string) (map[string]int64, error) {
 	return p.Positions, nil
 }
 
-func writePositionFile(filename string, positions map[string]int64) error {
+func writePositionFile(filename string, positions map[string]string) error {
 	buf, err := yaml.Marshal(File{
 		Positions: positions,
 	})

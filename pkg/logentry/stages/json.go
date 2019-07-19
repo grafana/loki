@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	//"encoding/json"
 	//"fmt"
+	"reflect"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -19,11 +20,13 @@ const (
 	ErrExpressionsRequired  = "JMES expression is required"
 	ErrCouldNotCompileJMES  = "could not compile JMES expression"
 	ErrEmptyJSONStageConfig = "empty json stage configuration"
+	ErrEmptyJSONStageSource = "empty source"
 )
 
 // JSONConfig represents a JSON Stage configuration
 type JSONConfig struct {
 	Expressions map[string]string `mapstructure:"expressions"`
+	Source      *string           `mapstructure:"source"`
 }
 
 // validateJSONConfig validates a json config and returns a map of necessary jmespath expressions.
@@ -34,6 +37,10 @@ func validateJSONConfig(c *JSONConfig) (map[string]*jmespath.JMESPath, error) {
 
 	if len(c.Expressions) == 0 {
 		return nil, errors.New(ErrExpressionsRequired)
+	}
+
+	if c.Source != nil && *c.Source == "" {
+		return nil, errors.New(ErrEmptyJSONStageSource)
 	}
 
 	expressions := map[string]*jmespath.JMESPath{}
@@ -88,14 +95,33 @@ func parseJSONConfig(config interface{}) (*JSONConfig, error) {
 
 // Process implements Stage
 func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
-	if entry == nil {
+	// If a source key is provided, the json stage should process it
+	// from the exctracted map, otherwise should fallback to the entry
+	input := entry
+
+	if j.cfg.Source != nil {
+		if _, ok := extracted[*j.cfg.Source]; !ok {
+			level.Debug(j.logger).Log("msg", "source does not exist in the set of extracted values", "source", *j.cfg.Source)
+			return
+		}
+
+		value, err := getString(extracted[*j.cfg.Source])
+		if err != nil {
+			level.Debug(j.logger).Log("msg", "failed to convert source value to string", "source", *j.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*j.cfg.Source]).String())
+			return
+		}
+
+		input = &value
+	}
+
+	if input == nil {
 		level.Debug(j.logger).Log("msg", "cannot parse a nil entry")
 		return
 	}
 
 	var data map[string]interface{}
 
-	if err := json.Unmarshal([]byte(*entry), &data); err != nil {
+	if err := json.Unmarshal([]byte(*input), &data); err != nil {
 		level.Debug(j.logger).Log("msg", "failed to unmarshal log line", "err", err)
 		return
 	}

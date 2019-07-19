@@ -52,7 +52,7 @@ workflows:
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
   docker:
-    - image: grafana/loki-build-image:0.2.1
+    - image: grafana/loki-build-image:0.3.0
   working_directory: /go/src/github.com/grafana/loki
 
 jobs:
@@ -195,6 +195,7 @@ jobs:
           name: Install k3s
           command: |
             curl -sfL https://get.k3s.io | sh -
+            sudo chmod 755 /etc/rancher/k3s/k3s.yaml
             mkdir -p ~/.kube
             cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - run:

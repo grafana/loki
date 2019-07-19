@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"net/http"
 	"sync"
@@ -60,8 +61,9 @@ type Ingester struct {
 	lifecycler *ring.Lifecycler
 	store      ChunkStore
 
-	done sync.WaitGroup
-	quit chan struct{}
+	done     sync.WaitGroup
+	quit     chan struct{}
+	quitting chan struct{}
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
@@ -82,6 +84,7 @@ func New(cfg Config, store ChunkStore) (*Ingester, error) {
 		store:       store,
 		quit:        make(chan struct{}),
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		quitting:    make(chan struct{}),
 	}
 
 	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
@@ -125,6 +128,14 @@ func (i *Ingester) Shutdown() {
 	i.done.Wait()
 
 	i.lifecycler.Shutdown()
+}
+
+// Stopping helps cleaning up resources before actual shutdown
+func (i *Ingester) Stopping() {
+	close(i.quitting)
+	for _, instance := range i.getInstances() {
+		instance.closeTailers()
+	}
 }
 
 // StopIncomingRequests implements ring.Lifecycler.
@@ -229,4 +240,28 @@ func (i *Ingester) getInstances() []*instance {
 		instances = append(instances, instance)
 	}
 	return instances
+}
+
+// Tail logs matching given query
+func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
+	select {
+	case <-i.quitting:
+		return errors.New("Ingester is stopping")
+	default:
+	}
+
+	instanceID, err := user.ExtractOrgID(queryServer.Context())
+	if err != nil {
+		return err
+	}
+
+	instance := i.getOrCreateInstance(instanceID)
+	tailer, err := newTailer(instanceID, req.Query, req.Regex, queryServer)
+	if err != nil {
+		return err
+	}
+
+	instance.addNewTailer(tailer)
+	tailer.loop()
+	return nil
 }

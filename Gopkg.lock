@@ -213,16 +213,27 @@
   revision = "a9fb20d87448d386e6d50b1f2e1fa70dcf0de43c"
 
 [[projects]]
-  digest = "1:5155f7153c694dc8e2efd74d799a27fd54e65778fa3f0c3e17626df724857db9"
+  digest = "1:bc38b83376aa09bdc1e889c00ce73cb748b2140d535bb5c76cb9823da6c7a98a"
   name = "github.com/coreos/go-systemd"
-  packages = ["activation"]
+  packages = [
+    "activation",
+    "sdjournal",
+  ]
   pruneopts = "UT"
   revision = "95778dfbb74eb7e4dbaf43bf7d71809650ef8076"
   version = "v19"
 
 [[projects]]
+  digest = "1:6e2ff82d2fe11ee35ec8dceb4346b8144a761f1c8655592c4ebe99a92fcec327"
+  name = "github.com/coreos/pkg"
+  packages = ["dlopen"]
+  pruneopts = "UT"
+  revision = "97fdf19511ea361ae1c100dd393cc47f8dcfa1e1"
+  version = "v4"
+
+[[projects]]
   branch = "master"
-  digest = "1:960e80517f3751439c5304aa501a68dcc81f4e70a7cfa84ff658f5fc939a0c0f"
+  digest = "1:5a07b5363e4c2aa127a3afd1e8e323d3a288ba1d90d37793d2e14843f5b5b82e"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/chunk",
@@ -248,7 +259,7 @@
     "pkg/util/validation",
   ]
   pruneopts = "UT"
-  revision = "5612c6ff1c3142583ae18f47e7af99b1827f758e"
+  revision = "ef492f6bbafb185bbe61ae7a6955b7a4af5f3d9a"
 
 [[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
@@ -1561,8 +1572,10 @@
   analyzer-version = 1
   input-imports = [
     "github.com/bmatcuk/doublestar",
+    "github.com/coreos/go-systemd/sdjournal",
     "github.com/cortexproject/cortex/pkg/chunk",
     "github.com/cortexproject/cortex/pkg/chunk/encoding",
+    "github.com/cortexproject/cortex/pkg/chunk/local",
     "github.com/cortexproject/cortex/pkg/chunk/storage",
     "github.com/cortexproject/cortex/pkg/ingester/client",
     "github.com/cortexproject/cortex/pkg/ingester/index",
@@ -1573,6 +1586,7 @@
     "github.com/docker/docker/api/types/plugins/logdriver",
     "github.com/docker/docker/daemon/logger",
     "github.com/docker/docker/daemon/logger/jsonfilelog",
+    "github.com/docker/docker/daemon/logger/templates",
     "github.com/docker/docker/pkg/ioutils",
     "github.com/docker/go-plugins-helpers/sdk",
     "github.com/fatih/color",
@@ -1611,12 +1625,12 @@
     "github.com/shurcooL/httpfs/filter",
     "github.com/shurcooL/httpfs/union",
     "github.com/shurcooL/vfsgen",
-    "github.com/sirupsen/logrus",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
     "github.com/tonistiigi/fifo",
     "github.com/weaveworks/common/httpgrpc",
     "github.com/weaveworks/common/httpgrpc/server",
+    "github.com/weaveworks/common/logging",
     "github.com/weaveworks/common/middleware",
     "github.com/weaveworks/common/server",
     "github.com/weaveworks/common/tracing",
@@ -1624,6 +1638,7 @@
     "golang.org/x/net/context",
     "google.golang.org/grpc",
     "google.golang.org/grpc/health/grpc_health_v1",
+    "google.golang.org/grpc/metadata",
     "gopkg.in/alecthomas/kingpin.v2",
     "gopkg.in/fsnotify.v1",
     "gopkg.in/yaml.v2",

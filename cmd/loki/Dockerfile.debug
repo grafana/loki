@@ -15,3 +15,4 @@ RUN apk add --no-cache libc6-compat
 #   Pass flags to the program you are debugging using --, for example:`
 #   dlv exec ./hello -- server --config conf/config.toml`
 ENTRYPOINT ["/usr/bin/dlv", "--listen=:40000", "--headless=true", "--api-version=2", "exec", "/bin/loki-debug", "--"]
+CMD        ["-config.file=/etc/loki/local-config.yaml"]

@@ -53,6 +53,8 @@ type instance struct {
 	streamsRemovedTotal prometheus.Counter
 
 	blockSize int
+	tailers   map[uint32]*tailer
+	tailerMtx sync.RWMutex
 }
 
 func newInstance(instanceID string, blockSize int) *instance {
@@ -65,6 +67,7 @@ func newInstance(instanceID string, blockSize int) *instance {
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
 
 		blockSize: blockSize,
+		tailers:   map[uint32]*tailer{},
 	}
 }
 
@@ -87,6 +90,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			i.index.Add(labels, fp)
 			i.streams[fp] = stream
 			i.streamsCreatedTotal.Inc()
+			i.addTailersToNewStream(stream)
 		}
 
 		if err := stream.Push(ctx, s.Entries); err != nil {
@@ -108,8 +112,8 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		expr = logql.NewFilterExpr(expr, labels.MatchRegexp, req.Regex)
 	}
 
-	querier := logql.QuerierFunc(func(matchers []*labels.Matcher) (iter.EntryIterator, error) {
-		iters, err := i.lookupStreams(req, matchers)
+	querier := logql.QuerierFunc(func(matchers []*labels.Matcher, filter logql.Filter) (iter.EntryIterator, error) {
+		iters, err := i.lookupStreams(req, matchers, filter)
 		if err != nil {
 			return nil, err
 		}
@@ -126,7 +130,7 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	return sendBatches(iter, queryServer, req.Limit)
 }
 
-func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	var labels []string
 	if req.Values {
 		values := i.index.LabelValues(req.Name)
@@ -146,7 +150,7 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	}, nil
 }
 
-func (i *instance) lookupStreams(req *logproto.QueryRequest, matchers []*labels.Matcher) ([]iter.EntryIterator, error) {
+func (i *instance) lookupStreams(req *logproto.QueryRequest, matchers []*labels.Matcher, filter logql.Filter) ([]iter.EntryIterator, error) {
 	i.streamsMtx.RLock()
 	defer i.streamsMtx.RUnlock()
 
@@ -166,13 +170,60 @@ outer:
 				continue outer
 			}
 		}
-		iter, err := stream.Iterator(req.Start, req.End, req.Direction)
+		iter, err := stream.Iterator(req.Start, req.End, req.Direction, filter)
 		if err != nil {
 			return nil, err
 		}
 		iterators = append(iterators, iter)
 	}
 	return iterators, nil
+}
+
+func (i *instance) addNewTailer(t *tailer) {
+	i.streamsMtx.RLock()
+	for _, stream := range i.streams {
+		if stream.matchesTailer(t) {
+			stream.addTailer(t)
+		}
+	}
+	i.streamsMtx.RUnlock()
+
+	i.tailerMtx.Lock()
+	defer i.tailerMtx.Unlock()
+	i.tailers[t.getID()] = t
+}
+
+func (i *instance) addTailersToNewStream(stream *stream) {
+	closedTailers := []uint32{}
+
+	i.tailerMtx.RLock()
+	for _, t := range i.tailers {
+		if t.isClosed() {
+			closedTailers = append(closedTailers, t.getID())
+			continue
+		}
+
+		if stream.matchesTailer(t) {
+			stream.addTailer(t)
+		}
+	}
+	i.tailerMtx.RUnlock()
+
+	if len(closedTailers) != 0 {
+		i.tailerMtx.Lock()
+		defer i.tailerMtx.Unlock()
+		for _, closedTailer := range closedTailers {
+			delete(i.tailers, closedTailer)
+		}
+	}
+}
+
+func (i *instance) closeTailers() {
+	i.tailerMtx.Lock()
+	defer i.tailerMtx.Unlock()
+	for _, t := range i.tailers {
+		t.close()
+	}
 }
 
 func isDone(ctx context.Context) bool {

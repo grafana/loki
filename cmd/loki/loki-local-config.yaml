@@ -10,7 +10,8 @@ ingester:
       kvstore:
         store: inmemory
       replication_factor: 1
-  chunk_idle_period: 15m
+  chunk_idle_period: 5m
+  chunk_retain_period: 30s
 
 schema_config:
   configs:

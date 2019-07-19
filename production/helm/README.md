@@ -33,13 +33,13 @@ $ helm upgrade --install loki loki/loki-stack --set "key1=val1,key2=val2,..."
 ## Deploy Loki only
 
 ```bash
-$ helm upgrade --install loki loki/loki --set "loki.serviceName=my-loki"
+$ helm upgrade --install loki loki/loki
 ```
 
 ## Deploy Promtail only
 
 ```bash
-$ helm upgrade --install promtail loki/promtail
+$ helm upgrade --install promtail loki/promtail --set "loki.serviceName=loki"
 ```
 
 ## Deploy Grafana to your cluster

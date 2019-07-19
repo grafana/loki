@@ -119,6 +119,7 @@ func TestMatcher(t *testing.T) {
 		{"{foo=\"bar\",bar!=\"test\"}", map[string]string{"foo": "bar", "bar": "test"}, false, false},
 		{"{foo=\"bar\",bar=~\"te.*\"}", map[string]string{"foo": "bar", "bar": "test"}, true, false},
 		{"{foo=\"bar\",bar!~\"te.*\"}", map[string]string{"foo": "bar", "bar": "test"}, false, false},
+		{"{foo=\"\"}", map[string]string{}, true, false},
 	}
 
 	for _, tt := range tests {

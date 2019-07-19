@@ -32,7 +32,12 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions
 	if err != nil {
 		return nil, err
 	}
-	if fi.Size() < positions.Get(path) {
+	pos, err := positions.Get(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if fi.Size() < pos {
 		positions.Remove(path)
 	}
 
@@ -41,7 +46,7 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions
 		Poll:   true,
 		ReOpen: true,
 		Location: &tail.SeekInfo{
-			Offset: positions.Get(path),
+			Offset: pos,
 			Whence: 0,
 		},
 	})
@@ -93,7 +98,7 @@ func (t *tailer) run() {
 			}
 
 			readLines.WithLabelValues(t.path).Inc()
-
+			logLengthHistogram.WithLabelValues(t.path).Observe(float64(len(line.Text)))
 			if err := t.handler.Handle(model.LabelSet{}, line.Time, line.Text); err != nil {
 				level.Error(t.logger).Log("msg", "error handling line", "path", t.path, "error", err)
 			}
@@ -128,6 +133,7 @@ func (t *tailer) stop() error {
 	// When we stop tailing the file, also un-export metrics related to the file
 	readBytes.DeleteLabelValues(t.path)
 	totalBytes.DeleteLabelValues(t.path)
+	logLengthHistogram.DeleteLabelValues(t.path)
 	level.Info(t.logger).Log("msg", "stopped tailing file", "path", t.path)
 	return err
 }

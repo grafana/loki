@@ -2,9 +2,11 @@ package loki
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func TestGetDeps(t *testing.T) {
+func TestOrderedDeps(t *testing.T) {
 	for _, m := range []moduleName{All, Distributor, Ingester, Querier} {
 		deps := orderedDeps(m)
 		seen := make(map[moduleName]struct{})
@@ -18,4 +20,18 @@ func TestGetDeps(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestOrderedDepsShouldGuaranteeStabilityAcrossMultipleRuns(t *testing.T) {
+	initial := orderedDeps(All)
+
+	for i := 0; i < 10; i++ {
+		assert.Equal(t, initial, orderedDeps(All))
+	}
+}
+
+func TestUniqueDeps(t *testing.T) {
+	input := []moduleName{Server, Overrides, Distributor, Overrides, Server, Ingester, Server}
+	expected := []moduleName{Server, Overrides, Distributor, Ingester}
+	assert.Equal(t, expected, uniqueDeps(input))
 }

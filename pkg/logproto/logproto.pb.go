@@ -11,8 +11,11 @@ import (
 	_ "github.com/gogo/protobuf/types"
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
 	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
 	io "io"
 	math "math"
+	math_bits "math/bits"
 	reflect "reflect"
 	strconv "strconv"
 	strings "strings"
@@ -257,8 +260,10 @@ func (m *QueryResponse) GetStreams() []*Stream {
 }
 
 type LabelRequest struct {
-	Name   string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Values bool   `protobuf:"varint,2,opt,name=values,proto3" json:"values,omitempty"`
+	Name   string     `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Values bool       `protobuf:"varint,2,opt,name=values,proto3" json:"values,omitempty"`
+	Start  *time.Time `protobuf:"bytes,3,opt,name=start,proto3,stdtime" json:"start,omitempty"`
+	End    *time.Time `protobuf:"bytes,4,opt,name=end,proto3,stdtime" json:"end,omitempty"`
 }
 
 func (m *LabelRequest) Reset()      { *m = LabelRequest{} }
@@ -305,6 +310,20 @@ func (m *LabelRequest) GetValues() bool {
 		return m.Values
 	}
 	return false
+}
+
+func (m *LabelRequest) GetStart() *time.Time {
+	if m != nil {
+		return m.Start
+	}
+	return nil
+}
+
+func (m *LabelRequest) GetEnd() *time.Time {
+	if m != nil {
+		return m.End
+	}
+	return nil
 }
 
 type LabelResponse struct {
@@ -452,6 +471,191 @@ func (m *Entry) GetLine() string {
 	return ""
 }
 
+type TailRequest struct {
+	Query    string    `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	Regex    string    `protobuf:"bytes,2,opt,name=regex,proto3" json:"regex,omitempty"`
+	DelayFor uint32    `protobuf:"varint,3,opt,name=delayFor,proto3" json:"delayFor,omitempty"`
+	Limit    uint32    `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`
+	Start    time.Time `protobuf:"bytes,5,opt,name=start,proto3,stdtime" json:"start"`
+}
+
+func (m *TailRequest) Reset()      { *m = TailRequest{} }
+func (*TailRequest) ProtoMessage() {}
+func (*TailRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7a8976f235a02f79, []int{8}
+}
+func (m *TailRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *TailRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_TailRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *TailRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_TailRequest.Merge(m, src)
+}
+func (m *TailRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *TailRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_TailRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_TailRequest proto.InternalMessageInfo
+
+func (m *TailRequest) GetQuery() string {
+	if m != nil {
+		return m.Query
+	}
+	return ""
+}
+
+func (m *TailRequest) GetRegex() string {
+	if m != nil {
+		return m.Regex
+	}
+	return ""
+}
+
+func (m *TailRequest) GetDelayFor() uint32 {
+	if m != nil {
+		return m.DelayFor
+	}
+	return 0
+}
+
+func (m *TailRequest) GetLimit() uint32 {
+	if m != nil {
+		return m.Limit
+	}
+	return 0
+}
+
+func (m *TailRequest) GetStart() time.Time {
+	if m != nil {
+		return m.Start
+	}
+	return time.Time{}
+}
+
+type TailResponse struct {
+	Stream         *Stream          `protobuf:"bytes,1,opt,name=stream,proto3" json:"stream,omitempty"`
+	DroppedStreams []*DroppedStream `protobuf:"bytes,2,rep,name=droppedStreams,proto3" json:"droppedStreams,omitempty"`
+}
+
+func (m *TailResponse) Reset()      { *m = TailResponse{} }
+func (*TailResponse) ProtoMessage() {}
+func (*TailResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7a8976f235a02f79, []int{9}
+}
+func (m *TailResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *TailResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_TailResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *TailResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_TailResponse.Merge(m, src)
+}
+func (m *TailResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *TailResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_TailResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_TailResponse proto.InternalMessageInfo
+
+func (m *TailResponse) GetStream() *Stream {
+	if m != nil {
+		return m.Stream
+	}
+	return nil
+}
+
+func (m *TailResponse) GetDroppedStreams() []*DroppedStream {
+	if m != nil {
+		return m.DroppedStreams
+	}
+	return nil
+}
+
+type DroppedStream struct {
+	From   time.Time `protobuf:"bytes,1,opt,name=from,proto3,stdtime" json:"from"`
+	To     time.Time `protobuf:"bytes,2,opt,name=to,proto3,stdtime" json:"to"`
+	Labels string    `protobuf:"bytes,3,opt,name=labels,proto3" json:"labels,omitempty"`
+}
+
+func (m *DroppedStream) Reset()      { *m = DroppedStream{} }
+func (*DroppedStream) ProtoMessage() {}
+func (*DroppedStream) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7a8976f235a02f79, []int{10}
+}
+func (m *DroppedStream) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *DroppedStream) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_DroppedStream.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *DroppedStream) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DroppedStream.Merge(m, src)
+}
+func (m *DroppedStream) XXX_Size() int {
+	return m.Size()
+}
+func (m *DroppedStream) XXX_DiscardUnknown() {
+	xxx_messageInfo_DroppedStream.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_DroppedStream proto.InternalMessageInfo
+
+func (m *DroppedStream) GetFrom() time.Time {
+	if m != nil {
+		return m.From
+	}
+	return time.Time{}
+}
+
+func (m *DroppedStream) GetTo() time.Time {
+	if m != nil {
+		return m.To
+	}
+	return time.Time{}
+}
+
+func (m *DroppedStream) GetLabels() string {
+	if m != nil {
+		return m.Labels
+	}
+	return ""
+}
+
 func init() {
 	proto.RegisterEnum("logproto.Direction", Direction_name, Direction_value)
 	proto.RegisterType((*PushRequest)(nil), "logproto.PushRequest")
@@ -462,50 +666,63 @@ func init() {
 	proto.RegisterType((*LabelResponse)(nil), "logproto.LabelResponse")
 	proto.RegisterType((*Stream)(nil), "logproto.Stream")
 	proto.RegisterType((*Entry)(nil), "logproto.Entry")
+	proto.RegisterType((*TailRequest)(nil), "logproto.TailRequest")
+	proto.RegisterType((*TailResponse)(nil), "logproto.TailResponse")
+	proto.RegisterType((*DroppedStream)(nil), "logproto.DroppedStream")
 }
 
 func init() { proto.RegisterFile("logproto.proto", fileDescriptor_7a8976f235a02f79) }
 
 var fileDescriptor_7a8976f235a02f79 = []byte{
-	// 601 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x53, 0x4f, 0x6f, 0xd3, 0x4e,
-	0x10, 0xf5, 0xb6, 0x89, 0x13, 0x4f, 0xd2, 0xb4, 0xda, 0xdf, 0x8f, 0x62, 0x45, 0x68, 0x1d, 0xf9,
-	0x00, 0x51, 0x25, 0x5c, 0x08, 0x88, 0x4a, 0x85, 0x4b, 0x4d, 0xa9, 0x90, 0x40, 0x02, 0x16, 0x24,
-	0xce, 0x4e, 0xbb, 0xb8, 0x96, 0xfc, 0xa7, 0xb5, 0xd7, 0x88, 0xde, 0x90, 0xf8, 0x02, 0xfd, 0x18,
-	0x7c, 0x94, 0x1e, 0x73, 0xec, 0x29, 0x10, 0xe7, 0x82, 0x72, 0xea, 0x8d, 0x2b, 0xda, 0xb5, 0x1d,
-	0x1b, 0x90, 0x40, 0x5c, 0x9c, 0x79, 0xbb, 0xef, 0xcd, 0xec, 0x9b, 0x99, 0x40, 0xcf, 0x8f, 0xdc,
-	0x93, 0x38, 0xe2, 0x91, 0x25, 0xbf, 0xb8, 0x5d, 0xe2, 0xbe, 0xe1, 0x46, 0x91, 0xeb, 0xb3, 0x6d,
-	0x89, 0xc6, 0xe9, 0xbb, 0x6d, 0xee, 0x05, 0x2c, 0xe1, 0x4e, 0x70, 0x92, 0x53, 0xfb, 0xb7, 0x5d,
-	0x8f, 0x1f, 0xa7, 0x63, 0xeb, 0x30, 0x0a, 0xb6, 0xdd, 0xc8, 0x8d, 0x2a, 0xa6, 0x40, 0x12, 0xc8,
-	0x28, 0xa7, 0x9b, 0x07, 0xd0, 0x79, 0x99, 0x26, 0xc7, 0x94, 0x9d, 0xa6, 0x2c, 0xe1, 0x78, 0x07,
-	0x5a, 0x09, 0x8f, 0x99, 0x13, 0x24, 0x3a, 0x1a, 0xac, 0x0e, 0x3b, 0xa3, 0x0d, 0x6b, 0xf9, 0x94,
-	0xd7, 0xf2, 0xc2, 0xee, 0x2c, 0xa6, 0x46, 0x49, 0xa2, 0x65, 0x60, 0xf6, 0xa0, 0x9b, 0xe7, 0x49,
-	0x4e, 0xa2, 0x30, 0x61, 0xe6, 0x77, 0x04, 0xdd, 0x57, 0x29, 0x8b, 0xcf, 0xca, 0xcc, 0xff, 0x43,
-	0xf3, 0x54, 0x60, 0x1d, 0x0d, 0xd0, 0x50, 0xa3, 0x39, 0x10, 0xa7, 0xbe, 0x17, 0x78, 0x5c, 0x5f,
-	0x19, 0xa0, 0xe1, 0x1a, 0xcd, 0x01, 0xde, 0x85, 0x66, 0xc2, 0x9d, 0x98, 0xeb, 0xab, 0x03, 0x34,
-	0xec, 0x8c, 0xfa, 0x56, 0x6e, 0xda, 0x2a, 0xad, 0x58, 0x6f, 0x4a, 0xd3, 0x76, 0xfb, 0x62, 0x6a,
-	0x28, 0xe7, 0x5f, 0x0c, 0x44, 0x73, 0x09, 0x7e, 0x00, 0xab, 0x2c, 0x3c, 0xd2, 0x1b, 0xff, 0xa0,
-	0x14, 0x02, 0x7c, 0x17, 0xb4, 0x23, 0x2f, 0x66, 0x87, 0xdc, 0x8b, 0x42, 0xbd, 0x39, 0x40, 0xc3,
-	0xde, 0xe8, 0xbf, 0xca, 0xfb, 0x7e, 0x79, 0x45, 0x2b, 0x96, 0x78, 0x7c, 0xcc, 0x5c, 0xf6, 0x41,
-	0x57, 0x73, 0x4b, 0x12, 0x98, 0x0f, 0x61, 0xad, 0x30, 0x9e, 0xb7, 0x02, 0x6f, 0xfd, 0xb5, 0xa7,
-	0x55, 0x1b, 0x77, 0xa1, 0xfb, 0xdc, 0x19, 0x33, 0xbf, 0xec, 0x1a, 0x86, 0x46, 0xe8, 0x04, 0xac,
-	0x68, 0x9a, 0x8c, 0xf1, 0x26, 0xa8, 0xef, 0x1d, 0x3f, 0x65, 0x89, 0x6c, 0x5a, 0x9b, 0x16, 0xc8,
-	0xbc, 0x05, 0x6b, 0x85, 0xb6, 0x28, 0x5c, 0x11, 0x45, 0x5d, 0x6d, 0x49, 0x3c, 0x06, 0x35, 0xaf,
-	0x8b, 0x4d, 0x50, 0x7d, 0x21, 0x49, 0xf2, 0x02, 0x36, 0x2c, 0xa6, 0x46, 0x71, 0x42, 0x8b, 0x5f,
-	0xbc, 0x0b, 0x2d, 0x16, 0xf2, 0xd8, 0x93, 0xf5, 0xc4, 0xf3, 0xd7, 0xab, 0xe7, 0x3f, 0x09, 0x79,
-	0x7c, 0x66, 0xaf, 0x8b, 0x4e, 0x8a, 0xad, 0x28, 0x78, 0xb4, 0x0c, 0xcc, 0x08, 0x9a, 0x92, 0x82,
-	0x9f, 0x82, 0xb6, 0x5c, 0x54, 0x59, 0xeb, 0xcf, 0xb3, 0xe9, 0x15, 0x19, 0x57, 0x78, 0x22, 0x27,
-	0x54, 0x89, 0xf1, 0x0d, 0x68, 0xf8, 0x5e, 0xc8, 0xa4, 0x77, 0xcd, 0x6e, 0x2f, 0xa6, 0x86, 0xc4,
-	0x54, 0x7e, 0xb7, 0x6e, 0x82, 0xb6, 0x1c, 0x15, 0xee, 0x40, 0xeb, 0xe0, 0x05, 0x7d, 0xbb, 0x47,
-	0xf7, 0x37, 0x14, 0xdc, 0x85, 0xb6, 0xbd, 0xf7, 0xf8, 0x99, 0x44, 0x68, 0xb4, 0x07, 0xaa, 0x58,
-	0x57, 0x16, 0xe3, 0x1d, 0x68, 0x88, 0x08, 0x5f, 0xab, 0x5c, 0xd5, 0xfe, 0x10, 0xfd, 0xcd, 0x5f,
-	0x8f, 0x8b, 0xfd, 0x56, 0x46, 0x9f, 0x10, 0xb4, 0xc4, 0xa0, 0x3d, 0x16, 0xe3, 0x47, 0xd0, 0x94,
-	0x33, 0xc7, 0x35, 0x7a, 0x7d, 0xfb, 0xfb, 0xd7, 0x7f, 0x3b, 0x2f, 0xf3, 0xdc, 0x41, 0x62, 0xdd,
-	0xe5, 0xe0, 0xea, 0xea, 0xfa, 0x16, 0xd4, 0xd5, 0x3f, 0x4d, 0xd8, 0x54, 0xec, 0xfb, 0x93, 0x19,
-	0x51, 0x2e, 0x67, 0x44, 0xb9, 0x9a, 0x11, 0xf4, 0x31, 0x23, 0xe8, 0x73, 0x46, 0xd0, 0x45, 0x46,
-	0xd0, 0x24, 0x23, 0xe8, 0x6b, 0x46, 0xd0, 0xb7, 0x8c, 0x28, 0x57, 0x19, 0x41, 0xe7, 0x73, 0xa2,
-	0x4c, 0xe6, 0x44, 0xb9, 0x9c, 0x13, 0x65, 0xac, 0xca, 0x64, 0xf7, 0x7e, 0x04, 0x00, 0x00, 0xff,
-	0xff, 0x47, 0x69, 0x1e, 0x88, 0x68, 0x04, 0x00, 0x00,
+	// 754 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x54, 0x4f, 0x4f, 0x13, 0x4f,
+	0x18, 0xde, 0xe9, 0xff, 0xbe, 0xfd, 0x03, 0x99, 0xdf, 0x4f, 0x68, 0x1a, 0xb3, 0x6d, 0xf6, 0xa0,
+	0x0d, 0x89, 0x45, 0x2b, 0x11, 0x45, 0x13, 0x43, 0x45, 0x62, 0xa2, 0x89, 0x3a, 0x90, 0x78, 0xde,
+	0xd2, 0xa1, 0x6c, 0xb2, 0xed, 0x94, 0xdd, 0xa9, 0xb1, 0x37, 0x3f, 0x02, 0x37, 0x3f, 0x82, 0x9e,
+	0xfc, 0x08, 0x9e, 0x39, 0x72, 0xe4, 0x54, 0x65, 0xb9, 0x18, 0x4e, 0xdc, 0xbc, 0x9a, 0xf9, 0xb3,
+	0xdd, 0x05, 0x8c, 0x80, 0x97, 0x76, 0x9e, 0x99, 0xf7, 0x9d, 0x7d, 0x9f, 0x67, 0x9e, 0xf7, 0x85,
+	0xb2, 0xcb, 0x7a, 0x43, 0x8f, 0x71, 0xd6, 0x94, 0xbf, 0x38, 0x17, 0xe2, 0x6a, 0xad, 0xc7, 0x58,
+	0xcf, 0xa5, 0x8b, 0x12, 0x75, 0x46, 0xdb, 0x8b, 0xdc, 0xe9, 0x53, 0x9f, 0xdb, 0xfd, 0xa1, 0x0a,
+	0xad, 0xde, 0xe9, 0x39, 0x7c, 0x67, 0xd4, 0x69, 0x6e, 0xb1, 0xfe, 0x62, 0x8f, 0xf5, 0x58, 0x14,
+	0x29, 0x90, 0x04, 0x72, 0xa5, 0xc2, 0xad, 0x75, 0x28, 0xbc, 0x19, 0xf9, 0x3b, 0x84, 0xee, 0x8e,
+	0xa8, 0xcf, 0xf1, 0x32, 0x64, 0x7d, 0xee, 0x51, 0xbb, 0xef, 0x57, 0x50, 0x3d, 0xd9, 0x28, 0xb4,
+	0x66, 0x9b, 0xd3, 0x52, 0x36, 0xe4, 0x41, 0xbb, 0x70, 0x32, 0xa9, 0x85, 0x41, 0x24, 0x5c, 0x58,
+	0x65, 0x28, 0xaa, 0x7b, 0xfc, 0x21, 0x1b, 0xf8, 0xd4, 0xfa, 0x85, 0xa0, 0xf8, 0x76, 0x44, 0xbd,
+	0x71, 0x78, 0xf3, 0xff, 0x90, 0xde, 0x15, 0xb8, 0x82, 0xea, 0xa8, 0x91, 0x27, 0x0a, 0x88, 0x5d,
+	0xd7, 0xe9, 0x3b, 0xbc, 0x92, 0xa8, 0xa3, 0x46, 0x89, 0x28, 0x80, 0x57, 0x20, 0xed, 0x73, 0xdb,
+	0xe3, 0x95, 0x64, 0x1d, 0x35, 0x0a, 0xad, 0x6a, 0x53, 0x91, 0x6e, 0x86, 0x54, 0x9a, 0x9b, 0x21,
+	0xe9, 0x76, 0x6e, 0x7f, 0x52, 0x33, 0xf6, 0xbe, 0xd7, 0x10, 0x51, 0x29, 0xf8, 0x01, 0x24, 0xe9,
+	0xa0, 0x5b, 0x49, 0x5d, 0x23, 0x53, 0x24, 0xe0, 0x7b, 0x90, 0xef, 0x3a, 0x1e, 0xdd, 0xe2, 0x0e,
+	0x1b, 0x54, 0xd2, 0x75, 0xd4, 0x28, 0xb7, 0xfe, 0x8b, 0xb8, 0xaf, 0x85, 0x47, 0x24, 0x8a, 0x12,
+	0xc5, 0x7b, 0xb4, 0x47, 0x3f, 0x54, 0x32, 0x8a, 0x92, 0x04, 0xd6, 0x63, 0x28, 0x69, 0xe2, 0x4a,
+	0x0a, 0xbc, 0x70, 0xa9, 0xa6, 0x91, 0x8c, 0x5f, 0x11, 0x14, 0x5f, 0xd9, 0x1d, 0xea, 0x86, 0xb2,
+	0x61, 0x48, 0x0d, 0xec, 0x3e, 0xd5, 0xaa, 0xc9, 0x35, 0x9e, 0x83, 0xcc, 0x7b, 0xdb, 0x1d, 0x51,
+	0x5f, 0xaa, 0x96, 0x23, 0x1a, 0x5d, 0x57, 0x36, 0xf4, 0xcf, 0xb2, 0xa1, 0xa9, 0x6c, 0xd6, 0x6d,
+	0x28, 0xe9, 0x7a, 0x35, 0xdb, 0xa8, 0x38, 0x41, 0x36, 0x1f, 0x16, 0x67, 0xed, 0x40, 0x46, 0x91,
+	0xc5, 0x16, 0x64, 0x5c, 0x91, 0xe2, 0x2b, 0x52, 0x6d, 0x38, 0x99, 0xd4, 0xf4, 0x0e, 0xd1, 0xff,
+	0x78, 0x05, 0xb2, 0x74, 0xc0, 0x3d, 0x47, 0x72, 0x14, 0x9a, 0xcd, 0x44, 0x9a, 0x3d, 0x1f, 0x70,
+	0x6f, 0xdc, 0x9e, 0x11, 0xcf, 0x27, 0xac, 0xa8, 0xe3, 0x48, 0xb8, 0xb0, 0x18, 0xa4, 0x65, 0x08,
+	0x7e, 0x01, 0xf9, 0x69, 0x77, 0xc8, 0x6f, 0xfd, 0x9d, 0x59, 0x59, 0xdf, 0x98, 0xe0, 0xbe, 0xe4,
+	0x17, 0x25, 0xe3, 0x9b, 0x90, 0x72, 0x9d, 0x01, 0x95, 0x7a, 0xe7, 0xdb, 0xb9, 0x93, 0x49, 0x4d,
+	0x62, 0x22, 0x7f, 0xad, 0xcf, 0x08, 0x0a, 0x9b, 0xb6, 0xe3, 0x5e, 0x6a, 0x75, 0xe5, 0x96, 0x44,
+	0xcc, 0x2d, 0xb8, 0x0a, 0xb9, 0x2e, 0x75, 0xed, 0xf1, 0x3a, 0xf3, 0xe4, 0xb3, 0x95, 0xc8, 0x14,
+	0x47, 0xcd, 0x91, 0xfa, 0x63, 0x73, 0xa4, 0xaf, 0xdd, 0x1c, 0xd6, 0x18, 0x8a, 0xaa, 0x50, 0xfd,
+	0x58, 0x0d, 0xc8, 0x28, 0xe7, 0x69, 0x79, 0x2e, 0x3a, 0x53, 0x9f, 0xe3, 0xa7, 0x50, 0xee, 0x7a,
+	0x6c, 0x38, 0xa4, 0xdd, 0x0d, 0xed, 0x65, 0xf5, 0x2e, 0xf3, 0xb1, 0x1e, 0x89, 0x9f, 0x93, 0x73,
+	0xe1, 0xd6, 0x27, 0x04, 0xa5, 0x33, 0x11, 0xf8, 0x21, 0xa4, 0xb6, 0x3d, 0xd6, 0xbf, 0xc2, 0xcb,
+	0x44, 0x3c, 0x64, 0x06, 0x5e, 0x82, 0x04, 0x67, 0x52, 0xc7, 0xab, 0xe6, 0x25, 0x38, 0x13, 0xce,
+	0xd4, 0xbe, 0x4b, 0xca, 0x17, 0xd0, 0x68, 0xe1, 0x16, 0xe4, 0xa7, 0xed, 0x8d, 0x0b, 0x90, 0x5d,
+	0x7f, 0x4d, 0xde, 0xad, 0x92, 0xb5, 0x59, 0x03, 0x17, 0x21, 0xd7, 0x5e, 0x7d, 0xf6, 0x52, 0x22,
+	0xd4, 0x5a, 0x85, 0x8c, 0x18, 0x71, 0xd4, 0xc3, 0xcb, 0x90, 0x12, 0x2b, 0x7c, 0x23, 0x22, 0x1f,
+	0x1b, 0xa2, 0xd5, 0xb9, 0xf3, 0xdb, 0x7a, 0x26, 0x1a, 0xad, 0x6f, 0x08, 0xb2, 0x62, 0x38, 0x38,
+	0xd4, 0xc3, 0x4f, 0x20, 0x2d, 0xe7, 0x04, 0x8e, 0x85, 0xc7, 0x27, 0x66, 0x75, 0xfe, 0xc2, 0x7e,
+	0x78, 0xcf, 0x5d, 0x24, 0x5c, 0x20, 0xfb, 0x2e, 0x9e, 0x1d, 0x1f, 0x1c, 0xf1, 0xec, 0x33, 0x0d,
+	0x6a, 0x19, 0xf8, 0x11, 0xa4, 0x84, 0x0b, 0xe2, 0xe5, 0xc7, 0xec, 0x1b, 0x2f, 0x3f, 0x6e, 0x16,
+	0xf1, 0xd9, 0xf6, 0xd2, 0xc1, 0x91, 0x69, 0x1c, 0x1e, 0x99, 0xc6, 0xe9, 0x91, 0x89, 0x3e, 0x06,
+	0x26, 0xfa, 0x12, 0x98, 0x68, 0x3f, 0x30, 0xd1, 0x41, 0x60, 0xa2, 0x1f, 0x81, 0x89, 0x7e, 0x06,
+	0xa6, 0x71, 0x1a, 0x98, 0x68, 0xef, 0xd8, 0x34, 0x0e, 0x8e, 0x4d, 0xe3, 0xf0, 0xd8, 0x34, 0x3a,
+	0x19, 0x79, 0xdb, 0xfd, 0xdf, 0x01, 0x00, 0x00, 0xff, 0xff, 0x25, 0xbd, 0x8d, 0xbf, 0xd7, 0x06,
+	0x00, 0x00,
 }
 
 func (x Direction) String() string {
@@ -658,6 +875,20 @@ func (this *LabelRequest) Equal(that interface{}) bool {
 	if this.Values != that1.Values {
 		return false
 	}
+	if that1.Start == nil {
+		if this.Start != nil {
+			return false
+		}
+	} else if !this.Start.Equal(*that1.Start) {
+		return false
+	}
+	if that1.End == nil {
+		if this.End != nil {
+			return false
+		}
+	} else if !this.End.Equal(*that1.End) {
+		return false
+	}
 	return true
 }
 func (this *LabelResponse) Equal(that interface{}) bool {
@@ -748,6 +979,104 @@ func (this *Entry) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *TailRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*TailRequest)
+	if !ok {
+		that2, ok := that.(TailRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Query != that1.Query {
+		return false
+	}
+	if this.Regex != that1.Regex {
+		return false
+	}
+	if this.DelayFor != that1.DelayFor {
+		return false
+	}
+	if this.Limit != that1.Limit {
+		return false
+	}
+	if !this.Start.Equal(that1.Start) {
+		return false
+	}
+	return true
+}
+func (this *TailResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*TailResponse)
+	if !ok {
+		that2, ok := that.(TailResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.Stream.Equal(that1.Stream) {
+		return false
+	}
+	if len(this.DroppedStreams) != len(that1.DroppedStreams) {
+		return false
+	}
+	for i := range this.DroppedStreams {
+		if !this.DroppedStreams[i].Equal(that1.DroppedStreams[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *DroppedStream) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*DroppedStream)
+	if !ok {
+		that2, ok := that.(DroppedStream)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.From.Equal(that1.From) {
+		return false
+	}
+	if !this.To.Equal(that1.To) {
+		return false
+	}
+	if this.Labels != that1.Labels {
+		return false
+	}
+	return true
+}
 func (this *PushRequest) GoString() string {
 	if this == nil {
 		return "nil"
@@ -800,10 +1129,12 @@ func (this *LabelRequest) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 6)
+	s := make([]string, 0, 8)
 	s = append(s, "&logproto.LabelRequest{")
 	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
 	s = append(s, "Values: "+fmt.Sprintf("%#v", this.Values)+",\n")
+	s = append(s, "Start: "+fmt.Sprintf("%#v", this.Start)+",\n")
+	s = append(s, "End: "+fmt.Sprintf("%#v", this.End)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -842,6 +1173,47 @@ func (this *Entry) GoString() string {
 	s = append(s, "&logproto.Entry{")
 	s = append(s, "Timestamp: "+fmt.Sprintf("%#v", this.Timestamp)+",\n")
 	s = append(s, "Line: "+fmt.Sprintf("%#v", this.Line)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *TailRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 9)
+	s = append(s, "&logproto.TailRequest{")
+	s = append(s, "Query: "+fmt.Sprintf("%#v", this.Query)+",\n")
+	s = append(s, "Regex: "+fmt.Sprintf("%#v", this.Regex)+",\n")
+	s = append(s, "DelayFor: "+fmt.Sprintf("%#v", this.DelayFor)+",\n")
+	s = append(s, "Limit: "+fmt.Sprintf("%#v", this.Limit)+",\n")
+	s = append(s, "Start: "+fmt.Sprintf("%#v", this.Start)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *TailResponse) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&logproto.TailResponse{")
+	if this.Stream != nil {
+		s = append(s, "Stream: "+fmt.Sprintf("%#v", this.Stream)+",\n")
+	}
+	if this.DroppedStreams != nil {
+		s = append(s, "DroppedStreams: "+fmt.Sprintf("%#v", this.DroppedStreams)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *DroppedStream) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&logproto.DroppedStream{")
+	s = append(s, "From: "+fmt.Sprintf("%#v", this.From)+",\n")
+	s = append(s, "To: "+fmt.Sprintf("%#v", this.To)+",\n")
+	s = append(s, "Labels: "+fmt.Sprintf("%#v", this.Labels)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -891,6 +1263,14 @@ type PusherServer interface {
 	Push(context.Context, *PushRequest) (*PushResponse, error)
 }
 
+// UnimplementedPusherServer can be embedded to have forward compatible implementations.
+type UnimplementedPusherServer struct {
+}
+
+func (*UnimplementedPusherServer) Push(ctx context.Context, req *PushRequest) (*PushResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Push not implemented")
+}
+
 func RegisterPusherServer(s *grpc.Server, srv PusherServer) {
 	s.RegisterService(&_Pusher_serviceDesc, srv)
 }
@@ -932,6 +1312,7 @@ var _Pusher_serviceDesc = grpc.ServiceDesc{
 type QuerierClient interface {
 	Query(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (Querier_QueryClient, error)
 	Label(ctx context.Context, in *LabelRequest, opts ...grpc.CallOption) (*LabelResponse, error)
+	Tail(ctx context.Context, in *TailRequest, opts ...grpc.CallOption) (Querier_TailClient, error)
 }
 
 type querierClient struct {
@@ -983,10 +1364,57 @@ func (c *querierClient) Label(ctx context.Context, in *LabelRequest, opts ...grp
 	return out, nil
 }
 
+func (c *querierClient) Tail(ctx context.Context, in *TailRequest, opts ...grpc.CallOption) (Querier_TailClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_Querier_serviceDesc.Streams[1], "/logproto.Querier/Tail", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &querierTailClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Querier_TailClient interface {
+	Recv() (*TailResponse, error)
+	grpc.ClientStream
+}
+
+type querierTailClient struct {
+	grpc.ClientStream
+}
+
+func (x *querierTailClient) Recv() (*TailResponse, error) {
+	m := new(TailResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // QuerierServer is the server API for Querier service.
 type QuerierServer interface {
 	Query(*QueryRequest, Querier_QueryServer) error
 	Label(context.Context, *LabelRequest) (*LabelResponse, error)
+	Tail(*TailRequest, Querier_TailServer) error
+}
+
+// UnimplementedQuerierServer can be embedded to have forward compatible implementations.
+type UnimplementedQuerierServer struct {
+}
+
+func (*UnimplementedQuerierServer) Query(req *QueryRequest, srv Querier_QueryServer) error {
+	return status.Errorf(codes.Unimplemented, "method Query not implemented")
+}
+func (*UnimplementedQuerierServer) Label(ctx context.Context, req *LabelRequest) (*LabelResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Label not implemented")
+}
+func (*UnimplementedQuerierServer) Tail(req *TailRequest, srv Querier_TailServer) error {
+	return status.Errorf(codes.Unimplemented, "method Tail not implemented")
 }
 
 func RegisterQuerierServer(s *grpc.Server, srv QuerierServer) {
@@ -1032,6 +1460,27 @@ func _Querier_Label_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Querier_Tail_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(TailRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(QuerierServer).Tail(m, &querierTailServer{stream})
+}
+
+type Querier_TailServer interface {
+	Send(*TailResponse) error
+	grpc.ServerStream
+}
+
+type querierTailServer struct {
+	grpc.ServerStream
+}
+
+func (x *querierTailServer) Send(m *TailResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 var _Querier_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "logproto.Querier",
 	HandlerType: (*QuerierServer)(nil),
@@ -1045,6 +1494,11 @@ var _Querier_serviceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Query",
 			Handler:       _Querier_Query_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "Tail",
+			Handler:       _Querier_Tail_Handler,
 			ServerStreams: true,
 		},
 	},
@@ -1216,6 +1670,26 @@ func (m *LabelRequest) MarshalTo(dAtA []byte) (int, error) {
 		}
 		i++
 	}
+	if m.Start != nil {
+		dAtA[i] = 0x1a
+		i++
+		i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(*m.Start)))
+		n3, err3 := github_com_gogo_protobuf_types.StdTimeMarshalTo(*m.Start, dAtA[i:])
+		if err3 != nil {
+			return 0, err3
+		}
+		i += n3
+	}
+	if m.End != nil {
+		dAtA[i] = 0x22
+		i++
+		i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(*m.End)))
+		n4, err4 := github_com_gogo_protobuf_types.StdTimeMarshalTo(*m.End, dAtA[i:])
+		if err4 != nil {
+			return 0, err4
+		}
+		i += n4
+	}
 	return i, nil
 }
 
@@ -1306,16 +1780,144 @@ func (m *Entry) MarshalTo(dAtA []byte) (int, error) {
 	dAtA[i] = 0xa
 	i++
 	i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp)))
-	n3, err3 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i:])
-	if err3 != nil {
-		return 0, err3
+	n5, err5 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i:])
+	if err5 != nil {
+		return 0, err5
 	}
-	i += n3
+	i += n5
 	if len(m.Line) > 0 {
 		dAtA[i] = 0x12
 		i++
 		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Line)))
 		i += copy(dAtA[i:], m.Line)
+	}
+	return i, nil
+}
+
+func (m *TailRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *TailRequest) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.Query) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Query)))
+		i += copy(dAtA[i:], m.Query)
+	}
+	if len(m.Regex) > 0 {
+		dAtA[i] = 0x12
+		i++
+		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Regex)))
+		i += copy(dAtA[i:], m.Regex)
+	}
+	if m.DelayFor != 0 {
+		dAtA[i] = 0x18
+		i++
+		i = encodeVarintLogproto(dAtA, i, uint64(m.DelayFor))
+	}
+	if m.Limit != 0 {
+		dAtA[i] = 0x20
+		i++
+		i = encodeVarintLogproto(dAtA, i, uint64(m.Limit))
+	}
+	dAtA[i] = 0x2a
+	i++
+	i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.Start)))
+	n6, err6 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i:])
+	if err6 != nil {
+		return 0, err6
+	}
+	i += n6
+	return i, nil
+}
+
+func (m *TailResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *TailResponse) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Stream != nil {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintLogproto(dAtA, i, uint64(m.Stream.Size()))
+		n7, err7 := m.Stream.MarshalTo(dAtA[i:])
+		if err7 != nil {
+			return 0, err7
+		}
+		i += n7
+	}
+	if len(m.DroppedStreams) > 0 {
+		for _, msg := range m.DroppedStreams {
+			dAtA[i] = 0x12
+			i++
+			i = encodeVarintLogproto(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
+	}
+	return i, nil
+}
+
+func (m *DroppedStream) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *DroppedStream) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	dAtA[i] = 0xa
+	i++
+	i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.From)))
+	n8, err8 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.From, dAtA[i:])
+	if err8 != nil {
+		return 0, err8
+	}
+	i += n8
+	dAtA[i] = 0x12
+	i++
+	i = encodeVarintLogproto(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdTime(m.To)))
+	n9, err9 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.To, dAtA[i:])
+	if err9 != nil {
+		return 0, err9
+	}
+	i += n9
+	if len(m.Labels) > 0 {
+		dAtA[i] = 0x1a
+		i++
+		i = encodeVarintLogproto(dAtA, i, uint64(len(m.Labels)))
+		i += copy(dAtA[i:], m.Labels)
 	}
 	return i, nil
 }
@@ -1408,6 +2010,14 @@ func (m *LabelRequest) Size() (n int) {
 	if m.Values {
 		n += 2
 	}
+	if m.Start != nil {
+		l = github_com_gogo_protobuf_types.SizeOfStdTime(*m.Start)
+		n += 1 + l + sovLogproto(uint64(l))
+	}
+	if m.End != nil {
+		l = github_com_gogo_protobuf_types.SizeOfStdTime(*m.End)
+		n += 1 + l + sovLogproto(uint64(l))
+	}
 	return n
 }
 
@@ -1460,15 +2070,69 @@ func (m *Entry) Size() (n int) {
 	return n
 }
 
-func sovLogproto(x uint64) (n int) {
-	for {
-		n++
-		x >>= 7
-		if x == 0 {
-			break
+func (m *TailRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Query)
+	if l > 0 {
+		n += 1 + l + sovLogproto(uint64(l))
+	}
+	l = len(m.Regex)
+	if l > 0 {
+		n += 1 + l + sovLogproto(uint64(l))
+	}
+	if m.DelayFor != 0 {
+		n += 1 + sovLogproto(uint64(m.DelayFor))
+	}
+	if m.Limit != 0 {
+		n += 1 + sovLogproto(uint64(m.Limit))
+	}
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.Start)
+	n += 1 + l + sovLogproto(uint64(l))
+	return n
+}
+
+func (m *TailResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Stream != nil {
+		l = m.Stream.Size()
+		n += 1 + l + sovLogproto(uint64(l))
+	}
+	if len(m.DroppedStreams) > 0 {
+		for _, e := range m.DroppedStreams {
+			l = e.Size()
+			n += 1 + l + sovLogproto(uint64(l))
 		}
 	}
 	return n
+}
+
+func (m *DroppedStream) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.From)
+	n += 1 + l + sovLogproto(uint64(l))
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.To)
+	n += 1 + l + sovLogproto(uint64(l))
+	l = len(m.Labels)
+	if l > 0 {
+		n += 1 + l + sovLogproto(uint64(l))
+	}
+	return n
+}
+
+func sovLogproto(x uint64) (n int) {
+	return (math_bits.Len64(x|1) + 6) / 7
 }
 func sozLogproto(x uint64) (n int) {
 	return sovLogproto(uint64((x << 1) ^ uint64((int64(x) >> 63))))
@@ -1534,6 +2198,8 @@ func (this *LabelRequest) String() string {
 	s := strings.Join([]string{`&LabelRequest{`,
 		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
 		`Values:` + fmt.Sprintf("%v", this.Values) + `,`,
+		`Start:` + strings.Replace(fmt.Sprintf("%v", this.Start), "Timestamp", "types.Timestamp", 1) + `,`,
+		`End:` + strings.Replace(fmt.Sprintf("%v", this.End), "Timestamp", "types.Timestamp", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1571,6 +2237,48 @@ func (this *Entry) String() string {
 	s := strings.Join([]string{`&Entry{`,
 		`Timestamp:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Timestamp), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Line:` + fmt.Sprintf("%v", this.Line) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *TailRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&TailRequest{`,
+		`Query:` + fmt.Sprintf("%v", this.Query) + `,`,
+		`Regex:` + fmt.Sprintf("%v", this.Regex) + `,`,
+		`DelayFor:` + fmt.Sprintf("%v", this.DelayFor) + `,`,
+		`Limit:` + fmt.Sprintf("%v", this.Limit) + `,`,
+		`Start:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Start), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *TailResponse) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForDroppedStreams := "[]*DroppedStream{"
+	for _, f := range this.DroppedStreams {
+		repeatedStringForDroppedStreams += strings.Replace(f.String(), "DroppedStream", "DroppedStream", 1) + ","
+	}
+	repeatedStringForDroppedStreams += "}"
+	s := strings.Join([]string{`&TailResponse{`,
+		`Stream:` + strings.Replace(this.Stream.String(), "Stream", "Stream", 1) + `,`,
+		`DroppedStreams:` + repeatedStringForDroppedStreams + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DroppedStream) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DroppedStream{`,
+		`From:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.From), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`To:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.To), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2112,6 +2820,78 @@ func (m *LabelRequest) Unmarshal(dAtA []byte) error {
 				}
 			}
 			m.Values = bool(v != 0)
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Start", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogproto
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Start == nil {
+				m.Start = new(time.Time)
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(m.Start, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field End", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogproto
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.End == nil {
+				m.End = new(time.Time)
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(m.End, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipLogproto(dAtA[iNdEx:])
@@ -2433,6 +3213,468 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Line = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipLogproto(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *TailRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowLogproto
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: TailRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: TailRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Query", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogproto
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Query = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Regex", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogproto
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Regex = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DelayFor", wireType)
+			}
+			m.DelayFor = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogproto
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.DelayFor |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Limit", wireType)
+			}
+			m.Limit = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogproto
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Limit |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Start", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogproto
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.Start, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipLogproto(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *TailResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowLogproto
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: TailResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: TailResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Stream", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogproto
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Stream == nil {
+				m.Stream = &Stream{}
+			}
+			if err := m.Stream.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DroppedStreams", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogproto
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.DroppedStreams = append(m.DroppedStreams, &DroppedStream{})
+			if err := m.DroppedStreams[len(m.DroppedStreams)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipLogproto(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *DroppedStream) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowLogproto
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: DroppedStream: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: DroppedStream: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field From", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogproto
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.From, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field To", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogproto
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.To, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Labels", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowLogproto
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthLogproto
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Labels = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

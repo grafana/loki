@@ -21,12 +21,18 @@ const (
 	queryPath       = "/api/prom/query?query=%s&limit=%d&start=%d&end=%d&direction=%s&regexp=%s"
 	labelsPath      = "/api/prom/label"
 	labelValuesPath = "/api/prom/label/%s/values"
-	tailPath        = "/api/prom/tail?query=%s&regexp=%s"
+	tailPath        = "/api/prom/tail?query=%s&regexp=%s&delay_for=%d&limit=%d&start=%d"
 )
 
 func query(from, through time.Time, direction logproto.Direction) (*logproto.QueryResponse, error) {
-	path := fmt.Sprintf(queryPath, url.QueryEscape(*queryStr), *limit, from.UnixNano(),
-		through.UnixNano(), direction.String(), url.QueryEscape(*regexpStr))
+	path := fmt.Sprintf(queryPath,
+		url.QueryEscape(*queryStr),  // query
+		*limit,                      // limit
+		from.UnixNano(),             // start
+		through.UnixNano(),          // end
+		direction.String(),          // direction
+		url.QueryEscape(*regexpStr), // regexp
+	)
 
 	var resp logproto.QueryResponse
 	if err := doRequest(path, &resp); err != nil {
@@ -54,22 +60,29 @@ func listLabelValues(name string) (*logproto.LabelResponse, error) {
 }
 
 func doRequest(path string, out interface{}) error {
-	url := *addr + path
-	log.Print(url)
+	us := *addr + path
+	if !*quiet {
+		log.Print(us)
+	}
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", us, nil)
 	if err != nil {
 		return err
 	}
 
 	req.SetBasicAuth(*username, *password)
 
+	// Parse the URL to extract the host
+	u, err := url.Parse(us)
+	if err != nil {
+		return err
+	}
 	clientConfig := config.HTTPClientConfig{
 		TLSConfig: config.TLSConfig{
 			CAFile:             *tlsCACertPath,
 			CertFile:           *tlsClientCertPath,
 			KeyFile:            *tlsClientCertKeyPath,
-			ServerName:         url,
+			ServerName:         u.Host,
 			InsecureSkipVerify: *tlsSkipVerify,
 		},
 	}
@@ -98,30 +111,43 @@ func doRequest(path string, out interface{}) error {
 }
 
 func liveTailQueryConn() (*websocket.Conn, error) {
-	path := fmt.Sprintf(tailPath, url.QueryEscape(*queryStr), url.QueryEscape(*regexpStr))
+	path := fmt.Sprintf(tailPath,
+		url.QueryEscape(*queryStr),      // query
+		url.QueryEscape(*regexpStr),     // regexp
+		*delayFor,                       // delay_for
+		*limit,                          // limit
+		getStart(time.Now()).UnixNano(), // start
+	)
 	return wsConnect(path)
 }
 
 func wsConnect(path string) (*websocket.Conn, error) {
+	us := *addr + path
 
+	// Parse the URL to extract the host
+	u, err := url.Parse(us)
+	if err != nil {
+		return nil, err
+	}
 	tlsConfig, err := config.NewTLSConfig(&config.TLSConfig{
 		CAFile:             *tlsCACertPath,
 		CertFile:           *tlsClientCertPath,
 		KeyFile:            *tlsClientCertKeyPath,
-		ServerName:         *addr,
+		ServerName:         u.Host,
 		InsecureSkipVerify: *tlsSkipVerify,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	url := *addr + path
-	if strings.HasPrefix(url, "https") {
-		url = strings.Replace(url, "https", "wss", 1)
-	} else if strings.HasPrefix(url, "http") {
-		url = strings.Replace(url, "http", "ws", 1)
+	if strings.HasPrefix(us, "https") {
+		us = strings.Replace(us, "https", "wss", 1)
+	} else if strings.HasPrefix(us, "http") {
+		us = strings.Replace(us, "http", "ws", 1)
 	}
-	log.Println(url)
+	if !*quiet {
+		log.Println(us)
+	}
 
 	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(*username+":"+*password))}}
 
@@ -129,7 +155,7 @@ func wsConnect(path string) (*websocket.Conn, error) {
 		TLSClientConfig: tlsConfig,
 	}
 
-	c, resp, err := ws.Dial(url, h)
+	c, resp, err := ws.Dial(us, h)
 
 	if err != nil {
 		if resp == nil {
