@@ -532,7 +532,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 
 	// If the buffer is not yet initialize or too small, we get a new one.
 	if si.buf == nil || lineSize > cap(si.buf) {
-		// in case of replacement
+		// in case of a replacement we replace back the buffer in the pool
 		if si.buf != nil {
 			BytesBufferPool.Put(si.buf)
 		}
