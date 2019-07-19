@@ -60,24 +60,29 @@ func listLabelValues(name string) (*logproto.LabelResponse, error) {
 }
 
 func doRequest(path string, out interface{}) error {
-	url := *addr + path
+	us := *addr + path
 	if !*quiet {
-		log.Print(url)
+		log.Print(us)
 	}
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", us, nil)
 	if err != nil {
 		return err
 	}
 
 	req.SetBasicAuth(*username, *password)
 
+	// Parse the URL to extract the host
+	u, err := url.Parse(us)
+	if err != nil {
+		return err
+	}
 	clientConfig := config.HTTPClientConfig{
 		TLSConfig: config.TLSConfig{
 			CAFile:             *tlsCACertPath,
 			CertFile:           *tlsClientCertPath,
 			KeyFile:            *tlsClientCertKeyPath,
-			ServerName:         url,
+			ServerName:         u.Host,
 			InsecureSkipVerify: *tlsSkipVerify,
 		},
 	}
@@ -117,26 +122,31 @@ func liveTailQueryConn() (*websocket.Conn, error) {
 }
 
 func wsConnect(path string) (*websocket.Conn, error) {
+	us := *addr + path
 
+	// Parse the URL to extract the host
+	u, err := url.Parse(us)
+	if err != nil {
+		return nil, err
+	}
 	tlsConfig, err := config.NewTLSConfig(&config.TLSConfig{
 		CAFile:             *tlsCACertPath,
 		CertFile:           *tlsClientCertPath,
 		KeyFile:            *tlsClientCertKeyPath,
-		ServerName:         *addr,
+		ServerName:         u.Host,
 		InsecureSkipVerify: *tlsSkipVerify,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	url := *addr + path
-	if strings.HasPrefix(url, "https") {
-		url = strings.Replace(url, "https", "wss", 1)
-	} else if strings.HasPrefix(url, "http") {
-		url = strings.Replace(url, "http", "ws", 1)
+	if strings.HasPrefix(us, "https") {
+		us = strings.Replace(us, "https", "wss", 1)
+	} else if strings.HasPrefix(us, "http") {
+		us = strings.Replace(us, "http", "ws", 1)
 	}
 	if !*quiet {
-		log.Println(url)
+		log.Println(us)
 	}
 
 	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(*username+":"+*password))}}
@@ -145,7 +155,7 @@ func wsConnect(path string) (*websocket.Conn, error) {
 		TLSClientConfig: tlsConfig,
 	}
 
-	c, resp, err := ws.Dial(url, h)
+	c, resp, err := ws.Dial(us, h)
 
 	if err != nil {
 		if resp == nil {

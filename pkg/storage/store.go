@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -56,7 +57,7 @@ func (s *store) LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter
 		}
 
 		matchers = append(matchers, nameLabelMatcher)
-		from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
+		from, through := util.RoundToMilliseconds(req.Start, req.End)
 		chks, fetchers, err := s.GetChunkRefs(ctx, from, through, matchers...)
 		if err != nil {
 			return nil, err

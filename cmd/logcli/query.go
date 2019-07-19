@@ -38,6 +38,14 @@ func doQuery() {
 	end := time.Now()
 	start := getStart(end)
 
+	if *to != "" {
+		var err error
+		end, err = time.Parse(time.RFC3339Nano, *to)
+		if err != nil {
+			log.Fatalf("error parsing --to date '%s': %s", *to, err)
+		}
+	}
+
 	d := logproto.BACKWARD
 	if *forward {
 		d = logproto.FORWARD
