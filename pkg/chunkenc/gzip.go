@@ -476,8 +476,8 @@ type bufferedIterator struct {
 
 	err error
 
-	buf    *bytes.Buffer // The buffer for a single entry.
-	decBuf []byte        // The buffer for decoding the lengths.
+	buf    []byte // The buffer for a single entry.
+	decBuf []byte // The buffer for decoding the lengths.
 
 	closed bool
 
@@ -491,7 +491,6 @@ func newBufferedIterator(pool CompressionPool, b []byte, filter logql.Filter) *b
 		reader: r,
 		pool:   pool,
 		filter: filter,
-		buf:    BytesBufferPool.Get(),
 		decBuf: make([]byte, binary.MaxVarintLen64),
 	}
 }
@@ -529,25 +528,32 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 			return 0, nil, false
 		}
 	}
+	lineSize := int(l)
 
-	if si.buf.Cap() < int(l) {
-		si.buf.Grow(int(l) - si.buf.Cap())
+	// If the buffer is not yet initialize or too small, we get a new one.
+	if si.buf == nil || lineSize > cap(si.buf) {
+		// in case of replacement
+		if si.buf != nil {
+			BytesBufferPool.Put(si.buf)
+		}
+		si.buf = BytesBufferPool.Get(lineSize).([]byte)
 	}
 
-	n, err := si.s.Read(si.buf.Bytes()[:l])
+	// Then process reading the line.
+	n, err := si.s.Read(si.buf[:lineSize])
 	if err != nil && err != io.EOF {
 		si.err = err
 		return 0, nil, false
 	}
-	for n < int(l) {
-		r, err := si.s.Read(si.buf.Bytes()[n:l])
+	for n < lineSize {
+		r, err := si.s.Read(si.buf[n:lineSize])
 		if err != nil {
 			si.err = err
 			return 0, nil, false
 		}
 		n += r
 	}
-	return ts, si.buf.Bytes()[:l], true
+	return ts, si.buf[:lineSize], true
 }
 
 func (si *bufferedIterator) Entry() logproto.Entry {
