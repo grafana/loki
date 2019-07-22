@@ -155,8 +155,9 @@ func NewMemChunk(enc Encoding) *MemChunk {
 // NewByteChunk returns a MemChunk on the passed bytes.
 func NewByteChunk(b []byte) (*MemChunk, error) {
 	bc := &MemChunk{
-		cPool: &Gzip,
-		head:  &headBlock{}, // Dummy, empty headblock.
+		cPool:    &Gzip,
+		encoding: EncGZIP,
+		head:     &headBlock{}, // Dummy, empty headblock.
 	}
 
 	db := decbuf{b: b}

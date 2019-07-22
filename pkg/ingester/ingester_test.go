@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -21,7 +22,7 @@ func TestIngester(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, store)
+	i, err := New(ingesterConfig, client.Config{}, store)
 	require.NoError(t, err)
 	defer i.Shutdown()
 

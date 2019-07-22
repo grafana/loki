@@ -71,6 +71,25 @@ func newInstance(instanceID string, blockSize int) *instance {
 	}
 }
 
+// consumeChunk manually adds a chunk that was received during ingester chunk
+// transfer.
+func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapter, chunk *logproto.Chunk) error {
+	i.streamsMtx.Lock()
+	defer i.streamsMtx.Unlock()
+
+	fp := client.FastFingerprint(labels)
+	stream, ok := i.streams[fp]
+	if !ok {
+		stream = newStream(fp, labels, i.blockSize)
+		i.index.Add(labels, fp)
+		i.streams[fp] = stream
+		i.streamsCreatedTotal.Inc()
+		i.addTailersToNewStream(stream)
+	}
+
+	return stream.consumeChunk(ctx, chunk)
+}
+
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	i.streamsMtx.Lock()
 	defer i.streamsMtx.Unlock()

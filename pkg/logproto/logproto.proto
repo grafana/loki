@@ -15,6 +15,10 @@ service Querier {
   rpc Tail(TailRequest) returns (stream TailResponse) {};
 }
 
+service Ingester {
+  rpc TransferChunks(stream TimeSeriesChunk) returns (TransferChunksResponse) {};
+}
+
 message PushRequest {
   repeated Stream streams = 1 [(gogoproto.jsontag) = "streams"];
 }
@@ -78,4 +82,24 @@ message DroppedStream {
   google.protobuf.Timestamp from = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   google.protobuf.Timestamp to = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   string labels = 3;
+}
+
+message TimeSeriesChunk {
+  string from_ingester_id = 1;
+  string user_id = 2;
+  repeated LabelPair labels = 3;
+  repeated Chunk chunks = 4;
+}
+
+message LabelPair {
+  string name = 1;
+  string value = 2;
+}
+
+message Chunk {
+  bytes data = 1;
+}
+
+message TransferChunksResponse {
+
 }

@@ -151,7 +151,7 @@ func (t *Loki) initQuerier() (err error) {
 
 func (t *Loki) initIngester() (err error) {
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = &t.cfg.Server.GRPCListenPort
-	t.ingester, err = ingester.New(t.cfg.Ingester, t.store)
+	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store)
 	if err != nil {
 		return
 	}

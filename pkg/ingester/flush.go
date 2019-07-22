@@ -166,7 +166,7 @@ func (i *Ingester) flushLoop(j int) {
 }
 
 func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediate bool) error {
-	instance, ok := i.getInstanceByID(userID)
+	instance, ok, _ := i.getInstanceByID(userID)
 	if !ok {
 		return nil
 	}
