@@ -130,6 +130,11 @@ func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interf
 	}
 }
 
+// Name implements Stage
+func (m *metricStage) Name() string {
+	return StageTypeMetric
+}
+
 // recordCounter will update a counter metric
 func (m *metricStage) recordCounter(name string, counter *metric.Counters, labels model.LabelSet, v interface{}) {
 	// If value matching is defined, make sure value matches.

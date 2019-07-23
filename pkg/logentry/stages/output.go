@@ -72,3 +72,8 @@ func (o *outputStage) Process(labels model.LabelSet, extracted map[string]interf
 		level.Debug(o.logger).Log("msg", "extracted data did not contain output source")
 	}
 }
+
+// Name implements Stage
+func (o *outputStage) Name() string {
+	return StageTypeOutput
+}

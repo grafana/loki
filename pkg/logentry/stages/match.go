@@ -93,3 +93,8 @@ func (m *matcherStage) Process(labels model.LabelSet, extracted map[string]inter
 	}
 	m.pipeline.Process(labels, extracted, t, entry)
 }
+
+// Name implements Stage
+func (m *matcherStage) Name() string {
+	return StageTypeMatch
+}
