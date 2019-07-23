@@ -85,6 +85,7 @@ With Journal support on CentOS, run with the following commands:
 ```bash
 $ sudo yum install -y systemd-devel
 $ go build ./cmd/promtail
+```
 
 Otherwise, to build promtail without Journal support, run `go build`
 with CGO disabled:
