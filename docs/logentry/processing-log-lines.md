@@ -1,5 +1,7 @@
 # Processing Log Lines
 
+A detailed look at how to setup promtail to process your log lines, including extracting metrics and labels.
+
   * [Pipeline](#pipeline)
   * [Stages](#stages)
 

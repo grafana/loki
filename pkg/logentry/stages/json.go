@@ -153,3 +153,8 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 	}
 
 }
+
+// Name implements Stage
+func (j *jsonStage) Name() string {
+	return StageTypeJSON
+}

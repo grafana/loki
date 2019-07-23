@@ -102,3 +102,8 @@ func (ts *timestampStage) Process(labels model.LabelSet, extracted map[string]in
 		level.Debug(ts.logger).Log("msg", "extracted data did not contain a timestamp")
 	}
 }
+
+// Name implements Stage
+func (ts *timestampStage) Name() string {
+	return StageTypeTimestamp
+}

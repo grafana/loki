@@ -80,3 +80,8 @@ func (l *labelStage) Process(labels model.LabelSet, extracted map[string]interfa
 		}
 	}
 }
+
+// Name implements Stage
+func (l *labelStage) Name() string {
+	return StageTypeLabel
+}

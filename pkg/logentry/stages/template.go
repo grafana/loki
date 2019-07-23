@@ -123,3 +123,8 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 		}
 	}
 }
+
+// Name implements Stage
+func (o *templateStage) Name() string {
+	return StageTypeTemplate
+}

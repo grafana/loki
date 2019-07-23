@@ -115,7 +115,6 @@ func (t *tailer) markPosition() error {
 	}
 
 	readBytes.WithLabelValues(t.path).Set(float64(pos))
-	level.Debug(t.logger).Log("path", t.path, "current_position", pos)
 	t.positions.Put(t.path, pos)
 	return nil
 }

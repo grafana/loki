@@ -168,7 +168,7 @@ func (t *FileTarget) run() {
 				}
 				t.startTailing([]string{event.Name})
 			default:
-				level.Debug(t.logger).Log("msg", "got unknown event", "event", event)
+				// No-op we only care about Create events
 			}
 		case err := <-t.watcher.Errors:
 			level.Error(t.logger).Log("msg", "error from fswatch", "error", err)

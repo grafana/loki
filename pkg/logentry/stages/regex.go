@@ -121,3 +121,8 @@ func (r *regexStage) Process(labels model.LabelSet, extracted map[string]interfa
 	}
 
 }
+
+// Name implements Stage
+func (r *regexStage) Name() string {
+	return StageTypeRegex
+}
