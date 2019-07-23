@@ -1,6 +1,8 @@
 package stages
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,9 +45,17 @@ func TestTimestampPipeline(t *testing.T) {
 	assert.Equal(t, time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", -4*60*60)).Unix(), ts.Unix())
 }
 
+var (
+	invalidLocationString = "America/Canada"
+	validLocationString   = "America/New_York"
+	validLocation, _      = time.LoadLocation(validLocationString)
+)
+
 func TestTimestampValidation(t *testing.T) {
 	tests := map[string]struct {
-		config       *TimestampConfig
+		config *TimestampConfig
+		// Note the error text validation is a little loosey as it only validates with strings.HasPrefix
+		// this is to work around different errors related to timezone loading on different systems
 		err          error
 		testString   string
 		expectedTime time.Time
@@ -63,6 +73,14 @@ func TestTimestampValidation(t *testing.T) {
 				Source: "source1",
 			},
 			err: errors.New(ErrTimestampFormatRequired),
+		},
+		"invalid location": {
+			config: &TimestampConfig{
+				Source:   "source1",
+				Format:   "2006-01-02",
+				Location: &invalidLocationString,
+			},
+			err: fmt.Errorf(ErrInvalidLocation, ""),
 		},
 		"standard format": {
 			config: &TimestampConfig{
@@ -91,6 +109,16 @@ func TestTimestampValidation(t *testing.T) {
 			testString:   "Jul 15 01:02:03",
 			expectedTime: time.Date(time.Now().Year(), 7, 15, 1, 2, 3, 0, time.UTC),
 		},
+		"custom format with location": {
+			config: &TimestampConfig{
+				Source:   "source1",
+				Format:   "2006-01-02 15:04:05",
+				Location: &validLocationString,
+			},
+			err:          nil,
+			testString:   "2009-07-01 03:30:20",
+			expectedTime: time.Date(2009, 7, 1, 3, 30, 20, 0, validLocation),
+		},
 		"unix_ms": {
 			config: &TimestampConfig{
 				Source: "source1",
@@ -110,7 +138,7 @@ func TestTimestampValidation(t *testing.T) {
 				t.Errorf("validateOutputConfig() expected error = %v, actual error = %v", test.err, err)
 				return
 			}
-			if (err != nil) && (err.Error() != test.err.Error()) {
+			if (err != nil) && !strings.HasPrefix(err.Error(), test.err.Error()) {
 				t.Errorf("validateOutputConfig() expected error = %v, actual error = %v", test.err, err)
 				return
 			}
@@ -175,6 +203,18 @@ func TestTimestampStage_Process(t *testing.T) {
 				"ts":           "1562708916000000123",
 			},
 			time.Date(2019, 7, 9, 21, 48, 36, 123, time.UTC),
+		},
+		"with location success": {
+			TimestampConfig{
+				Source:   "ts",
+				Format:   "2006-01-02 15:04:05",
+				Location: &validLocationString,
+			},
+			map[string]interface{}{
+				"somethigelse": "notimportant",
+				"ts":           "2019-07-22 20:29:32",
+			},
+			time.Date(2019, 7, 22, 20, 29, 32, 0, validLocation),
 		},
 	}
 	for name, test := range tests {

@@ -12,7 +12,7 @@ const (
 )
 
 // convertDateLayout converts pre-defined date format layout into date format
-func convertDateLayout(predef string) parser {
+func convertDateLayout(predef string, location *time.Location) parser {
 	switch predef {
 	case "ANSIC":
 		return func(t string) (time.Time, error) {
@@ -81,10 +81,13 @@ func convertDateLayout(predef string) parser {
 	default:
 		if !strings.Contains(predef, "2006") {
 			return func(t string) (time.Time, error) {
-				return parseTimestampWithoutYear(predef, t, time.Now())
+				return parseTimestampWithoutYear(predef, location, t, time.Now())
 			}
 		}
 		return func(t string) (time.Time, error) {
+			if location != nil {
+				return time.ParseInLocation(predef, t, location)
+			}
 			return time.Parse(predef, t)
 		}
 	}
@@ -93,8 +96,14 @@ func convertDateLayout(predef string) parser {
 // parseTimestampWithoutYear parses the input timestamp without the year component,
 // assuming the timestamp is related to a point in time close to "now", and correctly
 // handling the edge cases around new year's eve
-func parseTimestampWithoutYear(layout string, timestamp string, now time.Time) (time.Time, error) {
-	parsedTime, err := time.Parse(layout, timestamp)
+func parseTimestampWithoutYear(layout string, location *time.Location, timestamp string, now time.Time) (time.Time, error) {
+	var parsedTime time.Time
+	var err error
+	if location != nil {
+		parsedTime, err = time.ParseInLocation(layout, timestamp, location)
+	} else {
+		parsedTime, err = time.Parse(layout, timestamp)
+	}
 	if err != nil {
 		return parsedTime, err
 	}
