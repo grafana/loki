@@ -162,21 +162,19 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	instanceID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
-	}
-
-	instance, readonly := i.getOrCreateInstance(instanceID)
-	if readonly {
+	} else if i.readonly {
 		return nil, ErrReadOnly
 	}
 
+	instance := i.getOrCreateInstance(instanceID)
 	err = instance.Push(ctx, req)
 	return &logproto.PushResponse{}, err
 }
 
-func (i *Ingester) getOrCreateInstance(instanceID string) (instance *instance, readonly bool) {
-	inst, ok, readonly := i.getInstanceByID(instanceID)
-	if ok || readonly {
-		return inst, readonly
+func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
+	inst, ok := i.getInstanceByID(instanceID)
+	if ok || i.readonly {
+		return inst
 	}
 
 	i.instancesMtx.Lock()
@@ -186,7 +184,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) (instance *instance, r
 		inst = newInstance(instanceID, i.cfg.BlockSize)
 		i.instances[instanceID] = inst
 	}
-	return inst, i.readonly
+	return inst
 }
 
 // Query the ingests for log streams matching a set of matchers.
@@ -196,7 +194,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
-	instance, _ := i.getOrCreateInstance(instanceID)
+	instance := i.getOrCreateInstance(instanceID)
 	return instance.Query(req, queryServer)
 }
 
@@ -207,7 +205,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return nil, err
 	}
 
-	instance, _ := i.getOrCreateInstance(instanceID)
+	instance := i.getOrCreateInstance(instanceID)
 	return instance.Label(ctx, req)
 }
 
@@ -236,12 +234,12 @@ func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (i *Ingester) getInstanceByID(id string) (instance *instance, ok bool, readonly bool) {
+func (i *Ingester) getInstanceByID(id string) (*instance, bool) {
 	i.instancesMtx.RLock()
 	defer i.instancesMtx.RUnlock()
 
 	inst, ok := i.instances[id]
-	return inst, ok, i.readonly
+	return inst, ok
 }
 
 func (i *Ingester) getInstances() []*instance {
@@ -268,7 +266,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 		return err
 	}
 
-	instance, _ := i.getOrCreateInstance(instanceID)
+	instance := i.getOrCreateInstance(instanceID)
 	tailer, err := newTailer(instanceID, req.Query, req.Regex, queryServer)
 	if err != nil {
 		return err
