@@ -1,5 +1,5 @@
 FROM       alpine:3.9
-RUN        apk add --update --no-cache ca-certificates
+RUN        apk add --update --no-cache ca-certificates tzdata
 ADD        promtail-debug /usr/bin
 ADD        dlv /usr/bin
 COPY       promtail-local-config.yaml /etc/promtail/local-config.yaml

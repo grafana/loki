@@ -26,6 +26,7 @@ func NewDocker(logger log.Logger, registerer prometheus.Registerer) (Stage, erro
 			StageTypeTimestamp: TimestampConfig{
 				"timestamp",
 				RFC3339Nano,
+				nil,
 			}},
 		PipelineStage{
 			StageTypeOutput: OutputConfig{
@@ -52,6 +53,7 @@ func NewCRI(logger log.Logger, registerer prometheus.Registerer) (Stage, error) 
 			StageTypeTimestamp: TimestampConfig{
 				"time",
 				RFC3339Nano,
+				nil,
 			},
 		},
 		PipelineStage{

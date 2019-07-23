@@ -2,6 +2,7 @@ package stages
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -15,6 +16,7 @@ const (
 	ErrEmptyTimestampStageConfig = "timestamp stage config cannot be empty"
 	ErrTimestampSourceRequired   = "timestamp source value is required if timestamp is specified"
 	ErrTimestampFormatRequired   = "timestamp format is required"
+	ErrInvalidLocation           = "invalid location specified: %v"
 
 	Unix   = "Unix"
 	UnixMs = "UnixMs"
@@ -23,8 +25,9 @@ const (
 
 // TimestampConfig configures timestamp extraction
 type TimestampConfig struct {
-	Source string `mapstructure:"source"`
-	Format string `mapstructure:"format"`
+	Source   string  `mapstructure:"source"`
+	Format   string  `mapstructure:"format"`
+	Location *string `mapstructure:"location"`
 }
 
 // parser can convert the time string into a time.Time value
@@ -41,7 +44,15 @@ func validateTimestampConfig(cfg *TimestampConfig) (parser, error) {
 	if cfg.Format == "" {
 		return nil, errors.New(ErrTimestampFormatRequired)
 	}
-	return convertDateLayout(cfg.Format), nil
+	var loc *time.Location
+	var err error
+	if cfg.Location != nil {
+		loc, err = time.LoadLocation(*cfg.Location)
+		if err != nil {
+			return nil, fmt.Errorf(ErrInvalidLocation, err)
+		}
+	}
+	return convertDateLayout(cfg.Format, loc), nil
 
 }
 

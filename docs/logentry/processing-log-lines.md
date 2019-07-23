@@ -147,7 +147,7 @@ A regex stage will take the provided regex and set the named groups as data in t
     source:      ②
 ```
 
-① `expression` is **required** and needs to be a [golang RE2 regex string](https://github.com/google/re2/wiki/Syntax). Every capture group `(re)` will be set into the `extracted` map, every capture group **must be named:** `(?P<name>re)`, the name will be used as the key in the map.
+① `expression` is **required** and needs to be a [golang RE2 regex string](https://github.com/google/re2/wiki/Syntax). Every capture group `(re)` will be set into the `extracted` map, every capture group **must be named:** `(?P<name>re)`, the name will be used as the key in the map.  
 ② `source` is optional and contains the name of key in the `extracted` map containing the data to parse. If omitted, the regex stage will parse the log `entry`.
 
 ##### Example (without source):
@@ -209,8 +209,8 @@ A json stage will take the provided [JMESPath expressions](http://jmespath.org/)
     source:             ③
 ```
 
-① `expressions` is a required yaml object containing key/value pairs of JMESPath expressions
-② `key: expression` where `key` will be the key in the `extracted` map, and the value will be the evaluated JMESPath expression.
+① `expressions` is a required yaml object containing key/value pairs of JMESPath expressions  
+② `key: expression` where `key` will be the key in the `extracted` map, and the value will be the evaluated JMESPath expression.  
 ③ `source` is optional and contains the name of key in the `extracted` map containing the json to parse. If omitted, the json stage will parse the log `entry`.
 
 This stage uses the Go JSON unmarshaller, which means non string types like numbers or booleans will be unmarshalled into those types.  The `extracted` map will accept non-string values and this stage will keep primitive types as they are unmarshalled (e.g. bool or float64).  Downstream stages will need to perform correct type conversion of these values as necessary.
@@ -366,10 +366,12 @@ A timestamp stage will parse data from the `extracted` map and set the `time` va
 - timestamp:
     source:   ①
     format:   ②
+    location: ③
 ```
 
 ① `source` is **required** and is the key name to data in the `extracted` map.  
-② `format` is **required** and is the input to Go's [time.parse](https://golang.org/pkg/time/#Parse) function.
+② `format` is **required** and is the input to Go's [time.parse](https://golang.org/pkg/time/#Parse) function.  
+③ `location` is **optional** and is an IANA Timezone Database string, see the [go docs](https://golang.org/pkg/time/#LoadLocation) for more info
 
 Several of Go's pre-defined format's can be used by their name:
 
