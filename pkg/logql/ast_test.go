@@ -6,6 +6,7 @@ import (
 )
 
 func Test_logSelectorExpr_String(t *testing.T) {
+	t.Parallel()
 	tests := []string{
 		`{foo!~"bar"}`,
 		`{foo="bar", bar!="baz"}`,
@@ -16,6 +17,7 @@ func Test_logSelectorExpr_String(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt, func(t *testing.T) {
+			t.Parallel()
 			expr, err := ParseLogSelector(tt)
 			if err != nil {
 				t.Fatalf("failed to parse log selector: %s", err)
