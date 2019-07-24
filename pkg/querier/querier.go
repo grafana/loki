@@ -142,7 +142,7 @@ func (q *Querier) forGivenIngesters(replicationSet ring.ReplicationSet, f func(l
 	return result, nil
 }
 
-// Select Implements logql.Querier
+// Select Implements logql.Querier which select logs via matchers and regex filters.
 func (q *Querier) Select(ctx context.Context, params logql.SelectParams) (iter.EntryIterator, error) {
 	// Enforce the query timeout while querying backends
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
