@@ -202,11 +202,11 @@ func (ng *Engine) setupIterators(ctx context.Context, expr SampleExpr, q *query)
 				Selector:  e.Selector().String(),
 			},
 		})
-		e.iterator = newRangeVectorIterator(iter, e.left.interval.Nanoseconds(), q.step.Nanoseconds(),
-			q.start.UnixNano(), q.end.UnixNano())
 		if err != nil {
 			return err
 		}
+		e.iterator = newRangeVectorIterator(iter, e.left.interval.Nanoseconds(), q.step.Nanoseconds(),
+			q.start.UnixNano(), q.end.UnixNano())
 	}
 	return nil
 }
@@ -220,6 +220,7 @@ func (ng *Engine) evalSample(expr SampleExpr, q *query) promql.Value {
 
 	next, ts, vec := stepEvaluator.Next()
 	if q.isInstant() {
+		sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
 		return vec
 	}
 	for next {
