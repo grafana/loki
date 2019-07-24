@@ -15,15 +15,16 @@ import (
 	"github.com/prometheus/prometheus/promql"
 )
 
+// Expr is the root expression which can be a SampleExpr or LogSelectorExpr
 type Expr interface{}
-
-type Filter func(line []byte) bool
 
 // SelectParams specifies parameters passed to data selections.
 type SelectParams struct {
 	*logproto.QueryRequest
 }
 
+// LogSelector returns the LogSelectorExpr from the SelectParams.
+// The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectParams) LogSelector() (LogSelectorExpr, error) {
 	return ParseLogSelector(s.Selector)
 }
@@ -37,10 +38,13 @@ func (q QuerierFunc) Select(ctx context.Context, p SelectParams) (iter.EntryIter
 }
 
 // Querier allows a LogQL expression to fetch an EntryIterator for a
-// set of matchers.
+// set of matchers and filters
 type Querier interface {
 	Select(context.Context, SelectParams) (iter.EntryIterator, error)
 }
+
+// Filter is a function to filter logs.
+type Filter func(line []byte) bool
 
 // LogSelectorExpr is a LogQL expression filtering and returning logs.
 type LogSelectorExpr interface {
@@ -195,9 +199,9 @@ const (
 
 // SampleExpr is a LogQL expression filtering logs and returning metric samples.
 type SampleExpr interface {
-	// Selector is the LogQL selector to apply to when retrieving logs.
+	// Selector is the LogQL selector to apply when retrieving logs.
 	Selector() LogSelectorExpr
-	// Evaluator returns a `StepEvaluator` that can evaluate the expression.
+	// Evaluator returns a `StepEvaluator` that can evaluate the expression step by step
 	Evaluator() StepEvaluator
 	// Close all resources used.
 	Close() error
@@ -208,9 +212,10 @@ type StepEvaluator interface {
 	Next() (bool, int64, promql.Vector)
 }
 
-// StepEvaluatorFn implements `StepEvaluator`
+// StepEvaluatorFn is a function to chain multiple `StepEvaluator`.
 type StepEvaluatorFn func() (bool, int64, promql.Vector)
 
+// Next implements `StepEvaluator`
 func (s StepEvaluatorFn) Next() (bool, int64, promql.Vector) {
 	return s()
 }
