@@ -613,22 +613,23 @@ func (it *peekingEntryIterator) Next() bool {
 			entry:  it.cache.entry,
 			labels: it.cache.labels,
 		}
-		return it.cacheNext()
+		it.cacheNext()
+		return true
 	}
 	return false
 }
 
 // cacheNext caches the next element if it exists.
-func (it *peekingEntryIterator) cacheNext() bool {
+func (it *peekingEntryIterator) cacheNext() {
 	if it.iter.Next() {
 		it.cache = &entryWithLabels{
 			entry:  it.iter.Entry(),
 			labels: it.iter.Labels(),
 		}
-		return true
+		return
 	}
+	// nothing left removes the cached entry
 	it.cache = nil
-	return false
 }
 
 // Peek implements `PeekingEntryIterator`

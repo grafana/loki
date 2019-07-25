@@ -438,7 +438,7 @@ func (v *vectorAggregationExpr) Evaluator() StepEvaluator {
 						Metric: v.Metric,
 						Point: promql.Point{
 							T: ts,
-							V: aggr.value,
+							V: v.V,
 						},
 					})
 				}
