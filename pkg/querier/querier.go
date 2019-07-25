@@ -144,9 +144,6 @@ func (q *Querier) forGivenIngesters(replicationSet ring.ReplicationSet, f func(l
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
 func (q *Querier) Select(ctx context.Context, params logql.SelectParams) (iter.EntryIterator, error) {
-	// Enforce the query timeout while querying backends
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
-	defer cancel()
 
 	ingesterIterators, err := q.queryIngesters(ctx, params)
 	if err != nil {
