@@ -173,7 +173,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 
 func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	inst, ok := i.getInstanceByID(instanceID)
-	if ok || i.readonly {
+	if ok {
 		return inst
 	}
 

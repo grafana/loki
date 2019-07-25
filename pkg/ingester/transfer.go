@@ -29,7 +29,7 @@ var (
 	})
 )
 
-// TransferChunks receieves all chunks from another ingester. The Ingester
+// TransferChunks receives all chunks from another ingester. The Ingester
 // must be in PENDING state or else the call will fail.
 func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer) error {
 	// Entry JOINING state (only valid from PENDING)
