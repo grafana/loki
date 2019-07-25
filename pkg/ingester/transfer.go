@@ -10,6 +10,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -159,7 +160,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 		return err
 	}
 	if c, ok := c.(io.Closer); ok {
-		defer c.Close()
+		defer helpers.LogError("closing client", c.Close)
 	}
 	ic := c.(logproto.IngesterClient)
 
