@@ -1,6 +1,7 @@
 package querier
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -187,13 +188,17 @@ type instantQueryRequest struct {
 
 // RangeQueryHandler is a http.HandlerFunc for range queries.
 func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
+	// Enforce the query timeout while querying backends
+	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
+	defer cancel()
+
 	request, err := httpRequestToRangeQueryRequest(r)
 	if err != nil {
 		server.WriteError(w, err)
 		return
 	}
 	query := q.engine.NewRangeQuery(q, request.query, request.start, request.end, request.step, request.direction, request.limit)
-	result, err := query.Exec(r.Context())
+	result, err := query.Exec(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -212,13 +217,17 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
 func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
+	// Enforce the query timeout while querying backends
+	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
+	defer cancel()
+
 	request, err := httpRequestToInstantQueryRequest(r)
 	if err != nil {
 		server.WriteError(w, err)
 		return
 	}
 	query := q.engine.NewInstantQuery(q, request.query, request.ts, request.direction, request.limit)
-	result, err := query.Exec(r.Context())
+	result, err := query.Exec(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -237,13 +246,17 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 // LogQueryHandler is a http.HandlerFunc for log only queries.
 func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
+	// Enforce the query timeout while querying backends
+	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
+	defer cancel()
+
 	request, err := httpRequestToRangeQueryRequest(r)
 	if err != nil {
 		server.WriteError(w, err)
 		return
 	}
 	query := q.engine.NewRangeQuery(q, request.query, request.start, request.end, request.step, request.direction, request.limit)
-	result, err := query.Exec(r.Context())
+	result, err := query.Exec(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
