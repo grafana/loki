@@ -287,14 +287,14 @@ func Test_PeekingIterator(t *testing.T) {
 			},
 		},
 	}))
-	_, peek, hasNext := iter.Peek()
+	_, peek, ok := iter.Peek()
 	if peek.Timestamp.UnixNano() != 1 {
 		t.Fatal("wrong peeked time.")
 	}
-	if !hasNext {
-		t.Fatal("should have next.")
+	if !ok {
+		t.Fatal("should be ok.")
 	}
-	hasNext = iter.Next()
+	hasNext := iter.Next()
 	if !hasNext {
 		t.Fatal("should have next.")
 	}
@@ -302,12 +302,12 @@ func Test_PeekingIterator(t *testing.T) {
 		t.Fatal("wrong peeked time.")
 	}
 
-	_, peek, hasNext = iter.Peek()
+	_, peek, ok = iter.Peek()
 	if peek.Timestamp.UnixNano() != 2 {
 		t.Fatal("wrong peeked time.")
 	}
-	if !hasNext {
-		t.Fatal("should have next.")
+	if !ok {
+		t.Fatal("should be ok.")
 	}
 	hasNext = iter.Next()
 	if !hasNext {
@@ -316,22 +316,22 @@ func Test_PeekingIterator(t *testing.T) {
 	if iter.Entry().Timestamp.UnixNano() != 2 {
 		t.Fatal("wrong peeked time.")
 	}
-	_, peek, hasNext = iter.Peek()
+	_, peek, ok = iter.Peek()
 	if peek.Timestamp.UnixNano() != 3 {
 		t.Fatal("wrong peeked time.")
 	}
-	if !hasNext {
-		t.Fatal("should have next.")
+	if !ok {
+		t.Fatal("should be ok.")
 	}
 	hasNext = iter.Next()
-	if hasNext {
-		t.Fatal("should not have next.")
+	if !hasNext {
+		t.Fatal("should have next.")
 	}
 	if iter.Entry().Timestamp.UnixNano() != 3 {
 		t.Fatal("wrong peeked time.")
 	}
-	_, _, hasNext = iter.Peek()
-	if hasNext {
-		t.Fatal("should not have next.")
+	_, _, ok = iter.Peek()
+	if ok {
+		t.Fatal("should not be ok.")
 	}
 }
