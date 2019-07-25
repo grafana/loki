@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"text/scanner"
@@ -445,6 +446,55 @@ func TestParse(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
 			require.Equal(t, tc.err, err)
 			require.Equal(t, tc.exp, ast)
+		})
+	}
+}
+
+func TestParseMatchers(t *testing.T) {
+
+	tests := []struct {
+		input   string
+		want    []*labels.Matcher
+		wantErr bool
+	}{
+		{
+			`{app="foo",cluster=~".+bar"}`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+				mustNewMatcher(labels.MatchRegexp, "cluster", ".+bar"),
+			},
+			false,
+		},
+		{
+			`{app!="foo",cluster=~".+bar",bar!~".?boo"}`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchNotEqual, "app", "foo"),
+				mustNewMatcher(labels.MatchRegexp, "cluster", ".+bar"),
+				mustNewMatcher(labels.MatchNotRegexp, "bar", ".?boo"),
+			},
+			false,
+		},
+		{
+			`{app!="foo",cluster=~".+bar",bar!~".?boo"`,
+			nil,
+			true,
+		},
+		{
+			`{app!="foo",cluster=~".+bar",bar!~".?boo"} |= "test"`,
+			nil,
+			true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := ParseMatchers(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseMatchers() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ParseMatchers() = %v, want %v", got, tt.want)
+			}
 		})
 	}
 }

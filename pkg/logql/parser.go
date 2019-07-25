@@ -58,6 +58,7 @@ func ParseMatchers(input string) ([]*labels.Matcher, error) {
 	return matcherExpr.matchers, nil
 }
 
+// ParseLogSelector parses a log selector expression `{app="foo"} |= "filter"`
 func ParseLogSelector(input string) (LogSelectorExpr, error) {
 	expr, err := ParseExpr(input)
 	if err != nil {
