@@ -7,13 +7,13 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-func doLabels() {
+func labelQuery() {
 	var labelResponse *logproto.LabelResponse
 	var err error
 	if len(*labelName) > 0 {
-		labelResponse, err = listLabelValues(*labelName)
+		labelResponse, err = client.LabelValues(*labelName)
 	} else {
-		labelResponse, err = listLabelNames()
+		labelResponse, err = client.LabelNames()
 	}
 	if err != nil {
 		log.Fatalf("Error doing request: %+v", err)
@@ -24,7 +24,7 @@ func doLabels() {
 }
 
 func listLabels() []string {
-	labelResponse, err := listLabelNames()
+	labelResponse, err := client.LabelNames()
 	if err != nil {
 		log.Fatalf("Error fetching labels: %+v", err)
 	}

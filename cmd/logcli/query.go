@@ -24,12 +24,7 @@ func getStart(end time.Time) time.Time {
 	return start
 }
 
-func doQuery() {
-	if *tail {
-		tailQuery()
-		return
-	}
-
+func regularQuery() {
 	var (
 		i      iter.EntryIterator
 		common labels.Labels
@@ -46,12 +41,17 @@ func doQuery() {
 		}
 	}
 
-	d := logproto.BACKWARD
+	direction := logproto.BACKWARD
 	if *forward {
-		d = logproto.FORWARD
+		direction = logproto.FORWARD
 	}
 
-	resp, err := query(start, end, d)
+	resp, err := client.Query(
+		*queryStr, *regexpStr,
+		*limit,
+		start, end,
+		direction,
+	)
 	if err != nil {
 		log.Fatalf("Query failed: %+v", err)
 	}
@@ -90,7 +90,7 @@ func doQuery() {
 		}
 	}
 
-	i = iter.NewQueryResponseIterator(resp, d)
+	i = iter.NewQueryResponseIterator(resp, direction)
 
 	Outputs["default"] = DefaultOutput{
 		MaxLabelsLen: maxLabelsLen,

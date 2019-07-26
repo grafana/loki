@@ -2,8 +2,11 @@ package main
 
 import (
 	"log"
+	"net/url"
 	"os"
 
+	"github.com/grafana/loki/pkg/loki"
+	"github.com/prometheus/common/config"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -40,6 +43,8 @@ var (
 	labelName       = labelsCmd.Arg("label", "The name of the label.").HintAction(listLabels).String()
 )
 
+var client loki.Client
+
 func main() {
 	log.SetOutput(os.Stderr)
 
@@ -49,10 +54,33 @@ func main() {
 		log.Fatalln("Server address cannot be empty")
 	}
 
+	u, err := url.Parse(*addr)
+	if err != nil {
+		log.Fatalln("invalid addr:", err)
+	}
+
+	client = loki.Client{
+		Name:    "logcli",
+		Address: *addr,
+		TLS: &config.TLSConfig{
+			CAFile:             *tlsCACertPath,
+			CertFile:           *tlsClientCertPath,
+			KeyFile:            *tlsClientCertKeyPath,
+			InsecureSkipVerify: *tlsSkipVerify,
+			ServerName:         u.Host,
+		},
+		Username: *username,
+		Password: *password,
+	}
+
 	switch cmd {
 	case queryCmd.FullCommand():
-		doQuery()
+		if *tail {
+			tailQuery()
+			break
+		}
+		regularQuery()
 	case labelsCmd.FullCommand():
-		doLabels()
+		labelQuery()
 	}
 }

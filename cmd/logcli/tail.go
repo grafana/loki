@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"strings"
+	"time"
 
 	"github.com/grafana/loki/pkg/querier"
 
@@ -10,7 +11,14 @@ import (
 )
 
 func tailQuery() {
-	conn, err := liveTailQueryConn()
+	conn, err := client.TailConn(
+		*queryStr,
+		*regexpStr,
+		*delayFor,
+		*limit,
+		getStart(time.Now()),
+	)
+
 	if err != nil {
 		log.Fatalf("Tailing logs failed: %+v", err)
 	}
