@@ -2,7 +2,7 @@
 # This file is intented to be called from the root like so:
 # docker build -t grafana/loki -f cmd/loki/Dockerfile .
 
-FROM grafana/loki-build-image as build
+FROM grafana/loki-build-image:0.2.1 as build
 ARG GOARCH="amd64"
 COPY . /go/src/github.com/grafana/loki
 WORKDIR /go/src/github.com/grafana/loki
