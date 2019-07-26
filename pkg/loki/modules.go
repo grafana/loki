@@ -158,6 +158,7 @@ func (t *Loki) initIngester() (err error) {
 
 	logproto.RegisterPusherServer(t.server.GRPC, t.ingester)
 	logproto.RegisterQuerierServer(t.server.GRPC, t.ingester)
+	logproto.RegisterIngesterServer(t.server.GRPC, t.ingester)
 	grpc_health_v1.RegisterHealthServer(t.server.GRPC, t.ingester)
 	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.ingester.ReadinessHandler))
 	t.server.HTTP.Path("/flush").Handler(http.HandlerFunc(t.ingester.FlushHandler))
