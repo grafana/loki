@@ -22,6 +22,10 @@ const (
 type Target interface {
 	// Type of the target
 	Type() TargetType
+	// DiscoveredLabels returns labels discovered before any relabeling.
+	DiscoveredLabels() model.LabelSet
+	// Labels returns labels that are added to this target and its stream.
+	Labels() model.LabelSet
 	// Ready tells if the targets is ready
 	Ready() bool
 	// Details is additional information about this target specific to its type
@@ -49,6 +53,16 @@ func newDroppedTarget(reason string, discoveredLabels model.LabelSet) Target {
 // Type implements Target
 func (d *droppedTarget) Type() TargetType {
 	return DroppedTargetType
+}
+
+// DiscoveredLabels implements Target
+func (d *droppedTarget) DiscoveredLabels() model.LabelSet {
+	return d.discoveredLabels
+}
+
+// Labels implements Target
+func (d *droppedTarget) Labels() model.LabelSet {
+	return nil
 }
 
 // Ready implements Target
