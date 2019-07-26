@@ -50,20 +50,37 @@
               <span class="cursor-pointer" data-toggle="tooltip" title="" data-html=true data-original-title="<b>Before relabeling:</b>{{range $k, $v := .DiscoveredLabels}}<br>{{$ev := $v | html}}{{$k}}=&quot;{{$ev}}&quot;{{end}}">
                 {{range $label, $value := .Labels}}
                   <span class="badge badge-primary">{{$label}}="{{$value}}"</span>
-                {{else}} 
+                {{else}}
                   <span class="badge badge-default">none</span>
                 {{end}}
               </span>
             </td>
             <td class="details">
               {{if eq .Type "File"}}
-              
                 {{$files := fileTargetDetails .Details}}
                 <table class="table">
                     <thead>
                       <tr>
                         <th scope="col">Path</th>
                         <th scope="col">Position</th>
+                      </tr>
+                    </thead>
+                  <tbody>
+                {{range $path, $position := $files}}
+                  <tr>
+                    <td>{{$path}}</td>
+                    <td>{{$position}}</td>
+                  </tr>
+                {{end}}
+                </tbody>
+              </table>
+              {{else if eq .Type "Journal" }}
+                {{$files := journalTargetDetails .Details}}
+                <table class="table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Key</th>
+                        <th scope="col">Value</th>
                       </tr>
                     </thead>
                   <tbody>

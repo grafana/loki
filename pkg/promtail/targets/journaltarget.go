@@ -186,9 +186,24 @@ func (t *JournalTarget) Ready() bool {
 	return true
 }
 
-// Details returns target-specific details (currently nil).
-func (t *JournalTarget) Details() interface{} {
+// DiscoveredLabels returns the set of labels discovered by
+// the JournalTarget, which is always nil. Implements
+// Target.
+func (t *JournalTarget) DiscoveredLabels() model.LabelSet {
 	return nil
+}
+
+// Labels returns the set of labels that statically apply to
+// all log entries produced by the JournalTarget.
+func (t *JournalTarget) Labels() model.LabelSet {
+	return t.labels
+}
+
+// Details returns target-specific details.
+func (t *JournalTarget) Details() interface{} {
+	return map[string]string{
+		"position": t.positions.GetString(t.positionPath),
+	}
 }
 
 // Stop shuts down the JournalTarget.

@@ -149,6 +149,10 @@ func (s *Server) targets(rw http.ResponseWriter, _ *http.Request) {
 				// you can't cast with a text template in go so this is a helper
 				return details.(map[string]int64)
 			},
+			"journalTargetDetails": func(details interface{}) map[string]string {
+				// you can't cast with a text template in go so this is a helper
+				return details.(map[string]string)
+			},
 			"numReady": func(ts []targets.Target) (readies int) {
 				for _, t := range ts {
 					if t.Ready() {
