@@ -13,6 +13,14 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 BUILD_IN_CONTAINER := true
 BUILD_IMAGE_VERSION := "0.2.1"
 
+# Docker image info
+IMAGE_PREFIX ?= grafana
+IMAGE_TAG := $(shell ./tools/image-tag)
+
+# Version info for binaries
+GIT_REVISION := $(shell git rev-parse --short HEAD)
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
+
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/go/src/github.com/grafana/loki' phase.
 DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
@@ -45,10 +53,6 @@ PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
 # Yacc Files
 YACC_DEFS := $(shell find . $(DONT_FIND) -type f -name *.y -print)
 YACC_GOS := $(patsubst %.y,%.y.go,$(YACC_DEFS))
-
-# Docker image info
-IMAGE_PREFIX ?= grafana
-IMAGE_TAG := $(shell ./tools/image-tag)
 
 # RM is parameterized to allow CircleCI to run builds, as it
 # currently disallows `docker run --rm`. This value is overridden
@@ -150,12 +154,13 @@ test: all
 # Clean #
 #########
 
-clean: docker-driver-clean
+clean:
 	rm -rf cmd/promtail/promtail pkg/promtail/server/ui/assets_vfsdata.go
 	rm -rf cmd/loki/loki
 	rm -rf cmd/logcli/logcli
 	rm -rf cmd/loki-canary/loki-canary
 	rm -rf .cache
+	rm -rf cmd/docker-driver/rootfs
 	go clean ./...
 
 #########
@@ -277,7 +282,7 @@ docker-driver-enable:
 docker-driver-clean:
 	-docker plugin disable grafana/loki-docker-driver:$(IMAGE_TAG)
 	-docker plugin rm grafana/loki-docker-driver:$(IMAGE_TAG)
-	-rm -rf cmd/docker-driver/rootfs
+	rm -rf cmd/docker-driver/rootfs
 
 
 ##########
