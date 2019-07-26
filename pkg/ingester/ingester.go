@@ -17,8 +17,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 )
+
+// ErrReadOnly is returned when the ingester is shutting down and a push was
+// attempted.
+var ErrReadOnly = errors.New("Ingester is shutting down")
 
 var readinessProbeSuccess = []byte("Ready")
 
@@ -31,18 +36,25 @@ var flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
 type Config struct {
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
 
+	// Config for transferring chunks.
+	MaxTransferRetries int `yaml:"max_transfer_retries,omitempty"`
+
 	ConcurrentFlushes int           `yaml:"concurrent_flushes"`
 	FlushCheckPeriod  time.Duration `yaml:"flush_check_period"`
 	FlushOpTimeout    time.Duration `yaml:"flush_op_timeout"`
 	RetainPeriod      time.Duration `yaml:"chunk_retain_period"`
 	MaxChunkIdle      time.Duration `yaml:"chunk_idle_period"`
 	BlockSize         int           `yaml:"chunk_block_size"`
+
+	// For testing, you can override the address and ID of this ingester.
+	ingesterClientFactory func(cfg client.Config, addr string) (grpc_health_v1.HealthClient, error)
 }
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
 
+	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 10, "Number of times to try and transfer chunks before falling back to flushing.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushed", 16, "")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Second, "")
@@ -53,10 +65,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Ingester builds chunks for incoming log streams.
 type Ingester struct {
-	cfg Config
+	cfg          Config
+	clientConfig client.Config
 
 	instancesMtx sync.RWMutex
 	instances    map[string]*instance
+	readonly     bool
 
 	lifecycler *ring.Lifecycler
 	store      ChunkStore
@@ -77,14 +91,19 @@ type ChunkStore interface {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, store ChunkStore) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store ChunkStore) (*Ingester, error) {
+	if cfg.ingesterClientFactory == nil {
+		cfg.ingesterClientFactory = client.New
+	}
+
 	i := &Ingester{
-		cfg:         cfg,
-		instances:   map[string]*instance{},
-		store:       store,
-		quit:        make(chan struct{}),
-		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		quitting:    make(chan struct{}),
+		cfg:          cfg,
+		clientConfig: clientConfig,
+		instances:    map[string]*instance{},
+		store:        store,
+		quit:         make(chan struct{}),
+		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		quitting:     make(chan struct{}),
 	}
 
 	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
@@ -138,21 +157,13 @@ func (i *Ingester) Stopping() {
 	}
 }
 
-// StopIncomingRequests implements ring.Lifecycler.
-func (i *Ingester) StopIncomingRequests() {
-
-}
-
-// TransferOut implements ring.Lifecycler.
-func (i *Ingester) TransferOut(context.Context) error {
-	return nil
-}
-
 // Push implements logproto.Pusher.
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	instanceID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
+	} else if i.readonly {
+		return nil, ErrReadOnly
 	}
 
 	instance := i.getOrCreateInstance(instanceID)

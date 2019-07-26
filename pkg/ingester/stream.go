@@ -73,6 +73,21 @@ func newStream(fp model.Fingerprint, labels []client.LabelAdapter, blockSize int
 	}
 }
 
+// consumeChunk manually adds a chunk to the stream that was received during
+// ingester chunk transfer.
+func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
+	c, err := chunkenc.NewByteChunk(chunk.Data)
+	if err != nil {
+		return err
+	}
+
+	s.chunks = append(s.chunks, chunkDesc{
+		chunk: c,
+	})
+	chunksCreatedTotal.Inc()
+	return nil
+}
+
 func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 	if len(s.chunks) == 0 {
 		s.chunks = append(s.chunks, chunkDesc{

@@ -11,6 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
@@ -61,7 +62,7 @@ func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	ing, err := New(cfg, store)
+	ing, err := New(cfg, client.Config{}, store)
 	require.NoError(t, err)
 
 	return store, ing
