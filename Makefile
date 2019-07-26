@@ -10,7 +10,8 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # Certain aspects of the build are done in containers for consistency (e.g. yacc/protobuf generation)
 # If you have the correct tools installed and you want to speed up development you can run
 # make BUILD_IN_CONTAINER=false target
-BUILD_IN_CONTAINER := true
+# or you can override this with an environment variable
+BUILD_IN_CONTAINER ?= true
 BUILD_IMAGE_VERSION := "0.2.1"
 
 # Docker image info
@@ -345,3 +346,12 @@ loki-canary-image:
 build-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-build-image -f loki-build-image/Dockerfile .
 	$(SUDO) docker tag $(IMAGE_PREFIX)/loki-build-image $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG)
+
+
+########
+# Misc #
+########
+
+benchmark-store:
+	go run ./pkg/storage/hack/main.go
+	go test ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
