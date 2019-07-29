@@ -14,7 +14,11 @@ RUN apk add --no-cache curl && \
 FROM golang:1.11.4-alpine
 RUN sed -i -e 's/v[[:digit:]]\.[[:digit:]]/edge/g' /etc/apk/repositories && \
     apk update && apk upgrade &&\
-    apk add --no-cache file jq unzip protobuf protobuf-dev git bash coreutils make grep
+    apk add --no-cache \
+      coreutils file bash unzip\
+      git make grep jq \
+      protobuf protobuf-dev \
+      docker-cli
 COPY --from=helm /usr/bin/helm /usr/bin/helm
 COPY --from=golangci /bin/golangci-lint /usr/local/bin
 RUN go get \
