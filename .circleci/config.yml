@@ -136,7 +136,7 @@ jobs:
           command: |
             if [ -n "$DOCKER_USER" ]; then
               docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
-              make docker-driver-push
+              make BUILD_IN_CONTAINER=false docker-driver-push
             fi
 
   publish-master:
@@ -166,7 +166,7 @@ jobs:
           command: |
             if [ -n "$DOCKER_USER" ]; then
               docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
-              PLUGIN_TAG=master make docker-driver-push && PLUGIN_TAG=latest make docker-driver-push
+              PLUGIN_TAG=master make BUILD_IN_CONTAINER=false docker-driver-push && PLUGIN_TAG=latest make BUILD_IN_CONTAINER=false docker-driver-push
             fi
 
   test-helm:
