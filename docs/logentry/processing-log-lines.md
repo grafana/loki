@@ -30,7 +30,7 @@ scrape_configs:
       selector: '{name="promtail"}'
       stages:
       - regex:
-          expression: ".*level=(?P<level>[a-zA-Z]+).*ts=(?P<timestamp>[T\d-:.Z]*).*component=(?P<component>[a-zA-Z]+)"
+          expression: ".*level=(?P<level>[a-zA-Z]+).*ts=(?P<timestamp>[T\\d-:.Z]*).*component=(?P<component>[a-zA-Z]+)"
       - labels:
           level:
           component:
