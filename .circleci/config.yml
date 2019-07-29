@@ -57,8 +57,7 @@ jobs:
       - run:
           name: Run Unit Tests
           command: |
-            touch loki-build-image/.uptodate &&
-            make BUILD_IN_CONTAINER=false test
+            make test
 
   lint:
     <<: *defaults
@@ -68,13 +67,11 @@ jobs:
       - run:
           name: Lint
           command: |
-            touch loki-build-image/.uptodate &&
-            make BUILD_IN_CONTAINER=false lint
+            make lint
 
       - run:
           name: Check Generated Fies
           command: |
-            touch loki-build-image/.uptodate &&
             make BUILD_IN_CONTAINER=false check-generated-files
 
   build:
@@ -86,22 +83,19 @@ jobs:
       - run:
           name: Promtail cross platform
           command: |
-            touch loki-build-image/.uptodate &&
-            make GOOS=linux   BUILD_IN_CONTAINER=false cmd/promtail/promtail
+            make GOOS=linux BUILD_IN_CONTAINER=false promtail
             rm cmd/promtail/promtail
-            make GOOS=windows BUILD_IN_CONTAINER=false cmd/promtail/promtail
+            make GOOS=windows BUILD_IN_CONTAINER=false promtail
 
       - run:
           name: Build Images
           command: |
-            touch loki-build-image/.uptodate &&
-            make BUILD_IN_CONTAINER=false
+            make images
 
       - run:
           name: Save Images
           command: |
-            touch loki-build-image/.uptodate &&
-            make BUILD_IN_CONTAINER=false save-images
+            make save-images
 
       - save_cache:
           key: v1-loki-{{ .Branch }}-{{ .Revision }}
@@ -127,8 +121,7 @@ jobs:
       - run:
           name: Load Images
           command: |
-            touch loki-build-image/.uptodate &&
-            make BUILD_IN_CONTAINER=false load-images
+            make load-images
 
       - run:
           name: Push Images
@@ -143,7 +136,7 @@ jobs:
           command: |
             if [ -n "$DOCKER_USER" ]; then
               docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
-              make BUILD_IN_CONTAINER=false push-plugin
+              make docker-driver-push
             fi
 
   publish-master:
@@ -160,8 +153,7 @@ jobs:
       - run:
           name: Load Images
           command: |
-            touch loki-build-image/.uptodate &&
-            make BUILD_IN_CONTAINER=false load-images
+            make load-images
 
       - run:
           name: Push Images
@@ -174,7 +166,7 @@ jobs:
           command: |
             if [ -n "$DOCKER_USER" ]; then
               docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
-              PLUGIN_TAG=master make BUILD_IN_CONTAINER=false push-plugin && PLUGIN_TAG=latest make BUILD_IN_CONTAINER=false push-plugin
+              PLUGIN_TAG=master make docker-driver-push && PLUGIN_TAG=latest make docker-driver-push
             fi
 
   test-helm:

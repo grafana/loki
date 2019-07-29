@@ -1,118 +1,40 @@
-
-.PHONY: all test clean images protos assets check_assets release-prepare release-perform
 .DEFAULT_GOAL := all
+.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos
+.PHONY: helm helm-install helm-upgrade helm-publish helm-debug helm-clean
+.PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
+.PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
+.PHONY: benchmark-store
+#############
+# Variables #
+#############
 
-CHARTS := production/helm/loki production/helm/promtail production/helm/loki-stack
+DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
+IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,$(shell basename $(dir))))
 
-# Boiler plate for bulding Docker containers.
-# All this must go at top of file I'm afraid.
-IMAGE_PREFIX ?= grafana/
+# Certain aspects of the build are done in containers for consistency (e.g. yacc/protobuf generation)
+# If you have the correct tools installed and you want to speed up development you can run
+# make BUILD_IN_CONTAINER=false target
+# or you can override this with an environment variable
+BUILD_IN_CONTAINER ?= true
+BUILD_IMAGE_VERSION := "0.2.1"
+
+# Docker image info
+IMAGE_PREFIX ?= grafana
 IMAGE_TAG := $(shell ./tools/image-tag)
-UPTODATE := .uptodate
-DEBUG_UPTODATE := .uptodate-debug
+
+# Version info for binaries
 GIT_REVISION := $(shell git rev-parse --short HEAD)
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 
-
-# Building Docker images is now automated. The convention is every directory
-# with a Dockerfile in it builds an image calls quay.io/grafana/loki-<dirname>.
-# Dependencies (i.e. things that go in the image) still need to be explicitly
-# declared.
-%/$(UPTODATE): %/Dockerfile
-	$(SUDO) docker build -t $(IMAGE_PREFIX)$(shell basename $(@D)) $(@D)/
-	$(SUDO) docker tag $(IMAGE_PREFIX)$(shell basename $(@D)) $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)
-	touch $@
-
-%/$(DEBUG_UPTODATE): %/Dockerfile.debug
-	$(SUDO) docker build -f $(@D)/Dockerfile.debug -t $(IMAGE_PREFIX)$(shell basename $(@D))-debug $(@D)/
-	$(SUDO) docker tag $(IMAGE_PREFIX)$(shell basename $(@D))-debug $(IMAGE_PREFIX)$(shell basename $(@D))-debug:$(IMAGE_TAG)
-	touch $@
-
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/go/src/github.com/grafana/loki' phase.
-DONT_FIND := -name build -prune -o -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
+DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
-# Get a list of directories containing Dockerfiles
-DOCKERFILES := $(shell find . -name docker-driver -prune -o $(DONT_FIND) -type f -name 'Dockerfile' -print)
-UPTODATE_FILES := $(patsubst %/Dockerfile,%/$(UPTODATE),$(DOCKERFILES))
-DEBUG_DOCKERFILES := $(shell find . $(DONT_FIND) -type f -name 'Dockerfile.debug' -print)
-DEBUG_UPTODATE_FILES := $(patsubst %/Dockerfile.debug,%/$(DEBUG_UPTODATE),$(DEBUG_DOCKERFILES))
-DEBUG_DLV_FILES := $(patsubst %/Dockerfile.debug,%/dlv,$(DEBUG_DOCKERFILES))
-DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
-IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,$(shell basename $(dir))))
-DEBUG_DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile.debug,%,$(DEBUG_DOCKERFILES))
-DEBUG_IMAGE_NAMES := $(foreach dir,$(DEBUG_DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,$(shell basename $(dir))-debug))
-images:
-	$(info $(patsubst %,%:$(IMAGE_TAG),$(IMAGE_NAMES)))
-	@echo > /dev/null
+# These are all the application files, they are included in the various binary rules as dependencies
+# to make sure binaries are rebuilt if any source files change.
+APP_GO_FILES := $(shell find . $(DONT_FIND) -name .y.go -prune -o -name .pb.go -prune -o -name cmd -prune -o -type f -name '*.go' -print)
 
-# Generating proto code is automated.
-PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
-PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS)) \
-	vendor/github.com/cortexproject/cortex/pkg/ring/ring.pb.go \
-	vendor/github.com/cortexproject/cortex/pkg/ingester/client/cortex.pb.go \
-	vendor/github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.pb.go
-
-# Generating yacc code is automated.
-YACC_DEFS := $(shell find . $(DONT_FIND) -type f -name *.y -print)
-YACC_GOS := $(patsubst %.y,%.go,$(YACC_DEFS))
-
-# Building binaries is now automated.  The convention is to build a binary
-# for every directory with main.go in it, in the ./cmd directory.
-MAIN_GO := $(shell find . $(DONT_FIND) -type f -name 'main.go' -print)
-EXES := $(foreach exe, $(patsubst ./cmd/%/main.go, %, $(MAIN_GO)), ./cmd/$(exe)/$(exe))
-DEBUG_EXES := $(foreach exe, $(patsubst ./cmd/%/main.go, %, $(MAIN_GO)), ./cmd/$(exe)/$(exe)-debug)
-GO_FILES := $(shell find . $(DONT_FIND) -name cmd -prune -o -type f -name '*.go' -print)
-
-# This is the important part of how `make all` enters this file
-# the above EXES finds all the main.go files and for each of them
-# it creates the dep_exe targets which look like this:
-#   cmd/promtail/promtail: loki-build-image/.uptodate cmd/promtail//main.go pkg/loki/loki.go pkg/loki/fake_auth.go ...
-#   cmd/promtail/.uptodate: cmd/promtail/promtail
-# Then when `make all` expands `$(UPTODATE_FILES)` it will call the second generated target and initiate the build process
-define dep_exe
-$(1): $(dir $(1))/main.go $(GO_FILES) $(PROTO_GOS) $(YACC_GOS)
-$(dir $(1))$(UPTODATE): $(1)
-endef
-$(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
-
-# Everything is basically duplicated for debug builds,
-# but with a different set of Dockerfiles and binaries appended with -debug.
-define debug_dep_exe
-$(1): $(dir $(1))/main.go $(GO_FILES) $(PROTO_GOS) $(YACC_GOS)
-$(dir $(1))$(DEBUG_UPTODATE): $(1)
-endef
-$(foreach exe, $(DEBUG_EXES), $(eval $(call debug_dep_exe, $(exe))))
-
-# Manually declared dependancies and what goes into each exe
-pkg/logproto/logproto.pb.go: pkg/logproto/logproto.proto
-vendor/github.com/cortexproject/cortex/pkg/ring/ring.pb.go: vendor/github.com/cortexproject/cortex/pkg/ring/ring.proto
-vendor/github.com/cortexproject/cortex/pkg/ingester/client/cortex.pb.go: vendor/github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto
-vendor/github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.pb.go: vendor/github.com/cortexproject/cortex/pkg/chunk/storage/caching_index_client.proto
-pkg/promtail/server/server.go: assets
-pkg/logql/expr.go: pkg/logql/expr.y
-all: $(UPTODATE_FILES) build-plugin
-test: $(PROTO_GOS) $(YACC_GOS)
-debug: $(DEBUG_UPTODATE_FILES)
-yacc: $(YACC_GOS)
-protos: $(PROTO_GOS)
-yacc: $(YACC_GOS)
-
-# And now what goes into each image
-loki-build-image/$(UPTODATE): loki-build-image/*
-
-# All the boiler plate for building golang follows:
-SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
-BUILD_IN_CONTAINER := true
-# RM is parameterized to allow CircleCI to run builds, as it
-# currently disallows `docker run --rm`. This value is overridden
-# in circle.yml
-RM := --rm
-# TTY is parameterized to allow Google Cloud Builder to run builds,
-# as it currently disallows TTY devices. This value needs to be overridden
-# in any custom cloudbuild.yaml files
-TTY := --tty
-
+# Build flags
 VPREFIX := github.com/grafana/loki/vendor/github.com/prometheus/common/version
 GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION)" -tags netgo
 # Per some websites I've seen to add `-gcflags "all=-N -l"`, the gcflags seem poorly if at all documented
@@ -129,113 +51,175 @@ NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
        false; \
 }
 
-# If BUILD_IN_CONTAINER is true, the build image is run which launches
-# an image that mounts this project as a volume.  The image invokes a build.sh script
-# which essentially re-enters this file with BUILD_IN_CONTAINER=FALSE
-# causing the else block target below to be called and the files to be built.
-# If BUILD_IN_CONTAINER were false to begin with, the else block is
-# executed and the binaries are built without ever launching the build container.
-ifeq ($(BUILD_IN_CONTAINER),true)
+# Protobuf files
+PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
+PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
 
-$(EXES) $(DEBUG_EXES) $(PROTO_GOS) $(YACC_GOS) lint test shell check-generated-files: loki-build-image/$(UPTODATE)
+# Yacc Files
+YACC_DEFS := $(shell find . $(DONT_FIND) -type f -name *.y -print)
+YACC_GOS := $(patsubst %.y,%.y.go,$(YACC_DEFS))
+
+# RM is parameterized to allow CircleCI to run builds, as it
+# currently disallows `docker run --rm`. This value is overridden
+# in circle.yml
+RM := --rm
+# TTY is parameterized to allow Google Cloud Builder to run builds,
+# as it currently disallows TTY devices. This value needs to be overridden
+# in any custom cloudbuild.yaml files
+TTY := --tty
+
+################
+# Main Targets #
+################
+
+all: promtail logcli loki loki-canary check-generated-files
+
+
+# This is really a check for the CI to make sure generated files are built and checked in manually
+check-generated-files: yacc protos
+	@if ! (git diff --exit-code $(YACC_GOS) $(PROTO_GOS)); then \
+		echo "\nChanges found in either generated protos or yaccs"; \
+		echo "Run 'make all' and commit the changes to fix this error."; \
+		echo "If you are actively developing these files you can ignore this error"; \
+		echo "(Don't forget to check in the generated files when finished)\n"; \
+		exit 1; \
+	fi
+
+
+##########
+# Logcli #
+##########
+
+logcli: yacc cmd/logcli/logcli
+
+cmd/logcli/logcli: $(APP_GO_FILES) cmd/logcli/main.go
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	$(NETGO_CHECK)
+
+########
+# Loki #
+########
+
+loki: protos yacc cmd/loki/loki
+loki-debug: protos yacc cmd/loki/loki-debug
+
+cmd/loki/loki: $(APP_GO_FILES) cmd/loki/main.go
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	$(NETGO_CHECK)
+
+cmd/loki/loki-debug: $(APP_GO_FILES) cmd/loki/main.go
+	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
+	$(NETGO_CHECK)
+
+###############
+# Loki-Canary #
+###############
+
+loki-canary: protos yacc cmd/loki-canary/loki-canary
+
+cmd/loki-canary/loki-canary: $(APP_GO_FILES) cmd/loki-canary/main.go
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	$(NETGO_CHECK)
+
+############
+# Promtail #
+############
+
+promtail: yacc cmd/promtail/promtail
+promtail-debug: yacc cmd/promtail/promtail-debug
+
+# Rule to generate promtail static assets file
+pkg/promtail/server/ui/assets_vfsdata.go:
+	@echo ">> writing assets"
+	GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
+
+cmd/promtail/promtail: $(APP_GO_FILES) pkg/promtail/server/ui/assets_vfsdata.go cmd/promtail/main.go
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	$(NETGO_CHECK)
+
+cmd/promtail/promtail-debug: $(APP_GO_FILES) pkg/promtail/server/ui/assets_vfsdata.go cmd/promtail/main.go
+	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
+	$(NETGO_CHECK)
+
+########
+# Lint #
+########
+
+lint:
+	GOGC=20 golangci-lint run
+
+########
+# Test #
+########
+
+test: all
+	go test -p=8 ./...
+
+#########
+# Clean #
+#########
+
+clean:
+	rm -rf cmd/promtail/promtail pkg/promtail/server/ui/assets_vfsdata.go
+	rm -rf cmd/loki/loki
+	rm -rf cmd/logcli/logcli
+	rm -rf cmd/loki-canary/loki-canary
+	rm -rf .cache
+	rm -rf cmd/docker-driver/rootfs
+	go clean ./...
+
+#########
+# YACCs #
+#########
+
+yacc: $(YACC_GOS)
+
+%.y.go: %.y
+ifeq ($(BUILD_IN_CONTAINER),true)
+	# I wish we could make this a multiline variable however you can't pass more than simple arguments to them
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
 		-v $(shell pwd):/go/src/github.com/grafana/loki \
-		$(IMAGE_PREFIX)loki-build-image $@;
-
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
-
-$(DEBUG_EXES): loki-build-image/$(UPTODATE)
-	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
-	# Copy the delve binary to make it easily available to put in the binary's container.
-	[ -f "/go/bin/dlv" ] && mv "/go/bin/dlv" $(@D)/dlv
-
-$(EXES): loki-build-image/$(UPTODATE)
-	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
-	$(NETGO_CHECK)
-
-%.pb.go: loki-build-image/$(UPTODATE)
-	case "$@" in 	\
-	vendor*)			\
-		protoc -I ./vendor:./$(@D) --gogoslick_out=plugins=grpc:./vendor ./$(patsubst %.pb.go,%.proto,$@); \
-		;;					\
-	*)						\
-		protoc -I ./vendor:./$(@D) --gogoslick_out=Mgoogle/protobuf/timestamp.proto=github.com/gogo/protobuf/types,plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@); \
-		;;					\
-	esac
-
-%.go: %.y
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
-
-lint: loki-build-image/$(UPTODATE)
-	GOGC=20 golangci-lint run
-
-check-generated-files: loki-build-image/$(UPTODATE) yacc protos
-	@git diff-files || (echo "changed files; failing check" && exit 1)
-
-test: loki-build-image/$(UPTODATE)
-	go test -p=8 ./...
-
-shell: loki-build-image/$(UPTODATE)
-	bash
-
 endif
 
-save-images:
-	@set -e; \
-	mkdir -p images; \
-	for image_name in $(IMAGE_NAMES); do \
-		if ! echo $$image_name | grep build; then \
-			docker save $$image_name:$(IMAGE_TAG) -o images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
-		fi \
-	done
+#############
+# Protobufs #
+#############
 
-load-images:
-	@set -e; \
-	mkdir -p images; \
-	for image_name in $(IMAGE_NAMES); do \
-		if ! echo $$image_name | grep build; then \
-			docker load -i images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
-		fi \
-	done
+protos: $(PROTO_GOS)
 
-push-images:
-	@set -e; \
-	for image_name in $(IMAGE_NAMES); do \
-		if ! echo $$image_name | grep build; then \
-			docker push $$image_name:$(IMAGE_TAG); \
-		fi \
-	done
+%.pb.go: $(PROTO_DEFS)
+ifeq ($(BUILD_IN_CONTAINER),true)
+	@mkdir -p $(shell pwd)/.pkg
+	@mkdir -p $(shell pwd)/.cache
+	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd)/.cache:/go/cache \
+		-v $(shell pwd)/.pkg:/go/pkg \
+		-v $(shell pwd):/go/src/github.com/grafana/loki \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
+	case "$@" in 	\
+  	vendor*)			\
+  		protoc -I ./vendor:./$(@D) --gogoslick_out=plugins=grpc:./vendor ./$(patsubst %.pb.go,%.proto,$@); \
+  		;;					\
+  	*)						\
+  		protoc -I ./vendor:./$(@D) --gogoslick_out=Mgoogle/protobuf/timestamp.proto=github.com/gogo/protobuf/types,plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@); \
+  		;;					\
+  	esac
+endif
 
-push-latest:
-	@set -e; \
-	for image_name in $(IMAGE_NAMES); do \
-		if ! echo $$image_name | grep build; then \
-			docker tag $$image_name:$(IMAGE_TAG) $$image_name:latest; \
-			docker tag $$image_name:$(IMAGE_TAG) $$image_name:master; \
-			docker push $$image_name:latest; \
-			docker push $$image_name:master; \
-		fi \
-	done
 
-release-prepare:
-	@set -e; ./tools/release_prepare.sh
+########
+# Helm #
+########
 
-release-perform:
-	@[ "${VERSION}" ] || ( echo ">> VERSION env var must be set to create a release"; exit 1 )
-	@echo ">> Pushing docker images with tag for version $(VERSION)"
-	@set -e; \
-	for image_name in $(IMAGE_NAMES); do \
-		if ! echo $$image_name | grep build; then \
-			docker tag $$image_name:$(IMAGE_TAG) $$image_name:$(VERSION); \
-			docker push $$image_name:$(VERSION); \
-		fi \
-	done
-
+CHARTS := production/helm/loki production/helm/promtail production/helm/loki-stack
 
 helm:
 	-rm -f production/helm/*/requirements.lock
@@ -247,6 +231,15 @@ helm:
 		helm package $$chart; \
 	done
 	rm -f production/helm/*/requirements.lock
+
+helm-install:
+	kubectl apply -f tools/helm.yaml
+	helm init --wait --service-account helm --upgrade
+	$(MAKE) helm-upgrade
+
+helm-upgrade: helm
+	helm upgrade --wait --install $(ARGS) loki-stack ./production/helm/loki-stack \
+	--set promtail.image.tag=$(IMAGE_TAG) --set loki.image.tag=$(IMAGE_TAG) -f tools/dev.values.yaml
 
 helm-publish: helm
 	cp production/helm/README.md index.md
@@ -260,58 +253,108 @@ helm-publish: helm
 	git commit -m "[skip ci] Publishing helm charts: ${CIRCLE_SHA1}"
 	git push origin gh-pages
 
-clean:
-	$(SUDO) docker rmi $(IMAGE_NAMES) $(DEBUG_IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf $(UPTODATE_FILES) $(EXES) $(DEBUG_UPTODATE_FILES) $(DEBUG_EXES) $(DEBUG_DLV_FILES) .cache pkg/promtail/server/ui/assets_vfsdata.go
-	go clean ./...
-
-assets:
-	@echo ">> writing assets"
-	GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
-
-check_assets: assets
-	@echo ">> checking that assets are up-to-date"
-	@if ! (cd pkg/promtail/server/ui && git diff --exit-code); then \
-		echo "Run 'make assets' and commit the changes to fix the error."; \
-		exit 1; \
-	fi
-
-helm-install:
-	kubectl apply -f tools/helm.yaml
-	helm init --wait --service-account helm --upgrade
-	$(MAKE) upgrade-helm
-
 helm-debug: ARGS=--dry-run --debug
 helm-debug: helm-upgrade
-
-helm-upgrade: helm
-	helm upgrade --wait --install $(ARGS) loki-stack ./production/helm/loki-stack \
-	--set promtail.image.tag=$(IMAGE_TAG) --set loki.image.tag=$(IMAGE_TAG) -f tools/dev.values.yaml
-
 
 helm-clean:
 	-helm delete --purge loki-stack
 
-PLUGIN_FOLDER = ./cmd/docker-driver
+#################
+# Docker Driver #
+#################
+
 PLUGIN_TAG ?= $(IMAGE_TAG)
 
-build-plugin: $(PLUGIN_FOLDER)/docker-driver
-	-docker plugin disable grafana/loki-docker-driver:$(IMAGE_TAG)
-	-docker plugin rm grafana/loki-docker-driver:$(IMAGE_TAG)
-	-rm -rf $(PLUGIN_FOLDER)/rootfs
-	mkdir $(PLUGIN_FOLDER)/rootfs
-	docker build -t rootfsimage $(PLUGIN_FOLDER)
+docker-driver: docker-driver-clean cmd/docker-driver/docker-driver
+	mkdir cmd/docker-driver/rootfs
+	docker build -t rootfsimage cmd/docker-driver
 	ID=$$(docker create rootfsimage true) && \
-	(docker export $$ID | tar -x -C $(PLUGIN_FOLDER)/rootfs) && \
+	(docker export $$ID | tar -x -C cmd/docker-driver/rootfs) && \
 	docker rm -vf $$ID
 	docker rmi rootfsimage -f
-	docker plugin create grafana/loki-docker-driver:$(PLUGIN_TAG) $(PLUGIN_FOLDER)
+	docker plugin create grafana/loki-docker-driver:$(PLUGIN_TAG) cmd/docker-driver
 
-push-plugin: build-plugin
+cmd/docker-driver/docker-driver: $(APP_GO_FILES)
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	$(NETGO_CHECK)
+
+docker-driver-push: docker-driver
 	docker plugin push grafana/loki-docker-driver:$(PLUGIN_TAG)
 
-enable-plugin:
+docker-driver-enable:
 	docker plugin enable grafana/loki-docker-driver:$(PLUGIN_TAG)
+
+docker-driver-clean:
+	-docker plugin disable grafana/loki-docker-driver:$(IMAGE_TAG)
+	-docker plugin rm grafana/loki-docker-driver:$(IMAGE_TAG)
+	rm -rf cmd/docker-driver/rootfs
+
+
+##########
+# Images #
+##########
+
+images: promtail-image loki-image loki-canary-image docker-driver
+
+IMAGE_NAMES := grafana/loki grafana/promtail grafana/loki-canary
+
+save-images:
+	@set -e; \
+	mkdir -p images; \
+	for image_name in $(IMAGE_NAMES); do \
+		echo ">> saving image $$image_name:$(IMAGE_TAG)"; \
+		docker save $$image_name:$(IMAGE_TAG) -o images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
+	done
+
+load-images:
+	@set -e; \
+	mkdir -p images; \
+	for image_name in $(IMAGE_NAMES); do \
+		docker load -i images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
+	done
+
+push-images:
+	@set -e; \
+	for image_name in $(IMAGE_NAMES); do \
+		docker push $$image_name:$(IMAGE_TAG); \
+	done
+
+push-latest:
+	@set -e; \
+	for image_name in $(IMAGE_NAMES); do \
+		docker tag $$image_name:$(IMAGE_TAG) $$image_name:latest; \
+		docker tag $$image_name:$(IMAGE_TAG) $$image_name:master; \
+		docker push $$image_name:latest; \
+		docker push $$image_name:master; \
+	done
+
+
+promtail-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/promtail -f cmd/promtail/Dockerfile .
+	$(SUDO) docker tag $(IMAGE_PREFIX)/promtail $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)
+promtail-debug-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/promtail -f cmd/promtail/Dockerfile.debug .
+	$(SUDO) docker tag $(IMAGE_PREFIX)/promtail-debug $(IMAGE_PREFIX)/promtail-debug:$(IMAGE_TAG)
+
+loki-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki -f cmd/loki/Dockerfile .
+	$(SUDO) docker tag $(IMAGE_PREFIX)/loki $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+loki-debug-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki -f cmd/loki/Dockerfile.debug .
+	$(SUDO) docker tag $(IMAGE_PREFIX)/loki-debug $(IMAGE_PREFIX)/loki-debug:$(IMAGE_TAG)
+
+loki-canary-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-canary -f cmd/loki-canary/Dockerfile .
+	$(SUDO) docker tag $(IMAGE_PREFIX)/loki-canary $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
+
+build-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-build-image -f loki-build-image/Dockerfile .
+	$(SUDO) docker tag $(IMAGE_PREFIX)/loki-build-image $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG)
+
+
+########
+# Misc #
+########
 
 benchmark-store:
 	go run ./pkg/storage/hack/main.go
