@@ -1,5 +1,9 @@
 .DEFAULT_GOAL := all
-.PHONY := all images check-generated-files logcli loki loki-debug promtail promtail-debug lint test clean yacc protos helm helm-install helm-upgrade helm-publish helm-debug helm-clean
+.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos
+.PHONY: helm helm-install helm-upgrade helm-publish helm-debug helm-clean
+.PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
+.PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
+.PHONY: benchmark-store
 #############
 # Variables #
 #############
@@ -107,9 +111,9 @@ cmd/loki/loki-debug: $(APP_GO_FILES) cmd/loki/main.go
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
-########
-# Loki #
-########
+###############
+# Loki-Canary #
+###############
 
 loki-canary: protos yacc cmd/loki-canary/loki-canary
 
