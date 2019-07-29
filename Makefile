@@ -19,7 +19,8 @@ BUILD_IN_CONTAINER ?= true
 BUILD_IMAGE_VERSION := "0.2.1"
 
 # Docker image info
-IMAGE_PREFIX ?= grafana
+# IMAGE_PREFIX ?= grafana
+IMAGE_PREFIX ?= shorez
 IMAGE_TAG := $(shell ./tools/image-tag)
 
 # Version info for binaries
@@ -76,7 +77,7 @@ TTY := --tty
 DOCKER_BUILDKIT=1
 OCI_PLATFORMS=--platform=linux/amd64 --platform=linux/arm64 --platform=linux/arm/7
 ifeq ($(CI), true)
-	BUILD_OCI=img build $(OCI_PLATFORMS)
+	BUILD_OCI=img build --no-console $(OCI_PLATFORMS)
 	PUSH_OCI=img push
 else
 	BUILD_OCI=docker build
@@ -312,7 +313,8 @@ docker-driver-clean:
 
 images: promtail-image loki-image loki-canary-image docker-driver
 
-IMAGE_NAMES := grafana/loki grafana/promtail grafana/loki-canary
+# IMAGE_NAMES := grafana/loki grafana/promtail grafana/loki-canary
+IMAGE_NAMES := shorez/loki shorez/promtail shorez/loki-canary
 
 save-images:
 	@set -e; \
@@ -353,6 +355,9 @@ promtail-debug-image: OCI_PLATFORMS=
 promtail-debug-image:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)-debug -f cmd/promtail/Dockerfile.debug .
 
+promtail-push:
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)
+
 # loki
 loki-image:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile .
@@ -360,6 +365,9 @@ loki-image:
 loki-debug-image: OCI_PLATFORMS=
 loki-debug-image:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
+
+loki-push:
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
 
 # loki-canary
 loki-canary-image:
