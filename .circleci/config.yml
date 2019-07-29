@@ -2,51 +2,86 @@ version: 2
 
 workflows:
   version: 2
-  test-build-deploy:
+  containers:
     jobs:
-    - test
-    - test-helm
-    - build
-    - lint
-    - publish:
-        requires:
-        - test
-        - test-helm
-        - build
-        - lint
-        filters:
-          branches:
-            only: master
-    - publish-master:
-        requires:
-        - test
-        - test-helm
-        - build
-        - lint
-        filters:
-          branches:
-            only: master
-    - publish-helm:
-        requires:
-        - test
-        - test-helm
-        - build
-        - lint
-        filters:
-          branches:
-            only: master
-    - deploy:
-        requires:
-        - publish
-        filters:
-          branches:
-            only: master
+      - build/loki
+      - build/promtail
+  # test-build-deploy:
+  #   jobs:
+  #   - test
+  #   - test-helm
+  #   - build
+  #   - lint
+  #   - publish:
+  #       requires:
+  #       - test
+  #       - test-helm
+  #       - build
+  #       - lint
+  #       filters:
+  #         branches:
+  #           only: master
+  #   - publish-master:
+  #       requires:
+  #       - test
+  #       - test-helm
+  #       - build
+  #       - lint
+  #       filters:
+  #         branches:
+  #           only: master
+  #   - publish-helm:
+  #       requires:
+  #       - test
+  #       - test-helm
+  #       - build
+  #       - lint
+  #       filters:
+  #         branches:
+  #           only: master
+  #   - deploy:
+  #       requires:
+  #       - publish
+  #       filters:
+  #         branches:
+  #           only: master
 
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 defaults: &defaults
   docker:
     - image: grafana/loki-build-image:0.3.0
   working_directory: /go/src/github.com/grafana/loki
+
+container: &container
+  machine:
+    image: ubuntu-1604:201903-01
+  working_directory: ~/go/src/github.com/grafana/loki
+  environment:
+    APP: loki
+    GOPATH: /home/circleci/go
+  steps:
+    - checkout
+    - run:
+        name: rootless
+        command: |
+          sudo apt-get install -qy uidmap libseccomp-dev binfmt-support go-bindata
+          sudo docker run --privileged linuxkit/binfmt:v0.6
+    - run:
+        name: img
+        command: |
+          export GOPATH=~/go
+          go get -u github.com/jteeuwen/go-bindata/...
+          mkdir -p $GOPATH/src/github.com/genuinetools
+          cd $GOPATH/src/github.com/genuinetools
+          git clone https://github.com/genuinetools/img
+          cd img
+          make
+          sudo mv img /bin
+          cd $GOPATH/src/github.com/grafana/loki
+    - run:
+        name: container
+        command: |
+          make $APP-image
 
 jobs:
   test:
@@ -74,38 +109,15 @@ jobs:
           command: |
             make BUILD_IN_CONTAINER=false check-generated-files
 
-  build:
-    <<: *defaults
-    steps:
-      - checkout
-      - setup_remote_docker
+  build/loki:
+    <<: *container
+    environment:
+      APP: loki
 
-      - run:
-          name: Promtail cross platform
-          command: |
-            make GOOS=linux BUILD_IN_CONTAINER=false promtail
-            rm cmd/promtail/promtail
-            make GOOS=windows BUILD_IN_CONTAINER=false promtail
-
-      - run:
-          name: Build Images
-          command: |
-            make images
-
-      - run:
-          name: Save Images
-          command: |
-            make save-images
-
-      - save_cache:
-          key: v1-loki-{{ .Branch }}-{{ .Revision }}
-          paths:
-          - images/
-
-      - save_cache:
-          key: v1-loki-plugin-{{ .Branch }}-{{ .Revision }}
-          paths:
-          - cmd/docker-driver/docker-driver
+  build/promtail:
+    <<: *container
+    environment:
+      APP: promtail
 
   publish:
     <<: *defaults
