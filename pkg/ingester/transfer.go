@@ -20,10 +20,6 @@ import (
 )
 
 var (
-	sentChunks = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "loki_ingester_sent_chunks",
-		Help: "The total number of chunks sent by this ingester whilst leaving.",
-	})
 	receivedChunks = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "loki_ingester_received_chunks",
 		Help: "The total number of chunks received by this ingester whilst joining.",
@@ -200,8 +196,6 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 				level.Error(util.Logger).Log("msg", "failed sending stream's chunks to ingester", "to_ingester", targetIngester.Addr, "err", err)
 				return err
 			}
-
-			sentChunks.Add(float64(len(chunks)))
 		}
 	}
 
