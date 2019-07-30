@@ -24,6 +24,13 @@ workflows:
           requires: [ lint, test ]
           filters: { <<: *tag-or-master }
 
+      - build/canary:
+          requires: [ lint, test ]
+          filters: {<<: *no-master}
+      - publish/canary:
+          requires: [ lint, test ]
+          filters: { <<: *tag-or-master }
+
       - build/promtail:
           requires: [ lint, test ]
           filters: {<<: *no-master}
@@ -128,6 +135,17 @@ jobs:
     <<: *publish
     environment:
       APP: loki
+
+  # Loki
+  build/canary:
+    <<: *container
+    environment:
+      APP: loki-canary
+
+  publish/canary:
+    <<: *publish
+    environment:
+      APP: loki-canary
 
   # Promtail
   build/promtail:
