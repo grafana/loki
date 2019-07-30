@@ -282,9 +282,9 @@ helm-clean:
 
 PLUGIN_TAG ?= $(IMAGE_TAG)
 
-docker-driver: docker-driver-clean cmd/docker-driver/docker-driver
+docker-driver: docker-driver-clean 
 	mkdir cmd/docker-driver/rootfs
-	docker build -t rootfsimage cmd/docker-driver
+	docker build -t rootfsimage -f cmd/docker-driver/Dockerfile .
 	ID=$$(docker create rootfsimage true) && \
 	(docker export $$ID | tar -x -C cmd/docker-driver/rootfs) && \
 	docker rm -vf $$ID
