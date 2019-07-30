@@ -19,8 +19,7 @@ BUILD_IN_CONTAINER ?= true
 BUILD_IMAGE_VERSION := "0.2.1"
 
 # Docker image info
-# IMAGE_PREFIX ?= grafana
-IMAGE_PREFIX ?= shorez
+IMAGE_PREFIX ?= grafana
 IMAGE_TAG := $(shell ./tools/image-tag)
 
 # Version info for binaries
@@ -313,8 +312,7 @@ docker-driver-clean:
 
 images: promtail-image loki-image loki-canary-image docker-driver
 
-# IMAGE_NAMES := grafana/loki grafana/promtail grafana/loki-canary
-IMAGE_NAMES := shorez/loki shorez/promtail shorez/loki-canary
+IMAGE_NAMES := grafana/loki grafana/promtail grafana/loki-canary
 
 save-images:
 	@set -e; \
