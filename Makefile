@@ -372,6 +372,8 @@ loki-push:
 # loki-canary
 loki-canary-image:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile .
+loki-canary-push:
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
 
 # build-image (only amd64)
 build-image: OCI_PLATFORMS=
