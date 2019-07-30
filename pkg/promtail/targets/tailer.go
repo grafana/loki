@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
+	"github.com/grafana/loki/pkg/util"
 )
 
 type tailer struct {
@@ -54,6 +55,7 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions
 		return nil, err
 	}
 
+	logger = log.With(logger, "component", "tailer")
 	tailer := &tailer{
 		logger:    logger,
 		handler:   api.AddLabelsMiddleware(model.LabelSet{FilenameLabel: model.LabelValue(path)}).Wrap(handler),
@@ -64,6 +66,8 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions
 		quit: make(chan struct{}),
 		done: make(chan struct{}),
 	}
+	tail.Logger = util.NewLogAdapater(logger)
+
 	go tailer.run()
 	filesActive.Add(1.)
 	return tailer, nil
