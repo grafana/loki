@@ -34,25 +34,12 @@ var (
 		Help:      "Number of entries written to storage per chunk.",
 		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
 	})
-	rowWrites = util.NewHashBucketHistogram(util.HashBucketHistogramOpts{
-		HistogramOpts: prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "chunk_store_row_writes_distribution",
-			Help:      "Distribution of writes to individual storage rows",
-			Buckets:   prometheus.DefBuckets,
-		},
-		HashBuckets: 1024,
-	})
 	cacheCorrupt = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "cache_corrupt_chunks_total",
 		Help:      "Total count of corrupt chunks found in cache.",
 	})
 )
-
-func init() {
-	prometheus.MustRegister(rowWrites)
-}
 
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
@@ -167,7 +154,6 @@ func (c *store) calculateIndexEntries(userID string, from, through model.Time, c
 		key := fmt.Sprintf("%s:%s:%x", entry.TableName, entry.HashValue, entry.RangeValue)
 		if _, ok := seenIndexEntries[key]; !ok {
 			seenIndexEntries[key] = struct{}{}
-			rowWrites.Observe(entry.HashValue, 1)
 			result.Add(entry.TableName, entry.HashValue, entry.RangeValue, entry.Value)
 		}
 	}

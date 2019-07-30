@@ -468,7 +468,6 @@ func (c *seriesStore) calculateIndexEntries(from, through model.Time, chunk Chun
 		key := fmt.Sprintf("%s:%s:%x", entry.TableName, entry.HashValue, entry.RangeValue)
 		if _, ok := seenIndexEntries[key]; !ok {
 			seenIndexEntries[key] = struct{}{}
-			rowWrites.Observe(entry.HashValue, 1)
 			result.Add(entry.TableName, entry.HashValue, entry.RangeValue, entry.Value)
 		}
 	}
