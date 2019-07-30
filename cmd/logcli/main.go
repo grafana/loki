@@ -31,7 +31,7 @@ var (
 	to              = queryCmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").String()
 	forward         = queryCmd.Flag("forward", "Scan forwards through logs.").Default("false").Bool()
 	tail            = queryCmd.Flag("tail", "Tail the logs").Short('t').Default("false").Bool()
-	delayFor        = queryCmd.Flag("delay-for", "Delay in tailing by number of seconds to accumulate logs").Default("0").Int()
+	delayFor        = queryCmd.Flag("delay-for", "Delay in tailing by number of seconds to accumulate logs for re-ordering").Default("0").Int()
 	noLabels        = queryCmd.Flag("no-labels", "Do not print any labels").Default("false").Bool()
 	ignoreLabelsKey = queryCmd.Flag("exclude-label", "Exclude labels given the provided key during output.").Strings()
 	showLabelsKey   = queryCmd.Flag("include-label", "Include labels given the provided key during output.").Strings()
