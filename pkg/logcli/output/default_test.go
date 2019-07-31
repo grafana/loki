@@ -1,6 +1,7 @@
 package output
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -85,4 +86,51 @@ func TestDefaultOutput_Format(t *testing.T) {
 			assert.Equal(t, testData.expected, actual)
 		})
 	}
+}
+
+func TestDefaultOutput_FormatLabelsPadding(t *testing.T) {
+	t.Parallel()
+
+	// Define a list of labels that - once formatted - have a different length
+	labelsList := []labels.Labels{
+		labels.New(labels.Label{Name: "type", Value: "test"}),
+		labels.New(labels.Label{Name: "type", Value: "test"}, labels.Label{Name: "foo", Value: "bar"}),
+		labels.New(labels.Label{Name: "type", Value: "a-longer-test"}),
+	}
+
+	timestamp, _ := time.Parse(time.RFC3339, "2006-01-02T15:04:05+07:00")
+	maxLabelsLen := findMaxLabelsLength(labelsList)
+	options := &LogOutputOptions{Timezone: time.UTC, NoLabels: false}
+	out := &DefaultOutput{options}
+
+	// Format the same log line with different labels
+	formattedEntries := make([]string, 0, len(labelsList))
+	for _, lbls := range labelsList {
+		formattedEntries = append(formattedEntries, out.Format(timestamp, &lbls, maxLabelsLen, "XXX"))
+	}
+
+	// Ensure the log line starts at the same position in each formatted output
+	assert.Equal(t, len(formattedEntries), len(labelsList))
+
+	expectedIndex := strings.Index(formattedEntries[0], "XXX")
+	if expectedIndex <= 0 {
+		assert.FailNowf(t, "Unexpected starting position for log line in the formatted output", "position: %d", expectedIndex)
+	}
+
+	for _, entry := range formattedEntries {
+		assert.Equal(t, expectedIndex, strings.Index(entry, "XXX"))
+	}
+}
+
+func findMaxLabelsLength(labelsList []labels.Labels) int {
+	maxLabelsLen := 0
+
+	for _, lbls := range labelsList {
+		len := len(lbls.String())
+		if maxLabelsLen < len {
+			maxLabelsLen = len
+		}
+	}
+
+	return maxLabelsLen
 }
