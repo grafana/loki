@@ -11,14 +11,18 @@ RUN apk add --no-cache curl && \
     cd / && \
     curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.17.1
 
-FROM golang:1.11.4-alpine
-RUN sed -i -e 's/v[[:digit:]]\.[[:digit:]]/edge/g' /etc/apk/repositories && \
-    apk update && apk upgrade &&\
-    apk add --no-cache \
-      coreutils file bash unzip\
-      git make grep jq \
-      protobuf protobuf-dev \
-      docker-cli
+FROM alpine:edge as docker
+RUN apk add --no-cache docker-cli
+
+FROM golang:1.11.4-stretch
+RUN apt-get update && \
+    apt-get install -qy \
+      file unzip jq \
+      protobuf-compiler libprotobuf-dev \
+      libsystemd-dev && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+COPY --from=docker /usr/bin/docker /usr/bin/docker
 COPY --from=helm /usr/bin/helm /usr/bin/helm
 COPY --from=golangci /bin/golangci-lint /usr/local/bin
 RUN go get \
