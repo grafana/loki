@@ -107,10 +107,6 @@ workflows:
         name: login
         command: img login -u "$DOCKER_USER" -p "$DOCKER_PASS"
     - run:
-        name: container
-        command: |
-          make $APP-image
-    - run:
         name: push image
         command: make $APP-push
 
