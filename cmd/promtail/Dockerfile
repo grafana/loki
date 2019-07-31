@@ -12,7 +12,8 @@ WORKDIR /go/src/github.com/grafana/loki
 RUN GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make clean && make promtail
 
 FROM alpine:3.9
-RUN apk add --update --no-cache ca-certificates
+# tzdata required for the timestamp stage to work
+RUN apk add --update --no-cache ca-certificates tzdata
 COPY --from=build /go/src/github.com/grafana/loki/cmd/promtail/promtail /usr/bin/promtail
 COPY cmd/promtail/promtail-local-config.yaml /etc/promtail/local-config.yaml
 COPY cmd/promtail/promtail-docker-config.yaml /etc/promtail/docker-config.yaml
