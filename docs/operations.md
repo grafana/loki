@@ -135,13 +135,13 @@ Example config for using S3 & DynamoDB:
 ```yaml
 schema_config:
   configs:
-    - from: 0
-      store: dynamo
-      object_store: s3
-      schema: v9
-      index:
-        prefix: dynamodb_table_name
-        period: 0
+  - from: 2019-07-29 # a date from the past by default 7 days back
+    store: aws
+    object_store: s3
+    schema: v9
+    index:
+      prefix: dynamodb_table_name
+      period: 168h
 storage_config:
   aws:
     s3: s3://access_key:secret_access_key@region/bucket_name
