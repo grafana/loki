@@ -1,19 +1,12 @@
+ARG BUILD_IMAGE=grafana/loki-build-image:0.2.1
 # Directories in this file are referenced from the root of the project not this folder
 # This file is intented to be called from the root like so:
 # docker build -t grafana/loki -f cmd/loki/Dockerfile .
 
-# TODO: really add cross-platform support
-
-# FROM golang:1.11.4-alpine as goenv
-# RUN go env GOARCH > /goarch && \
-#   go env GOARM > /goarm
-
-# FROM --platform=linux/amd64 grafana/loki-build-image as build
-FROM grafana/loki-build-image as build
-# COPY --from=goenv /goarch /goarm /
+# TODO: add cross-platform support
+FROM $BUILD_IMAGE as build
 COPY . /go/src/github.com/grafana/loki
 WORKDIR /go/src/github.com/grafana/loki
-# RUN GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make clean && make cmd/docker-driver/docker-driver
 RUN make clean && make cmd/docker-driver/docker-driver
 
 FROM alpine:3.9

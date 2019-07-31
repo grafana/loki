@@ -75,11 +75,12 @@ TTY := --tty
 
 DOCKER_BUILDKIT=1
 OCI_PLATFORMS=--platform=linux/amd64 --platform=linux/arm64 --platform=linux/arm/7
+BUILD_IMAGE = BUILD_IMAGE=grafana/loki-build-image:0.2.1
 ifeq ($(CI), true)
-	BUILD_OCI=img build --no-console $(OCI_PLATFORMS)
+	BUILD_OCI=img build --no-console $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
 	PUSH_OCI=img push
 else
-	BUILD_OCI=docker build
+	BUILD_OCI=docker build --build-arg $(BUILD_IMAGE)
 	PUSH_OCI=img push
 endif
 
