@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logproto"
 )
 
@@ -24,9 +25,9 @@ func getStart(end time.Time) time.Time {
 	return start
 }
 
-func doQuery() {
+func doQuery(out output.LogOutput) {
 	if *tail {
-		tailQuery()
+		tailQuery(out)
 		return
 	}
 
@@ -77,13 +78,22 @@ func doQuery() {
 		log.Println("Ignoring labels key:", color.RedString(strings.Join(*ignoreLabelsKey, ",")))
 	}
 
-	// Get the max size of labels
+	// Remove ignored and common labels from the cached labels and
+	// calculate the max labels length
 	maxLabelsLen := *fixedLabelsLen
-	for _, ls := range cache {
-		ls = subtract(common, ls)
+	for key, ls := range cache {
+		// Remove common labels
+		ls = subtract(ls, common)
+
+		// Remove ignored labels
 		if len(*ignoreLabelsKey) > 0 {
 			ls = ls.MatchLabels(false, *ignoreLabelsKey...)
 		}
+
+		// Update cached labels
+		cache[key] = ls
+
+		// Update max labels length
 		len := len(ls.String())
 		if maxLabelsLen < len {
 			maxLabelsLen = len
@@ -92,14 +102,9 @@ func doQuery() {
 
 	i = iter.NewQueryResponseIterator(resp, d)
 
-	Outputs["default"] = DefaultOutput{
-		MaxLabelsLen: maxLabelsLen,
-		CommonLabels: common,
-	}
-
 	for i.Next() {
 		ls := labelsCache(i.Labels())
-		Outputs[*outputMode].Print(i.Entry().Timestamp, &ls, i.Entry().Line)
+		out.Print(i.Entry().Timestamp, &ls, maxLabelsLen, i.Entry().Line)
 	}
 
 	if err := i.Error(); err != nil {
