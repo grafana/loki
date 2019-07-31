@@ -36,6 +36,8 @@ workflows:
       - build/promtail:
           requires: [ lint, test ]
           filters: {<<: *no-master}
+      - build/promtail-windows:
+          requires: [ lint, test ]
       - publish/promtail:
           requires: [ lint, test ]
           filters: { <<: *tag-or-master }
@@ -157,6 +159,14 @@ jobs:
     <<: *container
     environment:
       APP: promtail
+
+  build/promtail-windows:
+    <<: *defaults
+    steps:
+      - checkout
+      - run:
+          name: build
+          command: make GOOS=windows promtail
 
   publish/promtail:
     <<: *publish
