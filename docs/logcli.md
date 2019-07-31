@@ -26,10 +26,19 @@ Now `logcli` is in your current directory.
 
 ### Example
 
+If you are running on Grafana cloud, use:
 ```
 $ export GRAFANA_ADDR=https://logs-us-west1.grafana.net
 $ export GRAFANA_USERNAME=<username>
 $ export GRAFANA_PASSWORD=<password>
+```
+Otherwise, when running e.g. [locally](https://github.com/grafana/loki/tree/master/production#run-locally-using-docker), point it to your Loki instance:
+```
+$ export GRAFANA_ADDR=http://localhost:3100
+```
+> Note: If you are running loki behind a proxy server and have an authentication setup. You will have to pass URL, username and password accordingly. Please refer to the [docs](https://github.com/adityacs/loki/blob/master/docs/operations.md) for more info.
+
+```
 $ logcli labels job
 https://logs-dev-ops-tools1.grafana.net/api/prom/label/job/values
 cortex-ops/consul
