@@ -66,7 +66,6 @@ type Memcached struct {
 }
 
 // NewMemcached makes a new Memcache.
-// TODO(bwplotka): Return error instead of just log line.
 // TODO(bwplotka): Fix metrics, get them out of globals, separate or allow prefixing.
 // TODO(bwplotka): Remove globals & util packages from cache package entirely (e.g util.Logger).
 func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string) *Memcached {
