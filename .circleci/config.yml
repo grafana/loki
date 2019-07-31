@@ -121,7 +121,7 @@ jobs:
       - checkout
       - run:
           name: Unit Tests
-          command: make test
+          command: make BUILD_IN_CONTAINER=false test
 
   lint:
     <<: *defaults
