@@ -30,6 +30,6 @@ RUN go get \
     rm -rf /go/pkg /go/src
 ENV GOCACHE=/go/cache
 
-# COPY build.sh /
-# RUN chmod +x /build.sh
-# ENTRYPOINT ["/build.sh"]
+COPY build.sh /
+RUN chmod +x /build.sh
+ENTRYPOINT ["/build.sh"]
