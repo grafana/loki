@@ -2,7 +2,6 @@ package output
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"time"
 
@@ -32,9 +31,4 @@ func (o *JSONLOutput) Format(ts time.Time, lbls *labels.Labels, maxLabelsLen int
 	}
 
 	return string(out)
-}
-
-// Print a log entry as json line
-func (o *JSONLOutput) Print(ts time.Time, lbls *labels.Labels, maxLabelsLen int, line string) {
-	fmt.Println(o.Format(ts, lbls, maxLabelsLen, line))
 }

@@ -26,11 +26,6 @@ func (o *DefaultOutput) Format(ts time.Time, lbls *labels.Labels, maxLabelsLen i
 	return fmt.Sprintf("%s %s %s", color.BlueString(timestamp), color.RedString(padLabel(*lbls, maxLabelsLen)), line)
 }
 
-// Print a log entry in a human readable format
-func (o *DefaultOutput) Print(ts time.Time, lbls *labels.Labels, maxLabelsLen int, line string) {
-	fmt.Println(o.Format(ts, lbls, maxLabelsLen, line))
-}
-
 // add some padding after labels
 func padLabel(ls labels.Labels, maxLabelsLen int) string {
 	labels := ls.String()

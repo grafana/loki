@@ -10,7 +10,6 @@ import (
 // LogOutput is the interface any output mode must implement
 type LogOutput interface {
 	Format(ts time.Time, lbls *labels.Labels, maxLabelsLen int, line string) string
-	Print(ts time.Time, lbls *labels.Labels, maxLabelsLen int, line string)
 }
 
 // LogOutputOptions defines options supported by LogOutput

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"strings"
 
@@ -59,7 +60,7 @@ func tailQuery(out output.LogOutput) {
 
 			for _, entry := range stream.Entries {
 				lbls := mustParseLabels(labels)
-				out.Print(entry.Timestamp, &lbls, 0, entry.Line)
+				fmt.Println(out.Format(entry.Timestamp, &lbls, 0, entry.Line))
 			}
 
 		}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -104,7 +105,7 @@ func doQuery(out output.LogOutput) {
 
 	for i.Next() {
 		ls := labelsCache(i.Labels())
-		out.Print(i.Entry().Timestamp, &ls, maxLabelsLen, i.Entry().Line)
+		fmt.Println(out.Format(i.Entry().Timestamp, &ls, maxLabelsLen, i.Entry().Line))
 	}
 
 	if err := i.Error(); err != nil {
