@@ -16,7 +16,7 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := "0.2.1"
+BUILD_IMAGE_VERSION := 0.2.1
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -75,7 +75,7 @@ TTY := --tty
 
 DOCKER_BUILDKIT=1
 OCI_PLATFORMS=--platform=linux/amd64 --platform=linux/arm64 --platform=linux/arm/7
-BUILD_IMAGE = BUILD_IMAGE=grafana/loki-build-image:0.2.1
+BUILD_IMAGE = BUILD_IMAGE=$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
 ifeq ($(CI), true)
 	BUILD_OCI=img build --no-console $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
 	PUSH_OCI=img push
