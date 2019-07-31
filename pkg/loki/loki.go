@@ -139,8 +139,8 @@ func (t *Loki) Run() error {
 // Stop gracefully stops a Loki.
 func (t *Loki) Stop() error {
 	t.stopping(t.cfg.Target)
-	t.server.Shutdown()
 	t.stop(t.cfg.Target)
+	t.server.Shutdown()
 	return nil
 }
 
