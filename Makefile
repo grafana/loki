@@ -329,8 +329,8 @@ endef
 # pushes the app, if branch==master also as :latest and :master
 define push-image
 	$(call push,$(1))
-	$(if $(filter $(GIT_BRANCH),master), $(call push,promtail,master))
-	$(if $(filter $(GIT_BRANCH),master), $(call push,promtail,latest))
+	$(if $(filter $(GIT_BRANCH),master), $(call push,$(1),master))
+	$(if $(filter $(GIT_BRANCH),master), $(call push,$(1),latest))
 endef
 
 # promtail
