@@ -20,7 +20,8 @@ BUILD_IMAGE_VERSION := 0.2.1
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
-IMAGE_TAG := $(shell ./tools/image-tag)
+
+IMAGE_TAG := $(shell git describe --exact-match 2> /dev/null || git rev-parse --abbrev-ref HEAD)
 
 # Version info for binaries
 GIT_REVISION := $(shell git rev-parse --short HEAD)
@@ -79,9 +80,11 @@ BUILD_IMAGE = BUILD_IMAGE=$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION
 ifeq ($(CI), true)
 	BUILD_OCI=img build --no-console $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
 	PUSH_OCI=img push
+	TAG_OCI=img tag
 else
 	BUILD_OCI=docker build --build-arg $(BUILD_IMAGE)
-	PUSH_OCI=img push
+	PUSH_OCI=docker push
+	TAG_OCI=docker tag
 endif
 
 binfmt:
@@ -315,36 +318,20 @@ images: promtail-image loki-image loki-canary-image docker-driver
 
 IMAGE_NAMES := grafana/loki grafana/promtail grafana/loki-canary
 
-save-images:
-	@set -e; \
-	mkdir -p images; \
-	for image_name in $(IMAGE_NAMES); do \
-		echo ">> saving image $$image_name:$(IMAGE_TAG)"; \
-		docker save $$image_name:$(IMAGE_TAG) -o images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
-	done
+# push(app, optional tag)
+# pushes the app, optionally tagging it differently before
+define push
+	$(SUDO) $(TAG_OCI)  $(IMAGE_PREFIX)/$(1):$(IMAGE_TAG) $(IMAGE_PREFIX)/$(1):$(if $(2),$(2),$(IMAGE_TAG))
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/$(1):$(if $(2),$(2),$(IMAGE_TAG))
+endef
 
-load-images:
-	@set -e; \
-	mkdir -p images; \
-	for image_name in $(IMAGE_NAMES); do \
-		docker load -i images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
-	done
-
-push-images:
-	@set -e; \
-	for image_name in $(IMAGE_NAMES); do \
-		docker push $$image_name:$(IMAGE_TAG); \
-	done
-
-push-latest:
-	@set -e; \
-	for image_name in $(IMAGE_NAMES); do \
-		docker tag $$image_name:$(IMAGE_TAG) $$image_name:latest; \
-		docker tag $$image_name:$(IMAGE_TAG) $$image_name:master; \
-		docker push $$image_name:latest; \
-		docker push $$image_name:master; \
-	done
-
+# push-image(app)
+# pushes the app, if branch==master also as :latest and :master
+define push-image
+	$(call push,$(1))
+	$(if $(filter $(GIT_BRANCH),master), $(call push,promtail,master))
+	$(if $(filter $(GIT_BRANCH),master), $(call push,promtail,latest))
+endef
 
 # promtail
 promtail-image:
@@ -355,7 +342,7 @@ promtail-debug-image:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)-debug -f cmd/promtail/Dockerfile.debug .
 
 promtail-push: promtail-image
-	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)
+	$(call push-image,promtail)
 
 # loki
 loki-image:
@@ -366,7 +353,7 @@ loki-debug-image:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
 
 loki-push: loki-image
-	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	$(call push-image,loki)
 
 # loki-canary
 loki-canary-image:
