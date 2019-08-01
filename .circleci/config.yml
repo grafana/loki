@@ -48,6 +48,14 @@ workflows:
       - publish/docker-driver:
           requires: [ lint, test ]
           filters: { <<: *tag-or-master }
+
+      - deploy:
+          requires:
+            - publish/loki
+            - publish/promtail
+            - publish/canary
+            - publish/docker-driver
+          filters: {<<: *tag-or-master}
     
       - test-helm:
           requires: [ lint, test ]
@@ -60,7 +68,7 @@ workflows:
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 .defaults: &defaults
   docker:
-    - image: grafana/loki-build-image:0.3.0
+    - image: grafana/loki-build-image:0.4.0
   working_directory: /go/src/github.com/grafana/loki
 
 .machine: &machine
@@ -194,6 +202,16 @@ jobs:
       - run:
           name: docker-driver
           command: make docker-driver-push
+
+  deploy:
+    <<: *defaults
+    steps:
+      - checkout
+      - run: |
+                curl -s --header "Content-Type: application/json" \
+                  --data "{\"build_parameters\": {\"CIRCLE_JOB\": \"deploy\", \"IMAGE_NAMES\": \"$(make print-images)\"}}" \
+                  --request POST \
+                  https://circleci.com/api/v1.1/project/github/raintank/deployment_tools/tree/master?circle-token=$CIRCLE_TOKEN
 
   test-helm:
     environment:
