@@ -316,6 +316,10 @@ docker-driver-clean:
 
 images: promtail-image loki-image loki-canary-image docker-driver
 
+print-images:
+	$(info $(patsubst %,%:$(IMAGE_TAG),$(IMAGE_NAMES)))
+	@echo > /dev/null
+
 IMAGE_NAMES := grafana/loki grafana/promtail grafana/loki-canary
 
 # push(app, optional tag)
