@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/klauspost/compress/gzip"
-
 	"github.com/prometheus/prometheus/pkg/pool"
 )
 
