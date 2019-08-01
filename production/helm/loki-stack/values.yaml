@@ -9,6 +9,8 @@ grafana:
   sidecar:
     datasources:
       enabled: true
+  image:
+    tag: 6.3.0-beta2
 
 prometheus:
   enabled: false
