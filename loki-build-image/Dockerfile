@@ -17,6 +17,7 @@ RUN apk add --no-cache docker-cli
 FROM golang:1.11.4-stretch
 RUN apt-get update && \
     apt-get install -qy \
+      musl \
       file unzip jq \
       protobuf-compiler libprotobuf-dev \
       libsystemd-dev && \
