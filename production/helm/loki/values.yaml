@@ -164,3 +164,7 @@ podDisruptionBudget: {}
 
 updateStrategy:
   type: RollingUpdate
+
+serviceMonitor:
+  enabled: false
+  interval: ""
