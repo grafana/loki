@@ -62,7 +62,7 @@ func main() {
 	for {
 		select {
 		case <-interrupt:
-			_, _ = fmt.Fprintf(os.Stderr, "suspending indefinetely\n")
+			_, _ = fmt.Fprintf(os.Stderr, "suspending indefinitely\n")
 			w.Stop()
 			r.Stop()
 			c.Stop()
