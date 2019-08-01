@@ -2,10 +2,10 @@ package chunkenc
 
 import (
 	"bufio"
-	"compress/gzip"
 	"io"
 	"sync"
 
+	"github.com/klauspost/compress/gzip"
 	"github.com/prometheus/prometheus/pkg/pool"
 )
 

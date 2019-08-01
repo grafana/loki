@@ -669,6 +669,25 @@
   version = "v1.1.5"
 
 [[projects]]
+  digest = "1:9b67e6f39db9eb120a6c5977e4b29f33d7e01970777e77152ed79395f7559291"
+  name = "github.com/klauspost/compress"
+  packages = [
+    "flate",
+    "gzip",
+  ]
+  pruneopts = "UT"
+  revision = "23256797d1e4ccac36fad828362cdfef5b3aeb90"
+  version = "v1.7.4"
+
+[[projects]]
+  digest = "1:923c4d7194b42e054b2eb8a6c62824ac55e23ececc1c7e48d4da69c971c55954"
+  name = "github.com/klauspost/cpuid"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "05a8198c0f5a27739aec358908d7e12c64ce6eb7"
+  version = "v1.2.1"
+
+[[projects]]
   digest = "1:0a69a1c0db3591fcefb47f115b224592c8dfa4368b7ba9fae509d5e16cdc95c8"
   name = "github.com/konsorten/go-windows-terminal-sequences"
   packages = ["."]
@@ -1593,6 +1612,7 @@
     "github.com/cortexproject/cortex/pkg/util",
     "github.com/cortexproject/cortex/pkg/util/flagext",
     "github.com/cortexproject/cortex/pkg/util/validation",
+    "github.com/docker/docker/api/types/backend",
     "github.com/docker/docker/api/types/plugins/logdriver",
     "github.com/docker/docker/daemon/logger",
     "github.com/docker/docker/daemon/logger/jsonfilelog",
@@ -1612,6 +1632,7 @@
     "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
     "github.com/hpcloud/tail",
     "github.com/jmespath/go-jmespath",
+    "github.com/klauspost/compress/gzip",
     "github.com/mitchellh/mapstructure",
     "github.com/mwitkow/go-grpc-middleware",
     "github.com/opentracing/opentracing-go",
