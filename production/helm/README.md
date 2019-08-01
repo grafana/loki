@@ -24,6 +24,12 @@ $ helm repo update
 $ helm upgrade --install loki loki/loki-stack
 ```
 
+### Deploy in a custom namespace
+
+```bash
+$ helm upgrade --install loki --namespace=loki-stack loki/loki-stack
+```
+
 ### Deploy with custom config
 
 ```bash

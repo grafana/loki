@@ -91,10 +91,10 @@ nodeSelector: {}
 ## - create a pv which above 10Gi and has same namespace with loki
 ## - keep storageClassName same with below setting
 persistence:
-  enabled: true
+  enabled: false
   accessModes:
   - ReadWriteOnce
-  size: 100Gi
+  size: 10Gi
   storageClassName: default
   annotations: {}
   # subPath: ""
