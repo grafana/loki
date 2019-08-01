@@ -3,21 +3,11 @@ package main
 import (
 	"log"
 	"sort"
-	"strings"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 )
-
-// add some padding after labels
-func padLabel(ls labels.Labels, maxLabelsLen int) string {
-	labels := ls.String()
-	if len(labels) < maxLabelsLen {
-		labels += strings.Repeat(" ", maxLabelsLen-len(labels))
-	}
-	return labels
-}
 
 // parse labels from string
 func mustParseLabels(labels string) labels.Labels {

@@ -3,6 +3,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: {{ template "promtail.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     app: {{ template "promtail.name" . }}
     chart: {{ template "promtail.chart" . }}

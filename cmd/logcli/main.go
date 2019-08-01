@@ -3,7 +3,9 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
+	"github.com/grafana/loki/pkg/logcli/output"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -11,6 +13,7 @@ var (
 	app        = kingpin.New("logcli", "A command-line for loki.")
 	quiet      = app.Flag("quiet", "suppress everything but log lines").Default("false").Short('q').Bool()
 	outputMode = app.Flag("output", "specify output mode [default, raw, jsonl]").Default("default").Short('o').Enum("default", "raw", "jsonl")
+	timezone   = app.Flag("timezone", "Specify the timezone to use when formatting output timestamps [Local, UTC]").Default("Local").Short('z').Enum("Local", "UTC")
 
 	addr = app.Flag("addr", "Server address.").Default("https://logs-us-west1.grafana.net").Envar("GRAFANA_ADDR").String()
 
@@ -51,7 +54,22 @@ func main() {
 
 	switch cmd {
 	case queryCmd.FullCommand():
-		doQuery()
+		location, err := time.LoadLocation(*timezone)
+		if err != nil {
+			log.Fatalf("Unable to load timezone '%s': %s", *timezone, err)
+		}
+
+		outputOptions := &output.LogOutputOptions{
+			Timezone: location,
+			NoLabels: *noLabels,
+		}
+
+		out, err := output.NewLogOutput(*outputMode, outputOptions)
+		if err != nil {
+			log.Fatalf("Unable to create log output: %s", err)
+		}
+
+		doQuery(out)
 	case labelsCmd.FullCommand():
 		doLabels()
 	}

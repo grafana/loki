@@ -1,15 +1,17 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"strings"
 
+	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/querier"
 
 	"github.com/fatih/color"
 )
 
-func tailQuery() {
+func tailQuery(out output.LogOutput) {
 	conn, err := liveTailQueryConn()
 	if err != nil {
 		log.Fatalf("Tailing logs failed: %+v", err)
@@ -58,7 +60,7 @@ func tailQuery() {
 
 			for _, entry := range stream.Entries {
 				lbls := mustParseLabels(labels)
-				Outputs[*outputMode].Print(entry.Timestamp, &lbls, entry.Line)
+				fmt.Println(out.Format(entry.Timestamp, &lbls, 0, entry.Line))
 			}
 
 		}

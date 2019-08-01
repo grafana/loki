@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: {{ template "promtail.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     app: {{ template "promtail.name" . }}
     chart: {{ template "promtail.chart" . }}
