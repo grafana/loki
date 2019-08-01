@@ -39,7 +39,7 @@ func makeSchema(schemaName string) Schema {
 	return PeriodConfig{
 		Schema:      schemaName,
 		IndexTables: PeriodicTableConfig{Prefix: table},
-	}.createSchema()
+	}.CreateSchema()
 }
 
 func TestSchemaHashKeys(t *testing.T) {
