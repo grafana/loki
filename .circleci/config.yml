@@ -1,173 +1,199 @@
 version: 2
 
+.tags: &tags # tags need to be explicitely defined (whitelist)
+  tags: {only: "/.*/"}
+
+.tag-or-master: &tag-or-master
+  branches: { only: master }
+  <<: *tags
+
+.no-master: &no-master # contrary to tags, the branches must be excluded (blacklist)
+  branches: { ignore: master }
+
 workflows:
   version: 2
-  test-build-deploy:
+  default:
     jobs:
-    - test
-    - test-helm
-    - build
-    - lint
-    - publish:
-        requires:
-        - test
-        - test-helm
-        - build
-        - lint
-        filters:
-          branches:
-            only: master
-    - publish-master:
-        requires:
-        - test
-        - test-helm
-        - build
-        - lint
-        filters:
-          branches:
-            only: master
-    - publish-helm:
-        requires:
-        - test
-        - test-helm
-        - build
-        - lint
-        filters:
-          branches:
-            only: master
-    - deploy:
-        requires:
-        - publish
-        filters:
-          branches:
-            only: master
+      # publish jobs depend on this as well,
+      # thus tags need to be allowed for these
+      - lint: {filters: {<<: *tags}}
+      - test: {filters: {<<: *tags}}
+
+      - build/loki:
+          requires: [ lint, test ]
+          filters: {<<: *no-master}
+      - publish/loki:
+          requires: [ lint, test ]
+          filters: { <<: *tag-or-master }
+
+      - build/canary:
+          requires: [ lint, test ]
+          filters: {<<: *no-master}
+      - publish/canary:
+          requires: [ lint, test ]
+          filters: { <<: *tag-or-master }
+
+      - build/promtail:
+          requires: [ lint, test ]
+          filters: {<<: *no-master}
+      - build/promtail-windows:
+          requires: [ lint, test ]
+      - publish/promtail:
+          requires: [ lint, test ]
+          filters: { <<: *tag-or-master }
+
+      - build/docker-driver:
+          requires: [ lint, test ]
+          filters: {<<: *no-master}
+      - publish/docker-driver:
+          requires: [ lint, test ]
+          filters: { <<: *tag-or-master }
+    
+      - test-helm:
+          requires: [ lint, test ]
+          filters: {<<: *tags}
+      - publish-helm:
+          requires: [ test-helm ]
+          filters: {<<: *tag-or-master}
+
 
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
-defaults: &defaults
+.defaults: &defaults
   docker:
     - image: grafana/loki-build-image:0.3.0
   working_directory: /go/src/github.com/grafana/loki
+
+.machine: &machine
+  machine:
+    image: ubuntu-1604:201903-01
+  working_directory: ~/go/src/github.com/grafana/loki
+  environment:
+    APP: to-be-set
+    GOPATH: /home/circleci/go
+
+.rootless: &rootless
+  run:
+    name: rootless
+    command: |
+      sudo apt-get install -qy uidmap libseccomp-dev binfmt-support go-bindata
+      sudo docker run --privileged linuxkit/binfmt:v0.6
+
+.img: &img
+  run:
+    name: img
+    # TODO: switch to https://github.com/genuinetools/img once 5a8119fb4ce7d712ca2ed589a345213fdf576268 is released
+    command: |
+      sudo curl -fSL "https://github.com/sh0rez/img/releases/download/v0.5.8/img-linux-amd64" -o "/usr/local/bin/img"
+      sudo chmod a+x "/usr/local/bin/img"
+
+# builds a container
+.container: &container
+  <<: *machine
+  steps:
+    - checkout
+    - <<: *rootless
+    - <<: *img
+    - run:
+        name: container
+        command: |
+          make $APP-image
+
+# builds and pushes a container
+.publish: &publish
+  <<: *machine
+  steps:
+    - checkout
+    - <<: *rootless
+    - <<: *img
+    - run:
+        name: login
+        command: img login -u "$DOCKER_USER" -p "$DOCKER_PASS"
+    - run:
+        name: push image
+        command: make $APP-push
 
 jobs:
   test:
     <<: *defaults
     steps:
       - checkout
-
       - run:
-          name: Run Unit Tests
-          command: |
-            make test
+          name: Unit Tests
+          command: make BUILD_IN_CONTAINER=false test
 
   lint:
     <<: *defaults
     steps:
       - checkout
-
       - run:
           name: Lint
-          command: |
-            make lint
-
+          command: make lint
       - run:
-          name: Check Generated Fies
-          command: |
-            make BUILD_IN_CONTAINER=false check-generated-files
+          name: Check Generated Files
+          command: make BUILD_IN_CONTAINER=false check-generated-files
 
-  build:
+  # Loki
+  build/loki:
+    <<: *container
+    environment:
+      APP: loki
+
+  publish/loki:
+    <<: *publish
+    environment:
+      APP: loki
+
+  # Loki
+  build/canary:
+    <<: *container
+    environment:
+      APP: loki-canary
+
+  publish/canary:
+    <<: *publish
+    environment:
+      APP: loki-canary
+
+  # Promtail
+  build/promtail:
+    <<: *container
+    environment:
+      APP: promtail
+
+  build/promtail-windows:
+    <<: *defaults
+    steps:
+      - checkout
+      - run:
+          name: build
+          command: make GOOS=windows promtail
+
+  publish/promtail:
+    <<: *publish
+    environment:
+      APP: promtail
+
+  # Docker driver
+  build/docker-driver:
     <<: *defaults
     steps:
       - checkout
       - setup_remote_docker
-
       - run:
-          name: Promtail cross platform
-          command: |
-            make GOOS=linux BUILD_IN_CONTAINER=false promtail
-            rm cmd/promtail/promtail
-            make GOOS=windows BUILD_IN_CONTAINER=false promtail
+          name: docker-driver
+          command: make docker-driver
 
-      - run:
-          name: Build Images
-          command: |
-            make images
-
-      - run:
-          name: Save Images
-          command: |
-            make save-images
-
-      - save_cache:
-          key: v1-loki-{{ .Branch }}-{{ .Revision }}
-          paths:
-          - images/
-
-      - save_cache:
-          key: v1-loki-plugin-{{ .Branch }}-{{ .Revision }}
-          paths:
-          - cmd/docker-driver/docker-driver
-
-  publish:
+  publish/docker-driver:
     <<: *defaults
     steps:
       - checkout
       - setup_remote_docker
-
-      - restore_cache:
-          key: v1-loki-{{ .Branch }}-{{ .Revision }}
-      - restore_cache:
-          key: v1-loki-plugin-{{ .Branch }}-{{ .Revision }}
-
       - run:
-          name: Load Images
-          command: |
-            make load-images
-
+          name: login
+          command: docker login -u "$DOCKER_USER" -p "$DOCKER_PASS"
       - run:
-          name: Push Images
-          command: |
-            if [ -n "$DOCKER_USER" ]; then
-              docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
-              make push-images
-            fi
-
-      - run:
-          name: Push Docker Plugin
-          command: |
-            if [ -n "$DOCKER_USER" ]; then
-              docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
-              make BUILD_IN_CONTAINER=false docker-driver-push
-            fi
-
-  publish-master:
-    <<: *defaults
-    steps:
-      - checkout
-      - setup_remote_docker
-
-      - restore_cache:
-          key: v1-loki-{{ .Branch }}-{{ .Revision }}
-      - restore_cache:
-          key: v1-loki-plugin-{{ .Branch }}-{{ .Revision }}
-
-      - run:
-          name: Load Images
-          command: |
-            make load-images
-
-      - run:
-          name: Push Images
-          command: |
-            docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
-            make push-latest
-
-      - run:
-          name: Push Docker Plugin
-          command: |
-            if [ -n "$DOCKER_USER" ]; then
-              docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
-              PLUGIN_TAG=master make BUILD_IN_CONTAINER=false docker-driver-push && PLUGIN_TAG=latest make BUILD_IN_CONTAINER=false docker-driver-push
-            fi
+          name: docker-driver
+          command: make docker-driver-push
 
   test-helm:
     environment:
@@ -210,35 +236,3 @@ jobs:
             - "5a:d3:08:5e:f7:53:a0:c4:e9:5d:83:c6:02:6a:d9:bd"
       - checkout
       - run: make helm-publish
-
-  deploy:
-    <<: *defaults
-    steps:
-      - checkout
-
-      - run: |
-          curl -s --header "Content-Type: application/json" \
-            --data "{\"build_parameters\": {\"CIRCLE_JOB\": \"deploy\", \"IMAGE_NAMES\": \"$(make images)\"}}" \
-            --request POST \
-            https://circleci.com/api/v1.1/project/github/raintank/deployment_tools/tree/master?circle-token=$CIRCLE_TOKEN
-
-  release:
-    <<: *defaults
-    steps:
-      - checkout
-      - setup_remote_docker
-      - restore_cache:
-          key: v1-loki-{{ .Branch }}-{{ .Revision }}
-      - run:
-          name: Load Images
-          command: |
-            touch loki-build-image/.uptodate &&
-            make BUILD_IN_CONTAINER=false load-images
-      - run:
-          name: "Print Tag"
-          command: echo ${CIRCLE_TAG}
-      - run:
-          name: "Release"
-          command: |
-            docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" &&
-            make VERSION=${CIRCLE_TAG} release-perform

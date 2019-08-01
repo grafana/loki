@@ -16,10 +16,11 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := "0.2.1"
+BUILD_IMAGE_VERSION := 0.3.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
+
 IMAGE_TAG := $(shell ./tools/image-tag)
 
 # Version info for binaries
@@ -59,6 +60,11 @@ PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
 YACC_DEFS := $(shell find . $(DONT_FIND) -type f -name *.y -print)
 YACC_GOS := $(patsubst %.y,%.y.go,$(YACC_DEFS))
 
+
+##########
+# Docker #
+##########
+
 # RM is parameterized to allow CircleCI to run builds, as it
 # currently disallows `docker run --rm`. This value is overridden
 # in circle.yml
@@ -68,12 +74,26 @@ RM := --rm
 # in any custom cloudbuild.yaml files
 TTY := --tty
 
+DOCKER_BUILDKIT=1
+OCI_PLATFORMS=--platform=linux/amd64 --platform=linux/arm64 --platform=linux/arm/7
+BUILD_IMAGE = BUILD_IMAGE=$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
+ifeq ($(CI), true)
+	BUILD_OCI=img build --no-console $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
+	PUSH_OCI=img push
+	TAG_OCI=img tag
+else
+	BUILD_OCI=docker build --build-arg $(BUILD_IMAGE)
+	PUSH_OCI=docker push
+	TAG_OCI=docker tag
+endif
+
+binfmt:
+	$(SUDO) docker run --privileged linuxkit/binfmt:v0.6
+
 ################
 # Main Targets #
 ################
-
 all: promtail logcli loki loki-canary check-generated-files
-
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
 check-generated-files: yacc protos
@@ -265,9 +285,9 @@ helm-clean:
 
 PLUGIN_TAG ?= $(IMAGE_TAG)
 
-docker-driver: docker-driver-clean cmd/docker-driver/docker-driver
+docker-driver: docker-driver-clean 
 	mkdir cmd/docker-driver/rootfs
-	docker build -t rootfsimage cmd/docker-driver
+	docker build -t rootfsimage -f cmd/docker-driver/Dockerfile .
 	ID=$$(docker create rootfsimage true) && \
 	(docker export $$ID | tar -x -C cmd/docker-driver/rootfs) && \
 	docker rm -vf $$ID
@@ -298,59 +318,53 @@ images: promtail-image loki-image loki-canary-image docker-driver
 
 IMAGE_NAMES := grafana/loki grafana/promtail grafana/loki-canary
 
-save-images:
-	@set -e; \
-	mkdir -p images; \
-	for image_name in $(IMAGE_NAMES); do \
-		echo ">> saving image $$image_name:$(IMAGE_TAG)"; \
-		docker save $$image_name:$(IMAGE_TAG) -o images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
-	done
+# push(app, optional tag)
+# pushes the app, optionally tagging it differently before
+define push
+	$(SUDO) $(TAG_OCI)  $(IMAGE_PREFIX)/$(1):$(IMAGE_TAG) $(IMAGE_PREFIX)/$(1):$(if $(2),$(2),$(IMAGE_TAG))
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/$(1):$(if $(2),$(2),$(IMAGE_TAG))
+endef
 
-load-images:
-	@set -e; \
-	mkdir -p images; \
-	for image_name in $(IMAGE_NAMES); do \
-		docker load -i images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
-	done
+# push-image(app)
+# pushes the app, if branch==master also as :latest and :master
+define push-image
+	$(call push,$(1))
+	$(if $(filter $(GIT_BRANCH),master), $(call push,promtail,master))
+	$(if $(filter $(GIT_BRANCH),master), $(call push,promtail,latest))
+endef
 
-push-images:
-	@set -e; \
-	for image_name in $(IMAGE_NAMES); do \
-		docker push $$image_name:$(IMAGE_TAG); \
-	done
-
-push-latest:
-	@set -e; \
-	for image_name in $(IMAGE_NAMES); do \
-		docker tag $$image_name:$(IMAGE_TAG) $$image_name:latest; \
-		docker tag $$image_name:$(IMAGE_TAG) $$image_name:master; \
-		docker push $$image_name:latest; \
-		docker push $$image_name:master; \
-	done
-
-
+# promtail
 promtail-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/promtail -f cmd/promtail/Dockerfile .
-	$(SUDO) docker tag $(IMAGE_PREFIX)/promtail $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f cmd/promtail/Dockerfile .
+
+promtail-debug-image: OCI_PLATFORMS=
 promtail-debug-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/promtail -f cmd/promtail/Dockerfile.debug .
-	$(SUDO) docker tag $(IMAGE_PREFIX)/promtail-debug $(IMAGE_PREFIX)/promtail-debug:$(IMAGE_TAG)
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)-debug -f cmd/promtail/Dockerfile.debug .
 
+promtail-push: promtail-image
+	$(call push-image,promtail)
+
+# loki
 loki-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki -f cmd/loki/Dockerfile .
-	$(SUDO) docker tag $(IMAGE_PREFIX)/loki $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile .
+
+loki-debug-image: OCI_PLATFORMS=
 loki-debug-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki -f cmd/loki/Dockerfile.debug .
-	$(SUDO) docker tag $(IMAGE_PREFIX)/loki-debug $(IMAGE_PREFIX)/loki-debug:$(IMAGE_TAG)
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
 
+loki-push: loki-image
+	$(call push-image,loki)
+
+# loki-canary
 loki-canary-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-canary -f cmd/loki-canary/Dockerfile .
-	$(SUDO) docker tag $(IMAGE_PREFIX)/loki-canary $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile .
+loki-canary-push: loki-canary-image
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
 
+# build-image (only amd64)
+build-image: OCI_PLATFORMS=
 build-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-build-image -f loki-build-image/Dockerfile .
-	$(SUDO) docker tag $(IMAGE_PREFIX)/loki-build-image $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG)
-
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
 
 ########
 # Misc #
