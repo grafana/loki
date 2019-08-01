@@ -16,7 +16,7 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.3.0
+BUILD_IMAGE_VERSION := 0.4.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -285,7 +285,7 @@ helm-clean:
 
 PLUGIN_TAG ?= $(IMAGE_TAG)
 
-docker-driver: docker-driver-clean 
+docker-driver: docker-driver-clean
 	mkdir cmd/docker-driver/rootfs
 	docker build -t rootfsimage -f cmd/docker-driver/Dockerfile .
 	ID=$$(docker create rootfsimage true) && \
