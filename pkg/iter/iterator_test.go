@@ -152,6 +152,40 @@ func TestIteratorMultipleLabels(t *testing.T) {
 	}
 }
 
+func TestHeapIteratorPrefetch(t *testing.T) {
+	t.Parallel()
+
+	type tester func(t *testing.T, i HeapIterator)
+
+	tests := map[string]tester{
+		"prefetch on Len() when called as first method": func(t *testing.T, i HeapIterator) {
+			assert.Equal(t, 2, i.Len())
+		},
+		"prefetch on Peek() when called as first method": func(t *testing.T, i HeapIterator) {
+			assert.Equal(t, time.Unix(0, 0), i.Peek())
+		},
+		"prefetch on Next() when called as first method": func(t *testing.T, i HeapIterator) {
+			assert.True(t, i.Next())
+			assert.Equal(t, logproto.Entry{Timestamp: time.Unix(0, 0), Line: "0"}, i.Entry())
+		},
+	}
+
+	for testName, testFunc := range tests {
+		testFunc := testFunc
+
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
+			i := NewHeapIterator([]EntryIterator{
+				mkStreamIterator(identity, "{foobar: \"baz1\"}"),
+				mkStreamIterator(identity, "{foobar: \"baz2\"}"),
+			}, logproto.FORWARD)
+
+			testFunc(t, i)
+		})
+	}
+}
+
 type generator func(i int64) logproto.Entry
 
 func mkStreamIterator(f generator, labels string) EntryIterator {
