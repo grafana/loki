@@ -21,7 +21,7 @@ BUILD_IMAGE_VERSION := 0.2.1
 # Docker image info
 IMAGE_PREFIX ?= grafana
 
-IMAGE_TAG := $(shell git describe --exact-match 2> /dev/null || git rev-parse --abbrev-ref HEAD)
+IMAGE_TAG := $(shell ./tools/image-tag)
 
 # Version info for binaries
 GIT_REVISION := $(shell git rev-parse --short HEAD)
