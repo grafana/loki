@@ -4,10 +4,10 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-WIP=$(git diff --quiet || echo 'WIP')
+WIP=$(git diff --quiet || echo '-WIP')
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 SHA=$(git rev-parse --short HEAD)
 
 # If this is a tag, use it,                otherwise branch-hash
 TAG=$(git describe --exact-match 2> /dev/null || echo "${BRANCH}-${SHA}")
-echo ${TAG}-${WIP}
+echo ${TAG}${WIP}

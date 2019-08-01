@@ -12,7 +12,7 @@ version: 2
 
 workflows:
   version: 2
-  containers:
+  default:
     jobs:
       # publish jobs depend on this as well,
       # thus tags need to be allowed for these
