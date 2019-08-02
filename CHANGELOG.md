@@ -10,10 +10,13 @@ There were over 100 PR's merged since 0.1.0 was released, here's a highlight:
 * **Loki**:  [541](https://github.com/grafana/loki/pull/541) Improvements in live tailing of logs.
 * **Loki**: [713](https://github.com/grafana/loki/pull/713) Storage memory improvement.
 * **Loki**: [764](https://github.com/grafana/loki/pull/764) Tailing can fetch previous logs for context.
-* **Loki**: [782](https://github.com/grafana/loki/pull/782) Performance improvement: Query storage by iterating through chunks in batchs.
+* **Loki**: [782](https://github.com/grafana/loki/pull/782) Performance improvement: Query storage by iterating through chunks in batches.
 * **Loki**: [788](https://github.com/grafana/loki/pull/788) Querier timeouts.
 * **Loki**: [794](https://github.com/grafana/loki/pull/794) Support ingester chunk transfer on shutdown.
 * **Loki**: [729](https://github.com/grafana/loki/pull/729) Bigtable backup tool support.
+
+
+* **Promtail**: [730](https://github.com/grafana/loki/pull/730) Add systemd journal support. **NOTE:** Not currently supported in docker images, should be addressed in the next release. 
 
 
 * **Pipeline**: [738](https://github.com/grafana/loki/pull/738) Added a template stage for manipulating label values.
@@ -22,7 +25,7 @@ There were over 100 PR's merged since 0.1.0 was released, here's a highlight:
 
 
 * **Helm**:  [641](https://github.com/grafana/loki/pull/641) Helm integration testing.
-* **Helm**: [824](https://github.com/grafana/loki/pull/824) Add service monitor
+* **Helm**: [824](https://github.com/grafana/loki/pull/824) Add service monitor.
 * **Helm**: [830](https://github.com/grafana/loki/pull/830) Customize namespace.
 
 
@@ -34,8 +37,7 @@ There were over 100 PR's merged since 0.1.0 was released, here's a highlight:
 * **Fluent-Plugin**: [792](https://github.com/grafana/loki/pull/792) Add prometheus for metrics and update gems.
 
 
-* **Build**: [753](https://github.com/grafana/loki/pull/753) Simplify Makefile.
-* **Build**: [668](https://github.com/grafana/loki/pull/668),[762](https://github.com/grafana/loki/pull/762) Build multiple architecture docker files.
+* **Build**: [668](https://github.com/grafana/loki/pull/668),[762](https://github.com/grafana/loki/pull/762) Build multiple architecture containers.
 
 
 * **Loki-Canary**: [772](https://github.com/grafana/loki/pull/772) Moved into Loki project.
