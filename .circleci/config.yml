@@ -3,6 +3,10 @@ version: 2
 .tags: &tags # tags need to be explicitely defined (whitelist)
   tags: {only: "/.*/"}
 
+.only-tags: &only-tags
+  <<: *tags
+  branches: { ignore: "/.*/" }
+
 .tag-or-master: &tag-or-master
   branches: { only: master }
   <<: *tags
@@ -49,6 +53,10 @@ workflows:
           requires: [ lint, test ]
           filters: { <<: *tag-or-master }
 
+      - publish/binaries:
+          requires: [ lint, test ]
+          filters: { <<: *only-tags }
+
       - deploy:
           requires:
             - publish/loki
@@ -68,7 +76,7 @@ workflows:
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 .defaults: &defaults
   docker:
-    - image: grafana/loki-build-image:0.4.0
+    - image: grafana/loki-build-image:0.5.0
   working_directory: /go/src/github.com/grafana/loki
 
 .machine: &machine
@@ -202,6 +210,14 @@ jobs:
       - run:
           name: docker-driver
           command: make docker-driver-push
+
+  publish/binaries:
+    <<: *defaults
+    steps:
+      - checkout
+      - run:
+          name: github release
+          command: make BUILD_IN_CONTAINER=false publish
 
   deploy:
     <<: *defaults

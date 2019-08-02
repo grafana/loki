@@ -5,6 +5,8 @@
 .PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store
+
+SHELL = /usr/bin/env bash
 #############
 # Variables #
 #############
@@ -17,7 +19,7 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.4.0
+BUILD_IMAGE_VERSION := 0.5.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -168,6 +170,20 @@ cmd/promtail/promtail-debug: $(APP_GO_FILES) pkg/promtail/server/ui/assets_vfsda
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
+#############
+# Releasing #
+#############
+# concurrency is limited to 4 to prevent CircleCI from OOMing. Sorry
+GOX = gox $(GO_FLAGS) -parallel=4 -output="dist/{{.Dir}}_{{.OS}}_{{.Arch}}" -arch="amd64 arm64 arm" -os="linux" 
+dist: clean
+	CGO_ENABLED=0 $(GOX) ./cmd/loki
+	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/promtail ./cmd/logcli
+	gzip dist/*
+	pushd dist && sha256sum * > SHA256SUMS && popd
+
+publish: dist
+	./tools/release
+
 ########
 # Lint #
 ########
@@ -193,6 +209,7 @@ clean:
 	rm -rf cmd/loki-canary/loki-canary
 	rm -rf .cache
 	rm -rf cmd/docker-driver/rootfs
+	rm -rf dist/
 	go clean ./...
 
 #########

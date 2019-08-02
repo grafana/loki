@@ -18,7 +18,7 @@ FROM golang:1.11.4-stretch
 RUN apt-get update && \
     apt-get install -qy \
       musl \
-      file unzip jq \
+      file unzip jq gettext\
       protobuf-compiler libprotobuf-dev \
       libsystemd-dev && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
@@ -31,7 +31,9 @@ RUN go get \
     github.com/gogo/protobuf/protoc-gen-gogoslick \
     github.com/gogo/protobuf/gogoproto \
     github.com/go-delve/delve/cmd/dlv \
-    golang.org/x/tools/cmd/goyacc && \
+    golang.org/x/tools/cmd/goyacc \
+    github.com/mitchellh/gox \
+    github.com/tcnksm/ghr && \
     rm -rf /go/pkg /go/src
 ENV GOCACHE=/go/cache
 
