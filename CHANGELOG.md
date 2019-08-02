@@ -16,9 +16,6 @@ There were over 100 PR's merged since 0.1.0 was released, here's a highlight:
 * **Loki**: [729](https://github.com/grafana/loki/pull/729) Bigtable backup tool support.
 
 
-* **Promtail**: [730](https://github.com/grafana/loki/pull/730) Add systemd journal support. **NOTE:** Not currently supported in docker images, should be addressed in the next release. 
-
-
 * **Pipeline**: [738](https://github.com/grafana/loki/pull/738) Added a template stage for manipulating label values.
 * **Pipeline**: [732](https://github.com/grafana/loki/pull/732) Support for Unix timestamps.
 * **Pipeline**: [760](https://github.com/grafana/loki/pull/760) Support timestamps without year.
