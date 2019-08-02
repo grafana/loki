@@ -150,7 +150,7 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 		//
 		//  And nextChunk is # 49, we need to keep references to #47 and #48 as they won't be
 		//  iterated over completely (we're clipping through to #49's from)  and then add them to the next batch.
-		it.lastOverlapping = []*chunkenc.LazyChunk{}
+		it.lastOverlapping = it.lastOverlapping[:0]
 		for _, c := range batch {
 			if it.req.Direction == logproto.BACKWARD {
 				if c.Chunk.From.Before(nextChunk.Chunk.Through) || c.Chunk.From == nextChunk.Chunk.Through {
