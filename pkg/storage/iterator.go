@@ -134,6 +134,22 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 			through = time.Unix(0, nextChunk.Chunk.From.UnixNano())
 		}
 		// we save all overlapping chunks as they are also needed in the next batch to properly order entries.
+		// If we have chunks like below:
+		//      ┌──────────────┐
+		//      │     # 47     │
+		//      └──────────────┘
+		//          ┌──────────────────────────┐
+		//          │           # 48           │
+		//          └──────────────────────────┘
+		//              ┌──────────────┐
+		//              │     # 49     │
+		//              └──────────────┘
+		//                        ┌────────────────────┐
+		//                        │        # 50        │
+		//                        └────────────────────┘
+		//
+		//  And nextChunk is # 49, we need to keep references to #47 and #48 as they won't be
+		//  iterated over completely (we're clipping through to #49's from)  and then add them to the next batch.
 		it.lastOverlapping = []*chunkenc.LazyChunk{}
 		for _, c := range batch {
 			if it.req.Direction == logproto.BACKWARD {
