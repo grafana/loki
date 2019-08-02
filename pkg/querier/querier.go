@@ -270,7 +270,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		Start:     req.Start,
 		End:       time.Now(),
 		Limit:     req.Limit,
-		Direction: logproto.FORWARD,
+		Direction: logproto.BACKWARD,
 		Regex:     req.Regex,
 	}
 	histIterators, err := q.getQueryIterators(queryCtx, &histReq)
@@ -278,10 +278,15 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		return nil, err
 	}
 
+	reversedIterator, err := iter.NewEntryIteratorForward(iter.NewHeapIterator(histIterators, logproto.BACKWARD), req.Limit)
+	if err != nil {
+		return nil, err
+	}
+
 	return newTailer(
 		time.Duration(req.DelayFor)*time.Second,
 		tailClients,
-		histIterators,
+		reversedIterator,
 		func(from, to time.Time, labels string) (iterator iter.EntryIterator, e error) {
 			return q.queryDroppedStreams(queryCtx, req, from, to, labels)
 		},

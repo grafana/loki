@@ -327,13 +327,13 @@ func (t *Tailer) getCloseErrorChan() <-chan error {
 func newTailer(
 	delayFor time.Duration,
 	querierTailClients map[string]logproto.Querier_TailClient,
-	historicEntries []iter.EntryIterator,
+	historicEntries iter.EntryIterator,
 	queryDroppedStreams func(from, to time.Time, labels string) (iter.EntryIterator, error),
 	tailDisconnectedIngesters func([]string) (map[string]logproto.Querier_TailClient, error),
 	tailMaxDuration time.Duration,
 ) *Tailer {
 	t := Tailer{
-		openStreamIterator: iter.NewHeapIterator(historicEntries, logproto.FORWARD),
+		openStreamIterator: iter.NewHeapIterator([]iter.EntryIterator{}, logproto.FORWARD),
 		//droppedStreamsIterator:    &droppedStreamsIterator{},
 		querierTailClients:        querierTailClients,
 		queryDroppedStreams:       queryDroppedStreams,
@@ -343,6 +343,8 @@ func newTailer(
 		tailDisconnectedIngesters: tailDisconnectedIngesters,
 		tailMaxDuration:           tailMaxDuration,
 	}
+
+	t.openStreamIterator.Push(historicEntries)
 
 	t.readTailClients()
 	go t.loop()

@@ -513,3 +513,54 @@ func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, e
 	}
 	return &result, respSize, i.Error()
 }
+
+type entryWithLabels struct {
+	entry  logproto.Entry
+	labels string
+}
+
+type entryIteratorForward struct {
+	backwardIter      EntryIterator
+	cur               entryWithLabels
+	entriesWithLabels []entryWithLabels
+	loaded            bool
+	limit             uint32
+}
+
+// NewEntryIteratorBackward returns an iterator which loads all or upton N entries
+// of an existing iterator, and then iterates over them backward.
+func NewEntryIteratorForward(it EntryIterator, limit uint32) (EntryIterator, error) {
+	return &entryIteratorForward{entriesWithLabels: make([]entryWithLabels, 0, 1024), backwardIter: it, limit: limit}, it.Error()
+}
+
+func (i *entryIteratorForward) load() {
+	if !i.loaded {
+		i.loaded = true
+		for count := uint32(0); (i.limit == 0 || count < i.limit) && i.backwardIter.Next(); count++ {
+			i.entriesWithLabels = append(i.entriesWithLabels, entryWithLabels{i.backwardIter.Entry(), i.backwardIter.Labels()})
+		}
+		i.backwardIter.Close()
+	}
+}
+
+func (i *entryIteratorForward) Next() bool {
+	i.load()
+	if len(i.entriesWithLabels) == 0 {
+		i.entriesWithLabels = nil
+		return false
+	}
+	i.cur, i.entriesWithLabels = i.entriesWithLabels[len(i.entriesWithLabels)-1], i.entriesWithLabels[:len(i.entriesWithLabels)-1]
+	return true
+}
+
+func (i *entryIteratorForward) Entry() logproto.Entry {
+	return i.cur.entry
+}
+
+func (i *entryIteratorForward) Close() error { return nil }
+
+func (i *entryIteratorForward) Error() error { return nil }
+
+func (i *entryIteratorForward) Labels() string {
+	return i.cur.labels
+}
