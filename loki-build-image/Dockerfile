@@ -31,7 +31,9 @@ RUN go get \
     github.com/gogo/protobuf/protoc-gen-gogoslick \
     github.com/gogo/protobuf/gogoproto \
     github.com/go-delve/delve/cmd/dlv \
-    golang.org/x/tools/cmd/goyacc && \
+    golang.org/x/tools/cmd/goyacc \
+    github.com/mitchellh/gox \
+    github.com/tcnksm/ghr && \
     rm -rf /go/pkg /go/src
 ENV GOCACHE=/go/cache
 

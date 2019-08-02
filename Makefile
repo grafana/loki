@@ -167,6 +167,18 @@ cmd/promtail/promtail-debug: $(APP_GO_FILES) pkg/promtail/server/ui/assets_vfsda
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
+#############
+# Releasing #
+#############
+GOX = gox $(GO_FLAGS) -output="dist/{{.Dir}}_{{.OS}}_{{.Arch}}" -arch="amd64 arm64 arm" -os="linux" -osarch="darwin/amd64"
+dist: clean
+	CGO_ENABLED=0 $(GOX) ./cmd/loki ./cmd/promtail ./cmd/logcli
+	gzip dist/*
+	cd dist && sha256sum * > SHA256SUMS
+
+publish: dist
+	@ghr -t $(GITHUB_TOKEN) -u $(CIRCLE_PROJECT_USERNAME) -r $(CIRCLE_PROJECT_REPONAME) -c $(CIRCLE_SHA1) -b='$(shell ./tools/release-note.sh)' -delete -draft $(IMAGE_TAG) ./dist/
+
 ########
 # Lint #
 ########
@@ -192,6 +204,7 @@ clean:
 	rm -rf cmd/loki-canary/loki-canary
 	rm -rf .cache
 	rm -rf cmd/docker-driver/rootfs
+	rm -rf dist/
 	go clean ./...
 
 #########

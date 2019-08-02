@@ -18,3 +18,4 @@ cmd/loki-canary/loki-canary
 /loki-canary
 dlv
 rootfs/
+dist
