@@ -18,7 +18,7 @@ FROM golang:1.11.4-stretch
 RUN apt-get update && \
     apt-get install -qy \
       musl \
-      file unzip jq \
+      file unzip jq gettext\
       protobuf-compiler libprotobuf-dev \
       libsystemd-dev && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
