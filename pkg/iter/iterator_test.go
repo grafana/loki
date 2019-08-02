@@ -252,3 +252,23 @@ func TestMostCommon(t *testing.T) {
 	}
 	require.Equal(t, "c", mostCommon(tuples).Entry.Line)
 }
+
+func TestEntryIteratorForward(t *testing.T) {
+	itr1 := mkStreamIterator(inverse(offset(testSize, identity)), defaultLabels)
+	itr2 := mkStreamIterator(inverse(offset(testSize, identity)), "{foobar: \"bazbar\"}")
+
+	heapIterator := NewHeapIterator([]EntryIterator{itr1, itr2}, logproto.BACKWARD)
+	forwardIterator, err := NewEntryIteratorForward(heapIterator, testSize)
+	require.NoError(t, err)
+
+	for i := int64((testSize / 2) + 1); i <= testSize; i++ {
+		assert.Equal(t, true, forwardIterator.Next())
+		assert.Equal(t, identity(i), forwardIterator.Entry(), fmt.Sprintln("iteration", i))
+		assert.Equal(t, true, forwardIterator.Next())
+		assert.Equal(t, identity(i), forwardIterator.Entry(), fmt.Sprintln("iteration", i))
+	}
+
+	assert.Equal(t, false, forwardIterator.Next())
+	assert.Equal(t, nil, forwardIterator.Error())
+	assert.NoError(t, forwardIterator.Close())
+}
