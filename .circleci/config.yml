@@ -217,7 +217,7 @@ jobs:
       - checkout
       - run:
           name: github release
-          command: make publish
+          command: make BUILD_IN_CONTAINER=false publish
 
   deploy:
     <<: *defaults
