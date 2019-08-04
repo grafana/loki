@@ -86,3 +86,8 @@
 [[override]]
   name = "github.com/prometheus/procfs"
   version = "v0.0.2"
+# For fluent-bit plugin
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/fluent/fluent-bit-go"
