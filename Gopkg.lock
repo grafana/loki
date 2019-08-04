@@ -405,6 +405,14 @@
   version = "v1.7.0"
 
 [[projects]]
+  branch = "master"
+  digest = "1:46b85bcf6d73ec481fe2b310aa38928a95aeae833761ba6525ebd5576d4de956"
+  name = "github.com/fluent/fluent-bit-go"
+  packages = ["output"]
+  pruneopts = "UT"
+  revision = "c017a8579953a0e55228908b85cdc5b29b6dcdd5"
+
+[[projects]]
   digest = "1:abeb38ade3f32a92943e5be54f55ed6d6e3b6602761d74b4aab4c9dd45c18abd"
   name = "github.com/fsnotify/fsnotify"
   packages = ["."]
@@ -424,11 +432,12 @@
   revision = "b364c791f57ac8f224c2f42ad599afa45ca0cfda"
 
 [[projects]]
-  digest = "1:ce058ca1b1787a997e578c4344f9650becb5086a3512332cbedffca9950d77a1"
+  digest = "1:f16510f2b32d25994b8c6e35c05fc3624b1b4047af2d19f3824e59e74415f691"
   name = "github.com/go-kit/kit"
   packages = [
     "log",
     "log/level",
+    "log/logrus",
   ]
   pruneopts = "UT"
   revision = "12210fb6ace19e0496167bb3e667dcd91fa9f69b"
@@ -1167,6 +1176,14 @@
   version = "v2.0.0"
 
 [[projects]]
+  digest = "1:5a1cf4e370bc86137b58da2ae065e76526d32b11f62a7665f36dbd5f41fa95ff"
+  name = "github.com/ugorji/go"
+  packages = ["codec"]
+  pruneopts = "UT"
+  revision = "23ab95ef5dc3b70286760af84ce2327a2b64ed62"
+  version = "v1.1.7"
+
+[[projects]]
   branch = "server-listen-addr"
   digest = "1:ac8d70a9fb648c76c20d099821664d0b18dfdfbd46029decdb92f31314c1ffa5"
   name = "github.com/weaveworks/common"
@@ -1841,8 +1858,10 @@
     "github.com/docker/docker/pkg/ioutils",
     "github.com/docker/go-plugins-helpers/sdk",
     "github.com/fatih/color",
+    "github.com/fluent/fluent-bit-go/output",
     "github.com/go-kit/kit/log",
     "github.com/go-kit/kit/log/level",
+    "github.com/go-kit/kit/log/logrus",
     "github.com/gogo/protobuf/gogoproto",
     "github.com/gogo/protobuf/io",
     "github.com/gogo/protobuf/proto",
@@ -1853,6 +1872,7 @@
     "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
     "github.com/hpcloud/tail",
     "github.com/jmespath/go-jmespath",
+    "github.com/json-iterator/go",
     "github.com/klauspost/compress/gzip",
     "github.com/mitchellh/mapstructure",
     "github.com/opentracing/opentracing-go",
@@ -1879,6 +1899,7 @@
     "github.com/shurcooL/httpfs/filter",
     "github.com/shurcooL/httpfs/union",
     "github.com/shurcooL/vfsgen",
+    "github.com/sirupsen/logrus",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/mock",
     "github.com/stretchr/testify/require",
