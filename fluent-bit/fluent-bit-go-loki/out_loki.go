@@ -6,7 +6,7 @@ import "github.com/sirupsen/logrus"
 import kit "github.com/go-kit/kit/log/logrus"
 import "github.com/prometheus/common/model"
 import "github.com/cortexproject/cortex/pkg/util/flagext"
-import "github.com/json-iterator/go"
+import jsoniter "github.com/json-iterator/go"
 
 import (
 	"C"
