@@ -1,12 +1,12 @@
-# Promtail API
+# API
 
 Promtail features an embedded web server exposing a web console at `/` and the following API endpoints:
 
-- `GET /ready`
+### `GET /ready`
 
   This endpoint returns 200 when Promtail is up and running, and there's at least one working target.
 
-- `GET /metrics`
+### `GET /metrics`
 
   This endpoint returns Promtail metrics for Prometheus. See "[Operations > Observability > Metrics](./operations.md)" to have a list of exported metrics.
 

@@ -1,23 +1,25 @@
-# Log CLI usage Instructions
+# LogCLI
 
-Loki's main query interface is Grafana; however, a basic CLI is provided as a proof of concept.
-
-Once you have Loki running in a cluster, you can query logs from that cluster.
+LogCLI is a handy tool to query logs from Loki without having to run a full Grafana instance.
 
 ## Installation
 
-### Get latest version
+### Binary (Recommended)
+Head over to the [Releases](https://github.com/grafana/loki/releases) and download the `logcli` binary for your OS:
+```bash
+# download a binary (adapt app, os and arch as needed)
+# installs v0.2.0. For up to date URLs refer to the release's description
+$ curl -fSL -o "/usr/local/bin/logcli.gz" "https://github.com/grafana/logcli/releases/download/v0.2.0/logcli-linux-amd64.gz"
+$ gunzip "/usr/local/bin/logcli.gz"
+
+# make sure it is executable
+$ chmod a+x "/usr/local/bin/logcli"
+```
+
+### From source
 
 ```
 $ go get github.com/grafana/loki/cmd/logcli
-```
-
-### Build from source
-
-```
-$ go get github.com/grafana/loki
-$ cd $GOPATH/src/github.com/grafana/loki
-$ go build ./cmd/logcli
 ```
 
 Now `logcli` is in your current directory.
@@ -36,14 +38,15 @@ Otherwise, when running e.g. [locally](https://github.com/grafana/loki/tree/mast
 ```
 $ export GRAFANA_ADDR=http://localhost:3100
 ```
-> Note: If you are running loki behind a proxy server and have an authentication setup. You will have to pass URL, username and password accordingly. Please refer to the [docs](https://github.com/adityacs/loki/blob/master/docs/operations.md) for more info.
+> Note: If you are running loki behind a proxy server and have an authentication setup, you will have to pass URL, username and password accordingly. Please refer to [Authentication](loki/operations.md#authentication) for more info.
 
-```
+```bash
 $ logcli labels job
 https://logs-dev-ops-tools1.grafana.net/api/prom/label/job/values
 cortex-ops/consul
 cortex-ops/cortex-gw
 ...
+
 $ logcli query '{job="cortex-ops/consul"}'
 https://logs-dev-ops-tools1.grafana.net/api/prom/query?query=%7Bjob%3D%22cortex-ops%2Fconsul%22%7D&limit=30&start=1529928228&end=1529931828&direction=backward&regexp=
 Common labels: {job="cortex-ops/consul", namespace="cortex-ops"}
@@ -55,14 +58,14 @@ Common labels: {job="cortex-ops/consul", namespace="cortex-ops"}
 
 Configuration values are considered in the following order (lowest to highest):
 
-- environment value
-- command line
+- Environment variables
+- Command line flags
 
 The URLs of the requests are printed to help with integration work.
 
 ### Details
 
-```console
+```bash
 $ logcli help
 usage: logcli [<flags>] <command> [<args> ...]
 

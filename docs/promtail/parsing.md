@@ -1,4 +1,4 @@
-# Processing Log Lines
+# Log Parsing
 
 A detailed look at how to setup promtail to process your log lines, including extracting metrics and labels.
 
