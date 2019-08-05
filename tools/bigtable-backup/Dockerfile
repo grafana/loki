@@ -1,5 +1,5 @@
 FROM       grafana/bigtable-backup:master-418c0dd
-RUN        apk add --update --no-cache python3 python3-dev \
+RUN        apk add --update --no-cache python3 python3-dev git \
             && pip3 install --no-cache-dir --upgrade pip
 COPY       bigtable-backup.py bigtable-backup.py
 COPY       requirements.txt requirements.txt

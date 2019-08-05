@@ -21,17 +21,17 @@ def secs_to_periodic_table_number(periodic_secs):
 
 
 def backup_active_periodic_table(args):
-    push_job_started_metric(args.prom_push_gateway_endpoint, job_backup_active_periodic_table)
+    push_job_started_metric(args.prom_push_gateway_endpoint, args.namespace, job_backup_active_periodic_table)
     start_time = time.time()
 
     table_id = args.bigtable_table_id_prefix + str(int(time.time() / args.periodic_table_duration))
     create_backup(table_id, args)
 
-    push_job_finished_metric(args.prom_push_gateway_endpoint, job_backup_active_periodic_table, int(time.time() - start_time))
+    push_job_finished_metric(args.prom_push_gateway_endpoint, args.namespace, job_backup_active_periodic_table, int(time.time() - start_time))
 
 
 def ensure_backups(args):
-    push_job_started_metric(args.prom_push_gateway_endpoint, job_ensure_backups)
+    push_job_started_metric(args.prom_push_gateway_endpoint, args.namespace, job_ensure_backups)
     start_time = time.time()
 
     # ensure-backups job specific metrics
@@ -52,7 +52,7 @@ def ensure_backups(args):
     for __, timestamps in backups.items():
         bigtable_backup_job_num_backup_ups.inc(len(timestamps))
 
-    push_metrics(args.prom_push_gateway_endpoint, job_ensure_backups)
+    push_metrics(args.prom_push_gateway_endpoint, args.namespace, job_ensure_backups)
 
     if args.period_from == None:
         period_from = datetime.utcnow() - timedelta(days=args.duration)
@@ -87,7 +87,7 @@ def ensure_backups(args):
             for timestamp in timestamps[:-1]:
                 delete_backup(table_id, str(timestamp), args)
 
-    push_job_finished_metric(args.prom_push_gateway_endpoint, job_ensure_backups, int(time.time() - start_time))
+    push_job_finished_metric(args.prom_push_gateway_endpoint, args.namespace, job_ensure_backups, int(time.time() - start_time))
 
 def find_last_timestamp_from_table_number(table_number, periodic_secs):
     return ((table_number + 1) * periodic_secs) - 1
@@ -142,24 +142,24 @@ def delete_backup(table_id, timestamp, args):
     else:
         print(popen.stdout.readlines())
 
-def push_job_started_metric(endpoint, job):
+def push_job_started_metric(endpoint, namespace, job):
     try:
         bigtable_backup_job_last_run_seconds.set_to_current_time()
-        push_to_gateway(endpoint, job=job, registry=registry)
+        push_to_gateway(endpoint, job="{}/{}".format(namespace, job), registry=registry)
     except Exception as e:
         print("failed to push metrics with error {}".format(e))
 
-def push_job_finished_metric(endpoint, job, runtime):
+def push_job_finished_metric(endpoint, namespace, job, runtime):
     try:
         bigtable_backup_job_last_success_seconds.set_to_current_time()
         bigtable_backup_job_runtime_seconds.set(runtime)
-        push_to_gateway(endpoint, job=job, registry=registry)
+        push_to_gateway(endpoint, job="{}/{}".format(namespace, job), registry=registry)
     except Exception as e:
         print("failed to push metrics with error {}".format(e))
 
-def push_metrics(endpoint, job):
+def push_metrics(endpoint, namespace, job):
     try:
-        push_to_gateway(endpoint, job=job, registry=registry)
+        push_to_gateway(endpoint, job="{}/{}".format(namespace, job), registry=registry)
     except Exception as e:
         print("failed to push metrics with error {}".format(e))
 
@@ -180,6 +180,7 @@ def main():
     parser.add_argument("--periodic-table-duration", required=True, type=valid_periodic_duration,
                         help="Periodic config set for loki tables in days")
     parser.add_argument("--prom-push-gateway-endpoint", default="localhost:9091", help="Endpoint where metrics are to be pushed")
+    parser.add_argument("--namespace", default="default", help="namespace while reporting metrics")
 
     backup_active_periodic_table_parser = subparser.add_parser(job_backup_active_periodic_table,
                                                                help="Backup active periodic table")
