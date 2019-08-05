@@ -125,7 +125,7 @@ func (t *Loki) initDistributor() (err error) {
 	if err != nil {
 		return
 	}
-
+	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.distributor.ReadinessHandler))
 	t.server.HTTP.Handle("/api/prom/push", middleware.Merge(
 		t.httpAuthMiddleware,
 	).Wrap(http.HandlerFunc(t.distributor.PushHandler)))
