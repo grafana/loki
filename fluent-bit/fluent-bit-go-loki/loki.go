@@ -50,9 +50,7 @@ func getLokiConfig(url string, batchWait string, batchSize string, labels string
 
 	var labelValues labelSetJSON
 	if labels == "" {
-		labels = `
-{"labels": [{"key": "job", "label": "fluent-bit"}]}
-`
+		labels = `{"labels": [{"key": "job", "label": "fluent-bit"}]}`
 	}
 
 	err = json.Unmarshal(([]byte)(labels), &labelValues)
