@@ -7,8 +7,8 @@ import (
 	"unsafe"
 
 	"github.com/fluent/fluent-bit-go/output"
-	"github.com/stretchr/testify/assert"
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCreateJSON(t *testing.T) {
@@ -59,7 +59,7 @@ func (p *testFluentPlugin) PluginConfigKey(ctx unsafe.Pointer, key string) strin
 	case "BatchSize":
 		return p.batchSize
 	case "Labels":
-		return  `
+		return `
 {"labels": [{"key": "job", "label": "fluent-bit"}]}
 `
 	}
@@ -76,7 +76,7 @@ func (p *testFluentPlugin) GetRecord(dec *output.FLBDecoder) (int, interface{}, 
 	return -1, nil, nil
 }
 func (p *testFluentPlugin) NewDecoder(data unsafe.Pointer, length int) *output.FLBDecoder { return nil }
-func (p *testFluentPlugin) Exit(code int) {}
+func (p *testFluentPlugin) Exit(code int)                                                 {}
 func (p *testFluentPlugin) HandleLine(ls model.LabelSet, timestamp time.Time, line string) error {
 	data := ([]byte)(line)
 	events := &events{data: data}
@@ -84,7 +84,7 @@ func (p *testFluentPlugin) HandleLine(ls model.LabelSet, timestamp time.Time, li
 	return nil
 }
 func (p *testFluentPlugin) addrecord(rc int, ts interface{}, line map[interface{}]interface{}) {
-	p.records  = append(p.records, testrecord{rc: rc, ts: ts, data: line})
+	p.records = append(p.records, testrecord{rc: rc, ts: ts, data: line})
 }
 
 func TestPluginInitialization(t *testing.T) {
@@ -107,8 +107,17 @@ func TestPluginFlusher(t *testing.T) {
 	assert.Equal(t, output.FLB_OK, res)
 	assert.Len(t, testplugin.events, len(testplugin.records))
 	var parsed map[string]interface{}
-	json.Unmarshal(testplugin.events[0].data, &parsed)
+	err := json.Unmarshal(testplugin.events[0].data, &parsed)
+	if err != nil {
+		assert.Fail(t, "unmarshal of json fails:%v", err)
+	}
 	assert.Equal(t, testrecords["mykey"], parsed["mykey"])
-	json.Unmarshal(testplugin.events[1].data, &parsed)
-	json.Unmarshal(testplugin.events[2].data, &parsed)
+	err = json.Unmarshal(testplugin.events[1].data, &parsed)
+	if err != nil {
+		assert.Fail(t, "unmarshal of json fails:%v", err)
+	}
+	err = json.Unmarshal(testplugin.events[2].data, &parsed)
+	if err != nil {
+		assert.Fail(t, "unmarshal of json fails:%v", err)
+	}
 }

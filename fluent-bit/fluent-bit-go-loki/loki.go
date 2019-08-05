@@ -55,7 +55,10 @@ func getLokiConfig(url string, batchWait string, batchSize string, labels string
 `
 	}
 
-	json.Unmarshal(([]byte)(labels), &labelValues)
+	err = json.Unmarshal(([]byte)(labels), &labelValues)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse Labels")
+	}
 	labelSet := make(model.LabelSet)
 	for _, v := range labelValues.Labels {
 		labelSet[model.LabelName(v.Key)] = model.LabelValue(v.Label)

@@ -44,7 +44,7 @@ func (p *fluentPlugin) GetRecord(dec *output.FLBDecoder) (int, interface{}, map[
 }
 
 func (p *fluentPlugin) NewDecoder(data unsafe.Pointer, length int) *output.FLBDecoder {
-	return output.NewDecoder(data, int(length))
+	return output.NewDecoder(data, length)
 }
 
 func (p *fluentPlugin) Exit(code int) {
