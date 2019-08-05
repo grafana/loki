@@ -8,9 +8,7 @@ import (
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
-	token_util "github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/helpers"
@@ -287,57 +285,11 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		time.Duration(req.DelayFor)*time.Second,
 		tailClients,
 		reversedIterator,
-		func(from, to time.Time, labels string) (iterator iter.EntryIterator, e error) {
-			return q.queryDroppedStreams(queryCtx, req, from, to, labels)
-		},
 		func(connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
 			return q.tailDisconnectedIngesters(tailCtx, req, connectedIngestersAddr)
 		},
 		q.cfg.TailMaxDuration,
 	), nil
-}
-
-// passed to tailer for querying dropped streams
-func (q *Querier) queryDroppedStreams(ctx context.Context, req *logproto.TailRequest, start, end time.Time, labels string) (iter.EntryIterator, error) {
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	key := token_util.TokenFor(userID, labels)
-	replicationSet, err := q.ring.Get(key, ring.Read)
-	if err != nil {
-		return nil, err
-	}
-
-	query := logproto.QueryRequest{
-		Direction: logproto.FORWARD,
-		Start:     start,
-		End:       end,
-		Limit:     10000,
-		Query:     req.Query,
-		Regex:     req.Regex,
-	}
-
-	clients, err := q.forGivenIngesters(replicationSet, func(client logproto.QuerierClient) (interface{}, error) {
-		return client.Query(ctx, &query)
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	ingesterIterators := make([]iter.EntryIterator, len(clients))
-	for i := range clients {
-		ingesterIterators[i] = iter.NewQueryClientIterator(clients[i].response.(logproto.Querier_QueryClient), query.Direction)
-	}
-
-	chunkStoreIterators, err := q.store.LazyQuery(ctx, &query)
-	if err != nil {
-		return nil, err
-	}
-
-	iterators := append(ingesterIterators, chunkStoreIterators)
-	return iter.NewHeapIterator(iterators, query.Direction), nil
 }
 
 // passed to tailer for (re)connecting to new or disconnected ingesters
