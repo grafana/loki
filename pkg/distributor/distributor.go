@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"flag"
+	"net/http"
 	"sync/atomic"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -23,6 +25,7 @@ import (
 
 const metricName = "logs"
 
+var readinessProbeSuccess = []byte("Ready")
 var (
 	ingesterAppends = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
@@ -99,6 +102,20 @@ type pushTracker struct {
 	samplesFailed  int32
 	done           chan struct{}
 	err            chan error
+}
+
+// ReadinessHandler is handler for Distributor
+func (d *Distributor) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
+	_, err := d.ring.GetAll()
+	if err != nil {
+		http.Error(w, "Not ready: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(readinessProbeSuccess); err != nil {
+		level.Error(cortex_util.Logger).Log("msg", "error writing success message", "error", err)
+	}
 }
 
 // Push a set of streams.
