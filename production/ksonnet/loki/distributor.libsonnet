@@ -11,6 +11,10 @@
     container.new('distributor', $._images.distributor) +
     container.withPorts($.util.defaultPorts) +
     container.withArgsMixin($.util.mapToFlags($.distributor_args)) +
+    container.mixin.readinessProbe.httpGet.withPath('/ready') +
+    container.mixin.readinessProbe.httpGet.withPort(80) +
+    container.mixin.readinessProbe.withInitialDelaySeconds(15) +
+    container.mixin.readinessProbe.withTimeoutSeconds(1) +
     $.util.resourcesRequests('500m', '100Mi') +
     $.util.resourcesLimits('1', '200Mi'),
 
