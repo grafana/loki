@@ -1,19 +1,19 @@
 package main
 
-import "github.com/fluent/fluent-bit-go/output"
-import "github.com/grafana/loki/pkg/promtail/client"
-import "github.com/sirupsen/logrus"
-import kit "github.com/go-kit/kit/log/logrus"
-import "github.com/prometheus/common/model"
-import "github.com/cortexproject/cortex/pkg/util/flagext"
-import jsoniter "github.com/json-iterator/go"
-
 import (
 	"C"
 	"fmt"
 	"os"
 	"time"
 	"unsafe"
+
+	"github.com/fluent/fluent-bit-go/output"
+	"github.com/grafana/loki/pkg/promtail/client"
+	"github.com/sirupsen/logrus"
+	kit "github.com/go-kit/kit/log/logrus"
+	"github.com/prometheus/common/model"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	jsoniter "github.com/json-iterator/go"
 )
 
 var loki client.Client

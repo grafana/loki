@@ -1,13 +1,13 @@
 package main
 
-import "github.com/cortexproject/cortex/pkg/util/flagext"
-import "github.com/prometheus/common/model"
-
 import (
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/prometheus/common/model"
 )
 
 type lokiConfig struct {
