@@ -1,6 +1,7 @@
 # fluent-bit loki output plugin
 
-This plugin works with fluent-bit's go plugin interface. You can use fluent-bit loki to ship logs into grafana datasource with loki.
+This plugin works with fluent-bit's go plugin interface.
+It allows fluent-bit to ship logs into Loki, for use with e.g. Grafana.
 
 The configuration typically looks like:
 
