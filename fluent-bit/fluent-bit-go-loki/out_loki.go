@@ -76,6 +76,7 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 		plugin.Exit(1)
 		return output.FLB_ERROR
 	}
+	fmt.Printf("[flb-go] plugin version is %s\n", Version)
 	fmt.Printf("[flb-go] plugin URL parameter = '%s'\n", url)
 	fmt.Printf("[flb-go] plugin BatchWait parameter = '%s'\n", batchSize)
 	fmt.Printf("[flb-go] plugin BatchSize parameter = '%s'\n", batchWait)
