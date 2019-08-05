@@ -37,7 +37,7 @@ type TailResponse struct {
 type Tailer struct {
 	// openStreamIterator is for streams already open
 	openStreamIterator iter.HeapIterator
-	streamMtx sync.Mutex // for synchronizing access to openStreamIterator
+	streamMtx          sync.Mutex // for synchronizing access to openStreamIterator
 
 	currEntry  logproto.Entry
 	currLabels string
@@ -264,7 +264,7 @@ func newTailer(
 	tailMaxDuration time.Duration,
 ) *Tailer {
 	t := Tailer{
-		openStreamIterator: iter.NewHeapIterator([]iter.EntryIterator{historicEntries}, logproto.FORWARD),
+		openStreamIterator:        iter.NewHeapIterator([]iter.EntryIterator{historicEntries}, logproto.FORWARD),
 		querierTailClients:        querierTailClients,
 		delayFor:                  delayFor,
 		responseChan:              make(chan *TailResponse, bufferSizeForTailResponse),
