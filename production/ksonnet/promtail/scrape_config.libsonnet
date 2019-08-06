@@ -23,6 +23,14 @@ config + {
         regex: '^$',
       },
 
+      // Include all the other labels on the pod.
+      // Perform this mapping before applying additional label replacement rules
+      // to prevent a supplied label from overwriting any of the following labels.
+      {
+        action: 'labelmap',
+        regex: '__meta_kubernetes_pod_label_(.+)',
+      },
+
       // Rename jobs to be <namespace>/<name, from pod name label>
       {
         source_labels: ['__meta_kubernetes_namespace', '__service__'],
@@ -51,12 +59,6 @@ config + {
         source_labels: ['__meta_kubernetes_pod_container_name'],
         action: 'replace',
         target_label: 'container_name',
-      },
-
-      // Also include all the other labels on the pod.
-      {
-        action: 'labelmap',
-        regex: '__meta_kubernetes_pod_label_(.+)',
       },
 
       // Kubernetes puts logs under subdirectories keyed pod UID and container_name.
