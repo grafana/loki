@@ -2,8 +2,6 @@ package chunkenc
 
 import (
 	"bytes"
-	"fmt"
-	"io/ioutil"
 	"math"
 	"math/rand"
 	"sync"
@@ -104,48 +102,6 @@ func TestGZIPBlock(t *testing.T) {
 		require.NoError(t, it.Error())
 		require.Equal(t, 6, idx)
 	})
-}
-
-func TestGZIPCompression(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
-	b, err := ioutil.ReadFile("NASA_access_log_Aug95")
-	if err != nil {
-		t.SkipNow()
-	}
-
-	lines := bytes.Split(b, []byte("\n"))
-	fmt.Println(len(lines))
-
-	for _, blockSize := range []int{4 * 1024, 8 * 1024, 16 * 1024, 32 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024} {
-		testName := fmt.Sprintf("%d", blockSize/1024)
-		t.Run(testName, func(t *testing.T) {
-			chk := NewMemChunk(EncGZIP)
-			chk.blockSize = blockSize
-
-			for i, l := range lines {
-				require.NoError(t, chk.Append(logprotoEntry(int64(i), string(l))))
-			}
-
-			b2, err := chk.Bytes()
-			require.NoError(t, err)
-			fmt.Println(float64(len(b))/(1024*1024), float64(len(b2))/(1024*1024), float64(len(b2))/float64(len(chk.blocks)))
-
-			it, err := chk.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
-			require.NoError(t, err)
-
-			for i, l := range lines {
-				require.True(t, it.Next())
-
-				e := it.Entry()
-				require.Equal(t, int64(i), e.Timestamp.UnixNano())
-				require.Equal(t, string(l), e.Line)
-			}
-			require.NoError(t, it.Error())
-		})
-	}
 }
 
 func TestGZIPSerialisation(t *testing.T) {
