@@ -16,18 +16,39 @@ import (
 //
 // If the bucket already exists, this method does nothing.
 func (s *Server) CreateBucket(name string) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
 	err := s.backend.CreateBucket(name)
 	if err != nil {
 		panic(err)
 	}
 }
 
-func (s *Server) listBuckets(w http.ResponseWriter, r *http.Request) {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
+// createBucketByPost handles a POST request to create a bucket
+func (s *Server) createBucketByPost(w http.ResponseWriter, r *http.Request) {
+	// Minimal version of Bucket from google.golang.org/api/storage/v1
+	var data struct {
+		Name string
+	}
 
+	// Read the bucket name from the request body JSON
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&data); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	name := data.Name
+
+	// Create the named bucket
+	if err := s.backend.CreateBucket(name); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return the created bucket:
+	resp := newBucketResponse(name)
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) listBuckets(w http.ResponseWriter, r *http.Request) {
 	bucketNames, err := s.backend.ListBuckets()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -39,8 +60,6 @@ func (s *Server) listBuckets(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getBucket(w http.ResponseWriter, r *http.Request) {
 	bucketName := mux.Vars(r)["bucketName"]
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
 	encoder := json.NewEncoder(w)
 	if err := s.backend.GetBucket(bucketName); err != nil {
 		w.WriteHeader(http.StatusNotFound)

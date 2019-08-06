@@ -28,6 +28,8 @@ var (
 		"org.apache.cassandra.auth.PasswordAuthenticator",
 		"com.instaclustr.cassandra.auth.SharedSecretAuthenticator",
 		"com.datastax.bdp.cassandra.auth.DseAuthenticator",
+		"io.aiven.cassandra.auth.AivenAuthenticator",
+		"com.ericsson.bss.cassandra.ecaudit.auth.AuditPasswordAuthenticator",
 	}
 )
 
@@ -138,7 +140,7 @@ type Conn struct {
 	headerBuf [maxFrameHeaderSize]byte
 
 	streams *streams.IDGenerator
-	mu      sync.RWMutex
+	mu      sync.Mutex
 	calls   map[int]*callReq
 
 	errorHandler ConnErrorHandler
@@ -158,13 +160,39 @@ type Conn struct {
 	timeouts int64
 }
 
-// Connect establishes a connection to a Cassandra node.
-func (s *Session) dial(host *HostInfo, cfg *ConnConfig, errorHandler ConnErrorHandler) (*Conn, error) {
+// connect establishes a connection to a Cassandra node using session's connection config.
+func (s *Session) connect(host *HostInfo, errorHandler ConnErrorHandler) (*Conn, error) {
+	return s.dial(host, s.connCfg, errorHandler)
+}
+
+// dial establishes a connection to a Cassandra node and notifies the session's connectObserver.
+func (s *Session) dial(host *HostInfo, connConfig *ConnConfig, errorHandler ConnErrorHandler) (*Conn, error) {
+	var obs ObservedConnect
+	if s.connectObserver != nil {
+		obs.Host = host
+		obs.Start = time.Now()
+	}
+
+	conn, err := s.dialWithoutObserver(host, connConfig, errorHandler)
+
+	if s.connectObserver != nil {
+		obs.End = time.Now()
+		obs.Err = err
+		s.connectObserver.ObserveConnect(obs)
+	}
+
+	return conn, err
+}
+
+// dialWithoutObserver establishes connection to a Cassandra node.
+//
+// dialWithoutObserver does not notify the connection observer, so you most probably want to call dial() instead.
+func (s *Session) dialWithoutObserver(host *HostInfo, cfg *ConnConfig, errorHandler ConnErrorHandler) (*Conn, error) {
 	ip := host.ConnectAddress()
 	port := host.port
 
 	// TODO(zariel): remove these
-	if len(ip) == 0 || ip.IsUnspecified() {
+	if !validIpAddr(ip) {
 		panic(fmt.Sprintf("host missing connect ip address: %v", ip))
 	} else if port == 0 {
 		panic(fmt.Sprintf("host missing port: %v", port))
@@ -182,15 +210,12 @@ func (s *Session) dial(host *HostInfo, cfg *ConnConfig, errorHandler ConnErrorHa
 		dialer.KeepAlive = cfg.Keepalive
 	}
 
-	// TODO(zariel): handle ipv6 zone
-	addr := (&net.TCPAddr{IP: ip, Port: port}).String()
-
 	if cfg.tlsConfig != nil {
 		// the TLS config is safe to be reused by connections but it must not
 		// be modified after being used.
-		conn, err = tls.DialWithDialer(dialer, "tcp", addr, cfg.tlsConfig)
+		conn, err = tls.DialWithDialer(dialer, "tcp", host.HostnameAndPort(), cfg.tlsConfig)
 	} else {
-		conn, err = dialer.Dial("tcp", addr)
+		conn, err = dialer.Dial("tcp", host.HostnameAndPort())
 	}
 
 	if err != nil {
@@ -252,10 +277,11 @@ func (s *Session) dial(host *HostInfo, cfg *ConnConfig, errorHandler ConnErrorHa
 
 	// dont coalesce startup frames
 	if s.cfg.WriteCoalesceWaitTime > 0 && !cfg.disableCoalesce {
-		c.w = newWriteCoalescer(c.w, s.cfg.WriteCoalesceWaitTime, c.quit)
+		c.w = newWriteCoalescer(conn, c.timeout, s.cfg.WriteCoalesceWaitTime, c.quit)
 	}
 
 	go c.serve()
+	go c.heartBeat()
 
 	return c, nil
 }
@@ -443,7 +469,7 @@ func (c *Conn) closeWithError(err error) {
 	// we should attempt to deliver the error back to the caller if it
 	// exists
 	if err != nil {
-		c.mu.RLock()
+		c.mu.Lock()
 		for _, req := range c.calls {
 			// we need to send the error to all waiting queries, put the state
 			// of this conn into not active so that it can not execute any queries.
@@ -452,7 +478,7 @@ func (c *Conn) closeWithError(err error) {
 			case <-req.timeout:
 			}
 		}
-		c.mu.RUnlock()
+		c.mu.Unlock()
 	}
 
 	// if error was nil then unblock the quit channel
@@ -506,6 +532,53 @@ func (p *protocolError) Error() string {
 	return fmt.Sprintf("gocql: received unexpected frame on stream %d: %v", p.frame.Header().stream, p.frame)
 }
 
+func (c *Conn) heartBeat() {
+	sleepTime := 1 * time.Second
+	timer := time.NewTimer(sleepTime)
+	defer timer.Stop()
+
+	var failures int
+
+	for {
+		if failures > 5 {
+			c.closeWithError(fmt.Errorf("gocql: heartbeat failed"))
+			return
+		}
+
+		timer.Reset(sleepTime)
+
+		select {
+		case <-c.quit:
+			return
+		case <-timer.C:
+		}
+
+		framer, err := c.exec(context.Background(), &writeOptionsFrame{}, nil)
+		if err != nil {
+			failures++
+			continue
+		}
+
+		resp, err := framer.parseFrame()
+		if err != nil {
+			// invalid frame
+			failures++
+			continue
+		}
+
+		switch resp.(type) {
+		case *supportedFrame:
+			// Everything ok
+			sleepTime = 5 * time.Second
+			failures = 0
+		case error:
+			// TODO: should we do something here?
+		default:
+			panic(fmt.Sprintf("gocql: unknown frame in response to options: %T", resp))
+		}
+	}
+}
+
 func (c *Conn) recv() error {
 	// not safe for concurrent reads
 
@@ -532,6 +605,7 @@ func (c *Conn) recv() error {
 			Length:  int32(head.length),
 			Start:   headStartTime,
 			End:     headEndTime,
+			Host:    c.host,
 		})
 	}
 
@@ -563,12 +637,15 @@ func (c *Conn) recv() error {
 		}
 	}
 
-	c.mu.RLock()
+	c.mu.Lock()
 	call, ok := c.calls[head.stream]
-	c.mu.RUnlock()
+	delete(c.calls, head.stream)
+	c.mu.Unlock()
 	if call == nil || call.framer == nil || !ok {
 		Logger.Printf("gocql: received response for stream which has no handler: header=%v\n", head)
 		return c.discardFrame(head)
+	} else if head.stream != call.streamID {
+		panic(fmt.Sprintf("call has incorrect streamID: got %d expected %d", call.streamID, head.stream))
 	}
 
 	err = call.framer.readFrame(&head)
@@ -585,30 +662,19 @@ func (c *Conn) recv() error {
 	select {
 	case call.resp <- err:
 	case <-call.timeout:
-		c.releaseStream(head.stream)
+		c.releaseStream(call)
 	case <-c.quit:
 	}
 
 	return nil
 }
 
-func (c *Conn) releaseStream(stream int) {
-	c.mu.Lock()
-	call := c.calls[stream]
-	if call != nil && stream != call.streamID {
-		panic(fmt.Sprintf("attempt to release streamID with invalid stream: %d -> %+v\n", stream, call))
-	} else if call == nil {
-		panic(fmt.Sprintf("releasing a stream not in use: %d", stream))
-	}
-	delete(c.calls, stream)
-	c.mu.Unlock()
-
+func (c *Conn) releaseStream(call *callReq) {
 	if call.timer != nil {
 		call.timer.Stop()
 	}
 
-	streamPool.Put(call)
-	c.streams.Clear(stream)
+	c.streams.Clear(call.streamID)
 }
 
 func (c *Conn) handleTimeout() {
@@ -616,16 +682,6 @@ func (c *Conn) handleTimeout() {
 		c.closeWithError(ErrTooManyTimeouts)
 	}
 }
-
-var (
-	streamPool = sync.Pool{
-		New: func() interface{} {
-			return &callReq{
-				resp: make(chan error),
-			}
-		},
-	}
-)
 
 type callReq struct {
 	// could use a waitgroup but this allows us to do timeouts on the read/send
@@ -652,19 +708,20 @@ func (c *deadlineWriter) Write(p []byte) (int, error) {
 	return c.w.Write(p)
 }
 
-func newWriteCoalescer(w io.Writer, d time.Duration, quit <-chan struct{}) *writeCoalescer {
+func newWriteCoalescer(conn net.Conn, timeout time.Duration, d time.Duration, quit <-chan struct{}) *writeCoalescer {
 	wc := &writeCoalescer{
 		writeCh: make(chan struct{}), // TODO: could this be sync?
 		cond:    sync.NewCond(&sync.Mutex{}),
-		w:       w,
+		c:       conn,
 		quit:    quit,
+		timeout: timeout,
 	}
 	go wc.writeFlusher(d)
 	return wc
 }
 
 type writeCoalescer struct {
-	w io.Writer
+	c net.Conn
 
 	quit    <-chan struct{}
 	writeCh chan struct{}
@@ -673,6 +730,7 @@ type writeCoalescer struct {
 	// cond waits for the buffer to be flushed
 	cond    *sync.Cond
 	buffers net.Buffers
+	timeout time.Duration
 
 	// result of the write
 	err error
@@ -684,10 +742,14 @@ func (w *writeCoalescer) flushLocked() {
 		return
 	}
 
+	if w.timeout > 0 {
+		w.c.SetWriteDeadline(time.Now().Add(w.timeout))
+	}
+
 	// Given we are going to do a fanout n is useless and according to
 	// the docs WriteTo should return 0 and err or bytes written and
 	// no error.
-	_, w.err = w.buffers.WriteTo(w.w)
+	_, w.err = w.buffers.WriteTo(w.c)
 	if w.err != nil {
 		w.buffers = nil
 	}
@@ -777,10 +839,12 @@ func (c *Conn) exec(ctx context.Context, req frameWriter, tracer Tracer) (*frame
 	// resp is basically a waiting semaphore protecting the framer
 	framer := newFramer(c, c, c.compressor, c.version)
 
-	call := streamPool.Get().(*callReq)
-	call.framer = framer
-	call.timeout = make(chan struct{})
-	call.streamID = stream
+	call := &callReq{
+		framer:   framer,
+		timeout:  make(chan struct{}),
+		streamID: stream,
+		resp:     make(chan error),
+	}
 
 	c.mu.Lock()
 	existingCall := c.calls[stream]
@@ -844,7 +908,7 @@ func (c *Conn) exec(ctx context.Context, req frameWriter, tracer Tracer) (*frame
 				// this is because the request is still outstanding and we have
 				// been handed another error from another stream which caused the
 				// connection to close.
-				c.releaseStream(stream)
+				c.releaseStream(call)
 			}
 			return nil, err
 		}
@@ -865,7 +929,7 @@ func (c *Conn) exec(ctx context.Context, req frameWriter, tracer Tracer) (*frame
 	//
 	// Ensure that the stream is not released if there are potentially outstanding
 	// requests on the stream to prevent nil pointer dereferences in recv().
-	defer c.releaseStream(stream)
+	defer c.releaseStream(call)
 
 	if v := framer.header.version.version(); v != c.version {
 		return nil, NewErrProtocol("unexpected protocol version in response: got %d expected %d", v, c.version)
@@ -1291,11 +1355,12 @@ func (c *Conn) query(ctx context.Context, statement string, values ...interface{
 
 func (c *Conn) awaitSchemaAgreement(ctx context.Context) (err error) {
 	const (
-		peerSchemas  = "SELECT schema_version, peer FROM system.peers"
+		peerSchemas  = "SELECT * FROM system.peers"
 		localSchemas = "SELECT schema_version FROM system.local WHERE key='local'"
 	)
 
 	var versions map[string]struct{}
+	var schemaVersion string
 
 	endDeadline := time.Now().Add(c.session.cfg.MaxWaitSchemaAgreement)
 	for time.Now().Before(endDeadline) {
@@ -1303,16 +1368,22 @@ func (c *Conn) awaitSchemaAgreement(ctx context.Context) (err error) {
 
 		versions = make(map[string]struct{})
 
-		var schemaVersion string
-		var peer string
-		for iter.Scan(&schemaVersion, &peer) {
-			if schemaVersion == "" {
-				Logger.Printf("skipping peer entry with empty schema_version: peer=%q", peer)
+		rows, err := iter.SliceMap()
+		if err != nil {
+			goto cont
+		}
+
+		for _, row := range rows {
+			host, err := c.session.hostInfoFromMap(row, &HostInfo{connectAddress: c.host.ConnectAddress(), port: c.session.cfg.Port})
+			if err != nil {
+				goto cont
+			}
+			if !isValidPeer(host) || host.schemaVersion == "" {
+				Logger.Printf("invalid peer or peer with empty schema_version: peer=%q", host)
 				continue
 			}
 
-			versions[schemaVersion] = struct{}{}
-			schemaVersion = ""
+			versions[host.schemaVersion] = struct{}{}
 		}
 
 		if err = iter.Close(); err != nil {
@@ -1363,7 +1434,7 @@ func (c *Conn) localHostInfo(ctx context.Context) (*HostInfo, error) {
 	port := c.conn.RemoteAddr().(*net.TCPAddr).Port
 
 	// TODO(zariel): avoid doing this here
-	host, err := c.session.hostInfoFromMap(row, port)
+	host, err := c.session.hostInfoFromMap(row, &HostInfo{connectAddress: c.host.connectAddress, port: port})
 	if err != nil {
 		return nil, err
 	}

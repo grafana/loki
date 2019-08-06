@@ -14,7 +14,7 @@ func (v *Version) Scan(src interface{}) (err error) {
 	case []byte:
 		str = string(src)
 	default:
-		return fmt.Errorf("Version.Scan: cannot convert %T to string.", src)
+		return fmt.Errorf("version.Scan: cannot convert %T to string", src)
 	}
 
 	if t, err := Parse(str); err == nil {

@@ -26,7 +26,7 @@ type Version struct {
 	Minor uint64
 	Patch uint64
 	Pre   []PRVersion
-	Build []string //No Precendence
+	Build []string //No Precedence
 }
 
 // Version to string
@@ -161,6 +161,36 @@ func (v Version) Compare(o Version) int {
 
 }
 
+// IncrementPatch increments the patch version
+func (v *Version) IncrementPatch() error {
+	if v.Major == 0 {
+		return fmt.Errorf("Patch version can not be incremented for %q", v.String())
+	}
+	v.Patch += 1
+	return nil
+}
+
+// IncrementMinor increments the minor version
+func (v *Version) IncrementMinor() error {
+	if v.Major == 0 {
+		return fmt.Errorf("Minor version can not be incremented for %q", v.String())
+	}
+	v.Minor += 1
+	v.Patch = 0
+	return nil
+}
+
+// IncrementMajor increments the major version
+func (v *Version) IncrementMajor() error {
+	if v.Major == 0 {
+		return fmt.Errorf("Major version can not be incremented for %q", v.String())
+	}
+	v.Major += 1
+	v.Minor = 0
+	v.Patch = 0
+	return nil
+}
+
 // Validate validates v and returns error in case
 func (v Version) Validate() error {
 	// Major, Minor, Patch already validated using uint64
@@ -202,14 +232,21 @@ func Make(s string) (Version, error) {
 
 // ParseTolerant allows for certain version specifications that do not strictly adhere to semver
 // specs to be parsed by this library. It does so by normalizing versions before passing them to
-// Parse(). It currently trims spaces, removes a "v" prefix, and adds a 0 patch number to versions
-// with only major and minor components specified
+// Parse(). It currently trims spaces, removes a "v" prefix, adds a 0 patch number to versions
+// with only major and minor components specified, and removes leading 0s.
 func ParseTolerant(s string) (Version, error) {
 	s = strings.TrimSpace(s)
 	s = strings.TrimPrefix(s, "v")
 
 	// Split into major.minor.(patch+pr+meta)
 	parts := strings.SplitN(s, ".", 3)
+	// Remove leading zeros.
+	for i, p := range parts {
+		if len(p) > 1 {
+			parts[i] = strings.TrimPrefix(p, "0")
+		}
+	}
+	// Fill up shortened versions.
 	if len(parts) < 3 {
 		if strings.ContainsAny(parts[len(parts)-1], "+-") {
 			return Version{}, errors.New("Short version cannot contain PreRelease/Build meta data")
@@ -217,8 +254,8 @@ func ParseTolerant(s string) (Version, error) {
 		for len(parts) < 3 {
 			parts = append(parts, "0")
 		}
-		s = strings.Join(parts, ".")
 	}
+	s = strings.Join(parts, ".")
 
 	return Parse(s)
 }

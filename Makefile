@@ -266,14 +266,14 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 		-v $(shell pwd):/go/src/github.com/grafana/loki \
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
-	case "$@" in	\
-		vendor*)			\
-			protoc -I ./vendor:./$(@D) --gogoslick_out=plugins=grpc:./vendor ./$(patsubst %.pb.go,%.proto,$@); \
-			;;					\
-		*)						\
-			protoc -I ./vendor:./$(@D) --gogoslick_out=Mgoogle/protobuf/timestamp.proto=github.com/gogo/protobuf/types,plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@); \
-			;;					\
-		esac
+	case "$@" in 	\
+  	vendor*)			\
+  		protoc -I $(GOPATH)/src:./vendor:./$(@D) --gogoslick_out=plugins=grpc:./vendor ./$(patsubst %.pb.go,%.proto,$@); \
+  		;;					\
+  	*)						\
+  		protoc -I $(GOPATH)/src:./vendor:./$(@D) --gogoslick_out=Mgoogle/protobuf/timestamp.proto=github.com/gogo/protobuf/types,plugins=grpc:./$(@D) ./$(patsubst %.pb.go,%.proto,$@); \
+  		;;					\
+  	esac
 endif
 
 

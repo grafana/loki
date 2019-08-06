@@ -18,11 +18,13 @@ import (
 
 // Object represents the object that is stored within the fake server.
 type Object struct {
-	BucketName string `json:"-"`
-	Name       string `json:"name"`
-	Content    []byte `json:"-"`
+	BucketName  string `json:"-"`
+	Name        string `json:"name"`
+	ContentType string `json:"contentType"`
+	Content     []byte `json:"-"`
 	// Crc32c checksum of Content. calculated by server when it's upload methods are used.
-	Crc32c string `json:"crc32c,omitempty"`
+	Crc32c  string `json:"crc32c,omitempty"`
+	Md5Hash string `json:"md5hash,omitempty"`
 }
 
 func (o *Object) id() string {
@@ -49,8 +51,6 @@ func (o *objectList) Swap(i int, j int) {
 // If the bucket within the object doesn't exist, it also creates it. If the
 // object already exists, it overrides the object.
 func (s *Server) CreateObject(obj Object) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
 	err := s.createObject(obj)
 	if err != nil {
 		panic(err)
@@ -64,8 +64,6 @@ func (s *Server) createObject(obj Object) error {
 // ListObjects returns a sorted list of objects that match the given criteria,
 // or an error if the bucket doesn't exist.
 func (s *Server) ListObjects(bucketName, prefix, delimiter string) ([]Object, []string, error) {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
 	backendObjects, err := s.backend.ListObjects(bucketName)
 	if err != nil {
 		return nil, nil, err
@@ -73,10 +71,7 @@ func (s *Server) ListObjects(bucketName, prefix, delimiter string) ([]Object, []
 	objects := fromBackendObjects(backendObjects)
 	olist := objectList(objects)
 	sort.Sort(&olist)
-	var (
-		respObjects  []Object
-		respPrefixes []string
-	)
+	var respObjects []Object
 	prefixes := make(map[string]bool)
 	for _, obj := range olist {
 		if strings.HasPrefix(obj.Name, prefix) {
@@ -89,6 +84,7 @@ func (s *Server) ListObjects(bucketName, prefix, delimiter string) ([]Object, []
 			}
 		}
 	}
+	respPrefixes := make([]string, 0, len(prefixes))
 	for p := range prefixes {
 		respPrefixes = append(respPrefixes, p)
 	}
@@ -100,10 +96,12 @@ func toBackendObjects(objects []Object) []backend.Object {
 	backendObjects := []backend.Object{}
 	for _, o := range objects {
 		backendObjects = append(backendObjects, backend.Object{
-			BucketName: o.BucketName,
-			Name:       o.Name,
-			Content:    o.Content,
-			Crc32c:     o.Crc32c,
+			BucketName:  o.BucketName,
+			Name:        o.Name,
+			Content:     o.Content,
+			ContentType: o.ContentType,
+			Crc32c:      o.Crc32c,
+			Md5Hash:     o.Md5Hash,
 		})
 	}
 	return backendObjects
@@ -113,10 +111,12 @@ func fromBackendObjects(objects []backend.Object) []Object {
 	backendObjects := []Object{}
 	for _, o := range objects {
 		backendObjects = append(backendObjects, Object{
-			BucketName: o.BucketName,
-			Name:       o.Name,
-			Content:    o.Content,
-			Crc32c:     o.Crc32c,
+			BucketName:  o.BucketName,
+			Name:        o.Name,
+			Content:     o.Content,
+			ContentType: o.ContentType,
+			Crc32c:      o.Crc32c,
+			Md5Hash:     o.Md5Hash,
 		})
 	}
 	return backendObjects
@@ -163,8 +163,6 @@ func (s *Server) getObject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteObject(w http.ResponseWriter, r *http.Request) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
 	vars := mux.Vars(r)
 	err := s.backend.DeleteObject(vars["bucketName"], vars["objectName"])
 	if err != nil {
@@ -185,10 +183,12 @@ func (s *Server) rewriteObject(w http.ResponseWriter, r *http.Request) {
 	}
 	dstBucket := vars["destinationBucket"]
 	newObject := Object{
-		BucketName: dstBucket,
-		Name:       vars["destinationObject"],
-		Content:    append([]byte(nil), obj.Content...),
-		Crc32c:     obj.Crc32c,
+		BucketName:  dstBucket,
+		Name:        vars["destinationObject"],
+		Content:     append([]byte(nil), obj.Content...),
+		Crc32c:      obj.Crc32c,
+		Md5Hash:     obj.Md5Hash,
+		ContentType: obj.ContentType,
 	}
 	s.CreateObject(newObject)
 	w.Header().Set("Content-Type", "application/json")
@@ -208,9 +208,13 @@ func (s *Server) downloadObject(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusPartialContent
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, len(obj.Content)))
 	}
+	w.Header().Set("Accept-Ranges", "bytes")
 	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
+	w.Header().Set(contentTypeHeader, obj.ContentType)
 	w.WriteHeader(status)
-	w.Write(content)
+	if r.Method == http.MethodGet {
+		w.Write(content)
+	}
 }
 
 func (s *Server) handleRange(obj Object, r *http.Request) (start, end int, content []byte) {

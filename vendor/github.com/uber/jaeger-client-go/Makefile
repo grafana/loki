@@ -8,8 +8,6 @@ ALL_SRC := $(shell find . -name "*.go" | grep -v -e vendor -e thrift-gen -e ./th
 
 -include crossdock/rules.mk
 
-export GO15VENDOREXPERIMENT=1
-
 RACE=-race
 GOTEST=go test -v $(RACE)
 GOLINT=golint
@@ -35,6 +33,9 @@ test-and-lint: test fmt lint
 
 .PHONY: test
 test:
+ifeq ($(USE_DEP),true)
+	dep check
+endif
 	bash -c "set -e; set -o pipefail; $(GOTEST) $(PACKAGES) | $(COLORIZE)"
 
 .PHONY: fmt

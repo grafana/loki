@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package queryrange;
+
+option go_package = "queryrange";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
+import "github.com/grafana/loki/pkg/logproto/logproto.proto";
+
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message Request {
+  string path = 1;
+  google.protobuf.Timestamp start = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp end = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Duration step = 4 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
+  google.protobuf.Duration timeout = 5 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
+  string query = 6;
+  logproto.Direction direction = 7;
+  uint32 limit = 8;
+}
+
+message APIResponse {
+  string Status = 1 [(gogoproto.jsontag) = "status"];
+  Response Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
+  string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
+  string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
+}
+
+message Response {
+  string ResultType = 1 [(gogoproto.jsontag) = "resultType"];
+  repeated SampleStream samples = 2 [(gogoproto.jsontag) = "samples,omitempty"];
+  repeated logproto.Stream streams = 3 [(gogoproto.jsontag) = "streams,omitempty"];
+}
+
+message SampleStream {
+  repeated cortex.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];
+  repeated cortex.Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "values"];
+}

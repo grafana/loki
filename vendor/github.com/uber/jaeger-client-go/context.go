@@ -22,8 +22,9 @@ import (
 )
 
 const (
-	flagSampled = byte(1)
-	flagDebug   = byte(2)
+	flagSampled  = byte(1)
+	flagDebug    = byte(2)
+	flagFirehose = byte(8)
 )
 
 var (
@@ -86,6 +87,11 @@ func (c SpanContext) IsSampled() bool {
 // IsDebug indicates whether sampling was explicitly requested by the service.
 func (c SpanContext) IsDebug() bool {
 	return (c.flags & flagDebug) == flagDebug
+}
+
+// IsFirehose indicates whether the firehose flag was set
+func (c SpanContext) IsFirehose() bool {
+	return (c.flags & flagFirehose) == flagFirehose
 }
 
 // IsValid indicates whether this context actually represents a valid trace.
@@ -198,7 +204,7 @@ func (c SpanContext) WithBaggageItem(key, value string) SpanContext {
 // extract method, but now it returns a dummy context with only debugID filled in.
 //
 // See JaegerDebugHeader in constants.go
-// See textMapPropagator#Extract
+// See TextMapPropagator#Extract
 func (c *SpanContext) isDebugIDContainerOnly() bool {
 	return !c.traceID.IsValid() && c.debugID != ""
 }

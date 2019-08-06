@@ -19,6 +19,8 @@ env:
   global:
     - GOMAXPROCS=2
   matrix:
+    - CASS=2.1.21
+      AUTH=true
     - CASS=2.2.13
       AUTH=true
     - CASS=2.2.13
@@ -29,8 +31,8 @@ env:
       AUTH=false
 
 go:
-  - "1.10"
-  - "1.11"
+  - 1.11.x
+  - 1.12.x
 
 install:
   - ./install_test_deps.sh $TRAVIS_REPO_SLUG

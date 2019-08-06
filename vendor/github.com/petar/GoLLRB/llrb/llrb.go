@@ -73,7 +73,7 @@ func (pInf) Less(Item) bool {
 	return false
 }
 
-// New() allocates a new tree
+// New allocates a new tree
 func New() *LLRB {
 	return &LLRB{}
 }

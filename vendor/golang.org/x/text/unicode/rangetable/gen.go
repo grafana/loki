@@ -31,7 +31,7 @@ To bootstrap the code generation, run:
 	go run gen.go --versions=4.1.0,5.0.0,6.0.0,6.1.0,6.2.0,6.3.0,7.0.0
 
 and ensure that the latest versions are included by checking:
-	http://www.unicode.org/Public/`
+	https://www.unicode.org/Public/`
 
 func getVersions() []string {
 	if *versionList == "" {
@@ -76,7 +76,7 @@ func main() {
 	for _, v := range versions {
 		assigned := []rune{}
 
-		r := gen.Open("http://www.unicode.org/Public/", "", v+"/ucd/UnicodeData.txt")
+		r := gen.Open("https://www.unicode.org/Public/", "", v+"/ucd/UnicodeData.txt")
 		ucd.Parse(r, func(p *ucd.Parser) {
 			assigned = append(assigned, p.Rune(0))
 		})

@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package queryrange;
+
+option go_package = "queryrange";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "google/protobuf/duration.proto";
+import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message Request {
+  string path = 1;
+  int64 start = 2;
+  int64 end = 3;
+  int64 step = 4;
+  google.protobuf.Duration timeout = 5 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
+  string query = 6;
+}
+
+message APIResponse {
+  string Status = 1 [(gogoproto.jsontag) = "status"];
+  Response Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
+  string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
+  string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
+}
+
+message Response {
+  string ResultType = 1 [(gogoproto.jsontag) = "resultType"];
+  repeated SampleStream Result = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "result"];
+}
+
+message SampleStream {
+  repeated cortex.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];
+  repeated cortex.Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "values"];
+}
+
+message CachedResponse  {
+	string key = 1 [(gogoproto.jsontag) = "key"];
+
+	// List of cached responses; non-overlapping and in order.
+	repeated Extent extents = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "extents"];
+}
+
+message Extent  {
+	int64 start = 1 [(gogoproto.jsontag) = "start"];
+	int64 end = 2 [(gogoproto.jsontag) = "end"];
+  APIResponse response = 3 [(gogoproto.jsontag) = "response"];
+  string trace_id = 4 [(gogoproto.jsontag) = "-"];
+}

@@ -1,3 +1,7 @@
+// Copyright 2018 Francisco Souza. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package backend
 
 import (
@@ -9,6 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // StorageFS is an implementation of the backend storage that stores data on disk
@@ -21,6 +26,7 @@ import (
 // Bucket and object names are url path escaped, so there's no special meaning of forward slashes.
 type StorageFS struct {
 	rootDir string
+	mtx     sync.RWMutex
 }
 
 // NewStorageFS creates an instance of StorageMemory
@@ -42,11 +48,19 @@ func NewStorageFS(objects []Object, rootDir string) (Storage, error) {
 
 // CreateBucket creates a bucket
 func (s *StorageFS) CreateBucket(name string) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	return s.createBucket(name)
+}
+
+func (s *StorageFS) createBucket(name string) error {
 	return os.MkdirAll(filepath.Join(s.rootDir, url.PathEscape(name)), 0700)
 }
 
 // ListBuckets lists buckets
 func (s *StorageFS) ListBuckets() ([]string, error) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
 	infos, err := ioutil.ReadDir(s.rootDir)
 	if err != nil {
 		return nil, err
@@ -66,13 +80,17 @@ func (s *StorageFS) ListBuckets() ([]string, error) {
 
 // GetBucket checks if a bucket exists
 func (s *StorageFS) GetBucket(name string) error {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
 	_, err := os.Stat(filepath.Join(s.rootDir, url.PathEscape(name)))
 	return err
 }
 
 // CreateObject stores an object
 func (s *StorageFS) CreateObject(obj Object) error {
-	err := s.CreateBucket(obj.BucketName)
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	err := s.createBucket(obj.BucketName)
 	if err != nil {
 		return err
 	}
@@ -85,6 +103,8 @@ func (s *StorageFS) CreateObject(obj Object) error {
 
 // ListObjects lists the objects in a given bucket with a given prefix and delimeter
 func (s *StorageFS) ListObjects(bucketName string) ([]Object, error) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
 	infos, err := ioutil.ReadDir(path.Join(s.rootDir, url.PathEscape(bucketName)))
 	if err != nil {
 		return nil, err
@@ -95,7 +115,7 @@ func (s *StorageFS) ListObjects(bucketName string) ([]Object, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to unescape object name %s: %s", info.Name(), err)
 		}
-		object, err := s.GetObject(bucketName, unescaped)
+		object, err := s.getObject(bucketName, unescaped)
 		if err != nil {
 			return nil, err
 		}
@@ -106,6 +126,12 @@ func (s *StorageFS) ListObjects(bucketName string) ([]Object, error) {
 
 // GetObject get an object by bucket and name
 func (s *StorageFS) GetObject(bucketName, objectName string) (Object, error) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	return s.getObject(bucketName, objectName)
+}
+
+func (s *StorageFS) getObject(bucketName, objectName string) (Object, error) {
 	encoded, err := ioutil.ReadFile(filepath.Join(s.rootDir, url.PathEscape(bucketName), url.PathEscape(objectName)))
 	if err != nil {
 		return Object{}, err
@@ -122,6 +148,8 @@ func (s *StorageFS) GetObject(bucketName, objectName string) (Object, error) {
 
 // DeleteObject deletes an object by bucket and name
 func (s *StorageFS) DeleteObject(bucketName, objectName string) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	if objectName == "" {
 		return fmt.Errorf("can't delete object with empty name")
 	}

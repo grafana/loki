@@ -18,7 +18,7 @@ import (
 	"context"
 
 	"cloud.google.com/go/internal"
-	gax "github.com/googleapis/gax-go"
+	gax "github.com/googleapis/gax-go/v2"
 )
 
 // runWithRetry calls the function until it returns nil or a non-retryable error, or

@@ -71,6 +71,12 @@ type OAuthTokenProvider interface {
 	OAuthToken() string
 }
 
+// MultitenantOAuthTokenProvider provides tokens used for multi-tenant authorization.
+type MultitenantOAuthTokenProvider interface {
+	PrimaryOAuthToken() string
+	AuxiliaryOAuthTokens() []string
+}
+
 // TokenRefreshError is an interface used by errors returned during token refresh.
 type TokenRefreshError interface {
 	error
@@ -982,4 +988,68 @@ func (spt *ServicePrincipalToken) Token() Token {
 	spt.refreshLock.RLock()
 	defer spt.refreshLock.RUnlock()
 	return spt.inner.Token
+}
+
+// MultiTenantServicePrincipalToken contains tokens for multi-tenant authorization.
+type MultiTenantServicePrincipalToken struct {
+	PrimaryToken    *ServicePrincipalToken
+	AuxiliaryTokens []*ServicePrincipalToken
+}
+
+// PrimaryOAuthToken returns the primary authorization token.
+func (mt *MultiTenantServicePrincipalToken) PrimaryOAuthToken() string {
+	return mt.PrimaryToken.OAuthToken()
+}
+
+// AuxiliaryOAuthTokens returns one to three auxiliary authorization tokens.
+func (mt *MultiTenantServicePrincipalToken) AuxiliaryOAuthTokens() []string {
+	tokens := make([]string, len(mt.AuxiliaryTokens))
+	for i := range mt.AuxiliaryTokens {
+		tokens[i] = mt.AuxiliaryTokens[i].OAuthToken()
+	}
+	return tokens
+}
+
+// EnsureFreshWithContext will refresh the token if it will expire within the refresh window (as set by
+// RefreshWithin) and autoRefresh flag is on.  This method is safe for concurrent use.
+func (mt *MultiTenantServicePrincipalToken) EnsureFreshWithContext(ctx context.Context) error {
+	if err := mt.PrimaryToken.EnsureFreshWithContext(ctx); err != nil {
+		return fmt.Errorf("failed to refresh primary token: %v", err)
+	}
+	for _, aux := range mt.AuxiliaryTokens {
+		if err := aux.EnsureFreshWithContext(ctx); err != nil {
+			return fmt.Errorf("failed to refresh auxiliary token: %v", err)
+		}
+	}
+	return nil
+}
+
+// NewMultiTenantServicePrincipalToken creates a new MultiTenantServicePrincipalToken with the specified credentials and resource.
+func NewMultiTenantServicePrincipalToken(multiTenantCfg MultiTenantOAuthConfig, clientID string, secret string, resource string) (*MultiTenantServicePrincipalToken, error) {
+	if err := validateStringParam(clientID, "clientID"); err != nil {
+		return nil, err
+	}
+	if err := validateStringParam(secret, "secret"); err != nil {
+		return nil, err
+	}
+	if err := validateStringParam(resource, "resource"); err != nil {
+		return nil, err
+	}
+	auxTenants := multiTenantCfg.AuxiliaryTenants()
+	m := MultiTenantServicePrincipalToken{
+		AuxiliaryTokens: make([]*ServicePrincipalToken, len(auxTenants)),
+	}
+	primary, err := NewServicePrincipalToken(*multiTenantCfg.PrimaryTenant(), clientID, secret, resource)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create SPT for primary tenant: %v", err)
+	}
+	m.PrimaryToken = primary
+	for i := range auxTenants {
+		aux, err := NewServicePrincipalToken(*auxTenants[i], clientID, secret, resource)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create SPT for auxiliary tenant: %v", err)
+		}
+		m.AuxiliaryTokens[i] = aux
+	}
+	return &m, nil
 }

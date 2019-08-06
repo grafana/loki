@@ -43,7 +43,6 @@ This design allows for greater flexibility in choosing your trade-offs.
 Please note that `rand.Rand` from the `math` package is *not* safe for concurrent use.
 Instantiate one per long living go-routine or use a `sync.Pool` if you want to avoid the potential contention of a locked `rand.Source` as its been frequently observed in the package level functions.
 
-
 ```go
 func ExampleULID() {
 	t := time.Unix(1000000, 0)
@@ -51,7 +50,40 @@ func ExampleULID() {
 	fmt.Println(ulid.MustNew(ulid.Timestamp(t), entropy))
 	// Output: 0000XSNJG0MQJHBF4QX1EFD6Y3
 }
+```
 
+## Commandline tool
+
+This repo also provides a tool to generate and parse ULIDs at the command line.
+
+Installation:
+
+```shell
+go get github.com/oklog/ulid/cmd/ulid
+```
+
+Usage:
+
+```shell
+Usage: ulid [-hlqz] [-f <format>] [parameters ...]
+ -f, --format=<format>  when parsing, show times in this format: default, rfc3339, unix, ms
+ -h, --help             print this help text
+ -l, --local            when parsing, show local time instead of UTC
+ -q, --quick            when generating, use non-crypto-grade entropy
+ -z, --zero             when generating, fix entropy to all-zeroes
+```
+
+Examples:
+
+```shell
+$ ulid
+01D78XYFJ1PRM1WPBCBT3VHMNV
+$ ulid -z
+01D78XZ44G0000000000000000
+$ ulid 01D78XZ44G0000000000000000
+Sun Mar 31 03:51:23.536 UTC 2019
+$ ulid --format=rfc3339 --local 01D78XZ44G0000000000000000
+2019-03-30T20:51:23.536PDT
 ```
 
 ## Specification

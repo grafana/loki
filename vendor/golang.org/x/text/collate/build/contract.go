@@ -18,7 +18,7 @@ import (
 // the necessary tables.
 // Any Unicode Collation Algorithm (UCA) table entry that has more than
 // one rune one the left-hand side is called a contraction.
-// See http://www.unicode.org/reports/tr10/#Contractions for more details.
+// See https://www.unicode.org/reports/tr10/#Contractions for more details.
 //
 // We define the following terms:
 //   initial:     a rune that appears as the first rune in a contraction.
