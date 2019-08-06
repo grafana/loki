@@ -31,6 +31,8 @@ data:
         regex: ^$
         source_labels:
         - __service__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
       - action: replace
         replacement: $1
         separator: /
@@ -50,8 +52,6 @@ data:
         source_labels:
         - __meta_kubernetes_pod_container_name
         target_label: container_name
-      - action: labelmap
-        regex: __meta_kubernetes_pod_label_(.+)
       - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
@@ -78,6 +78,8 @@ data:
         regex: ^$
         source_labels:
         - __service__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
       - action: replace
         replacement: $1
         separator: /
@@ -97,8 +99,6 @@ data:
         source_labels:
         - __meta_kubernetes_pod_container_name
         target_label: container_name
-      - action: labelmap
-        regex: __meta_kubernetes_pod_label_(.+)
       - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
@@ -131,6 +131,8 @@ data:
         regex: ^$
         source_labels:
         - __service__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
       - action: replace
         replacement: $1
         separator: /
@@ -150,8 +152,6 @@ data:
         source_labels:
         - __meta_kubernetes_pod_container_name
         target_label: container_name
-      - action: labelmap
-        regex: __meta_kubernetes_pod_label_(.+)
       - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
@@ -186,6 +186,8 @@ data:
         regex: ^$
         source_labels:
         - __service__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
       - action: replace
         replacement: $1
         separator: /
@@ -205,8 +207,6 @@ data:
         source_labels:
         - __meta_kubernetes_pod_container_name
         target_label: container_name
-      - action: labelmap
-        regex: __meta_kubernetes_pod_label_(.+)
       - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
@@ -234,6 +234,8 @@ data:
         regex: ^$
         source_labels:
         - __service__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
       - action: replace
         replacement: $1
         separator: /
@@ -253,8 +255,6 @@ data:
         source_labels:
         - __meta_kubernetes_pod_container_name
         target_label: container_name
-      - action: labelmap
-        regex: __meta_kubernetes_pod_label_(.+)
       - replacement: /var/log/pods/*$1/*.log
         separator: /
         source_labels:
