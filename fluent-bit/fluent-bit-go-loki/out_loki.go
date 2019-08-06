@@ -140,7 +140,7 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 		err = plugin.HandleLine(ls, timestamp, line)
 		if err != nil {
 			fmt.Printf("error sending message for Grafana Loki: %v", err)
-			return output.FLB_RETRY
+			return output.FLB_ERROR
 		}
 	}
 
