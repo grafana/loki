@@ -49,33 +49,33 @@ local utils = import "mixin-utils/utils.libsonnet";
         g.row('Frontend (cortex_gw)')
         .addPanel(
           g.panel('QPS') +
-          g.qpsPanel('loki_request_duration_seconds_count{cluster="$cluster", job="$namespace/cortex-gw", route="api_prom_query"}')
+          g.qpsPanel('loki_request_duration_seconds_count{cluster="$cluster", job="$namespace/cortex-gw", route=~"api_prom_query|api_prom_label|api_prom_label_name_values"}')
         )
         .addPanel(
           g.panel('Latency') +
-          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/cortex-gw'), utils.selector.eq('route', 'api_prom_query')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/cortex-gw'), utils.selector.re('route', 'api_prom_query|api_prom_labels|api_prom_label_name_values')], extra_selectors=[utils.selector.eq('cluster', '$cluster')], sum_by=['route'])
         )
       )
       .addRow(
         g.row('Querier')
         .addPanel(
           g.panel('QPS') +
-          g.qpsPanel('loki_request_duration_seconds_count{cluster="$cluster", job="$namespace/querier"}')
+          g.qpsPanel('loki_request_duration_seconds_count{cluster="$cluster", job="$namespace/querier", route=~"api_prom_query|api_prom_label|api_prom_label_name_values"}')
         )
         .addPanel(
           g.panel('Latency') +
-          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/querier')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/querier'), utils.selector.re('route', 'api_prom_query|api_prom_labels|api_prom_label_name_values')], extra_selectors=[utils.selector.eq('cluster', '$cluster')], sum_by=['route'])
         )
       )
       .addRow(
         g.row('Ingester')
         .addPanel(
           g.panel('QPS') +
-          g.qpsPanel('loki_request_duration_seconds_count{cluster="$cluster", job="$namespace/ingester",route!~"/logproto.Pusher/Push|metrics|ready|traces"}')
+          g.qpsPanel('loki_request_duration_seconds_count{cluster="$cluster", job="$namespace/ingester",route=~"/logproto.Querier/Query|/logproto.Querier/Label"}')
         )
         .addPanel(
           g.panel('Latency') +
-          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/ingester'), utils.selector.nre('route', '/logproto.Pusher/Push|metrics|ready')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/ingester'), utils.selector.re('route', '/logproto.Querier/Query|/logproto.Querier/Label')], extra_selectors=[utils.selector.eq('cluster', '$cluster')], sum_by=['route'])
         )
       ),
 
