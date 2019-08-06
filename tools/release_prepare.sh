@@ -58,6 +58,11 @@ echo "Updating helm charts"
 sed -i '' "s/^version:.*/version: ${LOKI_VERSION}/" production/helm/loki/Chart.yaml
 sed -i '' "s/^version:.*/version: ${PROMTAIL_VERSION}/" production/helm/promtail/Chart.yaml
 sed -i '' "s/^version:.*/version: ${LOKI_STACK_VERSION}/" production/helm/loki-stack/Chart.yaml
+
+sed -i '' "s/^appVersion:.*/appVersion: ${VERSION}/" production/helm/loki/Chart.yaml
+sed -i '' "s/^appVersion:.*/appVersion: ${VERSION}/" production/helm/promtail/Chart.yaml
+sed -i '' "s/^appVersion:.*/appVersion: ${VERSION}/" production/helm/loki-stack/Chart.yaml
+
 echo
 echo "######################################################################################################"
 echo "NEXT STEPS"
