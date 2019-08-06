@@ -104,7 +104,8 @@ type pushTracker struct {
 	err            chan error
 }
 
-// ReadinessHandler is handler for Distributor
+// ReadinessHandler is used to indicate to k8s when the distributor is ready.
+// Returns 200 when the distributor is ready, 500 otherwise.
 func (d *Distributor) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 	_, err := d.ring.GetAll()
 	if err != nil {
