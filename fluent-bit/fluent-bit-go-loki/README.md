@@ -46,8 +46,7 @@ add this section to fluent-bit.conf
     Url http://localhost:3100/api/prom/push
     BatchWait 10 # (10msec)
     BatchSize 30 # (30KiB)
-    # interpreted as {test="fluent-bit-go", lang="Golang"}
-    Labels {"labels": [{"key": "test", "label": "fluent-bit-go"},{"key": "lang", "label": "Golang"}]}
+    Labels {test="fluent-bit-go", lang="Golang"}
 ```
 
 ## Useful links
