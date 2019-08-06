@@ -125,11 +125,11 @@ func (t *Loki) initDistributor() (err error) {
 	if err != nil {
 		return
 	}
+
 	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.distributor.ReadinessHandler))
 	t.server.HTTP.Handle("/api/prom/push", middleware.Merge(
 		t.httpAuthMiddleware,
 	).Wrap(http.HandlerFunc(t.distributor.PushHandler)))
-
 	return
 }
 
@@ -142,6 +142,7 @@ func (t *Loki) initQuerier() (err error) {
 	httpMiddleware := middleware.Merge(
 		t.httpAuthMiddleware,
 	)
+	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.querier.ReadinessHandler))
 	t.server.HTTP.Handle("/api/prom/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.QueryHandler)))
 	t.server.HTTP.Handle("/api/prom/label", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
 	t.server.HTTP.Handle("/api/prom/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
