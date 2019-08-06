@@ -2,7 +2,7 @@ This document describes the rules and governance of the Loki project. It is mean
 
 ## Values
 
-The Loki developers and community are expected to follow the values defined in the [Loki Code of Conduct](https://github.com/grafana/loki/blob/master/CODE_OF_CONDUCT.md). Furthermore, the Loki community strives for kindness, giving feedback effectively, and building a welcoming environment. The Loki developers generally decide by lazy consensus and only resort to conflict resolution by a majority vote if consensus cannot be reached.
+The Loki [team](#team-members) and community are expected to follow the values defined in the [Loki Code of Conduct](https://github.com/grafana/loki/blob/master/CODE_OF_CONDUCT.md). Furthermore, the Loki community strives for kindness, giving feedback effectively, and building a welcoming environment. The Loki developers generally decide by lazy consensus and only resort to conflict resolution by a majority vote if consensus cannot be reached.
 
 ## New contributors
 
