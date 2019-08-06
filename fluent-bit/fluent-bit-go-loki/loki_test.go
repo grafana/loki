@@ -14,8 +14,8 @@ func TestGetLokiConfig(t *testing.T) {
 	}
 
 	assert.Equal(t, "http://localhost:3100/api/prom/push", c.url.String(), "Use default value of URL")
-	assert.Equal(t, 10*time.Millisecond, c.batchWait, "Use default value of batchWait")
-	assert.Equal(t, 10*1024, c.batchSize, "Use default value of batchSize")
+	assert.Equal(t, 1*time.Second, c.batchWait, "Use default value of batchWait")
+	assert.Equal(t, 100*1024, c.batchSize, "Use default value of batchSize")
 
 	// Invalid URL
 	_, err = getLokiConfig("invalid---URL+*#Q(%#Q", "", "", "")
@@ -25,11 +25,11 @@ func TestGetLokiConfig(t *testing.T) {
 
 	// batchWait, batchSize
 
-	c, err = getLokiConfig("", "15", "30", "")
+	c, err = getLokiConfig("", "15", "30720", "")
 	if err != nil {
 		t.Fatalf("failed test %#v", err)
 	}
-	assert.Equal(t, 15*time.Millisecond, c.batchWait, "Use user-defined value of batchWait")
+	assert.Equal(t, 15*time.Second, c.batchWait, "Use user-defined value of batchWait")
 	assert.Equal(t, 30*1024, c.batchSize, "Use user-defined value of batchSize")
 
 	// LabelSets

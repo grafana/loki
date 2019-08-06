@@ -38,15 +38,15 @@ func getLokiConfig(url string, batchWait string, batchSize string, labels string
 
 	batchWaitValue, err := strconv.Atoi(batchWait)
 	if err != nil || batchWait == "" {
-		batchWaitValue = 10
+		batchWaitValue = 1
 	}
-	lc.batchWait = time.Duration(batchWaitValue) * time.Millisecond
+	lc.batchWait = time.Duration(batchWaitValue) * time.Second
 
 	batchSizeValue, err := strconv.Atoi(batchSize)
 	if err != nil || batchSize == "" {
-		batchSizeValue = 10
+		batchSizeValue = 100 * 1024
 	}
-	lc.batchSize = batchSizeValue * 1024
+	lc.batchSize = batchSizeValue
 
 	var labelValues labelSetJSON
 	if labels == "" {
