@@ -48,13 +48,13 @@ scrape_configs:
 
 #### Description
 
-Scrape_config section of config.yaml contents contains various jobs for parsing your logs
+`scrape_config` section of `config.yaml` contents contains various jobs for parsing your logs
 
 `job` and `host` are examples of static labels added to all logs, labels are indexed by Loki and are used to help search logs.
 
 `__path__` it is path to directory where stored your logs.
 
-If you run promtail and this config.yaml in Docker container, don't forget use docker volumes for mapping real directories
+If you run promtail and this `config.yaml` in Docker container, don't forget use docker volumes for mapping real directories
 with log to those folders in the container.
 
 #### Example Use

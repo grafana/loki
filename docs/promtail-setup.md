@@ -133,7 +133,7 @@ spec:
 ### Custom Log Paths
 
 Sometime application create customized log files.  To collect those logs, you
-would need to have a customized `__path__` in your scrape_config.
+would need to have a customized `__path__` in your `scrape_config`.
 
 Right now, the best way to watch and tail custom log path is define log file path
 as a label for the pod.
