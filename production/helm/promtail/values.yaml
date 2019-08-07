@@ -124,3 +124,7 @@ config:
   target_config:
     # Period to resync directories being watched and files being tailed
     sync_period: 10s
+
+serviceMonitor:
+  enabled: false
+  interval: ""
