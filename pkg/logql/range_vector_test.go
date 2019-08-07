@@ -42,7 +42,7 @@ func newEntryIterator() iter.EntryIterator {
 }
 
 func newPoint(t time.Time, v float64) promql.Point {
-	return promql.Point{T: t.UnixNano(), V: v}
+	return promql.Point{T: t.UnixNano() / 1e+6, V: v}
 }
 
 func Test_RangeVectorIterator(t *testing.T) {
@@ -128,7 +128,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 				for it.Next() {
 					ts, v := it.At(count)
 					require.ElementsMatch(t, tt.expectedVectors[i], v)
-					require.Equal(t, tt.expectedTs[i].UnixNano(), ts)
+					require.Equal(t, tt.expectedTs[i].UnixNano()/1e+6, ts)
 					i++
 				}
 				require.Equal(t, len(tt.expectedTs), i)

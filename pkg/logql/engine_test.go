@@ -60,7 +60,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 			[]SelectParams{
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app="foo"}|~".+bar"`}},
 			},
-			promql.Vector{promql.Sample{Point: promql.Point{T: 60000000000, V: 1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
+			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
 		},
 		{
 			`rate({app="foo"}[30s])`, time.Unix(60, 0), logproto.FORWARD, 10,
@@ -71,7 +71,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 			[]SelectParams{
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(30, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app="foo"}`}},
 			},
-			promql.Vector{promql.Sample{Point: promql.Point{T: 60000000000, V: 0.5}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
+			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.5}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
 		},
 		{
 			`count_over_time({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), logproto.BACKWARD, 10,
@@ -81,7 +81,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 			[]SelectParams{
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app="foo"}|~".+bar"`}},
 			},
-			promql.Vector{promql.Sample{Point: promql.Point{T: 60000000000, V: 6}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
+			promql.Vector{promql.Sample{Point: promql.Point{T: 60 * 1000, V: 6}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
 		},
 		{
 			`count_over_time(({app="foo"} |~".+bar")[5m])`, time.Unix(5*60, 0), logproto.BACKWARD, 10,
@@ -91,7 +91,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 			[]SelectParams{
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(5*60, 0), Limit: 0, Selector: `{app="foo"}|~".+bar"`}},
 			},
-			promql.Vector{promql.Sample{Point: promql.Point{T: 5 * 60000000000, V: 30}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
+			promql.Vector{promql.Sample{Point: promql.Point{T: 5 * 60 * 1000, V: 30}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}}},
 		},
 		{
 			`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
@@ -102,7 +102,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
 			},
 			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 6}, Metric: labels.Labels{}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 6}, Metric: labels.Labels{}},
 			},
 		},
 		{
@@ -114,7 +114,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
 			},
 			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.1}, Metric: labels.Labels{}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.1}, Metric: labels.Labels{}},
 			},
 		},
 		{
@@ -126,8 +126,8 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
 			},
 			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
 			},
 		},
 		{
@@ -139,7 +139,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
 			},
 			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.2}, Metric: labels.Labels{}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.2}, Metric: labels.Labels{}},
 			},
 		},
 		{
@@ -151,7 +151,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
 			},
 			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.4}, Metric: labels.Labels{}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.4}, Metric: labels.Labels{}},
 			},
 		},
 		{
@@ -163,8 +163,8 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
 			},
 			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 6}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 6}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 6}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 6}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
 			},
 		},
 		{
@@ -176,7 +176,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
 			},
 			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 2}, Metric: labels.Labels{}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 2}, Metric: labels.Labels{}},
 			},
 		},
 		{
@@ -188,7 +188,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
 			},
 			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 9}, Metric: labels.Labels{}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 9}, Metric: labels.Labels{}},
 			},
 		},
 		{
@@ -200,7 +200,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
 			},
 			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 12}, Metric: labels.Labels{}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 12}, Metric: labels.Labels{}},
 			},
 		},
 		{
@@ -212,8 +212,8 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
 			},
 			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
 			},
 		},
 		{
@@ -225,8 +225,8 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
 			},
 			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
 			},
 		},
 		{
@@ -238,7 +238,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
 			},
 			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
 			},
 		},
 		{
@@ -251,10 +251,10 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
 			},
 			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "buzz"}}},
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "fuzz"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "buzz"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "fuzz"}}},
 			},
 		},
 		{
@@ -267,8 +267,8 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
 			},
 			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "fuzz"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "fuzz"}}},
 			},
 		},
 		{
@@ -281,9 +281,9 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
 			},
 			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
-				promql.Sample{Point: promql.Point{T: 60000000000, V: 0.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "fuzz"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "fuzz"}}},
 			},
 		},
 	} {
@@ -350,7 +350,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
-					Points: []promql.Point{{T: 60000000000, V: 1}, {T: 120000000000, V: 1}},
+					Points: []promql.Point{{T: 60 * 1000, V: 1}, {T: 120 * 1000, V: 1}},
 				},
 			},
 		},
@@ -365,7 +365,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
-					Points: []promql.Point{{T: 60000000000, V: 0.5}, {T: 75000000000, V: 0.5}, {T: 90000000000, V: 0.5}, {T: 105000000000, V: 0.5}, {T: 120000000000, V: 0.5}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.5}, {T: 75 * 1000, V: 0.5}, {T: 90 * 1000, V: 0.5}, {T: 105 * 1000, V: 0.5}, {T: 120 * 1000, V: 0.5}},
 				},
 			},
 		},
@@ -380,7 +380,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
-					Points: []promql.Point{{T: 60000000000, V: 6}, {T: 90000000000, V: 6}, {T: 120000000000, V: 6}},
+					Points: []promql.Point{{T: 60 * 1000, V: 6}, {T: 90 * 1000, V: 6}, {T: 120 * 1000, V: 6}},
 				},
 			},
 		},
@@ -396,17 +396,17 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
 					Points: []promql.Point{
-						{T: 300000000000, V: 30},
-						{T: 330000000000, V: 30},
-						{T: 360000000000, V: 30},
-						{T: 390000000000, V: 30},
-						{T: 420000000000, V: 30},
-						{T: 450000000000, V: 30},
-						{T: 480000000000, V: 30},
-						{T: 510000000000, V: 30},
-						{T: 540000000000, V: 30},
-						{T: 570000000000, V: 30},
-						{T: 600000000000, V: 30},
+						{T: 300 * 1000, V: 30},
+						{T: 330 * 1000, V: 30},
+						{T: 360 * 1000, V: 30},
+						{T: 390 * 1000, V: 30},
+						{T: 420 * 1000, V: 30},
+						{T: 450 * 1000, V: 30},
+						{T: 480 * 1000, V: 30},
+						{T: 510 * 1000, V: 30},
+						{T: 540 * 1000, V: 30},
+						{T: 570 * 1000, V: 30},
+						{T: 600 * 1000, V: 30},
 					},
 				},
 			},
@@ -422,7 +422,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{},
-					Points: []promql.Point{{T: 60000000000, V: 6}, {T: 90000000000, V: 6}, {T: 120000000000, V: 6}, {T: 150000000000, V: 6}, {T: 180000000000, V: 6}},
+					Points: []promql.Point{{T: 60 * 1000, V: 6}, {T: 90 * 1000, V: 6}, {T: 120 * 1000, V: 6}, {T: 150 * 1000, V: 6}, {T: 180 * 1000, V: 6}},
 				},
 			},
 		},
@@ -437,7 +437,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{},
-					Points: []promql.Point{{T: 60000000000, V: 0.1}, {T: 90000000000, V: 0.1}, {T: 120000000000, V: 0.1}, {T: 150000000000, V: 0.1}, {T: 180000000000, V: 0.1}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.1}, {T: 90 * 1000, V: 0.1}, {T: 120 * 1000, V: 0.1}, {T: 150 * 1000, V: 0.1}, {T: 180 * 1000, V: 0.1}},
 				},
 			},
 		},
@@ -452,11 +452,11 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "bar"}},
-					Points: []promql.Point{{T: 60000000000, V: 0.2}, {T: 90000000000, V: 0.2}, {T: 120000000000, V: 0.2}, {T: 150000000000, V: 0.2}, {T: 180000000000, V: 0.2}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.2}, {T: 90 * 1000, V: 0.2}, {T: 120 * 1000, V: 0.2}, {T: 150 * 1000, V: 0.2}, {T: 180 * 1000, V: 0.2}},
 				},
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
-					Points: []promql.Point{{T: 60000000000, V: 0.1}, {T: 90000000000, V: 0.1}, {T: 120000000000, V: 0.1}, {T: 150000000000, V: 0.1}, {T: 180000000000, V: 0.1}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.1}, {T: 90 * 1000, V: 0.1}, {T: 120 * 1000, V: 0.1}, {T: 150 * 1000, V: 0.1}, {T: 180 * 1000, V: 0.1}},
 				},
 			},
 		},
@@ -471,7 +471,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{},
-					Points: []promql.Point{{T: 60000000000, V: 0.2}, {T: 90000000000, V: 0.2}, {T: 120000000000, V: 0.2}, {T: 150000000000, V: 0.2}, {T: 180000000000, V: 0.2}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.2}, {T: 90 * 1000, V: 0.2}, {T: 120 * 1000, V: 0.2}, {T: 150 * 1000, V: 0.2}, {T: 180 * 1000, V: 0.2}},
 				},
 			},
 		},
@@ -486,7 +486,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{},
-					Points: []promql.Point{{T: 60000000000, V: 0.4}, {T: 90000000000, V: 0.4}, {T: 120000000000, V: 0.4}, {T: 150000000000, V: 0.4}, {T: 180000000000, V: 0.4}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.4}, {T: 90 * 1000, V: 0.4}, {T: 120 * 1000, V: 0.4}, {T: 150 * 1000, V: 0.4}, {T: 180 * 1000, V: 0.4}},
 				},
 			},
 		},
@@ -501,11 +501,11 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "bar"}},
-					Points: []promql.Point{{T: 60000000000, V: 12}, {T: 90000000000, V: 12}, {T: 120000000000, V: 12}, {T: 150000000000, V: 12}, {T: 180000000000, V: 12}},
+					Points: []promql.Point{{T: 60 * 1000, V: 12}, {T: 90 * 1000, V: 12}, {T: 120 * 1000, V: 12}, {T: 150 * 1000, V: 12}, {T: 180 * 1000, V: 12}},
 				},
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
-					Points: []promql.Point{{T: 60000000000, V: 6}, {T: 90000000000, V: 6}, {T: 120000000000, V: 6}, {T: 150000000000, V: 6}, {T: 180000000000, V: 6}},
+					Points: []promql.Point{{T: 60 * 1000, V: 6}, {T: 90 * 1000, V: 6}, {T: 120 * 1000, V: 6}, {T: 150 * 1000, V: 6}, {T: 180 * 1000, V: 6}},
 				},
 			},
 		},
@@ -520,7 +520,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{},
-					Points: []promql.Point{{T: 60000000000, V: 2}, {T: 90000000000, V: 2}, {T: 120000000000, V: 2}, {T: 150000000000, V: 2}, {T: 180000000000, V: 2}},
+					Points: []promql.Point{{T: 60 * 1000, V: 2}, {T: 90 * 1000, V: 2}, {T: 120 * 1000, V: 2}, {T: 150 * 1000, V: 2}, {T: 180 * 1000, V: 2}},
 				},
 			},
 		},
@@ -535,7 +535,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{},
-					Points: []promql.Point{{T: 60000000000, V: 9}, {T: 90000000000, V: 9}, {T: 120000000000, V: 9}, {T: 150000000000, V: 9}, {T: 180000000000, V: 9}},
+					Points: []promql.Point{{T: 60 * 1000, V: 9}, {T: 90 * 1000, V: 9}, {T: 120 * 1000, V: 9}, {T: 150 * 1000, V: 9}, {T: 180 * 1000, V: 9}},
 				},
 			},
 		},
@@ -550,7 +550,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{},
-					Points: []promql.Point{{T: 60000000000, V: 12}, {T: 90000000000, V: 12}, {T: 120000000000, V: 12}, {T: 150000000000, V: 12}, {T: 180000000000, V: 12}},
+					Points: []promql.Point{{T: 60 * 1000, V: 12}, {T: 90 * 1000, V: 12}, {T: 120 * 1000, V: 12}, {T: 150 * 1000, V: 12}, {T: 180 * 1000, V: 12}},
 				},
 			},
 		},
@@ -565,11 +565,11 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "bar"}},
-					Points: []promql.Point{{T: 60000000000, V: 0.2}, {T: 90000000000, V: 0.2}, {T: 120000000000, V: 0.2}, {T: 150000000000, V: 0.2}, {T: 180000000000, V: 0.2}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.2}, {T: 90 * 1000, V: 0.2}, {T: 120 * 1000, V: 0.2}, {T: 150 * 1000, V: 0.2}, {T: 180 * 1000, V: 0.2}},
 				},
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
-					Points: []promql.Point{{T: 60000000000, V: 0.1}, {T: 90000000000, V: 0.1}, {T: 120000000000, V: 0.1}, {T: 150000000000, V: 0.1}, {T: 180000000000, V: 0.1}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.1}, {T: 90 * 1000, V: 0.1}, {T: 120 * 1000, V: 0.1}, {T: 150 * 1000, V: 0.1}, {T: 180 * 1000, V: 0.1}},
 				},
 			},
 		},
@@ -584,11 +584,11 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "bar"}},
-					Points: []promql.Point{{T: 60000000000, V: 0.2}, {T: 90000000000, V: 0.2}, {T: 120000000000, V: 0.2}, {T: 150000000000, V: 0.2}, {T: 180000000000, V: 0.2}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.2}, {T: 90 * 1000, V: 0.2}, {T: 120 * 1000, V: 0.2}, {T: 150 * 1000, V: 0.2}, {T: 180 * 1000, V: 0.2}},
 				},
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
-					Points: []promql.Point{{T: 60000000000, V: 0.1}, {T: 90000000000, V: 0.1}, {T: 120000000000, V: 0.1}, {T: 150000000000, V: 0.1}, {T: 180000000000, V: 0.1}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.1}, {T: 90 * 1000, V: 0.1}, {T: 120 * 1000, V: 0.1}, {T: 150 * 1000, V: 0.1}, {T: 180 * 1000, V: 0.1}},
 				},
 			},
 		},
@@ -603,7 +603,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "bar"}},
-					Points: []promql.Point{{T: 60000000000, V: 0.2}, {T: 90000000000, V: 0.2}, {T: 120000000000, V: 0.2}, {T: 150000000000, V: 0.2}, {T: 180000000000, V: 0.2}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.2}, {T: 90 * 1000, V: 0.2}, {T: 120 * 1000, V: 0.2}, {T: 150 * 1000, V: 0.2}, {T: 180 * 1000, V: 0.2}},
 				},
 			},
 		},
@@ -619,15 +619,15 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "buzz"}},
-					Points: []promql.Point{{T: 60000000000, V: 1}, {T: 90000000000, V: 1}, {T: 120000000000, V: 1}, {T: 150000000000, V: 1}, {T: 180000000000, V: 1}},
+					Points: []promql.Point{{T: 60 * 1000, V: 1}, {T: 90 * 1000, V: 1}, {T: 120 * 1000, V: 1}, {T: 150 * 1000, V: 1}, {T: 180 * 1000, V: 1}},
 				},
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
-					Points: []promql.Point{{T: 60000000000, V: 0.1}, {T: 90000000000, V: 0.1}, {T: 120000000000, V: 0.1}, {T: 150000000000, V: 0.1}, {T: 180000000000, V: 0.1}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.1}, {T: 90 * 1000, V: 0.1}, {T: 120 * 1000, V: 0.1}, {T: 150 * 1000, V: 0.1}, {T: 180 * 1000, V: 0.1}},
 				},
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "fuzz"}},
-					Points: []promql.Point{{T: 60000000000, V: 0.2}, {T: 90000000000, V: 0.2}, {T: 120000000000, V: 0.2}, {T: 150000000000, V: 0.2}, {T: 180000000000, V: 0.2}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.2}, {T: 90 * 1000, V: 0.2}, {T: 120 * 1000, V: 0.2}, {T: 150 * 1000, V: 0.2}, {T: 180 * 1000, V: 0.2}},
 				},
 			},
 		},
@@ -643,11 +643,11 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "bar"}},
-					Points: []promql.Point{{T: 60000000000, V: 0.05}, {T: 90000000000, V: 0.05}, {T: 120000000000, V: 0.05}, {T: 150000000000, V: 0.05}, {T: 180000000000, V: 0.05}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.05}, {T: 90 * 1000, V: 0.05}, {T: 120 * 1000, V: 0.05}, {T: 150 * 1000, V: 0.05}, {T: 180 * 1000, V: 0.05}},
 				},
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
-					Points: []promql.Point{{T: 60000000000, V: 0.1}, {T: 90000000000, V: 0.1}, {T: 120000000000, V: 0.1}, {T: 150000000000, V: 0.1}, {T: 180000000000, V: 0.1}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.1}, {T: 90 * 1000, V: 0.1}, {T: 120 * 1000, V: 0.1}, {T: 150 * 1000, V: 0.1}, {T: 180 * 1000, V: 0.1}},
 				},
 			},
 		},
@@ -663,15 +663,15 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "bar"}},
-					Points: []promql.Point{{T: 60000000000, V: 0.05}, {T: 90000000000, V: 0.05}, {T: 120000000000, V: 0.05}, {T: 150000000000, V: 0.05}, {T: 180000000000, V: 0.05}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.05}, {T: 90 * 1000, V: 0.05}, {T: 120 * 1000, V: 0.05}, {T: 150 * 1000, V: 0.05}, {T: 180 * 1000, V: 0.05}},
 				},
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
-					Points: []promql.Point{{T: 60000000000, V: 0.1}, {T: 90000000000, V: 0.1}, {T: 120000000000, V: 0.1}, {T: 150000000000, V: 0.1}, {T: 180000000000, V: 0.1}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.1}, {T: 90 * 1000, V: 0.1}, {T: 120 * 1000, V: 0.1}, {T: 150 * 1000, V: 0.1}, {T: 180 * 1000, V: 0.1}},
 				},
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "fuzz"}},
-					Points: []promql.Point{{T: 60000000000, V: 0.2}, {T: 90000000000, V: 0.2}, {T: 120000000000, V: 0.2}, {T: 150000000000, V: 0.2}, {T: 180000000000, V: 0.2}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.2}, {T: 90 * 1000, V: 0.2}, {T: 120 * 1000, V: 0.2}, {T: 150 * 1000, V: 0.2}, {T: 180 * 1000, V: 0.2}},
 				},
 			},
 		},

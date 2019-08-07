@@ -6,7 +6,7 @@ import (
 )
 
 // RangeVectorAggregator aggregates samples for a given range of samples.
-// It receives the current nano-seconds timestamp and the list of point within
+// It receives the current milliseconds timestamp and the list of point within
 // the range.
 type RangeVectorAggregator func(int64, []promql.Point) float64
 
@@ -110,6 +110,8 @@ func (r *rangeVectorIterator) load(start, end int64) {
 
 func (r *rangeVectorIterator) At(aggregator RangeVectorAggregator) (int64, promql.Vector) {
 	result := make([]promql.Sample, 0, len(r.window))
+	// convert ts from nano to milli seconds as the iterator work with nanoseconds
+	ts := r.current / 1e+6
 	for lbs, series := range r.window {
 		labels, err := promql.ParseMetric(lbs)
 		if err != nil {
@@ -118,12 +120,12 @@ func (r *rangeVectorIterator) At(aggregator RangeVectorAggregator) (int64, promq
 
 		result = append(result, promql.Sample{
 			Point: promql.Point{
-				V: aggregator(r.current, series.Points),
-				T: r.current,
+				V: aggregator(ts, series.Points),
+				T: ts,
 			},
 			Metric: labels,
 		})
 
 	}
-	return r.current, result
+	return ts, result
 }
