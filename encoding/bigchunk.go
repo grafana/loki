@@ -114,6 +114,8 @@ func (b *bigchunk) UnmarshalFromBuf(buf []byte) error {
 	}
 
 	b.chunks = make([]smallChunk, 0, numChunks+1) // allow one extra space in case we want to add new data
+	var reuseIter chunkenc.Iterator
+	var start, end int64
 	for i := uint16(0); i < numChunks; i++ {
 		chunkLen, err := r.ReadUint16()
 		if err != nil {
@@ -130,7 +132,7 @@ func (b *bigchunk) UnmarshalFromBuf(buf []byte) error {
 			return err
 		}
 
-		start, end, err := firstAndLastTimes(chunk)
+		start, end, reuseIter, err = firstAndLastTimes(chunk, reuseIter)
 		if err != nil {
 			return err
 		}
@@ -172,7 +174,7 @@ func (b *bigchunk) Size() int {
 func (b *bigchunk) NewIterator() Iterator {
 	var it chunkenc.Iterator
 	if len(b.chunks) > 0 {
-		it = b.chunks[0].Iterator()
+		it = b.chunks[0].Iterator(it)
 	} else {
 		it = chunkenc.NewNopIterator()
 	}
@@ -257,9 +259,9 @@ func (it *bigchunkIterator) FindAtOrAfter(target model.Time) bool {
 	}
 
 	if it.curr == nil {
-		it.curr = it.chunks[it.i].Iterator()
+		it.curr = it.chunks[it.i].Iterator(it.curr)
 	} else if t, _ := it.curr.At(); int64(target) <= t {
-		it.curr = it.chunks[it.i].Iterator()
+		it.curr = it.chunks[it.i].Iterator(it.curr)
 	}
 
 	for it.curr.Next() {
@@ -281,7 +283,7 @@ func (it *bigchunkIterator) Scan() bool {
 
 	for it.i < len(it.chunks)-1 {
 		it.i++
-		it.curr = it.chunks[it.i].Iterator()
+		it.curr = it.chunks[it.i].Iterator(it.curr)
 		if it.curr.Next() {
 			return true
 		}
@@ -321,13 +323,13 @@ func (it *bigchunkIterator) Err() error {
 	return nil
 }
 
-func firstAndLastTimes(c chunkenc.Chunk) (int64, int64, error) {
+func firstAndLastTimes(c chunkenc.Chunk, iter chunkenc.Iterator) (int64, int64, chunkenc.Iterator, error) {
 	var (
 		first    int64
 		last     int64
 		firstSet bool
-		iter     = c.Iterator()
 	)
+	iter = c.Iterator(iter)
 	for iter.Next() {
 		t, _ := iter.At()
 		if !firstSet {
@@ -336,5 +338,5 @@ func firstAndLastTimes(c chunkenc.Chunk) (int64, int64, error) {
 		}
 		last = t
 	}
-	return first, last, iter.Err()
+	return first, last, iter, iter.Err()
 }
