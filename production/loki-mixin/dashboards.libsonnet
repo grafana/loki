@@ -131,22 +131,6 @@ local utils = import "mixin-utils/utils.libsonnet";
         ),
       ),
 
-    'loki-frontend.json':
-      g.dashboard('Loki / Frontend')
-      .addTemplate('cluster', 'kube_pod_container_info{image=~".*loki.*"}', 'cluster')
-      .addTemplate('namespace', 'kube_pod_container_info{image=~".*loki.*"}', 'namespace')
-      .addRow(
-        g.row('loki Reqs (cortex_gw)')
-        .addPanel(
-          g.panel('QPS') +
-          g.qpsPanel('loki_request_duration_seconds_count{cluster="$cluster", job="$namespace/cortex-gw"}')
-        )
-        .addPanel(
-          g.panel('Latency') +
-          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/cortex-gw')], extra_selectors=[utils.selector.eq('cluster', '$cluster')])
-        )
-      ),
-
       'promtail.json':
         g.dashboard('Loki / Promtail')
         .addTemplate('cluster', 'kube_pod_container_info{image=~".*promtail.*"}', 'cluster')
