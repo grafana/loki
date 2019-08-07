@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
 )
@@ -170,6 +172,47 @@ func TestGZIPChunkFilling(t *testing.T) {
 	}
 
 	require.Equal(t, int64(lines), i)
+}
+
+func TestMemChunk_AppendOutOfOrder(t *testing.T) {
+	t.Parallel()
+
+	type tester func(t *testing.T, chk *MemChunk)
+
+	tests := map[string]tester{
+		"append out of order in the same block": func(t *testing.T, chk *MemChunk) {
+			assert.NoError(t, chk.Append(logprotoEntry(5, "test")))
+			assert.NoError(t, chk.Append(logprotoEntry(6, "test")))
+
+			assert.EqualError(t, chk.Append(logprotoEntry(1, "test")), ErrOutOfOrder.Error())
+		},
+		"append out of order in a new block right after cutting the previous one": func(t *testing.T, chk *MemChunk) {
+			assert.NoError(t, chk.Append(logprotoEntry(5, "test")))
+			assert.NoError(t, chk.Append(logprotoEntry(6, "test")))
+			assert.NoError(t, chk.cut())
+
+			assert.EqualError(t, chk.Append(logprotoEntry(1, "test")), ErrOutOfOrder.Error())
+		},
+		"append out of order in a new block after multiple cuts": func(t *testing.T, chk *MemChunk) {
+			assert.NoError(t, chk.Append(logprotoEntry(5, "test")))
+			assert.NoError(t, chk.cut())
+
+			assert.NoError(t, chk.Append(logprotoEntry(6, "test")))
+			assert.NoError(t, chk.cut())
+
+			assert.EqualError(t, chk.Append(logprotoEntry(1, "test")), ErrOutOfOrder.Error())
+		},
+	}
+
+	for testName, tester := range tests {
+		tester := tester
+
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
+			tester(t, NewMemChunk(EncGZIP))
+		})
+	}
 }
 
 var result []Chunk
