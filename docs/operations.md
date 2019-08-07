@@ -137,8 +137,8 @@ Example config for using S3 & DynamoDB:
 ```yaml
 schema_config:
   configs:
-    - from: 0
-      store: dynamo
+    - from: 2018-04-15
+      store: aws
       object_store: s3
       schema: v9
       index:
