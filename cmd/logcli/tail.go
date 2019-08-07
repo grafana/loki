@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/loki/pkg/querier"
 
 	"github.com/fatih/color"
+	promlabels "github.com/prometheus/prometheus/pkg/labels"
 )
 
 func tailQuery(out output.LogOutput) {
@@ -35,6 +36,7 @@ func tailQuery(out output.LogOutput) {
 		}
 
 		labels := ""
+		parsedLabels := promlabels.Labels{}
 		for _, stream := range tailReponse.Streams {
 			if !*noLabels {
 
@@ -53,14 +55,13 @@ func tailQuery(out output.LogOutput) {
 					labels = ls.String()
 
 				} else {
-
 					labels = stream.Labels
 				}
+				parsedLabels = mustParseLabels(labels)
 			}
 
 			for _, entry := range stream.Entries {
-				lbls := mustParseLabels(labels)
-				fmt.Println(out.Format(entry.Timestamp, &lbls, 0, entry.Line))
+				fmt.Println(out.Format(entry.Timestamp, &parsedLabels, 0, entry.Line))
 			}
 
 		}
