@@ -404,7 +404,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 
 	chunks := []Chunk{chunk}
 
-	writeReqs, keysToCache, err := c.calculateIndexEntries(from, through, chunk)
+	writeReqs, keysToCache, err := c.calculateIndexEntries(ctx, from, through, chunk)
 	if err != nil {
 		return err
 	}
@@ -430,7 +430,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 }
 
 // calculateIndexEntries creates a set of batched WriteRequests for all the chunks it is given.
-func (c *seriesStore) calculateIndexEntries(from, through model.Time, chunk Chunk) (WriteBatch, []string, error) {
+func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through model.Time, chunk Chunk) (WriteBatch, []string, error) {
 	seenIndexEntries := map[string]struct{}{}
 	entries := []IndexEntry{}
 
@@ -443,7 +443,7 @@ func (c *seriesStore) calculateIndexEntries(from, through model.Time, chunk Chun
 	if err != nil {
 		return nil, nil, err
 	}
-	_, _, missing := c.writeDedupeCache.Fetch(context.Background(), keys)
+	_, _, missing := c.writeDedupeCache.Fetch(ctx, keys)
 	// keys and labelEntries are matched in order, but Fetch() may
 	// return missing keys in any order so check against all of them.
 	for _, missingKey := range missing {
