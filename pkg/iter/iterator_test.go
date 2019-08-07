@@ -258,7 +258,7 @@ func TestEntryIteratorForward(t *testing.T) {
 	itr2 := mkStreamIterator(inverse(offset(testSize, identity)), "{foobar: \"bazbar\"}")
 
 	heapIterator := NewHeapIterator([]EntryIterator{itr1, itr2}, logproto.BACKWARD)
-	forwardIterator, err := NewEntryIteratorForward(heapIterator, testSize)
+	forwardIterator, err := NewEntryIteratorForward(heapIterator, testSize, false)
 	require.NoError(t, err)
 
 	for i := int64((testSize / 2) + 1); i <= testSize; i++ {

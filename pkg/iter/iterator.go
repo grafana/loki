@@ -529,8 +529,18 @@ type entryIteratorForward struct {
 
 // NewEntryIteratorBackward returns an iterator which loads all or upton N entries
 // of an existing iterator, and then iterates over them backward.
-func NewEntryIteratorForward(it EntryIterator, limit uint32) (EntryIterator, error) {
-	return &entryIteratorForward{entriesWithLabels: make([]entryWithLabels, 0, 1024), backwardIter: it, limit: limit}, it.Error()
+// preload entries when they are being queried with a timeout
+func NewEntryIteratorForward(it EntryIterator, limit uint32, preload bool) (EntryIterator, error) {
+	itr, err := &entryIteratorForward{entriesWithLabels: make([]entryWithLabels, 0, 1024), backwardIter: it, limit: limit}, it.Error()
+	if err != nil {
+		return nil, err
+	}
+
+	if preload {
+		itr.load()
+	}
+
+	return itr, nil
 }
 
 func (i *entryIteratorForward) load() {
