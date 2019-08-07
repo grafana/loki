@@ -9,7 +9,9 @@ nevertheless [LogCLI](logcli.md) represents a viable standalone alternative.
 ### Grafana
 
 Grafana ships with built-in support for Loki for versions greater than
-[6.0](https://grafana.com/grafana/download).
+[6.0](https://grafana.com/grafana/download/6.0.0), however using
+[6.3](https://grafana.com/grafana/download/6.3.0) or later is highly
+recommended.
 
 1. Log into your Grafana, e.g, `http://localhost:3000` (default username:
    `admin`, default password: `admin`)
@@ -32,9 +34,9 @@ logs with Loki.
 > and make sure to adjust the URL similarly as shown above.
 
 ### LogCLI
-If you do not want (or can) use a full Grafana instance, [LogCLI](logcli.md) is
-a small command line application to run LogQL queries against a Loki server.
-Refer to its [documentation](logcli.md) for reference.
+If you prefer a command line interface, [LogCLI](logcli.md) also allows to run
+LogQL queries against a Loki server. Refer to its [documentation](logcli.md) for
+more details.
 
 ## LogQL
 Loki has it's very own language for querying logs from the Loki server called *LogQL*. Think of
