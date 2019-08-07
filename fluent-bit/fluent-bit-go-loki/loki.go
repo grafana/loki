@@ -2,12 +2,16 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/common/model"
+	"github.com/weaveworks/common/logging"
 )
 
 type lokiConfig struct {
@@ -15,9 +19,10 @@ type lokiConfig struct {
 	batchWait time.Duration
 	batchSize int
 	labelSet  model.LabelSet
+	logLevel  logging.Level
 }
 
-func getLokiConfig(url string, batchWait string, batchSize string, labels string) (*lokiConfig, error) {
+func getLokiConfig(url string, batchWait string, batchSize string, labels string, logLevelVal string) (*lokiConfig, error) {
 	lc := &lokiConfig{}
 	var clientURL flagext.URLValue
 	if url == "" {
@@ -56,5 +61,22 @@ func getLokiConfig(url string, batchWait string, batchSize string, labels string
 	}
 	lc.labelSet = labelSet
 
+	if logLevelVal == "" {
+		logLevelVal = "info"
+	}
+	var logLevel logging.Level
+	if err := logLevel.Set(logLevelVal); err != nil {
+		return nil, fmt.Errorf("invalid log level: %v", logLevel)
+	}
+	lc.logLevel = logLevel
+
 	return lc, nil
+}
+
+func newLogger(logLevel logging.Level) log.Logger {
+	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
+	logger = level.NewFilter(logger, logLevel.Gokit)
+	logger = log.With(logger, "caller", log.Caller(3))
+
+	return logger
 }

@@ -2,13 +2,14 @@ package main
 
 import (
 	"C"
-	"fmt"
 	"os"
 	"time"
 	"unsafe"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/fluent/fluent-bit-go/output"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	kit "github.com/go-kit/kit/log/logrus"
 	"github.com/grafana/loki/pkg/promtail/client"
 	jsoniter "github.com/json-iterator/go"
@@ -19,6 +20,7 @@ import (
 var loki client.Client
 var ls model.LabelSet
 var plugin GoOutputPlugin = &fluentPlugin{}
+var logger log.Logger
 
 type GoOutputPlugin interface {
 	PluginConfigKey(ctx unsafe.Pointer, key string) string
@@ -69,18 +71,21 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 	batchWait := plugin.PluginConfigKey(ctx, "BatchWait")
 	batchSize := plugin.PluginConfigKey(ctx, "BatchSize")
 	labels := plugin.PluginConfigKey(ctx, "Labels")
+	logLevel := plugin.PluginConfigKey(ctx, "LogLevel")
 
-	config, err := getLokiConfig(url, batchWait, batchSize, labels)
+	config, err := getLokiConfig(url, batchWait, batchSize, labels, logLevel)
 	if err != nil {
 		plugin.Unregister(ctx)
 		plugin.Exit(1)
 		return output.FLB_ERROR
 	}
-	fmt.Printf("[flb-go] plugin version is %s\n", Version)
-	fmt.Printf("[flb-go] plugin URL parameter = '%s'\n", url)
-	fmt.Printf("[flb-go] plugin BatchWait parameter = '%s'\n", batchSize)
-	fmt.Printf("[flb-go] plugin BatchSize parameter = '%s'\n", batchWait)
-	fmt.Printf("[flb-go] plugin Labels parameter = '%s'\n", labels)
+	logger = newLogger(config.logLevel)
+	level.Info(logger).Log("[flb-go]", "Starting fluent-bit-go-loki", "version", Version)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "URL", url)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "BatchWait", batchWait)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "BatchSize", batchSize)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "Labels", labels)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "LogLevel", logLevel)
 
 	cfg := client.Config{}
 	// Init everything with default values.
@@ -95,7 +100,7 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 
 	loki, err = client.New(cfg, kit.NewLogrusLogger(log))
 	if err != nil {
-		log.Fatalf("client.New: %s\n", err)
+		level.Error(logger).Log("client.New", err)
 		plugin.Unregister(ctx)
 		plugin.Exit(1)
 		return output.FLB_ERROR
@@ -127,19 +132,19 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 		case uint64:
 			timestamp = time.Unix(int64(t), 0)
 		default:
-			fmt.Print("timestamp isn't known format. Use current time.")
+			level.Warn(logger).Log("msg", "timestamp isn't known format. Use current time.")
 			timestamp = time.Now()
 		}
 
 		line, err := createJSON(record)
 		if err != nil {
-			fmt.Printf("error creating message for Grafana Loki: %v", err)
+			level.Error(logger).Log("msg", "error creating message for Grafana Loki", "error", err)
 			continue
 		}
 
 		err = plugin.HandleLine(ls, timestamp, line)
 		if err != nil {
-			fmt.Printf("error sending message for Grafana Loki: %v", err)
+			level.Error(logger).Log("msg", "error sending message for Grafana Loki", "error", err)
 			return output.FLB_ERROR
 		}
 	}
