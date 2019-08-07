@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/api"
 	promV1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 
@@ -429,12 +430,12 @@ func (m *mockPrometheus) SetResponseForReads(usageRates [][]int, errorRates [][]
 	}
 }
 
-func (m *mockPrometheus) QueryRange(ctx context.Context, query string, r promV1.Range) (model.Value, error) {
+func (m *mockPrometheus) QueryRange(ctx context.Context, query string, r promV1.Range) (model.Value, api.Warnings, error) {
 	if len(m.rangeValues) == 0 {
-		return nil, errors.New("mockPrometheus.QueryRange: out of values")
+		return nil, nil, errors.New("mockPrometheus.QueryRange: out of values")
 	}
 	// Take the first value and move the slice up
 	ret := m.rangeValues[0]
 	m.rangeValues = m.rangeValues[1:]
-	return ret, nil
+	return ret, nil, nil
 }

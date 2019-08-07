@@ -363,9 +363,18 @@ func promQuery(ctx context.Context, promAPI promV1.API, query string, duration, 
 		Step:  step,
 	}
 
-	value, err := promAPI.QueryRange(ctx, query, queryRange)
+	value, wrngs, err := promAPI.QueryRange(ctx, query, queryRange)
 	if err != nil {
 		return nil, err
+	}
+	if wrngs != nil {
+		level.Warn(util.Logger).Log(
+			"query", query,
+			"start", queryRange.Start,
+			"end", queryRange.End,
+			"step", queryRange.Step,
+			"warnings", wrngs,
+		)
 	}
 	matrix, ok := value.(model.Matrix)
 	if !ok {
