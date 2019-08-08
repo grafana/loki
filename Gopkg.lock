@@ -312,7 +312,11 @@
     "pkg/util/validation",
   ]
   pruneopts = "UT"
+<<<<<<< HEAD
   revision = "68603f14e3e4cdbc0b90ff5af4f544f2c6e457fa"
+=======
+  revision = "606262b7a63700054612e2767c3d6106af6d17e9"
+>>>>>>> refactor query parsing still need to figure out dep hell with etcd
 
 [[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"

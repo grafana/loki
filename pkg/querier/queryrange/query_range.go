@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
-	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -12,12 +11,12 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/querier/request"
 
 	jsoniter "github.com/json-iterator/go"
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -26,46 +25,21 @@ import (
 const statusSuccess = "success"
 
 var (
-	matrix            = model.ValMatrix.String()
-	json              = jsoniter.ConfigCompatibleWithStandardLibrary
-	errEndBeforeStart = httpgrpc.Errorf(http.StatusBadRequest, "end timestamp must not be before start time")
-	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "zero or negative query resolution step widths are not accepted. Try a positive integer")
-	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
+	matrix = model.ValMatrix.String()
+	json   = jsoniter.ConfigCompatibleWithStandardLibrary
 )
 
 func parseRequest(r *http.Request) (*Request, error) {
 	var result Request
-	var err error
-	result.Start, err = ParseTime(r.FormValue("start"))
+	req, err := request.ParseRangeQuery(r)
 	if err != nil {
 		return nil, err
 	}
-
-	result.End, err = ParseTime(r.FormValue("end"))
-	if err != nil {
-		return nil, err
-	}
-
-	if result.End < result.Start {
-		return nil, errEndBeforeStart
-	}
-
-	result.Step, err = parseDurationMs(r.FormValue("step"))
-	if err != nil {
-		return nil, err
-	}
-
-	if result.Step <= 0 {
-		return nil, errNegativeStep
-	}
-
-	// For safety, limit the number of returned points per timeseries.
-	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
-	if (result.End-result.Start)/result.Step > 11000 {
-		return nil, errStepTooSmall
-	}
-
-	result.Query = r.FormValue("query")
+	result.Limit = req.Limit
+	result.Query = req.Query
+	result.Start = req.Start
+	result.End = req.End
+	result.Direction = req.Direction
 	result.Path = r.URL.Path
 	return &result, nil
 }
@@ -106,37 +80,10 @@ func (q Request) toHTTPRequest(ctx context.Context) (*http.Request, error) {
 func (q Request) LogToSpan(ctx context.Context) {
 	if span := opentracing.SpanFromContext(ctx); span != nil {
 		span.LogFields(otlog.String("query", q.Query),
-			otlog.String("start", timestamp.Time(q.Start).String()),
-			otlog.String("end", timestamp.Time(q.End).String()),
-			otlog.Int64("step (ms)", q.Step))
+			otlog.String("start", q.Start.String()),
+			otlog.String("end", q.End.String()),
+			otlog.Float64("step (s)", q.Step.Seconds()))
 	}
-}
-
-// ParseTime parses the string into an int64, milliseconds since epoch.
-func ParseTime(s string) (int64, error) {
-	if t, err := strconv.ParseFloat(s, 64); err == nil {
-		s, ns := math.Modf(t)
-		tm := time.Unix(int64(s), int64(ns*float64(time.Second)))
-		return tm.UnixNano() / int64(time.Millisecond/time.Nanosecond), nil
-	}
-	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
-		return t.UnixNano() / int64(time.Millisecond/time.Nanosecond), nil
-	}
-	return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid timestamp", s)
-}
-
-func parseDurationMs(s string) (int64, error) {
-	if d, err := strconv.ParseFloat(s, 64); err == nil {
-		ts := d * float64(time.Second/time.Millisecond)
-		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
-			return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid duration. It overflows int64", s)
-		}
-		return int64(ts), nil
-	}
-	if d, err := model.ParseDuration(s); err == nil {
-		return int64(d) / int64(time.Millisecond/time.Nanosecond), nil
-	}
-	return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid duration", s)
 }
 
 func encodeTime(t int64) string {
@@ -218,16 +165,6 @@ func (a *APIResponse) toHTTPResponse(ctx context.Context) (*http.Response, error
 	}
 	return &resp, nil
 }
-
-// func extract(start, end int64, extent Extent) *APIResponse {
-// 	return &APIResponse{
-// 		Status: statusSuccess,
-// 		Data: Response{
-// 			ResultType: extent.Response.Data.ResultType,
-// 			Result:     extractMatrix(start, end, extent.Response.Data.Result),
-// 		},
-// 	}
-// }
 
 func extractMatrix(start, end int64, matrix []SampleStream) []SampleStream {
 	result := make([]SampleStream, 0, len(matrix))
