@@ -2,14 +2,40 @@
   _config+: {
     namespace: error 'must define namespace',
     cluster: error 'must define cluster',
+    
     replication_factor: 3,
-
     memcached_replicas: 3,
 
+    // Default to GCS and Bigtable for chunk and index store
+    chunk_store: 'gcs',
+    index_store: 'bigtable',
+
     table_prefix: $._config.namespace,
+
+    // Bigtable variables
     bigtable_instance: error 'must specify bigtable instance',
     bigtable_project: error 'must specify bigtable project',
+    
+    // GCS variables
     gcs_bucket_name: error 'must specify GCS bucket name',
+
+    // Cassandra variables
+    cassandra_keyspace: 'lokiindex',
+    cassandra_username: '',
+    cassandra_password: '',
+    cassandra_addresses: error 'must specify cassandra_addresses',
+
+    // S3 variables
+    s3_access_key: '',
+    s3_secret_access_key: '',
+    s3_address: error 'must specify s3_address',
+    s3_bucket_name: error 'must specify s3_bucket_name',
+    s3_path_style: false,
+
+    // Dynamodb variables
+    dynamodb_access_key: '',
+    dynamodb_secret_access_key: '',
+    dynamodb_region: error 'must specify dynamodb_region',
 
     // December 11 is when we first launched to the public.
     // Assume we can ingest logs that are 5months old.
@@ -65,14 +91,6 @@
       },
 
       storage_config: {
-        bigtable: {
-          instance: $._config.bigtable_instance,
-          project: $._config.bigtable_project,
-        },
-        gcs: {
-          bucket_name: $._config.gcs_bucket_name,
-        },
-
         index_queries_cache_config: {
           memcached: {
             batch_size: 100,
@@ -84,7 +102,48 @@
             service: 'memcached-client',
           },
         },
-      },
+      } + ( 
+      // Conditionally add chunk_store configs
+      if $._config.chunk_store == 'gcs' then {
+        gcs: {
+          bucket_name: $._config.gcs_bucket_name,
+        },
+      } else if $._config.chunk_store == 's3' then {
+        aws: {
+          s3forcepathstyle: $._config.s3_path_style,
+        } + if $._config.s3_access_key != '' then {
+          s3: 's3://' + $._config.s3_access_key + ':' + $._config.s3_secret_access_key + '@' + $._config.s3_address + '/' + $._config.s3_bucket_name,
+        } else {
+          s3: 's3://' + $._config.s3_address + '/' + $._config.s3_bucket_name,
+        },
+      } else error 'Unknown chunk_store' ) + (
+      // Conditionally add index_store configs
+      if $._config.index_store == 'bigtable' then {
+        bigtable: {
+          instance: $._config.bigtable_instance,
+          project: $._config.bigtable_project,
+        },
+      } else if $._config.index_store == 'cassandra' then {
+        cassandra: {
+          auth: false,
+          addresses: $._config.cassandra_addresses,
+          keyspace: $._config.cassandra_keyspace,
+        } + (
+          if $._config.cassandra_username != '' then {
+            auth: true,
+            username: $._config.cassandra_username,
+            password: $._config.cassandra_password,
+          } else {}
+        ),
+      } else if $._config.index_store == 'dynamodb' then {
+        aws: {
+          dynamodbconfig: {} + if $._config.dynamodb_access_key != '' then {
+            dynamodb: 'dynamodb://' + $._config.dynamodb_access_key + ':' + $._config.dynamodb_secret_access_key + '@' + $._config.dynamodb_region,
+          } else {
+            dynamodb: 'dynamodb://' + $._config.dynamodb_region,
+          },
+        },
+      } else error 'Unkown index_store' ),
 
       chunk_store_config: {
         chunk_cache_config: {
@@ -113,6 +172,7 @@
         max_look_back_period: 0,
       },
 
+      // Default schema config is bigtable/gcs, this will need to be overriden for other stores
       schema_config: {
         configs: [{
           from: '2018-04-15',
