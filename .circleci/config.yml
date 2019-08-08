@@ -259,7 +259,9 @@ jobs:
       - run:
           name: Run Chart Tests
           command: |
-            ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
+            check_version_increment=false
+            git diff --name-only HEAD master | grep -q helm && check_version_increment=true
+            ct lint --chart-dirs=production/helm --check-version-increment=$check_version_increment --validate-maintainers=false
             ct install --build-id=${CIRCLE_BUILD_NUM} --charts production/helm/loki-stack
 
   publish-helm:
