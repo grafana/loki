@@ -158,7 +158,7 @@ func TestLabelStage_Process(t *testing.T) {
 				t.Fatal(err)
 			}
 			st.Process(test.inputLabels, test.extractedData, nil, nil)
-			assert.Equal(t, test.expectedLabels, test.expectedLabels)
+			assert.Equal(t, test.inputLabels, test.expectedLabels)
 		})
 	}
 }
