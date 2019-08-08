@@ -121,7 +121,7 @@ func testChunkEncoding(t *testing.T, encoding Encoding, samples int) {
 	require.NoError(t, err)
 
 	// Check all the samples are in there.
-	iter := chunk.NewIterator()
+	iter := chunk.NewIterator(nil)
 	for i := 0; i < samples; i++ {
 		require.True(t, iter.Scan())
 		sample := iter.Value()
@@ -145,7 +145,7 @@ func testChunkEncoding(t *testing.T, encoding Encoding, samples int) {
 func testChunkSeek(t *testing.T, encoding Encoding, samples int) {
 	chunk := mkChunk(t, encoding, samples)
 
-	iter := chunk.NewIterator()
+	iter := chunk.NewIterator(nil)
 	for i := 0; i < samples; i += samples / 10 {
 		require.True(t, iter.FindAtOrAfter(model.Time(i*step)))
 		sample := iter.Value()
@@ -167,7 +167,7 @@ func testChunkSeek(t *testing.T, encoding Encoding, samples int) {
 func testChunkSeekForward(t *testing.T, encoding Encoding, samples int) {
 	chunk := mkChunk(t, encoding, samples)
 
-	iter := chunk.NewIterator()
+	iter := chunk.NewIterator(nil)
 	for i := 0; i < samples; i += samples / 10 {
 		require.True(t, iter.FindAtOrAfter(model.Time(i*step)))
 		sample := iter.Value()
@@ -190,7 +190,7 @@ func testChunkBatch(t *testing.T, encoding Encoding, samples int) {
 	chunk := mkChunk(t, encoding, samples)
 
 	// Check all the samples are in there.
-	iter := chunk.NewIterator()
+	iter := chunk.NewIterator(nil)
 	for i := 0; i < samples; {
 		require.True(t, iter.Scan())
 		batch := iter.Batch(BatchSize)

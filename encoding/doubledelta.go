@@ -193,7 +193,7 @@ func (c doubleDeltaEncodedChunk) FirstTime() model.Time {
 }
 
 // NewIterator( implements chunk.
-func (c *doubleDeltaEncodedChunk) NewIterator() Iterator {
+func (c *doubleDeltaEncodedChunk) NewIterator(_ Iterator) Iterator {
 	return newIndexAccessingChunkIterator(c.Len(), &doubleDeltaEncodedIndexAccessor{
 		c:      *c,
 		baseT:  c.baseTime(),

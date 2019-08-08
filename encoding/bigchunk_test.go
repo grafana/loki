@@ -24,7 +24,7 @@ func TestSliceBiggerChunk(t *testing.T) {
 
 	for i := 0; i < (12*3600/15)-480; i += 120 {
 		s := c.Slice(model.Time(i*step), model.Time((i+479)*step))
-		iter := s.NewIterator()
+		iter := s.NewIterator(nil)
 		for j := i; j < i+480; j++ {
 			require.True(t, iter.Scan())
 			sample := iter.Value()
@@ -38,7 +38,7 @@ func TestSliceBiggerChunk(t *testing.T) {
 	// Test for when the slice does not align perfectly with the sub-chunk boundaries.
 	for i := 0; i < (12*3600/15)-500; i += 100 {
 		s := c.Slice(model.Time(i*step), model.Time((i+500)*step))
-		iter := s.NewIterator()
+		iter := s.NewIterator(nil)
 
 		// Consume some samples until we get to where we want to be.
 		for {

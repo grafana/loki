@@ -171,12 +171,17 @@ func (b *bigchunk) Size() int {
 	return sum
 }
 
-func (b *bigchunk) NewIterator() Iterator {
+func (b *bigchunk) NewIterator(reuseIter Iterator) Iterator {
 	var it chunkenc.Iterator
 	if len(b.chunks) > 0 {
 		it = b.chunks[0].Iterator(it)
 	} else {
 		it = chunkenc.NewNopIterator()
+	}
+	if bci, ok := reuseIter.(*bigchunkIterator); ok {
+		bci.bigchunk = b
+		bci.curr = it
+		bci.i = 0
 	}
 	return &bigchunkIterator{
 		bigchunk: b,
