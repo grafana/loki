@@ -7,8 +7,12 @@
     memcached_replicas: 3,
 
     // Default to GCS and Bigtable for chunk and index store
-    chunk_store: 'gcs',
-    index_store: 'bigtable',
+    storage_backend: 'bigtable,gcs',
+
+    enabledBackends: [
+      backend
+      for backend in std.split($._config.storage_backend, ',')
+    ],
 
     table_prefix: $._config.namespace,
 
@@ -36,6 +40,43 @@
     dynamodb_access_key: '',
     dynamodb_secret_access_key: '',
     dynamodb_region: error 'must specify dynamodb_region',
+
+    client_configs: {
+      dynamo: {
+        dynamodbconfig: {} + if $._config.dynamodb_access_key != '' then {
+          dynamodb: 'dynamodb://' + $._config.dynamodb_access_key + ':' + $._config.dynamodb_secret_access_key + '@' + $._config.dynamodb_region,
+        } else {
+          dynamodb: 'dynamodb://' + $._config.dynamodb_region,
+        },
+      },
+      s3: {
+        s3forcepathstyle: $._config.s3_path_style
+      } + ( 
+        if $._config.s3_access_key != '' then {
+          s3: 's3://' + $._config.s3_access_key + ':' + $._config.s3_secret_access_key + '@' + $._config.s3_address + '/' + $._config.s3_bucket_name,
+        } else {
+          s3: 's3://' + $._config.s3_address + '/' + $._config.s3_bucket_name,
+        }
+      ),
+      cassandra: {
+        auth: false,
+        addresses: $._config.cassandra_addresses,
+        keyspace: $._config.cassandra_keyspace,
+      } + (
+        if $._config.cassandra_username != '' then {
+          auth: true,
+          username: $._config.cassandra_username,
+          password: $._config.cassandra_password,
+        } else {}
+      ),
+      gcp: {
+        instance: $._config.bigtable_instance,
+        project: $._config.bigtable_project,
+      },
+      gcs: {
+        bucket_name: $._config.gcs_bucket_name,
+      },
+    },
 
     // December 11 is when we first launched to the public.
     // Assume we can ingest logs that are 5months old.
@@ -102,48 +143,22 @@
             service: 'memcached-client',
           },
         },
-      } + ( 
-      // Conditionally add chunk_store configs
-      if $._config.chunk_store == 'gcs' then {
-        gcs: {
-          bucket_name: $._config.gcs_bucket_name,
-        },
-      } else if $._config.chunk_store == 's3' then {
-        aws: {
-          s3forcepathstyle: $._config.s3_path_style,
-        } + if $._config.s3_access_key != '' then {
-          s3: 's3://' + $._config.s3_access_key + ':' + $._config.s3_secret_access_key + '@' + $._config.s3_address + '/' + $._config.s3_bucket_name,
-        } else {
-          s3: 's3://' + $._config.s3_address + '/' + $._config.s3_bucket_name,
-        },
-      } else error 'Unknown chunk_store' ) + (
-      // Conditionally add index_store configs
-      if $._config.index_store == 'bigtable' then {
-        bigtable: {
-          instance: $._config.bigtable_instance,
-          project: $._config.bigtable_project,
-        },
-      } else if $._config.index_store == 'cassandra' then {
-        cassandra: {
-          auth: false,
-          addresses: $._config.cassandra_addresses,
-          keyspace: $._config.cassandra_keyspace,
-        } + (
-          if $._config.cassandra_username != '' then {
-            auth: true,
-            username: $._config.cassandra_username,
-            password: $._config.cassandra_password,
-          } else {}
-        ),
-      } else if $._config.index_store == 'dynamodb' then {
-        aws: {
-          dynamodbconfig: {} + if $._config.dynamodb_access_key != '' then {
-            dynamodb: 'dynamodb://' + $._config.dynamodb_access_key + ':' + $._config.dynamodb_secret_access_key + '@' + $._config.dynamodb_region,
-          } else {
-            dynamodb: 'dynamodb://' + $._config.dynamodb_region,
-          },
-        },
-      } else error 'Unkown index_store' ),
+      } +  
+      (if std.count($._config.enabledBackends, 'gcs') > 0 then {
+        gcs: $._config.client_configs.gcs,
+      } else {}) +
+      (if std.count($._config.enabledBackends, 's3') > 0 then {
+        aws+: $._config.client_configs.s3
+      } else {}) +
+      (if std.count($._config.enabledBackends, 'bigtable') > 0 then {
+        bigtable: $._config.client_configs.gcp,
+      } else {}) + 
+      (if std.count($._config.enabledBackends, 'cassandra') > 0 then {
+        cassandra: $._config.client_configs.cassandra,
+      } else {}) + 
+      (if std.count($._config.enabledBackends, 'dynamodb') > 0 then {
+        aws+: $._config.client_configs.dynamo
+      } else {}),
 
       chunk_store_config: {
         chunk_cache_config: {
