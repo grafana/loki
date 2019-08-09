@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -30,10 +29,10 @@ func TestQuerier_Query_QueryTimeoutConfigFlag(t *testing.T) {
 	}
 
 	store := newStoreMock()
-	store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(), nil)
+	store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(1, 2), nil)
 
 	queryClient := newQueryClientMock()
-	queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream()}), nil)
+	queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream(1, 2)}), nil)
 
 	ingesterClient := newQuerierClientMock()
 	ingesterClient.On("Query", mock.Anything, &request, mock.Anything).Return(queryClient, nil)
@@ -119,13 +118,13 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	}
 
 	store := newStoreMock()
-	store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(), nil)
+	store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(1, 2), nil)
 
 	queryClient := newQueryClientMock()
-	queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream()}), nil)
+	queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream(1, 2)}), nil)
 
 	tailClient := newTailClientMock()
-	tailClient.On("Recv").Return(mockTailResponse(mockStream()), nil)
+	tailClient.On("Recv").Return(mockTailResponse(mockStream(1, 2)), nil)
 
 	ingesterClient := newQuerierClientMock()
 	ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
@@ -170,24 +169,6 @@ func mockQuerierConfig() Config {
 	}
 }
 
-func mockStreamIterator() iter.EntryIterator {
-	return iter.NewStreamIterator(mockStream())
-}
-
-func mockStream() *logproto.Stream {
-	entries := []logproto.Entry{
-		{Timestamp: time.Now(), Line: "line 1"},
-		{Timestamp: time.Now(), Line: "line 2"},
-	}
-
-	labels := "{type=\"test\"}"
-
-	return &logproto.Stream{
-		Entries: entries,
-		Labels:  labels,
-	}
-}
-
 func mockQueryResponse(streams []*logproto.Stream) *logproto.QueryResponse {
 	return &logproto.QueryResponse{
 		Streams: streams,
@@ -197,12 +178,5 @@ func mockQueryResponse(streams []*logproto.Stream) *logproto.QueryResponse {
 func mockLabelResponse(values []string) *logproto.LabelResponse {
 	return &logproto.LabelResponse{
 		Values: values,
-	}
-}
-
-func mockTailResponse(stream *logproto.Stream) *logproto.TailResponse {
-	return &logproto.TailResponse{
-		Stream:         stream,
-		DroppedStreams: []*logproto.DroppedStream{},
 	}
 }
