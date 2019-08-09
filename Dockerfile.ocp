@@ -1,4 +1,3 @@
-# use grafana/loki-build-image to compile binaries
 FROM registry.svc.ci.openshift.org/openshift/release:golang-1.12 AS builder
 ARG GOARCH="amd64"
 WORKDIR /go/src/github.com/grafana/loki
