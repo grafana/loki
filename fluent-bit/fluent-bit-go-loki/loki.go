@@ -80,3 +80,13 @@ func newLogger(logLevel logging.Level) log.Logger {
 
 	return logger
 }
+
+func defaultLogger() log.Logger {
+	var logLevel logging.Level
+	_ = logLevel.Set("info")
+	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
+	logger = level.NewFilter(logger, logLevel.Gokit)
+	logger = log.With(logger, "caller", log.Caller(3))
+
+	return logger
+}

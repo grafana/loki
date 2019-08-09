@@ -8,7 +8,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/fluent/fluent-bit-go/output"
-	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	kit "github.com/go-kit/kit/log/logrus"
 	"github.com/grafana/loki/pkg/promtail/client"
@@ -21,7 +20,7 @@ import (
 var loki client.Client
 var ls model.LabelSet
 var plugin GoOutputPlugin = &fluentPlugin{}
-var logger log.Logger
+var logger = defaultLogger()
 
 type GoOutputPlugin interface {
 	PluginConfigKey(ctx unsafe.Pointer, key string) string
@@ -76,6 +75,7 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 
 	config, err := getLokiConfig(url, batchWait, batchSize, labels, logLevel)
 	if err != nil {
+		level.Error(logger).Log("[flb-go]", "failed to launch", "error", err)
 		plugin.Unregister(ctx)
 		plugin.Exit(1)
 		return output.FLB_ERROR
