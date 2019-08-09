@@ -13,13 +13,20 @@ import (
 )
 
 const (
-	// if we are not seeing any response from ingester, how long do we want to wait by going into sleep
-	nextEntryWait = time.Second / 2
-
 	// keep checking connections with ingesters in duration
 	checkConnectionsWithIngestersPeriod = time.Second * 5
 
-	bufferSizeForTailResponse = 10
+	// the size of the channel buffer used to send tailing streams
+	// back to the requesting client
+	maxBufferedTailResponses = 10
+
+	// the maximum number of entries to return in a TailResponse
+	maxEntriesPerTailResponse = 100
+
+	// the maximum number of dropped entries to keep in memory that will be sent along
+	// with the next successfully pushed response. Once the dropped entries memory buffer
+	// exceed this value, we start skipping dropped entries too.
+	maxDroppedEntriesPerTailResponse = 1000
 )
 
 type droppedEntry struct {
@@ -48,15 +55,14 @@ type Tailer struct {
 	querierTailClientsMtx sync.Mutex
 
 	stopped         bool
-	blocked         bool
-	blockedMtx      sync.RWMutex
 	delayFor        time.Duration
 	responseChan    chan *TailResponse
 	closeErrChan    chan error
 	tailMaxDuration time.Duration
 
-	// when tail client is slow, drop entry and store its details in droppedEntries to notify client
-	droppedEntries []droppedEntry
+	// if we are not seeing any response from ingester,
+	// how long do we want to wait by going into sleep
+	waitEntryThrottle time.Duration
 }
 
 func (t *Tailer) readTailClients() {
@@ -74,13 +80,9 @@ func (t *Tailer) loop() {
 	tailMaxDurationTicker := time.NewTicker(t.tailMaxDuration)
 	defer tailMaxDurationTicker.Stop()
 
-	tailResponse := new(TailResponse)
+	droppedEntries := make([]droppedEntry, 0)
 
-	for {
-		if t.stopped {
-			return
-		}
-
+	for !t.stopped {
 		select {
 		case <-checkConnectionTicker.C:
 			// Try to reconnect dropped ingesters and connect to new ingesters
@@ -96,44 +98,66 @@ func (t *Tailer) loop() {
 		default:
 		}
 
-		if !t.next() {
-			if len(tailResponse.Streams) == 0 {
-				if len(t.querierTailClients) == 0 {
-					// All the connections to ingesters are dropped, try reconnecting or return error
-					if err := t.checkIngesterConnections(); err != nil {
-						level.Error(util.Logger).Log("Error reconnecting to ingesters", fmt.Sprintf("%v", err))
-					} else {
-						continue
-					}
-					if err := t.close(); err != nil {
-						level.Error(util.Logger).Log("Error closing Tailer", fmt.Sprintf("%v", err))
-					}
-					t.closeErrChan <- errors.New("all ingesters closed the connection")
-					return
-				}
-				time.Sleep(nextEntryWait)
-				continue
-			}
-		} else {
-			// If channel is blocked already, drop current entry directly to save the effort
-			if t.isBlocked() {
-				t.dropEntry(t.currEntry.Timestamp, t.currLabels, nil)
+		// Read as much entries as we can (up to the max allowed) and populate the
+		// tail response we'll send over the response channel
+		tailResponse := new(TailResponse)
+		entriesCount := 0
+
+		for ; entriesCount < maxEntriesPerTailResponse && t.next(); entriesCount++ {
+			// If the response channel channel is blocked, we drop the current entry directly
+			// to save the effort
+			if t.isResponseChanBlocked() {
+				droppedEntries = dropEntry(droppedEntries, t.currEntry.Timestamp, t.currLabels)
 				continue
 			}
 
-			tailResponse.Streams = append(tailResponse.Streams, logproto.Stream{Labels: t.currLabels, Entries: []logproto.Entry{t.currEntry}})
-			if len(tailResponse.Streams) != 100 {
-				continue
+			tailResponse.Streams = append(tailResponse.Streams, logproto.Stream{
+				Labels:  t.currLabels,
+				Entries: []logproto.Entry{t.currEntry},
+			})
+		}
+
+		// If all consumed entries have been dropped because the response channel is blocked
+		// we should reiterate on the loop
+		if len(tailResponse.Streams) == 0 && entriesCount > 0 {
+			continue
+		}
+
+		// If no entry has been consumed we should ensure it's not caused by all ingesters
+		// connections dropped and then throttle for a while
+		if len(tailResponse.Streams) == 0 {
+			if len(t.querierTailClients) == 0 {
+				// All the connections to ingesters are dropped, try reconnecting or return error
+				if err := t.checkIngesterConnections(); err != nil {
+					level.Error(util.Logger).Log("Error reconnecting to ingesters", fmt.Sprintf("%v", err))
+				} else {
+					continue
+				}
+				if err := t.close(); err != nil {
+					level.Error(util.Logger).Log("Error closing Tailer", fmt.Sprintf("%v", err))
+				}
+				t.closeErrChan <- errors.New("all ingesters closed the connection")
+				return
 			}
-			tailResponse.DroppedEntries = t.popDroppedEntries()
+
+			time.Sleep(t.waitEntryThrottle)
+			continue
+		}
+
+		// Send the tail response through the response channel without blocking.
+		// Drop the entry if the response channel buffer is full.
+		if len(droppedEntries) > 0 {
+			tailResponse.DroppedEntries = droppedEntries
 		}
 
 		select {
 		case t.responseChan <- tailResponse:
+			if len(droppedEntries) > 0 {
+				droppedEntries = make([]droppedEntry, 0)
+			}
 		default:
-			t.dropEntry(t.currEntry.Timestamp, t.currLabels, tailResponse.DroppedEntries)
+			droppedEntries = dropEntries(droppedEntries, tailResponse.Streams)
 		}
-		tailResponse = new(TailResponse)
 	}
 }
 
@@ -219,33 +243,10 @@ func (t *Tailer) close() error {
 	return t.openStreamIterator.Close()
 }
 
-func (t *Tailer) dropEntry(timestamp time.Time, labels string, alreadyDroppedEntries []droppedEntry) {
-	t.blockedMtx.Lock()
-	defer t.blockedMtx.Unlock()
-
-	t.droppedEntries = append(t.droppedEntries, alreadyDroppedEntries...)
-	t.droppedEntries = append(t.droppedEntries, droppedEntry{timestamp, labels})
-}
-
-func (t *Tailer) isBlocked() bool {
-	t.blockedMtx.RLock()
-	defer t.blockedMtx.RUnlock()
-
-	return t.blocked
-}
-
-func (t *Tailer) popDroppedEntries() []droppedEntry {
-	t.blockedMtx.Lock()
-	defer t.blockedMtx.Unlock()
-
-	t.blocked = false
-	if len(t.droppedEntries) == 0 {
-		return nil
-	}
-	droppedEntries := t.droppedEntries
-	t.droppedEntries = []droppedEntry{}
-
-	return droppedEntries
+func (t *Tailer) isResponseChanBlocked() bool {
+	// Thread-safety: len() and cap() on a channel are thread-safe. The cap() doesn't
+	// change over the time, while len() does.
+	return len(t.responseChan) == cap(t.responseChan)
 }
 
 func (t *Tailer) getResponseChan() <-chan *TailResponse {
@@ -262,18 +263,38 @@ func newTailer(
 	historicEntries iter.EntryIterator,
 	tailDisconnectedIngesters func([]string) (map[string]logproto.Querier_TailClient, error),
 	tailMaxDuration time.Duration,
+	waitEntryThrottle time.Duration,
 ) *Tailer {
 	t := Tailer{
 		openStreamIterator:        iter.NewHeapIterator([]iter.EntryIterator{historicEntries}, logproto.FORWARD),
 		querierTailClients:        querierTailClients,
 		delayFor:                  delayFor,
-		responseChan:              make(chan *TailResponse, bufferSizeForTailResponse),
+		responseChan:              make(chan *TailResponse, maxBufferedTailResponses),
 		closeErrChan:              make(chan error),
 		tailDisconnectedIngesters: tailDisconnectedIngesters,
 		tailMaxDuration:           tailMaxDuration,
+		waitEntryThrottle:         waitEntryThrottle,
 	}
 
 	t.readTailClients()
 	go t.loop()
 	return &t
+}
+
+func dropEntry(droppedEntries []droppedEntry, timestamp time.Time, labels string) []droppedEntry {
+	if len(droppedEntries) >= maxDroppedEntriesPerTailResponse {
+		return droppedEntries
+	}
+
+	return append(droppedEntries, droppedEntry{timestamp, labels})
+}
+
+func dropEntries(droppedEntries []droppedEntry, streams []logproto.Stream) []droppedEntry {
+	for _, stream := range streams {
+		for _, entry := range stream.Entries {
+			droppedEntries = dropEntry(droppedEntries, entry.Timestamp, entry.Line)
+		}
+	}
+
+	return droppedEntries
 }

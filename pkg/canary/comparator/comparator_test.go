@@ -156,7 +156,7 @@ func TestEntryNeverReceived(t *testing.T) {
 	found := []time.Time{t1, t3, t4, t5}
 
 	mr := &mockReader{found}
-	maxWait := 5 * time.Millisecond
+	maxWait := 50 * time.Millisecond
 	c := NewComparator(actual, maxWait, 2*time.Millisecond, 1, make(chan time.Time), make(chan time.Time), mr)
 
 	c.entrySent(t1)

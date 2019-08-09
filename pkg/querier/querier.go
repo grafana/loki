@@ -20,6 +20,13 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 )
 
+const (
+	// How long the Tailer should wait - once there are no entries to read from ingesters -
+	// before checking if a new entry is available (to avoid spinning the CPU in a continuous
+	// check loop)
+	tailerWaitEntryThrottle = time.Second / 2
+)
+
 var readinessProbeSuccess = []byte("Ready")
 
 // Config for a querier.
@@ -308,6 +315,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 			return q.tailDisconnectedIngesters(tailCtx, req, connectedIngestersAddr)
 		},
 		q.cfg.TailMaxDuration,
+		tailerWaitEntryThrottle,
 	), nil
 }
 
