@@ -61,6 +61,8 @@ For more information about mixins, take a look at the [mixins project docs](http
 
 Retention in Loki can be done by configuring Table Manager. You need to set a retention period and enable deletes for retention using yaml config as seen [here](https://github.com/grafana/loki/blob/39bbd733be4a0d430986d9513476a91334485e9f/production/ksonnet/loki/config.libsonnet#L128-L129) or using `table-manager.retention-period` and `table-manager.retention-deletes-enabled` command line args. Retention period needs to be a duration in string format that can be parsed using [time.Duration](https://golang.org/pkg/time/#ParseDuration).
 
+**[PS]** retention period should be atleast **2*duration** of periodic table (default to 168h) [periodic table period](https://github.com/grafana/loki/blob/347a3e18f4976d799d51a26cee229efbc27ef6c9/production/helm/loki/values.yaml#L53)
+
 In the case of chunks retention when using S3 or GCS, you need to set the expiry policy on the bucket that is configured for storing chunks. For more details check [this](https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lifecycle-mgmt.html) for S3 and [this](https://cloud.google.com/storage/docs/managing-lifecycles) for GCS.
 
 Currently we only support global retention policy. A per user retention policy and API to delete ingested logs is still under development.
