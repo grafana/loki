@@ -1,0 +1,19 @@
+# use grafana/loki-build-image to compile binaries
+FROM registry.svc.ci.openshift.org/openshift/release:golang-1.12 AS builder
+ARG GOARCH="amd64"
+WORKDIR /go/src/github.com/grafana/loki
+COPY . .
+RUN touch loki-build-image/.uptodate && mkdir /build
+RUN make BUILD_IN_CONTAINER=false cmd/loki/loki
+
+FROM  registry.svc.ci.openshift.org/openshift/origin-v4.0:base
+LABEL io.k8s.display-name="OpenShift Loki" \
+      io.k8s.description="Horizontally-scalable, highly-available, multi-tenant log aggregation system inspired by Prometheus." \
+      io.openshift.tags="grafana,prometheus,monitoring" \
+      maintainer="OpenShift Development <dev@lists.openshift.redhat.com>" \
+      version="v0.2.0"
+
+COPY --from=builder /go/src/github.com/grafana/loki/cmd/loki/loki /usr/bin/loki
+COPY --from=builder /go/src/github.com/grafana/loki/cmd/loki/loki-local-config.yaml /etc/loki/local-config.yaml
+EXPOSE 80
+ENTRYPOINT ["/usr/bin/loki"]
