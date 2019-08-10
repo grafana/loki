@@ -45,7 +45,7 @@ func ConfigFromURL(awsURL *url.URL) (*aws.Config, error) {
 	}
 
 	if strings.Contains(awsURL.Host, ".") {
-		return config.WithEndpoint(fmt.Sprintf("http://%s", awsURL.Host)).WithRegion("dummy"), nil
+		return config.WithEndpoint(fmt.Sprintf("http://%s", awsURL.Host)), nil
 	}
 
 	// Let AWS generate default endpoint based on region passed as a host in URL.
