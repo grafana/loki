@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -546,6 +547,9 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 			BytesBufferPool.Put(si.buf)
 		}
 		si.buf = BytesBufferPool.Get(lineSize).([]byte)
+		if lineSize > cap(si.buf) {
+			fmt.Println("oups ", lineSize, " ", len(si.buf), " ", cap(si.buf))
+		}
 	}
 
 	// Then process reading the line.
@@ -576,7 +580,9 @@ func (si *bufferedIterator) Close() error {
 		si.closed = true
 		si.pool.PutReader(si.reader)
 		BufReaderPool.Put(si.s)
-		BytesBufferPool.Put(si.buf)
+		if si.buf != nil {
+			BytesBufferPool.Put(si.buf)
+		}
 		si.s = nil
 		si.buf = nil
 		si.decBuf = nil
