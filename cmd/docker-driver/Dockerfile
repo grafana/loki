@@ -7,7 +7,7 @@ ARG BUILD_IMAGE=grafana/loki-build-image:latest
 FROM $BUILD_IMAGE as build
 COPY . /go/src/github.com/grafana/loki
 WORKDIR /go/src/github.com/grafana/loki
-RUN make clean && make cmd/docker-driver/docker-driver
+RUN make clean && make BUILD_IN_CONTAINER=false cmd/docker-driver/docker-driver
 
 FROM alpine:3.9
 RUN apk add --update --no-cache ca-certificates
