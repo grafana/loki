@@ -592,7 +592,7 @@ func TestChunkStoreRandom(t *testing.T) {
 					},
 					chunks[0],
 					ts,
-					ts.Add(chunkLen*time.Second),
+					ts.Add(chunkLen*time.Second).Add(-1*time.Second),
 				)
 				err := chunk.Encode()
 				require.NoError(t, err)
@@ -602,8 +602,8 @@ func TestChunkStoreRandom(t *testing.T) {
 
 			// pick two random numbers and do a query
 			for i := 0; i < 100; i++ {
-				start := rand.Int63n(100 * chunkLen)
-				end := start + 1 + rand.Int63n((100*chunkLen)-start)
+				start := rand.Int63n(99 * chunkLen)
+				end := start + 1 + rand.Int63n((99*chunkLen)-start)
 				assert.True(t, start < end)
 
 				startTime := model.TimeFromUnix(start)
