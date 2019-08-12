@@ -603,7 +603,7 @@ func TestChunkStoreRandom(t *testing.T) {
 			// pick two random numbers and do a query
 			for i := 0; i < 100; i++ {
 				start := rand.Int63n(100 * chunkLen)
-				end := start + rand.Int63n((100*chunkLen)-start)
+				end := start + 1 + rand.Int63n((100*chunkLen)-start)
 				assert.True(t, start < end)
 
 				startTime := model.TimeFromUnix(start)
