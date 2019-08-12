@@ -10,7 +10,7 @@ FROM --platform=linux/amd64 $BUILD_IMAGE as build
 COPY --from=goenv /goarch /goarm /
 COPY . /go/src/github.com/grafana/loki
 WORKDIR /go/src/github.com/grafana/loki
-RUN GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make clean && make loki
+RUN make clean && GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make loki
 
 FROM alpine:3.9
 RUN apk add --update --no-cache ca-certificates

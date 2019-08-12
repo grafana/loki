@@ -10,7 +10,7 @@ FROM --platform=linux/amd64 $BUILD_IMAGE as build
 COPY --from=goenv /goarch /goarm /
 COPY . /go/src/github.com/grafana/loki
 WORKDIR /go/src/github.com/grafana/loki
-RUN GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make clean && make promtail
+RUN make clean && GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make promtail
 
 # Promtail requires debian as the base image to support systemd journal reading
 FROM debian:stretch-slim
