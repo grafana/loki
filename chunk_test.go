@@ -36,7 +36,7 @@ func dummyChunkForEncoding(now model.Time, metric labels.Labels, enc encoding.En
 	c, _ := encoding.NewForEncoding(enc)
 	for i := 0; i < samples; i++ {
 		t := time.Duration(i) * 15 * time.Second
-		cs, err := c.Add(model.SamplePair{Timestamp: now.Add(t), Value: 0})
+		cs, _, err := c.Add(model.SamplePair{Timestamp: now.Add(t), Value: 0}, nil)
 		if err != nil {
 			panic(err)
 		}

@@ -260,23 +260,28 @@ func newVarbitChunk(enc varbitValueEncoding) *varbitChunk {
 }
 
 // Add implements chunk.
-func (c *varbitChunk) Add(s model.SamplePair) ([]Chunk, error) {
+func (c *varbitChunk) Add(s model.SamplePair, reuseIter Iterator) ([]Chunk, Iterator, error) {
 	offset := c.nextSampleOffset()
 	switch {
 	case c.closed():
-		return addToOverflowChunk(c, s)
+		return addToOverflowChunk(c, s, reuseIter)
 	case offset > varbitNextSampleBitOffsetThreshold:
-		return c.addLastSample(s), nil
+		return c.addLastSample(s), reuseIter, nil
 	case offset == varbitFirstSampleBitOffset:
-		return c.addFirstSample(s), nil
+		return c.addFirstSample(s), reuseIter, nil
 	case offset == varbitSecondSampleBitOffset:
-		return c.addSecondSample(s)
+		ch, err := c.addSecondSample(s)
+		return ch, reuseIter, err
 	}
-	return c.addLaterSample(s, offset)
+	return c.addLaterSample(s, offset, reuseIter)
 }
 
 // NewIterator implements chunk.
-func (c varbitChunk) NewIterator(_ Iterator) Iterator {
+func (c varbitChunk) NewIterator(reuseIter Iterator) Iterator {
+	if it, ok := reuseIter.(*varbitChunkIterator); ok {
+		it.resetWithChunk(c)
+		return it
+	}
 	return newVarbitChunkIterator(c)
 }
 
@@ -546,7 +551,7 @@ func (c *varbitChunk) addLastSample(s model.SamplePair) []Chunk {
 
 // addLaterSample is a helper method only used by c.add(). It adds a third or
 // later sample.
-func (c *varbitChunk) addLaterSample(s model.SamplePair, offset uint16) ([]Chunk, error) {
+func (c *varbitChunk) addLaterSample(s model.SamplePair, offset uint16, reuseIter Iterator) ([]Chunk, Iterator, error) {
 	var (
 		lastTime      = c.lastTime()
 		lastTimeDelta = c.lastTimeDelta()
@@ -556,7 +561,7 @@ func (c *varbitChunk) addLaterSample(s model.SamplePair, offset uint16) ([]Chunk
 	)
 
 	if newTimeDelta < 0 {
-		return nil, fmt.Errorf("Δt is less than zero: %v", newTimeDelta)
+		return nil, reuseIter, fmt.Errorf("Δt is less than zero: %v", newTimeDelta)
 	}
 	if offset == varbitThirdSampleBitOffset {
 		offset, encoding = c.prepForThirdSample(lastValue, s.Value, encoding)
@@ -564,12 +569,12 @@ func (c *varbitChunk) addLaterSample(s model.SamplePair, offset uint16) ([]Chunk
 	if newTimeDelta > varbitMaxTimeDelta {
 		// A time delta too great. Still, we can add it as a last sample
 		// before overflowing.
-		return c.addLastSample(s), nil
+		return c.addLastSample(s), reuseIter, nil
 	}
 
 	// Analyze worst case, does it fit? If not, set new sample as the last.
 	if int(offset)+varbitWorstCaseBitsPerSample[encoding] > ChunkLen*8 {
-		return c.addLastSample(s), nil
+		return c.addLastSample(s), reuseIter, nil
 	}
 
 	// Transcoding/overflow decisions first.
@@ -577,26 +582,32 @@ func (c *varbitChunk) addLaterSample(s model.SamplePair, offset uint16) ([]Chunk
 		// Cannot go on with zero encoding.
 		if offset > ChunkLen*4 {
 			// Chunk already half full. Don't transcode, overflow instead.
-			return addToOverflowChunk(c, s)
+			return addToOverflowChunk(c, s, reuseIter)
 		}
 		if isInt32(s.Value - lastValue) {
 			// Trying int encoding looks promising.
-			return transcodeAndAdd(newVarbitChunk(varbitIntDoubleDeltaEncoding), c, s)
+			reuseIter = c.NewIterator(reuseIter)
+			ch, err := transcodeAndAdd(newVarbitChunk(varbitIntDoubleDeltaEncoding), reuseIter, s)
+			return ch, reuseIter, err
 		}
-		return transcodeAndAdd(newVarbitChunk(varbitXOREncoding), c, s)
+		reuseIter = c.NewIterator(reuseIter)
+		ch, err := transcodeAndAdd(newVarbitChunk(varbitXOREncoding), reuseIter, s)
+		return ch, reuseIter, err
 	}
 	if encoding == varbitIntDoubleDeltaEncoding && !isInt32(s.Value-lastValue) {
 		// Cannot go on with int encoding.
 		if offset > ChunkLen*4 {
 			// Chunk already half full. Don't transcode, overflow instead.
-			return addToOverflowChunk(c, s)
+			return addToOverflowChunk(c, s, reuseIter)
 		}
-		return transcodeAndAdd(newVarbitChunk(varbitXOREncoding), c, s)
+		reuseIter = c.NewIterator(reuseIter)
+		ch, err := transcodeAndAdd(newVarbitChunk(varbitXOREncoding), reuseIter, s)
+		return ch, reuseIter, err
 	}
 
 	offset, overflow := c.addDDTime(offset, lastTimeDelta, newTimeDelta)
 	if overflow {
-		return c.addLastSample(s), nil
+		return c.addLastSample(s), reuseIter, nil
 	}
 	switch encoding {
 	case varbitZeroEncoding:
@@ -608,12 +619,12 @@ func (c *varbitChunk) addLaterSample(s model.SamplePair, offset uint16) ([]Chunk
 	case varbitDirectEncoding:
 		offset = c.addBitPattern(offset, math.Float64bits(float64(s.Value)), 64)
 	default:
-		return nil, fmt.Errorf("unknown Varbit value encoding: %v", encoding)
+		return nil, reuseIter, fmt.Errorf("unknown Varbit value encoding: %v", encoding)
 	}
 
 	c.setNextSampleOffset(offset)
 	c.setLastSample(s)
-	return []Chunk{c}, nil
+	return []Chunk{c}, reuseIter, nil
 }
 
 func (c varbitChunk) prepForThirdSample(
@@ -1157,6 +1168,18 @@ func (it *varbitChunkIterator) reset() {
 	it.leading = 0
 	it.significant = 1
 	it.rewound = false
+}
+
+func (it *varbitChunkIterator) resetWithChunk(c varbitChunk) {
+	it.reset()
+
+	it.c = c
+	it.len = c.nextSampleOffset()
+	it.enc = c.valueEncoding()
+
+	it.lastError = nil
+	it.nextT = 0
+	it.nextV = 0
 }
 
 // rewind "rewinds" the chunk iterator by one step. Since one cannot simply

@@ -33,20 +33,20 @@ func newBigchunk() *bigchunk {
 	return &bigchunk{}
 }
 
-func (b *bigchunk) Add(sample model.SamplePair) ([]Chunk, error) {
+func (b *bigchunk) Add(sample model.SamplePair, reuseIter Iterator) ([]Chunk, Iterator, error) {
 	if b.remainingSamples == 0 {
 		if bigchunkSizeCapBytes > 0 && b.Size() > bigchunkSizeCapBytes {
-			return addToOverflowChunk(b, sample)
+			return addToOverflowChunk(b, sample, reuseIter)
 		}
 		if err := b.addNextChunk(sample.Timestamp); err != nil {
-			return nil, err
+			return nil, reuseIter, err
 		}
 	}
 
 	b.appender.Append(int64(sample.Timestamp), float64(sample.Value))
 	b.remainingSamples--
 	b.chunks[len(b.chunks)-1].end = int64(sample.Timestamp)
-	return []Chunk{b}, nil
+	return []Chunk{b}, reuseIter, nil
 }
 
 // addNextChunk adds a new XOR "subchunk" to the internal list of chunks.

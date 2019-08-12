@@ -76,7 +76,7 @@ func newDeltaEncodedChunk(tb, vb deltaBytes, isInt bool, length int) *deltaEncod
 }
 
 // Add implements chunk.
-func (c deltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
+func (c deltaEncodedChunk) Add(s model.SamplePair, reuseIter Iterator) ([]Chunk, Iterator, error) {
 	// TODO(beorn7): Since we return &c, this method might cause an unnecessary allocation.
 	if c.Len() == 0 {
 		c = c[:deltaHeaderBytes]
@@ -90,13 +90,13 @@ func (c deltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 	// Do we generally have space for another sample in this chunk? If not,
 	// overflow into a new one.
 	if remainingBytes < sampleSize {
-		return addToOverflowChunk(&c, s)
+		return addToOverflowChunk(&c, s, reuseIter)
 	}
 
 	baseValue := c.baseValue()
 	dt := s.Timestamp - c.baseTime()
 	if dt < 0 {
-		return nil, fmt.Errorf("time delta is less than zero: %v", dt)
+		return nil, reuseIter, fmt.Errorf("time delta is less than zero: %v", dt)
 	}
 
 	dv := s.Value - baseValue
@@ -127,10 +127,12 @@ func (c deltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 	}
 	if tb != ntb || vb != nvb || isInt != nInt {
 		if len(c)*2 < cap(c) {
-			return transcodeAndAdd(newDeltaEncodedChunk(ntb, nvb, nInt, cap(c)), &c, s)
+			reuseIter = c.NewIterator(reuseIter)
+			c, err := transcodeAndAdd(newDeltaEncodedChunk(ntb, nvb, nInt, cap(c)), reuseIter, s)
+			return c, reuseIter, err
 		}
 		// Chunk is already half full. Better create a new one and save the transcoding efforts.
-		return addToOverflowChunk(&c, s)
+		return addToOverflowChunk(&c, s, reuseIter)
 	}
 
 	offset := len(c)
@@ -147,7 +149,7 @@ func (c deltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 		// Store the absolute value (no delta) in case of d8.
 		binary.LittleEndian.PutUint64(c[offset:], uint64(s.Timestamp))
 	default:
-		return nil, fmt.Errorf("invalid number of bytes for time delta: %d", tb)
+		return nil, reuseIter, fmt.Errorf("invalid number of bytes for time delta: %d", tb)
 	}
 
 	offset += int(tb)
@@ -164,7 +166,7 @@ func (c deltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 			binary.LittleEndian.PutUint32(c[offset:], uint32(int32(dv)))
 		// d8 must not happen. Those samples are encoded as float64.
 		default:
-			return nil, fmt.Errorf("invalid number of bytes for integer delta: %d", vb)
+			return nil, reuseIter, fmt.Errorf("invalid number of bytes for integer delta: %d", vb)
 		}
 	} else {
 		switch vb {
@@ -174,10 +176,10 @@ func (c deltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 			// Store the absolute value (no delta) in case of d8.
 			binary.LittleEndian.PutUint64(c[offset:], math.Float64bits(float64(s.Value)))
 		default:
-			return nil, fmt.Errorf("invalid number of bytes for floating point delta: %d", vb)
+			return nil, reuseIter, fmt.Errorf("invalid number of bytes for floating point delta: %d", vb)
 		}
 	}
-	return []Chunk{&c}, nil
+	return []Chunk{&c}, reuseIter, nil
 }
 
 func (c *deltaEncodedChunk) Slice(_, _ model.Time) Chunk {
@@ -185,7 +187,29 @@ func (c *deltaEncodedChunk) Slice(_, _ model.Time) Chunk {
 }
 
 // NewIterator implements chunk.
-func (c *deltaEncodedChunk) NewIterator(_ Iterator) Iterator {
+func (c *deltaEncodedChunk) NewIterator(reuseIter Iterator) Iterator {
+	if ia, ok := reuseIter.(*indexAccessingChunkIterator); ok {
+		if deia, ok := ia.acc.(*deltaEncodedIndexAccessor); ok {
+			deia.c = *c
+			deia.baseT = c.baseTime()
+			deia.baseV = c.baseValue()
+			deia.tBytes = c.timeBytes()
+			deia.vBytes = c.valueBytes()
+			deia.isInt = c.isInt()
+			deia.lastErr = nil
+			ia.reset(c.Len(), deia)
+			return ia
+		}
+		ia.reset(c.Len(), &deltaEncodedIndexAccessor{
+			c:      *c,
+			baseT:  c.baseTime(),
+			baseV:  c.baseValue(),
+			tBytes: c.timeBytes(),
+			vBytes: c.valueBytes(),
+			isInt:  c.isInt(),
+		})
+		return ia
+	}
 	return newIndexAccessingChunkIterator(c.Len(), &deltaEncodedIndexAccessor{
 		c:      *c,
 		baseT:  c.baseTime(),

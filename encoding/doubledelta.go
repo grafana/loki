@@ -84,17 +84,18 @@ func newDoubleDeltaEncodedChunk(tb, vb deltaBytes, isInt bool, length int) *doub
 }
 
 // Add implements chunk.
-func (c doubleDeltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
+func (c doubleDeltaEncodedChunk) Add(s model.SamplePair, reuseIter Iterator) (_ []Chunk, ri Iterator, _ error) {
 	// TODO(beorn7): Since we return &c, this method might cause an unnecessary allocation.
 	if c.Len() == 0 {
-		return c.addFirstSample(s), nil
+		return c.addFirstSample(s), reuseIter, nil
 	}
 
 	tb := c.timeBytes()
 	vb := c.valueBytes()
 
 	if c.Len() == 1 {
-		return c.addSecondSample(s, tb, vb)
+		ch, err := c.addSecondSample(s, tb, vb)
+		return ch, reuseIter, err
 	}
 
 	remainingBytes := cap(c) - len(c)
@@ -103,7 +104,7 @@ func (c doubleDeltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 	// Do we generally have space for another sample in this chunk? If not,
 	// overflow into a new one.
 	if remainingBytes < sampleSize {
-		return addToOverflowChunk(&c, s)
+		return addToOverflowChunk(&c, s, reuseIter)
 	}
 
 	projectedTime := c.baseTime() + model.Time(c.Len())*c.baseTimeDelta()
@@ -134,10 +135,12 @@ func (c doubleDeltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 	}
 	if tb != ntb || vb != nvb || c.isInt() != nInt {
 		if len(c)*2 < cap(c) {
-			return transcodeAndAdd(newDoubleDeltaEncodedChunk(ntb, nvb, nInt, cap(c)), &c, s)
+			reuseIter = c.NewIterator(reuseIter)
+			ch, err := transcodeAndAdd(newDoubleDeltaEncodedChunk(ntb, nvb, nInt, cap(c)), reuseIter, s)
+			return ch, reuseIter, err
 		}
 		// Chunk is already half full. Better create a new one and save the transcoding efforts.
-		return addToOverflowChunk(&c, s)
+		return addToOverflowChunk(&c, s, reuseIter)
 	}
 
 	offset := len(c)
@@ -154,7 +157,7 @@ func (c doubleDeltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 		// Store the absolute value (no delta) in case of d8.
 		binary.LittleEndian.PutUint64(c[offset:], uint64(s.Timestamp))
 	default:
-		return nil, fmt.Errorf("invalid number of bytes for time delta: %d", tb)
+		return nil, reuseIter, fmt.Errorf("invalid number of bytes for time delta: %d", tb)
 	}
 
 	offset += int(tb)
@@ -171,7 +174,7 @@ func (c doubleDeltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 			binary.LittleEndian.PutUint32(c[offset:], uint32(int32(ddv)))
 		// d8 must not happen. Those samples are encoded as float64.
 		default:
-			return nil, fmt.Errorf("invalid number of bytes for integer delta: %d", vb)
+			return nil, reuseIter, fmt.Errorf("invalid number of bytes for integer delta: %d", vb)
 		}
 	} else {
 		switch vb {
@@ -181,10 +184,10 @@ func (c doubleDeltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 			// Store the absolute value (no delta) in case of d8.
 			binary.LittleEndian.PutUint64(c[offset:], math.Float64bits(float64(s.Value)))
 		default:
-			return nil, fmt.Errorf("invalid number of bytes for floating point delta: %d", vb)
+			return nil, reuseIter, fmt.Errorf("invalid number of bytes for floating point delta: %d", vb)
 		}
 	}
-	return []Chunk{&c}, nil
+	return []Chunk{&c}, reuseIter, nil
 }
 
 // FirstTime implements chunk.
@@ -193,7 +196,33 @@ func (c doubleDeltaEncodedChunk) FirstTime() model.Time {
 }
 
 // NewIterator( implements chunk.
-func (c *doubleDeltaEncodedChunk) NewIterator(_ Iterator) Iterator {
+func (c *doubleDeltaEncodedChunk) NewIterator(reuseIter Iterator) Iterator {
+	if ia, ok := reuseIter.(*indexAccessingChunkIterator); ok {
+		if deia, ok := ia.acc.(*doubleDeltaEncodedIndexAccessor); ok {
+			deia.c = *c
+			deia.baseT = c.baseTime()
+			deia.baseΔT = c.baseTimeDelta()
+			deia.baseV = c.baseValue()
+			deia.baseΔV = c.baseValueDelta()
+			deia.tBytes = c.timeBytes()
+			deia.vBytes = c.valueBytes()
+			deia.isInt = c.isInt()
+			deia.lastErr = nil
+			ia.reset(c.Len(), deia)
+			return ia
+		}
+		ia.reset(c.Len(), &doubleDeltaEncodedIndexAccessor{
+			c:      *c,
+			baseT:  c.baseTime(),
+			baseΔT: c.baseTimeDelta(),
+			baseV:  c.baseValue(),
+			baseΔV: c.baseValueDelta(),
+			tBytes: c.timeBytes(),
+			vBytes: c.valueBytes(),
+			isInt:  c.isInt(),
+		})
+		return ia
+	}
 	return newIndexAccessingChunkIterator(c.Len(), &doubleDeltaEncodedIndexAccessor{
 		c:      *c,
 		baseT:  c.baseTime(),

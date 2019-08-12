@@ -82,10 +82,10 @@ func TestUnmarshallingCorruptedDeltaReturnsAnError(t *testing.T) {
 	for _, c := range cases {
 		chunk := c.chunkConstructor(d1, d4, false, ChunkLen)
 
-		cs, err := chunk.Add(model.SamplePair{
+		cs, _, err := chunk.Add(model.SamplePair{
 			Timestamp: model.Now(),
 			Value:     model.SampleValue(100),
-		})
+		}, nil)
 		if err != nil {
 			t.Fatalf("Couldn't add sample to empty %s: %s", c.chunkTypeName, err)
 		}

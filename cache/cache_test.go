@@ -27,10 +27,10 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
 	chunks := []chunk.Chunk{}
 	for i := 0; i < 100; i++ {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
-		promChunk, _ := prom_chunk.New().Add(model.SamplePair{
+		promChunk, _, _ := prom_chunk.New().Add(model.SamplePair{
 			Timestamp: ts,
 			Value:     model.SampleValue(i),
-		})
+		}, nil)
 		c := chunk.NewChunk(
 			userID,
 			model.Fingerprint(1),

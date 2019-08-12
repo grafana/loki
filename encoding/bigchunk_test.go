@@ -12,10 +12,10 @@ import (
 func TestSliceBiggerChunk(t *testing.T) {
 	var c Chunk = newBigchunk()
 	for i := 0; i < 12*3600/15; i++ {
-		cs, err := c.Add(model.SamplePair{
+		cs, _, err := c.Add(model.SamplePair{
 			Timestamp: model.Time(i * step),
 			Value:     model.SampleValue(i),
-		})
+		}, nil)
 		require.NoError(t, err)
 		c = cs[0]
 	}
@@ -62,10 +62,10 @@ func BenchmarkBiggerChunkMemory(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var c Chunk = newBigchunk()
 		for i := 0; i < 12*3600/15; i++ {
-			cs, err := c.Add(model.SamplePair{
+			cs, _, err := c.Add(model.SamplePair{
 				Timestamp: model.Time(i * step),
 				Value:     model.SampleValue(i),
-			})
+			}, nil)
 			require.NoError(b, err)
 			c = cs[0]
 		}
