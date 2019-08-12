@@ -1,11 +1,11 @@
 package chunk
 
 import (
-	"reflect"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,7 +34,12 @@ func TestHourlyBuckets(t *testing.T) {
 				from:    model.TimeFromUnix(0),
 				through: model.TimeFromUnix(0),
 			},
-			[]Bucket{},
+			[]Bucket{{
+				from:      0,
+				through:   0,
+				tableName: "table",
+				hashKey:   "0:0",
+			}},
 		},
 		{
 			"30 minute window",
@@ -60,6 +65,11 @@ func TestHourlyBuckets(t *testing.T) {
 				through:   3600 * 1000, // ms
 				tableName: "table",
 				hashKey:   "0:0",
+			}, {
+				from:      0,
+				through:   0, // ms
+				tableName: "table",
+				hashKey:   "0:1",
 			}},
 		},
 		{
@@ -88,9 +98,8 @@ func TestHourlyBuckets(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := cfg.hourlyBuckets(tt.args.from, tt.args.through, userID); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("SchemaConfig.dailyBuckets() = %v, want %v", got, tt.want)
-			}
+			got := cfg.hourlyBuckets(tt.args.from, tt.args.through, userID)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -120,7 +129,12 @@ func TestDailyBuckets(t *testing.T) {
 				from:    model.TimeFromUnix(0),
 				through: model.TimeFromUnix(0),
 			},
-			[]Bucket{},
+			[]Bucket{{
+				from:      0,
+				through:   0,
+				tableName: "table",
+				hashKey:   "0:d0",
+			}},
 		},
 		{
 			"6 hour window",
@@ -146,6 +160,11 @@ func TestDailyBuckets(t *testing.T) {
 				through:   (24 * 3600) * 1000, // ms
 				tableName: "table",
 				hashKey:   "0:d0",
+			}, {
+				from:      0,
+				through:   0,
+				tableName: "table",
+				hashKey:   "0:d1",
 			}},
 		},
 		{
@@ -174,9 +193,8 @@ func TestDailyBuckets(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := cfg.dailyBuckets(tt.args.from, tt.args.through, userID); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("SchemaConfig.dailyBuckets() = %v, want %v", got, tt.want)
-			}
+			got := cfg.dailyBuckets(tt.args.from, tt.args.through, userID)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
