@@ -19,7 +19,7 @@ func TestComparatorEntryReceivedOutOfOrder(t *testing.T) {
 	duplicateEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Second)
@@ -60,7 +60,7 @@ func TestComparatorEntryReceivedNotExpected(t *testing.T) {
 	duplicateEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Second)
@@ -101,7 +101,7 @@ func TestComparatorEntryReceivedDuplicate(t *testing.T) {
 	duplicateEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Second)
@@ -157,7 +157,7 @@ func TestEntryNeverReceived(t *testing.T) {
 
 	mr := &mockReader{found}
 	maxWait := 50 * time.Millisecond
-	c := NewComparator(actual, maxWait, 2*time.Millisecond, 1, make(chan time.Time), make(chan time.Time), mr)
+	c := NewComparator(actual, maxWait, 2*time.Millisecond, 1, make(chan time.Time), make(chan time.Time), mr, false)
 
 	c.entrySent(t1)
 	c.entrySent(t2)
@@ -202,7 +202,7 @@ func TestEntryNeverReceived(t *testing.T) {
 func TestPruneAckdEntires(t *testing.T) {
 	actual := &bytes.Buffer{}
 	maxWait := 30 * time.Millisecond
-	c := NewComparator(actual, maxWait, 10*time.Millisecond, 1, make(chan time.Time), make(chan time.Time), nil)
+	c := NewComparator(actual, maxWait, 10*time.Millisecond, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Millisecond)
