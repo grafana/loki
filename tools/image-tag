@@ -8,6 +8,6 @@ WIP=$(git diff --quiet || echo '-WIP')
 BRANCH=$(git rev-parse --abbrev-ref HEAD | sed s#/#-#g)
 SHA=$(git rev-parse --short HEAD)
 
-# If this is a tag, use it,                otherwise branch-hash
+# If this is a tag, use it,                      otherwise branch-hash
 TAG=$(git describe --exact-match 2> /dev/null || echo "${BRANCH}-${SHA}")
 echo ${TAG}${WIP}

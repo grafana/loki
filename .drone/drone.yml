@@ -6,6 +6,7 @@ platform:
 steps:
 - commands:
   - apk add --no-cache bash git
+  - git fetch origin --tags
   - echo $(./tools/image-tag)-amd64 > .tags
   image: alpine
   name: image-tag
@@ -51,6 +52,7 @@ platform:
 steps:
 - commands:
   - apk add --no-cache bash git
+  - git fetch origin --tags
   - echo $(./tools/image-tag)-arm64 > .tags
   image: alpine
   name: image-tag
@@ -96,6 +98,7 @@ platform:
 steps:
 - commands:
   - apk add --no-cache bash git
+  - git fetch origin --tags
   - echo $(./tools/image-tag)-arm > .tags
   image: alpine
   name: image-tag
@@ -130,5 +133,49 @@ steps:
     password:
       from_secret: docker_password
     repo: shorez/loki-canary
+    username:
+      from_secret: docker_username
+---
+depends_on:
+- docker-amd64
+- docker-arm
+- docker-arm64
+kind: pipeline
+name: manifest
+steps:
+- depends_on:
+  - clone
+  image: plugins/manifest
+  name: manifest-promtail
+  settings:
+    ignore_missing: true
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest.tmpl
+    target: promtail
+    username:
+      from_secret: docker_username
+- depends_on:
+  - clone
+  image: plugins/manifest
+  name: manifest-loki
+  settings:
+    ignore_missing: true
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest.tmpl
+    target: loki
+    username:
+      from_secret: docker_username
+- depends_on:
+  - clone
+  image: plugins/manifest
+  name: manifest-loki-canary
+  settings:
+    ignore_missing: true
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest.tmpl
+    target: loki-canary
     username:
       from_secret: docker_username
