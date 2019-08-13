@@ -19,7 +19,7 @@ func TestComparatorEntryReceivedOutOfOrder(t *testing.T) {
 	duplicateEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Second)
@@ -60,7 +60,7 @@ func TestComparatorEntryReceivedNotExpected(t *testing.T) {
 	duplicateEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Second)
@@ -101,7 +101,7 @@ func TestComparatorEntryReceivedDuplicate(t *testing.T) {
 	duplicateEntries = &mockCounter{}
 
 	actual := &bytes.Buffer{}
-	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil)
+	c := NewComparator(actual, 1*time.Hour, 1*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Second)
@@ -157,7 +157,8 @@ func TestEntryNeverReceived(t *testing.T) {
 
 	mr := &mockReader{found}
 	maxWait := 50 * time.Millisecond
-	c := NewComparator(actual, maxWait, 2*time.Millisecond, 1, make(chan time.Time), make(chan time.Time), mr)
+	//We set the prune interval timer to a huge value here so that it never runs, instead we call pruneEntries manually below
+	c := NewComparator(actual, maxWait, 50*time.Hour, 1, make(chan time.Time), make(chan time.Time), mr, false)
 
 	c.entrySent(t1)
 	c.entrySent(t2)
@@ -173,15 +174,17 @@ func TestEntryNeverReceived(t *testing.T) {
 
 	assert.Equal(t, 2, c.Size())
 
-	//Wait a few maxWait intervals just to make sure all entries are expired and the async confirmMissing has completed
+	//Wait a few maxWait intervals just to make sure all entries are expired
 	<-time.After(2 * maxWait)
 
-	expected := fmt.Sprintf(ErrOutOfOrderEntry+ErrOutOfOrderEntry+ErrEntryNotReceivedWs+ErrEntryNotReceived+ErrEntryNotReceivedWs,
+	c.pruneEntries()
+
+	expected := fmt.Sprintf(ErrOutOfOrderEntry+ErrOutOfOrderEntry+ErrEntryNotReceivedWs+ErrEntryNotReceivedWs+ErrEntryNotReceived,
 		t3, []time.Time{t2},
 		t5, []time.Time{t2, t4},
 		t2.UnixNano(), maxWait.Seconds(),
-		t2.UnixNano(), maxWait.Seconds(),
-		t4.UnixNano(), maxWait.Seconds())
+		t4.UnixNano(), maxWait.Seconds(),
+		t2.UnixNano(), maxWait.Seconds())
 
 	assert.Equal(t, expected, actual.String())
 	assert.Equal(t, 0, c.Size())
@@ -202,12 +205,13 @@ func TestEntryNeverReceived(t *testing.T) {
 func TestPruneAckdEntires(t *testing.T) {
 	actual := &bytes.Buffer{}
 	maxWait := 30 * time.Millisecond
-	c := NewComparator(actual, maxWait, 10*time.Millisecond, 1, make(chan time.Time), make(chan time.Time), nil)
+	//We set the prune interval timer to a huge value here so that it never runs, instead we call pruneEntries manually below
+	c := NewComparator(actual, maxWait, 50*time.Hour, 1, make(chan time.Time), make(chan time.Time), nil, false)
 
 	t1 := time.Now()
 	t2 := t1.Add(1 * time.Millisecond)
 	t3 := t2.Add(1 * time.Millisecond)
-	t4 := t3.Add(100 * time.Millisecond)
+	t4 := t3.Add(100 * time.Second)
 
 	assert.Equal(t, 0, len(c.ackdEntries))
 
@@ -228,8 +232,9 @@ func TestPruneAckdEntires(t *testing.T) {
 	assert.Equal(t, 4, len(c.ackdEntries))
 
 	// Wait a couple maxWaits to make sure the first 3 timestamps get pruned from the ackdEntries,
-	// the fourth should still remain because it was 100ms newer than t3
+	// the fourth should still remain because its much much newer and we only prune things older than maxWait
 	<-time.After(2 * maxWait)
+	c.pruneEntries()
 
 	assert.Equal(t, 1, len(c.ackdEntries))
 	assert.Equal(t, t4, *c.ackdEntries[0])

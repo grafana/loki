@@ -61,6 +61,7 @@ type Comparator struct {
 	ackdEntries   []*time.Time
 	maxWait       time.Duration
 	pruneInterval time.Duration
+	confirmAsync  bool
 	sent          chan time.Time
 	recv          chan time.Time
 	rdr           reader.LokiReader
@@ -69,12 +70,13 @@ type Comparator struct {
 }
 
 func NewComparator(writer io.Writer, maxWait time.Duration, pruneInterval time.Duration,
-	buckets int, sentChan chan time.Time, receivedChan chan time.Time, reader reader.LokiReader) *Comparator {
+	buckets int, sentChan chan time.Time, receivedChan chan time.Time, reader reader.LokiReader, confirmAsync bool) *Comparator {
 	c := &Comparator{
 		w:             writer,
 		entries:       []*time.Time{},
 		maxWait:       maxWait,
 		pruneInterval: pruneInterval,
+		confirmAsync:  confirmAsync,
 		sent:          sentChan,
 		recv:          receivedChan,
 		rdr:           reader,
@@ -160,6 +162,8 @@ func (c *Comparator) entryReceived(ts time.Time) {
 }
 
 func (c *Comparator) Size() int {
+	c.entMtx.Lock()
+	defer c.entMtx.Unlock()
 	return len(c.entries)
 }
 
@@ -209,7 +213,12 @@ func (c *Comparator) pruneEntries() {
 	}
 	c.entries = c.entries[:k]
 	if len(missing) > 0 {
-		go c.confirmMissing(missing)
+		if c.confirmAsync {
+			go c.confirmMissing(missing)
+		} else {
+			c.confirmMissing(missing)
+		}
+
 	}
 
 	// Prune the acknowledged list, remove anything older than our maxwait
