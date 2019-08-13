@@ -173,8 +173,8 @@ func TestEntryNeverReceived(t *testing.T) {
 
 	assert.Equal(t, 2, c.Size())
 
-	//Wait a few maxWait intervals just to make sure all entries are expired and the async confirmMissing has completed
-	<-time.After(2 * maxWait)
+	//Wait a few maxWait intervals just to make sure all entries are expired and the confirmMissing has completed
+	<-time.After(5 * maxWait)
 
 	expected := fmt.Sprintf(ErrOutOfOrderEntry+ErrOutOfOrderEntry+ErrEntryNotReceivedWs+ErrEntryNotReceived+ErrEntryNotReceivedWs,
 		t3, []time.Time{t2},
