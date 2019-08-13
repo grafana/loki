@@ -1,0 +1,22 @@
+image: shorez/{{ config.target }}:{{#if build.tag}}{{trimPrefix "v" build.tag}}{{else}}latest{{/if}}
+{{#if build.tags}}
+tags:
+{{#each build.tags}}
+  - {{this}}
+{{/each}}
+{{/if}}
+manifests:
+  - image: shorez/{{ config.target }}:{{#if build.tag}}{{trimPrefix "v" build.tag}}-{{/if}}amd64
+    platform:
+      architecture: amd64
+      os: linux
+  - image: shorez/{{ config.target }}:{{#if build.tag}}{{trimPrefix "v" build.tag}}-{{/if}}arm64
+    platform:
+      architecture: arm64
+      os: linux
+      variant: v8
+  - image: shorez/{{ config.target }}:{{#if build.tag}}{{trimPrefix "v" build.tag}}-{{/if}}arm
+    platform:
+      architecture: arm
+      os: linux
+      variant: v7

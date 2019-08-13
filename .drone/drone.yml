@@ -1,0 +1,134 @@
+kind: pipeline
+name: docker-amd64
+platform:
+  arch: amd64
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - echo $(./tools/image-tag)-amd64 > .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: promtail-image
+  settings:
+    dockerfile: cmd/promtail/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: shorez/promtail
+    username:
+      from_secret: docker_username
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: loki-image
+  settings:
+    dockerfile: cmd/loki/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: shorez/loki
+    username:
+      from_secret: docker_username
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: loki-canary-image
+  settings:
+    dockerfile: cmd/loki-canary/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: shorez/loki-canary
+    username:
+      from_secret: docker_username
+---
+kind: pipeline
+name: docker-arm64
+platform:
+  arch: arm64
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - echo $(./tools/image-tag)-arm64 > .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: promtail-image
+  settings:
+    dockerfile: cmd/promtail/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: shorez/promtail
+    username:
+      from_secret: docker_username
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: loki-image
+  settings:
+    dockerfile: cmd/loki/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: shorez/loki
+    username:
+      from_secret: docker_username
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: loki-canary-image
+  settings:
+    dockerfile: cmd/loki-canary/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: shorez/loki-canary
+    username:
+      from_secret: docker_username
+---
+kind: pipeline
+name: docker-arm
+platform:
+  arch: arm
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - echo $(./tools/image-tag)-arm > .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: promtail-image
+  settings:
+    dockerfile: cmd/promtail/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: shorez/promtail
+    username:
+      from_secret: docker_username
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: loki-image
+  settings:
+    dockerfile: cmd/loki/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: shorez/loki
+    username:
+      from_secret: docker_username
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: loki-canary-image
+  settings:
+    dockerfile: cmd/loki-canary/Dockerfile
+    password:
+      from_secret: docker_password
+    repo: shorez/loki-canary
+    username:
+      from_secret: docker_username
