@@ -2,7 +2,7 @@
   _config+: {
     namespace: error 'must define namespace',
     cluster: error 'must define cluster',
-    
+
     replication_factor: 3,
     memcached_replicas: 3,
 
@@ -19,7 +19,7 @@
     // Bigtable variables
     bigtable_instance: error 'must specify bigtable instance',
     bigtable_project: error 'must specify bigtable project',
-    
+
     // GCS variables
     gcs_bucket_name: error 'must specify GCS bucket name',
 
@@ -50,8 +50,8 @@
         },
       },
       s3: {
-        s3forcepathstyle: $._config.s3_path_style
-      } + ( 
+        s3forcepathstyle: $._config.s3_path_style,
+      } + (
         if $._config.s3_access_key != '' then {
           s3: 's3://' + $._config.s3_access_key + ':' + $._config.s3_secret_access_key + '@' + $._config.s3_address + '/' + $._config.s3_bucket_name,
         } else {
@@ -146,19 +146,19 @@
       } +  
       (if std.count($._config.enabledBackends, 'gcs') > 0 then {
         gcs: $._config.client_configs.gcs,
-      } else {}) +
+       } else {}) +
       (if std.count($._config.enabledBackends, 's3') > 0 then {
         aws+: $._config.client_configs.s3
-      } else {}) +
+       } else {}) +
       (if std.count($._config.enabledBackends, 'bigtable') > 0 then {
         bigtable: $._config.client_configs.gcp,
-      } else {}) + 
+       } else {}) +
       (if std.count($._config.enabledBackends, 'cassandra') > 0 then {
         cassandra: $._config.client_configs.cassandra,
-      } else {}) + 
+       } else {}) +
       (if std.count($._config.enabledBackends, 'dynamodb') > 0 then {
         aws+: $._config.client_configs.dynamo
-      } else {}),
+       } else {}),
 
       chunk_store_config: {
         chunk_cache_config: {
