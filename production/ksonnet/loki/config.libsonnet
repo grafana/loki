@@ -2,14 +2,81 @@
   _config+: {
     namespace: error 'must define namespace',
     cluster: error 'must define cluster',
-    replication_factor: 3,
 
+    replication_factor: 3,
     memcached_replicas: 3,
 
+    // Default to GCS and Bigtable for chunk and index store
+    storage_backend: 'bigtable,gcs',
+
+    enabledBackends: [
+      backend
+      for backend in std.split($._config.storage_backend, ',')
+    ],
+
     table_prefix: $._config.namespace,
+
+    // Bigtable variables
     bigtable_instance: error 'must specify bigtable instance',
     bigtable_project: error 'must specify bigtable project',
+
+    // GCS variables
     gcs_bucket_name: error 'must specify GCS bucket name',
+
+    // Cassandra variables
+    cassandra_keyspace: 'lokiindex',
+    cassandra_username: '',
+    cassandra_password: '',
+    cassandra_addresses: error 'must specify cassandra_addresses',
+
+    // S3 variables
+    s3_access_key: '',
+    s3_secret_access_key: '',
+    s3_address: error 'must specify s3_address',
+    s3_bucket_name: error 'must specify s3_bucket_name',
+    s3_path_style: false,
+
+    // Dynamodb variables
+    dynamodb_access_key: '',
+    dynamodb_secret_access_key: '',
+    dynamodb_region: error 'must specify dynamodb_region',
+
+    client_configs: {
+      dynamo: {
+        dynamodbconfig: {} + if $._config.dynamodb_access_key != '' then {
+          dynamodb: 'dynamodb://' + $._config.dynamodb_access_key + ':' + $._config.dynamodb_secret_access_key + '@' + $._config.dynamodb_region,
+        } else {
+          dynamodb: 'dynamodb://' + $._config.dynamodb_region,
+        },
+      },
+      s3: {
+        s3forcepathstyle: $._config.s3_path_style,
+      } + (
+        if $._config.s3_access_key != '' then {
+          s3: 's3://' + $._config.s3_access_key + ':' + $._config.s3_secret_access_key + '@' + $._config.s3_address + '/' + $._config.s3_bucket_name,
+        } else {
+          s3: 's3://' + $._config.s3_address + '/' + $._config.s3_bucket_name,
+        }
+      ),
+      cassandra: {
+        auth: false,
+        addresses: $._config.cassandra_addresses,
+        keyspace: $._config.cassandra_keyspace,
+      } + (
+        if $._config.cassandra_username != '' then {
+          auth: true,
+          username: $._config.cassandra_username,
+          password: $._config.cassandra_password,
+        } else {}
+      ),
+      gcp: {
+        instance: $._config.bigtable_instance,
+        project: $._config.bigtable_project,
+      },
+      gcs: {
+        bucket_name: $._config.gcs_bucket_name,
+      },
+    },
 
     // December 11 is when we first launched to the public.
     // Assume we can ingest logs that are 5months old.
@@ -65,14 +132,6 @@
       },
 
       storage_config: {
-        bigtable: {
-          instance: $._config.bigtable_instance,
-          project: $._config.bigtable_project,
-        },
-        gcs: {
-          bucket_name: $._config.gcs_bucket_name,
-        },
-
         index_queries_cache_config: {
           memcached: {
             batch_size: 100,
@@ -84,7 +143,22 @@
             service: 'memcached-client',
           },
         },
-      },
+      } +  
+      (if std.count($._config.enabledBackends, 'gcs') > 0 then {
+        gcs: $._config.client_configs.gcs,
+       } else {}) +
+      (if std.count($._config.enabledBackends, 's3') > 0 then {
+        aws+: $._config.client_configs.s3
+       } else {}) +
+      (if std.count($._config.enabledBackends, 'bigtable') > 0 then {
+        bigtable: $._config.client_configs.gcp,
+       } else {}) +
+      (if std.count($._config.enabledBackends, 'cassandra') > 0 then {
+        cassandra: $._config.client_configs.cassandra,
+       } else {}) +
+      (if std.count($._config.enabledBackends, 'dynamodb') > 0 then {
+        aws+: $._config.client_configs.dynamo
+       } else {}),
 
       chunk_store_config: {
         chunk_cache_config: {
@@ -113,6 +187,7 @@
         max_look_back_period: 0,
       },
 
+      // Default schema config is bigtable/gcs, this will need to be overriden for other stores
       schema_config: {
         configs: [{
           from: '2018-04-15',
