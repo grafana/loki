@@ -15,7 +15,7 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-const positionFileMode = 0700
+const positionFileMode = 0600
 
 // Config describes where to get postition information from.
 type Config struct {
