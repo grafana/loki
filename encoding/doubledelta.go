@@ -197,21 +197,9 @@ func (c doubleDeltaEncodedChunk) FirstTime() model.Time {
 
 // NewIterator( implements chunk.
 func (c *doubleDeltaEncodedChunk) NewIterator(reuseIter Iterator) Iterator {
-	if ia, ok := reuseIter.(*indexAccessingChunkIterator); ok {
-		if deia, ok := ia.acc.(*doubleDeltaEncodedIndexAccessor); ok {
-			deia.c = *c
-			deia.baseT = c.baseTime()
-			deia.baseΔT = c.baseTimeDelta()
-			deia.baseV = c.baseValue()
-			deia.baseΔV = c.baseValueDelta()
-			deia.tBytes = c.timeBytes()
-			deia.vBytes = c.valueBytes()
-			deia.isInt = c.isInt()
-			deia.lastErr = nil
-			ia.reset(c.Len(), deia)
-			return ia
-		}
-		ia.reset(c.Len(), &doubleDeltaEncodedIndexAccessor{
+	ia, ok := reuseIter.(*indexAccessingChunkIterator)
+	if !ok {
+		return newIndexAccessingChunkIterator(c.Len(), &doubleDeltaEncodedIndexAccessor{
 			c:      *c,
 			baseT:  c.baseTime(),
 			baseΔT: c.baseTimeDelta(),
@@ -221,9 +209,21 @@ func (c *doubleDeltaEncodedChunk) NewIterator(reuseIter Iterator) Iterator {
 			vBytes: c.valueBytes(),
 			isInt:  c.isInt(),
 		})
+	}
+	if deia, ok := ia.acc.(*doubleDeltaEncodedIndexAccessor); ok {
+		deia.c = *c
+		deia.baseT = c.baseTime()
+		deia.baseΔT = c.baseTimeDelta()
+		deia.baseV = c.baseValue()
+		deia.baseΔV = c.baseValueDelta()
+		deia.tBytes = c.timeBytes()
+		deia.vBytes = c.valueBytes()
+		deia.isInt = c.isInt()
+		deia.lastErr = nil
+		ia.reset(c.Len(), deia)
 		return ia
 	}
-	return newIndexAccessingChunkIterator(c.Len(), &doubleDeltaEncodedIndexAccessor{
+	ia.reset(c.Len(), &doubleDeltaEncodedIndexAccessor{
 		c:      *c,
 		baseT:  c.baseTime(),
 		baseΔT: c.baseTimeDelta(),
@@ -233,6 +233,7 @@ func (c *doubleDeltaEncodedChunk) NewIterator(reuseIter Iterator) Iterator {
 		vBytes: c.valueBytes(),
 		isInt:  c.isInt(),
 	})
+	return ia
 }
 
 func (c *doubleDeltaEncodedChunk) Slice(_, _ model.Time) Chunk {

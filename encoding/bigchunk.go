@@ -182,6 +182,7 @@ func (b *bigchunk) NewIterator(reuseIter Iterator) Iterator {
 		bci.bigchunk = b
 		bci.curr = it
 		bci.i = 0
+		return bci
 	}
 	return &bigchunkIterator{
 		bigchunk: b,
