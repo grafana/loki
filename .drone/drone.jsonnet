@@ -8,7 +8,7 @@ local docker(arch, app) = {
   name: '%s-image' % app,
   image: 'plugins/docker',
   settings: {
-    repo: 'shorez/%s' % app,
+    repo: 'grafana/%s' % app,
     dockerfile: 'cmd/%s/Dockerfile' % app,
     username: { from_secret: 'docker_username' },
     password: { from_secret: 'docker_password' },

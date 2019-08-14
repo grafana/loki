@@ -19,7 +19,7 @@ steps:
     dry_run: true
     password:
       from_secret: docker_password
-    repo: shorez/promtail
+    repo: grafana/promtail
     username:
       from_secret: docker_username
 - depends_on:
@@ -31,7 +31,7 @@ steps:
     dry_run: true
     password:
       from_secret: docker_password
-    repo: shorez/loki
+    repo: grafana/loki
     username:
       from_secret: docker_username
 - depends_on:
@@ -43,7 +43,7 @@ steps:
     dry_run: true
     password:
       from_secret: docker_password
-    repo: shorez/loki-canary
+    repo: grafana/loki-canary
     username:
       from_secret: docker_username
 ---
@@ -68,7 +68,7 @@ steps:
     dry_run: true
     password:
       from_secret: docker_password
-    repo: shorez/promtail
+    repo: grafana/promtail
     username:
       from_secret: docker_username
 - depends_on:
@@ -80,7 +80,7 @@ steps:
     dry_run: true
     password:
       from_secret: docker_password
-    repo: shorez/loki
+    repo: grafana/loki
     username:
       from_secret: docker_username
 - depends_on:
@@ -92,7 +92,7 @@ steps:
     dry_run: true
     password:
       from_secret: docker_password
-    repo: shorez/loki-canary
+    repo: grafana/loki-canary
     username:
       from_secret: docker_username
 ---
@@ -117,7 +117,7 @@ steps:
     dry_run: true
     password:
       from_secret: docker_password
-    repo: shorez/promtail
+    repo: grafana/promtail
     username:
       from_secret: docker_username
 - depends_on:
@@ -129,7 +129,7 @@ steps:
     dry_run: true
     password:
       from_secret: docker_password
-    repo: shorez/loki
+    repo: grafana/loki
     username:
       from_secret: docker_username
 - depends_on:
@@ -141,6 +141,6 @@ steps:
     dry_run: true
     password:
       from_secret: docker_password
-    repo: shorez/loki-canary
+    repo: grafana/loki-canary
     username:
       from_secret: docker_username
