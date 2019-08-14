@@ -78,7 +78,7 @@ You can check the promtail log by looking in `/var/log/containers` at the promta
 
 ## Enable tracing for loki
 
-We support (jaeger)[https://www.jaegertracing.io/] to trace loki, just add env `JAEGER_AGENT_HOST` to where loki run, and you can use jaeger to trace.
+We support [jaeger](https://www.jaegertracing.io/) to trace loki, just add env `JAEGER_AGENT_HOST` to where loki run, and you can use jaeger to trace.
 
 If you deploy with helm, refer to following command:
 
