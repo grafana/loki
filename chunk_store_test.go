@@ -579,10 +579,10 @@ func TestChunkStoreRandom(t *testing.T) {
 			const chunkLen = 2 * 3600 // in seconds
 			for i := 0; i < 100; i++ {
 				ts := model.TimeFromUnix(int64(i * chunkLen))
-				chunks, _, _ := encoding.New().Add(model.SamplePair{
+				chunks, _ := encoding.New().Add(model.SamplePair{
 					Timestamp: ts,
 					Value:     model.SampleValue(float64(i)),
-				}, nil)
+				})
 				chunk := NewChunk(
 					userID,
 					model.Fingerprint(1),
@@ -644,10 +644,10 @@ func TestChunkStoreLeastRead(t *testing.T) {
 	const chunkLen = 60 // in seconds
 	for i := 0; i < 24; i++ {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
-		chunks, _, _ := encoding.New().Add(model.SamplePair{
+		chunks, _ := encoding.New().Add(model.SamplePair{
 			Timestamp: ts,
 			Value:     model.SampleValue(float64(i)),
-		}, nil)
+		})
 		chunk := NewChunk(
 			userID,
 			model.Fingerprint(1),

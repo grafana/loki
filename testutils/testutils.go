@@ -80,7 +80,7 @@ func dummyChunk(now model.Time) chunk.Chunk {
 }
 
 func dummyChunkFor(now model.Time, metric labels.Labels) chunk.Chunk {
-	cs, _, _ := promchunk.New().Add(model.SamplePair{Timestamp: now, Value: 0}, nil)
+	cs, _ := promchunk.New().Add(model.SamplePair{Timestamp: now, Value: 0})
 	chunk := chunk.NewChunk(
 		userID,
 		client.Fingerprint(metric),

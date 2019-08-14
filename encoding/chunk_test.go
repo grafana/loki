@@ -43,10 +43,10 @@ func TestLen(t *testing.T) {
 				t.Errorf("chunk type %s should have %d samples, had %d", c.Encoding(), i, c.Len())
 			}
 
-			cs, _, _ := c.Add(model.SamplePair{
+			cs, _ := c.Add(model.SamplePair{
 				Timestamp: model.Time(i),
 				Value:     model.SampleValue(i),
-			}, nil)
+			})
 			c = cs[0]
 		}
 	}
@@ -95,10 +95,10 @@ func mkChunk(t *testing.T, encoding Encoding, samples int) Chunk {
 	require.NoError(t, err)
 
 	for i := 0; i < samples; i++ {
-		chunks, _, err := chunk.Add(model.SamplePair{
+		chunks, err := chunk.Add(model.SamplePair{
 			Timestamp: model.Time(i * step),
 			Value:     model.SampleValue(i),
-		}, nil)
+		})
 		require.NoError(t, err)
 		require.Len(t, chunks, 1)
 		chunk = chunks[0]

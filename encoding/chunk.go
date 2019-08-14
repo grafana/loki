@@ -43,7 +43,7 @@ type Chunk interface {
 	// any. The first chunk returned might be the same as the original one
 	// or a newly allocated version. In any case, take the returned chunk as
 	// the relevant one and discard the original chunk.
-	Add(sample model.SamplePair, reuseIter Iterator) ([]Chunk, Iterator, error)
+	Add(sample model.SamplePair) ([]Chunk, error)
 	NewIterator(Iterator) Iterator
 	Marshal(io.Writer) error
 	UnmarshalFromBuf([]byte) error
@@ -120,40 +120,40 @@ func RangeValues(it Iterator, in metric.Interval) ([]model.SamplePair, error) {
 // addToOverflowChunk is a utility function that creates a new chunk as overflow
 // chunk, adds the provided sample to it, and returns a chunk slice containing
 // the provided old chunk followed by the new overflow chunk.
-func addToOverflowChunk(c Chunk, s model.SamplePair, reuseIter Iterator) ([]Chunk, Iterator, error) {
-	overflowChunks, reuseIter, err := New().Add(s, reuseIter)
+func addToOverflowChunk(c Chunk, s model.SamplePair) ([]Chunk, error) {
+	overflowChunks, err := New().Add(s)
 	if err != nil {
-		return nil, reuseIter, err
+		return nil, err
 	}
-	return []Chunk{c, overflowChunks[0]}, reuseIter, nil
+	return []Chunk{c, overflowChunks[0]}, nil
 }
 
 // transcodeAndAdd is a utility function that transcodes the dst chunk into the
 // provided src chunk (plus the necessary overflow chunks) and then adds the
 // provided sample. It returns the new chunks (transcoded plus overflow) with
 // the new sample at the end.
-func transcodeAndAdd(dst Chunk, srcIterator Iterator, s model.SamplePair) ([]Chunk, error) {
+func transcodeAndAdd(dst Chunk, src Chunk, s model.SamplePair) ([]Chunk, error) {
 	Ops.WithLabelValues(Transcode).Inc()
 
 	var (
 		head            = dst
 		body, NewChunks []Chunk
 		err             error
-		reuseIter       Iterator
 	)
 
-	for srcIterator.Scan() {
-		if NewChunks, reuseIter, err = head.Add(srcIterator.Value(), reuseIter); err != nil {
+	it := src.NewIterator(nil)
+	for it.Scan() {
+		if NewChunks, err = head.Add(it.Value()); err != nil {
 			return nil, err
 		}
 		body = append(body, NewChunks[:len(NewChunks)-1]...)
 		head = NewChunks[len(NewChunks)-1]
 	}
-	if srcIterator.Err() != nil {
-		return nil, srcIterator.Err()
+	if it.Err() != nil {
+		return nil, it.Err()
 	}
 
-	if NewChunks, reuseIter, err = head.Add(s, reuseIter); err != nil {
+	if NewChunks, err = head.Add(s); err != nil {
 		return nil, err
 	}
 	return append(body, NewChunks...), nil
