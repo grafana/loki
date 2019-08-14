@@ -246,6 +246,15 @@ func mockReadRingWithOneActiveIngester() *readRingMock {
 	})
 }
 
+func mockIngesterDesc(addr string, state ring.IngesterState) ring.IngesterDesc {
+	return ring.IngesterDesc{
+		Addr:      addr,
+		Timestamp: time.Now().UnixNano(),
+		State:     state,
+		Tokens:    []uint32{1, 2, 3},
+	}
+}
+
 // mockStreamIterator returns an iterator with 1 stream and quantity entries,
 // where entries timestamp and line string are constructed as sequential numbers
 // starting at from
