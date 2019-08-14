@@ -8,10 +8,11 @@ import pytz
 from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 
 registry = CollectorRegistry()
-bigtable_backup_job_last_run_seconds = Gauge('bigtable_backup_job_last_run_seconds', 'Last time a bigtable backup job ran at', registry=registry)
-bigtable_backup_job_last_success_seconds = Gauge('bigtable_backup_job_last_success_seconds', 'Last time a bigtable backup job successfully finished', registry=registry)
-bigtable_backup_job_runtime_seconds =  Gauge('bigtable_backup_job_runtime_seconds', 'Runtime of last successfully finished bigtable backup job', registry=registry)
-bigtable_backup_job_backups_created = Gauge('bigtable_backup_job_backups_created', 'Number of backups created during last run', registry=registry)
+bigtable_backup_job_last_run_seconds = Gauge('bigtable_backup_job_last_run_seconds', 'Last time a bigtable backup job ran at.', registry=registry)
+bigtable_backup_job_last_success_seconds = Gauge('bigtable_backup_job_last_success_seconds', 'Last time a bigtable backup job successfully finished.', registry=registry)
+bigtable_backup_job_runtime_seconds =  Gauge('bigtable_backup_job_runtime_seconds', 'Runtime of last successfully finished bigtable backup job.', registry=registry)
+bigtable_backup_job_backups_created = Gauge('bigtable_backup_job_backups_created', 'Number of backups created during last run.', registry=registry)
+bigtable_backup_job_last_active_table_backup_time_seconds = Gauge('bigtable_backup_job_last_active_table_backup_time_seconds', 'Last time an active table was backed up at.', registry=registry)
 
 job_backup_active_periodic_table = "backup-active-periodic-table"
 job_ensure_backups = "ensure-backups"
@@ -27,6 +28,7 @@ def backup_active_periodic_table(args):
     table_id = args.bigtable_table_id_prefix + str(int(time.time() / args.periodic_table_duration))
     create_backup(table_id, args)
 
+    bigtable_backup_job_last_active_table_backup_time_seconds.set_to_current_time()
     push_job_finished_metric(args.prom_push_gateway_endpoint, args.namespace, job_backup_active_periodic_table, int(time.time() - start_time))
 
 
@@ -56,6 +58,8 @@ def ensure_backups(args):
             print("backup for {} not found".format(table_id))
             create_backup(table_id, args)
         bigtable_backup_job_backups_created.inc(1)
+        if table_id == active_table_number:
+            bigtable_backup_job_last_active_table_backup_time_seconds.set_to_current_time()
 
     num_backups_deleted = 0
             
@@ -78,7 +82,7 @@ def ensure_backups(args):
     if args.delete_out_of_range_backups:
         num_backups_deleted += delete_out_of_range_backups(oldest_table_number, newest_table_number, backups, args)
 
-    set_ensure_backups_specific_metrics(args, num_backups_deleted, newest_table_number, active_table_number)
+    set_ensure_backups_specific_metrics(args, num_backups_deleted, active_table_number)
     push_job_finished_metric(args.prom_push_gateway_endpoint, args.namespace, job_ensure_backups, int(time.time() - start_time))
 
 def find_last_timestamp_from_table_number(table_number, periodic_secs):
@@ -91,12 +95,12 @@ def list_backups(backup_path):
 
     return json.loads(popen.stdout.readline())
 
-def set_ensure_backups_specific_metrics(args, num_backups_deleted, newest_table_number, active_table_number):
+def set_ensure_backups_specific_metrics(args, num_backups_deleted, active_table_number):
     # ensure-backups job specific metrics
-    bigtable_backup_job_tables_backed_up = Gauge('bigtable_backup_job_tables_backed_up', 'Number of backups for active and inactive tables found during last run', ['kind'], registry=registry)
-    bigtable_backup_job_backups = Gauge('bigtable_backup_job_backups', 'Sum of number of backups for all active and inactive tables found during last run', ['kind'], registry=registry)
-    bigtable_backup_job_backups_deleted = Gauge('bigtable_backup_job_backups_deleted', 'Number of backups deleted during last run', registry=registry)
-    bigtable_backup_job_expected_backups = Gauge('bigtable_backup_job_expected_backups', 'Number of backups expected for active and inactive tables', ['kind'], registry=registry)
+    bigtable_backup_job_tables_backed_up = Gauge('bigtable_backup_job_tables_backed_up', 'Number of active and inactive tables backed up.', ['kind'], registry=registry)
+    bigtable_backup_job_backups = Gauge('bigtable_backup_job_backups', 'Number of backups for all active and inactive tables.', ['kind'], registry=registry)
+    bigtable_backup_job_backups_deleted = Gauge('bigtable_backup_job_backups_deleted', 'Number of backups deleted during last run.', registry=registry)
+    bigtable_backup_job_expected_inactive_table_backups = Gauge('bigtable_backup_job_expected_inactive_table_backups', 'Expected number of backups for inactive tables.', registry=registry)
 
     duration = args.duration
     if args.duration == None:
@@ -104,11 +108,7 @@ def set_ensure_backups_specific_metrics(args, num_backups_deleted, newest_table_
 
     # there should be 1 backup per inactive table
     periodic_table_duration_in_days = args.periodic_table_duration / 86400
-    bigtable_backup_job_expected_backups.labels('inactive').set(int(duration/periodic_table_duration_in_days))
-    if newest_table_number == active_table_number:
-        # If job duration covers today as well, we should expect 1 backup per day for this weeks active table
-        num_expected_active_table_backups = (args.period_to.weekday() + 4) % 7 + 1
-        bigtable_backup_job_expected_backups.labels('active').set(num_expected_active_table_backups)
+    bigtable_backup_job_expected_inactive_table_backups.set(int(duration/periodic_table_duration_in_days))
 
     bigtable_backup_job_backups_deleted.set(num_backups_deleted)
 
