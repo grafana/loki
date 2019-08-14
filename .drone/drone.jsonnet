@@ -12,6 +12,8 @@ local docker(arch, app) = {
     dockerfile: 'cmd/%s/Dockerfile' % app,
     username: { from_secret: 'docker_username' },
     password: { from_secret: 'docker_password' },
+    //TODO: disable once considered stable
+    dry_run: true,
   },
 };
 
@@ -65,7 +67,9 @@ local drone = [
   multiarch_image('arm64'),
   multiarch_image('arm'),
 
-  manifest(['promtail', 'loki', 'loki-canary']),
+  // tie it all up as a fast manifest
+  // TODO: enable once considered stable
+  // manifest(['promtail', 'loki', 'loki-canary']),
 ];
 
 {
