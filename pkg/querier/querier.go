@@ -321,34 +321,50 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 
 // passed to tailer for (re)connecting to new or disconnected ingesters
 func (q *Querier) tailDisconnectedIngesters(ctx context.Context, req *logproto.TailRequest, connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
-	tailClients := make(map[string]logproto.Querier_TailClient)
-	for i := range connectedIngestersAddr {
-		tailClients[connectedIngestersAddr[i]] = nil
+	// Build a map to easily check if an ingester address is already connected
+	connected := make(map[string]bool)
+	for _, addr := range connectedIngestersAddr {
+		connected[addr] = true
 	}
 
-	disconnectedIngesters := []ring.IngesterDesc{}
+	// Get the current replication set from the ring
 	replicationSet, err := q.ring.GetAll()
 	if err != nil {
 		return nil, err
 	}
 
+	// Look for disconnected ingesters or new one we should (re)connect to
+	reconnectIngesters := []ring.IngesterDesc{}
+
 	for _, ingester := range replicationSet.Ingesters {
-		if _, isOk := tailClients[ingester.Addr]; isOk {
-			delete(tailClients, ingester.Addr)
-		} else {
-			disconnectedIngesters = append(disconnectedIngesters, ingester)
+		if _, ok := connected[ingester.Addr]; ok {
+			continue
 		}
+
+		// Skip ingesters which are leaving or joining the cluster
+		if ingester.State != ring.ACTIVE {
+			continue
+		}
+
+		reconnectIngesters = append(reconnectIngesters, ingester)
 	}
 
-	clients, err := q.forGivenIngesters(ring.ReplicationSet{Ingesters: disconnectedIngesters}, func(client logproto.QuerierClient) (interface{}, error) {
+	if len(reconnectIngesters) == 0 {
+		return nil, nil
+	}
+
+	// Instance a tail client for each ingester to re(connect)
+	reconnectClients, err := q.forGivenIngesters(ring.ReplicationSet{Ingesters: reconnectIngesters}, func(client logproto.QuerierClient) (interface{}, error) {
 		return client.Tail(ctx, req)
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	for i := range clients {
-		tailClients[clients[i].addr] = clients[i].response.(logproto.Querier_TailClient)
+	reconnectClientsMap := make(map[string]logproto.Querier_TailClient)
+	for _, client := range reconnectClients {
+		reconnectClientsMap[client.addr] = client.response.(logproto.Querier_TailClient)
 	}
-	return tailClients, nil
+
+	return reconnectClientsMap, nil
 }
