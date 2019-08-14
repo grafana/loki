@@ -19,11 +19,16 @@ type MemcachedClient interface {
 	Set(item *memcache.Item) error
 }
 
+type serverSelector interface {
+	memcache.ServerSelector
+	SetServers(servers ...string) error
+}
+
 // memcachedClient is a memcache client that gets its server list from SRV
 // records, and periodically updates that ServerList.
 type memcachedClient struct {
 	*memcache.Client
-	serverList *memcache.ServerList
+	serverList serverSelector
 	hostname   string
 	service    string
 
@@ -38,6 +43,7 @@ type MemcachedClientConfig struct {
 	Timeout        time.Duration `yaml:"timeout,omitempty"`
 	MaxIdleConns   int           `yaml:"max_idle_conns,omitempty"`
 	UpdateInterval time.Duration `yaml:"update_interval,omitempty"`
+	ConsistentHash bool          `yaml:"consistent_hash,omitempty"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -47,19 +53,26 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 	f.IntVar(&cfg.MaxIdleConns, prefix+"memcached.max-idle-conns", 16, description+"Maximum number of idle connections in pool.")
 	f.DurationVar(&cfg.Timeout, prefix+"memcached.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on memcached requests.")
 	f.DurationVar(&cfg.UpdateInterval, prefix+"memcached.update-interval", 1*time.Minute, description+"Period with which to poll DNS for memcache servers.")
+	f.BoolVar(&cfg.ConsistentHash, prefix+"memcached.consistent-hash", false, description+"Use consistent hashing to distribute to memcache servers.")
 }
 
 // NewMemcachedClient creates a new MemcacheClient that gets its server list
 // from SRV and updates the server list on a regular basis.
 func NewMemcachedClient(cfg MemcachedClientConfig) MemcachedClient {
-	var servers memcache.ServerList
-	client := memcache.NewFromSelector(&servers)
+	var selector serverSelector
+	if cfg.ConsistentHash {
+		selector = &MemcachedJumpHashSelector{}
+	} else {
+		selector = &memcache.ServerList{}
+	}
+
+	client := memcache.NewFromSelector(selector)
 	client.Timeout = cfg.Timeout
 	client.MaxIdleConns = cfg.MaxIdleConns
 
 	newClient := &memcachedClient{
 		Client:     client,
-		serverList: &servers,
+		serverList: selector,
 		hostname:   cfg.Host,
 		service:    cfg.Service,
 		quit:       make(chan struct{}),
