@@ -1,3 +1,18 @@
+local apps = ['loki', 'loki-canary', 'promtail'];
+local archs = ['amd64', 'arm64', 'arm'];
+
+local condition(verb) = {
+  tagMaster: {
+    ref: {
+      [verb]:
+        [
+          'refs/heads/master',
+          'refs/tags/v*',
+        ],
+    },
+  },
+};
+
 local pipeline(name) = {
   kind: 'pipeline',
   name: name,
@@ -5,15 +20,14 @@ local pipeline(name) = {
 };
 
 local docker(arch, app) = {
-  name: '%s-image' % app,
+  name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
   image: 'plugins/docker',
   settings: {
-    repo: 'grafana/%s' % app,
+    repo: 'grafanasaur/%s' % app,
     dockerfile: 'cmd/%s/Dockerfile' % app,
-    username: { from_secret: 'docker_username' },
-    password: { from_secret: 'docker_password' },
-    //TODO: disable once considered stable
-    dry_run: true,
+    username: { from_secret: 'saur_username' },
+    password: { from_secret: 'saur_password' },
+    dry_run: false,
   },
 };
 
@@ -31,8 +45,20 @@ local multiarch_image(arch) = pipeline('docker-' + arch) {
       'echo $(./tools/image-tag)-%s > .tags' % arch,
     ],
   }] + [
-    docker(arch, app) { depends_on: ['image-tag'] }
-    for app in ['promtail', 'loki', 'loki-canary']
+    // dry run for everything that is not tag or master
+    docker(arch, app) {
+      depends_on: ['image-tag'],
+      when: condition('exclude').tagMaster,
+      settings+: { dry_run: true },
+    }
+    for app in apps
+  ] + [
+    // publish for tag or master
+    docker(arch, app) {
+      depends_on: ['image-tag'],
+      when: condition('include').tagMaster,
+    }
+    for app in apps
   ],
 };
 
@@ -56,20 +82,18 @@ local manifest(apps) = pipeline('manifest') {
   ],
 } + {
   depends_on: [
-    'docker-amd64',
-    'docker-arm',
-    'docker-arm64',
+    'docker-%s' % arch
+    for arch in archs
   ],
 };
 
 local drone = [
-  multiarch_image('amd64'),
-  multiarch_image('arm64'),
-  multiarch_image('arm'),
-
-  // tie it all up as a fast manifest
-  // TODO: enable once considered stable
-  // manifest(['promtail', 'loki', 'loki-canary']),
+  multiarch_image(arch)
+  for arch in archs
+] + [
+  manifest(['promtail', 'loki', 'loki-canary']) {
+    trigger: condition('include').tagMaster,
+  },
 ];
 
 {

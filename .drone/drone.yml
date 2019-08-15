@@ -13,39 +13,105 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: promtail-image
-  settings:
-    dockerfile: cmd/promtail/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/promtail
-    username:
-      from_secret: docker_username
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: loki-image
+  name: build-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
     dry_run: true
     password:
-      from_secret: docker_password
-    repo: grafana/loki
+      from_secret: saur_password
+    repo: grafanasaur/loki
     username:
-      from_secret: docker_username
+      from_secret: saur_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/tags/v*
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: loki-canary-image
+  name: build-loki-canary-image
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: true
     password:
-      from_secret: docker_password
-    repo: grafana/loki-canary
+      from_secret: saur_password
+    repo: grafanasaur/loki-canary
     username:
-      from_secret: docker_username
+      from_secret: saur_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-promtail-image
+  settings:
+    dockerfile: cmd/promtail/Dockerfile
+    dry_run: true
+    password:
+      from_secret: saur_password
+    repo: grafanasaur/promtail
+    username:
+      from_secret: saur_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-loki-image
+  settings:
+    dockerfile: cmd/loki/Dockerfile
+    dry_run: false
+    password:
+      from_secret: saur_password
+    repo: grafanasaur/loki
+    username:
+      from_secret: saur_username
+  when:
+    ref:
+      include:
+      - refs/heads/master
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-loki-canary-image
+  settings:
+    dockerfile: cmd/loki-canary/Dockerfile
+    dry_run: false
+    password:
+      from_secret: saur_password
+    repo: grafanasaur/loki-canary
+    username:
+      from_secret: saur_username
+  when:
+    ref:
+      include:
+      - refs/heads/master
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-promtail-image
+  settings:
+    dockerfile: cmd/promtail/Dockerfile
+    dry_run: false
+    password:
+      from_secret: saur_password
+    repo: grafanasaur/promtail
+    username:
+      from_secret: saur_username
+  when:
+    ref:
+      include:
+      - refs/heads/master
+      - refs/tags/v*
 ---
 kind: pipeline
 name: docker-arm64
@@ -62,39 +128,105 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: promtail-image
-  settings:
-    dockerfile: cmd/promtail/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/promtail
-    username:
-      from_secret: docker_username
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: loki-image
+  name: build-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
     dry_run: true
     password:
-      from_secret: docker_password
-    repo: grafana/loki
+      from_secret: saur_password
+    repo: grafanasaur/loki
     username:
-      from_secret: docker_username
+      from_secret: saur_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/tags/v*
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: loki-canary-image
+  name: build-loki-canary-image
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: true
     password:
-      from_secret: docker_password
-    repo: grafana/loki-canary
+      from_secret: saur_password
+    repo: grafanasaur/loki-canary
     username:
-      from_secret: docker_username
+      from_secret: saur_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-promtail-image
+  settings:
+    dockerfile: cmd/promtail/Dockerfile
+    dry_run: true
+    password:
+      from_secret: saur_password
+    repo: grafanasaur/promtail
+    username:
+      from_secret: saur_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-loki-image
+  settings:
+    dockerfile: cmd/loki/Dockerfile
+    dry_run: false
+    password:
+      from_secret: saur_password
+    repo: grafanasaur/loki
+    username:
+      from_secret: saur_username
+  when:
+    ref:
+      include:
+      - refs/heads/master
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-loki-canary-image
+  settings:
+    dockerfile: cmd/loki-canary/Dockerfile
+    dry_run: false
+    password:
+      from_secret: saur_password
+    repo: grafanasaur/loki-canary
+    username:
+      from_secret: saur_username
+  when:
+    ref:
+      include:
+      - refs/heads/master
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-promtail-image
+  settings:
+    dockerfile: cmd/promtail/Dockerfile
+    dry_run: false
+    password:
+      from_secret: saur_password
+    repo: grafanasaur/promtail
+    username:
+      from_secret: saur_username
+  when:
+    ref:
+      include:
+      - refs/heads/master
+      - refs/tags/v*
 ---
 kind: pipeline
 name: docker-arm
@@ -111,36 +243,151 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: promtail-image
-  settings:
-    dockerfile: cmd/promtail/Dockerfile
-    dry_run: true
-    password:
-      from_secret: docker_password
-    repo: grafana/promtail
-    username:
-      from_secret: docker_username
-- depends_on:
-  - image-tag
-  image: plugins/docker
-  name: loki-image
+  name: build-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
     dry_run: true
     password:
-      from_secret: docker_password
-    repo: grafana/loki
+      from_secret: saur_password
+    repo: grafanasaur/loki
     username:
-      from_secret: docker_username
+      from_secret: saur_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/tags/v*
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: loki-canary-image
+  name: build-loki-canary-image
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: true
     password:
+      from_secret: saur_password
+    repo: grafanasaur/loki-canary
+    username:
+      from_secret: saur_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-promtail-image
+  settings:
+    dockerfile: cmd/promtail/Dockerfile
+    dry_run: true
+    password:
+      from_secret: saur_password
+    repo: grafanasaur/promtail
+    username:
+      from_secret: saur_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-loki-image
+  settings:
+    dockerfile: cmd/loki/Dockerfile
+    dry_run: false
+    password:
+      from_secret: saur_password
+    repo: grafanasaur/loki
+    username:
+      from_secret: saur_username
+  when:
+    ref:
+      include:
+      - refs/heads/master
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-loki-canary-image
+  settings:
+    dockerfile: cmd/loki-canary/Dockerfile
+    dry_run: false
+    password:
+      from_secret: saur_password
+    repo: grafanasaur/loki-canary
+    username:
+      from_secret: saur_username
+  when:
+    ref:
+      include:
+      - refs/heads/master
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-promtail-image
+  settings:
+    dockerfile: cmd/promtail/Dockerfile
+    dry_run: false
+    password:
+      from_secret: saur_password
+    repo: grafanasaur/promtail
+    username:
+      from_secret: saur_username
+  when:
+    ref:
+      include:
+      - refs/heads/master
+      - refs/tags/v*
+---
+depends_on:
+- docker-amd64
+- docker-arm64
+- docker-arm
+kind: pipeline
+name: manifest
+steps:
+- depends_on:
+  - clone
+  image: plugins/manifest
+  name: manifest-promtail
+  settings:
+    ignore_missing: true
+    password:
       from_secret: docker_password
-    repo: grafana/loki-canary
+    spec: .drone/docker-manifest.tmpl
+    target: promtail
     username:
       from_secret: docker_username
+- depends_on:
+  - clone
+  image: plugins/manifest
+  name: manifest-loki
+  settings:
+    ignore_missing: true
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest.tmpl
+    target: loki
+    username:
+      from_secret: docker_username
+- depends_on:
+  - clone
+  image: plugins/manifest
+  name: manifest-loki-canary
+  settings:
+    ignore_missing: true
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest.tmpl
+    target: loki-canary
+    username:
+      from_secret: docker_username
+trigger:
+  ref:
+    include:
+    - refs/heads/master
+    - refs/tags/v*
