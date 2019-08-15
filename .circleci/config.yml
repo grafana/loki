@@ -112,7 +112,7 @@ workflows:
     - run:
         name: container
         command: |
-          make $APP-image
+          make $APP-image-cross
 
 # builds and pushes a container
 .publish: &publish

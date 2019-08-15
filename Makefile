@@ -394,7 +394,9 @@ endef
 
 # promtail
 promtail-image:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f cmd/promtail/Dockerfile .
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f cmd/promtail/Dockerfile .
+promtail-image-cross:
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f cmd/promtail/Dockerfile.cross .
 
 promtail-debug-image: OCI_PLATFORMS=
 promtail-debug-image:
@@ -405,7 +407,9 @@ promtail-push: promtail-image
 
 # loki
 loki-image:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile .
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile .
+loki-image-cross:
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
 
 loki-debug-image: OCI_PLATFORMS=
 loki-debug-image:
@@ -416,7 +420,9 @@ loki-push: loki-image
 
 # loki-canary
 loki-canary-image:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile .
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile .
+loki-canary-image-cross:
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile.cross .
 loki-canary-push: loki-canary-image
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
 
@@ -432,3 +438,7 @@ build-image:
 benchmark-store:
 	go run ./pkg/storage/hack/main.go
 	go test ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
+
+# regenerate drone yaml
+drone:
+	jsonnet .drone/drone.jsonnet | jq .drone -r | yq -y . > .drone/drone.yml
