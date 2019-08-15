@@ -107,6 +107,7 @@
       ingester: {
         chunk_idle_period: '15m',
         chunk_block_size: 262144,
+        max_transfer_retries: 60,
 
         lifecycler: {
           ring: {
@@ -125,8 +126,8 @@
 
           num_tokens: 512,
           heartbeat_period: '5s',
-          join_after: '10s',
-          claim_on_rollout: false,
+          join_after: '30s',
+          claim_on_rollout: true,
           interface_names: ['eth0'],
         },
       },
