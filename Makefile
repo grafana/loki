@@ -402,7 +402,7 @@ promtail-debug-image: OCI_PLATFORMS=
 promtail-debug-image:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)-debug -f cmd/promtail/Dockerfile.debug .
 
-promtail-push: promtail-image
+promtail-push: promtail-image-cross
 	$(call push-image,promtail)
 
 # loki
@@ -415,7 +415,7 @@ loki-debug-image: OCI_PLATFORMS=
 loki-debug-image:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
 
-loki-push: loki-image
+loki-push: loki-image-cross
 	$(call push-image,loki)
 
 # loki-canary
@@ -423,7 +423,7 @@ loki-canary-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile .
 loki-canary-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile.cross .
-loki-canary-push: loki-canary-image
+loki-canary-push: loki-canary-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
 
 # build-image (only amd64)

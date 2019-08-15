@@ -73,8 +73,8 @@ local manifest(apps) = pipeline('manifest') {
         target: app,
         spec: '.drone/docker-manifest.tmpl',
         ignore_missing: true,
-        username: { from_secret: 'docker_username' },
-        password: { from_secret: 'docker_password' },
+        username: { from_secret: 'saur_username' },
+        password: { from_secret: 'saur_password' },
       },
       depends_on: ['clone'],
     }
