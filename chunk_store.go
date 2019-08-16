@@ -24,7 +24,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 )
 
 var (
@@ -161,13 +160,13 @@ func (c *store) calculateIndexEntries(userID string, from, through model.Time, c
 }
 
 // Get implements Store
-func (c *store) Get(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([]Chunk, error) {
+func (c *store) Get(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([]Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.Get")
 	defer log.Span.Finish()
 	level.Debug(log).Log("from", from, "through", through, "matchers", len(allMatchers))
 
 	// Validate the query is within reasonable bounds.
-	metricName, matchers, shortcut, err := c.validateQuery(ctx, &from, &through, allMatchers)
+	metricName, matchers, shortcut, err := c.validateQuery(ctx, userID, &from, &through, allMatchers)
 	if err != nil {
 		return nil, err
 	} else if shortcut {
@@ -175,25 +174,20 @@ func (c *store) Get(ctx context.Context, from, through model.Time, allMatchers .
 	}
 
 	log.Span.SetTag("metric", metricName)
-	return c.getMetricNameChunks(ctx, from, through, matchers, metricName)
+	return c.getMetricNameChunks(ctx, userID, from, through, matchers, metricName)
 }
 
-func (c *store) GetChunkRefs(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
+func (c *store) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
 	return nil, nil, errors.New("not implemented")
 }
 
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
-func (c *store) LabelValuesForMetricName(ctx context.Context, from, through model.Time, metricName, labelName string) ([]string, error) {
+func (c *store) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName, labelName string) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.LabelValues")
 	defer log.Span.Finish()
 	level.Debug(log).Log("from", from, "through", through, "metricName", metricName, "labelName", labelName)
 
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	shortcut, err := c.validateQueryTimeRange(ctx, &from, &through)
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
 		return nil, err
 	} else if shortcut {
@@ -224,19 +218,19 @@ func (c *store) LabelValuesForMetricName(ctx context.Context, from, through mode
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *store) LabelNamesForMetricName(ctx context.Context, from, through model.Time, metricName string) ([]string, error) {
+func (c *store) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.LabelNamesForMetricName")
 	defer log.Span.Finish()
 	level.Debug(log).Log("from", from, "through", through, "metricName", metricName)
 
-	shortcut, err := c.validateQueryTimeRange(ctx, &from, &through)
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
 		return nil, err
 	} else if shortcut {
 		return nil, nil
 	}
 
-	chunks, err := c.lookupChunksByMetricName(ctx, from, through, nil, metricName)
+	chunks, err := c.lookupChunksByMetricName(ctx, userID, from, through, nil, metricName)
 	if err != nil {
 		return nil, err
 	}
@@ -256,17 +250,12 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, from, through model
 	return labelNamesFromChunks(allChunks), nil
 }
 
-func (c *store) validateQueryTimeRange(ctx context.Context, from *model.Time, through *model.Time) (bool, error) {
+func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
 	log, ctx := spanlogger.New(ctx, "store.validateQueryTimeRange")
 	defer log.Span.Finish()
 
 	if *through < *from {
 		return false, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", through, from)
-	}
-
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return false, err
 	}
 
 	maxQueryLength := c.limits.MaxQueryLength(userID)
@@ -303,11 +292,11 @@ func (c *store) validateQueryTimeRange(ctx context.Context, from *model.Time, th
 	return false, nil
 }
 
-func (c *store) validateQuery(ctx context.Context, from *model.Time, through *model.Time, matchers []*labels.Matcher) (string, []*labels.Matcher, bool, error) {
+func (c *store) validateQuery(ctx context.Context, userID string, from *model.Time, through *model.Time, matchers []*labels.Matcher) (string, []*labels.Matcher, bool, error) {
 	log, ctx := spanlogger.New(ctx, "store.validateQuery")
 	defer log.Span.Finish()
 
-	shortcut, err := c.validateQueryTimeRange(ctx, from, through)
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, from, through)
 	if err != nil {
 		return "", nil, false, err
 	}
@@ -324,18 +313,13 @@ func (c *store) validateQuery(ctx context.Context, from *model.Time, through *mo
 	return metricNameMatcher.Value, matchers, false, nil
 }
 
-func (c *store) getMetricNameChunks(ctx context.Context, from, through model.Time, allMatchers []*labels.Matcher, metricName string) ([]Chunk, error) {
+func (c *store) getMetricNameChunks(ctx context.Context, userID string, from, through model.Time, allMatchers []*labels.Matcher, metricName string) ([]Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.getMetricNameChunks")
 	defer log.Finish()
 	level.Debug(log).Log("from", from, "through", through, "metricName", metricName, "matchers", len(allMatchers))
 
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
-	chunks, err := c.lookupChunksByMetricName(ctx, from, through, matchers, metricName)
+	chunks, err := c.lookupChunksByMetricName(ctx, userID, from, through, matchers, metricName)
 	if err != nil {
 		return nil, err
 	}
@@ -364,14 +348,9 @@ func (c *store) getMetricNameChunks(ctx context.Context, from, through model.Tim
 	return filteredChunks, nil
 }
 
-func (c *store) lookupChunksByMetricName(ctx context.Context, from, through model.Time, matchers []*labels.Matcher, metricName string) ([]Chunk, error) {
+func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, from, through model.Time, matchers []*labels.Matcher, metricName string) ([]Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.lookupChunksByMetricName")
 	defer log.Finish()
-
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
 
 	// Just get chunks for metric if there are no matchers
 	if len(matchers) == 0 {

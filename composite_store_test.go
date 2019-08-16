@@ -21,18 +21,18 @@ func (m mockStore) PutOne(ctx context.Context, from, through model.Time, chunk C
 	return nil
 }
 
-func (m mockStore) Get(tx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error) {
+func (m mockStore) Get(tx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error) {
 	return nil, nil
 }
-func (m mockStore) LabelValuesForMetricName(ctx context.Context, from, through model.Time, metricName string, labelName string) ([]string, error) {
+func (m mockStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error) {
 	return nil, nil
 }
 
-func (m mockStore) GetChunkRefs(tx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
+func (m mockStore) GetChunkRefs(tx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
 	return nil, nil, nil
 }
 
-func (m mockStore) LabelNamesForMetricName(ctx context.Context, from, through model.Time, metricName string) ([]string, error) {
+func (m mockStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	return nil, nil
 }
 

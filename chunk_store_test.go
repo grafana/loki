@@ -98,7 +98,7 @@ func newTestChunkStoreConfig(t require.TestingT, schemaName string, storeCfg Sto
 
 // TestChunkStore_Get tests results are returned correctly depending on the type of query
 func TestChunkStore_Get(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := context.Background()
 	now := model.Now()
 
 	fooMetric1 := labels.Labels{
@@ -232,21 +232,21 @@ func TestChunkStore_Get(t *testing.T) {
 					}
 
 					// Query with ordinary time-range
-					chunks1, err := store.Get(ctx, now.Add(-time.Hour), now, matchers...)
+					chunks1, err := store.Get(ctx, userID, now.Add(-time.Hour), now, matchers...)
 					require.NoError(t, err)
 					if !reflect.DeepEqual(tc.expect, chunks1) {
 						t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, chunks1))
 					}
 
 					// Pushing end of time-range into future should yield exact same resultset
-					chunks2, err := store.Get(ctx, now.Add(-time.Hour), now.Add(time.Hour*24*10), matchers...)
+					chunks2, err := store.Get(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), matchers...)
 					require.NoError(t, err)
 					if !reflect.DeepEqual(tc.expect, chunks2) {
 						t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, chunks2))
 					}
 
 					// Query with both begin & end of time-range in future should yield empty resultset
-					chunks3, err := store.Get(ctx, now.Add(time.Hour), now.Add(time.Hour*2), matchers...)
+					chunks3, err := store.Get(ctx, userID, now.Add(time.Hour), now.Add(time.Hour*2), matchers...)
 					require.NoError(t, err)
 					if len(chunks3) != 0 {
 						t.Fatalf("%s: future query should yield empty resultset ... actually got %v chunks: %#v",
@@ -259,7 +259,7 @@ func TestChunkStore_Get(t *testing.T) {
 }
 
 func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := context.Background()
 	now := model.Now()
 
 	fooMetric1 := labels.Labels{
@@ -341,7 +341,7 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 					}
 
 					// Query with ordinary time-range
-					labelValues1, err := store.LabelValuesForMetricName(ctx, now.Add(-time.Hour), now, tc.metricName, tc.labelName)
+					labelValues1, err := store.LabelValuesForMetricName(ctx, userID, now.Add(-time.Hour), now, tc.metricName, tc.labelName)
 					require.NoError(t, err)
 
 					if !reflect.DeepEqual(tc.expect, labelValues1) {
@@ -349,7 +349,7 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 					}
 
 					// Pushing end of time-range into future should yield exact same resultset
-					labelValues2, err := store.LabelValuesForMetricName(ctx, now.Add(-time.Hour), now.Add(time.Hour*24*10), tc.metricName, tc.labelName)
+					labelValues2, err := store.LabelValuesForMetricName(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), tc.metricName, tc.labelName)
 					require.NoError(t, err)
 
 					if !reflect.DeepEqual(tc.expect, labelValues2) {
@@ -357,7 +357,7 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 					}
 
 					// Query with both begin & end of time-range in future should yield empty resultset
-					labelValues3, err := store.LabelValuesForMetricName(ctx, now.Add(time.Hour), now.Add(time.Hour*2), tc.metricName, tc.labelName)
+					labelValues3, err := store.LabelValuesForMetricName(ctx, userID, now.Add(time.Hour), now.Add(time.Hour*2), tc.metricName, tc.labelName)
 					require.NoError(t, err)
 					if len(labelValues3) != 0 {
 						t.Fatalf("%s/%s: future query should yield empty resultset ... actually got %v label values: %#v",
@@ -371,7 +371,7 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 }
 
 func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := context.Background()
 	now := model.Now()
 
 	fooMetric1 := labels.Labels{
@@ -443,7 +443,7 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 					}
 
 					// Query with ordinary time-range
-					labelNames1, err := store.LabelNamesForMetricName(ctx, now.Add(-time.Hour), now, tc.metricName)
+					labelNames1, err := store.LabelNamesForMetricName(ctx, userID, now.Add(-time.Hour), now, tc.metricName)
 					require.NoError(t, err)
 
 					if !reflect.DeepEqual(tc.expect, labelNames1) {
@@ -451,7 +451,7 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 					}
 
 					// Pushing end of time-range into future should yield exact same resultset
-					labelNames2, err := store.LabelNamesForMetricName(ctx, now.Add(-time.Hour), now.Add(time.Hour*24*10), tc.metricName)
+					labelNames2, err := store.LabelNamesForMetricName(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), tc.metricName)
 					require.NoError(t, err)
 
 					if !reflect.DeepEqual(tc.expect, labelNames2) {
@@ -459,7 +459,7 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 					}
 
 					// Query with both begin & end of time-range in future should yield empty resultset
-					labelNames3, err := store.LabelNamesForMetricName(ctx, now.Add(time.Hour), now.Add(time.Hour*2), tc.metricName)
+					labelNames3, err := store.LabelNamesForMetricName(ctx, userID, now.Add(time.Hour), now.Add(time.Hour*2), tc.metricName)
 					require.NoError(t, err)
 					if len(labelNames3) != 0 {
 						t.Fatalf("%s: future query should yield empty resultset ... actually got %v label names: %#v",
@@ -474,7 +474,7 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 
 // TestChunkStore_getMetricNameChunks tests if chunks are fetched correctly when we have the metric name
 func TestChunkStore_getMetricNameChunks(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := context.Background()
 	now := model.Now()
 	chunk1 := dummyChunkFor(now, labels.Labels{
 		{Name: labels.MetricName, Value: "foo"},
@@ -547,7 +547,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 						t.Fatal(err)
 					}
 
-					chunks, err := store.Get(ctx, now.Add(-time.Hour), now, matchers...)
+					chunks, err := store.Get(ctx, userID, now.Add(-time.Hour), now, matchers...)
 					require.NoError(t, err)
 
 					if !reflect.DeepEqual(tc.expect, chunks) {
@@ -568,7 +568,7 @@ func mustNewLabelMatcher(matchType labels.MatchType, name string, value string) 
 }
 
 func TestChunkStoreRandom(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := context.Background()
 
 	for _, schema := range schemas {
 		t.Run(schema.name, func(t *testing.T) {
@@ -613,7 +613,7 @@ func TestChunkStoreRandom(t *testing.T) {
 					mustNewLabelMatcher(labels.MatchEqual, labels.MetricName, "foo"),
 					mustNewLabelMatcher(labels.MatchEqual, "bar", "baz"),
 				}
-				chunks, err := store.Get(ctx, startTime, endTime, matchers...)
+				chunks, err := store.Get(ctx, userID, startTime, endTime, matchers...)
 				require.NoError(t, err)
 
 				// We need to check that each chunk is in the time range
@@ -636,7 +636,7 @@ func TestChunkStoreRandom(t *testing.T) {
 
 func TestChunkStoreLeastRead(t *testing.T) {
 	// Test we don't read too much from the index
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := context.Background()
 	store := newTestChunkStore(t, "v6")
 	defer store.Stop()
 
@@ -679,7 +679,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 			mustNewLabelMatcher(labels.MatchEqual, "bar", "baz"),
 		}
 
-		chunks, err := store.Get(ctx, startTime, endTime, matchers...)
+		chunks, err := store.Get(ctx, userID, startTime, endTime, matchers...)
 		require.NoError(t, err)
 
 		// We need to check that each chunk is in the time range
@@ -698,7 +698,7 @@ func TestChunkStoreLeastRead(t *testing.T) {
 }
 
 func TestIndexCachingWorks(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := context.Background()
 	metric := labels.Labels{
 		{Name: labels.MetricName, Value: "foo"},
 		{Name: "bar", Value: "baz"},
@@ -728,7 +728,7 @@ func TestIndexCachingWorks(t *testing.T) {
 }
 
 func BenchmarkIndexCaching(b *testing.B) {
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := context.Background()
 	storeMaker := stores[1]
 	storeCfg := storeMaker.configFn()
 
@@ -745,7 +745,7 @@ func BenchmarkIndexCaching(b *testing.B) {
 }
 
 func TestChunkStoreError(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := context.Background()
 	for _, tc := range []struct {
 		query         string
 		from, through model.Time
@@ -785,7 +785,7 @@ func TestChunkStoreError(t *testing.T) {
 				require.NoError(t, err)
 
 				// Query with ordinary time-range
-				_, err = store.Get(ctx, tc.from, tc.through, matchers...)
+				_, err = store.Get(ctx, userID, tc.from, tc.through, matchers...)
 				require.EqualError(t, err, tc.err)
 			})
 		}
@@ -834,12 +834,12 @@ func TestStoreMaxLookBack(t *testing.T) {
 	}
 
 	// Both the chunks should be returned
-	chunks, err := storeWithoutLookBackLimit.Get(ctx, now.Add(-time.Hour), now, matchers...)
+	chunks, err := storeWithoutLookBackLimit.Get(ctx, userID, now.Add(-time.Hour), now, matchers...)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(chunks))
 
 	// Single chunk should be returned with newer timestamp
-	chunks, err = storeWithLookBackLimit.Get(ctx, now.Add(-time.Hour), now, matchers...)
+	chunks, err = storeWithLookBackLimit.Get(ctx, userID, now.Add(-time.Hour), now, matchers...)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(chunks))
 	chunks[0].Through.Equal(now)
