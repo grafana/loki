@@ -64,7 +64,7 @@ workflows:
             - publish/canary
             - publish/docker-driver
           filters: {<<: *tag-or-master}
-    
+
       - test-helm:
           requires: [ lint, test ]
           filters: {<<: *tags}
@@ -91,7 +91,8 @@ workflows:
   run:
     name: rootless
     command: |
-      sudo apt-get install -qy uidmap libseccomp-dev binfmt-support go-bindata
+      sudo apt-get update && \
+        sudo apt-get install -qy uidmap libseccomp-dev binfmt-support go-bindata
       sudo docker run --privileged linuxkit/binfmt:v0.6
 
 .img: &img
