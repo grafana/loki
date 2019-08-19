@@ -49,8 +49,8 @@ if [[ "${CONTINUE}" != "y" ]]; then
 fi
 
 echo "Updating helm and ksonnet image versions"
-sed -i '' "s/.*promtail:.*/    promtail: '\''grafana\/promtail:${VERSION}'\'',/" production/ksonnet/promtail/config.libsonnet
-sed -i '' "s/.*loki:.*/    loki: '\''grafana\/loki:${VERSION}'\'',/" production/ksonnet/loki/images.libsonnet
+sed -i '' "s/.*promtail:.*/    promtail: 'grafana\/promtail:${VERSION}',/" production/ksonnet/promtail/config.libsonnet
+sed -i '' "s/.*loki:.*/    loki: 'grafana\/loki:${VERSION}',/" production/ksonnet/loki/images.libsonnet
 sed -i '' "s/.*tag:.*/  tag: ${VERSION}/" production/helm/loki/values.yaml
 sed -i '' "s/.*tag:.*/  tag: ${VERSION}/" production/helm/promtail/values.yaml
 
@@ -65,16 +65,8 @@ sed -i '' "s/^appVersion:.*/appVersion: ${VERSION}/" production/helm/loki-stack/
 
 echo
 echo "######################################################################################################"
-echo "NEXT STEPS"
 echo
-echo "Verify the changes, then commit and push and get them merged to master"
+echo "Version numbers updated, create a new branch, commit and push"
 echo
-echo "Once merged to master"
-echo
-echo "git pull"
-echo "git tag -a ${VERSION} -m \"tagging release ${VERSION}\""
-echo "git push origin ${VERSION}"
-echo
-echo "This should initiate the CircleCI build to push the images and finish the release"
 echo "######################################################################################################"
 
