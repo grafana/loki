@@ -48,7 +48,6 @@ DYN_GO_FLAGS := -ldflags "$(GO_LDFLAGS)" -tags netgo
 # Also remove the -s and -w flags present in the normal build which strip the symbol table and the DWARF symbol table.
 DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo
 DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo
-FLUENTBIT_GO_FLAGS := -ldflags "-X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION)"
 
 NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
        rm $@; \
@@ -362,7 +361,7 @@ docker-driver-clean:
 # fluent-bit plugin #
 #####################
 fluent-bit-plugin:
-	go build $(FLUENTBIT_GO_FLAGS) -buildmode=c-shared -o fluent-bit/fluent-bit-go-loki/out_loki.so ./fluent-bit/fluent-bit-go-loki
+	go build $(DYN_GO_FLAGS) -buildmode=c-shared -o fluent-bit/fluent-bit-go-loki/out_loki.so ./fluent-bit/fluent-bit-go-loki
 
 ########################
 # Bigtable Backup Tool #
