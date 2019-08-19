@@ -7,7 +7,7 @@ import (
 	"io"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 )
 
 const samplesPerChunk = 120
