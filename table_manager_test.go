@@ -691,4 +691,9 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 			{Name: chunkTablePrefix + "3", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)
+
+	// Test table manager retention not multiple of periodic config
+	tbmConfig.RetentionPeriod++
+	_, err = NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil)
+	require.Error(t, err)
 }

@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"sort"
@@ -98,10 +99,10 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 	f.Int64Var(&cfg.ProvisionedWriteThroughput, argPrefix+".write-throughput", 3000, "DynamoDB table default write throughput.")
 	f.Int64Var(&cfg.ProvisionedReadThroughput, argPrefix+".read-throughput", 300, "DynamoDB table default read throughput.")
-	f.BoolVar(&cfg.ProvisionedThroughputOnDemandMode, argPrefix+".enable-ondemand-throughput-mode", false, "Enables on demand througput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled")
+	f.BoolVar(&cfg.ProvisionedThroughputOnDemandMode, argPrefix+".enable-ondemand-throughput-mode", false, "Enables on demand throughput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled")
 	f.Int64Var(&cfg.InactiveWriteThroughput, argPrefix+".inactive-write-throughput", 1, "DynamoDB table write throughput for inactive tables.")
 	f.Int64Var(&cfg.InactiveReadThroughput, argPrefix+".inactive-read-throughput", 300, "DynamoDB table read throughput for inactive tables.")
-	f.BoolVar(&cfg.InactiveThroughputOnDemandMode, argPrefix+".inactive-enable-ondemand-throughput-mode", false, "Enables on demand througput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled")
+	f.BoolVar(&cfg.InactiveThroughputOnDemandMode, argPrefix+".inactive-enable-ondemand-throughput-mode", false, "Enables on demand throughput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled")
 
 	cfg.WriteScale.RegisterFlags(argPrefix+".write-throughput.scale", f)
 	cfg.InactiveWriteScale.RegisterFlags(argPrefix+".inactive-write-throughput.scale", f)
@@ -126,6 +127,15 @@ type TableManager struct {
 // NewTableManager makes a new TableManager
 func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient,
 	objectClient BucketClient) (*TableManager, error) {
+
+	if cfg.RetentionPeriod != 0 {
+		// Assume the newest config is the one to use for validation of retention
+		indexTablesPeriod := schemaCfg.Configs[len(schemaCfg.Configs)-1].IndexTables.Period
+		if indexTablesPeriod != 0 && cfg.RetentionPeriod%indexTablesPeriod != 0 {
+			return nil, errors.New("retention period should now be a multiple of periodic table duration")
+		}
+	}
+
 	return &TableManager{
 		cfg:          cfg,
 		schemaCfg:    schemaCfg,
