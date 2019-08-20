@@ -184,13 +184,6 @@ func newIndexAccessingChunkIterator(len int, acc indexAccessor) *indexAccessingC
 	}
 }
 
-func (it *indexAccessingChunkIterator) reset(len int, acc indexAccessor) {
-	it.len = len
-	it.pos = -1
-	it.lastValue = model.ZeroSamplePair
-	it.acc = acc
-}
-
 // scan implements Iterator.
 func (it *indexAccessingChunkIterator) Scan() bool {
 	it.pos++

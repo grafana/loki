@@ -276,11 +276,7 @@ func (c *varbitChunk) Add(s model.SamplePair) ([]Chunk, error) {
 }
 
 // NewIterator implements chunk.
-func (c varbitChunk) NewIterator(reuseIter Iterator) Iterator {
-	if it, ok := reuseIter.(*varbitChunkIterator); ok {
-		it.resetWithChunk(c)
-		return it
-	}
+func (c varbitChunk) NewIterator(_ Iterator) Iterator {
 	return newVarbitChunkIterator(c)
 }
 
@@ -1161,18 +1157,6 @@ func (it *varbitChunkIterator) reset() {
 	it.leading = 0
 	it.significant = 1
 	it.rewound = false
-}
-
-func (it *varbitChunkIterator) resetWithChunk(c varbitChunk) {
-	it.reset()
-
-	it.c = c
-	it.len = c.nextSampleOffset()
-	it.enc = c.valueEncoding()
-
-	it.lastError = nil
-	it.nextT = 0
-	it.nextV = 0
 }
 
 // rewind "rewinds" the chunk iterator by one step. Since one cannot simply
