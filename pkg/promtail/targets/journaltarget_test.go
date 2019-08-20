@@ -142,7 +142,7 @@ func TestJournalTarget_Since(t *testing.T) {
 	}
 
 	cfg := scrape.JournalTargetConfig{
-		Cutoff: "4h",
+		MaxAge: "4h",
 	}
 
 	jt, err := journalTargetWithReader(logger, client, ps, "test", nil,
