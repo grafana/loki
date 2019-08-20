@@ -51,9 +51,10 @@ def ensure_backups(args):
     active_table_number = int(time.time() / args.periodic_table_duration)
 
     print("Checking right backups exist")
-    while oldest_table_number <= newest_table_number:
-        table_id = args.bigtable_table_id_prefix + str(oldest_table_number)
-        oldest_table_number += 1
+    table_number_to_check = oldest_table_number
+    while table_number_to_check <= newest_table_number:
+        table_id = args.bigtable_table_id_prefix + str(table_number_to_check)
+        table_number_to_check += 1
         if table_id not in backups:
             print("backup for {} not found".format(table_id))
             create_backup(table_id, args)
@@ -205,7 +206,7 @@ def delete_out_of_range_backups(oldest_table_number, newest_table_number, backup
         table_number = int(table_id.rsplit("_", 1)[-1])
         if table_number < oldest_table_number or table_number > newest_table_number:
             for timestamp in timestamps:
-                delete_backup(table_id, timestamp, args)
+                delete_backup(table_id, str(timestamp), args)
                 num_backups_deleted += 1
 
     return num_backups_deleted
