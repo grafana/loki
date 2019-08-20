@@ -133,6 +133,9 @@ resources: {}
 #   cpu: 100m
 #   memory: 128Mi
 
+## Extra environment variables that will be passed onto loki StatefulSet pod
+env: {}
+
 securityContext:
   fsGroup: 10001
   runAsGroup: 10001
