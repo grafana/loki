@@ -18,5 +18,6 @@
         docker: {},
       }],
     },
+    promtail_cluster_role_name: 'promtail',
   },
 }
