@@ -25,6 +25,14 @@ type Config struct {
 
 // JournalTargetConfig describes systemd journal records to scrape.
 type JournalTargetConfig struct {
+	// Cutoff determines the oldest relative time from process start that will
+	// be read and sent to Loki. Values like 14h means no entry older than
+	// 14h will be read. If unspecified, defaults to 7h.
+	//
+	// A relative time specified here takes precedence over the saved position;
+	// if the cursor is older than the Cutoff value, it will not be used.
+	Cutoff string `yaml:"cutoff"`
+
 	// Labels optionally holds labels to associate with each record coming out
 	// of the journal.
 	Labels model.LabelSet `yaml:"labels"`
