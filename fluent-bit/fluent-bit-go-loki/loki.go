@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -15,14 +16,15 @@ import (
 )
 
 type lokiConfig struct {
-	url       flagext.URLValue
-	batchWait time.Duration
-	batchSize int
-	labelSet  model.LabelSet
-	logLevel  logging.Level
+	url        flagext.URLValue
+	batchWait  time.Duration
+	batchSize  int
+	labelSet   model.LabelSet
+	logLevel   logging.Level
+	removeKeys []string
 }
 
-func getLokiConfig(url string, batchWait string, batchSize string, labels string, logLevelVal string) (*lokiConfig, error) {
+func getLokiConfig(url, batchWait, batchSize, labels, logLevelVal, removeKeyStr string) (*lokiConfig, error) {
 	lc := &lokiConfig{}
 	var clientURL flagext.URLValue
 	if url == "" {
@@ -69,6 +71,11 @@ func getLokiConfig(url string, batchWait string, batchSize string, labels string
 		return nil, fmt.Errorf("invalid log level: %v", logLevel)
 	}
 	lc.logLevel = logLevel
+
+	if removeKeyStr != "" {
+		regex := regexp.MustCompile(`\s*,\s*`)
+		lc.removeKeys = regex.Split(removeKeyStr, -1)
+	}
 
 	return lc, nil
 }

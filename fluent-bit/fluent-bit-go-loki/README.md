@@ -35,6 +35,7 @@ $ make
 | BatchSize     | Log batch size to send a log batch to Loki (unit: Bytes)    | 10 KiB (10 * 1024 Bytes) |
 | Labels        | labels for API requests                       | job="fluent-bit"                    |
 | LogLevel      | LogLevel for plugin logger                    | "info"                              |
+| RemoveKeys    | Specify removing keys                         | none                                |
 
 Example:
 
@@ -48,6 +49,7 @@ add this section to fluent-bit.conf
     BatchWait 1 # (1sec)
     BatchSize 30720 # (30KiB)
     Labels {test="fluent-bit-go", lang="Golang"}
+    RemoveKeys key1,key2
 ```
 
 ## Useful links

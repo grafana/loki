@@ -8,7 +8,7 @@ import (
 )
 
 func TestGetLokiConfig(t *testing.T) {
-	c, err := getLokiConfig("", "", "", "", "")
+	c, err := getLokiConfig("", "", "", "", "", "")
 	if err != nil {
 		t.Fatalf("failed test %#v", err)
 	}
@@ -19,14 +19,14 @@ func TestGetLokiConfig(t *testing.T) {
 	assert.Equal(t, "info", c.logLevel.String(), "Use default value of logLevel")
 
 	// Invalid URL
-	_, err = getLokiConfig("invalid---URL+*#Q(%#Q", "", "", "", "")
+	_, err = getLokiConfig("invalid---URL+*#Q(%#Q", "", "", "", "", "")
 	if err == nil {
 		t.Fatalf("failed test %#v", err)
 	}
 
 	// batchWait, batchSize
 
-	c, err = getLokiConfig("", "15", "30720", "", "")
+	c, err = getLokiConfig("", "15", "30720", "", "", "")
 	if err != nil {
 		t.Fatalf("failed test %#v", err)
 	}
@@ -35,11 +35,18 @@ func TestGetLokiConfig(t *testing.T) {
 
 	// LabelSets
 	labels := `{test="fluent-bit-go", lang="Golang"}`
-	c, err = getLokiConfig("", "15", "30", labels, "")
+	c, err = getLokiConfig("", "15", "30", labels, "", "")
 	if err != nil {
 		t.Fatalf("failed test %#v", err)
 	}
 	assert.Equal(t, "{lang=\"Golang\", test=\"fluent-bit-go\"}",
 		c.labelSet.String(), "Use user-defined value of labels")
 
+	c, err = getLokiConfig("", "", "", "", "", "kubernetes,pod_name")
+	if err != nil {
+		t.Fatalf("failed test %#v", err)
+	}
+	removeKeys := []string{"kubernetes", "pod_name"}
+	assert.Equal(t, removeKeys,
+		c.removeKeys, "Use user-defined value of removeKeys")
 }

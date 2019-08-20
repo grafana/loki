@@ -19,6 +19,7 @@ import (
 
 var loki client.Client
 var ls model.LabelSet
+var removeKeys []string
 var plugin GoOutputPlugin = &fluentPlugin{}
 var logger = defaultLogger()
 
@@ -72,8 +73,9 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 	batchSize := plugin.PluginConfigKey(ctx, "BatchSize")
 	labels := plugin.PluginConfigKey(ctx, "Labels")
 	logLevel := plugin.PluginConfigKey(ctx, "LogLevel")
+	removeKeyStr := plugin.PluginConfigKey(ctx, "RemoveKeys")
 
-	config, err := getLokiConfig(url, batchWait, batchSize, labels, logLevel)
+	config, err := getLokiConfig(url, batchWait, batchSize, labels, logLevel, removeKeyStr)
 	if err != nil {
 		level.Error(logger).Log("[flb-go]", "failed to launch", "error", err)
 		plugin.Unregister(ctx)
@@ -87,6 +89,7 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 	level.Info(logger).Log("[flb-go]", "provided parameter", "BatchSize", batchSize)
 	level.Info(logger).Log("[flb-go]", "provided parameter", "Labels", labels)
 	level.Info(logger).Log("[flb-go]", "provided parameter", "LogLevel", logLevel)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "RemoveKeys", removeKeyStr)
 
 	cfg := client.Config{}
 	// Init everything with default values.
@@ -107,6 +110,7 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 		return output.FLB_ERROR
 	}
 	ls = config.labelSet
+	removeKeys = config.removeKeys
 
 	return output.FLB_OK
 }
@@ -169,6 +173,10 @@ func createJSON(record map[interface{}]interface{}) (string, error) {
 		default:
 			m[k.(string)] = v
 		}
+	}
+
+	for _, k := range removeKeys {
+		delete(m, k)
 	}
 
 	js, err := jsoniter.Marshal(m)
