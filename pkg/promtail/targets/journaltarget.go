@@ -204,6 +204,15 @@ func (t *JournalTarget) generateJournalConfig(
 		Formatter: t.formatter,
 	}
 
+	// When generating the JournalReaderConfig, we want to preferably
+	// use the Cursor, since it's guaranteed unique to a given journal
+	// entry. When we don't know the cursor position (or want to set
+	// a start time), we'll fall back to the less-precise Since, which
+	// takes a negative duration back from the current system time.
+	//
+	// The presence of Since takes precedence over Cursor, so we only
+	// ever set one and not both here.
+
 	if cb.Position == "" {
 		cfg.Since = -1 * cb.MaxAge
 		return cfg
