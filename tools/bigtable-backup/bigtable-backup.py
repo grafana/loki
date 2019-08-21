@@ -58,7 +58,6 @@ def ensure_backups(args):
         if table_id not in backups:
             print("backup for {} not found".format(table_id))
             create_backup(table_id, args)
-        bigtable_backup_job_backups_created.inc(1)
         if table_id == active_table_number:
             bigtable_backup_job_last_active_table_backup_time_seconds.set_to_current_time()
 
@@ -168,6 +167,7 @@ def create_backup(table_id, args):
         raise Exception("Failed to create backup with error {}".format(b"".join(popen.stdout.readlines()).decode()))
     else:
         print("Backup created for table {}".format(table_id))
+        bigtable_backup_job_backups_created.inc(1)
 
 def delete_backup(table_id, timestamp, args):
     popen = subprocess.Popen(['bigtable-backup', 'delete-backup', '--bigtable-table-id', table_id,
