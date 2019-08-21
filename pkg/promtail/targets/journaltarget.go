@@ -31,6 +31,11 @@ const (
 	// Formatter causes an immediate EOF and induces performance issues
 	// with how that is handled in sdjournal.
 	journalEmptyStr = " "
+
+	// journalDefaultMaxAgeTime represents the default earliest entry that
+	// will be read by the journal reader if there is no saved position
+	// newer than the "max_age" time.
+	journalDefaultMaxAgeTime = time.Hour * 7
 )
 
 type journalReader interface {
@@ -38,10 +43,34 @@ type journalReader interface {
 	Follow(until <-chan time.Time, writer io.Writer) error
 }
 
+// Abstracted functions for interacting with the journal, used for mocking in tests:
 type journalReaderFunc func(sdjournal.JournalReaderConfig) (journalReader, error)
+type journalEntryFunc func(cfg sdjournal.JournalReaderConfig, cursor string) (*sdjournal.JournalEntry, error)
 
+// Default implementations of abstracted functions:
 var defaultJournalReaderFunc = func(c sdjournal.JournalReaderConfig) (journalReader, error) {
 	return sdjournal.NewJournalReader(c)
+}
+
+var defaultJournalEntryFunc = func(c sdjournal.JournalReaderConfig, cursor string) (*sdjournal.JournalEntry, error) {
+	var (
+		journal *sdjournal.Journal
+		err     error
+	)
+
+	if c.Path != "" {
+		journal, err = sdjournal.NewJournalFromDir(c.Path)
+	} else {
+		journal, err = sdjournal.NewJournal()
+	}
+
+	if err != nil {
+		return nil, err
+	} else if err := journal.SeekCursor(cursor); err != nil {
+		return nil, err
+	}
+
+	return journal.GetEntry()
 }
 
 // JournalTarget tails systemd journal entries.
@@ -76,6 +105,7 @@ func NewJournalTarget(
 		relabelConfig,
 		targetConfig,
 		defaultJournalReaderFunc,
+		defaultJournalEntryFunc,
 	)
 }
 
@@ -87,6 +117,7 @@ func journalTargetWithReader(
 	relabelConfig []*relabel.Config,
 	targetConfig *scrape.JournalTargetConfig,
 	readerFunc journalReaderFunc,
+	entryFunc journalEntryFunc,
 ) (*JournalTarget, error) {
 
 	positionPath := fmt.Sprintf("journal-%s", jobName)
@@ -94,6 +125,9 @@ func journalTargetWithReader(
 
 	if readerFunc == nil {
 		readerFunc = defaultJournalReaderFunc
+	}
+	if entryFunc == nil {
+		entryFunc = defaultJournalEntryFunc
 	}
 
 	until := make(chan time.Time)
@@ -109,6 +143,17 @@ func journalTargetWithReader(
 		until: until,
 	}
 
+	var maxAge time.Duration
+	var err error
+	if targetConfig.MaxAge == "" {
+		maxAge = journalDefaultMaxAgeTime
+	} else {
+		maxAge, err = time.ParseDuration(targetConfig.MaxAge)
+	}
+	if err != nil {
+		return nil, errors.Wrap(err, "parsing journal reader 'max_age' config value")
+	}
+
 	// Default to system path if not defined. Passing an empty string to
 	// sdjournal is valid but forces reads from the journal to be from
 	// the local machine id only, which contradicts the default behavior
@@ -119,12 +164,13 @@ func journalTargetWithReader(
 		journalPath = "/var/log/journal"
 	}
 
-	var err error
-	t.r, err = readerFunc(sdjournal.JournalReaderConfig{
-		Path:      journalPath,
-		Cursor:    position,
-		Formatter: t.formatter,
+	cfg := t.generateJournalConfig(journalConfigBuilder{
+		JournalPath: journalPath,
+		Position:    position,
+		MaxAge:      maxAge,
+		EntryFunc:   entryFunc,
 	})
+	t.r, err = readerFunc(cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating journal reader")
 	}
@@ -137,6 +183,59 @@ func journalTargetWithReader(
 	}()
 
 	return t, nil
+}
+
+type journalConfigBuilder struct {
+	JournalPath string
+	Position    string
+	MaxAge      time.Duration
+	EntryFunc   journalEntryFunc
+}
+
+// generateJournalConfig generates a journal config by trying to intelligently
+// determine if a time offset or the cursor should be used for the starting
+// position in the reader.
+func (t *JournalTarget) generateJournalConfig(
+	cb journalConfigBuilder,
+) sdjournal.JournalReaderConfig {
+
+	cfg := sdjournal.JournalReaderConfig{
+		Path:      cb.JournalPath,
+		Formatter: t.formatter,
+	}
+
+	// When generating the JournalReaderConfig, we want to preferably
+	// use the Cursor, since it's guaranteed unique to a given journal
+	// entry. When we don't know the cursor position (or want to set
+	// a start time), we'll fall back to the less-precise Since, which
+	// takes a negative duration back from the current system time.
+	//
+	// The presence of Since takes precedence over Cursor, so we only
+	// ever set one and not both here.
+
+	if cb.Position == "" {
+		cfg.Since = -1 * cb.MaxAge
+		return cfg
+	}
+
+	// We have a saved position and need to get that entry to see if it's
+	// older than cb.MaxAge. If it _is_ older, then we need to use cfg.Since
+	// rather than cfg.Cursor.
+	entry, err := cb.EntryFunc(cfg, cb.Position)
+	if err != nil {
+		level.Error(t.logger).Log("msg", "received error reading saved journal position", "err", err.Error())
+		cfg.Since = -1 * cb.MaxAge
+		return cfg
+	}
+
+	ts := time.Unix(0, int64(entry.RealtimeTimestamp)*int64(time.Microsecond))
+	if time.Since(ts) > cb.MaxAge {
+		cfg.Since = -1 * cb.MaxAge
+		return cfg
+	}
+
+	cfg.Cursor = cb.Position
+	return cfg
 }
 
 func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error) {

@@ -89,6 +89,7 @@ clients:
 scrape_configs:
   - job_name: journal
     journal:
+      max_age: 12h
       path: /var/log/journal
       labels:
         job: systemd-journal
@@ -102,6 +103,11 @@ scrape_configs:
 Just like the Docker example, the `scrape_configs` sections holds various
 jobs for parsing logs. A job with a `journal` key configures it for systemd
 journal reading.
+
+`max_age` is an optional string specifying the earliest entry that will be
+read. If unspecified, `max_age` defaults to `7h`. Even if the position in the
+journal is saved, if the entry corresponding to that position is older than
+the max_age, the position won't be used.
 
 `path` is an optional string specifying the path to read journal entries
 from. If unspecified, defaults to the system default (`/var/log/journal`).
