@@ -7,7 +7,7 @@ import (
 	"io"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 )
 
 const samplesPerChunk = 120
@@ -172,7 +172,7 @@ func (b *bigchunk) Size() int {
 func (b *bigchunk) NewIterator() Iterator {
 	var it chunkenc.Iterator
 	if len(b.chunks) > 0 {
-		it = b.chunks[0].Iterator()
+		it = b.chunks[0].Iterator(nil)
 	} else {
 		it = chunkenc.NewNopIterator()
 	}
@@ -257,9 +257,9 @@ func (it *bigchunkIterator) FindAtOrAfter(target model.Time) bool {
 	}
 
 	if it.curr == nil {
-		it.curr = it.chunks[it.i].Iterator()
+		it.curr = it.chunks[it.i].Iterator(nil)
 	} else if t, _ := it.curr.At(); int64(target) <= t {
-		it.curr = it.chunks[it.i].Iterator()
+		it.curr = it.chunks[it.i].Iterator(nil)
 	}
 
 	for it.curr.Next() {
@@ -281,7 +281,7 @@ func (it *bigchunkIterator) Scan() bool {
 
 	for it.i < len(it.chunks)-1 {
 		it.i++
-		it.curr = it.chunks[it.i].Iterator()
+		it.curr = it.chunks[it.i].Iterator(nil)
 		if it.curr.Next() {
 			return true
 		}
@@ -326,7 +326,7 @@ func firstAndLastTimes(c chunkenc.Chunk) (int64, int64, error) {
 		first    int64
 		last     int64
 		firstSet bool
-		iter     = c.Iterator()
+		iter     = c.Iterator(nil)
 	)
 	for iter.Next() {
 		t, _ := iter.At()
