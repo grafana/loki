@@ -4,15 +4,16 @@ import (
 	"context"
 	"flag"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
-	"github.com/cortexproject/cortex/pkg/util/validation"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 // Config is the loki storage configuration
@@ -39,7 +40,7 @@ type store struct {
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
-func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits *validation.Overrides) (Store, error) {
+func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits storage.StoreLimits) (Store, error) {
 	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg, limits)
 	if err != nil {
 		return nil, err

@@ -2,16 +2,22 @@ package querier
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 const (
@@ -36,12 +42,15 @@ func TestQuerier_Label_QueryTimeoutConfigFlag(t *testing.T) {
 	store := newStoreMock()
 	store.On("LabelValuesForMetricName", mock.Anything, model.TimeFromUnixNano(startTime.UnixNano()), model.TimeFromUnixNano(endTime.UnixNano()), "logs", "test").Return([]string{"foo", "bar"}, nil)
 
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
+	require.NoError(t, err)
+
 	q, err := newQuerier(
 		mockQuerierConfig(),
 		mockIngesterClientConfig(),
 		newIngesterClientMockFactory(ingesterClient),
 		mockReadRingWithOneActiveIngester(),
-		store)
+		store, limits)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
@@ -84,12 +93,15 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
 	ingesterClient.On("Tail", mock.Anything, &request, mock.Anything).Return(tailClient, nil)
 
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
+	require.NoError(t, err)
+
 	q, err := newQuerier(
 		mockQuerierConfig(),
 		mockIngesterClientConfig(),
 		newIngesterClientMockFactory(ingesterClient),
 		mockReadRingWithOneActiveIngester(),
-		store)
+		store, limits)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
@@ -182,12 +194,15 @@ func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
 			ingesterClient := newQuerierClientMock()
 			ingesterClient.On("Tail", mock.Anything, &req, mock.Anything).Return(newTailClientMock(), nil)
 
+			limits, err := validation.NewOverrides(defaultLimitsTestConfig())
+			require.NoError(t, err)
+
 			q, err := newQuerier(
 				mockQuerierConfig(),
 				mockIngesterClientConfig(),
 				newIngesterClientMockFactory(ingesterClient),
 				newReadRingMock(testData.ringIngesters),
-				newStoreMock())
+				newStoreMock(), limits)
 			require.NoError(t, err)
 
 			actualClients, err := q.tailDisconnectedIngesters(context.Background(), &req, testData.connectedIngestersAddr)
@@ -223,4 +238,58 @@ func mockLabelResponse(values []string) *logproto.LabelResponse {
 	return &logproto.LabelResponse{
 		Values: values,
 	}
+}
+
+func defaultLimitsTestConfig() validation.Limits {
+	limits := validation.Limits{}
+	flagext.DefaultValues(&limits)
+	return limits
+}
+
+func TestQuerier_validateQueryRequest(t *testing.T) {
+	request := logproto.QueryRequest{
+		Query:     "{type=\"test\", fail=\"yes\"}",
+		Limit:     10,
+		Start:     time.Now().Add(-1 * time.Minute),
+		End:       time.Now(),
+		Direction: logproto.FORWARD,
+		Regex:     "",
+	}
+
+	store := newStoreMock()
+	store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(1, 2), nil)
+
+	queryClient := newQueryClientMock()
+	queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream(1, 2)}), nil)
+
+	ingesterClient := newQuerierClientMock()
+	ingesterClient.On("Query", mock.Anything, &request, mock.Anything).Return(queryClient, nil)
+
+	defaultLimits := defaultLimitsTestConfig()
+	defaultLimits.MaxStreamsMatchersPerQuery = 1
+	defaultLimits.MaxQueryLength = 2 * time.Minute
+
+	limits, err := validation.NewOverrides(defaultLimits)
+	require.NoError(t, err)
+
+	q, err := newQuerier(
+		mockQuerierConfig(),
+		mockIngesterClientConfig(),
+		newIngesterClientMockFactory(ingesterClient),
+		mockReadRingWithOneActiveIngester(),
+		store, limits)
+	require.NoError(t, err)
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	_, err = q.Query(ctx, &request)
+	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max streams matchers per query exceeded, matchers-count > limit (2 > 1)"), err)
+
+	request.Query = "{type=\"test\"}"
+	_, err = q.Query(ctx, &request)
+	require.NoError(t, err)
+
+	request.Start = request.End.Add(-3 * time.Minute)
+	_, err = q.Query(ctx, &request)
+	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, length > limit (3m0s > 2m0s)"), err)
 }

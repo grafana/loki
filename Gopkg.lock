@@ -245,7 +245,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:fdc932ff5ac5519eb816057507cb79a6addb23c722c03cfeec05aed44b53c96f"
+  digest = "1:573b3a3fbdc3f803b40d99f7a917db72b96ef00f5da75641cbfb01e9e5eec1c9"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/chunk",
@@ -275,7 +275,7 @@
     "pkg/util/validation",
   ]
   pruneopts = "UT"
-  revision = "934998160dbec7322c1ddfd70342a7aca68177f2"
+  revision = "68603f14e3e4cdbc0b90ff5af4f544f2c6e457fa"
 
 [[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
@@ -974,16 +974,15 @@
   revision = "2998b132700a7d019ff618c06a234b47c1f3f681"
 
 [[projects]]
-  digest = "1:8232537905152d6a0b116b9af5a0868fcac0e84eb02ec5a150624c077bdedb0b"
+  digest = "1:366f5aa02ff6c1e2eccce9ca03a22a6d983da89eecff8a89965401764534eb7c"
   name = "github.com/prometheus/procfs"
   packages = [
     ".",
     "internal/fs",
-    "internal/util",
   ]
   pruneopts = "UT"
-  revision = "00ec24a6a2d86e7074629c8384715dbb05adccd8"
-  version = "v0.0.4"
+  revision = "3f98efb27840a48a7a2898ec80be07674d19f9c8"
+  version = "v0.0.3"
 
 [[projects]]
   branch = "master"
@@ -1222,7 +1221,7 @@
   version = "v1.3.3"
 
 [[projects]]
-  digest = "1:9a09f4299b5d5546c45b892c8f8ec733d7e7d4d113b4f6aa620f6b9ac5dede6b"
+  digest = "1:6b279e7b04444101c8878335e7671597f76ae87ba767405a45d0dec949b97344"
   name = "go.etcd.io/etcd"
   packages = [
     "auth",
@@ -1303,8 +1302,8 @@
     "wal/walpb",
   ]
   pruneopts = "UT"
-  revision = "67d0c21bb04c19ef1c76c63549c776bde3d3ee90"
-  version = "v3.4.0-rc.2"
+  revision = "8f85f0dc2607fcfb3ec8d812ecf52eb391fb2f74"
+  version = "v3.4.0-rc.1"
 
 [[projects]]
   digest = "1:86b11d1e4dd05cd44d14b1e30b0497f98a37f696e8740ae88383de56d766cb34"
@@ -1834,9 +1833,10 @@
     "github.com/cortexproject/cortex/pkg/ingester/client",
     "github.com/cortexproject/cortex/pkg/ingester/index",
     "github.com/cortexproject/cortex/pkg/ring",
+    "github.com/cortexproject/cortex/pkg/ring/kv",
+    "github.com/cortexproject/cortex/pkg/ring/kv/codec",
     "github.com/cortexproject/cortex/pkg/util",
     "github.com/cortexproject/cortex/pkg/util/flagext",
-    "github.com/cortexproject/cortex/pkg/util/grpcclient",
     "github.com/cortexproject/cortex/pkg/util/spanlogger",
     "github.com/cortexproject/cortex/pkg/util/validation",
     "github.com/davecgh/go-spew/spew",
@@ -1899,6 +1899,7 @@
     "github.com/weaveworks/common/tracing",
     "github.com/weaveworks/common/user",
     "golang.org/x/net/context",
+    "golang.org/x/time/rate",
     "google.golang.org/grpc",
     "google.golang.org/grpc/codes",
     "google.golang.org/grpc/health/grpc_health_v1",

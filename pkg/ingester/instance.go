@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"net/http"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -9,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
@@ -19,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 const queryBatchSize = 128
@@ -54,9 +57,11 @@ type instance struct {
 	blockSize int
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
+
+	limits *validation.Overrides
 }
 
-func newInstance(instanceID string, blockSize int) *instance {
+func newInstance(instanceID string, blockSize int, limits *validation.Overrides) *instance {
 	return &instance{
 		streams:    map[model.Fingerprint]*stream{},
 		index:      index.New(),
@@ -67,6 +72,7 @@ func newInstance(instanceID string, blockSize int) *instance {
 
 		blockSize: blockSize,
 		tailers:   map[uint32]*tailer{},
+		limits:    limits,
 	}
 }
 
@@ -101,14 +107,10 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		fp := client.FastFingerprint(labels)
-		stream, ok := i.streams[fp]
-		if !ok {
-			stream = newStream(fp, labels, i.blockSize)
-			i.index.Add(labels, fp)
-			i.streams[fp] = stream
-			i.streamsCreatedTotal.Inc()
-			i.addTailersToNewStream(stream)
+		stream, err := i.getOrCreateStream(labels)
+		if err != nil {
+			appendErr = err
+			continue
 		}
 
 		if err := stream.Push(ctx, s.Entries); err != nil {
@@ -118,6 +120,22 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	}
 
 	return appendErr
+}
+
+func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, error) {
+	fp := client.FastFingerprint(labels)
+	stream, ok := i.streams[fp]
+	if !ok {
+		if len(i.streams) >= i.limits.MaxStreamsPerUser(i.instanceID) {
+			return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user streams limit (%d) exceeded", i.limits.MaxStreamsPerUser(i.instanceID))
+		}
+		stream = newStream(fp, labels, i.blockSize)
+		i.index.Add(labels, fp)
+		i.streams[fp] = stream
+		i.streamsCreatedTotal.Inc()
+		i.addTailersToNewStream(stream)
+	}
+	return stream, nil
 }
 
 func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {

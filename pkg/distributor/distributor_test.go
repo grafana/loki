@@ -3,25 +3,63 @@ package distributor
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/validation"
+
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
-const numIngesters = 5
+const (
+	numIngesters       = 5
+	ingestionRateLimit = 0.000096 // 100 Bytes/s limit
+)
+
+var (
+	success = &logproto.PushResponse{}
+	ctx     = user.InjectOrgID(context.Background(), "test")
+)
 
 func TestDistributor(t *testing.T) {
+	for i, tc := range []struct {
+		samples          int
+		expectedResponse *logproto.PushResponse
+		expectedError    error
+	}{
+		{
+			samples:          10,
+			expectedResponse: success,
+		},
+		{
+			samples:       100,
+			expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (100) exceeded while adding 100 lines"),
+		},
+	} {
+		t.Run(fmt.Sprintf("[%d](samples=%v)", i, tc.samples), func(t *testing.T) {
+			d := prepare(t)
+
+			request := makeWriteRequest(tc.samples)
+			response, err := d.Push(ctx, request)
+			assert.Equal(t, tc.expectedResponse, response)
+			assert.Equal(t, tc.expectedError, err)
+		})
+	}
+}
+
+func prepare(t *testing.T) *Distributor {
 	var (
 		distributorConfig Config
 		defaultLimits     validation.Limits
@@ -29,6 +67,8 @@ func TestDistributor(t *testing.T) {
 	)
 	flagext.DefaultValues(&distributorConfig, &defaultLimits, &clientConfig)
 	defaultLimits.EnforceMetricName = false
+	defaultLimits.IngestionRate = ingestionRateLimit
+	defaultLimits.IngestionBurstSize = ingestionRateLimit
 
 	limits, err := validation.NewOverrides(defaultLimits)
 	require.NoError(t, err)
@@ -54,6 +94,10 @@ func TestDistributor(t *testing.T) {
 	d, err := New(distributorConfig, clientConfig, r, limits)
 	require.NoError(t, err)
 
+	return d
+}
+
+func makeWriteRequest(samples int) *logproto.PushRequest {
 	req := logproto.PushRequest{
 		Streams: []*logproto.Stream{
 			{
@@ -61,15 +105,14 @@ func TestDistributor(t *testing.T) {
 			},
 		},
 	}
-	for i := 0; i < 10; i++ {
+
+	for i := 0; i < samples; i++ {
 		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
 			Timestamp: time.Unix(0, 0),
 			Line:      fmt.Sprintf("line %d", i),
 		})
 	}
-
-	_, err = d.Push(user.InjectOrgID(context.Background(), "test"), &req)
-	require.NoError(t, err)
+	return &req
 }
 
 type mockIngester struct {

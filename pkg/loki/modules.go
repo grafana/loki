@@ -7,22 +7,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
-	"google.golang.org/grpc/health/grpc_health_v1"
-
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/validation"
+
+	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier"
 	loki_storage "github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 const maxChunkAgeForTableManager = 12 * time.Hour
@@ -134,7 +134,7 @@ func (t *Loki) initDistributor() (err error) {
 }
 
 func (t *Loki) initQuerier() (err error) {
-	t.querier, err = querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store)
+	t.querier, err = querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store, t.overrides)
 	if err != nil {
 		return
 	}
@@ -159,7 +159,7 @@ func (t *Loki) initQuerier() (err error) {
 
 func (t *Loki) initIngester() (err error) {
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = &t.cfg.Server.GRPCListenPort
-	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store)
+	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides)
 	if err != nil {
 		return
 	}

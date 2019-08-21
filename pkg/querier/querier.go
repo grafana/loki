@@ -6,18 +6,25 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/common/model"
-	"google.golang.org/grpc/health/grpc_health_v1"
+	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
 
+	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 const (
@@ -49,26 +56,28 @@ type Querier struct {
 	pool   *cortex_client.Pool
 	store  storage.Store
 	engine *logql.Engine
+	limits *validation.Overrides
 }
 
 // New makes a new Querier.
-func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, store storage.Store) (*Querier, error) {
+func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, store storage.Store, limits *validation.Overrides) (*Querier, error) {
 	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
 		return client.New(clientCfg, addr)
 	}
 
-	return newQuerier(cfg, clientCfg, factory, ring, store)
+	return newQuerier(cfg, clientCfg, factory, ring, store, limits)
 }
 
 // newQuerier creates a new Querier and allows to pass a custom ingester client factory
 // used for testing purposes
-func newQuerier(cfg Config, clientCfg client.Config, clientFactory cortex_client.Factory, ring ring.ReadRing, store storage.Store) (*Querier, error) {
+func newQuerier(cfg Config, clientCfg client.Config, clientFactory cortex_client.Factory, ring ring.ReadRing, store storage.Store, limits *validation.Overrides) (*Querier, error) {
 	return &Querier{
 		cfg:    cfg,
 		ring:   ring,
 		pool:   cortex_client.NewPool(clientCfg.PoolConfig, ring, clientFactory, util.Logger),
 		store:  store,
 		engine: logql.NewEngine(cfg.Engine),
+		limits: limits,
 	}, nil
 }
 
@@ -144,6 +153,10 @@ func (q *Querier) forGivenIngesters(replicationSet ring.ReplicationSet, f func(l
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
 func (q *Querier) Select(ctx context.Context, params logql.SelectParams) (iter.EntryIterator, error) {
+	err := q.validateQueryRequest(ctx, &req.QueryRequest)
+	if err != nil {
+		return nil, err
+	}
 
 	ingesterIterators, err := q.queryIngesters(ctx, params)
 	if err != nil {
@@ -256,6 +269,21 @@ func mergePair(s1, s2 []string) []string {
 
 // Tail keeps getting matching logs from all ingesters for given query
 func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
+	histReq := logql.SelectParams{
+		QueryRequest: &logproto.QueryRequest{
+			Selector:  req.Query,
+			Start:     req.Start,
+			End:       time.Now(),
+			Limit:     req.Limit,
+			Direction: logproto.BACKWARD,
+		},
+	}
+
+	err := q.validateQueryRequest(ctx, &histReq.QueryRequest)
+	if err != nil {
+		return nil, err
+	}
+
 	// Enforce the query timeout except when tailing, otherwise the tailing
 	// will be terminated once the query timeout is reached
 	tailCtx := ctx
@@ -274,15 +302,6 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		tailClients[clients[i].addr] = clients[i].response.(logproto.Querier_TailClient)
 	}
 
-	histReq := logql.SelectParams{
-		QueryRequest: &logproto.QueryRequest{
-			Selector:  req.Query,
-			Start:     req.Start,
-			End:       time.Now(),
-			Limit:     req.Limit,
-			Direction: logproto.BACKWARD,
-		},
-	}
 	histIterators, err := q.Select(queryCtx, histReq)
 	if err != nil {
 		return nil, err
@@ -353,4 +372,42 @@ func (q *Querier) tailDisconnectedIngesters(ctx context.Context, req *logproto.T
 	}
 
 	return reconnectClientsMap, nil
+}
+
+func (q *Querier) validateQueryRequest(ctx context.Context, req *logproto.QueryRequest) error {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return err
+	}
+
+	expr, err := logql.ParseExpr(req.Query)
+	if err != nil {
+		return err
+	}
+
+	if req.Regex != "" {
+		expr = logql.NewFilterExpr(expr, labels.MatchRegexp, req.Regex)
+	}
+
+	matchers := expr.Matchers()
+	maxStreamMatchersPerQuery := q.limits.MaxStreamsMatchersPerQuery(userID)
+	if len(matchers) > maxStreamMatchersPerQuery {
+		return httpgrpc.Errorf(http.StatusBadRequest,
+			"max streams matchers per query exceeded, matchers-count > limit (%d > %d)", len(matchers), maxStreamMatchersPerQuery)
+	}
+
+	return q.validateQueryTimeRange(userID, &req.Start, &req.End)
+}
+
+func (q *Querier) validateQueryTimeRange(userID string, from *time.Time, through *time.Time) error {
+	if (*through).Before(*from) {
+		return httpgrpc.Errorf(http.StatusBadRequest, "invalid query, through < from (%s < %s)", *through, *from)
+	}
+
+	maxQueryLength := q.limits.MaxQueryLength(userID)
+	if maxQueryLength > 0 && (*through).Sub(*from) > maxQueryLength {
+		return httpgrpc.Errorf(http.StatusBadRequest, cortex_validation.ErrQueryTooLong, (*through).Sub(*from), maxQueryLength)
+	}
+
+	return nil
 }

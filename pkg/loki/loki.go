@@ -4,22 +4,22 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/go-kit/kit/log/level"
-	"github.com/pkg/errors"
-	"google.golang.org/grpc"
-
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/validation"
+
+	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
+	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 // Config is the root config for Loki.

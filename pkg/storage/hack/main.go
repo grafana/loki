@@ -9,18 +9,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/common/user"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util/validation"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	lstore "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/weaveworks/common/user"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var (
