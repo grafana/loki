@@ -2,9 +2,9 @@
 
   * [Scrape Configs](#scrape-configs)
   * [Entry Parsing](#entry-parser)
-  * [Deployment Methods](./promtail-setup.md)
-  * [Promtail API](./promtail-api.md)
-  * [Config and Usage Examples](./promtail-examples.md)
+  * [Deployment Methods](./promtail/deployment-methods.md)
+  * [Promtail API](./promtail/api.md)
+  * [Config and Usage Examples](./promtail/config-examples.md)
   * [Failure modes](./promtail/known-failure-modes.md)
   * [Troubleshooting](./troubleshooting.md)
 

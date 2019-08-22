@@ -1,4 +1,4 @@
-# Promtail Setups
+# Promtail Deployment Methods
 
 ## Daemonset method
 
