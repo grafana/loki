@@ -50,8 +50,8 @@ func bigtableInstrumentation() ([]grpc.UnaryClientInterceptor, []grpc.StreamClie
 		}
 }
 
-func gcsInstrumentation(ctx context.Context) (option.ClientOption, error) {
-	transport, err := google_http.NewTransport(ctx, http.DefaultTransport)
+func gcsInstrumentation(ctx context.Context, scope string) (option.ClientOption, error) {
+	transport, err := google_http.NewTransport(ctx, http.DefaultTransport, option.WithScopes(scope))
 	if err != nil {
 		return nil, err
 	}

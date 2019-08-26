@@ -30,7 +30,7 @@
 
 [[constraint]]
   name = "github.com/weaveworks/common"
-  source = "https://github.com/tomwilkie/weaveworks-common"
+  source = "https://github.com/sandlis/weaveworks-common"
   branch = "server-listen-addr"
 
 [[constraint]]
@@ -56,7 +56,7 @@
   name = "github.com/prometheus/common"
 
 [[override]]
-  branch = "master"
+  version = "v1.0.0"
   name = "github.com/prometheus/client_golang"
 
 [[override]]
@@ -78,3 +78,11 @@
 [[constraint]]
   name = "github.com/stretchr/testify"
   version = "1.3.0"
+
+[[override]]
+  name = "go.etcd.io/etcd"
+  version = "v3.4.0-rc.1"
+
+[[override]]
+  name = "github.com/prometheus/procfs"
+  version = "v0.0.2"

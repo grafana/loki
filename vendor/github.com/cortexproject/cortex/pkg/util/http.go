@@ -12,7 +12,8 @@ import (
 	"github.com/blang/semver"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/weaveworks/common/instrument"
+	"github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 )
 
 // WriteJSONResponse writes some JSON as a HTTP response.
@@ -59,6 +60,10 @@ func CompressionTypeFor(version string) CompressionType {
 func ParseProtoReader(ctx context.Context, reader io.Reader, req proto.Message, compression CompressionType) ([]byte, error) {
 	var body []byte
 	var err error
+	sp := opentracing.SpanFromContext(ctx)
+	if sp != nil {
+		sp.LogFields(otlog.String("event", "util.ParseProtoRequest[start reading]"))
+	}
 	switch compression {
 	case NoCompression:
 		body, err = ioutil.ReadAll(reader)
@@ -66,6 +71,10 @@ func ParseProtoReader(ctx context.Context, reader io.Reader, req proto.Message, 
 		body, err = ioutil.ReadAll(snappy.NewReader(reader))
 	case RawSnappy:
 		body, err = ioutil.ReadAll(reader)
+		if sp != nil {
+			sp.LogFields(otlog.String("event", "util.ParseProtoRequest[decompress]"),
+				otlog.Int("size", len(body)))
+		}
 		if err == nil {
 			body, err = snappy.Decode(nil, body)
 		}
@@ -74,9 +83,20 @@ func ParseProtoReader(ctx context.Context, reader io.Reader, req proto.Message, 
 		return nil, err
 	}
 
-	if err := instrument.CollectedRequest(ctx, "util.ParseProtoRequest[unmarshal]", &instrument.HistogramCollector{}, instrument.ErrorCode, func(_ context.Context) error {
-		return proto.Unmarshal(body, req)
-	}); err != nil {
+	if sp != nil {
+		sp.LogFields(otlog.String("event", "util.ParseProtoRequest[unmarshal]"),
+			otlog.Int("size", len(body)))
+	}
+
+	// We re-implement proto.Unmarshal here as it calls XXX_Unmarshal first,
+	// which we can't override without upsetting golint.
+	req.Reset()
+	if u, ok := req.(proto.Unmarshaler); ok {
+		err = u.Unmarshal(body)
+	} else {
+		err = proto.NewBuffer(body).Unmarshal(req)
+	}
+	if err != nil {
 		return nil, err
 	}
 
