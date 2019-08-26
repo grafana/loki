@@ -17,7 +17,7 @@ import (
 )
 
 func TestIngester(t *testing.T) {
-	ingesterConfig := defaultIngesterTestConfig()
+	ingesterConfig := defaultIngesterTestConfig(t)
 	store := &mockStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
