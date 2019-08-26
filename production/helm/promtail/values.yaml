@@ -128,3 +128,5 @@ config:
 serviceMonitor:
   enabled: false
   interval: ""
+  additionalLabels: {}
+  # scrapeTimeout: 10s
