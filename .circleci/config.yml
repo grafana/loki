@@ -132,7 +132,6 @@ workflows:
 jobs:
   test:
     <<: *defaults
-    resource_class: large
     steps:
       - checkout
       - run:
@@ -141,7 +140,6 @@ jobs:
 
   lint:
     <<: *defaults
-    resource_class: large
     steps:
       - checkout
       - run:
