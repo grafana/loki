@@ -214,7 +214,7 @@ lint:
 ########
 
 test: all
-	go test -p=8 ./...
+	go test -p=6 ./...
 
 #########
 # Clean #
