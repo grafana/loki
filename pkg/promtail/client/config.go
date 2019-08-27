@@ -12,7 +12,7 @@ import (
 
 // Config describes configuration for a HTTP pusher client.
 type Config struct {
-	URL       flagext.URLValue
+	URL       flagext.URLValue `yaml:"url,omitempty" mapstructure:"url"`
 	BatchWait time.Duration
 	BatchSize int
 

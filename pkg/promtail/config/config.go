@@ -14,8 +14,8 @@ import (
 type Config struct {
 	ServerConfig server.Config `yaml:"server,omitempty"`
 	// deprecated use ClientConfigs instead
-	ClientConfig    client.Config    `yaml:"client,omitempty"`
-	ClientConfigs   []client.Config  `yaml:"clients,omitempty"`
+	ClientConfig    client.Config    `yaml:"client,omitempty" mapstructure:"client"`
+	ClientConfigs   []client.Config  `yaml:"clients,omitempty" mapstructure:"clients"`
 	PositionsConfig positions.Config `yaml:"positions,omitempty"`
 	ScrapeConfig    []scrape.Config  `yaml:"scrape_configs,omitempty"`
 	TargetConfig    targets.Config   `yaml:"target_config,omitempty"`

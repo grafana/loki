@@ -3,7 +3,9 @@ package main
 import (
 	"flag"
 	"os"
+	"path"
 	"reflect"
+	"strings"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -12,9 +14,11 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/promtail"
 	"github.com/grafana/loki/pkg/promtail/config"
+
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 )
 
 func init() {
@@ -28,15 +32,28 @@ func main() {
 	)
 	flag.StringVar(&configFile, "config.file", "promtail.yml", "The config file.")
 	flagext.RegisterFlags(&config)
-	flag.Parse()
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	pflag.Parse()
 
 	util.InitLogger(&config.ServerConfig.Config)
 
-	if configFile != "" {
-		if err := helpers.LoadConfig(configFile, &config); err != nil {
-			level.Error(util.Logger).Log("msg", "error loading config", "filename", configFile, "err", err)
-			os.Exit(1)
-		}
+	if err := viper.BindPFlags(pflag.CommandLine); err != nil {
+		level.Error(util.Logger).Log("msg", "error parsing flags", "err", err)
+		os.Exit(1)
+	}
+
+	configFile = viper.GetString("config.file")
+	viper.SetConfigType("yaml")
+	viper.SetConfigName(strings.TrimSuffix(path.Base(configFile), path.Ext(configFile)))
+	viper.AddConfigPath(path.Dir(configFile))
+	if err := viper.ReadInConfig(); err != nil {
+		level.Error(util.Logger).Log("msg", "error reading config", "filename", configFile, "err", err)
+		os.Exit(1)
+	}
+
+	if err := viper.Unmarshal(&config); err != nil {
+		level.Error(util.Logger).Log("msg", "error decoding config", "filename", configFile, "err", err)
+		os.Exit(1)
 	}
 
 	// Re-init the logger which will now honor a different log level set in ServerConfig.Config

@@ -17,6 +17,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 )
 
 func init() {
@@ -30,7 +32,12 @@ func main() {
 	)
 	flag.StringVar(&configFile, "config.file", "", "Configuration file to load.")
 	flagext.RegisterFlags(&cfg)
-	flag.Parse()
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	pflag.Parse()
+	if err := viper.BindPFlags(pflag.CommandLine); err != nil {
+		level.Error(util.Logger).Log("msg", "error parsing flags", "err", err)
+		os.Exit(1)
+	}
 
 	// LimitsConfig has a customer UnmarshalYAML that will set the defaults to a global.
 	// This global is set to the config passed into the last call to `NewOverrides`. If we don't
