@@ -4,6 +4,7 @@
 
 Make sure you have the ksonnet v0.8.0:
 
+For MacOS:
 ```
 $ brew install https://raw.githubusercontent.com/ksonnet/homebrew-tap/82ef24cb7b454d1857db40e38671426c18cd8820/ks.rb
 $ brew pin ks
@@ -12,6 +13,11 @@ ksonnet version: v0.8.0
 jsonnet version: v0.9.5
 client-go version: v1.6.8-beta.0+$Format:%h$
 ```
+
+For others:
+- download binary pkgs from [ksonnet](https://github.com/ksonnet/ksonnet/releases/tag/v0.8.0) based on your OS
+- extract it and mv `ks` binary file to `/usr/local/bin` or any path you wish
+- run `ks version` to valid it works and version is v0.8.0
 
 In your config repo, if you don't have a ksonnet application, make a new one (will copy credentials from current context):
 
