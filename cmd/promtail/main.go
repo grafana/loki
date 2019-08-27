@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/promtail"
 	"github.com/grafana/loki/pkg/promtail/config"
 
+	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
@@ -51,7 +52,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := viper.Unmarshal(&config); err != nil {
+	if err := viper.Unmarshal(&config, func(decoderConfig *mapstructure.DecoderConfig) {
+		decoderConfig.TagName = "yaml"
+	}); err != nil {
 		level.Error(util.Logger).Log("msg", "error decoding config", "filename", configFile, "err", err)
 		os.Exit(1)
 	}
