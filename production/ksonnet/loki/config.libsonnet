@@ -117,7 +117,6 @@
               store: 'consul',
               consul: {
                 host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
-                prefix: '',
                 httpclienttimeout: '20s',
                 consistentreads: true,
               },
@@ -144,7 +143,7 @@
             service: 'memcached-client',
           },
         },
-      } +  
+      } +
       (if std.count($._config.enabledBackends, 'gcs') > 0 then {
         gcs: $._config.client_configs.gcs,
        } else {}) +
