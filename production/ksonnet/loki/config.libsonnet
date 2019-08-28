@@ -15,6 +15,7 @@
     ],
 
     table_prefix: $._config.namespace,
+    index_period_hours: 168,  // 1 week
 
     // Bigtable variables
     bigtable_instance: error 'must specify bigtable instance',
@@ -196,7 +197,7 @@
           schema: 'v9',
           index: {
             prefix: '%s_index_' % $._config.table_prefix,
-            period: '168h',
+            period: '%dh' % $._config.index_period_hours,
           },
         }],
       },
