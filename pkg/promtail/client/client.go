@@ -112,7 +112,10 @@ func (c *client) run() {
 	maxWait := time.NewTimer(c.cfg.BatchWait)
 
 	defer func() {
-		c.sendBatch(batch)
+		if len(batch) > 0 {
+			c.sendBatch(batch)
+		}
+
 		c.wg.Done()
 	}()
 
