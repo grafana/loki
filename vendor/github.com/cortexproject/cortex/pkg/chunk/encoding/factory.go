@@ -76,6 +76,14 @@ var encodings = map[Encoding]encoding{
 
 // Set implements flag.Value.
 func (e *Encoding) Set(s string) error {
+	// First see if the name was given
+	for k, v := range encodings {
+		if s == v.Name {
+			*e = k
+			return nil
+		}
+	}
+	// Otherwise, accept a number
 	i, err := strconv.Atoi(s)
 	if err != nil {
 		return err

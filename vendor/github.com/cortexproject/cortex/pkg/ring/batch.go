@@ -2,6 +2,7 @@ package ring
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 )
 
@@ -35,7 +36,7 @@ type itemTracker struct {
 // to send to that ingester.
 //
 // Not implemented as a method on Ring so we can test separately.
-func DoBatch(ctx context.Context, r ReadRing, keys []uint32, callback func(IngesterDesc, []int) error) error {
+func DoBatch(ctx context.Context, r ReadRing, keys []uint32, callback func(IngesterDesc, []int) error, cleanup func()) error {
 	replicationSets, err := r.BatchGet(keys, Write)
 	if err != nil {
 		return err
@@ -63,12 +64,23 @@ func DoBatch(ctx context.Context, r ReadRing, keys []uint32, callback func(Inges
 		err:         make(chan error),
 	}
 
+	var wg sync.WaitGroup
+
+	wg.Add(len(ingesters))
 	for _, i := range ingesters {
 		go func(i ingester) {
 			err := callback(i.desc, i.indexes)
 			tracker.record(i.itemTrackers, err)
+			wg.Done()
 		}(i)
 	}
+
+	// Perform cleanup at the end.
+	go func() {
+		wg.Wait()
+
+		cleanup()
+	}()
 
 	select {
 	case err := <-tracker.err:

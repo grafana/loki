@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 )
 
 // ByToken is a sortable list of TokenDescs
@@ -18,6 +20,11 @@ func (ts ByToken) Less(i, j int) bool { return ts[i].Token < ts[j].Token }
 // ProtoDescFactory makes new Descs
 func ProtoDescFactory() proto.Message {
 	return NewDesc()
+}
+
+// GetCodec returns the codec used to encode and decode data being put by ring.
+func GetCodec() codec.Codec {
+	return codec.Proto{Factory: ProtoDescFactory}
 }
 
 // NewDesc returns an empty ring.Desc

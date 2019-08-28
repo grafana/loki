@@ -152,7 +152,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 		entries := make([]logproto.Entry, 0, len(stream.Entries))
 		for _, entry := range stream.Entries {
-			if err := d.overrides.ValidateSample(userID, metricName, cortex_client.Sample{
+			if err := validation.ValidateSample(d.overrides, userID, metricName, cortex_client.Sample{
 				TimestampMs: entry.Timestamp.UnixNano() / int64(time.Millisecond),
 			}); err != nil {
 				validationErr = err
@@ -224,7 +224,7 @@ func (d *Distributor) validateLabels(userID, labels string) error {
 		return err
 	}
 
-	return d.overrides.ValidateLabels(userID, ls)
+	return validation.ValidateLabels(d.overrides, userID, ls)
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.

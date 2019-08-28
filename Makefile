@@ -207,14 +207,14 @@ publish: dist
 ########
 
 lint:
-	GOGC=20 golangci-lint run
+	GOGC=10 golangci-lint run
 
 ########
 # Test #
 ########
 
 test: all
-	go test -p=8 ./...
+	go test -p=6 ./...
 
 #########
 # Clean #
