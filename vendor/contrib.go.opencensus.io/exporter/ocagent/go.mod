@@ -1,9 +1,10 @@
 module contrib.go.opencensus.io/exporter/ocagent
 
 require (
-	github.com/census-instrumentation/opencensus-proto v0.0.2-0.20180913191712-f303ae3f8d6a
-	github.com/golang/protobuf v1.2.0
-	go.opencensus.io v0.17.0
-	google.golang.org/api v0.0.0-20180910000450-7ca32eb868bf
-	google.golang.org/grpc v1.15.0
+	github.com/census-instrumentation/opencensus-proto v0.2.0 // this is to match the version used in census-instrumentation/opencensus-service
+	github.com/golang/protobuf v1.3.1
+	github.com/grpc-ecosystem/grpc-gateway v1.8.5 // indirect
+	go.opencensus.io v0.20.2
+	google.golang.org/api v0.3.1
+	google.golang.org/grpc v1.19.1
 )

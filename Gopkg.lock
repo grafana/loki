@@ -24,12 +24,12 @@
   version = "v0.44.3"
 
 [[projects]]
-  digest = "1:a366d29e068f3f3639f83e87feec6dc7c5977d316a8214e3937ced730383858d"
+  digest = "1:6b1426cad7057b717351eacf5b6fe70f053f11aac1ce254bbf2fd72c031719eb"
   name = "contrib.go.opencensus.io/exporter/ocagent"
   packages = ["."]
   pruneopts = "UT"
-  revision = "7c99379c268784cc5f9eef1e54999232c084db47"
-  version = "v0.3.0"
+  revision = "dcb33c7f3b7cfe67e8a2cea10207ede1b7c40764"
+  version = "v0.4.12"
 
 [[projects]]
   digest = "1:1f75bf6faaced525fd2fc98c3358f85346ee577b81acc5f3da11ef50158d8fcb"
@@ -212,11 +212,13 @@
   revision = "551aad21a6682b95329c1f5bd62ee5060d64f7e8"
 
 [[projects]]
-  digest = "1:8b16d49dbfbfdd73c960a4316c9a99cbd23d3c0e2bdaca7d68bb218ff7dd0e38"
+  digest = "1:8f5acd4d4462b5136af644d25101f0968a7a94ee90fcb2059cec5b7cc42e0b20"
   name = "github.com/census-instrumentation/opencensus-proto"
   packages = [
     "gen-go/agent/common/v1",
+    "gen-go/agent/metrics/v1",
     "gen-go/agent/trace/v1",
+    "gen-go/metrics/v1",
     "gen-go/resource/v1",
     "gen-go/trace/v1",
   ]
@@ -312,11 +314,7 @@
     "pkg/util/validation",
   ]
   pruneopts = "UT"
-<<<<<<< HEAD
   revision = "68603f14e3e4cdbc0b90ff5af4f544f2c6e457fa"
-=======
-  revision = "606262b7a63700054612e2767c3d6106af6d17e9"
->>>>>>> refactor query parsing still need to figure out dep hell with etcd
 
 [[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
@@ -1068,7 +1066,6 @@
   version = "v0.0.4"
 
 [[projects]]
-  branch = "master"
   digest = "1:e32080c90de19bfd30a206c7f7f4bcd9b3f56e9d57c9ce4f24bedd13f6a73187"
   name = "github.com/prometheus/prometheus"
   packages = [
@@ -1116,7 +1113,7 @@
     "util/treecache",
   ]
   pruneopts = "UT"
-  revision = "21c978908335c68c79e471d8b33498d85deb8604"
+  revision = "master"
 
 [[projects]]
   digest = "1:f1bf7bb3735f0251ef7e6600ed375ea46ddfd69345b67c61f335c984a3fe7318"
@@ -1900,7 +1897,7 @@
   revision = "4147c925140e4e3aa51d6b46b41650821712d457"
 
 [[projects]]
-  digest = "1:d6168474843596c732e8e457ef6f66655a86a135b25a408d7f913b38c056819c"
+  digest = "1:d23b4b9574f3e30cfe0c5a6db3e12be4ff81b6be9879ef6bb5af2a47c717e6df"
   name = "k8s.io/client-go"
   packages = [
     "discovery",
@@ -1963,7 +1960,8 @@
     "util/workqueue",
   ]
   pruneopts = "UT"
-  revision = "1a26190bd76a9017e289958b9fba936430aa3704"
+  revision = "78d2af792babf2dd937ba2e2a8d99c753a5eda89"
+  version = "v12.0.0"
 
 [[projects]]
   digest = "1:ccb9be4c583b6ec848eb98aa395a4e8c8f8ad9ebb823642c0dd1c1c45939a5bb"
@@ -2075,7 +2073,6 @@
     "github.com/prometheus/prometheus/pkg/pool",
     "github.com/prometheus/prometheus/pkg/relabel",
     "github.com/prometheus/prometheus/pkg/textparse",
-    "github.com/prometheus/prometheus/pkg/timestamp",
     "github.com/prometheus/prometheus/promql",
     "github.com/prometheus/prometheus/template",
     "github.com/shurcooL/httpfs/filter",

@@ -48,7 +48,7 @@
 # For Prometheus
 
 [[constraint]]
-  branch = "master"
+  revision = "master"
   name = "github.com/prometheus/prometheus"
 
 [[constraint]]
@@ -74,7 +74,8 @@
 
 [[override]]
   name = "k8s.io/client-go"
-  revision = "1a26190bd76a9017e289958b9fba936430aa3704"
+  version = "v12.0.0"
+
 [[constraint]]
   name = "github.com/stretchr/testify"
   version = "1.3.0"
@@ -86,3 +87,7 @@
 [[override]]
   name = "github.com/prometheus/procfs"
   version = "v0.0.2"
+
+[[override]]
+  name = "contrib.go.opencensus.io/exporter/ocagent"
+  version = "v0.4.12"
