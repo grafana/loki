@@ -52,35 +52,35 @@ func TestParse(t *testing.T) {
 	}{
 		{
 			in:  `{foo="bar"}`,
-			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(nil, labels.MatchEqual, "foo", "bar")}},
 		},
 		{
 			in:  `{ foo = "bar" }`,
-			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(nil, labels.MatchEqual, "foo", "bar")}},
 		},
 		{
 			in:  `{ foo != "bar" }`,
-			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotEqual, "foo", "bar")}},
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(nil, labels.MatchNotEqual, "foo", "bar")}},
 		},
 		{
 			in:  `{ foo =~ "bar" }`,
-			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchRegexp, "foo", "bar")}},
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(nil, labels.MatchRegexp, "foo", "bar")}},
 		},
 		{
 			in:  `{ foo !~ "bar" }`,
-			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(nil, labels.MatchNotRegexp, "foo", "bar")}},
 		},
 		{
 			in: `{ foo = "bar", bar != "baz" }`,
 			exp: &matchersExpr{matchers: []*labels.Matcher{
-				mustNewMatcher(labels.MatchEqual, "foo", "bar"),
-				mustNewMatcher(labels.MatchNotEqual, "bar", "baz"),
+				mustNewMatcher(nil, labels.MatchEqual, "foo", "bar"),
+				mustNewMatcher(nil, labels.MatchNotEqual, "bar", "baz"),
 			}},
 		},
 		{
 			in: `{foo="bar"} |= "baz"`,
 			exp: &filterExpr{
-				left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+				left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(nil, labels.MatchEqual, "foo", "bar")}},
 				ty:    labels.MatchEqual,
 				match: "baz",
 			},
@@ -91,7 +91,7 @@ func TestParse(t *testing.T) {
 				left: &filterExpr{
 					left: &filterExpr{
 						left: &filterExpr{
-							left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+							left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(nil, labels.MatchEqual, "foo", "bar")}},
 							ty:    labels.MatchEqual,
 							match: "baz",
 						},
@@ -145,6 +145,14 @@ func TestParse(t *testing.T) {
 				msg:  "syntax error: unexpected IDENTIFIER, expecting != or !~ or |~ or |=",
 				line: 1,
 				col:  13,
+			},
+		},
+		{
+			in: `{foo=~"*"}`,
+			err: ParseError{
+				msg:  "error parsing regexp: missing argument to repetition operator: `*`",
+				line: 1,
+				col:  7,
 			},
 		},
 	} {

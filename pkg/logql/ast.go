@@ -120,10 +120,16 @@ func (e *filterExpr) Eval(q Querier) (iter.EntryIterator, error) {
 	return next, nil
 }
 
-func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
+func mustNewMatcher(l *lexer, t labels.MatchType, n, v string) *labels.Matcher {
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
-		panic(err)
+		perr := ParseError{msg: err.Error()}
+		if l != nil {
+			perr.line = l.Line
+			perr.col = l.Column
+		}
+
+		panic(perr)
 	}
 	return m
 }

@@ -57,9 +57,9 @@ matchers:
     ;
 
 matcher:
-      IDENTIFIER EQ STRING             { $$ = mustNewMatcher(labels.MatchEqual, $1, $3) }
-    | IDENTIFIER NEQ STRING            { $$ = mustNewMatcher(labels.MatchNotEqual, $1, $3) }
-    | IDENTIFIER RE STRING             { $$ = mustNewMatcher(labels.MatchRegexp, $1, $3) }
-    | IDENTIFIER NRE STRING            { $$ = mustNewMatcher(labels.MatchNotRegexp, $1, $3) }
+      IDENTIFIER EQ STRING             { $$ = mustNewMatcher(exprlex.(*lexer), labels.MatchEqual, $1, $3) }
+    | IDENTIFIER NEQ STRING            { $$ = mustNewMatcher(exprlex.(*lexer), labels.MatchNotEqual, $1, $3) }
+    | IDENTIFIER RE STRING             { $$ = mustNewMatcher(exprlex.(*lexer), labels.MatchRegexp, $1, $3) }
+    | IDENTIFIER NRE STRING            { $$ = mustNewMatcher(exprlex.(*lexer), labels.MatchNotRegexp, $1, $3) }
     ;
 %%

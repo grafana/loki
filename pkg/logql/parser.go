@@ -19,7 +19,17 @@ func init() {
 }
 
 // ParseExpr parses a string and returns an Expr.
-func ParseExpr(input string) (Expr, error) {
+func ParseExpr(input string) (expr Expr, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			var ok bool
+			err, ok = r.(error)
+			if !ok {
+				panic(r)
+			}
+		}
+	}()
+
 	l := lexer{
 		parser: exprNewParser().(*exprParserImpl),
 	}

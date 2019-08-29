@@ -542,25 +542,25 @@ exprdefault:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 //line pkg/logql/expr.y:60
 		{
-			exprVAL.Matcher = mustNewMatcher(labels.MatchEqual, exprDollar[1].str, exprDollar[3].str)
+			exprVAL.Matcher = mustNewMatcher(exprlex.(*lexer), labels.MatchEqual, exprDollar[1].str, exprDollar[3].str)
 		}
 	case 16:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 //line pkg/logql/expr.y:61
 		{
-			exprVAL.Matcher = mustNewMatcher(labels.MatchNotEqual, exprDollar[1].str, exprDollar[3].str)
+			exprVAL.Matcher = mustNewMatcher(exprlex.(*lexer), labels.MatchNotEqual, exprDollar[1].str, exprDollar[3].str)
 		}
 	case 17:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 //line pkg/logql/expr.y:62
 		{
-			exprVAL.Matcher = mustNewMatcher(labels.MatchRegexp, exprDollar[1].str, exprDollar[3].str)
+			exprVAL.Matcher = mustNewMatcher(exprlex.(*lexer), labels.MatchRegexp, exprDollar[1].str, exprDollar[3].str)
 		}
 	case 18:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 //line pkg/logql/expr.y:63
 		{
-			exprVAL.Matcher = mustNewMatcher(labels.MatchNotRegexp, exprDollar[1].str, exprDollar[3].str)
+			exprVAL.Matcher = mustNewMatcher(exprlex.(*lexer), labels.MatchNotRegexp, exprDollar[1].str, exprDollar[3].str)
 		}
 	}
 	goto exprstack /* stack new state and value */
