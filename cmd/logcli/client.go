@@ -86,7 +86,7 @@ func doRequest(path string, out interface{}) error {
 		},
 	}
 
-	client, err := config.NewClientFromConfig(clientConfig, "logcli")
+	client, err := config.NewClientFromConfig(clientConfig, "logcli", false)
 	if err != nil {
 		return err
 	}

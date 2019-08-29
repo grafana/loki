@@ -301,6 +301,7 @@ func (v *vectorAggregationExpr) Evaluator() StepEvaluator {
 			}
 
 		}
+		buf := make([]byte, 0, 1024)
 		for _, s := range vec {
 			metric := s.Metric
 
@@ -308,9 +309,9 @@ func (v *vectorAggregationExpr) Evaluator() StepEvaluator {
 				groupingKey uint64
 			)
 			if v.grouping.without {
-				groupingKey = metric.HashWithoutLabels(v.grouping.groups...)
+				groupingKey, buf = metric.HashWithoutLabels(buf, v.grouping.groups...)
 			} else {
-				groupingKey = metric.HashForLabels(v.grouping.groups...)
+				groupingKey, buf = metric.HashForLabels(buf, v.grouping.groups...)
 			}
 			group, ok := result[groupingKey]
 			// Add a new group if it doesn't exist.
