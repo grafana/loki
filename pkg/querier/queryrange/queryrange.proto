@@ -40,5 +40,5 @@ message Response {
 
 message SampleStream {
   repeated cortex.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];
-  repeated cortex.Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "values"];
+  repeated cortex.Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "values" , (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.Sample"];
 }

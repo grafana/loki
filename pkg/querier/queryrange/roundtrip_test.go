@@ -8,11 +8,27 @@ import (
 	"net/url"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 )
+
+const (
+	query        = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&step=120"
+	responseBody = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
+)
+
+type fakeLimits struct{}
+
+func (fakeLimits) MaxQueryLength(string) time.Duration {
+	return 0 // Disable.
+}
+
+func (fakeLimits) MaxQueryParallelism(string) int {
+	return 14 // Flag default.
+}
 
 func TestRoundTrip(t *testing.T) {
 	s := httptest.NewServer(

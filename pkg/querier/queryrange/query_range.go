@@ -54,9 +54,10 @@ func (q Request) toHTTPRequest(ctx context.Context) (*http.Request, error) {
 		direction = "BACKWARD"
 	}
 	params := url.Values{
-		"start":     []string{encodeTime(q.Start)},
-		"end":       []string{encodeTime(q.End)},
-		"step":      []string{encodeDurationMs(q.Step)},
+		"start":     []string{q.Start.Format(time.RFC3339Nano)},
+		"end":       []string{q.End.Format(time.RFC3339Nano)},
+		"step":      []string{string(int64(q.Step.Seconds()))},
+		"limit":     []string{string(int64(q.Limit))},
 		"query":     []string{q.Query},
 		"direction": []string{direction},
 	}
@@ -82,6 +83,8 @@ func (q Request) LogToSpan(ctx context.Context) {
 		span.LogFields(otlog.String("query", q.Query),
 			otlog.String("start", q.Start.String()),
 			otlog.String("end", q.End.String()),
+			otlog.String("direction", q.Direction.String()),
+			otlog.String("limit", string(q.Limit)),
 			otlog.Float64("step (s)", q.Step.Seconds()))
 	}
 }
@@ -112,7 +115,7 @@ func parseResponse(ctx context.Context, r *http.Response) (*APIResponse, error) 
 
 	sp.LogFields(otlog.Int("bytes", len(buf)))
 
-	var resp APIResponse // todo parse result and explode into streams
+	var resp APIResponse
 	if err := json.Unmarshal(buf, &resp); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 	}
@@ -207,7 +210,7 @@ func mergeAPIResponses(responses []*APIResponse) (*APIResponse, error) {
 		Status: statusSuccess,
 		Data: Response{
 			ResultType: model.ValMatrix.String(),
-			Result:     matrixMerge(responses),
+			Samples:    matrixMerge(responses),
 		},
 	}, nil
 }
@@ -229,7 +232,7 @@ func minTime(resp *APIResponse) int64 {
 	return result[0].Samples[0].TimestampMs
 }
 
-func matrixMerge(resps []*APIResponse) []SampleStream {
+func matrixMerge(resps []*APIResponse) []*SampleStream {
 	output := map[string]*SampleStream{}
 	for _, resp := range resps {
 		for _, stream := range resp.Data.Samples {
@@ -258,9 +261,9 @@ func matrixMerge(resps []*APIResponse) []SampleStream {
 	}
 	sort.Strings(keys)
 
-	result := make([]SampleStream, 0, len(output))
+	result := make([]*SampleStream, 0, len(output))
 	for _, key := range keys {
-		result = append(result, *output[key])
+		result = append(result, output[key])
 	}
 
 	return result
