@@ -3,10 +3,8 @@ package cache_test
 import (
 	"context"
 	"errors"
-	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
@@ -151,47 +149,5 @@ func testMemcacheFailing(t *testing.T, memcache *cache.Memcached) {
 			_, ok := keysReturned[key]
 			require.True(t, ok, "key missing %s", key)
 		}
-	}
-}
-
-// TestUpdateLoop simulates memcachedClient.updateLoop and verifies its completeness
-func TestUpdateLoop(t *testing.T) {
-	var (
-		wait sync.WaitGroup
-		err  error
-	)
-	quit := make(chan struct{})
-
-	updateInterval := 50 * time.Millisecond
-	sleepDuration := 100 * time.Millisecond
-	errTimeout := 150 * time.Millisecond
-
-	wait.Add(1)
-
-	go func() {
-		defer wait.Done()
-		ticker := time.NewTicker(updateInterval)
-		timer := time.NewTimer(errTimeout)
-		for {
-			select {
-			case <-ticker.C:
-				// nop
-			case <-quit:
-				ticker.Stop()
-				return
-			case <-timer.C:
-				err = errors.New("updateLoop didn't finish on time")
-				return
-			}
-		}
-	}()
-
-	time.Sleep(sleepDuration)
-
-	close(quit)
-	wait.Wait()
-
-	if err != nil {
-		t.Fatal(err)
 	}
 }
