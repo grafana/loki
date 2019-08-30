@@ -9,18 +9,18 @@ import (
 
 %union{
   Expr                    Expr
-  LogExpr                 LogSelectorExpr
-  RangeAggregationExpr    SampleExpr
-  VectorAggregationExpr   SampleExpr
-  LogRangeExpr            *logRange
   Filter                  labels.MatchType
-  Selector                []*labels.Matcher
-  Matchers                []*labels.Matcher
-  Matcher                 *labels.Matcher
   Grouping                *grouping
   Labels                  []string
-  VectorOp                string
+  LogExpr                 LogSelectorExpr
+  LogRangeExpr            *logRange
+  Matcher                 *labels.Matcher
+  Matchers                []*labels.Matcher
+  RangeAggregationExpr    SampleExpr
   RangeOp                 string
+  Selector                []*labels.Matcher
+  VectorAggregationExpr   SampleExpr
+  VectorOp                string
   str                     string
   duration                time.Duration
   int                     int64
@@ -30,17 +30,17 @@ import (
 
 %type <Expr>                  expr
 %type <Filter>                filter
-%type <Selector>              selector
-%type <Matchers>              matchers
-%type <Matcher>               matcher
-%type <VectorOp>              vectorOp
-%type <RangeOp>               rangeOp
-%type <Labels>                labels
 %type <Grouping>              grouping
+%type <Labels>                labels
 %type <LogExpr>               logExpr
-%type <RangeAggregationExpr>  rangeAggregationExpr
-%type <VectorAggregationExpr> vectorAggregationExpr
 %type <LogRangeExpr>          logRangeExpr
+%type <Matcher>               matcher
+%type <Matchers>              matchers
+%type <RangeAggregationExpr>  rangeAggregationExpr
+%type <RangeOp>               rangeOp
+%type <Selector>              selector
+%type <VectorAggregationExpr> vectorAggregationExpr
+%type <VectorOp>              vectorOp
 
 %token <str>      IDENTIFIER STRING
 %token <duration> DURATION
@@ -72,16 +72,18 @@ logRangeExpr: logExpr DURATION { $$ = mustNewRange($1, $2) };
 rangeAggregationExpr: rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS { $$ = newRangeAggregationExpr($3,$1) };
 
 vectorAggregationExpr:
+    // Aggregations with 1 argument.
       vectorOp OPEN_PARENTHESIS rangeAggregationExpr CLOSE_PARENTHESIS                               { $$ = mustNewVectorAggregationExpr($3, $1, nil, nil) }
-    | vectorOp grouping OPEN_PARENTHESIS rangeAggregationExpr CLOSE_PARENTHESIS                      { $$ = mustNewVectorAggregationExpr($4, $1, $2, nil,) }
-    | vectorOp OPEN_PARENTHESIS rangeAggregationExpr CLOSE_PARENTHESIS grouping                      { $$ = mustNewVectorAggregationExpr($3, $1, $5, nil) }
-    | vectorOp OPEN_PARENTHESIS IDENTIFIER COMMA rangeAggregationExpr CLOSE_PARENTHESIS              { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
-    | vectorOp OPEN_PARENTHESIS IDENTIFIER COMMA rangeAggregationExpr CLOSE_PARENTHESIS grouping     { $$ = mustNewVectorAggregationExpr($5, $1, $7, &$3) }
     | vectorOp OPEN_PARENTHESIS vectorAggregationExpr CLOSE_PARENTHESIS                              { $$ = mustNewVectorAggregationExpr($3, $1, nil, nil) }
+    | vectorOp grouping OPEN_PARENTHESIS rangeAggregationExpr CLOSE_PARENTHESIS                      { $$ = mustNewVectorAggregationExpr($4, $1, $2, nil,) }
     | vectorOp grouping OPEN_PARENTHESIS vectorAggregationExpr CLOSE_PARENTHESIS                     { $$ = mustNewVectorAggregationExpr($4, $1, $2, nil,) }
+    | vectorOp OPEN_PARENTHESIS rangeAggregationExpr CLOSE_PARENTHESIS grouping                      { $$ = mustNewVectorAggregationExpr($3, $1, $5, nil) }
     | vectorOp OPEN_PARENTHESIS vectorAggregationExpr CLOSE_PARENTHESIS grouping                     { $$ = mustNewVectorAggregationExpr($3, $1, $5, nil) }
+    // Aggregations with 2 arguments.
     | vectorOp OPEN_PARENTHESIS IDENTIFIER COMMA vectorAggregationExpr CLOSE_PARENTHESIS             { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
     | vectorOp OPEN_PARENTHESIS IDENTIFIER COMMA vectorAggregationExpr CLOSE_PARENTHESIS grouping    { $$ = mustNewVectorAggregationExpr($5, $1, $7, &$3) }
+    | vectorOp OPEN_PARENTHESIS IDENTIFIER COMMA rangeAggregationExpr CLOSE_PARENTHESIS              { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
+    | vectorOp OPEN_PARENTHESIS IDENTIFIER COMMA rangeAggregationExpr CLOSE_PARENTHESIS grouping     { $$ = mustNewVectorAggregationExpr($5, $1, $7, &$3) }
     ;
 
 filter:
