@@ -448,6 +448,7 @@ drone:
 ##############
 
 check-dep:
+	go get -u github.com/golang/dep/cmd/dep
 	dep ensure
 	# return 1 if `dep ensure` do any changes
 	git diff --quiet --exit-code
