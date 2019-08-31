@@ -442,3 +442,12 @@ benchmark-store:
 # regenerate drone yaml
 drone:
 	jsonnet .drone/drone.jsonnet | jq .drone -r | yq -y . > .drone/drone.yml
+
+##############
+# Dependency #
+##############
+
+check-dep:
+	dep ensure
+	# return 1 if `dep ensure` do any changes
+	git diff --quiet --exit-code
