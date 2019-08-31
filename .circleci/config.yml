@@ -148,6 +148,9 @@ jobs:
       - run:
           name: Check Generated Files
           command: make BUILD_IN_CONTAINER=false check-generated-files
+      - run:
+          name: Check dependency
+          command: make check-dep
 
   # Loki
   build/loki:
