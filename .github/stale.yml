@@ -6,7 +6,7 @@ daysUntilClose: 7
 
 # Labels that prevent issues from being marked as stale
 exemptLabels:
-  - important
+  - keepalive
 
 # Label to use to identify a stale issue
 staleLabel: stale
