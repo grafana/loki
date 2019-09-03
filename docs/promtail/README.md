@@ -1,4 +1,5 @@
 # Overview
+
 Promtail is an agent which ships the content of local log files to Loki. It is
 usually deployed to every machine that has applications needed to be monitored.
 
@@ -6,6 +7,7 @@ It primarily **discovers** targets, attaches **labels** to log streams and
 **pushes** them to the Loki instance.
 
 ### Discovery
+
 Before Promtail is able to ship anything to Loki, it needs to find about its
 environment. This specifically means discovering applications emitting log lines
 that need to be monitored.
@@ -24,6 +26,7 @@ and the final metadata attached to the log line. Refer to the
 [configuration](configuration.md) for more details.
 
 ### Labeling and Parsing
+
 During service discovery, metadata is determined (pod name, filename, etc.) that
 may be attached to the log line as a label for easier identification afterwards.
 Using `relabel_configs`, those discovered labels can be mutated into the form
@@ -36,6 +39,7 @@ correct the timestamp or rewrite the log line entirely. Refer to the [logentry
 processing documentation](../logentry/processing-log-lines.md) for more details.
 
 ### Shipping
+
 Once Promtail is certain about what to ingest and all labels are set correctly,
 it starts *tailing* (continuously reading) the log files from the applications.
 Once enough data is read into memory, it is flushed in as a batch to Loki.
