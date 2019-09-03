@@ -12,12 +12,12 @@ labels as in Prometheus. This is much more efficient and scales better.
 - **[Loki](loki/overview.md)**: The main server component is called Loki. It is
   responsible for permanently storing the logs it is being shipped and it
   executes the LogQL
-  queries from clients.  
+  queries from clients.
   Loki shares its high-level architecture with Cortex, a highly scalable
   Prometheus backend.
 - **[Promtail](promtail/overview.md)**: To ship logs to a central place, an
   agent is required. Promtail
-  is deployed to every node that should be monitored and sends the logs to Loki.  
+  is deployed to every node that should be monitored and sends the logs to Loki.
   It also does important task of pre-processing the log lines, including
   attaching labels to them for easier querying.
 - *Grafana*: The *Explore* feature of Grafana 6.0+ is the primary place of
@@ -28,7 +28,7 @@ Alongside these main components, there are some other ones as well:
 
 - **[LogCLI](logcli.md)**: A command line interface to query logs and labels
   from Loki
-- **[Canary](canary.md)**: An audit utility to analyze the log-capturing
+- **[Canary](canary/README.md)**: An audit utility to analyze the log-capturing
   performance of Loki. Ingests data into Loki and immediately reads it back to
   check for latency and loss.
 - **[Docker

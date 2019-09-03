@@ -1,4 +1,4 @@
-# Canary
+# loki-canary
 
 A standalone app to audit the log capturing performance of Loki.
 
