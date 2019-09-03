@@ -180,6 +180,12 @@ storage_config:
     s3forcepathstyle: true
 ```
 
+To write to S3, Loki will require the following permissions on the bucket:
+
+* s3:ListBucket
+* s3:PutObject
+* s3:GetObject
+
 #### DynamoDB
 
 Loki uses DynamoDB for the index storage. It is used for querying logs, make
@@ -213,3 +219,18 @@ table_manager:
     provisioned_write_throughput: 10
     provisioned_read_throughput: 10
 ```
+
+For DynamoDB, Loki will require the following permissions on the table:
+
+* dynamodb:BatchGetItem
+* dynamodb:BatchWriteItem
+* dynamodb:DeleteItem
+* dynamodb:DescribeTable
+* dynamodb:GetItem
+* dynamodb:ListTagsOfResource
+* dynamodb:PutItem
+* dynamodb:Query
+* dynamodb:TagResource
+* dynamodb:UntagResource
+* dynamodb:UpdateItem
+* dynamodb:UpdateTable
