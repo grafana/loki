@@ -121,17 +121,16 @@ parameter is only required for `topk` and `bottomk`. without removes the listed 
 
 topk and bottomk are different from other aggregators in that a subset of the input samples, including the original labels, are returned in the result vector. by and without are only used to bucket the input vector.
 
-Example:
+#### Examples
 
-For example, this query will return the top 10 applications by highest log throughput.
+Get top 10 applications by highest log throughput:
 
 > `topk(10,sum(rate({region="us-east1"}[5m]) by (name))`
 
-
-The count of log during the last 5m by level.
+Get the count of logs during the last 5 minutes by level:
 
 > `sum(count_over_time({job="mysql"}[5m])) by (level)`
 
-The rate of http request received with method GET from nginx access logs.
+Get the rate of HTTP GET requests from nginx logs:
 
 > `avg(rate(({job="nginx"} |= "GET")[10s])) by (region)`
