@@ -9,13 +9,13 @@ instead of full-text indexing them, related logs are grouped using the same
 labels as in Prometheus. This is much more efficient and scales better.
 
 ## Components
-- **[Loki](loki/overview.md)**: The main server component is called Loki. It is
+- **[Loki](loki/README.md)**: The main server component is called Loki. It is
   responsible for permanently storing the logs it is being shipped and it
   executes the LogQL
   queries from clients.
   Loki shares its high-level architecture with Cortex, a highly scalable
   Prometheus backend.
-- **[Promtail](promtail/overview.md)**: To ship logs to a central place, an
+- **[Promtail](promtail/README.md)**: To ship logs to a central place, an
   agent is required. Promtail
   is deployed to every node that should be monitored and sends the logs to Loki.
   It also does important task of pre-processing the log lines, including
