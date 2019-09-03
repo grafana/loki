@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -87,15 +86,6 @@ func (q Request) LogToSpan(ctx context.Context) {
 			otlog.String("limit", string(q.Limit)),
 			otlog.Float64("step (s)", q.Step.Seconds()))
 	}
-}
-
-func encodeTime(t int64) string {
-	f := float64(t) / 1.0e3
-	return strconv.FormatFloat(f, 'f', -1, 64)
-}
-
-func encodeDurationMs(d int64) string {
-	return strconv.FormatFloat(float64(d)/float64(time.Second/time.Millisecond), 'f', -1, 64)
 }
 
 func parseResponse(ctx context.Context, r *http.Response) (*APIResponse, error) {
@@ -211,6 +201,7 @@ func mergeAPIResponses(responses []*APIResponse) (*APIResponse, error) {
 		Data: Response{
 			ResultType: model.ValMatrix.String(),
 			Samples:    matrixMerge(responses),
+			// todo merge streams
 		},
 	}, nil
 }

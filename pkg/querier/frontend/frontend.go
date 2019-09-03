@@ -20,8 +20,8 @@ import (
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 )
 
 var (
@@ -53,6 +53,7 @@ type Config struct {
 	MaxOutstandingPerTenant int  `yaml:"max_outstanding_per_tenant"`
 	MaxRetries              int  `yaml:"max_retries"`
 	CompressResponses       bool `yaml:"compress_responses"`
+	SplitQueriesByDay       bool `yaml:"split_queries_by_day"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -60,6 +61,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "querier.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per frontend; requests beyond this error with HTTP 429.")
 	f.IntVar(&cfg.MaxRetries, "querier.max-retries-per-request", 5, "Maximum number of retries for a single request; beyond this, the downstream error is returned.")
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
+	f.BoolVar(&cfg.SplitQueriesByDay, "querier.split-queries-by-day", false, "Split queries by day and execute in parallel.")
 }
 
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries

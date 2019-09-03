@@ -11,11 +11,8 @@ import (
 	queryrange "github.com/grafana/loki/pkg/querier/queryrange"
 	httpgrpc "github.com/weaveworks/common/httpgrpc"
 	grpc "google.golang.org/grpc"
-	codes "google.golang.org/grpc/codes"
-	status "google.golang.org/grpc/status"
 	io "io"
 	math "math"
-	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
 )
@@ -49,7 +46,7 @@ func (m *ProcessRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, erro
 		return xxx_messageInfo_ProcessRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
+		n, err := m.MarshalTo(b)
 		if err != nil {
 			return nil, err
 		}
@@ -100,7 +97,7 @@ func (m *ProcessResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, err
 		return xxx_messageInfo_ProcessResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
+		n, err := m.MarshalTo(b)
 		if err != nil {
 			return nil, err
 		}
@@ -319,14 +316,6 @@ type FrontendServer interface {
 	Process(Frontend_ProcessServer) error
 }
 
-// UnimplementedFrontendServer can be embedded to have forward compatible implementations.
-type UnimplementedFrontendServer struct {
-}
-
-func (*UnimplementedFrontendServer) Process(srv Frontend_ProcessServer) error {
-	return status.Errorf(codes.Unimplemented, "method Process not implemented")
-}
-
 func RegisterFrontendServer(s *grpc.Server, srv FrontendServer) {
 	s.RegisterService(&_Frontend_serviceDesc, srv)
 }
@@ -375,7 +364,7 @@ var _Frontend_serviceDesc = grpc.ServiceDesc{
 func (m *ProcessRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
@@ -383,46 +372,37 @@ func (m *ProcessRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *ProcessRequest) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *ProcessRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
+	var i int
 	_ = i
 	var l int
 	_ = l
-	if m.QueryRangeRequest != nil {
-		{
-			size, err := m.QueryRangeRequest.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintFrontend(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x12
-	}
 	if m.HttpRequest != nil {
-		{
-			size, err := m.HttpRequest.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintFrontend(dAtA, i, uint64(size))
-		}
-		i--
 		dAtA[i] = 0xa
+		i++
+		i = encodeVarintFrontend(dAtA, i, uint64(m.HttpRequest.Size()))
+		n1, err := m.HttpRequest.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n1
 	}
-	return len(dAtA) - i, nil
+	if m.QueryRangeRequest != nil {
+		dAtA[i] = 0x12
+		i++
+		i = encodeVarintFrontend(dAtA, i, uint64(m.QueryRangeRequest.Size()))
+		n2, err := m.QueryRangeRequest.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n2
+	}
+	return i, nil
 }
 
 func (m *ProcessResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
@@ -430,52 +410,41 @@ func (m *ProcessResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *ProcessResponse) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *ProcessResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
+	var i int
 	_ = i
 	var l int
 	_ = l
-	if m.ApiResponse != nil {
-		{
-			size, err := m.ApiResponse.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintFrontend(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x12
-	}
 	if m.HttpResponse != nil {
-		{
-			size, err := m.HttpResponse.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintFrontend(dAtA, i, uint64(size))
-		}
-		i--
 		dAtA[i] = 0xa
+		i++
+		i = encodeVarintFrontend(dAtA, i, uint64(m.HttpResponse.Size()))
+		n3, err := m.HttpResponse.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n3
 	}
-	return len(dAtA) - i, nil
+	if m.ApiResponse != nil {
+		dAtA[i] = 0x12
+		i++
+		i = encodeVarintFrontend(dAtA, i, uint64(m.ApiResponse.Size()))
+		n4, err := m.ApiResponse.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n4
+	}
+	return i, nil
 }
 
 func encodeVarintFrontend(dAtA []byte, offset int, v uint64) int {
-	offset -= sovFrontend(v)
-	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
 	dAtA[offset] = uint8(v)
-	return base
+	return offset + 1
 }
 func (m *ProcessRequest) Size() (n int) {
 	if m == nil {
@@ -512,7 +481,14 @@ func (m *ProcessResponse) Size() (n int) {
 }
 
 func sovFrontend(x uint64) (n int) {
-	return (math_bits.Len64(x|1) + 6) / 7
+	for {
+		n++
+		x >>= 7
+		if x == 0 {
+			break
+		}
+	}
+	return n
 }
 func sozFrontend(x uint64) (n int) {
 	return sovFrontend(uint64((x << 1) ^ uint64((int64(x) >> 63))))

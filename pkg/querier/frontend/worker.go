@@ -197,7 +197,7 @@ func (w *worker) process(c Frontend_ProcessClient) error {
 
 		// Handle the request on a "background" goroutine, so we go back to
 		// blocking on c.Recv().  This allows us to detect the stream closing
-		// and cancel the query.  We don't actally handle queries in parallel
+		// and cancel the query.  We don't actually handle queries in parallel
 		// here, as we're running in lock step with the server - each Recv is
 		// paired with a Send.
 		go func() {

@@ -26,15 +26,24 @@ RUN apt-get update && \
 COPY --from=docker /usr/bin/docker /usr/bin/docker
 COPY --from=helm /usr/bin/helm /usr/bin/helm
 COPY --from=golangci /bin/golangci-lint /usr/local/bin
-RUN go get \
+
+RUN go get -d -u \
     github.com/golang/protobuf/protoc-gen-go \
     github.com/gogo/protobuf/protoc-gen-gogoslick \
     github.com/gogo/protobuf/gogoproto \
     github.com/go-delve/delve/cmd/dlv \
     golang.org/x/tools/cmd/goyacc \
     github.com/mitchellh/gox \
-    github.com/tcnksm/ghr && \
+    github.com/tcnksm/ghr
+  
+RUN git -C "$(go env GOPATH)"/src/github.com/gogo/protobuf/gogoproto checkout v1.2.1 && \
+    go install github.com/gogo/protobuf/gogoproto && \
+    git -C "$(go env GOPATH)"/src/github.com/gogo/protobuf/protoc-gen-gogoslick checkout v1.2.1 && \
+    go install github.com/gogo/protobuf/protoc-gen-gogoslick && \
+    git -C "$(go env GOPATH)"/src/github.com/golang/protobuf/protoc-gen-go checkout v1.3.1 && \
+    go install github.com/golang/protobuf/protoc-gen-go && \
     rm -rf /go/pkg /go/src
+
 ENV GOCACHE=/go/cache
 
 COPY build.sh /

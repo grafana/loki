@@ -19,12 +19,19 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 )
+
+// Limits allows us to specify per-tenant runtime limits on the behaviour of
+// the query handling code.
+type Limits interface {
+	MaxQueryLength(string) time.Duration
+	MaxQueryParallelism(string) int
+}
 
 // HandlerFunc is like http.HandlerFunc, but for Handler.
 type HandlerFunc func(context.Context, *Request) (*APIResponse, error)
@@ -66,12 +73,12 @@ func MergeMiddlewares(middleware ...Middleware) Middleware {
 type roundTripper struct {
 	next    http.RoundTripper
 	handler Handler
-	limits  queryrange.Limits
+	limits  Limits
 }
 
 // NewRoundTripper wraps a QueryRange Handler and allows it to send requests
 // to a http.Roundtripper.
-func NewRoundTripper(next http.RoundTripper, handler Handler, limits queryrange.Limits) http.RoundTripper {
+func NewRoundTripper(next http.RoundTripper, handler Handler, limits Limits) http.RoundTripper {
 	return roundTripper{
 		next:    next,
 		handler: handler,
