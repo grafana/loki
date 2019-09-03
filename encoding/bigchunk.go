@@ -257,9 +257,9 @@ func (it *bigchunkIterator) FindAtOrAfter(target model.Time) bool {
 	}
 
 	if it.curr == nil {
-		it.curr = it.chunks[it.i].Iterator(nil)
+		it.curr = it.chunks[it.i].Iterator(it.curr)
 	} else if t, _ := it.curr.At(); int64(target) <= t {
-		it.curr = it.chunks[it.i].Iterator(nil)
+		it.curr = it.chunks[it.i].Iterator(it.curr)
 	}
 
 	for it.curr.Next() {
@@ -281,7 +281,7 @@ func (it *bigchunkIterator) Scan() bool {
 
 	for it.i < len(it.chunks)-1 {
 		it.i++
-		it.curr = it.chunks[it.i].Iterator(nil)
+		it.curr = it.chunks[it.i].Iterator(it.curr)
 		if it.curr.Next() {
 			return true
 		}
