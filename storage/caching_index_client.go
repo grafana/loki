@@ -16,7 +16,6 @@ import (
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -46,10 +45,10 @@ type cachingIndexClient struct {
 	chunk.IndexClient
 	cache    cache.Cache
 	validity time.Duration
-	limits   *validation.Overrides
+	limits   StoreLimits
 }
 
-func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration, limits *validation.Overrides) chunk.IndexClient {
+func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity time.Duration, limits StoreLimits) chunk.IndexClient {
 	if c == nil {
 		return client
 	}

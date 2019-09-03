@@ -44,6 +44,7 @@ type MetricsAutoScalingConfig struct {
 	URL              string  // URL to contact Prometheus store on
 	TargetQueueLen   int64   // Queue length above which we will scale up capacity
 	ScaleUpFactor    float64 // Scale up capacity by this multiple
+	MinThrottling    float64 // Ignore throttling below this level
 	QueueLengthQuery string  // Promql query to fetch ingester queue length
 	ThrottleQuery    string  // Promql query to fetch throttle rate per table
 	UsageQuery       string  // Promql query to fetch write capacity usage per table
@@ -58,6 +59,7 @@ func (cfg *MetricsAutoScalingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.URL, "metrics.url", "", "Use metrics-based autoscaling, via this query URL")
 	f.Int64Var(&cfg.TargetQueueLen, "metrics.target-queue-length", 100000, "Queue length above which we will scale up capacity")
 	f.Float64Var(&cfg.ScaleUpFactor, "metrics.scale-up-factor", 1.3, "Scale up capacity by this multiple")
+	f.Float64Var(&cfg.MinThrottling, "metrics.ignore-throttle-below", 1, "Ignore throttling below this level (rate per second)")
 	f.StringVar(&cfg.QueueLengthQuery, "metrics.queue-length-query", defaultQueueLenQuery, "query to fetch ingester queue length")
 	f.StringVar(&cfg.ThrottleQuery, "metrics.write-throttle-query", defaultThrottleRateQuery, "query to fetch throttle rates per table")
 	f.StringVar(&cfg.UsageQuery, "metrics.usage-query", defaultUsageQuery, "query to fetch write capacity usage per table")
@@ -146,7 +148,7 @@ func (m *metricsData) UpdateTable(ctx context.Context, current chunk.TableDesc, 
 				"write",
 				m.usageRates)
 		case throttleRate > 0 && m.queueLengths[2] > float64(m.cfg.TargetQueueLen)*targetMax:
-			// Too big queue, some throttling -> scale up
+			// Too big queue, some throttling -> scale up (note we don't apply MinThrottling in this case)
 			expected.ProvisionedWrite = scaleUp(current.Name,
 				current.ProvisionedWrite,
 				expected.WriteScale.MaxCapacity,
@@ -155,7 +157,7 @@ func (m *metricsData) UpdateTable(ctx context.Context, current chunk.TableDesc, 
 				expected.WriteScale.OutCooldown,
 				"metrics max queue scale-up",
 				"write")
-		case throttleRate > 0 &&
+		case throttleRate > m.cfg.MinThrottling &&
 			m.queueLengths[2] > float64(m.cfg.TargetQueueLen) &&
 			m.queueLengths[2] > m.queueLengths[1] && m.queueLengths[1] > m.queueLengths[0]:
 			// Growing queue, some throttling -> scale up
