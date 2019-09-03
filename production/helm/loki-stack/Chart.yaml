@@ -1,5 +1,5 @@
 name: loki-stack
-version: 0.16.0
+version: 0.17.0
 appVersion: v0.3.0
 kubeVersion: "^1.10.0-0"
 description: "Loki: like Prometheus, but for logs."

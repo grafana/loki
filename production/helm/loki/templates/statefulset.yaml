@@ -39,6 +39,11 @@ spec:
     {{- if .Values.priorityClassName }}
       priorityClassName: {{ .Values.priorityClassName }}
     {{- end }}
+      {{- if .Values.image.pullSecrets }}
+      imagePullSecrets:
+      {{- range .Values.image.pullSecrets }}
+        - name: {{ . }}
+      {{- end}}
       securityContext:
         {{- toYaml .Values.securityContext | nindent 8 }}
       containers:
@@ -105,4 +110,3 @@ spec:
           storage: {{ .Values.persistence.size | quote }}
       storageClassName: {{ .Values.persistence.storageClassName }}
   {{- end }}
-
