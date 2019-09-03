@@ -1,4 +1,4 @@
-# Log Parsing
+# Processing Log Lines
 
 A detailed look at how to setup promtail to process your log lines, including extracting metrics and labels.
 
@@ -11,13 +11,13 @@ Pipeline stages implement the following interface:
 
 ```go
 type Stage interface {
-	Process(labels model.LabelSet, extracted map[string]interface{}, time *time.Time, entry *string)
+  Process(labels model.LabelSet, extracted map[string]interface{}, time *time.Time, entry *string)
 }
 ```
 
 Any Stage is capable of modifying the `labels`, `extracted` data, `time`, and/or `entry`, though generally a Stage should only modify one of those things to reduce complexity.
 
-Typical pipelines will start with a [regex](#regex) or [json](#json) stage to extract data from the log line.  Then any combination of other stages follow to use the data in the `extracted` map.  It may also be common to see the use of [match](#match) at the start of a pipeline to selectively apply stages based on labels. 
+Typical pipelines will start with a [regex](#regex) or [json](#json) stage to extract data from the log line.  Then any combination of other stages follow to use the data in the `extracted` map.  It may also be common to see the use of [match](#match) at the start of a pipeline to selectively apply stages based on labels.
 
 The example below gives a good glimpse of what you can achieve with a pipeline :
 
@@ -127,7 +127,7 @@ Filtering stages
   * [match](#match) - apply selectors to conditionally run stages based on labels
 
 Mutating/manipulating output
-  
+
   * [timestamp](#timestamp) - set the timestamp sent to Loki
   * [output](#output) - set the log content sent to Loki
 
@@ -149,7 +149,7 @@ A regex stage will take the provided regex and set the named groups as data in t
     source:      ②
 ```
 
-① `expression` is **required** and needs to be a [golang RE2 regex string](https://github.com/google/re2/wiki/Syntax). Every capture group `(re)` will be set into the `extracted` map, every capture group **must be named:** `(?P<name>re)`, the name will be used as the key in the map.  
+① `expression` is **required** and needs to be a [golang RE2 regex string](https://github.com/google/re2/wiki/Syntax). Every capture group `(re)` will be set into the `extracted` map, every capture group **must be named:** `(?P<name>re)`, the name will be used as the key in the map.
 ② `source` is optional and contains the name of key in the `extracted` map containing the data to parse. If omitted, the regex stage will parse the log `entry`.
 
 ##### Example (without source):
@@ -165,10 +165,10 @@ Would create the following `extracted` map:
 
 ```go
 {
-	"time":    "2019-01-01T01:00:00.000000001Z",
-	"stream":  "stderr",
-	"flags":   "P",
-	"content": "i'm a log message",
+  "time":    "2019-01-01T01:00:00.000000001Z",
+  "stream":  "stderr",
+  "flags":   "P",
+  "content": "i'm a log message",
 }
 ```
 
@@ -211,8 +211,8 @@ A json stage will take the provided [JMESPath expressions](http://jmespath.org/)
     source:             ③
 ```
 
-① `expressions` is a required yaml object containing key/value pairs of JMESPath expressions  
-② `key: expression` where `key` will be the key in the `extracted` map, and the value will be the evaluated JMESPath expression.  
+① `expressions` is a required yaml object containing key/value pairs of JMESPath expressions
+② `key: expression` where `key` will be the key in the `extracted` map, and the value will be the evaluated JMESPath expression.
 ③ `source` is optional and contains the name of key in the `extracted` map containing the json to parse. If omitted, the json stage will parse the log `entry`.
 
 This stage uses the Go JSON unmarshaller, which means non string types like numbers or booleans will be unmarshalled into those types.  The `extracted` map will accept non-string values and this stage will keep primitive types as they are unmarshalled (e.g. bool or float64).  Downstream stages will need to perform correct type conversion of these values as necessary.
@@ -235,9 +235,9 @@ Would create the following `extracted` map:
 
 ```go
 {
-	"output":    "log message\n",
-	"stream":    "stderr",
-	"timestamp": "2019-04-30T02:12:41.8443515"
+  "output":    "log message\n",
+  "stream":    "stderr",
+  "timestamp": "2019-04-30T02:12:41.8443515"
 }
 ```
 [Example in unit test](../../pkg/logentry/stages/json_test.go)
@@ -284,7 +284,7 @@ You can set values in the extracted map for keys that did not previously exist.
     template:  ②
 ```
 
-① `source` is **required** and is the key to the value in the `extracted` data map you wish to modify, this key does __not__ have to be present and will be added if missing.  
+① `source` is **required** and is the key to the value in the `extracted` data map you wish to modify, this key does __not__ have to be present and will be added if missing.
 ② `template` is **required** and is a [Go template string](https://golang.org/pkg/text/template/)
 
 The value of the extracted data map is accessed by using `.Value` in your template
@@ -301,7 +301,7 @@ In addition to normal template syntax, several functions have also been mapped t
 "TrimPrefix": strings.TrimPrefix,
 "TrimSuffix": strings.TrimSuffix,
 "TrimSpace":  strings.TrimSpace,
-``` 
+```
 
 ##### Example
 
@@ -319,7 +319,7 @@ This would take the value of the `app` key in the `extracted` data map and appen
     template: '{{ ToLower .Value }}'
 ```
 
-This would take the value of `app` from `extracted` data and lowercase all the letters.  If `app=LOKI` the new value for `app` would be `loki`.  
+This would take the value of `app` from `extracted` data and lowercase all the letters.  If `app=LOKI` the new value for `app` would be `loki`.
 
 The template syntax passes paramters to functions using space delimiters, functions only taking a single argument can also use the pipe syntax:
 
@@ -352,8 +352,8 @@ A match stage will take the provided label `selector` and determine if a group o
     pipeline_name: loki_pipeline     ②
     stages:                          ③
 ```
-① `selector` is **required** and must be a [logql stream selector](../usage.md#log-stream-selector).  
-② `pipeline_name` is **optional** but when defined, will create an additional label on the `pipeline_duration_seconds` histogram, the value for `pipeline_name` will be concatenated with the `job_name` using an underscore: `job_name`_`pipeline_name`   
+① `selector` is **required** and must be a [logql stream selector](../usage.md#log-stream-selector).
+② `pipeline_name` is **optional** but when defined, will create an additional label on the `pipeline_duration_seconds` histogram, the value for `pipeline_name` will be concatenated with the `job_name` using an underscore: `job_name`_`pipeline_name`
 ③ `stages` is a **required** list of additional pipeline stages which will only be executed if the defined `selector` matches the labels.  The format is a list of pipeline stages which is defined exactly the same as the root pipeline
 
 
@@ -371,8 +371,8 @@ A timestamp stage will parse data from the `extracted` map and set the `time` va
     location: ③
 ```
 
-① `source` is **required** and is the key name to data in the `extracted` map.  
-② `format` is **required** and is the input to Go's [time.parse](https://golang.org/pkg/time/#Parse) function.  
+① `source` is **required** and is the key name to data in the `extracted` map.
+② `format` is **required** and is the input to Go's [time.parse](https://golang.org/pkg/time/#Parse) function.
 ③ `location` is **optional** and is an IANA Timezone Database string, see the [go docs](https://golang.org/pkg/time/#LoadLocation) for more info
 
 Several of Go's pre-defined format's can be used by their name:
@@ -463,7 +463,7 @@ A label stage will take data from the `extracted` map and set additional `labels
     label_name: source   ①②
 ```
 
-① `label_name` is **required** and will be the name of the label added.  
+① `label_name` is **required** and will be the name of the label added.
 ② `"source"` is **optional**, if not provided the label_name is used as the source key into the `extracted` map
 
 ##### Example:
@@ -477,7 +477,7 @@ This stage when placed after the [regex](#regex) example stage above, would crea
 
 ```go
 {
-	"stream": "stderr",
+  "stream": "stderr",
 }
 ```
 
@@ -504,21 +504,21 @@ Several metric types are available:
         action:      ⑥
 ```
 
-① `counter_name` is **required** and should be set to the desired counters name.  
-② `type` is **required** and should be the word `Counter` (case insensitive).  
-③ `description` is **optional** but recommended.  
-④ `source` is **optional** and is will be used as the key in the `extracted` data map, if not provided it will default to the `counter_name`.  
-⑤ `value` is **optional**, if present, the metric will only be operated on if `value` == `extracted[source]`.  For example, if `value` is _panic_ then the counter will only be modified if `extracted[source] == "panic"`.  
+① `counter_name` is **required** and should be set to the desired counters name.
+② `type` is **required** and should be the word `Counter` (case insensitive).
+③ `description` is **optional** but recommended.
+④ `source` is **optional** and is will be used as the key in the `extracted` data map, if not provided it will default to the `counter_name`.
+⑤ `value` is **optional**, if present, the metric will only be operated on if `value` == `extracted[source]`.  For example, if `value` is _panic_ then the counter will only be modified if `extracted[source] == "panic"`.
 ⑥ `action` is **required** and must be either `inc` or `add` (case insensitive).  If `add` is chosen, the value of the `extracted` data will be used as the parameter to the method and therefore must be convertible to a positive float.
 
 ##### Examples
 
 ```yaml
 - metrics:
-    log_lines_total:   
+    log_lines_total:
       type: Counter
       description: "total number of log lines"
-      source: time 
+      source: time
       config:
         action: inc
 ```
@@ -529,10 +529,10 @@ This counter will increment whenever the _time_ key is present in the `extracted
 - regex:
     expression: "^.*(?P<order_success>order successful).*$"
 - metrics:
-    succesful_orders_total:   
+    succesful_orders_total:
       type: Counter
       description: "log lines with the message `order successful`"
-      source: order_success 
+      source: order_success
       config:
         action: inc
 ```
@@ -543,17 +543,17 @@ This combo regex and counter would count any log line which has the words `order
 - regex:
     expression: "^.* order_status=(?P<order_status>.*?) .*$"
 - metrics:
-    succesful_orders_total:   
+    succesful_orders_total:
       type: Counter
       description: "successful orders"
-      source: order_status 
+      source: order_status
       config:
         value: success
         action: inc
-    failed_orders_total:   
+    failed_orders_total:
       type: Counter
       description: "failed orders"
-      source: order_status 
+      source: order_status
       config:
         fail: fail
         action: inc
@@ -574,11 +574,11 @@ Similarly, this would look for a key=value pair of `order_status=success` or `or
         action:      ⑥
 ```
 
-① `gauge_name` is **required** and should be set to the desired counters name.  
-② `type` is **required** and should be the word `Gauge` (case insensitive).  
-③ `description` is **optional** but recommended.  
-④ `source` is **optional** and is will be used as the key in the `extracted` data map, if not provided it will default to the `gauge_name`.  
-⑤ `value` is **optional**, if present, the metric will only be operated on if `value` == `extracted[source]`.  For example, if `value` is _panic_ then the counter will only be modified if `extracted[source] == "panic"`.  
+① `gauge_name` is **required** and should be set to the desired counters name.
+② `type` is **required** and should be the word `Gauge` (case insensitive).
+③ `description` is **optional** but recommended.
+④ `source` is **optional** and is will be used as the key in the `extracted` data map, if not provided it will default to the `gauge_name`.
+⑤ `value` is **optional**, if present, the metric will only be operated on if `value` == `extracted[source]`.  For example, if `value` is _panic_ then the counter will only be modified if `extracted[source] == "panic"`.
 ⑥ `action` is **required** and must be either `set`, `inc`, `dec`, `add` or `sub` (case insensitive).  If `add`, `set`, or `sub`, is chosen, the value of the `extracted` data will be used as the parameter to the method and therefore must be convertible to a positive float.
 
 ##### Example
@@ -598,12 +598,12 @@ Gauge examples will be very similar to Counter examples with additional `action`
         buckets: []    ⑥⑦
 ```
 
-① `histogram_name` is **required** and should be set to the desired counters name.  
-② `type` is **required** and should be the word `Histogram` (case insensitive).  
-③ `description` is **optional** but recommended.  
-④ `source` is **optional** and is will be used as the key in the `extracted` data map, if not provided it will default to the `histogram_name`.  
-⑤ `value` is **optional**, if present, the metric will only be operated on if `value` == `extracted[source]`.  For example, if `value` is _panic_ then the counter will only be modified if `extracted[source] == "panic"`.  
-⑥ `action` is **required** and must be either `inc` or `add` (case insensitive).  If `add` is chosen, the value of the `extracted` data will be used as the parameter in `add()` and therefore must be convertible to a numeric type.  
+① `histogram_name` is **required** and should be set to the desired counters name.
+② `type` is **required** and should be the word `Histogram` (case insensitive).
+③ `description` is **optional** but recommended.
+④ `source` is **optional** and is will be used as the key in the `extracted` data map, if not provided it will default to the `histogram_name`.
+⑤ `value` is **optional**, if present, the metric will only be operated on if `value` == `extracted[source]`.  For example, if `value` is _panic_ then the counter will only be modified if `extracted[source] == "panic"`.
+⑥ `action` is **required** and must be either `inc` or `add` (case insensitive).  If `add` is chosen, the value of the `extracted` data will be used as the parameter in `add()` and therefore must be convertible to a numeric type.
 ⑦ bucket values should be an array of numeric type
 
 ##### Example
