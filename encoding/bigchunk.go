@@ -15,7 +15,7 @@ const samplesPerChunk = 120
 var errOutOfBounds = errors.New("out of bounds")
 
 type smallChunk struct {
-	*chunkenc.XORChunk
+	chunkenc.XORChunk
 	start int64
 	end   int64
 }
@@ -63,22 +63,20 @@ func (b *bigchunk) addNextChunk(start model.Time) error {
 			if err != nil {
 				return err
 			}
-			b.chunks[l-1].XORChunk = compacted.(*chunkenc.XORChunk)
+			b.chunks[l-1].XORChunk = *compacted.(*chunkenc.XORChunk)
 		}
 	}
 
-	chunk := chunkenc.NewXORChunk()
-	appender, err := chunk.Appender()
-	if err != nil {
-		return err
-	}
-
 	b.chunks = append(b.chunks, smallChunk{
-		XORChunk: chunk,
+		XORChunk: *chunkenc.NewXORChunk(),
 		start:    int64(start),
 		end:      int64(start),
 	})
 
+	appender, err := b.chunks[len(b.chunks)-1].Appender()
+	if err != nil {
+		return err
+	}
 	b.appender = appender
 	b.remainingSamples = samplesPerChunk
 	return nil
@@ -138,7 +136,7 @@ func (b *bigchunk) UnmarshalFromBuf(buf []byte) error {
 		}
 
 		b.chunks = append(b.chunks, smallChunk{
-			XORChunk: chunk.(*chunkenc.XORChunk),
+			XORChunk: *chunk.(*chunkenc.XORChunk),
 			start:    int64(start),
 			end:      int64(end),
 		})
