@@ -28,7 +28,7 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
   For doing instant queries at a single point in time, accepts the following parameters in the query-string:
 
   - `query`: a logQL query
-  - `limit`: max number of entries to return (not used for sample expression)
+  - `limit`: max number of entries to return (not used for metric queries)
   - `time`: the evaluation time for the query, as a nanosecond Unix epoch (nanoseconds since 1970). Default is always now.
   - `direction`: `forward` or `backward`, useful when specifying a limit. Default is backward.
 
@@ -107,7 +107,7 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
   For doing queries over a range of time, accepts the following parameters in the query-string:
 
   - `query`: a logQL query
-  - `limit`: max number of entries to return (not used for sample expression)
+  - `limit`: max number of entries to return (not used for metric queries)
   - `start`: the start time for the query, as a nanosecond Unix epoch (nanoseconds since 1970). Default is always one hour ago.
   - `end`: the end time for the query, as a nanosecond Unix epoch (nanoseconds since 1970). Default is always now.
   - `step`: query resolution step width in seconds. Default 1 second.
@@ -211,7 +211,8 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
   so you need to specify the start and end labels accordingly. Querying a long time into the history will cause additional
   load to the index server and make the query slower.
 
-  > This endpoint doesn't accept [sample query](./usage.md#counting-logs).
+  > This endpoint will be deprecated in the future you should use `api/v1/query_range` instead.
+  > You can only query for logs, it doesn't accept [queries returning metrics](./usage.md#counting-logs).
 
   Responses looks like this:
 

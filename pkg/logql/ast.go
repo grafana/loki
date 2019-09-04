@@ -148,7 +148,7 @@ func (e *filterExpr) Filter() (Filter, error) {
 		}
 
 	default:
-		return nil, fmt.Errorf("unknow matcher: %v", e.match)
+		return nil, fmt.Errorf("unknown matcher: %v", e.match)
 	}
 	next, ok := e.left.(*filterExpr)
 	if ok {
