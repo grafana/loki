@@ -10,17 +10,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/prometheus/promql"
-	"github.com/weaveworks/common/httpgrpc/server"
-
-	"github.com/weaveworks/common/httpgrpc"
-
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/httpgrpc/server"
 )
 
 const (
@@ -166,6 +165,22 @@ func httpRequestToLookback(httpRequest *http.Request) (limit uint32, start, end 
 	return
 }
 
+// parseRegexQuery parses regex and query querystring from httpRequest and returns the combined LogQL query.
+// This is used only to keep regexp query string support until it gets fully deprecated.
+func parseRegexQuery(httpRequest *http.Request) (string, error) {
+	params := httpRequest.URL.Query()
+	query := params.Get("query")
+	regexp := params.Get("regexp")
+	if regexp != "" {
+		expr, err := logql.ParseLogSelector(query)
+		if err != nil {
+			return "", err
+		}
+		query = logql.NewFilterExpr(expr, labels.MatchRegexp, regexp).String()
+	}
+	return query, nil
+}
+
 type QueryResponse struct {
 	ResultType promql.ValueType `json:"resultType"`
 	Result     promql.Value     `json:"result"`
@@ -255,6 +270,12 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		server.WriteError(w, err)
 		return
 	}
+	request.query, err = parseRegexQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	query := q.engine.NewRangeQuery(q, request.query, request.start, request.end, request.step, request.direction, request.limit)
 	result, err := query.Exec(ctx)
 	if err != nil {
@@ -323,6 +344,12 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	tailRequestPtr, err := httpRequestToTailRequest(r)
 	if err != nil {
 		server.WriteError(w, err)
+		return
+	}
+
+	tailRequestPtr.Query, err = parseRegexQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
