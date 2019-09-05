@@ -141,9 +141,11 @@ func (m *metricStage) recordCounter(name string, counter *metric.Counters, label
 	if counter.Cfg.Value != nil {
 		stringVal, err := getString(v)
 		if err != nil {
-			level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
-				"can't perform value comparison", "metric", name, "err",
-				fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v).String()))
+			if Debug {
+				level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
+					"can't perform value comparison", "metric", name, "err",
+					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v).String()))
+			}
 			return
 		}
 		if *counter.Cfg.Value != stringVal {
@@ -157,7 +159,9 @@ func (m *metricStage) recordCounter(name string, counter *metric.Counters, label
 	case metric.CounterAdd:
 		f, err := getFloat(v)
 		if err != nil || f < 0 {
-			level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
+			if Debug {
+				level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
+			}
 			return
 		}
 		counter.With(labels).Add(f)
@@ -170,9 +174,11 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 	if gauge.Cfg.Value != nil {
 		stringVal, err := getString(v)
 		if err != nil {
-			level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
-				"can't perform value comparison", "metric", name, "err",
-				fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v).String()))
+			if Debug {
+				level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
+					"can't perform value comparison", "metric", name, "err",
+					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v).String()))
+			}
 			return
 		}
 		if *gauge.Cfg.Value != stringVal {
@@ -184,7 +190,9 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 	case metric.GaugeSet:
 		f, err := getFloat(v)
 		if err != nil || f < 0 {
-			level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
+			if Debug {
+				level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
+			}
 			return
 		}
 		gauge.With(labels).Set(f)
@@ -195,14 +203,18 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 	case metric.GaugeAdd:
 		f, err := getFloat(v)
 		if err != nil || f < 0 {
-			level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
+			if Debug {
+				level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
+			}
 			return
 		}
 		gauge.With(labels).Add(f)
 	case metric.GaugeSub:
 		f, err := getFloat(v)
 		if err != nil || f < 0 {
-			level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
+			if Debug {
+				level.Debug(m.logger).Log("msg", "failed to convert extracted value to positive float", "metric", name, "err", err)
+			}
 			return
 		}
 		gauge.With(labels).Sub(f)
@@ -215,9 +227,11 @@ func (m *metricStage) recordHistogram(name string, histogram *metric.Histograms,
 	if histogram.Cfg.Value != nil {
 		stringVal, err := getString(v)
 		if err != nil {
-			level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
-				"can't perform value comparison", "metric", name, "err",
-				fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v).String()))
+			if Debug {
+				level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
+					"can't perform value comparison", "metric", name, "err",
+					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v).String()))
+			}
 			return
 		}
 		if *histogram.Cfg.Value != stringVal {
@@ -226,7 +240,9 @@ func (m *metricStage) recordHistogram(name string, histogram *metric.Histograms,
 	}
 	f, err := getFloat(v)
 	if err != nil {
-		level.Debug(m.logger).Log("msg", "failed to convert extracted value to float", "metric", name, "err", err)
+		if Debug {
+			level.Debug(m.logger).Log("msg", "failed to convert extracted value to float", "metric", name, "err", err)
+		}
 		return
 	}
 	histogram.With(labels).Observe(f)
