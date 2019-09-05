@@ -98,7 +98,7 @@ docker stack deploy my_stack_name --compose-file docker-compose.yaml
 
 Once deployed the Grafana service will be sending logs automatically to Loki.
 
-> **Note**: stack name and service name are automatically discovered and sent as Loki labels for each swarm service, this way you can filter by them in Grafana.
+> **Note**: stack name and service name for each swarm service and project name and service name for each compose service are automatically discovered and sent as Loki labels, this way you can filter by them in Grafana.
 
 ## Labels
 
