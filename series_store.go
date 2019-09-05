@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -98,17 +97,12 @@ func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Ob
 }
 
 // Get implements Store
-func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([]Chunk, error) {
+func (c *seriesStore) Get(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([]Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.Get")
 	defer log.Span.Finish()
 	level.Debug(log).Log("from", from, "through", through, "matchers", len(allMatchers))
 
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	chks, fetchers, err := c.GetChunkRefs(ctx, from, through, allMatchers...)
+	chks, fetchers, err := c.GetChunkRefs(ctx, userID, from, through, allMatchers...)
 	if err != nil {
 		return nil, err
 	}
@@ -141,17 +135,12 @@ func (c *seriesStore) Get(ctx context.Context, from, through model.Time, allMatc
 	return filteredChunks, nil
 }
 
-func (c *seriesStore) GetChunkRefs(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
+func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.GetChunkRefs")
 	defer log.Span.Finish()
 
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
 	// Validate the query is within reasonable bounds.
-	metricName, matchers, shortcut, err := c.validateQuery(ctx, &from, &through, allMatchers)
+	metricName, matchers, shortcut, err := c.validateQuery(ctx, userID, &from, &through, allMatchers)
 	if err != nil {
 		return nil, nil, err
 	} else if shortcut {
@@ -191,16 +180,11 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, from, through model.Time
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, from, through model.Time, metricName string) ([]string, error) {
+func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.LabelNamesForMetricName")
 	defer log.Span.Finish()
 
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	shortcut, err := c.validateQueryTimeRange(ctx, &from, &through)
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
 		return nil, err
 	} else if shortcut {
