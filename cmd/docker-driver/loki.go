@@ -55,7 +55,11 @@ func (l *loki) Log(m *logger.Message) error {
 		level.Info(l.logger).Log("msg", "ignoring empty line", "line", string(m.Line))
 		return nil
 	}
-	return l.handler.Handle(l.labels.Clone(), m.Timestamp, string(m.Line))
+	lbs := l.labels.Clone()
+	if m.Source != "" {
+		lbs["source"] = model.LabelValue(m.Source)
+	}
+	return l.handler.Handle(lbs, m.Timestamp, string(m.Line))
 }
 
 // Log implements `logger.Logger`
