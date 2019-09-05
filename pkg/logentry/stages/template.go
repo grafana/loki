@@ -90,14 +90,18 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 	if v, ok := extracted[o.cfgs.Source]; ok {
 		s, err := getString(v)
 		if err != nil {
-			level.Debug(o.logger).Log("msg", "extracted template could not be converted to a string", "err", err, "type", reflect.TypeOf(v).String())
+			if Debug {
+				level.Debug(o.logger).Log("msg", "extracted template could not be converted to a string", "err", err, "type", reflect.TypeOf(v).String())
+			}
 			return
 		}
 		td := templateData{s}
 		buf := &bytes.Buffer{}
 		err = o.template.Execute(buf, td)
 		if err != nil {
-			level.Debug(o.logger).Log("msg", "failed to execute template on extracted value", "err", err, "value", v)
+			if Debug {
+				level.Debug(o.logger).Log("msg", "failed to execute template on extracted value", "err", err, "value", v)
+			}
 			return
 		}
 		st := buf.String()
@@ -113,7 +117,9 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 		buf := &bytes.Buffer{}
 		err := o.template.Execute(buf, td)
 		if err != nil {
-			level.Debug(o.logger).Log("msg", "failed to execute template on extracted value", "err", err, "value", v)
+			if Debug {
+				level.Debug(o.logger).Log("msg", "failed to execute template on extracted value", "err", err, "value", v)
+			}
 			return
 		}
 		st := buf.String()
