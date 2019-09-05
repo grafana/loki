@@ -45,6 +45,12 @@ const (
 	swarmServiceLabelName = "swarm_service"
 	swarmStackLabelName   = "swarm_stack"
 
+	composeServiceLabelKey = "com.docker.compose.service"
+	composeProjectLabelKey = "com.docker.compose.project"
+
+	composeServiceLabelName = "compose_service"
+	composeProjectLabelName = "compose_project"
+
 	defaultExternalLabels = "container_name={{.Name}}"
 	defaultHostLabelName  = model.LabelName("host")
 )
@@ -223,6 +229,16 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	swarmStack := logCtx.ContainerLabels[swarmStackLabelKey]
 	if swarmStack != "" {
 		attrs[swarmStackLabelName] = swarmStack
+	}
+
+	// parse docker compose labels and adds them automatically to attrs
+	composeService := logCtx.ContainerLabels[composeServiceLabelKey]
+	if composeService != "" {
+		attrs[composeServiceLabelName] = composeService
+	}
+	composeProject := logCtx.ContainerLabels[composeProjectLabelKey]
+	if composeProject != "" {
+		attrs[composeProjectLabelName] = composeProject
 	}
 
 	for key, value := range attrs {
