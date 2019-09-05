@@ -109,7 +109,7 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 func (c *client) run() {
 	batch := map[model.Fingerprint]*logproto.Stream{}
 	batchSize := 0
-	maxWait := time.NewTimer(c.cfg.BatchWait)
+	maxWait := time.NewTicker(c.cfg.BatchWait)
 
 	defer func() {
 		if len(batch) > 0 {
@@ -120,7 +120,6 @@ func (c *client) run() {
 	}()
 
 	for {
-		maxWait.Reset(c.cfg.BatchWait)
 		select {
 		case <-c.quit:
 			return
