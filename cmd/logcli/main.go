@@ -30,8 +30,7 @@ var (
 	tlsClientCertPath    = app.Flag("cert", "Path to the client certificate.").Default("").Envar("LOKI_CLIENT_CERT_PATH").String()
 	tlsClientCertKeyPath = app.Flag("key", "Path to the client certificate key.").Default("").Envar("LOKI_CLIENT_KEY_PATH").String()
 
-	queryCmd = app.Command("query", "Run a LogQL query.")
-
+	queryCmd        = app.Command("query", "Run a LogQL query.")
 	queryStr        = queryCmd.Arg("query", "eg '{foo=\"bar\",baz=\"blip\"}'").Required().String()
 	limit           = queryCmd.Flag("limit", "Limit on number of entries to print.").Default("30").Int()
 	since           = queryCmd.Flag("since", "Lookback window.").Default("1h").Duration()
@@ -77,11 +76,12 @@ func main() {
 			log.Fatalf("Unable to create log output: %s", err)
 		}
 
+		start, end := calculateQueryStartAndEnd(*from, *to, *since)
+
 		q := &query.Query{
 			QueryString:     *queryStr,
-			Since:           *since,
-			From:            *from,
-			To:              *to,
+			Start:           start,
+			End:             end,
 			Limit:           *limit,
 			Forward:         *forward,
 			Tail:            *tail,
@@ -122,4 +122,26 @@ func newQueryClient() *client.Client {
 		Password: *password,
 		Address:  *addr,
 	}
+}
+
+func calculateQueryStartAndEnd(to string, from string, since time.Duration) (time.Time, time.Time) {
+	var err error
+
+	end := time.Now()
+	start := end.Add(-since)
+	if from != "" {
+		start, err = time.Parse(time.RFC3339Nano, from)
+		if err != nil {
+			log.Fatalf("error parsing date '%s': %s", from, err)
+		}
+	}
+
+	if to != "" {
+		end, err = time.Parse(time.RFC3339Nano, to)
+		if err != nil {
+			log.Fatalf("error parsing --to date '%s': %s", to, err)
+		}
+	}
+
+	return start, end
 }

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"time"
 
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
@@ -15,8 +14,7 @@ import (
 )
 
 func tailQuery(q *Query, c *client.Client, out output.LogOutput) {
-	start := getStart(time.Now(), q.From, q.Since).UnixNano()
-	conn, err := c.LiveTailQueryConn(q.QueryString, q.DelayFor, q.Limit, start, q.Quiet)
+	conn, err := c.LiveTailQueryConn(q.QueryString, q.DelayFor, q.Limit, q.Start.UnixNano(), q.Quiet)
 	if err != nil {
 		log.Fatalf("Tailing logs failed: %+v", err)
 	}

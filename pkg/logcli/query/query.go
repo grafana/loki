@@ -17,9 +17,8 @@ import (
 
 type Query struct {
 	QueryString     string
-	Since           time.Duration
-	From            string
-	To              string
+	Start           time.Time
+	End             time.Time
 	Limit           int
 	Forward         bool
 	Tail            bool
@@ -29,18 +28,6 @@ type Query struct {
 	IgnoreLabelsKey []string
 	ShowLabelsKey   []string
 	FixedLabelsLen  int
-}
-
-func getStart(end time.Time, from string, since time.Duration) time.Time {
-	start := end.Add(-since)
-	if from != "" {
-		var err error
-		start, err = time.Parse(time.RFC3339Nano, from)
-		if err != nil {
-			log.Fatalf("error parsing date '%s': %s", from, err)
-		}
-	}
-	return start
 }
 
 func DoQuery(q *Query, c *client.Client, out output.LogOutput) {
@@ -54,23 +41,12 @@ func DoQuery(q *Query, c *client.Client, out output.LogOutput) {
 		common labels.Labels
 	)
 
-	end := time.Now()
-	start := getStart(end, q.From, q.Since)
-
-	if q.To != "" {
-		var err error
-		end, err = time.Parse(time.RFC3339Nano, q.To)
-		if err != nil {
-			log.Fatalf("error parsing --to date '%s': %s", q.To, err)
-		}
-	}
-
 	d := logproto.BACKWARD
 	if q.Forward {
 		d = logproto.FORWARD
 	}
 
-	resp, err := c.Query(q.QueryString, q.Limit, start, end, d, q.Quiet)
+	resp, err := c.Query(q.QueryString, q.Limit, q.Start, q.End, d, q.Quiet)
 	if err != nil {
 		log.Fatalf("Query failed: %+v", err)
 	}
