@@ -194,7 +194,7 @@ cmd/promtail/promtail-debug: $(APP_GO_FILES) pkg/promtail/server/ui/assets_vfsda
 # concurrency is limited to 4 to prevent CircleCI from OOMing. Sorry
 GOX = gox $(GO_FLAGS) -parallel=4 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}" -arch="amd64 arm64 arm" -os="linux"
 dist: clean
-	CGO_ENABLED=0 $(GOX) ./cmd/loki
+	CGO_ENABLED=0 $(GOX) -osarch="windows/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/promtail ./cmd/logcli
 	gzip dist/*
 	pushd dist && sha256sum * > SHA256SUMS && popd
