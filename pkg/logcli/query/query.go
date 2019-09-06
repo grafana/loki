@@ -29,7 +29,6 @@ type Query struct {
 	IgnoreLabelsKey []string
 	ShowLabelsKey   []string
 	FixedLabelsLen  int
-	Addr            string
 }
 
 func getStart(end time.Time, from string, since time.Duration) time.Time {
