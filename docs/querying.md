@@ -1,7 +1,7 @@
 # Querying
 
 To get the previously ingested logs back from Loki for analysis, you need a
-client that supports LogQL.  
+client that supports LogQL.
 Grafana will be the first choice for most users,
 nevertheless [LogCLI](logcli.md) represents a viable standalone alternative.
 
@@ -111,3 +111,61 @@ The query language is still under development to support more features, e.g.,:
 - Number extraction for timeseries based on number in log messages
 - JSON accessors for filtering of JSON-structured logs
 - Context (like `grep -C n`)
+
+## Counting logs
+
+Loki's LogQL support sample expression allowing to count entries per stream after the regex filtering stage.
+
+### Range Vector aggregation
+
+The language shares the same [range vector](https://prometheus.io/docs/prometheus/latest/querying/basics/#range-vector-selectors) concept from Prometheus, except that the selected range of samples contains a value of one for each log entry. You can then apply an aggregation over the selected range to transform it into an instant vector.
+
+`rate` calculates the number of entries per second and `count_over_time` count of entries for the each log stream within the range.
+
+In this example, we count all the log lines we have recorded within the last 5min for the mysql job.
+
+> `count_over_time({job="mysql"}[5m])`
+
+A range vector aggregation can also be applied to a [Filter Expression](#filter-expression), allowing you to select only matching log entries.
+
+> `rate( ( {job="mysql"} |= "error" != "timeout)[10s] ) )`
+
+The query above will compute the per second rate of all errors except those containing `timeout` within the last 10 seconds.
+
+You can then use aggregation operators over the range vector aggregation.
+
+### Aggregation operators
+
+Like [PromQL](https://prometheus.io/docs/prometheus/latest/querying/operators/#aggregation-operators), Loki's LogQL support a subset of built-in aggregation operators that can be used to aggregate the element of a single vector, resulting in a new vector of fewer elements with aggregated values:
+
+- `sum` (calculate sum over dimensions)
+- `min` (select minimum over dimensions)
+- `max` (select maximum over dimensions)
+- `avg` (calculate the average over dimensions)
+- `stddev` (calculate population standard deviation over dimensions)
+- `stdvar` (calculate population standard variance over dimensions)
+- `count` (count number of elements in the vector)
+- `bottomk` (smallest k elements by sample value)
+- `topk` (largest k elements by sample value)
+
+These operators can either be used to aggregate over all label dimensions or preserve distinct dimensions by including a without or by clause.
+
+> `<aggr-op>([parameter,] <vector expression>) [without|by (<label list>)]`
+
+parameter is only required for `topk` and `bottomk`. without removes the listed labels from the result vector, while all other labels are preserved the output. by does the opposite and drops labels that are not listed in the by clause, even if their label values are identical between all elements of the vector.
+
+topk and bottomk are different from other aggregators in that a subset of the input samples, including the original labels, are returned in the result vector. by and without are only used to bucket the input vector.
+
+#### Examples
+
+Get top 10 applications by highest log throughput:
+
+> `topk(10,sum(rate({region="us-east1"}[5m]) by (name))`
+
+Get the count of logs during the last 5 minutes by level:
+
+> `sum(count_over_time({job="mysql"}[5m])) by (level)`
+
+Get the rate of HTTP GET requests from nginx logs:
+
+> `avg(rate(({job="nginx"} |= "GET")[10s])) by (region)`
