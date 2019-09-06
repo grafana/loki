@@ -39,7 +39,7 @@ func tailQuery(q *Query, c *client.Client, out output.LogOutput) {
 		labels := ""
 		parsedLabels := promlabels.Labels{}
 		for _, stream := range tailReponse.Streams {
-			if q.NoLabels {
+			if !q.NoLabels {
 
 				if len(q.IgnoreLabelsKey) > 0 || len(q.ShowLabelsKey) > 0 {
 
