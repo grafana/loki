@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/logcli/client"
+	"github.com/grafana/loki/pkg/logcli/labelquery"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logcli/query"
 	"github.com/prometheus/common/config"
@@ -99,12 +100,12 @@ func main() {
 		}
 
 	case labelsCmd.FullCommand():
-		query.DoLabels(*labelName, *quiet, queryClient)
+		labelquery.DoLabels(*labelName, *quiet, queryClient)
 	}
 }
 
 func hintActionLabelNames() []string {
-	return query.ListLabels(*quiet, newQueryClient())
+	return labelquery.ListLabels(*quiet, newQueryClient())
 }
 
 func newQueryClient() *client.Client {
