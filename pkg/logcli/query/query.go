@@ -21,7 +21,6 @@ type Query struct {
 	End             time.Time
 	Limit           int
 	Forward         bool
-	Tail            bool
 	Quiet           bool
 	DelayFor        int
 	NoLabels        bool
@@ -30,12 +29,7 @@ type Query struct {
 	FixedLabelsLen  int
 }
 
-func DoQuery(q *Query, c *client.Client, out output.LogOutput) {
-	if q.Tail {
-		tailQuery(q, c, out)
-		return
-	}
-
+func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 	var (
 		i      iter.EntryIterator
 		common labels.Labels

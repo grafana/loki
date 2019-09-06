@@ -84,7 +84,6 @@ func main() {
 			End:             end,
 			Limit:           *limit,
 			Forward:         *forward,
-			Tail:            *tail,
 			Quiet:           *quiet,
 			DelayFor:        *delayFor,
 			NoLabels:        *noLabels,
@@ -93,7 +92,12 @@ func main() {
 			FixedLabelsLen:  *fixedLabelsLen,
 		}
 
-		query.DoQuery(q, queryClient, out)
+		if *tail {
+			q.TailQuery(queryClient, out)
+		} else {
+			q.DoQuery(queryClient, out)
+		}
+
 	case labelsCmd.FullCommand():
 		query.DoLabels(*labelName, *quiet, queryClient)
 	}
