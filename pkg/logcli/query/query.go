@@ -1,4 +1,4 @@
-package main
+package query
 
 import (
 	"fmt"
@@ -10,25 +10,43 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-func getStart(end time.Time) time.Time {
-	start := end.Add(-*since)
-	if *from != "" {
+type Query struct {
+	QueryString     string
+	Since           time.Duration
+	From            string
+	To              string
+	Limit           int
+	Forward         bool
+	Tail            bool
+	Quiet           bool
+	DelayFor        int
+	NoLabels        bool
+	IgnoreLabelsKey []string
+	ShowLabelsKey   []string
+	FixedLabelsLen  int
+	Addr            string
+}
+
+func getStart(end time.Time, from string, since time.Duration) time.Time {
+	start := end.Add(-since)
+	if from != "" {
 		var err error
-		start, err = time.Parse(time.RFC3339Nano, *from)
+		start, err = time.Parse(time.RFC3339Nano, from)
 		if err != nil {
-			log.Fatalf("error parsing date '%s': %s", *from, err)
+			log.Fatalf("error parsing date '%s': %s", from, err)
 		}
 	}
 	return start
 }
 
-func doQuery(out output.LogOutput) {
-	if *tail {
-		tailQuery(out)
+func DoQuery(q *Query, c *client.Client, out output.LogOutput) {
+	if q.Tail {
+		tailQuery(q, c, out)
 		return
 	}
 
@@ -38,22 +56,22 @@ func doQuery(out output.LogOutput) {
 	)
 
 	end := time.Now()
-	start := getStart(end)
+	start := getStart(end, q.From, q.Since)
 
-	if *to != "" {
+	if q.To != "" {
 		var err error
-		end, err = time.Parse(time.RFC3339Nano, *to)
+		end, err = time.Parse(time.RFC3339Nano, q.To)
 		if err != nil {
-			log.Fatalf("error parsing --to date '%s': %s", *to, err)
+			log.Fatalf("error parsing --to date '%s': %s", q.To, err)
 		}
 	}
 
 	d := logproto.BACKWARD
-	if *forward {
+	if q.Forward {
 		d = logproto.FORWARD
 	}
 
-	resp, err := query(start, end, d)
+	resp, err := c.Query(q.QueryString, q.Limit, start, end, d, q.Quiet)
 	if err != nil {
 		log.Fatalf("Query failed: %+v", err)
 	}
@@ -67,28 +85,28 @@ func doQuery(out output.LogOutput) {
 	common = commonLabels(lss)
 
 	// Remove the labels we want to show from common
-	if len(*showLabelsKey) > 0 {
-		common = common.MatchLabels(false, *showLabelsKey...)
+	if len(q.ShowLabelsKey) > 0 {
+		common = common.MatchLabels(false, q.ShowLabelsKey...)
 	}
 
-	if len(common) > 0 && !*quiet {
+	if len(common) > 0 && !q.Quiet {
 		log.Println("Common labels:", color.RedString(common.String()))
 	}
 
-	if len(*ignoreLabelsKey) > 0 && !*quiet {
-		log.Println("Ignoring labels key:", color.RedString(strings.Join(*ignoreLabelsKey, ",")))
+	if len(q.IgnoreLabelsKey) > 0 && !q.Quiet {
+		log.Println("Ignoring labels key:", color.RedString(strings.Join(q.IgnoreLabelsKey, ",")))
 	}
 
 	// Remove ignored and common labels from the cached labels and
 	// calculate the max labels length
-	maxLabelsLen := *fixedLabelsLen
+	maxLabelsLen := q.FixedLabelsLen
 	for key, ls := range cache {
 		// Remove common labels
 		ls = subtract(ls, common)
 
 		// Remove ignored labels
-		if len(*ignoreLabelsKey) > 0 {
-			ls = ls.MatchLabels(false, *ignoreLabelsKey...)
+		if len(q.IgnoreLabelsKey) > 0 {
+			ls = ls.MatchLabels(false, q.IgnoreLabelsKey...)
 		}
 
 		// Update cached labels

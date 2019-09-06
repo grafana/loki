@@ -2,10 +2,15 @@ package main
 
 import (
 	"log"
+	"net/url"
 	"os"
 	"time"
 
+	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
+	"github.com/grafana/loki/pkg/logcli/query"
+	"github.com/prometheus/common/config"
+
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -25,7 +30,8 @@ var (
 	tlsClientCertPath    = app.Flag("cert", "Path to the client certificate.").Default("").Envar("LOKI_CLIENT_CERT_PATH").String()
 	tlsClientCertKeyPath = app.Flag("key", "Path to the client certificate key.").Default("").Envar("LOKI_CLIENT_KEY_PATH").String()
 
-	queryCmd        = app.Command("query", "Run a LogQL query.")
+	queryCmd = app.Command("query", "Run a LogQL query.")
+
 	queryStr        = queryCmd.Arg("query", "eg '{foo=\"bar\",baz=\"blip\"}'").Required().String()
 	limit           = queryCmd.Flag("limit", "Limit on number of entries to print.").Default("30").Int()
 	since           = queryCmd.Flag("since", "Lookback window.").Default("1h").Duration()
@@ -38,8 +44,9 @@ var (
 	ignoreLabelsKey = queryCmd.Flag("exclude-label", "Exclude labels given the provided key during output.").Strings()
 	showLabelsKey   = queryCmd.Flag("include-label", "Include labels given the provided key during output.").Strings()
 	fixedLabelsLen  = queryCmd.Flag("labels-length", "Set a fixed padding to labels").Default("0").Int()
-	labelsCmd       = app.Command("labels", "Find values for a given label.")
-	labelName       = labelsCmd.Arg("label", "The name of the label.").HintAction(listLabels).String()
+
+	labelsCmd = app.Command("labels", "Find values for a given label.")
+	labelName = labelsCmd.Arg("label", "The name of the label.").HintAction(hintActionLabelNames).String()
 )
 
 func main() {
@@ -50,6 +57,8 @@ func main() {
 	if *addr == "" {
 		log.Fatalln("Server address cannot be empty")
 	}
+
+	queryClient := newQueryClient()
 
 	switch cmd {
 	case queryCmd.FullCommand():
@@ -68,8 +77,49 @@ func main() {
 			log.Fatalf("Unable to create log output: %s", err)
 		}
 
-		doQuery(out)
+		q := &query.Query{
+			QueryString:     *queryStr,
+			Since:           *since,
+			From:            *from,
+			To:              *to,
+			Limit:           *limit,
+			Forward:         *forward,
+			Tail:            *tail,
+			Quiet:           *quiet,
+			DelayFor:        *delayFor,
+			NoLabels:        *noLabels,
+			IgnoreLabelsKey: *ignoreLabelsKey,
+			ShowLabelsKey:   *showLabelsKey,
+			FixedLabelsLen:  *fixedLabelsLen,
+		}
+
+		query.DoQuery(q, queryClient, out)
 	case labelsCmd.FullCommand():
-		doLabels()
+		query.DoLabels(*labelName, *quiet, queryClient)
+	}
+}
+
+func hintActionLabelNames() []string {
+	return query.ListLabels(*quiet, newQueryClient())
+}
+
+func newQueryClient() *client.Client {
+	// extract host
+	u, err := url.Parse(*addr)
+	if err != nil {
+		log.Fatalf("Failed to parse hostname: %s", err)
+	}
+
+	return &client.Client{
+		TLSConfig: config.TLSConfig{
+			CAFile:             *tlsCACertPath,
+			CertFile:           *tlsClientCertPath,
+			KeyFile:            *tlsClientCertKeyPath,
+			ServerName:         u.Host,
+			InsecureSkipVerify: *tlsSkipVerify,
+		},
+		Username: *username,
+		Password: *password,
+		Address:  *addr,
 	}
 }
