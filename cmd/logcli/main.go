@@ -77,21 +77,7 @@ func main() {
 			log.Fatalf("Unable to create log output: %s", err)
 		}
 
-		start, end := calculateQueryStartAndEnd(*from, *to, *since)
-
-		q := &query.Query{
-			QueryString:     *queryStr,
-			Start:           start,
-			End:             end,
-			Limit:           *limit,
-			Forward:         *forward,
-			Quiet:           *quiet,
-			DelayFor:        *delayFor,
-			NoLabels:        *noLabels,
-			IgnoreLabelsKey: *ignoreLabelsKey,
-			ShowLabelsKey:   *showLabelsKey,
-			FixedLabelsLen:  *fixedLabelsLen,
-		}
+		q := newQuery()
 
 		if *tail {
 			q.TailQuery(queryClient, out)
@@ -100,12 +86,17 @@ func main() {
 		}
 
 	case labelsCmd.FullCommand():
-		labelquery.DoLabels(*labelName, *quiet, queryClient)
+		q := newLabelQuery(*labelName, *quiet)
+
+		q.DoLabels(queryClient)
 	}
 }
 
 func hintActionLabelNames() []string {
-	return labelquery.ListLabels(*quiet, newQueryClient())
+	c := newQueryClient()
+	q := newLabelQuery("", *quiet)
+
+	return q.ListLabels(c)
 }
 
 func newQueryClient() *client.Client {
@@ -129,24 +120,44 @@ func newQueryClient() *client.Client {
 	}
 }
 
-func calculateQueryStartAndEnd(to string, from string, since time.Duration) (time.Time, time.Time) {
+func newLabelQuery(labelName string, quiet bool) *labelquery.LabelQuery {
+	return &labelquery.LabelQuery{
+		LabelName: labelName,
+		Quiet:     quiet,
+	}
+}
+
+func newQuery() *query.Query {
+	// calculcate query range from cli params
 	var err error
 
 	end := time.Now()
-	start := end.Add(-since)
-	if from != "" {
-		start, err = time.Parse(time.RFC3339Nano, from)
+	start := end.Add(-*since)
+	if *from != "" {
+		start, err = time.Parse(time.RFC3339Nano, *from)
 		if err != nil {
-			log.Fatalf("error parsing date '%s': %s", from, err)
+			log.Fatalf("error parsing date '%s': %s", *from, err)
 		}
 	}
 
-	if to != "" {
-		end, err = time.Parse(time.RFC3339Nano, to)
+	if *to != "" {
+		end, err = time.Parse(time.RFC3339Nano, *to)
 		if err != nil {
-			log.Fatalf("error parsing --to date '%s': %s", to, err)
+			log.Fatalf("error parsing --to date '%s': %s", *to, err)
 		}
 	}
 
-	return start, end
+	return &query.Query{
+		QueryString:     *queryStr,
+		Start:           start,
+		End:             end,
+		Limit:           *limit,
+		Forward:         *forward,
+		Quiet:           *quiet,
+		DelayFor:        *delayFor,
+		NoLabels:        *noLabels,
+		IgnoreLabelsKey: *ignoreLabelsKey,
+		ShowLabelsKey:   *showLabelsKey,
+		FixedLabelsLen:  *fixedLabelsLen,
+	}
 }
