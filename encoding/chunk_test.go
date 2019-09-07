@@ -147,6 +147,14 @@ func testChunkSeek(t *testing.T, encoding Encoding, samples int) {
 
 	iter := chunk.NewIterator(nil)
 	for i := 0; i < samples; i += samples / 10 {
+		if i > 0 {
+			// Seek one millisecond before the actual time
+			require.True(t, iter.FindAtOrAfter(model.Time(i*step-1)), "1ms before step %d not found", i)
+			sample := iter.Value()
+			require.EqualValues(t, model.Time(i*step), sample.Timestamp)
+			require.EqualValues(t, model.SampleValue(i), sample.Value)
+		}
+		// Now seek to exactly the right time
 		require.True(t, iter.FindAtOrAfter(model.Time(i*step)))
 		sample := iter.Value()
 		require.EqualValues(t, model.Time(i*step), sample.Timestamp)

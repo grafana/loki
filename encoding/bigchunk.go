@@ -273,6 +273,14 @@ func (it *bigchunkIterator) FindAtOrAfter(target model.Time) bool {
 			return true
 		}
 	}
+	// Timestamp is after the end of that chunk - if there is another chunk
+	// then the position we need is at the beginning of it.
+	if it.i+1 < len(it.chunks) {
+		it.i++
+		it.curr = it.chunks[it.i].Iterator(it.curr)
+		it.curr.Next()
+		return true
+	}
 	return false
 }
 
