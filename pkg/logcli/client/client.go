@@ -11,14 +11,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/logql"
+
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/common/config"
+	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/querier"
 )
 
 const (
-	queryPath       = "/api/prom/query?query=%s&limit=%d&start=%d&end=%d&direction=%s"
+	queryPath       = "/api/v1/query_range?query=%s&limit=%d&start=%d&end=%d&direction=%s"
 	labelsPath      = "/api/v1/label"
 	labelValuesPath = "/api/v1/label/%s/values"
 	tailPath        = "/api/prom/tail?query=%s&delay_for=%d&limit=%d&start=%d"
@@ -31,7 +35,9 @@ type Client struct {
 	Address   string
 }
 
-func (c *Client) Query(queryStr string, limit int, from, through time.Time, direction logproto.Direction, quiet bool) (*logproto.QueryResponse, error) {
+func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, quiet bool) (*querier.QueryResponse, error) {
+	var err error
+
 	path := fmt.Sprintf(queryPath,
 		url.QueryEscape(queryStr), // query
 		limit,                     // limit
@@ -40,12 +46,35 @@ func (c *Client) Query(queryStr string, limit int, from, through time.Time, dire
 		direction.String(),        // direction
 	)
 
-	var resp logproto.QueryResponse
-	if err := c.doRequest(path, quiet, &resp); err != nil {
+	unmarshal := struct {
+		Type   promql.ValueType `json:"resultType"`
+		Result json.RawMessage  `json:"result"`
+	}{}
+
+	if err = c.doRequest(path, quiet, &unmarshal); err != nil {
 		return nil, err
 	}
 
-	return &resp, nil
+	var value promql.Value
+
+	// unmarshal results
+	switch unmarshal.Type {
+	case logql.ValueTypeStreams:
+		var s logql.Streams
+		err = json.Unmarshal(unmarshal.Result, &s)
+		value = s
+	default:
+		return nil, fmt.Errorf("Unknown type: %s", unmarshal.Type)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &querier.QueryResponse{
+		ResultType: unmarshal.Type,
+		Result:     value,
+	}, nil
 }
 
 func (c *Client) ListLabelNames(quiet bool) (*logproto.LabelResponse, error) {

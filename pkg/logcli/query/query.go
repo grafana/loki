@@ -7,9 +7,10 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logproto"
@@ -40,12 +41,15 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 		d = logproto.FORWARD
 	}
 
-	resp, err := c.Query(q.QueryString, q.Limit, q.Start, q.End, d, q.Quiet)
+	resp, err := c.QueryRange(q.QueryString, q.Limit, q.Start, q.End, d, q.Quiet)
 	if err != nil {
 		log.Fatalf("Query failed: %+v", err)
 	}
 
-	cache, lss := parseLabels(resp)
+	// currently only stream return type is supported
+	streams := resp.Result.(logql.Streams)
+
+	cache, lss := parseLabels(streams)
 
 	labelsCache := func(labels string) labels.Labels {
 		return cache[labels]
@@ -88,7 +92,7 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 		}
 	}
 
-	i = iter.NewQueryResponseIterator(resp, d)
+	i = newStreamsIterator(streams, d)
 
 	for i.Next() {
 		ls := labelsCache(i.Labels())
@@ -98,4 +102,12 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 	if err := i.Error(); err != nil {
 		log.Fatalf("Error from iterator: %v", err)
 	}
+}
+
+func newStreamsIterator(streams logql.Streams, direction logproto.Direction) iter.EntryIterator {
+	is := make([]iter.EntryIterator, 0, len(streams))
+	for i := range streams {
+		is = append(is, iter.NewStreamIterator(streams[i]))
+	}
+	return iter.NewHeapIterator(is, direction)
 }

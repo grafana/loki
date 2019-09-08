@@ -4,7 +4,7 @@ import (
 	"log"
 	"sort"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 )
@@ -19,10 +19,10 @@ func mustParseLabels(labels string) labels.Labels {
 }
 
 // parse labels from response stream
-func parseLabels(resp *logproto.QueryResponse) (map[string]labels.Labels, []labels.Labels) {
-	cache := make(map[string]labels.Labels, len(resp.Streams))
-	lss := make([]labels.Labels, 0, len(resp.Streams))
-	for _, stream := range resp.Streams {
+func parseLabels(streams logql.Streams) (map[string]labels.Labels, []labels.Labels) {
+	cache := make(map[string]labels.Labels, len(streams))
+	lss := make([]labels.Labels, 0, len(streams))
+	for _, stream := range streams {
 		ls := mustParseLabels(stream.Labels)
 		cache[stream.Labels] = ls
 		lss = append(lss, ls)
