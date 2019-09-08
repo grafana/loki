@@ -92,7 +92,7 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 		}
 	}
 
-	i = newStreamsIterator(streams, d)
+	i = iter.NewStreamsIterator(streams, d)
 
 	for i.Next() {
 		ls := labelsCache(i.Labels())
@@ -102,12 +102,4 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 	if err := i.Error(); err != nil {
 		log.Fatalf("Error from iterator: %v", err)
 	}
-}
-
-func newStreamsIterator(streams logql.Streams, direction logproto.Direction) iter.EntryIterator {
-	is := make([]iter.EntryIterator, 0, len(streams))
-	for i := range streams {
-		is = append(is, iter.NewStreamIterator(streams[i]))
-	}
-	return iter.NewHeapIterator(is, direction)
 }
