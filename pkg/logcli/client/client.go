@@ -19,8 +19,8 @@ import (
 
 const (
 	queryPath       = "/api/prom/query?query=%s&limit=%d&start=%d&end=%d&direction=%s"
-	labelsPath      = "/api/prom/label"
-	labelValuesPath = "/api/prom/label/%s/values"
+	labelsPath      = "/api/v1/label"
+	labelValuesPath = "/api/v1/label/%s/values"
 	tailPath        = "/api/prom/tail?query=%s&delay_for=%d&limit=%d&start=%d"
 )
 
