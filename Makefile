@@ -325,7 +325,9 @@ helm-clean:
 # Docker Driver #
 #################
 
+# optionally set the tag or the arch suffix (-arm64)
 PLUGIN_TAG ?= $(IMAGE_TAG)
+PLUGIN_ARCH ?=
 
 docker-driver: docker-driver-clean
 	mkdir cmd/docker-driver/rootfs
@@ -334,21 +336,24 @@ docker-driver: docker-driver-clean
 	(docker export $$ID | tar -x -C cmd/docker-driver/rootfs) && \
 	docker rm -vf $$ID
 	docker rmi rootfsimage -f
-	docker plugin create grafana/loki-docker-driver:$(PLUGIN_TAG) cmd/docker-driver
+	docker plugin create grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH) cmd/docker-driver
+	docker plugin create grafana/loki-docker-driver:latest$(PLUGIN_ARCH) cmd/docker-driver
 
 cmd/docker-driver/docker-driver: $(APP_GO_FILES)
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 docker-driver-push: docker-driver
-	docker plugin push grafana/loki-docker-driver:$(PLUGIN_TAG)
+	docker plugin push grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH)
+	docker plugin push grafana/loki-docker-driver:latest$(PLUGIN_ARCH)
 
 docker-driver-enable:
-	docker plugin enable grafana/loki-docker-driver:$(PLUGIN_TAG)
+	docker plugin enable grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH)
 
 docker-driver-clean:
-	-docker plugin disable grafana/loki-docker-driver:$(IMAGE_TAG)
-	-docker plugin rm grafana/loki-docker-driver:$(IMAGE_TAG)
+	-docker plugin disable grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH)
+	-docker plugin rm grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH)
+	-docker plugin rm grafana/loki-docker-driver:latest$(PLUGIN_ARCH)
 	rm -rf cmd/docker-driver/rootfs
 
 ########################
@@ -380,16 +385,16 @@ IMAGE_NAMES := grafana/loki grafana/promtail grafana/loki-canary
 # push(app, optional tag)
 # pushes the app, optionally tagging it differently before
 define push
-	$(SUDO) $(TAG_OCI)  $(IMAGE_PREFIX)/$(1):$(IMAGE_TAG) $(IMAGE_PREFIX)/$(1):$(if $(2),$(2),$(IMAGE_TAG))
-	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/$(1):$(if $(2),$(2),$(IMAGE_TAG))
+	$(SUDO) $(TAG_OCI)  $(IMAGE_PREFIX)/$(1):$(IMAGE_TAG) $(IMAGE_PREFIX)/$(1):$(2)
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/$(1):$(2)
 endef
 
 # push-image(app)
-# pushes the app, if branch==master also as :latest and :master
+# pushes the app, also as :latest and :master
 define push-image
-	$(call push,$(1))
-	$(if $(filter $(GIT_BRANCH),master), $(call push,$(1),master))
-	$(if $(filter $(GIT_BRANCH),master), $(call push,$(1),latest))
+	$(call push,$(1),$(IMAGE_TAG))
+	$(call push,$(1),master)
+	$(call push,$(1),latest)
 endef
 
 # promtail
