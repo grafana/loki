@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -18,7 +17,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
 
-	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -153,7 +151,7 @@ func (q *Querier) forGivenIngesters(replicationSet ring.ReplicationSet, f func(l
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
 func (q *Querier) Select(ctx context.Context, params logql.SelectParams) (iter.EntryIterator, error) {
-	err := q.validateQueryRequest(ctx, &req.QueryRequest)
+	err := q.validateQueryRequest(ctx, params.QueryRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +277,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		},
 	}
 
-	err := q.validateQueryRequest(ctx, &histReq.QueryRequest)
+	err := q.validateQueryRequest(ctx, histReq.QueryRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -380,16 +378,11 @@ func (q *Querier) validateQueryRequest(ctx context.Context, req *logproto.QueryR
 		return err
 	}
 
-	expr, err := logql.ParseExpr(req.Query)
+	matchers, err := logql.ParseMatchers(req.Selector)
 	if err != nil {
 		return err
 	}
 
-	if req.Regex != "" {
-		expr = logql.NewFilterExpr(expr, labels.MatchRegexp, req.Regex)
-	}
-
-	matchers := expr.Matchers()
 	maxStreamMatchersPerQuery := q.limits.MaxStreamsMatchersPerQuery(userID)
 	if len(matchers) > maxStreamMatchersPerQuery {
 		return httpgrpc.Errorf(http.StatusBadRequest,

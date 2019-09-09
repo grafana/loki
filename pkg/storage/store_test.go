@@ -19,8 +19,6 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/user"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 

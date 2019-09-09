@@ -133,6 +133,11 @@ func (t *Loki) initDistributor() (err error) {
 	return
 }
 
+func (t *Loki) stopDistributor() (err error) {
+	t.distributor.Stop()
+	return nil
+}
+
 func (t *Loki) initQuerier() (err error) {
 	t.querier, err = querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store, t.overrides)
 	if err != nil {
@@ -319,6 +324,7 @@ var modules = map[moduleName]module{
 	Distributor: {
 		deps: []moduleName{Ring, Server, Overrides},
 		init: (*Loki).initDistributor,
+		stop: (*Loki).stopDistributor,
 	},
 
 	Store: {

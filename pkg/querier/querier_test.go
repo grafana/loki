@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/logql"
+
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -248,12 +250,11 @@ func defaultLimitsTestConfig() validation.Limits {
 
 func TestQuerier_validateQueryRequest(t *testing.T) {
 	request := logproto.QueryRequest{
-		Query:     "{type=\"test\", fail=\"yes\"}",
+		Selector:  "{type=\"test\", fail=\"yes\"}",
 		Limit:     10,
 		Start:     time.Now().Add(-1 * time.Minute),
 		End:       time.Now(),
 		Direction: logproto.FORWARD,
-		Regex:     "",
 	}
 
 	store := newStoreMock()
@@ -282,14 +283,14 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "test")
 
-	_, err = q.Query(ctx, &request)
+	_, err = q.Select(ctx, logql.SelectParams{QueryRequest: &request})
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max streams matchers per query exceeded, matchers-count > limit (2 > 1)"), err)
 
-	request.Query = "{type=\"test\"}"
-	_, err = q.Query(ctx, &request)
+	request.Selector = "{type=\"test\"}"
+	_, err = q.Select(ctx, logql.SelectParams{QueryRequest: &request})
 	require.NoError(t, err)
 
 	request.Start = request.End.Add(-3 * time.Minute)
-	_, err = q.Query(ctx, &request)
+	_, err = q.Select(ctx, logql.SelectParams{QueryRequest: &request})
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, length > limit (3m0s > 2m0s)"), err)
 }

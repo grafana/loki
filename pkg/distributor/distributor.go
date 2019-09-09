@@ -62,10 +62,13 @@ var (
 type Config struct {
 	// For testing.
 	factory func(addr string) (grpc_health_v1.HealthClient, error)
+
+	LimiterReloadPeriod time.Duration
 }
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.DurationVar(&cfg.LimiterReloadPeriod, "distributor.limiter-reload-period", 5*time.Minute, "Period at which to reload user ingestion limits.")
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -78,6 +81,7 @@ type Distributor struct {
 
 	ingestLimitersMtx sync.RWMutex
 	ingestLimiters    map[string]*rate.Limiter
+	quit              chan struct{}
 }
 
 // New a distributor creates.
@@ -89,14 +93,44 @@ func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, overrides *val
 		}
 	}
 
-	return &Distributor{
+	d := Distributor{
 		cfg:            cfg,
 		clientCfg:      clientCfg,
 		ring:           ring,
 		overrides:      overrides,
 		pool:           cortex_client.NewPool(clientCfg.PoolConfig, ring, factory, cortex_util.Logger),
 		ingestLimiters: map[string]*rate.Limiter{},
-	}, nil
+		quit:           make(chan struct{}),
+	}
+
+	go d.loop()
+
+	return &d, nil
+}
+
+func (d *Distributor) loop() {
+	if d.cfg.LimiterReloadPeriod == 0 {
+		return
+	}
+
+	ticker := time.NewTicker(d.cfg.LimiterReloadPeriod)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			d.ingestLimitersMtx.Lock()
+			d.ingestLimiters = make(map[string]*rate.Limiter, len(d.ingestLimiters))
+			d.ingestLimitersMtx.Unlock()
+
+		case <-d.quit:
+			return
+		}
+	}
+}
+
+func (d *Distributor) Stop() {
+	close(d.quit)
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
