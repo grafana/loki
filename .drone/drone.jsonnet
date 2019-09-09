@@ -96,7 +96,7 @@ local manifest(apps) = pipeline('manifest') {
   depends_on: [
     'docker-%s' % arch
     for arch in archs
-  ] + ['check'],
+  ],
 };
 
 local drone = [
@@ -118,6 +118,24 @@ local drone = [
   manifest(['promtail', 'loki', 'loki-canary']) {
     trigger: condition('include').tagMaster,
   },
+] + [
+  pipeline("deploy") {
+    trigger: condition('include').tagMaster,
+    depends_on: ["manifest"],
+    steps: [
+      {
+        name: "trigger",
+        image: 'alpine',
+        environment: {
+          CIRLCE_TOKEN: {from_secret: "circle_token"}
+        },
+        commands: [
+          "apk add --no-cache curl",
+          'curl -s --header "Content-Type: application/json" --data "{\"build_parameters\": {\"CIRCLE_JOB\": \"deploy\", \"IMAGE_NAMES\": \"$(make print-images)\"}}" --request POST https://circleci.com/api/v1.1/project/github/raintank/deployment_tools/tree/master?circle-token=$CIRCLE_TOKEN'
+        ]
+      }
+    ],
+  }
 ];
 
 {
