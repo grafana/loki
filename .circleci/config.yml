@@ -23,28 +23,8 @@ workflows:
       - lint: {filters: {<<: *tags}}
       - test: {filters: {<<: *tags}}
 
-      - build/loki:
-          requires: [ lint, test ]
-          filters: {<<: *no-master}
-      - publish/loki:
-          requires: [ lint, test ]
-          filters: { <<: *tag-or-master }
-
-      - build/canary:
-          requires: [ lint, test ]
-          filters: {<<: *no-master}
-      - publish/canary:
-          requires: [ lint, test ]
-          filters: { <<: *tag-or-master }
-
-      - build/promtail:
-          requires: [ lint, test ]
-          filters: {<<: *no-master}
       - build/promtail-windows:
           requires: [ lint, test ]
-      - publish/promtail:
-          requires: [ lint, test ]
-          filters: { <<: *tag-or-master }
 
       - build/docker-driver:
           requires: [ lint, test ]
@@ -58,11 +38,6 @@ workflows:
           filters: { <<: *only-tags }
 
       - deploy:
-          requires:
-            - publish/loki
-            - publish/promtail
-            - publish/canary
-            - publish/docker-driver
           filters: {<<: *tag-or-master}
 
       - test-helm:
@@ -78,56 +53,6 @@ workflows:
   docker:
     - image: grafana/loki-build-image:0.5.0
   working_directory: /go/src/github.com/grafana/loki
-
-.machine: &machine
-  machine:
-    image: ubuntu-1604:201903-01
-  working_directory: ~/go/src/github.com/grafana/loki
-  environment:
-    APP: to-be-set
-    GOPATH: /home/circleci/go
-
-.rootless: &rootless
-  run:
-    name: rootless
-    command: |
-      sudo apt-get update && \
-        sudo apt-get install -qy uidmap libseccomp-dev binfmt-support go-bindata
-      sudo docker run --privileged linuxkit/binfmt:v0.6
-
-.img: &img
-  run:
-    name: img
-    # TODO: switch to https://github.com/genuinetools/img once 5a8119fb4ce7d712ca2ed589a345213fdf576268 is released
-    command: |
-      sudo curl -fSL "https://github.com/sh0rez/img/releases/download/v0.5.8/img-linux-amd64" -o "/usr/local/bin/img"
-      sudo chmod a+x "/usr/local/bin/img"
-
-# builds a container
-.container: &container
-  <<: *machine
-  steps:
-    - checkout
-    - <<: *rootless
-    - <<: *img
-    - run:
-        name: container
-        command: |
-          make $APP-image-cross
-
-# builds and pushes a container
-.publish: &publish
-  <<: *machine
-  steps:
-    - checkout
-    - <<: *rootless
-    - <<: *img
-    - run:
-        name: login
-        command: img login -u "$DOCKER_USER" -p "$DOCKER_PASS"
-    - run:
-        name: push image
-        command: make $APP-push
 
 jobs:
   test:
@@ -149,34 +74,7 @@ jobs:
           name: Check Generated Files
           command: make BUILD_IN_CONTAINER=false check-generated-files
 
-  # Loki
-  build/loki:
-    <<: *container
-    environment:
-      APP: loki
-
-  publish/loki:
-    <<: *publish
-    environment:
-      APP: loki
-
-  # Loki
-  build/canary:
-    <<: *container
-    environment:
-      APP: loki-canary
-
-  publish/canary:
-    <<: *publish
-    environment:
-      APP: loki-canary
-
   # Promtail
-  build/promtail:
-    <<: *container
-    environment:
-      APP: promtail
-
   build/promtail-windows:
     <<: *defaults
     steps:
@@ -184,11 +82,6 @@ jobs:
       - run:
           name: build
           command: make GOOS=windows promtail
-
-  publish/promtail:
-    <<: *publish
-    environment:
-      APP: promtail
 
   # Docker driver
   build/docker-driver:

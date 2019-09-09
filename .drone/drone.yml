@@ -18,10 +18,10 @@ steps:
     dockerfile: cmd/loki/Dockerfile
     dry_run: true
     password:
-      from_secret: saur_password
-    repo: grafanasaur/loki
+      from_secret: docker_password
+    repo: grafana/loki
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       exclude:
@@ -35,10 +35,10 @@ steps:
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: true
     password:
-      from_secret: saur_password
-    repo: grafanasaur/loki-canary
+      from_secret: docker_password
+    repo: grafana/loki-canary
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       exclude:
@@ -52,10 +52,10 @@ steps:
     dockerfile: cmd/promtail/Dockerfile
     dry_run: true
     password:
-      from_secret: saur_password
-    repo: grafanasaur/promtail
+      from_secret: docker_password
+    repo: grafana/promtail
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       exclude:
@@ -69,10 +69,10 @@ steps:
     dockerfile: cmd/loki/Dockerfile
     dry_run: false
     password:
-      from_secret: saur_password
-    repo: grafanasaur/loki
+      from_secret: docker_password
+    repo: grafana/loki
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       include:
@@ -86,10 +86,10 @@ steps:
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: false
     password:
-      from_secret: saur_password
-    repo: grafanasaur/loki-canary
+      from_secret: docker_password
+    repo: grafana/loki-canary
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       include:
@@ -103,10 +103,10 @@ steps:
     dockerfile: cmd/promtail/Dockerfile
     dry_run: false
     password:
-      from_secret: saur_password
-    repo: grafanasaur/promtail
+      from_secret: docker_password
+    repo: grafana/promtail
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       include:
@@ -133,10 +133,10 @@ steps:
     dockerfile: cmd/loki/Dockerfile
     dry_run: true
     password:
-      from_secret: saur_password
-    repo: grafanasaur/loki
+      from_secret: docker_password
+    repo: grafana/loki
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       exclude:
@@ -150,10 +150,10 @@ steps:
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: true
     password:
-      from_secret: saur_password
-    repo: grafanasaur/loki-canary
+      from_secret: docker_password
+    repo: grafana/loki-canary
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       exclude:
@@ -167,10 +167,10 @@ steps:
     dockerfile: cmd/promtail/Dockerfile
     dry_run: true
     password:
-      from_secret: saur_password
-    repo: grafanasaur/promtail
+      from_secret: docker_password
+    repo: grafana/promtail
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       exclude:
@@ -184,10 +184,10 @@ steps:
     dockerfile: cmd/loki/Dockerfile
     dry_run: false
     password:
-      from_secret: saur_password
-    repo: grafanasaur/loki
+      from_secret: docker_password
+    repo: grafana/loki
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       include:
@@ -201,10 +201,10 @@ steps:
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: false
     password:
-      from_secret: saur_password
-    repo: grafanasaur/loki-canary
+      from_secret: docker_password
+    repo: grafana/loki-canary
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       include:
@@ -218,10 +218,10 @@ steps:
     dockerfile: cmd/promtail/Dockerfile
     dry_run: false
     password:
-      from_secret: saur_password
-    repo: grafanasaur/promtail
+      from_secret: docker_password
+    repo: grafana/promtail
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       include:
@@ -248,10 +248,10 @@ steps:
     dockerfile: cmd/loki/Dockerfile
     dry_run: true
     password:
-      from_secret: saur_password
-    repo: grafanasaur/loki
+      from_secret: docker_password
+    repo: grafana/loki
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       exclude:
@@ -265,10 +265,10 @@ steps:
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: true
     password:
-      from_secret: saur_password
-    repo: grafanasaur/loki-canary
+      from_secret: docker_password
+    repo: grafana/loki-canary
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       exclude:
@@ -282,10 +282,10 @@ steps:
     dockerfile: cmd/promtail/Dockerfile
     dry_run: true
     password:
-      from_secret: saur_password
-    repo: grafanasaur/promtail
+      from_secret: docker_password
+    repo: grafana/promtail
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       exclude:
@@ -299,10 +299,10 @@ steps:
     dockerfile: cmd/loki/Dockerfile
     dry_run: false
     password:
-      from_secret: saur_password
-    repo: grafanasaur/loki
+      from_secret: docker_password
+    repo: grafana/loki
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       include:
@@ -316,10 +316,10 @@ steps:
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: false
     password:
-      from_secret: saur_password
-    repo: grafanasaur/loki-canary
+      from_secret: docker_password
+    repo: grafana/loki-canary
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       include:
@@ -333,10 +333,10 @@ steps:
     dockerfile: cmd/promtail/Dockerfile
     dry_run: false
     password:
-      from_secret: saur_password
-    repo: grafanasaur/promtail
+      from_secret: docker_password
+    repo: grafana/promtail
     username:
-      from_secret: saur_username
+      from_secret: docker_username
   when:
     ref:
       include:
@@ -357,11 +357,11 @@ steps:
   settings:
     ignore_missing: true
     password:
-      from_secret: saur_password
+      from_secret: docker_password
     spec: .drone/docker-manifest.tmpl
     target: promtail
     username:
-      from_secret: saur_username
+      from_secret: docker_username
 - depends_on:
   - clone
   image: plugins/manifest
@@ -369,11 +369,11 @@ steps:
   settings:
     ignore_missing: true
     password:
-      from_secret: saur_password
+      from_secret: docker_password
     spec: .drone/docker-manifest.tmpl
     target: loki
     username:
-      from_secret: saur_username
+      from_secret: docker_username
 - depends_on:
   - clone
   image: plugins/manifest
@@ -381,11 +381,11 @@ steps:
   settings:
     ignore_missing: true
     password:
-      from_secret: saur_password
+      from_secret: docker_password
     spec: .drone/docker-manifest.tmpl
     target: loki-canary
     username:
-      from_secret: saur_username
+      from_secret: docker_username
 trigger:
   ref:
     include:

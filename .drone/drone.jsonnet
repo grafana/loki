@@ -23,10 +23,10 @@ local docker(arch, app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
   image: 'plugins/docker',
   settings: {
-    repo: 'grafanasaur/%s' % app,
+    repo: 'grafana/%s' % app,
     dockerfile: 'cmd/%s/Dockerfile' % app,
-    username: { from_secret: 'saur_username' },
-    password: { from_secret: 'saur_password' },
+    username: { from_secret: 'docker_username' },
+    password: { from_secret: 'docker_password' },
     dry_run: false,
   },
 };
@@ -73,8 +73,8 @@ local manifest(apps) = pipeline('manifest') {
         target: app,
         spec: '.drone/docker-manifest.tmpl',
         ignore_missing: true,
-        username: { from_secret: 'saur_username' },
-        password: { from_secret: 'saur_password' },
+        username: { from_secret: 'docker_username' },
+        password: { from_secret: 'docker_password' },
       },
       depends_on: ['clone'],
     }
