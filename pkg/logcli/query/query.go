@@ -31,15 +31,7 @@ type Query struct {
 }
 
 func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
-	var (
-		i      iter.EntryIterator
-		common labels.Labels
-	)
-
-	d := logproto.BACKWARD
-	if q.Forward {
-		d = logproto.FORWARD
-	}
+	d := q.resultsDirection()
 
 	resp, err := c.QueryRange(q.QueryString, q.Limit, q.Start, q.End, d, q.Quiet)
 	if err != nil {
@@ -49,13 +41,18 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 	// currently only stream return type is supported
 	streams := resp.Result.(logql.Streams)
 
+	q.printStream(streams, out)
+
+}
+
+func (q *Query) printStream(streams logql.Streams, out output.LogOutput) {
 	cache, lss := parseLabels(streams)
 
 	labelsCache := func(labels string) labels.Labels {
 		return cache[labels]
 	}
 
-	common = commonLabels(lss)
+	common := commonLabels(lss)
 
 	// Remove the labels we want to show from common
 	if len(q.ShowLabelsKey) > 0 {
@@ -92,7 +89,8 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 		}
 	}
 
-	i = iter.NewStreamsIterator(streams, d)
+	d := q.resultsDirection()
+	i := iter.NewStreamsIterator(streams, d)
 
 	for i.Next() {
 		ls := labelsCache(i.Labels())
@@ -102,4 +100,11 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 	if err := i.Error(); err != nil {
 		log.Fatalf("Error from iterator: %v", err)
 	}
+}
+
+func (q *Query) resultsDirection() logproto.Direction {
+	if q.Forward {
+		return logproto.FORWARD
+	}
+	return logproto.BACKWARD
 }

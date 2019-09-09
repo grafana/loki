@@ -63,6 +63,10 @@ func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time,
 		var s logql.Streams
 		err = json.Unmarshal(unmarshal.Result, &s)
 		value = s
+	case promql.ValueTypeMatrix:
+		var m promql.Matrix
+		err = json.Unmarshal(unmarshal.Result, &m)
+		value = m
 	default:
 		return nil, fmt.Errorf("Unknown type: %s", unmarshal.Type)
 	}
