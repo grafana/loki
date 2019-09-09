@@ -36,7 +36,15 @@ type Query struct {
 func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 	d := q.resultsDirection()
 
-	resp, err := c.QueryRange(q.QueryString, q.Limit, q.Start, q.End, d, q.Quiet)
+	var resp *client.QueryResult
+	var err error
+
+	if q.isInstant() {
+		resp, err = c.Query(q.QueryString, q.Limit, q.Start, d, q.Quiet)
+	} else {
+		resp, err = c.QueryRange(q.QueryString, q.Limit, q.Start, q.End, d, q.Quiet)
+	}
+
 	if err != nil {
 		log.Fatalf("Query failed: %+v", err)
 	}
@@ -48,10 +56,22 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 	case promql.ValueTypeMatrix:
 		matrix := resp.Result.(model.Matrix)
 		q.printMatrix(matrix, out)
+	case promql.ValueTypeVector:
+		vector := resp.Result.(model.Vector)
+		q.printVector(vector, out)
 	default:
 		log.Fatalf("Unable to print unsupported type: %v", resp.ResultType)
 	}
 
+}
+
+func (q *Query) SetInstant(time time.Time) {
+	q.Start = time
+	q.End = time
+}
+
+func (q *Query) isInstant() bool {
+	return q.Start == q.End
 }
 
 func (q *Query) printStream(streams logql.Streams, out output.LogOutput) {
@@ -113,6 +133,10 @@ func (q *Query) printStream(streams logql.Streams, out output.LogOutput) {
 
 func (q *Query) printMatrix(matrix model.Matrix, out output.LogOutput) {
 	fmt.Println(matrix)
+}
+
+func (q *Query) printVector(vector model.Vector, out output.LogOutput) {
+	fmt.Println(vector)
 }
 
 func (q *Query) resultsDirection() logproto.Direction {

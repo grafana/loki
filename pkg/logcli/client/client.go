@@ -23,7 +23,8 @@ import (
 )
 
 const (
-	queryPath       = "/api/v1/query_range?query=%s&limit=%d&start=%d&end=%d&direction=%s"
+	queryPath       = "/api/v1/query?query=%s&limit=%d&time=%d&direction=%s"
+	queryRangePath  = "/api/v1/query_range?query=%s&limit=%d&start=%d&end=%d&direction=%s"
 	labelsPath      = "/api/v1/label"
 	labelValuesPath = "/api/v1/label/%s/values"
 	tailPath        = "/api/prom/tail?query=%s&delay_for=%d&limit=%d&start=%d"
@@ -41,16 +42,48 @@ type QueryResult struct {
 	Result     interface{}
 }
 
-func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, quiet bool) (*QueryResult, error) {
-	var err error
-
+func (c *Client) Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*QueryResult, error) {
 	path := fmt.Sprintf(queryPath,
+		url.QueryEscape(queryStr), // query
+		limit,                     // limit
+		time.UnixNano(),           // start
+		direction.String(),        // direction
+	)
+
+	return c.doQuery(path, quiet)
+}
+
+func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, quiet bool) (*QueryResult, error) {
+	path := fmt.Sprintf(queryRangePath,
 		url.QueryEscape(queryStr), // query
 		limit,                     // limit
 		from.UnixNano(),           // start
 		through.UnixNano(),        // end
 		direction.String(),        // direction
 	)
+
+	return c.doQuery(path, quiet)
+}
+
+func (c *Client) ListLabelNames(quiet bool) (*logproto.LabelResponse, error) {
+	var labelResponse logproto.LabelResponse
+	if err := c.doRequest(labelsPath, quiet, &labelResponse); err != nil {
+		return nil, err
+	}
+	return &labelResponse, nil
+}
+
+func (c *Client) ListLabelValues(name string, quiet bool) (*logproto.LabelResponse, error) {
+	path := fmt.Sprintf(labelValuesPath, url.PathEscape(name))
+	var labelResponse logproto.LabelResponse
+	if err := c.doRequest(path, quiet, &labelResponse); err != nil {
+		return nil, err
+	}
+	return &labelResponse, nil
+}
+
+func (c *Client) doQuery(path string, quiet bool) (*QueryResult, error) {
+	var err error
 
 	unmarshal := struct {
 		Type   promql.ValueType `json:"resultType"`
@@ -73,6 +106,10 @@ func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time,
 		var m model.Matrix
 		err = json.Unmarshal(unmarshal.Result, &m)
 		value = m
+	case promql.ValueTypeVector:
+		var m model.Vector
+		err = json.Unmarshal(unmarshal.Result, &m)
+		value = m
 	default:
 		return nil, fmt.Errorf("Unknown type: %s", unmarshal.Type)
 	}
@@ -85,23 +122,6 @@ func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time,
 		ResultType: unmarshal.Type,
 		Result:     value,
 	}, nil
-}
-
-func (c *Client) ListLabelNames(quiet bool) (*logproto.LabelResponse, error) {
-	var labelResponse logproto.LabelResponse
-	if err := c.doRequest(labelsPath, quiet, &labelResponse); err != nil {
-		return nil, err
-	}
-	return &labelResponse, nil
-}
-
-func (c *Client) ListLabelValues(name string, quiet bool) (*logproto.LabelResponse, error) {
-	path := fmt.Sprintf(labelValuesPath, url.PathEscape(name))
-	var labelResponse logproto.LabelResponse
-	if err := c.doRequest(path, quiet, &labelResponse); err != nil {
-		return nil, err
-	}
-	return &labelResponse, nil
 }
 
 func (c *Client) doRequest(path string, quiet bool, out interface{}) error {
