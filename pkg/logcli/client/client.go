@@ -1,4 +1,4 @@
-package client
+package main
 
 import (
 	"encoding/base64"
@@ -11,92 +11,56 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/logql"
-
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/common/config"
-	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier"
 )
 
 const (
-	queryPath       = "/api/v1/query_range?query=%s&limit=%d&start=%d&end=%d&direction=%s"
-	labelsPath      = "/api/v1/label"
-	labelValuesPath = "/api/v1/label/%s/values"
+	queryPath       = "/api/prom/query?query=%s&limit=%d&start=%d&end=%d&direction=%s"
+	labelsPath      = "/api/prom/label"
+	labelValuesPath = "/api/prom/label/%s/values"
 	tailPath        = "/api/prom/tail?query=%s&delay_for=%d&limit=%d&start=%d"
 )
 
-type Client struct {
-	TLSConfig config.TLSConfig
-	Username  string
-	Password  string
-	Address   string
-}
-
-func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, quiet bool) (*querier.QueryResponse, error) {
-	var err error
-
+func query(from, through time.Time, direction logproto.Direction) (*logproto.QueryResponse, error) {
 	path := fmt.Sprintf(queryPath,
-		url.QueryEscape(queryStr), // query
-		limit,                     // limit
-		from.UnixNano(),           // start
-		through.UnixNano(),        // end
-		direction.String(),        // direction
+		url.QueryEscape(*queryStr), // query
+		*limit,                     // limit
+		from.UnixNano(),            // start
+		through.UnixNano(),         // end
+		direction.String(),         // direction
 	)
 
-	unmarshal := struct {
-		Type   promql.ValueType `json:"resultType"`
-		Result json.RawMessage  `json:"result"`
-	}{}
-
-	if err = c.doRequest(path, quiet, &unmarshal); err != nil {
+	var resp logproto.QueryResponse
+	if err := doRequest(path, &resp); err != nil {
 		return nil, err
 	}
 
-	var value promql.Value
-
-	// unmarshal results
-	switch unmarshal.Type {
-	case logql.ValueTypeStreams:
-		var s logql.Streams
-		err = json.Unmarshal(unmarshal.Result, &s)
-		value = s
-	default:
-		return nil, fmt.Errorf("Unknown type: %s", unmarshal.Type)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &querier.QueryResponse{
-		ResultType: unmarshal.Type,
-		Result:     value,
-	}, nil
+	return &resp, nil
 }
 
-func (c *Client) ListLabelNames(quiet bool) (*logproto.LabelResponse, error) {
+func listLabelNames() (*logproto.LabelResponse, error) {
 	var labelResponse logproto.LabelResponse
-	if err := c.doRequest(labelsPath, quiet, &labelResponse); err != nil {
+	if err := doRequest(labelsPath, &labelResponse); err != nil {
 		return nil, err
 	}
 	return &labelResponse, nil
 }
 
-func (c *Client) ListLabelValues(name string, quiet bool) (*logproto.LabelResponse, error) {
+func listLabelValues(name string) (*logproto.LabelResponse, error) {
 	path := fmt.Sprintf(labelValuesPath, url.PathEscape(name))
 	var labelResponse logproto.LabelResponse
-	if err := c.doRequest(path, quiet, &labelResponse); err != nil {
+	if err := doRequest(path, &labelResponse); err != nil {
 		return nil, err
 	}
 	return &labelResponse, nil
 }
 
-func (c *Client) doRequest(path string, quiet bool, out interface{}) error {
-	us := c.Address + path
-	if !quiet {
+func doRequest(path string, out interface{}) error {
+	us := *addr + path
+	if !*quiet {
 		log.Print(us)
 	}
 
@@ -105,11 +69,21 @@ func (c *Client) doRequest(path string, quiet bool, out interface{}) error {
 		return err
 	}
 
-	req.SetBasicAuth(c.Username, c.Password)
+	req.SetBasicAuth(*username, *password)
 
 	// Parse the URL to extract the host
+	u, err := url.Parse(us)
+	if err != nil {
+		return err
+	}
 	clientConfig := config.HTTPClientConfig{
-		TLSConfig: c.TLSConfig,
+		TLSConfig: config.TLSConfig{
+			CAFile:             *tlsCACertPath,
+			CertFile:           *tlsClientCertPath,
+			KeyFile:            *tlsClientCertKeyPath,
+			ServerName:         u.Host,
+			InsecureSkipVerify: *tlsSkipVerify,
+		},
 	}
 
 	client, err := config.NewClientFromConfig(clientConfig, "logcli")
@@ -135,20 +109,31 @@ func (c *Client) doRequest(path string, quiet bool, out interface{}) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-func (c *Client) LiveTailQueryConn(queryStr string, delayFor int, limit int, from int64, quiet bool) (*websocket.Conn, error) {
+func liveTailQueryConn() (*websocket.Conn, error) {
 	path := fmt.Sprintf(tailPath,
-		url.QueryEscape(queryStr), // query
-		delayFor,                  // delay_for
-		limit,                     // limit
-		from,                      // start
+		url.QueryEscape(*queryStr),      // query
+		*delayFor,                       // delay_for
+		*limit,                          // limit
+		getStart(time.Now()).UnixNano(), // start
 	)
-	return c.wsConnect(path, quiet)
+	return wsConnect(path)
 }
 
-func (c *Client) wsConnect(path string, quiet bool) (*websocket.Conn, error) {
-	us := c.Address + path
+func wsConnect(path string) (*websocket.Conn, error) {
+	us := *addr + path
 
-	tlsConfig, err := config.NewTLSConfig(&c.TLSConfig)
+	// Parse the URL to extract the host
+	u, err := url.Parse(us)
+	if err != nil {
+		return nil, err
+	}
+	tlsConfig, err := config.NewTLSConfig(&config.TLSConfig{
+		CAFile:             *tlsCACertPath,
+		CertFile:           *tlsClientCertPath,
+		KeyFile:            *tlsClientCertKeyPath,
+		ServerName:         u.Host,
+		InsecureSkipVerify: *tlsSkipVerify,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -158,17 +143,17 @@ func (c *Client) wsConnect(path string, quiet bool) (*websocket.Conn, error) {
 	} else if strings.HasPrefix(us, "http") {
 		us = strings.Replace(us, "http", "ws", 1)
 	}
-	if !quiet {
+	if !*quiet {
 		log.Println(us)
 	}
 
-	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(c.Username+":"+c.Password))}}
+	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(*username+":"+*password))}}
 
 	ws := websocket.Dialer{
 		TLSClientConfig: tlsConfig,
 	}
 
-	conn, resp, err := ws.Dial(us, h)
+	c, resp, err := ws.Dial(us, h)
 
 	if err != nil {
 		if resp == nil {
@@ -178,5 +163,5 @@ func (c *Client) wsConnect(path string, quiet bool) (*websocket.Conn, error) {
 		return nil, fmt.Errorf("Error response from server: %s (%v)", string(buf), err)
 	}
 
-	return conn, nil
+	return c, nil
 }
