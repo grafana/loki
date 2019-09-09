@@ -28,7 +28,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/common/user"
 )
 
 const (
@@ -193,7 +192,6 @@ func (a dynamoDBStorageClient) NewWriteBatch() chunk.WriteBatch {
 }
 
 func logWriteRetry(ctx context.Context, unprocessed dynamoDBWriteBatch) {
-	userID, _ := user.ExtractOrgID(ctx)
 	for table, reqs := range unprocessed {
 		dynamoThrottled.WithLabelValues("DynamoDB.BatchWriteItem", table).Add(float64(len(reqs)))
 		for _, req := range reqs {
@@ -207,7 +205,7 @@ func logWriteRetry(ctx context.Context, unprocessed dynamoDBWriteBatch) {
 			if rangeAttr, ok := item[rangeKey]; ok {
 				rnge = string(rangeAttr.B)
 			}
-			util.Event().Log("msg", "store retry", "table", table, "userID", userID, "hashKey", hash, "rangeKey", rnge)
+			util.Event().Log("msg", "store retry", "table", table, "hashKey", hash, "rangeKey", rnge)
 		}
 	}
 }
