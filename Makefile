@@ -441,4 +441,4 @@ benchmark-store:
 
 # regenerate drone yaml
 drone:
-	jsonnet .drone/drone.jsonnet | jq .drone -r | yq -y . > .drone/drone.yml
+	jsonnet -V __build-image-version=$(BUILD_IMAGE_VERSION) .drone/drone.jsonnet | jq .drone -r | yq -y . > .drone/drone.yml
