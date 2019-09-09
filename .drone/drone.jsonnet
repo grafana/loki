@@ -127,7 +127,7 @@ local drone = [
         name: "trigger",
         image: 'grafana/loki-build-image:%s' % build_image_version,
         environment: {
-          CIRLCE_TOKEN: {from_secret: "circle_token"}
+          CIRCLE_TOKEN: {from_secret: "circle_token"}
         },
         commands: [
           'curl -s --header "Content-Type: application/json" --data "{\\"build_parameters\\": {\\"CIRCLE_JOB\\": \\"deploy\\", \\"IMAGE_NAMES\\": \\"$(make print-images)\\"}}" --request POST https://circleci.com/api/v1.1/project/github/raintank/deployment_tools/tree/master?circle-token=$CIRCLE_TOKEN'

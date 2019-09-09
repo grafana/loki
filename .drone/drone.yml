@@ -433,7 +433,7 @@ steps:
     {\"CIRCLE_JOB\": \"deploy\", \"IMAGE_NAMES\": \"$(make print-images)\"}}" --request
     POST https://circleci.com/api/v1.1/project/github/raintank/deployment_tools/tree/master?circle-token=$CIRCLE_TOKEN'
   environment:
-    CIRLCE_TOKEN:
+    CIRCLE_TOKEN:
       from_secret: circle_token
   image: grafana/loki-build-image:0.5.0
   name: trigger
