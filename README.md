@@ -42,7 +42,7 @@ Once you have promtail, Loki, and Grafana running, continue with [our usage docs
 - [Logcli](./docs/logcli.md) on how to query your logs without Grafana.
 - [Loki Canary](./docs/canary/README.md) for monitoring your Loki installation for missing logs.
 - [Troubleshooting](./docs/troubleshooting.md) for help around frequent error messages.
-- [Usage](./docs/usage.md) for how to set up a Loki datasource in Grafana and query your logs.
+- [Usage](./docs/querying.md) for how to set up a Loki datasource in Grafana and query your logs.
 
 ## Getting Help
 
