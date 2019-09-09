@@ -1,1 +1,31 @@
 # Loki Storage Retention
+
+Retention in Loki is achieved through the Table Manager. The Table Manager needs
+to be configured with a retention period and deletes enabled in the config. An
+example configuration can be seen
+[here](https://github.com/grafana/loki/blob/39bbd733be4a0d430986d9513476a91334485e9f/production/ksonnet/loki/config.libsonnet#L128-L129).
+Alternatively, the `table-manager.retention-period` and
+`table-manager.retention-deletes-enabled` command line flags can be used. The
+provided retention period needs to be a duration represented as a string that
+can be parsed using Go's [time.Duration](https://golang.org/pkg/time/#ParseDuration).
+
+> **WARNING**: The retention period should be at least twice the [duration of
+the periodic table config](https://github.com/grafana/loki/blob/347a3e18f4976d799d51a26cee229efbc27ef6c9/production/helm/loki/values.yaml#L53), which currently defaults to 7 days.
+
+When using S3 or GCS, the bucket storing the chunks needs to have the expiry
+policy set correctly. For more details check
+[S3's documentation](https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lifecycle-mgmt.html)
+or
+[GCS's documentation](https://cloud.google.com/storage/docs/managing-lifecycles).
+
+Currently the retention policy can only be set globally. A per-tenant retention
+policy with an API to delete ingested logs is still under development. Feel free
+to add your feeback to the [GitHub issue tracking this](https://github.com/grafana/loki/issues/162).
+
+Since a design goal of Loki is to make storing logs cheap, a volume-based
+deletion API is deprioritized. Until this feature is released, if you suddenly
+must delete ingested logs, you can delete old chunks in your object store. Note,
+however, that this only deletes the log content and keeps the label index
+intact; you will still be able to see related labels but will be unable to
+retrieve the deleted log content.
+
