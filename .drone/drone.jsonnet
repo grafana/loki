@@ -1,6 +1,8 @@
 local apps = ['loki', 'loki-canary', 'promtail'];
 local archs = ['amd64', 'arm64', 'arm'];
 
+local build_image_version = std.extVar('__build-image-version');
+
 local condition(verb) = {
   tagMaster: {
     ref: {
@@ -19,14 +21,24 @@ local pipeline(name) = {
   steps: [],
 };
 
+local run(name, commands) = {
+  name: name,
+  image: 'grafana/loki-build-image:%s' % build_image_version,
+  commands: commands,
+};
+
+local make(target, container=true) = run(target, [
+  'make ' + (if !container then 'BUILD_IN_CONTAINER=false ' else '') + target,
+]);
+
 local docker(arch, app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
   image: 'plugins/docker',
   settings: {
-    repo: 'grafanasaur/%s' % app,
+    repo: 'grafana/%s' % app,
     dockerfile: 'cmd/%s/Dockerfile' % app,
-    username: { from_secret: 'saur_username' },
-    password: { from_secret: 'saur_password' },
+    username: { from_secret: 'docker_username' },
+    password: { from_secret: 'docker_password' },
     dry_run: false,
   },
 };
@@ -60,6 +72,7 @@ local multiarch_image(arch) = pipeline('docker-' + arch) {
     }
     for app in apps
   ],
+  depends_on: ['check'],
 };
 
 local manifest(apps) = pipeline('manifest') {
@@ -73,21 +86,32 @@ local manifest(apps) = pipeline('manifest') {
         target: app,
         spec: '.drone/docker-manifest.tmpl',
         ignore_missing: true,
-        username: { from_secret: 'saur_username' },
-        password: { from_secret: 'saur_password' },
+        username: { from_secret: 'docker_username' },
+        password: { from_secret: 'docker_password' },
       },
       depends_on: ['clone'],
     }
     for app in apps
   ],
-} + {
   depends_on: [
     'docker-%s' % arch
     for arch in archs
-  ],
+  ] + ['check'],
 };
 
 local drone = [
+  pipeline('check') {
+    workspace: {
+      base: "/go",
+      path: "src/github.com/grafana/loki"
+    },
+    steps: [
+      make('test', container=false) { depends_on: ['clone'] },
+      make('lint', container=false) { depends_on: ['clone'] },
+      make('check-generated-files', container=false) { depends_on: ['clone'] },
+    ],
+  },
+] + [
   multiarch_image(arch)
   for arch in archs
 ] + [
