@@ -1,25 +1,19 @@
-package labelquery
+package main
 
 import (
 	"fmt"
 	"log"
 
-	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-type LabelQuery struct {
-	LabelName string
-	Quiet     bool
-}
-
-func (q *LabelQuery) DoLabels(c *client.Client) {
+func doLabels() {
 	var labelResponse *logproto.LabelResponse
 	var err error
-	if len(q.LabelName) > 0 {
-		labelResponse, err = c.ListLabelValues(q.LabelName, q.Quiet)
+	if len(*labelName) > 0 {
+		labelResponse, err = listLabelValues(*labelName)
 	} else {
-		labelResponse, err = c.ListLabelNames(q.Quiet)
+		labelResponse, err = listLabelNames()
 	}
 	if err != nil {
 		log.Fatalf("Error doing request: %+v", err)
@@ -29,8 +23,8 @@ func (q *LabelQuery) DoLabels(c *client.Client) {
 	}
 }
 
-func (q *LabelQuery) ListLabels(c *client.Client) []string {
-	labelResponse, err := c.ListLabelNames(q.Quiet)
+func listLabels() []string {
+	labelResponse, err := listLabelNames()
 	if err != nil {
 		log.Fatalf("Error fetching labels: %+v", err)
 	}
