@@ -102,8 +102,8 @@ local manifest(apps) = pipeline('manifest') {
 local drone = [
   pipeline('check') {
     workspace: {
-      base: "/go",
-      path: "src/github.com/grafana/loki"
+      base: "/go/src",
+      path: "github.com/grafana/loki"
     },
     steps: [
       make('test', container=false) { depends_on: ['clone'] },

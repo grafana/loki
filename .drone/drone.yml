@@ -20,8 +20,8 @@ steps:
   image: grafana/loki-build-image:0.5.0
   name: check-generated-files
 workspace:
-  base: /go
-  path: src/github.com/grafana/loki
+  base: /go/src
+  path: github.com/grafana/loki
 ---
 depends_on:
 - check
