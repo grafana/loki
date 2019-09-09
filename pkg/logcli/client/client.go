@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/grafana/loki/pkg/logql"
 
 	"github.com/gorilla/websocket"
@@ -18,7 +20,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier"
 )
 
 const (
@@ -35,7 +36,12 @@ type Client struct {
 	Address   string
 }
 
-func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, quiet bool) (*querier.QueryResponse, error) {
+type QueryResult struct {
+	ResultType promql.ValueType
+	Result     interface{}
+}
+
+func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, quiet bool) (*QueryResult, error) {
 	var err error
 
 	path := fmt.Sprintf(queryPath,
@@ -55,7 +61,7 @@ func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time,
 		return nil, err
 	}
 
-	var value promql.Value
+	var value interface{}
 
 	// unmarshal results
 	switch unmarshal.Type {
@@ -64,7 +70,7 @@ func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time,
 		err = json.Unmarshal(unmarshal.Result, &s)
 		value = s
 	case promql.ValueTypeMatrix:
-		var m promql.Matrix
+		var m model.Matrix
 		err = json.Unmarshal(unmarshal.Result, &m)
 		value = m
 	default:
@@ -75,7 +81,7 @@ func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time,
 		return nil, err
 	}
 
-	return &querier.QueryResponse{
+	return &QueryResult{
 		ResultType: unmarshal.Type,
 		Result:     value,
 	}, nil

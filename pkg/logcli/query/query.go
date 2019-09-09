@@ -6,6 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/promql"
+
 	"github.com/fatih/color"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql"
@@ -38,10 +41,16 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 		log.Fatalf("Query failed: %+v", err)
 	}
 
-	// currently only stream return type is supported
-	streams := resp.Result.(logql.Streams)
-
-	q.printStream(streams, out)
+	switch resp.ResultType {
+	case logql.ValueTypeStreams:
+		streams := resp.Result.(logql.Streams)
+		q.printStream(streams, out)
+	case promql.ValueTypeMatrix:
+		matrix := resp.Result.(model.Matrix)
+		q.printMatrix(matrix, out)
+	default:
+		log.Fatalf("Unable to print unsupported type: %v", resp.ResultType)
+	}
 
 }
 
@@ -100,6 +109,10 @@ func (q *Query) printStream(streams logql.Streams, out output.LogOutput) {
 	if err := i.Error(); err != nil {
 		log.Fatalf("Error from iterator: %v", err)
 	}
+}
+
+func (q *Query) printMatrix(matrix model.Matrix, out output.LogOutput) {
+	fmt.Println(matrix)
 }
 
 func (q *Query) resultsDirection() logproto.Direction {
