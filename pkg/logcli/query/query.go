@@ -1,6 +1,7 @@
 package query
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -55,14 +56,13 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 		q.printStream(streams, out)
 	case promql.ValueTypeMatrix:
 		matrix := resp.Result.(model.Matrix)
-		q.printMatrix(matrix, out)
+		q.printMatrix(matrix)
 	case promql.ValueTypeVector:
 		vector := resp.Result.(model.Vector)
-		q.printVector(vector, out)
+		q.printVector(vector)
 	default:
 		log.Fatalf("Unable to print unsupported type: %v", resp.ResultType)
 	}
-
 }
 
 func (q *Query) SetInstant(time time.Time) {
@@ -131,12 +131,27 @@ func (q *Query) printStream(streams logql.Streams, out output.LogOutput) {
 	}
 }
 
-func (q *Query) printMatrix(matrix model.Matrix, out output.LogOutput) {
-	fmt.Println(matrix)
+func (q *Query) printMatrix(matrix model.Matrix) {
+	// yes we are effectively unmarshalling and then immediately marshalling this object back to json.  we are doing this b/c
+	// it gives us more flexibility with regard to output types in the future.  initially we are supporting just formatted json and raw json but eventually
+	// we might add output options such as render to an image file on disk
+	bytes, err := json.MarshalIndent(matrix, "", "  ")
+
+	if err != nil {
+		log.Fatalf("Error marshalling matrix: %v", err)
+	}
+
+	fmt.Print(string(bytes))
 }
 
-func (q *Query) printVector(vector model.Vector, out output.LogOutput) {
-	fmt.Println(vector)
+func (q *Query) printVector(vector model.Vector) {
+	bytes, err := json.MarshalIndent(vector, "", "  ")
+
+	if err != nil {
+		log.Fatalf("Error marshalling vector: %v", err)
+	}
+
+	fmt.Print(string(bytes))
 }
 
 func (q *Query) resultsDirection() logproto.Direction {
