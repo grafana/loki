@@ -92,7 +92,7 @@ func hintActionLabelNames() []string {
 	return q.ListLabels(queryClient)
 }
 
-func newQueryClient(cmd *kingpin.Application) *client.Client {
+func newQueryClient(app *kingpin.Application) *client.Client {
 	client := &client.Client{
 		TLSConfig: config.TLSConfig{},
 	}
