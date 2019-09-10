@@ -29,7 +29,7 @@ The term "label" here is used in more than one different way and they can be eas
 * Labels starting with `__meta_kubernetes_pod_label_*` are "meta labels" which are generated based on your kubernetes
   pod labels. Example: If your kubernetes pod has a label "name" set to "foobar" then the scrape_configs section
   will have a label `__meta_kubernetes_pod_label_name` with value set to "foobar".
-* There are other `__meta_kubernetes_*` labels based on the Kubernetes metadadata, such as the namespace the pod is
+* There are other `__meta_kubernetes_*` labels based on the Kubernetes metadata, such as the namespace the pod is
   running (`__meta_kubernetes_namespace`) or the name of the container inside the pod (`__meta_kubernetes_pod_container_name`)
 * The label `__path__` is a special label which Promtail will read to find out where the log files are to be read in.
 * The label `filename` is added for every file found in `__path__` to ensure uniqueness of the streams. It contains the absolute path of the file being tailed.
@@ -100,7 +100,7 @@ See [Processing Log Lines](./logentry/processing-log-lines.md) for a detailed pi
 
 #### Labels
 
-[The original design doc](./design/labels.md) for labels.  Post implementation we have strayed quit a bit from the config examples, though the pipeline idea was maintained.
+[The original design doc](./design-documents/labels.md) for labels.  Post implementation we have strayed quit a bit from the config examples, though the pipeline idea was maintained.
 
 See the [pipeline label docs](./logentry/processing-log-lines.md#labels) for more info on creating labels from log content.
 

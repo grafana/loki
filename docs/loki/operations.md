@@ -6,7 +6,7 @@ This page lists operational aspects of running Loki in alphabetical order:
 
 Loki does not have an authentication layer.
 You are expected to run an authenticating reverse proxy in front of your services, such as an Nginx with basic auth or an OAuth2 proxy.
-See [client options](./promtail/deployment-methods.md#custom-client-options) for more details about supported authentication methods.
+See [client options](../promtail/deployment-methods.md#custom-client-options) for more details about supported authentication methods.
 
 ### Multi-tenancy
 
@@ -56,7 +56,7 @@ You can import dashboard with ID [10004](https://grafana.com/dashboards/10004) t
 
 ### Monitoring Mixins
 
-Check out our [Loki mixin](../production/loki-mixin) for a set of dashboards, recording rules, and alerts.
+Check out our [Loki mixin](../../production/loki-mixin) for a set of dashboards, recording rules, and alerts.
 These give you a comprehensive package on how to monitor Loki in production.
 
 For more information about mixins, take a look at the [mixins project docs](https://github.com/monitoring-mixins/docs).
@@ -83,6 +83,6 @@ You will still be able to see related labels, but the log retrieval of the delet
 See this [blog post](https://grafana.com/blog/2018/12/12/loki-prometheus-inspired-open-source-logging-for-cloud-natives/) on a discussion about Loki's scalability.
 
 When scaling Loki, consider running several Loki processes with their respective roles of ingestor, distributor, and querier.
-Take a look at their respective `.libsonnet` files in [our production setup](../production/ksonnet/loki) to get an idea about resource usage.
+Take a look at their respective `.libsonnet` files in [our production setup](../../production/ksonnet/loki) to get an idea about resource usage.
 
 We're happy to get feedback about your resource usage.
