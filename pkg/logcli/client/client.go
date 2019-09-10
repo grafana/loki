@@ -23,11 +23,11 @@ import (
 )
 
 const (
-	queryPath       = "/api/v1/query?query=%s&limit=%d&time=%d&direction=%s"
-	queryRangePath  = "/api/v1/query_range?query=%s&limit=%d&start=%d&end=%d&direction=%s"
-	labelsPath      = "/api/v1/label"
-	labelValuesPath = "/api/v1/label/%s/values"
-	tailPath        = "/api/prom/tail?query=%s&delay_for=%d&limit=%d&start=%d"
+	queryPath       = "/loki/api/v1/query?query=%s&limit=%d&time=%d&direction=%s"
+	queryRangePath  = "/loki/api/v1/query_range?query=%s&limit=%d&start=%d&end=%d&direction=%s"
+	labelsPath      = "/loki/api/v1/label"
+	labelValuesPath = "/loki/api/v1/label/%s/values"
+	tailPath        = "/loki/api/v1/tail?query=%s&delay_for=%d&limit=%d&start=%d"
 )
 
 // Client contains fields necessary to query a Loki instance
