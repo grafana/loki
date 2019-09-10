@@ -424,6 +424,14 @@
   revision = "b364c791f57ac8f224c2f42ad599afa45ca0cfda"
 
 [[projects]]
+  digest = "1:2cd7915ab26ede7d95b8749e6b1f933f1c6d5398030684e6505940a10f31cfda"
+  name = "github.com/ghodss/yaml"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "0ca9ea5df5451ffdf184b4428c902747c2c11cd7"
+  version = "v1.0.0"
+
+[[projects]]
   digest = "1:ce058ca1b1787a997e578c4344f9650becb5086a3512332cbedffca9950d77a1"
   name = "github.com/go-kit/kit"
   packages = [
@@ -732,6 +740,14 @@
   pruneopts = "UT"
   revision = "1624edc4454b8682399def8740d46db5e4362ba4"
   version = "v1.1.5"
+
+[[projects]]
+  digest = "1:fd9bea48bbc5bba66d9891c72af7255fbebecdff845c37c679406174ece5ca1b"
+  name = "github.com/kelseyhightower/envconfig"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "0b417c4ec4a8a82eecc22a1459a504aa55163d61"
+  version = "v1.4.0"
 
 [[projects]]
   digest = "1:9b67e6f39db9eb120a6c5977e4b29f33d7e01970777e77152ed79395f7559291"
@@ -1841,6 +1857,7 @@
     "github.com/docker/docker/pkg/ioutils",
     "github.com/docker/go-plugins-helpers/sdk",
     "github.com/fatih/color",
+    "github.com/ghodss/yaml",
     "github.com/go-kit/kit/log",
     "github.com/go-kit/kit/log/level",
     "github.com/gogo/protobuf/gogoproto",
@@ -1853,6 +1870,7 @@
     "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
     "github.com/hpcloud/tail",
     "github.com/jmespath/go-jmespath",
+    "github.com/kelseyhightower/envconfig",
     "github.com/klauspost/compress/gzip",
     "github.com/mitchellh/mapstructure",
     "github.com/opentracing/opentracing-go",
