@@ -45,6 +45,8 @@ type QueryResult struct {
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
+// excluding interfacer b/c it suggests taking the interface promql.Node instead of logproto.Direction b/c it happens to have a String() method
+// nolint:interfacer
 func (c *Client) Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*QueryResult, error) {
 	path := fmt.Sprintf(queryPath,
 		url.QueryEscape(queryStr), // query
@@ -57,6 +59,8 @@ func (c *Client) Query(queryStr string, limit int, time time.Time, direction log
 }
 
 // QueryRange uses the /api/v1/query_range endpoint to execute a range query
+// excluding interfacer b/c it suggests taking the interface promql.Node instead of logproto.Direction b/c it happens to have a String() method
+// nolint:interfacer
 func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, quiet bool) (*QueryResult, error) {
 	path := fmt.Sprintf(queryRangePath,
 		url.QueryEscape(queryStr), // query
