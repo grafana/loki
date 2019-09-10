@@ -132,7 +132,7 @@ func (q *Query) printStream(streams logql.Streams, out output.LogOutput) {
 
 func (q *Query) printMatrix(matrix model.Matrix) {
 	// yes we are effectively unmarshalling and then immediately marshalling this object back to json.  we are doing this b/c
-	// it gives us more flexibility with regard to output types in the future.  initially we are supporting just formatted json and raw json but eventually
+	// it gives us more flexibility with regard to output types in the future.  initially we are supporting just formatted json but eventually
 	// we might add output options such as render to an image file on disk
 	bytes, err := json.MarshalIndent(matrix, "", "  ")
 
