@@ -87,13 +87,6 @@
       'config.file': '/etc/loki/config.yaml',
     },
 
-    ingester_client_config: {
-      grpc_client_config: {
-        max_recv_msg_size: 1024 * 1024 * 64,
-      },
-      remote_timeout: '1s',
-    },
-
     loki: {
       server: {
         graceful_shutdown_timeout: '5s',
@@ -132,6 +125,13 @@
           claim_on_rollout: true,
           interface_names: ['eth0'],
         },
+      },
+
+      ingester_client: {
+        grpc_client_config: {
+          max_recv_msg_size: 1024 * 1024 * 64,
+        },
+        remote_timeout: '1s',
       },
 
       storage_config: {
