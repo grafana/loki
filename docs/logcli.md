@@ -62,7 +62,7 @@ The URLs of the requests are printed to help with integration work.
 
 ### Details
 
-```console
+```
 $ logcli help
 usage: logcli [<flags>] <command> [<args> ...]
 
@@ -72,6 +72,7 @@ Flags:
       --help             Show context-sensitive help (also try --help-long and --help-man).
   -q, --quiet            suppress everything but log lines
   -o, --output=default   specify output mode [default, raw, jsonl]
+  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC]
       --addr="https://logs-us-west1.grafana.net"  
                          Server address.
       --username=""      Username for HTTP basic auth.
@@ -85,14 +86,17 @@ Commands:
   help [<command>...]
     Show help.
 
-  query [<flags>] <query> [<regex>]
+  query [<flags>] <query>
     Run a LogQL query.
+
+  instant-query [<flags>] <query>
+    Run an instant LogQL query
 
   labels [<label>]
     Find values for a given label.
 
 $ logcli help query
-usage: logcli query [<flags>] <query> [<regex>]
+usage: logcli query [<flags>] <query>
 
 Run a LogQL query.
 
@@ -100,6 +104,7 @@ Flags:
       --help             Show context-sensitive help (also try --help-long and --help-man).
   -q, --quiet            suppress everything but log lines
   -o, --output=default   specify output mode [default, raw, jsonl]
+  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC]
       --addr="https://logs-us-west1.grafana.net"  
                          Server address.
       --username=""      Username for HTTP basic auth.
@@ -113,16 +118,15 @@ Flags:
       --from=FROM        Start looking for logs at this absolute time (inclusive)
       --to=TO            Stop looking for logs at this absolute time (exclusive)
       --forward          Scan forwards through logs.
-  -t, --tail             Tail the logs
-      --delay-for=0      Delay in tailing by number of seconds to accumulate logs for re-ordering
       --no-labels        Do not print any labels
       --exclude-label=EXCLUDE-LABEL ...  
                          Exclude labels given the provided key during output.
       --include-label=INCLUDE-LABEL ...  
                          Include labels given the provided key during output.
       --labels-length=0  Set a fixed padding to labels
+  -t, --tail             Tail the logs
+      --delay-for=0      Delay in tailing by number of seconds to accumulate logs for re-ordering
 
 Args:
-  <query>    eg '{foo="bar",baz="blip"}'
-  [<regex>]
+  <query>  eg '{foo="bar",baz="blip"}'
 ```
