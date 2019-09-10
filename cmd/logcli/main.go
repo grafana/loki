@@ -127,7 +127,6 @@ func newLabelQuery(labelName string, quiet bool) *labelquery.LabelQuery {
 
 func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	// calculcate query range from cli params
-	var err error
 	var now, from, to string
 	var since time.Duration
 
@@ -137,34 +136,13 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	cmd.Action(func(c *kingpin.ParseContext) error {
 
 		if instant {
-			start := time.Now()
-			if now != "" {
-				start, err = time.Parse(time.RFC3339Nano, from)
-				if err != nil {
-					return err
-				}
-			}
-
-			query.SetInstant(start)
+			query.SetInstant(mustParse(now, time.Now()))
 		} else {
-			end := time.Now()
-			start := end.Add(-since)
-			if from != "" {
-				start, err = time.Parse(time.RFC3339Nano, from)
-				if err != nil {
-					return err
-				}
-			}
+			defaultEnd := time.Now()
+			defaultStart := defaultEnd.Add(-since)
 
-			if to != "" {
-				end, err = time.Parse(time.RFC3339Nano, to)
-				if err != nil {
-					return err
-				}
-			}
-
-			query.Start = start
-			query.End = end
+			query.Start = mustParse(from, defaultStart)
+			query.End = mustParse(to, defaultEnd)
 		}
 
 		return nil
@@ -187,4 +165,18 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	cmd.Flag("labels-length", "Set a fixed padding to labels").Default("0").IntVar(&query.FixedLabelsLen)
 
 	return query
+}
+
+func mustParse(t string, defaultTime time.Time) time.Time {
+	if t == "" {
+		return defaultTime
+	}
+
+	ret, err := time.Parse(time.RFC3339Nano, t)
+
+	if err != nil {
+		log.Fatalf("Unable to parse time %v", err)
+	}
+
+	return ret
 }
