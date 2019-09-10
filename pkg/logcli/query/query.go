@@ -27,7 +27,6 @@ type Query struct {
 	Limit           int
 	Forward         bool
 	Quiet           bool
-	DelayFor        int
 	NoLabels        bool
 	IgnoreLabelsKey []string
 	ShowLabelsKey   []string

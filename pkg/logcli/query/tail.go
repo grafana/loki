@@ -13,8 +13,8 @@ import (
 	promlabels "github.com/prometheus/prometheus/pkg/labels"
 )
 
-func (q *Query) TailQuery(c *client.Client, out output.LogOutput) {
-	conn, err := c.LiveTailQueryConn(q.QueryString, q.DelayFor, q.Limit, q.Start.UnixNano(), q.Quiet)
+func (q *Query) TailQuery(delayFor int, c *client.Client, out output.LogOutput) {
+	conn, err := c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, q.Start.UnixNano(), q.Quiet)
 	if err != nil {
 		log.Fatalf("Tailing logs failed: %+v", err)
 	}
