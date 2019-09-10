@@ -42,7 +42,7 @@ def ensure_backups(args):
     backups = list_backups(args.destination_path)
 
     if args.period_from == None:
-        period_from = datetime.utcnow() - timedelta(days=args.duration)
+        period_from = datetime.utcnow() - timedelta(seconds=args.duration)
         args.period_from = valid_date(period_from.strftime("%Y-%m-%d"))
         args.period_to = valid_date(datetime.utcnow().strftime("%Y-%m-%d"))
 
@@ -104,11 +104,10 @@ def set_ensure_backups_specific_metrics(args, num_backups_deleted, active_table_
 
     duration = args.duration
     if args.duration == None:
-        duration = (args.period_to - args.period_from).days
+        duration = (args.period_to - args.period_from).seconds
 
     # there should be 1 backup per inactive table
-    periodic_table_duration_in_days = args.periodic_table_duration / 86400
-    bigtable_backup_job_expected_inactive_table_backups.set(int(duration/periodic_table_duration_in_days))
+    bigtable_backup_job_expected_inactive_table_backups.set(int(duration/args.periodic_table_duration))
 
     bigtable_backup_job_backups_deleted.set(num_backups_deleted)
 
@@ -140,9 +139,9 @@ def valid_date(s):
         raise argparse.ArgumentTypeError(msg)
 
 
-def valid_periodic_duration(s):
+def valid_duration(s):
     try:
-        return int(s) * 86400
+        return int(s) * 3600
     except ValueError:
         msg = "Not a valid duration: '{0}'.".format(s)
         raise argparse.ArgumentTypeError(msg)
@@ -151,9 +150,6 @@ def valid_periodic_duration(s):
 def valid_table_id_prefix(s):
     if not str(s).endswith("_"):
         return str(s) + "_"
-
-def valid_int(s):
-    return int(s)
 
 
 def create_backup(table_id, args):
@@ -225,8 +221,8 @@ def main():
                         help="GCS path where data should be written. For example, gs://mybucket/somefolder/")
     parser.add_argument("--temp-prefix", required=True,
                         help="Path and filename prefix for writing temporary files. ex: gs://MyBucket/tmp")
-    parser.add_argument("--periodic-table-duration", required=True, type=valid_periodic_duration,
-                        help="Periodic config set for loki tables in days")
+    parser.add_argument("--periodic-table-duration", required=True, type=valid_duration,
+                        help="Periodic config set for loki tables in hours")
     parser.add_argument("--prom-push-gateway-endpoint", default="localhost:9091", help="Endpoint where metrics are to be pushed")
     parser.add_argument("--namespace", default="default", help="namespace while reporting metrics")
 
@@ -236,8 +232,8 @@ def main():
 
     ensure_backups_parser = subparser.add_parser(job_ensure_backups,
                                                                help="Ensure backups of right tables exist")
-    ensure_backups_parser.add_argument('--duration', help="Duration in previous consecutive days for which backups should exist. "
-                                                          "Must not be set with --period-from and --period-to", type=valid_int)
+    ensure_backups_parser.add_argument('--duration', help="Duration in hours for which backups should exist. "
+                                                          "Must not be set with --period-from and --period-to", type=valid_duration)
     ensure_backups_parser.add_argument('--period-from', type=valid_date, help="Backups should exist starting from the date. Must not be set with --duration")
     ensure_backups_parser.add_argument('--period-to', type=valid_date,
                                                      default=datetime.utcnow().strftime("%Y-%m-%d"))
