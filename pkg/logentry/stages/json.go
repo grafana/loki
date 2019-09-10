@@ -101,13 +101,17 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 
 	if j.cfg.Source != nil {
 		if _, ok := extracted[*j.cfg.Source]; !ok {
-			level.Debug(j.logger).Log("msg", "source does not exist in the set of extracted values", "source", *j.cfg.Source)
+			if Debug {
+				level.Debug(j.logger).Log("msg", "source does not exist in the set of extracted values", "source", *j.cfg.Source)
+			}
 			return
 		}
 
 		value, err := getString(extracted[*j.cfg.Source])
 		if err != nil {
-			level.Debug(j.logger).Log("msg", "failed to convert source value to string", "source", *j.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*j.cfg.Source]).String())
+			if Debug {
+				level.Debug(j.logger).Log("msg", "failed to convert source value to string", "source", *j.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*j.cfg.Source]).String())
+			}
 			return
 		}
 
@@ -115,21 +119,27 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 	}
 
 	if input == nil {
-		level.Debug(j.logger).Log("msg", "cannot parse a nil entry")
+		if Debug {
+			level.Debug(j.logger).Log("msg", "cannot parse a nil entry")
+		}
 		return
 	}
 
 	var data map[string]interface{}
 
 	if err := json.Unmarshal([]byte(*input), &data); err != nil {
-		level.Debug(j.logger).Log("msg", "failed to unmarshal log line", "err", err)
+		if Debug {
+			level.Debug(j.logger).Log("msg", "failed to unmarshal log line", "err", err)
+		}
 		return
 	}
 
 	for n, e := range j.expressions {
 		r, err := e.Search(data)
 		if err != nil {
-			level.Debug(j.logger).Log("msg", "failed to search JMES expression", "err", err)
+			if Debug {
+				level.Debug(j.logger).Log("msg", "failed to search JMES expression", "err", err)
+			}
 			continue
 		}
 
@@ -145,7 +155,9 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 			// If the value wasn't a string or a number, marshal it back to json
 			jm, err := json.Marshal(r)
 			if err != nil {
-				level.Debug(j.logger).Log("msg", "failed to marshal complex type back to string", "err", err)
+				if Debug {
+					level.Debug(j.logger).Log("msg", "failed to marshal complex type back to string", "err", err)
+				}
 				continue
 			}
 			extracted[n] = string(jm)

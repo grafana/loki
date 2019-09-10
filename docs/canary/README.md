@@ -1,53 +1,81 @@
-
 # loki-canary
 
 A standalone app to audit the log capturing performance of Loki.
 
-## how it works
+## How it works
 
 ![block_diagram](block.png)
 
-loki-canary writes a log to a file and stores the timestamp in an internal array, the contents look something like this:
+loki-canary writes a log to a file and stores the timestamp in an internal
+array, the contents look something like this:
 
 ```nohighlight
 1557935669096040040 ppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp
 ```
 
-The relevant part is the timestamp, the `p`'s are just filler bytes to make the size of the log configurable.
+The relevant part is the timestamp, the `p`'s are just filler bytes to make the
+size of the log configurable.
 
 Promtail (or another agent) then reads the log file and ships it to Loki.
 
-Meanwhile loki-canary opens a websocket connection to loki and listens for logs it creates
+Meanwhile loki-canary opens a websocket connection to loki and listens for logs
+it creates
 
-When a log is received on the websocket, the timestamp in the log message is compared to the internal array.
+When a log is received on the websocket, the timestamp in the log message is
+compared to the internal array.
 
 If the received log is:
 
-  * The next in the array to be received, it is removed from the array and the (current time - log timestamp) is recorded in the `response_latency` histogram, this is the expected behavior for well behaving logs
-  * Not the next in the array received, is is removed from the array, the response time is recorded in the `response_latency` histogram, and the `out_of_order_entries` counter is incremented
-  * Not in the array at all, it is checked against a separate list of received logs to either increment the `duplicate_entries` counter or the `unexpected_entries` counter.
+  * The next in the array to be received, it is removed from the array and the
+    (current time - log timestamp) is recorded in the `response_latency`
+    histogram, this is the expected behavior for well behaving logs
+  * Not the next in the array received, is is removed from the array, the
+    response time is recorded in the `response_latency` histogram, and the
+    `out_of_order_entries` counter is incremented
+  * Not in the array at all, it is checked against a separate list of received
+    logs to either increment the `duplicate_entries` counter or the
+    `unexpected_entries` counter.
 
-In the background, loki-canary also runs a timer which iterates through all the entries in the internal array, if any are older than the duration specified by the `-wait` flag (default 60s), they are removed from the array and the `websocket_missing_entries` counter is incremented.  Then an additional query is made directly to loki for these missing entries to determine if they were actually missing or just didn't make it down the websocket.  If they are not found in the followup query the `missing_entries` counter is incremented.
+In the background, loki-canary also runs a timer which iterates through all the
+entries in the internal array, if any are older than the duration specified by
+the `-wait` flag (default 60s), they are removed from the array and the
+`websocket_missing_entries` counter is incremented. Then an additional query is
+made directly to loki for these missing entries to determine if they were
+actually missing or just didn't make it down the websocket. If they are not
+found in the followup query the `missing_entries` counter is incremented.
 
-## building and running
+## Installation
 
-`make` will run tests and build a docker image
+### Binary
+Loki Canary is provided as a pre-compiled binary as part of the
+[Releases](https://github.com/grafana/loki/releases) on GitHub.
 
-`make build` will create a binary `loki-canary` alongside the makefile
+### Docker
+Loki Canary is also provided as a Docker container image:
+```bash
+# change tag to the most recent release
+$ docker pull grafana/loki-canary:v0.2.0
+```
 
-To run the image, you can do something simple like:
+### Kubernetes
+To run on Kubernetes, you can do something simple like:
 
-`kubectl run loki-canary --generator=run-pod/v1 --image=grafana/loki-canary:latest --restart=Never --image-pull-policy=Never --labels=name=loki-canary -- -addr=loki:3100`
+`kubectl run loki-canary --generator=run-pod/v1
+--image=grafana/loki-canary:latest --restart=Never --image-pull-policy=Never
+--labels=name=loki-canary -- -addr=loki:3100`
 
-Or you can do something more complex like deploy it as a daemonset, there is a ksonnet setup for this in the `production` folder, you can import it using jsonnet-bundler:
+Or you can do something more complex like deploy it as a daemonset, there is a
+ksonnet setup for this in the `production` folder, you can import it using
+jsonnet-bundler:
 
 ```shell
 jb install github.com/grafana/loki-canary/production/ksonnet/loki-canary
 ```
 
-Then in your ksonnet environments `main.jsonnet` you'll want something like this:
+Then in your ksonnet environments `main.jsonnet` you'll want something like
+this:
 
-```nohighlight
+```jsonnet
 local loki_canary = import 'loki-canary/loki-canary.libsonnet';
 
 loki_canary {
@@ -66,17 +94,47 @@ loki_canary {
 
 ```
 
-## config
+### From Source
+If the other options are not sufficient for your use-case, you can compile
+`loki-canary` yourself:
 
-It is required to pass in the Loki address with the `-addr` flag, if your server uses TLS, also pass `-tls=true` (this will create a wss:// instead of ws:// connection)
+```bash
+# clone the source tree
+$ git clone https://github.com/grafana/loki
 
-You should also pass the `-labelname` and `-labelvalue` flags, these are used by loki-canary to filter the log stream to only process logs for this instance of loki-canary, so they must be unique per each of your loki-canary instances.  The ksonnet config in this project accomplishes this by passing in the pod name as the labelvalue
+# build the binary
+$ make loki-canary
 
-If you get a high number of `unexpected_entries` you may not be waiting long enough and should increase `-wait` from 60s to something larger.
+# (optionally build the container image)
+$ make loki-canary-image
+```
 
-__Be cognizant__ of the relationship between `pruneinterval` and the `interval`.  For example, with an interval of 10ms (100 logs per second) and a prune interval of 60s, you will write 6000 logs per minute, if those logs were not received over the websocket, the canary will attempt to query loki directly to see if they are completely lost.  __However__ the query return is limited to 1000 results so you will not be able to return all the logs even if they did make it to Loki.
+## Configuration
 
-__Likewise__, if you lower the `pruneinterval` you risk causing a denial of service attack as all your canaries attempt to query for missing logs at whatever your `pruneinterval` is defined at.
+It is required to pass in the Loki address with the `-addr` flag, if your server
+uses TLS, also pass `-tls=true` (this will create a `wss://` instead of `ws://`
+connection)
+
+You should also pass the `-labelname` and `-labelvalue` flags, these are used by
+loki-canary to filter the log stream to only process logs for this instance of
+loki-canary, so they must be unique per each of your loki-canary instances. The
+ksonnet config in this project accomplishes this by passing in the pod name as
+the labelvalue
+
+If you get a high number of `unexpected_entries` you may not be waiting long
+enough and should increase `-wait` from 60s to something larger.
+
+__Be cognizant__ of the relationship between `pruneinterval` and the `interval`.
+For example, with an interval of 10ms (100 logs per second) and a prune interval
+of 60s, you will write 6000 logs per minute, if those logs were not received
+over the websocket, the canary will attempt to query loki directly to see if
+they are completely lost. __However__ the query return is limited to 1000
+results so you will not be able to return all the logs even if they did make it
+to Loki.
+
+__Likewise__, if you lower the `pruneinterval` you risk causing a denial of
+service attack as all your canaries attempt to query for missing logs at
+whatever your `pruneinterval` is defined at.
 
 All options:
 

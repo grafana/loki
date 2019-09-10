@@ -200,7 +200,7 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
 
   For doing queries, accepts the following parameters in the query-string:
 
-  - `query`: a [logQL query](./usage.md) (eg: `{name=~"mysql.+"}` or `{name=~"mysql.+"} |= "error"`)
+  - `query`: a [logQL query](../querying.md) (eg: `{name=~"mysql.+"}` or `{name=~"mysql.+"} |= "error"`)
   - `limit`: max number of entries to return
   - `start`: the start time for the query, as a nanosecond Unix epoch (nanoseconds since 1970) or as RFC3339Nano (eg: "2006-01-02T15:04:05.999999999-07:00"). Default is always one hour ago.
   - `end`: the end time for the query, as a nanosecond Unix epoch (nanoseconds since 1970) or as RFC3339Nano (eg: "2006-01-02T15:04:05.999999999-07:00"). Default is current time.

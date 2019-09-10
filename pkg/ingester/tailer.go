@@ -25,8 +25,11 @@ type tailer struct {
 	expr     logql.Expr
 
 	sendChan chan *logproto.Stream
-	done     chan struct{}
-	closeMtx sync.Mutex
+
+	// Signaling channel used to notify once the tailer gets closed
+	// and the loop and senders should stop
+	closeChan chan struct{}
+	closeOnce sync.Once
 
 	blockedAt      *time.Time
 	blockedMtx     sync.RWMutex
@@ -54,7 +57,7 @@ func newTailer(orgID, query string, conn logproto.Querier_TailServer) (*tailer, 
 		conn:           conn,
 		droppedStreams: []*logproto.DroppedStream{},
 		id:             generateUniqueID(orgID, query),
-		done:           make(chan struct{}),
+		closeChan:      make(chan struct{}),
 		expr:           expr,
 	}, nil
 }
@@ -75,7 +78,7 @@ func (t *tailer) loop() {
 				t.close()
 				return
 			}
-		case <-t.done:
+		case <-t.closeChan:
 			return
 		case stream, ok = <-t.sendChan:
 			if !ok {
@@ -147,7 +150,7 @@ func (t *tailer) isWatchingLabels(metric model.Metric) bool {
 
 func (t *tailer) isClosed() bool {
 	select {
-	case <-t.done:
+	case <-t.closeChan:
 		return true
 	default:
 		return false
@@ -155,18 +158,15 @@ func (t *tailer) isClosed() bool {
 }
 
 func (t *tailer) close() {
-	if t.isClosed() {
-		return
-	}
+	t.closeOnce.Do(func() {
+		// Signal the close channel
+		close(t.closeChan)
 
-	t.closeMtx.Lock()
-	defer t.closeMtx.Unlock()
-
-	if t.isClosed() {
-		return
-	}
-	close(t.done)
-	close(t.sendChan)
+		// We intentionally do not close sendChan in order to avoid a panic on
+		// send to a just-closed channel. It's OK not to close a channel, since
+		// it will be eventually garbage collected as soon as no goroutine
+		// references it anymore, whether it has been closed or not.
+	})
 }
 
 func (t *tailer) blockedSince() *time.Time {
