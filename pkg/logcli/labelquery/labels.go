@@ -8,11 +8,13 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+// LabelQuery contains all necessary fields to execute label queries and print out the resutls
 type LabelQuery struct {
 	LabelName string
 	Quiet     bool
 }
 
+// DoLabels prints out label results
 func (q *LabelQuery) DoLabels(c *client.Client) {
 	var labelResponse *logproto.LabelResponse
 	var err error
@@ -29,6 +31,7 @@ func (q *LabelQuery) DoLabels(c *client.Client) {
 	}
 }
 
+// ListLabels returns an array of label strings
 func (q *LabelQuery) ListLabels(c *client.Client) []string {
 	labelResponse, err := c.ListLabelNames(q.Quiet)
 	if err != nil {

@@ -30,6 +30,7 @@ const (
 	tailPath        = "/api/prom/tail?query=%s&delay_for=%d&limit=%d&start=%d"
 )
 
+// Client contains fields necessary to query a Loki instance
 type Client struct {
 	TLSConfig config.TLSConfig
 	Username  string
@@ -37,11 +38,13 @@ type Client struct {
 	Address   string
 }
 
+// QueryResult contains fields necessary to return data from Loki endpoints
 type QueryResult struct {
 	ResultType promql.ValueType
 	Result     interface{}
 }
 
+// Query uses the /api/v1/query endpoint to execute an instant query
 func (c *Client) Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*QueryResult, error) {
 	path := fmt.Sprintf(queryPath,
 		url.QueryEscape(queryStr), // query
@@ -53,6 +56,7 @@ func (c *Client) Query(queryStr string, limit int, time time.Time, direction log
 	return c.doQuery(path, quiet)
 }
 
+// QueryRange uses the /api/v1/query_range endpoint to execute a range query
 func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, quiet bool) (*QueryResult, error) {
 	path := fmt.Sprintf(queryRangePath,
 		url.QueryEscape(queryStr), // query
@@ -65,6 +69,7 @@ func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time,
 	return c.doQuery(path, quiet)
 }
 
+// ListLabelNames uses the /api/v1/label endpoint to list label names
 func (c *Client) ListLabelNames(quiet bool) (*logproto.LabelResponse, error) {
 	var labelResponse logproto.LabelResponse
 	if err := c.doRequest(labelsPath, quiet, &labelResponse); err != nil {
@@ -73,6 +78,7 @@ func (c *Client) ListLabelNames(quiet bool) (*logproto.LabelResponse, error) {
 	return &labelResponse, nil
 }
 
+// ListLabelValues uses the /api/v1/label endpoint to list label values
 func (c *Client) ListLabelValues(name string, quiet bool) (*logproto.LabelResponse, error) {
 	path := fmt.Sprintf(labelValuesPath, url.PathEscape(name))
 	var labelResponse logproto.LabelResponse
@@ -165,6 +171,7 @@ func (c *Client) doRequest(path string, quiet bool, out interface{}) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+// LiveTailQueryConn uses /api/prom/tail to set up a websocket connection and returns it
 func (c *Client) LiveTailQueryConn(queryStr string, delayFor int, limit int, from int64, quiet bool) (*websocket.Conn, error) {
 	path := fmt.Sprintf(tailPath,
 		url.QueryEscape(queryStr), // query

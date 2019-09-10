@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+// Query contains all necessary fields to execute instant and range queries and print the results.
 type Query struct {
 	QueryString     string
 	Start           time.Time
@@ -33,6 +34,7 @@ type Query struct {
 	FixedLabelsLen  int
 }
 
+// DoQuery executes the query and prints out the results
 func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 	d := q.resultsDirection()
 
@@ -64,6 +66,7 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 	}
 }
 
+// SetInstant makes the Query an instant type
 func (q *Query) SetInstant(time time.Time) {
 	q.Start = time
 	q.End = time

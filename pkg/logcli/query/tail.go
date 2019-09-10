@@ -13,6 +13,7 @@ import (
 	promlabels "github.com/prometheus/prometheus/pkg/labels"
 )
 
+// TailQuery connects to the Loki websocket endpoint and tails logs
 func (q *Query) TailQuery(delayFor int, c *client.Client, out output.LogOutput) {
 	conn, err := c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, q.Start.UnixNano(), q.Quiet)
 	if err != nil {
