@@ -6,16 +6,16 @@ out of scope for Loki.
 
 The HTTP API includes the following endpoints:
 
-- [`GET /loki/api/v1/query`](#get-/loki/api/v1/query)
-- [`GET /loki/api/v1/query_range`](#get-/loki/api/v1/query_range)
-- [`GET /loki/api/v1/label`](#get-/loki/api/v1/label)
-- [`GET /loki/api/v1/label/<name>/values`](#get-/loki/api/v1/label/<name>/values)
-- [`GET /loki/api/v1/tail`](#get-/loki/api/v1/tail)
-- [`GET /api/prom/query`](#get-/api/prom/query)
-- [`POST /api/prom/push`](#post-/api/prom/push)
-- [`GET /ready`](#get-/ready)
-- [`GET /flush`](#get-/flush)
-- [`GET /metrics`](#get-/metrics)
+- [`GET /loki/api/v1/query`](#get-lokiapiv1query)
+- [`GET /loki/api/v1/query_range`](#get-lokiapiv1query_range)
+- [`GET /loki/api/v1/label`](#get-lokiapiv1label)
+- [`GET /loki/api/v1/label/<name>/values`](#get-lokiapiv1labelnamevalues)
+- [`GET /loki/api/v1/tail`](#get-lokiapiv1tail)
+- [`GET /api/prom/query`](#get-apipromquery)
+- [`POST /api/prom/push`](#post-apiprompush)
+- [`GET /ready`](#get-ready)
+- [`GET /flush`](#get-flush)
+- [`GET /metrics`](#get-metrics)
 
 [Example clients](#example-clients) can be found at the bottom of this document.
 
@@ -31,7 +31,7 @@ query parameters support the following values:
 
 Response:
 
-```json
+```
 {
   "resultType": "vector" | "streams",
   "result": [<vector value>] | [<stream value>]
@@ -144,7 +144,7 @@ load against the index server and result in a slow query.
 
 Response:
 
-```json
+```
 {
   "resultType": "matrix" | "streams",
   "result": [<matrix value>] | [<stream value>]
@@ -261,7 +261,7 @@ accepts the following query parameters in the URL:
 
 Response:
 
-```json
+```
 {
   "values": [
     <label string>,
@@ -294,7 +294,7 @@ the URL:
 
 Response:
 
-```json
+```
 {
   "values": [
     <label value>,
@@ -384,7 +384,7 @@ instead.
 
 Response:
 
-```json
+```
 {
   "streams": [
     {
