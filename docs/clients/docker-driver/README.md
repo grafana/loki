@@ -4,7 +4,8 @@ Loki officially supports a Docker plugin that will read logs from Docker
 containers and ship them to Loki. The plugin can be configured to send the logs
 to a private Loki instance or [Grafana Cloud](https://grafana.com/oss/loki).
 
-> Docker plugins are not yet supported on Windows; see the [Docker docs](https://docs.docker.com/engine/extend) for more information.
+> Docker plugins are not yet supported on Windows; see the
+> [Docker docs](https://docs.docker.com/engine/extend) for more information.
 
 ## Installing
 
@@ -27,7 +28,7 @@ ID                  NAME         DESCRIPTION           ENABLED
 ac720b8fcfdb        loki         Loki Logging Driver   true
 ```
 
-Once the plugin is installed it can be configured.
+Once the plugin is installed it can be [configured](./configuration.md).
 
 ## Upgrading
 
