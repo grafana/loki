@@ -6,22 +6,22 @@ out of scope for Loki.
 
 The HTTP API includes the following endpoints:
 
-- [`GET /api/v1/query`](#get-/api/v1/query)
-- [`GET /api/v1/query_range`](#get-/api/v1/query_range)
-- [`GET /api/v1/label`](#get-/api/v1/label)
-- [`GET /api/v1/label/<name>/values`](#get-/api/v1/label/<name>/values)
+- [`GET /loki/api/v1/query`](#get-/loki/api/v1/query)
+- [`GET /loki/api/v1/query_range`](#get-/loki/api/v1/query_range)
+- [`GET /loki/api/v1/label`](#get-/loki/api/v1/label)
+- [`GET /loki/api/v1/label/<name>/values`](#get-/loki/api/v1/label/<name>/values)
+- [`GET /loki/api/v1/tail`](#get-/loki/api/v1/tail)
 - [`GET /api/prom/query`](#get-/api/prom/query)
 - [`POST /api/prom/push`](#post-/api/prom/push)
-- [`GET /api/prom/tail`](#get-/api/prom/tail)
 - [`GET /ready`](#get-/ready)
 - [`GET /flush`](#get-/flush)
 - [`GET /metrics`](#get-/metrics)
 
 [Example clients](#example-clients) can be found at the bottom of this document.
 
-## `GET /api/v1/query`
+## `GET /loki/api/v1/query`
 
-`/api/v1/query` allows for doing queries against a single point in time. The URL
+`/loki/api/v1/query` allows for doing queries against a single point in time. The URL
 query parameters support the following values:
 
 - `query`: The [LogQL](./logql.md) query to perform
@@ -70,7 +70,7 @@ And `<stream value>` is:
 ### Examples
 
 ```bash
-$ curl -G -s  "http://localhost:3100/api/v1/query" --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
+$ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
 {
   "resultType": "vector",
   "result": [
@@ -104,7 +104,7 @@ $ curl -G -s  "http://localhost:3100/api/v1/query" --data-urlencode 'query=sum(r
 ```
 
 ```bash
-$ curl -G -s  "http://localhost:3100/api/v1/query" --data-urlencode 'query={job="varlogs"}' | jq
+$ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query={job="varlogs"}' | jq
 {
   "resultType": "streams",
   "result": [
@@ -125,9 +125,9 @@ $ curl -G -s  "http://localhost:3100/api/v1/query" --data-urlencode 'query={job=
 }
 ```
 
-## `GET /api/v1/query_range`
+## `GET /loki/api/v1/query_range`
 
-`/api/v1/query_range` is used to do a query over a range of time and
+`/loki/api/v1/query_range` is used to do a query over a range of time and
 accepts the following query parameters in the URL:
 
 - `query`: The [LogQL](./logql.md) query to perform
@@ -183,7 +183,7 @@ And `<stream value>` is:
 ### Examples
 
 ```bash
-$ curl -G -s  "http://localhost:3100/api/v1/query_range" --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' --data-urlencode 'step=300' | jq
+$ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' --data-urlencode 'step=300' | jq
 {
   "resultType": "matrix",
   "result": [
@@ -230,7 +230,7 @@ $ curl -G -s  "http://localhost:3100/api/v1/query_range" --data-urlencode 'query
 ```
 
 ```bash
-$ curl -G -s  "http://localhost:3100/api/v1/query_range" --data-urlencode 'query={job="varlogs"}' | jq
+$ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query={job="varlogs"}' | jq
 {
   "resultType": "streams",
   "result": [
@@ -251,9 +251,9 @@ $ curl -G -s  "http://localhost:3100/api/v1/query_range" --data-urlencode 'query
 }
 ```
 
-## `GET /api/v1/label`
+## `GET /loki/api/v1/label`
 
-`/api/v1/label` retrieves the list of known labels within a given time span. It
+`/loki/api/v1/label` retrieves the list of known labels within a given time span. It
 accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
@@ -273,7 +273,7 @@ Response:
 ### Examples
 
 ```bash
-$ curl -G -s  "http://localhost:3100/api/v1/label" | jq
+$ curl -G -s  "http://localhost:3100/loki/api/v1/label" | jq
 {
   "values": [
     "foo",
@@ -283,9 +283,9 @@ $ curl -G -s  "http://localhost:3100/api/v1/label" | jq
 }
 ```
 
-## `GET /api/v1/label/<name>/values`
+## `GET /loki/api/v1/label/<name>/values`
 
-`/api/v1/label/<name>/values` retrieves the list of known values for a given
+`/loki/api/v1/label/<name>/values` retrieves the list of known values for a given
 label within a given time span. It accepts thw following query parameters in
 the URL:
 
@@ -306,7 +306,7 @@ Response:
 ### Examples
 
 ```bash
-$ curl -G -s  "http://localhost:3100/api/v1/label/foo/values" | jq
+$ curl -G -s  "http://localhost:3100/loki/api/v1/label/foo/values" | jq
 {
   "values": [
     "cat",
@@ -315,6 +315,54 @@ $ curl -G -s  "http://localhost:3100/api/v1/label/foo/values" | jq
   ]
 }
 ```
+
+## `GET /loki/api/v1/tail`
+
+Alias (DEPRECATED): `GET /api/prom/tail`
+
+`/loki/api/v1/tail` is a websocket endpoint that will stream log messsages based on
+a query. It accepts the following query parameters in the URL:
+
+- `query`: The [LogQL](./logql.md) query to perform
+- `delay_for`: The number of seconds to delay retrieving logs to let slow
+    loggers catch up. Defaults to 0 and cannot be larger than 5.
+- `limit`: The max number of entries to return
+- `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
+
+Response (streamed):
+
+```json
+{
+  "streams": [
+    {
+      "labels": "<LogQL label key-value pairs>",
+      "entries": [
+        {
+          "ts": "<RFC3339Nano timestamp>",
+          "line": "<log line>"
+        }
+      ]
+    }
+  ],
+  "dropped_entries": [
+    {
+      "Timestamp": "<RFC3339Nano timestamp>",
+      "Labels": "<LogQL label key-value pairs>"
+    }
+  ]
+}
+```
+
+`dropped_entries` will be populated when the tailer could not keep up with the
+amount of traffic in Loki. When present, it indicates that the entries received
+in the streams is not the full amount of logs that are present in Loki. Note
+that the keys in `dropped_entries` will be sent as uppercase `Timestamp`
+and `Labels` instead of `labels` and `ts` like in the entries for the stream.
+
+As the response is streamed, the object defined by the response format above
+will be sent over the websocket multiple times.
+
+
 
 ## `GET /api/prom/query`
 
@@ -331,7 +379,7 @@ support the following values:
 Note that the larger the time span between `start` and `end` will cause
 additional load on Loki and the index store, resulting in slower queries.
 
-`/api/prom/query` is DEPRECATED and `/api/v1/query_range` should be used
+`/api/prom/query` is DEPRECATED and `/loki/api/v1/query_range` should be used
 instead.
 
 Response:
@@ -411,50 +459,6 @@ JSON post body can be sent in the following format:
 $ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/api/prom/push" --data-raw \
   '{"streams": [{ "labels": "{foo=\"bar\"}", "entries": [{ "ts": "2018-12-18T08:28:06.801064-04:00", "line": "fizzbuzz" }] }]}'
 ```
-
-## `GET /api/prom/tail`
-
-`/api/prom/tail` is a websocket endpoint that will stream log messsages based on
-a query. It accepts the following query parameters in the URL:
-
-- `query`: The [LogQL](./logql.md) query to perform
-- `delay_for`: The number of seconds to delay retrieving logs to let slow
-    loggers catch up. Defaults to 0 and cannot be larger than 5.
-- `limit`: The max number of entries to return
-- `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
-
-Response (streamed):
-
-```json
-{
-  "streams": [
-    {
-      "labels": "<LogQL label key-value pairs>",
-      "entries": [
-        {
-          "ts": "<RFC3339Nano timestamp>",
-          "line": "<log line>"
-        }
-      ]
-    }
-  ],
-  "dropped_entries": [
-    {
-      "Timestamp": "<RFC3339Nano timestamp>",
-      "Labels": "<LogQL label key-value pairs>"
-    }
-  ]
-}
-```
-
-`dropped_entries` will be populated when the tailer could not keep up with the
-amount of traffic in Loki. When present, it indicates that the entries received
-in the streams is not the full amount of logs that are present in Loki. Note
-that the keys in `dropped_entries` will be sent as uppercase `Timestamp`
-and `Labels` instead of `labels` and `ts` like in the entries for the stream.
-
-As the response is streamed, the object defined by the response format above
-will be sent over the websocket multiple times.
 
 ## `GET /ready`
 
