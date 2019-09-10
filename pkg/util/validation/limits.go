@@ -14,8 +14,8 @@ import (
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
 	// Distributor enforced limits.
-	IngestionRate          float64       `yaml:"ingestion_rate"`
-	IngestionBurstSize     float64       `yaml:"ingestion_burst_size"`
+	IngestionRate          float64       `yaml:"ingestion_rate_mb"`
+	IngestionBurstSize     float64       `yaml:"ingestion_burst_size_mb"`
 	MaxLabelNameLength     int           `yaml:"max_label_name_length"`
 	MaxLabelValueLength    int           `yaml:"max_label_value_length"`
 	MaxLabelNamesPerSeries int           `yaml:"max_label_names_per_series"`
@@ -41,8 +41,8 @@ type Limits struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
-	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit", 1, "Per-user ingestion rate limit in sample size per second.")
-	f.Float64Var(&l.IngestionBurstSize, "distributor.ingestion-burst-size", 1.5, "Per-user allowed ingestion burst size (in sample size). Warning, very high limits will be reset every -distributor.limiter-reload-period.")
+	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit-mb", 4, "Per-user ingestion rate limit in sample size per second. Units in MB.")
+	f.Float64Var(&l.IngestionBurstSize, "distributor.ingestion-burst-size-mb", 6, "Per-user allowed ingestion burst size (in sample size). Units in MB. Warning, very high limits will be reset every -distributor.limiter-reload-period.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
@@ -51,7 +51,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&l.CreationGracePeriod, "validation.create-grace-period", 10*time.Minute, "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
 	f.BoolVar(&l.EnforceMetricName, "validation.enforce-metric-name", true, "Enforce every sample has a metric name.")
 
-	f.IntVar(&l.MaxStreamsPerUser, "ingester.max-streams-per-user", 5000000, "Maximum number of active streams per user.")
+	f.IntVar(&l.MaxStreamsPerUser, "ingester.max-streams-per-user", 10e3, "Maximum number of active streams per user.")
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 	f.DurationVar(&l.MaxQueryLength, "store.max-query-length", 0, "Limit to length of chunk store queries, 0 to disable.")
