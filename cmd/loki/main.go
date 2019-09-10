@@ -3,11 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"reflect"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
@@ -15,9 +16,6 @@ import (
 	"github.com/weaveworks/common/tracing"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-
-	"github.com/grafana/loki/pkg/util/validation"
 )
 
 func init() {
@@ -25,40 +23,14 @@ func init() {
 }
 
 func main() {
-	var (
-		cfg        loki.Config
-		configFile = ""
-	)
-	flag.StringVar(&configFile, "config.file", "", "Configuration file to load.")
-	flagext.RegisterFlags(&cfg)
-
 	printVersion := flag.Bool("version", false, "Print this builds version information")
-	flag.Parse()
-
+	cfg := loadConfig()
 	if *printVersion {
 		fmt.Print(version.Print("loki"))
 		os.Exit(0)
 	}
 
-	// LimitsConfig has a customer UnmarshalYAML that will set the defaults to a global.
-	// This global is set to the config passed into the last call to `NewOverrides`. If we don't
-	// call it atleast once, the defaults are set to an empty struct.
-	// We call it with the flag values so that the config file unmarshalling only overrides the values set in the config.
-	if _, err := validation.NewOverrides(cfg.LimitsConfig); err != nil {
-		level.Error(util.Logger).Log("msg", "error loading limits", "err", err)
-		os.Exit(1)
-	}
-
-	util.InitLogger(&cfg.Server)
-
-	if configFile != "" {
-		if err := helpers.LoadConfig(configFile, &cfg); err != nil {
-			level.Error(util.Logger).Log("msg", "error loading config", "filename", configFile, "err", err)
-			os.Exit(1)
-		}
-	}
-
-	// Re-init the logger which will now honor a different log level set in cfg.Server
+	// Init the logger which will honor the log level set in cfg.Server
 	if reflect.DeepEqual(&cfg.Server.LogLevel, &logging.Level{}) {
 		level.Error(util.Logger).Log("msg", "invalid log level")
 		os.Exit(1)
@@ -74,7 +46,8 @@ func main() {
 		}
 	}()
 
-	t, err := loki.New(cfg)
+	// Start Loki
+	t, err := loki.New(*cfg)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error initialising loki", "err", err)
 		os.Exit(1)
@@ -90,4 +63,23 @@ func main() {
 		level.Error(util.Logger).Log("msg", "error stopping loki", "err", err)
 		os.Exit(1)
 	}
+}
+
+// loadConfig loads the config from various sources which take precedence over each other
+func loadConfig() *loki.Config {
+	var config loki.Config
+
+	// defaults shared by FlagDefaultsDangerous and Flags
+	var defaults []byte
+
+	// unmarshal config
+	if err := cfg.Unmarshal(&config,
+		cfg.FlagDefaultsDangerous(&loki.Config{}, &defaults),
+		cfg.YAMLFlag(),
+		cfg.Flags(&loki.Config{}, defaults),
+	); err != nil {
+		log.Fatalln(err)
+	}
+
+	return &config
 }
