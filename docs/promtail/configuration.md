@@ -134,7 +134,7 @@ bearer_token_file: /path/to/bearer/token/file
 # Configures the promtail request's TLS settings.
 tls_config:
   # CA certificate to validate API server certificate with.
-  # If not provided Trusted CA from sytem will be used.
+  # If not provided Trusted CA from system will be used.
   ca_file: <filename>
 
   # Certificate and key files for client cert authentication to the server.

@@ -93,21 +93,21 @@ The second `match` stage will only run if a label named `app` == `some-app`, it 
 
 More info on each field in the interface:
 
-##### labels
+##### labels model.LabelSet
 
 A set of prometheus style labels which will be sent with the log line and will be indexed by Loki.
 
-##### extracted
+##### extracted map[string]interface{}
 
 metadata extracted during the pipeline execution which can be used by subsequent stages.  This data is not sent with the logs and is dropped after the log entry is processed through the pipeline.
 
 For example, stages like [regex](#regex) and [json](#json) will use expressions to extract data from a log line and store it in the `extracted` map, which following stages like [timestamp](#timestamp) or [output](#output) can use to manipulate the log lines `time` and `entry`.
 
-##### time
+##### time *time.Time
 
-The timestamp which loki will store for the log line, if not set within the pipeline using the [time](#time) stage, it will default to time.Now().
+The timestamp which loki will store for the log line, if not set within the pipeline using the [timestamp](#timestamp) stage, it will default to time.Now().
 
-##### entry
+##### entry *string
 
 The log line which will be stored by loki, the [output](#output) stage is capable of modifying this value, if no stage modifies this value the log line stored will match what was input to the system and not be modified.
 
@@ -352,7 +352,7 @@ A match stage will take the provided label `selector` and determine if a group o
     pipeline_name: loki_pipeline     ②
     stages:                          ③
 ```
-① `selector` is **required** and must be a [logql stream selector](../usage.md#log-stream-selector).
+① `selector` is **required** and must be a [logql stream selector](../querying.md#log-stream-selector).
 ② `pipeline_name` is **optional** but when defined, will create an additional label on the `pipeline_duration_seconds` histogram, the value for `pipeline_name` will be concatenated with the `job_name` using an underscore: `job_name`_`pipeline_name`
 ③ `stages` is a **required** list of additional pipeline stages which will only be executed if the defined `selector` matches the labels.  The format is a list of pipeline stages which is defined exactly the same as the root pipeline
 

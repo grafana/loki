@@ -4,7 +4,7 @@ Loki needs to store two different types of data: **Chunks** and **Indexes**.
 
 Loki receives logs in separate streams. Each stream is identified by a set of labels.
 As the log entries from a stream arrive, they are gzipped as chunks and saved in
-the chunks store. The chunk format is documented in [`pkg/chunkenc`](../pkg/chunkenc/README.md).
+the chunks store. The chunk format is documented in [`pkg/chunkenc`](../../pkg/chunkenc/README.md).
 
 On the other hand, the index stores the stream's label set and links them to the
 individual chunks.
@@ -82,7 +82,7 @@ storage_config:
 #### S3
 
 Loki can use S3 as object storage, storing logs within directories based on
-the [OrgID](./operations.md#Multi-tenancy). For example, logs from the `faker`
+the [OrgID](./operations.md#multi-tenancy). For example, logs from the `faker`
 org will be stored in `s3://BUCKET_NAME/faker/`.
 
 The S3 configuration is set up using the URL format:
@@ -119,7 +119,7 @@ DynamoDB can be set up manually or automatically through `table-manager`.
 The `table-manager` allows deleting old indices by rotating a number of
 different DynamoDB tables and deleting the oldest one. An example deployment
 of the `table-manager` using ksonnet can be found
-[here](../production/ksonnet/loki/table-manager.libsonnet) and more information
+[here](../../production/ksonnet/loki/table-manager.libsonnet) and more information
 about it can be find at the
 [Cortex project](https://github.com/cortexproject/cortex).
 

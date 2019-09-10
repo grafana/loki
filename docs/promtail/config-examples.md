@@ -2,7 +2,7 @@
 
 ## Pipeline Examples
 
-[Pipeline Docs](./logentry/processing-log-lines.md) contains detailed documentation of the pipeline stages
+[Pipeline Docs](../logentry/processing-log-lines.md) contains detailed documentation of the pipeline stages
 
 ## Simple Docker Config
 
