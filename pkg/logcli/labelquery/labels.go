@@ -16,6 +16,15 @@ type LabelQuery struct {
 
 // DoLabels prints out label results
 func (q *LabelQuery) DoLabels(c *client.Client) {
+	values := q.ListLabels(c)
+
+	for _, value := range values {
+		fmt.Println(value)
+	}
+}
+
+// ListLabels returns an array of label strings
+func (q *LabelQuery) ListLabels(c *client.Client) []string {
 	var labelResponse *logproto.LabelResponse
 	var err error
 	if len(q.LabelName) > 0 {
@@ -25,17 +34,6 @@ func (q *LabelQuery) DoLabels(c *client.Client) {
 	}
 	if err != nil {
 		log.Fatalf("Error doing request: %+v", err)
-	}
-	for _, value := range labelResponse.Values {
-		fmt.Println(value)
-	}
-}
-
-// ListLabels returns an array of label strings
-func (q *LabelQuery) ListLabels(c *client.Client) []string {
-	labelResponse, err := c.ListLabelNames(q.Quiet)
-	if err != nil {
-		log.Fatalf("Error fetching labels: %+v", err)
 	}
 	return labelResponse.Values
 }
