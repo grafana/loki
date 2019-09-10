@@ -352,7 +352,7 @@ A match stage will take the provided label `selector` and determine if a group o
     pipeline_name: loki_pipeline     ②
     stages:                          ③
 ```
-① `selector` is **required** and must be a [logql stream selector](../usage.md#log-stream-selector).
+① `selector` is **required** and must be a [logql stream selector](../querying.md#log-stream-selector).
 ② `pipeline_name` is **optional** but when defined, will create an additional label on the `pipeline_duration_seconds` histogram, the value for `pipeline_name` will be concatenated with the `job_name` using an underscore: `job_name`_`pipeline_name`
 ③ `stages` is a **required** list of additional pipeline stages which will only be executed if the defined `selector` matches the labels.  The format is a list of pipeline stages which is defined exactly the same as the root pipeline
 

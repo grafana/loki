@@ -105,7 +105,7 @@ Once deployed the Grafana service will be sending logs automatically to Loki.
 
 ## Labels
 
-Loki can received a set of labels along with log line. These labels are used to index log entries and query back logs using [LogQL stream selector](../../docs/usage.md#log-stream-selector).
+Loki can received a set of labels along with log line. These labels are used to index log entries and query back logs using [LogQL stream selector](../../docs/querying.md#log-stream-selector).
 
 By default the Docker driver will add the `filename` where the log is written, the `host` where the log has been generated as well as the `container_name`. Additionally `swarm_stack` and `swarm_service` are added for Docker Swarm deployments.
 

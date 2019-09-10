@@ -30,7 +30,7 @@ Loki differs from Prometheus by focussing on logs instead of metrics, and delive
 
 The [getting started docs](./production/README.md) have instructions on how to install Loki via Docker images, Helm charts, Jsonnet, or from source.
 
-Once you have promtail, Loki, and Grafana running, continue with [our usage docs](./docs/usage.md) on how to query your logs.
+Once you have promtail, Loki, and Grafana running, continue with [our usage docs](./docs/querying.md) on how to query your logs.
 
 ### Documentation
 

@@ -212,7 +212,7 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
   load to the index server and make the query slower.
 
   > This endpoint will be deprecated in the future you should use `api/v1/query_range` instead.
-  > You can only query for logs, it doesn't accept [queries returning metrics](./usage.md#counting-logs).
+  > You can only query for logs, it doesn't accept [queries returning metrics](./querying.md#counting-logs).
 
   Responses looks like this:
 
