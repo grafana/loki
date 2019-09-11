@@ -15,6 +15,7 @@
     ],
 
     table_prefix: $._config.namespace,
+    index_period_hours: 168,  // 1 week
 
     // Bigtable variables
     bigtable_instance: error 'must specify bigtable instance',
@@ -117,7 +118,6 @@
               store: 'consul',
               consul: {
                 host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
-                prefix: '',
                 httpclienttimeout: '20s',
                 consistentreads: true,
               },
@@ -144,7 +144,7 @@
             service: 'memcached-client',
           },
         },
-      } +  
+      } +
       (if std.count($._config.enabledBackends, 'gcs') > 0 then {
         gcs: $._config.client_configs.gcs,
        } else {}) +
@@ -197,7 +197,7 @@
           schema: 'v9',
           index: {
             prefix: '%s_index_' % $._config.table_prefix,
-            period: '168h',
+            period: '%dh' % $._config.index_period_hours,
           },
         }],
       },

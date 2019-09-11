@@ -188,7 +188,8 @@ func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)
 	}
 }
 
-func (cfg PeriodConfig) createSchema() Schema {
+// CreateSchema returns the schema defined by the PeriodConfig
+func (cfg PeriodConfig) CreateSchema() Schema {
 	var s schema
 	switch cfg.Schema {
 	case "v1":

@@ -192,9 +192,9 @@ cmd/promtail/promtail-debug: $(APP_GO_FILES) pkg/promtail/server/ui/assets_vfsda
 # Releasing #
 #############
 # concurrency is limited to 4 to prevent CircleCI from OOMing. Sorry
-GOX = gox $(GO_FLAGS) -parallel=4 -output="dist/{{.Dir}}_{{.OS}}_{{.Arch}}" -arch="amd64 arm64 arm" -os="linux"
+GOX = gox $(GO_FLAGS) -parallel=4 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}" -arch="amd64 arm64 arm" -os="linux"
 dist: clean
-	CGO_ENABLED=0 $(GOX) ./cmd/loki
+	CGO_ENABLED=0 $(GOX) -osarch="windows/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/promtail ./cmd/logcli
 	gzip dist/*
 	pushd dist && sha256sum * > SHA256SUMS && popd
@@ -207,14 +207,14 @@ publish: dist
 ########
 
 lint:
-	GOGC=20 golangci-lint run
+	GOGC=10 golangci-lint run
 
 ########
 # Test #
 ########
 
 test: all
-	go test -p=8 ./...
+	go test -p=6 ./...
 
 #########
 # Clean #
@@ -325,7 +325,9 @@ helm-clean:
 # Docker Driver #
 #################
 
+# optionally set the tag or the arch suffix (-arm64)
 PLUGIN_TAG ?= $(IMAGE_TAG)
+PLUGIN_ARCH ?=
 
 docker-driver: docker-driver-clean
 	mkdir cmd/docker-driver/rootfs
@@ -334,21 +336,24 @@ docker-driver: docker-driver-clean
 	(docker export $$ID | tar -x -C cmd/docker-driver/rootfs) && \
 	docker rm -vf $$ID
 	docker rmi rootfsimage -f
-	docker plugin create grafana/loki-docker-driver:$(PLUGIN_TAG) cmd/docker-driver
+	docker plugin create grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH) cmd/docker-driver
+	docker plugin create grafana/loki-docker-driver:latest$(PLUGIN_ARCH) cmd/docker-driver
 
 cmd/docker-driver/docker-driver: $(APP_GO_FILES)
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 docker-driver-push: docker-driver
-	docker plugin push grafana/loki-docker-driver:$(PLUGIN_TAG)
+	docker plugin push grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH)
+	docker plugin push grafana/loki-docker-driver:latest$(PLUGIN_ARCH)
 
 docker-driver-enable:
-	docker plugin enable grafana/loki-docker-driver:$(PLUGIN_TAG)
+	docker plugin enable grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH)
 
 docker-driver-clean:
-	-docker plugin disable grafana/loki-docker-driver:$(IMAGE_TAG)
-	-docker plugin rm grafana/loki-docker-driver:$(IMAGE_TAG)
+	-docker plugin disable grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH)
+	-docker plugin rm grafana/loki-docker-driver:$(PLUGIN_TAG)$(PLUGIN_ARCH)
+	-docker plugin rm grafana/loki-docker-driver:latest$(PLUGIN_ARCH)
 	rm -rf cmd/docker-driver/rootfs
 
 ########################
@@ -380,16 +385,16 @@ IMAGE_NAMES := grafana/loki grafana/promtail grafana/loki-canary
 # push(app, optional tag)
 # pushes the app, optionally tagging it differently before
 define push
-	$(SUDO) $(TAG_OCI)  $(IMAGE_PREFIX)/$(1):$(IMAGE_TAG) $(IMAGE_PREFIX)/$(1):$(if $(2),$(2),$(IMAGE_TAG))
-	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/$(1):$(if $(2),$(2),$(IMAGE_TAG))
+	$(SUDO) $(TAG_OCI)  $(IMAGE_PREFIX)/$(1):$(IMAGE_TAG) $(IMAGE_PREFIX)/$(1):$(2)
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/$(1):$(2)
 endef
 
 # push-image(app)
-# pushes the app, if branch==master also as :latest and :master
+# pushes the app, also as :latest and :master
 define push-image
-	$(call push,$(1))
-	$(if $(filter $(GIT_BRANCH),master), $(call push,$(1),master))
-	$(if $(filter $(GIT_BRANCH),master), $(call push,$(1),latest))
+	$(call push,$(1),$(IMAGE_TAG))
+	$(call push,$(1),master)
+	$(call push,$(1),latest)
 endef
 
 # promtail
@@ -441,4 +446,4 @@ benchmark-store:
 
 # regenerate drone yaml
 drone:
-	jsonnet .drone/drone.jsonnet | jq .drone -r | yq -y . > .drone/drone.yml
+	jsonnet -V __build-image-version=$(BUILD_IMAGE_VERSION) .drone/drone.jsonnet | jq .drone -r | yq -y . > .drone/drone.yml

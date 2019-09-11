@@ -12,7 +12,7 @@ import (
 )
 
 const testSize = 10
-const defaultLabels = "{foo: \"baz\"}"
+const defaultLabels = "{foo=\"baz\"}"
 
 func TestIterator(t *testing.T) {
 	for i, tc := range []struct {
@@ -271,4 +271,67 @@ func TestEntryIteratorForward(t *testing.T) {
 	assert.Equal(t, false, forwardIterator.Next())
 	assert.Equal(t, nil, forwardIterator.Error())
 	assert.NoError(t, forwardIterator.Close())
+}
+
+func Test_PeekingIterator(t *testing.T) {
+	iter := NewPeekingIterator(NewStreamIterator(&logproto.Stream{
+		Entries: []logproto.Entry{
+			{
+				Timestamp: time.Unix(0, 1),
+			},
+			{
+				Timestamp: time.Unix(0, 2),
+			},
+			{
+				Timestamp: time.Unix(0, 3),
+			},
+		},
+	}))
+	_, peek, ok := iter.Peek()
+	if peek.Timestamp.UnixNano() != 1 {
+		t.Fatal("wrong peeked time.")
+	}
+	if !ok {
+		t.Fatal("should be ok.")
+	}
+	hasNext := iter.Next()
+	if !hasNext {
+		t.Fatal("should have next.")
+	}
+	if iter.Entry().Timestamp.UnixNano() != 1 {
+		t.Fatal("wrong peeked time.")
+	}
+
+	_, peek, ok = iter.Peek()
+	if peek.Timestamp.UnixNano() != 2 {
+		t.Fatal("wrong peeked time.")
+	}
+	if !ok {
+		t.Fatal("should be ok.")
+	}
+	hasNext = iter.Next()
+	if !hasNext {
+		t.Fatal("should have next.")
+	}
+	if iter.Entry().Timestamp.UnixNano() != 2 {
+		t.Fatal("wrong peeked time.")
+	}
+	_, peek, ok = iter.Peek()
+	if peek.Timestamp.UnixNano() != 3 {
+		t.Fatal("wrong peeked time.")
+	}
+	if !ok {
+		t.Fatal("should be ok.")
+	}
+	hasNext = iter.Next()
+	if !hasNext {
+		t.Fatal("should have next.")
+	}
+	if iter.Entry().Timestamp.UnixNano() != 3 {
+		t.Fatal("wrong peeked time.")
+	}
+	_, _, ok = iter.Peek()
+	if ok {
+		t.Fatal("should not be ok.")
+	}
 }

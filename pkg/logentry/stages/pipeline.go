@@ -78,11 +78,15 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, regist
 func (p *Pipeline) Process(labels model.LabelSet, extracted map[string]interface{}, ts *time.Time, entry *string) {
 	start := time.Now()
 	for i, stage := range p.stages {
-		level.Debug(p.logger).Log("msg", "processing pipeline", "stage", i, "name", stage.Name(), "labels", labels, "time", ts, "entry", entry)
+		if Debug {
+			level.Debug(p.logger).Log("msg", "processing pipeline", "stage", i, "name", stage.Name(), "labels", labels, "time", ts, "entry", entry)
+		}
 		stage.Process(labels, extracted, ts, entry)
 	}
 	dur := time.Since(start).Seconds()
-	level.Debug(p.logger).Log("msg", "finished processing log line", "labels", labels, "time", ts, "entry", entry, "duration_s", dur)
+	if Debug {
+		level.Debug(p.logger).Log("msg", "finished processing log line", "labels", labels, "time", ts, "entry", entry, "duration_s", dur)
+	}
 	if p.jobName != nil {
 		p.plDuration.WithLabelValues(*p.jobName).Observe(dur)
 	}

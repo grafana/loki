@@ -90,13 +90,17 @@ func (r *regexStage) Process(labels model.LabelSet, extracted map[string]interfa
 
 	if r.cfg.Source != nil {
 		if _, ok := extracted[*r.cfg.Source]; !ok {
-			level.Debug(r.logger).Log("msg", "source does not exist in the set of extracted values", "source", *r.cfg.Source)
+			if Debug {
+				level.Debug(r.logger).Log("msg", "source does not exist in the set of extracted values", "source", *r.cfg.Source)
+			}
 			return
 		}
 
 		value, err := getString(extracted[*r.cfg.Source])
 		if err != nil {
-			level.Debug(r.logger).Log("msg", "failed to convert source value to string", "source", *r.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*r.cfg.Source]).String())
+			if Debug {
+				level.Debug(r.logger).Log("msg", "failed to convert source value to string", "source", *r.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*r.cfg.Source]).String())
+			}
 			return
 		}
 
@@ -104,13 +108,17 @@ func (r *regexStage) Process(labels model.LabelSet, extracted map[string]interfa
 	}
 
 	if input == nil {
-		level.Debug(r.logger).Log("msg", "cannot parse a nil entry")
+		if Debug {
+			level.Debug(r.logger).Log("msg", "cannot parse a nil entry")
+		}
 		return
 	}
 
 	match := r.expression.FindStringSubmatch(*input)
 	if match == nil {
-		level.Debug(r.logger).Log("msg", "regex did not match")
+		if Debug {
+			level.Debug(r.logger).Log("msg", "regex did not match")
+		}
 		return
 	}
 

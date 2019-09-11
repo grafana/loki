@@ -9,7 +9,7 @@ k + config + scrape_config {
   local policyRule = $.rbac.v1beta1.policyRule,
 
   promtail_rbac:
-    $.util.rbac('promtail', [
+    $.util.rbac($._config.promtail_cluster_role_name, [
       policyRule.new() +
       policyRule.withApiGroups(['']) +
       policyRule.withResources(['nodes', 'nodes/proxy', 'services', 'endpoints', 'pods']) +
@@ -62,7 +62,7 @@ k + config + scrape_config {
 
   promtail_daemonset:
     daemonSet.new('promtail', [$.promtail_container]) +
-    daemonSet.mixin.spec.template.spec.withServiceAccount('promtail') +
+    daemonSet.mixin.spec.template.spec.withServiceAccount($._config.promtail_cluster_role_name) +
     $.util.configVolumeMount('promtail', '/etc/promtail') +
     $.util.hostVolumeMount('varlog', '/var/log', '/var/log') +
     $.util.hostVolumeMount('varlibdockercontainers', $._config.promtail_config.container_root_path + '/containers', $._config.promtail_config.container_root_path + '/containers', readOnly=true),

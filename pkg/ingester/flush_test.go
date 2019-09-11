@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -31,7 +34,7 @@ func init() {
 }
 
 func TestChunkFlushingIdle(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.FlushCheckPeriod = 20 * time.Millisecond
 	cfg.MaxChunkIdle = 100 * time.Millisecond
 	cfg.RetainPeriod = 500 * time.Millisecond
@@ -45,7 +48,7 @@ func TestChunkFlushingIdle(t *testing.T) {
 }
 
 func TestChunkFlushingShutdown(t *testing.T) {
-	store, ing := newTestStore(t, defaultIngesterTestConfig())
+	store, ing := newTestStore(t, defaultIngesterTestConfig(t))
 	userIDs, testData := pushTestSamples(t, ing)
 	ing.Shutdown()
 	store.checkData(t, userIDs, testData)
@@ -69,14 +72,16 @@ func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
 }
 
 // nolint
-func defaultIngesterTestConfig() Config {
-	consul := ring.NewInMemoryKVClient(ring.ProtoCodec{Factory: ring.ProtoDescFactory})
+func defaultIngesterTestConfig(t *testing.T) Config {
+	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, codec.Proto{Factory: ring.ProtoDescFactory})
+	require.NoError(t, err)
+
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	cfg.FlushCheckPeriod = 99999 * time.Hour
 	cfg.MaxChunkIdle = 99999 * time.Hour
 	cfg.ConcurrentFlushes = 1
-	cfg.LifecyclerConfig.RingConfig.KVStore.Mock = consul
+	cfg.LifecyclerConfig.RingConfig.KVStore.Mock = kvClient
 	cfg.LifecyclerConfig.NumTokens = 1
 	cfg.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
 	cfg.LifecyclerConfig.Addr = "localhost"

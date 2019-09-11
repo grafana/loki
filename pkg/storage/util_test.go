@@ -83,16 +83,16 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 }
 
 func newMatchers(matchers string) []*labels.Matcher {
-	ls, err := logql.ParseExpr(matchers)
+	res, err := logql.ParseMatchers(matchers)
 	if err != nil {
 		panic(err)
 	}
-	return ls.Matchers()
+	return res
 }
 
 func newQuery(query string, start, end time.Time, direction logproto.Direction) *logproto.QueryRequest {
 	return &logproto.QueryRequest{
-		Query:     query,
+		Selector:  query,
 		Start:     start,
 		Limit:     1000,
 		End:       end,

@@ -34,15 +34,15 @@ Once you have promtail, Loki, and Grafana running, continue with [our usage docs
 
 ### Documentation
 
-- [API documentation](./docs/api.md) for alternative ways of getting logs into Loki.
-- [Operations](./docs/operations.md) for important aspects of running Loki.
+- [API documentation](./docs/loki/api.md) for alternative ways of getting logs into Loki.
+- [Operations](./docs/loki/operations.md) for important aspects of running Loki.
 - [Promtail](./docs/promtail.md) is an agent which can tail your log files and push them to Loki.
 - [Processing Log Lines](./docs/logentry/processing-log-lines.md) for detailed log processing pipeline documentation
 - [Docker Logging Driver](./cmd/docker-driver/README.md) is a docker plugin to send logs directly to Loki from Docker containers.
 - [Logcli](./docs/logcli.md) on how to query your logs without Grafana.
 - [Loki Canary](./docs/canary/README.md) for monitoring your Loki installation for missing logs.
 - [Troubleshooting](./docs/troubleshooting.md) for help around frequent error messages.
-- [Usage](./docs/usage.md) for how to set up a Loki datasource in Grafana and query your logs.
+- [Usage](./docs/querying.md) for how to set up a Loki datasource in Grafana and query your logs.
 
 ## Getting Help
 

@@ -40,6 +40,21 @@ var (
 		Name:      "sent_bytes_total",
 		Help:      "Number of bytes sent.",
 	}, []string{"host"})
+	droppedBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "promtail",
+		Name:      "dropped_bytes_total",
+		Help:      "Number of bytes dropped because failed to be sent to the ingester after all retries.",
+	}, []string{"host"})
+	sentEntries = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "promtail",
+		Name:      "sent_entries_total",
+		Help:      "Number of log entries sent to the ingester.",
+	}, []string{"host"})
+	droppedEntries = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "promtail",
+		Name:      "dropped_entries_total",
+		Help:      "Number of log entries dropped because failed to be sent to the ingester after all retries.",
+	}, []string{"host"})
 	requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "promtail",
 		Name:      "request_duration_seconds",
@@ -50,6 +65,9 @@ var (
 func init() {
 	prometheus.MustRegister(encodedBytes)
 	prometheus.MustRegister(sentBytes)
+	prometheus.MustRegister(droppedBytes)
+	prometheus.MustRegister(sentEntries)
+	prometheus.MustRegister(droppedEntries)
 	prometheus.MustRegister(requestDuration)
 }
 
@@ -109,15 +127,17 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 func (c *client) run() {
 	batch := map[model.Fingerprint]*logproto.Stream{}
 	batchSize := 0
-	maxWait := time.NewTimer(c.cfg.BatchWait)
+	maxWait := time.NewTicker(c.cfg.BatchWait)
 
 	defer func() {
-		c.sendBatch(batch)
+		if len(batch) > 0 {
+			c.sendBatch(batch)
+		}
+
 		c.wg.Done()
 	}()
 
 	for {
-		maxWait.Reset(c.cfg.BatchWait)
 		select {
 		case <-c.quit:
 			return
@@ -151,7 +171,7 @@ func (c *client) run() {
 }
 
 func (c *client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
-	buf, err := encodeBatch(batch)
+	buf, entriesCount, err := encodeBatch(batch)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "error encoding batch", "error", err)
 		return
@@ -169,6 +189,7 @@ func (c *client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 
 		if err == nil {
 			sentBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
+			sentEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
 			return
 		}
 
@@ -183,22 +204,28 @@ func (c *client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 
 	if err != nil {
 		level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "error", err)
+		droppedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
+		droppedEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
 	}
 }
 
-func encodeBatch(batch map[model.Fingerprint]*logproto.Stream) ([]byte, error) {
+func encodeBatch(batch map[model.Fingerprint]*logproto.Stream) ([]byte, int, error) {
 	req := logproto.PushRequest{
 		Streams: make([]*logproto.Stream, 0, len(batch)),
 	}
+
+	entriesCount := 0
 	for _, stream := range batch {
 		req.Streams = append(req.Streams, stream)
+		entriesCount += len(stream.Entries)
 	}
+
 	buf, err := proto.Marshal(&req)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	buf = snappy.Encode(nil, buf)
-	return buf, nil
+	return buf, entriesCount, nil
 }
 
 func (c *client) send(ctx context.Context, buf []byte) (int, error) {

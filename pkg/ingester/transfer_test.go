@@ -12,6 +12,8 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -24,7 +26,7 @@ import (
 func TestTransferOut(t *testing.T) {
 	f := newTestIngesterFactory(t)
 
-	ing := f.getIngester(time.Duration(0))
+	ing := f.getIngester(time.Duration(0), t)
 
 	// Push some data into our original ingester
 	ctx := user.InjectOrgID(context.Background(), "test")
@@ -71,7 +73,7 @@ func TestTransferOut(t *testing.T) {
 	require.Contains(t, err2.Error(), "total ignored: 2 out of 2")
 
 	// Create a new ingester and trasfer data to it
-	ing2 := f.getIngester(time.Second * 60)
+	ing2 := f.getIngester(time.Second*60, t)
 	ing.Shutdown()
 
 	assert.Len(t, ing2.instances, 1)
@@ -110,25 +112,27 @@ func TestTransferOut(t *testing.T) {
 
 type testIngesterFactory struct {
 	t         *testing.T
-	store     ring.KVClient
+	store     kv.Client
 	n         int
 	ingesters map[string]*Ingester
 }
 
 func newTestIngesterFactory(t *testing.T) *testIngesterFactory {
+	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, codec.Proto{Factory: ring.ProtoDescFactory})
+	require.NoError(t, err)
+
 	return &testIngesterFactory{
 		t:         t,
-		store:     ring.NewInMemoryKVClient(ring.ProtoCodec{Factory: ring.ProtoDescFactory}),
+		store:     kvClient,
 		ingesters: make(map[string]*Ingester),
 	}
 }
 
-func (f *testIngesterFactory) getIngester(joinAfter time.Duration) *Ingester {
+func (f *testIngesterFactory) getIngester(joinAfter time.Duration, t *testing.T) *Ingester {
 	f.n++
 
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.MaxTransferRetries = 1
-	cfg.LifecyclerConfig.ClaimOnRollout = true
 	cfg.LifecyclerConfig.ID = fmt.Sprintf("localhost-%d", f.n)
 	cfg.LifecyclerConfig.RingConfig.KVStore.Mock = f.store
 	cfg.LifecyclerConfig.JoinAfter = joinAfter

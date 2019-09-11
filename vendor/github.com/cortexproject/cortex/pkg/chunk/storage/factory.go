@@ -157,6 +157,9 @@ func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
 	case "aws", "aws-dynamo":
+		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
+			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
+		}
 		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
 		if len(path) > 0 {
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)

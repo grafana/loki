@@ -15,6 +15,7 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -152,7 +153,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 		entries := make([]logproto.Entry, 0, len(stream.Entries))
 		for _, entry := range stream.Entries {
-			if err := d.overrides.ValidateSample(userID, metricName, cortex_client.Sample{
+			if err := validation.ValidateSample(d.overrides, userID, metricName, cortex_client.Sample{
 				TimestampMs: entry.Timestamp.UnixNano() / int64(time.Millisecond),
 			}); err != nil {
 				validationErr = err
@@ -221,10 +222,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 func (d *Distributor) validateLabels(userID, labels string) error {
 	ls, err := util.ToClientLabels(labels)
 	if err != nil {
-		return err
+		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	return d.overrides.ValidateLabels(userID, ls)
+	// everything in `ValidateLabels` returns `httpgrpc.Errorf` errors, no sugaring needed
+	return validation.ValidateLabels(d.overrides, userID, ls)
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.

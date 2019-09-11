@@ -13,6 +13,7 @@ import (
 	"github.com/weaveworks/common/logging"
 
 	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail"
 	"github.com/grafana/loki/pkg/promtail/config"
 )
@@ -45,6 +46,12 @@ func main() {
 		os.Exit(1)
 	}
 	util.InitLogger(&config.ServerConfig.Config)
+
+	// Set the global debug variable in the stages package which is used to conditionally log
+	// debug messages which otherwise cause huge allocations processing log lines for log messages never printed
+	if config.ServerConfig.Config.LogLevel.String() == "debug" {
+		stages.Debug = true
+	}
 
 	p, err := promtail.New(config)
 	if err != nil {

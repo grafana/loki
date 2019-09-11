@@ -15,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/user"
 )
@@ -29,8 +30,7 @@ var (
 //go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
 func Benchmark_store_LazyQueryRegexBackward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Query:     "{foo=\"bar\"}",
-		Regex:     "fuzz",
+		Selector:  `{foo="bar"} |= "fuzz"`,
 		Limit:     1000,
 		Start:     time.Unix(0, start.UnixNano()),
 		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
@@ -40,8 +40,7 @@ func Benchmark_store_LazyQueryRegexBackward(b *testing.B) {
 
 func Benchmark_store_LazyQueryLogQLBackward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Query:     "{foo=\"bar\"} |= \"test\" != \"toto\"",
-		Regex:     "fuzz",
+		Selector:  `{foo="bar"} |= "test" != "toto" |= "fuzz"`,
 		Limit:     1000,
 		Start:     time.Unix(0, start.UnixNano()),
 		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
@@ -51,8 +50,7 @@ func Benchmark_store_LazyQueryLogQLBackward(b *testing.B) {
 
 func Benchmark_store_LazyQueryRegexForward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Query:     "{foo=\"bar\"}",
-		Regex:     "fuzz",
+		Selector:  `{foo="bar"} |= "fuzz"`,
 		Limit:     1000,
 		Start:     time.Unix(0, start.UnixNano()),
 		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
@@ -62,7 +60,7 @@ func Benchmark_store_LazyQueryRegexForward(b *testing.B) {
 
 func Benchmark_store_LazyQueryForward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Query:     "{foo=\"bar\"}",
+		Selector:  `{foo="bar"}`,
 		Limit:     1000,
 		Start:     time.Unix(0, start.UnixNano()),
 		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
@@ -72,7 +70,7 @@ func Benchmark_store_LazyQueryForward(b *testing.B) {
 
 func Benchmark_store_LazyQueryBackward(b *testing.B) {
 	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Query:     "{foo=\"bar\"}",
+		Selector:  `{foo="bar"}`,
 		Limit:     1000,
 		Start:     time.Unix(0, start.UnixNano()),
 		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
@@ -102,7 +100,7 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 		}
 	}()
 	for i := 0; i < b.N; i++ {
-		iter, err := chunkStore.LazyQuery(ctx, query)
+		iter, err := chunkStore.LazyQuery(ctx, logql.SelectParams{QueryRequest: query})
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -334,7 +332,7 @@ func Test_store_LazyQuery(t *testing.T) {
 					MaxChunkBatchSize: 10,
 				},
 			}
-			it, err := s.LazyQuery(context.Background(), tt.req)
+			it, err := s.LazyQuery(context.Background(), logql.SelectParams{QueryRequest: tt.req})
 			if err != nil {
 				t.Errorf("store.LazyQuery() error = %v", err)
 				return

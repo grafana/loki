@@ -58,11 +58,11 @@ Upon death of a member, their team membership ends automatically.
 
 ### Technical decisions
 
-Technical decisions are made informally by the team member, and [lazy consensus]((#concensus)) is assumed. If no consensus can be reached, the matter may be resolved by [majority vote](#majority-vote).
+Technical decisions are made informally by the team member, and [lazy consensus](#consensus) is assumed. If no consensus can be reached, the matter may be resolved by [majority vote](#majority-vote).
 
 ### Governance changes
 
-Material changes to this document are discussed publicly on as an issue on the Loki repo. Any change requires a [supermajority](#supermajority-vote) in favor. Editorial changes may be made by [lazy consensus](#concensus) unless challenged.
+Material changes to this document are discussed publicly on as an issue on the Loki repo. Any change requires a [supermajority](#supermajority-vote) in favor. Editorial changes may be made by [lazy consensus](#consensus) unless challenged.
 
 ### Other matters
 

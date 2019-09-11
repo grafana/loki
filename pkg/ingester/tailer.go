@@ -7,8 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/iter"
-
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/logproto"
@@ -23,11 +21,15 @@ type tailer struct {
 	id       uint32
 	orgID    string
 	matchers []*labels.Matcher
+	filter   logql.Filter
 	expr     logql.Expr
 
 	sendChan chan *logproto.Stream
-	done     chan struct{}
-	closeMtx sync.Mutex
+
+	// Signaling channel used to notify once the tailer gets closed
+	// and the loop and senders should stop
+	closeChan chan struct{}
+	closeOnce sync.Once
 
 	blockedAt      *time.Time
 	blockedMtx     sync.RWMutex
@@ -36,25 +38,26 @@ type tailer struct {
 	conn logproto.Querier_TailServer
 }
 
-func newTailer(orgID, query, regex string, conn logproto.Querier_TailServer) (*tailer, error) {
-	expr, err := logql.ParseExpr(query)
+func newTailer(orgID, query string, conn logproto.Querier_TailServer) (*tailer, error) {
+	expr, err := logql.ParseLogSelector(query)
 	if err != nil {
 		return nil, err
 	}
-
-	matchers := expr.Matchers()
-	if regex != "" {
-		expr = logql.NewFilterExpr(expr, labels.MatchRegexp, regex)
+	filter, err := expr.Filter()
+	if err != nil {
+		return nil, err
 	}
+	matchers := expr.Matchers()
 
 	return &tailer{
 		orgID:          orgID,
 		matchers:       matchers,
+		filter:         filter,
 		sendChan:       make(chan *logproto.Stream, bufferSizeForTailResponse),
 		conn:           conn,
 		droppedStreams: []*logproto.DroppedStream{},
-		id:             generateUniqueID(orgID, query, regex),
-		done:           make(chan struct{}),
+		id:             generateUniqueID(orgID, query),
+		closeChan:      make(chan struct{}),
 		expr:           expr,
 	}, nil
 }
@@ -75,7 +78,7 @@ func (t *tailer) loop() {
 				t.close()
 				return
 			}
-		case <-t.done:
+		case <-t.closeChan:
 			return
 		case stream, ok = <-t.sendChan:
 			if !ok {
@@ -111,11 +114,7 @@ func (t *tailer) send(stream logproto.Stream) {
 		return
 	}
 
-	err := t.filterEntriesInStream(&stream)
-	if err != nil {
-		t.dropStream(stream)
-		return
-	}
+	t.filterEntriesInStream(&stream)
 
 	if len(stream.Entries) == 0 {
 		return
@@ -128,24 +127,14 @@ func (t *tailer) send(stream logproto.Stream) {
 	}
 }
 
-func (t *tailer) filterEntriesInStream(stream *logproto.Stream) error {
-	querier := logql.QuerierFunc(func(matchers []*labels.Matcher, filter logql.Filter) (iter.EntryIterator, error) {
-		var filteredEntries []logproto.Entry
-		for _, e := range stream.Entries {
-			if filter == nil || filter([]byte(e.Line)) {
-				filteredEntries = append(filteredEntries, e)
-			}
+func (t *tailer) filterEntriesInStream(stream *logproto.Stream) {
+	var filteredEntries []logproto.Entry
+	for _, e := range stream.Entries {
+		if t.filter == nil || t.filter([]byte(e.Line)) {
+			filteredEntries = append(filteredEntries, e)
 		}
-		stream.Entries = filteredEntries
-		return nil, nil
-	})
-
-	_, err := t.expr.Eval(querier)
-	if err != nil {
-		return err
 	}
-
-	return nil
+	stream.Entries = filteredEntries
 }
 
 // Returns true if tailer is interested in the passed labelset
@@ -161,7 +150,7 @@ func (t *tailer) isWatchingLabels(metric model.Metric) bool {
 
 func (t *tailer) isClosed() bool {
 	select {
-	case <-t.done:
+	case <-t.closeChan:
 		return true
 	default:
 		return false
@@ -169,18 +158,15 @@ func (t *tailer) isClosed() bool {
 }
 
 func (t *tailer) close() {
-	if t.isClosed() {
-		return
-	}
+	t.closeOnce.Do(func() {
+		// Signal the close channel
+		close(t.closeChan)
 
-	t.closeMtx.Lock()
-	defer t.closeMtx.Unlock()
-
-	if t.isClosed() {
-		return
-	}
-	close(t.done)
-	close(t.sendChan)
+		// We intentionally do not close sendChan in order to avoid a panic on
+		// send to a just-closed channel. It's OK not to close a channel, since
+		// it will be eventually garbage collected as soon as no goroutine
+		// references it anymore, whether it has been closed or not.
+	})
 }
 
 func (t *tailer) blockedSince() *time.Time {
@@ -230,11 +216,10 @@ func (t *tailer) getID() uint32 {
 }
 
 // An id is useful in managing tailer instances
-func generateUniqueID(orgID, query, regex string) uint32 {
+func generateUniqueID(orgID, query string) uint32 {
 	uniqueID := fnv.New32()
 	_, _ = uniqueID.Write([]byte(orgID))
 	_, _ = uniqueID.Write([]byte(query))
-	_, _ = uniqueID.Write([]byte(regex))
 
 	timeNow := make([]byte, 8)
 	binary.LittleEndian.PutUint64(timeNow, uint64(time.Now().UnixNano()))

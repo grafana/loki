@@ -22,8 +22,8 @@ func TestNewMulti(t *testing.T) {
 	}
 	host1, _ := url.Parse("http://localhost:3100")
 	host2, _ := url.Parse("https://grafana.com")
-	expectedCfg1 := Config{BatchSize: 20, URL: flagext.URLValue{URL: host1}}
-	expectedCfg2 := Config{BatchSize: 10, URL: flagext.URLValue{URL: host2}}
+	expectedCfg1 := Config{BatchSize: 20, BatchWait: 1 * time.Second, URL: flagext.URLValue{URL: host1}}
+	expectedCfg2 := Config{BatchSize: 10, BatchWait: 1 * time.Second, URL: flagext.URLValue{URL: host2}}
 
 	clients, err := NewMulti(util.Logger, expectedCfg1, expectedCfg2)
 	if err != nil {

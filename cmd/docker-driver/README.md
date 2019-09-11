@@ -47,6 +47,9 @@ docker run --log-driver=loki \
     grafana/grafana
 ```
 
+> **Note**: The Loki logging driver still uses the json-log driver in combination with sending logs to Loki, this is mainly useful to keep the `docker logs` command working.
+> You can adjust file size and rotation using the respective log option `max-size` and `max-file`.
+
 ### Configure the default logging driver
 
 To configure the Docker daemon to default to Loki logging driver, set the value of `log-driver` to `loki` logging driver in the `daemon.json` file, which is located in `/etc/docker/`. The following example explicitly sets the default logging driver to Loki:
@@ -98,7 +101,7 @@ docker stack deploy my_stack_name --compose-file docker-compose.yaml
 
 Once deployed the Grafana service will be sending logs automatically to Loki.
 
-> **Note**: stack name and service name are automatically discovered and sent as Loki labels for each swarm service, this way you can filter by them in Grafana.
+> **Note**: stack name and service name for each swarm service and project name and service name for each compose service are automatically discovered and sent as Loki labels, this way you can filter by them in Grafana.
 
 ## Labels
 
@@ -129,6 +132,8 @@ To specify additional logging driver options, you can use the --log-opt NAME=VAL
 | `loki-tls-server-name`          | No        |                      | Name used to validate the server certificate.
 | `loki-tls-insecure-skip-verify`           | No        | `false`                | Allow to skip tls verification.
 | `loki-proxy-url`                       | No        |           | Proxy URL use to connect to Loki.
+| `max-size`                       | No        |       -1    | The maximum size of the log before it is rolled. A positive integer plus a modifier representing the unit of measure (k, m, or g). Defaults to -1 (unlimited). This is used by json-log required to keep the `docker log` command working.
+| `max-file`                       | No        |       1    | The maximum number of log files that can be present. If rolling the logs creates excess files, the oldest file is removed. Only effective when max-size is also set. A positive integer. Defaults to 1.
 | `labels`                   | No | | Comma-separated list of keys of labels, which should be included in message, if these labels are specified for container.
 | `env`                   | No | | Comma-separated list of keys of environment variables to be included in message if they specified for a container.
 | `env-regex`                   | No | | A regular expression to match logging-related environment variables. Used for advanced log label options. If there is collision between the label and env keys, the value of the env takes precedence. Both options add additional fields to the labels of a logging message.
