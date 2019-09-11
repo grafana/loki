@@ -173,9 +173,8 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 			_, _ = fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), len(entries))
 
 			return httpgrpc.Errorf(http.StatusBadRequest, buf.String())
-		} else {
-			return lastEntryWithErr.e
 		}
+		return lastEntryWithErr.e
 	}
 
 	return nil
