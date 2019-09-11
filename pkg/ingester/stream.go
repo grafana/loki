@@ -163,11 +163,9 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 		streamName := client.FromLabelAdaptersToLabels(s.labels).String()
 
 		for _, entryWithError := range failedEntriesWithError {
-			if entryWithError.e == chunkenc.ErrOutOfOrder {
-				fmt.Fprintf(&buf,
-					"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
-					entryWithError.entry.Timestamp.String(), entryWithError.e, streamName)
-			}
+			fmt.Fprintf(&buf,
+				"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
+				entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
 		}
 
 		fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), len(entries))
