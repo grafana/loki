@@ -23,7 +23,7 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
 
   ```
 
-- `GET /api/v1/query`
+- `GET /loki/api/v1/query`
 
   For doing instant queries at a single point in time, accepts the following parameters in the query-string:
 
@@ -51,7 +51,7 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
   Examples:
 
   ```bash
-  $ curl -G -s  "http://localhost:3100/api/v1/query" --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
+  $ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
   {
     "status" : "success",
     "data": {
@@ -88,31 +88,31 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
   ```
 
   ```bash
-  curl -G -s  "http://localhost:3100/api/v1/query" --data-urlencode 'query={job="varlogs"}' | jq
+  curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query={job="varlogs"}' | jq
   {
-    "status" : "success",
-    "data": {
-        "resultType": "streams",
-        "result": [
-          {
-            "labels": "{filename=\"/var/log/myproject.log\", job=\"varlogs\", level=\"info\"}",
-            "entries": [
-              {
-                "ts": "2019-06-06T19:25:41.972739Z",
-                "line": "foo"
-              },
-              {
-                "ts": "2019-06-06T19:25:41.972722Z",
-                "line": "bar"
-              }
-            ]
-          }
+    "resultType": "streams",
+    "result": [
+      {
+        "stream": {
+          "filename": "/var/hostlog/syslog",
+          "job": "varlogs"
+        },
+        "values": [
+          [
+            "1568234281726420425",
+            "foo"
+          ],
+          [
+            "1568234269716526880",
+            "bar"
+          ]
         ]
       }
+    ]
   }
   ```
 
-- `GET /api/v1/query_range`
+- `GET /loki/api/v1/query_range`
 
   For doing queries over a range of time, accepts the following parameters in the query-string:
 
@@ -142,7 +142,7 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
   Examples:
 
   ```bash
-  $ curl -G -s  "http://localhost:3100/api/v1/query_range" --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' --data-urlencode 'step=300' | jq
+  $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' --data-urlencode 'step=300' | jq
   {
     "status" : "success",
     "data": {
@@ -192,69 +192,31 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
   ```
 
   ```bash
-  curl -G -s  "http://localhost:3100/api/v1/query_range" --data-urlencode 'query={job="varlogs"}' | jq
+  curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query={job="varlogs"}' | jq
   {
-    "status" : "success",
-    "data": {
-      "resultType": "streams",
-      "result": [
-        {
-          "labels": "{filename=\"/var/log/myproject.log\", job=\"varlogs\", level=\"info\"}",
-          "entries": [
-            {
-              "ts": "2019-06-06T19:25:41.972739Z",
-              "line": "foo"
-            },
-            {
-              "ts": "2019-06-06T19:25:41.972722Z",
-              "line": "bar"
-            }
-          ]
-        }
-      ]
-    }
-  }
-  ```
-
-- `GET /api/prom/query`
-
-  For doing queries, accepts the following parameters in the query-string:
-
-  - `query`: a [logQL query](../querying.md) (eg: `{name=~"mysql.+"}` or `{name=~"mysql.+"} |= "error"`)
-  - `limit`: max number of entries to return
-  - `start`: the start time for the query, as a nanosecond Unix epoch (nanoseconds since 1970) or as RFC3339Nano (eg: "2006-01-02T15:04:05.999999999-07:00"). Default is always one hour ago.
-  - `end`: the end time for the query, as a nanosecond Unix epoch (nanoseconds since 1970) or as RFC3339Nano (eg: "2006-01-02T15:04:05.999999999-07:00"). Default is current time.
-  - `direction`: `forward` or `backward`, useful when specifying a limit. Default is backward.
-  - `regexp`: a regex to filter the returned results
-
-  Loki needs to query the index store in order to find log streams for particular labels and the store is spread out by time,
-  so you need to specify the start and end labels accordingly. Querying a long time into the history will cause additional
-  load to the index server and make the query slower.
-
-  > This endpoint will be deprecated in the future you should use `api/v1/query_range` instead.
-  > You can only query for logs, it doesn't accept [queries returning metrics](../querying.md#counting-logs).
-
-  Responses looks like this:
-
-  ```json
-  {
-    "streams": [
+    "resultType": "streams",
+    "result": [
       {
-        "labels": "{instance=\"...\", job=\"...\", namespace=\"...\"}",
-        "entries": [
-          {
-            "ts": "2018-06-27T05:20:28.699492635Z",
-            "line": "..."
-          },
-          ...
+        "stream": {
+          "filename": "/var/hostlog/syslog",
+          "job": "varlogs"
+        },
+        "values": [
+          [
+            "1568234281726420425",
+            "foo"
+          ],
+          [
+            "1568234269716526880",
+            "bar"
+          ]
         ]
-      },
-      ...
+      }
     ]
   }
   ```
 
-- `GET /api/prom/label`
+- `GET /loki/api/v1/label`
 
   For doing label name queries, accepts the following parameters in the query-string:
 
@@ -273,7 +235,7 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
   }
   ```
 
-- `GET /api/prom/label/<name>/values`
+- `GET /loki/api/v1/label/<name>/values`
 
   For doing label values queries, accepts the following parameters in the query-string:
 
