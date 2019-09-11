@@ -38,7 +38,8 @@ func Test_EntryMarshalJSON(t *testing.T) {
 		line, ok := array[1].(string)
 		require.True(t, ok)
 
-		require.Equal(t, entry.Timestamp.UnixNano(), int64(timestamp*1e9), "Timestamps not equal ", array[0])
+		// only test to the microsecond level.  json's number type (float64) does not have enough precision to store nanoseconds
+		require.Equal(t, entry.Timestamp.UnixNano()/int64(time.Microsecond), int64(timestamp*1e9)/int64(time.Microsecond), "Timestamps not equal ", array[0])
 		require.Equal(t, entry.Line, line, "Lines are not equal ", array[1])
 	}
 }
