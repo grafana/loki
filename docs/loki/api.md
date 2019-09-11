@@ -2,7 +2,7 @@
 
 The Loki server has the following API endpoints (_Note:_ Authentication is out of scope for this project):
 
-- `POST /api/prom/push`
+- `POST /loki/api/v1/push`
 
   For sending log entries, expects a snappy compressed proto in the HTTP Body:
 
