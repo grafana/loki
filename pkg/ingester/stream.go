@@ -68,7 +68,7 @@ type chunkDesc struct {
 
 type entryWithError struct {
 	entry logproto.Entry
-	err error
+	e     error
 }
 
 func newStream(fp model.Fingerprint, labels []client.LabelAdapter, blockSize int) *stream {
@@ -163,10 +163,10 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 		streamName := client.FromLabelAdaptersToLabels(s.labels).String()
 
 		for _, entryWithError := range failedEntriesWithError {
-			if entryWithError.err == chunkenc.ErrOutOfOrder {
+			if entryWithError.e == chunkenc.ErrOutOfOrder {
 				fmt.Fprintf(&buf,
 					"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
-					entryWithError.entry.Timestamp.String(), entryWithError.err, streamName)
+					entryWithError.entry.Timestamp.String(), entryWithError.e, streamName)
 			}
 		}
 
