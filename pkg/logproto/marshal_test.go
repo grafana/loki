@@ -2,6 +2,7 @@ package logproto
 
 import (
 	"encoding/json"
+	fmt "fmt"
 	reflect "reflect"
 	"testing"
 	time "time"
@@ -44,14 +45,14 @@ func Test_EntryMarshalJSON(t *testing.T) {
 		err = json.Unmarshal(bytes, &array)
 		require.NoError(t, err)
 
-		timestamp, ok := array[0].(float64)
+		timestamp, ok := array[0].(string)
 		require.True(t, ok)
 
 		line, ok := array[1].(string)
 		require.True(t, ok)
 
 		// only test to the microsecond level.  json's number type (float64) does not have enough precision to store nanoseconds
-		require.Equal(t, entry.Timestamp.UnixNano()/int64(time.Microsecond), int64(timestamp*1e9)/int64(time.Microsecond), "Timestamps not equal ", array[0])
+		require.Equal(t, fmt.Sprint(entry.Timestamp.UnixNano()), timestamp, "Timestamps not equal ", array[0])
 		require.Equal(t, entry.Line, line, "Lines are not equal ", array[1])
 	}
 }
