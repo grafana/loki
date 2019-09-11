@@ -8,7 +8,7 @@ Promtail features an embedded web server exposing a web console at `/` and the f
 
 ### `GET /metrics`
 
-  This endpoint returns Promtail metrics for Prometheus. See "[Operations > Observability > Metrics](./operations.md)" to have a list of exported metrics.
+  This endpoint returns Promtail metrics for Prometheus. See "[Operations > Observability > Metrics](../loki/operations.md)" to have a list of exported metrics.
 
 
 ## Promtail web server config

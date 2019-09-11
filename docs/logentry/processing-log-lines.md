@@ -93,21 +93,21 @@ The second `match` stage will only run if a label named `app` == `some-app`, it 
 
 More info on each field in the interface:
 
-##### labels
+##### labels model.LabelSet
 
 A set of prometheus style labels which will be sent with the log line and will be indexed by Loki.
 
-##### extracted
+##### extracted map[string]interface{}
 
 metadata extracted during the pipeline execution which can be used by subsequent stages.  This data is not sent with the logs and is dropped after the log entry is processed through the pipeline.
 
 For example, stages like [regex](#regex) and [json](#json) will use expressions to extract data from a log line and store it in the `extracted` map, which following stages like [timestamp](#timestamp) or [output](#output) can use to manipulate the log lines `time` and `entry`.
 
-##### time
+##### time *time.Time
 
-The timestamp which loki will store for the log line, if not set within the pipeline using the [time](#time) stage, it will default to time.Now().
+The timestamp which loki will store for the log line, if not set within the pipeline using the [timestamp](#timestamp) stage, it will default to time.Now().
 
-##### entry
+##### entry *string
 
 The log line which will be stored by loki, the [output](#output) stage is capable of modifying this value, if no stage modifies this value the log line stored will match what was input to the system and not be modified.
 
