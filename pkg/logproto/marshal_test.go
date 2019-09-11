@@ -13,21 +13,21 @@ import (
 
 var (
 	entries = []Entry{
-		Entry{
+		{
 			Timestamp: time.Now(),
 			Line:      "testline",
 		},
-		Entry{
+		{
 			Timestamp: time.Date(2019, 9, 10, 1, 1, 1, 1, time.UTC),
 			Line:      "{}\"'!@$%&*^(_)(",
 		},
 	}
 	streams = []Stream{
-		Stream{
+		{
 			Labels:  "{}",
 			Entries: []Entry{},
 		},
-		Stream{
+		{
 			Labels:  "{name=\"value\",name1=\"value1\"}",
 			Entries: []Entry{},
 		},
