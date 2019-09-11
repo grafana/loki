@@ -3,6 +3,8 @@ package logproto
 import (
 	"encoding/json"
 	fmt "fmt"
+
+	"github.com/prometheus/prometheus/promql"
 )
 
 // MarshalJSON converts an Entry object to be prom compatible for http queries
@@ -20,7 +22,11 @@ func (e *Entry) MarshalJSON() ([]byte, error) {
 
 // MarshalJSON converts a Stream object to be prom compatible for http queries
 func (s *Stream) MarshalJSON() ([]byte, error) {
-	l, err := json.Marshal(s.Labels)
+	parsedLabels, err := promql.ParseMetric(s.Labels)
+	if err != nil {
+		return nil, err
+	}
+	l, err := json.Marshal(parsedLabels)
 	if err != nil {
 		return nil, err
 	}
@@ -29,5 +35,5 @@ func (s *Stream) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 
-	return []byte(fmt.Sprintf("{\"labels\":%s,\"values\":%s}", l, e)), nil
+	return []byte(fmt.Sprintf("{\"stream\":%s,\"values\":%s}", l, e)), nil
 }
