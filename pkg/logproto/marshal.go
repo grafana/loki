@@ -5,6 +5,7 @@ import (
 	fmt "fmt"
 )
 
+// MasrshalJSON converts an Entry object to be prom compatible for http queries
 func (e *Entry) MarshalJSON() ([]byte, error) {
 
 	t, err := json.Marshal(float64(e.Timestamp.UnixNano()) / 1e+9)
