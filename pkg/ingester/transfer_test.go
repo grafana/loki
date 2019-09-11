@@ -55,13 +55,13 @@ func TestTransferOut(t *testing.T) {
 		assert.Len(t, ing.instances["test"].streams, 2)
 	}
 
-	// verify we get out of order exception on adding entries with older timestamps
+	// verify we get out of order exception on adding an entry with older timestamps
 	_, err2 := ing.Push(ctx, &logproto.PushRequest{
 		Streams: []*logproto.Stream{
 			{
 				Entries: []logproto.Entry{
-					{Line: "line 3", Timestamp: time.Unix(0, 0)},
-					{Line: "line 4", Timestamp: time.Unix(0, 0)},
+					{Line: "out of order line", Timestamp: time.Unix(0, 0)},
+					{Line: "line 4", Timestamp: time.Unix(2, 0)},
 				},
 				Labels: `{foo="bar",bar="baz1"}`,
 			},
@@ -70,9 +70,9 @@ func TestTransferOut(t *testing.T) {
 
 	require.Error(t, err2)
 	require.Contains(t, err2.Error(), "out of order")
-	require.Contains(t, err2.Error(), "total ignored: 2 out of 2")
+	require.Contains(t, err2.Error(), "total ignored: 1 out of 2")
 
-	// Create a new ingester and trasfer data to it
+	// Create a new ingester and transfer data to it
 	ing2 := f.getIngester(time.Second*60, t)
 	ing.Shutdown()
 
@@ -104,7 +104,7 @@ func TestTransferOut(t *testing.T) {
 
 		assert.Equal(
 			t,
-			[]string{"line 0", "line 1", "line 2", "line 3"},
+			[]string{"line 0", "line 1", "line 2", "line 3", "line 4"},
 			lines,
 		)
 	}
