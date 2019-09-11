@@ -44,6 +44,9 @@ type Chunk interface {
 	// or a newly allocated version. In any case, take the returned chunk as
 	// the relevant one and discard the original chunk.
 	Add(sample model.SamplePair) ([]Chunk, error)
+	// NewIterator returns an iterator for the chunks.
+	// The iterator passed as argument is for re-use. Depending on implementation,
+	// the iterator can be re-used or a new iterator can be allocated.
 	NewIterator(Iterator) Iterator
 	Marshal(io.Writer) error
 	UnmarshalFromBuf([]byte) error
