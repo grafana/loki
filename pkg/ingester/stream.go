@@ -67,7 +67,7 @@ type chunkDesc struct {
 }
 
 type entryWithError struct {
-	entry logproto.Entry
+	entry *logproto.Entry
 	e     error
 }
 
@@ -103,8 +103,8 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 		chunksCreatedTotal.Inc()
 	}
 
-	var storedEntries []logproto.Entry
-	var failedEntriesWithError []entryWithError
+	storedEntries := []logproto.Entry{}
+	failedEntriesWithError := []entryWithError{}
 
 	// Don't fail on the first append error - if samples are sent out of order,
 	// we still want to append the later ones.
@@ -122,7 +122,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 			chunk = &s.chunks[len(s.chunks)-1]
 		}
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{entries[i], err})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err})
 		} else {
 			// send only stored entries to tailers
 			storedEntries = append(storedEntries, entries[i])
@@ -158,19 +158,24 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 	}
 
 	if len(failedEntriesWithError) > 0 {
-		// return bad http status request response with all failed entries
-		buf := bytes.Buffer{}
-		streamName := client.FromLabelAdaptersToLabels(s.labels).String()
+		lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
+		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
+			// return bad http status request response with all failed entries
+			buf := bytes.Buffer{}
+			streamName := client.FromLabelAdaptersToLabels(s.labels).String()
 
-		for _, entryWithError := range failedEntriesWithError {
-			fmt.Fprintf(&buf,
-				"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
-				entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
+			for _, entryWithError := range failedEntriesWithError {
+				_, _ = fmt.Fprintf(&buf,
+					"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
+					entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
+			}
+
+			_, _ = fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), len(entries))
+
+			return httpgrpc.Errorf(http.StatusBadRequest, buf.String())
+		} else {
+			return lastEntryWithErr.e
 		}
-
-		fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), len(entries))
-
-		return httpgrpc.Errorf(http.StatusBadRequest, buf.String())
 	}
 
 	return nil
