@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -46,6 +47,13 @@ func unixNanoTimeParam(values url.Values, name string, def time.Time) (time.Time
 		return def, nil
 	}
 
+	if strings.Contains(value, ".") {
+		if t, err := strconv.ParseFloat(value, 64); err == nil {
+			s, ns := math.Modf(t)
+			ns = math.Round(ns*1000) / 1000
+			return time.Unix(int64(s), int64(ns*float64(time.Second))), nil
+		}
+	}
 	nanos, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
 		if ts, err := time.Parse(time.RFC3339Nano, value); err == nil {
@@ -53,7 +61,9 @@ func unixNanoTimeParam(values url.Values, name string, def time.Time) (time.Time
 		}
 		return time.Time{}, err
 	}
-
+	if len(value) <= 10 {
+		return time.Unix(nanos, 0), nil
+	}
 	return time.Unix(0, nanos), nil
 }
 
@@ -219,9 +229,12 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := &QueryResponse{
-		ResultType: result.Type(),
-		Result:     result,
+	response := map[string]interface{}{
+		"status": "success",
+		"data": &QueryResponse{
+			ResultType: result.Type(),
+			Result:     result,
+		},
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -248,9 +261,12 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := &QueryResponse{
-		ResultType: result.Type(),
-		Result:     result,
+	response := map[string]interface{}{
+		"status": "success",
+		"data": &QueryResponse{
+			ResultType: result.Type(),
+			Result:     result,
+		},
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {

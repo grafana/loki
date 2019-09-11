@@ -40,8 +40,11 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
 
   ```json
   {
-    "resultType": "vector" | "streams",
-    "result": <value>
+    "status" : "success",
+    "data": {
+        "resultType": "vector" | "streams",
+        "result": <value>
+    }
   }
   ```
 
@@ -50,56 +53,63 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
   ```bash
   $ curl -G -s  "http://localhost:3100/api/v1/query" --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
   {
-    "resultType": "vector",
-    "result": [
-      {
-        "metric": {},
-        "value": [
-          1559848867745737,
-          "1267.1266666666666"
-        ]
-      },
-      {
-        "metric": {
-          "level": "warn"
+    "status" : "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {},
+          "value": [
+            1559848867745737,
+            "1267.1266666666666"
+          ]
         },
-        "value": [
-          1559848867745737,
-          "37.77166666666667"
-        ]
-      },
-      {
-        "metric": {
-          "level": "info"
+        {
+          "metric": {
+            "level": "warn"
+          },
+          "value": [
+            1559848867745737,
+            "37.77166666666667"
+          ]
         },
-        "value": [
-          1559848867745737,
-          "37.69"
-        ]
-      }
-    ]
+        {
+          "metric": {
+            "level": "info"
+          },
+          "value": [
+            1559848867745737,
+            "37.69"
+          ]
+        }
+      ]
+    }
   }
   ```
 
   ```bash
   curl -G -s  "http://localhost:3100/api/v1/query" --data-urlencode 'query={job="varlogs"}' | jq
   {
-    "resultType": "streams",
-    "result": [
-      {
-        "labels": "{filename=\"/var/log/myproject.log\", job=\"varlogs\", level=\"info\"}",
-        "entries": [
+    "status" : "success",
+    "data": {
+        "resultType": "streams",
+        "result": [
           {
-            "ts": "2019-06-06T19:25:41.972739Z",
-            "line": "foo"
-          },
-          {
-            "ts": "2019-06-06T19:25:41.972722Z",
-            "line": "bar"
+            "labels": "{filename=\"/var/log/myproject.log\", job=\"varlogs\", level=\"info\"}",
+            "entries": [
+              {
+                "ts": "2019-06-06T19:25:41.972739Z",
+                "line": "foo"
+              },
+              {
+                "ts": "2019-06-06T19:25:41.972722Z",
+                "line": "bar"
+              }
+            ]
           }
         ]
       }
-    ]
+  }
   ```
 
 - `GET /api/v1/query_range`
@@ -121,8 +131,11 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
 
   ```json
   {
-    "resultType": "matrix" | "streams",
-    "result": <value>
+    "status" : "success",
+    "data": {
+      "resultType": "matrix" | "streams",
+      "result": <value>
+    }
   }
   ```
 
@@ -131,69 +144,76 @@ The Loki server has the following API endpoints (_Note:_ Authentication is out o
   ```bash
   $ curl -G -s  "http://localhost:3100/api/v1/query_range" --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' --data-urlencode 'step=300' | jq
   {
-    "resultType": "matrix",
-    "result": [
-    {
-       "metric": {
-          "level": "info"
-        },
-        "values": [
-          [
-            1559848958663735,
-            "137.95"
-          ],
-          [
-            1559849258663735,
-            "467.115"
-          ],
-          [
-            1559849558663735,
-            "658.8516666666667"
-          ]
-        ]
-      },
+    "status" : "success",
+    "data": {
+      "resultType": "matrix",
+      "result": [
       {
         "metric": {
-          "level": "warn"
-        },
-        "values": [
-          [
-            1559848958663735,
-            "137.27833333333334"
-          ],
-          [
-            1559849258663735,
-            "467.69"
-          ],
-          [
-            1559849558663735,
-            "660.6933333333334"
+            "level": "info"
+          },
+          "values": [
+            [
+              1559848958663735,
+              "137.95"
+            ],
+            [
+              1559849258663735,
+              "467.115"
+            ],
+            [
+              1559849558663735,
+              "658.8516666666667"
+            ]
           ]
-        ]
-      }
-    ]
+        },
+        {
+          "metric": {
+            "level": "warn"
+          },
+          "values": [
+            [
+              1559848958663735,
+              "137.27833333333334"
+            ],
+            [
+              1559849258663735,
+              "467.69"
+            ],
+            [
+              1559849558663735,
+              "660.6933333333334"
+            ]
+          ]
+        }
+      ]
+    }
   }
   ```
 
   ```bash
   curl -G -s  "http://localhost:3100/api/v1/query_range" --data-urlencode 'query={job="varlogs"}' | jq
   {
-    "resultType": "streams",
-    "result": [
-      {
-        "labels": "{filename=\"/var/log/myproject.log\", job=\"varlogs\", level=\"info\"}",
-        "entries": [
-          {
-            "ts": "2019-06-06T19:25:41.972739Z",
-            "line": "foo"
-          },
-          {
-            "ts": "2019-06-06T19:25:41.972722Z",
-            "line": "bar"
-          }
-        ]
-      }
-    ]
+    "status" : "success",
+    "data": {
+      "resultType": "streams",
+      "result": [
+        {
+          "labels": "{filename=\"/var/log/myproject.log\", job=\"varlogs\", level=\"info\"}",
+          "entries": [
+            {
+              "ts": "2019-06-06T19:25:41.972739Z",
+              "line": "foo"
+            },
+            {
+              "ts": "2019-06-06T19:25:41.972722Z",
+              "line": "bar"
+            }
+          ]
+        }
+      ]
+    }
+  }
   ```
 
 - `GET /api/prom/query`
