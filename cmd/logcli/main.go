@@ -148,7 +148,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 		return nil
 	})
 
-	cmd.Arg("query", "eg '{foo=\"bar\",baz=\"blip\"}'").Required().StringVar(&query.QueryString)
+	cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"}'").Required().StringVar(&query.QueryString)
 	cmd.Flag("limit", "Limit on number of entries to print.").Default("30").IntVar(&query.Limit)
 	if instant {
 		cmd.Flag("now", "Time at which to execute the instant query.").StringVar(&now)

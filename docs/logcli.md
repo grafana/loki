@@ -131,5 +131,5 @@ Flags:
       --delay-for=0      Delay in tailing by number of seconds to accumulate logs for re-ordering
 
 Args:
-  <query>  eg '{foo="bar",baz="blip"}'
+  <query>  eg '{foo="bar",baz=~".*blip"}'
 ```
