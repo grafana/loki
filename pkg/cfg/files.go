@@ -17,10 +17,14 @@ func JSON(f *string) Source {
 			return err
 		}
 
-		if err := json.Unmarshal(j, dst); err != nil {
-			return err
-		}
-		return nil
+		return dJSON(j)(dst)
+	}
+}
+
+// dJSON returns a JSON source and allows dependency injection
+func dJSON(y []byte) Source {
+	return func(dst interface{}) error {
+		return json.Unmarshal(y, dst)
 	}
 }
 
@@ -36,10 +40,14 @@ func YAML(f *string) Source {
 			return err
 		}
 
-		if err := yaml.Unmarshal(y, dst); err != nil {
-			return err
-		}
-		return nil
+		return dYAML(y)(dst)
+	}
+}
+
+// dYAML returns a YAML source and allows dependency injection
+func dYAML(y []byte) Source {
+	return func(dst interface{}) error {
+		return yaml.Unmarshal(y, dst)
 	}
 }
 

@@ -1,8 +1,8 @@
 package cfg
 
 import (
-	"errors"
 	"flag"
+	"os"
 	"reflect"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -21,21 +21,19 @@ func FlagDefaultsDangerous(reg flagext.Registerer, ptr *[]byte) Source {
 	flagext.DefaultValues(reg)
 	flag.CommandLine = tmp
 
-	d, err := yaml.Marshal(reg)
-	if err != nil {
-		panic(err)
-	}
-
+	// dump defaults for subsequent `Flags()` call
 	if ptr != nil {
+		d, err := yaml.Marshal(reg)
+		if err != nil {
+			panic(err)
+		}
+
 		*ptr = d
 	}
 
 	return func(dst interface{}) error {
-		v := reflect.ValueOf(dst)
-		if v.Kind() != reflect.Ptr {
-			return errors.New("dst not a pointer")
-		}
-		v = reflect.Indirect(v)
+		// set *reg for *dst
+		v := reflect.Indirect(reflect.ValueOf(dst))
 		v.Set(reflect.Indirect(reflect.ValueOf(reg)))
 		return nil
 	}
@@ -45,8 +43,14 @@ func FlagDefaultsDangerous(reg flagext.Registerer, ptr *[]byte) Source {
 // The must have the same structure as dst, usually it is even the same type.
 // The defaults slice MUST contain valid defaults as yaml from the same registerer.
 func Flags(reg flagext.Registerer, defaults []byte) Source {
+	return dFlags(os.Args[1:], reg, defaults)
+}
+
+// dFlags parses flags defined by reg using the args slice onto dst.
+// The defaults slice MUST contain valid defaults as yaml from the same registerer.
+func dFlags(args []string, reg flagext.Registerer, defaults []byte) Source {
 	flagext.RegisterFlags(reg)
-	flag.Parse()
+	_ = flag.CommandLine.Parse(args)
 	data, err := yaml.Marshal(reg)
 	if err != nil {
 		panic(err)

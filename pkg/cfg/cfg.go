@@ -14,12 +14,20 @@ import (
 // data from previous sources.
 type Source func(interface{}) error
 
+var (
+	ErrNotPointer = errors.New("dst is not a pointer")
+)
+
 // Unmarshal merges the values of the various configuration sources and sets them on
 // `dst`. The object must be compatible with `json.Unmarshal`.
 func Unmarshal(dst interface{}, sources ...Source) error {
 	if len(sources) == 0 {
 		panic("No sources supplied to cfg.Unmarshal(). This is most likely a programming issue and should never happen. Check the code!")
 	}
+	if reflect.ValueOf(dst).Kind() != reflect.Ptr {
+		return ErrNotPointer
+	}
+
 	for _, source := range sources {
 		if err := source(dst); err != nil {
 			return errors.Wrap(err, "sourcing")
@@ -33,7 +41,7 @@ func Parse(dst interface{}) error {
 	// check dst is a pointer
 	v := reflect.ValueOf(dst)
 	if v.Kind() != reflect.Ptr {
-		panic("dst not a pointer")
+		return ErrNotPointer
 	}
 
 	// obtain type of dst for cloning
