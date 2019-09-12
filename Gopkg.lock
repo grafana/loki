@@ -742,14 +742,6 @@
   version = "v1.1.5"
 
 [[projects]]
-  digest = "1:fd9bea48bbc5bba66d9891c72af7255fbebecdff845c37c679406174ece5ca1b"
-  name = "github.com/kelseyhightower/envconfig"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "0b417c4ec4a8a82eecc22a1459a504aa55163d61"
-  version = "v1.4.0"
-
-[[projects]]
   digest = "1:9b67e6f39db9eb120a6c5977e4b29f33d7e01970777e77152ed79395f7559291"
   name = "github.com/klauspost/compress"
   packages = [
@@ -1870,7 +1862,6 @@
     "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
     "github.com/hpcloud/tail",
     "github.com/jmespath/go-jmespath",
-    "github.com/kelseyhightower/envconfig",
     "github.com/klauspost/compress/gzip",
     "github.com/mitchellh/mapstructure",
     "github.com/opentracing/opentracing-go",
