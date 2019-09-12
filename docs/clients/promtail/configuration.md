@@ -4,6 +4,32 @@ Promtail is configured in a YAML file (usually referred to as `config.yaml`)
 which contains information on the Promtail server, where positions are stored,
 ans how to scrape logs from files.
 
+* [Configuration File Reference](#configuration-file-reference)
+* [server_config](#server_config)
+* [client_config](#client_config)
+* [position_config](#position_config)
+* [scrape_config](#scrape_config)
+    * [pipeline_stages](#pipeline_stages)
+        * [regex_stage](#regex_stage)
+        * [json_stage](#json_stage)
+        * [template_stage](#template_stage)
+        * [match_stage](#match_stage)
+        * [timestamp_stage](#timestamp_stage)
+        * [output_stage](#output_stage)
+        * [labels_stage](#labels_stage)
+        * [metrics_stage](#metrics_stage)
+            * [metric_counter](#metric_counter)
+            * [metric_gauge](#metric_gauge)
+            * [metric_histogram](#metric_histogram)
+    * [journal_config](#journal_config)
+    * [relabel_config](#relabel_config)
+    * [static_config](#static_config)
+    * [file_sd_config](#file_sd_config)
+    * [kubernetes_sd_config](#kubernetes_sd_config)
+* [target_config](#target_config)
+* [Example Docker Config](#example-docker-config)
+* [Example Journal Config](#example-journal-config)
+
 ## Configuration File Reference
 
 To specify which configuration file to load, pass the `-config.file` flag at the
@@ -53,7 +79,7 @@ scrape_configs:
 [target_config: <target_config>]
 ```
 
-## Server Config (server_config)
+## server_config
 
 The `server_config` block configures Promtail's behavior as an HTTP server:
 
@@ -102,7 +128,7 @@ The `server_config` block configures Promtail's behavior as an HTTP server:
 [http_path_prefix: <string>]
 ```
 
-## Client Config (client_config)
+## client_config
 
 The `client_config` block configures how Promtail connects to an instance of
 Loki:
@@ -182,7 +208,7 @@ external_labels:
 [timeout: <duration> | default = 10s]
 ```
 
-### Position Config (position_config)
+## position_config
 
 The `position_config` block configures where promtail will save a file
 indicating how far it has read into a file. It is needed for when promtail
@@ -196,7 +222,7 @@ is restarted to allow it to continue from where it left off.
 [sync_period: <duration> | default = 10s]
 ```
 
-### Scrape Config (scrape_config)
+## scrape_config
 
 The `scrape_config` block configures how Promtail can scrape logs from a series
 of targets using a specified discovery method:
@@ -233,7 +259,7 @@ kubernetes_sd_configs:
   - [<kubernetes_sd_config>]
 ```
 
-#### Pipeline Stages (pipeline_stages)
+### pipeline_stages
 
 The pipeline stages (`pipeline_stages`) is used to transform log entries and
 their labels after discovery.
@@ -260,7 +286,7 @@ match:
       ]
 ```
 
-##### Regex Stage (regex_stage)
+#### regex_stage
 
 The Regex stage takes a regular expression and extracts captured named groups to
 be used in further stages.
@@ -274,7 +300,7 @@ regex:
   [source: <string>]
 ```
 
-##### JSON Stage (json_stage)
+#### json_stage
 
 The JSON stage takes JMESPath expressions and extracts data to be used in
 further stages.
@@ -291,7 +317,7 @@ json:
   [source: <string>]
 ```
 
-##### Template Stage (template_stage)
+#### template_stage
 
 The template stage uses Go's `text/template` language to manipualte values.
 
@@ -307,7 +333,7 @@ template:
   template: <string>
 ```
 
-##### Match Stage (match_stage)
+#### match_stage
 
 The match stage wraps a second set of stages to determine if they should
 be executed.
@@ -337,7 +363,7 @@ match:
       ]
 ```
 
-##### Timestamp Stage (timestamp_stage)
+#### timestamp_stage
 
 The timestamp stage parses data from the extracted map and overrides the final
 time value of the log that is stored by Loki. If this stage isn't present,
@@ -359,7 +385,7 @@ timestamp:
   [location: <string>]
 ```
 
-##### Output Stage (output_stage)
+##### output_stage
 
 The output stage takes data from the extracted map and sets the contents of the
 log entry that will be stored by Loki.
@@ -370,7 +396,7 @@ output:
   source: <string>
 ```
 
-##### Labels Stage (labels_stage)
+#### labels_stage
 
 The labels stage takes data from the extacted map and sets additional labels
 on the log entry that will be sent to Loki.
@@ -384,7 +410,7 @@ labels:
   [ <string>: [<string>] ... ]
 ```
 
-##### Metrics Stage (metrics_stage)
+#### metrics_stage
 
 The metrics stage allows for defining metrics from the extracted data.
 
@@ -395,7 +421,7 @@ metrics:
   [<string>: [ <metric_counter> | <metric_gauge> | <metric_histogram> ] ...]
 ```
 
-###### Counter Metric (metric_counter)
+##### metric_counter
 
 Defines a counter metric whose value only goes up.
 
@@ -424,7 +450,7 @@ config:
   action: <string>
 ```
 
-###### Gauge Metric (metric_gauge)
+##### metric_gauge
 
 Defines a gauge metric whose value can go up or down.
 
@@ -452,7 +478,7 @@ config:
   action: <string>
 ```
 
-###### Histogram Metric (metric_histogram)
+##### metric_histogram
 
 Defines a histogram metric whose values are bucketed.
 
@@ -485,7 +511,7 @@ config:
     - <int>
 ```
 
-#### Journal Config (journal_config)
+### journal_config
 
 The `journal_config` block configures reading from the systemd journal from
 Promtail. Requires a build of Promtail that has journal support _enabled_. If
@@ -505,7 +531,7 @@ labels:
 [path: <string>]
 ```
 
-#### Relabel Config (relabel_config)
+### relabel_config
 
 Relabeling is a powerful tool to dynamically rewrite the label set of a target
 before it gets scraped. Multiple relabeling steps can be configured per scrape
@@ -585,7 +611,7 @@ use `.*<regex>.*`.
 Care must be taken with `labeldrop` and `labelkeep` to ensure that metrics are
 still uniquely labeled once the labels are removed.
 
-#### Static Config (static_config)
+### static_config
 
 A `static_config` allows specifying a list of targets and a common label set
 for them.  It is the canonical way to specify static targets in a scrape
@@ -606,7 +632,7 @@ labels:
   [ <labelname>: <labelvalue> ... ]
 ```
 
-#### File Service Discovery Config (file_sd_config)
+### file_sd_config
 
 File-based service discovery provides a more generic way to configure static
 targets and serves as an interface to plug in custom service discovery
@@ -652,7 +678,7 @@ Where `<filename_pattern>` may be a path ending in `.json`, `.yml` or `.yaml`.
 The last path segment may contain a single `*` that matches any character
 sequence, e.g. `my/path/tg_*.json`.
 
-#### Kubernetes Service Discovery Config (kubernetes_sd_config)
+### kubernetes_sd_config
 
 Kubernetes SD configurations allow retrieving scrape targets from
 [Kubernetes'](https://kubernetes.io/) REST API and always staying synchronized
@@ -826,7 +852,7 @@ You may wish to check out the 3rd party
 [Prometheus Operator](https://github.com/coreos/prometheus-operator),
 which automates the Prometheus setup on top of Kubernetes.
 
-### Target Config (target_config)
+## target_config
 
 The `target_config` block controls the behavior of reading files from discovered
 targets.
