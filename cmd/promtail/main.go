@@ -25,8 +25,11 @@ func init() {
 
 func main() {
 	printVersion := flag.Bool("version", false, "Print this builds version information")
-	config := loadConfig()
 
+	var config config.Config
+	if err := cfg.Parse(&config); err != nil {
+		log.Fatalln(err)
+	}
 	if *printVersion {
 		fmt.Print(version.Print("promtail"))
 		os.Exit(0)
@@ -45,7 +48,7 @@ func main() {
 		stages.Debug = true
 	}
 
-	p, err := promtail.New(*config)
+	p, err := promtail.New(config)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error creating promtail", "error", err)
 		os.Exit(1)
@@ -59,19 +62,4 @@ func main() {
 	}
 
 	p.Shutdown()
-}
-
-func loadConfig() *config.Config {
-	var c config.Config
-	var defaults []byte
-
-	if err := cfg.Unmarshal(&c,
-		cfg.FlagDefaultsDangerous(&config.Config{}, &defaults),
-		cfg.YAMLFlag(),
-		cfg.Flags(&config.Config{}, defaults),
-	); err != nil {
-		log.Fatalln(err)
-	}
-
-	return &c
 }

@@ -1,6 +1,9 @@
 package cfg
 
 import (
+	"reflect"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/pkg/errors"
 )
 
@@ -23,4 +26,30 @@ func Unmarshal(dst interface{}, sources ...Source) error {
 		}
 	}
 	return nil
+}
+
+// Parse is a higher level wrapper for Unmarshal that automatically parses flags and a .yaml file
+func Parse(dst interface{}) error {
+	// check dst is a pointer
+	v := reflect.ValueOf(dst)
+	if v.Kind() != reflect.Ptr {
+		panic("dst not a pointer")
+	}
+
+	// obtain type of dst for cloning
+	t := reflect.Indirect(v).Type()
+
+	// create new instances of dst's type for flags
+	d := reflect.New(t).Interface().(flagext.Registerer)
+	f := reflect.New(t).Interface().(flagext.Registerer)
+
+	// shared state for FlagDefaultsDangerous and Flags
+	var defaultsYaml []byte
+
+	// unmarshal config
+	return Unmarshal(dst,
+		FlagDefaultsDangerous(d, &defaultsYaml),
+		YAMLFlag(),
+		Flags(f, defaultsYaml),
+	)
 }
