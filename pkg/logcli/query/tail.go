@@ -1,10 +1,11 @@
-package main
+package query
 
 import (
 	"fmt"
 	"log"
 	"strings"
 
+	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/querier"
 
@@ -12,20 +13,21 @@ import (
 	promlabels "github.com/prometheus/prometheus/pkg/labels"
 )
 
-func tailQuery(out output.LogOutput) {
-	conn, err := liveTailQueryConn()
+// TailQuery connects to the Loki websocket endpoint and tails logs
+func (q *Query) TailQuery(delayFor int, c *client.Client, out output.LogOutput) {
+	conn, err := c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, q.Start.UnixNano(), q.Quiet)
 	if err != nil {
 		log.Fatalf("Tailing logs failed: %+v", err)
 	}
 
 	tailReponse := new(querier.TailResponse)
 
-	if len(*ignoreLabelsKey) > 0 {
-		log.Println("Ingoring labels key:", color.RedString(strings.Join(*ignoreLabelsKey, ",")))
+	if len(q.IgnoreLabelsKey) > 0 {
+		log.Println("Ignoring labels key:", color.RedString(strings.Join(q.IgnoreLabelsKey, ",")))
 	}
 
-	if len(*showLabelsKey) > 0 {
-		log.Println("Print only labels key:", color.RedString(strings.Join(*showLabelsKey, ",")))
+	if len(q.ShowLabelsKey) > 0 {
+		log.Println("Print only labels key:", color.RedString(strings.Join(q.ShowLabelsKey, ",")))
 	}
 
 	for {
@@ -38,18 +40,18 @@ func tailQuery(out output.LogOutput) {
 		labels := ""
 		parsedLabels := promlabels.Labels{}
 		for _, stream := range tailReponse.Streams {
-			if !*noLabels {
+			if !q.NoLabels {
 
-				if len(*ignoreLabelsKey) > 0 || len(*showLabelsKey) > 0 {
+				if len(q.IgnoreLabelsKey) > 0 || len(q.ShowLabelsKey) > 0 {
 
 					ls := mustParseLabels(stream.GetLabels())
 
-					if len(*showLabelsKey) > 0 {
-						ls = ls.MatchLabels(true, *showLabelsKey...)
+					if len(q.ShowLabelsKey) > 0 {
+						ls = ls.MatchLabels(true, q.ShowLabelsKey...)
 					}
 
-					if len(*ignoreLabelsKey) > 0 {
-						ls = ls.MatchLabels(false, *ignoreLabelsKey...)
+					if len(q.IgnoreLabelsKey) > 0 {
+						ls = ls.MatchLabels(false, q.IgnoreLabelsKey...)
 					}
 
 					labels = ls.String()

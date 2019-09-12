@@ -292,6 +292,15 @@ func (i *heapIterator) Len() int {
 	return i.heap.Len()
 }
 
+// NewStreamsIterator returns an iterator over logproto.Stream
+func NewStreamsIterator(streams []*logproto.Stream, direction logproto.Direction) EntryIterator {
+	is := make([]EntryIterator, 0, len(streams))
+	for i := range streams {
+		is = append(is, NewStreamIterator(streams[i]))
+	}
+	return NewHeapIterator(is, direction)
+}
+
 // NewQueryResponseIterator returns an iterator over a QueryResponse.
 func NewQueryResponseIterator(resp *logproto.QueryResponse, direction logproto.Direction) EntryIterator {
 	is := make([]EntryIterator, 0, len(resp.Streams))
