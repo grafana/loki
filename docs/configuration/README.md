@@ -4,6 +4,25 @@ Loki is configured in a YAML file (usually referred to as `loki.yaml`)
 which contains information on the Loki server and its individual components,
 depending on which mode Loki is launched in.
 
+Configuration examples can be found in the [Configuration Examples](examples.md) document.
+
+* [Configuration File Reference](#configuration-file-reference)
+* [server_config](#server_config)
+* [querier_config](#querier_config)
+* [ingester_client_config](#ingester_client_config)
+* [ingester_config](#ingester_config)
+  * [lifecycler_config](#lifecycler_config)
+  * [ring_config](#ring_config)
+* [storage_config](#storage_config)
+  * [cache_config](#cache_config)
+* [chunk_store_config](#chunk_store_config)
+* [schema_config](#schema_config)
+  * [period_config](#period_config)
+* [limits_config](#limits_config)
+* [table_manager_config](#table_manager_config)
+  * [provision_config](#provision_config)
+    * [auto_scaling_config](#auto_scaling_config)
+
 ## Configuration File Reference
 
 To specify which configuration file to load, pass the `-config.file` flag at the
