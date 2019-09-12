@@ -2,7 +2,7 @@
 
 Promtail is configured in a YAML file (usually referred to as `config.yaml`)
 which contains information on the Promtail server, where positions are stored,
-ans how to scrape logs from files.
+and how to scrape logs from files.
 
 * [Configuration File Reference](#configuration-file-reference)
 * [server_config](#server_config)

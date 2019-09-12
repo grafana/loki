@@ -53,6 +53,24 @@ There are different types of labels present in Promtail:
   uniqueness of the streams. It is set to the absolute path of the file the line
   was read from.
 
+### Kubernetes Discovery
+
+Note that while promtail can utilize the Kubernetes API to discover pods as
+targets, it can only use pods that are running on the same hostname of the
+machine that promtail is running on.
+
+This means that any time Kubernetes service discovery is used, there must be a
+`relabel_config` that creates the intermediate label `__host__` from
+`__meta_kubernetes_pod_node_name`:
+
+```yaml
+relabel_configs:
+  - source_labels: ['__meta_kubernetes_pod_node_name']
+    target_label: '__host__'
+```
+
+See [Relabeling](#relabeling) for more information.
+
 ## Relabeling
 
 Each `scrape_configs` entry can contain a `relabel_configs` stanza.
