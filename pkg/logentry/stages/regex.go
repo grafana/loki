@@ -89,22 +89,30 @@ func (r *regexStage) Process(labels model.LabelSet, extracted map[string]interfa
 	input := entry
 
 	if r.cfg.Source != nil {
-		if _, ok := extracted[*r.cfg.Source]; !ok {
+		if _, ok := extracted[*r.cfg.Source]; ok {
+			value, err := getString(extracted[*r.cfg.Source])
+			if err != nil {
+				if Debug {
+					level.Debug(r.logger).Log("msg", "failed to convert source value to string", "source", *r.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*r.cfg.Source]).String())
+				}
+				return
+			}
+			input = &value
+		} else if _, ok := labels[model.LabelName(*r.cfg.Source)]; ok {
+			value, err := getString(labels[model.LabelName(*r.cfg.Source)])
+			if err != nil {
+				if Debug {
+					level.Debug(r.logger).Log("msg", "failed to convert source value to string", "source", *r.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*r.cfg.Source]).String())
+				}
+				return
+			}
+			input = &value
+		} else {
 			if Debug {
 				level.Debug(r.logger).Log("msg", "source does not exist in the set of extracted values", "source", *r.cfg.Source)
 			}
 			return
 		}
-
-		value, err := getString(extracted[*r.cfg.Source])
-		if err != nil {
-			if Debug {
-				level.Debug(r.logger).Log("msg", "failed to convert source value to string", "source", *r.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*r.cfg.Source]).String())
-			}
-			return
-		}
-
-		input = &value
 	}
 
 	if input == nil {
