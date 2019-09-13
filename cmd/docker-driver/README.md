@@ -118,7 +118,7 @@ To specify additional logging driver options, you can use the --log-opt NAME=VAL
 | Option                    | Required? | Default Value        | Description
 | ------------------------- | :-------: | :------------------: | -------------------------------------- |
 | `loki-url`                  | Yes       |                      | Loki HTTP push endpoint.
-| `loki-external-labels`      | No        | `container_name={{.Name}}` | Additional label value pair separated by `,` to send with logs. The value is expanded with the [Docker tag template format](https://docs.docker.com/engine/admin/logging/log_tags/). (eg: `container_name={{.ID}}.{{.Name}},cluster=prod`)
+| `loki-external-labels`      | No        | `container_name={{.Name}}` | Additional label value pair separated by `,` to send with logs. The value is expanded with the [Docker tag template format](https://docs.docker.com/config/containers/logging/log_tags/). (eg: `container_name={{.ID}}.{{.Name}},cluster=prod`)
 | `loki-timeout`          | No        | `10s`     | The timeout to use when sending logs to the Loki instance. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
 | `loki-batch-wait`          | No        | `1s`            | The amount of time to wait before sending a log batch complete or not. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
 | `loki-batch-size`             | No        | `102400`               | The maximum size of a log batch to send.
