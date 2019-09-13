@@ -214,7 +214,7 @@ lint:
 ########
 
 test: all
-	GOGC=20 go test -p=6 ./...
+	go test -p=6 ./...
 
 #########
 # Clean #
