@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/prometheus/common/model"
 )
 
 //QueryStatus
@@ -89,56 +91,7 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 }
 
 //Vector
-type Vector []Metric
-
-//Metric
-type Metric struct {
-	Labels LabelSet `json:"metric"`
-	Value  Point    `json:"value"`
-}
+type Vector []*model.Sample
 
 //Matrix
-type Matrix []Series
-
-//Series
-type Series struct {
-	Labels LabelSet `json:"metric"`
-	Value  []Point  `json:"values"`
-}
-
-//Point jpe:  time.Time or int64?
-type Point struct {
-	T time.Time
-	V float64
-}
-
-//MarshalJSON implements json.Marshaler.
-func (p Point) MarshalJSON() ([]byte, error) {
-	v := strconv.FormatFloat(p.V, 'f', -1, 64)
-	return json.Marshal([...]interface{}{float64(p.T.UnixNano() / int64(time.Millisecond)), v})
-}
-
-//UnmarshalJSON
-func (p Point) UnmarshalJSON(data []byte) error {
-	var unmarshal []interface{}
-
-	err := json.Unmarshal(data, &unmarshal)
-	if err != nil {
-		return err
-	}
-
-	f, ok := unmarshal[0].(float64)
-	if !ok {
-		return fmt.Errorf("Failed to convert ")
-	}
-
-	t, err := strconv.ParseInt(unmarshal[0], 10, 64)
-	if err != nil {
-		return err
-	}
-
-	e.Timestamp = time.Unix(0, t)
-	e.Line = unmarshal[1]
-
-	return nil
-}
+type Matrix []*model.SampleStream
