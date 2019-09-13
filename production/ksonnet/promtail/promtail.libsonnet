@@ -63,7 +63,7 @@ k + config + scrape_config {
   promtail_daemonset:
     daemonSet.new('promtail', [$.promtail_container]) +
     daemonSet.mixin.spec.template.spec.withServiceAccount($._config.promtail_cluster_role_name) +
-    $.util.configVolumeMount('promtail', '/etc/promtail') +
+    $.util.configVolumeMount($._config.promtail_configmap_name, '/etc/promtail') +
     $.util.hostVolumeMount('varlog', '/var/log', '/var/log') +
     $.util.hostVolumeMount('varlibdockercontainers', $._config.promtail_config.container_root_path + '/containers', $._config.promtail_config.container_root_path + '/containers', readOnly=true),
 }
