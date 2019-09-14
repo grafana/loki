@@ -299,7 +299,7 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if result.Type() != logql.ValueTypeStreams {
+	if result.Type() != logql.ValueTypeStreams { //jpe - remove in favor of legacy package doing this now
 		http.Error(w, fmt.Sprintf("log query only support %s result type, current type is %s", logql.ValueTypeStreams, result.Type()), http.StatusBadRequest)
 		return
 	}
