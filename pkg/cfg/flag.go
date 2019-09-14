@@ -7,8 +7,25 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	ghodss "github.com/ghodss/yaml"
+	"github.com/pkg/errors"
 	yaml "gopkg.in/yaml.v2"
 )
+
+// FlagDefaults obtains defaults from a flag registerer and fails when it is not the first source.
+func FlagDefaults(reg flagext.Registerer, ptr *[]byte) Source {
+	f := FlagDefaultsDangerous(reg, ptr)
+
+	return func(dst interface{}) error {
+		// check dst is it's zero value (also indirect pointers first)
+		v := reflect.Indirect(reflect.ValueOf(dst))
+		z := reflect.Zero(v.Type())
+		if !reflect.DeepEqual(v.Interface(), z.Interface()) {
+			return errors.New("FlagDefaults() does not seem to be the first source. This is required to avoid data loss. If you really want to override data from previous sources, use FlagDefaultsDangerous()")
+		}
+
+		return f(dst)
+	}
+}
 
 // FlagDefaultsDangerous obtains defaults from a flag Registerer and DANGEROUSLY
 // replaces (!!) the dst object with reg.

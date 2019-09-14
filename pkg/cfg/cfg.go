@@ -38,6 +38,20 @@ func Unmarshal(dst interface{}, sources ...Source) error {
 
 // Parse is a higher level wrapper for Unmarshal that automatically parses flags and a .yaml file
 func Parse(dst interface{}) error {
+	yamlSource := func() Source {
+		return YAMLFlag("config.file", "", ".yaml configuration file to parse")
+	}
+	flagSource := func(reg flagext.Registerer, def []byte) Source {
+		return Flags(reg, def)
+	}
+	return dParse(dst, yamlSource, flagSource)
+}
+
+// dParse is like Parse, but allows dependency injection
+func dParse(dst interface{},
+	yamlSource func() Source,
+	flagSource func(flagext.Registerer, []byte) Source,
+) error {
 	// check dst is a pointer
 	v := reflect.ValueOf(dst)
 	if v.Kind() != reflect.Ptr {
@@ -56,8 +70,8 @@ func Parse(dst interface{}) error {
 
 	// unmarshal config
 	return Unmarshal(dst,
-		FlagDefaultsDangerous(d, &defaultsYaml),
-		YAMLFlag(),
-		Flags(f, defaultsYaml),
+		FlagDefaults(d, &defaultsYaml),
+		yamlSource(),
+		flagSource(f, defaultsYaml),
 	)
 }

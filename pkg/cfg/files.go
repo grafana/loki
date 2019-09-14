@@ -52,8 +52,8 @@ func dYAML(y []byte) Source {
 }
 
 // YAMLFlag defines a `config.file` flag and loads this file
-func YAMLFlag() Source {
-	f := flag.String("config.file", "", ".yaml configuration file to parse")
+func YAMLFlag(name, value, help string) Source {
+	f := flag.String(name, value, help)
 	return func(dst interface{}) error {
 		if *f == "" {
 			f = nil

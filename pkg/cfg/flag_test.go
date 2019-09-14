@@ -12,10 +12,10 @@ import (
 // NOTE: These tests CANNOT run in parallel, because of the global state in the
 // `flag` package of the standard library.
 
-// TestDefaults checks whether `FlagDefaultsDangerous()` correctly sets values from flag defaults
+// TestDefaults checks whether `FlagDefaults()` correctly sets values from flag defaults
 func TestDefaults(t *testing.T) {
 	var d Data
-	err := FlagDefaultsDangerous(&Data{}, nil)(&d)
+	err := FlagDefaults(&Data{}, nil)(&d)
 	require.NoError(t, err)
 	assert.Equal(t, Data{
 		Verbose: false,
@@ -37,7 +37,7 @@ func TestFlagsSetOnly(t *testing.T) {
 
 	var sharedMem []byte
 	// c is not passed, to only see the output of dFlags() afterwards
-	err := FlagDefaultsDangerous(&Data{}, &sharedMem)(&Data{})
+	err := FlagDefaults(&Data{}, &sharedMem)(&Data{})
 	require.NoError(t, err)
 
 	err = dFlags([]string{"-verbose", "-server.timeout=12h"}, &Data{}, sharedMem)(&c)
@@ -65,7 +65,7 @@ func TestFlagsMerge(t *testing.T) {
 	var sharedMem []byte
 
 	err := Unmarshal(&c,
-		FlagDefaultsDangerous(&Data{}, &sharedMem),
+		FlagDefaults(&Data{}, &sharedMem),
 		dFlags([]string{"-verbose", "-server.timeout=12h"}, &Data{}, sharedMem),
 	)
 	require.NoError(t, err)
