@@ -19,23 +19,36 @@ type DroppedStream struct {
 	Labels LabelSet  `json:"labels,omitempty"`
 }
 
-func NewTailResponse(r logproto.TailResponse) TailResponse {
+func NewTailResponse(r logproto.TailResponse) (TailResponse, error) {
+	s, err := NewStream(r.Stream)
+	if err != nil {
+		return TailResponse{}, err
+	}
+
 	new := TailResponse{
-		Stream:         NewStream(r.Stream),
+		Stream:         s,
 		DroppedStreams: make([]*DroppedStream, len(r.DroppedStreams)),
 	}
 
 	for i, d := range r.DroppedStreams {
-		new.DroppedStreams[i] = NewDroppedStream(d)
+		new.DroppedStreams[i], err = NewDroppedStream(d)
+		if err != nil {
+			return TailResponse{}, err
+		}
 	}
 
-	return new
+	return new, nil
 }
 
-func NewDroppedStream(s *logproto.DroppedStream) *DroppedStream {
+func NewDroppedStream(s *logproto.DroppedStream) (*DroppedStream, error) {
+	l, err := NewLabelSet(s.Labels)
+	if err != nil {
+		return nil, err
+	}
+
 	return &DroppedStream{
 		From:   s.From,
 		To:     s.To,
-		Labels: s.Labels,
-	}
+		Labels: l,
+	}, nil
 }

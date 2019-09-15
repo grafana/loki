@@ -97,13 +97,13 @@ type Vector []*model.Sample
 //Matrix
 type Matrix []*model.SampleStream
 
-func NewStream(s logproto.Stream) (Stream, error) {
+func NewStream(s *logproto.Stream) (*Stream, error) {
 	labels, err := NewLabelSet(s.Labels)
 	if err != nil {
-		return Stream{}, err
+		return nil, err
 	}
 
-	new := Stream{
+	new := &Stream{
 		Labels:  labels,
 		Entries: make([]Entry, len(s.Entries)),
 	}

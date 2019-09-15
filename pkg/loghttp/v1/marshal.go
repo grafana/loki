@@ -9,7 +9,7 @@ import (
 )
 
 func WriteQueryResponseJSON(v promql.Value, w io.Writer) error {
-
+	return nil
 }
 
 //WriteLabelResponseJSON marshals a logproto.LabelResponse to JSON and then writes it to the provided io.Writer
