@@ -29,8 +29,8 @@ func NewStream(s *logproto.Stream) *Stream {
 		Entries: make([]Entry, len(s.Entries)),
 	}
 
-	for _, e := range s.Entries {
-		new.Entries = append(new.Entries, NewEntry(e))
+	for i, e := range s.Entries {
+		new.Entries[i] = NewEntry(e)
 	}
 
 	return new

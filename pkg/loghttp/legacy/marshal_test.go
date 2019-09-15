@@ -111,7 +111,7 @@ func Test_MarshalTailResponse(t *testing.T) {
 	require.Truef(t, ok, "Failed to convert stream object")
 	testStream(t, expectedTailResponse.Stream, stream)
 
-	droppedStreams, ok := actualValue["droppedStream"].([]interface{})
+	droppedStreams, ok := actualValue["droppedStreams"].([]interface{})
 	require.Truef(t, ok, "Failed to convert droppedStreams object")
 	require.Equalf(t, len(expectedTailResponse.DroppedStreams), len(droppedStreams), "Dropped stream count difference")
 

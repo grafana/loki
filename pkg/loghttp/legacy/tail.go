@@ -24,8 +24,8 @@ func NewTailResponse(r logproto.TailResponse) TailResponse {
 		DroppedStreams: make([]*DroppedStream, len(r.DroppedStreams)),
 	}
 
-	for _, d := range r.DroppedStreams {
-		new.DroppedStreams = append(new.DroppedStreams, NewDroppedStream(d))
+	for i, d := range r.DroppedStreams {
+		new.DroppedStreams[i] = NewDroppedStream(d)
 	}
 
 	return new
