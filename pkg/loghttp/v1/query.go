@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 )
 
@@ -95,3 +96,28 @@ type Vector []*model.Sample
 
 //Matrix
 type Matrix []*model.SampleStream
+
+func NewStream(s logproto.Stream) (Stream, error) {
+	labels, err := NewLabelSet(s.Labels)
+	if err != nil {
+		return Stream{}, err
+	}
+
+	new := Stream{
+		Labels:  labels,
+		Entries: make([]Entry, len(s.Entries)),
+	}
+
+	for i, e := range s.Entries {
+		new.Entries[i] = NewEntry(e)
+	}
+
+	return new, nil
+}
+
+func NewEntry(e logproto.Entry) Entry {
+	return Entry{
+		Timestamp: e.Timestamp,
+		Line:      e.Line,
+	}
+}
