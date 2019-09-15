@@ -3,8 +3,11 @@ package v1
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -133,18 +136,28 @@ func Test_MarshalTailResponse(t *testing.T) {
 
 func testStream(t *testing.T, expectedValue *logproto.Stream, actualValue map[string]interface{}) {
 	expectedStream := expectedValue
-	require.Equalf(t, expectedStream.Labels, actualValue["labels"], "Labels different on stream")
+
+	expectedLabels, err := promql.ParseMetric(expectedStream.Labels)
+	require.NoErrorf(t, err, "Failed to convert string labels to map")
+
+	actualLabels, ok := actualValue["labels"].(map[string]interface{})
+	require.Truef(t, ok, "Failed to convert labels object")
+
+	require.Equalf(t, len(expectedLabels), len(actualLabels), "Labels have different lengths")
+	for _, l := range expectedLabels {
+		require.Equalf(t, l.Value, actualLabels[l.Name], "Label %s has different values", l.Name)
+	}
 
 	entries, ok := actualValue["entries"].([]interface{})
 	require.Truef(t, ok, "Failed to convert entries object on stream")
 	require.Equalf(t, len(expectedStream.Entries), len(entries), "Entries count different on stream")
 
 	for j, entry := range entries {
-		actualEntry, ok := entry.(map[string]interface{})
+		actualEntry, ok := entry.([]interface{})
 		require.Truef(t, ok, "Failed to convert entry object on entry %d", j)
 
 		expectedEntry := expectedStream.Entries[j]
-		require.Equalf(t, expectedEntry.Line, actualEntry["line"], "Lines not equal on stream %d", j)
-		require.Equalf(t, expectedEntry.Timestamp.Format(time.RFC3339Nano), actualEntry["ts"], "Timestamps not equal on stream %d", j)
+		require.Equalf(t, expectedEntry.Line, actualEntry[1], "Lines not equal on stream %d", j)
+		require.Equalf(t, fmt.Sprintf("%d", expectedEntry.Timestamp.UnixNano()), actualEntry[0], "Timestamps not equal on stream %d", j)
 	}
 }
