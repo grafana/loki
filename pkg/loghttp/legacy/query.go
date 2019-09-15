@@ -1,6 +1,10 @@
 package legacy
 
-import "time"
+import (
+	"time"
+
+	"github.com/grafana/loki/pkg/logproto"
+)
 
 // QueryResponse represents the http json response to a label query
 type QueryResponse struct {
@@ -17,4 +21,24 @@ type Stream struct {
 type Entry struct {
 	Timestamp time.Time `json:"ts"`
 	Line      string    `json:"line"`
+}
+
+func NewStream(s *logproto.Stream) *Stream {
+	new := &Stream{
+		Labels:  s.Labels,
+		Entries: make([]Entry, len(s.Entries)),
+	}
+
+	for _, e := range s.Entries {
+		new.Entries = append(new.Entries, NewEntry(e))
+	}
+
+	return new
+}
+
+func NewEntry(e logproto.Entry) Entry {
+	return Entry{
+		Timestamp: e.Timestamp,
+		Line:      e.Line,
+	}
 }
