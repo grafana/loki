@@ -61,27 +61,48 @@ var labelTests = []struct {
 	},
 }
 
-var expectedTailResponse = logproto.TailResponse{
-	Stream: &logproto.Stream{
-		Entries: []logproto.Entry{
-			logproto.Entry{
-				Timestamp: time.Now(),
-				Line:      "super line",
+var tailTests = []struct {
+	actual   logproto.TailResponse
+	expected string
+}{
+	{
+		logproto.TailResponse{
+			Stream: &logproto.Stream{
+				Entries: []logproto.Entry{
+					logproto.Entry{
+						Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
+						Line:      "super line",
+					},
+				},
+				Labels: "{test=\"test\"}",
+			},
+			DroppedStreams: []*logproto.DroppedStream{
+				&logproto.DroppedStream{
+					From:   mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
+					To:     mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.38000132Z"),
+					Labels: "{test=\"test\"}",
+				},
 			},
 		},
-		Labels: "{test=\"test\"}",
-	},
-	DroppedStreams: []*logproto.DroppedStream{
-		&logproto.DroppedStream{
-			From:   time.Now(),
-			To:     time.Now().Add(20 * time.Millisecond),
-			Labels: "{test=\"test\"}",
-		},
-		&logproto.DroppedStream{
-			From:   time.Now(),
-			To:     time.Now().Add(20 * time.Nanosecond),
-			Labels: "{test=\"test\"}",
-		},
+		// jpe confirm tail response format
+		`{
+			"stream": {
+				"labels": "{test=\"test\"}",
+				"entries": [
+					{
+						"ts": "2019-09-13T18:32:22.380001319Z",
+						"line": "super line"	
+					}
+				]
+			},
+			"droppedStreams": [
+				{
+					"from": "2019-09-13T18:32:22.380001319Z",
+					"to": "2019-09-13T18:32:22.38000132Z",
+					"labels": "{test=\"test\"}"
+				}
+			]
+		}`,
 	},
 }
 
@@ -112,50 +133,16 @@ func Test_WriteLabelResponseJSON(t *testing.T) {
 }
 
 func Test_MarshalTailResponse(t *testing.T) {
-	// convert logproto to model objects
-	model := NewTailResponse(expectedTailResponse)
 
-	// marshal model object
-	bytes, err := json.Marshal(model)
-	require.NoError(t, err)
+	for i, tailTest := range tailTests {
+		// convert logproto to model objects
+		model := NewTailResponse(tailTest.actual)
 
-	var actualValue map[string]interface{}
-	err = json.Unmarshal(bytes, &actualValue)
-	require.NoError(t, err)
+		// marshal model object
+		bytes, err := json.Marshal(model)
+		require.NoError(t, err)
 
-	stream, ok := actualValue["stream"].(map[string]interface{})
-	require.Truef(t, ok, "Failed to convert stream object")
-	testStream(t, expectedTailResponse.Stream, stream)
-
-	droppedStreams, ok := actualValue["droppedStreams"].([]interface{})
-	require.Truef(t, ok, "Failed to convert droppedStreams object")
-	require.Equalf(t, len(expectedTailResponse.DroppedStreams), len(droppedStreams), "Dropped stream count difference")
-
-	for i, droppedStream := range droppedStreams {
-		actualDropped, ok := droppedStream.(map[string]interface{})
-		require.Truef(t, ok, "Failed to convert droppedStream object")
-
-		require.Equalf(t, expectedTailResponse.DroppedStreams[i].Labels, actualDropped["labels"], "Labels not equal on dropped stream %d", i)
-		require.Equalf(t, expectedTailResponse.DroppedStreams[i].To.Format(time.RFC3339Nano), actualDropped["to"], "To not equal on dropped stream %d", i)
-		require.Equalf(t, expectedTailResponse.DroppedStreams[i].From.Format(time.RFC3339Nano), actualDropped["from"], "From not equal on dropped stream %d", i)
-	}
-}
-
-func testStream(t *testing.T, expectedValue *logproto.Stream, actualValue map[string]interface{}) {
-	expectedStream := expectedValue
-	require.Equalf(t, expectedStream.Labels, actualValue["labels"], "Labels different on stream")
-
-	entries, ok := actualValue["entries"].([]interface{})
-	require.Truef(t, ok, "Failed to convert entries object on stream")
-	require.Equalf(t, len(expectedStream.Entries), len(entries), "Entries count different on stream")
-
-	for j, entry := range entries {
-		actualEntry, ok := entry.(map[string]interface{})
-		require.Truef(t, ok, "Failed to convert entry object on entry %d", j)
-
-		expectedEntry := expectedStream.Entries[j]
-		require.Equalf(t, expectedEntry.Line, actualEntry["line"], "Lines not equal on stream %d", j)
-		require.Equalf(t, expectedEntry.Timestamp.Format(time.RFC3339Nano), actualEntry["ts"], "Timestamps not equal on stream %d", j)
+		testJSONBytesEqual(t, []byte(tailTest.expected), bytes, "Tail Test %d failed", i)
 	}
 }
 
