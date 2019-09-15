@@ -52,8 +52,8 @@ type Streams []Stream
 
 //Stream represents a log stream.  It includes a set of log entries and their labels.
 type Stream struct {
-	Labels  LabelSet `json:"labels"`
-	Entries []Entry  `json:"entries"`
+	Labels  LabelSet `json:"stream"`
+	Entries []Entry  `json:"values"`
 }
 
 //Entry represents a log entry.  It includes a log message and the time it occurred at.
