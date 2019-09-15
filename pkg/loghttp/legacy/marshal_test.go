@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var expectedValue = logql.Streams{
+var expectedStreamsValue = logql.Streams{
 	&logproto.Stream{
 		Entries: []logproto.Entry{
 			logproto.Entry{
@@ -23,28 +23,37 @@ var expectedValue = logql.Streams{
 	},
 }
 
+var expectedLabelsValue = logproto.LabelResponse{
+	Values: []string{
+		"label1",
+		"test",
+		"value",
+	},
+}
+
 func init() {
 
 }
 
-func Test_WriteJSON(t *testing.T) {
+func Test_WriteQueryResponseJSON(t *testing.T) {
 	var b bytes.Buffer
-	err := WriteJSON(expectedValue, &b)
+	err := WriteQueryResponseJSON(expectedStreamsValue, &b)
 	require.NoError(t, err)
 
 	//unmarshal to a simple map and compare actual vs. expected
 	var actualValue map[string]interface{}
-	json.Unmarshal(b.Bytes(), &actualValue)
+	err = json.Unmarshal(b.Bytes(), &actualValue)
+	require.NoError(t, err)
 
 	streams, ok := actualValue["streams"].([]interface{})
 	require.Truef(t, ok, "Failed to convert streams object")
-	require.Equalf(t, len(expectedValue), len(streams), "Stream count difference")
+	require.Equalf(t, len(expectedStreamsValue), len(streams), "Stream count difference")
 
 	for i, stream := range streams {
 		actualStream, ok := stream.(map[string]interface{})
 		require.Truef(t, ok, "Failed to convert stream object")
 
-		expectedStream := expectedValue[i]
+		expectedStream := expectedStreamsValue[i]
 		require.Equalf(t, expectedStream.Labels, actualStream["labels"], "Labels different on stream %d", i)
 
 		entries, ok := actualStream["entries"].([]interface{})
@@ -59,5 +68,24 @@ func Test_WriteJSON(t *testing.T) {
 			require.Equalf(t, expectedEntry.Line, actualEntry["line"], "Lines not equal on stream %d entry %d", i, j)
 			require.Equalf(t, expectedEntry.Timestamp.Format(time.RFC3339Nano), actualEntry["ts"], "Timestamps not equal on stream %d entry %d", i, j)
 		}
+	}
+}
+
+func Test_WriteLabelResponseJSON(t *testing.T) {
+	var b bytes.Buffer
+	err := WriteLabelResponseJSON(expectedLabelsValue, &b)
+	require.NoError(t, err)
+
+	//unmarshal to a simple map and compare actual vs. expected
+	var actualValue map[string]interface{}
+	err = json.Unmarshal(b.Bytes(), &actualValue)
+	require.NoError(t, err)
+
+	values, ok := actualValue["values"].([]interface{})
+	require.Truef(t, ok, "Failed to convert values object")
+	require.Equalf(t, len(expectedLabelsValue.Values), len(values), "Value count difference")
+
+	for i, value := range values {
+		require.Equal(t, expectedLabelsValue.Values[i], value)
 	}
 }
