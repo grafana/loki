@@ -40,11 +40,19 @@ var expectedStreamsValue = logql.Streams{
 	},
 }
 
-var expectedLabelsValue = logproto.LabelResponse{
-	Values: []string{
-		"label1",
-		"test",
-		"value",
+var labelTests = []struct {
+	actual   logproto.LabelResponse
+	expected string
+}{
+	{
+		logproto.LabelResponse{
+			Values: []string{
+				"label1",
+				"test",
+				"value",
+			},
+		},
+		`{"values": ["label1", "test", "value"]}`,
 	},
 }
 
@@ -99,21 +107,13 @@ func Test_WriteQueryResponseJSON(t *testing.T) {
 }
 
 func Test_WriteLabelResponseJSON(t *testing.T) {
-	var b bytes.Buffer
-	err := WriteLabelResponseJSON(expectedLabelsValue, &b)
-	require.NoError(t, err)
 
-	//unmarshal to a simple map and compare actual vs. expected
-	var actualValue map[string]interface{}
-	err = json.Unmarshal(b.Bytes(), &actualValue)
-	require.NoError(t, err)
+	for i, labelTest := range labelTests {
+		var b bytes.Buffer
+		err := WriteLabelResponseJSON(labelTest.actual, &b)
+		require.NoError(t, err)
 
-	values, ok := actualValue["values"].([]interface{})
-	require.Truef(t, ok, "Failed to convert values object")
-	require.Equalf(t, len(expectedLabelsValue.Values), len(values), "Value count difference")
-
-	for i, value := range values {
-		require.Equal(t, expectedLabelsValue.Values[i], value)
+		testJSONBytesEqual(t, []byte(labelTest.expected), b.Bytes(), "Label Test %d failed", i)
 	}
 }
 
@@ -163,4 +163,16 @@ func testStream(t *testing.T, expectedValue *logproto.Stream, actualValue map[st
 		require.Equalf(t, expectedEntry.Line, actualEntry["line"], "Lines not equal on stream %d", j)
 		require.Equalf(t, expectedEntry.Timestamp.Format(time.RFC3339Nano), actualEntry["ts"], "Timestamps not equal on stream %d", j)
 	}
+}
+
+func testJSONBytesEqual(t *testing.T, expected []byte, actual []byte, msg string, args ...interface{}) {
+	var expectedValue map[string]interface{}
+	err := json.Unmarshal(expected, &expectedValue)
+	require.NoError(t, err)
+
+	var actualValue map[string]interface{}
+	err = json.Unmarshal(actual, &actualValue)
+	require.NoError(t, err)
+
+	require.Equalf(t, expectedValue, actualValue, msg, args)
 }
