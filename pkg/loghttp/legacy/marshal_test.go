@@ -64,6 +64,11 @@ var expectedTailResponse = logproto.TailResponse{
 			To:     time.Now().Add(20 * time.Millisecond),
 			Labels: "{test=\"test\"}",
 		},
+		&logproto.DroppedStream{
+			From:   time.Now(),
+			To:     time.Now().Add(20 * time.Nanosecond),
+			Labels: "{test=\"test\"}",
+		},
 	},
 }
 
