@@ -21,6 +21,23 @@ var expectedStreamsValue = logql.Streams{
 		},
 		Labels: "{test=\"test\"}",
 	},
+	&logproto.Stream{
+		Entries: []logproto.Entry{
+			logproto.Entry{
+				Timestamp: time.Now(),
+				Line:      "super line",
+			},
+			logproto.Entry{
+				Timestamp: time.Now().Add(300 * time.Second),
+				Line:      "other line",
+			},
+		},
+		Labels: "{test=\"test\",asdf=\"asdf\"}",
+	},
+	&logproto.Stream{
+		Entries: []logproto.Entry{},
+		Labels:  "{}",
+	},
 }
 
 var expectedLabelsValue = logproto.LabelResponse{
@@ -44,7 +61,7 @@ var expectedTailResponse = logproto.TailResponse{
 	DroppedStreams: []*logproto.DroppedStream{
 		&logproto.DroppedStream{
 			From:   time.Now(),
-			To:     time.Now(),
+			To:     time.Now().Add(20 * time.Millisecond),
 			Labels: "{test=\"test\"}",
 		},
 	},
