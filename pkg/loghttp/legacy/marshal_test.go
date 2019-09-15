@@ -3,6 +3,7 @@ package legacy
 import (
 	"bytes"
 	"encoding/json"
+	"log"
 	"testing"
 	"time"
 
@@ -11,32 +12,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var expectedStreamsValue = logql.Streams{
-	&logproto.Stream{
-		Entries: []logproto.Entry{
-			logproto.Entry{
-				Timestamp: time.Now(),
-				Line:      "super line",
+var queryTests = []struct {
+	actual   logql.Streams
+	expected string
+}{
+	// basic test
+	{
+		logql.Streams{
+			&logproto.Stream{
+				Entries: []logproto.Entry{
+					logproto.Entry{
+						Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
+						Line:      "super line",
+					},
+				},
+				Labels: `{test="test"}`,
 			},
 		},
-		Labels: "{test=\"test\"}",
-	},
-	&logproto.Stream{
-		Entries: []logproto.Entry{
-			logproto.Entry{
-				Timestamp: time.Now(),
-				Line:      "super line",
-			},
-			logproto.Entry{
-				Timestamp: time.Now().Add(300 * time.Second),
-				Line:      "other line",
-			},
-		},
-		Labels: "{test=\"test\",asdf=\"asdf\"}",
-	},
-	&logproto.Stream{
-		Entries: []logproto.Entry{},
-		Labels:  "{}",
+		`{
+			"streams":[
+				{
+					"labels":"{test=\"test\"}",
+					"entries":[
+						{
+							"ts": "2019-09-13T18:32:22.380001319Z",
+							"line": "super line"	
+						}
+					]
+				}
+			]
+		}`,
 	},
 }
 
@@ -85,24 +90,13 @@ func init() {
 }
 
 func Test_WriteQueryResponseJSON(t *testing.T) {
-	var b bytes.Buffer
-	err := WriteQueryResponseJSON(expectedStreamsValue, &b)
-	require.NoError(t, err)
 
-	//unmarshal to a simple map and compare actual vs. expected
-	var actualValue map[string]interface{}
-	err = json.Unmarshal(b.Bytes(), &actualValue)
-	require.NoError(t, err)
+	for i, queryTest := range queryTests {
+		var b bytes.Buffer
+		err := WriteQueryResponseJSON(queryTest.actual, &b)
+		require.NoError(t, err)
 
-	streams, ok := actualValue["streams"].([]interface{})
-	require.Truef(t, ok, "Failed to convert streams object")
-	require.Equalf(t, len(expectedStreamsValue), len(streams), "Stream count difference")
-
-	for i, stream := range streams {
-		actualStream, ok := stream.(map[string]interface{})
-		require.Truef(t, ok, "Failed to convert stream object")
-
-		testStream(t, expectedStreamsValue[i], actualStream)
+		testJSONBytesEqual(t, []byte(queryTest.expected), b.Bytes(), "Query Test %d failed", i)
 	}
 }
 
@@ -175,4 +169,13 @@ func testJSONBytesEqual(t *testing.T, expected []byte, actual []byte, msg string
 	require.NoError(t, err)
 
 	require.Equalf(t, expectedValue, actualValue, msg, args)
+}
+
+func mustParse(l string, t string) time.Time {
+	ret, err := time.Parse(l, t)
+	if err != nil {
+		log.Fatalf("Failed to parse %s", t)
+	}
+
+	return ret
 }
