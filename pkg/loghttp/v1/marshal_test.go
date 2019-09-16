@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -16,11 +17,10 @@ import (
 )
 
 var queryTests = []struct {
-	actual   logql.Streams
+	actual   promql.Value
 	expected string
 }{
-	// jpe - add vector/matrix tests
-	// basic test
+	// streams test
 	{
 		logql.Streams{
 			&logproto.Stream{
@@ -50,6 +50,72 @@ var queryTests = []struct {
 			}
 		}`,
 	},
+	// vector test
+	{
+		promql.Vector{
+			{
+				Point: promql.Point{
+					T: 1568404331324,
+					V: 0.013333333333333334,
+				},
+				Metric: []labels.Label{
+					{
+						Name:  "filename",
+						Value: `/var/hostlog/apport.log`,
+					},
+					{
+						Name:  "job",
+						Value: "varlogs",
+					},
+				},
+			},
+			{
+				Point: promql.Point{
+					T: 1568404331324,
+					V: 3.45,
+				},
+				Metric: []labels.Label{
+					{
+						Name:  "filename",
+						Value: `/var/hostlog/syslog`,
+					},
+					{
+						Name:  "job",
+						Value: "varlogs",
+					},
+				},
+			},
+		},
+		`{
+			"data": {
+			  "resultType": "vector",
+			  "result": [
+				{
+				  "metric": {
+					"filename": "\/var\/hostlog\/apport.log",
+					"job": "varlogs"
+				  },
+				  "value": [
+					1568404331.324,
+					"0.013333333333333334"
+				  ]
+				},
+				{
+				  "metric": {
+					"filename": "\/var\/hostlog\/syslog",
+					"job": "varlogs"
+				  },
+				  "value": [
+					1568404331.324,
+					"3.45"
+				  ]
+				}
+			  ]
+			},
+			"status": "success"
+		  }`,
+	},
+	// matrix test
 }
 
 var labelTests = []struct {
