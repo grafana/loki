@@ -13,7 +13,7 @@ const (
 
 //Version returns the http/json version for a given path.
 func GetVersion(uri string) Version {
-	if strings.HasPrefix(uri, "/loki/api/v1") {
+	if strings.HasPrefix(strings.ToLower(uri), "/loki/api/v1") {
 		return VersionV1
 	}
 
