@@ -10,6 +10,7 @@ Configuration examples can be found in the [Configuration Examples](examples.md)
 * [server_config](#server_config)
 * [querier_config](#querier_config)
 * [ingester_client_config](#ingester_client_config)
+  * [grpc_client_config](#grpc_client_config)
 * [ingester_config](#ingester_config)
   * [lifecycler_config](#lifecycler_config)
   * [ring_config](#ring_config)
@@ -177,11 +178,47 @@ pool_config:
   # health check to recover the missing client.
   [remotetimeout: <duration>]
 
-# The maximum message size in bytes that the client will accept
-[max_recv_msg_size: <int> | default = 67108864]
-
 # The remote request timeout on the client side.
 [remote_timeout: <duration> | default = 5s]
+
+# Configures how the gRPC connection to ingesters work as a
+# client.
+[grpc_client_config: <grpc_client_config>]
+```
+
+### grpc_client_config
+
+The `grpc_client_config` block configures a client connection to a gRPC service.
+
+```yaml
+# The maximum size in bytes the client can recieve
+[max_recv_msg_size: <int> | default = 104857600]
+
+# The maximum size in bytes the client can send
+[max_send_msg_size: <int> | default = 16777216]
+
+# Whether or not messages should be compressed
+[use_gzip_compression: <bool> | default = false]
+
+# Rate limit for gRPC client. 0 is disabled
+[rate_limit: <float> | default = 0]
+
+# Rate limit burst for gRPC client.
+[rate_limit_burst: <int> | default = 0]
+
+# Enable backoff and retry when a rate limit is hit.
+[backoff_on_ratelimits: <bool> | default = false]
+
+# Configures backoff when enbaled.
+backoff_config:
+  # Minimum delay when backing off.
+  [minbackoff: <duration> | default = 100ms]
+
+  # The maximum delay when backing off.
+  [maxbackoff: <duration> | default = 10s]
+
+  # Number of times to backoff and retry before failing.
+  [maxretries: <int> | default = 10]
 ```
 
 ## ingester_config
@@ -387,35 +424,7 @@ bigtable:
   instance: <string>
 
   # Configures the gRPC client used to connect to Bigtable.
-  grpc_client_config:
-    # The maximum size in bytes the client can recieve
-    [max_recv_msg_size: <int> | default = 104857600]
-
-    # The maximum size in bytes the client can send
-    [max_send_msg_size: <int> | default = 16777216]
-
-    # Whether or not messages should be compressed
-    [use_gzip_compression: <bool> | default = false]
-
-    # Rate limit for gRPC client. 0 is disabled
-    [rate_limit: <float> | default = 0]
-
-    # Rate limit burst for gRPC client.
-    [rate_limit_burst: <int> | default = 0]
-
-    # Enable backoff and retry when a rate limit is hit.
-    [backoff_on_ratelimits: <bool> | default = false]
-
-    # Configures backoff when enbaled.
-    backoff_config:
-      # Minimum delay when backing off.
-      [minbackoff: <duration> | default = 100ms]
-
-      # The maximum delay when backing off.
-      [maxbackoff: <duration> | default = 10s]
-
-      # Number of times to backoff and retry before failing.
-      [maxretries: <int> | default = 10]
+  [grpc_client_config: <grpc_client_config>]
 
 # Configures storing index in GCS. Required fields only required
 # when gcs is defined in config.
@@ -594,7 +603,7 @@ The `schema_config` block configures schemas from given dates.
 ```yaml
 # The configuration for chunk index schemas.
 configs:
-  - [period_config]
+  - [<period_config>]
 ```
 
 ### period_config
@@ -603,8 +612,9 @@ The `period_config` block configures what index schemas should be used
 for from specific time periods.
 
 ```yaml
-# The date of the first day that index buckets should be created. 0 is an
-# acceptable value for the very first period.
+# The date of the first day that index buckets should be created. Use
+# a date in the past if this is your only period_config, otherwise
+# use a date when you want the schema to switch over.
 [from: <daytime>]
 
 # store and object_store below affect which <storage_config> key is
