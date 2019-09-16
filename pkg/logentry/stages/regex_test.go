@@ -252,6 +252,16 @@ func TestRegexParser_Parse(t *testing.T) {
 				"protocol": "unknown",
 			},
 		},
+		"case insensitive": {
+			map[string]interface{}{
+				"expression": "(?i)(?P<bad>panic:|core_dumped|failure|error|attack| bad |illegal |denied|refused|unauthorized|fatal|failed|Segmentation Fault|Corrupted)",
+			},
+			map[string]interface{}{},
+			"A Terrible Error has occurred!!!",
+			map[string]interface{}{
+				"bad": "Error",
+			},
+		},
 		"missing extracted[source]": {
 			map[string]interface{}{
 				"expression": "^HTTP\\/(?P<protocol_version>.*)$",
