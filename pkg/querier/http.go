@@ -396,7 +396,12 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case response = <-responseChan:
-			err := conn.WriteJSON(*response)
+			var err error
+			if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
+				err = v1.WriteTailResponseJSON(*response, conn)
+			} else {
+				err = legacy.WriteTailResponseJSON(*response, conn)
+			}
 			if err != nil {
 				level.Error(util.Logger).Log("Error writing to websocket", fmt.Sprintf("%v", err))
 				if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {

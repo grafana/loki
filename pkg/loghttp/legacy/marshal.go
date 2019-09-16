@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/gorilla/websocket"
 	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/grafana/loki/pkg/logql"
@@ -29,4 +30,8 @@ func WriteQueryResponseJSON(v promql.Value, w io.Writer) error {
 
 func WriteLabelResponseJSON(l logproto.LabelResponse, w io.Writer) error {
 	return json.NewEncoder(w).Encode(l)
+}
+
+func WriteTailResponseJSON(r TailResponse, c *websocket.Conn) error {
+	return c.WriteJSON(r)
 }

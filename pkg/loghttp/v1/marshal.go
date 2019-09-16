@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/gorilla/websocket"
+	"github.com/grafana/loki/pkg/loghttp/legacy"
+
 	"github.com/grafana/loki/pkg/logql"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -69,4 +72,14 @@ func WriteQueryResponseJSON(v promql.Value, w io.Writer) error {
 //  cleanly to the v1 http protocol.  If this ever changes, it will be caught by testing.
 func WriteLabelResponseJSON(l logproto.LabelResponse, w io.Writer) error {
 	return json.NewEncoder(w).Encode(l)
+}
+
+func WriteTailResponseJSON(r legacy.TailResponse, c *websocket.Conn) error {
+	v1Response, err := NewTailResponse(r)
+
+	if err != nil {
+		return err
+	}
+
+	return c.WriteJSON(v1Response)
 }
