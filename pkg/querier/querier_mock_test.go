@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -65,8 +67,10 @@ func mockIngesterClientConfig() client.Config {
 			HealthCheckIngesters: false,
 			RemoteTimeout:        1 * time.Second,
 		},
-		MaxRecvMsgSize: 1024,
-		RemoteTimeout:  1 * time.Second,
+		GRPCClientConfig: grpcclient.Config{
+			MaxRecvMsgSize: 1024,
+		},
+		RemoteTimeout: 1 * time.Second,
 	}
 }
 
