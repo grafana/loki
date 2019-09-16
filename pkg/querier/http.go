@@ -389,7 +389,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	ticker := time.NewTicker(wsPingPeriod)
 	defer ticker.Stop()
 
-	var response *loghttp.TailResponse
+	var response *legacy.TailResponse
 	responseChan := tailer.getResponseChan()
 	closeErrChan := tailer.getCloseErrorChan()
 

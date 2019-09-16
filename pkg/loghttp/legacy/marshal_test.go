@@ -62,44 +62,46 @@ var labelTests = []struct {
 }
 
 var tailTests = []struct {
-	actual   logproto.TailResponse
+	actual   TailResponse
 	expected string
 }{
 	{
-		logproto.TailResponse{
-			Stream: &logproto.Stream{
-				Entries: []logproto.Entry{
-					logproto.Entry{
-						Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
-						Line:      "super line",
+		TailResponse{
+			Streams: []logproto.Stream{
+				logproto.Stream{
+					Entries: []logproto.Entry{
+						logproto.Entry{
+							Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
+							Line:      "super line",
+						},
 					},
-				},
-				Labels: "{test=\"test\"}",
-			},
-			DroppedStreams: []*logproto.DroppedStream{
-				&logproto.DroppedStream{
-					From:   mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
-					To:     mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.38000132Z"),
 					Labels: "{test=\"test\"}",
+				},
+			},
+			DroppedEntries: []DroppedEntry{
+				DroppedEntry{
+					Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
+					Labels:    "{test=\"test\"}",
 				},
 			},
 		},
 		// jpe confirm tail response format
 		`{
-			"stream": {
-				"labels": "{test=\"test\"}",
-				"entries": [
-					{
-						"ts": "2019-09-13T18:32:22.380001319Z",
-						"line": "super line"	
-					}
-				]
-			},
+			"streams": [
+				{
+					"labels": "{test=\"test\"}",
+					"entries": [
+						{
+							"ts": "2019-09-13T18:32:22.380001319Z",
+							"line": "super line"	
+						}
+					]
+				}
+			],
 			"dropped_entries": [
 				{
-					"from": "2019-09-13T18:32:22.380001319Z",
-					"to": "2019-09-13T18:32:22.38000132Z",
-					"labels": "{test=\"test\"}"
+					"Timestamp": "2019-09-13T18:32:22.380001319Z",
+					"Labels": "{test=\"test\"}"
 				}
 			]
 		}`,
@@ -135,11 +137,8 @@ func Test_WriteLabelResponseJSON(t *testing.T) {
 func Test_MarshalTailResponse(t *testing.T) {
 
 	for i, tailTest := range tailTests {
-		// convert logproto to model objects
-		model := NewTailResponse(tailTest.actual)
-
 		// marshal model object
-		bytes, err := json.Marshal(model)
+		bytes, err := json.Marshal(tailTest.actual)
 		require.NoError(t, err)
 
 		testJSONBytesEqual(t, []byte(tailTest.expected), bytes, "Tail Test %d failed", i)

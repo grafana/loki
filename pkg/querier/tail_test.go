@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -168,8 +168,8 @@ func TestTailer(t *testing.T) {
 	}
 }
 
-func readFromTailer(tailer *Tailer, maxEntries int) ([]*loghttp.TailResponse, error) {
-	responses := make([]*loghttp.TailResponse, 0)
+func readFromTailer(tailer *Tailer, maxEntries int) ([]*legacy.TailResponse, error) {
+	responses := make([]*legacy.TailResponse, 0)
 	entriesCount := 0
 
 	// Ensure we do not wait indefinitely
@@ -235,7 +235,7 @@ func countEntriesInStreams(streams []logproto.Stream) int {
 // to abstract away implementation details in the Tailer when testing for the output
 // regardless how the responses have been generated (ie. multiple entries grouped
 // into the same stream)
-func flattenStreamsFromResponses(responses []*loghttp.TailResponse) []logproto.Stream {
+func flattenStreamsFromResponses(responses []*legacy.TailResponse) []logproto.Stream {
 	result := make([]logproto.Stream, 0)
 
 	for _, response := range responses {

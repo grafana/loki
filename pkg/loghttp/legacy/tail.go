@@ -6,35 +6,13 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+type DroppedEntry struct {
+	Timestamp time.Time
+	Labels    string
+}
+
 //TailResponse represents the http json response to a tail query
 type TailResponse struct {
-	Stream         *Stream          `json:"stream,omitempty"`
-	DroppedStreams []*DroppedStream `json:"dropped_entries,omitempty"`
-}
-
-type DroppedStream struct {
-	From   time.Time `json:"from"`
-	To     time.Time `json:"to"`
-	Labels string    `json:"labels,omitempty"`
-}
-
-func NewTailResponse(r logproto.TailResponse) TailResponse {
-	new := TailResponse{
-		Stream:         NewStream(r.Stream),
-		DroppedStreams: make([]*DroppedStream, len(r.DroppedStreams)),
-	}
-
-	for i, d := range r.DroppedStreams {
-		new.DroppedStreams[i] = NewDroppedStream(d)
-	}
-
-	return new
-}
-
-func NewDroppedStream(s *logproto.DroppedStream) *DroppedStream {
-	return &DroppedStream{
-		From:   s.From,
-		To:     s.To,
-		Labels: s.Labels,
-	}
+	Streams        []logproto.Stream `json:"streams"`
+	DroppedEntries []DroppedEntry    `json:"dropped_entries"`
 }
