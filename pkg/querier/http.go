@@ -2,7 +2,6 @@ package querier
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -10,6 +9,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/loghttp/legacy"
+	v1 "github.com/grafana/loki/pkg/loghttp/v1"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
@@ -229,15 +232,7 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
-		"status": "success",
-		"data": &QueryResponse{
-			ResultType: result.Type(),
-			Result:     result,
-		},
-	}
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	if err := v1.WriteQueryResponseJSON(result, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -261,15 +256,7 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
-		"status": "success",
-		"data": &QueryResponse{
-			ResultType: result.Type(),
-			Result:     result,
-		},
-	}
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	if err := v1.WriteQueryResponseJSON(result, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -299,18 +286,7 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if result.Type() != logql.ValueTypeStreams { //jpe - remove in favor of legacy package doing this now
-		http.Error(w, fmt.Sprintf("log query only support %s result type, current type is %s", logql.ValueTypeStreams, result.Type()), http.StatusBadRequest)
-		return
-	}
-
-	if err := json.NewEncoder(w).Encode(
-		struct {
-			Streams promql.Value `json:"streams"`
-		}{
-			Streams: result,
-		},
-	); err != nil {
+	if err := legacy.WriteQueryResponseJSON(result, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -345,7 +321,13 @@ func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
+
+	if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
+		err = v1.WriteLabelResponseJSON(*resp, w)
+	} else {
+		err = legacy.WriteLabelResponseJSON(*resp, w)
+	}
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
