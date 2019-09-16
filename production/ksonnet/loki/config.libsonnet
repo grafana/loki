@@ -144,6 +144,7 @@
           memcached_client: {
             host: 'memcached-index-queries.%s.svc.cluster.local' % $._config.namespace,
             service: 'memcached-client',
+            consistent_hash: true,
           },
         },
       } +
@@ -173,6 +174,7 @@
           memcached_client: {
             host: 'memcached.%s.svc.cluster.local' % $._config.namespace,
             service: 'memcached-client',
+            consistent_hash: true,
           },
         },
 
@@ -185,6 +187,7 @@
           memcached_client: {
             host: 'memcached-index-writes.%s.svc.cluster.local' % $._config.namespace,
             service: 'memcached-client',
+            consistent_hash: true,
           },
         },
         max_look_back_period: 0,
