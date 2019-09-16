@@ -17,11 +17,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// covers responses from /loki/api/v1/query_range and /loki/api/v1/query
 var queryTests = []struct {
 	actual   promql.Value
 	expected string
 }{
-	// streams test
 	{
 		logql.Streams{
 			&logproto.Stream{
@@ -199,6 +199,7 @@ var queryTests = []struct {
 	},
 }
 
+// covers responses from /loki/api/v1/label and /loki/api/v1/label/{name}/values
 var labelTests = []struct {
 	actual   logproto.LabelResponse
 	expected string
@@ -215,6 +216,7 @@ var labelTests = []struct {
 	},
 }
 
+// covers responses from /loki/api/v1/tail
 var tailTests = []struct {
 	actual   legacy.TailResponse
 	expected string
@@ -239,7 +241,6 @@ var tailTests = []struct {
 				},
 			},
 		},
-		// jpe confirm tail response format
 		`{
 			"streams": [
 				{
@@ -261,10 +262,6 @@ var tailTests = []struct {
 			]
 		}`,
 	},
-}
-
-func init() {
-
 }
 
 func Test_WriteQueryResponseJSON(t *testing.T) {

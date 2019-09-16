@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// covers responses from /api/prom/query
 var queryTests = []struct {
 	actual   logql.Streams
 	expected string
 }{
-	// basic test
 	{
 		logql.Streams{
 			&logproto.Stream{
@@ -45,6 +45,7 @@ var queryTests = []struct {
 	},
 }
 
+// covers responses from /api/prom/label and /api/prom/label/{name}/values
 var labelTests = []struct {
 	actual   logproto.LabelResponse
 	expected string
@@ -61,6 +62,7 @@ var labelTests = []struct {
 	},
 }
 
+// covers responses from /api/prom/tail and /api/prom/tail
 var tailTests = []struct {
 	actual   TailResponse
 	expected string
@@ -85,7 +87,6 @@ var tailTests = []struct {
 				},
 			},
 		},
-		// jpe confirm tail response format
 		`{
 			"streams": [
 				{
@@ -106,10 +107,6 @@ var tailTests = []struct {
 			]
 		}`,
 	},
-}
-
-func init() {
-
 }
 
 func Test_WriteQueryResponseJSON(t *testing.T) {
