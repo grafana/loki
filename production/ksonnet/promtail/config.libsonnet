@@ -20,5 +20,6 @@
     },
     promtail_cluster_role_name: 'promtail',
     promtail_configmap_name: 'promtail',
+    promtail_pod_name: 'promtail',
   },
 }

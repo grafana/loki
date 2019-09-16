@@ -33,7 +33,7 @@ k + config + scrape_config {
   local configMap = $.core.v1.configMap,
 
   promtail_config_map:
-    configMap.new('promtail') +
+    configMap.new($._config.promtail_configmap_name) +
     configMap.withData({
       'promtail.yml': $.util.manifestYaml($.promtail_config),
     }),
@@ -61,7 +61,7 @@ k + config + scrape_config {
   local daemonSet = $.extensions.v1beta1.daemonSet,
 
   promtail_daemonset:
-    daemonSet.new('promtail', [$.promtail_container]) +
+    daemonSet.new($._config.promtail_pod_name, [$.promtail_container]) +
     daemonSet.mixin.spec.template.spec.withServiceAccount($._config.promtail_cluster_role_name) +
     $.util.configVolumeMount($._config.promtail_configmap_name, '/etc/promtail') +
     $.util.hostVolumeMount('varlog', '/var/log', '/var/log') +
