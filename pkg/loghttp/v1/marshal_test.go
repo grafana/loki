@@ -231,15 +231,15 @@ var tailTests = []struct {
 			},
 			DroppedStreams: []*logproto.DroppedStream{
 				&logproto.DroppedStream{
-					From:   mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
-					To:     mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.38000132Z"),
+					From:   time.Unix(0, 123456789022345),
+					To:     time.Unix(0, 123456789032345),
 					Labels: "{test=\"test\"}",
 				},
 			},
 		},
 		// jpe confirm tail response format
 		`{
-			"stream": {
+			"entry": {
 				"stream": {
 					"test": "test"
 				},
@@ -247,10 +247,10 @@ var tailTests = []struct {
 					[ "123456789012345", "super line" ]
 				]
 			},
-			"droppedStreams": [
+			"dropped_entries": [
 				{
-					"from": "2019-09-13T18:32:22.380001319Z",
-					"to": "2019-09-13T18:32:22.38000132Z",
+					"from": "123456789022345",
+					"to": "123456789032345",
 					"labels": {
 						"test": "test"
 					}

@@ -95,7 +95,7 @@ var tailTests = []struct {
 					}
 				]
 			},
-			"droppedStreams": [
+			"dropped_entries": [
 				{
 					"from": "2019-09-13T18:32:22.380001319Z",
 					"to": "2019-09-13T18:32:22.38000132Z",

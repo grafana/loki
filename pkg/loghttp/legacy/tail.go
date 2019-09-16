@@ -9,7 +9,7 @@ import (
 //TailResponse represents the http json response to a tail query
 type TailResponse struct {
 	Stream         *Stream          `json:"stream,omitempty"`
-	DroppedStreams []*DroppedStream `json:"droppedStreams,omitempty"`
+	DroppedStreams []*DroppedStream `json:"dropped_entries,omitempty"`
 }
 
 type DroppedStream struct {
