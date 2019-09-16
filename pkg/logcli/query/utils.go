@@ -30,7 +30,7 @@ func parseLabels(streams logql.Streams) (map[string]labels.Labels, []labels.Labe
 	return cache, lss
 }
 
-// return commonLabels labels between given lavels set
+// return commonLabels labels between given labels set
 func commonLabels(lss []labels.Labels) labels.Labels {
 	if len(lss) == 0 {
 		return nil
