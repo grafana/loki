@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/loghttp/legacy"
+
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 
@@ -214,42 +216,44 @@ var labelTests = []struct {
 }
 
 var tailTests = []struct {
-	actual   logproto.TailResponse
+	actual   legacy.TailResponse
 	expected string
 }{
 	{
-		logproto.TailResponse{
-			Stream: &logproto.Stream{
-				Entries: []logproto.Entry{
-					logproto.Entry{
-						Timestamp: time.Unix(0, 123456789012345),
-						Line:      "super line",
+		legacy.TailResponse{
+			Streams: []logproto.Stream{
+				logproto.Stream{
+					Entries: []logproto.Entry{
+						logproto.Entry{
+							Timestamp: time.Unix(0, 123456789012345),
+							Line:      "super line",
+						},
 					},
-				},
-				Labels: "{test=\"test\"}",
-			},
-			DroppedStreams: []*logproto.DroppedStream{
-				&logproto.DroppedStream{
-					From:   time.Unix(0, 123456789022345),
-					To:     time.Unix(0, 123456789032345),
 					Labels: "{test=\"test\"}",
+				},
+			},
+			DroppedEntries: []legacy.DroppedEntry{
+				legacy.DroppedEntry{
+					Timestamp: time.Unix(0, 123456789022345),
+					Labels:    "{test=\"test\"}",
 				},
 			},
 		},
 		// jpe confirm tail response format
 		`{
-			"entry": {
-				"stream": {
-					"test": "test"
-				},
-				"values":[
-					[ "123456789012345", "super line" ]
-				]
-			},
+			"streams": [
+				{
+					"stream": {
+						"test": "test"
+					},
+					"values":[
+						[ "123456789012345", "super line" ]
+					]
+				}
+			],
 			"dropped_entries": [
 				{
-					"from": "123456789022345",
-					"to": "123456789032345",
+					"timestamp": "123456789022345",
 					"labels": {
 						"test": "test"
 					}
