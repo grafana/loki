@@ -116,6 +116,86 @@ var queryTests = []struct {
 		  }`,
 	},
 	// matrix test
+	{
+		promql.Matrix{
+			{
+				Points: []promql.Point{
+					promql.Point{
+						T: 1568404331324,
+						V: 0.013333333333333334,
+					},
+				},
+				Metric: []labels.Label{
+					{
+						Name:  "filename",
+						Value: `/var/hostlog/apport.log`,
+					},
+					{
+						Name:  "job",
+						Value: "varlogs",
+					},
+				},
+			},
+			{
+				Points: []promql.Point{
+					promql.Point{
+						T: 1568404331324,
+						V: 3.45,
+					},
+					promql.Point{
+						T: 1568404331339,
+						V: 4.45,
+					},
+				},
+				Metric: []labels.Label{
+					{
+						Name:  "filename",
+						Value: `/var/hostlog/syslog`,
+					},
+					{
+						Name:  "job",
+						Value: "varlogs",
+					},
+				},
+			},
+		},
+		`{
+			"data": {
+			  "resultType": "matrix",
+			  "result": [
+				{
+				  "metric": {
+					"filename": "\/var\/hostlog\/apport.log",
+					"job": "varlogs"
+				  },
+				  "values": [
+					  [
+						1568404331.324,
+						"0.013333333333333334"
+					  ]
+					]
+				},
+				{
+				  "metric": {
+					"filename": "\/var\/hostlog\/syslog",
+					"job": "varlogs"
+				  },
+				  "values": [
+						[
+							1568404331.324,
+							"3.45"
+						],
+						[
+							1568404331.339,
+							"4.45"
+						]
+					]
+				}
+			  ]
+			},
+			"status": "success"
+		  }`,
+	},
 }
 
 var labelTests = []struct {
