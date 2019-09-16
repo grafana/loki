@@ -50,6 +50,7 @@ fi
 
 echo "Updating helm and ksonnet image versions"
 sed -i '' "s/.*promtail:.*/    promtail: 'grafana\/promtail:${VERSION}',/" production/ksonnet/promtail/config.libsonnet
+sed -i '' "s/.*loki_canary:.*/    loki_canary: 'grafana\/loki-canary:${VERSION}',/" production/ksonnet/loki-canary/config.libsonnet
 sed -i '' "s/.*loki:.*/    loki: 'grafana\/loki:${VERSION}',/" production/ksonnet/loki/images.libsonnet
 sed -i '' "s/.*tag:.*/  tag: ${VERSION}/" production/helm/loki/values.yaml
 sed -i '' "s/.*tag:.*/  tag: ${VERSION}/" production/helm/promtail/values.yaml
