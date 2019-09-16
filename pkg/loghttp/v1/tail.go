@@ -26,7 +26,7 @@ func NewTailResponse(r logproto.TailResponse) (TailResponse, error) {
 	}
 
 	new := TailResponse{
-		Stream:         s,
+		Stream:         &s,
 		DroppedStreams: make([]*DroppedStream, len(r.DroppedStreams)),
 	}
 

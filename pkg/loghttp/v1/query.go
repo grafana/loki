@@ -6,8 +6,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/prometheus/prometheus/promql"
+
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 //QueryStatus
@@ -92,18 +96,33 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 }
 
 //Vector
-type Vector []*model.Sample
+type Vector []model.Sample
 
 //Matrix
-type Matrix []*model.SampleStream
+type Matrix []model.SampleStream
 
-func NewStream(s *logproto.Stream) (*Stream, error) {
-	labels, err := NewLabelSet(s.Labels)
-	if err != nil {
-		return nil, err
+func NewStreams(s logql.Streams) (Streams, error) {
+	var err error
+	new := make([]Stream, len(s))
+
+	for i, stream := range s {
+		new[i], err = NewStream(stream)
+
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	new := &Stream{
+	return new, nil
+}
+
+func NewStream(s *logproto.Stream) (Stream, error) {
+	labels, err := NewLabelSet(s.Labels)
+	if err != nil {
+		return Stream{}, err
+	}
+
+	new := Stream{
 		Labels:  labels,
 		Entries: make([]Entry, len(s.Entries)),
 	}
@@ -120,4 +139,59 @@ func NewEntry(e logproto.Entry) Entry {
 		Timestamp: e.Timestamp,
 		Line:      e.Line,
 	}
+}
+
+func NewVector(v promql.Vector) Vector {
+	new := make([]model.Sample, len(v))
+
+	for i, s := range v {
+		new[i] = NewSample(s)
+	}
+
+	return new
+}
+
+func NewSample(s promql.Sample) model.Sample {
+
+	new := model.Sample{
+		Value:     model.SampleValue(s.V),
+		Timestamp: model.Time(s.T),
+		Metric:    NewMetric(s.Metric),
+	}
+
+	return new
+}
+
+func NewMatrix(m promql.Matrix) Matrix {
+	new := make([]model.SampleStream, len(m))
+
+	for i, s := range m {
+		new[i] = NewSampleStream(s)
+	}
+
+	return new
+}
+
+func NewSampleStream(s promql.Series) model.SampleStream {
+	new := model.SampleStream{
+		Metric: NewMetric(s.Metric),
+		Values: make([]model.SamplePair, len(s.Points)),
+	}
+
+	for i, p := range s.Points {
+		new.Values[i].Timestamp = model.Time(p.T)
+		new.Values[i].Value = model.SampleValue(p.V)
+	}
+
+	return new
+}
+
+func NewMetric(l labels.Labels) model.Metric {
+	new := make(map[model.LabelName]model.LabelValue)
+
+	for _, label := range l {
+		new[model.LabelName(label.Name)] = model.LabelValue(label.Value)
+	}
+
+	return new
 }
