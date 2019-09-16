@@ -21,7 +21,6 @@ that Loki is cheaper to operate and can be orders of magnitude more efficent.
 3. [Getting Started](getting-started/README.md)
     1. [Grafana](getting-started/grafana.md)
     2. [Logcli](getting-started/logcli.md)
-    3. [Components](getting-started/components.md)
     4. [Troubleshooting](getting-started/troubleshooting.md)
 4. [Configuration](configuration/README.md)
     1. [Examples](configuration/examples.md)
