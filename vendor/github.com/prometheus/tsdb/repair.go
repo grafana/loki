@@ -23,6 +23,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	tsdb_errors "github.com/prometheus/tsdb/errors"
 	"github.com/prometheus/tsdb/fileutil"
 )
 
@@ -39,6 +40,16 @@ func repairBadIndexVersion(logger log.Logger, dir string) error {
 	wrapErr := func(err error, d string) error {
 		return errors.Wrapf(err, "block dir: %q", d)
 	}
+
+	tmpFiles := make([]string, 0, len(dir))
+	defer func() {
+		for _, tmp := range tmpFiles {
+			if err := os.RemoveAll(tmp); err != nil {
+				level.Error(logger).Log("msg", "remove tmp file", "err", err.Error())
+			}
+		}
+	}()
+
 	for _, d := range dirs {
 		meta, err := readBogusMetaFile(d)
 		if err != nil {
@@ -64,6 +75,8 @@ func repairBadIndexVersion(logger log.Logger, dir string) error {
 		if err != nil {
 			return wrapErr(err, d)
 		}
+		tmpFiles = append(tmpFiles, repl.Name())
+
 		broken, err := os.Open(filepath.Join(d, indexFilename))
 		if err != nil {
 			return wrapErr(err, d)
@@ -71,12 +84,19 @@ func repairBadIndexVersion(logger log.Logger, dir string) error {
 		if _, err := io.Copy(repl, broken); err != nil {
 			return wrapErr(err, d)
 		}
+
+		var merr tsdb_errors.MultiError
+
 		// Set the 5th byte to 2 to indicate the correct file format version.
 		if _, err := repl.WriteAt([]byte{2}, 4); err != nil {
-			return wrapErr(err, d)
+			merr.Add(wrapErr(err, d))
+			merr.Add(wrapErr(repl.Close(), d))
+			return merr.Err()
 		}
-		if err := fileutil.Fsync(repl); err != nil {
-			return wrapErr(err, d)
+		if err := repl.Sync(); err != nil {
+			merr.Add(wrapErr(err, d))
+			merr.Add(wrapErr(repl.Close(), d))
+			return merr.Err()
 		}
 		if err := repl.Close(); err != nil {
 			return wrapErr(err, d)
@@ -84,12 +104,12 @@ func repairBadIndexVersion(logger log.Logger, dir string) error {
 		if err := broken.Close(); err != nil {
 			return wrapErr(err, d)
 		}
-		if err := renameFile(repl.Name(), broken.Name()); err != nil {
+		if err := fileutil.Replace(repl.Name(), broken.Name()); err != nil {
 			return wrapErr(err, d)
 		}
 		// Reset version of meta.json to 1.
 		meta.Version = 1
-		if err := writeMetaFile(d, meta); err != nil {
+		if _, err := writeMetaFile(logger, d, meta); err != nil {
 			return wrapErr(err, d)
 		}
 	}

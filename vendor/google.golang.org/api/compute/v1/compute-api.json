@@ -29,7 +29,7 @@
   "description": "Creates and runs virtual machines on Google Cloud Platform.",
   "discoveryVersion": "v1",
   "documentationLink": "https://developers.google.com/compute/docs/reference/latest/",
-  "etag": "\"VPK3KBfpaEgZ16pozGOoMYfKc0U/isJ5vctr0fRB9VbwWEZjs0c-shw\"",
+  "etag": "\"VPK3KBfpaEgZ16pozGOoMYfKc0U/L7OHwc6Gh2BR8n3__eQkZu5iQsE\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/compute_engine-16.png",
     "x32": "https://www.google.com/images/icons/product/compute_engine-32.png"
@@ -1804,7 +1804,6 @@
               "type": "string"
             },
             "guestFlush": {
-              "description": "[Input Only] Specifies to create an application consistent snapshot by informing the OS to prepare for the snapshot process. Currently only supported on Windows instances using the Volume Shadow Copy Service (VSS).",
               "location": "query",
               "type": "boolean"
             },
@@ -18315,7 +18314,7 @@
       }
     }
   },
-  "revision": "20190528",
+  "revision": "20190403",
   "rootUrl": "https://www.googleapis.com/",
   "schemas": {
     "AcceleratorConfig": {
@@ -19346,14 +19345,6 @@
         "sourceImageEncryptionKey": {
           "$ref": "CustomerEncryptionKey",
           "description": "The customer-supplied encryption key of the source image. Required if the source image is protected by a customer-supplied encryption key.\n\nInstance templates do not store customer-supplied encryption keys, so you cannot create disks for instances in a managed instance group if the source images are encrypted with your own keys."
-        },
-        "sourceSnapshot": {
-          "description": "The source snapshot to create this disk. When creating a new instance, one of initializeParams.sourceSnapshot or disks.source is required except for local SSD.\n\nTo create a disk with a snapshot that you created, specify the snapshot name in the following format:\nglobal/snapshots/my-backup\n\n\nIf the source snapshot is deleted later, this field will not be set.",
-          "type": "string"
-        },
-        "sourceSnapshotEncryptionKey": {
-          "$ref": "CustomerEncryptionKey",
-          "description": "The customer-supplied encryption key of the source snapshot."
         }
       },
       "type": "object"
@@ -20291,11 +20282,9 @@
           "enum": [
             "EXTERNAL",
             "INTERNAL",
-            "INTERNAL_SELF_MANAGED",
             "INVALID_LOAD_BALANCING_SCHEME"
           ],
           "enumDescriptions": [
-            "",
             "",
             "",
             ""
@@ -21412,7 +21401,7 @@
         },
         "diskEncryptionKey": {
           "$ref": "CustomerEncryptionKey",
-          "description": "Encrypts the disk using a customer-supplied encryption key.\n\nAfter you encrypt a disk with a customer-supplied key, you must provide the same key if you use the disk later (e.g. to create a disk snapshot, to create a disk image, to create a machine image, or to attach the disk to a virtual machine).\n\nCustomer-supplied encryption keys do not protect access to metadata of the disk.\n\nIf you do not provide an encryption key when creating the disk, then the disk will be encrypted using an automatically generated key and you do not need to provide a key to use the disk later."
+          "description": "Encrypts the disk using a customer-supplied encryption key.\n\nAfter you encrypt a disk with a customer-supplied key, you must provide the same key if you use the disk later (e.g. to create a disk snapshot or an image, or to attach the disk to a virtual machine).\n\nCustomer-supplied encryption keys do not protect access to metadata of the disk.\n\nIf you do not provide an encryption key when creating the disk, then the disk will be encrypted using an automatically generated key and you do not need to provide a key to use the disk later."
         },
         "guestOsFeatures": {
           "description": "A list of features to enable on the guest operating system. Applicable only for bootable images. Read  Enabling guest operating system features to see a list of available options.",
@@ -21548,11 +21537,11 @@
           "type": "string"
         },
         "type": {
-          "description": "URL of the disk type resource describing which disk type to use to create the disk. Provide this when creating the disk. For example: projects/project/zones/zone/diskTypes/pd-standard or pd-ssd",
+          "description": "URL of the disk type resource describing which disk type to use to create the disk. Provide this when creating the disk. For example: project/zones/zone/diskTypes/pd-standard or pd-ssd",
           "type": "string"
         },
         "users": {
-          "description": "[Output Only] Links to the users of the disk (attached instances) in form: projects/project/zones/zone/instances/instance",
+          "description": "[Output Only] Links to the users of the disk (attached instances) in form: project/zones/zone/instances/instance",
           "items": {
             "type": "string"
           },
@@ -22742,11 +22731,9 @@
           "enum": [
             "EXTERNAL",
             "INTERNAL",
-            "INTERNAL_SELF_MANAGED",
             "INVALID"
           ],
           "enumDescriptions": [
-            "",
             "",
             "",
             ""
@@ -24124,7 +24111,7 @@
               "type": "string"
             },
             "sha1Checksum": {
-              "description": "[Deprecated] This field is deprecated. An optional SHA1 checksum of the disk image before unpackaging provided by the client when the disk image is created.",
+              "description": "An optional SHA1 checksum of the disk image before unpackaging provided by the client when the disk image is created.",
               "pattern": "[a-f0-9]{40}",
               "type": "string"
             },
@@ -26577,7 +26564,7 @@
           "type": "array"
         },
         "interconnectType": {
-          "description": "Type of interconnect, which can take one of the following values: \n- PARTNER: A partner-managed interconnection shared between customers though a partner. \n- DEDICATED: A dedicated physical interconnection with the customer. Note that a value IT_PRIVATE has been deprecated in favor of DEDICATED.",
+          "description": "Type of interconnect. Note that \"IT_PRIVATE\" has been deprecated in favor of \"DEDICATED\"",
           "enum": [
             "DEDICATED",
             "IT_PRIVATE",
@@ -26596,7 +26583,7 @@
           "type": "string"
         },
         "linkType": {
-          "description": "Type of link requested, which can take one of the following values: \n- LINK_TYPE_ETHERNET_10G_LR: A 10G Ethernet with LR optics \n- LINK_TYPE_ETHERNET_100G_LR: A 100G Ethernet with LR optics. Note that this field indicates the speed of each of the links in the bundle, not the speed of the entire bundle.",
+          "description": "Type of link requested. This field indicates speed of each of the links in the bundle, not the entire bundle.",
           "enum": [
             "LINK_TYPE_ETHERNET_10G_LR"
           ],
@@ -26624,7 +26611,7 @@
           "type": "string"
         },
         "operationalStatus": {
-          "description": "[Output Only] The current status of this Interconnect's functionality, which can take one of the following values: \n- OS_ACTIVE: A valid Interconnect, which is turned up and is ready to use. Attachments may be provisioned on this Interconnect. \n- OS_UNPROVISIONED: An Interconnect that has not completed turnup. No attachments may be provisioned on this Interconnect. \n- OS_UNDER_MAINTENANCE: An Interconnect that is undergoing internal maintenance. No attachments may be provisioned or updated on this Interconnect.",
+          "description": "[Output Only] The current status of whether or not this Interconnect is functional.",
           "enum": [
             "OS_ACTIVE",
             "OS_UNPROVISIONED"
@@ -26654,7 +26641,7 @@
           "type": "string"
         },
         "state": {
-          "description": "[Output Only] The current state of Interconnect functionality, which can take one of the following values: \n- ACTIVE: The Interconnect is valid, turned up and ready to use. Attachments may be provisioned on this Interconnect. \n- UNPROVISIONED: The Interconnect has not completed turnup. No attachments may be provisioned on this Interconnect. \n- UNDER_MAINTENANCE: The Interconnect is undergoing internal maintenance. No attachments may be provisioned or updated on this Interconnect.",
+          "description": "[Output Only] The current state of whether or not this Interconnect is functional.",
           "enum": [
             "ACTIVE",
             "UNPROVISIONED"
@@ -26677,7 +26664,7 @@
           "type": "boolean"
         },
         "bandwidth": {
-          "description": "Provisioned bandwidth capacity for the interconnect attachment. For attachments of type DEDICATED, the user can set the bandwidth. For attachments of type PARTNER, the Google Partner that is operating the interconnect must set the bandwidth. Output only for PARTNER type, mutable for PARTNER_PROVIDER and DEDICATED, and can take one of the following values: \n- BPS_50M: 50 Mbit/s \n- BPS_100M: 100 Mbit/s \n- BPS_200M: 200 Mbit/s \n- BPS_300M: 300 Mbit/s \n- BPS_400M: 400 Mbit/s \n- BPS_500M: 500 Mbit/s \n- BPS_1G: 1 Gbit/s \n- BPS_2G: 2 Gbit/s \n- BPS_5G: 5 Gbit/s \n- BPS_10G: 10 Gbit/s",
+          "description": "Provisioned bandwidth capacity for the interconnectAttachment. Can be set by the partner to update the customer's provisioned bandwidth. Output only for PARTNER type, mutable for PARTNER_PROVIDER and DEDICATED.",
           "enum": [
             "BPS_100M",
             "BPS_10G",
@@ -26728,7 +26715,7 @@
           "type": "string"
         },
         "edgeAvailabilityDomain": {
-          "description": "Desired availability domain for the attachment. Only available for type PARTNER, at creation time, and can take one of the following values: \n- AVAILABILITY_DOMAIN_ANY \n- AVAILABILITY_DOMAIN_1 \n- AVAILABILITY_DOMAIN_2 For improved reliability, customers should configure a pair of attachments, one per availability domain. The selected availability domain will be provided to the Partner via the pairing key, so that the provisioned circuit will lie in the specified domain. If not specified, the value will default to AVAILABILITY_DOMAIN_ANY.",
+          "description": "Desired availability domain for the attachment. Only available for type PARTNER, at creation time. For improved reliability, customers should configure a pair of attachments with one per availability domain. The selected availability domain will be provided to the Partner via the pairing key so that the provisioned circuit will lie in the specified domain. If not specified, the value will default to AVAILABILITY_DOMAIN_ANY.",
           "enum": [
             "AVAILABILITY_DOMAIN_1",
             "AVAILABILITY_DOMAIN_2",
@@ -26765,7 +26752,7 @@
           "type": "string"
         },
         "operationalStatus": {
-          "description": "[Output Only] The current status of whether or not this interconnect attachment is functional, which can take one of the following values: \n- OS_ACTIVE: The attachment has been turned up and is ready to use. \n- OS_UNPROVISIONED: The attachment is not ready to use yet, because turnup is not complete.",
+          "description": "[Output Only] The current status of whether or not this interconnect attachment is functional.",
           "enum": [
             "OS_ACTIVE",
             "OS_UNPROVISIONED"
@@ -26781,7 +26768,7 @@
           "type": "string"
         },
         "partnerAsn": {
-          "description": "Optional BGP ASN for the router supplied by a Layer 3 Partner if they configured BGP on behalf of the customer. Output only for PARTNER type, input only for PARTNER_PROVIDER, not available for DEDICATED.",
+          "description": "Optional BGP ASN for the router that should be supplied by a layer 3 Partner if they configured BGP on behalf of the customer. Output only for PARTNER type, input only for PARTNER_PROVIDER, not available for DEDICATED.",
           "format": "int64",
           "type": "string"
         },
@@ -26806,7 +26793,7 @@
           "type": "string"
         },
         "state": {
-          "description": "[Output Only] The current state of this attachment's functionality. Enum values ACTIVE and UNPROVISIONED are shared by DEDICATED/PRIVATE, PARTNER, and PARTNER_PROVIDER interconnect attachments, while enum values PENDING_PARTNER, PARTNER_REQUEST_RECEIVED, and PENDING_CUSTOMER are used for only PARTNER and PARTNER_PROVIDER interconnect attachments. This state can take one of the following values: \n- ACTIVE: The attachment has been turned up and is ready to use. \n- UNPROVISIONED: The attachment is not ready to use yet, because turnup is not complete. \n- PENDING_PARTNER: A newly-created PARTNER attachment that has not yet been configured on the Partner side. \n- PARTNER_REQUEST_RECEIVED: A PARTNER attachment is in the process of provisioning after a PARTNER_PROVIDER attachment was created that references it. \n- PENDING_CUSTOMER: A PARTNER or PARTNER_PROVIDER attachment that is waiting for a customer to activate it. \n- DEFUNCT: The attachment was deleted externally and is no longer functional. This could be because the associated Interconnect was removed, or because the other side of a Partner attachment was deleted.",
+          "description": "[Output Only] The current state of this attachment's functionality.",
           "enum": [
             "ACTIVE",
             "DEFUNCT",
@@ -26828,7 +26815,6 @@
           "type": "string"
         },
         "type": {
-          "description": "The type of interconnect attachment this is, which can take one of the following values: \n- DEDICATED: an attachment to a Dedicated Interconnect. \n- PARTNER: an attachment to a Partner Interconnect, created by the customer. \n- PARTNER_PROVIDER: an attachment to a Partner Interconnect, created by the partner.",
           "enum": [
             "DEDICATED",
             "PARTNER",
@@ -27086,7 +27072,7 @@
           "type": "string"
         },
         "portalUrl": {
-          "description": "URL of the Partner?s portal for this Attachment. Partners may customise this to be a deep link to the specific resource on the Partner portal. This value may be validated to match approved Partner values.",
+          "description": "URL of the Partner?s portal for this Attachment. Partners may customise this to be a deep-link to the specific resource on the Partner portal. This value may be validated to match approved Partner values.",
           "type": "string"
         }
       },
@@ -27269,7 +27255,6 @@
           "type": "string"
         },
         "state": {
-          "description": "The state of a LACP link, which can take one of the following values: \n- ACTIVE: The link is configured and active within the bundle. \n- DETACHED: The link is not configured within the bundle. This means that the rest of the object should be empty.",
           "enum": [
             "ACTIVE",
             "DETACHED"
@@ -27473,7 +27458,7 @@
           "type": "string"
         },
         "continent": {
-          "description": "[Output Only] Continent for this location, which can take one of the following values: \n- AFRICA \n- ASIA_PAC \n- EUROPE \n- NORTH_AMERICA \n- SOUTH_AMERICA",
+          "description": "[Output Only] Continent for this location.",
           "enum": [
             "AFRICA",
             "ASIA_PAC",
@@ -27546,7 +27531,7 @@
           "type": "string"
         },
         "status": {
-          "description": "[Output Only] The status of this InterconnectLocation, which can take one of the following values: \n- CLOSED: The InterconnectLocation is closed and is unavailable for provisioning new Interconnects. \n- AVAILABLE: The InterconnectLocation is available for provisioning new Interconnects.",
+          "description": "[Output Only] The status of this InterconnectLocation. If the status is AVAILABLE, new Interconnects may be provisioned in this InterconnectLocation. Otherwise, no new Interconnects may be provisioned.",
           "enum": [
             "AVAILABLE",
             "CLOSED"
@@ -27725,7 +27710,7 @@
           "type": "string"
         },
         "issueType": {
-          "description": "Form this outage is expected to take, which can take one of the following values: \n- OUTAGE: The Interconnect may be completely out of service for some or all of the specified window. \n- PARTIAL_OUTAGE: Some circuits comprising the Interconnect as a whole should remain up, but with reduced bandwidth. Note that the versions of this enum prefixed with \"IT_\" have been deprecated in favor of the unprefixed values.",
+          "description": "Form this outage is expected to take. Note that the \"IT_\" versions of this enum have been deprecated in favor of the unprefixed values.",
           "enum": [
             "IT_OUTAGE",
             "IT_PARTIAL_OUTAGE",
@@ -27745,7 +27730,7 @@
           "type": "string"
         },
         "source": {
-          "description": "The party that generated this notification, which can take the following value: \n- GOOGLE: this notification as generated by Google. Note that the value of NSRC_GOOGLE has been deprecated in favor of GOOGLE.",
+          "description": "The party that generated this notification. Note that \"NSRC_GOOGLE\" has been deprecated in favor of \"GOOGLE\"",
           "enum": [
             "GOOGLE",
             "NSRC_GOOGLE"
@@ -27762,7 +27747,7 @@
           "type": "string"
         },
         "state": {
-          "description": "State of this notification, which can take one of the following values: \n- ACTIVE: This outage notification is active. The event could be in the past, present, or future. See start_time and end_time for scheduling. \n- CANCELLED: The outage associated with this notification was cancelled before the outage was due to start. Note that the versions of this enum prefixed with \"NS_\" have been deprecated in favor of the unprefixed values.",
+          "description": "State of this notification. Note that the \"NS_\" versions of this enum have been deprecated in favor of the unprefixed values.",
           "enum": [
             "ACTIVE",
             "CANCELLED",
@@ -28112,7 +28097,7 @@
       "id": "LogConfigDataAccessOptions",
       "properties": {
         "logMode": {
-          "description": "Whether Gin logging should happen in a fail-closed manner at the caller. This is relevant only in the LocalIAM implementation, for now.",
+          "description": "Whether Gin logging should happen in a fail-closed manner at the caller. This is relevant only in the LocalIAM implementation, for now.\n\nNOTE: Logging to Gin in a fail-closed manner is currently unsupported while work is being done to satisfy the requirements of go/345. Currently, setting LOG_FAIL_CLOSED mode will have no effect, but still exists because there is active work being done to support it (b/115874152).",
           "enum": [
             "LOG_FAIL_CLOSED",
             "LOG_MODE_UNSPECIFIED"
@@ -33167,7 +33152,7 @@
           "description": "BGP information specific to this router."
         },
         "bgpPeers": {
-          "description": "BGP information that must be configured into the routing stack to establish BGP peering. This information must specify the peer ASN and either the interface name, IP address, or peer IP address. Please refer to RFC4273.",
+          "description": "BGP information that needs to be configured into the routing stack to establish the BGP peering. It must specify peer ASN and either interface name, IP, or peer IP. Please refer to RFC4273.",
           "items": {
             "$ref": "RouterBgpPeer"
           },
@@ -33187,7 +33172,7 @@
           "type": "string"
         },
         "interfaces": {
-          "description": "Router interfaces. Each interface requires either one linked resource, (for example, linkedVpnTunnel), or IP address and IP address range (for example, ipRange), or both.",
+          "description": "Router interfaces. Each interface requires either one linked resource (e.g. linkedVpnTunnel), or IP address and IP address range (e.g. ipRange), or both.",
           "items": {
             "$ref": "RouterInterface"
           },
@@ -33209,7 +33194,7 @@
           "type": "string"
         },
         "nats": {
-          "description": "A list of NAT services created in this router.",
+          "description": "A list of Nat services created in this router.",
           "items": {
             "$ref": "RouterNat"
           },
@@ -33367,7 +33352,7 @@
       "id": "RouterBgp",
       "properties": {
         "advertiseMode": {
-          "description": "User-specified flag to indicate which mode to use for advertisement. The options are DEFAULT or CUSTOM.",
+          "description": "User-specified flag to indicate which mode to use for advertisement.",
           "enum": [
             "CUSTOM",
             "DEFAULT"
@@ -33422,7 +33407,7 @@
           "type": "string"
         },
         "advertisedGroups": {
-          "description": "User-specified list of prefix groups to advertise in custom mode, which can take one of the following options: \n- ALL_SUBNETS: Advertises all available subnets, including peer VPC subnets. \n- ALL_VPC_SUBNETS: Advertises the router's own VPC subnets. \n- ALL_PEER_VPC_SUBNETS: Advertises peer subnets of the router's VPC network. Note that this field can only be populated if advertise_mode is CUSTOM and overrides the list defined for the router (in the \"bgp\" message). These groups are advertised in addition to any specified prefixes. Leave this field blank to advertise no custom groups.",
+          "description": "User-specified list of prefix groups to advertise in custom mode. This field can only be populated if advertise_mode is CUSTOM and overrides the list defined for the router (in Bgp message). These groups will be advertised in addition to any specified prefixes. Leave this field blank to advertise no custom groups.",
           "items": {
             "enum": [
               "ALL_SUBNETS"
@@ -33435,14 +33420,14 @@
           "type": "array"
         },
         "advertisedIpRanges": {
-          "description": "User-specified list of individual IP ranges to advertise in custom mode. This field can only be populated if advertise_mode is CUSTOM and overrides the list defined for the router (in the \"bgp\" message). These IP ranges are advertised in addition to any specified groups. Leave this field blank to advertise no custom IP ranges.",
+          "description": "User-specified list of individual IP ranges to advertise in custom mode. This field can only be populated if advertise_mode is CUSTOM and overrides the list defined for the router (in Bgp message). These IP ranges will be advertised in addition to any specified groups. Leave this field blank to advertise no custom IP ranges.",
           "items": {
             "$ref": "RouterAdvertisedIpRange"
           },
           "type": "array"
         },
         "advertisedRoutePriority": {
-          "description": "The priority of routes advertised to this BGP peer. Where there is more than one matching route of maximum length, the routes with the lowest priority value win.",
+          "description": "The priority of routes advertised to this BGP peer. In the case where there is more than one matching route of maximum length, the routes with lowest priority value win.",
           "format": "uint32",
           "type": "integer"
         },
@@ -33455,7 +33440,7 @@
           "type": "string"
         },
         "managementType": {
-          "description": "[Output Only] The resource that configures and manages this BGP peer. \n- MANAGED_BY_USER is the default value and can be managed by you or other users \n- MANAGED_BY_ATTACHMENT is a BGP peer that is configured and managed by Cloud Interconnect, specifically by an InterconnectAttachment of type PARTNER. Google automatically creates, updates, and deletes this type of BGP peer when the PARTNER InterconnectAttachment is created, updated, or deleted.",
+          "description": "[Output Only] The resource that configures and manages this BGP peer. MANAGED_BY_USER is the default value and can be managed by you or other users; MANAGED_BY_ATTACHMENT is a BGP peer that is configured and managed by Cloud Interconnect, specifically by an InterconnectAttachment of type PARTNER. Google will automatically create, update, and delete this type of BGP peer when the PARTNER InterconnectAttachment is created, updated, or deleted.",
           "enum": [
             "MANAGED_BY_ATTACHMENT",
             "MANAGED_BY_USER"
@@ -33472,12 +33457,12 @@
           "type": "string"
         },
         "peerAsn": {
-          "description": "Peer BGP Autonomous System Number (ASN). Each BGP interface may use a different value.",
+          "description": "Peer BGP Autonomous System Number (ASN). For VPN use case, this value can be different for every tunnel.",
           "format": "uint32",
           "type": "integer"
         },
         "peerIpAddress": {
-          "description": "IP address of the BGP interface outside Google Cloud Platform. Only IPv4 is supported.",
+          "description": "IP address of the BGP interface outside Google cloud. Only IPv4 is supported.",
           "type": "string"
         }
       },
@@ -33487,19 +33472,19 @@
       "id": "RouterInterface",
       "properties": {
         "ipRange": {
-          "description": "IP address and range of the interface. The IP range must be in the RFC3927 link-local IP address space. The value must be a CIDR-formatted string, for example: 169.254.0.1/30. NOTE: Do not truncate the address as it represents the IP address of the interface.",
+          "description": "IP address and range of the interface. The IP range must be in the RFC3927 link-local IP space. The value must be a CIDR-formatted string, for example: 169.254.0.1/30. NOTE: Do not truncate the address as it represents the IP address of the interface.",
           "type": "string"
         },
         "linkedInterconnectAttachment": {
-          "description": "URI of the linked Interconnect attachment. It must be in the same region as the router. Each interface can have one linked resource, which can be either be a VPN tunnel or an Interconnect attachment.",
+          "description": "URI of the linked interconnect attachment. It must be in the same region as the router. Each interface can have at most one linked resource and it could either be a VPN Tunnel or an interconnect attachment.",
           "type": "string"
         },
         "linkedVpnTunnel": {
-          "description": "URI of the linked VPN tunnel, which must be in the same region as the router. Each interface can have one linked resource, which can be either a VPN tunnel or an Interconnect attachment.",
+          "description": "URI of the linked VPN tunnel. It must be in the same region as the router. Each interface can have at most one linked resource and it could either be a VPN Tunnel or an interconnect attachment.",
           "type": "string"
         },
         "managementType": {
-          "description": "[Output Only] The resource that configures and manages this interface. \n- MANAGED_BY_USER is the default value and can be managed directly by users. \n- MANAGED_BY_ATTACHMENT is an interface that is configured and managed by Cloud Interconnect, specifically, by an InterconnectAttachment of type PARTNER. Google automatically creates, updates, and deletes this type of interface when the PARTNER InterconnectAttachment is created, updated, or deleted.",
+          "description": "[Output Only] The resource that configures and manages this interface. MANAGED_BY_USER is the default value and can be managed by you or other users; MANAGED_BY_ATTACHMENT is an interface that is configured and managed by Cloud Interconnect, specifically by an InterconnectAttachment of type PARTNER. Google will automatically create, update, and delete this type of interface when the PARTNER InterconnectAttachment is created, updated, or deleted.",
           "enum": [
             "MANAGED_BY_ATTACHMENT",
             "MANAGED_BY_USER"
@@ -33639,12 +33624,8 @@
           "format": "int32",
           "type": "integer"
         },
-        "logConfig": {
-          "$ref": "RouterNatLogConfig",
-          "description": "Configure logging on this NAT."
-        },
         "minPortsPerVm": {
-          "description": "Minimum number of ports allocated to a VM from this NAT config. If not set, a default number of ports is allocated to a VM. This is rounded up to the nearest power of 2. For example, if the value of this field is 50, at least 64 ports are allocated to a VM.",
+          "description": "Minimum number of ports allocated to a VM from this NAT config. If not set, a default number of ports is allocated to a VM. This gets rounded up to the nearest power of 2. Eg. if the value of this field is 50, at least 64 ports will be allocated to a VM.",
           "format": "int32",
           "type": "integer"
         },
@@ -33654,7 +33635,7 @@
           "type": "string"
         },
         "natIpAllocateOption": {
-          "description": "Specify the NatIpAllocateOption, which can take one of the following values: \n- MANUAL_ONLY: Uses only Nat IP addresses provided by customers. When there are not enough specified Nat IPs, the Nat service fails for new VMs. \n- AUTO_ONLY: Nat IPs are allocated by Google Cloud Platform; customers can't specify any Nat IPs. When choosing AUTO_ONLY, then nat_ip should be empty.",
+          "description": "Specify the NatIpAllocateOption. If it is AUTO_ONLY, then nat_ip should be empty.",
           "enum": [
             "AUTO_ONLY",
             "MANUAL_ONLY"
@@ -33666,14 +33647,14 @@
           "type": "string"
         },
         "natIps": {
-          "description": "A list of URLs of the IP resources used for this Nat service. These IP addresses must be valid static external IP addresses assigned to the project.",
+          "description": "A list of URLs of the IP resources used for this Nat service. These IPs must be valid static external IP addresses assigned to the project. max_length is subject to change post alpha.",
           "items": {
             "type": "string"
           },
           "type": "array"
         },
         "sourceSubnetworkIpRangesToNat": {
-          "description": "Specify the Nat option, which can take one of the following values: \n- ALL_SUBNETWORKS_ALL_IP_RANGES: All of the IP ranges in every Subnetwork are allowed to Nat. \n- ALL_SUBNETWORKS_ALL_PRIMARY_IP_RANGES: All of the primary IP ranges in every Subnetwork are allowed to Nat. \n- LIST_OF_SUBNETWORKS: A list of Subnetworks are allowed to Nat (specified in the field subnetwork below) The default is SUBNETWORK_IP_RANGE_TO_NAT_OPTION_UNSPECIFIED. Note that if this field contains ALL_SUBNETWORKS_ALL_IP_RANGES or ALL_SUBNETWORKS_ALL_PRIMARY_IP_RANGES, then there should not be any other Router.Nat section in any Router for this network in this region.",
+          "description": "Specify the Nat option. If this field contains ALL_SUBNETWORKS_ALL_IP_RANGES or ALL_SUBNETWORKS_ALL_PRIMARY_IP_RANGES, then there should not be any other Router.Nat section in any Router for this network in this region.",
           "enum": [
             "ALL_SUBNETWORKS_ALL_IP_RANGES",
             "ALL_SUBNETWORKS_ALL_PRIMARY_IP_RANGES",
@@ -33711,37 +33692,12 @@
       },
       "type": "object"
     },
-    "RouterNatLogConfig": {
-      "description": "Configuration of logging on a NAT.",
-      "id": "RouterNatLogConfig",
-      "properties": {
-        "enable": {
-          "description": "Indicates whether or not to export logs. This is false by default.",
-          "type": "boolean"
-        },
-        "filter": {
-          "description": "Specifies the desired filtering of logs on this NAT. If unspecified, logs are exported for all connections handled by this NAT.",
-          "enum": [
-            "ALL",
-            "ERRORS_ONLY",
-            "TRANSLATIONS_ONLY"
-          ],
-          "enumDescriptions": [
-            "",
-            "",
-            ""
-          ],
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
     "RouterNatSubnetworkToNat": {
       "description": "Defines the IP ranges that want to use NAT for a subnetwork.",
       "id": "RouterNatSubnetworkToNat",
       "properties": {
         "name": {
-          "description": "URL for the subnetwork resource that will use NAT.",
+          "description": "URL for the subnetwork resource to use NAT.",
           "type": "string"
         },
         "secondaryIpRangeNames": {
@@ -33752,7 +33708,7 @@
           "type": "array"
         },
         "sourceIpRangesToNat": {
-          "description": "Specify the options for NAT ranges in the Subnetwork. All options of a single value are valid except NAT_IP_RANGE_OPTION_UNSPECIFIED. The only valid option with multiple values is: [\"PRIMARY_IP_RANGE\", \"LIST_OF_SECONDARY_IP_RANGES\"] Default: [ALL_IP_RANGES]",
+          "description": "Specify the options for NAT ranges in the Subnetwork. All usages of single value are valid except NAT_IP_RANGE_OPTION_UNSPECIFIED. The only valid option with multiple values is: [\"PRIMARY_IP_RANGE\", \"LIST_OF_SECONDARY_IP_RANGES\"] Default: [ALL_IP_RANGES]",
           "items": {
             "enum": [
               "ALL_IP_RANGES",
@@ -34631,7 +34587,7 @@
         },
         "snapshotEncryptionKey": {
           "$ref": "CustomerEncryptionKey",
-          "description": "Encrypts the snapshot using a customer-supplied encryption key.\n\nAfter you encrypt a snapshot using a customer-supplied key, you must provide the same key if you use the snapshot later. For example, you must provide the encryption key when you create a disk from the encrypted snapshot in a future request.\n\nCustomer-supplied encryption keys do not protect access to metadata of the snapshot.\n\nIf you do not provide an encryption key when creating the snapshot, then the snapshot will be encrypted using an automatically generated key and you do not need to provide a key to use the snapshot later."
+          "description": "Encrypts the snapshot using a customer-supplied encryption key.\n\nAfter you encrypt a snapshot using a customer-supplied key, you must provide the same key if you use the image later For example, you must provide the encryption key when you create a disk from the encrypted snapshot in a future request.\n\nCustomer-supplied encryption keys do not protect access to metadata of the disk.\n\nIf you do not provide an encryption key when creating the snapshot, then the snapshot will be encrypted using an automatically generated key and you do not need to provide a key to use the snapshot later."
         },
         "sourceDisk": {
           "description": "[Output Only] The source disk used to create this snapshot.",

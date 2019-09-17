@@ -65,8 +65,9 @@ func newWalMetrics(wal *SegmentWAL, r prometheus.Registerer) *walMetrics {
 	m := &walMetrics{}
 
 	m.fsyncDuration = prometheus.NewSummary(prometheus.SummaryOpts{
-		Name: "prometheus_tsdb_wal_fsync_duration_seconds",
-		Help: "Duration of WAL fsync.",
+		Name:       "prometheus_tsdb_wal_fsync_duration_seconds",
+		Help:       "Duration of WAL fsync.",
+		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 	})
 	m.corruptions = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "prometheus_tsdb_wal_corruptions_total",
@@ -338,6 +339,12 @@ func (w *SegmentWAL) Truncate(mint int64, keep func(uint64) bool) error {
 	if err != nil {
 		return errors.Wrap(err, "create compaction segment")
 	}
+	defer func() {
+		if err := os.RemoveAll(f.Name()); err != nil {
+			level.Error(w.logger).Log("msg", "remove tmp file", "err", err.Error())
+		}
+	}()
+
 	var (
 		csf          = newSegmentFile(f)
 		crc32        = newCRC32()
@@ -389,7 +396,7 @@ func (w *SegmentWAL) Truncate(mint int64, keep func(uint64) bool) error {
 	csf.Close()
 
 	candidates[0].Close() // need close before remove on platform windows
-	if err := renameFile(csf.Name(), candidates[0].Name()); err != nil {
+	if err := fileutil.Replace(csf.Name(), candidates[0].Name()); err != nil {
 		return errors.Wrap(err, "rename compaction segment")
 	}
 	for _, f := range candidates[1:] {
@@ -1239,7 +1246,7 @@ func MigrateWAL(logger log.Logger, dir string) (err error) {
 	if err := os.RemoveAll(tmpdir); err != nil {
 		return errors.Wrap(err, "cleanup replacement dir")
 	}
-	repl, err := wal.New(logger, nil, tmpdir)
+	repl, err := wal.New(logger, nil, tmpdir, false)
 	if err != nil {
 		return errors.Wrap(err, "open new WAL")
 	}

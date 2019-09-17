@@ -14,6 +14,7 @@
 package tsdb
 
 import (
+	"fmt"
 	"math"
 	"runtime"
 	"sort"
@@ -39,7 +40,7 @@ var (
 	ErrNotFound = errors.Errorf("not found")
 
 	// ErrOutOfOrderSample is returned if an appended sample has a
-	// timestamp larger than the most recent sample.
+	// timestamp smaller than the most recent sample.
 	ErrOutOfOrderSample = errors.New("out of order sample")
 
 	// ErrAmendSample is returned if an appended sample has the same timestamp
@@ -74,6 +75,9 @@ type Head struct {
 	symMtx  sync.RWMutex
 	symbols map[string]struct{}
 	values  map[string]stringset // label names to possible values
+
+	deletedMtx sync.Mutex
+	deleted    map[uint64]int // Deleted series, and what WAL segment they must be kept until.
 
 	postings *index.MemPostings // postings lists for terms
 }
@@ -137,8 +141,9 @@ func newHeadMetrics(h *Head, r prometheus.Registerer) *headMetrics {
 		Help: "Total number of chunks removed in the head",
 	})
 	m.gcDuration = prometheus.NewSummary(prometheus.SummaryOpts{
-		Name: "prometheus_tsdb_head_gc_duration_seconds",
-		Help: "Runtime of garbage collection in the head block.",
+		Name:       "prometheus_tsdb_head_gc_duration_seconds",
+		Help:       "Runtime of garbage collection in the head block.",
+		Objectives: map[float64]float64{},
 	})
 	m.maxTime = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "prometheus_tsdb_head_max_time",
@@ -153,8 +158,9 @@ func newHeadMetrics(h *Head, r prometheus.Registerer) *headMetrics {
 		return float64(h.MinTime())
 	})
 	m.walTruncateDuration = prometheus.NewSummary(prometheus.SummaryOpts{
-		Name: "prometheus_tsdb_wal_truncate_duration_seconds",
-		Help: "Duration of WAL truncation.",
+		Name:       "prometheus_tsdb_wal_truncate_duration_seconds",
+		Help:       "Duration of WAL truncation.",
+		Objectives: map[float64]float64{},
 	})
 	m.walCorruptionsTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "prometheus_tsdb_wal_corruptions_total",
@@ -234,6 +240,7 @@ func NewHead(r prometheus.Registerer, l log.Logger, wal *wal.WAL, chunkRange int
 		values:     map[string]stringset{},
 		symbols:    map[string]struct{}{},
 		postings:   index.NewUnorderedMemPostings(),
+		deleted:    map[uint64]int{},
 	}
 	h.metrics = newHeadMetrics(h, r)
 
@@ -308,7 +315,7 @@ func (h *Head) updateMinMaxTime(mint, maxt int64) {
 	}
 }
 
-func (h *Head) loadWAL(r *wal.Reader) error {
+func (h *Head) loadWAL(r *wal.Reader, multiRef map[uint64]uint64) (err error) {
 	// Track number of samples that referenced a series we don't know about
 	// for error reporting.
 	var unknownRefs uint64
@@ -317,12 +324,25 @@ func (h *Head) loadWAL(r *wal.Reader) error {
 	// They are connected through a ring of channels which ensures that all sample batches
 	// read from the WAL are processed in order.
 	var (
-		wg      sync.WaitGroup
-		n       = runtime.GOMAXPROCS(0)
-		inputs  = make([]chan []RefSample, n)
-		outputs = make([]chan []RefSample, n)
+		wg           sync.WaitGroup
+		multiRefLock sync.Mutex
+		n            = runtime.GOMAXPROCS(0)
+		inputs       = make([]chan []RefSample, n)
+		outputs      = make([]chan []RefSample, n)
 	)
 	wg.Add(n)
+
+	defer func() {
+		// For CorruptionErr ensure to terminate all workers before exiting.
+		if _, ok := err.(*wal.CorruptionErr); ok {
+			for i := 0; i < n; i++ {
+				close(inputs[i])
+				for range outputs[i] {
+				}
+			}
+			wg.Wait()
+		}
+	}()
 
 	for i := 0; i < n; i++ {
 		outputs[i] = make(chan []RefSample, 300)
@@ -341,9 +361,12 @@ func (h *Head) loadWAL(r *wal.Reader) error {
 		samples   []RefSample
 		tstones   []Stone
 		allStones = newMemTombstones()
-		err       error
 	)
-	defer allStones.Close()
+	defer func() {
+		if err := allStones.Close(); err != nil {
+			level.Warn(h.logger).Log("msg", "closing  memTombstones during wal read", "err", err)
+		}
+	}()
 	for r.Next() {
 		series, samples, tstones = series[:0], samples[:0], tstones[:0]
 		rec := r.Record()
@@ -359,7 +382,14 @@ func (h *Head) loadWAL(r *wal.Reader) error {
 				}
 			}
 			for _, s := range series {
-				h.getOrCreateWithID(s.Ref, s.Labels.Hash(), s.Labels)
+				series, created := h.getOrCreateWithID(s.Ref, s.Labels.Hash(), s.Labels)
+
+				if !created {
+					// There's already a different ref for this series.
+					multiRefLock.Lock()
+					multiRef[s.Ref] = series.ref
+					multiRefLock.Unlock()
+				}
 
 				if h.lastSeriesID < s.Ref {
 					h.lastSeriesID = s.Ref
@@ -394,6 +424,9 @@ func (h *Head) loadWAL(r *wal.Reader) error {
 					shards[i] = buf[:0]
 				}
 				for _, sam := range samples[:m] {
+					if r, ok := multiRef[sam.Ref]; ok {
+						sam.Ref = r
+					}
 					mod := sam.Ref % uint64(n)
 					shards[mod] = append(shards[mod], sam)
 				}
@@ -417,6 +450,10 @@ func (h *Head) loadWAL(r *wal.Reader) error {
 					if itv.Maxt < h.minValidTime {
 						continue
 					}
+					if m := h.series.getByID(s.ref); m == nil {
+						unknownRefs++
+						continue
+					}
 					allStones.addInterval(s.ref, itv)
 				}
 			}
@@ -428,9 +465,6 @@ func (h *Head) loadWAL(r *wal.Reader) error {
 			}
 		}
 	}
-	if r.Err() != nil {
-		return errors.Wrap(r.Err(), "read records")
-	}
 
 	// Signal termination to each worker and wait for it to close its output channel.
 	for i := 0; i < n; i++ {
@@ -439,6 +473,10 @@ func (h *Head) loadWAL(r *wal.Reader) error {
 		}
 	}
 	wg.Wait()
+
+	if r.Err() != nil {
+		return errors.Wrap(r.Err(), "read records")
+	}
 
 	if err := allStones.Iter(func(ref uint64, dranges Intervals) error {
 		return h.chunkRewrite(ref, dranges)
@@ -469,37 +507,49 @@ func (h *Head) Init(minValidTime int64) error {
 	if err != nil && err != ErrNotFound {
 		return errors.Wrap(err, "find last checkpoint")
 	}
+	multiRef := map[uint64]uint64{}
 	if err == nil {
 		sr, err := wal.NewSegmentsReader(dir)
 		if err != nil {
 			return errors.Wrap(err, "open checkpoint")
 		}
-		defer sr.Close()
+		defer func() {
+			if err := sr.Close(); err != nil {
+				level.Warn(h.logger).Log("msg", "error while closing the wal segments reader", "err", err)
+			}
+		}()
 
 		// A corrupted checkpoint is a hard error for now and requires user
 		// intervention. There's likely little data that can be recovered anyway.
-		if err := h.loadWAL(wal.NewReader(sr)); err != nil {
+		if err := h.loadWAL(wal.NewReader(sr), multiRef); err != nil {
 			return errors.Wrap(err, "backfill checkpoint")
 		}
 		startFrom++
 	}
 
-	// Backfill segments from the last checkpoint onwards
-	sr, err := wal.NewSegmentsRangeReader(wal.SegmentRange{Dir: h.wal.Dir(), First: startFrom, Last: -1})
+	// Find the last segment.
+	_, last, err := h.wal.Segments()
 	if err != nil {
-		return errors.Wrap(err, "open WAL segments")
+		return errors.Wrap(err, "finding WAL segments")
 	}
 
-	err = h.loadWAL(wal.NewReader(sr))
-	sr.Close() // Close the reader so that if there was an error the repair can remove the corrupted file under Windows.
-	if err == nil {
-		return nil
+	// Backfill segments from the most recent checkpoint onwards.
+	for i := startFrom; i <= last; i++ {
+		s, err := wal.OpenReadSegment(wal.SegmentName(h.wal.Dir(), i))
+		if err != nil {
+			return errors.Wrap(err, fmt.Sprintf("open WAL segment: %d", i))
+		}
+
+		sr := wal.NewSegmentBufReader(s)
+		err = h.loadWAL(wal.NewReader(sr), multiRef)
+		if err := sr.Close(); err != nil {
+			level.Warn(h.logger).Log("msg", "error while closing the wal segments reader", "err", err)
+		}
+		if err != nil {
+			return err
+		}
 	}
-	level.Warn(h.logger).Log("msg", "encountered WAL error, attempting repair", "err", err)
-	h.metrics.walCorruptionsTotal.Inc()
-	if err := h.wal.Repair(err); err != nil {
-		return errors.Wrap(err, "repair corrupted WAL")
-	}
+
 	return nil
 }
 
@@ -545,6 +595,12 @@ func (h *Head) Truncate(mint int64) (err error) {
 	if err != nil {
 		return errors.Wrap(err, "get segment range")
 	}
+	// Start a new segment, so low ingestion volume TSDB don't have more WAL than
+	// needed.
+	err = h.wal.NextSegment()
+	if err != nil {
+		return errors.Wrap(err, "next segment")
+	}
 	last-- // Never consider last segment for checkpoint.
 	if last < 0 {
 		return nil // no segments yet.
@@ -557,7 +613,13 @@ func (h *Head) Truncate(mint int64) (err error) {
 	}
 
 	keep := func(id uint64) bool {
-		return h.series.getByID(id) != nil
+		if h.series.getByID(id) != nil {
+			return true
+		}
+		h.deletedMtx.Lock()
+		_, ok := h.deleted[id]
+		h.deletedMtx.Unlock()
+		return ok
 	}
 	h.metrics.checkpointCreationTotal.Inc()
 	if _, err = Checkpoint(h.wal, first, last, keep, mint); err != nil {
@@ -570,6 +632,17 @@ func (h *Head) Truncate(mint int64) (err error) {
 		// that supersedes them.
 		level.Error(h.logger).Log("msg", "truncating segments failed", "err", err)
 	}
+
+	// The checkpoint is written and segments before it is truncated, so we no
+	// longer need to track deleted series that are before it.
+	h.deletedMtx.Lock()
+	for ref, segment := range h.deleted {
+		if segment < first {
+			delete(h.deleted, ref)
+		}
+	}
+	h.deletedMtx.Unlock()
+
 	h.metrics.checkpointDeleteTotal.Inc()
 	if err := DeleteCheckpoints(h.wal.Dir(), last); err != nil {
 		// Leftover old checkpoints do not cause problems down the line beyond
@@ -734,6 +807,9 @@ func (a *headAppender) Add(lset labels.Labels, t int64, v float64) (uint64, erro
 		return 0, ErrOutOfBounds
 	}
 
+	// Ensure no empty labels have gotten through.
+	lset = lset.WithoutEmpty()
+
 	s, created := a.head.getOrCreate(lset.Hash(), lset)
 	if created {
 		a.series = append(a.series, RefSeries{
@@ -891,8 +967,8 @@ func (h *Head) Delete(mint, maxt int64, ms ...labels.Matcher) error {
 	var enc RecordEncoder
 	if h.wal != nil {
 		// Although we don't store the stones in the head
-		// we need to write them  to the WAL to mark these as deleted
-		// after a restart while loeading the WAL.
+		// we need to write them to the WAL to mark these as deleted
+		// after a restart while loading the WAL.
 		if err := h.wal.Log(enc.Tombstones(stones, nil)); err != nil {
 			return err
 		}
@@ -953,8 +1029,23 @@ func (h *Head) gc() {
 	// Remove deleted series IDs from the postings lists.
 	h.postings.Delete(deleted)
 
+	if h.wal != nil {
+		_, last, _ := h.wal.Segments()
+		h.deletedMtx.Lock()
+		// Keep series records until we're past segment 'last'
+		// because the WAL will still have samples records with
+		// this ref ID. If we didn't keep these series records then
+		// on start up when we replay the WAL, or any other code
+		// that reads the WAL, wouldn't be able to use those
+		// samples since we would have no labels for that ref ID.
+		for ref := range deleted {
+			h.deleted[ref] = last
+		}
+		h.deletedMtx.Unlock()
+	}
+
 	// Rebuild symbols and label value indices from what is left in the postings terms.
-	symbols := make(map[string]struct{})
+	symbols := make(map[string]struct{}, len(h.symbols))
 	values := make(map[string]stringset, len(h.values))
 
 	if err := h.postings.Iter(func(t labels.Label, _ index.Postings) error {
@@ -1018,6 +1109,13 @@ func (h *Head) MinTime() int64 {
 // MaxTime returns the highest timestamp seen in data of the head.
 func (h *Head) MaxTime() int64 {
 	return atomic.LoadInt64(&h.maxTime)
+}
+
+// compactable returns whether the head has a compactable range.
+// The head has a compactable range when the head time range is 1.5 times the chunk range.
+// The 0.5 acts as a buffer of the appendable window.
+func (h *Head) compactable() bool {
+	return h.MaxTime()-h.MinTime() > h.chunkRange/2*3
 }
 
 // Close flushes the WAL and closes the head.
@@ -1200,9 +1298,15 @@ func (h *headIndexReader) Series(ref uint64, lbls *labels.Labels, chks *[]chunks
 		if !c.OverlapsClosedInterval(h.mint, h.maxt) {
 			continue
 		}
+		// Set the head chunks as open (being appended to).
+		maxTime := c.maxTime
+		if s.headChunk == c {
+			maxTime = math.MaxInt64
+		}
+
 		*chks = append(*chks, chunks.Meta{
 			MinTime: c.minTime,
-			MaxTime: c.maxTime,
+			MaxTime: maxTime,
 			Ref:     packChunkID(s.ref, uint64(s.chunkID(i))),
 		})
 	}

@@ -380,7 +380,13 @@ func (s *server) ReadRows(req *btpb.ReadRowsRequest, stream btpb.Bigtable_ReadRo
 
 	rows := make([]*row, 0, len(rowSet))
 	for _, r := range rowSet {
-		rows = append(rows, r)
+		r.mu.Lock()
+		fams := len(r.families)
+		r.mu.Unlock()
+
+		if fams != 0 {
+			rows = append(rows, r)
+		}
 	}
 	sort.Sort(byRowKey(rows))
 
@@ -473,8 +479,13 @@ func filterRow(f *btpb.RowFilter, r *row) (bool, error) {
 		srs := make([]*row, 0, len(f.Interleave.Filters))
 		for _, sub := range f.Interleave.Filters {
 			sr := r.copy()
-			filterRow(sub, sr)
-			srs = append(srs, sr)
+			match, err := filterRow(sub, sr)
+			if err != nil {
+				return false, err
+			}
+			if match {
+				srs = append(srs, sr)
+			}
 		}
 		// merge
 		// TODO(dsymonds): is this correct?
@@ -798,6 +809,9 @@ func (s *server) CheckAndMutateRow(ctx context.Context, req *btpb.CheckAndMutate
 		// Use true_mutations iff any cells in the row match the filter.
 		// TODO(dsymonds): This could be cheaper.
 		nr := r.copy()
+
+		// TODO(dsymonds, odeke-em): examine if filterRow here should be checked:
+		// with: match, err := filterRow(req.PredicateFilter, nr)
 		filterRow(req.PredicateFilter, nr)
 		whichMut = !nr.isEmpty()
 	}

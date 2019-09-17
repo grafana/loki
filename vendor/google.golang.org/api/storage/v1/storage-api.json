@@ -26,7 +26,7 @@
   "description": "Stores and retrieves potentially large, immutable data objects.",
   "discoveryVersion": "v1",
   "documentationLink": "https://developers.google.com/storage/docs/json_api/",
-  "etag": "\"VPK3KBfpaEgZ16pozGOoMYfKc0U/g26t9M1iNI-j1-5ry7bpKWNPs60\"",
+  "etag": "\"VPK3KBfpaEgZ16pozGOoMYfKc0U/0oTiRxFg5a8IRGYou40wPCps2h4\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -109,11 +109,6 @@
               "required": true,
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -147,11 +142,6 @@
               "required": true,
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -179,11 +169,6 @@
               "description": "Name of a bucket.",
               "location": "path",
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -216,11 +201,6 @@
               "description": "Name of a bucket.",
               "location": "path",
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -257,11 +237,6 @@
               "description": "The entity holding the permission. Can be user-userId, user-emailAddress, group-groupId, group-emailAddress, allUsers, or allAuthenticatedUsers.",
               "location": "path",
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -301,11 +276,6 @@
               "description": "The entity holding the permission. Can be user-userId, user-emailAddress, group-groupId, group-emailAddress, allUsers, or allAuthenticatedUsers.",
               "location": "path",
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -353,11 +323,6 @@
             "ifMetagenerationNotMatch": {
               "description": "If set, only deletes the bucket if its metageneration does not match this value.",
               "format": "int64",
-              "location": "query",
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
               "location": "query",
               "type": "string"
             },
@@ -413,11 +378,6 @@
               "location": "query",
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -450,11 +410,6 @@
               "required": true,
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -467,7 +422,10 @@
           },
           "scopes": [
             "https://www.googleapis.com/auth/cloud-platform",
-            "https://www.googleapis.com/auth/devstorage.full_control"
+            "https://www.googleapis.com/auth/cloud-platform.read-only",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_only",
+            "https://www.googleapis.com/auth/devstorage.read_write"
           ]
         },
         "insert": {
@@ -537,11 +495,6 @@
               "location": "query",
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request.",
               "location": "query",
@@ -606,11 +559,6 @@
               "location": "query",
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request.",
               "location": "query",
@@ -649,11 +597,6 @@
               "format": "int64",
               "location": "query",
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -751,11 +694,6 @@
               "location": "query",
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -788,11 +726,6 @@
               "required": true,
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -808,7 +741,8 @@
           },
           "scopes": [
             "https://www.googleapis.com/auth/cloud-platform",
-            "https://www.googleapis.com/auth/devstorage.full_control"
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
           ]
         },
         "testIamPermissions": {
@@ -831,11 +765,6 @@
               "location": "query",
               "repeated": true,
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -935,11 +864,6 @@
               "location": "query",
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -1004,11 +928,6 @@
               "required": true,
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -1042,11 +961,6 @@
               "required": true,
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -1074,11 +988,6 @@
               "description": "Name of a bucket.",
               "location": "path",
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -1125,11 +1034,6 @@
               "location": "query",
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -1164,11 +1068,6 @@
               "description": "The entity holding the permission. Can be user-userId, user-emailAddress, group-groupId, group-emailAddress, allUsers, or allAuthenticatedUsers.",
               "location": "path",
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -1208,11 +1107,6 @@
               "description": "The entity holding the permission. Can be user-userId, user-emailAddress, group-groupId, group-emailAddress, allUsers, or allAuthenticatedUsers.",
               "location": "path",
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -1258,11 +1152,6 @@
               "required": true,
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -1297,11 +1186,6 @@
               "required": true,
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -1332,11 +1216,6 @@
               "description": "The parent bucket of the notification.",
               "location": "path",
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -1370,11 +1249,6 @@
               "description": "Name of a Google Cloud Storage bucket.",
               "location": "path",
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -1433,11 +1307,6 @@
               "required": true,
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -1484,11 +1353,6 @@
               "required": true,
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -1529,11 +1393,6 @@
               "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
               "location": "path",
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -1579,11 +1438,6 @@
               "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
               "location": "path",
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -1633,11 +1487,6 @@
               "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
               "location": "path",
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -1690,11 +1539,6 @@
               "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
               "location": "path",
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -1775,11 +1619,6 @@
             },
             "kmsKeyName": {
               "description": "Resource name of the Cloud KMS key, of the form projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key, that will be used to encrypt the object. Overrides the object metadata's kms_key_name value, if any.",
-              "location": "query",
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
               "location": "query",
               "type": "string"
             },
@@ -1907,11 +1746,6 @@
               "location": "query",
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "sourceBucket": {
               "description": "Name of the bucket in which to find the source object.",
               "location": "path",
@@ -2000,11 +1834,6 @@
               "required": true,
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -2082,11 +1911,6 @@
               "location": "query",
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -2132,11 +1956,6 @@
               "description": "Name of the object. For information about how to URL encode object names to be path safe, see Encoding URI Path Parts.",
               "location": "path",
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -2259,11 +2078,6 @@
               "location": "query",
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -2336,11 +2150,6 @@
                 "Include all properties.",
                 "Omit the owner, acl property."
               ],
-              "location": "query",
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
               "location": "query",
               "type": "string"
             },
@@ -2450,11 +2259,6 @@
                 "Include all properties.",
                 "Omit the owner, acl property."
               ],
-              "location": "query",
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
               "location": "query",
               "type": "string"
             },
@@ -2592,11 +2396,6 @@
               "location": "query",
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "rewriteToken": {
               "description": "Include this field (from the previous rewrite response) on each rewrite request after the first one, until the rewrite response 'done' flag is true. Calls that provide a rewriteToken can omit all other request fields, but if included those fields must match the values provided in the first rewrite request.",
               "location": "query",
@@ -2666,11 +2465,6 @@
               "required": true,
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -2723,11 +2517,6 @@
               "location": "query",
               "repeated": true,
               "required": true,
-              "type": "string"
-            },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
               "type": "string"
             },
             "userProject": {
@@ -2833,11 +2622,6 @@
               "location": "query",
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -2911,11 +2695,6 @@
               "location": "query",
               "type": "string"
             },
-            "provisionalUserProject": {
-              "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-              "location": "query",
-              "type": "string"
-            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -2970,11 +2749,6 @@
                   "location": "query",
                   "required": true,
                   "type": "string"
-                },
-                "userProject": {
-                  "description": "The project to be billed for this request.",
-                  "location": "query",
-                  "type": "string"
                 }
               },
               "path": "projects/{projectId}/hmacKeys",
@@ -3006,11 +2780,6 @@
                   "location": "path",
                   "required": true,
                   "type": "string"
-                },
-                "userProject": {
-                  "description": "The project to be billed for this request.",
-                  "location": "query",
-                  "type": "string"
                 }
               },
               "path": "projects/{projectId}/hmacKeys/{accessId}",
@@ -3040,11 +2809,6 @@
                   "location": "path",
                   "required": true,
                   "type": "string"
-                },
-                "userProject": {
-                  "description": "The project to be billed for this request.",
-                  "location": "query",
-                  "type": "string"
                 }
               },
               "path": "projects/{projectId}/hmacKeys/{accessId}",
@@ -3066,8 +2830,8 @@
               ],
               "parameters": {
                 "maxResults": {
-                  "default": "250",
-                  "description": "Maximum number of items to return in a single page of responses. The service uses this parameter or 250 items, whichever is smaller. The max number of items per page will also be limited by the number of distinct service accounts in the response. If the number of service accounts in a single response is too high, the page will truncated and a next page token will be returned.",
+                  "default": "1000",
+                  "description": "Maximum number of items plus prefixes to return in a single page of responses. Because duplicate prefixes are omitted, fewer total results may be returned than requested. The service uses this parameter or 1,000 items, whichever is smaller.",
                   "format": "uint32",
                   "location": "query",
                   "minimum": "0",
@@ -3093,11 +2857,6 @@
                   "description": "Whether or not to show keys in the DELETED state.",
                   "location": "query",
                   "type": "boolean"
-                },
-                "userProject": {
-                  "description": "The project to be billed for this request.",
-                  "location": "query",
-                  "type": "string"
                 }
               },
               "path": "projects/{projectId}/hmacKeys",
@@ -3131,11 +2890,6 @@
                   "location": "path",
                   "required": true,
                   "type": "string"
-                },
-                "userProject": {
-                  "description": "The project to be billed for this request.",
-                  "location": "query",
-                  "type": "string"
                 }
               },
               "path": "projects/{projectId}/hmacKeys/{accessId}",
@@ -3168,11 +2922,6 @@
                   "required": true,
                   "type": "string"
                 },
-                "provisionalUserProject": {
-                  "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
-                  "location": "query",
-                  "type": "string"
-                },
                 "userProject": {
                   "description": "The project to be billed for this request.",
                   "location": "query",
@@ -3196,7 +2945,7 @@
       }
     }
   },
-  "revision": "20190523",
+  "revision": "20190326",
   "rootUrl": "https://www.googleapis.com/",
   "schemas": {
     "Bucket": {
@@ -3390,10 +3139,6 @@
         },
         "location": {
           "description": "The location of the bucket. Object data for objects in the bucket resides in physical storage within this region. Defaults to US. See the developer's guide for the authoritative list.",
-          "type": "string"
-        },
-        "locationType": {
-          "description": "The type of the bucket location.",
           "type": "string"
         },
         "logging": {
@@ -3742,6 +3487,11 @@
           "description": "Textual representation of an expression in Common Expression Language syntax. The application context of the containing message determines which well-known feature set of CEL is supported.",
           "type": "string"
         },
+        "kind": {
+          "default": "storage#expr",
+          "description": "The kind of item this is. For storage, this is always storage#expr. This field is ignored on input.",
+          "type": "string"
+        },
         "location": {
           "description": "An optional string indicating the location of the expression for error reporting, e.g. a file name and a position in the file.",
           "type": "string"
@@ -3763,8 +3513,8 @@
           "type": "string"
         },
         "metadata": {
-          "$ref": "HmacKeyMetadata",
-          "description": "Key metadata."
+          "description": "Key metadata.",
+          "type": "any"
         },
         "secret": {
           "description": "HMAC secret key material.",
@@ -3782,7 +3532,7 @@
           "type": "string"
         },
         "etag": {
-          "description": "HTTP 1.1 Entity tag for the HMAC key.",
+          "description": "HTTP 1.1 Entity tag for the access-control entry.",
           "type": "string"
         },
         "id": {
@@ -3812,12 +3562,10 @@
         },
         "timeCreated": {
           "description": "The creation time of the HMAC key in RFC 3339 format.",
-          "format": "date-time",
           "type": "string"
         },
         "updated": {
           "description": "The last modification time of the HMAC key metadata in RFC 3339 format.",
-          "format": "date-time",
           "type": "string"
         }
       },

@@ -26,7 +26,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -778,6 +777,10 @@ type ObjectAttrs struct {
 	// ObjectIterator.Next. When set, no other fields in ObjectAttrs will be
 	// populated.
 	Prefix string
+
+	// Etag is the HTTP/1.1 Entity tag for the object.
+	// This field is read-only.
+	Etag string
 }
 
 // convertTime converts a time in RFC3339 format to time.Time.
@@ -830,6 +833,7 @@ func newObject(o *raw.Object) *ObjectAttrs {
 		Created:                 convertTime(o.TimeCreated),
 		Deleted:                 convertTime(o.TimeDeleted),
 		Updated:                 convertTime(o.Updated),
+		Etag:                    o.Etag,
 	}
 }
 
@@ -870,17 +874,6 @@ type Query struct {
 	// Versions indicates whether multiple versions of the same
 	// object will be included in the results.
 	Versions bool
-}
-
-// contentTyper implements ContentTyper to enable an
-// io.ReadCloser to specify its MIME type.
-type contentTyper struct {
-	io.Reader
-	t string
-}
-
-func (c *contentTyper) ContentType() string {
-	return c.t
 }
 
 // Conditions constrain methods to act on specific generations of

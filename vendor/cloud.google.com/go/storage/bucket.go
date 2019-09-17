@@ -232,6 +232,10 @@ type BucketAttrs struct {
 	// ACL is the list of access control rules on the bucket.
 	ACL []ACLRule
 
+	// BucketPolicyOnly configures access checks to use only bucket-level IAM
+	// policies.
+	BucketPolicyOnly BucketPolicyOnly
+
 	// DefaultObjectACL is the list of access controls to
 	// apply to new objects when no object ACL is provided.
 	DefaultObjectACL []ACLRule
@@ -309,6 +313,21 @@ type BucketAttrs struct {
 
 	// The website configuration.
 	Website *BucketWebsite
+
+	// Etag is the HTTP/1.1 Entity tag for the bucket.
+	// This field is read-only.
+	Etag string
+}
+
+// BucketPolicyOnly configures access checks to use only bucket-level IAM
+// policies.
+type BucketPolicyOnly struct {
+	// Enabled specifies whether access checks use only bucket-level IAM
+	// policies. Enabled may be disabled until the locked time.
+	Enabled bool
+	// LockedTime specifies the deadline for changing Enabled from true to
+	// false.
+	LockedTime time.Time
 }
 
 // Lifecycle is the lifecycle configuration for objects in the bucket.
@@ -485,6 +504,8 @@ func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
 		Encryption:            toBucketEncryption(b.Encryption),
 		Logging:               toBucketLogging(b.Logging),
 		Website:               toBucketWebsite(b.Website),
+		BucketPolicyOnly:      toBucketPolicyOnly(b.IamConfiguration),
+		Etag:                  b.Etag,
 	}, nil
 }
 
@@ -509,6 +530,14 @@ func (b *BucketAttrs) toRawBucket() *raw.Bucket {
 	if b.RequesterPays {
 		bb = &raw.BucketBilling{RequesterPays: true}
 	}
+	var bktIAM *raw.BucketIamConfiguration
+	if b.BucketPolicyOnly.Enabled {
+		bktIAM = &raw.BucketIamConfiguration{
+			BucketPolicyOnly: &raw.BucketIamConfigurationBucketPolicyOnly{
+				Enabled: true,
+			},
+		}
+	}
 	return &raw.Bucket{
 		Name:             b.Name,
 		Location:         b.Location,
@@ -524,6 +553,7 @@ func (b *BucketAttrs) toRawBucket() *raw.Bucket {
 		Encryption:       b.Encryption.toRawBucketEncryption(),
 		Logging:          b.Logging.toRawBucketLogging(),
 		Website:          b.Website.toRawBucketWebsite(),
+		IamConfiguration: bktIAM,
 	}
 }
 
@@ -569,6 +599,10 @@ type BucketAttrsToUpdate struct {
 	// DefaultEventBasedHold is the default value for event-based hold on
 	// newly created objects in this bucket.
 	DefaultEventBasedHold optional.Bool
+
+	// BucketPolicyOnly configures access checks to use only bucket-level IAM
+	// policies.
+	BucketPolicyOnly *BucketPolicyOnly
 
 	// If set, updates the retention policy of the bucket. Using
 	// RetentionPolicy.RetentionPeriod = 0 will delete the existing policy.
@@ -654,6 +688,13 @@ func (ua *BucketAttrsToUpdate) toRawBucket() *raw.Bucket {
 		rb.Billing = &raw.BucketBilling{
 			RequesterPays:   optional.ToBool(ua.RequesterPays),
 			ForceSendFields: []string{"RequesterPays"},
+		}
+	}
+	if ua.BucketPolicyOnly != nil {
+		rb.IamConfiguration = &raw.BucketIamConfiguration{
+			BucketPolicyOnly: &raw.BucketIamConfigurationBucketPolicyOnly{
+				Enabled: ua.BucketPolicyOnly.Enabled,
+			},
 		}
 	}
 	if ua.Encryption != nil {
@@ -972,6 +1013,22 @@ func toBucketWebsite(w *raw.BucketWebsite) *BucketWebsite {
 	return &BucketWebsite{
 		MainPageSuffix: w.MainPageSuffix,
 		NotFoundPage:   w.NotFoundPage,
+	}
+}
+
+func toBucketPolicyOnly(b *raw.BucketIamConfiguration) BucketPolicyOnly {
+	if b == nil || b.BucketPolicyOnly == nil || !b.BucketPolicyOnly.Enabled {
+		return BucketPolicyOnly{}
+	}
+	lt, err := time.Parse(time.RFC3339, b.BucketPolicyOnly.LockedTime)
+	if err != nil {
+		return BucketPolicyOnly{
+			Enabled: true,
+		}
+	}
+	return BucketPolicyOnly{
+		Enabled:    true,
+		LockedTime: lt,
 	}
 }
 

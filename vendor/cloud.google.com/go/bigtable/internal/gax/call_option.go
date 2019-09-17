@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package gax is a snapshot from github.com/googleapis/gax-go with minor modifications.
+// Package gax is a snapshot from github.com/googleapis/gax-go/v2 with minor modifications.
 package gax
 
 import (

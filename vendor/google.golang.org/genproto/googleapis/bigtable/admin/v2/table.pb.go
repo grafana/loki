@@ -46,7 +46,7 @@ func (x Table_TimestampGranularity) String() string {
 	return proto.EnumName(Table_TimestampGranularity_name, int32(x))
 }
 func (Table_TimestampGranularity) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_table_ed23c9c8618cc2b8, []int{0, 0}
+	return fileDescriptor_table_d23eabdaefbca794, []int{0, 0}
 }
 
 // Defines a view over a table's fields.
@@ -85,7 +85,7 @@ func (x Table_View) String() string {
 	return proto.EnumName(Table_View_name, int32(x))
 }
 func (Table_View) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_table_ed23c9c8618cc2b8, []int{0, 1}
+	return fileDescriptor_table_d23eabdaefbca794, []int{0, 1}
 }
 
 // Table replication states.
@@ -129,7 +129,7 @@ func (x Table_ClusterState_ReplicationState) String() string {
 	return proto.EnumName(Table_ClusterState_ReplicationState_name, int32(x))
 }
 func (Table_ClusterState_ReplicationState) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_table_ed23c9c8618cc2b8, []int{0, 0, 0}
+	return fileDescriptor_table_d23eabdaefbca794, []int{0, 0, 0}
 }
 
 // Possible states of a snapshot.
@@ -161,7 +161,7 @@ func (x Snapshot_State) String() string {
 	return proto.EnumName(Snapshot_State_name, int32(x))
 }
 func (Snapshot_State) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_table_ed23c9c8618cc2b8, []int{3, 0}
+	return fileDescriptor_table_d23eabdaefbca794, []int{3, 0}
 }
 
 // A collection of user data indexed by row, column, and timestamp.
@@ -198,7 +198,7 @@ func (m *Table) Reset()         { *m = Table{} }
 func (m *Table) String() string { return proto.CompactTextString(m) }
 func (*Table) ProtoMessage()    {}
 func (*Table) Descriptor() ([]byte, []int) {
-	return fileDescriptor_table_ed23c9c8618cc2b8, []int{0}
+	return fileDescriptor_table_d23eabdaefbca794, []int{0}
 }
 func (m *Table) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Table.Unmarshal(m, b)
@@ -260,7 +260,7 @@ func (m *Table_ClusterState) Reset()         { *m = Table_ClusterState{} }
 func (m *Table_ClusterState) String() string { return proto.CompactTextString(m) }
 func (*Table_ClusterState) ProtoMessage()    {}
 func (*Table_ClusterState) Descriptor() ([]byte, []int) {
-	return fileDescriptor_table_ed23c9c8618cc2b8, []int{0, 0}
+	return fileDescriptor_table_d23eabdaefbca794, []int{0, 0}
 }
 func (m *Table_ClusterState) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Table_ClusterState.Unmarshal(m, b)
@@ -305,7 +305,7 @@ func (m *ColumnFamily) Reset()         { *m = ColumnFamily{} }
 func (m *ColumnFamily) String() string { return proto.CompactTextString(m) }
 func (*ColumnFamily) ProtoMessage()    {}
 func (*ColumnFamily) Descriptor() ([]byte, []int) {
-	return fileDescriptor_table_ed23c9c8618cc2b8, []int{1}
+	return fileDescriptor_table_d23eabdaefbca794, []int{1}
 }
 func (m *ColumnFamily) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ColumnFamily.Unmarshal(m, b)
@@ -351,7 +351,7 @@ func (m *GcRule) Reset()         { *m = GcRule{} }
 func (m *GcRule) String() string { return proto.CompactTextString(m) }
 func (*GcRule) ProtoMessage()    {}
 func (*GcRule) Descriptor() ([]byte, []int) {
-	return fileDescriptor_table_ed23c9c8618cc2b8, []int{2}
+	return fileDescriptor_table_d23eabdaefbca794, []int{2}
 }
 func (m *GcRule) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GcRule.Unmarshal(m, b)
@@ -554,7 +554,7 @@ func (m *GcRule_Intersection) Reset()         { *m = GcRule_Intersection{} }
 func (m *GcRule_Intersection) String() string { return proto.CompactTextString(m) }
 func (*GcRule_Intersection) ProtoMessage()    {}
 func (*GcRule_Intersection) Descriptor() ([]byte, []int) {
-	return fileDescriptor_table_ed23c9c8618cc2b8, []int{2, 0}
+	return fileDescriptor_table_d23eabdaefbca794, []int{2, 0}
 }
 func (m *GcRule_Intersection) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GcRule_Intersection.Unmarshal(m, b)
@@ -594,7 +594,7 @@ func (m *GcRule_Union) Reset()         { *m = GcRule_Union{} }
 func (m *GcRule_Union) String() string { return proto.CompactTextString(m) }
 func (*GcRule_Union) ProtoMessage()    {}
 func (*GcRule_Union) Descriptor() ([]byte, []int) {
-	return fileDescriptor_table_ed23c9c8618cc2b8, []int{2, 1}
+	return fileDescriptor_table_d23eabdaefbca794, []int{2, 1}
 }
 func (m *GcRule_Union) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GcRule_Union.Unmarshal(m, b)
@@ -665,7 +665,7 @@ func (m *Snapshot) Reset()         { *m = Snapshot{} }
 func (m *Snapshot) String() string { return proto.CompactTextString(m) }
 func (*Snapshot) ProtoMessage()    {}
 func (*Snapshot) Descriptor() ([]byte, []int) {
-	return fileDescriptor_table_ed23c9c8618cc2b8, []int{3}
+	return fileDescriptor_table_d23eabdaefbca794, []int{3}
 }
 func (m *Snapshot) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Snapshot.Unmarshal(m, b)
@@ -751,10 +751,10 @@ func init() {
 }
 
 func init() {
-	proto.RegisterFile("google/bigtable/admin/v2/table.proto", fileDescriptor_table_ed23c9c8618cc2b8)
+	proto.RegisterFile("google/bigtable/admin/v2/table.proto", fileDescriptor_table_d23eabdaefbca794)
 }
 
-var fileDescriptor_table_ed23c9c8618cc2b8 = []byte{
+var fileDescriptor_table_d23eabdaefbca794 = []byte{
 	// 965 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x56, 0xff, 0x6e, 0xdb, 0x54,
 	0x18, 0xad, 0xe3, 0x38, 0x6d, 0xbf, 0xa4, 0xad, 0xb9, 0x1d, 0x22, 0x8b, 0xa6, 0x2d, 0x44, 0x30,

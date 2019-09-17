@@ -65,7 +65,7 @@ func (m *CreateTableRequest) Reset()         { *m = CreateTableRequest{} }
 func (m *CreateTableRequest) String() string { return proto.CompactTextString(m) }
 func (*CreateTableRequest) ProtoMessage()    {}
 func (*CreateTableRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{0}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{0}
 }
 func (m *CreateTableRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CreateTableRequest.Unmarshal(m, b)
@@ -126,7 +126,7 @@ func (m *CreateTableRequest_Split) Reset()         { *m = CreateTableRequest_Spl
 func (m *CreateTableRequest_Split) String() string { return proto.CompactTextString(m) }
 func (*CreateTableRequest_Split) ProtoMessage()    {}
 func (*CreateTableRequest_Split) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{0, 0}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{0, 0}
 }
 func (m *CreateTableRequest_Split) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CreateTableRequest_Split.Unmarshal(m, b)
@@ -181,7 +181,7 @@ func (m *CreateTableFromSnapshotRequest) Reset()         { *m = CreateTableFromS
 func (m *CreateTableFromSnapshotRequest) String() string { return proto.CompactTextString(m) }
 func (*CreateTableFromSnapshotRequest) ProtoMessage()    {}
 func (*CreateTableFromSnapshotRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{1}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{1}
 }
 func (m *CreateTableFromSnapshotRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CreateTableFromSnapshotRequest.Unmarshal(m, b)
@@ -244,7 +244,7 @@ func (m *DropRowRangeRequest) Reset()         { *m = DropRowRangeRequest{} }
 func (m *DropRowRangeRequest) String() string { return proto.CompactTextString(m) }
 func (*DropRowRangeRequest) ProtoMessage()    {}
 func (*DropRowRangeRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{2}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{2}
 }
 func (m *DropRowRangeRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_DropRowRangeRequest.Unmarshal(m, b)
@@ -400,7 +400,7 @@ func (m *ListTablesRequest) Reset()         { *m = ListTablesRequest{} }
 func (m *ListTablesRequest) String() string { return proto.CompactTextString(m) }
 func (*ListTablesRequest) ProtoMessage()    {}
 func (*ListTablesRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{3}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{3}
 }
 func (m *ListTablesRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ListTablesRequest.Unmarshal(m, b)
@@ -466,7 +466,7 @@ func (m *ListTablesResponse) Reset()         { *m = ListTablesResponse{} }
 func (m *ListTablesResponse) String() string { return proto.CompactTextString(m) }
 func (*ListTablesResponse) ProtoMessage()    {}
 func (*ListTablesResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{4}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{4}
 }
 func (m *ListTablesResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ListTablesResponse.Unmarshal(m, b)
@@ -519,7 +519,7 @@ func (m *GetTableRequest) Reset()         { *m = GetTableRequest{} }
 func (m *GetTableRequest) String() string { return proto.CompactTextString(m) }
 func (*GetTableRequest) ProtoMessage()    {}
 func (*GetTableRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{5}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{5}
 }
 func (m *GetTableRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetTableRequest.Unmarshal(m, b)
@@ -569,7 +569,7 @@ func (m *DeleteTableRequest) Reset()         { *m = DeleteTableRequest{} }
 func (m *DeleteTableRequest) String() string { return proto.CompactTextString(m) }
 func (*DeleteTableRequest) ProtoMessage()    {}
 func (*DeleteTableRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{6}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{6}
 }
 func (m *DeleteTableRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_DeleteTableRequest.Unmarshal(m, b)
@@ -617,7 +617,7 @@ func (m *ModifyColumnFamiliesRequest) Reset()         { *m = ModifyColumnFamilie
 func (m *ModifyColumnFamiliesRequest) String() string { return proto.CompactTextString(m) }
 func (*ModifyColumnFamiliesRequest) ProtoMessage()    {}
 func (*ModifyColumnFamiliesRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{7}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{7}
 }
 func (m *ModifyColumnFamiliesRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ModifyColumnFamiliesRequest.Unmarshal(m, b)
@@ -673,7 +673,7 @@ func (m *ModifyColumnFamiliesRequest_Modification) Reset() {
 func (m *ModifyColumnFamiliesRequest_Modification) String() string { return proto.CompactTextString(m) }
 func (*ModifyColumnFamiliesRequest_Modification) ProtoMessage()    {}
 func (*ModifyColumnFamiliesRequest_Modification) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{7, 0}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{7, 0}
 }
 func (m *ModifyColumnFamiliesRequest_Modification) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ModifyColumnFamiliesRequest_Modification.Unmarshal(m, b)
@@ -861,7 +861,7 @@ func (m *GenerateConsistencyTokenRequest) Reset()         { *m = GenerateConsist
 func (m *GenerateConsistencyTokenRequest) String() string { return proto.CompactTextString(m) }
 func (*GenerateConsistencyTokenRequest) ProtoMessage()    {}
 func (*GenerateConsistencyTokenRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{8}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{8}
 }
 func (m *GenerateConsistencyTokenRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GenerateConsistencyTokenRequest.Unmarshal(m, b)
@@ -902,7 +902,7 @@ func (m *GenerateConsistencyTokenResponse) Reset()         { *m = GenerateConsis
 func (m *GenerateConsistencyTokenResponse) String() string { return proto.CompactTextString(m) }
 func (*GenerateConsistencyTokenResponse) ProtoMessage()    {}
 func (*GenerateConsistencyTokenResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{9}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{9}
 }
 func (m *GenerateConsistencyTokenResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GenerateConsistencyTokenResponse.Unmarshal(m, b)
@@ -947,7 +947,7 @@ func (m *CheckConsistencyRequest) Reset()         { *m = CheckConsistencyRequest
 func (m *CheckConsistencyRequest) String() string { return proto.CompactTextString(m) }
 func (*CheckConsistencyRequest) ProtoMessage()    {}
 func (*CheckConsistencyRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{10}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{10}
 }
 func (m *CheckConsistencyRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CheckConsistencyRequest.Unmarshal(m, b)
@@ -996,7 +996,7 @@ func (m *CheckConsistencyResponse) Reset()         { *m = CheckConsistencyRespon
 func (m *CheckConsistencyResponse) String() string { return proto.CompactTextString(m) }
 func (*CheckConsistencyResponse) ProtoMessage()    {}
 func (*CheckConsistencyResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{11}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{11}
 }
 func (m *CheckConsistencyResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CheckConsistencyResponse.Unmarshal(m, b)
@@ -1060,7 +1060,7 @@ func (m *SnapshotTableRequest) Reset()         { *m = SnapshotTableRequest{} }
 func (m *SnapshotTableRequest) String() string { return proto.CompactTextString(m) }
 func (*SnapshotTableRequest) ProtoMessage()    {}
 func (*SnapshotTableRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{12}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{12}
 }
 func (m *SnapshotTableRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_SnapshotTableRequest.Unmarshal(m, b)
@@ -1136,7 +1136,7 @@ func (m *GetSnapshotRequest) Reset()         { *m = GetSnapshotRequest{} }
 func (m *GetSnapshotRequest) String() string { return proto.CompactTextString(m) }
 func (*GetSnapshotRequest) ProtoMessage()    {}
 func (*GetSnapshotRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{13}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{13}
 }
 func (m *GetSnapshotRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetSnapshotRequest.Unmarshal(m, b)
@@ -1191,7 +1191,7 @@ func (m *ListSnapshotsRequest) Reset()         { *m = ListSnapshotsRequest{} }
 func (m *ListSnapshotsRequest) String() string { return proto.CompactTextString(m) }
 func (*ListSnapshotsRequest) ProtoMessage()    {}
 func (*ListSnapshotsRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{14}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{14}
 }
 func (m *ListSnapshotsRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ListSnapshotsRequest.Unmarshal(m, b)
@@ -1255,7 +1255,7 @@ func (m *ListSnapshotsResponse) Reset()         { *m = ListSnapshotsResponse{} }
 func (m *ListSnapshotsResponse) String() string { return proto.CompactTextString(m) }
 func (*ListSnapshotsResponse) ProtoMessage()    {}
 func (*ListSnapshotsResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{15}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{15}
 }
 func (m *ListSnapshotsResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ListSnapshotsResponse.Unmarshal(m, b)
@@ -1310,7 +1310,7 @@ func (m *DeleteSnapshotRequest) Reset()         { *m = DeleteSnapshotRequest{} }
 func (m *DeleteSnapshotRequest) String() string { return proto.CompactTextString(m) }
 func (*DeleteSnapshotRequest) ProtoMessage()    {}
 func (*DeleteSnapshotRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{16}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{16}
 }
 func (m *DeleteSnapshotRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_DeleteSnapshotRequest.Unmarshal(m, b)
@@ -1359,7 +1359,7 @@ func (m *SnapshotTableMetadata) Reset()         { *m = SnapshotTableMetadata{} }
 func (m *SnapshotTableMetadata) String() string { return proto.CompactTextString(m) }
 func (*SnapshotTableMetadata) ProtoMessage()    {}
 func (*SnapshotTableMetadata) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{17}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{17}
 }
 func (m *SnapshotTableMetadata) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_SnapshotTableMetadata.Unmarshal(m, b)
@@ -1423,7 +1423,7 @@ func (m *CreateTableFromSnapshotMetadata) Reset()         { *m = CreateTableFrom
 func (m *CreateTableFromSnapshotMetadata) String() string { return proto.CompactTextString(m) }
 func (*CreateTableFromSnapshotMetadata) ProtoMessage()    {}
 func (*CreateTableFromSnapshotMetadata) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2, []int{18}
+	return fileDescriptor_bigtable_table_admin_66c21ad243a58d94, []int{18}
 }
 func (m *CreateTableFromSnapshotMetadata) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CreateTableFromSnapshotMetadata.Unmarshal(m, b)
@@ -2071,10 +2071,10 @@ var _BigtableTableAdmin_serviceDesc = grpc.ServiceDesc{
 }
 
 func init() {
-	proto.RegisterFile("google/bigtable/admin/v2/bigtable_table_admin.proto", fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2)
+	proto.RegisterFile("google/bigtable/admin/v2/bigtable_table_admin.proto", fileDescriptor_bigtable_table_admin_66c21ad243a58d94)
 }
 
-var fileDescriptor_bigtable_table_admin_5099d9e5d77fdde2 = []byte{
+var fileDescriptor_bigtable_table_admin_66c21ad243a58d94 = []byte{
 	// 1520 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xcc, 0x58, 0xcb, 0x6f, 0xdc, 0x54,
 	0x17, 0xaf, 0x27, 0x8f, 0x26, 0x67, 0xf2, 0xea, 0xfd, 0xd2, 0x76, 0x3a, 0x6d, 0x93, 0xc8, 0x5f,

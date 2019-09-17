@@ -35,11 +35,11 @@
 // Log output is buffered and written periodically using Flush. Programs
 // should call Flush before exiting to guarantee all log output is written.
 //
-// By default, all log statements write to files in a temporary directory.
+// By default, all log statements write to standard error.
 // This package provides several flags that modify this behavior.
 // As a result, flag.Parse must be called before any logging is done.
 //
-//	-logtostderr=false
+//	-logtostderr=true
 //		Logs are written to standard error instead of to files.
 //	-alsologtostderr=false
 //		Logs are written to standard error as well as to files.
@@ -78,6 +78,7 @@ import (
 	"fmt"
 	"io"
 	stdLog "log"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -403,17 +404,46 @@ func init() {
 	go logging.flushDaemon()
 }
 
-// InitFlags is for explicitly initializing the flags
+var initDefaultsOnce sync.Once
+
+// InitFlags is for explicitly initializing the flags.
 func InitFlags(flagset *flag.FlagSet) {
+
+	// Initialize defaults.
+	initDefaultsOnce.Do(func() {
+		logging.logDir = ""
+		logging.logFile = ""
+		logging.logFileMaxSizeMB = 1800
+		// TODO: The default value of toStderr should be false.
+		// Ideally, toStderr can be deprecated.
+		// If --log-file is set, only log to the dedicated log-file.
+		// If --alsoToStderr is true, whether or not --log-file is set, we will
+		// log to stderr.
+		// Since kubernetes/kubernetes are currently using klog with
+		// default --toStderr to be true, we can't change this default value
+		// directly.
+		// As a compromise, when --log-file is set, the toStdErr is reset to
+		// be false. e.g. See function `IsSingleMode`.
+		logging.toStderr = true
+		logging.alsoToStderr = false
+		logging.skipHeaders = false
+		logging.skipLogHeaders = false
+	})
+
 	if flagset == nil {
 		flagset = flag.CommandLine
 	}
-	flagset.StringVar(&logging.logDir, "log_dir", "", "If non-empty, write log files in this directory")
-	flagset.StringVar(&logging.logFile, "log_file", "", "If non-empty, use this log file")
-	flagset.BoolVar(&logging.toStderr, "logtostderr", false, "log to standard error instead of files")
-	flagset.BoolVar(&logging.alsoToStderr, "alsologtostderr", false, "log to standard error as well as files")
-	flagset.Var(&logging.verbosity, "v", "log level for V logs")
-	flagset.BoolVar(&logging.skipHeaders, "skip_headers", false, "If true, avoid header prefixes in the log messages")
+
+	flagset.StringVar(&logging.logDir, "log_dir", logging.logDir, "If non-empty, write log files in this directory")
+	flagset.StringVar(&logging.logFile, "log_file", logging.logFile, "If non-empty, use this log file")
+	flagset.Uint64Var(&logging.logFileMaxSizeMB, "log_file_max_size", logging.logFileMaxSizeMB,
+		"Defines the maximum size a log file can grow to. Unit is megabytes. "+
+			"If the value is 0, the maximum file size is unlimited.")
+	flagset.BoolVar(&logging.toStderr, "logtostderr", logging.toStderr, "log to standard error instead of files")
+	flagset.BoolVar(&logging.alsoToStderr, "alsologtostderr", logging.alsoToStderr, "log to standard error as well as files")
+	flagset.Var(&logging.verbosity, "v", "number for the log level verbosity")
+	flagset.BoolVar(&logging.skipHeaders, "skip_headers", logging.skipHeaders, "If true, avoid header prefixes in the log messages")
+	flagset.BoolVar(&logging.skipLogHeaders, "skip_log_headers", logging.skipLogHeaders, "If true, avoid headers when opening log files")
 	flagset.Var(&logging.stderrThreshold, "stderrthreshold", "logs at or above this threshold go to stderr")
 	flagset.Var(&logging.vmodule, "vmodule", "comma-separated list of pattern=N settings for file-filtered logging")
 	flagset.Var(&logging.traceLocation, "log_backtrace_at", "when logging hits line file:N, emit a stack trace")
@@ -447,6 +477,8 @@ type loggingT struct {
 	mu sync.Mutex
 	// file holds writer for each of the log types.
 	file [numSeverity]flushSyncWriter
+	// file holds writer for the dedicated file when --log-file is set.
+	singleModeFile flushSyncWriter
 	// pcs is used in V to avoid an allocation when computing the caller's PC.
 	pcs [1]uintptr
 	// vmap is a cache of the V Level for each V() call site, identified by PC.
@@ -471,8 +503,15 @@ type loggingT struct {
 	// with the log-dir option.
 	logFile string
 
+	// When logFile is specified, this limiter makes sure the logFile won't exceeds a certain size. When exceeds, the
+	// logFile will be cleaned up. If this value is 0, no size limitation will be applied to logFile.
+	logFileMaxSizeMB uint64
+
 	// If true, do not add the prefix headers, useful when used with SetOutput
 	skipHeaders bool
+
+	// If true, do not add the headers to log files
+	skipLogHeaders bool
 }
 
 // buffer holds a byte Buffer for reuse. The zero value is ready for use.
@@ -483,6 +522,16 @@ type buffer struct {
 }
 
 var logging loggingT
+
+func (l *loggingT) IsSingleMode() bool {
+	if l.logFile != "" {
+		// TODO: Remove the toStdErr reset when switching the logging.toStderr
+		// default value to be false.
+		l.toStderr = false
+		return true
+	}
+	return false
+}
 
 // setVState sets a consistent state for V logging.
 // l.mu is held.
@@ -709,24 +758,40 @@ func (rb *redirectBuffer) Write(bytes []byte) (n int, err error) {
 
 // SetOutput sets the output destination for all severities
 func SetOutput(w io.Writer) {
-	for s := fatalLog; s >= infoLog; s-- {
+	// In single-mode, all severity logs are tracked in a single dedicated file.
+	if logging.IsSingleMode() {
 		rb := &redirectBuffer{
 			w: w,
 		}
-		logging.file[s] = rb
+		logging.singleModeFile = rb
+	} else {
+		for s := fatalLog; s >= infoLog; s-- {
+			rb := &redirectBuffer{
+				w: w,
+			}
+			logging.file[s] = rb
+		}
 	}
 }
 
 // SetOutputBySeverity sets the output destination for specific severity
 func SetOutputBySeverity(name string, w io.Writer) {
-	sev, ok := severityByName(name)
-	if !ok {
-		panic(fmt.Sprintf("SetOutputBySeverity(%q): unrecognized severity name", name))
+	// In single-mode, all severity logs are tracked in a single dedicated file.
+	// Guarantee this buffer exists whatever severity output is trying to be set.
+	if logging.IsSingleMode() {
+		if logging.singleModeFile == nil {
+			logging.singleModeFile = &redirectBuffer{w: w}
+		}
+	} else {
+		sev, ok := severityByName(name)
+		if !ok {
+			panic(fmt.Sprintf("SetOutputBySeverity(%q): unrecognized severity name", name))
+		}
+		rb := &redirectBuffer{
+			w: w,
+		}
+		logging.file[sev] = rb
 	}
-	rb := &redirectBuffer{
-		w: w,
-	}
-	logging.file[sev] = rb
 }
 
 // output writes the data to the log files and releases the buffer.
@@ -738,32 +803,7 @@ func (l *loggingT) output(s severity, buf *buffer, file string, line int, alsoTo
 		}
 	}
 	data := buf.Bytes()
-	if l.toStderr {
-		os.Stderr.Write(data)
-	} else {
-		if alsoToStderr || l.alsoToStderr || s >= l.stderrThreshold.get() {
-			os.Stderr.Write(data)
-		}
-		if l.file[s] == nil {
-			if err := l.createFiles(s); err != nil {
-				os.Stderr.Write(data) // Make sure the message appears somewhere.
-				l.exit(err)
-			}
-		}
-		switch s {
-		case fatalLog:
-			l.file[fatalLog].Write(data)
-			fallthrough
-		case errorLog:
-			l.file[errorLog].Write(data)
-			fallthrough
-		case warningLog:
-			l.file[warningLog].Write(data)
-			fallthrough
-		case infoLog:
-			l.file[infoLog].Write(data)
-		}
-	}
+	l.writeLogData(s, data)
 	if s == fatalLog {
 		// If we got here via Exit rather than Fatal, print no stacks.
 		if atomic.LoadUint32(&fatalNoStacks) > 0 {
@@ -771,30 +811,62 @@ func (l *loggingT) output(s severity, buf *buffer, file string, line int, alsoTo
 			timeoutFlush(10 * time.Second)
 			os.Exit(1)
 		}
-		// Dump all goroutine stacks before exiting.
-		// First, make sure we see the trace for the current goroutine on standard error.
-		// If -logtostderr has been specified, the loop below will do that anyway
-		// as the first stack in the full dump.
-		if !l.toStderr {
-			os.Stderr.Write(stacks(false))
-		}
-		// Write the stack trace for all goroutines to the files.
-		trace := stacks(true)
 		logExitFunc = func(error) {} // If we get a write error, we'll still exit below.
-		for log := fatalLog; log >= infoLog; log-- {
-			if f := l.file[log]; f != nil { // Can be nil if -logtostderr is set.
-				f.Write(trace)
-			}
-		}
+		l.writeLogData(fatalLog, stacks(true))
 		l.mu.Unlock()
 		timeoutFlush(10 * time.Second)
 		os.Exit(255) // C++ uses -1, which is silly because it's anded with 255 anyway.
 	}
 	l.putBuffer(buf)
 	l.mu.Unlock()
+	// Note: The stats estimate logs for each severity level individually,
+	// even in the situation that log-file is specified and
+	// all severity-level logs are tracked only in the infoLog file.
 	if stats := severityStats[s]; stats != nil {
 		atomic.AddInt64(&stats.lines, 1)
 		atomic.AddInt64(&stats.bytes, int64(len(data)))
+	}
+}
+
+// writeLogData writes |data| to the `s` and lower severity files.
+// e.g. If Severity level is Error, the data will be written to all the Error,
+// Warning, and Info log file. However, if --log_file flag is provided, klog
+// no longer tracks logs separately due to their severity level, but rather
+// only write to the singleModeFile which later on will be flushed to the
+// dedicated log_file.
+func (l *loggingT) writeLogData(s severity, data []byte) {
+	shouldAlsoToStderr := l.alsoToStderr && s >= l.stderrThreshold.get()
+	if l.IsSingleMode() {
+		if shouldAlsoToStderr {
+			os.Stderr.Write(data)
+		}
+		if l.singleModeFile == nil {
+			now := time.Now()
+			sb := &syncBuffer{
+				logger:   l,
+				maxbytes: CalculateMaxSize(),
+			}
+			if err := sb.rotateFile(now, true); err != nil {
+				l.exit(err)
+			}
+			l.singleModeFile = sb
+		}
+		l.singleModeFile.Write(data)
+	} else {
+		if l.toStderr || shouldAlsoToStderr {
+			os.Stderr.Write(data)
+		}
+		for currSeverity := s; currSeverity >= infoLog; currSeverity-- {
+			if l.file[currSeverity] == nil {
+				if err := l.createFiles(currSeverity); err != nil {
+					os.Stderr.Write(data) // Make sure the message appears somewhere.
+					l.exit(err)
+				}
+			}
+			if f := l.file[currSeverity]; f != nil { // Can be nil if -logtostderr is set.
+				f.Write(data)
+			}
+		}
 	}
 }
 
@@ -861,18 +933,33 @@ func (l *loggingT) exit(err error) {
 type syncBuffer struct {
 	logger *loggingT
 	*bufio.Writer
-	file   *os.File
-	sev    severity
-	nbytes uint64 // The number of bytes written to this file
+	file     *os.File
+	sev      severity
+	nbytes   uint64 // The number of bytes written to this file
+	maxbytes uint64 // The max number of bytes this syncBuffer.file can hold before cleaning up.
 }
 
 func (sb *syncBuffer) Sync() error {
 	return sb.file.Sync()
 }
 
+// CalculateMaxSize returns the real max size in bytes after considering the default max size and the flag options.
+func CalculateMaxSize() uint64 {
+	if logging.logFile != "" {
+		if logging.logFileMaxSizeMB == 0 {
+			// If logFileMaxSizeMB is zero, we don't have limitations on the log size.
+			return math.MaxUint64
+		}
+		// Flag logFileMaxSizeMB is in MB for user convenience.
+		return logging.logFileMaxSizeMB * 1024 * 1024
+	}
+	// If "log_file" flag is not specified, the target file (sb.file) will be cleaned up when reaches a fixed size.
+	return MaxSize
+}
+
 func (sb *syncBuffer) Write(p []byte) (n int, err error) {
-	if sb.nbytes+uint64(len(p)) >= MaxSize {
-		if err := sb.rotateFile(time.Now()); err != nil {
+	if sb.nbytes+uint64(len(p)) >= sb.maxbytes {
+		if err := sb.rotateFile(time.Now(), false); err != nil {
 			sb.logger.exit(err)
 		}
 	}
@@ -885,19 +972,25 @@ func (sb *syncBuffer) Write(p []byte) (n int, err error) {
 }
 
 // rotateFile closes the syncBuffer's file and starts a new one.
-func (sb *syncBuffer) rotateFile(now time.Time) error {
+// The startup argument indicates whether this is the initial startup of klog.
+// If startup is true, existing files are opened for appending instead of truncated.
+func (sb *syncBuffer) rotateFile(now time.Time, startup bool) error {
 	if sb.file != nil {
 		sb.Flush()
 		sb.file.Close()
 	}
 	var err error
-	sb.file, _, err = create(severityName[sb.sev], now)
+	sb.file, _, err = create(severityName[sb.sev], now, startup)
 	sb.nbytes = 0
 	if err != nil {
 		return err
 	}
 
 	sb.Writer = bufio.NewWriterSize(sb.file, bufferSize)
+
+	if sb.logger.skipLogHeaders {
+		return nil
+	}
 
 	// Write header.
 	var buf bytes.Buffer
@@ -923,10 +1016,11 @@ func (l *loggingT) createFiles(sev severity) error {
 	// has already been created, we can stop.
 	for s := sev; s >= infoLog && l.file[s] == nil; s-- {
 		sb := &syncBuffer{
-			logger: l,
-			sev:    s,
+			logger:   l,
+			sev:      s,
+			maxbytes: CalculateMaxSize(),
 		}
-		if err := sb.rotateFile(now); err != nil {
+		if err := sb.rotateFile(now, true); err != nil {
 			return err
 		}
 		l.file[s] = sb
@@ -934,7 +1028,7 @@ func (l *loggingT) createFiles(sev severity) error {
 	return nil
 }
 
-const flushInterval = 30 * time.Second
+const flushInterval = 5 * time.Second
 
 // flushDaemon periodically flushes the log file buffers.
 func (l *loggingT) flushDaemon() {
@@ -953,12 +1047,20 @@ func (l *loggingT) lockAndFlushAll() {
 // flushAll flushes all the logs and attempts to "sync" their data to disk.
 // l.mu is held.
 func (l *loggingT) flushAll() {
-	// Flush from fatal down, in case there's trouble flushing.
-	for s := fatalLog; s >= infoLog; s-- {
-		file := l.file[s]
+	if l.IsSingleMode() {
+		file := l.singleModeFile
 		if file != nil {
 			file.Flush() // ignore error
 			file.Sync()  // ignore error
+		}
+	} else {
+		// Flush from fatal down, in case there's trouble flushing.
+		for s := fatalLog; s >= infoLog; s-- {
+			file := l.file[s]
+			if file != nil {
+				file.Flush() // ignore error
+				file.Sync()  // ignore error
+			}
 		}
 	}
 }
@@ -1045,9 +1147,9 @@ type Verbose bool
 // The returned value is a boolean of type Verbose, which implements Info, Infoln
 // and Infof. These methods will write to the Info log if called.
 // Thus, one may write either
-//	if glog.V(2) { glog.Info("log this") }
+//  if glog.V(2) { glog.Info("log this") }
 // or
-//	glog.V(2).Info("log this")
+//  glog.V(2).Info("log this")
 // The second form is shorter but the first is cheaper if logging is off because it does
 // not evaluate its arguments.
 //

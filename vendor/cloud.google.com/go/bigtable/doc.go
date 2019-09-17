@@ -35,7 +35,7 @@ is the simplest option. Those credentials will be used by default when NewClient
 
 To use alternate credentials, pass them to NewClient or NewAdminClient using option.WithTokenSource.
 For instance, you can use service account credentials by visiting
-https://cloud.google.com/console/project/MYPROJECT/apiui/credential,
+https://cloud.google.com/console/project/_/apiui/credential,
 creating a new OAuth "Client ID", storing the JSON key somewhere accessible, and writing
 	jsonKey, err := ioutil.ReadFile(pathToKeyFile)
 	...

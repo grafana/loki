@@ -45,6 +45,9 @@ func ConfigFromURL(awsURL *url.URL) (*aws.Config, error) {
 	}
 
 	if strings.Contains(awsURL.Host, ".") {
+		if awsURL.Scheme == "https" {
+			return config.WithEndpoint(fmt.Sprintf("https://%s", awsURL.Host)).WithRegion("dummy"), nil
+		}
 		return config.WithEndpoint(fmt.Sprintf("http://%s", awsURL.Host)).WithRegion("dummy"), nil
 	}
 

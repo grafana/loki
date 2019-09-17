@@ -385,7 +385,7 @@ func (ac *AdminClient) Snapshots(ctx context.Context, cluster string) *SnapshotI
 		for _, s := range resp.Snapshots {
 			snapshotInfo, err := newSnapshotInfo(s)
 			if err != nil {
-				return "", fmt.Errorf("Failed to parse snapshot proto %v", err)
+				return "", fmt.Errorf("failed to parse snapshot proto %v", err)
 			}
 			it.items = append(it.items, snapshotInfo)
 		}
@@ -407,12 +407,12 @@ func newSnapshotInfo(snapshot *btapb.Snapshot) (*SnapshotInfo, error) {
 
 	createTime, err := ptypes.Timestamp(snapshot.CreateTime)
 	if err != nil {
-		return nil, fmt.Errorf("Invalid createTime: %v", err)
+		return nil, fmt.Errorf("invalid createTime: %v", err)
 	}
 
 	deleteTime, err := ptypes.Timestamp(snapshot.DeleteTime)
 	if err != nil {
-		return nil, fmt.Errorf("Invalid deleteTime: %v", err)
+		return nil, fmt.Errorf("invalid deleteTime: %v", err)
 	}
 
 	return &SnapshotInfo{
@@ -1064,9 +1064,7 @@ func (iac *InstanceAdminClient) ListAppProfiles(ctx context.Context, instanceID 
 			return "", err
 		}
 
-		for _, a := range profileRes.AppProfiles {
-			pit.items = append(pit.items, a)
-		}
+		pit.items = append(pit.items, profileRes.AppProfiles...)
 		return profileRes.NextPageToken, nil
 	}
 
