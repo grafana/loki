@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/loghttp/legacy"
-	v1 "github.com/grafana/loki/pkg/loghttp/v1"
+	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
+	loghttp_v1 "github.com/grafana/loki/pkg/loghttp/v1"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
@@ -232,7 +232,7 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := v1.WriteQueryResponseJSON(result, w); err != nil {
+	if err := loghttp_v1.WriteQueryResponseJSON(result, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -256,7 +256,7 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := v1.WriteQueryResponseJSON(result, w); err != nil {
+	if err := loghttp_v1.WriteQueryResponseJSON(result, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -286,7 +286,7 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := legacy.WriteQueryResponseJSON(result, w); err != nil {
+	if err := loghttp_legacy.WriteQueryResponseJSON(result, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -323,9 +323,9 @@ func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-		err = v1.WriteLabelResponseJSON(*resp, w)
+		err = loghttp_v1.WriteLabelResponseJSON(*resp, w)
 	} else {
-		err = legacy.WriteLabelResponseJSON(*resp, w)
+		err = loghttp_legacy.WriteLabelResponseJSON(*resp, w)
 	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -389,7 +389,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	ticker := time.NewTicker(wsPingPeriod)
 	defer ticker.Stop()
 
-	var response *legacy.TailResponse
+	var response *loghttp_legacy.TailResponse
 	responseChan := tailer.getResponseChan()
 	closeErrChan := tailer.getCloseErrorChan()
 
@@ -398,9 +398,9 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 		case response = <-responseChan:
 			var err error
 			if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-				err = v1.WriteTailResponseJSON(*response, conn)
+				err = loghttp_v1.WriteTailResponseJSON(*response, conn)
 			} else {
-				err = legacy.WriteTailResponseJSON(*response, conn)
+				err = loghttp_legacy.WriteTailResponseJSON(*response, conn)
 			}
 			if err != nil {
 				level.Error(util.Logger).Log("Error writing to websocket", fmt.Sprintf("%v", err))
