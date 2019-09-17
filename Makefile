@@ -470,3 +470,12 @@ benchmark-store:
 # regenerate drone yaml
 drone:
 	jsonnet -V __build-image-version=$(BUILD_IMAGE_VERSION) .drone/drone.jsonnet | jq .drone -r | yq -y . > .drone/drone.yml
+
+#######
+# Mod #
+#######
+
+check-mod:
+	GO111MODULE=on go mod download
+	GO111MODULE=on go mod verify
+	GO111MODULE=on go mod tidy
