@@ -19,7 +19,7 @@ import (
 
 // WriteQueryResponseJSON marshals promql.Value to legacy loghttp JSON and then writes it to the provided io.Writer
 func WriteQueryResponseJSON(v promql.Value, w io.Writer) error {
-	if v.Type() != logql.ValueTypeStreams { // jpe - consider defining this in legacy
+	if v.Type() != logql.ValueTypeStreams {
 		return fmt.Errorf("legacy endpoints only support %s result type, current type is %s", logql.ValueTypeStreams, v.Type())
 	}
 

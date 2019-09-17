@@ -10,7 +10,7 @@ import (
 
 // TailResponse represents the http json response to a tail query
 type TailResponse struct {
-	Streams        []Stream         `json:"streams,omitempty"` // jpe - remove omitempty and write test
+	Streams        []Stream         `json:"streams,omitempty"`
 	DroppedStreams []*DroppedStream `json:"dropped_entries,omitempty"`
 }
 
