@@ -14,10 +14,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-//QueryStatus
+// QueryStatus holds the status of a query
 type QueryStatus string
 
-//QueryStatus values
+// QueryStatus values
 const (
 	QueryStatusSuccess = "success"
 )
@@ -28,16 +28,17 @@ type QueryResponse struct {
 	Data   QueryResponseData `json:"data"`
 }
 
-//ResultType
+// ResultType holds the type of the result
 type ResultType string
 
-//ResultType values
+// ResultType values
 const (
 	ResultTypeStream = "streams"
 	ResultTypeVector = "vector"
 	ResultTypeMatrix = "matrix"
 )
 
+// ResultValue interface mimics the promql.Value interface
 type ResultValue interface {
 	Type() ResultType
 }
@@ -48,10 +49,16 @@ type QueryResponseData struct {
 	Result     ResultValue `json:"result"`
 }
 
+// Type implements the promql.Value interface
 func (Streams) Type() ResultType { return ResultTypeStream }
-func (Vector) Type() ResultType  { return ResultTypeVector }
-func (Matrix) Type() ResultType  { return ResultTypeMatrix }
 
+// Type implements the promql.Value interface
+func (Vector) Type() ResultType { return ResultTypeVector }
+
+// Type implements the promql.Value interface
+func (Matrix) Type() ResultType { return ResultTypeMatrix }
+
+// Streams is a slice of Stream
 type Streams []Stream
 
 //Stream represents a log stream.  It includes a set of log entries and their labels.
@@ -66,7 +73,7 @@ type Entry struct {
 	Line      string
 }
 
-//MarshalJSON converts an Entry object to be prom compatible for http queries
+// MarshalJSON implements the json.Marshaler interface.
 func (e *Entry) MarshalJSON() ([]byte, error) {
 	l, err := json.Marshal(e.Line)
 	if err != nil {
@@ -75,7 +82,7 @@ func (e *Entry) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf("[\"%d\",%s]", e.Timestamp.UnixNano(), l)), nil
 }
 
-//UnmarshalJSON
+// UnmarshalJSON implements the json.Unmarshaler interface.
 func (e *Entry) UnmarshalJSON(data []byte) error {
 	var unmarshal []string
 
@@ -95,12 +102,13 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-//Vector
+// Vector is a slice of Samples
 type Vector []model.Sample
 
-//Matrix
+// Matrix is a slice of SampleStreams
 type Matrix []model.SampleStream
 
+// NewStreams constructs a Streams from a logql.Streams
 func NewStreams(s logql.Streams) (Streams, error) {
 	var err error
 	ret := make([]Stream, len(s))
@@ -116,6 +124,7 @@ func NewStreams(s logql.Streams) (Streams, error) {
 	return ret, nil
 }
 
+// NewStream constructs a Stream from a logproto.Stream
 func NewStream(s *logproto.Stream) (Stream, error) {
 	labels, err := NewLabelSet(s.Labels)
 	if err != nil {
@@ -134,6 +143,7 @@ func NewStream(s *logproto.Stream) (Stream, error) {
 	return ret, nil
 }
 
+// NewEntry constructs an Entry from a logproto.Entry
 func NewEntry(e logproto.Entry) Entry {
 	return Entry{
 		Timestamp: e.Timestamp,
@@ -141,6 +151,7 @@ func NewEntry(e logproto.Entry) Entry {
 	}
 }
 
+// NewVector constructs a Vector from a promql.Vector
 func NewVector(v promql.Vector) Vector {
 	ret := make([]model.Sample, len(v))
 
@@ -151,6 +162,7 @@ func NewVector(v promql.Vector) Vector {
 	return ret
 }
 
+// NewSample constructs a model.Sample from a promql.Sample
 func NewSample(s promql.Sample) model.Sample {
 
 	ret := model.Sample{
@@ -162,6 +174,7 @@ func NewSample(s promql.Sample) model.Sample {
 	return ret
 }
 
+// NewMatrix constructs a Matrix from a promql.Matrix
 func NewMatrix(m promql.Matrix) Matrix {
 	ret := make([]model.SampleStream, len(m))
 
@@ -172,6 +185,7 @@ func NewMatrix(m promql.Matrix) Matrix {
 	return ret
 }
 
+// NewSampleStream constructs a model.SampleStream from a promql.Series
 func NewSampleStream(s promql.Series) model.SampleStream {
 	ret := model.SampleStream{
 		Metric: NewMetric(s.Metric),
@@ -186,6 +200,7 @@ func NewSampleStream(s promql.Series) model.SampleStream {
 	return ret
 }
 
+// NewMetric constructs a labels.Labels from a model.Metric
 func NewMetric(l labels.Labels) model.Metric {
 	ret := make(map[model.LabelName]model.LabelValue)
 

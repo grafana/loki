@@ -8,19 +8,19 @@ import (
 	"github.com/grafana/loki/pkg/loghttp/legacy"
 )
 
-//TailResponse represents the http json response to a tail query
+// TailResponse represents the http json response to a tail query
 type TailResponse struct {
 	Streams        []Stream         `json:"streams,omitempty"` // jpe - remove omitempty and write test
 	DroppedStreams []*DroppedStream `json:"dropped_entries,omitempty"`
 }
 
-//DroppedStream
+// DroppedStream represents a dropped stream in tail call
 type DroppedStream struct {
 	Timestamp time.Time
 	Labels    LabelSet
 }
 
-//MarshalJSON converts an Entry object to be prom compatible for http queries
+// MarshalJSON implements json.Marshaller
 func (s *DroppedStream) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		Timestamp string   `json:"timestamp"`
@@ -31,6 +31,7 @@ func (s *DroppedStream) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// NewTailResponse constructs a TailResponse from a legacy.TailResponse
 func NewTailResponse(r legacy.TailResponse) (TailResponse, error) {
 	var err error
 	ret := TailResponse{
@@ -56,6 +57,7 @@ func NewTailResponse(r legacy.TailResponse) (TailResponse, error) {
 	return ret, nil
 }
 
+// NewDroppedStream constructs a DroppedStream from a legacy.DroppedEntry
 func NewDroppedStream(s *legacy.DroppedEntry) (*DroppedStream, error) {
 	l, err := NewLabelSet(s.Labels)
 	if err != nil {

@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 )
 
+// WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then writes it to the provided io.Writer
 func WriteQueryResponseJSON(v promql.Value, w io.Writer) error {
 
 	var err error
@@ -67,13 +68,14 @@ func WriteQueryResponseJSON(v promql.Value, w io.Writer) error {
 	return json.NewEncoder(w).Encode(j)
 }
 
-//WriteLabelResponseJSON marshals a logproto.LabelResponse to JSON and then writes it to the provided io.Writer
+// WriteLabelResponseJSON marshals a logproto.LabelResponse to v1 loghttp JSON and then writes it to the provided io.Writer
 //  Note that it simply directly marshals the value passed in.  This is because the label currently marshals
 //  cleanly to the v1 http protocol.  If this ever changes, it will be caught by testing.
 func WriteLabelResponseJSON(l logproto.LabelResponse, w io.Writer) error {
 	return json.NewEncoder(w).Encode(l)
 }
 
+// WriteTailResponseJSON marshals the legacy.TailResponse to v1 loghttp JSON and then writes it to the provided connection
 func WriteTailResponseJSON(r legacy.TailResponse, c *websocket.Conn) error {
 	v1Response, err := NewTailResponse(r)
 

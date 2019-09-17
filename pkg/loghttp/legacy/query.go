@@ -23,6 +23,7 @@ type Entry struct {
 	Line      string    `json:"line"`
 }
 
+// NewStream constructs a Stream from a logproto.Stream
 func NewStream(s *logproto.Stream) *Stream {
 	ret := &Stream{
 		Labels:  s.Labels,
@@ -36,6 +37,7 @@ func NewStream(s *logproto.Stream) *Stream {
 	return ret
 }
 
+// NewEntry constructs an Entry from a logproto.Entry
 func NewEntry(e logproto.Entry) Entry {
 	return Entry{
 		Timestamp: e.Timestamp,
