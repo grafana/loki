@@ -33,13 +33,13 @@ func (s *DroppedStream) MarshalJSON() ([]byte, error) {
 
 func NewTailResponse(r legacy.TailResponse) (TailResponse, error) {
 	var err error
-	new := TailResponse{
+	ret := TailResponse{
 		Streams:        make([]Stream, len(r.Streams)),
 		DroppedStreams: make([]*DroppedStream, len(r.DroppedEntries)),
 	}
 
 	for i, s := range r.Streams {
-		new.Streams[i], err = NewStream(&s)
+		ret.Streams[i], err = NewStream(&s)
 
 		if err != nil {
 			return TailResponse{}, err
@@ -47,13 +47,13 @@ func NewTailResponse(r legacy.TailResponse) (TailResponse, error) {
 	}
 
 	for i, d := range r.DroppedEntries {
-		new.DroppedStreams[i], err = NewDroppedStream(&d)
+		ret.DroppedStreams[i], err = NewDroppedStream(&d)
 		if err != nil {
 			return TailResponse{}, err
 		}
 	}
 
-	return new, nil
+	return ret, nil
 }
 
 func NewDroppedStream(s *legacy.DroppedEntry) (*DroppedStream, error) {

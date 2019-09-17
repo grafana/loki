@@ -24,16 +24,16 @@ type Entry struct {
 }
 
 func NewStream(s *logproto.Stream) *Stream {
-	new := &Stream{
+	ret := &Stream{
 		Labels:  s.Labels,
 		Entries: make([]Entry, len(s.Entries)),
 	}
 
 	for i, e := range s.Entries {
-		new.Entries[i] = NewEntry(e)
+		ret.Entries[i] = NewEntry(e)
 	}
 
-	return new
+	return ret
 }
 
 func NewEntry(e logproto.Entry) Entry {
