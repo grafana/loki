@@ -17,7 +17,27 @@ The HTTP API includes the following endpoints:
 - [`GET /flush`](#get-flush)
 - [`GET /metrics`](#get-metrics)
 
+The API endpoints starting with `/loki/` are [Prometheus API-compatible](https://prometheus.io/docs/prometheus/latest/querying/api/) and the result formats can be used interchangeably.
+
 [Example clients](#example-clients) can be found at the bottom of this document.
+
+## Matrix, Vector, And Streams
+
+Some Loki API endpoints return a result of a metrix, a vector, or a stream:
+
+- Matrix: a table of values where each row represents a different label set
+  and the columns are each sample value for that row over the queried time.
+  Matrix types are only returned when running a query that computes some value.
+  Unlike vectors and stream, the sample value in a matrix will never be a log
+  line.
+
+- Instant Vector: denoted in the type as just `vector`, an Instant Vector
+  represents the latest received value (log) for a given labelset over time.
+  Instant Vectors are only returned when doing a query against a single point in
+  time.
+
+- Stream: a Stream is a set of all values (logs) for a given label set over the
+  queried time range.
 
 ## `GET /loki/api/v1/query`
 
@@ -384,6 +404,9 @@ will be sent over the websocket multiple times.
 
 ## `GET /api/prom/query`
 
+> **WARNING**: `/api/prom/query` is DEPRECATED; use `/loki/api/v1/query_range`
+> instead.
+
 `/api/prom/query` supports doing general queries. The URL query parameters
 support the following values:
 
@@ -397,8 +420,6 @@ support the following values:
 Note that the larger the time span between `start` and `end` will cause
 additional load on Loki and the index store, resulting in slower queries.
 
-`/api/prom/query` is DEPRECATED and `/loki/api/v1/query_range` should be used
-instead.
 
 Response:
 

@@ -29,3 +29,29 @@ however, that this only deletes the log content and keeps the label index
 intact; you will still be able to see related labels but will be unable to
 retrieve the deleted log content.
 
+## Example Configuration
+
+Example configuration with GCS with a 30 day retention:
+
+```yaml
+schema_config:
+  configs:
+  - from: 2018-04-15
+    store: bigtable
+    object_store: gcs
+    schema: v9
+    index:
+      prefix: loki_index_
+      period: 168h
+
+storage_config:
+  bigtable:
+    instance: BIGTABLE_INSTANCE
+    project: BIGTABLE_PROJECT
+  gcs:
+    bucket_name: GCS_BUCKET_NAME
+
+table_manager:
+  retention_deletes_enabled: true
+  retention_period: 720h
+```

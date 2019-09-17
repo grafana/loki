@@ -10,7 +10,7 @@ Unlike other logging systems, Loki is built around the idea of only indexing
 labels for logs and leaving the original log message unindexed. This means
 that Loki is cheaper to operate and can be orders of magnitude more efficent.
 
-## Table of Conents
+## Table of Contents
 
 1. [Overview](overview/README.md)
     1. [Comparison to other Log Systems](overview/comparisons.md)
