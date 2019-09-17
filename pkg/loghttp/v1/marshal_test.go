@@ -312,6 +312,7 @@ func testJSONBytesEqual(t *testing.T, expected []byte, actual []byte, msg string
 }
 
 func mustParse(l string, t string) time.Time {
+
 	ret, err := time.Parse(l, t)
 	if err != nil {
 		log.Fatalf("Failed to parse %s", t)

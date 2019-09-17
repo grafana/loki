@@ -4,6 +4,7 @@ import (
 	"strings"
 )
 
+// Version holds a loghttp version
 type Version int
 
 const (
@@ -11,7 +12,7 @@ const (
 	VersionV1
 )
 
-//Version returns the http/json version for a given path.
+//GetVersion returns the loghttp version for a given path.
 func GetVersion(uri string) Version {
 	if strings.HasPrefix(strings.ToLower(uri), "/loki/api/v1") {
 		return VersionV1

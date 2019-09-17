@@ -16,11 +16,11 @@ func NewLabelSet(s string) (LabelSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	new := make(map[string]string)
+	ret := make(map[string]string)
 
 	for _, l := range labels {
-		new[l.Name] = l.Value
+		ret[l.Name] = l.Value
 	}
 
-	return new, nil
+	return ret, nil
 }

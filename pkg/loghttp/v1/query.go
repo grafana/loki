@@ -103,17 +103,17 @@ type Matrix []model.SampleStream
 
 func NewStreams(s logql.Streams) (Streams, error) {
 	var err error
-	new := make([]Stream, len(s))
+	ret := make([]Stream, len(s))
 
 	for i, stream := range s {
-		new[i], err = NewStream(stream)
+		ret[i], err = NewStream(stream)
 
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return new, nil
+	return ret, nil
 }
 
 func NewStream(s *logproto.Stream) (Stream, error) {
@@ -122,16 +122,16 @@ func NewStream(s *logproto.Stream) (Stream, error) {
 		return Stream{}, err
 	}
 
-	new := Stream{
+	ret := Stream{
 		Labels:  labels,
 		Entries: make([]Entry, len(s.Entries)),
 	}
 
 	for i, e := range s.Entries {
-		new.Entries[i] = NewEntry(e)
+		ret.Entries[i] = NewEntry(e)
 	}
 
-	return new, nil
+	return ret, nil
 }
 
 func NewEntry(e logproto.Entry) Entry {
@@ -142,56 +142,56 @@ func NewEntry(e logproto.Entry) Entry {
 }
 
 func NewVector(v promql.Vector) Vector {
-	new := make([]model.Sample, len(v))
+	ret := make([]model.Sample, len(v))
 
 	for i, s := range v {
-		new[i] = NewSample(s)
+		ret[i] = NewSample(s)
 	}
 
-	return new
+	return ret
 }
 
 func NewSample(s promql.Sample) model.Sample {
 
-	new := model.Sample{
+	ret := model.Sample{
 		Value:     model.SampleValue(s.V),
 		Timestamp: model.Time(s.T),
 		Metric:    NewMetric(s.Metric),
 	}
 
-	return new
+	return ret
 }
 
 func NewMatrix(m promql.Matrix) Matrix {
-	new := make([]model.SampleStream, len(m))
+	ret := make([]model.SampleStream, len(m))
 
 	for i, s := range m {
-		new[i] = NewSampleStream(s)
+		ret[i] = NewSampleStream(s)
 	}
 
-	return new
+	return ret
 }
 
 func NewSampleStream(s promql.Series) model.SampleStream {
-	new := model.SampleStream{
+	ret := model.SampleStream{
 		Metric: NewMetric(s.Metric),
 		Values: make([]model.SamplePair, len(s.Points)),
 	}
 
 	for i, p := range s.Points {
-		new.Values[i].Timestamp = model.Time(p.T)
-		new.Values[i].Value = model.SampleValue(p.V)
+		ret.Values[i].Timestamp = model.Time(p.T)
+		ret.Values[i].Value = model.SampleValue(p.V)
 	}
 
-	return new
+	return ret
 }
 
 func NewMetric(l labels.Labels) model.Metric {
-	new := make(map[model.LabelName]model.LabelValue)
+	ret := make(map[model.LabelName]model.LabelValue)
 
 	for _, label := range l {
-		new[model.LabelName(label.Name)] = model.LabelValue(label.Value)
+		ret[model.LabelName(label.Name)] = model.LabelValue(label.Value)
 	}
 
-	return new
+	return ret
 }
