@@ -209,13 +209,13 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 	for {
 		if t.stopped {
 			if err := querierTailClient.CloseSend(); err != nil {
-				level.Error(util.Logger).Log("Error closing gprc tail client", fmt.Sprintf("%v", err))
+				level.Error(util.Logger).Log("Error closing grpc tail client", fmt.Sprintf("%v", err))
 			}
 			break
 		}
 		resp, err = querierTailClient.Recv()
 		if err != nil {
-			level.Error(util.Logger).Log("Error receiving response from gprc tail client", fmt.Sprintf("%v", err))
+			level.Error(util.Logger).Log("Error receiving response from grpc tail client", fmt.Sprintf("%v", err))
 			break
 		}
 		t.pushTailResponseFromIngester(resp)
