@@ -135,10 +135,8 @@ module Fluent
         data_labels = {} if data_labels.nil?
         data_labels = data_labels.merge(@extra_labels)
 
-        unless data_labels.nil?
-          data_labels.each do |k, v|
-            formatted_labels.push("#{k}=\"#{v}\"")
-          end
+        data_labels.each do |k, v|
+          formatted_labels.push("#{k}=\"#{v.gsub('"','\\"')}\"") if v
         end
         '{' + formatted_labels.join(',') + '}'
       end
