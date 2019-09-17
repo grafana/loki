@@ -16,6 +16,7 @@ import (
 	"github.com/weaveworks/common/tracing"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func init() {
@@ -32,6 +33,13 @@ func main() {
 	if *printVersion {
 		fmt.Print(version.Print("loki"))
 		os.Exit(0)
+	}
+
+	// This global is set to the config passed into the last call to `NewOverrides`. If we don't
+	// call it atleast once, the defaults are set to an empty struct.
+	// We call it with the flag values so that the config file unmarshalling only overrides the values set in the config.
+	if _, err := validation.NewOverrides(config.LimitsConfig); err != nil {
+		log.Fatalln(err)
 	}
 
 	// Init the logger which will honor the log level set in config.Server
