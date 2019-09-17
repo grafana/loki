@@ -18,7 +18,7 @@ import (
 //  legacy like we do v1:  1) exchange promql.Value for model objects 2) marshal the model objects
 func WriteQueryResponseJSON(v promql.Value, w io.Writer) error {
 	if v.Type() != logql.ValueTypeStreams { // jpe - consider defining this in legacy
-		return fmt.Errorf("Legacy endpoints only support %s result type, current type is %s", logql.ValueTypeStreams, v.Type())
+		return fmt.Errorf("legacy endpoints only support %s result type, current type is %s", logql.ValueTypeStreams, v.Type())
 	}
 
 	j := map[string]interface{}{

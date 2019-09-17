@@ -26,7 +26,7 @@ func WriteQueryResponseJSON(v promql.Value, w io.Writer) error {
 		s, ok := v.(logql.Streams)
 
 		if !ok {
-			return fmt.Errorf("Unexpected type %T for streams", s)
+			return fmt.Errorf("unexpected type %T for streams", s)
 		}
 
 		value, err = NewStreams(s)
@@ -39,7 +39,7 @@ func WriteQueryResponseJSON(v promql.Value, w io.Writer) error {
 		vector, ok := v.(promql.Vector)
 
 		if !ok {
-			return fmt.Errorf("Unexpected type %T for vector", vector)
+			return fmt.Errorf("unexpected type %T for vector", vector)
 		}
 
 		value = NewVector(vector)
@@ -48,7 +48,7 @@ func WriteQueryResponseJSON(v promql.Value, w io.Writer) error {
 		m, ok := v.(promql.Matrix)
 
 		if !ok {
-			return fmt.Errorf("Unexpected type %T for vector", m)
+			return fmt.Errorf("unexpected type %T for vector", m)
 		}
 
 		value = NewMatrix(m)
