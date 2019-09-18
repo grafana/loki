@@ -29,7 +29,7 @@ When Loki runs in single process mode, individual components continue to
 communicate to one another over gRPC using the gRPC listen port of the overall
 process.
 
-Single process mode is ideally suited for localy development, small workloads,
+Single process mode is ideally suited for local development, small workloads,
 and for evaluation purposes. Single-process mode can be scaled with multiple
 processes with the following limitations:
 
