@@ -7,6 +7,9 @@ Unlike other logging systems, Loki is built around the idea of only indexing
 labels for logs and leaving the original log message unindexed. This means
 that Loki is cheaper to operate and can be orders of magnitude more efficent.
 
+For a more detailed version of this same document, please read
+[Architecture](../architecture.md).
+
 ## Multi Tenancy
 
 Loki supports multi-tenancy so that data between tenants is completely
@@ -113,8 +116,7 @@ maintainence tasks. It consists of:
 
 > Unlike the other core components of Loki, the chunk store is not a separate
 > service, job, or process, but rather a library embedded in the three services
-> that need to access Loki data: the [ingester](#ingester),
-> [querier](#querier), and [ruler](#ruler).
+> that need to access Loki data: the [ingester](#ingester) and [querier](#querier).
 
 The chunk store relies on a unified interface to the
 "[NoSQL](https://en.wikipedia.org/wiki/NoSQL)" stores (DynamoDB, Bigtable, and
