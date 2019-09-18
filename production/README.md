@@ -2,36 +2,35 @@
 
 Currently there are five ways to try out Loki, in order from easier to hardest:
 
-- [Using our free hosted demo](#free-hosted-demo)
-- [Running it locally with Docker](#run-locally-using-docker)
-- [Using Helm to deploy on Kubernetes](#using-helm-to-deploy-on-kubernetes)
-- [Building from source](#build-and-run-from-source)
+- [Use our free hosted demo](#free-hosted-demo)
+- [Run Loki locally with Docker](#run-locally-using-docker)
+- [Use Helm to deploy on Kubernetes](#using-helm-to-deploy-on-kubernetes)
+- [Build Loki from source](#build-and-run-from-source)
 - [Get inspired by our production setup](#get-inspired-by-our-production-setup)
 
 For the various ways to run `promtail`, the tailing agent, see our [Promtail documentation](../docs/promtail.md).
 
-## Get a Free Hosted Demo of Grafana Cloud: Logs
+## Get a free hosted demo of Grafana Cloud: Logs
 
-Grafana is running a free, hosted demo cluster of Loki; instructions for getting access can be found at [grafana.com/loki](https://grafana.com/loki).
+Grafana is running a free, hosted demo cluster of Loki. Find instructions for getting access at [grafana.com/loki](https://grafana.com/loki).
 
-In addition, the demo also includes an allotment of complimentary metrics (Prometheus or Graphite) to help illustrate the experience of easily switching between logs and metrics.
+The demo includes complimentary metrics (Prometheus or Graphite) that help illustrate the experience of easily switching between logs and metrics.
 
-## Run Locally Using Docker
+## Run locally using Docker
 
 The Docker images for [Loki](https://hub.docker.com/r/grafana/loki/) and [Promtail](https://hub.docker.com/r/grafana/promtail/) are available on DockerHub.
 
-To test locally, we recommend using the `docker-compose.yaml` file in this directory.
-It will start containers for promtail, Loki, and Grafana.
+To test locally, we recommend using the `docker-compose.yaml` file in this directory. Docker starts containers for promtail, Loki, and Grafana.
 
 1. Either `git clone` this repository locally and `cd loki/production`, or download a copy of the [docker-compose.yaml](docker-compose.yaml) locally.
 
-1. Ensure you have the freshest, most up to date container images:
+1. Ensure you have the most up-to-date Docker container images:
 
    ```bash
    docker-compose pull
    ```
 
-1. Run the stack on your local docker:
+1. Run the stack on your local Docker:
 
    ```bash
    docker-compose up
@@ -39,7 +38,7 @@ It will start containers for promtail, Loki, and Grafana.
 
 1. Grafana should now be available at http://localhost:3000/. Log in with `admin` / `admin` and follow the [steps for configuring the datasource in Grafana](../docs/querying.md#grafana), using `http://loki:3100` for the URL field.
 
-_Note_: When running locally, promtail starts before loki is ready. This can lead to the error message "Data source connected, but no labels received." After a couple seconds, Promtail will forward all newly created log messages correctly.
+**Note:** When running locally, promtail starts before loki is ready. This can lead to the error message "Data source connected, but no labels received." After a couple seconds, Promtail will forward all newly created log messages correctly.
 Until this is fixed we recommend [building and running from source](#build-and-run-from-source).
 
 For instructions on how to query Loki, see [our usage docs](../docs/querying.md).
@@ -48,7 +47,7 @@ For instructions on how to query Loki, see [our usage docs](../docs/querying.md)
 
 There is a [Helm chart](helm) to deploy Loki and promtail to Kubernetes.
 
-## Build and Run From Source
+## Build and run from source
 
 Loki can be run in a single host, no-dependencies mode using the following commands.
 
