@@ -6,7 +6,7 @@ Overview](overview/README.md).
 ## Multi Tenancy
 
 All data both in memory and in long-term storage is partitioned by a tenant ID,
-pulled from the `X-Scope-OrgID` header from the request when Loki is ran in
+pulled from the `X-Scope-OrgID` header from the request when Loki is run in
 multi-tenant mode. When Loki is **not** in multi-tenant mode, the header
 is ignored and the tenant ID is set to "fake", which will appear in the index
 and in stored chunks.
@@ -20,7 +20,7 @@ are internally referred to as modules. Each component spawns a gRPC server for
 internal traffic and an HTTP/1 server for external API requests. All components
 come with an HTTP/1 server, but most only expose readiness and health endpoints.
 
-While each component can be ran in a separate process, Loki also supports running
+While each component can be run in a separate process, Loki also supports running
 all components in a single process. Running all components in a single process is
 referred to as "single process" mode, while the other mode is the "horizontally"
 scalable mode.
