@@ -30,6 +30,7 @@ that Loki is cheaper to operate and can be orders of magnitude more efficent.
         2. [Configration](clients/promtail/configuration.md)
         3. [Scraping](clients/promtail/scraping.md)
         4. [Pipelines](clients/promtail/pipelines.md)
+        5. [Troubleshooting](clients/promtail/troubleshooting.md)
     2. [Docker Driver](clients/docker-driver/README.md)
         1. [Configration](clients/docker-driver/configuration.md)
     3. [fluentd](clients/fluentd.md)
@@ -50,3 +51,5 @@ that Loki is cheaper to operate and can be orders of magnitude more efficent.
     1. [Governance](community/governance.md)
     2. [Getting in Touch](community/getting-in-touch.md)
     3. [Contributing](community/contributing.md)
+11. [Maintaining Loki](./maintaining/README.md)
+    1. [Releasing Loki](./maintaining/release.md)

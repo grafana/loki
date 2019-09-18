@@ -51,4 +51,24 @@ all labels are set correctly, it will start tailing (continously reading) the
 logs from targets. Once enough data is read into memory, it is flushed as a
 single batch to Loki.
 
+## API
 
+Promtail features an embedded web server exposing a web console at `/` and the following API endpoints:
+
+### `GET /ready`
+
+This endpoint returns 200 when Promtail is up and running, and there's at least one working target.
+
+### `GET /metrics`
+
+This endpoint returns Promtail metrics for Prometheus. See "[Operations > Observability > Metrics](../loki/operations.md)" to have a list of exported metrics.
+
+## Promtail web server config
+
+The web server exposed by Promtail can be configured in the promtail `.yaml` config file:
+
+```yaml
+server:
+  http_listen_host: 127.0.0.1
+  http_listen_port: 9080
+```
