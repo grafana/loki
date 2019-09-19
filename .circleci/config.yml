@@ -78,7 +78,7 @@ jobs:
       - checkout
       - run:
           name: build
-          command: make GOOS=windows promtail
+          command: make GOOS=windows GOGC=10 promtail
 
   # Docker driver
   build/docker-driver:
