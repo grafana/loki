@@ -47,7 +47,7 @@ timestamp, or re-write log lines entirely. Refer to the documentation for
 ## Shipping
 
 Once Promtail has a set of targets (i.e., things to read from, like files) and
-all labels are set correctly, it will start tailing (continously reading) the
+all labels are set correctly, it will start tailing (continuously reading) the
 logs from targets. Once enough data is read into memory, it is flushed as a
 single batch to Loki.
 
