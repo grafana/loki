@@ -18,8 +18,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier"
 )
 
 var (
@@ -159,7 +159,7 @@ func (r *Reader) run() {
 
 	r.closeAndReconnect()
 
-	tailResponse := &querier.TailResponse{}
+	tailResponse := &loghttp.TailResponse{}
 
 	for {
 		err := r.conn.ReadJSON(tailResponse)

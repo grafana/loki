@@ -3,7 +3,6 @@ package marshal
 import (
 	"bytes"
 	"encoding/json"
-	"log"
 	"testing"
 	"time"
 
@@ -309,14 +308,4 @@ func testJSONBytesEqual(t *testing.T, expected []byte, actual []byte, msg string
 	require.NoError(t, err)
 
 	require.Equalf(t, expectedValue, actualValue, msg, args)
-}
-
-func mustParse(l string, t string) time.Time {
-
-	ret, err := time.Parse(l, t)
-	if err != nil {
-		log.Fatalf("Failed to parse %s", t)
-	}
-
-	return ret
 }

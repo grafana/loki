@@ -7,7 +7,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
-	"github.com/grafana/loki/pkg/querier"
+	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 
 	"github.com/fatih/color"
 	promlabels "github.com/prometheus/prometheus/pkg/labels"
@@ -20,7 +20,7 @@ func (q *Query) TailQuery(delayFor int, c *client.Client, out output.LogOutput) 
 		log.Fatalf("Tailing logs failed: %+v", err)
 	}
 
-	tailReponse := new(querier.TailResponse)
+	tailReponse := new(loghttp.TailResponse)
 
 	if len(q.IgnoreLabelsKey) > 0 {
 		log.Println("Ignoring labels key:", color.RedString(strings.Join(q.IgnoreLabelsKey, ",")))

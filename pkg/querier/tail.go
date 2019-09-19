@@ -286,7 +286,7 @@ func dropEntry(droppedEntries []legacy.DroppedEntry, timestamp time.Time, labels
 		return droppedEntries
 	}
 
-	return append(droppedEntries, legacy.DroppedEntry{timestamp, labels})
+	return append(droppedEntries, legacy.DroppedEntry{Timestamp: timestamp, Labels: labels})
 }
 
 func dropEntries(droppedEntries []legacy.DroppedEntry, streams []logproto.Stream) []legacy.DroppedEntry {
