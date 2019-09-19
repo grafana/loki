@@ -17,7 +17,7 @@ one of many root causes:
 ## "Data source connected, but no labels received. Verify that Loki and Promtail is configured properly."
 
 This error can appear in Grafana when Loki is added as a datasource, indicating
-that although Grafana has connected to Loki, Loki hasn't recieved any logs from
+that although Grafana has connected to Loki, Loki hasn't received any logs from
 promtail yet. There may be one of many root causes:
 
 - Promtail is running and collecting logs but is unable to connect to Loki to
