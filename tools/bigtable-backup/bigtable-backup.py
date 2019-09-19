@@ -62,7 +62,10 @@ def ensure_backups(args):
             bigtable_backup_job_last_active_table_backup_time_seconds.set_to_current_time()
 
     num_backups_deleted = 0
-            
+
+    # list backups again to verify them below
+    backups = list_backups(args.destination_path)
+
     print("Checking whether all the backups are created after their period is over and deleting old unwanted backups")
     for table_id, timestamps in backups.items():
         table_number = int(table_id.rsplit("_", 1)[-1])
