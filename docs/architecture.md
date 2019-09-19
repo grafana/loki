@@ -54,7 +54,7 @@ in parallel.
 
 Distributors use consistent hashing in conjunction with a configurable
 replication factor to determine which instances of the ingester service should
-recieve log data for a given stream.
+receive log data for a given stream.
 
 A stream is a set of logs associated to a tenant and a unique labelset. The
 stream is hashed using both the tenant ID and the labelset and then the hash is
@@ -86,7 +86,7 @@ sent to any distributor.
 
 To ensure consistent query results, Loki uses
 [Dynamo-style](https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf)
-quoum consistency on reads and writes. This means that the distributor will wait
+quorum consistency on reads and writes. This means that the distributor will wait
 for a positive response of at least one half plus one of the ingesters to send
 the sample to before responding to the user.
 
@@ -210,7 +210,7 @@ To summarize, the read path does the following:
    any.
 4. The querier lazily loads data from the backing store and runs the query
    against it if no ingesters returned data.
-5. The querier iterates over all recieved data and deduplicates, returning a
+5. The querier iterates over all received data and deduplicates, returning a
    final set of data over the HTTP/1 connection.
 
 ## Write Path

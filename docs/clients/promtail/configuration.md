@@ -262,28 +262,39 @@ kubernetes_sd_configs:
 ### pipeline_stages
 
 The pipeline stages (`pipeline_stages`) is used to transform log entries and
-their labels after discovery.
+their labels after discovery. It is simply an array of various stages, defined
+below.
 
 The point of most stages is to extract fields and values into a temporary
 set of key-value pairs that is passed around from stage to stage.
 
 ```yaml
-match:
-  # LogQL selector to modify
-  selector: <string>
+- [
+    <regex_stage>
+    <json_stage> |
+    <template_stage> |
+    <match_stage> |
+    <timestamp_stage> |
+    <output_stage> |
+    <labels_stage> |
+    <metrics_stage>
+  ]
+```
 
-  # Stages to execute.
-  stages:
-    - [
-        <regex_stage>
-        <json_stage> |
-        <template_stage> |
-        <match_stage> |
-        <timestamp_stage> |
-        <output_stage> |
-        <labels_stage> |
-        <metrics_stage>
-      ]
+Example:
+
+```yaml
+pipeline_stages:
+  - regex:
+      expr: "./*"
+  - json:
+      timestamp:
+        source: time
+        format: RFC3339
+      labels:
+        stream:
+          source: json_key_name.json_sub_key_name
+      output:
 ```
 
 #### regex_stage
@@ -331,6 +342,14 @@ template:
   # functions, ToLower, ToUpper, Replace, Trim, TrimLeft, TrimRight,
   # TrimPrefix, TrimSuffix, and TrimSpace are available as functions.
   template: <string>
+```
+
+Example:
+
+```yaml
+template:
+  source: level
+  template: '{{ if eq .Value "WARN" }}{{ Replace .Value "WARN" "OK" -1 }}{{ else }}{{ .Value }}{{ end }}'
 ```
 
 #### match_stage
@@ -538,9 +557,6 @@ before it gets scraped. Multiple relabeling steps can be configured per scrape
 configuration. They are applied to the label set of each target in order of
 their appearance in the configuration file.
 
-Initially, aside from the configured per-target labels, a target's `job`
-label is set to the `job_name` value of the respective scrape configuration.
-The `__address__` label is set to the `<host>:<port>` address of the target.
 After relabeling, the `instance` label is set to the value of `__address__` by
 default if it was not set during relabeling. The `__scheme__` and
 `__metrics_path__` labels are set to the scheme and metrics path of the target
@@ -608,7 +624,7 @@ use `.*<regex>.*`.
 * `labelkeep`: Match `regex` against all label names. Any label that does not match will be
   removed from the set of labels.
 
-Care must be taken with `labeldrop` and `labelkeep` to ensure that metrics are
+Care must be taken with `labeldrop` and `labelkeep` to ensure that logs are
 still uniquely labeled once the labels are removed.
 
 ### static_config
@@ -623,9 +639,10 @@ configuration.
 targets:
   - localhost
 
-# Labels assigned to all metrics scraped from the targets.
+# Defines a file to scrape and an optional set of additional labels to apply to
+# all streams defined by the files from __path__.
 labels:
-  # The path to load logs from
+  # The path to load logs from. Can use glob patterns (e.g., /var/log/*.log).
   __path__: <string>
 
   # Additional labels to assign to the logs

@@ -51,6 +51,12 @@ all labels are set correctly, it will start tailing (continuously reading) the
 logs from targets. Once enough data is read into memory, it is flushed as a
 single batch to Loki.
 
+As Promtail reads data from sources (files and systemd journal, if configured),
+it will track the last offset it read in a positions file. By default, the
+positions file is stored at `/var/log/positions.yaml`. The positions file helps
+Promtail continue reading from where it left off in the case of the Promtail
+instance restarting.
+
 ## API
 
 Promtail features an embedded web server exposing a web console at `/` and the following API endpoints:

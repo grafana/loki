@@ -1,6 +1,6 @@
 # Loki Clients
 
-Grafana Labs supports the following official clients for sending logs to Loki:
+Loki supports the following official clients for sending logs:
 
 1. [Promtail](./promtail/README.md)
 2. [Docker Driver](./docker-driver/README.md)

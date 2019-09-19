@@ -23,21 +23,20 @@ The API endpoints starting with `/loki/` are [Prometheus API-compatible](https:/
 
 ## Matrix, Vector, And Streams
 
-Some Loki API endpoints return a result of a metrix, a vector, or a stream:
+Some Loki API endpoints return a result of a matrix, a vector, or a stream:
 
 - Matrix: a table of values where each row represents a different label set
   and the columns are each sample value for that row over the queried time.
   Matrix types are only returned when running a query that computes some value.
-  Unlike vectors and stream, the sample value in a matrix will never be a log
-  line.
 
 - Instant Vector: denoted in the type as just `vector`, an Instant Vector
-  represents the latest received value (log) for a given labelset over time.
-  Instant Vectors are only returned when doing a query against a single point in
+  represents the latest value of a calculation for a given labelset. Instant
+  Vectors are only returned when doing a query against a single point in
   time.
 
 - Stream: a Stream is a set of all values (logs) for a given label set over the
-  queried time range.
+  queried time range. Streams are the only type that will result in log lines
+  being returned.
 
 ## `GET /loki/api/v1/query`
 
@@ -466,7 +465,7 @@ $ curl -G -s  "http://localhost:3100/api/prom/query" --data-urlencode '{foo="bar
 
 ## `POST /api/prom/push`
 
-`/api/prom/push` is how log entries are sent to Loki. The deafult behavior is
+`/api/prom/push` is how log entries are sent to Loki. The default behavior is
 for the POST body to be a snappy-compress protobuf messsage:
 
 - [Protobuf definition](/pkg/logproto/logproto.proto)
