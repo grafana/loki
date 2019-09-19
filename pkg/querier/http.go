@@ -12,7 +12,6 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
-	loghttp_v1 "github.com/grafana/loki/pkg/loghttp/v1"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
@@ -232,7 +231,7 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := loghttp_v1.WriteQueryResponseJSON(result, w); err != nil {
+	if err := loghttp.WriteQueryResponseJSON(result, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -256,7 +255,7 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := loghttp_v1.WriteQueryResponseJSON(result, w); err != nil {
+	if err := loghttp.WriteQueryResponseJSON(result, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -323,7 +322,7 @@ func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-		err = loghttp_v1.WriteLabelResponseJSON(*resp, w)
+		err = loghttp.WriteLabelResponseJSON(*resp, w)
 	} else {
 		err = loghttp_legacy.WriteLabelResponseJSON(*resp, w)
 	}
@@ -398,7 +397,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 		case response = <-responseChan:
 			var err error
 			if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-				err = loghttp_v1.WriteTailResponseJSON(*response, conn)
+				err = loghttp.WriteTailResponseJSON(*response, conn)
 			} else {
 				err = loghttp_legacy.WriteTailResponseJSON(*response, conn)
 			}
