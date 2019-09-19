@@ -27,8 +27,8 @@ local run(name, commands) = {
   commands: commands,
 };
 
-local make(target, container=true) = run(target, [
-  'make ' + (if !container then 'BUILD_IN_CONTAINER=false ' else '') + target,
+local make(target, env='', container=true) = run(target, [
+  env + ' ' + 'make ' + (if !container then 'BUILD_IN_CONTAINER=false ' else '') + target,
 ]);
 
 local docker(arch, app) = {
@@ -102,13 +102,24 @@ local manifest(apps) = pipeline('manifest') {
 local drone = [
   pipeline('check') {
     workspace: {
-      base: "/go/src",
-      path: "github.com/grafana/loki"
+      base: '/go/src',
+      path: 'github.com/grafana/loki'
     },
     steps: [
       make('test', container=false) { depends_on: ['clone'] },
       make('lint', container=false) { depends_on: ['clone'] },
       make('check-generated-files', container=false) { depends_on: ['clone'] },
+    ],
+  },
+] + [
+  pipeline('promtail-windows') {
+    depends_on: ['check'],
+    workspace: {
+      base: '/go/src',
+      path: 'github.com/grafana/loki'
+    },
+    steps: [
+      make('promtail', container=false, env='GOOS=windows') { depends_on: ['clone'] },
     ],
   },
 ] + [
@@ -119,15 +130,15 @@ local drone = [
     trigger: condition('include').tagMaster,
   },
 ] + [
-  pipeline("deploy") {
+  pipeline('deploy') {
     trigger: condition('include').tagMaster,
-    depends_on: ["manifest"],
+    depends_on: ['manifest'],
     steps: [
       {
-        name: "trigger",
+        name: 'trigger',
         image: 'grafana/loki-build-image:%s' % build_image_version,
         environment: {
-          CIRCLE_TOKEN: {from_secret: "circle_token"}
+          CIRCLE_TOKEN: {from_secret: 'circle_token'}
         },
         commands: [
           'curl -s --header "Content-Type: application/json" --data "{\\"build_parameters\\": {\\"CIRCLE_JOB\\": \\"deploy\\", \\"IMAGE_NAMES\\": \\"$(make print-images)\\"}}" --request POST https://circleci.com/api/v1.1/project/github/raintank/deployment_tools/tree/master?circle-token=$CIRCLE_TOKEN'
