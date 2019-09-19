@@ -12,6 +12,8 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
+	"github.com/grafana/loki/pkg/logql/marshal"
+	marshal_legacy "github.com/grafana/loki/pkg/logql/marshal/legacy"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
@@ -231,7 +233,7 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := loghttp.WriteQueryResponseJSON(result, w); err != nil {
+	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -255,7 +257,7 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := loghttp.WriteQueryResponseJSON(result, w); err != nil {
+	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -285,7 +287,7 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := loghttp_legacy.WriteQueryResponseJSON(result, w); err != nil {
+	if err := marshal_legacy.WriteQueryResponseJSON(result, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -322,9 +324,9 @@ func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-		err = loghttp.WriteLabelResponseJSON(*resp, w)
+		err = marshal.WriteLabelResponseJSON(*resp, w)
 	} else {
-		err = loghttp_legacy.WriteLabelResponseJSON(*resp, w)
+		err = marshal_legacy.WriteLabelResponseJSON(*resp, w)
 	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -397,9 +399,9 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 		case response = <-responseChan:
 			var err error
 			if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-				err = loghttp.WriteTailResponseJSON(*response, conn)
+				err = marshal.WriteTailResponseJSON(*response, conn)
 			} else {
-				err = loghttp_legacy.WriteTailResponseJSON(*response, conn)
+				err = marshal_legacy.WriteTailResponseJSON(*response, conn)
 			}
 			if err != nil {
 				level.Error(util.Logger).Log("Error writing to websocket", fmt.Sprintf("%v", err))

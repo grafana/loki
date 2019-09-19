@@ -1,4 +1,4 @@
-package loghttp
+package marshal
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/loghttp/legacy"
+	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"

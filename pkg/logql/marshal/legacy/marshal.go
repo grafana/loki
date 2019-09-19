@@ -1,4 +1,4 @@
-package loghttp
+package marshal
 
 import (
 	"encoding/json"
@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/gorilla/websocket"
+	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/grafana/loki/pkg/logql"
@@ -36,6 +37,6 @@ func WriteLabelResponseJSON(l logproto.LabelResponse, w io.Writer) error {
 }
 
 // WriteTailResponseJSON marshals the TailResponse to legacy loghttp JSON and then writes it to the provided connection
-func WriteTailResponseJSON(r TailResponse, c *websocket.Conn) error {
+func WriteTailResponseJSON(r loghttp.TailResponse, c *websocket.Conn) error {
 	return c.WriteJSON(r)
 }

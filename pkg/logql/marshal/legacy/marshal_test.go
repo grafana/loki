@@ -1,4 +1,4 @@
-package loghttp
+package marshal
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/stretchr/testify/require"
@@ -64,11 +65,11 @@ var labelTests = []struct {
 
 // covers responses from /api/prom/tail and /api/prom/tail
 var tailTests = []struct {
-	actual   TailResponse
+	actual   loghttp.TailResponse
 	expected string
 }{
 	{
-		TailResponse{
+		loghttp.TailResponse{
 			Streams: []logproto.Stream{
 				logproto.Stream{
 					Entries: []logproto.Entry{
@@ -80,8 +81,8 @@ var tailTests = []struct {
 					Labels: "{test=\"test\"}",
 				},
 			},
-			DroppedEntries: []DroppedEntry{
-				DroppedEntry{
+			DroppedEntries: []loghttp.DroppedEntry{
+				loghttp.DroppedEntry{
 					Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
 					Labels:    "{test=\"test\"}",
 				},
