@@ -115,7 +115,7 @@ maintainence tasks. It consists of:
   [Amazon * S3](https://aws.amazon.com/s3)
 
 > Unlike the other core components of Loki, the chunk store is not a separate
-> service, job, or process, but rather a library embedded in the three services
+> service, job, or process, but rather a library embedded in the two services
 > that need to access Loki data: the [ingester](#ingester) and [querier](#querier).
 
 The chunk store relies on a unified interface to the

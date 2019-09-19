@@ -2,11 +2,10 @@
 
 ## Prerequisites
 
-Make sure you have Ksonnet v0.8.0:
+Make sure you have Ksonnet v0.8.0. Prebuilt binaries for Ksonnet can be found
+[here](https://github.com/ksonnet/ksonnet/releases/tag/v0.8.0).
 
 ```
-$ brew install https://raw.githubusercontent.com/ksonnet/homebrew-tap/82ef24cb7b454d1857db40e38671426c18cd8820/ks.rb
-$ brew pin ks
 $ ks version
 ksonnet version: v0.8.0
 jsonnet version: v0.9.5

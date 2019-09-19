@@ -1,4 +1,4 @@
-# Maintaining Loki
+# Loki Maintainers Guide
 
 This section details information for maintainers of Loki.
 

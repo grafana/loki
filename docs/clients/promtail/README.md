@@ -61,7 +61,9 @@ This endpoint returns 200 when Promtail is up and running, and there's at least 
 
 ### `GET /metrics`
 
-This endpoint returns Promtail metrics for Prometheus. See "[Operations > Observability > Metrics](../loki/operations.md)" to have a list of exported metrics.
+This endpoint returns Promtail metrics for Prometheus. See
+"[Operations > Observability](../../operations/observability.md)" to get a list
+of exported metrics.
 
 ## Promtail web server config
 

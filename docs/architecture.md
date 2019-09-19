@@ -22,8 +22,9 @@ come with an HTTP/1 server, but most only expose readiness and health endpoints.
 
 While each component can be run in a separate process, Loki also supports running
 all components in a single process. Running all components in a single process is
-referred to as "single process" mode, while the other mode is the "horizontally"
-scalable mode.
+referred to as "single process" mode (or sometimes "single binary" or monolithic
+mode), while the other mode is the "horizontally" scalable, or microservices
+mode.
 
 When Loki runs in single process mode, individual components continue to
 communicate to one another over gRPC using the gRPC listen port of the overall
@@ -44,8 +45,10 @@ processes with the following limitations:
 
 The **distributor** service is responsible for handling incoming streams by
 clients. It's the first stop in the write path for log data. Once the
-distributor receives a set of streams, they are split into batches and sent to
-multiple [ingesters](#ingester) in parallel.
+distributor receives a set of streams, each stream is validated for correctness
+and to ensure that it is within the configured tenant (or global) limits. Valid
+chunks are then split into batches and sent to multiple [ingesters](#ingester)
+in parallel.
 
 #### Hashing
 

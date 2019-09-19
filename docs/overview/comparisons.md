@@ -6,16 +6,16 @@ The EFK (Elasticsearch, Fluentd, Kibana) stack is used to ingest, visualize, and
 query for logs from various sources.
 
 Data in Elasticsearch is stored on-disk as unstructured JSON objects. Both the
-keys for each object and the contents of each key are indexed for searching.
-Data can then be queried using a JSON object to define a query (called the
-Query DSL) or through the Lucene query language if using Kibana.
+keys for each object and the contents of each key are indexed. Data can then be
+queried using a JSON object to define a query (called the Query DSL) or through
+the Lucene query language.
 
-In comparison, Loki in single-binary mode can store data on-disk, but data in
-horizontally scalable mode is stored in a cloud storage system such as S3, GCS,
-or Cassandra. Logs are stored in plaintext form tagged with a set of label names
-and values, where only the label pairs are indexed. This tradeoff makes it
+In comparison, Loki in single-binary mode can store data on-disk, but in
+horizontally-scalable mode data is stored in a cloud storage system such as S3,
+GCS, or Cassandra. Logs are stored in plaintext form tagged with a set of label
+names and values, where only the label pairs are indexed. This tradeoff makes it
 cheaper to operate than a full index and allows developers to aggressively log
-from their applications. Logs in Loki are queried using LogQL.
+from their applications. Logs in Loki are queried using [LogQL](../logql.md).
 
 Fluentd is usually used to collect and forward logs to Elasticsearch. Fluentd is
 called a data collector which can ingest logs from many sources, process it, and
@@ -24,8 +24,9 @@ forward it to one or more targets.
 In comparison, Promtail's use case is specifically tailored to Loki. Its main mode
 of operation is to discover log files stored on disk and forward them associated
 with a set of labels to Loki. Promtail can do service discovery for Kubernetes
-pods running on the same node as Promtail, act as a Docker logging driver, read
-logs from specified folders, and tail the systemd journal.
+pods running on the same node as Promtail, act as a container sidecar or a
+Docker logging driver, read logs from specified folders, and tail the systemd
+journal.
 
 The way Loki represents logs by a set of label pairs is similar to how
 [Prometheus](https://prometheus.io) represents metrics. When deployed in an

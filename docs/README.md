@@ -7,20 +7,22 @@ Grafana Loki is a set of components that can be composed into a fully featured
 logging stack.
 
 Unlike other logging systems, Loki is built around the idea of only indexing
-labels for logs and leaving the original log message unindexed. This means
-that Loki is cheaper to operate and can be orders of magnitude more efficent.
+metadata about your logs: labels (just like Prometheus labels). Log data itself
+is then compressed and stored in chunks in object stores such as S3 or GCS, or
+even locally on the filesystem. A small index and highly compressed chunks
+simplifies the operation and significantly lowers the cost of Loki.
 
 ## Table of Contents
 
 1. [Overview](overview/README.md)
     1. [Comparison to other Log Systems](overview/comparisons.md)
 2. [Installation](installation/README.md)
-    1. [Installing Locally](installation/local.md)
+    1. [Installing with Ksonnet](installation/ksonnet.md)
     2. [Installing with Helm](installation/helm.md)
-    3. [Installing with Ksonnet](installation/ksonnet.md)
+    3. [Installing Locally](installation/local.md)
 3. [Getting Started](getting-started/README.md)
     1. [Grafana](getting-started/grafana.md)
-    2. [Logcli](getting-started/logcli.md)
+    2. [LogCLI](getting-started/logcli.md)
     4. [Troubleshooting](getting-started/troubleshooting.md)
 4. [Configuration](configuration/README.md)
     1. [Examples](configuration/examples.md)
@@ -34,7 +36,6 @@ that Loki is cheaper to operate and can be orders of magnitude more efficent.
     2. [Docker Driver](clients/docker-driver/README.md)
         1. [Configration](clients/docker-driver/configuration.md)
     3. [fluentd](clients/fluentd.md)
-    4. [fluent-bit](clients/fluent-bit.md)
 6. [LogQL](logql.md)
 7. [Operations](operations/README.md)
     1. [Authentication](operations/authentication.md)
@@ -50,6 +51,6 @@ that Loki is cheaper to operate and can be orders of magnitude more efficent.
 10. [Community](community/README.md)
     1. [Governance](community/governance.md)
     2. [Getting in Touch](community/getting-in-touch.md)
-    3. [Contributing](community/contributing.md)
-11. [Maintaining Loki](./maintaining/README.md)
+    3. [Contributing to Loki](community/contributing.md)
+11. [Loki Maintainers Guide](./maintaining/README.md)
     1. [Releasing Loki](./maintaining/release.md)
