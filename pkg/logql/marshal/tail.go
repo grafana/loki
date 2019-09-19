@@ -10,7 +10,7 @@ func NewTailResponse(r legacy.TailResponse) (loghttp.TailResponse, error) {
 	var err error
 	ret := loghttp.TailResponse{
 		Streams:        make([]loghttp.Stream, len(r.Streams)),
-		DroppedStreams: make([]*loghttp.DroppedStream, len(r.DroppedEntries)),
+		DroppedStreams: make([]loghttp.DroppedStream, len(r.DroppedEntries)),
 	}
 
 	for i, s := range r.Streams {
@@ -32,13 +32,13 @@ func NewTailResponse(r legacy.TailResponse) (loghttp.TailResponse, error) {
 }
 
 // NewDroppedStream constructs a DroppedStream from a legacy.DroppedEntry
-func NewDroppedStream(s *legacy.DroppedEntry) (*loghttp.DroppedStream, error) {
+func NewDroppedStream(s *legacy.DroppedEntry) (loghttp.DroppedStream, error) {
 	l, err := NewLabelSet(s.Labels)
 	if err != nil {
-		return nil, err
+		return loghttp.DroppedStream{}, err
 	}
 
-	return &loghttp.DroppedStream{
+	return loghttp.DroppedStream{
 		Timestamp: s.Timestamp,
 		Labels:    l,
 	}, nil
