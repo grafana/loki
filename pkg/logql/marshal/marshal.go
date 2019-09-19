@@ -1,4 +1,4 @@
-// Package marshal is for marshalling our internal objects to loghttp model objects.  This package is designed to work with
+// Package marshal converts internal objects to loghttp model objects.  This package is designed to work with
 //  models in pkg/loghttp.
 package marshal
 
