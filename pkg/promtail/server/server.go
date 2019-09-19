@@ -1,11 +1,11 @@
 package server
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"sort"
 	"strings"
 	"text/template"
@@ -49,13 +49,15 @@ func New(cfg Config, tms *targets.TargetManagers) (*Server, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "parse external URL %q", cfg.ExternalURL)
 	}
+	cfg.PathPrefix = externalURL.Path
+
 	serv := &Server{
 		Server:      wws,
 		tms:         tms,
 		externalURL: externalURL,
 	}
 
-	serv.HTTP.Path("/").Handler(http.RedirectHandler("/targets", 303))
+	serv.HTTP.Path("/").Handler(http.RedirectHandler(path.Join(serv.externalURL.Path, "/targets"), 303))
 	serv.HTTP.Path("/ready").Handler(http.HandlerFunc(serv.ready))
 	serv.HTTP.PathPrefix("/static/").Handler(http.FileServer(ui.Assets))
 	serv.HTTP.Path("/service-discovery").Handler(http.HandlerFunc(serv.serviceDiscovery))
@@ -65,7 +67,7 @@ func New(cfg Config, tms *targets.TargetManagers) (*Server, error) {
 }
 
 // serviceDiscovery serves the service discovery page.
-func (s *Server) serviceDiscovery(rw http.ResponseWriter, _ *http.Request) {
+func (s *Server) serviceDiscovery(rw http.ResponseWriter, req *http.Request) {
 	var index []string
 	allTarget := s.tms.AllTargets()
 	for job := range allTarget {
@@ -103,7 +105,7 @@ func (s *Server) serviceDiscovery(rw http.ResponseWriter, _ *http.Request) {
 		}
 	}
 
-	executeTemplate(context.Background(), rw, templateOptions{
+	executeTemplate(req.Context(), rw, templateOptions{
 		Data:         scrapeConfigData,
 		BuildVersion: version.Info(),
 		Name:         "service-discovery.html",
@@ -133,8 +135,8 @@ func (s *Server) serviceDiscovery(rw http.ResponseWriter, _ *http.Request) {
 }
 
 // targets serves the targets page.
-func (s *Server) targets(rw http.ResponseWriter, _ *http.Request) {
-	executeTemplate(context.Background(), rw, templateOptions{
+func (s *Server) targets(rw http.ResponseWriter, req *http.Request) {
+	executeTemplate(req.Context(), rw, templateOptions{
 		Data: struct {
 			TargetPools map[string][]targets.Target
 		}{
