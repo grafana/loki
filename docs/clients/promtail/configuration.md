@@ -319,7 +319,7 @@ json:
 
 #### template_stage
 
-The template stage uses Go's `text/template` language to manipualte values.
+The template stage uses Go's `text/template` language to manipulate values.
 
 ```yaml
 template:
