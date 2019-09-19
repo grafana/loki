@@ -22,7 +22,7 @@ var queryTests = []struct {
 		logql.Streams{
 			&logproto.Stream{
 				Entries: []logproto.Entry{
-					logproto.Entry{
+					{
 						Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
 						Line:      "super line",
 					},
@@ -71,9 +71,9 @@ var tailTests = []struct {
 	{
 		loghttp.TailResponse{
 			Streams: []logproto.Stream{
-				logproto.Stream{
+				{
 					Entries: []logproto.Entry{
-						logproto.Entry{
+						{
 							Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
 							Line:      "super line",
 						},
@@ -82,7 +82,7 @@ var tailTests = []struct {
 				},
 			},
 			DroppedEntries: []loghttp.DroppedEntry{
-				loghttp.DroppedEntry{
+				{
 					Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
 					Labels:    "{test=\"test\"}",
 				},

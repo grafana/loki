@@ -26,7 +26,7 @@ var queryTests = []struct {
 		logql.Streams{
 			&logproto.Stream{
 				Entries: []logproto.Entry{
-					logproto.Entry{
+					{
 						Timestamp: time.Unix(0, 123456789012345),
 						Line:      "super line",
 					},
@@ -121,7 +121,7 @@ var queryTests = []struct {
 		promql.Matrix{
 			{
 				Points: []promql.Point{
-					promql.Point{
+					{
 						T: 1568404331324,
 						V: 0.013333333333333334,
 					},
@@ -139,11 +139,11 @@ var queryTests = []struct {
 			},
 			{
 				Points: []promql.Point{
-					promql.Point{
+					{
 						T: 1568404331324,
 						V: 3.45,
 					},
-					promql.Point{
+					{
 						T: 1568404331339,
 						V: 4.45,
 					},
@@ -224,9 +224,9 @@ var tailTests = []struct {
 	{
 		legacy.TailResponse{
 			Streams: []logproto.Stream{
-				logproto.Stream{
+				{
 					Entries: []logproto.Entry{
-						logproto.Entry{
+						{
 							Timestamp: time.Unix(0, 123456789012345),
 							Line:      "super line",
 						},
@@ -235,7 +235,7 @@ var tailTests = []struct {
 				},
 			},
 			DroppedEntries: []legacy.DroppedEntry{
-				legacy.DroppedEntry{
+				{
 					Timestamp: time.Unix(0, 123456789022345),
 					Labels:    "{test=\"test\"}",
 				},
