@@ -9,7 +9,7 @@ type Version int
 
 // Valid Version values
 const (
-	VersionLegacy = iota
+	VersionLegacy = Version(iota)
 	VersionV1
 )
 
