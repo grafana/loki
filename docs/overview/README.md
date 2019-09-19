@@ -49,7 +49,7 @@ The hash is based on a combination of the log's labels and the tenant ID.
 A hash ring stored in [Consul](https://www.consul.io) is used to achieve
 consistent hashing; all [ingesters](#ingester) register themselves into the
 hash ring with a set of tokens they own. Distributors then find the token that
-most closely mathces the value of the log's hash and will send data to that
+most closely matches the value of the log's hash and will send data to that
 token's owner.
 
 #### Quorum consistency
