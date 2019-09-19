@@ -8,7 +8,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/iter"
-	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
+	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/pkg/errors"
 )
@@ -46,7 +46,7 @@ type Tailer struct {
 
 	stopped         bool
 	delayFor        time.Duration
-	responseChan    chan *legacy.TailResponse
+	responseChan    chan *loghttp.TailResponse
 	closeErrChan    chan error
 	tailMaxDuration time.Duration
 
@@ -73,7 +73,7 @@ func (t *Tailer) loop() {
 	tailMaxDurationTicker := time.NewTicker(t.tailMaxDuration)
 	defer tailMaxDurationTicker.Stop()
 
-	droppedEntries := make([]legacy.DroppedEntry, 0)
+	droppedEntries := make([]loghttp.DroppedEntry, 0)
 
 	for !t.stopped {
 		select {
@@ -93,7 +93,7 @@ func (t *Tailer) loop() {
 
 		// Read as much entries as we can (up to the max allowed) and populate the
 		// tail response we'll send over the response channel
-		tailResponse := new(legacy.TailResponse)
+		tailResponse := new(loghttp.TailResponse)
 		entriesCount := 0
 
 		for ; entriesCount < maxEntriesPerTailResponse && t.next(); entriesCount++ {
@@ -150,7 +150,7 @@ func (t *Tailer) loop() {
 		select {
 		case t.responseChan <- tailResponse:
 			if len(droppedEntries) > 0 {
-				droppedEntries = make([]legacy.DroppedEntry, 0)
+				droppedEntries = make([]loghttp.DroppedEntry, 0)
 			}
 		default:
 			droppedEntries = dropEntries(droppedEntries, tailResponse.Streams)
@@ -249,7 +249,7 @@ func (t *Tailer) isResponseChanBlocked() bool {
 	return len(t.responseChan) == cap(t.responseChan)
 }
 
-func (t *Tailer) getResponseChan() <-chan *legacy.TailResponse {
+func (t *Tailer) getResponseChan() <-chan *loghttp.TailResponse {
 	return t.responseChan
 }
 
@@ -269,7 +269,7 @@ func newTailer(
 		openStreamIterator:        iter.NewHeapIterator([]iter.EntryIterator{historicEntries}, logproto.FORWARD),
 		querierTailClients:        querierTailClients,
 		delayFor:                  delayFor,
-		responseChan:              make(chan *legacy.TailResponse, maxBufferedTailResponses),
+		responseChan:              make(chan *loghttp.TailResponse, maxBufferedTailResponses),
 		closeErrChan:              make(chan error),
 		tailDisconnectedIngesters: tailDisconnectedIngesters,
 		tailMaxDuration:           tailMaxDuration,
@@ -281,15 +281,15 @@ func newTailer(
 	return &t
 }
 
-func dropEntry(droppedEntries []legacy.DroppedEntry, timestamp time.Time, labels string) []legacy.DroppedEntry {
+func dropEntry(droppedEntries []loghttp.DroppedEntry, timestamp time.Time, labels string) []loghttp.DroppedEntry {
 	if len(droppedEntries) >= maxDroppedEntriesPerTailResponse {
 		return droppedEntries
 	}
 
-	return append(droppedEntries, legacy.DroppedEntry{Timestamp: timestamp, Labels: labels})
+	return append(droppedEntries, loghttp.DroppedEntry{Timestamp: timestamp, Labels: labels})
 }
 
-func dropEntries(droppedEntries []legacy.DroppedEntry, streams []logproto.Stream) []legacy.DroppedEntry {
+func dropEntries(droppedEntries []loghttp.DroppedEntry, streams []logproto.Stream) []loghttp.DroppedEntry {
 	for _, stream := range streams {
 		for _, entry := range stream.Entries {
 			droppedEntries = dropEntry(droppedEntries, entry.Timestamp, entry.Line)
