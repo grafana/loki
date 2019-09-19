@@ -13,6 +13,7 @@ import (
 
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
 
 	"github.com/gorilla/websocket"
@@ -74,8 +75,8 @@ func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time,
 }
 
 // ListLabelNames uses the /api/v1/label endpoint to list label names
-func (c *Client) ListLabelNames(quiet bool) (*logproto.LabelResponse, error) {
-	var labelResponse logproto.LabelResponse
+func (c *Client) ListLabelNames(quiet bool) (*loghttp.LabelResponse, error) {
+	var labelResponse loghttp.LabelResponse
 	if err := c.doRequest(labelsPath, quiet, &labelResponse); err != nil {
 		return nil, err
 	}
@@ -83,9 +84,9 @@ func (c *Client) ListLabelNames(quiet bool) (*logproto.LabelResponse, error) {
 }
 
 // ListLabelValues uses the /api/v1/label endpoint to list label values
-func (c *Client) ListLabelValues(name string, quiet bool) (*logproto.LabelResponse, error) {
+func (c *Client) ListLabelValues(name string, quiet bool) (*loghttp.LabelResponse, error) {
 	path := fmt.Sprintf(labelValuesPath, url.PathEscape(name))
-	var labelResponse logproto.LabelResponse
+	var labelResponse loghttp.LabelResponse
 	if err := c.doRequest(path, quiet, &labelResponse); err != nil {
 		return nil, err
 	}
