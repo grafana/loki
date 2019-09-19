@@ -6,7 +6,7 @@ import (
 	"io"
 
 	"github.com/gorilla/websocket"
-	"github.com/grafana/loki/pkg/loghttp/legacy"
+	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 
 	"github.com/grafana/loki/pkg/logql"
 

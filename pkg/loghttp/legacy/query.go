@@ -1,4 +1,4 @@
-package legacy
+package loghttp
 
 import (
 	"time"

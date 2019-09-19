@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/loki/pkg/loghttp/legacy"
+	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 )
 
 // TailResponse represents the http json response to a tail query

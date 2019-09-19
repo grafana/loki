@@ -8,7 +8,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/loghttp/legacy"
+	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/pkg/errors"
 )
