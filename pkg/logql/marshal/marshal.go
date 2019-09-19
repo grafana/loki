@@ -52,7 +52,7 @@ func WriteQueryResponseJSON(v promql.Value, w io.Writer) error {
 		m, ok := v.(promql.Matrix)
 
 		if !ok {
-			return fmt.Errorf("unexpected type %T for vector", m)
+			return fmt.Errorf("unexpected type %T for matrix", m)
 		}
 
 		value = NewMatrix(m)
