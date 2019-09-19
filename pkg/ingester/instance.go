@@ -124,17 +124,21 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, error) {
 	fp := client.FastFingerprint(labels)
+
 	stream, ok := i.streams[fp]
-	if !ok {
-		if len(i.streams) >= i.limits.MaxStreamsPerUser(i.instanceID) {
-			return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user streams limit (%d) exceeded", i.limits.MaxStreamsPerUser(i.instanceID))
-		}
-		stream = newStream(fp, labels, i.blockSize)
-		i.index.Add(labels, fp)
-		i.streams[fp] = stream
-		i.streamsCreatedTotal.Inc()
-		i.addTailersToNewStream(stream)
+	if ok {
+		return stream, nil
 	}
+
+	if len(i.streams) >= i.limits.MaxStreamsPerUser(i.instanceID) {
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user streams limit (%d) exceeded", i.limits.MaxStreamsPerUser(i.instanceID))
+	}
+	stream = newStream(fp, labels, i.blockSize)
+	i.index.Add(labels, fp)
+	i.streams[fp] = stream
+	i.streamsCreatedTotal.Inc()
+	i.addTailersToNewStream(stream)
+
 	return stream, nil
 }
 

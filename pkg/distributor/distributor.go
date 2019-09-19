@@ -63,7 +63,7 @@ type Config struct {
 	// For testing.
 	factory func(addr string) (grpc_health_v1.HealthClient, error)
 
-	LimiterReloadPeriod time.Duration
+	LimiterReloadPeriod time.Duration `yaml:"limiter_reload_period"`
 }
 
 // RegisterFlags registers the flags.
