@@ -1,3 +1,5 @@
+// Package marshal is for marshalling our internal objects to loghttp model objects.  This package is designed to work with
+//  models in pkg/loghttp/legacy.
 package marshal
 
 import (
