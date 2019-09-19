@@ -3,7 +3,7 @@
 <p align="center"> <img src="logo_and_name.png" alt="Loki Logo"> <br>
   <small>Like Prometheus, but for logs!</small> </p>
 
-Grafana Loki is a set of components that can be compsed into a fully featured
+Grafana Loki is a set of components that can be composed into a fully featured
 logging stack.
 
 Unlike other logging systems, Loki is built around the idea of only indexing
