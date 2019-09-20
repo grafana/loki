@@ -7,14 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/loghttp"
-
-	"github.com/prometheus/prometheus/promql"
-
 	"github.com/fatih/color"
-	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
@@ -54,8 +50,8 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 
 	switch resp.Data.ResultType {
 	case logql.ValueTypeStreams:
-		// streams := resp.Data.Result.(loghttp.Streams)
-		// q.printStream(streams, out)
+		streams := resp.Data.Result.(loghttp.Streams)
+		q.printStream(streams, out)
 	case promql.ValueTypeMatrix:
 		matrix := resp.Data.Result.(loghttp.Matrix)
 		q.printMatrix(matrix)
@@ -77,18 +73,12 @@ func (q *Query) isInstant() bool {
 	return q.Start == q.End
 }
 
-func (q *Query) printStream(streams logql.Streams, out output.LogOutput) {
-	cache, lss := parseLabels(streams)
-
-	labelsCache := func(labels string) labels.Labels {
-		return cache[labels]
-	}
-
-	common := commonLabels(lss)
+func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput) {
+	common := commonLabels(streams)
 
 	// Remove the labels we want to show from common
 	if len(q.ShowLabelsKey) > 0 {
-		common = common.MatchLabels(false, q.ShowLabelsKey...)
+		common = matchLabels(false, common, q.ShowLabelsKey)
 	}
 
 	if len(common) > 0 && !q.Quiet {
@@ -102,17 +92,17 @@ func (q *Query) printStream(streams logql.Streams, out output.LogOutput) {
 	// Remove ignored and common labels from the cached labels and
 	// calculate the max labels length
 	maxLabelsLen := q.FixedLabelsLen
-	for key, ls := range cache {
+	for i, s := range streams {
 		// Remove common labels
-		ls = subtract(ls, common)
+		ls := subtract(s.Labels, common)
 
 		// Remove ignored labels
 		if len(q.IgnoreLabelsKey) > 0 {
-			ls = ls.MatchLabels(false, q.IgnoreLabelsKey...)
+			ls = matchLabels(false, ls, q.IgnoreLabelsKey)
 		}
 
-		// Update cached labels
-		cache[key] = ls
+		// Overwrite existing Labels
+		streams[i].Labels = ls
 
 		// Update max labels length
 		len := len(ls.String())
@@ -121,16 +111,10 @@ func (q *Query) printStream(streams logql.Streams, out output.LogOutput) {
 		}
 	}
 
-	d := q.resultsDirection()
-	i := iter.NewStreamsIterator(streams, d)
-
-	for i.Next() {
-		ls := labelsCache(i.Labels())
-		fmt.Println(out.Format(i.Entry().Timestamp, &ls, maxLabelsLen, i.Entry().Line))
-	}
-
-	if err := i.Error(); err != nil {
-		log.Fatalf("Error from iterator: %v", err)
+	for _, s := range streams {
+		for _, e := range s.Entries {
+			fmt.Println(out.Format(e.Timestamp, s.Labels, maxLabelsLen, e.Line))
+		}
 	}
 }
 

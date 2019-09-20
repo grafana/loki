@@ -1,87 +1,64 @@
 package query
 
 import (
-	"log"
-	"sort"
-
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/grafana/loki/pkg/loghttp"
 )
 
-// parse labels from string
-func mustParseLabels(labels string) labels.Labels {
-	ls, err := promql.ParseMetric(labels)
-	if err != nil {
-		log.Fatalf("Failed to parse labels: %+v", err)
-	}
-	return ls
-}
-
-// parse labels from response stream
-func parseLabels(streams logql.Streams) (map[string]labels.Labels, []labels.Labels) {
-	cache := make(map[string]labels.Labels, len(streams))
-	lss := make([]labels.Labels, 0, len(streams))
-	for _, stream := range streams {
-		ls := mustParseLabels(stream.Labels)
-		cache[stream.Labels] = ls
-		lss = append(lss, ls)
-	}
-	return cache, lss
-}
-
 // return commonLabels labels between given labels set
-func commonLabels(lss []labels.Labels) labels.Labels {
-	if len(lss) == 0 {
+func commonLabels(streams loghttp.Streams) loghttp.LabelSet {
+	if len(streams) == 0 {
 		return nil
 	}
 
-	result := lss[0]
-	for i := 1; i < len(lss); i++ {
-		result = intersect(result, lss[i])
+	result := streams[0].Labels
+	for i := 1; i < len(streams); i++ {
+		result = intersect(result, streams[i].Labels)
 	}
 	return result
 }
 
 // intersect two labels set
-func intersect(a, b labels.Labels) labels.Labels {
+func intersect(a, b loghttp.LabelSet) loghttp.LabelSet {
+	set := loghttp.LabelSet{}
 
-	set := labels.Labels{}
-	ma := a.Map()
-	mb := b.Map()
-
-	for ka, va := range ma {
-		if vb, ok := mb[ka]; ok {
+	for ka, va := range a {
+		if vb, ok := b[ka]; ok {
 			if vb == va {
-				set = append(set, labels.Label{
-					Name:  ka,
-					Value: va,
-				})
+				set[ka] = va
 			}
 		}
 	}
-	sort.Sort(set)
 	return set
 }
 
 // subtract labels set b from labels set a
-func subtract(a, b labels.Labels) labels.Labels {
+func subtract(a, b loghttp.LabelSet) loghttp.LabelSet {
+	set := loghttp.LabelSet{}
 
-	set := labels.Labels{}
-	ma := a.Map()
-	mb := b.Map()
-
-	for ka, va := range ma {
-		if vb, ok := mb[ka]; ok {
+	for ka, va := range a {
+		if vb, ok := b[ka]; ok {
 			if vb == va {
 				continue
 			}
 		}
-		set = append(set, labels.Label{
-			Name:  ka,
-			Value: va,
-		})
+		set[ka] = va
 	}
-	sort.Sort(set)
 	return set
+}
+
+func matchLabels(on bool, l loghttp.LabelSet, names []string) loghttp.LabelSet {
+	ret := loghttp.LabelSet{}
+
+	nameSet := map[string]struct{}{}
+	for _, n := range names {
+		nameSet[n] = struct{}{}
+	}
+
+	for k, v := range l {
+		if _, ok := nameSet[k]; on == ok {
+			ret[k] = v
+		}
+	}
+
+	return ret
 }

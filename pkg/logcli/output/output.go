@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/grafana/loki/pkg/loghttp"
 )
 
 // LogOutput is the interface any output mode must implement
 type LogOutput interface {
-	Format(ts time.Time, lbls *labels.Labels, maxLabelsLen int, line string) string
+	Format(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string) string
 }
 
 // LogOutputOptions defines options supported by LogOutput
