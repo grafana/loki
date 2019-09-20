@@ -17,7 +17,7 @@ simplifies the operation and significantly lowers the cost of Loki.
 1. [Overview](overview/README.md)
     1. [Comparison to other Log Systems](overview/comparisons.md)
 2. [Installation](installation/README.md)
-    1. [Installing with Ksonnet](installation/ksonnet.md)
+    1. [Installing with Tanka](installation/tanka.md)
     2. [Installing with Helm](installation/helm.md)
     3. [Installing Locally](installation/local.md)
 3. [Getting Started](getting-started/README.md)
