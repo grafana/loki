@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -12,12 +12,14 @@ func TestRawOutput_Format(t *testing.T) {
 	t.Parallel()
 
 	timestamp, _ := time.Parse(time.RFC3339, "2006-01-02T15:04:05+07:00")
-	someLabels := labels.New(labels.Label{Name: "type", Value: "test"})
+	someLabels := loghttp.LabelSet(map[string]string{
+		"type": "test",
+	})
 
 	tests := map[string]struct {
 		options      *LogOutputOptions
 		timestamp    time.Time
-		lbls         *labels.Labels
+		lbls         loghttp.LabelSet
 		maxLabelsLen int
 		line         string
 		expected     string
@@ -25,7 +27,7 @@ func TestRawOutput_Format(t *testing.T) {
 		"empty line": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
 			timestamp,
-			&someLabels,
+			someLabels,
 			0,
 			"",
 			"",
@@ -33,7 +35,7 @@ func TestRawOutput_Format(t *testing.T) {
 		"non empty line": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
 			timestamp,
-			&someLabels,
+			someLabels,
 			0,
 			"Hello world",
 			"Hello world",

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -13,13 +13,15 @@ func TestDefaultOutput_Format(t *testing.T) {
 	t.Parallel()
 
 	timestamp, _ := time.Parse(time.RFC3339, "2006-01-02T15:04:05+07:00")
-	emptyLabels := labels.New()
-	someLabels := labels.New(labels.Label{Name: "type", Value: "test"})
+	emptyLabels := loghttp.LabelSet{}
+	someLabels := loghttp.LabelSet(map[string]string{
+		"type": "test",
+	})
 
 	tests := map[string]struct {
 		options      *LogOutputOptions
 		timestamp    time.Time
-		lbls         *labels.Labels
+		lbls         loghttp.LabelSet
 		maxLabelsLen int
 		line         string
 		expected     string
@@ -27,7 +29,7 @@ func TestDefaultOutput_Format(t *testing.T) {
 		"empty line with no labels": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
 			timestamp,
-			&emptyLabels,
+			emptyLabels,
 			0,
 			"",
 			"2006-01-02T08:04:05Z {} ",
@@ -35,7 +37,7 @@ func TestDefaultOutput_Format(t *testing.T) {
 		"empty line with labels": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
 			timestamp,
-			&someLabels,
+			someLabels,
 			len(someLabels.String()),
 			"",
 			"2006-01-02T08:04:05Z {type=\"test\"} ",
@@ -43,7 +45,7 @@ func TestDefaultOutput_Format(t *testing.T) {
 		"max labels length shorter than input labels": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
 			timestamp,
-			&someLabels,
+			someLabels,
 			0,
 			"Hello",
 			"2006-01-02T08:04:05Z {type=\"test\"} Hello",
@@ -51,7 +53,7 @@ func TestDefaultOutput_Format(t *testing.T) {
 		"max labels length longer than input labels": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
 			timestamp,
-			&someLabels,
+			someLabels,
 			20,
 			"Hello",
 			"2006-01-02T08:04:05Z {type=\"test\"}        Hello",
@@ -59,7 +61,7 @@ func TestDefaultOutput_Format(t *testing.T) {
 		"timezone option set to a Local one": {
 			&LogOutputOptions{Timezone: time.FixedZone("test", 2*60*60), NoLabels: false},
 			timestamp,
-			&someLabels,
+			someLabels,
 			0,
 			"Hello",
 			"2006-01-02T10:04:05+02:00 {type=\"test\"} Hello",
@@ -67,7 +69,7 @@ func TestDefaultOutput_Format(t *testing.T) {
 		"labels output disabled": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: true},
 			timestamp,
-			&someLabels,
+			someLabels,
 			0,
 			"Hello",
 			"2006-01-02T08:04:05Z Hello",
@@ -92,10 +94,17 @@ func TestDefaultOutput_FormatLabelsPadding(t *testing.T) {
 	t.Parallel()
 
 	// Define a list of labels that - once formatted - have a different length
-	labelsList := []labels.Labels{
-		labels.New(labels.Label{Name: "type", Value: "test"}),
-		labels.New(labels.Label{Name: "type", Value: "test"}, labels.Label{Name: "foo", Value: "bar"}),
-		labels.New(labels.Label{Name: "type", Value: "a-longer-test"}),
+	labelsList := []loghttp.LabelSet{
+		loghttp.LabelSet(map[string]string{
+			"type": "test",
+		}),
+		loghttp.LabelSet(map[string]string{
+			"type": "test",
+			"foo":  "bar",
+		}),
+		loghttp.LabelSet(map[string]string{
+			"type": "a-longer-test",
+		}),
 	}
 
 	timestamp, _ := time.Parse(time.RFC3339, "2006-01-02T15:04:05+07:00")
@@ -106,7 +115,7 @@ func TestDefaultOutput_FormatLabelsPadding(t *testing.T) {
 	// Format the same log line with different labels
 	formattedEntries := make([]string, 0, len(labelsList))
 	for _, lbls := range labelsList {
-		formattedEntries = append(formattedEntries, out.Format(timestamp, &lbls, maxLabelsLen, "XXX"))
+		formattedEntries = append(formattedEntries, out.Format(timestamp, lbls, maxLabelsLen, "XXX"))
 	}
 
 	// Ensure the log line starts at the same position in each formatted output
@@ -122,7 +131,7 @@ func TestDefaultOutput_FormatLabelsPadding(t *testing.T) {
 	}
 }
 
-func findMaxLabelsLength(labelsList []labels.Labels) int {
+func findMaxLabelsLength(labelsList []loghttp.LabelSet) int {
 	maxLabelsLen := 0
 
 	for _, lbls := range labelsList {
