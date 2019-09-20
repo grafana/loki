@@ -134,7 +134,9 @@ The `client_config` block configures how Promtail connects to an instance of
 Loki:
 
 ```yaml
-# The URL of Loki.
+# The URL where Loki is listening, denoted in Loki as http_listen_host and
+# http_listen_port. If Loki is running in microservices mode, this be the HTTP
+# URL for the Distributor.
 url: <string>
 
 # Maximum amount of time to wait before sending a batch, even if that
