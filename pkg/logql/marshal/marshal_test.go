@@ -3,6 +3,7 @@ package marshal
 import (
 	"bytes"
 	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
@@ -299,9 +300,9 @@ func Test_MarshalTailResponse(t *testing.T) {
 	}
 }
 
-func Test_QueryResponseMarshalLoop(t *testing.T) {
+func Test_QueryResponseResultValueMarshalLoop(t *testing.T) {
 	for i, queryTest := range queryTests {
-		var r loghttp.QueryResponse
+		var r loghttp.ResultValue
 
 		err := json.Unmarshal([]byte(queryTest.expected), &r)
 		require.NoError(t, err)
@@ -310,6 +311,26 @@ func Test_QueryResponseMarshalLoop(t *testing.T) {
 		require.NoError(t, err)
 
 		testJSONBytesEqual(t, []byte(queryTest.expected), jsonOut, "Query Marshal Loop %d failed", i)
+	}
+}
+
+func Test_QueryResponseResultType(t *testing.T) {
+	for i, queryTest := range queryTests {
+		var r loghttp.ResultValue
+
+		err := json.Unmarshal([]byte(queryTest.expected), &r)
+		require.NoError(t, err)
+
+		switch r.Type() {
+		case loghttp.ResultTypeStream:
+			require.IsTypef(t, reflect.TypeOf(loghttp.Stream{}), r, "Incorrect type %d", i)
+		case loghttp.ResultTypeMatrix:
+			require.IsTypef(t, reflect.TypeOf(loghttp.Matrix{}), r, "Incorrect type %d", i)
+		case loghttp.ResultTypeVector:
+			require.IsTypef(t, reflect.TypeOf(loghttp.Vector{}), r, "Incorrect type %d", i)
+		default:
+			require.Fail(t, "Unknown result type %s", r.Type())
+		}
 	}
 }
 
