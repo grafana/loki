@@ -68,6 +68,48 @@ type Entry struct {
 	Line      string
 }
 
+// UnmarshalJSON implements the json.Unmarshaler interface.
+func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
+	unmarshal := struct {
+		Type   ResultType      `json:"resultType"`
+		Result json.RawMessage `json:"result"`
+	}{}
+
+	err := json.Unmarshal(data, &unmarshal)
+	if err != nil {
+		return err
+	}
+
+	var value ResultValue
+
+	// unmarshal results
+	switch unmarshal.Type {
+	case ResultTypeStream:
+		var s Streams
+		err = json.Unmarshal(unmarshal.Result, &s)
+		value = s
+	case ResultTypeMatrix:
+		var m Matrix
+		err = json.Unmarshal(unmarshal.Result, &m)
+		value = m
+	case ResultTypeVector:
+		var v Vector
+		err = json.Unmarshal(unmarshal.Result, &v)
+		value = v
+	default:
+		return fmt.Errorf("unknown type: %s", unmarshal.Type)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	q.ResultType = unmarshal.Type
+	q.Result = value
+
+	return nil
+}
+
 // MarshalJSON implements the json.Marshaler interface.
 func (e *Entry) MarshalJSON() ([]byte, error) {
 	l, err := json.Marshal(e.Line)

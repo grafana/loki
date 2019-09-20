@@ -3,7 +3,6 @@ package marshal
 import (
 	"bytes"
 	"encoding/json"
-	"reflect"
 	"testing"
 	"time"
 
@@ -300,36 +299,44 @@ func Test_MarshalTailResponse(t *testing.T) {
 	}
 }
 
-func Test_QueryResponseResultValueMarshalLoop(t *testing.T) {
+func Test_QueryResponseMarshalLoop(t *testing.T) {
 	for i, queryTest := range queryTests {
-		var r loghttp.ResultValue
-
-		err := json.Unmarshal([]byte(queryTest.expected), &r)
+		value, err := NewResultValue(queryTest.actual)
 		require.NoError(t, err)
 
-		jsonOut, err := json.Marshal(r)
+		q := loghttp.QueryResponse{
+			Status: "success",
+			Data: loghttp.QueryResponseData{
+				ResultType: value.Type(),
+				Result:     value,
+			},
+		}
+		var expected loghttp.QueryResponse
+
+		bytes, err := json.Marshal(q)
 		require.NoError(t, err)
 
-		testJSONBytesEqual(t, []byte(queryTest.expected), jsonOut, "Query Marshal Loop %d failed", i)
+		err = json.Unmarshal(bytes, &expected)
+		require.NoError(t, err)
+
+		require.Equalf(t, q, expected, "Query Marshal Loop %d failed", i)
 	}
 }
 
 func Test_QueryResponseResultType(t *testing.T) {
 	for i, queryTest := range queryTests {
-		var r loghttp.ResultValue
-
-		err := json.Unmarshal([]byte(queryTest.expected), &r)
+		value, err := NewResultValue(queryTest.actual)
 		require.NoError(t, err)
 
-		switch r.Type() {
+		switch value.Type() {
 		case loghttp.ResultTypeStream:
-			require.IsTypef(t, reflect.TypeOf(loghttp.Stream{}), r, "Incorrect type %d", i)
+			require.IsTypef(t, loghttp.Streams{}, value, "Incorrect type %d", i)
 		case loghttp.ResultTypeMatrix:
-			require.IsTypef(t, reflect.TypeOf(loghttp.Matrix{}), r, "Incorrect type %d", i)
+			require.IsTypef(t, loghttp.Matrix{}, value, "Incorrect type %d", i)
 		case loghttp.ResultTypeVector:
-			require.IsTypef(t, reflect.TypeOf(loghttp.Vector{}), r, "Incorrect type %d", i)
+			require.IsTypef(t, loghttp.Vector{}, value, "Incorrect type %d", i)
 		default:
-			require.Fail(t, "Unknown result type %s", r.Type())
+			require.Fail(t, "Unknown result type %s", value.Type())
 		}
 	}
 }

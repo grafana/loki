@@ -1,6 +1,8 @@
 package marshal
 
 import (
+	"fmt"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -8,6 +10,47 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 )
+
+// NewResultValue constructs a ResultValue from a promql.Value
+func NewResultValue(v promql.Value) (loghttp.ResultValue, error) {
+	var err error
+	var value loghttp.ResultValue
+
+	switch v.Type() {
+	case loghttp.ResultTypeStream:
+		s, ok := v.(logql.Streams)
+
+		if !ok {
+			return nil, fmt.Errorf("unexpected type %T for streams", s)
+		}
+
+		value, err = NewStreams(s)
+
+		if err != nil {
+			return nil, err
+		}
+	case loghttp.ResultTypeVector:
+		vector, ok := v.(promql.Vector)
+
+		if !ok {
+			return nil, fmt.Errorf("unexpected type %T for vector", vector)
+		}
+
+		value = NewVector(vector)
+	case loghttp.ResultTypeMatrix:
+		m, ok := v.(promql.Matrix)
+
+		if !ok {
+			return nil, fmt.Errorf("unexpected type %T for matrix", m)
+		}
+
+		value = NewMatrix(m)
+	default:
+		return nil, fmt.Errorf("v1 endpoints do not support type %s", v.Type())
+	}
+
+	return value, nil
+}
 
 // NewStreams constructs a Streams from a logql.Streams
 func NewStreams(s logql.Streams) (loghttp.Streams, error) {
