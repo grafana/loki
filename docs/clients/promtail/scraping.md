@@ -56,8 +56,11 @@ There are different types of labels present in Promtail:
 ### Kubernetes Discovery
 
 Note that while promtail can utilize the Kubernetes API to discover pods as
-targets, it can only use pods that are running on the same machine/node that
-promtail is running on, validated using the hostname.
+targets, it can only read log files from pods that are running on the same node
+as the one Promtail is running on. Promtail looks for a `__host__` label on
+each target and validates that it is set to the same hostname as Promtail's
+(using either `$HOSTNAME` or the hostname reported by the kernel if the
+environment variable is not set).
 
 This means that any time Kubernetes service discovery is used, there must be a
 `relabel_config` that creates the intermediate label `__host__` from
