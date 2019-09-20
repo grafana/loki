@@ -17,6 +17,33 @@ The HTTP API includes the following endpoints:
 - [`GET /flush`](#get-flush)
 - [`GET /metrics`](#get-metrics)
 
+## Microservices Mode
+
+When deploying Loki in microservices mode, the set of endpoints exposed by each
+component is different.
+
+These endpoints are exposed by all components:
+
+- [`GET /ready`](#get-ready)
+- [`GET /metrics`](#get-metrics)
+
+These endpoints are exposed by just the querier:
+
+- [`GET /loki/api/v1/query`](#get-lokiapiv1query)
+- [`GET /loki/api/v1/query_range`](#get-lokiapiv1query_range)
+- [`GET /loki/api/v1/label`](#get-lokiapiv1label)
+- [`GET /loki/api/v1/label/<name>/values`](#get-lokiapiv1labelnamevalues)
+- [`GET /loki/api/v1/tail`](#get-lokiapiv1tail)
+- [`GET /api/prom/query`](#get-apipromquery)
+
+While these endpoints are exposed by just the distributor:
+
+- [`POST /api/prom/push`](#post-apiprompush)
+
+And these endpoints are exposed by just the ingester:
+
+- [`GET /flush`](#get-flush)
+
 The API endpoints starting with `/loki/` are [Prometheus API-compatible](https://prometheus.io/docs/prometheus/latest/querying/api/) and the result formats can be used interchangeably.
 
 [Example clients](#example-clients) can be found at the bottom of this document.
@@ -47,6 +74,8 @@ query parameters support the following values:
 - `limit`: The max number of entries to return
 - `time`: The evaluation time for the query as a nanosecond Unix epoch. Defaults to now.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
+
+In microservices mode, `/loki/api/v1/query` is exposed by the querier.
 
 Response:
 
@@ -169,6 +198,8 @@ Requests against this endpoint require Loki to query the index store in order to
 find log streams for particular labels. Because the index store is spread out by
 time, the time span covered by `start` and `end`, if large, may cause additional
 load against the index server and result in a slow query.
+
+In microservices mode, `/loki/api/v1/query_range` is exposed by the querier.
 
 Response:
 
@@ -296,6 +327,8 @@ accepts the following query parameters in the URL:
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
 
+In microservices mode, `/loki/api/v1/label` is exposed by the querier.
+
 Response:
 
 ```
@@ -328,6 +361,8 @@ the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
+
+In microservices mode, `/loki/api/v1/label/<name>/values` is exposed by the querier.
 
 Response:
 
@@ -365,6 +400,8 @@ a query. It accepts the following query parameters in the URL:
     loggers catch up. Defaults to 0 and cannot be larger than 5.
 - `limit`: The max number of entries to return
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
+
+In microservices mode, `/loki/api/v1/tail` is exposed by the querier.
 
 Response (streamed):
 
@@ -416,9 +453,10 @@ support the following values:
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 - `regexp`: a regex to filter the returned results
 
+In microservices mode, `/api/prom/query` is exposed by the querier.
+
 Note that the larger the time span between `start` and `end` will cause
 additional load on Loki and the index store, resulting in slower queries.
-
 
 Response:
 
@@ -490,8 +528,9 @@ JSON post body can be sent in the following format:
 }
 ```
 
-### Examples
+In microservices mode, `/api/prom/push` is exposed by the distributor.
 
+### Examples
 
 ```bash
 $ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/api/prom/push" --data-raw \
@@ -503,16 +542,22 @@ $ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/api
 `/ready` returns HTTP 200 when the Loki ingester is ready to accept traffic. If
 running Loki on Kubernetes, `/ready` can be used as a readiness probe.
 
+In microservices mode, the `/ready` endpoint is exposed by all components.
+
 ## `GET /flush`
 
 `/flush` triggers a flush of all in-memory chunks held by the ingesters to the
 backing store. Mainly used for local testing.
+
+In microservices mode, the `/ready` endpoint is exposed by the ingester.
 
 ## `GET /metrics`
 
 `/metrics` exposes Prometheus metrics. See
 [Observing Loki](operations/observability.md)
 for a list of exported metrics.
+
+In microservices mode, the `/metrics` endpoint is exposed by all components.
 
 ## Example Clients
 
