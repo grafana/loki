@@ -52,11 +52,10 @@ func getLokiConfig(url, batchWait, batchSize, labels, logLevelVal, removeKeyStr 
 		labels = `{job="fluent-bit"}`
 	}
 
-	ls, err := logql.ParseExpr(labels)
+	matchers, err := logql.ParseMatchers(labels)
 	if err != nil {
 		return nil, err
 	}
-	matchers := ls.Matchers()
 	labelSet := make(model.LabelSet)
 	for _, m := range matchers {
 		labelSet[model.LabelName(m.Name)] = model.LabelValue(m.Value)
