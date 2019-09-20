@@ -20,7 +20,7 @@ import (
 
 type streamEntryPair struct {
 	entry  loghttp.Entry
-	stream *loghttp.Stream
+	labels loghttp.LabelSet
 }
 
 // Query contains all necessary fields to execute instant and range queries and print the results.
@@ -124,7 +124,7 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput) {
 		for _, e := range s.Entries {
 			allEntries = append(allEntries, streamEntryPair{
 				entry:  e,
-				stream: &s,
+				labels: s.Labels,
 			})
 		}
 	}
@@ -136,7 +136,7 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput) {
 	}
 
 	for _, e := range allEntries {
-		fmt.Println(out.Format(e.entry.Timestamp, e.stream.Labels, maxLabelsLen, e.entry.Line))
+		fmt.Println(out.Format(e.entry.Timestamp, e.labels, maxLabelsLen, e.entry.Line))
 	}
 }
 
