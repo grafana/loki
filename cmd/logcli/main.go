@@ -11,12 +11,13 @@ import (
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logcli/query"
 	"github.com/prometheus/common/config"
+	"github.com/prometheus/common/version"
 
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
-	app        = kingpin.New("logcli", "A command-line for loki.")
+	app        = kingpin.New("logcli", "A command-line for loki.").Version(version.Print("logcli"))
 	quiet      = app.Flag("quiet", "suppress everything but log lines").Default("false").Short('q').Bool()
 	outputMode = app.Flag("output", "specify output mode [default, raw, jsonl]").Default("default").Short('o').Enum("default", "raw", "jsonl")
 	timezone   = app.Flag("timezone", "Specify the timezone to use when formatting output timestamps [Local, UTC]").Default("Local").Short('z').Enum("Local", "UTC")

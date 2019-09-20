@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/common/version"
 
 	"github.com/grafana/loki/pkg/canary/comparator"
 	"github.com/grafana/loki/pkg/canary/reader"
@@ -32,7 +33,15 @@ func main() {
 	wait := flag.Duration("wait", 60*time.Second, "Duration to wait for log entries before reporting them lost")
 	pruneInterval := flag.Duration("pruneinterval", 60*time.Second, "Frequency to check sent vs received logs, also the frequency which queries for missing logs will be dispatched to loki")
 	buckets := flag.Int("buckets", 10, "Number of buckets in the response_latency histogram")
+
+	printVersion := flag.Bool("version", false, "Print this builds version information")
+
 	flag.Parse()
+
+	if *printVersion {
+		fmt.Print(version.Print("loki-canary"))
+		os.Exit(0)
+	}
 
 	if *addr == "" {
 		_, _ = fmt.Fprintf(os.Stderr, "Must specify a Loki address with -addr\n")
