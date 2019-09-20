@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,6 +17,11 @@ import (
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logproto"
 )
+
+type streamEntryPair struct {
+	entry  loghttp.Entry
+	stream *loghttp.Stream
+}
 
 // Query contains all necessary fields to execute instant and range queries and print the results.
 type Query struct {
@@ -111,10 +117,26 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput) {
 		}
 	}
 
+	// sort and display entries
+	allEntries := make([]streamEntryPair, 0)
+
 	for _, s := range streams {
 		for _, e := range s.Entries {
-			fmt.Println(out.Format(e.Timestamp, s.Labels, maxLabelsLen, e.Line))
+			allEntries = append(allEntries, streamEntryPair{
+				entry:  e,
+				stream: &s,
+			})
 		}
+	}
+
+	if q.Forward {
+		sort.Slice(allEntries, func(i, j int) bool { return allEntries[i].entry.Timestamp.Before(allEntries[j].entry.Timestamp) })
+	} else {
+		sort.Slice(allEntries, func(i, j int) bool { return allEntries[i].entry.Timestamp.After(allEntries[j].entry.Timestamp) })
+	}
+
+	for _, e := range allEntries {
+		fmt.Println(out.Format(e.entry.Timestamp, e.stream.Labels, maxLabelsLen, e.entry.Line))
 	}
 }
 
