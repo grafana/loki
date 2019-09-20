@@ -7,7 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/common/model"
+	"github.com/grafana/loki/pkg/loghttp"
+
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/fatih/color"
@@ -38,7 +39,7 @@ type Query struct {
 func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 	d := q.resultsDirection()
 
-	var resp *client.QueryResult
+	var resp *loghttp.QueryResponse
 	var err error
 
 	if q.isInstant() {
@@ -51,18 +52,18 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 		log.Fatalf("Query failed: %+v", err)
 	}
 
-	switch resp.ResultType {
+	switch resp.Data.ResultType {
 	case logql.ValueTypeStreams:
-		streams := resp.Result.(logql.Streams)
-		q.printStream(streams, out)
+		// streams := resp.Data.Result.(loghttp.Streams)
+		// q.printStream(streams, out)
 	case promql.ValueTypeMatrix:
-		matrix := resp.Result.(model.Matrix)
+		matrix := resp.Data.Result.(loghttp.Matrix)
 		q.printMatrix(matrix)
 	case promql.ValueTypeVector:
-		vector := resp.Result.(model.Vector)
+		vector := resp.Data.Result.(loghttp.Vector)
 		q.printVector(vector)
 	default:
-		log.Fatalf("Unable to print unsupported type: %v", resp.ResultType)
+		log.Fatalf("Unable to print unsupported type: %v", resp.Data.ResultType)
 	}
 }
 
@@ -133,7 +134,7 @@ func (q *Query) printStream(streams logql.Streams, out output.LogOutput) {
 	}
 }
 
-func (q *Query) printMatrix(matrix model.Matrix) {
+func (q *Query) printMatrix(matrix loghttp.Matrix) {
 	// yes we are effectively unmarshalling and then immediately marshalling this object back to json.  we are doing this b/c
 	// it gives us more flexibility with regard to output types in the future.  initially we are supporting just formatted json but eventually
 	// we might add output options such as render to an image file on disk
@@ -146,7 +147,7 @@ func (q *Query) printMatrix(matrix model.Matrix) {
 	fmt.Print(string(bytes))
 }
 
-func (q *Query) printVector(vector model.Vector) {
+func (q *Query) printVector(vector loghttp.Vector) {
 	bytes, err := json.MarshalIndent(vector, "", "  ")
 
 	if err != nil {
