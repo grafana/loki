@@ -22,7 +22,7 @@ scrape_configs:
 ```
 
 If more than one scrape config section matches your logs, you will get duplicate
-entires as lthe logs are sent in different streams likely with slightly
+entries as the logs are sent in different streams likely with slightly
 different labels.
 
 There are different types of labels present in Promtail:
