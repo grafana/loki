@@ -109,17 +109,17 @@ then parses the log line and creates an extracted key named panic if it finds
 `panic: ` in the log line. Then a metrics stage will increment a counter if the
 extracted key `panic` is found in the `extracted` map.
 
-### Types in the interface
+### Data Accessible to Stages
 
-The following sections further describe the types that are found in the
-`Process` method of the interface.
+The following sections further describe the types that are acessible to each
+stage (although not all may be used)
 
-##### labels model.LabelSet
+##### Label Set
 
 A set of prometheus style labels which will be sent with the log line and will
 be indexed by Loki.
 
-##### extracted map[string]interface{}
+##### Extracted Map
 
 Metadata extracted during the pipeline execution which can be used by subsequent
 stages. This data is not sent with the logs and is dropped after the log entry
@@ -130,12 +130,14 @@ to extract data from a log line and store it in the `extracted` map, which
 following stages like [timestamp](#timestamp) or [output](#output) can use to
 manipulate the log lines `time` and `entry`.
 
-##### time *time.Time
+Defined in Go as `map[string]interface{}`.
+
+##### Log Timesamp
 
 The timestamp for which Loki will store for the log line, if not set within the
 pipeline using the [timestamp](#timestamp) stage, it will default to time.Now().
 
-##### entry *string
+##### Log Line
 
 The log line which will be stored by loki, the [output](#output) stage is
 capable of modifying this value, if no stage modifies this value the log line
