@@ -130,7 +130,7 @@ If Loki Canary reports a high number of `unexpected_entries`, Loki Canary may
 not be waiting long enough and the value for the `-wait` flag should be
 increased to a larger value than 60s.
 
-__Be cognizant__ of the relationship between `pruneinterval` and the `interval`.
+__Be aware__ of the relationship between `pruneinterval` and the `interval`.
 For example, with an interval of 10ms (100 logs per second) and a prune interval
 of 60s, you will write 6000 logs per minute. If those logs were not received
 over the websocket, the canary will attempt to query Loki directly to see if
