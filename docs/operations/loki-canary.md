@@ -40,7 +40,7 @@ In the background, Loki Canary also runs a timer which iterates through all of
 the entries in the internal array. If any of the entries are older than the
 duration specified by the `-wait` flag (defaulting to 60s), they are removed
 from the array and the `websocket_missing_entries` counter is incremented. An
-additional query is then made direclty to Loki for any missing entries to
+additional query is then made directly to Loki for any missing entries to
 determine if they are truly missing or only missing from the websocket. If
 missing entries are not found in the direct query, the `missing_entries` counter
 is incremented.
