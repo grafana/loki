@@ -30,7 +30,14 @@ func main() {
 	)
 	flag.StringVar(&configFile, "config.file", "", "Configuration file to load.")
 	flagext.RegisterFlags(&cfg)
+
+	printVersion := flag.Bool("version", false, "Print this builds version information")
 	flag.Parse()
+
+	if *printVersion {
+		fmt.Print(version.Print("loki"))
+		os.Exit(0)
+	}
 
 	// LimitsConfig has a customer UnmarshalYAML that will set the defaults to a global.
 	// This global is set to the config passed into the last call to `NewOverrides`. If we don't

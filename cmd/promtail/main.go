@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"reflect"
 
@@ -29,7 +30,14 @@ func main() {
 	)
 	flag.StringVar(&configFile, "config.file", "promtail.yml", "The config file.")
 	flagext.RegisterFlags(&config)
+
+	printVersion := flag.Bool("version", false, "Print this builds version information")
 	flag.Parse()
+
+	if *printVersion {
+		fmt.Print(version.Print("promtail"))
+		os.Exit(0)
+	}
 
 	util.InitLogger(&config.ServerConfig.Config)
 
