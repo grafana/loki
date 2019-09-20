@@ -56,8 +56,8 @@ There are different types of labels present in Promtail:
 ### Kubernetes Discovery
 
 Note that while promtail can utilize the Kubernetes API to discover pods as
-targets, it can only use pods that are running on the same hostname of the
-machine that promtail is running on.
+targets, it can only use pods that are running on the same machine/node that
+promtail is running on, validated using the hostname.
 
 This means that any time Kubernetes service discovery is used, there must be a
 `relabel_config` that creates the intermediate label `__host__` from
@@ -135,7 +135,9 @@ client: [ <client_option> ]
 Reference for `client_option`:
 
 ```yaml
-# Sets the `url` of loki api push endpoint
+# The endpoint to push to Loki, specified in the Loki configuration as
+# http_listen_host and http_listen_port. If Loki is running in microservices
+# mode, this is the HTTP URL for the Distributor.
 url: http[s]://<host>:<port>/api/prom/push
 
 # Sets the `Authorization` header on every promtail request with the

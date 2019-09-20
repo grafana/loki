@@ -135,7 +135,7 @@ Loki:
 
 ```yaml
 # The URL where Loki is listening, denoted in Loki as http_listen_host and
-# http_listen_port. If Loki is running in microservices mode, this be the HTTP
+# http_listen_port. If Loki is running in microservices mode, this is the HTTP
 # URL for the Distributor.
 url: <string>
 
