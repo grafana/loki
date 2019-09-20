@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/loghttp"
 	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -295,6 +296,48 @@ func Test_MarshalTailResponse(t *testing.T) {
 		require.NoError(t, err)
 
 		testJSONBytesEqual(t, []byte(tailTest.expected), bytes, "Tail Test %d failed", i)
+	}
+}
+
+func Test_QueryResponseMarshalLoop(t *testing.T) {
+	for i, queryTest := range queryTests {
+		var r loghttp.QueryResponse
+
+		err := json.Unmarshal([]byte(queryTest.expected), &r)
+		require.NoError(t, err)
+
+		jsonOut, err := json.Marshal(r)
+		require.NoError(t, err)
+
+		testJSONBytesEqual(t, []byte(queryTest.expected), jsonOut, "Query Marshal Loop %d failed", i)
+	}
+}
+
+func Test_LabelResponseMarshalLoop(t *testing.T) {
+	for i, labelTest := range labelTests {
+		var r loghttp.LabelResponse
+
+		err := json.Unmarshal([]byte(labelTest.expected), &r)
+		require.NoError(t, err)
+
+		jsonOut, err := json.Marshal(r)
+		require.NoError(t, err)
+
+		testJSONBytesEqual(t, []byte(labelTest.expected), jsonOut, "Label Marshal Loop %d failed", i)
+	}
+}
+
+func Test_TailResponseMarshalLoop(t *testing.T) {
+	for i, tailTest := range tailTests {
+		var r loghttp.TailResponse
+
+		err := json.Unmarshal([]byte(tailTest.expected), &r)
+		require.NoError(t, err)
+
+		jsonOut, err := json.Marshal(r)
+		require.NoError(t, err)
+
+		testJSONBytesEqual(t, []byte(tailTest.expected), jsonOut, "Tail Marshal Loop %d failed", i)
 	}
 }
 

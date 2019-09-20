@@ -143,6 +143,48 @@ func Test_MarshalTailResponse(t *testing.T) {
 	}
 }
 
+func Test_QueryResponseMarshalLoop(t *testing.T) {
+	for i, queryTest := range queryTests {
+		var r loghttp.QueryResponse
+
+		err := json.Unmarshal([]byte(queryTest.expected), &r)
+		require.NoError(t, err)
+
+		jsonOut, err := json.Marshal(r)
+		require.NoError(t, err)
+
+		testJSONBytesEqual(t, []byte(queryTest.expected), jsonOut, "Query Marshal Loop %d failed", i)
+	}
+}
+
+func Test_LabelResponseMarshalLoop(t *testing.T) {
+	for i, labelTest := range labelTests {
+		var r loghttp.LabelResponse
+
+		err := json.Unmarshal([]byte(labelTest.expected), &r)
+		require.NoError(t, err)
+
+		jsonOut, err := json.Marshal(r)
+		require.NoError(t, err)
+
+		testJSONBytesEqual(t, []byte(labelTest.expected), jsonOut, "Label Marshal Loop %d failed", i)
+	}
+}
+
+func Test_TailResponseMarshalLoop(t *testing.T) {
+	for i, tailTest := range tailTests {
+		var r loghttp.TailResponse
+
+		err := json.Unmarshal([]byte(tailTest.expected), &r)
+		require.NoError(t, err)
+
+		jsonOut, err := json.Marshal(r)
+		require.NoError(t, err)
+
+		testJSONBytesEqual(t, []byte(tailTest.expected), jsonOut, "Tail Marshal Loop %d failed", i)
+	}
+}
+
 func testJSONBytesEqual(t *testing.T, expected []byte, actual []byte, msg string, args ...interface{}) {
 	var expectedValue map[string]interface{}
 	err := json.Unmarshal(expected, &expectedValue)
