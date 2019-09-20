@@ -36,7 +36,7 @@ If the received log is:
   logs to either increment the `duplicate_entries` counter or the
   `unexpected_entries` counter.
 
-In the background, Loki Canary also runs a timer which iterates through lal of
+In the background, Loki Canary also runs a timer which iterates through all of
 the entries in the internal array. If any of the entries are older than the
 duration specified by the `-wait` flag (defaulting to 60s), they are removed
 from the array and the `websocket_missing_entries` counter is incremented. An
