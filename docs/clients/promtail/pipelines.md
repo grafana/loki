@@ -8,17 +8,18 @@ extracting metrics and labels.
 
 ## Pipeline
 
-Pipeline stages implement the following interface:
+A pipeline can be used to transform a single log line and its labels. A
+pipeline contains a set of stages where each stage can do the following:
 
-```go
-type Stage interface {
-  Process(labels model.LabelSet, extracted map[string]interface{}, time *time.Time, entry *string)
-}
-```
+1. Manipulate the set of labels
+2. Extract data from the log line into a map passed around from
+   stage to stage
+3. Change the time of the log line
+4. Change the log line contents
 
-Any Stage is capable of modifying the `labels`, `extracted` data, `time`, and/or
-`entry`, though generally a Stage should only modify one of those things to
-reduce complexity.
+Each stage receives as input the set of labels for the line, the set of
+extracted data (represented as a dictionary of a string to a value of any type),
+the time of the log line and the log line itself.
 
 Typical pipelines will start with a [regex](#regex) or [json](#json) stage to
 extract data from the log line. Then, any combination of other stages follow to
@@ -568,6 +569,9 @@ create the following `labels`:
 ### metrics
 
 A metrics stage will define and update metrics from `extracted` data.
+Created metrics are not pushed to Loki and are instead exposed via Promtail's
+`/metrics` endpoint. Prometheus should be configured to scrape Promtail to be
+able to retrieve the metrics configured by this stage.
 
 [A simple example can be found in the unit test.](../../pkg/logentry/stages/metrics_test.go)
 
