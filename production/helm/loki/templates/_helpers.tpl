@@ -41,3 +41,21 @@ Create the name of the service account
     {{ default "default" .Values.serviceAccount.name }}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Create the app name of the collectors. Defaults to the same logic as "loki.fullname", and default collector expects "promtail".
+*/}}
+{{- define "collector.name" -}}
+{{- if .Values.collector.name -}}
+{{- .Values.collector.name -}}
+{{- else if .Values.collector.fullnameOverride -}}
+{{- .Values.collector.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- $name := default "promtail" .Values.collector.nameOverride -}}
+{{- if contains $name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

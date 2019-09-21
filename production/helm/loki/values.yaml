@@ -80,9 +80,12 @@ livenessProbe:
     port: http-metrics
   initialDelaySeconds: 45
 
-## Enable persistence using Persistent Volume Claims
 networkPolicy:
   enabled: false
+
+## If you set enabled as "True" of networkPolicy, you may have to configure the app name for log collectors
+collector: {}
+  # name:
 
 ## ref: https://kubernetes.io/docs/user-guide/node-selection/
 nodeSelector: {}
