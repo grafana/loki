@@ -2,23 +2,21 @@
 
 ## Prerequisites
 
-Make sure you have the ksonnet v0.8.0:
+Make sure you have a recent version of [Tanka](https://github.com/grafana/tanka). Follow their [install instructions](https://tanka.dev/#getting-started) to do so. Make sure to install [jsonnet-bundler](https://github.com/jsonnet-bundler/jsonnet-bundler) as well.
 
-```
-$ brew install https://raw.githubusercontent.com/ksonnet/homebrew-tap/82ef24cb7b454d1857db40e38671426c18cd8820/ks.rb
-$ brew pin ks
-$ ks version
-ksonnet version: v0.8.0
-jsonnet version: v0.9.5
-client-go version: v1.6.8-beta.0+$Format:%h$
+```bash
+# Verify it works
+$ tk --version
+tk version v0.5.0
 ```
 
-In your config repo, if you don't have a ksonnet application, make a new one (will copy credentials from current context):
+In your config repo, if you don't yet have the directory structure of Tanka set up:
 
-```
-$ ks init <application name>
-$ cd <application name>
-$ ks env add loki --namespace=loki
+```bash
+# create a directory (any name works)
+$ mkdir config && cd config/
+$ tk init
+$ tk env add loki --namespace=loki
 ```
 
 ## Deploying Promtail to your cluster.
@@ -26,13 +24,11 @@ $ ks env add loki --namespace=loki
 Grab the promtail module using jb:
 
 ```
-$ go get -u github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
-$ jb init
 $ jb install github.com/grafana/loki/production/ksonnet/promtail
 ```
 
 Replace the contents of `environments/loki/main.jsonnet` with:
-```
+```jsonnet
 local promtail = import 'promtail/promtail.libsonnet';
 
 
@@ -72,7 +68,7 @@ jb install github.com/grafana/loki/production/ksonnet/loki
 Be sure to replace the username, password and the relevant htpasswd contents.
 Replace the contents of `environments/loki/main.jsonnet` with:
 
-```
+```jsonnet
 local gateway = import 'loki/gateway.libsonnet';
 local loki = import 'loki/loki.libsonnet';
 local promtail = import 'promtail/promtail.libsonnet';
@@ -97,5 +93,5 @@ loki + promtail + gateway {
 ```
 Notice that `container_root_path` is your own data root for docker daemon, use `docker info | grep "Root Dir"` to get it.
 
-Do `ks show loki` to see the manifests being deployed to the cluster.
-Finally `ks apply loki` to deploy the server components to your cluster.
+Use `tk show environments/loki` to see the manifests being deployed to the cluster.
+Finally `tk apply environments/loki` will deploy the server components to your cluster.
