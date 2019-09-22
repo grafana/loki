@@ -151,7 +151,7 @@ func (c *client) run() {
 
 			batchSize += len(e.Line)
 			fp := e.labels.FastFingerprint()
-			orgId := c.getOrgId(e.labels)
+			orgId := c.getOrgID(e.labels)
 			orgBatch, ok := batch[orgId]
 			if !ok {
 				batch[orgId] = map[model.Fingerprint]*logproto.Stream{}
@@ -216,13 +216,13 @@ func (c *client) sendBatch(batch map[string]map[model.Fingerprint]*logproto.Stre
 	}
 }
 
-func (c client) getOrgId (l model.LabelSet) string {
-	if c.cfg.OrgIdLabel == nil {
-		return c.cfg.EmptyOrgId
+func (c client) getOrgID (l model.LabelSet) string {
+	if c.cfg.OrgIDLabel == nil {
+		return c.cfg.EmptyOrgID
 	}
-	orgId, ok := l[model.LabelName(*c.cfg.OrgIdLabel)]
+	orgId, ok := l[model.LabelName(*c.cfg.OrgIDLabel)]
 	if !ok {
-		return c.cfg.EmptyOrgId
+		return c.cfg.EmptyOrgID
 	}
 	return string(orgId)
 }
@@ -256,7 +256,7 @@ func (c *client) send(ctx context.Context, buf []byte, orgId string) (int, error
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", contentType)
 
-	if c.cfg.OrgIdLabel != nil && orgId != c.cfg.EmptyOrgId {
+	if c.cfg.OrgIDLabel != nil && orgId != c.cfg.EmptyOrgID {
 		req.Header.Set("X-Scope-OrgID", orgId)
 	}
 
