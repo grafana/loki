@@ -23,7 +23,7 @@ type Config struct {
 	ExternalLabels lokiflag.LabelSet `yaml:"external_labels,omitempty"`
 	Timeout        time.Duration     `yaml:"timeout"`
 	OrgIdLabel     *string           `yaml:"org_id_label,omitempty"`
-	EmptyOrgId     string            `yaml:"empty_org_id_label"`
+	EmptyOrgId     string            `yaml:"empty_org_id_label,omitempty"`
 }
 
 // RegisterFlags registers flags.
