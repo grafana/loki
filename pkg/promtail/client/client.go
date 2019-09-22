@@ -216,7 +216,7 @@ func (c *client) sendBatch(batch map[string]map[model.Fingerprint]*logproto.Stre
 	}
 }
 
-func (c client) getOrgID (l model.LabelSet) string {
+func (c *client) getOrgID (l model.LabelSet) string {
 	if c.cfg.OrgIDLabel == nil {
 		return c.cfg.EmptyOrgID
 	}
