@@ -155,6 +155,7 @@ func (c *client) run() {
 			orgBatch, ok := batch[OrgID]
 			if !ok {
 				batch[OrgID] = map[model.Fingerprint]*logproto.Stream{}
+				orgBatch = batch[OrgID]
 			}
 			stream, ok := orgBatch[fp]
 			if !ok {
