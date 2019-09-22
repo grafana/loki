@@ -151,10 +151,10 @@ func (c *client) run() {
 
 			batchSize += len(e.Line)
 			fp := e.labels.FastFingerprint()
-			orgId := c.getOrgID(e.labels)
-			orgBatch, ok := batch[orgId]
+			OrgID := c.getOrgID(e.labels)
+			orgBatch, ok := batch[OrgID]
 			if !ok {
-				batch[orgId] = map[model.Fingerprint]*logproto.Stream{}
+				batch[OrgID] = map[model.Fingerprint]*logproto.Stream{}
 			}
 			stream, ok := orgBatch[fp]
 			if !ok {
@@ -176,7 +176,7 @@ func (c *client) run() {
 }
 
 func (c *client) sendBatch(batch map[string]map[model.Fingerprint]*logproto.Stream) {
-	for orgId, b := range batch {
+	for OrgID, b := range batch {
 		buf, entriesCount, err := encodeBatch(b)
 		if err != nil {
 			level.Error(c.logger).Log("msg", "error encoding batch", "error", err)
@@ -190,7 +190,7 @@ func (c *client) sendBatch(batch map[string]map[model.Fingerprint]*logproto.Stre
 		var status int
 		for backoff.Ongoing() {
 			start := time.Now()
-			status, err = c.send(ctx, buf, orgId)
+			status, err = c.send(ctx, buf, OrgID)
 			requestDuration.WithLabelValues(strconv.Itoa(status), c.cfg.URL.Host).Observe(time.Since(start).Seconds())
 
 			if err == nil {
@@ -220,11 +220,11 @@ func (c client) getOrgID (l model.LabelSet) string {
 	if c.cfg.OrgIDLabel == nil {
 		return c.cfg.EmptyOrgID
 	}
-	orgId, ok := l[model.LabelName(*c.cfg.OrgIDLabel)]
+	OrgID, ok := l[model.LabelName(*c.cfg.OrgIDLabel)]
 	if !ok {
 		return c.cfg.EmptyOrgID
 	}
-	return string(orgId)
+	return string(OrgID)
 }
 
 func encodeBatch(batch map[model.Fingerprint]*logproto.Stream) ([]byte, int, error) {
@@ -246,7 +246,7 @@ func encodeBatch(batch map[model.Fingerprint]*logproto.Stream) ([]byte, int, err
 	return buf, entriesCount, nil
 }
 
-func (c *client) send(ctx context.Context, buf []byte, orgId string) (int, error) {
+func (c *client) send(ctx context.Context, buf []byte, OrgID string) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
 	req, err := http.NewRequest("POST", c.cfg.URL.String(), bytes.NewReader(buf))
@@ -256,8 +256,8 @@ func (c *client) send(ctx context.Context, buf []byte, orgId string) (int, error
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", contentType)
 
-	if c.cfg.OrgIDLabel != nil && orgId != c.cfg.EmptyOrgID {
-		req.Header.Set("X-Scope-OrgID", orgId)
+	if c.cfg.OrgIDLabel != nil && OrgID != c.cfg.EmptyOrgID {
+		req.Header.Set("X-Scope-OrgID", OrgID)
 	}
 
 	resp, err := c.client.Do(req)
