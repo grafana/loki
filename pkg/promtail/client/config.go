@@ -22,6 +22,8 @@ type Config struct {
 	// The labels to add to any time series or alerts when communicating with loki
 	ExternalLabels lokiflag.LabelSet `yaml:"external_labels,omitempty"`
 	Timeout        time.Duration     `yaml:"timeout"`
+	OrgIdLabel     *string           `yaml:"org_id_label,omitempty"`
+	EmptyOrgId     string            `yaml:"empty_org_id_label"`
 }
 
 // RegisterFlags registers flags.
@@ -52,9 +54,10 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 				MaxRetries: 5,
 				MinBackoff: 100 * time.Millisecond,
 			},
-			BatchSize: 100 * 1024,
-			BatchWait: 1 * time.Second,
-			Timeout:   10 * time.Second,
+			BatchSize:  100 * 1024,
+			BatchWait:  1 * time.Second,
+			Timeout:    10 * time.Second,
+			EmptyOrgId: "fake",
 		}
 	}
 

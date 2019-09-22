@@ -125,7 +125,7 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 }
 
 func (c *client) run() {
-	batch := map[model.Fingerprint]*logproto.Stream{}
+	batch := map[string]map[model.Fingerprint]*logproto.Stream{}
 	batchSize := 0
 	maxWait := time.NewTicker(c.cfg.BatchWait)
 
@@ -146,17 +146,22 @@ func (c *client) run() {
 			if batchSize+len(e.Line) > c.cfg.BatchSize {
 				c.sendBatch(batch)
 				batchSize = 0
-				batch = map[model.Fingerprint]*logproto.Stream{}
+				batch = map[string]map[model.Fingerprint]*logproto.Stream{}
 			}
 
 			batchSize += len(e.Line)
 			fp := e.labels.FastFingerprint()
-			stream, ok := batch[fp]
+			orgId := c.getOrgId(e.labels)
+			orgBatch, ok := batch[orgId]
+			if !ok {
+				batch[orgId] = map[model.Fingerprint]*logproto.Stream{}
+			}
+			stream, ok := orgBatch[fp]
 			if !ok {
 				stream = &logproto.Stream{
 					Labels: e.labels.String(),
 				}
-				batch[fp] = stream
+				orgBatch[fp] = stream
 			}
 			stream.Entries = append(stream.Entries, e.Entry)
 
@@ -164,49 +169,62 @@ func (c *client) run() {
 			if len(batch) > 0 {
 				c.sendBatch(batch)
 				batchSize = 0
-				batch = map[model.Fingerprint]*logproto.Stream{}
+				batch = map[string]map[model.Fingerprint]*logproto.Stream{}
 			}
 		}
 	}
 }
 
-func (c *client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
-	buf, entriesCount, err := encodeBatch(batch)
-	if err != nil {
-		level.Error(c.logger).Log("msg", "error encoding batch", "error", err)
-		return
-	}
-	bufBytes := float64(len(buf))
-	encodedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
-
-	ctx := context.Background()
-	backoff := util.NewBackoff(ctx, c.cfg.BackoffConfig)
-	var status int
-	for backoff.Ongoing() {
-		start := time.Now()
-		status, err = c.send(ctx, buf)
-		requestDuration.WithLabelValues(strconv.Itoa(status), c.cfg.URL.Host).Observe(time.Since(start).Seconds())
-
-		if err == nil {
-			sentBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
-			sentEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
+func (c *client) sendBatch(batch map[string]map[model.Fingerprint]*logproto.Stream) {
+	for orgId, b := range batch {
+		buf, entriesCount, err := encodeBatch(b)
+		if err != nil {
+			level.Error(c.logger).Log("msg", "error encoding batch", "error", err)
 			return
 		}
+		bufBytes := float64(len(buf))
+		encodedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
 
-		// Only retry 500s and connection-level errors.
-		if status > 0 && status/100 != 5 {
-			break
+		ctx := context.Background()
+		backoff := util.NewBackoff(ctx, c.cfg.BackoffConfig)
+		var status int
+		for backoff.Ongoing() {
+			start := time.Now()
+			status, err = c.send(ctx, buf, orgId)
+			requestDuration.WithLabelValues(strconv.Itoa(status), c.cfg.URL.Host).Observe(time.Since(start).Seconds())
+
+			if err == nil {
+				sentBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
+				sentEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
+				return
+			}
+
+			// Only retry 500s and connection-level errors.
+			if status > 0 && status/100 != 5 {
+				break
+			}
+
+			level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err)
+			backoff.Wait()
 		}
 
-		level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err)
-		backoff.Wait()
+		if err != nil {
+			level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "error", err)
+			droppedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
+			droppedEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
+		}
 	}
+}
 
-	if err != nil {
-		level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "error", err)
-		droppedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
-		droppedEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
+func (c client) getOrgId (l model.LabelSet) string {
+	if c.cfg.OrgIdLabel == nil {
+		return c.cfg.EmptyOrgId
 	}
+	orgId, ok := l[model.LabelName(*c.cfg.OrgIdLabel)]
+	if !ok {
+		return c.cfg.EmptyOrgId
+	}
+	return string(orgId)
 }
 
 func encodeBatch(batch map[model.Fingerprint]*logproto.Stream) ([]byte, int, error) {
@@ -228,7 +246,7 @@ func encodeBatch(batch map[model.Fingerprint]*logproto.Stream) ([]byte, int, err
 	return buf, entriesCount, nil
 }
 
-func (c *client) send(ctx context.Context, buf []byte) (int, error) {
+func (c *client) send(ctx context.Context, buf []byte, orgId string) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
 	req, err := http.NewRequest("POST", c.cfg.URL.String(), bytes.NewReader(buf))
@@ -237,6 +255,10 @@ func (c *client) send(ctx context.Context, buf []byte) (int, error) {
 	}
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", contentType)
+
+	if c.cfg.OrgIdLabel != nil && orgId != c.cfg.EmptyOrgId {
+		req.Header.Set("X-Scope-OrgID", orgId)
+	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
