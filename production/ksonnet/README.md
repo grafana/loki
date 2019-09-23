@@ -17,6 +17,9 @@ In your config repo, if you don't yet have the directory structure of Tanka set 
 $ mkdir config && cd config/
 $ tk init
 $ tk env add loki --namespace=loki
+# Ksonnet kubernetes libraries
+$ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k.libsonnet
+$ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k8s.libsonnet
 ```
 
 ## Deploying Promtail to your cluster.
@@ -27,7 +30,7 @@ Grab the promtail module using jb:
 $ jb install github.com/grafana/loki/production/ksonnet/promtail
 ```
 
-Replace the contents of `environments/loki/main.jsonnet` with:
+Replace the contents of `environments/default/main.jsonnet` with:
 ```jsonnet
 local promtail = import 'promtail/promtail.libsonnet';
 
@@ -54,19 +57,29 @@ promtail + {
 ```
 Notice that `container_root_path` is your own data root for docker daemon, use `docker info | grep "Root Dir"` to get it.
 
-Then do `ks show loki` to see the manifests that'll be deployed to your cluster.
-Apply them using `ks apply loki`.
+As a last step, fill add the correct `spec.apiServer` and `spec.namespace` to `environments/default/spec.json`:
+
+{
+  "apiVersion": "tanka.dev/v1alpha1",
+  "kind": "Environment",
+  "spec": {
+    "apiServer": "https://localhost:6443",
+    "namespace": "default"
+  }
+}
+
+Now use `tk show environments/default` to see the yaml, and `tk apply environments/default` to apply it to the cluster.
 
 ## Deploying Loki to your cluster.
 
 If you want to further also deploy the server to the cluster, then run the following to install the module:
 
 ```
-jb install github.com/grafana/loki/production/ksonnet/loki
+$ jb install github.com/grafana/loki/production/ksonnet/loki
 ```
 
 Be sure to replace the username, password and the relevant htpasswd contents.
-Replace the contents of `environments/loki/main.jsonnet` with:
+Replace the contents of `environments/default/main.jsonnet` with:
 
 ```jsonnet
 local gateway = import 'loki/gateway.libsonnet';
@@ -93,5 +106,5 @@ loki + promtail + gateway {
 ```
 Notice that `container_root_path` is your own data root for docker daemon, use `docker info | grep "Root Dir"` to get it.
 
-Use `tk show environments/loki` to see the manifests being deployed to the cluster.
-Finally `tk apply environments/loki` will deploy the server components to your cluster.
+Use `tk show environments/default` to see the manifests being deployed to the cluster.
+Finally `tk apply environments/default` will deploy the server components to your cluster.
