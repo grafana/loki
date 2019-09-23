@@ -424,14 +424,6 @@
   revision = "b364c791f57ac8f224c2f42ad599afa45ca0cfda"
 
 [[projects]]
-  digest = "1:2cd7915ab26ede7d95b8749e6b1f933f1c6d5398030684e6505940a10f31cfda"
-  name = "github.com/ghodss/yaml"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "0ca9ea5df5451ffdf184b4428c902747c2c11cd7"
-  version = "v1.0.0"
-
-[[projects]]
   digest = "1:ce058ca1b1787a997e578c4344f9650becb5086a3512332cbedffca9950d77a1"
   name = "github.com/go-kit/kit"
   packages = [
@@ -1833,8 +1825,6 @@
     "github.com/cortexproject/cortex/pkg/ingester/client",
     "github.com/cortexproject/cortex/pkg/ingester/index",
     "github.com/cortexproject/cortex/pkg/ring",
-    "github.com/cortexproject/cortex/pkg/ring/kv",
-    "github.com/cortexproject/cortex/pkg/ring/kv/codec",
     "github.com/cortexproject/cortex/pkg/util",
     "github.com/cortexproject/cortex/pkg/util/flagext",
     "github.com/cortexproject/cortex/pkg/util/grpcclient",
@@ -1849,7 +1839,6 @@
     "github.com/docker/docker/pkg/ioutils",
     "github.com/docker/go-plugins-helpers/sdk",
     "github.com/fatih/color",
-    "github.com/ghodss/yaml",
     "github.com/go-kit/kit/log",
     "github.com/go-kit/kit/log/level",
     "github.com/gogo/protobuf/gogoproto",
