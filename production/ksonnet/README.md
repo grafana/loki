@@ -16,7 +16,7 @@ In your config repo, if you don't yet have the directory structure of Tanka set 
 # create a directory (any name works)
 $ mkdir promtail && cd promtail/
 $ tk init
-$ tk env add loki --namespace=loki
+$ tk env add promtail --namespace=loki
 # Ksonnet kubernetes libraries
 $ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k.libsonnet
 $ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k8s.libsonnet
