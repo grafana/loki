@@ -1,10 +1,10 @@
 package cfg
 
 import (
+	"flag"
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,8 +19,8 @@ tls:
 `))
 	}
 
-	flagSource := func(reg flagext.Registerer, def []byte) Source {
-		return dFlags([]string{"-verbose", "-server.port=21"}, reg, def)
+	flagSource := func(fs *flag.FlagSet) Source {
+		return dFlags(fs, []string{"-verbose", "-server.port=21"})
 	}
 
 	var c Data

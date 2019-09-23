@@ -1,9 +1,10 @@
 package cfg
 
 import (
+	"flag"
+	"os"
 	"reflect"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/pkg/errors"
 )
 
@@ -38,19 +39,17 @@ func Unmarshal(dst interface{}, sources ...Source) error {
 
 // Parse is a higher level wrapper for Unmarshal that automatically parses flags and a .yaml file
 func Parse(dst interface{}) error {
-	yamlSource := func() Source {
-		return YAMLFlag("config.file", "", ".yaml configuration file to parse")
+	yamls := func() Source {
+		return YAMLFlag("config.file", "", "yaml file to load")
 	}
-	flagSource := func(reg flagext.Registerer, def []byte) Source {
-		return Flags(reg, def)
-	}
-	return dParse(dst, yamlSource, flagSource)
+
+	return dParse(dst, yamls, Flags)
 }
 
-// dParse is like Parse, but allows dependency injection
+// dParse is the same as Parse, but with dependency injection for testing
 func dParse(dst interface{},
-	yamlSource func() Source,
-	flagSource func(flagext.Registerer, []byte) Source,
+	yamls func() Source,
+	flags func(fs *flag.FlagSet) Source,
 ) error {
 	// check dst is a pointer
 	v := reflect.ValueOf(dst)
@@ -58,20 +57,13 @@ func dParse(dst interface{},
 		return ErrNotPointer
 	}
 
-	// obtain type of dst for cloning
-	t := reflect.Indirect(v).Type()
-
-	// create new instances of dst's type for flags
-	d := reflect.New(t).Interface().(flagext.Registerer)
-	f := reflect.New(t).Interface().(flagext.Registerer)
-
-	// shared state for FlagDefaultsDangerous and Flags
-	var defaultsYaml []byte
+	fs := flag.NewFlagSet(os.Args[0]+" (cfg/internal)", flag.ExitOnError)
 
 	// unmarshal config
-	return Unmarshal(dst,
-		FlagDefaults(d, &defaultsYaml),
-		yamlSource(),
-		flagSource(f, defaultsYaml),
+	err := Unmarshal(dst,
+		Defaults(fs),
+		yamls(),
+		flags(fs),
 	)
+	return err
 }
