@@ -250,7 +250,7 @@ func defaultLimitsTestConfig() validation.Limits {
 
 func TestQuerier_validateQueryRequest(t *testing.T) {
 	request := logproto.QueryRequest{
-		Selector:  "{type=\"test\", fail=\"yes\"}",
+		Selector:  "{type=\"test\", fail=\"yes\"} |= \"foo\"",
 		Limit:     10,
 		Start:     time.Now().Add(-1 * time.Minute),
 		End:       time.Now(),

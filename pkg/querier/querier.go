@@ -378,10 +378,11 @@ func (q *Querier) validateQueryRequest(ctx context.Context, req *logproto.QueryR
 		return err
 	}
 
-	matchers, err := logql.ParseMatchers(req.Selector)
+	selector, err := logql.ParseLogSelector(req.Selector)
 	if err != nil {
 		return err
 	}
+	matchers := selector.Matchers()
 
 	maxStreamMatchersPerQuery := q.limits.MaxStreamsMatchersPerQuery(userID)
 	if len(matchers) > maxStreamMatchersPerQuery {
