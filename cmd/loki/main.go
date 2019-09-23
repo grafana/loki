@@ -16,7 +16,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/validation"
+
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 func init() {

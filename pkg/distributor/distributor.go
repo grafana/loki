@@ -4,27 +4,34 @@ import (
 	"context"
 	"flag"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/validation"
+	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
+
 	"github.com/go-kit/kit/log/level"
-	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
-const metricName = "logs"
+const (
+	metricName = "logs"
+	bytesInMB  = 1048576
+)
 
 var readinessProbeSuccess = []byte("Ready")
 var (
@@ -55,10 +62,13 @@ var (
 type Config struct {
 	// For testing.
 	factory func(addr string) (grpc_health_v1.HealthClient, error)
+
+	LimiterReloadPeriod time.Duration `yaml:"limiter_reload_period"`
 }
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.DurationVar(&cfg.LimiterReloadPeriod, "distributor.limiter-reload-period", 5*time.Minute, "Period at which to reload user ingestion limits.")
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -68,6 +78,10 @@ type Distributor struct {
 	ring      ring.ReadRing
 	overrides *validation.Overrides
 	pool      *cortex_client.Pool
+
+	ingestLimitersMtx sync.RWMutex
+	ingestLimiters    map[string]*rate.Limiter
+	quit              chan struct{}
 }
 
 // New a distributor creates.
@@ -79,13 +93,44 @@ func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, overrides *val
 		}
 	}
 
-	return &Distributor{
-		cfg:       cfg,
-		clientCfg: clientCfg,
-		ring:      ring,
-		overrides: overrides,
-		pool:      cortex_client.NewPool(clientCfg.PoolConfig, ring, factory, cortex_util.Logger),
-	}, nil
+	d := Distributor{
+		cfg:            cfg,
+		clientCfg:      clientCfg,
+		ring:           ring,
+		overrides:      overrides,
+		pool:           cortex_client.NewPool(clientCfg.PoolConfig, ring, factory, cortex_util.Logger),
+		ingestLimiters: map[string]*rate.Limiter{},
+		quit:           make(chan struct{}),
+	}
+
+	go d.loop()
+
+	return &d, nil
+}
+
+func (d *Distributor) loop() {
+	if d.cfg.LimiterReloadPeriod == 0 {
+		return
+	}
+
+	ticker := time.NewTicker(d.cfg.LimiterReloadPeriod)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			d.ingestLimitersMtx.Lock()
+			d.ingestLimiters = make(map[string]*rate.Limiter, len(d.ingestLimiters))
+			d.ingestLimitersMtx.Unlock()
+
+		case <-d.quit:
+			return
+		}
+	}
+}
+
+func (d *Distributor) Stop() {
+	close(d.quit)
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
@@ -145,6 +190,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	streams := make([]streamTracker, 0, len(req.Streams))
 	keys := make([]uint32, 0, len(req.Streams))
 	var validationErr error
+	validatedSamplesSize := 0
+
 	for _, stream := range req.Streams {
 		if err := d.validateLabels(userID, stream.Labels); err != nil {
 			validationErr = err
@@ -153,13 +200,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 		entries := make([]logproto.Entry, 0, len(stream.Entries))
 		for _, entry := range stream.Entries {
-			if err := validation.ValidateSample(d.overrides, userID, metricName, cortex_client.Sample{
+			if err := cortex_validation.ValidateSample(d.overrides, userID, metricName, cortex_client.Sample{
 				TimestampMs: entry.Timestamp.UnixNano() / int64(time.Millisecond),
 			}); err != nil {
 				validationErr = err
 				continue
 			}
 			entries = append(entries, entry)
+			validatedSamplesSize += len(entry.Line)
 		}
 
 		if len(entries) == 0 {
@@ -174,6 +222,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	if len(streams) == 0 {
 		return &logproto.PushResponse{}, validationErr
+	}
+
+	limiter := d.getOrCreateIngestLimiter(userID)
+	if !limiter.AllowN(time.Now(), validatedSamplesSize) {
+		// Return a 4xx here to have the client discard the data and not retry. If a client
+		// is sending too much data consistently we will unlikely ever catch up otherwise.
+		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesSize))
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%d) exceeded while adding %d lines", int(limiter.Limit()), lineCount)
 	}
 
 	replicationSets, err := d.ring.BatchGet(keys, ring.Write)
@@ -226,7 +282,7 @@ func (d *Distributor) validateLabels(userID, labels string) error {
 	}
 
 	// everything in `ValidateLabels` returns `httpgrpc.Errorf` errors, no sugaring needed
-	return validation.ValidateLabels(d.overrides, userID, ls)
+	return cortex_validation.ValidateLabels(d.overrides, userID, ls)
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
@@ -286,4 +342,22 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Ingester
 // Check implements the grpc healthcheck
 func (*Distributor) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+}
+
+func (d *Distributor) getOrCreateIngestLimiter(userID string) *rate.Limiter {
+	d.ingestLimitersMtx.RLock()
+	limiter, ok := d.ingestLimiters[userID]
+	d.ingestLimitersMtx.RUnlock()
+
+	if ok {
+		return limiter
+	}
+
+	limiter = rate.NewLimiter(rate.Limit(int64(d.overrides.IngestionRate(userID)*bytesInMB)), int(d.overrides.IngestionBurstSize(userID)*bytesInMB))
+
+	d.ingestLimitersMtx.Lock()
+	d.ingestLimiters[userID] = limiter
+	d.ingestLimitersMtx.Unlock()
+
+	return limiter
 }

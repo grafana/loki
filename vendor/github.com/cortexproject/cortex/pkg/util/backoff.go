@@ -24,25 +24,28 @@ func (cfg *BackoffConfig) RegisterFlags(prefix string, f *flag.FlagSet) {
 
 // Backoff implements exponential backoff with randomized wait times
 type Backoff struct {
-	cfg        BackoffConfig
-	ctx        context.Context
-	numRetries int
-	duration   time.Duration
+	cfg          BackoffConfig
+	ctx          context.Context
+	numRetries   int
+	nextDelayMin time.Duration
+	nextDelayMax time.Duration
 }
 
 // NewBackoff creates a Backoff object. Pass a Context that can also terminate the operation.
 func NewBackoff(ctx context.Context, cfg BackoffConfig) *Backoff {
 	return &Backoff{
-		cfg:      cfg,
-		ctx:      ctx,
-		duration: cfg.MinBackoff,
+		cfg:          cfg,
+		ctx:          ctx,
+		nextDelayMin: cfg.MinBackoff,
+		nextDelayMax: doubleDuration(cfg.MinBackoff, cfg.MaxBackoff),
 	}
 }
 
 // Reset the Backoff back to its initial condition
 func (b *Backoff) Reset() {
 	b.numRetries = 0
-	b.duration = b.cfg.MinBackoff
+	b.nextDelayMin = b.cfg.MinBackoff
+	b.nextDelayMax = doubleDuration(b.cfg.MinBackoff, b.cfg.MaxBackoff)
 }
 
 // Ongoing returns true if caller should keep going
@@ -70,18 +73,45 @@ func (b *Backoff) NumRetries() int {
 // Wait sleeps for the backoff time then increases the retry count and backoff time
 // Returns immediately if Context is terminated
 func (b *Backoff) Wait() {
-	b.numRetries++
-	// Based on the "Full Jitter" approach from https://www.awsarchitectureblog.com/2015/03/backoff.html
-	// sleep = random_between(0, min(cap, base * 2 ** attempt))
+	// Increase the number of retries and get the next delay
+	sleepTime := b.nextDelay()
+
 	if b.Ongoing() {
-		sleepTime := time.Duration(rand.Int63n(int64(b.duration)))
 		select {
 		case <-b.ctx.Done():
 		case <-time.After(sleepTime):
 		}
 	}
-	b.duration = b.duration * 2
-	if b.duration > b.cfg.MaxBackoff {
-		b.duration = b.cfg.MaxBackoff
+}
+
+func (b *Backoff) nextDelay() time.Duration {
+	b.numRetries++
+
+	// Handle the edge case the min and max have the same value
+	// (or due to some misconfig max is < min)
+	if b.nextDelayMin >= b.nextDelayMax {
+		return b.nextDelayMin
 	}
+
+	// Add a jitter within the next exponential backoff range
+	sleepTime := b.nextDelayMin + time.Duration(rand.Int63n(int64(b.nextDelayMax-b.nextDelayMin)))
+
+	// Apply the exponential backoff to calculate the next jitter
+	// range, unless we've already reached the max
+	if b.nextDelayMax < b.cfg.MaxBackoff {
+		b.nextDelayMin = doubleDuration(b.nextDelayMin, b.cfg.MaxBackoff)
+		b.nextDelayMax = doubleDuration(b.nextDelayMax, b.cfg.MaxBackoff)
+	}
+
+	return sleepTime
+}
+
+func doubleDuration(value time.Duration, max time.Duration) time.Duration {
+	value = value * 2
+
+	if value <= max {
+		return value
+	}
+
+	return max
 }

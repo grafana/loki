@@ -7,16 +7,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util/validation"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
@@ -65,7 +67,10 @@ func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	ing, err := New(cfg, client.Config{}, store)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
+	require.NoError(t, err)
+
+	ing, err := New(cfg, client.Config{}, store, limits)
 	require.NoError(t, err)
 
 	return store, ing

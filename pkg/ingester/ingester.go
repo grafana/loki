@@ -17,8 +17,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
@@ -83,6 +85,8 @@ type Ingester struct {
 	// pick a queue.
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
+
+	limits *validation.Overrides
 }
 
 // ChunkStore is the interface we need to store chunks.
@@ -91,7 +95,7 @@ type ChunkStore interface {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store ChunkStore) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *validation.Overrides) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -104,6 +108,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore) (*Ingester, e
 		quit:         make(chan struct{}),
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		quitting:     make(chan struct{}),
+		limits:       limits,
 	}
 
 	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
@@ -181,7 +186,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(instanceID, i.cfg.BlockSize)
+		inst = newInstance(instanceID, i.cfg.BlockSize, i.limits)
 		i.instances[instanceID] = inst
 	}
 	return inst

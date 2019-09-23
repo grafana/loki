@@ -9,15 +9,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
+	"github.com/weaveworks/common/user"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
-	"github.com/cortexproject/cortex/pkg/util/validation"
+
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/user"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var (

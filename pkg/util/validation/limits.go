@@ -5,6 +5,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/validation"
+
 	"gopkg.in/yaml.v2"
 )
 
@@ -12,11 +14,8 @@ import (
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
 	// Distributor enforced limits.
-	IngestionRate          float64       `yaml:"ingestion_rate"`
-	IngestionBurstSize     int           `yaml:"ingestion_burst_size"`
-	AcceptHASamples        bool          `yaml:"accept_ha_samples"`
-	HAClusterLabel         string        `yaml:"ha_cluster_label"`
-	HAReplicaLabel         string        `yaml:"ha_replica_label"`
+	IngestionRate          float64       `yaml:"ingestion_rate_mb"`
+	IngestionBurstSize     float64       `yaml:"ingestion_burst_size_mb"`
 	MaxLabelNameLength     int           `yaml:"max_label_name_length"`
 	MaxLabelValueLength    int           `yaml:"max_label_value_length"`
 	MaxLabelNamesPerSeries int           `yaml:"max_label_names_per_series"`
@@ -26,17 +25,14 @@ type Limits struct {
 	EnforceMetricName      bool          `yaml:"enforce_metric_name"`
 
 	// Ingester enforced limits.
-	MaxSeriesPerQuery  int `yaml:"max_series_per_query"`
-	MaxSamplesPerQuery int `yaml:"max_samples_per_query"`
-	MaxSeriesPerUser   int `yaml:"max_series_per_user"`
-	MaxSeriesPerMetric int `yaml:"max_series_per_metric"`
-	MinChunkLength     int `yaml:"min_chunk_length"`
+	MaxStreamsPerUser int `yaml:"max_streams_per_user"`
 
 	// Querier enforced limits.
-	MaxChunksPerQuery   int           `yaml:"max_chunks_per_query"`
-	MaxQueryLength      time.Duration `yaml:"max_query_length"`
-	MaxQueryParallelism int           `yaml:"max_query_parallelism"`
-	CardinalityLimit    int           `yaml:"cardinality_limit"`
+	MaxChunksPerQuery          int           `yaml:"max_chunks_per_query"`
+	MaxQueryLength             time.Duration `yaml:"max_query_length"`
+	MaxQueryParallelism        int           `yaml:"max_query_parallelism"`
+	CardinalityLimit           int           `yaml:"cardinality_limit"`
+	MaxStreamsMatchersPerQuery int           `yaml:"max_streams_matchers_per_query"`
 
 	// Config for overrides, convenient if it goes here.
 	PerTenantOverrideConfig string        `yaml:"per_tenant_override_config"`
@@ -45,11 +41,8 @@ type Limits struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
-	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
-	f.IntVar(&l.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples). Warning, very high limits will be reset every -distributor.limiter-reload-period.")
-	f.BoolVar(&l.AcceptHASamples, "distributor.ha-tracker.enable-for-all-users", false, "Flag to enable, for all users, handling of samples with external labels identifying replicas in an HA Prometheus setup.")
-	f.StringVar(&l.HAReplicaLabel, "distributor.ha-tracker.replica", "__replica__", "Prometheus label to look for in samples to identify a Prometheus HA replica.")
-	f.StringVar(&l.HAClusterLabel, "distributor.ha-tracker.cluster", "cluster", "Prometheus label to look for in samples to identify a Prometheus HA cluster.")
+	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit-mb", 4, "Per-user ingestion rate limit in sample size per second. Units in MB.")
+	f.Float64Var(&l.IngestionBurstSize, "distributor.ingestion-burst-size-mb", 6, "Per-user allowed ingestion burst size (in sample size). Units in MB. Warning, very high limits will be reset every -distributor.limiter-reload-period.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
@@ -58,16 +51,13 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&l.CreationGracePeriod, "validation.create-grace-period", 10*time.Minute, "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
 	f.BoolVar(&l.EnforceMetricName, "validation.enforce-metric-name", true, "Enforce every sample has a metric name.")
 
-	f.IntVar(&l.MaxSeriesPerQuery, "ingester.max-series-per-query", 100000, "The maximum number of series that a query can return.")
-	f.IntVar(&l.MaxSamplesPerQuery, "ingester.max-samples-per-query", 1000000, "The maximum number of samples that a query can return.")
-	f.IntVar(&l.MaxSeriesPerUser, "ingester.max-series-per-user", 5000000, "Maximum number of active series per user.")
-	f.IntVar(&l.MaxSeriesPerMetric, "ingester.max-series-per-metric", 50000, "Maximum number of active series per metric name.")
-	f.IntVar(&l.MinChunkLength, "ingester.min-chunk-length", 0, "Minimum number of samples in an idle chunk to flush it to the store. Use with care, if chunks are less than this size they will be discarded.")
+	f.IntVar(&l.MaxStreamsPerUser, "ingester.max-streams-per-user", 10e3, "Maximum number of active streams per user.")
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 	f.DurationVar(&l.MaxQueryLength, "store.max-query-length", 0, "Limit to length of chunk store queries, 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of queries will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
+	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Limit the number of streams matchers per query")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides.")
 	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with this to reload the overrides.")
@@ -96,7 +86,7 @@ var defaultLimits *Limits
 // Overrides periodically fetch a set of per-user overrides, and provides convenience
 // functions for fetching the correct value.
 type Overrides struct {
-	overridesManager *OverridesManager
+	overridesManager *validation.OverridesManager
 }
 
 // NewOverrides makes a new Overrides.
@@ -105,14 +95,14 @@ type Overrides struct {
 // become the new global defaults.
 func NewOverrides(defaults Limits) (*Overrides, error) {
 	defaultLimits = &defaults
-	overridesManagerConfig := OverridesManagerConfig{
+	overridesManagerConfig := validation.OverridesManagerConfig{
 		OverridesReloadPeriod: defaults.PerTenantOverridePeriod,
 		OverridesLoadPath:     defaults.PerTenantOverrideConfig,
 		OverridesLoader:       loadOverrides,
 		Defaults:              &defaults,
 	}
 
-	overridesManager, err := NewOverridesManager(overridesManagerConfig)
+	overridesManager, err := validation.NewOverridesManager(overridesManagerConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -133,23 +123,8 @@ func (o *Overrides) IngestionRate(userID string) float64 {
 }
 
 // IngestionBurstSize returns the burst size for ingestion rate.
-func (o *Overrides) IngestionBurstSize(userID string) int {
+func (o *Overrides) IngestionBurstSize(userID string) float64 {
 	return o.overridesManager.GetLimits(userID).(*Limits).IngestionBurstSize
-}
-
-// AcceptHASamples returns whether the distributor should track and accept samples from HA replicas for this user.
-func (o *Overrides) AcceptHASamples(userID string) bool {
-	return o.overridesManager.GetLimits(userID).(*Limits).AcceptHASamples
-}
-
-// HAReplicaLabel returns the replica label to look for when deciding whether to accept a sample from a Prometheus HA replica.
-func (o *Overrides) HAReplicaLabel(userID string) string {
-	return o.overridesManager.GetLimits(userID).(*Limits).HAReplicaLabel
-}
-
-// HAClusterLabel returns the cluster label to look for when deciding whether to accept a sample from a Prometheus HA replica.
-func (o *Overrides) HAClusterLabel(userID string) string {
-	return o.overridesManager.GetLimits(userID).(*Limits).HAClusterLabel
 }
 
 // MaxLabelNameLength returns maximum length a label name can be.
@@ -185,24 +160,9 @@ func (o *Overrides) CreationGracePeriod(userID string) time.Duration {
 	return o.overridesManager.GetLimits(userID).(*Limits).CreationGracePeriod
 }
 
-// MaxSeriesPerQuery returns the maximum number of series a query is allowed to hit.
-func (o *Overrides) MaxSeriesPerQuery(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxSeriesPerQuery
-}
-
-// MaxSamplesPerQuery returns the maximum number of samples in a query (from the ingester).
-func (o *Overrides) MaxSamplesPerQuery(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxSamplesPerQuery
-}
-
-// MaxSeriesPerUser returns the maximum number of series a user is allowed to store.
-func (o *Overrides) MaxSeriesPerUser(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxSeriesPerUser
-}
-
-// MaxSeriesPerMetric returns the maximum number of series allowed per metric.
-func (o *Overrides) MaxSeriesPerMetric(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxSeriesPerMetric
+// MaxStreamsPerUser returns the maximum number of streams a user is allowed to store.
+func (o *Overrides) MaxStreamsPerUser(userID string) int {
+	return o.overridesManager.GetLimits(userID).(*Limits).MaxStreamsPerUser
 }
 
 // MaxChunksPerQuery returns the maximum number of chunks allowed per query.
@@ -231,9 +191,9 @@ func (o *Overrides) CardinalityLimit(userID string) int {
 	return o.overridesManager.GetLimits(userID).(*Limits).CardinalityLimit
 }
 
-// MinChunkLength returns the minimum size of chunk that will be saved by ingesters
-func (o *Overrides) MinChunkLength(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MinChunkLength
+// MaxStreamsMatchersPerQuery returns the limit to number of streams matchers per query.
+func (o *Overrides) MaxStreamsMatchersPerQuery(userID string) int {
+	return o.overridesManager.GetLimits(userID).(*Limits).MaxStreamsMatchersPerQuery
 }
 
 // Loads overrides and returns the limits as an interface to store them in OverridesManager.
