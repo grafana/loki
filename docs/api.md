@@ -11,8 +11,9 @@ The HTTP API includes the following endpoints:
 - [`GET /loki/api/v1/label`](#get-lokiapiv1label)
 - [`GET /loki/api/v1/label/<name>/values`](#get-lokiapiv1labelnamevalues)
 - [`GET /loki/api/v1/tail`](#get-lokiapiv1tail)
+- [`POST /loki/api/v1/push`](#post-lokiapiv1push)
+- [`GET /api/prom/tail`](#get-apipromtail)
 - [`GET /api/prom/query`](#get-apipromquery)
-- [`POST /api/prom/push`](#post-apiprompush)
 - [`GET /ready`](#get-ready)
 - [`POST /flush`](#post-flush)
 - [`GET /metrics`](#get-metrics)
@@ -34,11 +35,12 @@ These endpoints are exposed by just the querier:
 - [`GET /loki/api/v1/label`](#get-lokiapiv1label)
 - [`GET /loki/api/v1/label/<name>/values`](#get-lokiapiv1labelnamevalues)
 - [`GET /loki/api/v1/tail`](#get-lokiapiv1tail)
+- [`GET /api/prom/tail`](#get-lokiapipromtail)
 - [`GET /api/prom/query`](#get-apipromquery)
 
 While these endpoints are exposed by just the distributor:
 
-- [`POST /api/prom/push`](#post-apiprompush)
+- [`POST /loki/api/v1/push`](#post-lokiapiv1push)
 
 And these endpoints are exposed by just the ingester:
 
@@ -107,12 +109,14 @@ And `<stream value>` is:
 
 ```
 {
-  "labels": "<LogQL label key-value pairs>",
-  "entries": [
-    {
-      "ts": "<RFC3339Nano string>",
-      "line": "<log line>",
-    },
+  "stream": {
+    <label key-value pairs>
+  },
+  "values": [
+    [
+      <string: nanosecond unix epoch>,
+      <string: log line>
+    ],
     ...
   ]
 }
@@ -165,16 +169,20 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query=
     "resultType": "streams",
     "result": [
       {
-        "labels": "{filename=\"/var/log/myproject.log\", job=\"varlogs\", level=\"info\"}",
-        "entries": [
-          {
-            "ts": "2019-06-06T19:25:41.972739Z",
-            "line": "foo"
-          },
-          {
-            "ts": "2019-06-06T19:25:41.972722Z",
-            "line": "bar"
-          }
+        "stream": {
+          "filename": "/var/log/myproject.log",
+          "job": "varlogs",
+          "level": "info"
+        },
+        "values": [
+          [
+            "1568234281726420425",
+            "foo"
+          ],
+          [
+            "1568234269716526880",
+            "bar"
+          ]
         ]
       }
     ]
@@ -231,12 +239,14 @@ And `<stream value>` is:
 
 ```
 {
-  "labels": "<LogQL label key-value pairs>",
-  "entries": [
-    {
-      "ts": "<RFC3339Nano string>",
-      "line": "<log line>",
-    },
+  "stream": {
+    <label key-value pairs>
+  },
+  "values": [
+    [
+      <string: nanosecond unix epoch>,
+      <string: log line>
+    ],
     ...
   ]
 }
@@ -302,15 +312,19 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
     "resultType": "streams",
     "result": [
       {
-        "labels": "{filename=\"/var/log/myproject.log\", job=\"varlogs\", level=\"info\"}",
-        "entries": [
+        "stream": {
+          "filename": "/var/log/myproject.log",
+          "job": "varlogs",
+          "level": "info"
+        },
+        "values": [
           {
-            "ts": "2019-06-06T19:25:41.972739Z",
-            "line": "foo"
+            "1569266497240578000",
+            "foo"
           },
           {
-            "ts": "2019-06-06T19:25:41.972722Z",
-            "line": "bar"
+            "1569266492548155000",
+            "bar"
           }
         ]
       }
@@ -390,8 +404,6 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/label/foo/values" | jq
 
 ## `GET /loki/api/v1/tail`
 
-Alias (DEPRECATED): `GET /api/prom/tail`
-
 `/loki/api/v1/tail` is a WebSocket endpoint that will stream log messages based on
 a query. It accepts the following query parameters in the URL:
 
@@ -402,6 +414,88 @@ a query. It accepts the following query parameters in the URL:
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
 
 In microservices mode, `/loki/api/v1/tail` is exposed by the querier.
+
+Response (streamed):
+
+```
+{
+  "streams": [
+    {
+      "stream": {
+        <label key-value pairs>
+      },
+      "values": [
+        [
+          <string: nanosecond unix epoch>,
+          <string: log line>
+        ]
+      ]
+    }
+  ],
+  "dropped_entries": [
+    {
+      "labels": {
+        <label key-value pairs>
+      },
+      "timestamp": "<nanosecond unix epoch>"
+    }
+  ]
+}
+```
+
+## `POST /loki/api/v1/push`
+
+Alias (DEPRECATED): `POST /api/prom/push`
+
+`/loki/api/v1/push` is the endpoint used to send log entries to Loki. The default
+behavior is for the POST body to be a snappy-compressed protobuf messsage:
+
+- [Protobuf definition](/pkg/logproto/logproto.proto)
+- [Go client library](/pkg/promtail/client/client.go)
+
+Alternatively, if the `Content-Type` header is set to `application/json`, a
+JSON post body can be sent in the following format:
+
+```
+{
+  "streams": [
+    {
+      "labels": "<LogQL label key-value pairs>",
+      "entries": [
+        {
+          "ts": "<RFC3339Nano string>",
+          "line": "<log line>"
+        }
+      ]
+    }
+  ]
+}
+```
+
+In microservices mode, `/loki/api/v1/push` is exposed by the distributor.
+
+### Examples
+
+```bash
+$ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/loki/api/v1/push" --data-raw \
+  '{"streams": [{ "labels": "{foo=\"bar\"}", "entries": [{ "ts": "2018-12-18T08:28:06.801064-04:00", "line": "fizzbuzz" }] }]}'
+```
+
+## `GET /api/prom/tail`
+
+> **DEPRECATED**: `/api/prom/tail` is deprecated. Use `/loki/api/v1/tail`
+> instead.
+
+`/api/prom/tail` is a WebSocket endpoint that will stream log messages based on
+a query. It accepts the following query parameters in the URL:
+
+- `query`: The [LogQL](./logql.md) query to perform
+- `delay_for`: The number of seconds to delay retrieving logs to let slow
+    loggers catch up. Defaults to 0 and cannot be larger than 5.
+- `limit`: The max number of entries to return
+- `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
+
+In microservices mode, `/api/prom/tail` is exposed by the querier.
 
 Response (streamed):
 
@@ -500,35 +594,6 @@ $ curl -G -s  "http://localhost:3100/api/prom/query" --data-urlencode '{foo="bar
   ]
 }
 ```
-
-## `POST /api/prom/push`
-
-`/api/prom/push` is the endpoint used to send log entries to Loki. The default
-behavior is for the POST body to be a snappy-compressed protobuf messsage:
-
-- [Protobuf definition](/pkg/logproto/logproto.proto)
-- [Go client library](/pkg/promtail/client/client.go)
-
-Alternatively, if the `Content-Type` header is set to `application/json`, a
-JSON post body can be sent in the following format:
-
-```
-{
-  "streams": [
-    {
-      "labels": "<LogQL label key-value pairs>",
-      "entries": [
-        {
-          "ts": "<RFC3339Nano string>",
-          "line": "<log line>"
-        }
-      ]
-    }
-  ]
-}
-```
-
-In microservices mode, `/api/prom/push` is exposed by the distributor.
 
 ### Examples
 
