@@ -51,14 +51,19 @@ Promtail exposes these metrics:
 
 - `promtail_read_bytes_total`: Number of bytes read.
 - `promtail_read_lines_total`: Number of lines read.
-- `promtail_request_duration_seconds_count`: Number of send requests.
-- `promtail_encoded_bytes_total`: Number of bytes encoded and ready to send.
-- `promtail_sent_bytes_total`: Number of bytes sent.
 - `promtail_dropped_bytes_total`: Number of bytes dropped because failed to be
   sent to the ingester after all retries.
-- `promtail_sent_entries_total`: Number of log entries sent to the ingester.
 - `promtail_dropped_entries_total`: Number of log entries dropped because failed
   to be sent to the ingester after all retries.
+- `promtail_encoded_bytes_total`: Number of bytes encoded and ready to send.
+- `promtail_file_bytes_total`: Number of bytes read from files.
+- `promtail_files_active_total`: Number of active files.
+- `promtail_log_entries_bytes`: The total count of bytes read.
+- `promtail_request_duration_seconds_count`: Number of send requests.
+- `promtail_sent_bytes_total`: Number of bytes sent.
+- `promtail_sent_entries_total`: Number of log entries sent to the ingester.
+- `promtail_targets_active_total`: Number of total active targets.
+- `promtail_targets_failed_total`: Number of total failed targets.
 
 Most of these metrics are counters and should continuously increase during normal operations:
 
