@@ -14,7 +14,7 @@ In your config repo, if you don't yet have the directory structure of Tanka set 
 
 ```bash
 # create a directory (any name works)
-$ mkdir config && cd config/
+$ mkdir promtail && cd promtail/
 $ tk init
 $ tk env add loki --namespace=loki
 # Ksonnet kubernetes libraries
@@ -75,6 +75,13 @@ Now use `tk show environments/default` to see the yaml, and `tk apply environmen
 If you want to further also deploy the server to the cluster, then run the following to install the module:
 
 ```
+# create a directory (any name works)
+$ mkdir loki && cd loki/
+$ tk init
+$ tk env add loki --namespace=loki
+# Ksonnet kubernetes libraries
+$ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k.libsonnet
+$ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k8s.libsonnet
 $ jb install github.com/grafana/loki/production/ksonnet/loki
 ```
 
