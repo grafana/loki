@@ -147,7 +147,7 @@ elements of the vector.
 
 > `topk(10,sum(rate({region="us-east1"}[5m]) by (name))`
 
-Gets the top 10 applicaitons by the highest log throughput.
+Gets the top 10 applications by the highest log throughput.
 
 > `sum(count_over_time({job="mysql"}[5m])) by (level)`
 
@@ -156,4 +156,4 @@ by level.
 
 > `avg(rate(({job="nginx"} |= "GET")[10s])) by (region)`
 
-Gets the rate of HTTP GET requests from nginx logs.
+Gets the rate of HTTP GET requests from NGINX logs.

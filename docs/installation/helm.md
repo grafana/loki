@@ -72,7 +72,7 @@ If Loki and Promtail are deployed on different clusters you can add an Ingress
 in front of Loki. By adding a certificate you create an HTTPS endpoint. For
 extra security you can also enable Basic Authentication on the Ingress.
 
-In promtail, set the following values to communicate using HTTPS and basic
+In Promtail, set the following values to communicate using HTTPS and basic
 authentication:
 
 ```yaml

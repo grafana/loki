@@ -40,7 +40,7 @@ $ export GRAFANA_USERNAME=<username>
 $ export GRAFANA_PASSWORD=<password>
 ```
 
-Otherwise you can point logcli to a local instance directly
+Otherwise you can point LogCLI to a local instance directly
 without needing a username and password:
 
 ```bash

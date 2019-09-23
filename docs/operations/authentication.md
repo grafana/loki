@@ -2,7 +2,7 @@
 
 Loki does not come with any included authentication layer. Operators are
 expected to run an authenticating reverse proxy in front of your services, such
-as Nginx using basic auth or an OAuth2 proxy.
+as NGINX using basic auth or an OAuth2 proxy.
 
 Note that when using Loki in multi-tenant mode, Loki requires the HTTP header
 `X-Scopre-OrgID` to be set to a string identifying the user; the responsibility

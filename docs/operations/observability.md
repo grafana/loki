@@ -1,7 +1,7 @@
 # Observing Loki
 
-Both Loki and promtail expose a `/metrics` endpoint that expose Prometheus
-metrics. You will need a local Prometheus and add Loki and promtail as targets.
+Both Loki and Promtail expose a `/metrics` endpoint that expose Prometheus
+metrics. You will need a local Prometheus and add Loki and Promtail as targets.
 See [configuring
 Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/configuration)
 for more information.
@@ -27,7 +27,7 @@ Promtail exposes these metrics:
 
 Most of these metrics are counters and should continuously increase during normal operations:
 
-1. Your app emits a log line to a file that is tracked by promtail.
+1. Your app emits a log line to a file that is tracked by Promtail.
 2. Promtail reads the new line and increases its counters.
 3. Promtail forwards the log line to a Loki distributor, where the received
    counters should increase.

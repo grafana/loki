@@ -175,7 +175,7 @@ maintenance tasks. It consists of:
 
 * An index for the chunks. This index can be backed by:
     * [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-    * [Google bigtab](https://cloud.google.com/bigtable)
+    * [Google Bigtable](https://cloud.google.com/bigtable)
     * [Apache Cassandra](https://cassandra.apache.org)
 * A key-value (KV) store for the chunk data itself, which can be:
     * [Amazon DynamoDB](https://aws.amazon.com/dynamodb)

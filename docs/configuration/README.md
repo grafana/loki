@@ -76,7 +76,7 @@ Supported contents and default values of `loki.yaml`:
 # Configures how Loki will store data in the specific store.
 [chunk_store_config: <chunk_store_config>]
 
-# Configures the chunk index scema and where it is stored.
+# Configures the chunk index schema and where it is stored.
 [schema_config: <schema_config>]
 
 # Configures limits per-tenant or globally

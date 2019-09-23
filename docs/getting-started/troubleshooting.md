@@ -3,7 +3,7 @@
 ## "Loki: Bad Gateway. 502"
 
 This error can appear in Grafana when Loki is added as a
-datasource, indicating that Grafana in unsable to connect to Loki. There may
+datasource, indicating that Grafana in unable to connect to Loki. There may
 one of many root causes:
 
 - If Loki is deployed with Docker, and Grafana and Loki are not running in the
@@ -18,15 +18,15 @@ one of many root causes:
 
 This error can appear in Grafana when Loki is added as a datasource, indicating
 that although Grafana has connected to Loki, Loki hasn't received any logs from
-promtail yet. There may be one of many root causes:
+Promtail yet. There may be one of many root causes:
 
 - Promtail is running and collecting logs but is unable to connect to Loki to
   send the logs. Check Promtail's output.
 - Promtail started sending logs to Loki before Loki was ready. This can
   happen in test environment where Promtail has already read all logs and sent
   them off. Here is what you can do:
-    - Start promtail after Loki, e.g., 60 seconds later.
-    - To force promtail to re-send log messages, delete the positions file
+    - Start Promtail after Loki, e.g., 60 seconds later.
+    - To force Promtail to re-send log messages, delete the positions file
       (default location `/tmp/positions.yaml`).
 - Promtail is ignoring targets and isn't reading any logs because of a
   configuration issue.
@@ -50,7 +50,7 @@ the reason why the target has been dropped.
 The targets page (`/targets`) displays only targets that are being actively
 scraped and their respective labels, files, and positions.
 
-On Kubernetes, you can access those two pages by port-forwarding the promtail
+On Kubernetes, you can access those two pages by port-forwarding the Promtail
 port (`9080` or `3101` if using Helm) locally:
 
 ```bash
@@ -69,17 +69,17 @@ $ promtail -log.level=debug
 
 ## Failed to create target, `ioutil.ReadDir: readdirent: not a directory`
 
-The promtail configuration contains a `__path__` entry to a directory that
-promtail cannot find.
+The Promtail configuration contains a `__path__` entry to a directory that
+Promtail cannot find.
 
-## Connecting to a promtail pod to troubleshoot
+## Connecting to a Promtail pod to troubleshoot
 
 First check [Troubleshooting targets](#troubleshooting-targets) section above.
-If that doesn't help answer your questions, you can connect to the promtail pod
+If that doesn't help answer your questions, you can connect to the Promtail pod
 to investigate further.
 
-If you are running promtail as a DaemonSet in your cluster, you will have a
-promtail pod on each node, so figure out which promtail you need to debug first:
+If you are running Promtail as a DaemonSet in your cluster, you will have a
+Promtail pod on each node, so figure out which Promtail you need to debug first:
 
 
 ```shell
@@ -95,9 +95,9 @@ That output is truncated to highlight just the two pods we are interested in,
 you can see with the `-o wide` flag the NODE on which they are running.
 
 You'll want to match the node for the pod you are interested in, in this example
-nginx, to the promtail running on the same node.
+NGINX, to the Promtail running on the same node.
 
-To debug you can connect to the promtail pod:
+To debug you can connect to the Promtail pod:
 
 ```shell
 kubectl exec -it promtail-bth9q -- /bin/sh
@@ -108,10 +108,10 @@ contents you expect.
 
 Also check `/var/log/positions.yaml` (`/run/promtail/positions.yaml` when
 deployed by Helm or whatever value is specified for `positions.file`) and make
-sure promtail is tailing the logs you would expect.
+sure Promtail is tailing the logs you would expect.
 
-You can check the promtail log by looking in `/var/log/containers` at the
-promtail container log.
+You can check the Promtail log by looking in `/var/log/containers` at the
+Promtail container log.
 
 ## Enable tracing for Loki
 

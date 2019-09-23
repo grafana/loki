@@ -17,11 +17,11 @@ array. The contents look something like this:
 The relevant part of the log entry is the timestamp; the `p`s are just filler
 bytes to make the size of the log configurable.
 
-An agent (like promtail) should be configured to read the log file and ship it
+An agent (like Promtail) should be configured to read the log file and ship it
 to Loki.
 
-Meanwhile, Loki Canary will open a websocket connection to Loki and will tail
-the logs it creates. When a log is received on the websocket, the timestamp
+Meanwhile, Loki Canary will open a WebSocket connection to Loki and will tail
+the logs it creates. When a log is received on the WebSocket, the timestamp
 in the log message is compared to the internal array.
 
 If the received log is:
@@ -41,7 +41,7 @@ the entries in the internal array. If any of the entries are older than the
 duration specified by the `-wait` flag (defaulting to 60s), they are removed
 from the array and the `websocket_missing_entries` counter is incremented. An
 additional query is then made directly to Loki for any missing entries to
-determine if they are truly missing or only missing from the websocket. If
+determine if they are truly missing or only missing from the WebSocket. If
 missing entries are not found in the direct query, the `missing_entries` counter
 is incremented.
 
@@ -69,15 +69,15 @@ To run on Kubernetes, you can do something simple like:
 --image=grafana/loki-canary:latest --restart=Never --image-pull-policy=Never
 --labels=name=loki-canary -- -addr=loki:3100`
 
-Or you can do something more complex like deploy it as a daemonset, there is a
-ksonnet setup for this in the `production` folder, you can import it using
-jsonnet-bundler:
+Or you can do something more complex like deploy it as a DaemonSet, there is a
+Tanka setup for this in the `production` folder, you can import it using
+`jsonnet-bundler`:
 
 ```shell
 jb install github.com/grafana/loki-canary/production/ksonnet/loki-canary
 ```
 
-Then in your ksonnet environments `main.jsonnet` you'll want something like
+Then in your Tanka environment's `main.jsonnet` you'll want something like
 this:
 
 ```jsonnet
@@ -118,12 +118,12 @@ $ make loki-canary-image
 
 The address of Loki must be passed in with the `-addr` flag, and if your Loki
 server uses TLS, `-tls=true` must also be provided. Note that using TLS will
-cause the websocket connection to use `wss://` instead of `ws://`.
+cause the WebSocket connection to use `wss://` instead of `ws://`.
 
 The `-labelname` and `-labelvalue` flags should also be provided, as these are
 used by Loki Canary to filter the log stream to only process logs for the
 current instance of the canary. Ensure that the values provided to the flags are
-unique to each instance of Loki Canary. Grafana Lab's ksonnet config
+unique to each instance of Loki Canary. Grafana Labs' Tanka config
 accomplishes this by passing in the pod name as the label value.
 
 If Loki Canary reports a high number of `unexpected_entries`, Loki Canary may
@@ -133,7 +133,7 @@ increased to a larger value than 60s.
 __Be aware__ of the relationship between `pruneinterval` and the `interval`.
 For example, with an interval of 10ms (100 logs per second) and a prune interval
 of 60s, you will write 6000 logs per minute. If those logs were not received
-over the websocket, the canary will attempt to query Loki directly to see if
+over the WebSocket, the canary will attempt to query Loki directly to see if
 they are completely lost. __However__ the query return is limited to 1000
 results so you will not be able to return all the logs even if they did make it
 to Loki.

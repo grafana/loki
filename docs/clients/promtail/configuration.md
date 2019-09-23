@@ -47,7 +47,7 @@ Generic placeholders are defined as follows:
 * `<int>`: any integer matching the regular expression `[1-9]+[0-9]*`
 * `<duration>`: a duration matching the regular expression `[0-9]+(ms|[smhdwy])`
 * `<labelname>`: a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
-* `<labelvalue>`: a string of unicode characters
+* `<labelvalue>`: a string of Unicode characters
 * `<filename>`: a valid path relative to current working directory or an
     absolute path.
 * `<host>`: a valid string consisting of a hostname or IP followed by an optional port number
@@ -212,8 +212,8 @@ external_labels:
 
 ## position_config
 
-The `position_config` block configures where promtail will save a file
-indicating how far it has read into a file. It is needed for when promtail
+The `position_config` block configures where Promtail will save a file
+indicating how far it has read into a file. It is needed for when Promtail
 is restarted to allow it to continue from where it left off.
 
 ```yaml
@@ -391,7 +391,7 @@ match:
 
 The timestamp stage parses data from the extracted map and overrides the final
 time value of the log that is stored by Loki. If this stage isn't present,
-promtail will associate the timestamp of the log entry with the time that
+Promtail will associate the timestamp of the log entry with the time that
 log entry was read.
 
 ```yaml
@@ -422,7 +422,7 @@ output:
 
 #### labels_stage
 
-The labels stage takes data from the extacted map and sets additional labels
+The labels stage takes data from the extracted map and sets additional labels
 on the log entry that will be sent to Loki.
 
 ```yaml

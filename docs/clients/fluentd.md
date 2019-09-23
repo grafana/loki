@@ -1,4 +1,4 @@
-# fluentd
+# Fluentd
 
 Loki has a [Fluentd](https://fluentd.org/) output plugin called
 `fluent-plugin-grafana-loki` that enables shipping logs to a private Loki
@@ -9,7 +9,8 @@ Loki.
 
 Key features:
 
-* `extra_labels`: Labels to be added to every line of a logfile, useful for designating environments
+* `extra_labels`: Labels to be added to every line of a log file, useful for
+  designating environments
 * `label_keys`: Customizable list of keys for stream labels
 
 ## Installation
@@ -68,7 +69,7 @@ For example, using
 
 There is a Docker image `grafana/fluent-plugin-grafana-loki:master` which
 contains default configuration files to git log information
-a host's `/var/log` dir, and from the host's journald. To use it, you can set
+a host's `/var/log` directory, and from the host's journald. To use it, you can set
 the `LOKI_URL`, `LOKI_USERNAME`, and `LOKI_PASSWORD` environment variables
 (`LOKI_USERNAME` and `LOKI_PASSWORD` can be left blank if Loki is not protected
 behind an authenticating proxy).
@@ -110,7 +111,8 @@ services:
 
 ### Proxy Support
 
-Starting with version 0.8.0, this gem uses excon, which supports proxy with environment variables - https://github.com/excon/excon#proxy-support
+Starting with version 0.8.0, this gem uses `excon`, which supports proxy with
+environment variables - https://github.com/excon/excon#proxy-support
 
 ### `url`
 
@@ -141,7 +143,7 @@ the majority of log message will be sent as a single log "line".
 There are few configurations settings to control the output format:
 
 - `extra_labels`: (default: nil) set of labels to include with every Loki
-  stream. e.g.: `{"env":"dev", "datacenter": "dc1"}`
+  stream. (e.g., `{"env":"dev", "datacenter": "dc1"}`)
 
 - `remove_keys`: (default: nil) comma separated list of record keys to
   remove. All other keys will be placed into the log line.

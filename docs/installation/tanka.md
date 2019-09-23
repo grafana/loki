@@ -23,7 +23,7 @@ $ tk env add environments/loki --namespace=loki --server=<Kubernetes API server>
 
 ## Deploying
 
-Grab the Loki module using jb:
+Grab the Loki module using `jb`:
 
 ```bash
 $ go get -u github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
@@ -31,8 +31,8 @@ $ jb init
 $ jb install github.com/grafana/loki/production/ksonnet/loki
 ```
 
-Be sure to replace the username, password and the relevant htpasswd contents.
-Making sure to set the value for username, password, and htpasswd properly,
+Be sure to replace the username, password and the relevant `htpasswd` contents.
+Making sure to set the value for username, password, and `htpasswd` properly,
 replace the contents of `environments/loki/main.jsonnet` with:
 
 ```jsonnet

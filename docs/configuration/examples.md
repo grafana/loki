@@ -66,7 +66,7 @@ table_manager:
 
 ## Google Cloud Storage
 
-This is partial config that uses GCS and BigTable for the chunk and index
+This is partial config that uses GCS and Bigtable for the chunk and index
 stores, respectively.
 
 ```yaml

@@ -116,14 +116,14 @@ The following are all supported options that the Loki logging driver supports:
 | Option                          | Required? | Default Value              | Description
 | ------------------------------- | :-------: | :------------------------: | -------------------------------------- |
 | `loki-url`                      | Yes       |                            | Loki HTTP push endpoint.
-| `loki-external-labels`          | No        | `container_name={{.Name}}` | Additional label value pairs separated by `,` to send with logs. The value is expanded with the [Docker tag template format](https://docs.docker.com/engine/admin/logging/log_tags/). (eg: `container_name={{.ID}}.{{.Name}},cluster=prod`)
+| `loki-external-labels`          | No        | `container_name={{.Name}}` | Additional label value pairs separated by `,` to send with logs. The value is expanded with the [Docker tag template format](https://docs.docker.com/engine/admin/logging/log_tags/). (e.g.,: `container_name={{.ID}}.{{.Name}},cluster=prod`)
 | `loki-timeout`                  | No        | `10s`                      | The timeout to use when sending logs to the Loki instance. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
 | `loki-batch-wait`               | No        | `1s`                       | The amount of time to wait before sending a log batch complete or not. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
 | `loki-batch-size`               | No        | `102400`                   | The maximum size of a log batch to send.
 | `loki-min-backoff`              | No        | `100ms`                    | The minimum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
 | `loki-max-backoff`              | No        | `10s`                      | The maximum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
 | `loki-retries`                  | No        | `10`                       | The maximum amount of retries for a log batch.
-| `loki-pipeline-stage-file`      | No        |                            | The location of a pipeline stage configuration file. Pipeline stages allows to parse log lines to extract more labels. [See promtail documentation for more info.](../promtail/pipelines.md)
+| `loki-pipeline-stage-file`      | No        |                            | The location of a pipeline stage configuration file. Pipeline stages allows to parse log lines to extract more labels. [See the Promtail documentation for more info.](../promtail/pipelines.md)
 | `loki-tls-ca-file`              | No        |                            | Set the path to a custom certificate authority.
 | `loki-tls-cert-file`            | No        |                            | Set the path to a client certificate file.
 | `loki-tls-key-file`             | No        |                            | Set the path to a client key.

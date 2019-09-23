@@ -5,9 +5,9 @@
 
 Loki needs to store two different types of data: **chunks** and **indexes**.
 
-Loki recieves logs in separate streams, where each stream is uniquely identified
+Loki receives logs in separate streams, where each stream is uniquely identified
 by its tenant ID and its set of labels. As log entries from a stream arrive,
-they are gzipped as "chunks" and saved in the chunks store. See [chunk
+they are GZipped as "chunks" and saved in the chunks store. See [chunk
 format](#chunk-format) for how chunks are stored internally.
 
 The **index** stores each stream's label set and links them to the individual

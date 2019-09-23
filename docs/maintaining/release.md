@@ -27,7 +27,7 @@ make release-prepare
 
 * Set the release version and in most cases the auto selected helm version numbers should be fine.
 * Commit to another branch, make a PR and get merge it.
-* Go to github and finish manually editing the auto generated release template and publish it!
+* Go to GitHub and finish manually editing the auto generated release template and publish it!
 
 
 

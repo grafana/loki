@@ -392,7 +392,7 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/label/foo/values" | jq
 
 Alias (DEPRECATED): `GET /api/prom/tail`
 
-`/loki/api/v1/tail` is a websocket endpoint that will stream log messages based on
+`/loki/api/v1/tail` is a WebSocket endpoint that will stream log messages based on
 a query. It accepts the following query parameters in the URL:
 
 - `query`: The [LogQL](./logql.md) query to perform
@@ -434,7 +434,7 @@ that the keys in `dropped_entries` will be sent as uppercase `Timestamp`
 and `Labels` instead of `labels` and `ts` like in the entries for the stream.
 
 As the response is streamed, the object defined by the response format above
-will be sent over the websocket multiple times.
+will be sent over the WebSocket multiple times.
 
 
 
@@ -507,7 +507,7 @@ $ curl -G -s  "http://localhost:3100/api/prom/query" --data-urlencode '{foo="bar
 behavior is for the POST body to be a snappy-compressed protobuf messsage:
 
 - [Protobuf definition](/pkg/logproto/logproto.proto)
-- [Golang client library](/pkg/promtail/client/client.go)
+- [Go client library](/pkg/promtail/client/client.go)
 
 Alternatively, if the `Content-Type` header is set to `application/json`, a
 JSON post body can be sent in the following format:
@@ -564,6 +564,6 @@ In microservices mode, the `/metrics` endpoint is exposed by all components.
 Please note that the Loki API is not stable yet and breaking changes may occur
 when using or writing a third-party client.
 
-- [promtail](https://github.com/grafana/loki/tree/master/pkg/promtail) (Official, Go)
+- [Promtail](https://github.com/grafana/loki/tree/master/pkg/promtail) (Official, Go)
 - [promtail-client](https://github.com/afiskon/promtail-client) (Go)
 - [push-to-loki.py](https://github.com/sleleko/devops-kb/blob/master/python/push-to-loki.py) (Python 3)

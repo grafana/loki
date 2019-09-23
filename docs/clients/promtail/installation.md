@@ -52,11 +52,11 @@ $ helm upgrade --install promtail loki/promtail --set "loki.serviceName=loki"
 
 ## Kubernetes
 
-### Daemonset (Recommended)
+### DaemonSet (Recommended)
 
 A `DaemonSet` will deploy `promtail` on every node within a Kubernetes cluster.
 
-The Daemonset deployment is great to collect the logs of all containers within a
+The DaemonSet deployment is great to collect the logs of all containers within a
 cluster. It's the best solution for a single-tenant model.
 
 ```yaml

@@ -36,7 +36,7 @@ The current team members are:
   - May also review for more holistic issues, but not a requirement
 - Expected to be responsive to review requests in a timely manner
 - Assigned PRs to review related based on expertise
-- Granted commit access to Loki repo
+- Granted commit access to Loki repository
 
 ### New members
 
@@ -64,7 +64,7 @@ Technical decisions are made informally by the team member, and [lazy consensus]
 
 ### Governance changes
 
-Material changes to this document are discussed publicly on as an issue on the Loki repo. Any change requires a [supermajority](#supermajority-vote) in favor. Editorial changes may be made by [lazy consensus](#consensus) unless challenged.
+Material changes to this document are discussed publicly on as an issue on the Loki repository. Any change requires a [supermajority](#supermajority-vote) in favor. Editorial changes may be made by [lazy consensus](#consensus) unless challenged.
 
 ### Other matters
 

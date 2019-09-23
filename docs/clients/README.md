@@ -13,7 +13,7 @@ client is initially picked to send logs depends on your use case.
 
 Promtail is the client of choice when you're running Kubernetes, as you can
 configure it to automatically scrape logs from pods running on the same node
-that promtail runs on. Promtail and Prometheus running together in Kubernetes
+that Promtail runs on. Promtail and Prometheus running together in Kubernetes
 enables powerful debugging: if Prometheus and Promtail use the same labels,
 users can use tools like Grafana to switch between metrics and logs based on the
 label set.

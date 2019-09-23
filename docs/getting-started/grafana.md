@@ -1,6 +1,6 @@
 # Loki in Grafana
 
-Grafanan ships with built-in support for Loki for versions greater than
+Grafana ships with built-in support for Loki for versions greater than
 [6.0](https://grafana.com/grafana/download/6.0.0). Using
 [6.3](https://grafana.com/grafana/download/6.3.0) or later is highly
 recommended to take advantage of new LogQL functionality.
@@ -15,7 +15,7 @@ recommended to take advantage of new LogQL functionality.
    when running locally or with Docker using port mapping, the address is
    likely `http://localhost:3100`. When running with docker-compose or
    Kubernetes, the address is likely `https://loki:3100`.
-6. To see the logs, click <kbd>Explore</kbd> on the sidebar, seelct the Loki
+6. To see the logs, click <kbd>Explore</kbd> on the sidebar, select the Loki
    datasource in the top-left dropdown, and then choose a log stream using the
    <kbd>Log labels</kbd> button.
 

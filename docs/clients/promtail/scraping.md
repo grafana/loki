@@ -35,12 +35,12 @@ There are different types of labels present in Promtail:
 * Labels starting with `__meta_kubernetes_pod_label_*` are "meta labels" which
   are generated based on your Kubernetes pod's labels.
 
-  For exmaple, if your Kubernetes pod has a label `name` set to `foobar`, then
-  the `scrape_configs` section will recieve an internal label
+  For example, if your Kubernetes pod has a label `name` set to `foobar`, then
+  the `scrape_configs` section will receive an internal label
   `__meta_kubernetes_pod_label_name` with a value set to `foobar`.
 
 * Other labels starting with `__meta_kubernetes_*` exist based on other
-  Kubernetes metadata,s such as the namespace of the pod
+  Kubernetes metadata, such as the namespace of the pod
   (`__meta_kubernetes_namespace`) or the name of the container inside the pod
   (`__meta_kubernetes_pod_container_name`). Refer to
   [the Prometheus docs](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#kubernetes_sd_config)
@@ -55,7 +55,7 @@ There are different types of labels present in Promtail:
 
 ### Kubernetes Discovery
 
-Note that while promtail can utilize the Kubernetes API to discover pods as
+Note that while Promtail can utilize the Kubernetes API to discover pods as
 targets, it can only read log files from pods that are running on the same node
 as the one Promtail is running on. Promtail looks for a `__host__` label on
 each target and validates that it is set to the same hostname as Promtail's

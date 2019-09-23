@@ -20,7 +20,7 @@ or
 
 Currently the retention policy can only be set globally. A per-tenant retention
 policy with an API to delete ingested logs is still under development. Feel free
-to add your feeback to the [GitHub issue tracking this](https://github.com/grafana/loki/issues/162).
+to add your feedback to the [GitHub issue tracking this](https://github.com/grafana/loki/issues/162).
 
 Since a design goal of Loki is to make storing logs cheap, a volume-based
 deletion API is deprioritized. Until this feature is released, if you suddenly

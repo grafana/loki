@@ -1,6 +1,6 @@
 # Pipelines and Stages
 
-A detailed look at how to setup promtail to process your log lines, including
+A detailed look at how to setup Promtail to process your log lines, including
 extracting metrics and labels.
 
   * [Pipeline](#pipeline)
@@ -111,12 +111,12 @@ extracted key `panic` is found in the `extracted` map.
 
 ### Data Accessible to Stages
 
-The following sections further describe the types that are acessible to each
+The following sections further describe the types that are accessible to each
 stage (although not all may be used)
 
 ##### Label Set
 
-A set of prometheus style labels which will be sent with the log line and will
+A set of Prometheus-style labels which will be sent with the log line and will
 be indexed by Loki.
 
 ##### Extracted Map
@@ -130,14 +130,14 @@ to extract data from a log line and store it in the `extracted` map, which
 following stages like [timestamp](#timestamp) or [output](#output) can use to
 manipulate the log lines `time` and `entry`.
 
-##### Log Timesamp
+##### Log Timestamp
 
 The timestamp for which Loki will store for the log line, if not set within the
 pipeline using the [timestamp](#timestamp) stage, it will default to time.Now().
 
 ##### Log Line
 
-The log line which will be stored by loki, the [output](#output) stage is
+The log line which will be stored by Loki, the [output](#output) stage is
 capable of modifying this value, if no stage modifies this value the log line
 stored will match what was input to the system and not be modified.
 
@@ -179,7 +179,7 @@ A regex stage will take the provided regex and set the named groups as data in t
     source:      ②
 ```
 
-① `expression` is **required** and needs to be a [golang RE2 regex string](https://github.com/google/re2/wiki/Syntax). Every capture group `(re)` will be set into the `extracted` map, every capture group **must be named:** `(?P<name>re)`, the name will be used as the key in the map.
+① `expression` is **required** and needs to be a [Go RE2 regex string](https://github.com/google/re2/wiki/Syntax). Every capture group `(re)` will be set into the `extracted` map, every capture group **must be named:** `(?P<name>re)`, the name will be used as the key in the map.
 
 ② `source` is optional and contains the name of key in the `extracted` map containing the data to parse. If omitted, the regex stage will parse the log `entry`.
 
@@ -244,16 +244,16 @@ and set the key/value data in the `extracted` map.
     source:             ③
 ```
 
-① `expressions` is a required yaml object containing key/value pairs of JMESPath expressions
+① `expressions` is a required YAML object containing key/value pairs of JMESPath expressions
 
 ② `key: expression` where `key` will be the key in the `extracted` map, and the value will be the evaluated JMESPath expression.
 
 ③ `source` is optional and contains the name of key in the `extracted` map containing the json to parse. If omitted, the json stage will parse the log `entry`.
 
-This stage uses the Go JSON unmarshaller, which means non string types like
-numbers or booleans will be unmarshalled into those types.  The `extracted` map
+This stage uses the Go JSON unmarshaler, which means non string types like
+numbers or booleans will be unmarshaled into those types.  The `extracted` map
 will accept non-string values and this stage will keep primitive types as they
-are unmarshalled (e.g. bool or float64).  Downstream stages will need to perform
+are unmarshaled (e.g. bool or float64).  Downstream stages will need to perform
 correct type conversion of these values as necessary.
 
 If the value is a complex type, for example a JSON object, it will be marshalled
@@ -372,7 +372,7 @@ in the map would be `loki_some_suffix`
 This would take the value of `app` from `extracted` data and lowercase all the
 letters.  If `app=LOKI` the new value for `app` would be `loki`.
 
-The template syntax passes paramters to functions using space delimiters,
+The template syntax passes parameters to functions using space delimiters,
 functions only taking a single argument can also use the pipe syntax:
 
 ```yaml
@@ -428,7 +428,7 @@ of pipeline stages which is defined exactly the same as the root pipeline.
 
 A timestamp stage will parse data from the `extracted` map and set the `time`
 value which will be stored by Loki. The timestamp stage is important for having
-log entries in the correct order. In the absence of this stage, promtail will
+log entries in the correct order. In the absence of this stage, Promtail will
 associate the current timestamp to the log entry.
 
 ```yaml
@@ -469,11 +469,11 @@ UnixNs = 1562708916000000123
 
 Finally any custom format can be supplied, and will be passed directly in as the
 layout parameter in `time.Parse()`. If the custom format has no year component
-specified (ie. syslog's default logs), promtail will assume the current year
+specified (i.e., syslog's default logs), Promtail will assume the current year
 should be used, correctly handling the edge cases around new year's eve.
 
 The syntax used by the custom format defines the reference date and time using
-specific values for each component of the timestamp (ie. `Mon Jan 2 15:04:05
+specific values for each component of the timestamp (i.e., `Mon Jan 2 15:04:05
 -0700 MST 2006`). The following table shows supported reference values which
 should be used in the custom format.
 

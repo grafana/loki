@@ -5,7 +5,7 @@ logging stack.
 
 Unlike other logging systems, Loki is built around the idea of only indexing
 labels for logs and leaving the original log message unindexed. This means
-that Loki is cheaper to operate and can be orders of magnitude more efficent.
+that Loki is cheaper to operate and can be orders of magnitude more efficient.
 
 For a more detailed version of this same document, please read
 [Architecture](../architecture.md).
@@ -24,7 +24,7 @@ horizontally: Loki comes with a _single process mode_ that runs all of the requi
 microservices in one process. The single process mode is great for testing Loki
 or for running it at a small scale. For horizontal scalability, the
 microservices of Loki can be broken out into separate processes, allowing them
-to scale indepedently of each other.
+to scale independently of each other.
 
 ## Components
 
@@ -42,7 +42,7 @@ stateless and can be scaled up and down as needed.
 
 Distributors use consistent hashing in conjunction with a configurable
 replication factor to determine which instances of the ingester service should
-recieve log data.
+receive log data.
 
 The hash is based on a combination of the log's labels and the tenant ID.
 
@@ -59,7 +59,7 @@ sent to any distributor.
 
 To ensure consistent query results, Loki uses
 [Dynamo-style](https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf)
-quoum consistency on reads and writes. This means that the distributor will wait
+quorum consistency on reads and writes. This means that the distributor will wait
 for a positive response of at least one half plus one of the ingesters to send
 the sample to before responding to the user.
 
@@ -104,7 +104,7 @@ loading data from the backend store.
 
 The **chunk store** is Loki's long-term data store, designed to support
 interactive querying and sustained writing without the need for background
-maintainence tasks. It consists of:
+maintenance tasks. It consists of:
 
 * An index for the chunks. This index can be backed by
   [DynamoDB from Amazon Web Services](https://aws.amazon.com/dynamodb),
