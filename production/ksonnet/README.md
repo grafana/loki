@@ -113,5 +113,16 @@ loki + promtail + gateway {
 ```
 Notice that `container_root_path` is your own data root for docker daemon, use `docker info | grep "Root Dir"` to get it.
 
+As a last step, fill add the correct `spec.apiServer` and `spec.namespace` to `environments/default/spec.json`:
+
+{
+  "apiVersion": "tanka.dev/v1alpha1",
+  "kind": "Environment",
+  "spec": {
+    "apiServer": "https://localhost:6443",
+    "namespace": "default"
+  }
+}
+
 Use `tk show environments/default` to see the manifests being deployed to the cluster.
 Finally `tk apply environments/default` will deploy the server components to your cluster.
