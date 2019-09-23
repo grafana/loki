@@ -5,11 +5,11 @@ Overview](overview/README.md).
 
 ## Multi Tenancy
 
-All data both in memory and in long-term storage is partitioned by a tenant ID,
-pulled from the `X-Scope-OrgID` header from the request when Loki is run in
-multi-tenant mode. When Loki is **not** in multi-tenant mode, the header
-is ignored and the tenant ID is set to "fake", which will appear in the index
-and in stored chunks.
+All data - both in memory and in long-term storage - is partitioned by a
+tenant ID, pulled from the `X-Scope-OrgID` HTTP header in the request when Loki
+is running in multi-tenant mode. When Loki is **not** in multi-tenant mode, the
+header is ignored and the tenant ID is set to "fake", which will appear in the
+index and in stored chunks.
 
 ## Modes of Operation
 
@@ -18,7 +18,8 @@ and in stored chunks.
 Loki has a set of components (defined below in [Components](#components)) which
 are internally referred to as modules. Each component spawns a gRPC server for
 internal traffic and an HTTP/1 server for external API requests. All components
-come with an HTTP/1 server, but most only expose readiness and health endpoints.
+come with an HTTP/1 server, but most only expose readiness, health, and metrics
+endpoints.
 
 While each component can be run in a separate process, Loki also supports running
 all components in a single process. Running all components in a single process is
@@ -31,7 +32,7 @@ communicate to one another over gRPC using the gRPC listen port of the overall
 process.
 
 Single process mode is ideally suited for local development, small workloads,
-and for evaluation purposes. Single-process mode can be scaled with multiple
+and for evaluation purposes. Monolithic mode can be scaled with multiple
 processes with the following limitations:
 
 1. Local index and local storage cannot currently be used as they are not safe
@@ -54,7 +55,7 @@ in parallel.
 
 Distributors use consistent hashing in conjunction with a configurable
 replication factor to determine which instances of the ingester service should
-receive log data for a given stream.
+receive a given stream.
 
 A stream is a set of logs associated to a tenant and a unique labelset. The
 stream is hashed using both the tenant ID and the labelset and then the hash is
@@ -65,13 +66,13 @@ consistent hashing; all [ingesters](#ingester) register themselves into the hash
 ring with a set of tokens they own. Each token is a random unsigned 64-bit
 number. Along with a set of tokens, ingesters register their state into the
 hash ring. The state JOINING, and ACTIVE may all receive write requests, while
-ACTIVE and LEAVING ingesters may receieve read requests. When doing a hash
+ACTIVE and LEAVING ingesters may receive read requests. When doing a hash
 lookup, distributors only use tokens for ingesters who are in the appropriate
 state for the request.
 
 To do the hash lookup, distributors find the smallest appropriate token whose
 value is larger than the hash of the stream. When the replication factor is
-larger than 1, the next sucessing tokens (clockwise in the ring) that belong to
+larger than 1, the next subsequent tokens (clockwise in the ring) that belong to
 different ingesters will also be included in the result.
 
 The effect of this hash set up is that each token that an ingester owns is
@@ -88,7 +89,7 @@ To ensure consistent query results, Loki uses
 [Dynamo-style](https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf)
 quorum consistency on reads and writes. This means that the distributor will wait
 for a positive response of at least one half plus one of the ingesters to send
-the sample to before responding to the user.
+the sample to before responding to the client that initiated the send.
 
 ### Ingester
 
@@ -96,44 +97,49 @@ The **ingester** service is responsible for writing log data to long-term
 storage backends (DynamoDB, S3, Cassandra, etc.) on the write path and returning
 log data for in-memory queries on the read path.
 
-Ingesters contain a _lifecycler_ which manages the lifecycler of an ingester in
-the hash ring. Each ingester has a state of either PENDING, JOINING, ACTIVE,
-LEAVING, or UNHEALTHY:
+Ingesters contain a _lifecycler_ which manages the lifecycle of an ingester in
+the hash ring. Each ingester has a state of either `PENDING`, `JOINING`,
+`ACTIVE`, `LEAVING`, or `UNHEALTHY`:
 
-1. PENDING is an Ingester's state when it is waiting for a handoff from another
-   ingester that is LEAVING.
+1. `PENDING` is an Ingester's state when it is waiting for a handoff from
+   another ingester that is `LEAVING`.
 
-2. JOINING is an Ingester's state when it is currently inserting its tokens into
-   the ring and initializing itself. It may receive write requests for tokens it
-   owns.
+2. `JOINING` is an Ingester's state when it is currently inserting its tokens
+   into the ring and initializing itself. It may receive write requests for
+   tokens it owns.
 
-3. ACTIVE is an Ingester's state when it is fully initialized. It may receive
+3. `ACTIVE` is an Ingester's state when it is fully initialized. It may receive
    both write and read requests for tokens it owns.
 
-4. LEAVING is an Ingester's state when it is shutting down. It may receive read
-   requests for data it still has in memory.
+4. `LEAVING` is an Ingester's state when it is shutting down. It may receive
+   read requests for data it still has in memory.
 
-5. UNHEALTHY is an Ingester's state when it has failed to heartbeart to Consul.
-   UNHEALHTY is set by the distributor when it periodically checks the ring.
+5. `UNHEALTHY` is an Ingester's state when it has failed to heartbeat to
+   Consul. `UNHEALHTY` is set by the distributor when it periodically checks the ring.
 
-Each log stream that an ingester receives is built up into a set of many "chunks"
-in memory and flushed to the backing storage backend at a configurable interval.
+Each log stream that an ingester receives is built up into a set of many
+"chunks" in memory and flushed to the backing storage backend at a configurable
+interval.
 
-A new chunk is created in memory when:
+Chunks are compressed and marked as read-only when:
 
-1. The chunk has reached capacity (a configurable value)
-2. Too much time has passed without the chunk being updated
+1. The current chunk has reached capacity (a configurable value).
+2. Too much time has passed without the current chunk being updated
 3. A flush occurs.
+
+Whenever a chunk is compressed and marked as read-only, a writable chunk takes
+its place.
 
 If an ingester process crashes or exits abruptly, all the data that has not yet
 been flushed will be lost. Loki is usually configured to replicate multiple
 replicas (usually 3) of each log to mitigate this risk.
 
-When a flush occurs to a backend store, the chunk is hashed based on its tenant,
-labels, and contents. This means that multiple ingesters with the same copy of
-data will not write the same data to the backing store twice, but if any write
-failed to one of the replicas, multiple differing chunk objects will be created
-in the backing store. See [Querier](#querier) for how data is deduplicated.
+When a flush occurs to a persistent storage provider, the chunk is hashed based
+on its tenant, labels, and contents. This means that multiple ingesters with the
+same copy of data will not write the same data to the backing store twice, but
+if any write failed to one of the replicas, multiple differing chunk objects
+will be created in the backing store. See [Querier](#querier) for how data is
+deduplicated.
 
 #### Handoff
 
@@ -142,36 +148,44 @@ it will wait to see if a new ingester tries to enter before flushing and will
 try to initiate a handoff. The handoff will transfer all of the tokens and
 in-memory chunks owned by the leaving ingester to the new ingester.
 
+Before joining the hash ring, ingesters will wait in `PENDING` state for a
+handoff to occur. After a configurable timeout, ingesters in the `PENDING` state
+that have not received a transfer will join the ring normally, inserting a new
+set of tokens.
+
 This process is used to avoid flushing all chunks when shutting down, which is a
 slow process.
 
 ### Querier
 
-The **querier** service handles the actual [LogQL](./logql.md) evaluation of
-logs stored in long-term storage.
+The **querier** service handles queries using the [LogQL](./logql.md) query
+language, fetching logs both from the ingesters and long-term storage.
 
 Queriers query all ingesters for in-memory data before falling back to
-running the same query against the backend store. Queriers build an iterator
-over the data from the appropriate sources and perform deduplication: if two log
-lines have the exact same nanosecond timestamp and the exact same contents, the
-duplicates will not be returned in the query result.
+running the same query against the backend store. Because of the replication
+factor, it is possible that the querier may receive duplicate data. To resolve
+this, the querier internally **deduplicates** data that has the same nanosecond
+timestamp, label set, and log message.
 
 ## Chunk Store
 
 The **chunk store** is Loki's long-term data store, designed to support
 interactive querying and sustained writing without the need for background
-maintainence tasks. It consists of:
+maintenance tasks. It consists of:
 
-* An index for the chunks. This index can be backed by
-  [DynamoDB from Amazon Web Services](https://aws.amazon.com/dynamodb),
-  [Bigtable from Google Cloud Platform](https://cloud.google.com/bigtable), or
-  [Apache Cassandra](https://cassandra.apache.org).
-* A key-value (KV) store for the chunk data itself, which can be DynamoDB,
-  Bigtable, Cassandra again, or an object store such as
-  [Amazon * S3](https://aws.amazon.com/s3)
+* An index for the chunks. This index can be backed by:
+    * [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
+    * [Google bigtab](https://cloud.google.com/bigtable)
+    * [Apache Cassandra](https://cassandra.apache.org)
+* A key-value (KV) store for the chunk data itself, which can be:
+    * [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
+    * [Google Bigtable](https://cloud.google.com/bigtable)
+    * [Apache Cassandra](https://cassandra.apache.org)
+    * [Amazon S3](https://aws.amazon.com/s3)
+    * [Google Cloud Storage](https://cloud.google.com/storage/)
 
 > Unlike the other core components of Loki, the chunk store is not a separate
-> service, job, or process, but rather a library embedded in the three services
+> service, job, or process, but rather a library embedded in the two services
 > that need to access Loki data: the [ingester](#ingester) and [querier](#querier).
 
 The chunk store relies on a unified interface to the
@@ -187,7 +201,7 @@ The interface works somewhat differently across the supported databases:
 
 * DynamoDB supports range and hash keys natively. Index entries are thus
   modelled directly as DynamoDB entries, with the hash key as the distribution
-  key and the range as the range key.
+  key and the range as the DynamoDB range key.
 * For Bigtable and Cassandra, index entries are modelled as individual column
   values. The hash key becomes the row key and the range key becomes the column
   key.
@@ -201,11 +215,10 @@ writes and improve query performance.
 
 ## Read Path
 
-To summarize, the read path does the following:
+To summarize, the read path works as follows:
 
 1. The querier receives an HTTP/1 request for data.
-2. The querier passes the query to all ingesters for in-memory data and with a
-   lazily-loaded fallback of the backing store.
+2. The querier passes the query to all ingesters for in-memory data.
 3. The ingesters receive the read request and return data matching the query, if
    any.
 4. The querier lazily loads data from the backing store and runs the query
@@ -217,7 +230,7 @@ To summarize, the read path does the following:
 
 ![chunk_diagram](chunks_diagram.png)
 
-To summarize, the write path does the following:
+To summarize, the write path works as follows:
 
 1. The distributor receives an HTTP/1 request to store data for streams.
 2. Each stream is hashed using the hash ring.

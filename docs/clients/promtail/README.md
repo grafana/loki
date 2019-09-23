@@ -1,7 +1,8 @@
-# promtail
+# Promtail
 
-Promtail is an agent which ships the contents of local logs to Loki. It is
-usually deployed to every machine that has applications needed to be monitored.
+Promtail is an agent which ships the contents of local logs to a private Loki
+instance or [Grafana Cloud](https://grafana.com/oss/loki). It is usually
+deployed to every machine that has applications needed to be monitored.
 
 It primarily:
 
@@ -9,7 +10,7 @@ It primarily:
 2. Attaches labels to log streams
 3. Pushes them to the Loki instance.
 
-Currently, promtail can tail logs from two sources: local log files and the
+Currently, Promtail can tail logs from two sources: local log files and the
 systemd journal (on AMD64 machines only).
 
 ## Log File Discovery
@@ -29,7 +30,7 @@ Kubernetes API server while `static` usually covers all other use cases.
 Just like Prometheus, `promtail` is configured using a `scrape_configs` stanza.
 `relabel_configs` allows for fine-grained control of what to ingest, what to
 drop, and the final metadata to attach to the log line. Refer to the docs for
-[configuring promtail](configuration.md) for more details.
+[configuring Promtail](configuration.md) for more details.
 
 ## Labeling and Parsing
 
@@ -48,8 +49,8 @@ timestamp, or re-write log lines entirely. Refer to the documentation for
 
 Once Promtail has a set of targets (i.e., things to read from, like files) and
 all labels are set correctly, it will start tailing (continuously reading) the
-logs from targets. Once enough data is read into memory, it is flushed as a
-single batch to Loki.
+logs from targets. Once enough data is read into memory or after a configurable
+timeout, it is flushed as a single batch to Loki.
 
 As Promtail reads data from sources (files and systemd journal, if configured),
 it will track the last offset it read in a positions file. By default, the
@@ -71,9 +72,9 @@ This endpoint returns Promtail metrics for Prometheus. See
 "[Operations > Observability](../../operations/observability.md)" to get a list
 of exported metrics.
 
-## Promtail web server config
+### Promtail web server config
 
-The web server exposed by Promtail can be configured in the promtail `.yaml` config file:
+The web server exposed by Promtail can be configured in the Promtail `.yaml` config file:
 
 ```yaml
 server:

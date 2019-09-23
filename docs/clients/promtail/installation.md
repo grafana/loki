@@ -1,6 +1,7 @@
 # Installing Promtail
 
-Promtail is distributed as a binary, Docker container, and Helm chart.
+Promtail is distributed as a [binary](#binary), [Docker container](#docker), and
+[Helm chart](#helm).
 
 ## Binary
 

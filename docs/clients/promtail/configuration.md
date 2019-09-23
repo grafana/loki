@@ -34,10 +34,10 @@ and how to scrape logs from files.
 
 To specify which configuration file to load, pass the `-config.file` flag at the
 command line. The file is written in [YAML format](https://en.wikipedia.org/wiki/YAML),
-defined by the scheme below. Brackets indicate that a parameter is optional. For
+defined by the schema below. Brackets indicate that a parameter is optional. For
 non-list parameters the value is set to the specified default.
 
-For more details information on configuring how to discover and scrape logs from
+For more detailed information on configuring how to discover and scrape logs from
 targets, see [Scraping](scraping.md). For more information on transforming logs
 from scraped targets, see [Pipelines](pipelines.md).
 
@@ -200,7 +200,7 @@ backoff_config:
   # Maximum number of retries to do
   [maxretries: <int> | default = 10]
 
-# Static labels to add to all logs being sent to loki.
+# Static labels to add to all logs being sent to Loki.
 # Use map like {"foo": "bar"} to add a label foo with
 # value bar.
 external_labels:
@@ -263,11 +263,11 @@ kubernetes_sd_configs:
 
 ### pipeline_stages
 
-The pipeline stages (`pipeline_stages`) is used to transform log entries and
-their labels after discovery. It is simply an array of various stages, defined
-below.
+The [pipeline](./pipelines.md) stages (`pipeline_stages`) is used to transform
+log entries and their labels after discovery. It is simply an array of various
+stages, defined below.
 
-The point of most stages is to extract fields and values into a temporary
+The purpose of most stages is to extract fields and values into a temporary
 set of key-value pairs that is passed around from stage to stage.
 
 ```yaml
@@ -315,8 +315,9 @@ regex:
 
 #### json_stage
 
-The JSON stage takes JMESPath expressions and extracts data to be used in
-further stages.
+The JSON stage parses a log line as JSON and takes
+[JMESPath](http://jmespath.org/) expressions to extract data from the JSON to be
+used in further stages.
 
 ```yaml
 json:
@@ -332,7 +333,9 @@ json:
 
 #### template_stage
 
-The template stage uses Go's `text/template` language to manipulate values.
+The template stage uses Go's
+[`text/template`](https://golang.org/pkg/text/template) language to manipulate
+values.
 
 ```yaml
 template:
@@ -356,8 +359,8 @@ template:
 
 #### match_stage
 
-The match stage wraps a second set of stages to determine if they should
-be executed.
+The match stage conditionally executes a set of stages when a log entry matches
+a configurable [LogQL](../../logql.md) stream selector.
 
 ```yaml
 match:
@@ -434,6 +437,11 @@ labels:
 #### metrics_stage
 
 The metrics stage allows for defining metrics from the extracted data.
+
+Created metrics are not pushed to Loki and are instead exposed via Promtail's
+`/metrics` endpoint. Prometheus should be configured to scrape Promtail to be
+able to retrieve the metrics configured by this stage.
+
 
 ```yaml
 # A map where the key is the name of the metric and the value is a specific
@@ -728,7 +736,7 @@ as retrieved from the API server.
 
 #### `service`
 
-The `service` role discovers a target for each service port for each service.
+The `service` role discovers a target for each service port of each service.
 This is generally useful for blackbox monitoring of a service.
 The address will be set to the Kubernetes DNS name of the service and respective
 service port.

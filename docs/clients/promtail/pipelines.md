@@ -14,8 +14,8 @@ pipeline contains a set of stages where each stage can do the following:
 1. Manipulate the set of labels
 2. Extract data from the log line into a map passed around from
    stage to stage
-3. Change the time of the log line
-4. Change the log line contents
+3. Change the timestamp of the log line
+4. Change the log line's content
 
 Each stage receives as input the set of labels for the line, the set of
 extracted data (represented as a dictionary of a string to a value of any type),
@@ -129,8 +129,6 @@ For example, stages like [regex](#regex) and [json](#json) will use expressions
 to extract data from a log line and store it in the `extracted` map, which
 following stages like [timestamp](#timestamp) or [output](#output) can use to
 manipulate the log lines `time` and `entry`.
-
-Defined in Go as `map[string]interface{}`.
 
 ##### Log Timesamp
 

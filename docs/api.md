@@ -14,7 +14,7 @@ The HTTP API includes the following endpoints:
 - [`GET /api/prom/query`](#get-apipromquery)
 - [`POST /api/prom/push`](#post-apiprompush)
 - [`GET /ready`](#get-ready)
-- [`GET /flush`](#get-flush)
+- [`POST /flush`](#post-flush)
 - [`GET /metrics`](#get-metrics)
 
 ## Microservices Mode
@@ -42,7 +42,7 @@ While these endpoints are exposed by just the distributor:
 
 And these endpoints are exposed by just the ingester:
 
-- [`GET /flush`](#get-flush)
+- [`POST /flush`](#post-flush)
 
 The API endpoints starting with `/loki/` are [Prometheus API-compatible](https://prometheus.io/docs/prometheus/latest/querying/api/) and the result formats can be used interchangeably.
 
@@ -356,7 +356,7 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/label" | jq
 ## `GET /loki/api/v1/label/<name>/values`
 
 `/loki/api/v1/label/<name>/values` retrieves the list of known values for a given
-label within a given time span. It accepts thw following query parameters in
+label within a given time span. It accepts the following query parameters in
 the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
@@ -392,7 +392,7 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/label/foo/values" | jq
 
 Alias (DEPRECATED): `GET /api/prom/tail`
 
-`/loki/api/v1/tail` is a websocket endpoint that will stream log messsages based on
+`/loki/api/v1/tail` is a websocket endpoint that will stream log messages based on
 a query. It accepts the following query parameters in the URL:
 
 - `query`: The [LogQL](./logql.md) query to perform
@@ -503,8 +503,8 @@ $ curl -G -s  "http://localhost:3100/api/prom/query" --data-urlencode '{foo="bar
 
 ## `POST /api/prom/push`
 
-`/api/prom/push` is how log entries are sent to Loki. The default behavior is
-for the POST body to be a snappy-compress protobuf messsage:
+`/api/prom/push` is the endpoint used to send log entries to Loki. The default
+behavior is for the POST body to be a snappy-compressed protobuf messsage:
 
 - [Protobuf definition](/pkg/logproto/logproto.proto)
 - [Golang client library](/pkg/promtail/client/client.go)
@@ -544,12 +544,12 @@ running Loki on Kubernetes, `/ready` can be used as a readiness probe.
 
 In microservices mode, the `/ready` endpoint is exposed by all components.
 
-## `GET /flush`
+## `POST /flush`
 
 `/flush` triggers a flush of all in-memory chunks held by the ingesters to the
 backing store. Mainly used for local testing.
 
-In microservices mode, the `/ready` endpoint is exposed by the ingester.
+In microservices mode, the `/flush` endpoint is exposed by the ingester.
 
 ## `GET /metrics`
 
@@ -564,5 +564,6 @@ In microservices mode, the `/metrics` endpoint is exposed by all components.
 Please note that the Loki API is not stable yet and breaking changes may occur
 when using or writing a third-party client.
 
+- [promtail](https://github.com/grafana/loki/tree/master/pkg/promtail) (Official, Go)
 - [promtail-client](https://github.com/afiskon/promtail-client) (Go)
 - [push-to-loki.py](https://github.com/sleleko/devops-kb/blob/master/python/push-to-loki.py) (Python 3)

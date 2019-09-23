@@ -1,7 +1,8 @@
 # fluentd
 
 Loki has a [Fluentd](https://fluentd.org/) output plugin called
-`fluent-plugin-grafana-loki` that enables shipping logs to a Loki server.
+`fluent-plugin-grafana-loki` that enables shipping logs to a private Loki
+instance or [Grafana Cloud](https://grafana.com/oss/loki).
 
 The plugin offers two line formats and uses protobuf to send compressed data to
 Loki.
