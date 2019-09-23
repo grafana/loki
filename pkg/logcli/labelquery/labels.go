@@ -5,7 +5,7 @@ import (
 	"log"
 
 	"github.com/grafana/loki/pkg/logcli/client"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/loghttp"
 )
 
 // LabelQuery contains all necessary fields to execute label queries and print out the resutls
@@ -25,7 +25,7 @@ func (q *LabelQuery) DoLabels(c *client.Client) {
 
 // ListLabels returns an array of label strings
 func (q *LabelQuery) ListLabels(c *client.Client) []string {
-	var labelResponse *logproto.LabelResponse
+	var labelResponse *loghttp.LabelResponse
 	var err error
 	if len(q.LabelName) > 0 {
 		labelResponse, err = c.ListLabelValues(q.LabelName, q.Quiet)

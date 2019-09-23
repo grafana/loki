@@ -4,21 +4,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql"
-
 	"github.com/fatih/color"
-	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logproto"
 )
+
+type streamEntryPair struct {
+	entry  loghttp.Entry
+	labels loghttp.LabelSet
+}
 
 // Query contains all necessary fields to execute instant and range queries and print the results.
 type Query struct {
@@ -38,7 +41,7 @@ type Query struct {
 func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 	d := q.resultsDirection()
 
-	var resp *client.QueryResult
+	var resp *loghttp.QueryResponse
 	var err error
 
 	if q.isInstant() {
@@ -51,18 +54,18 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 		log.Fatalf("Query failed: %+v", err)
 	}
 
-	switch resp.ResultType {
+	switch resp.Data.ResultType {
 	case logql.ValueTypeStreams:
-		streams := resp.Result.(logql.Streams)
+		streams := resp.Data.Result.(loghttp.Streams)
 		q.printStream(streams, out)
 	case promql.ValueTypeMatrix:
-		matrix := resp.Result.(model.Matrix)
+		matrix := resp.Data.Result.(loghttp.Matrix)
 		q.printMatrix(matrix)
 	case promql.ValueTypeVector:
-		vector := resp.Result.(model.Vector)
+		vector := resp.Data.Result.(loghttp.Vector)
 		q.printVector(vector)
 	default:
-		log.Fatalf("Unable to print unsupported type: %v", resp.ResultType)
+		log.Fatalf("Unable to print unsupported type: %v", resp.Data.ResultType)
 	}
 }
 
@@ -76,18 +79,12 @@ func (q *Query) isInstant() bool {
 	return q.Start == q.End
 }
 
-func (q *Query) printStream(streams logql.Streams, out output.LogOutput) {
-	cache, lss := parseLabels(streams)
-
-	labelsCache := func(labels string) labels.Labels {
-		return cache[labels]
-	}
-
-	common := commonLabels(lss)
+func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput) {
+	common := commonLabels(streams)
 
 	// Remove the labels we want to show from common
 	if len(q.ShowLabelsKey) > 0 {
-		common = common.MatchLabels(false, q.ShowLabelsKey...)
+		common = matchLabels(false, common, q.ShowLabelsKey)
 	}
 
 	if len(common) > 0 && !q.Quiet {
@@ -101,17 +98,17 @@ func (q *Query) printStream(streams logql.Streams, out output.LogOutput) {
 	// Remove ignored and common labels from the cached labels and
 	// calculate the max labels length
 	maxLabelsLen := q.FixedLabelsLen
-	for key, ls := range cache {
+	for i, s := range streams {
 		// Remove common labels
-		ls = subtract(ls, common)
+		ls := subtract(s.Labels, common)
 
 		// Remove ignored labels
 		if len(q.IgnoreLabelsKey) > 0 {
-			ls = ls.MatchLabels(false, q.IgnoreLabelsKey...)
+			ls = matchLabels(false, ls, q.IgnoreLabelsKey)
 		}
 
-		// Update cached labels
-		cache[key] = ls
+		// Overwrite existing Labels
+		streams[i].Labels = ls
 
 		// Update max labels length
 		len := len(ls.String())
@@ -120,20 +117,30 @@ func (q *Query) printStream(streams logql.Streams, out output.LogOutput) {
 		}
 	}
 
-	d := q.resultsDirection()
-	i := iter.NewStreamsIterator(streams, d)
+	// sort and display entries
+	allEntries := make([]streamEntryPair, 0)
 
-	for i.Next() {
-		ls := labelsCache(i.Labels())
-		fmt.Println(out.Format(i.Entry().Timestamp, &ls, maxLabelsLen, i.Entry().Line))
+	for _, s := range streams {
+		for _, e := range s.Entries {
+			allEntries = append(allEntries, streamEntryPair{
+				entry:  e,
+				labels: s.Labels,
+			})
+		}
 	}
 
-	if err := i.Error(); err != nil {
-		log.Fatalf("Error from iterator: %v", err)
+	if q.Forward {
+		sort.Slice(allEntries, func(i, j int) bool { return allEntries[i].entry.Timestamp.Before(allEntries[j].entry.Timestamp) })
+	} else {
+		sort.Slice(allEntries, func(i, j int) bool { return allEntries[i].entry.Timestamp.After(allEntries[j].entry.Timestamp) })
+	}
+
+	for _, e := range allEntries {
+		fmt.Println(out.Format(e.entry.Timestamp, e.labels, maxLabelsLen, e.entry.Line))
 	}
 }
 
-func (q *Query) printMatrix(matrix model.Matrix) {
+func (q *Query) printMatrix(matrix loghttp.Matrix) {
 	// yes we are effectively unmarshalling and then immediately marshalling this object back to json.  we are doing this b/c
 	// it gives us more flexibility with regard to output types in the future.  initially we are supporting just formatted json but eventually
 	// we might add output options such as render to an image file on disk
@@ -146,7 +153,7 @@ func (q *Query) printMatrix(matrix model.Matrix) {
 	fmt.Print(string(bytes))
 }
 
-func (q *Query) printVector(vector model.Vector) {
+func (q *Query) printVector(vector loghttp.Vector) {
 	bytes, err := json.MarshalIndent(vector, "", "  ")
 
 	if err != nil {

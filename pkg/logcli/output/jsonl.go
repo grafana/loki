@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/grafana/loki/pkg/loghttp"
 )
 
 // JSONLOutput prints logs and metadata as JSON Lines, suitable for scripts
@@ -14,7 +14,7 @@ type JSONLOutput struct {
 }
 
 // Format a log entry as json line
-func (o *JSONLOutput) Format(ts time.Time, lbls *labels.Labels, maxLabelsLen int, line string) string {
+func (o *JSONLOutput) Format(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string) string {
 	entry := map[string]interface{}{
 		"timestamp": ts.In(o.options.Timezone),
 		"line":      line,

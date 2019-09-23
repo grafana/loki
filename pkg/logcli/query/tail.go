@@ -5,12 +5,10 @@ import (
 	"log"
 	"strings"
 
+	"github.com/fatih/color"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
-	"github.com/grafana/loki/pkg/querier"
-
-	"github.com/fatih/color"
-	promlabels "github.com/prometheus/prometheus/pkg/labels"
+	"github.com/grafana/loki/pkg/loghttp"
 )
 
 // TailQuery connects to the Loki websocket endpoint and tails logs
@@ -20,7 +18,7 @@ func (q *Query) TailQuery(delayFor int, c *client.Client, out output.LogOutput) 
 		log.Fatalf("Tailing logs failed: %+v", err)
 	}
 
-	tailReponse := new(querier.TailResponse)
+	tailReponse := new(loghttp.TailResponse)
 
 	if len(q.IgnoreLabelsKey) > 0 {
 		log.Println("Ignoring labels key:", color.RedString(strings.Join(q.IgnoreLabelsKey, ",")))
@@ -37,39 +35,38 @@ func (q *Query) TailQuery(delayFor int, c *client.Client, out output.LogOutput) 
 			return
 		}
 
-		labels := ""
-		parsedLabels := promlabels.Labels{}
+		labels := loghttp.LabelSet{}
 		for _, stream := range tailReponse.Streams {
 			if !q.NoLabels {
 
 				if len(q.IgnoreLabelsKey) > 0 || len(q.ShowLabelsKey) > 0 {
 
-					ls := mustParseLabels(stream.GetLabels())
+					ls := stream.Labels
 
 					if len(q.ShowLabelsKey) > 0 {
-						ls = ls.MatchLabels(true, q.ShowLabelsKey...)
+						ls = matchLabels(true, ls, q.ShowLabelsKey)
 					}
 
 					if len(q.IgnoreLabelsKey) > 0 {
-						ls = ls.MatchLabels(false, q.IgnoreLabelsKey...)
+						ls = matchLabels(false, ls, q.ShowLabelsKey)
 					}
 
-					labels = ls.String()
+					labels = ls
 
 				} else {
 					labels = stream.Labels
 				}
-				parsedLabels = mustParseLabels(labels)
+
 			}
 
 			for _, entry := range stream.Entries {
-				fmt.Println(out.Format(entry.Timestamp, &parsedLabels, 0, entry.Line))
+				fmt.Println(out.Format(entry.Timestamp, labels, 0, entry.Line))
 			}
 
 		}
-		if len(tailReponse.DroppedEntries) != 0 {
+		if len(tailReponse.DroppedStreams) != 0 {
 			log.Println("Server dropped following entries due to slow client")
-			for _, d := range tailReponse.DroppedEntries {
+			for _, d := range tailReponse.DroppedStreams {
 				log.Println(d.Timestamp, d.Labels)
 			}
 		}

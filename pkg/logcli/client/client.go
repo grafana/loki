@@ -11,13 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/common/model"
-
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/loghttp"
 
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/common/config"
-	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -38,16 +35,10 @@ type Client struct {
 	Address   string
 }
 
-// QueryResult contains fields necessary to return data from Loki endpoints
-type QueryResult struct {
-	ResultType promql.ValueType
-	Result     interface{}
-}
-
 // Query uses the /api/v1/query endpoint to execute an instant query
 // excluding interfacer b/c it suggests taking the interface promql.Node instead of logproto.Direction b/c it happens to have a String() method
 // nolint:interfacer
-func (c *Client) Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*QueryResult, error) {
+func (c *Client) Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
 	path := fmt.Sprintf(queryPath,
 		url.QueryEscape(queryStr), // query
 		limit,                     // limit
@@ -61,7 +52,7 @@ func (c *Client) Query(queryStr string, limit int, time time.Time, direction log
 // QueryRange uses the /api/v1/query_range endpoint to execute a range query
 // excluding interfacer b/c it suggests taking the interface promql.Node instead of logproto.Direction b/c it happens to have a String() method
 // nolint:interfacer
-func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, quiet bool) (*QueryResult, error) {
+func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
 	path := fmt.Sprintf(queryRangePath,
 		url.QueryEscape(queryStr), // query
 		limit,                     // limit
@@ -74,8 +65,8 @@ func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time,
 }
 
 // ListLabelNames uses the /api/v1/label endpoint to list label names
-func (c *Client) ListLabelNames(quiet bool) (*logproto.LabelResponse, error) {
-	var labelResponse logproto.LabelResponse
+func (c *Client) ListLabelNames(quiet bool) (*loghttp.LabelResponse, error) {
+	var labelResponse loghttp.LabelResponse
 	if err := c.doRequest(labelsPath, quiet, &labelResponse); err != nil {
 		return nil, err
 	}
@@ -83,55 +74,24 @@ func (c *Client) ListLabelNames(quiet bool) (*logproto.LabelResponse, error) {
 }
 
 // ListLabelValues uses the /api/v1/label endpoint to list label values
-func (c *Client) ListLabelValues(name string, quiet bool) (*logproto.LabelResponse, error) {
+func (c *Client) ListLabelValues(name string, quiet bool) (*loghttp.LabelResponse, error) {
 	path := fmt.Sprintf(labelValuesPath, url.PathEscape(name))
-	var labelResponse logproto.LabelResponse
+	var labelResponse loghttp.LabelResponse
 	if err := c.doRequest(path, quiet, &labelResponse); err != nil {
 		return nil, err
 	}
 	return &labelResponse, nil
 }
 
-func (c *Client) doQuery(path string, quiet bool) (*QueryResult, error) {
+func (c *Client) doQuery(path string, quiet bool) (*loghttp.QueryResponse, error) {
 	var err error
+	var r loghttp.QueryResponse
 
-	unmarshal := struct {
-		Type   promql.ValueType `json:"resultType"`
-		Result json.RawMessage  `json:"result"`
-	}{}
-
-	if err = c.doRequest(path, quiet, &unmarshal); err != nil {
+	if err = c.doRequest(path, quiet, &r); err != nil {
 		return nil, err
 	}
 
-	var value interface{}
-
-	// unmarshal results
-	switch unmarshal.Type {
-	case logql.ValueTypeStreams:
-		var s logql.Streams
-		err = json.Unmarshal(unmarshal.Result, &s)
-		value = s
-	case promql.ValueTypeMatrix:
-		var m model.Matrix
-		err = json.Unmarshal(unmarshal.Result, &m)
-		value = m
-	case promql.ValueTypeVector:
-		var m model.Vector
-		err = json.Unmarshal(unmarshal.Result, &m)
-		value = m
-	default:
-		return nil, fmt.Errorf("Unknown type: %s", unmarshal.Type)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &QueryResult{
-		ResultType: unmarshal.Type,
-		Result:     value,
-	}, nil
+	return &r, nil
 }
 
 func (c *Client) doRequest(path string, quiet bool, out interface{}) error {

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -13,13 +13,15 @@ func TestJSONLOutput_Format(t *testing.T) {
 	t.Parallel()
 
 	timestamp, _ := time.Parse(time.RFC3339, "2006-01-02T15:04:05+07:00")
-	emptyLabels := labels.New()
-	someLabels := labels.New(labels.Label{Name: "type", Value: "test"})
+	emptyLabels := loghttp.LabelSet{}
+	someLabels := loghttp.LabelSet(map[string]string{
+		"type": "test",
+	})
 
 	tests := map[string]struct {
 		options      *LogOutputOptions
 		timestamp    time.Time
-		lbls         *labels.Labels
+		lbls         loghttp.LabelSet
 		maxLabelsLen int
 		line         string
 		expected     string
@@ -27,7 +29,7 @@ func TestJSONLOutput_Format(t *testing.T) {
 		"empty line with no labels": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
 			timestamp,
-			&emptyLabels,
+			emptyLabels,
 			0,
 			"",
 			`{"labels":{},"line":"","timestamp":"2006-01-02T08:04:05Z"}`,
@@ -35,7 +37,7 @@ func TestJSONLOutput_Format(t *testing.T) {
 		"empty line with labels": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: false},
 			timestamp,
-			&someLabels,
+			someLabels,
 			len(someLabels.String()),
 			"",
 			`{"labels":{"type":"test"},"line":"","timestamp":"2006-01-02T08:04:05Z"}`,
@@ -43,7 +45,7 @@ func TestJSONLOutput_Format(t *testing.T) {
 		"timezone option set to a Local one": {
 			&LogOutputOptions{Timezone: time.FixedZone("test", 2*60*60), NoLabels: false},
 			timestamp,
-			&someLabels,
+			someLabels,
 			0,
 			"Hello",
 			`{"labels":{"type":"test"},"line":"Hello","timestamp":"2006-01-02T10:04:05+02:00"}`,
@@ -51,7 +53,7 @@ func TestJSONLOutput_Format(t *testing.T) {
 		"labels output disabled": {
 			&LogOutputOptions{Timezone: time.UTC, NoLabels: true},
 			timestamp,
-			&someLabels,
+			someLabels,
 			0,
 			"Hello",
 			`{"line":"Hello","timestamp":"2006-01-02T08:04:05Z"}`,

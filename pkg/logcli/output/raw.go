@@ -3,7 +3,7 @@ package output
 import (
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/grafana/loki/pkg/loghttp"
 )
 
 // RawOutput prints logs in their original form, without any metadata
@@ -12,6 +12,6 @@ type RawOutput struct {
 }
 
 // Format a log entry as is
-func (o *RawOutput) Format(ts time.Time, lbls *labels.Labels, maxLabelsLen int, line string) string {
+func (o *RawOutput) Format(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string) string {
 	return line
 }
