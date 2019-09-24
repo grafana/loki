@@ -31,7 +31,7 @@ Grab the promtail module using jb:
 $ jb install github.com/grafana/loki/production/ksonnet/promtail
 ```
 
-Replace the contents of `loki/main.jsonnet` with:
+Replace the contents of `environments/loki/main.jsonnet` with:
 ```jsonnet
 local promtail = import 'promtail/promtail.libsonnet';
 
