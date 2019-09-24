@@ -2,7 +2,7 @@
 
 Currently there are five ways to try out Loki, in order from easier to hardest:
 
-- [Use our free hosted demo](#free-hosted-demo)
+- [Get a free hosted demo of Grafana Cloud: Logs](#get-a-free-hosted-demo-of-grafana-cloud-logs)
 - [Run Loki locally with Docker](#run-locally-using-docker)
 - [Use Helm to deploy on Kubernetes](#using-helm-to-deploy-on-kubernetes)
 - [Build Loki from source](#build-and-run-from-source)
