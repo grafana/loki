@@ -7,8 +7,8 @@ deprecated. Tanka is used by Grafana Labs to run Loki in production.
 ## Prerequisites
 
 Grab the latest version of Tanka (at least version v0.5.0) for the `tk env`
-commands. Prebuilt binaries for Tanka can be found
-[here](https://github.com/grafana/tanka/releases/tag/v0.5.0).
+commands. Prebuilt binaries for Tanka can be found at the [Tanka releases
+URL](https://github.com/grafana/tanka/releases).
 
 In your config repo, if you don't have a Tanka application, create a folder and
 call `tk init` inside of it. Then create an environment for Loki and provide the

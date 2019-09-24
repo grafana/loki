@@ -7,8 +7,8 @@ to a private Loki instance or [Grafana Cloud](https://grafana.com/oss/loki).
 > Docker plugins are not yet supported on Windows; see the
 > [Docker docs](https://docs.docker.com/engine/extend) for more information.
 
-Documentation on configuring the Loki Docker Driver can be found
-[here](./configuration.md).
+Documentation on configuring the Loki Docker Driver can be found on the
+[configuration page](./configuration.md).
 
 ## Installing
 

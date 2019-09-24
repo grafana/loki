@@ -1,9 +1,7 @@
 # Loki Storage Retention
 
 Retention in Loki is achieved through the Table Manager. The Table Manager needs
-to be configured with a retention period and deletes enabled in the config. An
-example configuration can be seen
-[here](https://github.com/grafana/loki/blob/39bbd733be4a0d430986d9513476a91334485e9f/production/ksonnet/loki/config.libsonnet#L128-L129).
+to be configured with a retention period and deletes enabled in the config.
 Alternatively, the `table-manager.retention-period` and
 `table-manager.retention-deletes-enabled` command line flags can be used. The
 provided retention period needs to be a duration represented as a string that

@@ -63,7 +63,7 @@ used to find the ingesters to send the stream to.
 
 A hash ring stored in [Consul](https://www.consul.io) is used to achieve
 consistent hashing; all [ingesters](#ingester) register themselves into the hash
-ring with a set of tokens they own. Each token is a random unsigned 64-bit
+ring with a set of tokens they own. Each token is a random unsigned 32-bit
 number. Along with a set of tokens, ingesters register their state into the
 hash ring. The state JOINING, and ACTIVE may all receive write requests, while
 ACTIVE and LEAVING ingesters may receive read requests. When doing a hash
@@ -166,6 +166,62 @@ running the same query against the backend store. Because of the replication
 factor, it is possible that the querier may receive duplicate data. To resolve
 this, the querier internally **deduplicates** data that has the same nanosecond
 timestamp, label set, and log message.
+
+## Chunk Format
+
+```
+  -------------------------------------------------------------------
+  |                               |                                 |
+  |        MagicNumber(4b)        |           version(1b)           |
+  |                               |                                 |
+  -------------------------------------------------------------------
+  |         block-1 bytes         |          checksum (4b)          |
+  -------------------------------------------------------------------
+  |         block-2 bytes         |          checksum (4b)          |
+  -------------------------------------------------------------------
+  |         block-n bytes         |          checksum (4b)          |
+  -------------------------------------------------------------------
+  |                        #blocks (uvarint)                        |
+  -------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
+  -------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
+  -------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
+  -------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
+  -------------------------------------------------------------------
+  |                      checksum(from #blocks)                     |
+  -------------------------------------------------------------------
+  |                    #blocks section byte offset                  |
+  -------------------------------------------------------------------
+```
+
+`mint` and `maxt` describe the minimum and maximum Unix nanosecond timestamp,
+respectively.
+
+### Block Format
+
+A block is comprised of a series of entries, each of which is an individual log
+line.
+
+Note that the bytes of a block are stored compressed using Gzip. The following
+is their form when uncompressed:
+
+```
+  -------------------------------------------------------------------
+  |    ts (varint)    |     len (uvarint)    |     log-1 bytes      |
+  -------------------------------------------------------------------
+  |    ts (varint)    |     len (uvarint)    |     log-2 bytes      |
+  -------------------------------------------------------------------
+  |    ts (varint)    |     len (uvarint)    |     log-3 bytes      |
+  -------------------------------------------------------------------
+  |    ts (varint)    |     len (uvarint)    |     log-n bytes      |
+  -------------------------------------------------------------------
+```
+
+`ts` is the Unix nanosecond timestamp of the logs, while len is the length in
+bytes of the log entry.
 
 ## Chunk Store
 
