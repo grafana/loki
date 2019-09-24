@@ -21,22 +21,31 @@ internal traffic and an HTTP/1 server for external API requests. All components
 come with an HTTP/1 server, but most only expose readiness, health, and metrics
 endpoints.
 
-While each component can be run in a separate process, Loki also supports running
-all components in a single process. Running all components in a single process is
-referred to as "single process" mode (or sometimes "single binary" or monolithic
-mode), while the other mode is the "horizontally" scalable, or microservices
-mode.
+Which component Loki runs is determined by either the `-target` flag at the
+command line or the `target: <string>` section in Loki's config file. When the
+value of `target` is `all`, Loki will run all of its components in a single
+process. This is referred to as "single process", "single binary", or monolithic
+mode. Monolithic mode is the default deployment of Loki when Loki is installed
+using Helm.
 
-When Loki runs in single process mode, individual components continue to
-communicate to one another over gRPC using the gRPC listen port of the overall
-process.
+When `target` is _not_ set to `all` (i.e., it is set to `querier`, `ingester`,
+or `distributor`), then Loki is said to be running in "horizontally scalable",
+or microservices, mode.
+
+Each component of Loki, such as the ingesters and distributors, communicate with
+one another over gRPC using the gRPC listen port defined in the Loki config.
+When running components in monolithic mode, this is still true: each component,
+although running in the same process, will connect to each other over the local
+network for inter-component communication.
 
 Single process mode is ideally suited for local development, small workloads,
 and for evaluation purposes. Monolithic mode can be scaled with multiple
 processes with the following limitations:
 
-1. Local index and local storage cannot currently be used as they are not safe
-   for concurrent access by multiple processes.
+1. Local index and local storage cannot currently be used when running
+   monolithic mode with more than one replica, as each replica must be able to
+   access the same storage backend, and local storage is not safe for concurrent
+   access.
 2. Individual components cannot be scaled independently, so it is not possible
    to have more read components than write components.
 
