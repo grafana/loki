@@ -16,7 +16,7 @@ fails.
 
 ```bash
 docker run --log-driver=loki \
-    --log-opt loki-url="https://<user_id>:<password>@logs-us-west1.grafana.net/api/prom/push" \
+    --log-opt loki-url="https://<user_id>:<password>@logs-us-west1.grafana.net/loki/api/v1/push" \
     --log-opt loki-retries=5 \
     --log-opt loki-batch-size=400 \
     grafana/grafana
@@ -48,7 +48,7 @@ Options for the logging driver can also be configured with `log-opts` in the
     "debug" : true,
     "log-driver": "loki",
     "log-opts": {
-        "loki-url": "https://<user_id>:<password>@logs-us-west1.grafana.net/api/prom/push",
+        "loki-url": "https://<user_id>:<password>@logs-us-west1.grafana.net/loki/api/v1/push",
         "loki-batch-size": "400"
     }
 }
@@ -75,7 +75,7 @@ services:
     logging:
       driver: loki
       options:
-        loki-url: "https://<user_id>:<password>@logs-us-west1.grafana.net/api/prom/push"
+        loki-url: "https://<user_id>:<password>@logs-us-west1.grafana.net/loki/api/v1/push"
 ```
 
 You can then deploy your stack using:

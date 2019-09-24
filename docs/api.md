@@ -445,7 +445,7 @@ Response (streamed):
 
 ## `POST /loki/api/v1/push`
 
-Alias (DEPRECATED): `POST /api/prom/push`
+Alias (DEPRECATED): `POST /loki/api/v1/push`
 
 `/loki/api/v1/push` is the endpoint used to send log entries to Loki. The default
 behavior is for the POST body to be a snappy-compressed protobuf messsage:
@@ -598,7 +598,7 @@ $ curl -G -s  "http://localhost:3100/api/prom/query" --data-urlencode '{foo="bar
 ### Examples
 
 ```bash
-$ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/api/prom/push" --data-raw \
+$ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/loki/api/v1/push" --data-raw \
   '{"streams": [{ "labels": "{foo=\"bar\"}", "entries": [{ "ts": "2018-12-18T08:28:06.801064-04:00", "line": "fizzbuzz" }] }]}'
 ```
 
