@@ -16,7 +16,11 @@ In your config repo, if you don't yet have the directory structure of Tanka set 
 # create a directory (any name works)
 $ mkdir config && cd config/
 $ tk init
-$ tk env add loki --namespace=loki
+$ tk env add environments/loki --namespace=loki
+$ tk env set environments/loki --server=https://${K8S_MASTER_ADDRESS}:6443
+# Ksonnet kubernetes libraries
+$ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k.libsonnet
+$ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k8s.libsonnet
 ```
 
 ## Deploying Promtail to your cluster.
@@ -30,7 +34,6 @@ $ jb install github.com/grafana/loki/production/ksonnet/promtail
 Replace the contents of `environments/loki/main.jsonnet` with:
 ```jsonnet
 local promtail = import 'promtail/promtail.libsonnet';
-
 
 promtail + {
   _config+:: {
@@ -54,17 +57,15 @@ promtail + {
 ```
 Notice that `container_root_path` is your own data root for docker daemon, use `docker info | grep "Root Dir"` to get it.
 
-Then do `ks show loki` to see the manifests that'll be deployed to your cluster.
-Apply them using `ks apply loki`.
+Now use `tk show environments/loki` to see the yaml, and `tk apply environments/loki` to apply it to the cluster.
 
 ## Deploying Loki to your cluster.
 
 If you want to further also deploy the server to the cluster, then run the following to install the module:
 
 ```
-jb install github.com/grafana/loki/production/ksonnet/loki
+$ jb install github.com/grafana/loki/production/ksonnet/loki
 ```
-
 Be sure to replace the username, password and the relevant htpasswd contents.
 Replace the contents of `environments/loki/main.jsonnet` with:
 
