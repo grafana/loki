@@ -16,8 +16,8 @@ In your config repo, if you don't yet have the directory structure of Tanka set 
 # create a directory (any name works)
 $ mkdir config && cd config/
 $ tk init
-$ tk env add loki --namespace=loki
-$ tk env set loki --server=https://$k8s_master_node_ip:6443
+$ tk env add environments/loki --namespace=loki
+$ tk env set environments/loki --server=https://$k8s_master_node_ip:6443
 # Ksonnet kubernetes libraries
 $ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k.libsonnet
 $ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k8s.libsonnet
@@ -67,7 +67,7 @@ If you want to further also deploy the server to the cluster, then run the follo
 $ jb install github.com/grafana/loki/production/ksonnet/loki
 ```
 Be sure to replace the username, password and the relevant htpasswd contents.
-Replace the contents of `loki/main.jsonnet` with:
+Replace the contents of `environments/loki/main.jsonnet` with:
 
 ```jsonnet
 local gateway = import 'loki/gateway.libsonnet';
