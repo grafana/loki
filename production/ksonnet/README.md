@@ -17,8 +17,7 @@ In your config repo, if you don't yet have the directory structure of Tanka set 
 $ mkdir config && cd config/
 $ tk init
 $ tk env add loki --namespace=loki
-# notice that k8s_master_node_ip could not be localhost or 0.0.0.0
-$ tk env set loki --server=https://$(k8s_master_node_ip):6443
+$ tk env set loki --server=https://$k8s_master_node_ip:6443
 # Ksonnet kubernetes libraries
 $ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k.libsonnet
 $ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k8s.libsonnet
