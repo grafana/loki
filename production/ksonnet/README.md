@@ -18,7 +18,7 @@ $ mkdir config && cd config/
 $ tk init
 $ tk env add loki --namespace=loki
 # notice that k8s_master_node_ip could not be localhost or 0.0.0.0
-$ tk env set environments/loki --server=https://$(k8s_master_node_ip):6443
+$ tk env set loki --server=https://$(k8s_master_node_ip):6443
 # Ksonnet kubernetes libraries
 $ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k.libsonnet
 $ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k8s.libsonnet
@@ -32,7 +32,7 @@ Grab the promtail module using jb:
 $ jb install github.com/grafana/loki/production/ksonnet/promtail
 ```
 
-Replace the contents of `environments/loki/main.jsonnet` with:
+Replace the contents of `loki/main.jsonnet` with:
 ```jsonnet
 local promtail = import 'promtail/promtail.libsonnet';
 
@@ -67,9 +67,8 @@ If you want to further also deploy the server to the cluster, then run the follo
 ```
 $ jb install github.com/grafana/loki/production/ksonnet/loki
 ```
-
 Be sure to replace the username, password and the relevant htpasswd contents.
-Replace the contents of `environments/loki/main.jsonnet` with:
+Replace the contents of `loki/main.jsonnet` with:
 
 ```jsonnet
 local gateway = import 'loki/gateway.libsonnet';
