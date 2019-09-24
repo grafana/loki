@@ -126,6 +126,9 @@ func mustParseURL(u string) flagext.URLValue {
 
 func mustParseLogLevel(l string) logging.Level {
 	level := logging.Level{}
-	level.Set(l)
+	err := level.Set(l)
+	if err != nil {
+		panic(err)
+	}
 	return level
 }

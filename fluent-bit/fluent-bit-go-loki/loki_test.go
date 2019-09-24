@@ -128,8 +128,6 @@ func compareJson(t *testing.T, got, want string) {
 }
 
 func Test_removeKeys(t *testing.T) {
-	type args struct {
-	}
 	tests := []struct {
 		name     string
 		records  map[string]interface{}

@@ -114,7 +114,7 @@ func createLine(records map[string]interface{}, f format) (string, error) {
 	case kvPairFormat:
 		buff := &bytes.Buffer{}
 		var keys []string
-		for k, _ := range records {
+		for k := range records {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
