@@ -67,7 +67,7 @@ func Test_parseConfig(t *testing.T) {
 				dropSingleKey: false,
 			},
 			false},
-		{"bad url", map[string]string{"URL": "ba.d.com\awe"}, nil, true},
+		{"bad url", map[string]string{"URL": "|da\xc5zba.d.com\awe"}, nil, true},
 		{"bad BatchWait", map[string]string{"BatchWait": "a"}, nil, true},
 		{"bad BatchSize", map[string]string{"BatchSize": "a"}, nil, true},
 		{"bad labels", map[string]string{"Labels": "a"}, nil, true},
