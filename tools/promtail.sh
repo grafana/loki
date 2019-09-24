@@ -284,7 +284,7 @@ spec:
     spec:
       containers:
       - args:
-        - -client.url=https://<instanceId>:<apiKey>@<instanceUrl>/api/prom/push
+        - -client.url=https://<instanceId>:<apiKey>@<instanceUrl>/loki/api/v1/push
         - -config.file=/etc/promtail/promtail.yml
         env:
         - name: HOSTNAME
