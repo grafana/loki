@@ -1,7 +1,10 @@
 # Loki Storage Retention
 
-Retention in Loki is achieved through the Table Manager. The Table Manager needs
-to be configured with a retention period and deletes enabled in the config.
+Retention in Loki is achieved through the [Table Manager](./table-manager.md).
+In order to enable the retention support, the Table Manager needs to be
+configured to enable deletions and a retention period. Please refer to the
+[`table_manager_config`](../../configuration/README.md#table_manager_config)
+section of the Loki configuration reference for all available options.
 Alternatively, the `table-manager.retention-period` and
 `table-manager.retention-deletes-enabled` command line flags can be used. The
 provided retention period needs to be a duration represented as a string that
@@ -16,9 +19,8 @@ policy set correctly. For more details check
 or
 [GCS's documentation](https://cloud.google.com/storage/docs/managing-lifecycles).
 
-Currently the retention policy can only be set globally. A per-tenant retention
-policy with an API to delete ingested logs is still under development. Feel free
-to add your feedback to the [GitHub issue tracking this](https://github.com/grafana/loki/issues/162).
+Currently, the retention policy can only be set globally. A per-tenant retention
+policy with an API to delete ingested logs is still under development.
 
 Since a design goal of Loki is to make storing logs cheap, a volume-based
 deletion API is deprioritized. Until this feature is released, if you suddenly

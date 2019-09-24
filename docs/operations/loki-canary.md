@@ -29,7 +29,7 @@ If the received log is:
 * The next in the array to be received, it is removed from the array and the
   (current time - log timestamp) is recorded in the `response_latency`
   histogram. This is the expected behavior for well behaving logs.
-* Not the next in the array received, is is removed from the array, the
+* Not the next in the array to be received, it is removed from the array, the
   response time is recorded in the `response_latency` histogram, and the
   `out_of_order_entries` counter is incremented.
 * Not in the array at all, it is checked against a separate list of received

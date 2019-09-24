@@ -1,12 +1,11 @@
 # LogQL: Log Query Language
 
 Loki comes with its very own language for querying logs called *LogQL*. LogQL
-can be considered a distributed `grep` with labels for extra querying control.
+can be considered a distributed `grep` with labels for filtering.
 
 A basic LogQL query consists of two parts: the **log stream selector** and a
-**filter expression**. Because of how Loki is designed, a set of log streams
-must be selected using a [Prometheus](https://prometheus.io)-style log stream
-selector.
+**filter expression**. Due to Loki's design, all LogQL queries are required to
+contain a log stream selector.
 
 The log stream selector will reduce the number of log streams to a manageable
 volume. Depending how many labels you use to filter down the log streams will
@@ -26,8 +25,9 @@ pair of curly braces:
 {app="mysql",name="mysql-backup"}
 ```
 
-In this example, log streams that have a label of `app` and `name` with exact
-values of `mysql` and `mysql-backup` will be included in the query results.
+In this example, log streams that have a label of `app` whose value is `mysql`
+_and_ a label of `name` whose value is `mysql-backup` will be included in the
+query results.
 
 The `=` operator after the label name is a **label matching operator**. The
 following label matching operators are supported:
@@ -70,18 +70,9 @@ expression - resulting log lines must satisfy _every_ filter:
 `{job="mysql"} |= "error" != "timeout"`
 
 When using `|~` and `!~`,
-[RE2 syntax](https://github.com/google/re2/wiki/Syntax) regex may be used. The
+[Go RE2 syntax](https://github.com/google/re2/wiki/Syntax) regex may be used. The
 matching is case-sensitive by default and can be switched to case-insensitive
 prefixing the regex with `(?i)`.
-
-### Future Query Language Extensions
-
-The query language is still under development to support more features, for
-example:
-
-- `AND` / `NOT` operators
-- JSON accessors for filtering of JSON-structured logs
-- Context (like `grep -C n`)
 
 ## Counting logs
 
@@ -95,8 +86,11 @@ concept from Prometheus, except the selected range of samples include a value of
 1 for each log entry. An aggregation can be applied over the selected range to
 transform it into an instance vector.
 
-`rate` calculates the number of entries per second while `count_over_time`
-counts the entries for each log stream within the range.
+The currently supported functions for operating over are:
+
+- `rate`: calculate the number of entries per second
+- `count_over_time`: counts the entries for each log stream within the given
+  range.
 
 > `count_over_time({job="mysql"}[5m])`
 
@@ -128,8 +122,8 @@ elements but with aggregated values:
 - `topk`: Select largest k elements by sample value
 
 The aggregation operators can either be used to aggregate over all label
-values or a set of distinct label values by including a _without_ or a
-_by_ clause:
+values or a set of distinct label values by including a `withou` or a
+`by` clause:
 
 > `<aggr-op>([parameter,] <vector expression>) [without|by (<label list>)]`
 
@@ -145,15 +139,15 @@ elements of the vector.
 
 #### Examples
 
+Get the top 10 applications by the highest log throughput:
+
 > `topk(10,sum(rate({region="us-east1"}[5m]) by (name))`
 
-Gets the top 10 applications by the highest log throughput.
+Get the count of logs during the last five minutes, grouping
+by level:
 
 > `sum(count_over_time({job="mysql"}[5m])) by (level)`
 
-Gets the count of logs during the last five minutes, grouping
-by level.
+Get the rate of HTTP GET requests from NGINX logs:
 
 > `avg(rate(({job="nginx"} |= "GET")[10s])) by (region)`
-
-Gets the rate of HTTP GET requests from NGINX logs.

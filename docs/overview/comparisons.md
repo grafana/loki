@@ -16,6 +16,9 @@ GCS, or Cassandra. Logs are stored in plaintext form tagged with a set of label
 names and values, where only the label pairs are indexed. This tradeoff makes it
 cheaper to operate than a full index and allows developers to aggressively log
 from their applications. Logs in Loki are queried using [LogQL](../logql.md).
+However, because of this design tradeoff, LogQL queries that filter based on
+content (i.e., text within the log lines) require loading all chunks within the
+search window that match the labels defined in the query.
 
 Fluentd is usually used to collect and forward logs to Elasticsearch. Fluentd is
 called a data collector which can ingest logs from many sources, process it, and

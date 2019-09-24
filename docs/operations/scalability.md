@@ -6,8 +6,6 @@ on a discussion about Loki's scalability.
 
 When scaling Loki, operators should consider running several Loki processes
 partitioned by role (ingester, distributor, querier) rather than a single Loki
-process. Grafana Lab's [production setup](../../production/ksonnet/loki)
+process. Grafana Labs' [production setup](../../production/ksonnet/loki)
 contains `.libsonnet` files that demonstrates configuring separate components
 and scaling for resource usage.
-
-We're happy to get feedback about your resource usage.

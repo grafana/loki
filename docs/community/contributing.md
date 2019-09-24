@@ -51,7 +51,7 @@ While `go install ./cmd/loki` works, the preferred way to build is by using
 These commands can be chained together to build multiple binaries in one go:
 
 ```bash
-# Makes Loki, Promtail, and LogCLI.
+# Builds binaries for Loki, Promtail, and LogCLI.
 $ make loki promtail logcli
 ```
 

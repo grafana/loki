@@ -1,8 +1,5 @@
 # Loki Storage
 
-1. [Table Manager](table-manager.md)
-2. [Retention](retention.md)
-
 Loki needs to store two different types of data: **chunks** and **indexes**.
 
 Loki receives logs in separate streams, where each stream is uniquely identified
@@ -15,6 +12,11 @@ chunks.
 
 Refer to Loki's [configuration](../../configuration/README.md) for details on
 how to configure the storage and the index.
+
+For more information:
+
+1. [Table Manager](table-manager.md)
+2. [Retention](retention.md)
 
 ## Cloud Storage Permissions
 

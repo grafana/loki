@@ -8,7 +8,9 @@ For detailed information on configuring the Table Manager, refer to the
 [table_manager_config](../../configuration/README.md#table_manager_config)
 section in the Loki configuration document.
 
-When configuring DynamoDB with the table manager, the default provisioning
+## DynamoDB Provisioning
+
+When configuring DynamoDB with the Table Manager, the default provisioning
 capacity units for reads are set to 300 and writes are set to 3000. The defaults
 can be overwritten:
 

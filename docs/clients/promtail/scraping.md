@@ -30,7 +30,8 @@ There are different types of labels present in Promtail:
 * Labels starting with `__` (two underscores) are internal labels. They usually
   come from dynamic sources like service discovery. Once relabeling is done,
   they are removed from the label set. To persist internal labels so they're
-  sent to Loki, rename them so they don't start with `__`.
+  sent to Loki, rename them so they don't start with `__`. See
+  [Relabeling](#relabeling) for more information.
 
 * Labels starting with `__meta_kubernetes_pod_label_*` are "meta labels" which
   are generated based on your Kubernetes pod's labels.
@@ -86,21 +87,21 @@ owning `scrape_config` will not process logs from that particular source.
 Other `scrape_configs` without the drop action reading from the same target
 may still use and forward logs from it to Loki.
 
-A common usecase of `relabel_configs` is to transform an internal label such
+A common use case of `relabel_configs` is to transform an internal label such
 as `__meta_kubernetes_*` into an intermediate internal label such as
 `__service__`. The intermediate internal label may then be dropped based on
 value or transformed to a final external label, such as `__job__`.
 
 ### Examples
 
-* Drop the target if a label is empty:
+* Drop the target if a label (`__service__` in the example) is empty:
 ```yaml
   - action: drop
     regex: ^$
     source_labels:
     - __service__
 ```
-* Drop the target if any of these labels contains a value:
+* Drop the target if any of the `source_labels` contain a value:
 ```yaml
   - action: drop
     regex: .+
@@ -109,14 +110,15 @@ value or transformed to a final external label, such as `__job__`.
     - __meta_kubernetes_pod_label_name
     - __meta_kubernetes_pod_label_app
 ```
-* Rename an internal label into an external label so that it will be sent to Loki:
+* Persist an internal label by renaming it so it will be sent to Loki:
 ```yaml
   - action: replace
     source_labels:
     - __meta_kubernetes_namespace
     target_label: namespace
 ```
-* Convert all of the Kubernetes pod labels into external labels:
+* Persist all Kubernetes pod labels by mapping them, like by mapping
+    `__meta_kube__meta_kubernetes_pod_label_foo` to `foo`.
 ```yaml
   - action: labelmap
     regex: __meta_kubernetes_pod_label_(.+)
@@ -129,88 +131,13 @@ Additional reading:
 ## HTTP client options
 
 Promtail uses the Prometheus HTTP client implementation for all calls to Loki.
-Therefore it can be configured using the `client` stanza:
+Therefore it can be configured using the `clients` stanza, where one or more
+connections to Loki can be established:
 
 ```yaml
-client: [ <client_option> ]
-```
-
-Reference for `client_option`:
-
-```yaml
-# The endpoint to push to Loki, specified in the Loki configuration as
-# http_listen_host and http_listen_port. If Loki is running in microservices
-# mode, this is the HTTP URL for the Distributor.
-url: http[s]://<host>:<port>/api/prom/push
-
-# Sets the `Authorization` header on every promtail request with the
-# configured username and password.
-# password and password_file are mutually exclusive.
-basic_auth:
-  username: <string>
-  password: <secret>
-  password_file: <string>
-
-# Sets the `Authorization` header on every promtail request with
-# the configured bearer token. It is mutually exclusive with `bearer_token_file`.
-bearer_token: <secret>
-
-# Sets the `Authorization` header on every promtail request with the bearer token
-# read from the configured file. It is mutually exclusive with `bearer_token`.
-bearer_token_file: /path/to/bearer/token/file
-
-# Configures the promtail request's TLS settings.
-tls_config:
-  # CA certificate to validate API server certificate with.
-  # If not provided Trusted CA from system will be used.
-  ca_file: <filename>
-
-  # Certificate and key files for client cert authentication to the server.
-  cert_file: <filename>
-  key_file: <filename>
-
-  # ServerName extension to indicate the name of the server.
-  # https://tools.ietf.org/html/rfc4366#section-3.1
-  server_name: <string>
-
-  # Disable validation of the server certificate.
-  insecure_skip_verify: <boolean>
-
-# Optional proxy URL.
-proxy_url: <string>
-
-# Maximum wait period before sending batch
-batchwait: 1s
-
-# Maximum batch size to accrue before sending, unit is byte
-batchsize: 102400
-
-# Maximum time to wait for server to respond to a request
-timeout: 10s
-
-backoff_config:
-  # Initial backoff time between retries
-  minbackoff: 100ms
-  # Maximum backoff time between retries
-  maxbackoff: 5s
-  # Maximum number of retires when sending batches, 0 means infinite retries
-  maxretries: 5
-
-# The labels to add to any time series or alerts when communicating with loki
-external_labels: {}
-```
-
-### Ship to multiple Loki Servers
-
-Promtail is able to push logs to as many different Loki servers as you like. Use
-`clients` instead of `client` to achieve this:
-
-```yaml
-# Single Loki
-client: [ <client_option> ]
-
-# Multiple Loki instances
 clients:
   - [ <client_option> ]
 ```
 
+Refer to [`client_config`](./configuration.md#client_config) from the Promtail
+Configuration reference for all available options.
