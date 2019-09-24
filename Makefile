@@ -1,4 +1,3 @@
-Makefile
 .DEFAULT_GOAL := all
 .PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos
 .PHONY: helm helm-install helm-upgrade helm-publish helm-debug helm-clean
@@ -366,13 +365,13 @@ fluent-bit-plugin:
 	go build $(DYN_GO_FLAGS) -buildmode=c-shared -o fluent-bit/fluent-bit-go-loki/out_loki.so ./fluent-bit/fluent-bit-go-loki/
 
 fluent-bit-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-fluent-bit:$(IMAGE_TAG) -f fluent-bit/fluent-bit-go-loki/Dockerfile .
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) -f fluent-bit/fluent-bit-go-loki/Dockerfile .
 
 fluent-bit-push:
-	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-fluent-bit:$(IMAGE_TAG)
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
 
 fluent-bit-test:
-	docker run -v /var/log:/var/log -v $(PWD)/tools/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf $(IMAGE_PREFIX)/loki-fluent-bit:$(IMAGE_TAG)
+	docker run -v /var/log:/var/log -v $(PWD)/tools/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
 
 ########################
 # Bigtable Backup Tool #

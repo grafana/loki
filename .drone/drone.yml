@@ -139,6 +139,23 @@ steps:
       include:
       - refs/heads/master
       - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-fluent-bit-image
+  settings:
+    dockerfile: fluent-bit/fluent-bit-go-loki/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/fluent-bit-plugin-loki
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      include:
+      - refs/heads/master
+      - refs/tags/v*
 ---
 depends_on:
 - check
