@@ -68,6 +68,11 @@ the sample to before responding to the user.
 The **ingester** service is responsible for writing log data to long-term
 storage backends (DynamoDB, S3, Cassandra, etc.).
 
+The ingester validates that ingested log lines are received in
+timestamp-ascending order (i.e., each log has a timestamp that occurs at a later
+time than the log before it). When the ingester receives a log that does not
+follow this order, the log line is rejected and an error is returned.
+
 Logs from each unique set of labels are built up into "chunks" in memory and
 then flushed to the backing storage backend.
 

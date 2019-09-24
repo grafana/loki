@@ -472,6 +472,11 @@ JSON post body can be sent in the following format:
 }
 ```
 
+> **NOTE**: logs sent to Loki for every stream must be in timestamp-ascending
+> order, meaning each log line must be more recent than the one last received.
+> If logs do not follow this order, Loki will reject the log with an out of
+> order error.
+
 In microservices mode, `/loki/api/v1/push` is exposed by the distributor.
 
 ### Examples
