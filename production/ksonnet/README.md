@@ -18,7 +18,7 @@ $ mkdir config && cd config/
 $ tk init
 $ tk env add loki --namespace=loki
 # notice that k8s_master_node_ip could not be localhost or 0.0.0.0
-$ tk set environments/loki --server=https://$(k8s_master_node_ip):6443
+$ tk env set environments/loki --server=https://$(k8s_master_node_ip):6443
 # Ksonnet kubernetes libraries
 $ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k.libsonnet
 $ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k8s.libsonnet
