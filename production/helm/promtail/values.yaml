@@ -77,6 +77,7 @@ serviceAccount:
 ## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
 tolerations:
 - key: node-role.kubernetes.io/master
+  operator: Exists
   effect: NoSchedule
 
 # Extra volumes to scrape logs from
