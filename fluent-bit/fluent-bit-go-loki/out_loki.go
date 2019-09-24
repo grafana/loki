@@ -2,115 +2,65 @@ package main
 
 import (
 	"C"
-	"os"
 	"time"
 	"unsafe"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/fluent/fluent-bit-go/output"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	kit "github.com/go-kit/kit/log/logrus"
-	"github.com/grafana/loki/pkg/promtail/client"
-	jsoniter "github.com/json-iterator/go"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
-	"github.com/sirupsen/logrus"
+	"github.com/weaveworks/common/logging"
 )
 
-var loki client.Client
-var ls model.LabelSet
-var removeKeys []string
-var plugin GoOutputPlugin = &fluentPlugin{}
-var logger = defaultLogger()
+var plugin *loki
+var logger log.Logger
 
-type GoOutputPlugin interface {
-	PluginConfigKey(ctx unsafe.Pointer, key string) string
-	Unregister(ctx unsafe.Pointer)
-	GetRecord(dec *output.FLBDecoder) (ret int, ts interface{}, rec map[interface{}]interface{})
-	NewDecoder(data unsafe.Pointer, length int) *output.FLBDecoder
-	HandleLine(ls model.LabelSet, timestamp time.Time, line string) error
-	Exit(code int)
+func init() {
+	var logLevel logging.Level
+	_ = logLevel.Set("info")
+	logger = newLogger(logLevel)
 }
 
-type fluentPlugin struct{}
-
-func (p *fluentPlugin) PluginConfigKey(ctx unsafe.Pointer, key string) string {
-	return output.FLBPluginConfigKey(ctx, key)
+type pluginConfig struct {
+	ctx unsafe.Pointer
 }
 
-func (p *fluentPlugin) Unregister(ctx unsafe.Pointer) {
-	output.FLBPluginUnregister(ctx)
-}
-
-func (p *fluentPlugin) GetRecord(dec *output.FLBDecoder) (int, interface{}, map[interface{}]interface{}) {
-	return output.GetRecord(dec)
-}
-
-func (p *fluentPlugin) NewDecoder(data unsafe.Pointer, length int) *output.FLBDecoder {
-	return output.NewDecoder(data, length)
-}
-
-func (p *fluentPlugin) Exit(code int) {
-	os.Exit(code)
-}
-
-func (p *fluentPlugin) HandleLine(ls model.LabelSet, timestamp time.Time, line string) error {
-	return loki.Handle(ls, timestamp, line)
+func (c *pluginConfig) Get(key string) string {
+	return output.FLBPluginConfigKey(c.ctx, key)
 }
 
 //export FLBPluginRegister
 func FLBPluginRegister(ctx unsafe.Pointer) int {
-	return output.FLBPluginRegister(ctx, "loki", "Ship fleunt-bit logs to Grafana Loki")
+	return output.FLBPluginRegister(ctx, "loki", "Ship fluent-bit logs to Grafana Loki")
 }
 
 //export FLBPluginInit
 // (fluentbit will call this)
 // ctx (context) pointer to fluentbit context (state/ c code)
 func FLBPluginInit(ctx unsafe.Pointer) int {
-	// Example to retrieve an optional configuration parameter
-	url := plugin.PluginConfigKey(ctx, "URL")
-	batchWait := plugin.PluginConfigKey(ctx, "BatchWait")
-	batchSize := plugin.PluginConfigKey(ctx, "BatchSize")
-	labels := plugin.PluginConfigKey(ctx, "Labels")
-	logLevel := plugin.PluginConfigKey(ctx, "LogLevel")
-	removeKeyStr := plugin.PluginConfigKey(ctx, "RemoveKeys")
 
-	config, err := getLokiConfig(url, batchWait, batchSize, labels, logLevel, removeKeyStr)
+	conf, err := parseConfig(&pluginConfig{ctx: ctx})
 	if err != nil {
 		level.Error(logger).Log("[flb-go]", "failed to launch", "error", err)
-		plugin.Unregister(ctx)
-		plugin.Exit(1)
 		return output.FLB_ERROR
 	}
-	logger = newLogger(config.logLevel)
+	logger = newLogger(conf.logLevel)
 	level.Info(logger).Log("[flb-go]", "Starting fluent-bit-go-loki", "version", version.Info())
-	level.Info(logger).Log("[flb-go]", "provided parameter", "URL", url)
-	level.Info(logger).Log("[flb-go]", "provided parameter", "BatchWait", batchWait)
-	level.Info(logger).Log("[flb-go]", "provided parameter", "BatchSize", batchSize)
-	level.Info(logger).Log("[flb-go]", "provided parameter", "Labels", labels)
-	level.Info(logger).Log("[flb-go]", "provided parameter", "LogLevel", logLevel)
-	level.Info(logger).Log("[flb-go]", "provided parameter", "RemoveKeys", removeKeyStr)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "URL", conf.clientConfig.URL)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "BatchWait", conf.clientConfig.BatchWait)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "BatchSize", conf.clientConfig.BatchSize)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "Labels", conf.clientConfig.ExternalLabels)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "LogLevel", conf.logLevel)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "RemoveKeys", conf.removeKeys)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "LabelKeys", conf.labelKeys)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "LineFormat", conf.lineFormat)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "DropSingleKey", conf.dropSingleKey)
 
-	cfg := client.Config{}
-	// Init everything with default values.
-	flagext.RegisterFlags(&cfg)
-
-	// Override some of those defaults
-	cfg.URL = config.url
-	cfg.BatchWait = config.batchWait
-	cfg.BatchSize = config.batchSize
-
-	log := logrus.New()
-
-	loki, err = client.New(cfg, kit.NewLogrusLogger(log))
+	plugin, err = newPlugin(conf, logger)
 	if err != nil {
-		level.Error(logger).Log("client.New", err)
-		plugin.Unregister(ctx)
-		plugin.Exit(1)
+		level.Error(logger).Log("newPlugin", err)
 		return output.FLB_ERROR
 	}
-	ls = config.labelSet
-	removeKeys = config.removeKeys
 
 	return output.FLB_OK
 }
@@ -121,10 +71,10 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 	var ts interface{}
 	var record map[interface{}]interface{}
 
-	dec := plugin.NewDecoder(data, int(length))
+	dec := output.NewDecoder(data, int(length))
 
 	for {
-		ret, ts, record = plugin.GetRecord(dec)
+		ret, ts, record = output.GetRecord(dec)
 		if ret != 0 {
 			break
 		}
@@ -141,15 +91,9 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 			timestamp = time.Now()
 		}
 
-		line, err := createJSON(record)
+		err := plugin.sendRecord(record, timestamp)
 		if err != nil {
-			level.Error(logger).Log("msg", "error creating message for Grafana Loki", "error", err)
-			continue
-		}
-
-		err = plugin.HandleLine(ls, timestamp, line)
-		if err != nil {
-			level.Error(logger).Log("msg", "error sending message for Grafana Loki", "error", err)
+			level.Error(logger).Log("msg", "error sending record to Loki", "error", err)
 			return output.FLB_ERROR
 		}
 	}
@@ -162,36 +106,12 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 	return output.FLB_OK
 }
 
-func createJSON(record map[interface{}]interface{}) (string, error) {
-	m := make(map[string]interface{})
-
-	for k, v := range record {
-		switch t := v.(type) {
-		case []byte:
-			// prevent encoding to base64
-			m[k.(string)] = string(t)
-		default:
-			m[k.(string)] = v
-		}
-	}
-
-	for _, k := range removeKeys {
-		delete(m, k)
-	}
-
-	js, err := jsoniter.Marshal(m)
-	if err != nil {
-		return "{}", err
-	}
-
-	return string(js), nil
-}
-
 //export FLBPluginExit
 func FLBPluginExit() int {
-	loki.Stop()
+	if plugin.client != nil {
+		plugin.client.Stop()
+	}
 	return output.FLB_OK
 }
 
-func main() {
-}
+func main() {}

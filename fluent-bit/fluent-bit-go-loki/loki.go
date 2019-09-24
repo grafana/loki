@@ -1,98 +1,142 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
-	"regexp"
-	"strconv"
+	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/promtail/client"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/logging"
 )
 
-type lokiConfig struct {
-	url        flagext.URLValue
-	batchWait  time.Duration
-	batchSize  int
-	labelSet   model.LabelSet
-	logLevel   logging.Level
-	removeKeys []string
+type loki struct {
+	cfg    *config
+	client client.Client
+	logger log.Logger
 }
 
-func getLokiConfig(url, batchWait, batchSize, labels, logLevelVal, removeKeyStr string) (*lokiConfig, error) {
-	lc := &lokiConfig{}
-	var clientURL flagext.URLValue
-	if url == "" {
-		url = "http://localhost:3100/api/prom/push"
-	}
-	err := clientURL.Set(url)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to parse client URL")
-	}
-	lc.url = clientURL
-
-	batchWaitValue, err := strconv.Atoi(batchWait)
-	if err != nil || batchWait == "" {
-		batchWaitValue = 1
-	}
-	lc.batchWait = time.Duration(batchWaitValue) * time.Second
-
-	batchSizeValue, err := strconv.Atoi(batchSize)
-	if err != nil || batchSize == "" {
-		batchSizeValue = 100 * 1024
-	}
-	lc.batchSize = batchSizeValue
-
-	if labels == "" {
-		labels = `{job="fluent-bit"}`
-	}
-
-	matchers, err := logql.ParseMatchers(labels)
+func newPlugin(cfg *config, logger log.Logger) (*loki, error) {
+	client, err := client.New(cfg.clientConfig, logger)
 	if err != nil {
 		return nil, err
 	}
-	labelSet := make(model.LabelSet)
-	for _, m := range matchers {
-		labelSet[model.LabelName(m.Name)] = model.LabelValue(m.Value)
-	}
-	lc.labelSet = labelSet
+	return &loki{
+		cfg:    cfg,
+		client: client,
+		logger: logger,
+	}, nil
+}
 
-	if logLevelVal == "" {
-		logLevelVal = "info"
+// sendRecord send fluentbit records to loki as an entry.
+func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
+	records := toStringMap(r)
+	level.Debug(l.logger).Log("msg", "processing records", "records", fmt.Sprintf("%v", records))
+	lbs := extractLabels(records, l.cfg.labelKeys)
+	removeKeys(records, append(l.cfg.labelKeys, l.cfg.removeKeys...))
+	if len(records) == 0 {
+		return nil
 	}
-	var logLevel logging.Level
-	if err := logLevel.Set(logLevelVal); err != nil {
-		return nil, fmt.Errorf("invalid log level: %v", logLevel)
+	if l.cfg.dropSingleKey && len(records) == 1 {
+		for _, v := range records {
+			return l.client.Handle(lbs, ts, fmt.Sprintf("%v", v))
+		}
 	}
-	lc.logLevel = logLevel
+	line, err := createLine(records, l.cfg.lineFormat)
+	if err != nil {
+		level.Error(l.logger).Log("msg", "error creating line", "error", err)
+		return nil
+	}
+	return l.client.Handle(lbs, ts, line)
+}
 
-	if removeKeyStr != "" {
-		regex := regexp.MustCompile(`\s*,\s*`)
-		lc.removeKeys = regex.Split(removeKeyStr, -1)
-	}
+func toStringMap(record map[interface{}]interface{}) map[string]interface{} {
+	m := make(map[string]interface{})
 
-	return lc, nil
+	for k, v := range record {
+		key, ok := k.(string)
+		if !ok {
+			continue
+		}
+		switch t := v.(type) {
+		case []byte:
+			// prevent encoding to base64
+			m[key] = string(t)
+		default:
+			m[key] = v
+		}
+	}
+	return m
+}
+
+func extractLabels(records map[string]interface{}, keys []string) model.LabelSet {
+	// right now we extract labels only from the outer most keys.
+	// in the future we should allow to extract `foo.bar.x`
+	res := model.LabelSet{}
+	for _, k := range keys {
+		v, ok := records[k]
+		if !ok {
+			continue
+		}
+		ln := model.LabelName(k)
+		// skips invalid name and values
+		if !ln.IsValid() {
+			continue
+		}
+		lv := model.LabelValue(fmt.Sprintf("%v", v))
+		if !lv.IsValid() {
+			continue
+		}
+		res[ln] = lv
+	}
+	return res
+}
+
+func removeKeys(records map[string]interface{}, keys []string) {
+	for _, k := range keys {
+		delete(records, k)
+	}
+}
+
+func createLine(records map[string]interface{}, f format) (string, error) {
+	switch f {
+	case jsonFormat:
+		js, err := jsoniter.Marshal(records)
+		if err != nil {
+			return "", err
+		}
+		return string(js), nil
+	case kvPairFormat:
+		buff := &bytes.Buffer{}
+		var keys []string
+		for k, _ := range records {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			_, err := fmt.Fprintf(buff, "%s=%v ", k, records[k])
+			if err != nil {
+				return "", err
+			}
+		}
+		res := buff.String()
+		if len(records) > 0 {
+			return res[:len(res)-1], nil
+		}
+		return res, nil
+	default:
+		return "", fmt.Errorf("invalid line format: %v", f)
+	}
 }
 
 func newLogger(logLevel logging.Level) log.Logger {
-	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
+	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 	logger = level.NewFilter(logger, logLevel.Gokit)
 	logger = log.With(logger, "caller", log.Caller(3))
-
-	return logger
-}
-
-func defaultLogger() log.Logger {
-	var logLevel logging.Level
-	_ = logLevel.Set("info")
-	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
-	logger = level.NewFilter(logger, logLevel.Gokit)
-	logger = log.With(logger, "caller", log.Caller(3))
-
 	return logger
 }

@@ -1,52 +1,193 @@
 package main
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	jsoniter "github.com/json-iterator/go"
+	"github.com/prometheus/common/model"
 )
 
-func TestGetLokiConfig(t *testing.T) {
-	c, err := getLokiConfig("", "", "", "", "", "")
+type entry struct {
+	lbs  model.LabelSet
+	line string
+	ts   time.Time
+}
+
+type recorder struct {
+	*entry
+}
+
+func (r *recorder) Handle(labels model.LabelSet, time time.Time, e string) error {
+	r.entry = &entry{
+		labels,
+		e,
+		time,
+	}
+	return nil
+}
+
+func (r *recorder) toEntry() *entry { return r.entry }
+
+func (r *recorder) Stop() {}
+
+var now = time.Now()
+
+func Test_loki_sendRecord(t *testing.T) {
+	var recordFixture = map[interface{}]interface{}{
+		"foo":   "bar",
+		"bar":   500,
+		"error": make(chan struct{}),
+	}
+
+	tests := []struct {
+		name string
+		cfg  *config
+		want *entry
+	}{
+		{"not enough records", &config{labelKeys: []string{"foo"}, lineFormat: jsonFormat, removeKeys: []string{"bar", "error"}}, nil},
+		{"labels", &config{labelKeys: []string{"bar", "fake"}, lineFormat: jsonFormat, removeKeys: []string{"fuzz", "error"}}, &entry{model.LabelSet{"bar": "500"}, `{"foo":"bar"}`, now}},
+		{"remove key", &config{labelKeys: []string{"fake"}, lineFormat: jsonFormat, removeKeys: []string{"foo", "error", "fake"}}, &entry{model.LabelSet{}, `{"bar":500}`, now}},
+		{"error", &config{labelKeys: []string{"fake"}, lineFormat: jsonFormat, removeKeys: []string{"foo"}}, nil},
+		{"key value", &config{labelKeys: []string{"fake"}, lineFormat: kvPairFormat, removeKeys: []string{"foo", "error", "fake"}}, &entry{model.LabelSet{}, `bar=500`, now}},
+		{"single", &config{labelKeys: []string{"fake"}, dropSingleKey: true, lineFormat: kvPairFormat, removeKeys: []string{"foo", "error", "fake"}}, &entry{model.LabelSet{}, `500`, now}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := &recorder{}
+			l := &loki{
+				cfg:    tt.cfg,
+				client: rec,
+				logger: logger,
+			}
+			_ = l.sendRecord(recordFixture, now)
+			got := rec.toEntry()
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("sendRecord() want:%v got:%v", tt.want, got)
+			}
+		})
+	}
+}
+
+func Test_createLine(t *testing.T) {
+	tests := []struct {
+		name    string
+		records map[string]interface{}
+		f       format
+		want    string
+		wantErr bool
+	}{
+
+		{"json", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": "bazz"}}, jsonFormat, `{"foo":"bar","bar":{"bizz":"bazz"}}`, false},
+		{"json with number", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": 20}}, jsonFormat, `{"foo":"bar","bar":{"bizz":20}}`, false},
+		{"bad json", map[string]interface{}{"foo": make(chan interface{})}, jsonFormat, "", true},
+		{"kv", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": "bazz"}}, kvPairFormat, `bar=map[bizz:bazz] foo=bar`, false},
+		{"kv with number", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": 20}, "decimal": 12.2}, kvPairFormat, `bar=map[bizz:20] decimal=12.2 foo=bar`, false},
+		{"kv with nil", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": 20}, "null": nil}, kvPairFormat, `bar=map[bizz:20] foo=bar null=<nil>`, false},
+		{"kv empty", map[string]interface{}{}, kvPairFormat, ``, false},
+		{"bad format", nil, format(3), "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := createLine(tt.records, tt.f)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("createLine() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if err != nil {
+				return
+			}
+			if tt.f == jsonFormat {
+				compareJson(t, got, tt.want)
+			} else {
+				if got != tt.want {
+					t.Errorf("createLine() = %v, want %v", got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+// compareJson unmarshal both string to map[string]interface compare json result.
+// we can't compare string to string as jsoniter doesn't ensure field ordering.
+func compareJson(t *testing.T, got, want string) {
+	var w map[string]interface{}
+	err := jsoniter.Unmarshal([]byte(want), &w)
 	if err != nil {
-		t.Fatalf("failed test %#v", err)
+		t.Errorf("failed to unmarshal string: %s", err)
 	}
-
-	assert.Equal(t, "http://localhost:3100/api/prom/push", c.url.String(), "Use default value of URL")
-	assert.Equal(t, 1*time.Second, c.batchWait, "Use default value of batchWait")
-	assert.Equal(t, 100*1024, c.batchSize, "Use default value of batchSize")
-	assert.Equal(t, "info", c.logLevel.String(), "Use default value of logLevel")
-
-	// Invalid URL
-	_, err = getLokiConfig("invalid---URL+*#Q(%#Q", "", "", "", "", "")
-	if err == nil {
-		t.Fatalf("failed test %#v", err)
-	}
-
-	// batchWait, batchSize
-
-	c, err = getLokiConfig("", "15", "30720", "", "", "")
+	var g map[string]interface{}
+	err = jsoniter.Unmarshal([]byte(got), &g)
 	if err != nil {
-		t.Fatalf("failed test %#v", err)
+		t.Errorf("failed to unmarshal string: %s", err)
 	}
-	assert.Equal(t, 15*time.Second, c.batchWait, "Use user-defined value of batchWait")
-	assert.Equal(t, 30*1024, c.batchSize, "Use user-defined value of batchSize")
+	if !reflect.DeepEqual(g, w) {
+		t.Errorf("compareJson() = %v, want %v", g, w)
+	}
+}
 
-	// LabelSets
-	labels := `{test="fluent-bit-go", lang="Golang"}`
-	c, err = getLokiConfig("", "15", "30", labels, "", "")
-	if err != nil {
-		t.Fatalf("failed test %#v", err)
+func Test_removeKeys(t *testing.T) {
+	type args struct {
 	}
-	assert.Equal(t, "{lang=\"Golang\", test=\"fluent-bit-go\"}",
-		c.labelSet.String(), "Use user-defined value of labels")
+	tests := []struct {
+		name     string
+		records  map[string]interface{}
+		expected map[string]interface{}
+		keys     []string
+	}{
+		{"remove all keys", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": "bazz"}}, map[string]interface{}{}, []string{"foo", "bar"}},
+		{"remove none", map[string]interface{}{"foo": "bar"}, map[string]interface{}{"foo": "bar"}, []string{}},
+		{"remove not existing", map[string]interface{}{"foo": "bar"}, map[string]interface{}{"foo": "bar"}, []string{"bar"}},
+		{"remove one", map[string]interface{}{"foo": "bar", "bazz": "buzz"}, map[string]interface{}{"foo": "bar"}, []string{"bazz"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			removeKeys(tt.records, tt.keys)
+			if !reflect.DeepEqual(tt.expected, tt.records) {
+				t.Errorf("removeKeys() = %v, want %v", tt.records, tt.expected)
+			}
+		})
+	}
+}
 
-	c, err = getLokiConfig("", "", "", "", "", "kubernetes,pod_name")
-	if err != nil {
-		t.Fatalf("failed test %#v", err)
+func Test_extractLabels(t *testing.T) {
+	tests := []struct {
+		name    string
+		records map[string]interface{}
+		keys    []string
+		want    model.LabelSet
+	}{
+		{"single string", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": "bazz"}}, []string{"foo"}, model.LabelSet{"foo": "bar"}},
+		{"multiple", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": "bazz"}}, []string{"foo", "bar"}, model.LabelSet{"foo": "bar", "bar": "map[bizz:bazz]"}},
+		{"nil", map[string]interface{}{"foo": nil}, []string{"foo"}, model.LabelSet{"foo": "<nil>"}},
+		{"none", map[string]interface{}{"foo": nil}, []string{}, model.LabelSet{}},
+		{"missing", map[string]interface{}{"foo": "bar"}, []string{"foo", "buzz"}, model.LabelSet{"foo": "bar"}},
+		{"skip invalid", map[string]interface{}{"foo.blah": "bar", "bar": "a\xc5z"}, []string{"foo.blah", "bar"}, model.LabelSet{}},
 	}
-	removeKeys := []string{"kubernetes", "pod_name"}
-	assert.Equal(t, removeKeys,
-		c.removeKeys, "Use user-defined value of removeKeys")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := extractLabels(tt.records, tt.keys); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("extractLabels() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_toStringMap(t *testing.T) {
+	tests := []struct {
+		name   string
+		record map[interface{}]interface{}
+		want   map[string]interface{}
+	}{
+		{"already string", map[interface{}]interface{}{"string": "foo", "bar": []byte("buzz")}, map[string]interface{}{"string": "foo", "bar": "buzz"}},
+		{"skip non string", map[interface{}]interface{}{"string": "foo", 1.0: []byte("buzz")}, map[string]interface{}{"string": "foo"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := toStringMap(tt.record); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("toStringMap() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
