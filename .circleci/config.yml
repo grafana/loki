@@ -72,7 +72,7 @@ jobs:
           command: make BUILD_IN_CONTAINER=false check-generated-files
       - run:
           name: Check Dependency
-          command: make BUILD_IN_CONTAINER=false check-mod
+          command: make check-mod
 
   # Promtail
   build/promtail-windows:
