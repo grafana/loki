@@ -55,6 +55,13 @@ func TestSliceBiggerChunk(t *testing.T) {
 			require.Equal(t, sample.Value, model.SampleValue(j))
 			require.True(t, iter.Scan())
 		}
+
+		// Now try via seek
+		iter = s.NewIterator(iter)
+		require.True(t, iter.FindAtOrAfter(model.Time(i*step)))
+		sample := iter.Value()
+		require.Equal(t, sample.Timestamp, model.Time(i*step))
+		require.Equal(t, sample.Value, model.SampleValue(i))
 	}
 }
 

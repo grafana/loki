@@ -131,6 +131,12 @@ func testChunkEncoding(t *testing.T, encoding Encoding, samples int) {
 	require.False(t, iter.Scan())
 	require.NoError(t, iter.Err())
 
+	// Check seek works after unmarshal
+	iter = chunk.NewIterator(iter)
+	for i := 0; i < samples; i += samples / 10 {
+		require.True(t, iter.FindAtOrAfter(model.Time(i*step)))
+	}
+
 	// Check the byte representation after another Marshall is the same.
 	buf = bytes.Buffer{}
 	err = chunk.Marshal(&buf)
@@ -170,6 +176,8 @@ func testChunkSeek(t *testing.T, encoding Encoding, samples int) {
 		require.False(t, iter.Scan())
 		require.NoError(t, iter.Err())
 	}
+	// Check seek past the end of the chunk returns failure
+	require.False(t, iter.FindAtOrAfter(model.Time(samples*step+1)))
 }
 
 func testChunkSeekForward(t *testing.T, encoding Encoding, samples int) {
