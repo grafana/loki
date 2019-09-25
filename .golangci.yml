@@ -3,6 +3,7 @@
 
 # options for analysis running
 run:
+  modules-download-mode: vendor
   # default concurrency is a available CPU number
   concurrency: 2
 
@@ -63,4 +64,4 @@ linters:
 
 issues:
   exclude:
-    - Error return value of .*log\.Logger\)\.Log\x60 is not checked 
+    - Error return value of .*log\.Logger\)\.Log\x60 is not checked
