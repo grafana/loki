@@ -445,7 +445,7 @@ Response (streamed):
 
 ## `POST /loki/api/v1/push`
 
-Alias (DEPRECATED): `POST /loki/api/v1/push`
+Alias (DEPRECATED): `POST /api/prom/push`
 
 `/loki/api/v1/push` is the endpoint used to send log entries to Loki. The default
 behavior is for the POST body to be a snappy-compressed protobuf messsage:
