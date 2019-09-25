@@ -243,6 +243,7 @@ func NewEngine(opts EngineOpts) *Engine {
 			Name:        "query_duration_seconds",
 			Help:        "Query timings",
 			ConstLabels: prometheus.Labels{"slice": "queue_time"},
+			Objectives:  map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 		}),
 		queryPrepareTime: prometheus.NewSummary(prometheus.SummaryOpts{
 			Namespace:   namespace,
@@ -250,6 +251,7 @@ func NewEngine(opts EngineOpts) *Engine {
 			Name:        "query_duration_seconds",
 			Help:        "Query timings",
 			ConstLabels: prometheus.Labels{"slice": "prepare_time"},
+			Objectives:  map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 		}),
 		queryInnerEval: prometheus.NewSummary(prometheus.SummaryOpts{
 			Namespace:   namespace,
@@ -257,6 +259,7 @@ func NewEngine(opts EngineOpts) *Engine {
 			Name:        "query_duration_seconds",
 			Help:        "Query timings",
 			ConstLabels: prometheus.Labels{"slice": "inner_eval"},
+			Objectives:  map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 		}),
 		queryResultSort: prometheus.NewSummary(prometheus.SummaryOpts{
 			Namespace:   namespace,
@@ -264,6 +267,7 @@ func NewEngine(opts EngineOpts) *Engine {
 			Name:        "query_duration_seconds",
 			Help:        "Query timings",
 			ConstLabels: prometheus.Labels{"slice": "result_sort"},
+			Objectives:  map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 		}),
 	}
 	metrics.maxConcurrentQueries.Set(float64(opts.MaxConcurrent))
@@ -1519,13 +1523,17 @@ func (ev *evaluator) VectorBinop(op ItemType, lhs, rhs Vector, matching *VectorM
 // signatureFunc returns a function that calculates the signature for a metric
 // ignoring the provided labels. If on, then the given labels are only used instead.
 func signatureFunc(on bool, names ...string) func(labels.Labels) uint64 {
-	// TODO(fabxc): ensure names are sorted and then use that and sortedness
-	// of labels by names to speed up the operations below.
-	// Alternatively, inline the hashing and don't build new label sets.
+	sort.Strings(names)
 	if on {
-		return func(lset labels.Labels) uint64 { return lset.HashForLabels(names...) }
+		return func(lset labels.Labels) uint64 {
+			h, _ := lset.HashForLabels(make([]byte, 0, 1024), names...)
+			return h
+		}
 	}
-	return func(lset labels.Labels) uint64 { return lset.HashWithoutLabels(names...) }
+	return func(lset labels.Labels) uint64 {
+		h, _ := lset.HashWithoutLabels(make([]byte, 0, 1024), names...)
+		return h
+	}
 }
 
 // resultMetric returns the metric for the given sample(s) based on the Vector
@@ -1718,11 +1726,14 @@ func (ev *evaluator) aggregation(op ItemType, grouping []string, without bool, p
 		}
 	}
 
+	sort.Strings(grouping)
+	lb := labels.NewBuilder(nil)
+	buf := make([]byte, 0, 1024)
 	for _, s := range vec {
 		metric := s.Metric
 
 		if op == ItemCountValues {
-			lb := labels.NewBuilder(metric)
+			lb.Reset(metric)
 			lb.Set(valueLabel, strconv.FormatFloat(s.V, 'f', -1, 64))
 			metric = lb.Labels()
 		}
@@ -1731,9 +1742,9 @@ func (ev *evaluator) aggregation(op ItemType, grouping []string, without bool, p
 			groupingKey uint64
 		)
 		if without {
-			groupingKey = metric.HashWithoutLabels(grouping...)
+			groupingKey, buf = metric.HashWithoutLabels(buf, grouping...)
 		} else {
-			groupingKey = metric.HashForLabels(grouping...)
+			groupingKey, buf = metric.HashForLabels(buf, grouping...)
 		}
 
 		group, ok := result[groupingKey]
@@ -1742,7 +1753,7 @@ func (ev *evaluator) aggregation(op ItemType, grouping []string, without bool, p
 			var m labels.Labels
 
 			if without {
-				lb := labels.NewBuilder(metric)
+				lb.Reset(metric)
 				lb.Del(grouping...)
 				lb.Del(labels.MetricName)
 				m = lb.Labels()

@@ -48,7 +48,7 @@ type LifecyclerConfig struct {
 	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period,omitempty"`
 	JoinAfter        time.Duration `yaml:"join_after,omitempty"`
 	MinReadyDuration time.Duration `yaml:"min_ready_duration,omitempty"`
-	ClaimOnRollout   bool          `yaml:"claim_on_rollout,omitempty"`
+	UnusedFlag       bool          `yaml:"claim_on_rollout,omitempty"` // DEPRECATED - left for backwards-compatibility
 	NormaliseTokens  bool          `yaml:"normalise_tokens,omitempty"`
 	InfNames         []string      `yaml:"interface_names"`
 	FinalSleep       time.Duration `yaml:"final_sleep"`
@@ -79,7 +79,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.DurationVar(&cfg.HeartbeatPeriod, prefix+"heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul.")
 	f.DurationVar(&cfg.JoinAfter, prefix+"join-after", 0*time.Second, "Period to wait for a claim from another member; will join automatically after this.")
 	f.DurationVar(&cfg.MinReadyDuration, prefix+"min-ready-duration", 1*time.Minute, "Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring.")
-	f.BoolVar(&cfg.ClaimOnRollout, prefix+"claim-on-rollout", false, "Send chunks to PENDING ingesters on exit.")
+	flagext.DeprecatedFlag(f, prefix+"claim-on-rollout", "DEPRECATED. This feature is no longer optional.")
 	f.BoolVar(&cfg.NormaliseTokens, prefix+"normalise-tokens", false, "Store tokens in a normalised fashion to reduce allocations.")
 	f.DurationVar(&cfg.FinalSleep, prefix+"final-sleep", 30*time.Second, "Duration to sleep for before exiting, to ensure metrics are scraped.")
 
@@ -474,15 +474,13 @@ func (i *Lifecycler) changeState(ctx context.Context, state IngesterState) error
 
 func (i *Lifecycler) processShutdown(ctx context.Context) {
 	flushRequired := true
-	if i.cfg.ClaimOnRollout {
-		transferStart := time.Now()
-		if err := i.flushTransferer.TransferOut(ctx); err != nil {
-			level.Error(util.Logger).Log("msg", "Failed to transfer chunks to another ingester", "err", err)
-			shutdownDuration.WithLabelValues("transfer", "fail", i.RingName).Observe(time.Since(transferStart).Seconds())
-		} else {
-			flushRequired = false
-			shutdownDuration.WithLabelValues("transfer", "success", i.RingName).Observe(time.Since(transferStart).Seconds())
-		}
+	transferStart := time.Now()
+	if err := i.flushTransferer.TransferOut(ctx); err != nil {
+		level.Error(util.Logger).Log("msg", "Failed to transfer chunks to another ingester", "err", err)
+		shutdownDuration.WithLabelValues("transfer", "fail", i.RingName).Observe(time.Since(transferStart).Seconds())
+	} else {
+		flushRequired = false
+		shutdownDuration.WithLabelValues("transfer", "success", i.RingName).Observe(time.Since(transferStart).Seconds())
 	}
 
 	if flushRequired {

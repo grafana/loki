@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"unsafe"
 
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -14,6 +15,21 @@ var (
 	expectedTimeseries       = 100
 	expectedLabels           = 20
 	expectedSamplesPerSeries = 10
+
+	slicePool = sync.Pool{
+		New: func() interface{} {
+			return make([]PreallocTimeseries, 0, expectedTimeseries)
+		},
+	}
+
+	timeSeriesPool = sync.Pool{
+		New: func() interface{} {
+			return TimeSeries{
+				Labels:  make([]LabelAdapter, 0, expectedLabels),
+				Samples: make([]Sample, 0, expectedSamplesPerSeries),
+			}
+		},
+	}
 )
 
 // PreallocConfig configures how structures will be preallocated to optimise
@@ -27,26 +43,25 @@ func (PreallocConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&expectedSamplesPerSeries, "ingester-client.expected-samples-per-series", expectedSamplesPerSeries, "Expected number of samples per timeseries, used for preallocations.")
 }
 
-// PreallocWriteRequest is a WriteRequest which preallocs slices on Unmarshall.
+// PreallocWriteRequest is a WriteRequest which preallocs slices on Unmarshal.
 type PreallocWriteRequest struct {
 	WriteRequest
 }
 
 // Unmarshal implements proto.Message.
 func (p *PreallocWriteRequest) Unmarshal(dAtA []byte) error {
-	p.Timeseries = make([]PreallocTimeseries, 0, expectedTimeseries)
+	p.Timeseries = slicePool.Get().([]PreallocTimeseries)
 	return p.WriteRequest.Unmarshal(dAtA)
 }
 
-// PreallocTimeseries is a TimeSeries which preallocs slices on Unmarshall.
+// PreallocTimeseries is a TimeSeries which preallocs slices on Unmarshal.
 type PreallocTimeseries struct {
 	TimeSeries
 }
 
 // Unmarshal implements proto.Message.
 func (p *PreallocTimeseries) Unmarshal(dAtA []byte) error {
-	p.Labels = make([]LabelAdapter, 0, expectedLabels)
-	p.Samples = make([]Sample, 0, expectedSamplesPerSeries)
+	p.TimeSeries = timeSeriesPool.Get().(TimeSeries)
 	return p.TimeSeries.Unmarshal(dAtA)
 }
 
@@ -223,4 +238,19 @@ func (bs *LabelAdapter) Compare(other LabelAdapter) int {
 		return c
 	}
 	return strings.Compare(bs.Value, other.Value)
+}
+
+// ReuseSlice puts the slice back into a sync.Pool for reuse.
+func ReuseSlice(slice []PreallocTimeseries) {
+	for i := range slice {
+		ReuseTimeseries(slice[i].TimeSeries)
+	}
+	slicePool.Put(slice[:0])
+}
+
+// ReuseTimeseries puts the timeseries back into a sync.Pool for reuse.
+func ReuseTimeseries(ts TimeSeries) {
+	ts.Labels = ts.Labels[:0]
+	ts.Samples = ts.Samples[:0]
+	timeSeriesPool.Put(ts)
 }

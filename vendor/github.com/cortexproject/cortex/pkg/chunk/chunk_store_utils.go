@@ -108,6 +108,7 @@ type decodeResponse struct {
 
 // NewChunkFetcher makes a new ChunkFetcher.
 func NewChunkFetcher(cfg cache.Config, cacheStubs bool, storage ObjectClient) (*Fetcher, error) {
+	cfg.Prefix = "chunks"
 	cache, err := cache.New(cfg)
 	if err != nil {
 		return nil, err

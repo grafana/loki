@@ -16,7 +16,7 @@ require (
 	github.com/bradfitz/gomemcache v0.0.0-20180710155616-bc664df96737 // indirect
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
-	github.com/cortexproject/cortex v0.1.0
+	github.com/cortexproject/cortex v0.2.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/docker/docker v0.0.0-20190607191414-238f8eaa31aa
@@ -55,8 +55,7 @@ require (
 	github.com/prometheus/client_golang v1.1.0
 	github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4
 	github.com/prometheus/common v0.6.0
-	github.com/prometheus/prometheus v0.0.0-20190607092147-e23fa22233cf
-	github.com/prometheus/tsdb v0.9.1 // indirect
+	github.com/prometheus/prometheus v0.0.0-20190731144842-63ed2e28f1ac
 	github.com/samuel/go-zookeeper v0.0.0-20190810000440-0ceca61e4d75 // indirect
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd

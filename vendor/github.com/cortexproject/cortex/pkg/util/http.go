@@ -87,7 +87,16 @@ func ParseProtoReader(ctx context.Context, reader io.Reader, req proto.Message, 
 		sp.LogFields(otlog.String("event", "util.ParseProtoRequest[unmarshal]"),
 			otlog.Int("size", len(body)))
 	}
-	if err := proto.Unmarshal(body, req); err != nil {
+
+	// We re-implement proto.Unmarshal here as it calls XXX_Unmarshal first,
+	// which we can't override without upsetting golint.
+	req.Reset()
+	if u, ok := req.(proto.Unmarshaler); ok {
+		err = u.Unmarshal(body)
+	} else {
+		err = proto.NewBuffer(body).Unmarshal(req)
+	}
+	if err != nil {
 		return nil, err
 	}
 

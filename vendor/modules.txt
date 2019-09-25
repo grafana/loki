@@ -41,6 +41,8 @@ github.com/alecthomas/template
 github.com/alecthomas/template/parse
 # github.com/alecthomas/units v0.0.0-20190717042225-c3de453c63f4
 github.com/alecthomas/units
+# github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da
+github.com/armon/go-metrics
 # github.com/aws/aws-sdk-go v1.22.4
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/awserr
@@ -115,7 +117,7 @@ github.com/coreos/go-systemd/journal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/dlopen
 github.com/coreos/pkg/capnslog
-# github.com/cortexproject/cortex v0.1.0
+# github.com/cortexproject/cortex v0.2.0
 github.com/cortexproject/cortex/pkg/util
 github.com/cortexproject/cortex/pkg/util/flagext
 github.com/cortexproject/cortex/pkg/chunk
@@ -194,6 +196,8 @@ github.com/docker/go-plugins-helpers/sdk
 github.com/docker/go-units
 # github.com/dustin/go-humanize v1.0.0
 github.com/dustin/go-humanize
+# github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
+github.com/facette/natsort
 # github.com/fatih/color v1.7.0
 github.com/fatih/color
 # github.com/fsnotify/fsnotify v1.4.7
@@ -291,11 +295,19 @@ github.com/grpc-ecosystem/grpc-gateway/utilities
 github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc
 # github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed
 github.com/hailocab/go-hostpool
+# github.com/hashicorp/consul/api v1.1.0
+github.com/hashicorp/consul/api
 # github.com/hashicorp/go-cleanhttp v0.5.1
 github.com/hashicorp/go-cleanhttp
+# github.com/hashicorp/go-immutable-radix v1.0.0
+github.com/hashicorp/go-immutable-radix
+# github.com/hashicorp/go-rootcerts v1.0.0
+github.com/hashicorp/go-rootcerts
 # github.com/hashicorp/golang-lru v0.5.3
 github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
+# github.com/hashicorp/serf v0.8.2
+github.com/hashicorp/serf/coordinate
 # github.com/hpcloud/tail v1.0.0
 github.com/hpcloud/tail
 github.com/hpcloud/tail/ratelimiter
@@ -331,6 +343,8 @@ github.com/mattn/go-isatty
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/miekg/dns v1.1.15
 github.com/miekg/dns
+# github.com/mitchellh/go-homedir v1.0.0
+github.com/mitchellh/go-homedir
 # github.com/mitchellh/mapstructure v1.1.2
 github.com/mitchellh/mapstructure
 # github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
@@ -379,7 +393,7 @@ github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg
 # github.com/prometheus/procfs v0.0.3
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
-# github.com/prometheus/prometheus v0.0.0-20190607092147-e23fa22233cf
+# github.com/prometheus/prometheus v0.0.0-20190731144842-63ed2e28f1ac
 github.com/prometheus/prometheus/pkg/pool
 github.com/prometheus/prometheus/pkg/labels
 github.com/prometheus/prometheus/promql
