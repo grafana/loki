@@ -90,18 +90,14 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 	if v, ok := extracted[o.cfgs.Source]; ok {
 		s, err := getString(v)
 		if err != nil {
-			if Debug {
-				level.Debug(o.logger).Log("msg", "extracted template could not be converted to a string", "err", err, "type", reflect.TypeOf(v).String())
-			}
+			level.Warn(o.logger).Log("msg", "extracted template could not be converted to a string", "err", err, "type", reflect.TypeOf(v).String())
 			return
 		}
 		td := templateData{s}
 		buf := &bytes.Buffer{}
 		err = o.template.Execute(buf, td)
 		if err != nil {
-			if Debug {
-				level.Debug(o.logger).Log("msg", "failed to execute template on extracted value", "err", err, "value", v)
-			}
+			level.Warn(o.logger).Log("msg", "failed to execute template on extracted value", "err", err, "value", v)
 			return
 		}
 		st := buf.String()
@@ -112,20 +108,27 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 			extracted[o.cfgs.Source] = st
 		}
 
+		if Debug {
+			level.Debug(o.logger).Log("msg", "template output", "out", st)
+		}
 	} else {
 		td := templateData{}
 		buf := &bytes.Buffer{}
 		err := o.template.Execute(buf, td)
 		if err != nil {
-			if Debug {
-				level.Debug(o.logger).Log("msg", "failed to execute template on extracted value", "err", err, "value", v)
-			}
+			level.Warn(o.logger).Log("msg", "failed to execute template on extracted value", "err", err, "value", v)
 			return
 		}
 		st := buf.String()
 		// Do not set extracted data with empty values
 		if st != "" {
 			extracted[o.cfgs.Source] = st
+
+			if Debug {
+				level.Debug(o.logger).Log("msg", "template output", "out", st)
+			}
+		} else if Debug {
+			level.Debug(o.logger).Log("msg", "template output is empty, ignoring")
 		}
 	}
 }
