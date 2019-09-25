@@ -52,6 +52,7 @@ func Test_loki_sendRecord(t *testing.T) {
 		{"error", &config{labelKeys: []string{"fake"}, lineFormat: jsonFormat, removeKeys: []string{"foo"}}, nil},
 		{"key value", &config{labelKeys: []string{"fake"}, lineFormat: kvPairFormat, removeKeys: []string{"foo", "error", "fake"}}, &entry{model.LabelSet{}, `bar=500`, now}},
 		{"single", &config{labelKeys: []string{"fake"}, dropSingleKey: true, lineFormat: kvPairFormat, removeKeys: []string{"foo", "error", "fake"}}, &entry{model.LabelSet{}, `500`, now}},
+		{"labelmap", &config{labeMap: map[string]interface{}{"bar": "other"}, lineFormat: jsonFormat, removeKeys: []string{"bar", "error"}}, &entry{model.LabelSet{"other": "500"}, `{"foo":"bar"}`, now}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -185,6 +186,93 @@ func Test_toStringMap(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := toStringMap(tt.record); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("toStringMap() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_labelMapping(t *testing.T) {
+	tests := []struct {
+		name    string
+		records map[string]interface{}
+		mapping map[string]interface{}
+		want    model.LabelSet
+	}{
+		{
+			"bytes string",
+			map[string]interface{}{
+				"kubernetes": map[string]interface{}{
+					"foo": []byte("buzz"),
+				},
+				"stream": "stderr",
+			},
+			map[string]interface{}{
+				"kubernetes": map[string]interface{}{
+					"foo":         "test",
+					"nonexisting": "",
+				},
+				"stream": "output",
+				"nope":   "nope",
+			},
+			model.LabelSet{"test": "buzz", "output": "stderr"},
+		},
+		{
+			"deep string",
+			map[string]interface{}{
+				"kubernetes": map[string]interface{}{
+					"label": map[string]interface{}{
+						"component": map[string]interface{}{
+							"buzz": "value",
+						},
+					},
+				},
+			},
+			map[string]interface{}{
+				"kubernetes": map[string]interface{}{
+					"label": map[string]interface{}{
+						"component": map[string]interface{}{
+							"buzz": "label",
+						},
+					},
+				},
+				"stream": "output",
+				"nope":   "nope",
+			},
+			model.LabelSet{"label": "value"},
+		},
+		{
+			"skip invalid values",
+			map[string]interface{}{
+				"kubernetes": map[string]interface{}{
+					"annotations": map[string]interface{}{
+						"kubernetes.io/config.source": "cfg",
+						"kubernetes.io/config.hash":   []byte("a\xc5z"),
+					},
+					"container_name": "loki",
+					"namespace_name": "dev",
+					"pod_name":       "loki-asdwe",
+				},
+			},
+			map[string]interface{}{
+				"kubernetes": map[string]interface{}{
+					"annotations": map[string]interface{}{
+						"kubernetes.io/config.source": "source",
+						"kubernetes.io/config.hash":   "hash",
+					},
+					"container_name": "container",
+					"namespace_name": "namespace",
+					"pod_name":       "instance",
+				},
+				"stream": "output",
+			},
+			model.LabelSet{"container": "loki", "instance": "loki-asdwe", "namespace": "dev", "source": "cfg"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := model.LabelSet{}
+			if mapLabels(tt.records, tt.mapping, got); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("mapLabels() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"io/ioutil"
 	"net/url"
+	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -21,6 +23,9 @@ func (f fakeConfig) Get(key string) string {
 }
 
 func Test_parseConfig(t *testing.T) {
+	fileName := createTempLabelMap(t)
+	defer os.Remove(fileName)
+
 	tests := []struct {
 		name    string
 		conf    map[string]string
@@ -41,7 +46,7 @@ func Test_parseConfig(t *testing.T) {
 				dropSingleKey: true,
 			},
 			false},
-		{"values",
+		{"setting values",
 			map[string]string{
 				"URL":           "http://somewhere.com:3100/loki/api/v1/push",
 				"LineFormat":    "key_value",
@@ -67,6 +72,46 @@ func Test_parseConfig(t *testing.T) {
 				dropSingleKey: false,
 			},
 			false},
+		{"with label map",
+			map[string]string{
+				"URL":           "http://somewhere.com:3100/loki/api/v1/push",
+				"LineFormat":    "key_value",
+				"LogLevel":      "warn",
+				"Labels":        `{app="foo"}`,
+				"BatchWait":     "30",
+				"BatchSize":     "100",
+				"RemoveKeys":    "buzz,fuzz",
+				"LabelKeys":     "foo,bar",
+				"DropSingleKey": "false",
+				"LabelMapPath":  fileName,
+			},
+			&config{
+				lineFormat: kvPairFormat,
+				clientConfig: client.Config{
+					URL:            mustParseURL("http://somewhere.com:3100/loki/api/v1/push"),
+					BatchSize:      100,
+					BatchWait:      30 * time.Second,
+					ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"app": "foo"}},
+				},
+				logLevel:      mustParseLogLevel("warn"),
+				labelKeys:     nil,
+				removeKeys:    []string{"buzz", "fuzz"},
+				dropSingleKey: false,
+				labeMap: map[string]interface{}{
+					"kubernetes": map[string]interface{}{
+						"container_name": "container",
+						"host":           "host",
+						"namespace_name": "namespace",
+						"pod_name":       "instance",
+						"labels": map[string]interface{}{
+							"component": "component",
+							"tier":      "tier",
+						},
+					},
+					"stream": "stream",
+				},
+			},
+			false},
 		{"bad url", map[string]string{"URL": "::doh.com"}, nil, true},
 		{"bad BatchWait", map[string]string{"BatchWait": "a"}, nil, true},
 		{"bad BatchSize", map[string]string{"BatchSize": "a"}, nil, true},
@@ -74,6 +119,7 @@ func Test_parseConfig(t *testing.T) {
 		{"bad format", map[string]string{"LineFormat": "a"}, nil, true},
 		{"bad log level", map[string]string{"LogLevel": "a"}, nil, true},
 		{"bad drop single key", map[string]string{"DropSingleKey": "a"}, nil, true},
+		{"bad labelmap file", map[string]string{"LabelMapPath": "a"}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -109,10 +155,13 @@ func assertConfig(t *testing.T, expected, actual *config) {
 		t.Errorf("incorrect removeKeys want:%v got:%v", expected.removeKeys, actual.removeKeys)
 	}
 	if !reflect.DeepEqual(expected.labelKeys, actual.labelKeys) {
-		t.Errorf("incorrect removeKeys want:%v got:%v", expected.labelKeys, actual.labelKeys)
+		t.Errorf("incorrect labelKeys want:%v got:%v", expected.labelKeys, actual.labelKeys)
 	}
 	if expected.logLevel.String() != actual.logLevel.String() {
 		t.Errorf("incorrect logLevel want:%v got:%v", expected.logLevel.String(), actual.logLevel.String())
+	}
+	if !reflect.DeepEqual(expected.labeMap, actual.labeMap) {
+		t.Errorf("incorrect labeMap want:%v got:%v", expected.labeMap, actual.labeMap)
 	}
 }
 
@@ -131,4 +180,28 @@ func mustParseLogLevel(l string) logging.Level {
 		panic(err)
 	}
 	return level
+}
+
+func createTempLabelMap(t *testing.T) string {
+	file, err := ioutil.TempFile("", "labelmap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = file.WriteString(`{
+        "kubernetes": {
+            "namespace_name": "namespace",
+            "labels": {
+                "component": "component",
+                "tier": "tier"
+            },
+            "host": "host",
+            "container_name": "container",
+            "pod_name": "instance"
+        },
+        "stream": "stream"
+    }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return file.Name()
 }

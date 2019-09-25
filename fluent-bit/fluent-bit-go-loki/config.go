@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"strconv"
 	"strings"
 	"time"
@@ -40,6 +42,7 @@ type config struct {
 	labelKeys     []string
 	lineFormat    format
 	dropSingleKey bool
+	labeMap       map[string]interface{}
 }
 
 func parseConfig(cfg ConfigGetter) (*config, error) {
@@ -128,6 +131,18 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 		res.lineFormat = kvPairFormat
 	default:
 		return nil, fmt.Errorf("invalid format: %s", lineFormat)
+	}
+
+	labelMapPath := cfg.Get("LabelMapPath")
+	if labelMapPath != "" {
+		content, err := ioutil.ReadFile(labelMapPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open LabelMap file: %s", err)
+		}
+		if err := json.Unmarshal(content, &res.labeMap); err != nil {
+			return nil, fmt.Errorf("failed to Unmarshal LabelMap file: %s", err)
+		}
+		res.labelKeys = nil
 	}
 	return res, nil
 }

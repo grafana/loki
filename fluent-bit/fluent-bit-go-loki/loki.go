@@ -37,7 +37,12 @@ func newPlugin(cfg *config, logger log.Logger) (*loki, error) {
 func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	records := toStringMap(r)
 	level.Debug(l.logger).Log("msg", "processing records", "records", fmt.Sprintf("%v", records))
-	lbs := extractLabels(records, l.cfg.labelKeys)
+	lbs := model.LabelSet{}
+	if l.cfg.labeMap != nil {
+		mapLabels(records, l.cfg.labeMap, lbs)
+	} else {
+		lbs = extractLabels(records, l.cfg.labelKeys)
+	}
 	removeKeys(records, append(l.cfg.labelKeys, l.cfg.removeKeys...))
 	if len(records) == 0 {
 		return nil
@@ -75,8 +80,6 @@ func toStringMap(record map[interface{}]interface{}) map[string]interface{} {
 }
 
 func extractLabels(records map[string]interface{}, keys []string) model.LabelSet {
-	// right now we extract labels only from the outer most keys.
-	// in the future we should allow to extract `foo.bar.x`
 	res := model.LabelSet{}
 	for _, k := range keys {
 		v, ok := records[k]
@@ -95,6 +98,43 @@ func extractLabels(records map[string]interface{}, keys []string) model.LabelSet
 		res[ln] = lv
 	}
 	return res
+}
+
+// mapLabels convert records into labels using a json map[string]interface{} mapping
+func mapLabels(records map[string]interface{}, mapping map[string]interface{}, res model.LabelSet) {
+	for k, v := range mapping {
+		switch nextKey := v.(type) {
+		// if the next level is a map we are expecting we need to move deeper in the tree
+		case map[string]interface{}:
+			if nextValue, ok := records[k].(map[string]interface{}); ok {
+				// recursively search through the next level map.
+				mapLabels(nextValue, nextKey, res)
+			}
+		// we found a value in the mapping meaning we need to save the corresponding record value for the given key.
+		case string:
+			if value, ok := getRecordValue(k, records); ok {
+				lName := model.LabelName(nextKey)
+				lValue := model.LabelValue(value)
+				if lValue.IsValid() && lName.IsValid() {
+					res[lName] = lValue
+				}
+			}
+		}
+	}
+}
+
+func getRecordValue(key string, records map[string]interface{}) (string, bool) {
+	if value, ok := records[key]; ok {
+		switch typedVal := value.(type) {
+		case string:
+			return typedVal, true
+		case []byte:
+			return string(typedVal), true
+		default:
+			return fmt.Sprintf("%v", typedVal), true
+		}
+	}
+	return "", false
 }
 
 func removeKeys(records map[string]interface{}, keys []string) {
