@@ -18,6 +18,24 @@ For more information:
 1. [Table Manager](table-manager.md)
 2. [Retention](retention.md)
 
+## Supported Stores
+
+The following are supported for the index:
+
+* [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
+* [Google Bigtable](https://cloud.google.com/bigtable)
+* [Apache Cassandra](https://cassandra.apache.org)
+* [BoltDB](https://github.com/boltdb/bolt) (doesn't work when clustering Loki)
+
+The following are supported for the chunks:
+
+* [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
+* [Google Bigtable](https://cloud.google.com/bigtable)
+* [Apache Cassandra](https://cassandra.apache.org)
+* [Amazon S3](https://aws.amazon.com/s3)
+* [Google Cloud Storage](https://cloud.google.com/storage/)
+* Filesystem (doesn't work when clustering Loki)
+
 ## Cloud Storage Permissions
 
 ### S3
