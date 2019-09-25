@@ -30,6 +30,16 @@ something with that extract data. The most common action stage will be a
 A common stage will also be the [match](./stages/match.md) stage to selectively
 apply stages based on the current labels.
 
+Note that pipelines can not currently be used to deduplicate logs; Loki will
+receive the same log line multiple times if, for example:
+
+1. Two scrape configs read from the same file
+2. Duplicate log lines in a file are sent through a pipeline. Deduplication is
+   not done.
+
+However, Loki will perform some deduplication at query time for logs that have
+the exact same nanosecond timestamp, labels, and log contents.
+
 This documented example gives a good glimpse of what you can achieve with a
 pipeline:
 
