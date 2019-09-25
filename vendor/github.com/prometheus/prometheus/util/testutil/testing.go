@@ -23,7 +23,6 @@
 package testutil
 
 import (
-	"fmt"
 	"reflect"
 )
 
@@ -63,20 +62,9 @@ func NotOk(tb TB, err error, format string, a ...interface{}) {
 }
 
 // Equals fails the test if exp is not equal to act.
-func Equals(tb TB, exp, act interface{}, msgAndArgs ...interface{}) {
+func Equals(tb TB, exp, act interface{}) {
 	tb.Helper()
 	if !reflect.DeepEqual(exp, act) {
-		tb.Fatalf("\033[31m%s\n\nexp: %#v\n\ngot: %#v%s\033[39m\n", formatMessage(msgAndArgs), exp, act)
+		tb.Fatalf("\033[31m\nexp: %#v\n\ngot: %#v\033[39m\n", exp, act)
 	}
-}
-
-func formatMessage(msgAndArgs []interface{}) string {
-	if len(msgAndArgs) == 0 {
-		return ""
-	}
-
-	if msg, ok := msgAndArgs[0].(string); ok {
-		return fmt.Sprintf("\nmsg: "+msg, msgAndArgs[1:]...)
-	}
-	return ""
 }

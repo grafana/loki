@@ -55,10 +55,10 @@ type Querier interface {
 	Select(*SelectParams, ...*labels.Matcher) (SeriesSet, Warnings, error)
 
 	// LabelValues returns all potential values for a label name.
-	LabelValues(name string) ([]string, Warnings, error)
+	LabelValues(name string) ([]string, error)
 
 	// LabelNames returns all the unique label names present in the block in sorted order.
-	LabelNames() ([]string, Warnings, error)
+	LabelNames() ([]string, error)
 
 	// Close releases the resources of the Querier.
 	Close() error

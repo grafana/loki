@@ -80,6 +80,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 		var retry bool
 		intermediate, retry, err = f(intermediate)
 		if err != nil {
+			level.Error(util.Logger).Log("msg", "error CASing", "key", key, "err", err)
 			if !retry {
 				return err
 			}

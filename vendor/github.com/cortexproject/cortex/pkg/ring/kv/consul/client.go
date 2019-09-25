@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
 	cleanhttp "github.com/hashicorp/go-cleanhttp"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -126,6 +127,9 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 		intermediate, retry, err = f(intermediate)
 		if err != nil {
 			if !retry {
+				if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() != 202 {
+					level.Error(util.Logger).Log("msg", "error CASing", "key", key, "err", err)
+				}
 				return err
 			}
 			continue
@@ -215,8 +219,7 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 	)
 	for backoff.Ongoing() {
 		queryOptions := &consul.QueryOptions{
-			AllowStale:        !c.cfg.ConsistentReads,
-			RequireConsistent: c.cfg.ConsistentReads,
+			RequireConsistent: true,
 			WaitIndex:         index,
 			WaitTime:          longPollDuration,
 		}

@@ -16,6 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // CardinalityExceededError is returned when the user reads a row that
@@ -66,7 +67,7 @@ type seriesStore struct {
 	writeDedupeCache cache.Cache
 }
 
-func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectClient, limits StoreLimits) (Store, error) {
+func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectClient, limits *validation.Overrides) (Store, error) {
 	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, cfg.chunkCacheStubs, chunks)
 	if err != nil {
 		return nil, err
@@ -403,7 +404,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 
 	chunks := []Chunk{chunk}
 
-	writeReqs, keysToCache, err := c.calculateIndexEntries(ctx, from, through, chunk)
+	writeReqs, keysToCache, err := c.calculateIndexEntries(from, through, chunk)
 	if err != nil {
 		return err
 	}
@@ -429,7 +430,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 }
 
 // calculateIndexEntries creates a set of batched WriteRequests for all the chunks it is given.
-func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through model.Time, chunk Chunk) (WriteBatch, []string, error) {
+func (c *seriesStore) calculateIndexEntries(from, through model.Time, chunk Chunk) (WriteBatch, []string, error) {
 	seenIndexEntries := map[string]struct{}{}
 	entries := []IndexEntry{}
 
@@ -442,7 +443,7 @@ func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through m
 	if err != nil {
 		return nil, nil, err
 	}
-	_, _, missing := c.writeDedupeCache.Fetch(ctx, keys)
+	_, _, missing := c.writeDedupeCache.Fetch(context.Background(), keys)
 	// keys and labelEntries are matched in order, but Fetch() may
 	// return missing keys in any order so check against all of them.
 	for _, missingKey := range missing {

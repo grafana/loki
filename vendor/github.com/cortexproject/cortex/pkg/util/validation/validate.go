@@ -2,7 +2,6 @@ package validation
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/extract"
@@ -51,15 +50,8 @@ func init() {
 	prometheus.MustRegister(DiscardedSamples)
 }
 
-// SampleValidationConfig helps with getting required config to validate sample.
-type SampleValidationConfig interface {
-	RejectOldSamples(userID string) bool
-	RejectOldSamplesMaxAge(userID string) time.Duration
-	CreationGracePeriod(userID string) time.Duration
-}
-
 // ValidateSample returns an err if the sample is invalid.
-func ValidateSample(cfg SampleValidationConfig, userID string, metricName string, s client.Sample) error {
+func (cfg *Overrides) ValidateSample(userID string, metricName string, s client.Sample) error {
 	if cfg.RejectOldSamples(userID) && model.Time(s.TimestampMs) < model.Now().Add(-cfg.RejectOldSamplesMaxAge(userID)) {
 		DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errTooOld, metricName, model.Time(s.TimestampMs))
@@ -73,16 +65,8 @@ func ValidateSample(cfg SampleValidationConfig, userID string, metricName string
 	return nil
 }
 
-// LabelValidationConfig helps with getting required config to validate labels.
-type LabelValidationConfig interface {
-	EnforceMetricName(userID string) bool
-	MaxLabelNamesPerSeries(userID string) int
-	MaxLabelNameLength(userID string) int
-	MaxLabelValueLength(userID string) int
-}
-
 // ValidateLabels returns an err if the labels are invalid.
-func ValidateLabels(cfg LabelValidationConfig, userID string, ls []client.LabelAdapter) error {
+func (cfg *Overrides) ValidateLabels(userID string, ls []client.LabelAdapter) error {
 	metricName, err := extract.MetricNameFromLabelAdapters(ls)
 	if cfg.EnforceMetricName(userID) {
 		if err != nil {

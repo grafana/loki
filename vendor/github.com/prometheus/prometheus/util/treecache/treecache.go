@@ -17,7 +17,6 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -69,7 +68,6 @@ type ZookeeperTreeCache struct {
 	prefix string
 	events chan ZookeeperTreeCacheEvent
 	stop   chan struct{}
-	wg     *sync.WaitGroup
 	head   *zookeeperTreeCacheNode
 
 	logger log.Logger
@@ -96,17 +94,14 @@ func NewZookeeperTreeCache(conn *zk.Conn, path string, events chan ZookeeperTree
 		prefix: path,
 		events: events,
 		stop:   make(chan struct{}),
-		wg:     &sync.WaitGroup{},
 
 		logger: logger,
 	}
 	tc.head = &zookeeperTreeCacheNode{
 		events:   make(chan zk.Event),
 		children: map[string]*zookeeperTreeCacheNode{},
-		done:     make(chan struct{}, 1),
-		stopped:  true, // Set head's stop to be true so that recursiveDelete will not stop the head node.
+		stopped:  true,
 	}
-	tc.wg.Add(1)
 	go tc.loop(path)
 	return tc
 }
@@ -114,23 +109,9 @@ func NewZookeeperTreeCache(conn *zk.Conn, path string, events chan ZookeeperTree
 // Stop stops the tree cache.
 func (tc *ZookeeperTreeCache) Stop() {
 	tc.stop <- struct{}{}
-	go func() {
-		// Drain tc.head.events so that go routines can make progress and exit.
-		for range tc.head.events {
-		}
-	}()
-	go func() {
-		tc.wg.Wait()
-		// Close the tc.head.events after all members of the wait group have exited.
-		// This makes the go routine above exit.
-		close(tc.head.events)
-		close(tc.events)
-	}()
 }
 
 func (tc *ZookeeperTreeCache) loop(path string) {
-	defer tc.wg.Done()
-
 	failureMode := false
 	retryChan := make(chan struct{})
 
@@ -204,8 +185,6 @@ func (tc *ZookeeperTreeCache) loop(path string) {
 				failureMode = false
 			}
 		case <-tc.stop:
-			// Stop head as well.
-			tc.head.done <- struct{}{}
 			tc.recursiveStop(tc.head)
 			return
 		}
@@ -264,7 +243,6 @@ func (tc *ZookeeperTreeCache) recursiveNodeUpdate(path string, node *zookeeperTr
 		}
 	}
 
-	tc.wg.Add(1)
 	go func() {
 		numWatchers.Inc()
 		// Pass up zookeeper events, until the node is deleted.
@@ -276,7 +254,6 @@ func (tc *ZookeeperTreeCache) recursiveNodeUpdate(path string, node *zookeeperTr
 		case <-node.done:
 		}
 		numWatchers.Dec()
-		tc.wg.Done()
 	}()
 	return nil
 }

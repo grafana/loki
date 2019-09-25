@@ -28,7 +28,6 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/util/teststorage"
 	"github.com/prometheus/prometheus/util/testutil"
 )
 
@@ -439,7 +438,7 @@ func (t *Test) exec(tc testCommand) error {
 		}
 
 	case *evalCmd:
-		q, err := t.QueryEngine().NewInstantQuery(t.storage, cmd.expr, cmd.start)
+		q, err := t.queryEngine.NewInstantQuery(t.storage, cmd.expr, cmd.start)
 		if err != nil {
 			return err
 		}
@@ -510,7 +509,7 @@ func (t *Test) clear() {
 	if t.cancelCtx != nil {
 		t.cancelCtx()
 	}
-	t.storage = teststorage.New(t)
+	t.storage = testutil.NewStorage(t)
 
 	opts := EngineOpts{
 		Logger:        nil,
@@ -624,7 +623,7 @@ func (ll *LazyLoader) clear() {
 	if ll.cancelCtx != nil {
 		ll.cancelCtx()
 	}
-	ll.storage = teststorage.New(ll)
+	ll.storage = testutil.NewStorage(ll)
 
 	opts := EngineOpts{
 		Logger:        nil,
