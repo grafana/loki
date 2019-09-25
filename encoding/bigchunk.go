@@ -23,7 +23,6 @@ type smallChunk struct {
 // upperbound on number of samples it can contain.
 type bigchunk struct {
 	chunks []smallChunk
-	end    int64
 
 	appender         chunkenc.Appender
 	remainingSamples int
@@ -45,7 +44,6 @@ func (b *bigchunk) Add(sample model.SamplePair) ([]Chunk, error) {
 
 	b.appender.Append(int64(sample.Timestamp), float64(sample.Value))
 	b.remainingSamples--
-	b.end = int64(sample.Timestamp)
 	return []Chunk{b}, nil
 }
 
@@ -248,7 +246,7 @@ type bigchunkIterator struct {
 }
 
 func (it *bigchunkIterator) FindAtOrAfter(target model.Time) bool {
-	if it.i >= len(it.chunks) || int64(target) > it.end {
+	if it.i >= len(it.chunks) {
 		return false
 	}
 
