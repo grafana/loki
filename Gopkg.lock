@@ -849,14 +849,6 @@
   revision = "cc309e4a22231782e8893f3c35ced0967807a33e"
 
 [[projects]]
-  digest = "1:1168584a5881d371e96cb0e66ef6db71d7cef0856cc7f311490bc856627f8328"
-  name = "github.com/mwitkow/go-grpc-middleware"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "c250d6563d4d4c20252cd865923440e829844f4e"
-  version = "v1.0.0"
-
-[[projects]]
   digest = "1:4f5513cb656b73fb4c4f77ccd482c8366d6290278564d2b1d3285f45e45f4a1e"
   name = "github.com/oklog/ulid"
   packages = ["."]
@@ -1837,6 +1829,7 @@
     "github.com/cortexproject/cortex/pkg/ring/kv/codec",
     "github.com/cortexproject/cortex/pkg/util",
     "github.com/cortexproject/cortex/pkg/util/flagext",
+    "github.com/cortexproject/cortex/pkg/util/grpcclient",
     "github.com/cortexproject/cortex/pkg/util/spanlogger",
     "github.com/cortexproject/cortex/pkg/util/validation",
     "github.com/davecgh/go-spew/spew",
@@ -1862,7 +1855,6 @@
     "github.com/jmespath/go-jmespath",
     "github.com/klauspost/compress/gzip",
     "github.com/mitchellh/mapstructure",
-    "github.com/mwitkow/go-grpc-middleware",
     "github.com/opentracing/opentracing-go",
     "github.com/pkg/errors",
     "github.com/prometheus/client_golang/prometheus",
