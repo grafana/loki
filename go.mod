@@ -37,7 +37,6 @@ require (
 	github.com/klauspost/cpuid v1.2.1 // indirect
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/morikuni/aec v0.0.0-20170113033406-39771216ff4c // indirect
-	github.com/mwitkow/go-grpc-middleware v1.0.0
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/opentracing-contrib/go-stdlib v0.0.0-20181222025249-77df8e8e70b4 // indirect
@@ -58,6 +57,7 @@ require (
 	go.uber.org/atomic v1.4.0 // indirect
 	golang.org/x/net v0.0.0-20190813000000-74dc4d7220e7
 	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45 // indirect
+	golang.org/x/time v0.0.0-20181108054448-85acf8d2951c
 	google.golang.org/appengine v1.5.0 // indirect
 	google.golang.org/genproto v0.0.0-20190502173448-54afdca5d873 // indirect
 	google.golang.org/grpc v1.23.0
