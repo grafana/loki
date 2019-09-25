@@ -69,7 +69,7 @@ func TestPromtail(t *testing.T) {
 		recMtx:         sync.Mutex{},
 		t:              t,
 	}
-	http.Handle("/api/prom/push", handler)
+	http.Handle("/loki/api/v1/push", handler)
 	defer func() {
 		if err != nil {
 			t.Fatal(err)
@@ -526,7 +526,7 @@ func parsePromMetrics(t *testing.T, bytes []byte, contentType string, metricName
 
 func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) config.Config {
 	var clientURL flagext.URLValue
-	err := clientURL.Set("http://localhost:3100/api/prom/push")
+	err := clientURL.Set("http://localhost:3100/loki/api/v1/push")
 	if err != nil {
 		t.Fatal("Failed to parse client URL")
 	}
