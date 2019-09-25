@@ -19,7 +19,7 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.5.0
+BUILD_IMAGE_VERSION := 0.6.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
