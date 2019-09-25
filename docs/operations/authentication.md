@@ -5,7 +5,7 @@ expected to run an authenticating reverse proxy in front of your services, such
 as NGINX using basic auth or an OAuth2 proxy.
 
 Note that when using Loki in multi-tenant mode, Loki requires the HTTP header
-`X-Scopre-OrgID` to be set to a string identifying the user; the responsibility
+`X-Scope-OrgID` to be set to a string identifying the user; the responsibility
 of populating this value should be handled by the authenticating reverse proxy.
 For more information on multi-tenancy please read its
 [documentation](multi-tenancy.md).
