@@ -89,23 +89,20 @@ func (ts *timestampStage) Process(labels model.LabelSet, extracted map[string]in
 	if v, ok := extracted[ts.cfgs.Source]; ok {
 		s, err := getString(v)
 		if err != nil {
-			if Debug {
-				level.Debug(ts.logger).Log("msg", "failed to convert extracted time to string", "err", err, "type", reflect.TypeOf(v).String())
-			}
+			level.Warn(ts.logger).Log("msg", "failed to convert extracted time to string", "err", err, "type", reflect.TypeOf(v).String())
 		}
 
 		parsedTs, err := ts.parser(s)
 		if err != nil {
-			if Debug {
-				level.Debug(ts.logger).Log("msg", "failed to parse time", "err", err, "format", ts.cfgs.Format, "value", s)
-			}
+			level.Warn(ts.logger).Log("msg", "failed to parse time", "err", err, "format", ts.cfgs.Format, "value", s)
 		} else {
 			*t = parsedTs
+			if Debug {
+				level.Debug(ts.logger).Log("msg", "parsed time", "time", parsedTs)
+			}
 		}
 	} else {
-		if Debug {
-			level.Debug(ts.logger).Log("msg", "extracted data did not contain a timestamp")
-		}
+		level.Warn(ts.logger).Log("msg", "extracted data did not contain a timestamp", "source", ts.cfgs.Source)
 	}
 }
 

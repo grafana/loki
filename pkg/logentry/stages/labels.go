@@ -63,25 +63,33 @@ type labelStage struct {
 
 // Process implements Stage
 func (l *labelStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+	var dl []interface{}
+	if Debug {
+		dl = append(dl, "msg", "labels set")
+	}
+
 	for lName, lSrc := range l.cfgs {
 		if _, ok := extracted[*lSrc]; ok {
 			lValue := extracted[*lSrc]
 			s, err := getString(lValue)
 			if err != nil {
-				if Debug {
-					level.Debug(l.logger).Log("msg", "failed to convert extracted label value to string", "err", err, "type", reflect.TypeOf(lValue).String())
-				}
+				level.Warn(l.logger).Log("msg", "failed to convert extracted label value to string", "err", err, "type", reflect.TypeOf(lValue).String())
 				continue
 			}
 			labelValue := model.LabelValue(s)
 			if !labelValue.IsValid() {
-				if Debug {
-					level.Debug(l.logger).Log("msg", "invalid label value parsed", "value", labelValue)
-				}
+				level.Warn(l.logger).Log("msg", "invalid label value parsed", "value", labelValue)
 				continue
 			}
 			labels[model.LabelName(lName)] = labelValue
+			if Debug {
+				dl = append(dl, lName, labelValue)
+			}
 		}
+	}
+
+	if Debug {
+		level.Debug(l.logger).Log(dl...)
 	}
 }
 

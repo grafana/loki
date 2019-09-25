@@ -101,17 +101,13 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 
 	if j.cfg.Source != nil {
 		if _, ok := extracted[*j.cfg.Source]; !ok {
-			if Debug {
-				level.Debug(j.logger).Log("msg", "source does not exist in the set of extracted values", "source", *j.cfg.Source)
-			}
+			level.Warn(j.logger).Log("msg", "source does not exist in the set of extracted values", "source", *j.cfg.Source)
 			return
 		}
 
 		value, err := getString(extracted[*j.cfg.Source])
 		if err != nil {
-			if Debug {
-				level.Debug(j.logger).Log("msg", "failed to convert source value to string", "source", *j.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*j.cfg.Source]).String())
-			}
+			level.Warn(j.logger).Log("msg", "failed to convert source value to string", "source", *j.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*j.cfg.Source]).String())
 			return
 		}
 
@@ -119,51 +115,52 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 	}
 
 	if input == nil {
-		if Debug {
-			level.Debug(j.logger).Log("msg", "cannot parse a nil entry")
-		}
+		level.Warn(j.logger).Log("msg", "cannot parse a nil entry")
 		return
 	}
 
 	var data map[string]interface{}
 
 	if err := json.Unmarshal([]byte(*input), &data); err != nil {
-		if Debug {
-			level.Debug(j.logger).Log("msg", "failed to unmarshal log line", "err", err)
-		}
+		level.Warn(j.logger).Log("msg", "failed to unmarshal log line", "err", err)
 		return
 	}
 
+	var l []interface{}
+	if Debug {
+		l = append(l, "msg", "extracted expressions")
+	}
 	for n, e := range j.expressions {
 		r, err := e.Search(data)
 		if err != nil {
-			if Debug {
-				level.Debug(j.logger).Log("msg", "failed to search JMES expression", "err", err)
-			}
+			level.Warn(j.logger).Log("msg", "failed to search JMES expression", "err", err)
 			continue
 		}
 
 		switch r.(type) {
-		case float64:
+		case float64, string, bool:
 			// All numbers in JSON are unmarshaled to float64.
 			extracted[n] = r
-		case string:
-			extracted[n] = r
-		case bool:
-			extracted[n] = r
+			if Debug {
+				l = append(l, n, r)
+			}
 		default:
 			// If the value wasn't a string or a number, marshal it back to json
 			jm, err := json.Marshal(r)
 			if err != nil {
-				if Debug {
-					level.Debug(j.logger).Log("msg", "failed to marshal complex type back to string", "err", err)
-				}
+				level.Warn(j.logger).Log("msg", "failed to marshal complex type back to string", "err", err)
 				continue
 			}
 			extracted[n] = string(jm)
+			if Debug {
+				l = append(l, n, string(jm))
+			}
 		}
 	}
 
+	if Debug {
+		level.Debug(j.logger).Log(l...)
+	}
 }
 
 // Name implements Stage
