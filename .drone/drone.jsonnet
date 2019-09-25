@@ -137,6 +137,7 @@ local drone = [
       make('test', container=false) { depends_on: ['clone'] },
       make('lint', container=false) { depends_on: ['clone'] },
       make('check-generated-files', container=false) { depends_on: ['clone'] },
+      make('check-mod', container=false) { depends_on: ['clone'] },
     ],
   },
 ] + [

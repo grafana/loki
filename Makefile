@@ -102,7 +102,7 @@ binfmt:
 ################
 # Main Targets #
 ################
-all: promtail logcli loki loki-canary check-generated-files
+all: promtail logcli loki loki-canary check-generated-files check-mod
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
 check-generated-files: yacc protos pkg/promtail/server/ui/assets_vfsdata.go
@@ -470,3 +470,11 @@ benchmark-store:
 # regenerate drone yaml
 drone:
 	jsonnet -V __build-image-version=$(BUILD_IMAGE_VERSION) .drone/drone.jsonnet | jq .drone -r | yq -y . > .drone/drone.yml
+
+# support go modules
+check-mod:
+	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod download
+	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod verify
+	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod tidy
+	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod vendor
+	@git diff --exit-code -- go.sum go.mod vendor/
