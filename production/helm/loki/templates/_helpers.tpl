@@ -43,15 +43,15 @@ Create the name of the service account
 {{- end -}}
 
 {{/*
-Create the app name of the collectors. Defaults to the same logic as "loki.fullname", and default collector expects "promtail".
+Create the app name of loki clients. Defaults to the same logic as "loki.fullname", and default client expects "promtail".
 */}}
-{{- define "collector.name" -}}
-{{- if .Values.collector.name -}}
-{{- .Values.collector.name -}}
-{{- else if .Values.collector.fullnameOverride -}}
-{{- .Values.collector.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- define "client.name" -}}
+{{- if .Values.client.name -}}
+{{- .Values.client.name -}}
+{{- else if .Values.client.fullnameOverride -}}
+{{- .Values.client.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
-{{- $name := default "promtail" .Values.collector.nameOverride -}}
+{{- $name := default "promtail" .Values.client.nameOverride -}}
 {{- if contains $name .Release.Name -}}
 {{- .Release.Name | trunc 63 | trimSuffix "-" -}}
 {{- else -}}

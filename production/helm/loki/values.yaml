@@ -83,8 +83,8 @@ livenessProbe:
 networkPolicy:
   enabled: false
 
-## If you set enabled as "True" of networkPolicy, you may have to configure the app name for log collectors
-collector: {}
+## If you set enabled as "True" of networkPolicy, you may have to configure the app name for client.
+client: {}
   # name:
 
 ## ref: https://kubernetes.io/docs/user-guide/node-selection/
