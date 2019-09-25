@@ -432,12 +432,11 @@
   revision = "b364c791f57ac8f224c2f42ad599afa45ca0cfda"
 
 [[projects]]
-  digest = "1:f16510f2b32d25994b8c6e35c05fc3624b1b4047af2d19f3824e59e74415f691"
+  digest = "1:ce058ca1b1787a997e578c4344f9650becb5086a3512332cbedffca9950d77a1"
   name = "github.com/go-kit/kit"
   packages = [
     "log",
     "log/level",
-    "log/logrus",
   ]
   pruneopts = "UT"
   revision = "12210fb6ace19e0496167bb3e667dcd91fa9f69b"
@@ -1861,7 +1860,6 @@
     "github.com/fluent/fluent-bit-go/output",
     "github.com/go-kit/kit/log",
     "github.com/go-kit/kit/log/level",
-    "github.com/go-kit/kit/log/logrus",
     "github.com/gogo/protobuf/gogoproto",
     "github.com/gogo/protobuf/io",
     "github.com/gogo/protobuf/proto",
@@ -1899,7 +1897,6 @@
     "github.com/shurcooL/httpfs/filter",
     "github.com/shurcooL/httpfs/union",
     "github.com/shurcooL/vfsgen",
-    "github.com/sirupsen/logrus",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/mock",
     "github.com/stretchr/testify/require",
