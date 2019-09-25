@@ -12,6 +12,8 @@ Key features:
 * `extra_labels`: Labels to be added to every line of a log file, useful for
   designating environments
 * `label_keys`: Customizable list of keys for stream labels
+* `line_format`: Format to use when flattening the record to a log line (`json`
+    or `key_value`).
 
 ## Installation
 
@@ -152,9 +154,9 @@ There are few configurations settings to control the output format:
   stream labels.
 
 - `line_format`: format to use when flattening the record to a log line. Valid
-  values are "json" or "key_value". If set to "json" the log line sent to Loki
+  values are `json` or `key_value`. If set to `json` the log line sent to Loki
   will be the fluentd record (excluding any keys extracted out as labels) dumped
-  as json. If set to "key_value", the log line will be each item in the record
+  as json. If set to `key_value`, the log line will be each item in the record
   concatenated together (separated by a single space) in the format
   `<key>=<value>`.
 
