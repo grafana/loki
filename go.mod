@@ -67,3 +67,7 @@ require (
 	gopkg.in/yaml.v2 v2.2.2
 	gotest.tools v2.2.0+incompatible // indirect
 )
+
+replace github.com/weaveworks/common => github.com/sandlis/weaveworks-common v0.0.0-20190822064708-8fa0a1ca9d89
+
+replace github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20190416211555-5ab7a9e9e921

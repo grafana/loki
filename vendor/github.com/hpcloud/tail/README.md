@@ -1,5 +1,7 @@
-[![Build Status](https://travis-ci.org/hpcloud/tail.svg)](https://travis-ci.org/hpcloud/tail)
-[![Build status](https://ci.appveyor.com/api/projects/status/kohpsf3rvhjhrox6?svg=true)](https://ci.appveyor.com/project/HelionCloudFoundry/tail) 
+
+**NOTE**: This fork is currently being maintained for use in the promtail agent of the [Loki](https://github.com/grafana/loki) project.
+
+Use outside of that context is not tested or supported.
 
 # Go package for tail-ing files
 
