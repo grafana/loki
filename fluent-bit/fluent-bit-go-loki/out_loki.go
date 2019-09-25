@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 )
+import "fmt"
 
 var plugin *loki
 var logger log.Logger
@@ -51,10 +52,11 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 	level.Info(logger).Log("[flb-go]", "provided parameter", "BatchSize", conf.clientConfig.BatchSize)
 	level.Info(logger).Log("[flb-go]", "provided parameter", "Labels", conf.clientConfig.ExternalLabels)
 	level.Info(logger).Log("[flb-go]", "provided parameter", "LogLevel", conf.logLevel)
-	level.Info(logger).Log("[flb-go]", "provided parameter", "RemoveKeys", conf.removeKeys)
-	level.Info(logger).Log("[flb-go]", "provided parameter", "LabelKeys", conf.labelKeys)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "RemoveKeys", fmt.Sprintf("%+v", conf.removeKeys))
+	level.Info(logger).Log("[flb-go]", "provided parameter", "LabelKeys", fmt.Sprintf("%+v", conf.labelKeys))
 	level.Info(logger).Log("[flb-go]", "provided parameter", "LineFormat", conf.lineFormat)
 	level.Info(logger).Log("[flb-go]", "provided parameter", "DropSingleKey", conf.dropSingleKey)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "LabelMapPath", fmt.Sprintf("%+v", conf.labeMap))
 
 	plugin, err = newPlugin(conf, logger)
 	if err != nil {

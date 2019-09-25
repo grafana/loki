@@ -283,7 +283,7 @@ endif
 # Helm #
 ########
 
-CHARTS := production/helm/loki production/helm/promtail production/helm/loki-stack
+CHARTS := production/helm/loki production/helm/promtail production/helm/fluent-bit production/helm/loki-stack
 
 helm:
 	-rm -f production/helm/*/requirements.lock
@@ -299,11 +299,15 @@ helm:
 helm-install:
 	kubectl apply -f tools/helm.yaml
 	helm init --wait --service-account helm --upgrade
-	$(MAKE) helm-upgrade
+	HELM_ARGS="$(HELM_ARGS)" $(MAKE) helm-upgrade
+
+helm-install-fluent-bit:
+	HELM_ARGS="--set fluent-bit.enabled=true,promtail.enabled=false" $(MAKE) helm-install
+
 
 helm-upgrade: helm
 	helm upgrade --wait --install $(ARGS) loki-stack ./production/helm/loki-stack \
-	--set promtail.image.tag=$(IMAGE_TAG) --set loki.image.tag=$(IMAGE_TAG) -f tools/dev.values.yaml
+	--set promtail.image.tag=$(IMAGE_TAG) --set loki.image.tag=$(IMAGE_TAG) --set fluent-bit.image.tag=$(IMAGE_TAG) -f tools/dev.values.yaml $(HELM_ARGS)
 
 helm-publish: helm
 	cp production/helm/README.md index.md

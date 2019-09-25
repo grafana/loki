@@ -4,6 +4,9 @@ loki:
 promtail:
   enabled: true
 
+fluent-bit:
+  enabled: false
+
 grafana:
   enabled: false
   sidecar:

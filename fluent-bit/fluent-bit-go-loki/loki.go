@@ -36,7 +36,7 @@ func newPlugin(cfg *config, logger log.Logger) (*loki, error) {
 // sendRecord send fluentbit records to loki as an entry.
 func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	records := toStringMap(r)
-	level.Debug(l.logger).Log("msg", "processing records", "records", fmt.Sprintf("%v", records))
+	level.Debug(l.logger).Log("msg", "processing records", "records", fmt.Sprintf("%+v", records))
 	lbs := model.LabelSet{}
 	if l.cfg.labeMap != nil {
 		mapLabels(records, l.cfg.labeMap, lbs)
@@ -106,9 +106,10 @@ func mapLabels(records map[string]interface{}, mapping map[string]interface{}, r
 		switch nextKey := v.(type) {
 		// if the next level is a map we are expecting we need to move deeper in the tree
 		case map[string]interface{}:
-			if nextValue, ok := records[k].(map[string]interface{}); ok {
+			if nextValue, ok := records[k].(map[interface{}]interface{}); ok {
+				recordsMap := toStringMap(nextValue)
 				// recursively search through the next level map.
-				mapLabels(nextValue, nextKey, res)
+				mapLabels(recordsMap, nextKey, res)
 			}
 		// we found a value in the mapping meaning we need to save the corresponding record value for the given key.
 		case string:

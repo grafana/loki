@@ -201,7 +201,7 @@ func Test_labelMapping(t *testing.T) {
 		{
 			"bytes string",
 			map[string]interface{}{
-				"kubernetes": map[string]interface{}{
+				"kubernetes": map[interface{}]interface{}{
 					"foo": []byte("buzz"),
 				},
 				"stream": "stderr",
@@ -219,9 +219,9 @@ func Test_labelMapping(t *testing.T) {
 		{
 			"deep string",
 			map[string]interface{}{
-				"kubernetes": map[string]interface{}{
-					"label": map[string]interface{}{
-						"component": map[string]interface{}{
+				"kubernetes": map[interface{}]interface{}{
+					"label": map[interface{}]interface{}{
+						"component": map[interface{}]interface{}{
 							"buzz": "value",
 						},
 					},
@@ -243,8 +243,8 @@ func Test_labelMapping(t *testing.T) {
 		{
 			"skip invalid values",
 			map[string]interface{}{
-				"kubernetes": map[string]interface{}{
-					"annotations": map[string]interface{}{
+				"kubernetes": map[interface{}]interface{}{
+					"annotations": map[interface{}]interface{}{
 						"kubernetes.io/config.source": "cfg",
 						"kubernetes.io/config.hash":   []byte("a\xc5z"),
 					},
