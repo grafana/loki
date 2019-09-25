@@ -112,7 +112,7 @@ func (c *Client) doRequest(path string, quiet bool, out interface{}) error {
 		TLSConfig: c.TLSConfig,
 	}
 
-	client, err := config.NewClientFromConfig(clientConfig, "logcli")
+	client, err := config.NewClientFromConfig(clientConfig, "logcli", false)
 	if err != nil {
 		return err
 	}
