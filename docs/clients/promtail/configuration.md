@@ -60,10 +60,6 @@ Supported contents and default values of `config.yaml`:
 # Configures the server for Promtail.
 [server: <server_config>]
 
-# Describes how promtail will connect to Loki
-# DEPRECATED. Use clients instead.
-[client: <client_config>]
-
 # Describes how promtail connects to multiple instances
 # of Loki, sending logs to each.
 clients:

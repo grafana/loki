@@ -10,9 +10,10 @@ section in the Loki configuration document.
 
 ## DynamoDB Provisioning
 
-When configuring DynamoDB with the Table Manager, the default provisioning
-capacity units for reads are set to 300 and writes are set to 3000. The defaults
-can be overwritten:
+When configuring DynamoDB with the Table Manager, the default [on-demand
+provisioning](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html)
+capacity units for reads are set to 300 and writes are set to 3000. The
+defaults can be overwritten:
 
 ```yaml
 table_manager:
