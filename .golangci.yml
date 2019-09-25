@@ -65,3 +65,4 @@ linters:
 issues:
   exclude:
     - Error return value of .*log\.Logger\)\.Log\x60 is not checked
+    - vendor/github.com/prometheus/tsdb/goversion/init.go:17:9: undeclared name: _SoftwareRequiresGOVERSION1_12
