@@ -61,7 +61,7 @@ $ docker pull grafana/loki-canary:v0.2.0
 To run on Kubernetes, you can do something simple like:
 
 `kubectl run loki-canary --generator=run-pod/v1
---image=grafana/loki-canary:latest --restart=Never --image-pull-policy=Never
+--image=grafana/loki-canary:latest --restart=Never --image-pull-policy=IfNotPresent
 --labels=name=loki-canary -- -addr=loki:3100`
 
 Or you can do something more complex like deploy it as a daemonset, there is a
