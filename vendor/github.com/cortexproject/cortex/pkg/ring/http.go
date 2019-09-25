@@ -40,12 +40,8 @@ const tpl = `
 					</tr>
 				</thead>
 				<tbody>
-					{{ range $i, $ing := .Ingesters }}
-					{{ if mod $i 2 }}
+					{{ range .Ingesters }}
 					<tr>
-					{{ else }}
-					<tr bgcolor="#BEBEBE">
-					{{ end }}
 						<td>{{ .ID }}</td>
 						<td>{{ .State }}</td>
 						<td>{{ .Address }}</td>
@@ -65,9 +61,7 @@ const tpl = `
 var tmpl *template.Template
 
 func init() {
-	t := template.New("webpage")
-	t.Funcs(template.FuncMap{"mod": func(i, j int) bool { return i%j == 0 }})
-	tmpl = template.Must(t.Parse(tpl))
+	tmpl = template.Must(template.New("webpage").Parse(tpl))
 }
 
 func (r *Ring) forget(ctx context.Context, id string) error {

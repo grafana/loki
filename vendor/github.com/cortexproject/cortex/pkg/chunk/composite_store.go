@@ -3,17 +3,12 @@ package chunk
 import (
 	"context"
 	"sort"
-	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-)
 
-// StoreLimits helps get Limits specific to Queries for Stores
-type StoreLimits interface {
-	MaxChunksPerQuery(userID string) int
-	MaxQueryLength(userID string) time.Duration
-}
+	"github.com/cortexproject/cortex/pkg/util/validation"
+)
 
 // Store for chunks.
 type Store interface {
@@ -50,7 +45,7 @@ func NewCompositeStore() CompositeStore {
 }
 
 // AddPeriod adds the configuration for a period of time to the CompositeStore
-func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index IndexClient, chunks ObjectClient, limits StoreLimits) error {
+func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index IndexClient, chunks ObjectClient, limits *validation.Overrides) error {
 	schema := cfg.CreateSchema()
 	var store Store
 	var err error
