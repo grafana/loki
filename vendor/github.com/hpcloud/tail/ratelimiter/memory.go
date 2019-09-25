@@ -5,10 +5,7 @@ import (
 	"time"
 )
 
-const (
-	GC_SIZE   int           = 100
-	GC_PERIOD time.Duration = 60 * time.Second
-)
+const GC_SIZE int = 100
 
 type Memory struct {
 	store           map[string]LeakyBucket
@@ -47,10 +44,11 @@ func (m *Memory) GarbageCollect() {
 	now := time.Now()
 
 	// rate limit GC to once per minute
-	if now.Unix() >= m.lastGCCollected.Add(GC_PERIOD).Unix() {
+	if now.Add(60*time.Second).Unix() > m.lastGCCollected.Unix() {
+
 		for key, bucket := range m.store {
 			// if the bucket is drained, then GC
-			if bucket.DrainedAt().Unix() < now.Unix() {
+			if bucket.DrainedAt().Unix() > now.Unix() {
 				delete(m.store, key)
 			}
 		}

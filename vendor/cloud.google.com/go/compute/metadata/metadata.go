@@ -137,7 +137,7 @@ func testOnGCE() bool {
 	resc := make(chan bool, 2)
 
 	// Try two strategies in parallel.
-	// See https://github.com/GoogleCloudPlatform/google-cloud-go/issues/194
+	// See https://github.com/googleapis/google-cloud-go/issues/194
 	go func() {
 		req, _ := http.NewRequest("GET", "http://"+metadataIP, nil)
 		req.Header.Set("User-Agent", userAgent)
@@ -227,6 +227,9 @@ func InternalIP() (string, error) { return defaultClient.InternalIP() }
 // ExternalIP returns the instance's primary external (public) IP address.
 func ExternalIP() (string, error) { return defaultClient.ExternalIP() }
 
+// Email calls Client.Email on the default client.
+func Email(serviceAccount string) (string, error) { return defaultClient.Email(serviceAccount) }
+
 // Hostname returns the instance's hostname. This will be of the form
 // "<instanceID>.c.<projID>.internal".
 func Hostname() (string, error) { return defaultClient.Hostname() }
@@ -300,8 +303,8 @@ func (c *Client) getETag(suffix string) (value, etag string, err error) {
 		// being stable anyway.
 		host = metadataIP
 	}
-	url := "http://" + host + "/computeMetadata/v1/" + suffix
-	req, _ := http.NewRequest("GET", url, nil)
+	u := "http://" + host + "/computeMetadata/v1/" + suffix
+	req, _ := http.NewRequest("GET", u, nil)
 	req.Header.Set("Metadata-Flavor", "Google")
 	req.Header.Set("User-Agent", userAgent)
 	res, err := c.hc.Do(req)
@@ -312,12 +315,12 @@ func (c *Client) getETag(suffix string) (value, etag string, err error) {
 	if res.StatusCode == http.StatusNotFound {
 		return "", "", NotDefinedError(suffix)
 	}
-	if res.StatusCode != 200 {
-		return "", "", fmt.Errorf("status code %d trying to fetch %s", res.StatusCode, url)
-	}
 	all, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		return "", "", err
+	}
+	if res.StatusCode != 200 {
+		return "", "", &Error{Code: res.StatusCode, Message: string(all)}
 	}
 	return string(all), res.Header.Get("Etag"), nil
 }
@@ -365,6 +368,16 @@ func (c *Client) InstanceID() (string, error) { return instID.get(c) }
 // InternalIP returns the instance's primary internal IP address.
 func (c *Client) InternalIP() (string, error) {
 	return c.getTrimmed("instance/network-interfaces/0/ip")
+}
+
+// Email returns the email address associated with the service account.
+// The account may be empty or the string "default" to use the instance's
+// main account.
+func (c *Client) Email(serviceAccount string) (string, error) {
+	if serviceAccount == "" {
+		serviceAccount = "default"
+	}
+	return c.getTrimmed("instance/service-accounts/" + serviceAccount + "/email")
 }
 
 // ExternalIP returns the instance's primary external (public) IP address.
@@ -498,4 +511,16 @@ func (c *Client) Subscribe(suffix string, fn func(v string, ok bool) error) erro
 			return err
 		}
 	}
+}
+
+// Error contains an error response from the server.
+type Error struct {
+	// Code is the HTTP response status code.
+	Code int
+	// Message is the server response message.
+	Message string
+}
+
+func (e *Error) Error() string {
+	return fmt.Sprintf("compute: Received %d `%s`", e.Code, e.Message)
 }

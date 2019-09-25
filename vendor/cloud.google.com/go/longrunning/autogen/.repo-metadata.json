@@ -1,0 +1,12 @@
+{
+  "name": "longrunning",
+  "name_pretty": "Longrunning operations API",
+  "product_documentation": "https://cloud.google.com/service-infrastructure/docs/service-management/reference/rpc/google.longrunning",
+  "client_documentation": "https://godoc.org/cloud.google.com/go/longrunning/autogen",
+  "release_level": "alpha",
+  "language": "go",
+  "repo": "googleapis/google-cloud-go",
+  "distribution_name": "cloud.google.com/go",
+  "api_id": "longrunning.googleapis.com",
+  "requires_billing": true
+}
