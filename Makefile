@@ -122,7 +122,7 @@ check-generated-files: yacc protos pkg/promtail/server/ui/assets_vfsdata.go
 logcli: yacc cmd/logcli/logcli
 
 cmd/logcli/logcli: $(APP_GO_FILES) cmd/logcli/main.go
-	GO111MODULE=on GOPROXY=https://proxy.golang.org CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 ########
@@ -133,11 +133,11 @@ loki: protos yacc cmd/loki/loki
 loki-debug: protos yacc cmd/loki/loki-debug
 
 cmd/loki/loki: $(APP_GO_FILES) cmd/loki/main.go
-	GO111MODULE=on GOPROXY=https://proxy.golang.org CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 cmd/loki/loki-debug: $(APP_GO_FILES) cmd/loki/main.go
-	GO111MODULE=on GOPROXY=https://proxy.golang.org CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 ###############
@@ -147,7 +147,7 @@ cmd/loki/loki-debug: $(APP_GO_FILES) cmd/loki/main.go
 loki-canary: protos yacc cmd/loki-canary/loki-canary
 
 cmd/loki-canary/loki-canary: $(APP_GO_FILES) cmd/loki-canary/main.go
-	GO111MODULE=on GOPROXY=https://proxy.golang.org CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 ############
@@ -181,18 +181,18 @@ $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 	GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
 
 cmd/promtail/promtail: $(APP_GO_FILES) $(PROMTAIL_GENERATED_FILE) cmd/promtail/main.go
-	GO111MODULE=on GOPROXY=https://proxy.golang.org CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 cmd/promtail/promtail-debug: $(APP_GO_FILES) pkg/promtail/server/ui/assets_vfsdata.go cmd/promtail/main.go
-	GO111MODULE=on GOPROXY=https://proxy.golang.org CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 #############
 # Releasing #
 #############
 # concurrency is limited to 4 to prevent CircleCI from OOMing. Sorry
-GO111MODULE=on GOPROXY=https://proxy.golang.org GOX = gox $(GO_FLAGS) -parallel=4 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}" -arch="amd64 arm64 arm" -os="linux"
+GOX = gox $(GO_FLAGS) -parallel=4 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}" -arch="amd64 arm64 arm" -os="linux"
 dist: clean
 	CGO_ENABLED=0 $(GOX) -osarch="windows/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/promtail ./cmd/logcli
@@ -346,7 +346,7 @@ docker-driver: docker-driver-clean
 	docker plugin create grafana/loki-docker-driver:latest$(PLUGIN_ARCH) cmd/docker-driver
 
 cmd/docker-driver/docker-driver: $(APP_GO_FILES)
-	GO111MODULE=on GOPROXY=https://proxy.golang.org CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 docker-driver-push: docker-driver
