@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,22 +17,27 @@ server:
 tls:
   key: YAML
 `))
-	fs := flag.NewFlagSet("testParse", flag.PanicOnError)
+
+	fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 	flagSource := dFlags(fs, []string{"-verbose", "-server.port=21"})
 
-	var c Data
-	err := dParse(&c, dDefaults(fs), yamlSource, flagSource)
+	data := Data{}
+	err := dParse(&data,
+		dDefaults(fs),
+		yamlSource,
+		flagSource,
+	)
 	require.NoError(t, err)
 
-	require.Equal(t, Data{
-		Verbose: true,
+	assert.Equal(t, Data{
+		Verbose: true, // flag
 		Server: Server{
-			Port:    21,
-			Timeout: 60 * time.Hour,
+			Port:    21,             // flag
+			Timeout: 60 * time.Hour, // defaults
 		},
 		TLS: TLS{
-			Cert: "DEFAULTCERT",
-			Key:  "YAML",
+			Cert: "DEFAULTCERT", // defaults
+			Key:  "YAML",        // yaml
 		},
-	}, c)
+	}, data)
 }
