@@ -22,7 +22,7 @@ require (
 	github.com/fatih/color v1.7.0
 	github.com/go-kit/kit v0.9.0
 	github.com/gocql/gocql v0.0.0-20181124151448-70385f88b28b // indirect
-	github.com/gogo/protobuf v1.2.2-0.20190730201129-28a6bbf47e48
+	github.com/gogo/protobuf v1.3.0
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/mux v1.6.2
 	github.com/gorilla/websocket v1.4.0

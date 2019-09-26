@@ -219,7 +219,7 @@ github.com/gocql/gocql/internal/murmur
 github.com/gocql/gocql/internal/streams
 # github.com/gogo/googleapis v1.1.0
 github.com/gogo/googleapis/google/rpc
-# github.com/gogo/protobuf v1.2.2-0.20190730201129-28a6bbf47e48
+# github.com/gogo/protobuf v1.3.0
 github.com/gogo/protobuf/io
 github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/proto
