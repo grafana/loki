@@ -414,5 +414,4 @@ const (
 	SYS_FSCONFIG                     = 4431
 	SYS_FSMOUNT                      = 4432
 	SYS_FSPICK                       = 4433
-	SYS_PIDFD_OPEN                   = 4434
 )
