@@ -1825,6 +1825,8 @@
     "github.com/cortexproject/cortex/pkg/ingester/client",
     "github.com/cortexproject/cortex/pkg/ingester/index",
     "github.com/cortexproject/cortex/pkg/ring",
+    "github.com/cortexproject/cortex/pkg/ring/kv",
+    "github.com/cortexproject/cortex/pkg/ring/kv/codec",
     "github.com/cortexproject/cortex/pkg/util",
     "github.com/cortexproject/cortex/pkg/util/flagext",
     "github.com/cortexproject/cortex/pkg/util/grpcclient",

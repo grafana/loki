@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"reflect"
 
@@ -28,7 +27,8 @@ func main() {
 
 	var config config.Config
 	if err := cfg.Parse(&config); err != nil {
-		log.Fatalln(err)
+		level.Error(util.Logger).Log("msg", "parsing config", "error", err)
+		os.Exit(1)
 	}
 	if *printVersion {
 		fmt.Print(version.Print("promtail"))

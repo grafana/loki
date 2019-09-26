@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"reflect"
 
@@ -28,7 +27,8 @@ func main() {
 
 	var config loki.Config
 	if err := cfg.Parse(&config); err != nil {
-		log.Fatalln(err)
+		level.Error(util.Logger).Log("msg", "parsing config", "error", err)
+		os.Exit(1)
 	}
 	if *printVersion {
 		fmt.Print(version.Print("loki"))
@@ -39,7 +39,8 @@ func main() {
 	// call it atleast once, the defaults are set to an empty struct.
 	// We call it with the flag values so that the config file unmarshalling only overrides the values set in the config.
 	if _, err := validation.NewOverrides(config.LimitsConfig); err != nil {
-		log.Fatalln(err)
+		level.Error(util.Logger).Log("msg", "setting up overrides", "error", err)
+		os.Exit(1)
 	}
 
 	// Init the logger which will honor the log level set in config.Server
