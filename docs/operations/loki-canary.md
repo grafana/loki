@@ -66,7 +66,7 @@ $ docker pull grafana/loki-canary:v0.2.0
 To run on Kubernetes, you can do something simple like:
 
 `kubectl run loki-canary --generator=run-pod/v1
---image=grafana/loki-canary:latest --restart=Never --image-pull-policy=Never
+--image=grafana/loki-canary:latest --restart=Never --image-pull-policy=IfNotPresent
 --labels=name=loki-canary -- -addr=loki:3100`
 
 Or you can do something more complex like deploy it as a DaemonSet, there is a
@@ -97,6 +97,88 @@ loki_canary {
   }
 }
 ```
+#### Examples
+
+Standalone Pod Implementation of loki-canary
+
+```
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: loki-canary
+    name: loki-canary
+  name: loki-canary
+spec:
+  containers:
+  - args:
+    - -addr=loki:3100
+    image: grafana/loki-canary:latest
+    imagePullPolicy: IfNotPresent
+    name: loki-canary
+    resources: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-canary
+  labels:
+    app: loki-canary
+spec:
+  type: ClusterIP
+  selector:
+    app: loki-canary
+  ports:
+  - name: metrics
+    protocol: TCP
+    port: 3500
+    targetPort: 3500
+```
+
+DeamonSet Implementation of loki-canary
+
+```
+---
+kind: DaemonSet
+apiVersion: extensions/v1beta1
+metadata:
+  labels:
+    app: loki-canary
+    name: loki-canary
+  name: loki-canary
+spec:
+  template:
+    metadata:
+      name: loki-canary
+      labels:
+        app: loki-canary
+  spec:
+    containers:
+    - args:
+      - -addr=loki:3100
+      image: grafana/loki-canary:latest
+      imagePullPolicy: IfNotPresent
+      name: loki-canary
+      resources: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-canary
+  labels:
+    app: loki-canary
+spec:
+  type: ClusterIP
+  selector:
+    app: loki-canary
+  ports:
+  - name: metrics
+    protocol: TCP
+    port: 3500
+    targetPort: 3500
+```
+
 
 ### From Source
 
