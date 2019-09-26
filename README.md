@@ -28,21 +28,32 @@ Loki differs from Prometheus by focussing on logs instead of metrics, and delive
 
 ## Getting started
 
-The [getting started docs](./production/README.md) have instructions on how to install Loki via Docker images, Helm charts, Jsonnet, or from source.
+The [Installation docs](./docs/installation/README.md) have instructions on how
+to install Loki via Docker images, Helm charts, Jsonnet, or from source.
 
-Once you have promtail, Loki, and Grafana running, continue with [our usage docs](./docs/querying.md) on how to query your logs.
+You may also be interested in [installing
+Promtail](./docs/clients/promtail/installation.md) to send logs to Loki.
+
+Once you have Promtail, Loki, and Grafana running, continue with our [Getting
+Started Guide](./docs/getting-started/README.md) to get up and running with
+querying logs.
 
 ### Documentation
 
-- [API documentation](./docs/loki/api.md) for alternative ways of getting logs into Loki.
-- [Operations](./docs/loki/operations.md) for important aspects of running Loki.
-- [Promtail](./docs/promtail.md) is an agent which can tail your log files and push them to Loki.
-- [Processing Log Lines](./docs/logentry/processing-log-lines.md) for detailed log processing pipeline documentation
-- [Docker Logging Driver](./cmd/docker-driver/README.md) is a docker plugin to send logs directly to Loki from Docker containers.
-- [Logcli](./docs/logcli.md) on how to query your logs without Grafana.
-- [Loki Canary](./docs/canary/README.md) for monitoring your Loki installation for missing logs.
-- [Troubleshooting](./docs/troubleshooting.md) for help around frequent error messages.
-- [Usage](./docs/querying.md) for how to set up a Loki datasource in Grafana and query your logs.
+The documentation with a Table of Contents can be found in
+[`docs/`](./docs/README.md).
+
+Some key documents to read:
+
+- [API documentation](./docs/api.md) for alternative ways of getting logs into Loki.
+- [Operations](./docs/operations) for important aspects of running Loki.
+- [Promtail](./docs/clients/promtail) is an agent which can tail your log files and push them to Loki.
+- [Pipelines](./docs/clients/promtail/pipelines.md) for detailed log processing pipeline documentation
+- [Docker Logging Driver](./docs/clients/docker-driver) is a docker plugin to send logs directly to Loki from Docker containers.
+- [LogCLI](./docs/getting-started/logcli.md) on how to query your logs without Grafana.
+- [Loki Canary](./docs/operations/loki-canary.md) for monitoring your Loki installation for missing logs.
+- [Troubleshooting](./docs/getting-started/troubleshooting.md) for help around frequent error messages.
+- [Loki in Grafana](./docs/getting-started/grafana.md) for how to set up a Loki datasource in Grafana and query your logs.
 
 ## Getting Help
 
