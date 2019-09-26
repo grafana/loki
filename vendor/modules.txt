@@ -625,7 +625,7 @@ golang.org/x/exp/apidiff
 # golang.org/x/lint v0.0.0-20190909230951-414d861bb4ac
 golang.org/x/lint/golint
 golang.org/x/lint
-# golang.org/x/net v0.0.0-20190923162816-aa69164e4478
+# golang.org/x/net v0.0.0-20190923162816-aa69164e4478 => golang.org/x/net v0.0.0-20190923162816-aa69164e4478
 golang.org/x/net/context
 golang.org/x/net/trace
 golang.org/x/net/proxy

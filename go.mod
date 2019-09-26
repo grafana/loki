@@ -74,3 +74,6 @@ replace github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20190416211555
 
 // Override reference that causes an error from Go proxy - see https://github.com/golang/go/issues/33558
 replace k8s.io/client-go => k8s.io/client-go v0.0.0-20190620085101-78d2af792bab
+
+// Override reference causing proxy error.  Otherwise it attempts to download https://proxy.golang.org/golang.org/x/net/@v/v0.0.0-20190813000000-74dc4d7220e7.info
+replace golang.org/x/net => golang.org/x/net v0.0.0-20190923162816-aa69164e4478
