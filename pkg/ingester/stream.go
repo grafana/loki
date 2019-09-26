@@ -52,6 +52,7 @@ func init() {
 }
 
 type stream struct {
+	cfg *Config
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
 	chunks  []chunkDesc
@@ -76,8 +77,9 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(fp model.Fingerprint, labels labels.Labels, factory func() chunkenc.Chunk) *stream {
+func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels, factory func() chunkenc.Chunk) *stream {
 	return &stream{
+		cfg:     cfg,
 		fp:      fp,
 		labels:  labels,
 		factory: factory,
@@ -182,13 +184,18 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePe
 			buf := bytes.Buffer{}
 			streamName := s.labels.String()
 
-			for _, entryWithError := range failedEntriesWithError {
-				_, _ = fmt.Fprintf(&buf,
+			limitedFailedEntries := failedEntriesWithError
+			if maxIgnore := s.cfg.MaxIgnoredErrors; maxIgnore > 0 && len(limitedFailedEntries) > maxIgnore {
+				limitedFailedEntries = limitedFailedEntries[:maxIgnore]
+			}
+
+			for _, entryWithError := range limitedFailedEntries {
+				fmt.Fprintf(&buf,
 					"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
 					entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
 			}
 
-			_, _ = fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), len(entries))
+			fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), len(entries))
 
 			return httpgrpc.Errorf(http.StatusBadRequest, buf.String())
 		}

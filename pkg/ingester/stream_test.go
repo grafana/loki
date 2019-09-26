@@ -1,16 +1,72 @@
 package ingester
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
 )
+
+func TestMaxIgnoredStreamsErrors(t *testing.T) {
+	numLogs := 100
+
+	tt := []struct {
+		name       string
+		limit      int
+		expectErrs int
+	}{
+		{"10", 10, 10},
+		{"unlimited", 0, numLogs},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newStream(
+				&Config{MaxIgnoredErrors: tc.limit},
+				model.Fingerprint(0),
+				labels.Labels{
+					{Name: "foo", Value: "bar"},
+				},
+				defaultFactory,
+			)
+
+			err := s.Push(context.Background(), []logproto.Entry{
+				{Timestamp: time.Unix(int64(numLogs), 0), Line: "log"},
+			}, 0, 0)
+			require.NoError(t, err)
+
+			newLines := make([]logproto.Entry, numLogs)
+			for i := 0; i < numLogs; i++ {
+				newLines[i] = logproto.Entry{Timestamp: time.Unix(int64(i), 0), Line: "log"}
+			}
+
+			var expected bytes.Buffer
+			for i := 0; i < tc.expectErrs; i++ {
+				fmt.Fprintf(&expected,
+					"entry with timestamp %s ignored, reason: 'entry out of order' for stream: {foo=\"bar\"},\n",
+					time.Unix(int64(i), 0).String(),
+				)
+			}
+
+			fmt.Fprintf(&expected, "total ignored: %d out of %d", numLogs, numLogs)
+			expectErr := httpgrpc.Errorf(http.StatusBadRequest, expected.String())
+
+			err = s.Push(context.Background(), newLines, 0, 0)
+			require.Error(t, err)
+			require.Equal(t, expectErr.Error(), err.Error())
+		})
+	}
+}
 
 func TestStreamIterator(t *testing.T) {
 	const chunks = 3

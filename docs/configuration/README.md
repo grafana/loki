@@ -296,6 +296,10 @@ The `ingester_config` block configures Ingesters.
 # this chunk rollover doesn't happen.
 [sync_period: <duration> | default = 0]
 [sync_min_utilization: <float> | Default = 0]
+
+# The maximum number of errors a stream will report to the user
+# when a push fails. 0 to make unlimited.
+[max_ignored_stream_errors: <int> | default = 10]
 ```
 
 ### lifecycler_config

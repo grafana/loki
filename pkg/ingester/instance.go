@@ -52,6 +52,7 @@ var (
 )
 
 type instance struct {
+	cfg        *Config
 	streamsMtx sync.RWMutex
 	streams    map[model.Fingerprint]*stream // we use 'mapped' fingerprints here.
 	index      *index.InvertedIndex
@@ -73,8 +74,9 @@ type instance struct {
 	syncMinUtil float64
 }
 
-func newInstance(instanceID string, factory func() chunkenc.Chunk, limiter *Limiter, syncPeriod time.Duration, syncMinUtil float64) *instance {
+func newInstance(cfg *Config, instanceID string, factory func() chunkenc.Chunk, limiter *Limiter, syncPeriod time.Duration, syncMinUtil float64) *instance {
 	i := &instance{
+		cfg:        cfg,
 		streams:    map[model.Fingerprint]*stream{},
 		index:      index.New(),
 		instanceID: instanceID,
@@ -105,7 +107,7 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 	stream, ok := i.streams[fp]
 	if !ok {
 		sortedLabels := i.index.Add(labels, fp)
-		stream = newStream(fp, sortedLabels, i.factory)
+		stream = newStream(i.cfg, fp, sortedLabels, i.factory)
 		i.streams[fp] = stream
 		i.streamsCreatedTotal.Inc()
 		memoryStreams.Inc()
@@ -165,7 +167,7 @@ func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, err
 	}
 
 	sortedLabels := i.index.Add(labels, fp)
-	stream = newStream(fp, sortedLabels, i.factory)
+	stream = newStream(i.cfg, fp, sortedLabels, i.factory)
 	i.streams[fp] = stream
 	memoryStreams.Inc()
 	i.streamsCreatedTotal.Inc()

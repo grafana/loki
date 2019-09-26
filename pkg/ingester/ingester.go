@@ -56,6 +56,8 @@ type Config struct {
 	SyncPeriod         time.Duration `yaml:"sync_period"`
 	SyncMinUtilization float64       `yaml:"sync_min_utilization"`
 
+	MaxIgnoredErrors int `yaml:"max_ignored_stream_errors"`
+
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(cfg client.Config, addr string) (grpc_health_v1.HealthClient, error)
 }
@@ -75,6 +77,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", chunkenc.EncGZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", chunkenc.SupportedEncoding()))
 	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 0, "How often to cut chunks to synchronize ingesters.")
 	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0, "Minimum utilization of chunk when doing synchronization.")
+	f.IntVar(&cfg.MaxIgnoredErrors, "ingester.max-ignored-stream-errors", 10, "Maximum number of ignored stream errors to return. 0 to return all errors.")
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -211,7 +214,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(instanceID, i.factory, i.limiter, i.cfg.SyncPeriod, i.cfg.SyncMinUtilization)
+		inst = newInstance(&i.cfg, instanceID, i.factory, i.limiter, i.cfg.SyncPeriod, i.cfg.SyncMinUtilization)
 		i.instances[instanceID] = inst
 	}
 	return inst
