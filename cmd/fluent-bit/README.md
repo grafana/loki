@@ -67,7 +67,7 @@ and a LabelMap file as follow :
 
 The labels extracted will be `{team="x-men", container="promtail", pod="promtail-xxx", namespace="prod"}`
 
-If you don't want the `kubernetes` and `HOSTNAME` fields to appear in the log line you can use the `RemoveKeys` configuration. (e.g. `RemoveKeys kubernetes,HOSTNAME`).
+If you don't want the `kubernetes` and `HOSTNAME` fields to appear in the log line you can use the `RemoveKeys` configuration field. (e.g. `RemoveKeys kubernetes,HOSTNAME`).
 
 ### Configuration examples
 
@@ -121,9 +121,9 @@ docker run -v /var/log:/var/log \
 
 ## Kubernetes
 
-You can run fluent-bit as a DaemonSet to collect all your Kubernetes workload logs.
+You can run fluent-bit as a [Daemonset](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/) to collect all your Kubernetes workload logs.
 
-To do so you can use our [fluent-bit helm chart](../../production/helm/fluent-bit/README.m):
+To do so you can use our [fluent-bit helm chart](../../production/helm/fluent-bit/README.md):
 
 > Make sure [tiller](https://helm.sh/docs/install/) is installed correctly in your cluster
 
