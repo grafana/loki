@@ -4,6 +4,7 @@ Loki supports the following official clients for sending logs:
 
 1. [Promtail](./promtail/README.md)
 2. [Docker Driver](./docker-driver/README.md)
+4. [Fluent-bit](../../cmd/fluent-bit/README.md)
 3. [Fluentd](./fluentd.md)
 
 ## Picking a Client
@@ -25,5 +26,5 @@ logs to Loki from plain-text files (e.g., things that log to `/var/log/*.log`).
 When using Docker and not Kubernetes, the Docker Logging driver should be used,
 as it automatically adds labels appropriate to the running container.
 
-The Fluentd plugin is ideal when you already have Fluentd deployed and you don't
-need the service discovery capabilities of Promtail.
+The Fluentd and fluent-bit plugins is ideal when you already have Fluentd deployed and you
+already have configured `Parser` and `Filter` plugins.

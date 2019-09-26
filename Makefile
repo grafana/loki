@@ -374,8 +374,10 @@ fluent-bit-image:
 fluent-bit-push:
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
 
+fluent-bit-test: LOKI_URL ?= http://localhost:3100/loki/api/
 fluent-bit-test:
-	docker run -v /var/log:/var/log -v $(PWD)/tools/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
+	docker run -v /var/log:/var/log -e LOG_PATH="/var/log/*.log" -e LOKI_URL="$(LOKI_URL)" \
+	 $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
 
 ########################
 # Bigtable Backup Tool #
