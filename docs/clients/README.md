@@ -26,5 +26,5 @@ logs to Loki from plain-text files (e.g., things that log to `/var/log/*.log`).
 When using Docker and not Kubernetes, the Docker Logging driver should be used,
 as it automatically adds labels appropriate to the running container.
 
-The Fluentd and fluent-bit plugins is ideal when you already have Fluentd deployed and you
-already have configured `Parser` and `Filter` plugins.
+The Fluentd and fluent-bit plugins are ideal when you already have Fluentd deployed 
+and you already have configured `Parser` and `Filter` plugins.
