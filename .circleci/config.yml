@@ -49,7 +49,7 @@ workflows:
 .defaults: &defaults
   docker:
     - image: grafana/loki-build-image:0.6.0
-  working_directory: /go/src/github.com/grafana/loki
+  working_directory: /src/loki
 
 jobs:
   test:

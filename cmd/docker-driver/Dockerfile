@@ -5,12 +5,12 @@ ARG BUILD_IMAGE=grafana/loki-build-image:latest
 
 # TODO: add cross-platform support
 FROM $BUILD_IMAGE as build
-COPY . /go/src/github.com/grafana/loki
-WORKDIR /go/src/github.com/grafana/loki
+COPY . /src/loki
+WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false cmd/docker-driver/docker-driver
 
 FROM alpine:3.9
 RUN apk add --update --no-cache ca-certificates
-COPY --from=build /go/src/github.com/grafana/loki/cmd/docker-driver/docker-driver /bin/docker-driver
+COPY --from=build /src/loki/cmd/docker-driver/docker-driver /bin/docker-driver
 WORKDIR /bin/
 ENTRYPOINT [ "/bin/docker-driver" ]
