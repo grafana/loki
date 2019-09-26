@@ -48,6 +48,20 @@ $ helm upgrade --install loki loki/loki
 $ helm upgrade --install promtail loki/promtail --set "loki.serviceName=loki"
 ```
 
+## Deploy Loki and fluent-bit to your cluster
+
+```bash
+$ helm upgrade --install loki loki/loki-stack \
+    --set fluent-bit.enabled=true,promtail.enabled=false
+```
+
+## Deploy fluent-bit only
+
+```bash
+$ helm upgrade --install fluent-bit loki/fluent-bit \
+    --set "loki.serviceName=loki.svc.cluster.local"
+```
+
 ## Deploy Grafana to your cluster
 
 To install Grafana on your cluster with helm, use the following command:
@@ -55,6 +69,8 @@ To install Grafana on your cluster with helm, use the following command:
 ```bash
 $ helm install stable/grafana -n loki-grafana
 ```
+
+> The chart loki-stack contains a pre-configured Grafana, simply use `--set grafana.enabled=true`
 
 To get the admin password for the Grafana pod, run the following command:
 
