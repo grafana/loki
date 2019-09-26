@@ -11,10 +11,7 @@ import (
 // destination, which will be something compatible to `json.Unmarshal`. The
 // obtained configuration may be written to this object, it may also contain
 // data from previous sources.
-type (
-	Source     func(interface{}) error
-	SourceFunc func() Source
-)
+type Source func(interface{}) error
 
 var (
 	ErrNotPointer = errors.New("dst is not a pointer")
@@ -40,15 +37,15 @@ func Unmarshal(dst interface{}, sources ...Source) error {
 
 // Parse is a higher level wrapper for Unmarshal that automatically parses flags and a .yaml file
 func Parse(dst interface{}) error {
-	yamls := func() Source {
-		return YAMLFlag("config.file", "", "yaml file to load")
-	}
-
-	return dParse(dst, yamls, Flags)
+	return dParse(dst,
+		Defaults(),
+		YAMLFlag("config.file", "", "yaml file to load"),
+		Flags(),
+	)
 }
 
 // dParse is the same as Parse, but with dependency injection for testing
-func dParse(dst interface{}, yamls, flags SourceFunc) error {
+func dParse(dst interface{}, defaults, yaml, flags Source) error {
 	// check dst is a pointer
 	v := reflect.ValueOf(dst)
 	if v.Kind() != reflect.Ptr {
@@ -57,8 +54,8 @@ func dParse(dst interface{}, yamls, flags SourceFunc) error {
 
 	// unmarshal config
 	return Unmarshal(dst,
-		Defaults(),
-		yamls(),
-		flags(),
+		defaults,
+		yaml,
+		flags,
 	)
 }

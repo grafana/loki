@@ -8,8 +8,14 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Defaults registers flags using dst as the flagext.Registerer
+// Defaults registers flags to the command line using dst as the
+// flagext.Registerer
 func Defaults() Source {
+	return dDefaults(flag.CommandLine)
+}
+
+// dDefaults registers flags to the flagSet using dst as the flagext.Registerer
+func dDefaults(fs *flag.FlagSet) Source {
 	return func(dst interface{}) error {
 		r, ok := dst.(flagext.Registerer)
 		if !ok {
@@ -17,7 +23,7 @@ func Defaults() Source {
 		}
 
 		// already sets the defaults on r
-		r.RegisterFlags(flag.CommandLine)
+		r.RegisterFlags(fs)
 		return nil
 	}
 }
@@ -25,13 +31,13 @@ func Defaults() Source {
 // Flags parses the flag from the command line, setting only user-supplied
 // values on the flagext.Registerer passed to Defaults()
 func Flags() Source {
-	return dFlags(os.Args[1:])
+	return dFlags(flag.CommandLine, os.Args[1:])
 }
 
 // dFlags parses the flagset, applying all values set on the slice
-func dFlags(args []string) Source {
+func dFlags(fs *flag.FlagSet, args []string) Source {
 	return func(dst interface{}) error {
 		// parse the final flagset
-		return flag.CommandLine.Parse(args)
+		return fs.Parse(args)
 	}
 }

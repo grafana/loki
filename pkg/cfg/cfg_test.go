@@ -9,22 +9,18 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	yamlSource := func() Source {
-		return dYAML([]byte(`
+	yamlSource := dYAML([]byte(`
 server:
   port: 2000
   timeout: 60h
 tls:
   key: YAML
 `))
-	}
-
-	flagSource := func(fs *flag.FlagSet) Source {
-		return dFlags(fs, []string{"-verbose", "-server.port=21"})
-	}
+	fs := flag.NewFlagSet("testParse", flag.PanicOnError)
+	flagSource := dFlags(fs, []string{"-verbose", "-server.port=21"})
 
 	var c Data
-	err := dParse(&c, yamlSource, flagSource)
+	err := dParse(&c, dDefaults(fs), yamlSource, flagSource)
 	require.NoError(t, err)
 
 	require.Equal(t, Data{
@@ -34,7 +30,7 @@ tls:
 			Timeout: 60 * time.Hour,
 		},
 		TLS: TLS{
-			Cert: "CERT",
+			Cert: "DEFAULTCERT",
 			Key:  "YAML",
 		},
 	}, c)
