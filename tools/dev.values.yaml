@@ -15,8 +15,12 @@ prometheus:
       servicePort: 9090
 
 promtail:
+  enabled: true
   image:
     pullPolicy: Never
+
+fluent-bit:
+  enable: false
 
 loki:
   image:

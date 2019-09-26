@@ -43,7 +43,7 @@ local docker(arch, app) = {
   },
 };
 
-local multiarch_image(arch) = pipeline('docker-' + arch) {
+local arch_image(arch) = {
   platform: {
     os: 'linux',
     arch: arch,
@@ -56,7 +56,35 @@ local multiarch_image(arch) = pipeline('docker-' + arch) {
       'git fetch origin --tags',
       'echo $(./tools/image-tag)-%s > .tags' % arch,
     ],
-  }] + [
+  }],
+};
+
+local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64') {
+ steps+: [
+    // dry run for everything that is not tag or master
+    docker('amd64', 'fluent-bit') {
+      depends_on: ['image-tag'],
+      when: condition('exclude').tagMaster,
+      settings+: {
+        dry_run: true,
+        repo: 'grafana/fluent-bit-plugin-loki',
+      },
+    }
+  ] + [
+    // publish for tag or master
+    docker('amd64', 'fluent-bit') {
+      depends_on: ['image-tag'],
+      when: condition('include').tagMaster,
+      settings+: {
+        repo: 'grafana/fluent-bit-plugin-loki',
+      },
+    }
+  ],
+  depends_on: ['check'],
+};
+
+local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
+  steps+: [
     // dry run for everything that is not tag or master
     docker(arch, app) {
       depends_on: ['image-tag'],
@@ -114,6 +142,8 @@ local drone = [
 ] + [
   multiarch_image(arch)
   for arch in archs
+] + [
+ fluentbit()
 ] + [
   manifest(['promtail', 'loki', 'loki-canary']) {
     trigger: condition('include').tagMaster,

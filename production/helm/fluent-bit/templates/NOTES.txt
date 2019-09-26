@@ -1,0 +1,3 @@
+Verify the application is working by running these commands:
+  kubectl --namespace {{ .Release.Namespace }} port-forward daemonset/{{ include "fluent-bit-loki.fullname" . }} {{ .Values.config.port }}
+  curl http://127.0.0.1:{{ .Values.config.port }}/api/v1/metrics/prometheus

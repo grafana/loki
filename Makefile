@@ -228,6 +228,8 @@ clean:
 	rm -rf .cache
 	rm -rf cmd/docker-driver/rootfs
 	rm -rf dist/
+	rm -rf cmd/fluent-bit/out_loki.h
+	rm -rf cmd/fluent-bit/out_loki.so
 	go clean ./...
 
 #########
@@ -281,7 +283,7 @@ endif
 # Helm #
 ########
 
-CHARTS := production/helm/loki production/helm/promtail production/helm/loki-stack
+CHARTS := production/helm/loki production/helm/promtail production/helm/fluent-bit production/helm/loki-stack
 
 helm:
 	-rm -f production/helm/*/requirements.lock
@@ -297,11 +299,15 @@ helm:
 helm-install:
 	kubectl apply -f tools/helm.yaml
 	helm init --wait --service-account helm --upgrade
-	$(MAKE) helm-upgrade
+	HELM_ARGS="$(HELM_ARGS)" $(MAKE) helm-upgrade
+
+helm-install-fluent-bit:
+	HELM_ARGS="--set fluent-bit.enabled=true,promtail.enabled=false" $(MAKE) helm-install
+
 
 helm-upgrade: helm
 	helm upgrade --wait --install $(ARGS) loki-stack ./production/helm/loki-stack \
-	--set promtail.image.tag=$(IMAGE_TAG) --set loki.image.tag=$(IMAGE_TAG) -f tools/dev.values.yaml
+	--set promtail.image.tag=$(IMAGE_TAG) --set loki.image.tag=$(IMAGE_TAG) --set fluent-bit.image.tag=$(IMAGE_TAG) -f tools/dev.values.yaml $(HELM_ARGS)
 
 helm-publish: helm
 	cp production/helm/README.md index.md
@@ -356,6 +362,23 @@ docker-driver-clean:
 	-docker plugin rm grafana/loki-docker-driver:latest$(PLUGIN_ARCH)
 	rm -rf cmd/docker-driver/rootfs
 
+#####################
+# fluent-bit plugin #
+#####################
+fluent-bit-plugin:
+	go build $(DYN_GO_FLAGS) -buildmode=c-shared -o cmd/fluent-bit/out_loki.so ./cmd/fluent-bit/
+
+fluent-bit-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) -f cmd/fluent-bit/Dockerfile .
+
+fluent-bit-push:
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
+
+fluent-bit-test: LOKI_URL ?= http://localhost:3100/loki/api/
+fluent-bit-test:
+	docker run -v /var/log:/var/log -e LOG_PATH="/var/log/*.log" -e LOKI_URL="$(LOKI_URL)" \
+	 $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
+
 ########################
 # Bigtable Backup Tool #
 ########################
@@ -374,7 +397,7 @@ push-bigtable-backup: bigtable-backup
 # Images #
 ##########
 
-images: promtail-image loki-image loki-canary-image docker-driver
+images: promtail-image loki-image loki-canary-image docker-driver fluent-bit-image
 
 print-images:
 	$(info $(patsubst %,%:$(IMAGE_TAG),$(IMAGE_NAMES)))

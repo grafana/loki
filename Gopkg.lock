@@ -405,6 +405,14 @@
   version = "v1.7.0"
 
 [[projects]]
+  branch = "master"
+  digest = "1:46b85bcf6d73ec481fe2b310aa38928a95aeae833761ba6525ebd5576d4de956"
+  name = "github.com/fluent/fluent-bit-go"
+  packages = ["output"]
+  pruneopts = "UT"
+  revision = "c017a8579953a0e55228908b85cdc5b29b6dcdd5"
+
+[[projects]]
   digest = "1:abeb38ade3f32a92943e5be54f55ed6d6e3b6602761d74b4aab4c9dd45c18abd"
   name = "github.com/fsnotify/fsnotify"
   packages = ["."]
@@ -1167,6 +1175,14 @@
   version = "v2.0.0"
 
 [[projects]]
+  digest = "1:5a1cf4e370bc86137b58da2ae065e76526d32b11f62a7665f36dbd5f41fa95ff"
+  name = "github.com/ugorji/go"
+  packages = ["codec"]
+  pruneopts = "UT"
+  revision = "23ab95ef5dc3b70286760af84ce2327a2b64ed62"
+  version = "v1.1.7"
+
+[[projects]]
   branch = "server-listen-addr"
   digest = "1:ac8d70a9fb648c76c20d099821664d0b18dfdfbd46029decdb92f31314c1ffa5"
   name = "github.com/weaveworks/common"
@@ -1841,6 +1857,7 @@
     "github.com/docker/docker/pkg/ioutils",
     "github.com/docker/go-plugins-helpers/sdk",
     "github.com/fatih/color",
+    "github.com/fluent/fluent-bit-go/output",
     "github.com/go-kit/kit/log",
     "github.com/go-kit/kit/log/level",
     "github.com/gogo/protobuf/gogoproto",
@@ -1853,6 +1870,7 @@
     "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc",
     "github.com/hpcloud/tail",
     "github.com/jmespath/go-jmespath",
+    "github.com/json-iterator/go",
     "github.com/klauspost/compress/gzip",
     "github.com/mitchellh/mapstructure",
     "github.com/opentracing/opentracing-go",

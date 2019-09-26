@@ -268,7 +268,7 @@ func isDone(ctx context.Context) bool {
 }
 
 func sendBatches(i iter.EntryIterator, queryServer logproto.Querier_QueryServer, limit uint32) error {
-	if limit <= 0 {
+	if limit == 0 {
 		return sendAllBatches(i, queryServer)
 	}
 	sent := uint32(0)
