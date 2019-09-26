@@ -85,9 +85,8 @@ For more details, read the [fluent-bit documentation](../../../cmd/fluent-bit/RE
 | `deploymentStrategy`     | The deployment strategy to use with the daemonset                                                  | `RollingUpdate`                  |
 | `image.repository`       | The fluent-bit docker image repository                                                             | `grafana/fluent-bit-plugin-loki` |
 | `image.tag`              | The fluent-bit docker image tag                                                                    | `0.1`                            |
-| `image.tag`              | The fluent-bit docker image pull policy                                                            | `IfNotPresent`                   |
+| `image.pullPolicy`       | The fluent-bit docker image pull policy                                                            | `IfNotPresent`                   |
 | `nodeSelector`           | fluent-bit [node labels][nodeSelector] for pod assignment                                          | `{}`                             |
-| `podLabels`              | additional fluent-bit pod labels                                                                   | `{}`                             |
 | `podLabels`              | additional fluent-bit pod labels                                                                   | `{}`                             |
 | `podAnnotations`         | additional fluent-bit pod annotations                                                              | `Prometheus discovery`           |
 | `rbac.create`            | Activate support for RBAC                                                                          | `true`                           |
@@ -95,7 +94,7 @@ For more details, read the [fluent-bit documentation](../../../cmd/fluent-bit/RE
 | `tolerations`            | [Toleration][toleration] labels for pod assignment                                                 | `no schedule on master nodes`    |
 | `volumes`                | [Volume]([volumes]) to mount                                                                       | `host containers log`            |
 | `volumeMounts`           | Volume mount mapping                                                                               |                                  |
-| `serviceMonitor.enabled` | Create a [Prometheus Operator](operator) serviceMonitor resource for fluent-bit                                | `false`                          |
+| `serviceMonitor.enabled` | Create a [Prometheus Operator](operator) serviceMonitor resource for fluent-bit                    | `false`                          |
 
 
 [toleration]: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
