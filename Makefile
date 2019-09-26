@@ -207,7 +207,7 @@ publish: dist
 ########
 
 lint:
-	GOGC=10 golangci-lint run
+	GO111MODULE=on GOGC=10 golangci-lint run
 
 ########
 # Test #

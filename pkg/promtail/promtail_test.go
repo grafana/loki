@@ -535,9 +535,10 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	// Init everything with default values.
 	flagext.RegisterFlags(&cfg)
 
-	cfg.ServerConfig.HTTPListenHost = "localhost"
-	cfg.ServerConfig.ExternalURL = "localhost"
-	cfg.ServerConfig.GRPCListenHost = "localhost"
+	const hostname = "localhost"
+	cfg.ServerConfig.HTTPListenHost = hostname
+	cfg.ServerConfig.ExternalURL = hostname
+	cfg.ServerConfig.GRPCListenHost = hostname
 	cfg.ServerConfig.HTTPListenPort = httpTestPort
 
 	// Override some of those defaults
