@@ -11,6 +11,9 @@ import (
 // JSON returns a Source that opens the supplied `.json` file and loads it.
 func JSON(f *string) Source {
 	return func(dst interface{}) error {
+		if f == nil {
+			return nil
+		}
 
 		j, err := ioutil.ReadFile(*f)
 		if err != nil {
