@@ -1,8 +1,6 @@
 package cfg
 
 import (
-	"flag"
-	"os"
 	"reflect"
 
 	"github.com/pkg/errors"
@@ -13,7 +11,10 @@ import (
 // destination, which will be something compatible to `json.Unmarshal`. The
 // obtained configuration may be written to this object, it may also contain
 // data from previous sources.
-type Source func(interface{}) error
+type (
+	Source     func(interface{}) error
+	SourceFunc func() Source
+)
 
 var (
 	ErrNotPointer = errors.New("dst is not a pointer")
@@ -47,23 +48,17 @@ func Parse(dst interface{}) error {
 }
 
 // dParse is the same as Parse, but with dependency injection for testing
-func dParse(dst interface{},
-	yamls func() Source,
-	flags func(fs *flag.FlagSet) Source,
-) error {
+func dParse(dst interface{}, yamls, flags SourceFunc) error {
 	// check dst is a pointer
 	v := reflect.ValueOf(dst)
 	if v.Kind() != reflect.Ptr {
 		return ErrNotPointer
 	}
 
-	fs := flag.NewFlagSet(os.Args[0]+" (cfg/internal)", flag.ExitOnError)
-
 	// unmarshal config
-	err := Unmarshal(dst,
-		Defaults(fs),
+	return Unmarshal(dst,
+		Defaults(),
 		yamls(),
-		flags(fs),
+		flags(),
 	)
-	return err
 }

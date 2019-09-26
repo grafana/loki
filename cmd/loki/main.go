@@ -16,7 +16,7 @@ import (
 	"github.com/weaveworks/common/tracing"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 func init() {
