@@ -13,7 +13,7 @@ import (
 // flagext.Registerer
 func TestDefaults(t *testing.T) {
 	data := Data{}
-	fs := flag.NewFlagSet("testDefaults", flag.PanicOnError)
+	fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 
 	err := Unmarshal(&data,
 		dDefaults(fs),
@@ -37,7 +37,7 @@ func TestDefaults(t *testing.T) {
 // correctly obtained from the command line
 func TestFlags(t *testing.T) {
 	data := Data{}
-	fs := flag.NewFlagSet("testDefaults", flag.PanicOnError)
+	fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 	err := Unmarshal(&data,
 		dDefaults(fs),
 		dFlags(fs, []string{"-server.timeout=10h", "-verbose"}),
