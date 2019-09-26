@@ -228,8 +228,8 @@ clean:
 	rm -rf .cache
 	rm -rf cmd/docker-driver/rootfs
 	rm -rf dist/
-	rm -rf fluent-bit/fluent-bit-go-loki/out_loki.h
-	rm -rf fluent-bit/fluent-bit-go-loki/out_loki.so
+	rm -rf cmd/fluent-bit/out_loki.h
+	rm -rf cmd/fluent-bit/out_loki.so
 	go clean ./...
 
 #########
@@ -366,10 +366,10 @@ docker-driver-clean:
 # fluent-bit plugin #
 #####################
 fluent-bit-plugin:
-	go build $(DYN_GO_FLAGS) -buildmode=c-shared -o fluent-bit/fluent-bit-go-loki/out_loki.so ./fluent-bit/fluent-bit-go-loki/
+	go build $(DYN_GO_FLAGS) -buildmode=c-shared -o cmd/fluent-bit/out_loki.so cmd/fluent-bit/
 
 fluent-bit-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) -f fluent-bit/fluent-bit-go-loki/Dockerfile .
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) -f cmd/fluent-bit/Dockerfile .
 
 fluent-bit-push:
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
