@@ -1,8 +1,8 @@
 # fluent-bit output plugin
 
-[Fluent-bit](https://fluentbit.io/) is a Fast and Lightweight Data Forwarder, it can be configured with Loki [output plugin](https://fluentbit.io/documentation/0.12/output/) to ship logs to Loki. You can define which log files you want to collect using the [`Tail`](https://fluentbit.io/documentation/0.12/input/tail.html)  [input plugin](https://fluentbit.io/documentation/0.12/getting_started/input.html). Additionally fluent-bit support multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc..) to structure and alter log lines.
+[Fluent-bit](https://fluentbit.io/) is a Fast and Lightweight Data Forwarder, it can be configured with the [Loki output plugin](https://fluentbit.io/documentation/0.12/output/) to ship logs to Loki. You can define which log files you want to collect using the [`Tail`](https://fluentbit.io/documentation/0.12/input/tail.html)  [input plugin](https://fluentbit.io/documentation/0.12/getting_started/input.html). Additionally fluent-bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc..) to structure and alter log lines.
 
-This plugin is implemented with the [fluent-bit's go plugin](https://github.com/fluent/fluent-bit-go) interface, it communicates with Loki server using a GRPC connection.
+This plugin is implemented with [fluent-bit's go plugin](https://github.com/fluent/fluent-bit-go) interface. It pushes logs to Loki using a GRPC connection.
 
 > syslog and systemd input plugin have not been tested yet, feedback appreciated.
 
@@ -16,21 +16,21 @@ This plugin is implemented with the [fluent-bit's go plugin](https://github.com/
 | Labels        | labels for API requests.                       | {job="fluent-bit"}                    |
 | LogLevel      | LogLevel for plugin logger.                    | "info"                              |
 | RemoveKeys    | Specify removing keys.                         | none                                |
-| LabelKeys     | Comma separated list of keys to use as stream labels. All other keys will be placed into the log line. LabelKeys is desactivated when using `LabelMapPath` label mapping configuration. | none |
+| LabelKeys     | Comma separated list of keys to use as stream labels. All other keys will be placed into the log line. LabelKeys is deactivated when using `LabelMapPath` label mapping configuration. | none |
 | LineFormat    | Format to use when flattening the record to a log line. Valid values are "json" or "key_value". If set to "json" the log line sent to Loki will be the fluentd record (excluding any keys extracted out as labels) dumped as json. If set to "key_value", the log line will be each item in the record concatenated together (separated by a single space) in the format <key>=<value>. | json |
-| DropSingleKey | if set to true and after extracting label_keys a record only has a single key remaining, the log line sent to Loki will just be the value of the record key.| true |
+| DropSingleKey | If set to true and after extracting label_keys a record only has a single key remaining, the log line sent to Loki will just be the value of the record key.| true |
 | LabelMapPath | Path to a json file defining how to transform nested records. | none
 
 ### Labels
 
-Labels are used to [query logs](../../docs/logql.md) `{container_name="nginx", cluster="us-west1"}`, they are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`). Like in Prometheus labels are indexed consequently you should be cautious when choosing them. (high cardinality label values can have performance drastic impact).
+Labels are used to [query logs](../../docs/logql.md) `{container_name="nginx", cluster="us-west1"}`, they are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`).  In Loki labels are indexed consequently you should be cautious when choosing them (high cardinality label values can have performance drastic impact).
 
 You can use `Labels`, `RemoveKeys` , `LabelKeys` and `LabelMapPath` to how the output plugin will perform labels extraction.
 
 ### LabelMapPath
 
-When using `Parser` and `Filter` plugin fluent-bit can extract and add data to the current record/log data. While Loki labels are key value pair, record data can be nested structures.
-You can pass a json file to defines how to extract [labels](../../docs/overview/README.md#overview-of-loki) from each record. Each json key from the file will be matched with the log record to find label values. Values from the configuration are used as label names.
+When using the `Parser` and `Filter` plugins fluent-bit can extract and add data to the current record/log data. While Loki labels are key value pair, record data can be nested structures.
+You can pass a json file that defines how to extract [labels](../../docs/overview/README.md#overview-of-loki) from each record. Each json key from the file will be matched with the log record to find label values. Values from the configuration are used as label names.
 
 Considering the record below :
 
@@ -65,13 +65,13 @@ and a LabelMap file as follow :
 }
 ```
 
-The labels extracted will be `{team="x-men", container="promtail", pod="promtail-xxx", namespace="prod"}`
+The labels extracted will be `{team="x-men", container="promtail", pod="promtail-xxx", namespace="prod"}`.
 
 If you don't want the `kubernetes` and `HOSTNAME` fields to appear in the log line you can use the `RemoveKeys` configuration field. (e.g. `RemoveKeys kubernetes,HOSTNAME`).
 
 ### Configuration examples
 
-To configure Loki output plugin add this section to fluent-bit.conf
+To configure the Loki output plugin add this section to fluent-bit.conf
 
 ```properties
 [Output]
@@ -86,7 +86,7 @@ To configure Loki output plugin add this section to fluent-bit.conf
     LineFormat key_value
 ```
 
-A full example of configuration [file](fluent-bit.conf) is also available in this repository.
+A full [example configuration file](fluent-bit.conf) is also available in this repository.
 
 ## Building
 
