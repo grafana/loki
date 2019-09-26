@@ -28,13 +28,13 @@ $ chmod a+x "/usr/local/bin/loki"
 Clone Loki to `$GOPATH/src/github.com/grafana/loki`:
 
 ```bash
-$ git clone https://github.com/grafana/loki $(go env GOPATH)/src/github.com/grafana/loki
+$ git clone https://github.com/grafana/loki $GOPATH/src/github.com/grafana/loki
 ```
 
 Then change into that directory and run `make loki`:
 
 ```bash
-$ cd $(go env GOPATH)/src/github.com/grafana/loki
+$ cd $GOPATH/src/github.com/grafana/loki
 $ make loki
 
 # A file at ./cmd/loki/loki will be created and is the
