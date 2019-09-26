@@ -96,7 +96,6 @@ persistence:
   accessModes:
   - ReadWriteOnce
   size: 10Gi
-  storageClassName: default
   annotations: {}
   # subPath: ""
   # existingClaim:
