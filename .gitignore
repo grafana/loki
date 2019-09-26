@@ -12,9 +12,8 @@ cmd/loki/loki-debug
 cmd/promtail/promtail-debug
 cmd/docker-driver/docker-driver
 cmd/loki-canary/loki-canary
-fluent-bit/fluent-bit-go-loki/out_loki.so
-fluent-bit/fluent-bit-go-loki/out_loki.h
-fluent-bit/fluent-bit-go-loki/coverage.txt
+cmd/fluent-bit/out_loki.so
+cmd/fluent-bit/out_loki.h
 /loki
 /promtail
 /logcli
