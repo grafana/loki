@@ -41,9 +41,9 @@ type Client struct {
 func (c *Client) Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
 	path := fmt.Sprintf(queryPath,
 		url.QueryEscape(queryStr), // query
-		limit,              // limit
-		time.UnixNano(),    // start
-		direction.String(), // direction
+		limit,                     // limit
+		time.UnixNano(),           // start
+		direction.String(),        // direction
 	)
 
 	return c.doQuery(path, quiet)
@@ -55,10 +55,10 @@ func (c *Client) Query(queryStr string, limit int, time time.Time, direction log
 func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
 	path := fmt.Sprintf(queryRangePath,
 		url.QueryEscape(queryStr), // query
-		limit,              // limit
-		from.UnixNano(),    // start
-		through.UnixNano(), // end
-		direction.String(), // direction
+		limit,                     // limit
+		from.UnixNano(),           // start
+		through.UnixNano(),        // end
+		direction.String(),        // direction
 	)
 
 	return c.doQuery(path, quiet)
