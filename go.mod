@@ -48,6 +48,7 @@ require (
 	github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd
 	github.com/stretchr/testify v1.3.0
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
+	github.com/ugorji/go v1.1.7 // indirect
 	github.com/weaveworks/common v0.0.0-20190822150010-afb9996716e4
 	go.etcd.io/etcd v0.0.0-20190815204525-8f85f0dc2607 // indirect
 	go.opencensus.io v0.22.1 // indirect
