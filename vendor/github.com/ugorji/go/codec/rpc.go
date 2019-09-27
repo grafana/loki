@@ -97,9 +97,6 @@ func (c *rpcCodec) write(obj1, obj2 interface{}, writeObj2 bool) (err error) {
 		if writeObj2 {
 			err = c.enc.Encode(obj2)
 		}
-		// if err == nil && c.f != nil {
-		// 	err = c.f.Flush()
-		// }
 	}
 	if c.f != nil {
 		if err == nil {

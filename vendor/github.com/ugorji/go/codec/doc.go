@@ -14,15 +14,9 @@ Supported Serialization formats are:
   - json:    http://json.org http://tools.ietf.org/html/rfc7159
   - simple:
 
-To install:
-
-    go get github.com/ugorji/go/codec
-
-This package will carefully use 'unsafe' for performance reasons in specific places.
+This package will carefully use 'package unsafe' for performance reasons in specific places.
 You can build without unsafe use by passing the safe or appengine tag
-i.e. 'go install -tags=safe ...'. Note that unsafe is only supported for the last 3
-go sdk versions e.g. current go release is go 1.9, so we support unsafe use only from
-go 1.7+ . This is because supporting unsafe requires knowledge of implementation details.
+i.e. 'go install -tags=safe ...'.
 
 For detailed usage information, read the primer at http://ugorji.net/blog/go-codec-primer .
 
@@ -32,12 +26,12 @@ the standard library (ie json, xml, gob, etc).
 Rich Feature Set includes:
 
   - Simple but extremely powerful and feature-rich API
-  - Support for go1.4 and above, while selectively using newer APIs for later releases
+  - Support for go 1.4 and above, while selectively using newer APIs for later releases
   - Excellent code coverage ( > 90% )
   - Very High Performance.
     Our extensive benchmarks show us outperforming Gob, Json, Bson, etc by 2-4X.
   - Careful selected use of 'unsafe' for targeted performance gains.
-    100% mode exists where 'unsafe' is not used at all.
+  - 100% safe mode supported, where 'unsafe' is not used at all.
   - Lock-free (sans mutex) concurrency for scaling to 100's of cores
   - In-place updates during decode, with option to zero value in maps and slices prior to decode
   - Coerce types where appropriate
@@ -62,7 +56,7 @@ Rich Feature Set includes:
     (to support structured streams with fields encoded as numeric codes)
   - Comprehensive support for anonymous fields
   - Fast (no-reflection) encoding/decoding of common maps and slices
-  - Code-generation for faster performance.
+  - Code-generation for faster performance, supported in go 1.6+
   - Support binary (e.g. messagepack, cbor) and text (e.g. json) formats
   - Support indefinite-length formats to enable true streaming
     (for formats which support it e.g. json, cbor)
@@ -100,13 +94,16 @@ encoded as an empty map because it has no exported fields, while UUID
 would be encoded as a string. However, with extension support, you can
 encode any of these however you like.
 
+There is also seamless support provided for registering an extension (with a tag)
+but letting the encoding mechanism default to the standard way.
+
 Custom Encoding and Decoding
 
 This package maintains symmetry in the encoding and decoding halfs.
 We determine how to encode or decode by walking this decision tree
 
-  - is type a codec.Selfer?
   - is there an extension registered for the type?
+  - is type a codec.Selfer?
   - is format binary, and is type a encoding.BinaryMarshaler and BinaryUnmarshaler?
   - is format specifically json, and is type a encoding/json.Marshaler and Unmarshaler?
   - is format text-based, and type an encoding.TextMarshaler and TextUnmarshaler?
@@ -206,6 +203,9 @@ You can run the tag 'safe' to run tests or build in safe mode. e.g.
 
 Running Benchmarks
 
+    cd bench
+    go test -bench . -benchmem -benchtime 1s
+    
 Please see http://github.com/ugorji/go-codec-bench .
 
 Caveats
@@ -224,4 +224,3 @@ with some caveats. See Encode documentation.
 
 */
 package codec
-
