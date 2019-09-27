@@ -112,7 +112,7 @@ For instructions on how to use loki, see [our usage docs](../docs/querying.md).
 
 ## Get inspired by our production setup
 
-We run Loki on Kubernetes with the help of ksonnet.
+We run Loki on Kubernetes with the help of tanka.
 You can take a look at [our production setup](ksonnet/).
 
-To learn more about ksonnet, check out its [documentation](https://ksonnet.io).
+To learn more about tanka, check out its [documentation](https://tanka.dev).
