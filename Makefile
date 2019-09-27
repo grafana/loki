@@ -231,7 +231,7 @@ clean:
 	rm -rf dist/
 	rm -rf cmd/fluent-bit/out_loki.h
 	rm -rf cmd/fluent-bit/out_loki.so
-	go clean ./...
+	go clean -mod vendor ./...
 
 #########
 # YACCs #
