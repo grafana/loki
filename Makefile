@@ -2,9 +2,10 @@
 .PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos
 .PHONY: helm helm-install helm-upgrade helm-publish helm-debug helm-clean
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
+.PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
 .PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
 .PHONY: bigtable-backup, push-bigtable-backup
-.PHONY: benchmark-store
+.PHONY: benchmark-store, drone, check-mod
 
 SHELL = /usr/bin/env bash
 #############
