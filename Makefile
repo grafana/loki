@@ -215,7 +215,7 @@ lint:
 ########
 
 test: all
-	GOGC=10 go test -p=4 ./...
+	GOGC=10 go test -mod=vendor -p=4 ./...
 
 #########
 # Clean #
@@ -231,7 +231,7 @@ clean:
 	rm -rf dist/
 	rm -rf cmd/fluent-bit/out_loki.h
 	rm -rf cmd/fluent-bit/out_loki.so
-	go clean -mod vendor ./...
+	go clean -mod=vendor ./...
 
 #########
 # YACCs #
