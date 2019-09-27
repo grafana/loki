@@ -465,8 +465,8 @@ build-image:
 ########
 
 benchmark-store:
-	go run ./pkg/storage/hack/main.go
-	go test ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
+	go run -mod=vendor ./pkg/storage/hack/main.go
+	go test -mod=vendor ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
 
 # regenerate drone yaml
 drone:
