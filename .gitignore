@@ -7,6 +7,7 @@
 requirements.lock
 mixin/vendor/
 cmd/loki/loki
+cmd/logcli/logcli
 cmd/promtail/promtail
 cmd/loki/loki-debug
 cmd/promtail/promtail-debug
