@@ -98,25 +98,25 @@ var ignoredHeaders = rules{
 var requiredSignedHeaders = rules{
 	whitelist{
 		mapRule{
-			"Cache-Control":                         struct{}{},
-			"Content-Disposition":                   struct{}{},
-			"Content-Encoding":                      struct{}{},
-			"Content-Language":                      struct{}{},
-			"Content-Md5":                           struct{}{},
-			"Content-Type":                          struct{}{},
-			"Expires":                               struct{}{},
-			"If-Match":                              struct{}{},
-			"If-Modified-Since":                     struct{}{},
-			"If-None-Match":                         struct{}{},
-			"If-Unmodified-Since":                   struct{}{},
-			"Range":                                 struct{}{},
-			"X-Amz-Acl":                             struct{}{},
-			"X-Amz-Copy-Source":                     struct{}{},
-			"X-Amz-Copy-Source-If-Match":            struct{}{},
-			"X-Amz-Copy-Source-If-Modified-Since":   struct{}{},
-			"X-Amz-Copy-Source-If-None-Match":       struct{}{},
-			"X-Amz-Copy-Source-If-Unmodified-Since": struct{}{},
-			"X-Amz-Copy-Source-Range":               struct{}{},
+			"Cache-Control":                                               struct{}{},
+			"Content-Disposition":                                         struct{}{},
+			"Content-Encoding":                                            struct{}{},
+			"Content-Language":                                            struct{}{},
+			"Content-Md5":                                                 struct{}{},
+			"Content-Type":                                                struct{}{},
+			"Expires":                                                     struct{}{},
+			"If-Match":                                                    struct{}{},
+			"If-Modified-Since":                                           struct{}{},
+			"If-None-Match":                                               struct{}{},
+			"If-Unmodified-Since":                                         struct{}{},
+			"Range":                                                       struct{}{},
+			"X-Amz-Acl":                                                   struct{}{},
+			"X-Amz-Copy-Source":                                           struct{}{},
+			"X-Amz-Copy-Source-If-Match":                                  struct{}{},
+			"X-Amz-Copy-Source-If-Modified-Since":                         struct{}{},
+			"X-Amz-Copy-Source-If-None-Match":                             struct{}{},
+			"X-Amz-Copy-Source-If-Unmodified-Since":                       struct{}{},
+			"X-Amz-Copy-Source-Range":                                     struct{}{},
 			"X-Amz-Copy-Source-Server-Side-Encryption-Customer-Algorithm": struct{}{},
 			"X-Amz-Copy-Source-Server-Side-Encryption-Customer-Key":       struct{}{},
 			"X-Amz-Copy-Source-Server-Side-Encryption-Customer-Key-Md5":   struct{}{},
@@ -687,7 +687,11 @@ func (ctx *signingCtx) buildBodyDigest() error {
 			if !aws.IsReaderSeekable(ctx.Body) {
 				return fmt.Errorf("cannot use unseekable request body %T, for signed request with body", ctx.Body)
 			}
-			hash = hex.EncodeToString(makeSha256Reader(ctx.Body))
+			hashBytes, err := makeSha256Reader(ctx.Body)
+			if err != nil {
+				return err
+			}
+			hash = hex.EncodeToString(hashBytes)
 		}
 
 		if includeSHA256Header {
@@ -734,10 +738,16 @@ func makeSha256(data []byte) []byte {
 	return hash.Sum(nil)
 }
 
-func makeSha256Reader(reader io.ReadSeeker) []byte {
+func makeSha256Reader(reader io.ReadSeeker) (hashBytes []byte, err error) {
 	hash := sha256.New()
-	start, _ := reader.Seek(0, sdkio.SeekCurrent)
-	defer reader.Seek(start, sdkio.SeekStart)
+	start, err := reader.Seek(0, sdkio.SeekCurrent)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		// ensure error is return if unable to seek back to start of payload.
+		_, err = reader.Seek(start, sdkio.SeekStart)
+	}()
 
 	// Use CopyN to avoid allocating the 32KB buffer in io.Copy for bodies
 	// smaller than 32KB. Fall back to io.Copy if we fail to determine the size.
@@ -748,7 +758,7 @@ func makeSha256Reader(reader io.ReadSeeker) []byte {
 		io.CopyN(hash, reader, size)
 	}
 
-	return hash.Sum(nil)
+	return hash.Sum(nil), nil
 }
 
 const doubleSpace = "  "

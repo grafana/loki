@@ -16,6 +16,7 @@ package bttest
 
 import (
 	"context"
+	"regexp"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	btapb "google.golang.org/genproto/googleapis/bigtable/admin/v2"
@@ -49,8 +50,34 @@ func (s *server) PartialUpdateInstance(ctx context.Context, req *btapb.PartialUp
 	return nil, errUnimplemented
 }
 
+var (
+	// As per https://godoc.org/google.golang.org/genproto/googleapis/bigtable/admin/v2#DeleteInstanceRequest.Name
+	// the Name should be of the form:
+	//    `projects/<project>/instances/<instance>`
+	instanceNameRegRaw = `^projects/[a-z][a-z0-9\\-]+[a-z0-9]/instances/[a-z][a-z0-9\\-]+[a-z0-9]$`
+	regInstanceName    = regexp.MustCompile(instanceNameRegRaw)
+)
+
 func (s *server) DeleteInstance(ctx context.Context, req *btapb.DeleteInstanceRequest) (*empty.Empty, error) {
-	return nil, errUnimplemented
+	name := req.GetName()
+	if !regInstanceName.Match([]byte(name)) {
+		return nil, status.Errorf(codes.InvalidArgument,
+			"Error in field 'instance_name' : Invalid name for collection instances : Should match %s but found '%s'",
+			instanceNameRegRaw, name)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, ok := s.instances[name]
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "instance %q not found", name)
+	}
+
+	// Then finally remove the instance.
+	delete(s.instances, name)
+
+	return new(empty.Empty), nil
 }
 
 func (s *server) CreateCluster(ctx context.Context, req *btapb.CreateClusterRequest) (*longrunning.Operation, error) {

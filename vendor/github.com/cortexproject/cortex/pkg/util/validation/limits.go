@@ -30,6 +30,7 @@ type Limits struct {
 	MaxSamplesPerQuery int `yaml:"max_samples_per_query"`
 	MaxSeriesPerUser   int `yaml:"max_series_per_user"`
 	MaxSeriesPerMetric int `yaml:"max_series_per_metric"`
+	MinChunkLength     int `yaml:"min_chunk_length"`
 
 	// Querier enforced limits.
 	MaxChunksPerQuery   int           `yaml:"max_chunks_per_query"`
@@ -61,6 +62,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxSamplesPerQuery, "ingester.max-samples-per-query", 1000000, "The maximum number of samples that a query can return.")
 	f.IntVar(&l.MaxSeriesPerUser, "ingester.max-series-per-user", 5000000, "Maximum number of active series per user.")
 	f.IntVar(&l.MaxSeriesPerMetric, "ingester.max-series-per-metric", 50000, "Maximum number of active series per metric name.")
+	f.IntVar(&l.MinChunkLength, "ingester.min-chunk-length", 0, "Minimum number of samples in an idle chunk to flush it to the store. Use with care, if chunks are less than this size they will be discarded.")
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 	f.DurationVar(&l.MaxQueryLength, "store.max-query-length", 0, "Limit to length of chunk store queries, 0 to disable.")
@@ -227,6 +229,11 @@ func (o *Overrides) EnforceMetricName(userID string) bool {
 // CardinalityLimit whether to enforce the presence of a metric name.
 func (o *Overrides) CardinalityLimit(userID string) int {
 	return o.overridesManager.GetLimits(userID).(*Limits).CardinalityLimit
+}
+
+// MinChunkLength returns the minimum size of chunk that will be saved by ingesters
+func (o *Overrides) MinChunkLength(userID string) int {
+	return o.overridesManager.GetLimits(userID).(*Limits).MinChunkLength
 }
 
 // Loads overrides and returns the limits as an interface to store them in OverridesManager.

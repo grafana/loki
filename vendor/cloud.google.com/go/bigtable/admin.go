@@ -25,7 +25,6 @@ import (
 	"strings"
 	"time"
 
-	"cloud.google.com/go/bigtable/internal/gax"
 	btopt "cloud.google.com/go/bigtable/internal/option"
 	"cloud.google.com/go/iam"
 	"cloud.google.com/go/internal/optional"
@@ -33,6 +32,7 @@ import (
 	lroauto "cloud.google.com/go/longrunning/autogen"
 	"github.com/golang/protobuf/ptypes"
 	durpb "github.com/golang/protobuf/ptypes/duration"
+	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/cloudresourcemanager/v1"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -105,14 +105,14 @@ func (ac *AdminClient) instancePrefix() string {
 
 // Tables returns a list of the tables in the instance.
 func (ac *AdminClient) Tables(ctx context.Context) ([]string, error) {
-	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), ac.md)
 	prefix := ac.instancePrefix()
 	req := &btapb.ListTablesRequest{
 		Parent: prefix,
 	}
 
 	var res *btapb.ListTablesResponse
-	err := gax.Invoke(ctx, func(ctx context.Context) error {
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 		var err error
 		res, err = ac.tClient.ListTables(ctx, req)
 		return err
@@ -153,7 +153,7 @@ func (ac *AdminClient) CreatePresplitTable(ctx context.Context, table string, sp
 
 // CreateTableFromConf creates a new table in the instance from the given configuration.
 func (ac *AdminClient) CreateTableFromConf(ctx context.Context, conf *TableConf) error {
-	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), ac.md)
 	var reqSplits []*btapb.CreateTableRequest_Split
 	for _, split := range conf.SplitKeys {
 		reqSplits = append(reqSplits, &btapb.CreateTableRequest_Split{Key: []byte(split)})
@@ -179,7 +179,7 @@ func (ac *AdminClient) CreateTableFromConf(ctx context.Context, conf *TableConf)
 // CreateColumnFamily creates a new column family in a table.
 func (ac *AdminClient) CreateColumnFamily(ctx context.Context, table, family string) error {
 	// TODO(dsymonds): Permit specifying gcexpr and any other family settings.
-	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), ac.md)
 	prefix := ac.instancePrefix()
 	req := &btapb.ModifyColumnFamiliesRequest{
 		Name: prefix + "/tables/" + table,
@@ -194,7 +194,7 @@ func (ac *AdminClient) CreateColumnFamily(ctx context.Context, table, family str
 
 // DeleteTable deletes a table and all of its data.
 func (ac *AdminClient) DeleteTable(ctx context.Context, table string) error {
-	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), ac.md)
 	prefix := ac.instancePrefix()
 	req := &btapb.DeleteTableRequest{
 		Name: prefix + "/tables/" + table,
@@ -205,7 +205,7 @@ func (ac *AdminClient) DeleteTable(ctx context.Context, table string) error {
 
 // DeleteColumnFamily deletes a column family in a table and all of its data.
 func (ac *AdminClient) DeleteColumnFamily(ctx context.Context, table, family string) error {
-	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), ac.md)
 	prefix := ac.instancePrefix()
 	req := &btapb.ModifyColumnFamiliesRequest{
 		Name: prefix + "/tables/" + table,
@@ -233,7 +233,7 @@ type FamilyInfo struct {
 
 // TableInfo retrieves information about a table.
 func (ac *AdminClient) TableInfo(ctx context.Context, table string) (*TableInfo, error) {
-	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), ac.md)
 	prefix := ac.instancePrefix()
 	req := &btapb.GetTableRequest{
 		Name: prefix + "/tables/" + table,
@@ -241,7 +241,7 @@ func (ac *AdminClient) TableInfo(ctx context.Context, table string) (*TableInfo,
 
 	var res *btapb.Table
 
-	err := gax.Invoke(ctx, func(ctx context.Context) error {
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 		var err error
 		res, err = ac.tClient.GetTable(ctx, req)
 		return err
@@ -262,7 +262,7 @@ func (ac *AdminClient) TableInfo(ctx context.Context, table string) (*TableInfo,
 // GC executes opportunistically in the background; table reads may return data
 // matching the GC policy.
 func (ac *AdminClient) SetGCPolicy(ctx context.Context, table, family string, policy GCPolicy) error {
-	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), ac.md)
 	prefix := ac.instancePrefix()
 	req := &btapb.ModifyColumnFamiliesRequest{
 		Name: prefix + "/tables/" + table,
@@ -277,7 +277,7 @@ func (ac *AdminClient) SetGCPolicy(ctx context.Context, table, family string, po
 
 // DropRowRange permanently deletes a row range from the specified table.
 func (ac *AdminClient) DropRowRange(ctx context.Context, table, rowKeyPrefix string) error {
-	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), ac.md)
 	prefix := ac.instancePrefix()
 	req := &btapb.DropRowRangeRequest{
 		Name:   prefix + "/tables/" + table,
@@ -295,7 +295,7 @@ func (ac *AdminClient) DropRowRange(ctx context.Context, table, rowKeyPrefix str
 // might be changed in backward-incompatible ways and is not recommended for
 // production use. It is not subject to any SLA or deprecation policy.
 func (ac *AdminClient) CreateTableFromSnapshot(ctx context.Context, table, cluster, snapshot string) error {
-	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), ac.md)
 	prefix := ac.instancePrefix()
 	snapshotPath := prefix + "/clusters/" + cluster + "/snapshots/" + snapshot
 
@@ -324,7 +324,7 @@ const DefaultSnapshotDuration time.Duration = 0
 // might be changed in backward-incompatible ways and is not recommended for
 // production use. It is not subject to any SLA or deprecation policy.
 func (ac *AdminClient) SnapshotTable(ctx context.Context, table, cluster, snapshot string, ttl time.Duration) error {
-	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), ac.md)
 	prefix := ac.instancePrefix()
 
 	var ttlProto *durpb.Duration
@@ -356,7 +356,7 @@ func (ac *AdminClient) SnapshotTable(ctx context.Context, table, cluster, snapsh
 // changed in backward-incompatible ways and is not recommended for production use.
 // It is not subject to any SLA or deprecation policy.
 func (ac *AdminClient) Snapshots(ctx context.Context, cluster string) *SnapshotIterator {
-	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), ac.md)
 	prefix := ac.instancePrefix()
 	clusterPath := prefix + "/clusters/" + cluster
 
@@ -374,7 +374,7 @@ func (ac *AdminClient) Snapshots(ctx context.Context, cluster string) *SnapshotI
 		}
 
 		var resp *btapb.ListSnapshotsResponse
-		err := gax.Invoke(ctx, func(ctx context.Context) error {
+		err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 			var err error
 			resp, err = ac.tClient.ListSnapshots(ctx, req)
 			return err
@@ -469,7 +469,7 @@ type SnapshotInfo struct {
 // might be changed in backward-incompatible ways and is not recommended for
 // production use. It is not subject to any SLA or deprecation policy.
 func (ac *AdminClient) SnapshotInfo(ctx context.Context, cluster, snapshot string) (*SnapshotInfo, error) {
-	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), ac.md)
 	prefix := ac.instancePrefix()
 	clusterPath := prefix + "/clusters/" + cluster
 	snapshotPath := clusterPath + "/snapshots/" + snapshot
@@ -479,7 +479,7 @@ func (ac *AdminClient) SnapshotInfo(ctx context.Context, cluster, snapshot strin
 	}
 
 	var resp *btapb.Snapshot
-	err := gax.Invoke(ctx, func(ctx context.Context) error {
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 		var err error
 		resp, err = ac.tClient.GetSnapshot(ctx, req)
 		return err
@@ -498,7 +498,7 @@ func (ac *AdminClient) SnapshotInfo(ctx context.Context, cluster, snapshot strin
 // might be changed in backward-incompatible ways and is not recommended for
 // production use. It is not subject to any SLA or deprecation policy.
 func (ac *AdminClient) DeleteSnapshot(ctx context.Context, cluster, snapshot string) error {
-	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), ac.md)
 	prefix := ac.instancePrefix()
 	clusterPath := prefix + "/clusters/" + cluster
 	snapshotPath := clusterPath + "/snapshots/" + snapshot
@@ -531,7 +531,7 @@ func (ac *AdminClient) isConsistent(ctx context.Context, tableName, token string
 	var resp *btapb.CheckConsistencyResponse
 
 	// Retry calls on retryable errors to avoid losing the token gathered before.
-	err := gax.Invoke(ctx, func(ctx context.Context) error {
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 		var err error
 		resp, err = ac.tClient.CheckConsistency(ctx, req)
 		return err
@@ -644,14 +644,17 @@ func (st StorageType) proto() btapb.StorageType {
 type InstanceType int32
 
 const (
-	PRODUCTION  InstanceType = InstanceType(btapb.Instance_PRODUCTION)
+	// UNSPECIFIED instance types default to PRODUCTION
+	UNSPECIFIED InstanceType = InstanceType(btapb.Instance_TYPE_UNSPECIFIED)
+	PRODUCTION               = InstanceType(btapb.Instance_PRODUCTION)
 	DEVELOPMENT              = InstanceType(btapb.Instance_DEVELOPMENT)
 )
 
 // InstanceInfo represents information about an instance
 type InstanceInfo struct {
-	Name        string // name of the instance
-	DisplayName string // display name for UIs
+	Name         string // name of the instance
+	DisplayName  string // display name for UIs
+	InstanceType InstanceType
 }
 
 // InstanceConf contains the information necessary to create an Instance
@@ -675,6 +678,7 @@ var instanceNameRegexp = regexp.MustCompile(`^projects/([^/]+)/instances/([a-z][
 // CreateInstance creates a new instance in the project.
 // This method will return when the instance has been created or when an error occurs.
 func (iac *InstanceAdminClient) CreateInstance(ctx context.Context, conf *InstanceConf) error {
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
 	newConfig := InstanceWithClustersConfig{
 		InstanceID:   conf.InstanceId,
 		DisplayName:  conf.DisplayName,
@@ -695,7 +699,7 @@ func (iac *InstanceAdminClient) CreateInstance(ctx context.Context, conf *Instan
 // CreateInstanceWithClusters creates a new instance with configured clusters in the project.
 // This method will return when the instance has been created or when an error occurs.
 func (iac *InstanceAdminClient) CreateInstanceWithClusters(ctx context.Context, conf *InstanceWithClustersConfig) error {
-	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
 	clusters := make(map[string]*btapb.Cluster)
 	for _, cluster := range conf.Clusters {
 		clusters[cluster.ClusterID] = cluster.proto(iac.project)
@@ -716,9 +720,76 @@ func (iac *InstanceAdminClient) CreateInstanceWithClusters(ctx context.Context, 
 	return longrunning.InternalNewOperation(iac.lroClient, lro).Wait(ctx, &resp)
 }
 
+// UpdateInstanceWithClusters updates an instance and its clusters.
+// The provided InstanceWithClustersConfig is used as follows:
+// - InstanceID is required
+// - DisplayName and InstanceType are updated only if they are not empty
+// - ClusterID is required for any provided cluster
+// - All other cluster fields are ignored except for NumNodes, which if set will be updated
+//
+// This method may return an error after partially succeeding, for example if the instance is updated
+// but a cluster update fails. If an error is returned, InstanceInfo and Clusters may be called to
+// determine the current state.
+func (iac *InstanceAdminClient) UpdateInstanceWithClusters(ctx context.Context, conf *InstanceWithClustersConfig) error {
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
+
+	if conf.InstanceID == "" {
+		return errors.New("InstanceID is required")
+	}
+	for _, cluster := range conf.Clusters {
+		if cluster.ClusterID == "" {
+			return errors.New("ClusterID is required for every cluster")
+		}
+	}
+
+	// Update the instance, if necessary
+	mask := &field_mask.FieldMask{}
+	ireq := &btapb.PartialUpdateInstanceRequest{
+		Instance: &btapb.Instance{
+			Name: "projects/" + iac.project + "/instances/" + conf.InstanceID,
+		},
+		UpdateMask: mask,
+	}
+	if conf.DisplayName != "" {
+		ireq.Instance.DisplayName = conf.DisplayName
+		mask.Paths = append(mask.Paths, "display_name")
+	}
+	if btapb.Instance_Type(conf.InstanceType) != btapb.Instance_TYPE_UNSPECIFIED {
+		ireq.Instance.Type = btapb.Instance_Type(conf.InstanceType)
+		mask.Paths = append(mask.Paths, "type")
+	}
+	updatedInstance := false
+	if len(mask.Paths) > 0 {
+		lro, err := iac.iClient.PartialUpdateInstance(ctx, ireq)
+		if err != nil {
+			return err
+		}
+		err = longrunning.InternalNewOperation(iac.lroClient, lro).Wait(ctx, nil)
+		if err != nil {
+			return err
+		}
+		updatedInstance = true
+	}
+
+	// Update any clusters
+	for _, cluster := range conf.Clusters {
+		err := iac.UpdateCluster(ctx, conf.InstanceID, cluster.ClusterID, cluster.NumNodes)
+		if err != nil {
+			if updatedInstance {
+				// We updated the instance, so note that in the error message.
+				return fmt.Errorf("UpdateCluster %q failed %v; however UpdateInstance succeeded",
+					cluster.ClusterID, err)
+			}
+			return err
+		}
+	}
+
+	return nil
+}
+
 // DeleteInstance deletes an instance from the project.
 func (iac *InstanceAdminClient) DeleteInstance(ctx context.Context, instanceID string) error {
-	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
 	req := &btapb.DeleteInstanceRequest{Name: "projects/" + iac.project + "/instances/" + instanceID}
 	_, err := iac.iClient.DeleteInstance(ctx, req)
 	return err
@@ -726,12 +797,12 @@ func (iac *InstanceAdminClient) DeleteInstance(ctx context.Context, instanceID s
 
 // Instances returns a list of instances in the project.
 func (iac *InstanceAdminClient) Instances(ctx context.Context) ([]*InstanceInfo, error) {
-	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
 	req := &btapb.ListInstancesRequest{
 		Parent: "projects/" + iac.project,
 	}
 	var res *btapb.ListInstancesResponse
-	err := gax.Invoke(ctx, func(ctx context.Context) error {
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 		var err error
 		res, err = iac.iClient.ListInstances(ctx, req)
 		return err
@@ -752,8 +823,9 @@ func (iac *InstanceAdminClient) Instances(ctx context.Context) ([]*InstanceInfo,
 			return nil, fmt.Errorf("malformed instance name %q", i.Name)
 		}
 		is = append(is, &InstanceInfo{
-			Name:        m[2],
-			DisplayName: i.DisplayName,
+			Name:         m[2],
+			DisplayName:  i.DisplayName,
+			InstanceType: InstanceType(i.Type),
 		})
 	}
 	return is, nil
@@ -761,12 +833,12 @@ func (iac *InstanceAdminClient) Instances(ctx context.Context) ([]*InstanceInfo,
 
 // InstanceInfo returns information about an instance.
 func (iac *InstanceAdminClient) InstanceInfo(ctx context.Context, instanceID string) (*InstanceInfo, error) {
-	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
 	req := &btapb.GetInstanceRequest{
 		Name: "projects/" + iac.project + "/instances/" + instanceID,
 	}
 	var res *btapb.Instance
-	err := gax.Invoke(ctx, func(ctx context.Context) error {
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 		var err error
 		res, err = iac.iClient.GetInstance(ctx, req)
 		return err
@@ -780,8 +852,9 @@ func (iac *InstanceAdminClient) InstanceInfo(ctx context.Context, instanceID str
 		return nil, fmt.Errorf("malformed instance name %q", res.Name)
 	}
 	return &InstanceInfo{
-		Name:        m[2],
-		DisplayName: res.DisplayName,
+		Name:         m[2],
+		DisplayName:  res.DisplayName,
+		InstanceType: InstanceType(res.Type),
 	}, nil
 }
 
@@ -811,7 +884,7 @@ type ClusterInfo struct {
 // CreateCluster creates a new cluster in an instance.
 // This method will return when the cluster has been created or when an error occurs.
 func (iac *InstanceAdminClient) CreateCluster(ctx context.Context, conf *ClusterConfig) error {
-	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
 
 	req := &btapb.CreateClusterRequest{
 		Parent:    "projects/" + iac.project + "/instances/" + conf.InstanceID,
@@ -829,7 +902,7 @@ func (iac *InstanceAdminClient) CreateCluster(ctx context.Context, conf *Cluster
 
 // DeleteCluster deletes a cluster from an instance.
 func (iac *InstanceAdminClient) DeleteCluster(ctx context.Context, instanceID, clusterID string) error {
-	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
 	req := &btapb.DeleteClusterRequest{Name: "projects/" + iac.project + "/instances/" + instanceID + "/clusters/" + clusterID}
 	_, err := iac.iClient.DeleteCluster(ctx, req)
 	return err
@@ -837,7 +910,7 @@ func (iac *InstanceAdminClient) DeleteCluster(ctx context.Context, instanceID, c
 
 // UpdateCluster updates attributes of a cluster
 func (iac *InstanceAdminClient) UpdateCluster(ctx context.Context, instanceID, clusterID string, serveNodes int32) error {
-	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
 	cluster := &btapb.Cluster{
 		Name:       "projects/" + iac.project + "/instances/" + instanceID + "/clusters/" + clusterID,
 		ServeNodes: serveNodes}
@@ -850,10 +923,10 @@ func (iac *InstanceAdminClient) UpdateCluster(ctx context.Context, instanceID, c
 
 // Clusters lists the clusters in an instance.
 func (iac *InstanceAdminClient) Clusters(ctx context.Context, instanceID string) ([]*ClusterInfo, error) {
-	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
 	req := &btapb.ListClustersRequest{Parent: "projects/" + iac.project + "/instances/" + instanceID}
 	var res *btapb.ListClustersResponse
-	err := gax.Invoke(ctx, func(ctx context.Context) error {
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 		var err error
 		res, err = iac.iClient.ListClusters(ctx, req)
 		return err
@@ -878,10 +951,10 @@ func (iac *InstanceAdminClient) Clusters(ctx context.Context, instanceID string)
 
 // GetCluster fetches a cluster in an instance
 func (iac *InstanceAdminClient) GetCluster(ctx context.Context, instanceID, clusterID string) (*ClusterInfo, error) {
-	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
 	req := &btapb.GetClusterRequest{Name: "projects/" + iac.project + "/instances/" + instanceID + "/clusters/" + clusterID}
 	var c *btapb.Cluster
-	err := gax.Invoke(ctx, func(ctx context.Context) error {
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 		var err error
 		c, err = iac.iClient.GetCluster(ctx, req)
 		return err
@@ -991,7 +1064,7 @@ func (it *ProfileIterator) Next() (*btapb.AppProfile, error) {
 
 // CreateAppProfile creates an app profile within an instance.
 func (iac *InstanceAdminClient) CreateAppProfile(ctx context.Context, profile ProfileConf) (*btapb.AppProfile, error) {
-	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
 	parent := "projects/" + iac.project + "/instances/" + profile.InstanceID
 	appProfile := &btapb.AppProfile{
 		Etag:        profile.Etag,
@@ -1028,12 +1101,12 @@ func (iac *InstanceAdminClient) CreateAppProfile(ctx context.Context, profile Pr
 
 // GetAppProfile gets information about an app profile.
 func (iac *InstanceAdminClient) GetAppProfile(ctx context.Context, instanceID, name string) (*btapb.AppProfile, error) {
-	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
 	profileRequest := &btapb.GetAppProfileRequest{
 		Name: "projects/" + iac.project + "/instances/" + instanceID + "/appProfiles/" + name,
 	}
 	var ap *btapb.AppProfile
-	err := gax.Invoke(ctx, func(ctx context.Context) error {
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 		var err error
 		ap, err = iac.iClient.GetAppProfile(ctx, profileRequest)
 		return err
@@ -1046,7 +1119,7 @@ func (iac *InstanceAdminClient) GetAppProfile(ctx context.Context, instanceID, n
 
 // ListAppProfiles lists information about app profiles in an instance.
 func (iac *InstanceAdminClient) ListAppProfiles(ctx context.Context, instanceID string) *ProfileIterator {
-	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
 	listRequest := &btapb.ListAppProfilesRequest{
 		Parent: "projects/" + iac.project + "/instances/" + instanceID,
 	}
@@ -1055,7 +1128,7 @@ func (iac *InstanceAdminClient) ListAppProfiles(ctx context.Context, instanceID 
 	fetch := func(pageSize int, pageToken string) (string, error) {
 		listRequest.PageToken = pageToken
 		var profileRes *btapb.ListAppProfilesResponse
-		err := gax.Invoke(ctx, func(ctx context.Context) error {
+		err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
 			var err error
 			profileRes, err = iac.iClient.ListAppProfiles(ctx, listRequest)
 			return err
@@ -1078,7 +1151,7 @@ func (iac *InstanceAdminClient) ListAppProfiles(ctx context.Context, instanceID 
 // UpdateAppProfile updates an app profile within an instance.
 // updateAttrs should be set. If unset, all fields will be replaced.
 func (iac *InstanceAdminClient) UpdateAppProfile(ctx context.Context, instanceID, profileID string, updateAttrs ProfileAttrsToUpdate) error {
-	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
 
 	profile := &btapb.AppProfile{
 		Name: "projects/" + iac.project + "/instances/" + instanceID + "/appProfiles/" + profileID,
@@ -1122,7 +1195,7 @@ func (iac *InstanceAdminClient) UpdateAppProfile(ctx context.Context, instanceID
 
 // DeleteAppProfile deletes an app profile from an instance.
 func (iac *InstanceAdminClient) DeleteAppProfile(ctx context.Context, instanceID, name string) error {
-	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
 	deleteProfileRequest := &btapb.DeleteAppProfileRequest{
 		Name:           "projects/" + iac.project + "/instances/" + instanceID + "/appProfiles/" + name,
 		IgnoreWarnings: true,

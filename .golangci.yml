@@ -3,7 +3,9 @@
 
 # options for analysis running
 run:
+  # trust vendored dependencies
   modules-download-mode: vendor
+
   # default concurrency is a available CPU number
   concurrency: 2
 
@@ -65,10 +67,3 @@ linters:
 issues:
   exclude:
     - Error return value of .*log\.Logger\)\.Log\x60 is not checked
-    - vendor/*
-    - can only use ... with matching parameter
-    - too few arguments in call to config.NewClientFromConfig
-    - StoreLimits not declared by package storage
-    - cfg.ServerConfig.HTTPListenHost undefined \(.*\)
-    - cfg.ServerConfig.GRPCListenHost undefined \(.*\)
-    - cannot assign 2 values to 1 variables

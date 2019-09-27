@@ -99,7 +99,7 @@ func (HorizontalPodAutoscalerList) SwaggerDoc() map[string]string {
 var map_HorizontalPodAutoscalerSpec = map[string]string{
 	"":                               "specification of a horizontal pod autoscaler.",
 	"scaleTargetRef":                 "reference to scaled resource; horizontal pod autoscaler will learn the current resource consumption and will set the desired number of pods by using its Scale subresource.",
-	"minReplicas":                    "lower limit for the number of pods that can be set by the autoscaler, default 1.",
+	"minReplicas":                    "minReplicas is the lower limit for the number of replicas to which the autoscaler can scale down.  It defaults to 1 pod.  minReplicas is allowed to be 0 if the alpha feature gate HPAScaleToZero is enabled and at least one Object or External metric is configured.  Scaling is active as long as at least one metric value is available.",
 	"maxReplicas":                    "upper limit for the number of pods that can be set by the autoscaler; cannot be smaller than MinReplicas.",
 	"targetCPUUtilizationPercentage": "target average CPU utilization (represented as a percentage of requested CPU) over all the pods; if not specified the default autoscaling policy will be used.",
 }
@@ -196,8 +196,8 @@ func (PodsMetricStatus) SwaggerDoc() map[string]string {
 }
 
 var map_ResourceMetricSource = map[string]string{
-	"":                         "ResourceMetricSource indicates how to scale on a resource metric known to Kubernetes, as specified in requests and limits, describing each pod in the current scale target (e.g. CPU or memory).  The values will be averaged together before being compared to the target.  Such metrics are built in to Kubernetes, and have special scaling options on top of those available to normal per-pod metrics using the \"pods\" source.  Only one \"target\" type should be set.",
-	"name":                     "name is the name of the resource in question.",
+	"":     "ResourceMetricSource indicates how to scale on a resource metric known to Kubernetes, as specified in requests and limits, describing each pod in the current scale target (e.g. CPU or memory).  The values will be averaged together before being compared to the target.  Such metrics are built in to Kubernetes, and have special scaling options on top of those available to normal per-pod metrics using the \"pods\" source.  Only one \"target\" type should be set.",
+	"name": "name is the name of the resource in question.",
 	"targetAverageUtilization": "targetAverageUtilization is the target value of the average of the resource metric across all relevant pods, represented as a percentage of the requested value of the resource for the pods.",
 	"targetAverageValue":       "targetAverageValue is the target value of the average of the resource metric across all relevant pods, as a raw value (instead of as a percentage of the request), similar to the \"pods\" metric source type.",
 }
@@ -207,8 +207,8 @@ func (ResourceMetricSource) SwaggerDoc() map[string]string {
 }
 
 var map_ResourceMetricStatus = map[string]string{
-	"":                          "ResourceMetricStatus indicates the current value of a resource metric known to Kubernetes, as specified in requests and limits, describing each pod in the current scale target (e.g. CPU or memory).  Such metrics are built in to Kubernetes, and have special scaling options on top of those available to normal per-pod metrics using the \"pods\" source.",
-	"name":                      "name is the name of the resource in question.",
+	"":     "ResourceMetricStatus indicates the current value of a resource metric known to Kubernetes, as specified in requests and limits, describing each pod in the current scale target (e.g. CPU or memory).  Such metrics are built in to Kubernetes, and have special scaling options on top of those available to normal per-pod metrics using the \"pods\" source.",
+	"name": "name is the name of the resource in question.",
 	"currentAverageUtilization": "currentAverageUtilization is the current value of the average of the resource metric across all relevant pods, represented as a percentage of the requested value of the resource for the pods.  It will only be present if `targetAverageValue` was set in the corresponding metric specification.",
 	"currentAverageValue":       "currentAverageValue is the current value of the average of the resource metric across all relevant pods, as a raw value (instead of as a percentage of the request), similar to the \"pods\" metric source type. It will always be set, regardless of the corresponding metric specification.",
 }

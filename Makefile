@@ -19,7 +19,7 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.5.0
+BUILD_IMAGE_VERSION := 0.6.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -31,7 +31,7 @@ GIT_REVISION := $(shell git rev-parse --short HEAD)
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
-# 'make: Entering directory '/go/src/github.com/grafana/loki' phase.
+# 'make: Entering directory '/src/loki' phase.
 DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # These are all the application files, they are included in the various binary rules as dependencies
@@ -178,11 +178,10 @@ promtail-clean-assets:
 # Rule to generate promtail static assets file
 $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 	@echo ">> writing assets"
-	GO111MODULE=on GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
+	GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
 
 cmd/promtail/promtail: $(APP_GO_FILES) $(PROMTAIL_GENERATED_FILE) cmd/promtail/main.go
-	GO111MODULE=on go mod download
-	GO111MODULE=on CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
 cmd/promtail/promtail-debug: $(APP_GO_FILES) pkg/promtail/server/ui/assets_vfsdata.go cmd/promtail/main.go
@@ -215,7 +214,7 @@ lint:
 ########
 
 test: all
-	GO111MODULE=on GOGC=10 go test -p=4 ./...
+	GOGC=10 go test -p=4 ./...
 
 #########
 # Clean #
@@ -247,7 +246,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 	$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/grafana/loki \
+		-v $(shell pwd):/src/loki \
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
@@ -266,7 +265,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 	$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/grafana/loki \
+		-v $(shell pwd):/src/loki \
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
 	case "$@" in	\
@@ -472,11 +471,10 @@ benchmark-store:
 drone:
 	jsonnet -V __build-image-version=$(BUILD_IMAGE_VERSION) .drone/drone.jsonnet | jq .drone -r | yq -y . > .drone/drone.yml
 
-#######
-# Mod #
-#######
-
+# support go modules
 check-mod:
-	GO111MODULE=on go mod download
-	GO111MODULE=on go mod verify
-	GO111MODULE=on go mod tidy
+	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod download
+	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod verify
+	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod tidy
+	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod vendor
+	@git diff --exit-code -- go.sum go.mod vendor/

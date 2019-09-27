@@ -14,10 +14,16 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 )
+
+// StoreLimits helps get Limits specific to Queries for Stores
+type StoreLimits interface {
+	CardinalityLimit(userID string) int
+	MaxChunksPerQuery(userID string) int
+	MaxQueryLength(userID string) time.Duration
+}
 
 // Config chooses which storage client to use.
 type Config struct {
@@ -47,7 +53,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewStore makes the storage clients based on the configuration.
-func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits *validation.Overrides) (chunk.Store, error) {
+func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits StoreLimits) (chunk.Store, error) {
 	tieredCache, err := cache.New(cfg.IndexQueriesCacheConfig)
 	if err != nil {
 		return nil, err

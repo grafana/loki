@@ -113,13 +113,6 @@ func (c *codec) Decode(data []byte, defaultGVK *schema.GroupVersionKind, into ru
 
 	// if we specify a target, use generic conversion.
 	if into != nil {
-		if into == obj {
-			if isVersioned {
-				return versioned, gvk, nil
-			}
-			return into, gvk, nil
-		}
-
 		// perform defaulting if requested
 		if c.defaulter != nil {
 			// create a copy to ensure defaulting is not applied to the original versioned objects
@@ -131,6 +124,14 @@ func (c *codec) Decode(data []byte, defaultGVK *schema.GroupVersionKind, into ru
 			if isVersioned {
 				versioned.Objects = []runtime.Object{obj}
 			}
+		}
+
+		// Short-circuit conversion if the into object is same object
+		if into == obj {
+			if isVersioned {
+				return versioned, gvk, nil
+			}
+			return into, gvk, nil
 		}
 
 		if err := c.convertor.Convert(obj, into, c.decodeVersion); err != nil {
@@ -229,11 +230,3 @@ func (c *codec) Encode(obj runtime.Object, w io.Writer) error {
 	// Conversion is responsible for setting the proper group, version, and kind onto the outgoing object
 	return c.encoder.Encode(out, w)
 }
-
-// DirectEncoder was moved and renamed to runtime.WithVersionEncoder in 1.15.
-// TODO: remove in 1.16.
-type DirectEncoder = runtime.WithVersionEncoder
-
-// DirectDecoder was moved and renamed to runtime.WithoutVersionDecoder in 1.15.
-// TODO: remove in 1.16.
-type DirectDecoder = runtime.WithoutVersionDecoder
