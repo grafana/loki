@@ -27,6 +27,9 @@ Grab the Loki module using `jb`:
 
 ```bash
 $ go get -u github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
+# Ksonnet kubernetes libraries
+$ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k.libsonnet
+$ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k8s.libsonnet
 $ jb install github.com/grafana/loki/production/ksonnet/loki
 ```
 
