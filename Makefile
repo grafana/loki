@@ -477,4 +477,4 @@ check-mod:
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod verify
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod tidy
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod vendor
-	@git diff --exit-code -- go.sum go.mod vendor/
+	git diff --exit-code -- go.sum go.mod vendor/
