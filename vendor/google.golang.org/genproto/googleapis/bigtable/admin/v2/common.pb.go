@@ -43,8 +43,8 @@ var StorageType_name = map[int32]string{
 
 var StorageType_value = map[string]int32{
 	"STORAGE_TYPE_UNSPECIFIED": 0,
-	"SSD": 1,
-	"HDD": 2,
+	"SSD":                      1,
+	"HDD":                      2,
 }
 
 func (x StorageType) String() string {

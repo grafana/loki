@@ -15,7 +15,7 @@ This makes us unable to solve many use cases without a fork. The factors that co
  * `glog` [presents a lot "gotchas"](https://github.com/kubernetes/kubernetes/issues/61006) and introduces challenges in containerized environments, all of which aren't well documented.
  * `glog` doesn't provide an easy way to test logs, which detracts from the stability of software using it
  * A long term goal is to implement a logging interface that allows us to add context, change output format, etc.
-
+ 
 Historical context is available here:
 
  * https://github.com/kubernetes/kubernetes/issues/61006

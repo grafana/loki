@@ -575,7 +575,7 @@ func (EnvVarSource) SwaggerDoc() map[string]string {
 }
 
 var map_EphemeralContainer = map[string]string{
-	"": "An EphemeralContainer is a special type of container which doesn't come with any resource or scheduling guarantees but can be added to a pod that has already been created. They are intended for user-initiated activities such as troubleshooting a running pod. Ephemeral containers will not be restarted when they exit, and they will be killed if the pod is removed or restarted. If an ephemeral container causes a pod to exceed its resource allocation, the pod may be evicted. Ephemeral containers are added via a pod's ephemeralcontainers subresource and will appear in the pod spec once added. No fields in EphemeralContainer may be changed once added. This is an alpha feature enabled by the EphemeralContainers feature flag.",
+	"":                    "An EphemeralContainer is a special type of container which doesn't come with any resource or scheduling guarantees but can be added to a pod that has already been created. They are intended for user-initiated activities such as troubleshooting a running pod. Ephemeral containers will not be restarted when they exit, and they will be killed if the pod is removed or restarted. If an ephemeral container causes a pod to exceed its resource allocation, the pod may be evicted. Ephemeral containers are added via a pod's ephemeralcontainers subresource and will appear in the pod spec once added. No fields in EphemeralContainer may be changed once added. This is an alpha feature enabled by the EphemeralContainers feature flag.",
 	"targetContainerName": "If set, the name of the container from PodSpec that this ephemeral container targets. The ephemeral container will be run in the namespaces (IPC, PID, etc) of this container. If not set then the ephemeral container is run in whatever namespaces are shared for the pod. Note that the container runtime must support this feature.",
 }
 
@@ -612,7 +612,7 @@ func (EphemeralContainerCommon) SwaggerDoc() map[string]string {
 }
 
 var map_EphemeralContainers = map[string]string{
-	"": "A list of ephemeral containers used in API operations",
+	"":                    "A list of ephemeral containers used in API operations",
 	"ephemeralContainers": "The new set of ephemeral containers to use for a pod.",
 }
 
@@ -1726,7 +1726,7 @@ func (PreferredSchedulingTerm) SwaggerDoc() map[string]string {
 }
 
 var map_Probe = map[string]string{
-	"": "Probe describes a health check to be performed against a container to determine whether it is alive or ready to receive traffic.",
+	"":                    "Probe describes a health check to be performed against a container to determine whether it is alive or ready to receive traffic.",
 	"initialDelaySeconds": "Number of seconds after the container has started before liveness probes are initiated. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes",
 	"timeoutSeconds":      "Number of seconds after which the probe times out. Defaults to 1 second. Minimum value is 1. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes",
 	"periodSeconds":       "How often (in seconds) to perform the probe. Default to 10 seconds. Minimum value is 1.",
@@ -2293,7 +2293,7 @@ func (TopologySelectorLabelRequirement) SwaggerDoc() map[string]string {
 }
 
 var map_TopologySelectorTerm = map[string]string{
-	"": "A topology selector term represents the result of label queries. A null or empty topology selector term matches no objects. The requirements of them are ANDed. It provides a subset of functionality as NodeSelectorTerm. This is an alpha feature and may change in the future.",
+	"":                      "A topology selector term represents the result of label queries. A null or empty topology selector term matches no objects. The requirements of them are ANDed. It provides a subset of functionality as NodeSelectorTerm. This is an alpha feature and may change in the future.",
 	"matchLabelExpressions": "A list of topology selector requirements by labels.",
 }
 
@@ -2390,24 +2390,24 @@ var map_VolumeSource = map[string]string{
 	"iscsi":                 "ISCSI represents an ISCSI Disk resource that is attached to a kubelet's host machine and then exposed to the pod. More info: https://examples.k8s.io/volumes/iscsi/README.md",
 	"glusterfs":             "Glusterfs represents a Glusterfs mount on the host that shares a pod's lifetime. More info: https://examples.k8s.io/volumes/glusterfs/README.md",
 	"persistentVolumeClaim": "PersistentVolumeClaimVolumeSource represents a reference to a PersistentVolumeClaim in the same namespace. More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims",
-	"rbd":                  "RBD represents a Rados Block Device mount on the host that shares a pod's lifetime. More info: https://examples.k8s.io/volumes/rbd/README.md",
-	"flexVolume":           "FlexVolume represents a generic volume resource that is provisioned/attached using an exec based plugin.",
-	"cinder":               "Cinder represents a cinder volume attached and mounted on kubelets host machine. More info: https://examples.k8s.io/mysql-cinder-pd/README.md",
-	"cephfs":               "CephFS represents a Ceph FS mount on the host that shares a pod's lifetime",
-	"flocker":              "Flocker represents a Flocker volume attached to a kubelet's host machine. This depends on the Flocker control service being running",
-	"downwardAPI":          "DownwardAPI represents downward API about the pod that should populate this volume",
-	"fc":                   "FC represents a Fibre Channel resource that is attached to a kubelet's host machine and then exposed to the pod.",
-	"azureFile":            "AzureFile represents an Azure File Service mount on the host and bind mount to the pod.",
-	"configMap":            "ConfigMap represents a configMap that should populate this volume",
-	"vsphereVolume":        "VsphereVolume represents a vSphere volume attached and mounted on kubelets host machine",
-	"quobyte":              "Quobyte represents a Quobyte mount on the host that shares a pod's lifetime",
-	"azureDisk":            "AzureDisk represents an Azure Data Disk mount on the host and bind mount to the pod.",
-	"photonPersistentDisk": "PhotonPersistentDisk represents a PhotonController persistent disk attached and mounted on kubelets host machine",
-	"projected":            "Items for all in one resources secrets, configmaps, and downward API",
-	"portworxVolume":       "PortworxVolume represents a portworx volume attached and mounted on kubelets host machine",
-	"scaleIO":              "ScaleIO represents a ScaleIO persistent volume attached and mounted on Kubernetes nodes.",
-	"storageos":            "StorageOS represents a StorageOS volume attached and mounted on Kubernetes nodes.",
-	"csi":                  "CSI (Container Storage Interface) represents storage that is handled by an external CSI driver (Alpha feature).",
+	"rbd":                   "RBD represents a Rados Block Device mount on the host that shares a pod's lifetime. More info: https://examples.k8s.io/volumes/rbd/README.md",
+	"flexVolume":            "FlexVolume represents a generic volume resource that is provisioned/attached using an exec based plugin.",
+	"cinder":                "Cinder represents a cinder volume attached and mounted on kubelets host machine. More info: https://examples.k8s.io/mysql-cinder-pd/README.md",
+	"cephfs":                "CephFS represents a Ceph FS mount on the host that shares a pod's lifetime",
+	"flocker":               "Flocker represents a Flocker volume attached to a kubelet's host machine. This depends on the Flocker control service being running",
+	"downwardAPI":           "DownwardAPI represents downward API about the pod that should populate this volume",
+	"fc":                    "FC represents a Fibre Channel resource that is attached to a kubelet's host machine and then exposed to the pod.",
+	"azureFile":             "AzureFile represents an Azure File Service mount on the host and bind mount to the pod.",
+	"configMap":             "ConfigMap represents a configMap that should populate this volume",
+	"vsphereVolume":         "VsphereVolume represents a vSphere volume attached and mounted on kubelets host machine",
+	"quobyte":               "Quobyte represents a Quobyte mount on the host that shares a pod's lifetime",
+	"azureDisk":             "AzureDisk represents an Azure Data Disk mount on the host and bind mount to the pod.",
+	"photonPersistentDisk":  "PhotonPersistentDisk represents a PhotonController persistent disk attached and mounted on kubelets host machine",
+	"projected":             "Items for all in one resources secrets, configmaps, and downward API",
+	"portworxVolume":        "PortworxVolume represents a portworx volume attached and mounted on kubelets host machine",
+	"scaleIO":               "ScaleIO represents a ScaleIO persistent volume attached and mounted on Kubernetes nodes.",
+	"storageos":             "StorageOS represents a StorageOS volume attached and mounted on Kubernetes nodes.",
+	"csi":                   "CSI (Container Storage Interface) represents storage that is handled by an external CSI driver (Alpha feature).",
 }
 
 func (VolumeSource) SwaggerDoc() map[string]string {
@@ -2437,7 +2437,7 @@ func (WeightedPodAffinityTerm) SwaggerDoc() map[string]string {
 }
 
 var map_WindowsSecurityContextOptions = map[string]string{
-	"": "WindowsSecurityContextOptions contain Windows-specific options and credentials.",
+	"":                       "WindowsSecurityContextOptions contain Windows-specific options and credentials.",
 	"gmsaCredentialSpecName": "GMSACredentialSpecName is the name of the GMSA credential spec to use. This field is alpha-level and is only honored by servers that enable the WindowsGMSA feature flag.",
 	"gmsaCredentialSpec":     "GMSACredentialSpec is where the GMSA admission webhook (https://github.com/kubernetes-sigs/windows-gmsa) inlines the contents of the GMSA credential spec named by the GMSACredentialSpecName field. This field is alpha-level and is only honored by servers that enable the WindowsGMSA feature flag.",
 	"runAsUserName":          "The UserName in Windows to run the entrypoint of the container process. Defaults to the user specified in image metadata if unspecified. May also be set in PodSecurityContext. If set in both SecurityContext and PodSecurityContext, the value specified in SecurityContext takes precedence. This field is alpha-level and it is only honored by servers that enable the WindowsRunAsUserName feature flag.",

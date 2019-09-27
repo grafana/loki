@@ -53,16 +53,16 @@ var LibraryInfo_Language_name = map[int32]string{
 
 var LibraryInfo_Language_value = map[string]int32{
 	"LANGUAGE_UNSPECIFIED": 0,
-	"CPP":     1,
-	"C_SHARP": 2,
-	"ERLANG":  3,
-	"GO_LANG": 4,
-	"JAVA":    5,
-	"NODE_JS": 6,
-	"PHP":     7,
-	"PYTHON":  8,
-	"RUBY":    9,
-	"WEB_JS":  10,
+	"CPP":                  1,
+	"C_SHARP":              2,
+	"ERLANG":               3,
+	"GO_LANG":              4,
+	"JAVA":                 5,
+	"NODE_JS":              6,
+	"PHP":                  7,
+	"PYTHON":               8,
+	"RUBY":                 9,
+	"WEB_JS":               10,
 }
 
 func (x LibraryInfo_Language) String() string {

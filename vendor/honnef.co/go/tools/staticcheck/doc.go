@@ -3,22 +3,22 @@ package staticcheck
 import "honnef.co/go/tools/lint"
 
 var Docs = map[string]*lint.Documentation{
-	"SA1000": {
+	"SA1000": &lint.Documentation{
 		Title: `Invalid regular expression`,
 		Since: "2017.1",
 	},
 
-	"SA1001": {
+	"SA1001": &lint.Documentation{
 		Title: `Invalid template`,
 		Since: "2017.1",
 	},
 
-	"SA1002": {
+	"SA1002": &lint.Documentation{
 		Title: `Invalid format in time.Parse`,
 		Since: "2017.1",
 	},
 
-	"SA1003": {
+	"SA1003": &lint.Documentation{
 		Title: `Unsupported argument to functions in encoding/binary`,
 		Text: `The encoding/binary package can only serialize types with known sizes.
 This precludes the use of the int and uint types, as their sizes
@@ -29,7 +29,7 @@ Before Go 1.8, bool wasn't supported, either.`,
 		Since: "2017.1",
 	},
 
-	"SA1004": {
+	"SA1004": &lint.Documentation{
 		Title: `Suspiciously small untyped constant in time.Sleep`,
 		Text: `The time.Sleep function takes a time.Duration as its only argument.
 Durations are expressed in nanoseconds. Thus, calling time.Sleep(1)
@@ -46,7 +46,7 @@ for some amount of nanoseconds.`,
 		Since: "2017.1",
 	},
 
-	"SA1005": {
+	"SA1005": &lint.Documentation{
 		Title: `Invalid first argument to exec.Command`,
 		Text: `os/exec runs programs directly (using variants of the fork and exec
 system calls on Unix systems). This shouldn't be confused with running
@@ -69,7 +69,7 @@ Windows, will have a /bin/sh program:
 		Since: "2017.1",
 	},
 
-	"SA1006": {
+	"SA1006": &lint.Documentation{
 		Title: `Printf with dynamic first argument and no further arguments`,
 		Text: `Using fmt.Printf with a dynamic first argument can lead to unexpected
 output. The first argument is a format string, where certain character
@@ -93,12 +93,12 @@ and pass the string as an argument.`,
 		Since: "2017.1",
 	},
 
-	"SA1007": {
+	"SA1007": &lint.Documentation{
 		Title: `Invalid URL in net/url.Parse`,
 		Since: "2017.1",
 	},
 
-	"SA1008": {
+	"SA1008": &lint.Documentation{
 		Title: `Non-canonical key in http.Header map`,
 		Text: `Keys in http.Header maps are canonical, meaning they follow a specific
 combination of uppercase and lowercase letters. Methods such as
@@ -123,39 +123,39 @@ http.CanonicalHeaderKey.`,
 		Since: "2017.1",
 	},
 
-	"SA1010": {
+	"SA1010": &lint.Documentation{
 		Title: `(*regexp.Regexp).FindAll called with n == 0, which will always return zero results`,
 		Text: `If n >= 0, the function returns at most n matches/submatches. To
 return all results, specify a negative number.`,
 		Since: "2017.1",
 	},
 
-	"SA1011": {
+	"SA1011": &lint.Documentation{
 		Title: `Various methods in the strings package expect valid UTF-8, but invalid input is provided`,
 		Since: "2017.1",
 	},
 
-	"SA1012": {
+	"SA1012": &lint.Documentation{
 		Title: `A nil context.Context is being passed to a function, consider using context.TODO instead`,
 		Since: "2017.1",
 	},
 
-	"SA1013": {
+	"SA1013": &lint.Documentation{
 		Title: `io.Seeker.Seek is being called with the whence constant as the first argument, but it should be the second`,
 		Since: "2017.1",
 	},
 
-	"SA1014": {
+	"SA1014": &lint.Documentation{
 		Title: `Non-pointer value passed to Unmarshal or Decode`,
 		Since: "2017.1",
 	},
 
-	"SA1015": {
+	"SA1015": &lint.Documentation{
 		Title: `Using time.Tick in a way that will leak. Consider using time.NewTicker, and only use time.Tick in tests, commands and endless functions`,
 		Since: "2017.1",
 	},
 
-	"SA1016": {
+	"SA1016": &lint.Documentation{
 		Title: `Trapping a signal that cannot be trapped`,
 		Text: `Not all signals can be intercepted by a process. Speficially, on
 UNIX-like systems, the syscall.SIGKILL and syscall.SIGSTOP signals are
@@ -164,7 +164,7 @@ kernel. It is therefore pointless to try and handle these signals.`,
 		Since: "2017.1",
 	},
 
-	"SA1017": {
+	"SA1017": &lint.Documentation{
 		Title: `Channels used with os/signal.Notify should be buffered`,
 		Text: `The os/signal package uses non-blocking channel sends when delivering
 signals. If the receiving end of the channel isn't ready and the
@@ -175,24 +175,24 @@ signal value, a buffer of size 1 is sufficient.`,
 		Since: "2017.1",
 	},
 
-	"SA1018": {
+	"SA1018": &lint.Documentation{
 		Title: `strings.Replace called with n == 0, which does nothing`,
 		Text: `With n == 0, zero instances will be replaced. To replace all
 instances, use a negative number, or use strings.ReplaceAll.`,
 		Since: "2017.1",
 	},
 
-	"SA1019": {
+	"SA1019": &lint.Documentation{
 		Title: `Using a deprecated function, variable, constant or field`,
 		Since: "2017.1",
 	},
 
-	"SA1020": {
+	"SA1020": &lint.Documentation{
 		Title: `Using an invalid host:port pair with a net.Listen-related function`,
 		Since: "2017.1",
 	},
 
-	"SA1021": {
+	"SA1021": &lint.Documentation{
 		Title: `Using bytes.Equal to compare two net.IP`,
 		Text: `A net.IP stores an IPv4 or IPv6 address as a slice of bytes. The
 length of the slice for an IPv4 address, however, can be either 4 or
@@ -202,13 +202,13 @@ be used, as it takes both representations into account.`,
 		Since: "2017.1",
 	},
 
-	"SA1023": {
+	"SA1023": &lint.Documentation{
 		Title: `Modifying the buffer in an io.Writer implementation`,
 		Text:  `Write must not modify the slice data, even temporarily.`,
 		Since: "2017.1",
 	},
 
-	"SA1024": {
+	"SA1024": &lint.Documentation{
 		Title: `A string cutset contains duplicate characters`,
 		Text: `The strings.TrimLeft and strings.TrimRight functions take cutsets, not
 prefixes. A cutset is treated as a set of characters to remove from a
@@ -223,17 +223,17 @@ In order to remove one string from another, use strings.TrimPrefix instead.`,
 		Since: "2017.1",
 	},
 
-	"SA1025": {
+	"SA1025": &lint.Documentation{
 		Title: `It is not possible to use (*time.Timer).Reset's return value correctly`,
 		Since: "2019.1",
 	},
 
-	"SA1026": {
+	"SA1026": &lint.Documentation{
 		Title: `Cannot marshal channels or functions`,
 		Since: "2019.2",
 	},
 
-	"SA1027": {
+	"SA1027": &lint.Documentation{
 		Title: `Atomic access to 64-bit variable must be 64-bit aligned`,
 		Text: `On ARM, x86-32, and 32-bit MIPS, it is the caller's responsibility to
 arrange for 64-bit alignment of 64-bit words accessed atomically. The
@@ -245,12 +245,12 @@ in a struct.`,
 		Since: "2019.2",
 	},
 
-	"SA2000": {
+	"SA2000": &lint.Documentation{
 		Title: `sync.WaitGroup.Add called inside the goroutine, leading to a race condition`,
 		Since: "2017.1",
 	},
 
-	"SA2001": {
+	"SA2001": &lint.Documentation{
 		Title: `Empty critical section, did you mean to defer the unlock?`,
 		Text: `Empty critical sections of the kind
 
@@ -271,17 +271,17 @@ rare false positive.`,
 		Since: "2017.1",
 	},
 
-	"SA2002": {
+	"SA2002": &lint.Documentation{
 		Title: `Called testing.T.FailNow or SkipNow in a goroutine, which isn't allowed`,
 		Since: "2017.1",
 	},
 
-	"SA2003": {
+	"SA2003": &lint.Documentation{
 		Title: `Deferred Lock right after locking, likely meant to defer Unlock instead`,
 		Since: "2017.1",
 	},
 
-	"SA3000": {
+	"SA3000": &lint.Documentation{
 		Title: `TestMain doesn't call os.Exit, hiding test failures`,
 		Text: `Test executables (and in turn 'go test') exit with a non-zero status
 code if any tests failed. When specifying your own TestMain function,
@@ -292,7 +292,7 @@ os.Exit(m.Run()).`,
 		Since: "2017.1",
 	},
 
-	"SA3001": {
+	"SA3001": &lint.Documentation{
 		Title: `Assigning to b.N in benchmarks distorts the results`,
 		Text: `The testing package dynamically sets b.N to improve the reliability of
 benchmarks and uses it in computations to determine the duration of a
@@ -301,102 +301,102 @@ falsify results.`,
 		Since: "2017.1",
 	},
 
-	"SA4000": {
+	"SA4000": &lint.Documentation{
 		Title: `Boolean expression has identical expressions on both sides`,
 		Since: "2017.1",
 	},
 
-	"SA4001": {
+	"SA4001": &lint.Documentation{
 		Title: `&*x gets simplified to x, it does not copy x`,
 		Since: "2017.1",
 	},
 
-	"SA4002": {
+	"SA4002": &lint.Documentation{
 		Title: `Comparing strings with known different sizes has predictable results`,
 		Since: "2017.1",
 	},
 
-	"SA4003": {
+	"SA4003": &lint.Documentation{
 		Title: `Comparing unsigned values against negative values is pointless`,
 		Since: "2017.1",
 	},
 
-	"SA4004": {
+	"SA4004": &lint.Documentation{
 		Title: `The loop exits unconditionally after one iteration`,
 		Since: "2017.1",
 	},
 
-	"SA4005": {
+	"SA4005": &lint.Documentation{
 		Title: `Field assignment that will never be observed. Did you mean to use a pointer receiver?`,
 		Since: "2017.1",
 	},
 
-	"SA4006": {
+	"SA4006": &lint.Documentation{
 		Title: `A value assigned to a variable is never read before being overwritten. Forgotten error check or dead code?`,
 		Since: "2017.1",
 	},
 
-	"SA4008": {
+	"SA4008": &lint.Documentation{
 		Title: `The variable in the loop condition never changes, are you incrementing the wrong variable?`,
 		Since: "2017.1",
 	},
 
-	"SA4009": {
+	"SA4009": &lint.Documentation{
 		Title: `A function argument is overwritten before its first use`,
 		Since: "2017.1",
 	},
 
-	"SA4010": {
+	"SA4010": &lint.Documentation{
 		Title: `The result of append will never be observed anywhere`,
 		Since: "2017.1",
 	},
 
-	"SA4011": {
+	"SA4011": &lint.Documentation{
 		Title: `Break statement with no effect. Did you mean to break out of an outer loop?`,
 		Since: "2017.1",
 	},
 
-	"SA4012": {
+	"SA4012": &lint.Documentation{
 		Title: `Comparing a value against NaN even though no value is equal to NaN`,
 		Since: "2017.1",
 	},
 
-	"SA4013": {
+	"SA4013": &lint.Documentation{
 		Title: `Negating a boolean twice (!!b) is the same as writing b. This is either redundant, or a typo.`,
 		Since: "2017.1",
 	},
 
-	"SA4014": {
+	"SA4014": &lint.Documentation{
 		Title: `An if/else if chain has repeated conditions and no side-effects; if the condition didn't match the first time, it won't match the second time, either`,
 		Since: "2017.1",
 	},
 
-	"SA4015": {
+	"SA4015": &lint.Documentation{
 		Title: `Calling functions like math.Ceil on floats converted from integers doesn't do anything useful`,
 		Since: "2017.1",
 	},
 
-	"SA4016": {
+	"SA4016": &lint.Documentation{
 		Title: `Certain bitwise operations, such as x ^ 0, do not do anything useful`,
 		Since: "2017.1",
 	},
 
-	"SA4017": {
+	"SA4017": &lint.Documentation{
 		Title: `A pure function's return value is discarded, making the call pointless`,
 		Since: "2017.1",
 	},
 
-	"SA4018": {
+	"SA4018": &lint.Documentation{
 		Title: `Self-assignment of variables`,
 		Since: "2017.1",
 	},
 
-	"SA4019": {
+	"SA4019": &lint.Documentation{
 		Title: `Multiple, identical build constraints in the same file`,
 		Since: "2017.1",
 	},
 
-	"SA4020": {
+	"SA4020": &lint.Documentation{
 		Title: `Unreachable case clause in a type switch`,
 		Text: `In a type switch like the following
 
@@ -467,27 +467,27 @@ and therefore doSomething()'s return value implements both.`,
 		Since: "2019.2",
 	},
 
-	"SA4021": {
+	"SA4021": &lint.Documentation{
 		Title: `x = append(y) is equivalent to x = y`,
 		Since: "2019.2",
 	},
 
-	"SA5000": {
+	"SA5000": &lint.Documentation{
 		Title: `Assignment to nil map`,
 		Since: "2017.1",
 	},
 
-	"SA5001": {
+	"SA5001": &lint.Documentation{
 		Title: `Defering Close before checking for a possible error`,
 		Since: "2017.1",
 	},
 
-	"SA5002": {
+	"SA5002": &lint.Documentation{
 		Title: `The empty for loop (for {}) spins and can block the scheduler`,
 		Since: "2017.1",
 	},
 
-	"SA5003": {
+	"SA5003": &lint.Documentation{
 		Title: `Defers in infinite loops will never execute`,
 		Text: `Defers are scoped to the surrounding function, not the surrounding
 block. In a function that never returns, i.e. one containing an
@@ -495,12 +495,12 @@ infinite loop, defers will never execute.`,
 		Since: "2017.1",
 	},
 
-	"SA5004": {
+	"SA5004": &lint.Documentation{
 		Title: `for { select { ... with an empty default branch spins`,
 		Since: "2017.1",
 	},
 
-	"SA5005": {
+	"SA5005": &lint.Documentation{
 		Title: `The finalizer references the finalized object, preventing garbage collection`,
 		Text: `A finalizer is a function associated with an object that runs when the
 garbage collector is ready to collect said object, that is when the
@@ -516,12 +516,12 @@ to zero before the object is being passed to the finalizer.`,
 		Since: "2017.1",
 	},
 
-	"SA5006": {
+	"SA5006": &lint.Documentation{
 		Title: `Slice index out of bounds`,
 		Since: "2017.1",
 	},
 
-	"SA5007": {
+	"SA5007": &lint.Documentation{
 		Title: `Infinite recursive call`,
 		Text: `A function that calls itself recursively needs to have an exit
 condition. Otherwise it will recurse forever, until the system runs
@@ -535,22 +535,22 @@ should be used instead.`,
 		Since: "2017.1",
 	},
 
-	"SA5008": {
+	"SA5008": &lint.Documentation{
 		Title: `Invalid struct tag`,
 		Since: "2019.2",
 	},
 
-	"SA5009": {
+	"SA5009": &lint.Documentation{
 		Title: `Invalid Printf call`,
 		Since: "2019.2",
 	},
 
-	"SA6000": {
+	"SA6000": &lint.Documentation{
 		Title: `Using regexp.Match or related in a loop, should use regexp.Compile`,
 		Since: "2017.1",
 	},
 
-	"SA6001": {
+	"SA6001": &lint.Documentation{
 		Title: `Missing an optimization opportunity when indexing maps by byte slices`,
 
 		Text: `Map keys must be comparable, which precludes the use of byte slices.
@@ -580,7 +580,7 @@ f5f5a8b6209f84961687d993b93ea0d397f5d5bf in the Go repository.`,
 		Since: "2017.1",
 	},
 
-	"SA6002": {
+	"SA6002": &lint.Documentation{
 		Title: `Storing non-pointer values in sync.Pool allocates memory`,
 		Text: `A sync.Pool is used to avoid unnecessary allocations and reduce the
 amount of work the garbage collector has to do.
@@ -597,7 +597,7 @@ that discuss this problem.`,
 		Since: "2017.1",
 	},
 
-	"SA6003": {
+	"SA6003": &lint.Documentation{
 		Title: `Converting a string to a slice of runes before ranging over it`,
 		Text: `You may want to loop over the runes in a string. Instead of converting
 the string to a slice of runes and looping over that, you can loop
@@ -619,7 +619,7 @@ the slice of runes.`,
 		Since: "2017.1",
 	},
 
-	"SA6005": {
+	"SA6005": &lint.Documentation{
 		Title: `Inefficient string comparison with strings.ToLower or strings.ToUpper`,
 		Text: `Converting two strings to the same case and comparing them like so
 
@@ -643,22 +643,22 @@ https://blog.digitalocean.com/how-to-efficiently-compare-strings-in-go/`,
 		Since: "2019.2",
 	},
 
-	"SA9001": {
+	"SA9001": &lint.Documentation{
 		Title: `Defers in range loops may not run when you expect them to`,
 		Since: "2017.1",
 	},
 
-	"SA9002": {
+	"SA9002": &lint.Documentation{
 		Title: `Using a non-octal os.FileMode that looks like it was meant to be in octal.`,
 		Since: "2017.1",
 	},
 
-	"SA9003": {
+	"SA9003": &lint.Documentation{
 		Title: `Empty body in an if or else branch`,
 		Since: "2017.1",
 	},
 
-	"SA9004": {
+	"SA9004": &lint.Documentation{
 		Title: `Only the first constant has an explicit type`,
 
 		Text: `In a constant declaration such as the following:
@@ -750,7 +750,7 @@ as EnumSecond has no explicit type, and thus defaults to int.`,
 		Since: "2019.1",
 	},
 
-	"SA9005": {
+	"SA9005": &lint.Documentation{
 		Title: `Trying to marshal a struct with no public fields nor custom marshaling`,
 		Text: `The encoding/json and encoding/xml packages only operate on exported
 fields in structs, not unexported ones. It is usually an error to try

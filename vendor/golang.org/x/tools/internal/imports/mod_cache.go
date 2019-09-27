@@ -91,9 +91,9 @@ func (d *moduleCacheInfo) Store(dir string, info directoryPackageInfo) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.modCacheDirInfo[dir] = &directoryPackageInfo{
-		status: info.status,
-		err:    info.err,
-		dir:    info.dir,
+		status:                 info.status,
+		err:                    info.err,
+		dir:                    info.dir,
 		nonCanonicalImportPath: info.nonCanonicalImportPath,
 		needsReplace:           info.needsReplace,
 	}

@@ -429,8 +429,8 @@ func (r *ModuleResolver) scanDirForPackage(root gopathwalk.Root, dir string) (di
 	}
 
 	result := directoryPackageInfo{
-		status: directoryScanned,
-		dir:    dir,
+		status:                 directoryScanned,
+		dir:                    dir,
 		nonCanonicalImportPath: importPath,
 		needsReplace:           false,
 	}

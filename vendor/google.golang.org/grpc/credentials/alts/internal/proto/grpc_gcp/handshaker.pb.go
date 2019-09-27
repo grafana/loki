@@ -41,8 +41,8 @@ var HandshakeProtocol_name = map[int32]string{
 }
 var HandshakeProtocol_value = map[string]int32{
 	"HANDSHAKE_PROTOCOL_UNSPECIFIED": 0,
-	"TLS":  1,
-	"ALTS": 2,
+	"TLS":                            1,
+	"ALTS":                           2,
 }
 
 func (x HandshakeProtocol) String() string {
@@ -67,8 +67,8 @@ var NetworkProtocol_name = map[int32]string{
 }
 var NetworkProtocol_value = map[string]int32{
 	"NETWORK_PROTOCOL_UNSPECIFIED": 0,
-	"TCP": 1,
-	"UDP": 2,
+	"TCP":                          1,
+	"UDP":                          2,
 }
 
 func (x NetworkProtocol) String() string {

@@ -20,6 +20,7 @@ require (
 	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect
 	github.com/docker/go-plugins-helpers v0.0.0-20181025120712-1e6269c305b8
 	github.com/fatih/color v1.7.0
+	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
 	github.com/go-kit/kit v0.9.0
 	github.com/gocql/gocql v0.0.0-20181124151448-70385f88b28b // indirect
 	github.com/gogo/protobuf v1.3.0
@@ -30,6 +31,7 @@ require (
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hpcloud/tail v1.0.0
 	github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
+	github.com/json-iterator/go v1.1.7
 	github.com/klauspost/compress v1.7.4
 	github.com/klauspost/cpuid v1.2.1 // indirect
 	github.com/mitchellh/mapstructure v1.1.2

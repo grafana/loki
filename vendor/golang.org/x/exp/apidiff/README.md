@@ -586,7 +586,7 @@ methods, thanks to embedding.
 The definitions given here don't account for these sorts of problems.
 
 
-## Compatibility, Types and Names
+## Compatibility, Types and Names 
 
 The above definitions state that the only types that can differ compatibly are
 defined types and the types that underly them. Changes to other type literals

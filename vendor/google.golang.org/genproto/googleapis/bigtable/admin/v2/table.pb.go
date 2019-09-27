@@ -43,7 +43,7 @@ var Table_TimestampGranularity_name = map[int32]string{
 
 var Table_TimestampGranularity_value = map[string]int32{
 	"TIMESTAMP_GRANULARITY_UNSPECIFIED": 0,
-	"MILLIS": 1,
+	"MILLIS":                            1,
 }
 
 func (x Table_TimestampGranularity) String() string {
