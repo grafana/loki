@@ -179,7 +179,7 @@ promtail-clean-assets:
 # Rule to generate promtail static assets file
 $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 	@echo ">> writing assets"
-	GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
+	GOFLAGS=-mod=vendor GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
 
 cmd/promtail/promtail: $(APP_GO_FILES) $(PROMTAIL_GENERATED_FILE) cmd/promtail/main.go
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
