@@ -65,6 +65,12 @@ func (b *bigchunk) addNextChunk(start model.Time) error {
 		}
 	}
 
+	// Explicitly reallocate slice to avoid up to 2x overhead if we let append() do it
+	if len(b.chunks)+1 > cap(b.chunks) {
+		newChunks := make([]smallChunk, len(b.chunks), len(b.chunks)+1)
+		copy(newChunks, b.chunks)
+		b.chunks = newChunks
+	}
 	b.chunks = append(b.chunks, smallChunk{
 		XORChunk: *chunkenc.NewXORChunk(),
 		start:    int64(start),
