@@ -202,6 +202,8 @@ github.com/edsrzf/mmap-go
 github.com/facette/natsort
 # github.com/fatih/color v1.7.0
 github.com/fatih/color
+# github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
+github.com/fluent/fluent-bit-go/output
 # github.com/fsnotify/fsnotify v1.4.7
 github.com/fsnotify/fsnotify
 # github.com/fsouza/fake-gcs-server v1.3.0
@@ -487,6 +489,8 @@ github.com/uber/jaeger-client-go/thrift-gen/agent
 # github.com/uber/jaeger-lib v2.0.0+incompatible
 github.com/uber/jaeger-lib/metrics/prometheus
 github.com/uber/jaeger-lib/metrics
+# github.com/ugorji/go v1.1.4
+github.com/ugorji/go/codec
 # github.com/weaveworks/common v0.0.0-20190822150010-afb9996716e4 => github.com/sandlis/weaveworks-common v0.0.0-20190822064708-8fa0a1ca9d89
 github.com/weaveworks/common/logging
 github.com/weaveworks/common/tracing
