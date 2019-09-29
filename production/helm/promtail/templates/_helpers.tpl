@@ -60,3 +60,23 @@ The service name to connect to Loki. Defaults to the same logic as "loki.fullnam
 {{- end -}}
 {{- end -}}
 
+{{/*
+Return the appropriate apiVersion for daemonset.
+*/}}
+{{- define "promtail.daemonset.apiVersion" -}}
+{{- if semverCompare "<1.9-0" .Capabilities.KubeVersion.GitVersion -}}
+{{- print "extensions/v1beta1" -}}
+{{- else if semverCompare "^1.9-0" .Capabilities.KubeVersion.GitVersion -}}
+{{- print "apps/v1" -}}
+{{- end -}}
+{{- end -}}
+{{/*
+Return the appropriate apiVersion for podsecuritypolicy.
+*/}}
+{{- define "promtail.podSecurityPolicy.apiVersion" -}}
+{{- if semverCompare ">=1.3-0, <1.10-0" .Capabilities.KubeVersion.GitVersion -}}
+{{- print "extensions/v1beta1" -}}
+{{- else if semverCompare "^1.10-0" .Capabilities.KubeVersion.GitVersion -}}
+{{- print "policy/v1beta1 " -}}
+{{- end -}}
+{{- end -}}

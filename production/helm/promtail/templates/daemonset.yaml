@@ -1,4 +1,4 @@
-apiVersion: apps/v1
+apiVersion: {{ template "promtail.daemonset.apiVersion" . }}
 kind: DaemonSet
 metadata:
   name: {{ template "promtail.fullname" . }}
@@ -27,7 +27,7 @@ spec:
         release: {{ .Release.Name }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
-        {{- end }}          
+        {{- end }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         {{- with .Values.podAnnotations }}

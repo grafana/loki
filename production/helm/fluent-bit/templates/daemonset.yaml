@@ -1,4 +1,4 @@
-apiVersion: apps/v1
+apiVersion: {{ template "fluentd-bit.daemonset.apiVersion.apiVersion" . }}
 kind: DaemonSet
 metadata:
   name: {{ template "fluent-bit-loki.fullname" . }}

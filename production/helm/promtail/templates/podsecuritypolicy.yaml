@@ -1,5 +1,5 @@
 {{- if .Values.rbac.pspEnabled }}
-apiVersion: policy/v1beta1
+apiVersion: {{ template "promtail.podSecurityPolicy.apiVersion" . }}
 kind: PodSecurityPolicy
 metadata:
   name: {{ template "promtail.fullname" . }}
