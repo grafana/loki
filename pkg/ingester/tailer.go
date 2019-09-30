@@ -128,9 +128,14 @@ func (t *tailer) send(stream logproto.Stream) {
 }
 
 func (t *tailer) filterEntriesInStream(stream *logproto.Stream) {
+	// Optimization: skip filtering entirely, if no filter is set
+	if t.filter == nil {
+		return
+	}
+
 	var filteredEntries []logproto.Entry
 	for _, e := range stream.Entries {
-		if t.filter == nil || t.filter([]byte(e.Line)) {
+		if t.filter([]byte(e.Line)) {
 			filteredEntries = append(filteredEntries, e)
 		}
 	}
