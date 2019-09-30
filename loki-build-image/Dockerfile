@@ -14,7 +14,7 @@ RUN apk add --no-cache curl && \
 FROM alpine:edge as docker
 RUN apk add --no-cache docker-cli
 
-FROM golang:1.12.9-stretch
+FROM golang:1.13.1-stretch
 RUN apt-get update && \
     apt-get install -qy \
       musl \

@@ -1,4 +1,4 @@
-FROM golang:1.12 as build
+FROM golang:1.13 as build
 COPY . /src/loki
 WORKDIR /src/loki
 RUN apt-get update && apt-get install -qy libsystemd-dev
