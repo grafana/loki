@@ -3,57 +3,42 @@
 // Package applicationautoscaling provides the client and types for making API
 // requests to Application Auto Scaling.
 //
-// With Application Auto Scaling, you can configure automatic scaling for your
-// scalable resources. You can use Application Auto Scaling to accomplish the
-// following tasks:
+// With Application Auto Scaling, you can configure automatic scaling for the
+// following resources:
 //
-//    * Define scaling policies to automatically scale your AWS or custom resources
+//    * Amazon ECS services
 //
-//    * Scale your resources in response to CloudWatch alarms
+//    * Amazon EC2 Spot Fleet requests
 //
-//    * Schedule one-time or recurring scaling actions
+//    * Amazon EMR clusters
 //
-//    * View the history of your scaling events
+//    * Amazon AppStream 2.0 fleets
 //
-// Application Auto Scaling can scale the following resources:
+//    * Amazon DynamoDB tables and global secondary indexes throughput capacity
 //
-//    * Amazon ECS services. For more information, see Service Auto Scaling
-//    (http://docs.aws.amazon.com/AmazonECS/latest/developerguide/service-auto-scaling.html)
-//    in the Amazon Elastic Container Service Developer Guide.
+//    * Amazon Aurora Replicas
 //
-//    * Amazon EC2 Spot fleets. For more information, see Automatic Scaling
-//    for Spot Fleet (http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/fleet-auto-scaling.html)
-//    in the Amazon EC2 User Guide.
+//    * Amazon SageMaker endpoint variants
 //
-//    * Amazon EMR clusters. For more information, see Using Automatic Scaling
-//    in Amazon EMR (http://docs.aws.amazon.com/ElasticMapReduce/latest/ManagementGuide/emr-automatic-scaling.html)
-//    in the Amazon EMR Management Guide.
+//    * Custom resources provided by your own applications or services
 //
-//    * AppStream 2.0 fleets. For more information, see Fleet Auto Scaling for
-//    Amazon AppStream 2.0 (http://docs.aws.amazon.com/appstream2/latest/developerguide/autoscaling.html)
-//    in the Amazon AppStream 2.0 Developer Guide.
+// API Summary
 //
-//    * Provisioned read and write capacity for Amazon DynamoDB tables and global
-//    secondary indexes. For more information, see Managing Throughput Capacity
-//    Automatically with DynamoDB Auto Scaling (http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/AutoScaling.html)
-//    in the Amazon DynamoDB Developer Guide.
+// The Application Auto Scaling service API includes two key sets of actions:
 //
-//    * Amazon Aurora Replicas. For more information, see Using Amazon Aurora
-//    Auto Scaling with Aurora Replicas (http://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Aurora.Integrating.AutoScaling.html).
+//    * Register and manage scalable targets - Register AWS or custom resources
+//    as scalable targets (a resource that Application Auto Scaling can scale),
+//    set minimum and maximum capacity limits, and retrieve information on existing
+//    scalable targets.
 //
-//    * Amazon SageMaker endpoint variants. For more information, see Automatically
-//    Scaling Amazon SageMaker Models (http://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-auto-scaling.html).
+//    * Configure and manage automatic scaling - Define scaling policies to
+//    dynamically scale your resources in response to CloudWatch alarms, schedule
+//    one-time or recurring scaling actions, and retrieve your recent scaling
+//    activity history.
 //
-//    * Custom resources provided by your own applications or services. More
-//    information is available in our GitHub repository (https://github.com/aws/aws-auto-scaling-custom-resource).
-//
-//
-// To learn more about Application Auto Scaling, see the Application Auto Scaling
-// User Guide (http://docs.aws.amazon.com/autoscaling/application/userguide/what-is-application-auto-scaling.html).
-//
-// To configure automatic scaling for multiple resources across multiple services,
-// use AWS Auto Scaling to create a scaling plan for your application. For more
-// information, see the AWS Auto Scaling User Guide (http://docs.aws.amazon.com/autoscaling/plans/userguide/what-is-aws-auto-scaling.html).
+// To learn more about Application Auto Scaling, including information about
+// granting IAM users required permissions for Application Auto Scaling actions,
+// see the Application Auto Scaling User Guide (https://docs.aws.amazon.com/autoscaling/application/userguide/what-is-application-auto-scaling.html).
 //
 // See https://docs.aws.amazon.com/goto/WebAPI/application-autoscaling-2016-02-06 for more information on this service.
 //

@@ -2,9 +2,10 @@
 .PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos
 .PHONY: helm helm-install helm-upgrade helm-publish helm-debug helm-clean
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
+.PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
 .PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
 .PHONY: bigtable-backup, push-bigtable-backup
-.PHONY: benchmark-store
+.PHONY: benchmark-store, drone, check-mod
 
 SHELL = /usr/bin/env bash
 #############
@@ -19,7 +20,7 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.5.0
+BUILD_IMAGE_VERSION := 0.6.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -31,7 +32,7 @@ GIT_REVISION := $(shell git rev-parse --short HEAD)
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
-# 'make: Entering directory '/go/src/github.com/grafana/loki' phase.
+# 'make: Entering directory '/src/loki' phase.
 DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # These are all the application files, they are included in the various binary rules as dependencies
@@ -41,13 +42,13 @@ APP_GO_FILES := $(shell find . $(DONT_FIND) -name .y.go -prune -o -name .pb.go -
 # Build flags
 VPREFIX := github.com/grafana/loki/vendor/github.com/prometheus/common/version
 GO_LDFLAGS   := -s -w -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION) -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-GO_FLAGS     := -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo
-DYN_GO_FLAGS := -ldflags "$(GO_LDFLAGS)" -tags netgo
+GO_FLAGS     := -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo -mod vendor
+DYN_GO_FLAGS := -ldflags "$(GO_LDFLAGS)" -tags netgo -mod vendor
 # Per some websites I've seen to add `-gcflags "all=-N -l"`, the gcflags seem poorly if at all documented
 # the best I could dig up is -N disables optimizations and -l disables inlining which should make debugging match source better.
 # Also remove the -s and -w flags present in the normal build which strip the symbol table and the DWARF symbol table.
-DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo
-DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo
+DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo -mod vendor
+DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo -mod vendor
 
 NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
        rm $@; \
@@ -178,7 +179,7 @@ promtail-clean-assets:
 # Rule to generate promtail static assets file
 $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 	@echo ">> writing assets"
-	GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
+	GOFLAGS=-mod=vendor GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
 
 cmd/promtail/promtail: $(APP_GO_FILES) $(PROMTAIL_GENERATED_FILE) cmd/promtail/main.go
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
@@ -207,14 +208,14 @@ publish: dist
 ########
 
 lint:
-	GOGC=10 golangci-lint run
+	GO111MODULE=on GOGC=10 golangci-lint run -j 4
 
 ########
 # Test #
 ########
 
 test: all
-	GOGC=10 go test -p=4 ./...
+	GOGC=10 go test -mod=vendor -p=4 ./...
 
 #########
 # Clean #
@@ -230,7 +231,7 @@ clean:
 	rm -rf dist/
 	rm -rf cmd/fluent-bit/out_loki.h
 	rm -rf cmd/fluent-bit/out_loki.so
-	go clean ./...
+	go clean -mod=vendor ./...
 
 #########
 # YACCs #
@@ -246,7 +247,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 	$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/grafana/loki \
+		-v $(shell pwd):/src/loki \
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
@@ -265,7 +266,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 	$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd)/.cache:/go/cache \
 		-v $(shell pwd)/.pkg:/go/pkg \
-		-v $(shell pwd):/go/src/github.com/grafana/loki \
+		-v $(shell pwd):/src/loki \
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
 	case "$@" in	\
@@ -464,9 +465,17 @@ build-image:
 ########
 
 benchmark-store:
-	go run ./pkg/storage/hack/main.go
-	go test ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
+	go run -mod=vendor ./pkg/storage/hack/main.go
+	go test -mod=vendor ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
 
 # regenerate drone yaml
 drone:
 	jsonnet -V __build-image-version=$(BUILD_IMAGE_VERSION) .drone/drone.jsonnet | jq .drone -r | yq -y . > .drone/drone.yml
+
+# support go modules
+check-mod:
+	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod download
+	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod verify
+	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod tidy
+	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod vendor
+	@git diff --exit-code -- go.sum go.mod vendor/

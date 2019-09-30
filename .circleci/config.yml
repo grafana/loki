@@ -48,8 +48,8 @@ workflows:
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 .defaults: &defaults
   docker:
-    - image: grafana/loki-build-image:0.5.0
-  working_directory: /go/src/github.com/grafana/loki
+    - image: grafana/loki-build-image:0.6.0
+  working_directory: /src/loki
 
 jobs:
   test:
@@ -70,6 +70,9 @@ jobs:
       - run:
           name: Check Generated Files
           command: make BUILD_IN_CONTAINER=false check-generated-files
+      - run:
+          name: Check Go Mod
+          command: make BUILD_IN_CONTAINER=false check-mod
 
   # Promtail
   build/promtail-windows:

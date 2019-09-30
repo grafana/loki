@@ -18,7 +18,7 @@ const (
 	// when Application Auto Scaling is unable to retrieve the alarms associated
 	// with a scaling policy due to a client error, for example, if the role ARN
 	// specified for a scalable target does not have permission to call the CloudWatch
-	// DescribeAlarms (http://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_DescribeAlarms.html)
+	// DescribeAlarms (https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_DescribeAlarms.html)
 	// on your behalf.
 	ErrCodeFailedResourceAccessException = "FailedResourceAccessException"
 
@@ -38,7 +38,7 @@ const (
 	// "LimitExceededException".
 	//
 	// A per-account resource limit is exceeded. For more information, see Application
-	// Auto Scaling Limits (http://docs.aws.amazon.com/ApplicationAutoScaling/latest/userguide/application-auto-scaling-limits.html).
+	// Auto Scaling Limits (https://docs.aws.amazon.com/ApplicationAutoScaling/latest/userguide/application-auto-scaling-limits.html).
 	ErrCodeLimitExceededException = "LimitExceededException"
 
 	// ErrCodeObjectNotFoundException for service response error code

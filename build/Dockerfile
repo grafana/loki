@@ -9,8 +9,8 @@ RUN apk add --update --no-cache ca-certificates
 # use grafana/loki-build-image to compile binaries
 FROM grafana/loki-build-image as golang
 ARG GOARCH="amd64"
-COPY . /go/src/github.com/grafana/loki
-WORKDIR /go/src/github.com/grafana/loki
+COPY . /src/loki
+WORKDIR /src/loki
 RUN touch loki-build-image/.uptodate &&\
   mkdir /build
 

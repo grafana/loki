@@ -170,22 +170,23 @@ finalize:
 	RET
 
 // writeBlocks uses the same registers as above except that it uses AX to store
-// the d pointer.
+// the x pointer.
 
-// func writeBlocks(d *Digest, b []byte) int
-TEXT ·writeBlocks(SB), NOSPLIT, $0-40
+// func writeBlocks(x *xxh, b []byte) []byte
+TEXT ·writeBlocks(SB), NOSPLIT, $0-56
 	// Load fixed primes needed for round.
 	MOVQ ·prime1v(SB), R13
 	MOVQ ·prime2v(SB), R14
 
 	// Load slice.
 	MOVQ b_base+8(FP), CX
+	MOVQ CX, ret_base+32(FP) // initialize return base pointer; see NOTE below
 	MOVQ b_len+16(FP), DX
 	LEAQ (CX)(DX*1), BX
 	SUBQ $32, BX
 
-	// Load vN from d.
-	MOVQ d+0(FP), AX
+	// Load vN from x.
+	MOVQ x+0(FP), AX
 	MOVQ 0(AX), R8   // v1
 	MOVQ 8(AX), R9   // v2
 	MOVQ 16(AX), R10 // v3
@@ -202,14 +203,31 @@ blockLoop:
 	CMPQ CX, BX
 	JLE  blockLoop
 
-	// Copy vN back to d.
+	// Copy vN back to x.
 	MOVQ R8, 0(AX)
 	MOVQ R9, 8(AX)
 	MOVQ R10, 16(AX)
 	MOVQ R11, 24(AX)
 
-	// The number of bytes written is CX minus the old base pointer.
-	SUBQ b_base+8(FP), CX
-	MOVQ CX, ret+32(FP)
+	// Construct return slice.
+	// NOTE: It's important that we don't construct a slice that has a base
+	// pointer off the end of the original slice, as in Go 1.7+ this will
+	// cause runtime crashes. (See discussion in, for example,
+	// https://github.com/golang/go/issues/16772.)
+	// Therefore, we calculate the length/cap first, and if they're zero, we
+	// keep the old base. This is what the compiler does as well if you
+	// write code like
+	//   b = b[len(b):]
+
+	// New length is 32 - (CX - BX) -> BX+32 - CX.
+	ADDQ $32, BX
+	SUBQ CX, BX
+	JZ   afterSetBase
+
+	MOVQ CX, ret_base+32(FP)
+
+afterSetBase:
+	MOVQ BX, ret_len+40(FP)
+	MOVQ BX, ret_cap+48(FP) // set cap == len
 
 	RET
