@@ -113,7 +113,7 @@ config:
       # Maximum backoff time between retries
       maxbackoff: 5s
       # Maximum number of retries when sending batches, 0 means infinite retries
-      maxretries: 5
+      maxretries: 20
 
     # The labels to add to any time series or alerts when communicating with loki
     external_labels: {}
