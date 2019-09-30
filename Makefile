@@ -474,8 +474,23 @@ drone:
 
 # support go modules
 check-mod:
+ifeq ($(BUILD_IN_CONTAINER),true)
+	docker run \
+		--entrypoint "" \
+		-e "GO111MODULE=on" \
+		-e "GOPROXY=https://proxy.golang.org" \
+		-v ~/go/pkg/mod:/go/pkg/mod \
+		-v $(shell pwd):/src/loki \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) \
+		bash -c "cd /src/loki; \
+		go mod download; \
+		go mod verify; \
+		go mod tidy; \
+		go mod vendor; "
+else
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod download
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod verify
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod tidy
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod vendor
+endif
 	@git diff --exit-code -- go.sum go.mod vendor/
