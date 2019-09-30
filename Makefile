@@ -208,7 +208,7 @@ publish: dist
 ########
 
 lint:
-	GO111MODULE=on GOGC=10 golangci-lint run -j 2
+	GODEBUG=madvdontneed=1 GO111MODULE=on GOGC=10 golangci-lint run -j 2
 
 ########
 # Test #
