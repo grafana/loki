@@ -245,7 +245,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:573b3a3fbdc3f803b40d99f7a917db72b96ef00f5da75641cbfb01e9e5eec1c9"
+  digest = "1:06c85c48269d6266f8536b8f9b46acba6ad0a55d3496b250ec37ec717a0ec571"
   name = "github.com/cortexproject/cortex"
   packages = [
     "pkg/chunk",
@@ -275,7 +275,7 @@
     "pkg/util/validation",
   ]
   pruneopts = "UT"
-  revision = "68603f14e3e4cdbc0b90ff5af4f544f2c6e457fa"
+  revision = "de2318048992085e682efb7910000d975186e4ab"
 
 [[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
@@ -386,6 +386,14 @@
   packages = ["."]
   pruneopts = "UT"
   revision = "9f541cc9db5d55bce703bd99987c9d5cb8eea45e"
+  version = "v1.0.0"
+
+[[projects]]
+  digest = "1:edb569dd02419a41ddd98768cc0e7aec922ef19dae139731e5ca750afcf6f4c5"
+  name = "github.com/edsrzf/mmap-go"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "188cc3b666ba704534fa4f96e9e61f21f1e1ba7c"
   version = "v1.0.0"
 
 [[projects]]
@@ -986,7 +994,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:43edb14ccbe0d18f38bd55511250c39ccc3917c64a514a0e791408ac19a71558"
+  digest = "1:4bb1499d097e0ec39f615dcb4c8529bb6f6beda974b3c782750606503fff9f2c"
   name = "github.com/prometheus/prometheus"
   packages = [
     "discovery",
@@ -1016,30 +1024,26 @@
     "storage",
     "storage/tsdb",
     "template",
+    "tsdb",
+    "tsdb/chunkenc",
+    "tsdb/chunks",
+    "tsdb/encoding",
+    "tsdb/errors",
+    "tsdb/fileutil",
+    "tsdb/goversion",
+    "tsdb/index",
+    "tsdb/labels",
+    "tsdb/record",
+    "tsdb/tombstones",
+    "tsdb/wal",
     "util/stats",
     "util/strutil",
+    "util/teststorage",
     "util/testutil",
     "util/treecache",
   ]
   pruneopts = "UT"
-  revision = "e23fa22233cfbaa4fcea7abcd4e191ce5258870b"
-
-[[projects]]
-  digest = "1:7aa5ae0ef5452ce26522f16677edee5016afeaa689f77e62e6b46374463b1884"
-  name = "github.com/prometheus/tsdb"
-  packages = [
-    ".",
-    "chunkenc",
-    "chunks",
-    "encoding",
-    "fileutil",
-    "index",
-    "labels",
-    "wal",
-  ]
-  pruneopts = "UT"
-  revision = "8921f18eb3e34d1e2a752ae0df5bbb94dc367cc7"
-  version = "v0.6.1"
+  revision = "5a554df0855bf707a8c333c0dd830067d03422cf"
 
 [[projects]]
   branch = "master"

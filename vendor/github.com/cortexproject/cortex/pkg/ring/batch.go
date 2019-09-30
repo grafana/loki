@@ -37,19 +37,26 @@ type itemTracker struct {
 //
 // Not implemented as a method on Ring so we can test separately.
 func DoBatch(ctx context.Context, r ReadRing, keys []uint32, callback func(IngesterDesc, []int) error, cleanup func()) error {
-	replicationSets, err := r.BatchGet(keys, Write)
-	if err != nil {
-		return err
-	}
-
+	expectedTrackers := len(keys) * (r.ReplicationFactor() + 1) / r.IngesterCount()
 	itemTrackers := make([]itemTracker, len(keys))
-	ingesters := map[string]ingester{}
-	for i, replicationSet := range replicationSets {
+	ingesters := make(map[string]ingester, r.IngesterCount())
+
+	const maxExpectedReplicationSet = 5 // Typical replication factor 3, plus one for inactive plus one for luck.
+	var descs [maxExpectedReplicationSet]IngesterDesc
+	for i, key := range keys {
+		replicationSet, err := r.Get(key, Write, descs[:0])
+		if err != nil {
+			return err
+		}
 		itemTrackers[i].minSuccess = len(replicationSet.Ingesters) - replicationSet.MaxErrors
 		itemTrackers[i].maxFailures = replicationSet.MaxErrors
 
 		for _, desc := range replicationSet.Ingesters {
-			curr := ingesters[desc.Addr]
+			curr, found := ingesters[desc.Addr]
+			if !found {
+				curr.itemTrackers = make([]*itemTracker, 0, expectedTrackers)
+				curr.indexes = make([]int, 0, expectedTrackers)
+			}
 			ingesters[desc.Addr] = ingester{
 				desc:         desc,
 				itemTrackers: append(curr.itemTrackers, &itemTrackers[i]),
@@ -60,8 +67,8 @@ func DoBatch(ctx context.Context, r ReadRing, keys []uint32, callback func(Inges
 
 	tracker := batchTracker{
 		rpcsPending: int32(len(itemTrackers)),
-		done:        make(chan struct{}),
-		err:         make(chan error),
+		done:        make(chan struct{}, 1),
+		err:         make(chan error, 1),
 	}
 
 	var wg sync.WaitGroup
