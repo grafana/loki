@@ -969,7 +969,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:7b7d0a4d2eb73417daf29284e6152edada0f463e2984090284cee388108c9b49"
+  digest = "1:8362098a3caa377c329d96fdce74dfcbc0b718962cc7dcff588a36a0759b418c"
   name = "github.com/prometheus/common"
   packages = [
     "config",
@@ -979,7 +979,7 @@
     "version",
   ]
   pruneopts = "UT"
-  revision = "2998b132700a7d019ff618c06a234b47c1f3f681"
+  revision = "287d3e634a1e550c9e463dd7e5a75a422c614505"
 
 [[projects]]
   digest = "1:366f5aa02ff6c1e2eccce9ca03a22a6d983da89eecff8a89965401764534eb7c"
