@@ -8,7 +8,13 @@
 .PHONY: benchmark-store, drone, check-mod
 
 SHELL = /usr/bin/env bash
-MOD_VENDOR ?= -mod=vendor
+
+VENDOR?=true
+MOD_VENDOR=
+ifeq ($(VENDOR),true)
+  MOD_VENDOR=-mod=vendor
+endif
+
 #############
 # Variables #
 #############
