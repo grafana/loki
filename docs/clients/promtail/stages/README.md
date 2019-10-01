@@ -5,6 +5,8 @@ This section is a collection of all stages Promtail supports in a
 
 Parsing stages:
 
+  * [docker](./docker.md): Extract data by parsing the log line using the standard Docker format.
+  * [cri](./cri.md): Extract data by parsing the log line using the standard CRI format.
   * [regex](./regex.md): Extract data using a regular expression.
   * [json](./json.md): Extract data by parsing the log line as JSON.
 
