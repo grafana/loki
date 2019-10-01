@@ -1,21 +1,28 @@
 # `docker` stage
 
-The `docker` stage is a parsing stage that reads the log line as the way that docker generated.
-It works similar with `json` stage but no need to set anything.
+The `docker` stage is a parsing stage that reads log lines in the standard
+format of Docker log files.
 
-## Format
-
-Each log from docker is json format and covert following three keys:
-1. `log`: the content of log
-2. `stream`: stdout/stderr
-3. `time`: the timestamp string of log
-
-## Examples
-
-### Using log line
+## Schema
 
 ```yaml
 docker: {}
+```
+
+Unlike most stages, the `docker` stage provides no configuration options and
+only supports the specific Docker log format. Each log line from Docker is
+written as JSON with the following keys:
+
+1. `log`: The content of log line
+2. `stream`: Either `stdout` or `stderr`
+3. `time`: The timestamp string of the log line
+
+## Examples
+
+For the given pipeline:
+
+```yaml
+- docker: {}
 ```
 
 Given the following log line:

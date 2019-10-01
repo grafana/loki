@@ -1,31 +1,36 @@
 # `cri` stage
 
-The `cri` stage is a parsing stage that reads the log line as the way that cri generated.
+The `cri` stage is a parsing stage that reads the log line using the standard CRI logging format.
 
-## Format
+## Schema
 
-Each log from cri is string format and covert following three parts:
-1. `log`: the content of log
-2. `stream`: stdout/stderr
-3. `time`: the timestamp string of log
+```yaml
+cri: {}
+```
 
-Each part is splited with blank with others and no blanks in each part.
+Unlike most stages, the `cri` stage provides no configuration options and only
+supports the specific CRI log format. CRI specifies log lines log lines as
+space-delimited values with the following components:
 
-So in the following logs, only the first is cri format which `cri` stage can format:
+1. `time`: The timestamp string of the log
+2. `stream`: Either stdout or stderr
+3. `log`: The contents of the log line
+
+No whitespace is permitted between the components. In the following exmaple,
+only the first log line can be properly formatted using the `cri` stage:
+
 ```
 "2019-01-01T01:00:00.000000001Z stderr P test\ngood"
 "2019-01-01 T01:00:00.000000001Z stderr testgood"
 "2019-01-01T01:00:00.000000001Z testgood"
 ```
 
-More case refer to [entry_parser_test](../../../../pkg/promtail/api/entry_parser_test.go).
-
 ## Examples
 
-### Using log line
+For the given pipeline:
 
 ```yaml
-cri: {}
+- cri: {}
 ```
 
 Given the following log line:
