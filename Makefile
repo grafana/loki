@@ -20,7 +20,7 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.7.1
+BUILD_IMAGE_VERSION := 0.7.2
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -475,18 +475,10 @@ drone:
 # support go modules
 check-mod:
 ifeq ($(BUILD_IN_CONTAINER),true)
-	docker run \
-		--entrypoint "" \
-		-e "GO111MODULE=on" \
-		-e "GOPROXY=https://proxy.golang.org" \
-		-v ~/go/pkg/mod:/go/pkg/mod \
+	$(SUDO) docker run  $(RM) $(TTY) -i \
+		-v $(shell go env GOPATH)/pkg:/go/pkg \
 		-v $(shell pwd):/src/loki \
-		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) \
-		bash -c "cd /src/loki; \
-		go mod download; \
-		go mod verify; \
-		go mod tidy; \
-		go mod vendor; "
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod download
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod verify
