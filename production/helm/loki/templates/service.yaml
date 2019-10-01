@@ -26,6 +26,9 @@ spec:
 {{- if (and (eq .Values.service.type "NodePort") (not (empty .Values.service.nodePort))) }}
       nodePort: {{ .Values.service.nodePort }}
 {{- end }}
+{{- if .Values.extraPorts }}
+{{ toYaml .Values.extraPorts | indent 4}}
+{{- end }}
   selector:
     app: {{ template "loki.name" . }}
     release: {{ .Release.Name }}

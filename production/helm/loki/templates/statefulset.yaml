@@ -73,6 +73,9 @@ spec:
             - name: JAEGER_AGENT_HOST
               value: "{{ .Values.tracing.jaegerAgentHost }}"
             {{- end }}
+{{- if .Values.extraContainers }}
+{{ toYaml .Values.extraContainers | indent 8}}
+{{- end }}
       nodeSelector:
         {{- toYaml .Values.nodeSelector | nindent 8 }}
       affinity:
@@ -84,6 +87,9 @@ spec:
         - name: config
           secret:
             secretName: {{ template "loki.fullname" . }}
+{{- if .Values.extraVolumes }}
+{{ toYaml .Values.extraVolumes | indent 8}}
+{{- end }}
   {{- if not .Values.persistence.enabled }}
         - name: storage
           emptyDir: {}

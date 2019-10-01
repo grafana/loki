@@ -170,3 +170,32 @@ serviceMonitor:
   interval: ""
   additionalLabels: {}
   # scrapeTimeout: 10s
+
+extraContainers: []
+## Additional containers to be added to the loki pod.
+# - name: reverse-proxy
+#   image: angelbarrera92/basic-auth-reverse-proxy:dev
+#   args:
+#     - "serve"
+#     - "--upstream=http://localhost:3100"
+#     - "--auth-config=/etc/reverse-proxy-conf/authn.yaml"
+#   ports:
+#     - name: http
+#       containerPort: 11811
+#       protocol: TCP
+#   volumeMounts:
+#     - name: reverse-proxy-auth-config
+#       mountPath: /etc/reverse-proxy-conf
+
+extraVolumes: []
+## Additional volumes to the loki pod.
+# - name: reverse-proxy-auth-config
+#   secret:
+#     secretName: reverse-proxy-auth-config
+
+extraPorts: []
+## Additional ports to the loki services. Useful to expose extra container ports.
+# - port: 11811
+#   protocol: TCP
+#   name: http
+#   targetPort: http
