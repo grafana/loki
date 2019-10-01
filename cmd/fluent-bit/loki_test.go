@@ -199,6 +199,22 @@ func Test_labelMapping(t *testing.T) {
 		want    model.LabelSet
 	}{
 		{
+			"empty record",
+			map[string]interface{}{},
+			map[string]interface{}{},
+			model.LabelSet{},
+		},
+		{
+			"empty subrecord",
+			map[string]interface{}{
+				"kubernetes": map[interface{}]interface{}{
+					"foo": []byte("buzz"),
+				},
+			},
+			map[string]interface{}{},
+			model.LabelSet{},
+		},
+		{
 			"bytes string",
 			map[string]interface{}{
 				"kubernetes": map[interface{}]interface{}{
@@ -215,6 +231,39 @@ func Test_labelMapping(t *testing.T) {
 				"nope":   "nope",
 			},
 			model.LabelSet{"test": "buzz", "output": "stderr"},
+		},
+		{
+			"numeric label",
+			map[string]interface{}{
+				"kubernetes": map[interface{}]interface{}{
+					"integer":        42,
+					"floating_point": 42.42,
+				},
+				"stream": "stderr",
+			},
+			map[string]interface{}{
+				"kubernetes": map[string]interface{}{
+					"integer":        "integer",
+					"floating_point": "floating_point",
+				},
+				"stream": "output",
+				"nope":   "nope",
+			},
+			model.LabelSet{"integer": "42", "floating_point": "42.42", "output": "stderr"},
+		},
+		{
+			"list label",
+			map[string]interface{}{
+				"kubernetes": map[interface{}]interface{}{
+					"integers": []int{42, 43},
+				},
+			},
+			map[string]interface{}{
+				"kubernetes": map[string]interface{}{
+					"integers": "integers",
+				},
+			},
+			model.LabelSet{"integers": "[42 43]"},
 		},
 		{
 			"deep string",
