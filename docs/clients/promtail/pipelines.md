@@ -188,6 +188,8 @@ given log entry.
 
 Parsing stages:
 
+  * [docker](./stages/docker.md): Extract data by parsing the log line using the standard Docker format.
+  * [cri](./stages/cri.md): Extract data by parsing the log line using the standard CRI format.
   * [regex](./stages/regex.md): Extract data using a regular expression.
   * [json](./stages/json.md): Extract data by parsing the log line as JSON.
 
