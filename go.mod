@@ -3,8 +3,6 @@ module github.com/grafana/loki
 go 1.13
 
 require (
-	cloud.google.com/go/bigtable v1.0.0 // indirect
-	cloud.google.com/go/storage v1.0.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
 	github.com/Microsoft/go-winio v0.4.12 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
@@ -53,7 +51,6 @@ require (
 	go.etcd.io/etcd v0.0.0-20190815204525-8f85f0dc2607 // indirect
 	go.opencensus.io v0.22.1 // indirect
 	go.uber.org/atomic v1.4.0 // indirect
-	golang.org/x/exp v0.0.0-20190919035709-81c71964d733 // indirect
 	golang.org/x/net v0.0.0-20190923162816-aa69164e4478
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0

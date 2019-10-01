@@ -992,8 +992,10 @@ type ObjectAttrs struct {
 	// StorageClass is the storage class of the object.
 	// This value defines how objects in the bucket are stored and
 	// determines the SLA and the cost of storage. Typical values are
-	// "NEARLINE", "COLDLINE" and "STANDARD".
-	// It defaults to "STANDARD".
+	// "MULTI_REGIONAL", "REGIONAL", "NEARLINE", "COLDLINE", "STANDARD"
+	// and "DURABLE_REDUCED_AVAILABILITY".
+	// It defaults to "STANDARD", which is equivalent to "MULTI_REGIONAL"
+	// or "REGIONAL" depending on the bucket's location settings.
 	StorageClass string
 
 	// Created is the time the object was created. This field is read-only.

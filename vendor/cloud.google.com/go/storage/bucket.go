@@ -267,8 +267,14 @@ type BucketAttrs struct {
 
 	// StorageClass is the default storage class of the bucket. This defines
 	// how objects in the bucket are stored and determines the SLA
-	// and the cost of storage. Typical values are "NEARLINE", "COLDLINE" and
-	// "STANDARD". Defaults to "STANDARD".
+	// and the cost of storage. Typical values are "MULTI_REGIONAL",
+	// "REGIONAL", "NEARLINE", "COLDLINE", "STANDARD" and
+	// "DURABLE_REDUCED_AVAILABILITY". Defaults to "STANDARD", which
+	// is equivalent to "MULTI_REGIONAL" or "REGIONAL" depending on
+	// the bucket's location settings.
+	//
+	// "DURABLE_REDUCED_AVAILABILITY", "MULTI_REGIONAL" and "REGIONAL"
+	// are considered legacy storage classes.
 	StorageClass string
 
 	// Created is the creation time of the bucket.
@@ -440,7 +446,8 @@ type LifecycleCondition struct {
 	// MatchesStorageClasses is the condition matching the object's storage
 	// class.
 	//
-	// Values include "NEARLINE", "COLDLINE" and "STANDARD".
+	// Values include "MULTI_REGIONAL", "REGIONAL", "NEARLINE", "COLDLINE",
+	// "STANDARD", and "DURABLE_REDUCED_AVAILABILITY".
 	MatchesStorageClasses []string
 
 	// NumNewerVersions is the condition matching objects with a number of newer versions.
