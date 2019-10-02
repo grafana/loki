@@ -149,6 +149,7 @@ func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, err
 	stream = newStream(fp, labels, i.blockSize)
 	i.index.Add(labels, fp)
 	i.streams[fp] = stream
+	memoryStreams.Inc()
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(stream)
 
