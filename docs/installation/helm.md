@@ -39,14 +39,14 @@ $ helm upgrade --install loki loki/loki --set "key1=val1,key2=val2,..."
 ### Deploy Loki Stack (Loki, Promtail, Grafana, Prometheus)
 
 ```bash
-$ helm upgrade --install loki loki/loki-stack  --set grafana.enabled=true
+$ helm upgrade --install loki loki/loki-stack  --set grafana.enabled=true,prometheus.enabled=true,prometheus.alertmanager.persistentVolume.enabled=false,prometheus.server.persistentVolume.enabled=false
 ```
 
 ### Deploy Loki Stack (Loki, fluent-bit, Grafana, Prometheus)
 
 ```bash
 $ helm upgrade --install loki loki/loki-stack \
-    --set fluent-bit.enabled=true,promtail.enabled=false,grafana.enabled=true
+    --set fluent-bit.enabled=true,promtail.enabled=false,grafana.enabled=true,prometheus.enabled=true,prometheus.alertmanager.persistentVolume.enabled=false,prometheus.server.persistentVolume.enabled=false
 ```
 
 ## Deploy Grafana to your cluster
