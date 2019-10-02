@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,7 +22,7 @@ import (
 
 const (
 	queryPath       = "/loki/api/v1/query?query=%s&limit=%d&time=%d&direction=%s"
-	queryRangePath  = "/loki/api/v1/query_range?query=%s&limit=%d&start=%d&end=%d&direction=%s"
+	queryRangePath  = "/loki/api/v1/query_range"
 	labelsPath      = "/loki/api/v1/label"
 	labelValuesPath = "/loki/api/v1/label/%s/values"
 	tailPath        = "/loki/api/v1/tail?query=%s&delay_for=%d&limit=%d&start=%d"
@@ -52,16 +53,21 @@ func (c *Client) Query(queryStr string, limit int, time time.Time, direction log
 // QueryRange uses the /api/v1/query_range endpoint to execute a range query
 // excluding interfacer b/c it suggests taking the interface promql.Node instead of logproto.Direction b/c it happens to have a String() method
 // nolint:interfacer
-func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
-	path := fmt.Sprintf(queryRangePath,
-		url.QueryEscape(queryStr), // query
-		limit,                     // limit
-		from.UnixNano(),           // start
-		through.UnixNano(),        // end
-		direction.String(),        // direction
-	)
+func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
+	params := url.Values{}
+	params.Set("query", queryStr)
+	params.Set("limit", strconv.Itoa(limit))
+	params.Set("start", strconv.FormatInt(from.UnixNano(), 10))
+	params.Set("end", strconv.FormatInt(through.UnixNano(), 10))
+	params.Set("direction", direction.String())
 
-	return c.doQuery(path, quiet)
+	// The step is optional, so we do set it only if provided,
+	// otherwise we do leverage on the API defaults
+	if step != 0 {
+		params.Set("step", strconv.FormatInt(int64(step.Seconds()), 10))
+	}
+
+	return c.doQuery(queryRangePath+"?"+params.Encode(), quiet)
 }
 
 // ListLabelNames uses the /api/v1/label endpoint to list label names
