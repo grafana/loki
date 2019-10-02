@@ -116,14 +116,14 @@ local utils = import "mixin-utils/utils.libsonnet";
         )
         .addPanel(
           g.panel('Entries') +
-          g.queryPanel('sum(rate(loki_chunk_store_index_entries_per_chunk_sum{cluster="$cluster", job="$namespace/ingester"}[5m])) / sum(rate(loki_chunk_store_index_entries_per_chunk_count{cluster="$cluster", job="$namespace/ingester"}[5m]))', 'entries'),
+          g.queryPanel('sum(rate(cortex_chunk_store_index_entries_per_chunk_sum{cluster="$cluster", job="$namespace/ingester"}[5m])) / sum(rate(cortex_chunk_store_index_entries_per_chunk_count{cluster="$cluster", job="$namespace/ingester"}[5m]))', 'entries'),
         ),
       )
       .addRow(
         g.row('Flush Stats')
         .addPanel(
           g.panel('Queue Length') +
-          g.queryPanel('loki_ingester_flush_queue_length{cluster="$cluster", job="$namespace/ingester"}', '{{instance}}'),
+          g.queryPanel('cortex_ingester_flush_queue_length{cluster="$cluster", job="$namespace/ingester"}', '{{instance}}'),
         )
         .addPanel(
           g.panel('Flush Rate') +
