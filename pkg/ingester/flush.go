@@ -22,6 +22,10 @@ import (
 )
 
 var (
+	memoryChunks = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "loki_ingester_memory_chunks",
+		Help: "The total number of chunks in memory.",
+	})
 	chunkEntries = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "loki_ingester_chunk_entries",
 		Help:    "Distribution of stored chunk entries (when stored).",
@@ -234,6 +238,7 @@ func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) bool {
 func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 	now := time.Now()
 
+	prevNumChunks := len(stream.chunks)
 	for len(stream.chunks) > 0 {
 		if stream.chunks[0].flushed.IsZero() || now.Sub(stream.chunks[0].flushed) < i.cfg.RetainPeriod {
 			break
@@ -242,6 +247,7 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 		stream.chunks[0].chunk = nil // erase reference so the chunk can be garbage-collected
 		stream.chunks = stream.chunks[1:]
 	}
+	memoryChunks.Sub(float64(prevNumChunks - len(stream.chunks)))
 
 	if len(stream.chunks) == 0 {
 		delete(instance.streams, stream.fp)

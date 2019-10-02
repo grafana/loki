@@ -92,7 +92,12 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 		i.addTailersToNewStream(stream)
 	}
 
-	return stream.consumeChunk(ctx, chunk)
+	err := stream.consumeChunk(ctx, chunk)
+	if err != nil {
+		memoryChunks.Inc()
+	}
+
+	return err
 }
 
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
@@ -113,10 +118,13 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
+		prevNumChunks := len(stream.chunks)
 		if err := stream.Push(ctx, s.Entries); err != nil {
 			appendErr = err
 			continue
 		}
+
+		memoryChunks.Add(float64(len(stream.chunks) - prevNumChunks))
 	}
 
 	return appendErr
