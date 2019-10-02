@@ -32,6 +32,10 @@ var (
 )
 
 var (
+	memoryStreams = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "loki_ingester_memory_streams",
+		Help: "The total number of streams in memory.",
+	})
 	streamsCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "ingester_streams_created_total",
@@ -89,6 +93,7 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 		i.index.Add(labels, fp)
 		i.streams[fp] = stream
 		i.streamsCreatedTotal.Inc()
+		memoryStreams.Inc()
 		i.addTailersToNewStream(stream)
 	}
 

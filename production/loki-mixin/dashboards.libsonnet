@@ -92,7 +92,7 @@ local utils = import "mixin-utils/utils.libsonnet";
         )
         .addPanel(
           g.panel('Chunks per series') +
-          g.queryPanel('sum(loki_ingester_memory_chunks{cluster="$cluster", job="$namespace/ingester"}) / sum(loki_ingester_memory_series{job="$namespace/ingester"})', 'chunks'),
+          g.queryPanel('sum(loki_ingester_memory_chunks{cluster="$cluster", job="$namespace/ingester"}) / sum(loki_ingester_memory_streams{job="$namespace/ingester"})', 'chunks'),
         )
       )
       .addRow(
