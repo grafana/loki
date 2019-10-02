@@ -205,7 +205,10 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 		}
 		resp, err = querierTailClient.Recv()
 		if err != nil {
-			level.Error(util.Logger).Log("Error receiving response from grpc tail client", fmt.Sprintf("%v", err))
+			// We don't want to log error when its due to stopping the tail request
+			if !t.stopped {
+				level.Error(util.Logger).Log("Error receiving response from grpc tail client", fmt.Sprintf("%v", err))
+			}
 			break
 		}
 		t.pushTailResponseFromIngester(resp)
