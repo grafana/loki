@@ -157,6 +157,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 		cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
 		cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 		cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
+		cmd.Flag("step", "Query resolution step width").Default("30s").DurationVar(&query.Step)
 	}
 
 	cmd.Flag("forward", "Scan forwards through logs.").Default("false").BoolVar(&query.Forward)
