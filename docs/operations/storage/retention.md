@@ -29,6 +29,10 @@ however, that this only deletes the log content and keeps the label index
 intact; you will still be able to see related labels but will be unable to
 retrieve the deleted log content.
 
+For further details on the Table Manager internals, refer to the
+[Table Manager](./table-manager.md) documentation.
+
+
 ## Example Configuration
 
 Example configuration with GCS with a 30 day retention:

@@ -124,7 +124,7 @@ index storage:
 ```yaml
 schema_config:
   configs:
-    - from: 0
+    - from: 2018-04-15
       store: dynamo
       object_store: s3
       schema: v9
