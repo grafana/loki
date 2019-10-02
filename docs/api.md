@@ -199,7 +199,7 @@ accepts the following query parameters in the URL:
 - `limit`: The max number of entries to return
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
 - `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
-- `step`: Query resolution step width in seconds. Defaults to 1.
+- `step`: Query resolution step width in seconds. Defaults to a dynamic value based on `start` and `end`.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 
 Requests against this endpoint require Loki to query the index store in order to

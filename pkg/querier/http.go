@@ -32,7 +32,6 @@ const (
 	defaultSince         = 1 * time.Hour
 	wsPingPeriod         = 1 * time.Second
 	maxDelayForInTailing = 5
-	defaultStep          = 1 // 1 seconds
 )
 
 // nolint
@@ -85,6 +84,12 @@ func directionParam(values url.Values, name string, def logproto.Direction) (log
 	return logproto.Direction(d), nil
 }
 
+// defaultQueryRangeStep returns the default step used in the query range API,
+// which is dinamically calculated based on the time range
+func defaultQueryRangeStep(start time.Time, end time.Time) int {
+	return int(math.Max(math.Floor(end.Sub(start).Seconds()/250), 1))
+}
+
 func httpRequestToInstantQueryRequest(httpRequest *http.Request) (*instantQueryRequest, error) {
 	params := httpRequest.URL.Query()
 	queryRequest := instantQueryRequest{
@@ -111,21 +116,24 @@ func httpRequestToInstantQueryRequest(httpRequest *http.Request) (*instantQueryR
 }
 
 func httpRequestToRangeQueryRequest(httpRequest *http.Request) (*rangeQueryRequest, error) {
+	var err error
+
 	params := httpRequest.URL.Query()
 	queryRequest := rangeQueryRequest{
 		query: params.Get("query"),
 	}
 
-	step, err := intParam(params, "step", defaultStep)
+	queryRequest.limit, queryRequest.start, queryRequest.end, err = httpRequestToLookback(httpRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	step, err := intParam(params, "step", defaultQueryRangeStep(queryRequest.start, queryRequest.end))
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 	queryRequest.step = time.Duration(step) * time.Second
 
-	queryRequest.limit, queryRequest.start, queryRequest.end, err = httpRequestToLookback(httpRequest)
-	if err != nil {
-		return nil, err
-	}
 	queryRequest.direction, err = directionParam(params, "direction", logproto.BACKWARD)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
