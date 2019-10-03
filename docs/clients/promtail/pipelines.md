@@ -18,7 +18,7 @@ stages:
     2. Change the timestamp of the log line
     3. Change the content of the log line
     4. Create a metric based on the extracted data
-4. **Filtering stages** optionally apply a subset of stages based on some
+4. **Filtering stages** optionally apply a subset of stages or drop entries based on some
    condition.
 
 Typical pipelines will start with a parsing stage (such as a
@@ -28,7 +28,7 @@ something with that extract data. The most common action stage will be a
 [labels](./stages/labels.md) stage to turn extracted data into a label.
 
 A common stage will also be the [match](./stages/match.md) stage to selectively
-apply stages based on the current labels.
+apply stages or drop entries based on a [LogQL stream selector and filter expressions](../../logql.md).
 
 Note that pipelines can not currently be used to deduplicate logs; Loki will
 receive the same log line multiple times if, for example:
@@ -76,9 +76,9 @@ scrape_configs:
           source: timestamp
 
   # This stage is only going to run if the scraped target has a label of
-  # "name" with a value of "nginx".
+  # "name" with a value of "nginx" and if the log line contains the word "GET"
   - match:
-      selector: '{name="nginx"}'
+      selector: '{name="nginx"} |= "GET"'
       stages:
       # This regex stage extracts a new output by matching against some
       # values and capturing the rest.
@@ -126,10 +126,10 @@ scrape_configs:
           level:
           component:
 
-  # This stage will only run if the scraped target has a label of "app"
-  # and a value of "some-app".
+  # This stage will only run if the scraped target has a label "app"
+  # with a value of "some-app" and the log line doesn't contains the word "info"
   - match:
-      selector: '{app="some-app"}'
+      selector: '{app="some-app"} != "info"'
       stages:
       # The regex stage tries to extract a Go panic by looking for panic:
       # in the log message.
@@ -207,4 +207,3 @@ Action stages:
 Filtering stages:
 
   * [match](./stages/match.md): Conditionally run stages based on the label set.
-

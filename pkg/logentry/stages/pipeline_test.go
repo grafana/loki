@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
 	"gopkg.in/yaml.v2"
 )
 
@@ -165,6 +164,67 @@ func BenchmarkPipeline(b *testing.B) {
 				extracted := map[string]interface{}{}
 				pl.Process(lb, extracted, &ts, &entry)
 			}
+		})
+	}
+}
+
+type stubHandler struct {
+	bool
+}
+
+func (s *stubHandler) Handle(labels model.LabelSet, time time.Time, entry string) error {
+	s.bool = true
+	return nil
+}
+
+func TestPipeline_Wrap(t *testing.T) {
+	now := time.Now()
+	var config map[string]interface{}
+	err := yaml.Unmarshal([]byte(testYaml), &config)
+	if err != nil {
+		panic(err)
+	}
+	p, err := NewPipeline(util.Logger, config["pipeline_stages"].([]interface{}), nil, prometheus.DefaultRegisterer)
+	if err != nil {
+		panic(err)
+	}
+
+	tests := map[string]struct {
+		labels     model.LabelSet
+		shouldSend bool
+	}{
+		"should drop": {
+			map[model.LabelName]model.LabelValue{
+				"__drop__":    "true",
+				"stream":      "stderr",
+				"action":      "GET",
+				"status_code": "200",
+			},
+			false,
+		},
+		"should send": {
+			map[model.LabelName]model.LabelValue{
+				"stream":      "stderr",
+				"action":      "GET",
+				"status_code": "200",
+			},
+			true,
+		},
+	}
+
+	for tName, tt := range tests {
+		tt := tt
+		t.Run(tName, func(t *testing.T) {
+			t.Parallel()
+			extracted := map[string]interface{}{}
+			p.Process(tt.labels, extracted, &now, &rawTestLine)
+			stub := &stubHandler{}
+			handler := p.Wrap(stub)
+			if err := handler.Handle(tt.labels, now, rawTestLine); err != nil {
+				t.Fatalf("failed to handle entry: %v", err)
+			}
+			assert.Equal(t, stub.bool, tt.shouldSend)
+
 		})
 	}
 }
