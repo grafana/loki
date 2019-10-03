@@ -193,6 +193,9 @@ extraVolumes: []
 #   secret:
 #     secretName: reverse-proxy-auth-config
 
+## Extra volume mounts that will be added to the loki container
+extraVolumeMounts: []
+
 extraPorts: []
 ## Additional ports to the loki services. Useful to expose extra container ports.
 # - port: 11811
