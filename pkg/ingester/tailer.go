@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"encoding/binary"
-	"fmt"
 	"hash/fnv"
 	"sync"
 	"time"
@@ -94,7 +93,7 @@ func (t *tailer) loop() {
 			if err != nil {
 				// Don't log any error due to tail client closing the connection
 				if !util.IsConnCanceled(err) {
-					level.Error(cortex_util.Logger).Log("Error writing to tail client", fmt.Sprintf("%v", err))
+					level.Error(cortex_util.Logger).Log("msg", "Error writing to tail client", "err", err)
 				}
 				t.close()
 				return
