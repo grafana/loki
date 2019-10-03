@@ -176,18 +176,37 @@ type testIngesterClient struct {
 func (c *testIngesterClient) TransferChunks(context.Context, ...grpc.CallOption) (logproto.Ingester_TransferChunksClient, error) {
 	chunkCh := make(chan *logproto.TimeSeriesChunk)
 	respCh := make(chan *logproto.TransferChunksResponse)
+	waitCh := make(chan bool)
 
-	client := &testTransferChunksClient{ch: chunkCh, resp: respCh}
+	client := &testTransferChunksClient{ch: chunkCh, resp: respCh, wait: waitCh}
 	go func() {
 		server := &testTransferChunksServer{ch: chunkCh, resp: respCh}
 		err := c.i.TransferChunks(server)
 		require.NoError(c.t, err)
 	}()
 
+	// After 50ms, we try killing the target ingester's lifecycler to verify
+	// that it obtained a lock on the shutdown process. This operation should
+	// block until the transfer completes.
+	//
+	// Then after another 50ms, we also allow data to start sending. This tests an issue
+	// where an ingester is shut down before it completes the handoff and ends up in an
+	// unhealthy state, permanently stuck in the handler for claiming tokens.
+	go func() {
+		time.Sleep(time.Millisecond * 50)
+		c.i.lifecycler.Shutdown()
+	}()
+
+	go func() {
+		time.Sleep(time.Millisecond * 100)
+		close(waitCh)
+	}()
+
 	return client, nil
 }
 
 type testTransferChunksClient struct {
+	wait chan bool
 	ch   chan *logproto.TimeSeriesChunk
 	resp chan *logproto.TransferChunksResponse
 
@@ -195,11 +214,13 @@ type testTransferChunksClient struct {
 }
 
 func (c *testTransferChunksClient) Send(chunk *logproto.TimeSeriesChunk) error {
+	<-c.wait
 	c.ch <- chunk
 	return nil
 }
 
 func (c *testTransferChunksClient) CloseAndRecv() (*logproto.TransferChunksResponse, error) {
+	<-c.wait
 	close(c.ch)
 	resp := <-c.resp
 	close(c.resp)
