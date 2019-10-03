@@ -1,7 +1,6 @@
 package querier
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -126,12 +125,12 @@ func (t *Tailer) loop() {
 			if numClients == 0 {
 				// All the connections to ingesters are dropped, try reconnecting or return error
 				if err := t.checkIngesterConnections(); err != nil {
-					level.Error(util.Logger).Log("Error reconnecting to ingesters", fmt.Sprintf("%v", err))
+					level.Error(util.Logger).Log("msg", "Error reconnecting to ingesters", "err", err)
 				} else {
 					continue
 				}
 				if err := t.close(); err != nil {
-					level.Error(util.Logger).Log("Error closing Tailer", fmt.Sprintf("%v", err))
+					level.Error(util.Logger).Log("msg", "Error closing Tailer", "err", err)
 				}
 				t.closeErrChan <- errors.New("all ingesters closed the connection")
 				return
@@ -199,13 +198,16 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 	for {
 		if t.stopped {
 			if err := querierTailClient.CloseSend(); err != nil {
-				level.Error(util.Logger).Log("Error closing grpc tail client", fmt.Sprintf("%v", err))
+				level.Error(util.Logger).Log("msg", "Error closing grpc tail client", "err", err)
 			}
 			break
 		}
 		resp, err = querierTailClient.Recv()
 		if err != nil {
-			level.Error(util.Logger).Log("Error receiving response from grpc tail client", fmt.Sprintf("%v", err))
+			// We don't want to log error when its due to stopping the tail request
+			if !t.stopped {
+				level.Error(util.Logger).Log("msg", "Error receiving response from grpc tail client", "err", err)
+			}
 			break
 		}
 		t.pushTailResponseFromIngester(resp)
