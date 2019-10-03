@@ -33,6 +33,11 @@ var (
 // TransferChunks receives all chunks from another ingester. The Ingester
 // must be in PENDING state or else the call will fail.
 func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer) error {
+	// Prevent a shutdown from happening until we've completely finished a handoff
+	// from a leaving ingester.
+	i.shutdownMtx.Lock()
+	defer i.shutdownMtx.Unlock()
+
 	// Entry JOINING state (only valid from PENDING)
 	if err := i.lifecycler.ChangeState(stream.Context(), ring.JOINING); err != nil {
 		return err
@@ -122,8 +127,12 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 
 // StopIncomingRequests implements ring.Lifecycler.
 func (i *Ingester) StopIncomingRequests() {
+	i.shutdownMtx.Lock()
+	defer i.shutdownMtx.Unlock()
+
 	i.instancesMtx.Lock()
 	defer i.instancesMtx.Unlock()
+
 	i.readonly = true
 }
 
