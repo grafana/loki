@@ -114,7 +114,7 @@ func (m *matcherStage) Process(labels model.LabelSet, extracted map[string]inter
 	if m.filter == nil || m.filter([]byte(*entry)) {
 		// Adds the drop label to not be sent by the api.EntryHandler
 		if m.drop {
-			labels[dropLabel] = "true"
+			labels[dropLabel] = ""
 			return
 		}
 		m.pipeline.Process(labels, extracted, t, entry)

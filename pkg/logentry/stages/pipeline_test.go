@@ -195,7 +195,7 @@ func TestPipeline_Wrap(t *testing.T) {
 	}{
 		"should drop": {
 			map[model.LabelName]model.LabelValue{
-				"__drop__":    "true",
+				dropLabel:     "true",
 				"stream":      "stderr",
 				"action":      "GET",
 				"status_code": "200",
