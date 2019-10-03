@@ -152,7 +152,7 @@ func (m *TableManager) Start() {
 	m.wait.Add(1)
 	go m.loop()
 
-	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled == true {
+	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled {
 		m.wait.Add(1)
 		go m.bucketRetentionLoop()
 	}

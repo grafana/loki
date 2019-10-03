@@ -233,7 +233,6 @@ func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batc
 	}
 
 	s.cache.Store(ctx, hashed, bufs)
-	return
 }
 
 func (s *cachingIndexClient) cacheFetch(ctx context.Context, keys []string) (batches []ReadBatch, missed []string) {
