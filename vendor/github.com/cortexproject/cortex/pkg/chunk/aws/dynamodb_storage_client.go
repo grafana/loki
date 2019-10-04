@@ -28,7 +28,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	awscommon "github.com/weaveworks/common/aws"
 	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/common/user"
 )
 
 const (
@@ -127,6 +126,7 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 type StorageConfig struct {
 	DynamoDBConfig
 	S3               flagext.URLValue
+	BucketNames      string
 	S3ForcePathStyle bool
 }
 
@@ -137,6 +137,7 @@ func (cfg *StorageConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.S3, "s3.url", "S3 endpoint URL with escaped Key and Secret encoded. "+
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<bucket-name> to use a mock in-memory implementation.")
 	f.BoolVar(&cfg.S3ForcePathStyle, "s3.force-path-style", false, "Set this to `true` to force the request to use path-style addressing.")
+	f.StringVar(&cfg.BucketNames, "s3.buckets", "", "Comma separated list of bucket names to evenly distribute chunks over. Overrides any buckets specified in s3.url flag")
 }
 
 type dynamoDBStorageClient struct {
@@ -193,7 +194,6 @@ func (a dynamoDBStorageClient) NewWriteBatch() chunk.WriteBatch {
 }
 
 func logWriteRetry(ctx context.Context, unprocessed dynamoDBWriteBatch) {
-	userID, _ := user.ExtractOrgID(ctx)
 	for table, reqs := range unprocessed {
 		dynamoThrottled.WithLabelValues("DynamoDB.BatchWriteItem", table).Add(float64(len(reqs)))
 		for _, req := range reqs {
@@ -207,7 +207,7 @@ func logWriteRetry(ctx context.Context, unprocessed dynamoDBWriteBatch) {
 			if rangeAttr, ok := item[rangeKey]; ok {
 				rnge = string(rangeAttr.B)
 			}
-			util.Event().Log("msg", "store retry", "table", table, "userID", userID, "hashKey", hash, "rangeKey", rnge)
+			util.Event().Log("msg", "store retry", "table", table, "hashKey", hash, "rangeKey", rnge)
 		}
 	}
 }

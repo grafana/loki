@@ -185,7 +185,7 @@ func (c *deltaEncodedChunk) Slice(_, _ model.Time) Chunk {
 }
 
 // NewIterator implements chunk.
-func (c *deltaEncodedChunk) NewIterator() Iterator {
+func (c *deltaEncodedChunk) NewIterator(_ Iterator) Iterator {
 	return newIndexAccessingChunkIterator(c.Len(), &deltaEncodedIndexAccessor{
 		c:      *c,
 		baseT:  c.baseTime(),
