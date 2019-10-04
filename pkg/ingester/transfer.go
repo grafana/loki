@@ -79,6 +79,33 @@ func (i *Ingester) TransferChunks(stream logproto.Ingester_TransferChunksServer)
 		if fromIngesterID == "" {
 			fromIngesterID = chunkSet.FromIngesterId
 			level.Info(util.Logger).Log("msg", "processing TransferChunks request", "from_ingester", fromIngesterID)
+
+			// Ring gossiping: check if "from" ingester is in LEAVING state. It should be, but we may not see that yet.
+			// If ingester is not LEAVING yet, we don't accept this transfer, as claiming tokens would end up
+			// with this ingester owning no tokens.
+			// Hopefully the leaving ingester will retry again.
+			v, err := i.lifecycler.KVStore.Get(stream.Context(), ring.ConsulKey)
+			if err != nil {
+				util.Logger.Log("msg", "TransferChunks error", "err", err)
+				return err
+			}
+			if v == nil {
+				err = fmt.Errorf("ring not found?!? (got nil)")
+				util.Logger.Log("msg", "TransferChunks error", "err", err)
+				return err
+			}
+			r, ok := v.(*ring.Desc)
+			if !ok || r == nil {
+				err = fmt.Errorf("ring not found?!? (got %T instead)", v)
+				util.Logger.Log("msg", "TransferChunks error", "err", err)
+				return err
+			}
+
+			if r.Ingesters == nil || r.Ingesters[fromIngesterID].State != ring.LEAVING {
+				err = fmt.Errorf("source ingester is not in a LEAVING state, found state=%v", r.Ingesters[fromIngesterID].State)
+				util.Logger.Log("msg", "TransferChunks error", "err", err)
+				return err
+			}
 		}
 
 		userCtx := user.InjectOrgID(stream.Context(), chunkSet.UserId)
