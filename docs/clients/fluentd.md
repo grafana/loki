@@ -120,8 +120,8 @@ environment variables - https://github.com/excon/excon#proxy-support
 
 The URL of the Loki server to send logs to. When sending data the publish path
 (`/loki/api/v1/push`) will automatically be appended. By default the URL is set to
-`https://logs-us-west1.grafana.net`, the URL of the Grafana Labs [hosted
-Loki](https://grafana.com/loki) service.
+`https://logs-us-west1.grafana.net`, the url of the
+[Grafana Cloud](https://grafana.com/oss/loki) service.
 
 ### `username` / `password`
 

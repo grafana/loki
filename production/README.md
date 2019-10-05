@@ -12,7 +12,7 @@ For the various ways to run `promtail`, the tailing agent, see our [Promtail doc
 
 ## Get a free hosted demo of Grafana Cloud: Logs
 
-Grafana is running a free, hosted demo cluster of Loki. Find instructions for getting access at [grafana.com/loki](https://grafana.com/loki).
+Grafana is running a free, hosted demo cluster of Loki. Find instructions for getting access at [Grafana Cloud](https://grafana.com/oss/loki).
 
 The demo includes complimentary metrics (Prometheus or Graphite) that help illustrate the experience of easily switching between logs and metrics.
 

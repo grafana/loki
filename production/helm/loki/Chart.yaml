@@ -3,7 +3,7 @@ version: 0.15.0
 appVersion: v0.3.0
 kubeVersion: "^1.10.0-0"
 description: "Loki: like Prometheus, but for logs."
-home: https://grafana.com/loki
+home: https://grafana.com/oss/loki
 icon: https://github.com/grafana/loki/raw/master/docs/logo.png
 sources:
   - https://github.com/grafana/loki

@@ -3,7 +3,7 @@ version: 0.12.2
 appVersion: v0.3.0
 kubeVersion: "^1.10.0-0"
 description: "Responsible for gathering logs and sending them to Loki"
-home: https://grafana.com/loki
+home: https://grafana.com/oss/loki
 icon: https://github.com/grafana/loki/raw/master/docs/logo.png
 sources:
 - https://github.com/grafana/loki
