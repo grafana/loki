@@ -24,7 +24,7 @@ stages:
 Typical pipelines will start with a parsing stage (such as a
 [regex](./stages/regex.md) or [json](./stages/json.md) stage) to extract data
 from the log line. Then, a series of action stages will be present to do
-something with that extract data. The most common action stage will be a
+something with that extracted data. The most common action stage will be a
 [labels](./stages/labels.md) stage to turn extracted data into a label.
 
 A common stage will also be the [match](./stages/match.md) stage to selectively
@@ -153,7 +153,7 @@ scrape_configs:
 The following sections further describe the types that are accessible to each
 stage (although not all may be used):
 
-##### Label Set
+#### Label Set
 
 The current set of labels for the log line. Initialized to be the set of labels
 that were scraped along with the log line. The label set is only modified by an
@@ -161,7 +161,7 @@ action stage, but filtering stages read from it.
 
 The final label set will be index by Loki and can be used for queries.
 
-##### Extracted Map
+#### Extracted Map
 
 A collection of key-value pairs extracted during a parsing stage. Subsequent
 stages operate on the extracted map, either transforming them or taking action
@@ -169,14 +169,22 @@ with them. At the end of a pipeline, the extracted map is discarded; for a
 parsing stage to be useful, it must always be paired with at least one action
 stage.
 
-##### Log Timestamp
+The extracted map is initialized with the same set of initial labels that were
+scraped along with the log line. This initial data allows for taking action on
+the values of labels inside pipeline stages that only manipulate the extracted
+map. For example, log entries tailed from files have the label `filename` whose
+value is the file path that was tailed. When a pipeline executes for that log
+entry, the initial extracted map would contain `filename` using the same value
+as the label.
+
+#### Log Timestamp
 
 The current timestamp for the log line. Action stages can modify this value.
 If left unset, it defaults to the time when the log was scraped.
 
 The final value for the timestamp is sent to Loki.
 
-##### Log Line
+#### Log Line
 
 The current log line, represented as text. Initialized to be the text that
 Promtail scraped. Action stages can modify this value.
