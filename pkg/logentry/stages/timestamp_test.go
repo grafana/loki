@@ -7,10 +7,12 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	lokiutil "github.com/grafana/loki/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var testTimestampYaml = `
@@ -128,6 +130,14 @@ func TestTimestampValidation(t *testing.T) {
 			testString:   "1562708916919",
 			expectedTime: time.Date(2019, 7, 9, 21, 48, 36, 919*1000000, time.UTC),
 		},
+		"should fail on invalid action on failure": {
+			config: &TimestampConfig{
+				Source:          "source1",
+				Format:          time.RFC3339,
+				ActionOnFailure: lokiutil.StringRef("foo"),
+			},
+			err: fmt.Errorf(ErrInvalidActionOnFailure, TimestampActionOnFailureOptions),
+		},
 	}
 	for name, test := range tests {
 		test := test
@@ -229,7 +239,129 @@ func TestTimestampStage_Process(t *testing.T) {
 			lbls := model.LabelSet{}
 			st.Process(lbls, test.extracted, &ts, nil)
 			assert.Equal(t, test.expected.UnixNano(), ts.UnixNano())
+		})
+	}
+}
 
+func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
+	t.Parallel()
+
+	type inputEntry struct {
+		timestamp time.Time
+		labels    model.LabelSet
+		extracted map[string]interface{}
+	}
+
+	tests := map[string]struct {
+		config             TimestampConfig
+		inputEntries       []inputEntry
+		expectedTimestamps []time.Time
+	}{
+		"should keep the parsed timestamp on success": {
+			config: TimestampConfig{
+				Source:          "time",
+				Format:          time.RFC3339Nano,
+				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
+			},
+			inputEntries: []inputEntry{
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.500000000Z"}},
+			},
+			expectedTimestamps: []time.Time{
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.500000000Z"),
+			},
+		},
+		"should fudge the timestamp based on the last known value on timestamp parsing failure": {
+			config: TimestampConfig{
+				Source:          "time",
+				Format:          time.RFC3339Nano,
+				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
+			},
+			inputEntries: []inputEntry{
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{}},
+			},
+			expectedTimestamps: []time.Time{
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000001Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000002Z"),
+			},
+		},
+		"should fudge the timestamp based on the last known value for the right file target": {
+			config: TimestampConfig{
+				Source:          "time",
+				Format:          time.RFC3339Nano,
+				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
+			},
+			inputEntries: []inputEntry{
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/1.log"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/2.log"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.800000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/1.log"}, extracted: map[string]interface{}{}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/2.log"}, extracted: map[string]interface{}{}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/1.log"}, extracted: map[string]interface{}{}},
+			},
+			expectedTimestamps: []time.Time{
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.800000000Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000001Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.800000001Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000002Z"),
+			},
+		},
+		"should keep the input timestamp if unable to fudge because there's no known valid timestamp yet": {
+			config: TimestampConfig{
+				Source:          "time",
+				Format:          time.RFC3339Nano,
+				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
+			},
+			inputEntries: []inputEntry{
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/1.log"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/2.log"}, extracted: map[string]interface{}{}},
+			},
+			expectedTimestamps: []time.Time{
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
+				time.Unix(1, 0),
+			},
+		},
+		"should keep the input timestamp on action_on_failure=skip": {
+			config: TimestampConfig{
+				Source:          "time",
+				Format:          time.RFC3339Nano,
+				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureSkip),
+			},
+			inputEntries: []inputEntry{
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{}},
+			},
+			expectedTimestamps: []time.Time{
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
+				time.Unix(1, 0),
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Ensure the test has been correctly set
+			require.Equal(t, len(testData.inputEntries), len(testData.expectedTimestamps))
+
+			s, err := newTimestampStage(util.Logger, testData.config)
+			require.NoError(t, err)
+
+			for i, inputEntry := range testData.inputEntries {
+				extracted := inputEntry.extracted
+				timestamp := inputEntry.timestamp
+				entry := ""
+
+				s.Process(inputEntry.labels, extracted, &timestamp, &entry)
+				assert.Equal(t, testData.expectedTimestamps[i], timestamp)
+			}
 		})
 	}
 }
