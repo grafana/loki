@@ -187,6 +187,7 @@ extraContainers: []
 #     - name: reverse-proxy-auth-config
 #       mountPath: /etc/reverse-proxy-conf
 
+
 extraVolumes: []
 ## Additional volumes to the loki pod.
 # - name: reverse-proxy-auth-config
@@ -202,3 +203,6 @@ extraPorts: []
 #   protocol: TCP
 #   name: http
 #   targetPort: http
+
+# Extra env variables to pass to the loki container
+env: []
