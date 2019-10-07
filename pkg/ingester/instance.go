@@ -98,7 +98,7 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 	}
 
 	err := stream.consumeChunk(ctx, chunk)
-	if err != nil {
+	if err == nil {
 		memoryChunks.Inc()
 	}
 
