@@ -21,6 +21,9 @@ const (
 	ErrMatchRequiresStages   = "match stage requires at least one additional stage to be defined in '- stages'"
 	ErrSelectorSyntax        = "invalid selector syntax for match stage"
 	ErrStagesWithDropLine    = "match stage configured to drop entries cannot contains stages"
+	ErrUnknownMatchAction    = "match stage action should be 'keep' or 'drop'"
+	MatchActionKeep          = "keep"
+	MatchActionDrop          = "drop"
 )
 
 // MatcherConfig contains the configuration for a matcherStage
@@ -28,7 +31,7 @@ type MatcherConfig struct {
 	PipelineName *string        `mapstructure:"pipeline_name"`
 	Selector     string         `mapstructure:"selector"`
 	Stages       PipelineStages `mapstructure:"stages"`
-	DropEntries  bool           `mapstructure:"drop_entries"`
+	Action       string         `mapstructure:"action"`
 }
 
 // validateMatcherConfig validates the MatcherConfig for the matcherStage
@@ -42,10 +45,18 @@ func validateMatcherConfig(cfg *MatcherConfig) (logql.LogSelectorExpr, error) {
 	if cfg.Selector == "" {
 		return nil, errors.New(ErrSelectorRequired)
 	}
-	if !cfg.DropEntries && (cfg.Stages == nil || len(cfg.Stages) == 0) {
+	switch cfg.Action {
+	case MatchActionKeep, MatchActionDrop:
+	case "":
+		cfg.Action = MatchActionKeep
+	default:
+		return nil, errors.New(ErrUnknownMatchAction)
+	}
+
+	if cfg.Action == MatchActionKeep && (cfg.Stages == nil || len(cfg.Stages) == 0) {
 		return nil, errors.New(ErrMatchRequiresStages)
 	}
-	if cfg.DropEntries && (cfg.Stages != nil && len(cfg.Stages) != 0) {
+	if cfg.Action == MatchActionDrop && (cfg.Stages != nil && len(cfg.Stages) != 0) {
 		return nil, errors.New(ErrStagesWithDropLine)
 	}
 
@@ -75,7 +86,7 @@ func newMatcherStage(logger log.Logger, jobName *string, config interface{}, reg
 	}
 
 	var pl *Pipeline
-	if !cfg.DropEntries {
+	if cfg.Action == MatchActionKeep {
 		var err error
 		pl, err = NewPipeline(logger, cfg.Stages, nPtr, registerer)
 		if err != nil {
@@ -91,7 +102,7 @@ func newMatcherStage(logger log.Logger, jobName *string, config interface{}, reg
 	return &matcherStage{
 		matchers: selector.Matchers(),
 		pipeline: pl,
-		drop:     cfg.DropEntries,
+		action:   cfg.Action,
 		filter:   filter,
 	}, nil
 }
@@ -101,7 +112,7 @@ type matcherStage struct {
 	matchers []*labels.Matcher
 	filter   logql.Filter
 	pipeline Stage
-	drop     bool
+	action   string
 }
 
 // Process implements Stage
@@ -112,12 +123,13 @@ func (m *matcherStage) Process(labels model.LabelSet, extracted map[string]inter
 		}
 	}
 	if m.filter == nil || m.filter([]byte(*entry)) {
-		// Adds the drop label to not be sent by the api.EntryHandler
-		if m.drop {
+		switch m.action {
+		case MatchActionDrop:
+			// Adds the drop label to not be sent by the api.EntryHandler
 			labels[dropLabel] = ""
-			return
+		case MatchActionKeep:
+			m.pipeline.Process(labels, extracted, t, entry)
 		}
-		m.pipeline.Process(labels, extracted, t, entry)
 	}
 }
 

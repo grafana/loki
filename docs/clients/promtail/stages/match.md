@@ -16,9 +16,9 @@ match:
   # concatenated with job_name using an underscore.
   [pipeline_name: <string>]
 
-  # When set to true (default to false), all entries matching the selector will
+  # When set to drop (default to keep), all entries matching the selector will
   # be dropped. Stages must not be defined when dropping entries.
-  [drop_entries: <bool>]
+  [action: <keep|drop>]
 
   # Nested set of pipeline stages only if the selector
   # matches the labels of the log entries:
@@ -58,13 +58,14 @@ pipeline_stages:
 - match:
     pipeline_name: "app2"
     selector: '{app="pokey"}'
+    action: keep
     stages:
     - json:
         expressions:
           msg: msg
 - match:
     selector: '{app="promtail"} |~ ".*noisy error.*"'
-    drop_entries: true
+    action: drop
 - output:
     source: msg
 ```

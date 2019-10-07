@@ -101,57 +101,55 @@ func TestMatcher(t *testing.T) {
 	tests := []struct {
 		selector string
 		labels   map[string]string
-		drop     bool
+		action   string
 
 		shouldDrop bool
 		shouldRun  bool
 		wantErr    bool
 	}{
-		{`{foo="bar"} |= "foo"`, map[string]string{"foo": "bar"}, false, false, true, false},
-		{`{foo="bar"} |~ "foo"`, map[string]string{"foo": "bar"}, false, false, true, false},
-		{`{foo="bar"} |= "bar"`, map[string]string{"foo": "bar"}, false, false, false, false},
-		{`{foo="bar"} |~ "bar"`, map[string]string{"foo": "bar"}, false, false, false, false},
-		{`{foo="bar"} != "bar"`, map[string]string{"foo": "bar"}, false, false, true, false},
-		{`{foo="bar"} !~ "bar"`, map[string]string{"foo": "bar"}, false, false, true, false},
-		{`{foo="bar"} != "foo"`, map[string]string{"foo": "bar"}, false, false, false, false},
-		{`{foo="bar"} |= "foo"`, map[string]string{"foo": "bar"}, true, true, false, false},
-		{`{foo="bar"} |~ "foo"`, map[string]string{"foo": "bar"}, true, true, false, false},
-		{`{foo="bar"} |= "bar"`, map[string]string{"foo": "bar"}, true, false, false, false},
-		{`{foo="bar"} |~ "bar"`, map[string]string{"foo": "bar"}, true, false, false, false},
-		{`{foo="bar"} != "bar"`, map[string]string{"foo": "bar"}, true, true, false, false},
-		{`{foo="bar"} !~ "bar"`, map[string]string{"foo": "bar"}, true, true, false, false},
-		{`{foo="bar"} != "foo"`, map[string]string{"foo": "bar"}, true, false, false, false},
-		{`{foo="bar"} !~ "[]"`, map[string]string{"foo": "bar"}, false, false, false, true},
-		{"foo", map[string]string{"foo": "bar"}, false, false, false, true},
-		{"{}", map[string]string{"foo": "bar"}, false, false, false, true},
-		{"{", map[string]string{"foo": "bar"}, false, false, false, true},
-		{"", map[string]string{"foo": "bar"}, false, false, true, true},
-		{`{foo="bar"}`, map[string]string{"foo": "bar"}, false, false, true, false},
-		{`{foo=""}`, map[string]string{"foo": "bar"}, false, false, false, false},
-		{`{foo=""}`, map[string]string{}, false, false, true, false},
-		{`{foo!="bar"}`, map[string]string{"foo": "bar"}, false, false, false, false},
-		{`{foo!="bar"}`, map[string]string{"foo": "bar"}, true, false, false, false},
-		{`{foo="bar",bar!="test"}`, map[string]string{"foo": "bar"}, false, false, true, false},
-		{`{foo="bar",bar!="test"}`, map[string]string{"foo": "bar"}, true, true, false, false},
-		{`{foo="bar",bar!="test"}`, map[string]string{"foo": "bar", "bar": "test"}, false, false, false, false},
-		{`{foo="bar",bar=~"te.*"}`, map[string]string{"foo": "bar", "bar": "test"}, true, true, false, false},
-		{`{foo="bar",bar=~"te.*"}`, map[string]string{"foo": "bar", "bar": "test"}, false, false, true, false},
-		{`{foo="bar",bar!~"te.*"}`, map[string]string{"foo": "bar", "bar": "test"}, false, false, false, false},
-		{`{foo="bar",bar!~"te.*"}`, map[string]string{"foo": "bar", "bar": "test"}, true, false, false, false},
+		{`{foo="bar"} |= "foo"`, map[string]string{"foo": "bar"}, MatchActionKeep, false, true, false},
+		{`{foo="bar"} |~ "foo"`, map[string]string{"foo": "bar"}, MatchActionKeep, false, true, false},
+		{`{foo="bar"} |= "bar"`, map[string]string{"foo": "bar"}, MatchActionKeep, false, false, false},
+		{`{foo="bar"} |~ "bar"`, map[string]string{"foo": "bar"}, MatchActionKeep, false, false, false},
+		{`{foo="bar"} != "bar"`, map[string]string{"foo": "bar"}, MatchActionKeep, false, true, false},
+		{`{foo="bar"} !~ "bar"`, map[string]string{"foo": "bar"}, MatchActionKeep, false, true, false},
+		{`{foo="bar"} != "foo"`, map[string]string{"foo": "bar"}, MatchActionKeep, false, false, false},
+		{`{foo="bar"} |= "foo"`, map[string]string{"foo": "bar"}, MatchActionDrop, true, false, false},
+		{`{foo="bar"} |~ "foo"`, map[string]string{"foo": "bar"}, MatchActionDrop, true, false, false},
+		{`{foo="bar"} |= "bar"`, map[string]string{"foo": "bar"}, MatchActionDrop, false, false, false},
+		{`{foo="bar"} |~ "bar"`, map[string]string{"foo": "bar"}, MatchActionDrop, false, false, false},
+		{`{foo="bar"} != "bar"`, map[string]string{"foo": "bar"}, MatchActionDrop, true, false, false},
+		{`{foo="bar"} !~ "bar"`, map[string]string{"foo": "bar"}, MatchActionDrop, true, false, false},
+		{`{foo="bar"} != "foo"`, map[string]string{"foo": "bar"}, MatchActionDrop, false, false, false},
+		{`{foo="bar"} !~ "[]"`, map[string]string{"foo": "bar"}, MatchActionDrop, false, false, true},
+		{"foo", map[string]string{"foo": "bar"}, MatchActionKeep, false, false, true},
+		{"{}", map[string]string{"foo": "bar"}, MatchActionKeep, false, false, true},
+		{"{", map[string]string{"foo": "bar"}, MatchActionKeep, false, false, true},
+		{"", map[string]string{"foo": "bar"}, MatchActionKeep, false, true, true},
+		{`{foo="bar"}`, map[string]string{"foo": "bar"}, MatchActionKeep, false, true, false},
+		{`{foo=""}`, map[string]string{"foo": "bar"}, MatchActionKeep, false, false, false},
+		{`{foo=""}`, map[string]string{}, MatchActionKeep, false, true, false},
+		{`{foo!="bar"}`, map[string]string{"foo": "bar"}, MatchActionKeep, false, false, false},
+		{`{foo!="bar"}`, map[string]string{"foo": "bar"}, MatchActionDrop, false, false, false},
+		{`{foo="bar",bar!="test"}`, map[string]string{"foo": "bar"}, MatchActionKeep, false, true, false},
+		{`{foo="bar",bar!="test"}`, map[string]string{"foo": "bar"}, MatchActionDrop, true, false, false},
+		{`{foo="bar",bar!="test"}`, map[string]string{"foo": "bar", "bar": "test"}, MatchActionKeep, false, false, false},
+		{`{foo="bar",bar=~"te.*"}`, map[string]string{"foo": "bar", "bar": "test"}, MatchActionDrop, true, false, false},
+		{`{foo="bar",bar=~"te.*"}`, map[string]string{"foo": "bar", "bar": "test"}, MatchActionKeep, false, true, false},
+		{`{foo="bar",bar!~"te.*"}`, map[string]string{"foo": "bar", "bar": "test"}, MatchActionKeep, false, false, false},
+		{`{foo="bar",bar!~"te.*"}`, map[string]string{"foo": "bar", "bar": "test"}, MatchActionDrop, false, false, false},
 
-		{`{foo=""}`, map[string]string{}, false, false, true, false},
+		{`{foo=""}`, map[string]string{}, MatchActionKeep, false, true, false},
 	}
 
 	for _, tt := range tests {
-		name := fmt.Sprintf("%s/%s", tt.selector, tt.labels)
-		if tt.drop {
-			name += "_drop"
-		}
+		name := fmt.Sprintf("%s/%s/%s", tt.selector, tt.labels, tt.action)
+
 		t.Run(name, func(t *testing.T) {
 			// Build a match config which has a simple label stage that when matched will add the test_label to
 			// the labels in the pipeline.
 			var stages PipelineStages
-			if !tt.drop {
+			if tt.action != MatchActionDrop {
 				stages = PipelineStages{
 					PipelineStage{
 						StageTypeLabel: LabelsConfig{
@@ -164,7 +162,7 @@ func TestMatcher(t *testing.T) {
 				nil,
 				tt.selector,
 				stages,
-				tt.drop,
+				tt.action,
 			}
 			s, err := newMatcherStage(util.Logger, nil, matchConfig, prometheus.DefaultRegisterer)
 			if (err != nil) != tt.wantErr {
@@ -206,12 +204,13 @@ func Test_validateMatcherConfig(t *testing.T) {
 		{"empty", nil, true},
 		{"pipeline name required", &MatcherConfig{PipelineName: &empty}, true},
 		{"selector required", &MatcherConfig{PipelineName: &notempty, Selector: ""}, true},
-		{"nil stages without dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, DropEntries: false, Stages: nil}, true},
-		{"empty stages without dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, DropEntries: false, Stages: []interface{}{}}, true},
-		{"stages with dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, DropEntries: true, Stages: []interface{}{""}}, true},
-		{"empty stages dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, DropEntries: true, Stages: []interface{}{}}, false},
-		{"stages without dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, DropEntries: false, Stages: []interface{}{""}}, false},
-		{"bad selector", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo}`, DropEntries: false, Stages: []interface{}{""}}, true},
+		{"nil stages without dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, Action: MatchActionKeep, Stages: nil}, true},
+		{"empty stages without dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, Action: MatchActionKeep, Stages: []interface{}{}}, true},
+		{"stages with dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, Action: MatchActionDrop, Stages: []interface{}{""}}, true},
+		{"empty stages dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, Action: MatchActionDrop, Stages: []interface{}{}}, false},
+		{"stages without dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, Action: MatchActionKeep, Stages: []interface{}{""}}, false},
+		{"bad selector", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo}`, Action: MatchActionKeep, Stages: []interface{}{""}}, true},
+		{"bad action", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo}`, Action: "nope", Stages: []interface{}{""}}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
