@@ -50,6 +50,11 @@ func (c *dumbChunk) Size() int {
 	return len(c.entries)
 }
 
+// Utilization implements Chunk
+func (c *dumbChunk) Utilization() float64 {
+	return float64(len(c.entries)) / float64(tmpNumEntries)
+}
+
 // Returns an iterator that goes from _most_ recent to _least_ recent (ie,
 // backwards).
 func (c *dumbChunk) Iterator(from, through time.Time, direction logproto.Direction, _ logql.Filter) (iter.EntryIterator, error) {

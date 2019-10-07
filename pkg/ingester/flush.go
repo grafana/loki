@@ -22,6 +22,11 @@ import (
 )
 
 var (
+	chunkUtilization = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "loki_ingester_chunk_utilization",
+		Help:    "Distribution of stored chunk utilization (when stored).",
+		Buckets: prometheus.LinearBuckets(0, 0.2, 6),
+	})
 	memoryChunks = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "loki_ingester_memory_chunks",
 		Help: "The total number of chunks in memory.",
@@ -299,6 +304,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			continue
 		}
 
+		chunkUtilization.Observe(wc.Data.Utilization())
 		chunkEntries.Observe(float64(numEntries))
 		chunkSize.Observe(float64(len(byt)))
 		sizePerTenant.Add(float64(len(byt)))

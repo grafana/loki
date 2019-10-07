@@ -56,3 +56,7 @@ func (Facade) Encoding() encoding.Encoding {
 func (f Facade) LokiChunk() Chunk {
 	return f.c
 }
+
+func (f Facade) Utilization() float64 {
+	return f.c.Utilization()
+}

@@ -313,6 +313,13 @@ func (c *MemChunk) SpaceFor(*logproto.Entry) bool {
 	return len(c.blocks) < blocksPerChunk
 }
 
+// Utilization implements Chunk.
+func (c *MemChunk) Utilization() float64 {
+	// Here we're just reporting the block utilization which is not super exciting.  It would be more interesting to see
+	// for each block what %age of c.blocksize was used, but that would require uncompressing the data in every block
+	return float64(len(c.blocks)) / float64(blocksPerChunk)
+}
+
 // Append implements Chunk.
 func (c *MemChunk) Append(entry *logproto.Entry) error {
 	entryTimestamp := entry.Timestamp.UnixNano()
