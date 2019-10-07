@@ -33,7 +33,7 @@ var (
 	})
 	chunkEntries = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "loki_ingester_chunk_entries",
-		Help:    "Distribution of stored chunk entries (when stored).",
+		Help:    "Distribution of stored lines per chunk (when stored).",
 		Buckets: prometheus.ExponentialBuckets(200, 2, 9), // biggest bucket is 200*2^(9-1) = 51200
 	})
 	chunkSize = promauto.NewHistogram(prometheus.HistogramOpts{

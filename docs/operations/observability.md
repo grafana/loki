@@ -32,7 +32,7 @@ The Loki Ingesters expose the following metrics:
 | `loki_ingester_memory_streams`               | Gauge       | The total number of streams in memory.                                                      |
 | `loki_ingester_chunk_age_seconds`            | Histogram   | Distribution of chunk ages when flushed.                                                    |
 | `loki_ingester_chunk_encode_time_seconds`    | Histogram   | Distribution of chunk encode times.                                                         |
-| `loki_ingester_chunk_entries`                | Histogram   | Distribution of entries per-chunk when flushed.                                             |
+| `loki_ingester_chunk_entries`                | Histogram   | Distribution of lines per-chunk when flushed.                                               |
 | `loki_ingester_chunk_size_bytes`             | Histogram   | Distribution of chunk sizes when flushed.                                                   |
 | `loki_ingester_chunk_utilization`            | Histogram   | Distribution of chunk utilization when flushed.                                             |
 | `loki_ingester_chunk_stored_bytes_total`     | Counter     | Total bytes stored in chunks per tenant.                                                    |
