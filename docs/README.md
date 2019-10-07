@@ -35,7 +35,7 @@ simplifies the operation and significantly lowers the cost of Loki.
         5. [Troubleshooting](clients/promtail/troubleshooting.md)
     2. [Docker Driver](clients/docker-driver/README.md)
         1. [Configuration](clients/docker-driver/configuration.md)
-    4. [Fluent-bit](../cmd/fluent-bit/README.md)
+    4. [Fluent Bit](../cmd/fluent-bit/README.md)
     3. [Fluentd](clients/fluentd.md)
 6. [LogQL](logql.md)
 7. [Operations](operations/README.md)

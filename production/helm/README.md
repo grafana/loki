@@ -48,14 +48,14 @@ $ helm upgrade --install loki loki/loki
 $ helm upgrade --install promtail loki/promtail --set "loki.serviceName=loki"
 ```
 
-## Deploy Loki and fluent-bit to your cluster
+## Deploy Loki and Fluent Bit to your cluster
 
 ```bash
 $ helm upgrade --install loki loki/loki-stack \
     --set fluent-bit.enabled=true,promtail.enabled=false
 ```
 
-## Deploy fluent-bit only
+## Deploy Fluent Bit only
 
 ```bash
 $ helm upgrade --install fluent-bit loki/fluent-bit \
