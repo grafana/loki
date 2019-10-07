@@ -54,9 +54,36 @@ clients:
   - url: INGESTER-URL
     backoff_config:
       minbackoff: 100ms
-      maxbackoff: 5s
-      maxretries: 5
+      maxbackoff: 10s
+      maxretries: 10
 ```
+
+The following table shows an example of the total delay applied by the backoff algorithm
+with `minbackoff: 100ms` and `maxbackoff: 10s`:
+
+| Retry | Min delay | Max delay | Total min delay | Total max delay |
+| ----- | --------- | --------- | --------------- | --------------- |
+| 1     | 100ms     | 200ms     | 100ms           | 200ms           |
+| 2     | 200ms     | 400ms     | 300ms           | 600ms           |
+| 3     | 400ms     | 800ms     | 700ms           | 1.4s            |
+| 4     | 800ms     | 1.6s      | 1.5s            | 3s              |
+| 5     | 1.6s      | 3.2s      | 3.1s            | 6.2s            |
+| 6     | 3.2s      | 6.4s      | 6.3s            | 12.6s           |
+| 7     | 6.4s      | 10s       | 12.7s           | 22.6s           |
+| 8     | 6.4s      | 10s       | 19.1s           | 32.6s           |
+| 9     | 6.4s      | 10s       | 25.5s           | 42.6s           |
+| 10    | 6.4s      | 10s       | 31.9s           | 52.6s           |
+| 11    | 6.4s      | 10s       | 38.3s           | 62.6s           |
+| 12    | 6.4s      | 10s       | 44.7s           | 72.6s           |
+| 13    | 6.4s      | 10s       | 51.1s           | 82.6s           |
+| 14    | 6.4s      | 10s       | 57.5s           | 92.6s           |
+| 15    | 6.4s      | 10s       | 63.9s           | 102.6s          |
+| 16    | 6.4s      | 10s       | 70.3s           | 112.6s          |
+| 17    | 6.4s      | 10s       | 76.7s           | 122.6s          |
+| 18    | 6.4s      | 10s       | 83.1s           | 132.6s          |
+| 19    | 6.4s      | 10s       | 89.5s           | 142.6s          |
+| 20    | 6.4s      | 10s       | 95.9s           | 152.6s          |
+
 
 ## Log entries pushed after a `promtail` crash / panic / abruptly termination
 
