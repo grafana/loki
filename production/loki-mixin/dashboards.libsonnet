@@ -111,7 +111,7 @@ local utils = import "mixin-utils/utils.libsonnet";
         g.row('Flush Stats')
         .addPanel(
           g.panel('Size') +
-          g.latencyPanel('loki_ingester_chunk_length', '{cluster="$cluster", job="$namespace/ingester"}', multiplier='1') +
+          g.latencyPanel('loki_ingester_chunk_entries', '{cluster="$cluster", job="$namespace/ingester"}', multiplier='1') +
           { yaxes: g.yaxes('short') },
         )
         .addPanel(
