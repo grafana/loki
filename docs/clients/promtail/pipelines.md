@@ -137,7 +137,7 @@ scrape_configs:
           expression: ".*(?P<panic>panic: .*)"
 
       # The metrics stage is going to increment a panic_total metric counter
-      # which promtail exposes. The counter is only incremented when panic
+      # which Promtail exposes. The counter is only incremented when panic
       # was extracted from the regex stage.
       - metrics:
         - panic_total:
@@ -179,7 +179,7 @@ The final value for the timestamp is sent to Loki.
 ##### Log Line
 
 The current log line, represented as text. Initialized to be the text that
-promtail scraped. Action stages can modify this value.
+Promtail scraped. Action stages can modify this value.
 
 The final value for the log line is sent to Loki as the text content for the
 given log entry.

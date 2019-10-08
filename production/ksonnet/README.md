@@ -25,7 +25,7 @@ $ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k8s.libsonnet
 
 ## Deploying Promtail to your cluster.
 
-Grab the promtail module using jb:
+Grab the `promtail` module using jb:
 
 ```
 $ jb install github.com/grafana/loki/production/ksonnet/promtail

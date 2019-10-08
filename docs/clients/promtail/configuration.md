@@ -60,7 +60,7 @@ Supported contents and default values of `config.yaml`:
 # Configures the server for Promtail.
 [server: <server_config>]
 
-# Describes how promtail connects to multiple instances
+# Describes how Promtail connects to multiple instances
 # of Loki, sending logs to each.
 clients:
   - [<client_config>]
@@ -226,7 +226,7 @@ The `scrape_config` block configures how Promtail can scrape logs from a series
 of targets using a specified discovery method:
 
 ```yaml
-# Name to identify this scrape config in the promtail UI.
+# Name to identify this scrape config in the Promtail UI.
 job_name: <string>
 
 # Describes how to parse log lines. Suported values [cri docker raw]
