@@ -61,7 +61,8 @@ type block struct {
 
 	mint, maxt int64
 
-	offset int // The offset of the block in the chunk.
+	offset           int // The offset of the block in the chunk.
+	uncompressedSize int // Total uncompressed size in bytes when the chunk is cut.
 }
 
 // This block holds the un-compressed entries. Once it has enough data, this is
@@ -313,11 +314,19 @@ func (c *MemChunk) SpaceFor(*logproto.Entry) bool {
 	return len(c.blocks) < blocksPerChunk
 }
 
-// Utilization implements Chunk.
+// Utilization implements Chunk.  It is the bytes used as a percentage of the
 func (c *MemChunk) Utilization() float64 {
-	// Here we're just reporting the block utilization which is not super exciting.  It would be more interesting to see
-	// for each block what %age of c.blocksize was used, but that would require uncompressing the data in every block
-	return float64(len(c.blocks)) / float64(blocksPerChunk)
+	usedSize := 0
+
+	if !c.head.isEmpty() {
+		usedSize += c.head.size
+	}
+
+	for _, b := range c.blocks {
+		usedSize += b.uncompressedSize
+	}
+
+	return float64(usedSize) / float64(blocksPerChunk*c.blockSize)
 }
 
 // Append implements Chunk.
@@ -359,10 +368,11 @@ func (c *MemChunk) cut() error {
 	}
 
 	c.blocks = append(c.blocks, block{
-		b:          b,
-		numEntries: len(c.head.entries),
-		mint:       c.head.mint,
-		maxt:       c.head.maxt,
+		b:                b,
+		numEntries:       len(c.head.entries),
+		mint:             c.head.mint,
+		maxt:             c.head.maxt,
+		uncompressedSize: c.head.size,
 	})
 
 	c.head.entries = c.head.entries[:0]
