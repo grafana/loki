@@ -48,9 +48,9 @@ promtail + {
 }
 ```
 
-change the `some_cluster_name` to anything meaningful to help find your logs in loki
+change the `some_cluster_name` to anything meaningful to help find your logs in Loki
 
-also update the `hostname`, `username`, and `password` for your loki instance.
+also update the `hostname`, `username`, and `password` for your Loki instance.
 
 ## Loki in kubernetes
 
