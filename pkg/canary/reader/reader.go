@@ -109,8 +109,6 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	}
 	_, _ = fmt.Fprintf(r.w, "Querying loki for missing values with query: %v\n", u.String())
 
-	client := &http.Client{}
-
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
 		return nil, err
@@ -118,7 +116,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 
 	req.SetBasicAuth(r.user, r.pass)
 
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
