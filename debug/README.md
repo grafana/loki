@@ -11,7 +11,7 @@ You can use the `docker-compose.yaml` in this directory to launch the debug vers
 
 ## Promtail in kubernetes
 
-If you want to debug promtail in kubernetes, I have done so with the ksonnet setup:
+If you want to debug Promtail in kubernetes, I have done so with the ksonnet setup:
 
 ```shell
 ks init promtail

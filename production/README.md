@@ -20,7 +20,7 @@ The demo includes complimentary metrics (Prometheus or Graphite) that help illus
 
 The Docker images for [Loki](https://hub.docker.com/r/grafana/loki/) and [Promtail](https://hub.docker.com/r/grafana/promtail/) are available on DockerHub.
 
-To test locally, we recommend using the `docker-compose.yaml` file in this directory. Docker starts containers for promtail, Loki, and Grafana.
+To test locally, we recommend using the `docker-compose.yaml` file in this directory. Docker starts containers for Promtail, Loki, and Grafana.
 
 1. Either `git clone` this repository locally and `cd loki/production`, or download a copy of the [docker-compose.yaml](docker-compose.yaml) locally.
 
@@ -38,14 +38,14 @@ To test locally, we recommend using the `docker-compose.yaml` file in this direc
 
 1. Grafana should now be available at http://localhost:3000/. Log in with `admin` / `admin` and follow the [steps for configuring the datasource in Grafana](../docs/querying.md#grafana), using `http://loki:3100` for the URL field.
 
-**Note:** When running locally, promtail starts before loki is ready. This can lead to the error message "Data source connected, but no labels received." After a couple seconds, Promtail will forward all newly created log messages correctly.
+**Note:** When running locally, Promtail starts before loki is ready. This can lead to the error message "Data source connected, but no labels received." After a couple seconds, Promtail will forward all newly created log messages correctly.
 Until this is fixed we recommend [building and running from source](#build-and-run-from-source).
 
 For instructions on how to query Loki, see [our usage docs](../docs/querying.md).
 
 ## Using Helm to deploy on Kubernetes
 
-There is a [Helm chart](helm) to deploy Loki and promtail to Kubernetes.
+There is a [Helm chart](helm) to deploy Loki and Promtail to Kubernetes.
 
 ## Build and run from source
 
@@ -69,7 +69,7 @@ To build Promtail on non-Linux platforms, use the following command:
 $ go build ./cmd/promtail
 ```
 
-On Linux, promtail requires the systemd headers to be installed for
+On Linux, Promtail requires the systemd headers to be installed for
 Journal support.
 
 With Journal support on Ubuntu, run with the following commands:
@@ -86,7 +86,7 @@ $ sudo yum install -y systemd-devel
 $ go build ./cmd/promtail
 ```
 
-Otherwise, to build promtail without Journal support, run `go build`
+Otherwise, to build Promtail without Journal support, run `go build`
 with CGO disabled:
 
 ```bash

@@ -92,7 +92,7 @@ Then follow the [instructions for adding the loki datasource](/docs/querying.md#
 If Loki and Promtail are deployed on different clusters you can add an Ingress in front of Loki.
 By adding a certificate you create an https endpoint. For extra security enable basic authentication on the Ingress.
 
-In promtail set the following values to communicate with https and basic auth
+In Promtail set the following values to communicate with https and basic auth
 
 ```
 loki:
