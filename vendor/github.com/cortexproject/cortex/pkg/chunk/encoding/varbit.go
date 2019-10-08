@@ -276,7 +276,7 @@ func (c *varbitChunk) Add(s model.SamplePair) ([]Chunk, error) {
 }
 
 // NewIterator implements chunk.
-func (c varbitChunk) NewIterator() Iterator {
+func (c varbitChunk) NewIterator(_ Iterator) Iterator {
 	return newVarbitChunkIterator(c)
 }
 
@@ -329,7 +329,7 @@ func (c varbitChunk) marshalLen() int {
 
 // Len implements chunk.  Runs in O(n).
 func (c varbitChunk) Len() int {
-	it := c.NewIterator()
+	it := c.NewIterator(nil)
 	i := 0
 	for ; it.Scan(); i++ {
 	}

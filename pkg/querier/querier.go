@@ -198,13 +198,19 @@ func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logpr
 
 	from, through := model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
 	var storeValues []string
+
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	if req.Values {
-		storeValues, err = q.store.LabelValuesForMetricName(ctx, from, through, "logs", req.Name)
+		storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		storeValues, err = q.store.LabelNamesForMetricName(ctx, from, through, "logs")
+		storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs")
 		if err != nil {
 			return nil, err
 		}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"flag"
 
+	"github.com/weaveworks/common/user"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 
@@ -72,7 +74,12 @@ func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.Ent
 
 	matchers = append(matchers, nameLabelMatcher)
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
-	chks, fetchers, err := s.GetChunkRefs(ctx, from, through, matchers...)
+
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	chks, fetchers, err := s.GetChunkRefs(ctx, userID, from, through, matchers...)
 	if err != nil {
 		return nil, err
 	}

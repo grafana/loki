@@ -64,6 +64,14 @@ func (p *page) full() bool {
 	return pageSize-p.alloc < recordHeaderSize
 }
 
+func (p *page) reset() {
+	for i := range p.buf {
+		p.buf[i] = 0
+	}
+	p.alloc = 0
+	p.flushed = 0
+}
+
 // Segment represents a segment file.
 type Segment struct {
 	*os.File
@@ -205,15 +213,16 @@ func NewSize(logger log.Logger, reg prometheus.Registerer, dir string, segmentSi
 	}
 	registerMetrics(reg, w)
 
-	_, j, err := w.Segments()
-	// Index of the Segment we want to open and write to.
-	writeSegmentIndex := 0
+	_, last, err := w.Segments()
 	if err != nil {
 		return nil, errors.Wrap(err, "get segment range")
 	}
+
+	// Index of the Segment we want to open and write to.
+	writeSegmentIndex := 0
 	// If some segments already exist create one with a higher index than the last segment.
-	if j != -1 {
-		writeSegmentIndex = j + 1
+	if last != -1 {
+		writeSegmentIndex = last + 1
 	}
 
 	segment, err := CreateSegment(w.dir, writeSegmentIndex)
@@ -401,7 +410,7 @@ func (w *WAL) Repair(origErr error) error {
 		return errors.Wrap(err, "delete corrupted segment")
 	}
 
-	// Explicitly close the the segment we just repaired to avoid issues with Windows.
+	// Explicitly close the segment we just repaired to avoid issues with Windows.
 	s.Close()
 
 	// We always want to start writing to a new Segment rather than an existing
@@ -493,11 +502,7 @@ func (w *WAL) flushPage(clear bool) error {
 
 	// We flushed an entire page, prepare a new one.
 	if clear {
-		for i := range p.buf {
-			p.buf[i] = 0
-		}
-		p.alloc = 0
-		p.flushed = 0
+		p.reset()
 		w.donePages++
 		w.pageCompletions.Inc()
 	}
