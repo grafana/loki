@@ -25,11 +25,6 @@ var (
 		Name:      "ingester_chunks_created_total",
 		Help:      "The total number of chunks created in the ingester.",
 	})
-	chunksFlushedTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "loki",
-		Name:      "ingester_chunks_flushed_total",
-		Help:      "The total number of chunks flushed by the ingester.",
-	})
 	samplesPerChunk = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Subsystem: "ingester",
@@ -42,7 +37,6 @@ var (
 
 func init() {
 	prometheus.MustRegister(chunksCreatedTotal)
-	prometheus.MustRegister(chunksFlushedTotal)
 	prometheus.MustRegister(samplesPerChunk)
 }
 
