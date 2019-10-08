@@ -10,8 +10,10 @@ Alternatively, the `table-manager.retention-period` and
 provided retention period needs to be a duration represented as a string that
 can be parsed using Go's [time.Duration](https://golang.org/pkg/time/#ParseDuration).
 
-> **WARNING**: The retention period should be at least twice the [duration of
-the periodic table config](https://github.com/grafana/loki/blob/347a3e18f4976d799d51a26cee229efbc27ef6c9/production/helm/loki/values.yaml#L53), which currently defaults to 7 days.
+> **WARNING**: The retention period must be a multiple of the index and chunks table
+`period`, configured in the [`period_config`](../../configuration/README.md#period_config)
+block. See the [Table Manager](./table-manager.md#retention) documentation for
+more information.
 
 When using S3 or GCS, the bucket storing the chunks needs to have the expiry
 policy set correctly. For more details check
