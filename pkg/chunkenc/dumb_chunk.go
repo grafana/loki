@@ -50,6 +50,11 @@ func (c *dumbChunk) Size() int {
 	return len(c.entries)
 }
 
+// UncompressedSize implements Chunk.
+func (c *dumbChunk) UncompressedSize() int {
+	return c.Size()
+}
+
 // Utilization implements Chunk
 func (c *dumbChunk) Utilization() float64 {
 	return float64(len(c.entries)) / float64(tmpNumEntries)

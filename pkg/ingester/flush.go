@@ -41,6 +41,11 @@ var (
 		Help:    "Distribution of stored chunk sizes (when stored).",
 		Buckets: prometheus.ExponentialBuckets(10000, 2, 7), // biggest bucket is 10000*2^(7-1) = 640000 (~640KB)
 	})
+	chunkCompressionRatio = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "loki_ingester_chunk_compression_ratio",
+		Help:    "Compression ratio of chunks (when stored).",
+		Buckets: prometheus.LinearBuckets(1, 1.5, 6),
+	})
 	chunksPerTenant = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "loki_ingester_chunks_stored_total",
 		Help: "Total stored chunks per tenant.",
@@ -304,10 +309,17 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			continue
 		}
 
+		compressedSize := float64(len(byt))
+		uncompressedSize, ok := chunkenc.UncompressedSize(wc.Data)
+
+		if ok {
+			chunkCompressionRatio.Observe(float64(uncompressedSize) / compressedSize)
+		}
+
 		chunkUtilization.Observe(wc.Data.Utilization())
 		chunkEntries.Observe(float64(numEntries))
-		chunkSize.Observe(float64(len(byt)))
-		sizePerTenant.Add(float64(len(byt)))
+		chunkSize.Observe(compressedSize)
+		sizePerTenant.Add(compressedSize)
 		countPerTenant.Inc()
 		firstTime, _ := cs[i].chunk.Bounds()
 		chunkAge.Observe(time.Since(firstTime).Seconds())

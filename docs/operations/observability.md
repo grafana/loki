@@ -35,6 +35,7 @@ The Loki Ingesters expose the following metrics:
 | `loki_ingester_chunk_entries`                | Histogram   | Distribution of lines per-chunk when flushed.                                               |
 | `loki_ingester_chunk_size_bytes`             | Histogram   | Distribution of chunk sizes when flushed.                                                   |
 | `loki_ingester_chunk_utilization`            | Histogram   | Distribution of chunk utilization when flushed.                                             |
+| `loki_ingester_chunk_compression_ratio`      | Histogram   | Distribution of chunk compression ratio when flushed.                                       |
 | `loki_ingester_chunk_stored_bytes_total`     | Counter     | Total bytes stored in chunks per tenant.                                                    |
 | `loki_ingester_chunks_created_total`         | Counter     | The total number of chunks created in the ingester.                                         |
 | `loki_ingester_chunks_flushed_total`         | Counter     | The total number of chunks flushed by the ingester.                                         |

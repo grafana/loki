@@ -314,19 +314,26 @@ func (c *MemChunk) SpaceFor(*logproto.Entry) bool {
 	return len(c.blocks) < blocksPerChunk
 }
 
-// Utilization implements Chunk.  It is the bytes used as a percentage of the
-func (c *MemChunk) Utilization() float64 {
-	usedSize := 0
+// UncompressedSize implements Chunk.
+func (c *MemChunk) UncompressedSize() int {
+	size := 0
 
 	if !c.head.isEmpty() {
-		usedSize += c.head.size
+		size += c.head.size
 	}
 
 	for _, b := range c.blocks {
-		usedSize += b.uncompressedSize
+		size += b.uncompressedSize
 	}
 
-	return float64(usedSize) / float64(blocksPerChunk*c.blockSize)
+	return size
+}
+
+// Utilization implements Chunk.  It is the bytes used as a percentage of the
+func (c *MemChunk) Utilization() float64 {
+	size := c.UncompressedSize()
+
+	return float64(size) / float64(blocksPerChunk*c.blockSize)
 }
 
 // Append implements Chunk.
