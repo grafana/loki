@@ -262,3 +262,6 @@ data:
         - __meta_kubernetes_pod_container_name
         target_label: __path__
     {{- end }}
+    {{- if .Values.extraScrapeConfigs }}
+    {{- toYaml .Values.extraScrapeConfigs | nindent 4 }}
+    {{- end }}
