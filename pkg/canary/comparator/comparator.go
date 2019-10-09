@@ -13,11 +13,13 @@ import (
 )
 
 const (
-	ErrOutOfOrderEntry    = "out of order entry %s was received before entries: %v\n"
-	ErrEntryNotReceivedWs = "websocket failed to receive entry %v within %f seconds\n"
-	ErrEntryNotReceived   = "failed to receive entry %v within %f seconds\n"
-	ErrDuplicateEntry     = "received a duplicate entry for ts %v\n"
-	ErrUnexpectedEntry    = "received an unexpected entry with ts %v\n"
+	ErrOutOfOrderEntry         = "out of order entry %s was received before entries: %v\n"
+	ErrEntryNotReceivedWs      = "websocket failed to receive entry %v within %f seconds\n"
+	ErrEntryNotReceived        = "failed to receive entry %v within %f seconds\n"
+	ErrDuplicateEntry          = "received a duplicate entry for ts %v\n"
+	ErrUnexpectedEntry         = "received an unexpected entry with ts %v\n"
+	DebugWebsocketMissingEntry = "websocket missing entry: %v\n"
+	DebugQueryResult           = "confirmation query result: %v\n"
 )
 
 var (
@@ -255,10 +257,10 @@ func (c *Comparator) confirmMissing(missing []*time.Time) {
 	// This is to help debug some missing log entries when queried,
 	// let's print exactly what we are missing and what Loki sent back
 	for _, r := range missing {
-		fmt.Fprintf(c.w, "Websocket missing entry: %v\n", r.UnixNano())
+		fmt.Fprintf(c.w, DebugWebsocketMissingEntry, r.UnixNano())
 	}
 	for _, r := range recvd {
-		fmt.Fprintf(c.w, "Confirmation query result: %v\n", r.UnixNano())
+		fmt.Fprintf(c.w, DebugQueryResult, r.UnixNano())
 	}
 
 	k := 0
