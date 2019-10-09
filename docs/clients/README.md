@@ -41,3 +41,11 @@ and you already have configured `Parser` and `Filter` plugins.
 Fluentd also works well for extracting metrics from logs when using its
 Prometheus plugin.
 
+# Unofficial Clients
+
+Please note that the Loki API is not stable yet and breaking changes may occur
+when using or writing a third-party client.
+
+- [promtail-client](https://github.com/afiskon/promtail-client) (Go)
+- [push-to-loki.py](https://github.com/sleleko/devops-kb/blob/master/python/push-to-loki.py) (Python 3)
+- [Serilog-Sinks-Loki](https://github.com/JosephWoodward/Serilog-Sinks-Loki) (C#)
