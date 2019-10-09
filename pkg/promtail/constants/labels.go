@@ -1,7 +1,7 @@
 package constants
 
 const (
-	// Label reserved to override the tenant / org ID while processing
+	// Label reserved to override the tenant ID while processing
 	// pipeline stages
-	ReservedLabelOrgID = "__orgid__"
+	ReservedLabelTenantID = "__tenant_id__"
 )

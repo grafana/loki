@@ -91,8 +91,8 @@ type client struct {
 }
 
 type entry struct {
-	orgID  string
-	labels model.LabelSet
+	tenantID string
+	labels   model.LabelSet
 	logproto.Entry
 }
 
@@ -143,8 +143,8 @@ func (c *client) run() {
 
 	defer func() {
 		// Send all pending batches
-		for orgID, batch := range batches {
-			c.sendBatch(orgID, batch)
+		for tenantID, batch := range batches {
+			c.sendBatch(tenantID, batch)
 		}
 
 		c.wg.Done()
@@ -156,20 +156,20 @@ func (c *client) run() {
 			return
 
 		case e := <-c.entries:
-			batch, ok := batches[e.orgID]
+			batch, ok := batches[e.tenantID]
 
 			// If the batch doesn't exist yet, we create a new one with the entry
 			if !ok {
-				batches[e.orgID] = newBatch(e)
+				batches[e.tenantID] = newBatch(e)
 				break
 			}
 
 			// If adding the entry to the batch will increase the size over the max
 			// size allowed, we do send the current batch and then create a new one
 			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
-				c.sendBatch(e.orgID, batch)
+				c.sendBatch(e.tenantID, batch)
 
-				batches[e.orgID] = newBatch(e)
+				batches[e.tenantID] = newBatch(e)
 				break
 			}
 
@@ -178,19 +178,19 @@ func (c *client) run() {
 
 		case <-maxWaitCheck.C:
 			// Send all batches whose max wait time has been reached
-			for orgID, batch := range batches {
+			for tenantID, batch := range batches {
 				if batch.age() < c.cfg.BatchWait {
 					continue
 				}
 
-				c.sendBatch(orgID, batch)
-				delete(batches, orgID)
+				c.sendBatch(tenantID, batch)
+				delete(batches, tenantID)
 			}
 		}
 	}
 }
 
-func (c *client) sendBatch(orgID string, batch *batch) {
+func (c *client) sendBatch(tenantID string, batch *batch) {
 	buf, entriesCount, err := batch.encode()
 	if err != nil {
 		level.Error(c.logger).Log("msg", "error encoding batch", "error", err)
@@ -204,7 +204,7 @@ func (c *client) sendBatch(orgID string, batch *batch) {
 	var status int
 	for backoff.Ongoing() {
 		start := time.Now()
-		status, err = c.send(ctx, orgID, buf)
+		status, err = c.send(ctx, tenantID, buf)
 		requestDuration.WithLabelValues(strconv.Itoa(status), c.cfg.URL.Host).Observe(time.Since(start).Seconds())
 
 		if err == nil {
@@ -229,7 +229,7 @@ func (c *client) sendBatch(orgID string, batch *batch) {
 	}
 }
 
-func (c *client) send(ctx context.Context, orgID string, buf []byte) (int, error) {
+func (c *client) send(ctx context.Context, tenantID string, buf []byte) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
 	req, err := http.NewRequest("POST", c.cfg.URL.String(), bytes.NewReader(buf))
@@ -239,10 +239,10 @@ func (c *client) send(ctx context.Context, orgID string, buf []byte) (int, error
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", contentType)
 
-	// If the orgID is not empty promtail is running in multi-tenant mode, so
+	// If the tenant ID is not empty promtail is running in multi-tenant mode, so
 	// we should send it to Loki
-	if orgID != "" {
-		req.Header.Set("X-Scope-OrgID", orgID)
+	if tenantID != "" {
+		req.Header.Set("X-Scope-OrgID", tenantID)
 	}
 
 	resp, err := c.client.Do(req)
@@ -262,9 +262,9 @@ func (c *client) send(ctx context.Context, orgID string, buf []byte) (int, error
 	return resp.StatusCode, err
 }
 
-func (c *client) getOrgID(labels model.LabelSet) string {
+func (c *client) getTenantID(labels model.LabelSet) string {
 	// Check if it has been overridden while processing the pipeline stages
-	if value, ok := labels[constants.ReservedLabelOrgID]; ok {
+	if value, ok := labels[constants.ReservedLabelTenantID]; ok {
 		return string(value)
 	}
 
@@ -290,16 +290,16 @@ func (c *client) Handle(ls model.LabelSet, t time.Time, s string) error {
 		ls = c.externalLabels.Merge(ls)
 	}
 
-	// Get the tenant / org ID in case it has been overridden while processing
+	// Get the tenant  ID in case it has been overridden while processing
 	// the pipeline stages, then remove the special label
-	orgID := c.getOrgID(ls)
-	if _, ok := ls[constants.ReservedLabelOrgID]; ok {
+	tenantID := c.getTenantID(ls)
+	if _, ok := ls[constants.ReservedLabelTenantID]; ok {
 		// Clone the label set to not manipulate the input one
 		ls = ls.Clone()
-		delete(ls, constants.ReservedLabelOrgID)
+		delete(ls, constants.ReservedLabelTenantID)
 	}
 
-	c.entries <- entry{orgID, ls, logproto.Entry{
+	c.entries <- entry{tenantID, ls, logproto.Entry{
 		Timestamp: t,
 		Line:      s,
 	}}

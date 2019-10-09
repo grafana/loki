@@ -21,6 +21,7 @@ and how to scrape logs from files.
             * [metric_counter](#metric_counter)
             * [metric_gauge](#metric_gauge)
             * [metric_histogram](#metric_histogram)
+        * [tenant_stage](#tenant_stage)
     * [journal_config](#journal_config)
     * [relabel_config](#relabel_config)
     * [static_config](#static_config)
@@ -135,7 +136,7 @@ Loki:
 # URL for the Distributor.
 url: <string>
 
-# The tenant / org ID used by default to push logs to Loki. If omitted or empty
+# The tenant ID used by default to push logs to Loki. If omitted or empty
 # it assumes Loki is running in single-tenant mode and no X-Scope-OrgID header
 # it sent.
 [tenant_id: <string>]
@@ -280,7 +281,8 @@ set of key-value pairs that is passed around from stage to stage.
     <timestamp_stage> |
     <output_stage> |
     <labels_stage> |
-    <metrics_stage>
+    <metrics_stage> |
+    <tenant_stage>
   ]
 ```
 
@@ -539,6 +541,17 @@ config:
   # Holds all the numbers in which to bucket the metric.
   buckets:
     - <int>
+```
+
+#### tenant_stage
+
+The tenant stage is an action stage that sets the tenant ID for the log entry
+picking it from a field in the extracted data map.
+
+```yaml
+tenant:
+  # Name from extracted data to whose value should be set as tenant ID
+  source: <string>
 ```
 
 ### journal_config

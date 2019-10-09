@@ -23,7 +23,7 @@ type Config struct {
 	ExternalLabels lokiflag.LabelSet `yaml:"external_labels,omitempty"`
 	Timeout        time.Duration     `yaml:"timeout"`
 
-	// The tenant / org ID to use when pushing logs to Loki (empty string means
+	// The tenant ID to use when pushing logs to Loki (empty string means
 	// single tenant mode)
 	TenantID string `yaml:"tenant_id"`
 }
