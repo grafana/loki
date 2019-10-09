@@ -249,9 +249,18 @@ func (c *Comparator) confirmMissing(missing []*time.Time) {
 	end = end.Add(10 * time.Second)
 	recvd, err := c.rdr.Query(start, end)
 	if err != nil {
-		_, _ = fmt.Fprintf(c.w, "error querying loki: %s", err)
+		_, _ = fmt.Fprintf(c.w, "error querying loki: %s\n", err)
 		return
 	}
+	// This is to help debug some missing log entries when queried,
+	// let's print exactly what we are missing and what Loki sent back
+	for _, r := range missing {
+		_, _ = fmt.Fprintf(c.w, "Websocket missing entry: %v\n", r.UnixNano())
+	}
+	for _, r := range recvd {
+		_, _ = fmt.Fprintf(c.w, "Confirmation query result: %v\n", r.UnixNano())
+	}
+
 	k := 0
 	for i, m := range missing {
 		found := false
