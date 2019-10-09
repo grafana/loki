@@ -8,11 +8,11 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/common/config"
@@ -54,20 +54,20 @@ func (c *Client) Query(queryStr string, limit int, time time.Time, direction log
 // excluding interfacer b/c it suggests taking the interface promql.Node instead of logproto.Direction b/c it happens to have a String() method
 // nolint:interfacer
 func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
-	params := url.Values{}
-	params.Set("query", queryStr)
-	params.Set("limit", strconv.Itoa(limit))
-	params.Set("start", strconv.FormatInt(from.UnixNano(), 10))
-	params.Set("end", strconv.FormatInt(through.UnixNano(), 10))
-	params.Set("direction", direction.String())
+	params := util.NewQueryStringBuilder()
+	params.SetString("query", queryStr)
+	params.SetInt32("limit", limit)
+	params.SetInt("start", from.UnixNano())
+	params.SetInt("end", through.UnixNano())
+	params.SetString("direction", direction.String())
 
 	// The step is optional, so we do set it only if provided,
 	// otherwise we do leverage on the API defaults
 	if step != 0 {
-		params.Set("step", strconv.FormatInt(int64(step.Seconds()), 10))
+		params.SetInt("step", int64(step.Seconds()))
 	}
 
-	return c.doQuery(queryRangePath+"?"+params.Encode(), quiet)
+	return c.doQuery(params.EncodeWithPath(queryRangePath), quiet)
 }
 
 // ListLabelNames uses the /api/v1/label endpoint to list label names
