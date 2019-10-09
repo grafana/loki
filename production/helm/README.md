@@ -39,7 +39,7 @@ $ helm upgrade --install loki loki/loki-stack --set "key1=val1,key2=val2,..."
 ## Deploy Loki only
 
 ```bash
-$ helm upgrade --install loki loki/loki
+$ helm upgrade --install loki loki/loki --set "logForwarder=none"
 ```
 
 ## Deploy Promtail only
@@ -52,7 +52,7 @@ $ helm upgrade --install promtail loki/promtail --set "loki.serviceName=loki"
 
 ```bash
 $ helm upgrade --install loki loki/loki-stack \
-    --set fluent-bit.enabled=true,promtail.enabled=false
+    --set "logForwarder=fluent-bit"
 ```
 
 ## Deploy Fluent Bit only

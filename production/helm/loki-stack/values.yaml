@@ -1,11 +1,7 @@
 loki:
   enabled: true
 
-promtail:
-  enabled: true
-
-fluent-bit:
-  enabled: false
+logForwarder: promtail
 
 grafana:
   enabled: false

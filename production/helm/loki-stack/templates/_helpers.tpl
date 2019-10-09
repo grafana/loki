@@ -30,3 +30,19 @@ Create chart name and version as used by the chart label.
 {{- define "loki-stack.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
+
+{{- define "logForwarder.promtail" -}}
+{{- if eq .Values.logForwarder "promtail" -}}
+{{- printf "true" -}}
+{{- else -}}
+{{- printf "false" -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "logForwarder.fluent-bit" -}}
+{{- if eq .Values.logForwarder "fluent-bit" -}}
+{{- printf "true" -}}
+{{- else -}}
+{{- printf "false" -}}
+{{- end -}}
+{{- end -}}
