@@ -125,7 +125,7 @@ func (c *Comparator) entryReceived(ts time.Time) {
 			// If this isn't the first item in the list we received it out of order
 			if i != 0 {
 				outOfOrderEntries.Inc()
-				_, _ = fmt.Fprintf(c.w, ErrOutOfOrderEntry, e, c.entries[:i])
+				fmt.Fprintf(c.w, ErrOutOfOrderEntry, e, c.entries[:i])
 			}
 			responseLatency.Observe(time.Since(ts).Seconds())
 			// Put this element in the acknowledged entries list so we can use it to check for duplicates
@@ -145,12 +145,12 @@ func (c *Comparator) entryReceived(ts time.Time) {
 			if ts.Equal(*e) {
 				duplicate = true
 				duplicateEntries.Inc()
-				_, _ = fmt.Fprintf(c.w, ErrDuplicateEntry, ts.UnixNano())
+				fmt.Fprintf(c.w, ErrDuplicateEntry, ts.UnixNano())
 				break
 			}
 		}
 		if !duplicate {
-			_, _ = fmt.Fprintf(c.w, ErrUnexpectedEntry, ts.UnixNano())
+			fmt.Fprintf(c.w, ErrUnexpectedEntry, ts.UnixNano())
 			unexpectedEntries.Inc()
 		}
 	}
@@ -199,7 +199,7 @@ func (c *Comparator) pruneEntries() {
 		if e.Before(time.Now().Add(-c.maxWait)) {
 			missing = append(missing, e)
 			wsMissingEntries.Inc()
-			_, _ = fmt.Fprintf(c.w, ErrEntryNotReceivedWs, e.UnixNano(), c.maxWait.Seconds())
+			fmt.Fprintf(c.w, ErrEntryNotReceivedWs, e.UnixNano(), c.maxWait.Seconds())
 		} else {
 			if i != k {
 				c.entries[k] = c.entries[i]
@@ -249,16 +249,16 @@ func (c *Comparator) confirmMissing(missing []*time.Time) {
 	end = end.Add(10 * time.Second)
 	recvd, err := c.rdr.Query(start, end)
 	if err != nil {
-		_, _ = fmt.Fprintf(c.w, "error querying loki: %s\n", err)
+		fmt.Fprintf(c.w, "error querying loki: %s\n", err)
 		return
 	}
 	// This is to help debug some missing log entries when queried,
 	// let's print exactly what we are missing and what Loki sent back
 	for _, r := range missing {
-		_, _ = fmt.Fprintf(c.w, "Websocket missing entry: %v\n", r.UnixNano())
+		fmt.Fprintf(c.w, "Websocket missing entry: %v\n", r.UnixNano())
 	}
 	for _, r := range recvd {
-		_, _ = fmt.Fprintf(c.w, "Confirmation query result: %v\n", r.UnixNano())
+		fmt.Fprintf(c.w, "Confirmation query result: %v\n", r.UnixNano())
 	}
 
 	k := 0
@@ -286,6 +286,6 @@ func (c *Comparator) confirmMissing(missing []*time.Time) {
 	missing = missing[:k]
 	for _, e := range missing {
 		missingEntries.Inc()
-		_, _ = fmt.Fprintf(c.w, ErrEntryNotReceived, e.UnixNano(), c.maxWait.Seconds())
+		fmt.Fprintf(c.w, ErrEntryNotReceived, e.UnixNano(), c.maxWait.Seconds())
 	}
 }
