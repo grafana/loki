@@ -135,6 +135,11 @@ Loki:
 # URL for the Distributor.
 url: <string>
 
+# The tenant / org ID used by default to push logs to Loki. If omitted or empty
+# it assumes Loki is running in single-tenant mode and no X-Scope-OrgID header
+# it sent.
+[tenant_id: <string>]
+
 # Maximum amount of time to wait before sending a batch, even if that
 # batch isn't full.
 [batchwait: <duration> | default = 1s]
