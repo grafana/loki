@@ -24,7 +24,7 @@ var (
 
 	timeSeriesPool = sync.Pool{
 		New: func() interface{} {
-			return TimeSeries{
+			return &TimeSeries{
 				Labels:  make([]LabelAdapter, 0, expectedLabels),
 				Samples: make([]Sample, 0, expectedSamplesPerSeries),
 			}
@@ -56,12 +56,12 @@ func (p *PreallocWriteRequest) Unmarshal(dAtA []byte) error {
 
 // PreallocTimeseries is a TimeSeries which preallocs slices on Unmarshal.
 type PreallocTimeseries struct {
-	TimeSeries
+	*TimeSeries
 }
 
 // Unmarshal implements proto.Message.
 func (p *PreallocTimeseries) Unmarshal(dAtA []byte) error {
-	p.TimeSeries = timeSeriesPool.Get().(TimeSeries)
+	p.TimeSeries = timeSeriesPool.Get().(*TimeSeries)
 	return p.TimeSeries.Unmarshal(dAtA)
 }
 
@@ -249,7 +249,7 @@ func ReuseSlice(slice []PreallocTimeseries) {
 }
 
 // ReuseTimeseries puts the timeseries back into a sync.Pool for reuse.
-func ReuseTimeseries(ts TimeSeries) {
+func ReuseTimeseries(ts *TimeSeries) {
 	ts.Labels = ts.Labels[:0]
 	ts.Samples = ts.Samples[:0]
 	timeSeriesPool.Put(ts)

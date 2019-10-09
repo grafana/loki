@@ -336,7 +336,7 @@ func equalByKey(a, b Chunk) bool {
 
 // Samples returns all SamplePairs for the chunk.
 func (c *Chunk) Samples(from, through model.Time) ([]model.SamplePair, error) {
-	it := c.Data.NewIterator()
+	it := c.Data.NewIterator(nil)
 	interval := metric.Interval{OldestInclusive: from, NewestInclusive: through}
 	return prom_chunk.RangeValues(it, interval)
 }

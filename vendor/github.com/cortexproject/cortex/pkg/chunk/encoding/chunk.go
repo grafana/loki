@@ -44,7 +44,10 @@ type Chunk interface {
 	// or a newly allocated version. In any case, take the returned chunk as
 	// the relevant one and discard the original chunk.
 	Add(sample model.SamplePair) ([]Chunk, error)
-	NewIterator() Iterator
+	// NewIterator returns an iterator for the chunks.
+	// The iterator passed as argument is for re-use. Depending on implementation,
+	// the iterator can be re-used or a new iterator can be allocated.
+	NewIterator(Iterator) Iterator
 	Marshal(io.Writer) error
 	UnmarshalFromBuf([]byte) error
 	Encoding() Encoding
@@ -141,7 +144,7 @@ func transcodeAndAdd(dst Chunk, src Chunk, s model.SamplePair) ([]Chunk, error) 
 		err             error
 	)
 
-	it := src.NewIterator()
+	it := src.NewIterator(nil)
 	for it.Scan() {
 		if NewChunks, err = head.Add(it.Value()); err != nil {
 			return nil, err

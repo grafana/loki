@@ -226,7 +226,7 @@ func (o *Overrides) EnforceMetricName(userID string) bool {
 	return o.overridesManager.GetLimits(userID).(*Limits).EnforceMetricName
 }
 
-// CardinalityLimit whether to enforce the presence of a metric name.
+// CardinalityLimit returns the maximum number of timeseries allowed in a query.
 func (o *Overrides) CardinalityLimit(userID string) int {
 	return o.overridesManager.GetLimits(userID).(*Limits).CardinalityLimit
 }

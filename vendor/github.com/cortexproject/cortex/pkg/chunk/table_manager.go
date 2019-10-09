@@ -98,7 +98,7 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
-	f.Int64Var(&cfg.ProvisionedWriteThroughput, argPrefix+".write-throughput", 3000, "DynamoDB table default write throughput.")
+	f.Int64Var(&cfg.ProvisionedWriteThroughput, argPrefix+".write-throughput", 1000, "DynamoDB table default write throughput.")
 	f.Int64Var(&cfg.ProvisionedReadThroughput, argPrefix+".read-throughput", 300, "DynamoDB table default read throughput.")
 	f.BoolVar(&cfg.ProvisionedThroughputOnDemandMode, argPrefix+".enable-ondemand-throughput-mode", false, "Enables on demand throughput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled")
 	f.Int64Var(&cfg.InactiveWriteThroughput, argPrefix+".inactive-write-throughput", 1, "DynamoDB table write throughput for inactive tables.")
@@ -152,7 +152,7 @@ func (m *TableManager) Start() {
 	m.wait.Add(1)
 	go m.loop()
 
-	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled == true {
+	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled {
 		m.wait.Add(1)
 		go m.bucketRetentionLoop()
 	}

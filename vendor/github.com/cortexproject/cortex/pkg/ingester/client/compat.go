@@ -18,26 +18,19 @@ import (
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
-// ToWriteRequest converts an array of samples into a WriteRequest proto.
-func ToWriteRequest(samples []model.Sample, source WriteRequest_SourceEnum) *WriteRequest {
+// ToWriteRequest converts matched slices of Labels and Samples into a WriteRequest proto.
+// It gets timeseries from the pool, so ReuseSlice() should be called when done.
+func ToWriteRequest(lbls []labels.Labels, samples []Sample, source WriteRequest_SourceEnum) *WriteRequest {
 	req := &WriteRequest{
-		Timeseries: make([]PreallocTimeseries, 0, len(samples)),
+		Timeseries: slicePool.Get().([]PreallocTimeseries),
 		Source:     source,
 	}
 
-	for _, s := range samples {
-		ts := PreallocTimeseries{
-			TimeSeries: TimeSeries{
-				Labels: FromMetricsToLabelAdapters(s.Metric),
-				Samples: []Sample{
-					{
-						Value:       float64(s.Value),
-						TimestampMs: int64(s.Timestamp),
-					},
-				},
-			},
-		}
-		req.Timeseries = append(req.Timeseries, ts)
+	for i, s := range samples {
+		ts := timeSeriesPool.Get().(*TimeSeries)
+		ts.Labels = append(ts.Labels, FromLabelsToLabelAdapters(lbls[i])...)
+		ts.Samples = append(ts.Samples, s)
+		req.Timeseries = append(req.Timeseries, PreallocTimeseries{TimeSeries: ts})
 	}
 
 	return req
@@ -201,10 +194,10 @@ func FromLabelAdaptersToLabels(ls []LabelAdapter) labels.Labels {
 	return *(*labels.Labels)(unsafe.Pointer(&ls))
 }
 
-// FromLabelsToLabelAdapaters casts labels.Labels to []LabelAdapter.
+// FromLabelsToLabelAdapters casts labels.Labels to []LabelAdapter.
 // It uses unsafe, but as LabelAdapter == labels.Label this should be safe.
 // This allows us to use labels.Labels directly in protos.
-func FromLabelsToLabelAdapaters(ls labels.Labels) []LabelAdapter {
+func FromLabelsToLabelAdapters(ls labels.Labels) []LabelAdapter {
 	return *(*[]LabelAdapter)(unsafe.Pointer(&ls))
 }
 

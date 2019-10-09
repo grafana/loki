@@ -31,10 +31,13 @@ const (
 type ReadRing interface {
 	prometheus.Collector
 
-	Get(key uint32, op Operation) (ReplicationSet, error)
-	BatchGet(keys []uint32, op Operation) ([]ReplicationSet, error)
+	// Get returns n (or more) ingesters which form the replicas for the given key.
+	// buf is a slice to be overwritten for the return value
+	// to avoid memory allocation; can be nil.
+	Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet, error)
 	GetAll() (ReplicationSet, error)
 	ReplicationFactor() int
+	IngesterCount() int
 }
 
 // Operation can be Read or Write
@@ -181,37 +184,16 @@ func migrateRing(desc *Desc) []TokenDesc {
 }
 
 // Get returns n (or more) ingesters which form the replicas for the given key.
-func (r *Ring) Get(key uint32, op Operation) (ReplicationSet, error) {
+func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
-	return r.getInternal(key, op)
-}
-
-// BatchGet returns ReplicationFactor (or more) ingesters which form the replicas
-// for the given keys. The order of the result matches the order of the input.
-func (r *Ring) BatchGet(keys []uint32, op Operation) ([]ReplicationSet, error) {
-	r.mtx.RLock()
-	defer r.mtx.RUnlock()
-
-	result := make([]ReplicationSet, len(keys), len(keys))
-	for i, key := range keys {
-		rs, err := r.getInternal(key, op)
-		if err != nil {
-			return nil, err
-		}
-		result[i] = rs
-	}
-	return result, nil
-}
-
-func (r *Ring) getInternal(key uint32, op Operation) (ReplicationSet, error) {
 	if r.ringDesc == nil || len(r.ringDesc.Tokens) == 0 {
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
 	var (
 		n             = r.cfg.ReplicationFactor
-		ingesters     = make([]IngesterDesc, 0, n)
+		ingesters     = buf[:0]
 		distinctHosts = map[string]struct{}{}
 		start         = r.search(key)
 		iterations    = 0

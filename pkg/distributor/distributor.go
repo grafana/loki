@@ -232,14 +232,17 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%d) exceeded while adding %d lines", int(limiter.Limit()), lineCount)
 	}
 
-	replicationSets, err := d.ring.BatchGet(keys, ring.Write)
-	if err != nil {
-		return nil, err
-	}
+	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
+	var descs [maxExpectedReplicationSet]ring.IngesterDesc
 
 	samplesByIngester := map[string][]*streamTracker{}
 	ingesterDescs := map[string]ring.IngesterDesc{}
-	for i, replicationSet := range replicationSets {
+	for i, key := range keys {
+		replicationSet, err := d.ring.Get(key, ring.Write, descs[:0])
+		if err != nil {
+			return nil, err
+		}
+
 		streams[i].minSuccess = len(replicationSet.Ingesters) - replicationSet.MaxErrors
 		streams[i].maxFailures = replicationSet.MaxErrors
 		for _, ingester := range replicationSet.Ingesters {
