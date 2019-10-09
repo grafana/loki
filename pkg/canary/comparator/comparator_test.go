@@ -179,11 +179,21 @@ func TestEntryNeverReceived(t *testing.T) {
 
 	c.pruneEntries()
 
-	expected := fmt.Sprintf(ErrOutOfOrderEntry+ErrOutOfOrderEntry+ErrEntryNotReceivedWs+ErrEntryNotReceivedWs+ErrEntryNotReceived,
+	expected := fmt.Sprintf(ErrOutOfOrderEntry+ErrOutOfOrderEntry+ // Out of order because we missed entries
+		ErrEntryNotReceivedWs+ErrEntryNotReceivedWs+ // Complain about missed entries
+		DebugWebsocketMissingEntry+DebugWebsocketMissingEntry+ // List entries we are missing
+		DebugQueryResult+DebugQueryResult+DebugQueryResult+DebugQueryResult+ // List entries we got back from Loki
+		ErrEntryNotReceived, // List entry not received from Loki
 		t3, []time.Time{t2},
 		t5, []time.Time{t2, t4},
 		t2.UnixNano(), maxWait.Seconds(),
 		t4.UnixNano(), maxWait.Seconds(),
+		t2.UnixNano(),
+		t4.UnixNano(),
+		t1.UnixNano(),
+		t3.UnixNano(),
+		t4.UnixNano(),
+		t5.UnixNano(),
 		t2.UnixNano(), maxWait.Seconds())
 
 	assert.Equal(t, expected, actual.String())
