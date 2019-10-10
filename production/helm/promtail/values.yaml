@@ -64,6 +64,9 @@ resources: {}
 # Custom scrape_configs to override the default ones in the configmap
 scrapeConfigs: []
 
+# Custom scrape_configs together with the default ones in the configmap
+extraScrapeConfigs: []
+
 securityContext:
   readOnlyRootFilesystem: true
   runAsGroup: 0
