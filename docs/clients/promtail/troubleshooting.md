@@ -1,7 +1,7 @@
 # Troubleshooting Promtail
 
 This document describes known failure modes of `promtail` on edge cases and the
-adopted trade-offs.
+adopted trade-offs as well as some common troubleshooting paterns.
 
 ## A tailed file is truncated while `promtail` is not running
 
@@ -106,3 +106,17 @@ logs. To leverage this, it's important that your `pipeline_stages` include
 the `timestamp` stage, parsing the log entry timestamp from the log line instead
 of relying on the default behaviour of setting the timestamp as the point in
 time when the line is read by `promtail`.
+
+## Scrape configs and relabeling
+
+It can be difficult to configure [scrape and relabel configs](scraping.md), so there are two prometheus style webpages available to offer some insight as to why a target is not being scraped:
+
+  * The service discovery page `/service-discovery` shows all discovered targets with their labels before and after relabeling as well as the reason why the target has been dropped. 
+  * The targets page `/targets` displays only targets being actively scraped with their respective labels, files and positions.
+
+You can access those two pages by connecting a web browser to the http port defined by the `http_listen_port` config, or by port-forwarding from a kubernetes pod:
+
+```
+kubectl port-forward loki-promtail-jrfg7 9090:80
+```
+This would forward from a prometheus pod listening on port 80 to the local machine on port 9090 where you could then open http://localhost:9090/service-discovery

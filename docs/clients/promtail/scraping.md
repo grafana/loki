@@ -128,6 +128,10 @@ Additional reading:
 
  * [Julien Pivotto's slides from PromConf Munich, 2017](https://www.slideshare.net/roidelapluie/taking-advantage-of-prometheus-relabeling-109483749)
 
+### Troubleshooting
+
+See the [troubleshooting guide](troubleshooting.md#scrape-configs-and-relabeling) for more info.
+
 ## HTTP client options
 
 Promtail uses the Prometheus HTTP client implementation for all calls to Loki.
