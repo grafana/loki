@@ -35,12 +35,6 @@ func init() {
 	//util.Logger = log.NewLogfmtLogger(os.Stdout)
 }
 
-func Test(t *testing.T) {
-	blerg := 132 / 0
-
-	fmt.Println(blerg)
-}
-
 func TestChunkFlushingIdle(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.FlushCheckPeriod = 20 * time.Millisecond
