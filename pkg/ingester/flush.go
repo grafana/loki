@@ -44,7 +44,7 @@ var (
 	chunkCompressionRatio = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "loki_ingester_chunk_compression_ratio",
 		Help:    "Compression ratio of chunks (when stored).",
-		Buckets: prometheus.LinearBuckets(1, 1.5, 6),
+		Buckets: prometheus.LinearBuckets(.75, 2, 10),
 	})
 	chunksPerTenant = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "loki_ingester_chunks_stored_total",
