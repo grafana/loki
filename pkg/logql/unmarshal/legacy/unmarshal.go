@@ -8,6 +8,6 @@ import (
 )
 
 // DecodePushRequest directly decodes json to a logproto.PushRequest
-func DecodePushRequest(b io.ReadCloser, r *logproto.PushRequest) error {
+func DecodePushRequest(b io.Reader, r *logproto.PushRequest) error {
 	return json.NewDecoder(b).Decode(r)
 }
