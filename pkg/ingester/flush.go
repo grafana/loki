@@ -44,7 +44,7 @@ var (
 	chunkCompressionRatio = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "loki_ingester_chunk_compression_ratio",
 		Help:    "Compression ratio of chunks (when stored).",
-		Buckets: prometheus.LinearBuckets(1, 1.5, 6),
+		Buckets: prometheus.LinearBuckets(.75, 2, 10),
 	})
 	chunksPerTenant = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "loki_ingester_chunks_stored_total",
@@ -312,7 +312,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		compressedSize := float64(len(byt))
 		uncompressedSize, ok := chunkenc.UncompressedSize(wc.Data)
 
-		if ok {
+		if ok && compressedSize > 0 {
 			chunkCompressionRatio.Observe(float64(uncompressedSize) / compressedSize)
 		}
 
