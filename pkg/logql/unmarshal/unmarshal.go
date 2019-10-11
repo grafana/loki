@@ -30,8 +30,8 @@ func NewPushRequest(r loghttp.PushRequest) logproto.PushRequest {
 		Streams: make([]*logproto.Stream, len(r.Streams)),
 	}
 
-	for _, s := range r.Streams {
-		ret.Streams = append(ret.Streams, NewStream(s))
+	for i, s := range r.Streams {
+		ret.Streams[i] = NewStream(s)
 	}
 
 	return ret
@@ -44,8 +44,8 @@ func NewStream(s *loghttp.Stream) *logproto.Stream {
 		Labels:  s.Labels.String(),
 	}
 
-	for _, e := range s.Entries {
-		ret.Entries = append(ret.Entries, NewEntry(e))
+	for i, e := range s.Entries {
+		ret.Entries[i] = NewEntry(e)
 	}
 
 	return ret
