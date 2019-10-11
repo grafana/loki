@@ -312,7 +312,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		compressedSize := float64(len(byt))
 		uncompressedSize, ok := chunkenc.UncompressedSize(wc.Data)
 
-		if ok {
+		if ok && compressedSize > 0 {
 			chunkCompressionRatio.Observe(float64(uncompressedSize) / compressedSize)
 		}
 
