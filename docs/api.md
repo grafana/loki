@@ -460,12 +460,12 @@ JSON post body can be sent in the following format:
 {
   "streams": [
     {
-      "labels": "<LogQL label key-value pairs>",
-      "entries": [
-        {
-          "ts": "<RFC3339Nano string>",
-          "line": "<log line>"
-        }
+      "stream": {
+        "label": "value"
+      },
+      "values": [
+          [ "<unix epoch in nanoseconds>", "<log line>" ],
+          [ "<unix epoch in nanoseconds>", "<log line>" ]
       ]
     }
   ]
@@ -482,8 +482,8 @@ In microservices mode, `/loki/api/v1/push` is exposed by the distributor.
 ### Examples
 
 ```bash
-$ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/loki/api/v1/push" --data-raw \
-  '{"streams": [{ "labels": "{foo=\"bar\"}", "entries": [{ "ts": "2018-12-18T08:28:06.801064-04:00", "line": "fizzbuzz" }] }]}'
+$ curl -v -H "Content-Type: application/json" -XPOST -s "http://localhost:3100/loki/api/v1/push" --data-raw \
+  '{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}'
 ```
 
 ## `GET /api/prom/tail`
