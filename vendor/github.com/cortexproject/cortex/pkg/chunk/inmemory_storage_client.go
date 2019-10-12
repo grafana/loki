@@ -266,9 +266,7 @@ func (m *MockStorage) query(ctx context.Context, query IndexQuery, callback func
 	}
 
 	result := mockReadBatch{}
-	for _, item := range items {
-		result.items = append(result.items, item)
-	}
+	result.items = append(result.items, items...)
 
 	callback(&result)
 	return nil

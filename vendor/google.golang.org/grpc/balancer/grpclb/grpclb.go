@@ -408,11 +408,11 @@ func (lb *lbBalancer) HandleResolvedAddrs(addrs []resolver.Address, err error) {
 	panic("not used")
 }
 
-func (lb *lbBalancer) handleServiceConfig(sc string) {
+func (lb *lbBalancer) handleServiceConfig(gc *grpclbServiceConfig) {
 	lb.mu.Lock()
 	defer lb.mu.Unlock()
 
-	newUsePickFirst := childIsPickFirst(sc)
+	newUsePickFirst := childIsPickFirst(gc)
 	if lb.usePickFirst == newUsePickFirst {
 		return
 	}
@@ -422,13 +422,14 @@ func (lb *lbBalancer) handleServiceConfig(sc string) {
 	lb.refreshSubConns(lb.backendAddrs, lb.inFallback, newUsePickFirst)
 }
 
-func (lb *lbBalancer) UpdateResolverState(rs resolver.State) {
+func (lb *lbBalancer) UpdateClientConnState(ccs balancer.ClientConnState) {
 	if grpclog.V(2) {
-		grpclog.Infof("lbBalancer: UpdateResolverState: %+v", rs)
+		grpclog.Infof("lbBalancer: UpdateClientConnState: %+v", ccs)
 	}
-	lb.handleServiceConfig(rs.ServiceConfig)
+	gc, _ := ccs.BalancerConfig.(*grpclbServiceConfig)
+	lb.handleServiceConfig(gc)
 
-	addrs := rs.Addresses
+	addrs := ccs.ResolverState.Addresses
 	if len(addrs) <= 0 {
 		return
 	}

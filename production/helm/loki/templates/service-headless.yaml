@@ -15,6 +15,9 @@ spec:
       protocol: TCP
       name: http-metrics
       targetPort: http-metrics
+{{- if .Values.extraPorts }}
+{{ toYaml .Values.extraPorts | indent 4}}
+{{- end }}
   selector:
     app: {{ template "loki.name" . }}
     release: {{ .Release.Name }}

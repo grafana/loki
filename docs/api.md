@@ -48,7 +48,7 @@ And these endpoints are exposed by just the ingester:
 
 The API endpoints starting with `/loki/` are [Prometheus API-compatible](https://prometheus.io/docs/prometheus/latest/querying/api/) and the result formats can be used interchangeably.
 
-[Example clients](#example-clients) can be found at the bottom of this document.
+A [list of clients](./clients) can be found in the clients documentation.
 
 ## Matrix, Vector, And Streams
 
@@ -199,7 +199,7 @@ accepts the following query parameters in the URL:
 - `limit`: The max number of entries to return
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
 - `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
-- `step`: Query resolution step width in seconds. Defaults to 1.
+- `step`: Query resolution step width in seconds. Defaults to a dynamic value based on `start` and `end`.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 
 Requests against this endpoint require Loki to query the index store in order to
@@ -628,12 +628,3 @@ In microservices mode, the `/flush` endpoint is exposed by the ingester.
 for a list of exported metrics.
 
 In microservices mode, the `/metrics` endpoint is exposed by all components.
-
-## Example Clients
-
-Please note that the Loki API is not stable yet and breaking changes may occur
-when using or writing a third-party client.
-
-- [Promtail](https://github.com/grafana/loki/tree/master/pkg/promtail) (Official, Go)
-- [promtail-client](https://github.com/afiskon/promtail-client) (Go)
-- [push-to-loki.py](https://github.com/sleleko/devops-kb/blob/master/python/push-to-loki.py) (Python 3)

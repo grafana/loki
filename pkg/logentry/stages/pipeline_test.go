@@ -29,11 +29,15 @@ pipeline_stages:
     - docker:
     - regex:
         expression: "^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<action>\\S+)\\s?(?P<path>\\S+)?\\s?(?P<protocol>\\S+)?\" (?P<status>\\d{3}|-) (?P<size>\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$"
+    - regex:
+        source:     filename
+        expression: "(?P<service>[^\\/]+)\\.log"
     - timestamp:
         source: timestamp
         format: "02/Jan/2006:15:04:05 -0700"
     - labels:
         action:
+        service:
         status_code: "status"
 `
 
@@ -104,6 +108,24 @@ func TestPipeline_MultiStage(t *testing.T) {
 			},
 			map[model.LabelName]model.LabelValue{
 				"nomatch": "true",
+			},
+		},
+		"should initialize the extracted map with the initial labels": {
+			rawTestLine,
+			processedTestLine,
+			time.Now(),
+			time.Date(2000, 01, 25, 14, 00, 01, 0, est),
+			map[model.LabelName]model.LabelValue{
+				"match":    "true",
+				"filename": "/var/log/nginx/frontend.log",
+			},
+			map[model.LabelName]model.LabelValue{
+				"filename":    "/var/log/nginx/frontend.log",
+				"match":       "true",
+				"stream":      "stderr",
+				"service":     "frontend",
+				"action":      "GET",
+				"status_code": "200",
 			},
 		},
 	}

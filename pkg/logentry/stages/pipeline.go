@@ -77,6 +77,13 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, regist
 // Process implements Stage allowing a pipeline stage to also be an entire pipeline
 func (p *Pipeline) Process(labels model.LabelSet, extracted map[string]interface{}, ts *time.Time, entry *string) {
 	start := time.Now()
+
+	// Initialize the extracted map with the initial labels (ie. "filename"),
+	// so that stages can operate on initial labels too
+	for labelName, labelValue := range labels {
+		extracted[string(labelName)] = string(labelValue)
+	}
+
 	for i, stage := range p.stages {
 		if Debug {
 			level.Debug(p.logger).Log("msg", "processing pipeline", "stage", i, "name", stage.Name(), "labels", labels, "time", ts, "entry", entry)

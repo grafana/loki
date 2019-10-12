@@ -31,9 +31,11 @@ type Transport struct {
 }
 
 type clientOptions struct {
-	operationName      string
-	componentName      string
-	disableClientTrace bool
+	operationName            string
+	componentName            string
+	disableClientTrace       bool
+	disableInjectSpanContext bool
+	spanObserver             func(span opentracing.Span, r *http.Request)
 }
 
 // ClientOption contols the behavior of TraceRequest.
@@ -63,6 +65,24 @@ func ClientTrace(enabled bool) ClientOption {
 	}
 }
 
+// InjectSpanContext returns a ClientOption that turns on or off
+// injection of the Span context in the request HTTP headers.
+// If this option is not used, the default behaviour is to
+// inject the span context.
+func InjectSpanContext(enabled bool) ClientOption {
+	return func(options *clientOptions) {
+		options.disableInjectSpanContext = !enabled
+	}
+}
+
+// ClientSpanObserver returns a ClientOption that observes the span
+// for the client-side span.
+func ClientSpanObserver(f func(span opentracing.Span, r *http.Request)) ClientOption {
+	return func(options *clientOptions) {
+		options.spanObserver = f
+	}
+}
+
 // TraceRequest adds a ClientTracer to req, tracing the request and
 // all requests caused due to redirects. When tracing requests this
 // way you must also use Transport.
@@ -88,7 +108,9 @@ func ClientTrace(enabled bool) ClientOption {
 // 		return nil
 // 	}
 func TraceRequest(tr opentracing.Tracer, req *http.Request, options ...ClientOption) (*http.Request, *Tracer) {
-	opts := &clientOptions{}
+	opts := &clientOptions{
+		spanObserver: func(_ opentracing.Span, _ *http.Request) {},
+	}
 	for _, opt := range options {
 		opt(opts)
 	}
@@ -113,14 +135,24 @@ func (c closeTracker) Close() error {
 	return err
 }
 
+// TracerFromRequest retrieves the Tracer from the request. If the request does
+// not have a Tracer it will return nil.
+func TracerFromRequest(req *http.Request) *Tracer {
+	tr, ok := req.Context().Value(keyTracer).(*Tracer)
+	if !ok {
+		return nil
+	}
+	return tr
+}
+
 // RoundTrip implements the RoundTripper interface.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	rt := t.RoundTripper
 	if rt == nil {
 		rt = http.DefaultTransport
 	}
-	tracer, ok := req.Context().Value(keyTracer).(*Tracer)
-	if !ok {
+	tracer := TracerFromRequest(req)
+	if tracer == nil {
 		return rt.RoundTrip(req)
 	}
 
@@ -128,9 +160,13 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	ext.HTTPMethod.Set(tracer.sp, req.Method)
 	ext.HTTPUrl.Set(tracer.sp, req.URL.String())
+	tracer.opts.spanObserver(tracer.sp, req)
 
-	carrier := opentracing.HTTPHeadersCarrier(req.Header)
-	tracer.sp.Tracer().Inject(tracer.sp.Context(), opentracing.HTTPHeaders, carrier)
+	if !tracer.opts.disableInjectSpanContext {
+		carrier := opentracing.HTTPHeadersCarrier(req.Header)
+		tracer.sp.Tracer().Inject(tracer.sp.Context(), opentracing.HTTPHeaders, carrier)
+	}
+
 	resp, err := rt.RoundTrip(req)
 
 	if err != nil {
@@ -138,6 +174,9 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 	ext.HTTPStatusCode.Set(tracer.sp, uint16(resp.StatusCode))
+	if resp.StatusCode >= http.StatusInternalServerError {
+		ext.Error.Set(tracer.sp, true)
+	}
 	if req.Method == "HEAD" {
 		tracer.sp.Finish()
 	} else {

@@ -315,9 +315,9 @@ func (v *vectorAggregationExpr) Evaluator() StepEvaluator {
 				groupingKey uint64
 			)
 			if v.grouping.without {
-				groupingKey = metric.HashWithoutLabels(v.grouping.groups...)
+				groupingKey, _ = metric.HashWithoutLabels(make([]byte, 0, 1024), v.grouping.groups...)
 			} else {
-				groupingKey = metric.HashForLabels(v.grouping.groups...)
+				groupingKey, _ = metric.HashForLabels(make([]byte, 0, 1024), v.grouping.groups...)
 			}
 			group, ok := result[groupingKey]
 			// Add a new group if it doesn't exist.

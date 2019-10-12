@@ -42,7 +42,7 @@ func TestQuerier_Label_QueryTimeoutConfigFlag(t *testing.T) {
 	ingesterClient.On("Label", mock.Anything, &request, mock.Anything).Return(mockLabelResponse([]string{}), nil)
 
 	store := newStoreMock()
-	store.On("LabelValuesForMetricName", mock.Anything, model.TimeFromUnixNano(startTime.UnixNano()), model.TimeFromUnixNano(endTime.UnixNano()), "logs", "test").Return([]string{"foo", "bar"}, nil)
+	store.On("LabelValuesForMetricName", mock.Anything, "test", model.TimeFromUnixNano(startTime.UnixNano()), model.TimeFromUnixNano(endTime.UnixNano()), "logs", "test").Return([]string{"foo", "bar"}, nil)
 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
 	require.NoError(t, err)

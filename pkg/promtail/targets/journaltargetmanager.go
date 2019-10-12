@@ -21,7 +21,7 @@ func NewJournalTargetManager(
 	client api.EntryHandler,
 	scrapeConfigs []scrape.Config,
 ) (*JournalTargetManager, error) {
-	level.Warn(logger).Log("msg", "WARNING!!! Journal target manager initialized on platform without Journal support!")
+	level.Warn(logger).Log("msg", "WARNING!!! Journal target was configured but support for reading the systemd journal is not compiled into this build of promtail!")
 	return &JournalTargetManager{}, nil
 }
 

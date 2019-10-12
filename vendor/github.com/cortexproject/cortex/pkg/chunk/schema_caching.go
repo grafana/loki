@@ -14,80 +14,61 @@ type schemaCaching struct {
 }
 
 func (s *schemaCaching) GetReadQueriesForMetric(from, through model.Time, userID string, metricName string) ([]IndexQuery, error) {
-	cFrom, cThrough, from, through := splitTimesByCacheability(from, through, model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix()))
-
-	cacheableQueries, err := s.Schema.GetReadQueriesForMetric(cFrom, cThrough, userID, metricName)
-	if err != nil {
-		return nil, err
-	}
-
-	activeQueries, err := s.Schema.GetReadQueriesForMetric(from, through, userID, metricName)
-	if err != nil {
-		return nil, err
-	}
-
-	return mergeCacheableAndActiveQueries(cacheableQueries, activeQueries), nil
+	return s.splitTimesByCacheability(from, through, func(from, through model.Time) ([]IndexQuery, error) {
+		return s.Schema.GetReadQueriesForMetric(from, through, userID, metricName)
+	})
 }
 
 func (s *schemaCaching) GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName string, labelName string) ([]IndexQuery, error) {
-	cFrom, cThrough, from, through := splitTimesByCacheability(from, through, model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix()))
-
-	cacheableQueries, err := s.Schema.GetReadQueriesForMetricLabel(cFrom, cThrough, userID, metricName, labelName)
-	if err != nil {
-		return nil, err
-	}
-
-	activeQueries, err := s.Schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
-	if err != nil {
-		return nil, err
-	}
-
-	return mergeCacheableAndActiveQueries(cacheableQueries, activeQueries), nil
+	return s.splitTimesByCacheability(from, through, func(from, through model.Time) ([]IndexQuery, error) {
+		return s.Schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
+	})
 }
 
 func (s *schemaCaching) GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName string, labelName string, labelValue string) ([]IndexQuery, error) {
-	cFrom, cThrough, from, through := splitTimesByCacheability(from, through, model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix()))
-
-	cacheableQueries, err := s.Schema.GetReadQueriesForMetricLabelValue(cFrom, cThrough, userID, metricName, labelName, labelValue)
-	if err != nil {
-		return nil, err
-	}
-
-	activeQueries, err := s.Schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, labelName, labelValue)
-	if err != nil {
-		return nil, err
-	}
-
-	return mergeCacheableAndActiveQueries(cacheableQueries, activeQueries), nil
+	return s.splitTimesByCacheability(from, through, func(from, through model.Time) ([]IndexQuery, error) {
+		return s.Schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, labelName, labelValue)
+	})
 }
 
 // If the query resulted in series IDs, use this method to find chunks.
 func (s *schemaCaching) GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
-	cFrom, cThrough, from, through := splitTimesByCacheability(from, through, model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix()))
+	return s.splitTimesByCacheability(from, through, func(from, through model.Time) ([]IndexQuery, error) {
+		return s.Schema.GetChunksForSeries(from, through, userID, seriesID)
+	})
+}
 
-	cacheableQueries, err := s.Schema.GetChunksForSeries(cFrom, cThrough, userID, seriesID)
-	if err != nil {
-		return nil, err
-	}
+func (s *schemaCaching) splitTimesByCacheability(from, through model.Time, f func(from, through model.Time) ([]IndexQuery, error)) ([]IndexQuery, error) {
+	var (
+		cacheableQueries []IndexQuery
+		activeQueries    []IndexQuery
+		err              error
+		cacheBefore      = model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix())
+	)
 
-	activeQueries, err := s.Schema.GetChunksForSeries(from, through, userID, seriesID)
-	if err != nil {
-		return nil, err
+	if from.After(cacheBefore) {
+		activeQueries, err = f(from, through)
+		if err != nil {
+			return nil, err
+		}
+	} else if through.Before(cacheBefore) {
+		cacheableQueries, err = f(from, through)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		cacheableQueries, err = f(from, cacheBefore)
+		if err != nil {
+			return nil, err
+		}
+
+		activeQueries, err = f(cacheBefore, through)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return mergeCacheableAndActiveQueries(cacheableQueries, activeQueries), nil
-}
-
-func splitTimesByCacheability(from, through model.Time, cacheBefore model.Time) (model.Time, model.Time, model.Time, model.Time) {
-	if from.After(cacheBefore) {
-		return 0, 0, from, through
-	}
-
-	if through.Before(cacheBefore) {
-		return from, through, 0, 0
-	}
-
-	return from, cacheBefore, cacheBefore, through
 }
 
 func mergeCacheableAndActiveQueries(cacheableQueries []IndexQuery, activeQueries []IndexQuery) []IndexQuery {

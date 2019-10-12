@@ -32,7 +32,6 @@ const (
 	defaultSince         = 1 * time.Hour
 	wsPingPeriod         = 1 * time.Second
 	maxDelayForInTailing = 5
-	defaultStep          = 1 // 1 seconds
 )
 
 // nolint
@@ -85,6 +84,12 @@ func directionParam(values url.Values, name string, def logproto.Direction) (log
 	return logproto.Direction(d), nil
 }
 
+// defaultQueryRangeStep returns the default step used in the query range API,
+// which is dinamically calculated based on the time range
+func defaultQueryRangeStep(start time.Time, end time.Time) int {
+	return int(math.Max(math.Floor(end.Sub(start).Seconds()/250), 1))
+}
+
 func httpRequestToInstantQueryRequest(httpRequest *http.Request) (*instantQueryRequest, error) {
 	params := httpRequest.URL.Query()
 	queryRequest := instantQueryRequest{
@@ -111,21 +116,24 @@ func httpRequestToInstantQueryRequest(httpRequest *http.Request) (*instantQueryR
 }
 
 func httpRequestToRangeQueryRequest(httpRequest *http.Request) (*rangeQueryRequest, error) {
+	var err error
+
 	params := httpRequest.URL.Query()
 	queryRequest := rangeQueryRequest{
 		query: params.Get("query"),
 	}
 
-	step, err := intParam(params, "step", defaultStep)
+	queryRequest.limit, queryRequest.start, queryRequest.end, err = httpRequestToLookback(httpRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	step, err := intParam(params, "step", defaultQueryRangeStep(queryRequest.start, queryRequest.end))
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 	queryRequest.step = time.Duration(step) * time.Second
 
-	queryRequest.limit, queryRequest.start, queryRequest.end, err = httpRequestToLookback(httpRequest)
-	if err != nil {
-		return nil, err
-	}
 	queryRequest.direction, err = directionParam(params, "direction", logproto.BACKWARD)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -354,19 +362,19 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 	if tailRequestPtr.DelayFor > maxDelayForInTailing {
 		server.WriteError(w, fmt.Errorf("delay_for can't be greater than %d", maxDelayForInTailing))
-		level.Error(util.Logger).Log("Error in upgrading websocket", fmt.Sprintf("%v", err))
+		level.Error(util.Logger).Log("msg", "Error in upgrading websocket", "err", err)
 		return
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		level.Error(util.Logger).Log("Error in upgrading websocket", fmt.Sprintf("%v", err))
+		level.Error(util.Logger).Log("msg", "Error in upgrading websocket", "err", err)
 		return
 	}
 
 	defer func() {
 		if err := conn.Close(); err != nil {
-			level.Error(util.Logger).Log("Error closing websocket", fmt.Sprintf("%v", err))
+			level.Error(util.Logger).Log("msg", "Error closing websocket", "err", err)
 		}
 	}()
 
@@ -377,13 +385,13 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	tailer, err := q.Tail(r.Context(), &tailRequest)
 	if err != nil {
 		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-			level.Error(util.Logger).Log("Error connecting to ingesters for tailing", fmt.Sprintf("%v", err))
+			level.Error(util.Logger).Log("msg", "Error connecting to ingesters for tailing", "err", err)
 		}
 		return
 	}
 	defer func() {
 		if err := tailer.close(); err != nil {
-			level.Error(util.Logger).Log("Error closing Tailer", fmt.Sprintf("%v", err))
+			level.Error(util.Logger).Log("msg", "Error closing Tailer", "err", err)
 		}
 	}()
 
@@ -404,25 +412,25 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 				err = marshal_legacy.WriteTailResponseJSON(*response, conn)
 			}
 			if err != nil {
-				level.Error(util.Logger).Log("Error writing to websocket", fmt.Sprintf("%v", err))
+				level.Error(util.Logger).Log("msg", "Error writing to websocket", "err", err)
 				if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-					level.Error(util.Logger).Log("Error writing close message to websocket", fmt.Sprintf("%v", err))
+					level.Error(util.Logger).Log("msg", "Error writing close message to websocket", "err", err)
 				}
 				return
 			}
 
 		case err := <-closeErrChan:
-			level.Error(util.Logger).Log("Error from iterator", fmt.Sprintf("%v", err))
+			level.Error(util.Logger).Log("msg", "Error from iterator", "err", err)
 			if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-				level.Error(util.Logger).Log("Error writing close message to websocket", fmt.Sprintf("%v", err))
+				level.Error(util.Logger).Log("msg", "Error writing close message to websocket", "err", err)
 			}
 			return
 		case <-ticker.C:
 			// This is to periodically check whether connection is active, useful to clean up dead connections when there are no entries to send
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				level.Error(util.Logger).Log("Error writing ping message to websocket", fmt.Sprintf("%v", err))
+				level.Error(util.Logger).Log("msg", "Error writing ping message to websocket", "err", err)
 				if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-					level.Error(util.Logger).Log("Error writing close message to websocket", fmt.Sprintf("%v", err))
+					level.Error(util.Logger).Log("msg", "Error writing close message to websocket", "err", err)
 				}
 				return
 			}

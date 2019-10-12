@@ -14,6 +14,14 @@
 
 package ocagent
 
+import (
+	"time"
+
+	"go.opencensus.io/resource"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+)
+
 const (
 	DefaultAgentPort uint16 = 55678
 	DefaultAgentHost string = "localhost"
@@ -23,13 +31,21 @@ type ExporterOption interface {
 	withExporter(e *Exporter)
 }
 
-type portSetter uint16
+type resourceDetector resource.Detector
 
-func (ps portSetter) withExporter(e *Exporter) {
-	e.agentPort = uint16(ps)
+var _ ExporterOption = (*resourceDetector)(nil)
+
+func (rd resourceDetector) withExporter(e *Exporter) {
+	e.resourceDetector = resource.Detector(rd)
 }
 
-var _ ExporterOption = (*portSetter)(nil)
+// WithResourceDetector allows one to register a resource detector. Resource Detector is used
+// to detect resources associated with the application. Detected resource is exported
+// along with the metrics. If the detector fails then it panics.
+// If a resource detector is not provided then by default it detects from the environment.
+func WithResourceDetector(rd resource.Detector) ExporterOption {
+	return resourceDetector(rd)
+}
 
 type insecureGrpcConnection int
 
@@ -43,12 +59,6 @@ func (igc *insecureGrpcConnection) withExporter(e *Exporter) {
 // just like grpc.WithInsecure() https://godoc.org/google.golang.org/grpc#WithInsecure
 // does. Note, by default, client security is required unless WithInsecure is used.
 func WithInsecure() ExporterOption { return new(insecureGrpcConnection) }
-
-// WithPort allows one to override the port that the exporter will
-// connect to the agent on, instead of using DefaultAgentPort.
-func WithPort(port uint16) ExporterOption {
-	return portSetter(port)
-}
 
 type addressSetter string
 
@@ -77,4 +87,75 @@ var _ ExporterOption = (*serviceNameSetter)(nil)
 // that the exporter will report to the agent.
 func WithServiceName(serviceName string) ExporterOption {
 	return serviceNameSetter(serviceName)
+}
+
+type reconnectionPeriod time.Duration
+
+func (rp reconnectionPeriod) withExporter(e *Exporter) {
+	e.reconnectionPeriod = time.Duration(rp)
+}
+
+func WithReconnectionPeriod(rp time.Duration) ExporterOption {
+	return reconnectionPeriod(rp)
+}
+
+type compressorSetter string
+
+func (c compressorSetter) withExporter(e *Exporter) {
+	e.compressor = string(c)
+}
+
+// UseCompressor will set the compressor for the gRPC client to use when sending requests.
+// It is the responsibility of the caller to ensure that the compressor set has been registered
+// with google.golang.org/grpc/encoding. This can be done by encoding.RegisterCompressor. Some
+// compressors auto-register on import, such as gzip, which can be registered by calling
+// `import _ "google.golang.org/grpc/encoding/gzip"`
+func UseCompressor(compressorName string) ExporterOption {
+	return compressorSetter(compressorName)
+}
+
+type headerSetter map[string]string
+
+func (h headerSetter) withExporter(e *Exporter) {
+	e.headers = map[string]string(h)
+}
+
+// WithHeaders will send the provided headers when the gRPC stream connection
+// is instantiated
+func WithHeaders(headers map[string]string) ExporterOption {
+	return headerSetter(headers)
+}
+
+type clientCredentials struct {
+	credentials.TransportCredentials
+}
+
+var _ ExporterOption = (*clientCredentials)(nil)
+
+// WithTLSCredentials allows the connection to use TLS credentials
+// when talking to the server. It takes in grpc.TransportCredentials instead
+// of say a Certificate file or a tls.Certificate, because the retrieving
+// these credentials can be done in many ways e.g. plain file, in code tls.Config
+// or by certificate rotation, so it is up to the caller to decide what to use.
+func WithTLSCredentials(creds credentials.TransportCredentials) ExporterOption {
+	return &clientCredentials{TransportCredentials: creds}
+}
+
+func (cc *clientCredentials) withExporter(e *Exporter) {
+	e.clientTransportCredentials = cc.TransportCredentials
+}
+
+type grpcDialOptions []grpc.DialOption
+
+var _ ExporterOption = (*grpcDialOptions)(nil)
+
+// WithGRPCDialOption opens support to any grpc.DialOption to be used. If it conflicts
+// with some other configuration the GRPC specified via the agent the ones here will
+// take preference since they are set last.
+func WithGRPCDialOption(opts ...grpc.DialOption) ExporterOption {
+	return grpcDialOptions(opts)
+}
+
+func (opts grpcDialOptions) withExporter(e *Exporter) {
+	e.grpcDialOptions = opts
 }

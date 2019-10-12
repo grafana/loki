@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -64,6 +63,15 @@ type Request struct {
 	SignedHeaderVals       http.Header
 	LastSignedAt           time.Time
 	DisableFollowRedirects bool
+
+	// Additional API error codes that should be retried. IsErrorRetryable
+	// will consider these codes in addition to its built in cases.
+	RetryErrorCodes []string
+
+	// Additional API error codes that should be retried with throttle backoff
+	// delay. IsErrorThrottle will consider these codes in addition to its
+	// built in cases.
+	ThrottleErrorCodes []string
 
 	// A value greater than 0 instructs the request to be signed as Presigned URL
 	// You should not set this field directly. Instead use Request's
@@ -232,6 +240,10 @@ func (r *Request) WillRetry() bool {
 	return r.Error != nil && aws.BoolValue(r.Retryable) && r.RetryCount < r.MaxRetries()
 }
 
+func fmtAttemptCount(retryCount, maxRetries int) string {
+	return fmt.Sprintf("attempt %v/%v", retryCount, maxRetries)
+}
+
 // ParamsFilled returns if the request's parameters have been populated
 // and the parameters are valid. False is returned if no parameters are
 // provided or invalid.
@@ -260,7 +272,18 @@ func (r *Request) SetStringBody(s string) {
 // SetReaderBody will set the request's body reader.
 func (r *Request) SetReaderBody(reader io.ReadSeeker) {
 	r.Body = reader
-	r.BodyStart, _ = reader.Seek(0, sdkio.SeekCurrent) // Get the Bodies current offset.
+
+	if aws.IsReaderSeekable(reader) {
+		var err error
+		// Get the Bodies current offset so retries will start from the same
+		// initial position.
+		r.BodyStart, err = reader.Seek(0, sdkio.SeekCurrent)
+		if err != nil {
+			r.Error = awserr.New(ErrCodeSerialization,
+				"failed to determine start of request body", err)
+			return
+		}
+	}
 	r.ResetBody()
 }
 
@@ -331,14 +354,13 @@ func getPresignedURL(r *Request, expire time.Duration) (string, http.Header, err
 	return r.HTTPRequest.URL.String(), r.SignedHeaderVals, nil
 }
 
-func debugLogReqError(r *Request, stage string, retrying bool, err error) {
+const (
+	notRetrying = "not retrying"
+)
+
+func debugLogReqError(r *Request, stage, retryStr string, err error) {
 	if !r.Config.LogLevel.Matches(aws.LogDebugWithRequestErrors) {
 		return
-	}
-
-	retryStr := "not retrying"
-	if retrying {
-		retryStr = "will retry"
 	}
 
 	r.Config.Logger.Log(fmt.Sprintf("DEBUG: %s %s/%s failed, %s, error %v",
@@ -359,12 +381,12 @@ func (r *Request) Build() error {
 	if !r.built {
 		r.Handlers.Validate.Run(r)
 		if r.Error != nil {
-			debugLogReqError(r, "Validate Request", false, r.Error)
+			debugLogReqError(r, "Validate Request", notRetrying, r.Error)
 			return r.Error
 		}
 		r.Handlers.Build.Run(r)
 		if r.Error != nil {
-			debugLogReqError(r, "Build Request", false, r.Error)
+			debugLogReqError(r, "Build Request", notRetrying, r.Error)
 			return r.Error
 		}
 		r.built = true
@@ -380,7 +402,7 @@ func (r *Request) Build() error {
 func (r *Request) Sign() error {
 	r.Build()
 	if r.Error != nil {
-		debugLogReqError(r, "Build Request", false, r.Error)
+		debugLogReqError(r, "Build Request", notRetrying, r.Error)
 		return r.Error
 	}
 
@@ -388,12 +410,16 @@ func (r *Request) Sign() error {
 	return r.Error
 }
 
-func (r *Request) getNextRequestBody() (io.ReadCloser, error) {
+func (r *Request) getNextRequestBody() (body io.ReadCloser, err error) {
 	if r.safeBody != nil {
 		r.safeBody.Close()
 	}
 
-	r.safeBody = newOffsetReader(r.Body, r.BodyStart)
+	r.safeBody, err = newOffsetReader(r.Body, r.BodyStart)
+	if err != nil {
+		return nil, awserr.New(ErrCodeSerialization,
+			"failed to get next request body reader", err)
+	}
 
 	// Go 1.8 tightened and clarified the rules code needs to use when building
 	// requests with the http package. Go 1.8 removed the automatic detection
@@ -410,10 +436,10 @@ func (r *Request) getNextRequestBody() (io.ReadCloser, error) {
 	// Related golang/go#18257
 	l, err := aws.SeekerLen(r.Body)
 	if err != nil {
-		return nil, awserr.New(ErrCodeSerialization, "failed to compute request body size", err)
+		return nil, awserr.New(ErrCodeSerialization,
+			"failed to compute request body size", err)
 	}
 
-	var body io.ReadCloser
 	if l == 0 {
 		body = NoBody
 	} else if l > 0 {
@@ -474,29 +500,28 @@ func (r *Request) Send() error {
 		r.AttemptTime = time.Now()
 
 		if err := r.Sign(); err != nil {
-			debugLogReqError(r, "Sign Request", false, err)
+			debugLogReqError(r, "Sign Request", notRetrying, err)
 			return err
 		}
 
 		if err := r.sendRequest(); err == nil {
 			return nil
-		} else if !shouldRetryCancel(r) {
+		}
+		r.Handlers.Retry.Run(r)
+		r.Handlers.AfterRetry.Run(r)
+
+		if r.Error != nil || !aws.BoolValue(r.Retryable) {
+			return r.Error
+		}
+
+		if err := r.prepareRetry(); err != nil {
+			r.Error = err
 			return err
-		} else {
-			r.Handlers.Retry.Run(r)
-			r.Handlers.AfterRetry.Run(r)
-
-			if r.Error != nil || !aws.BoolValue(r.Retryable) {
-				return r.Error
-			}
-
-			r.prepareRetry()
-			continue
 		}
 	}
 }
 
-func (r *Request) prepareRetry() {
+func (r *Request) prepareRetry() error {
 	if r.Config.LogLevel.Matches(aws.LogDebugWithRequestRetries) {
 		r.Config.Logger.Log(fmt.Sprintf("DEBUG: Retrying Request %s/%s, attempt %d",
 			r.ClientInfo.ServiceName, r.Operation.Name, r.RetryCount))
@@ -507,12 +532,19 @@ func (r *Request) prepareRetry() {
 	// the request's body even though the Client's Do returned.
 	r.HTTPRequest = copyHTTPRequest(r.HTTPRequest, nil)
 	r.ResetBody()
+	if err := r.Error; err != nil {
+		return awserr.New(ErrCodeSerialization,
+			"failed to prepare body for retry", err)
+
+	}
 
 	// Closing response body to ensure that no response body is leaked
 	// between retry attempts.
 	if r.HTTPResponse != nil && r.HTTPResponse.Body != nil {
 		r.HTTPResponse.Body.Close()
 	}
+
+	return nil
 }
 
 func (r *Request) sendRequest() (sendErr error) {
@@ -521,7 +553,9 @@ func (r *Request) sendRequest() (sendErr error) {
 	r.Retryable = nil
 	r.Handlers.Send.Run(r)
 	if r.Error != nil {
-		debugLogReqError(r, "Send Request", r.WillRetry(), r.Error)
+		debugLogReqError(r, "Send Request",
+			fmtAttemptCount(r.RetryCount, r.MaxRetries()),
+			r.Error)
 		return r.Error
 	}
 
@@ -529,13 +563,17 @@ func (r *Request) sendRequest() (sendErr error) {
 	r.Handlers.ValidateResponse.Run(r)
 	if r.Error != nil {
 		r.Handlers.UnmarshalError.Run(r)
-		debugLogReqError(r, "Validate Response", r.WillRetry(), r.Error)
+		debugLogReqError(r, "Validate Response",
+			fmtAttemptCount(r.RetryCount, r.MaxRetries()),
+			r.Error)
 		return r.Error
 	}
 
 	r.Handlers.Unmarshal.Run(r)
 	if r.Error != nil {
-		debugLogReqError(r, "Unmarshal Response", r.WillRetry(), r.Error)
+		debugLogReqError(r, "Unmarshal Response",
+			fmtAttemptCount(r.RetryCount, r.MaxRetries()),
+			r.Error)
 		return r.Error
 	}
 
@@ -560,32 +598,6 @@ func AddToUserAgent(r *Request, s string) {
 		s = curUA + " " + s
 	}
 	r.HTTPRequest.Header.Set("User-Agent", s)
-}
-
-func shouldRetryCancel(r *Request) bool {
-	awsErr, ok := r.Error.(awserr.Error)
-	timeoutErr := false
-	errStr := r.Error.Error()
-	if ok {
-		if awsErr.Code() == CanceledErrorCode {
-			return false
-		}
-		err := awsErr.OrigErr()
-		netErr, netOK := err.(net.Error)
-		timeoutErr = netOK && netErr.Temporary()
-		if urlErr, ok := err.(*url.Error); !timeoutErr && ok {
-			errStr = urlErr.Err.Error()
-		}
-	}
-
-	// There can be two types of canceled errors here.
-	// The first being a net.Error and the other being an error.
-	// If the request was timed out, we want to continue the retry
-	// process. Otherwise, return the canceled error.
-	return timeoutErr ||
-		(errStr != "net/http: request canceled" &&
-			errStr != "net/http: request canceled while waiting for connection")
-
 }
 
 // SanitizeHostForHeader removes default port from host and updates request.Host
