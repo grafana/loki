@@ -13,7 +13,7 @@ helm upgrade --install my-release loki/fluent-bit \
     --set loki.serviceName=loki.default.svc.cluster.local
 ```
 
-If you deploy loki with custom namespace or service name, you must update `loki.serviceName` as you own value.
+If you deploy Loki with a custom namespace or service name, you must change the value above for `loki.serviceName` to the appropriate value.
 
 The command deploys fluent-bit on the Kubernetes cluster with the default configuration. The [configuration](#configuration) section lists the parameters that can be configured during installation.
 
