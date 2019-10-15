@@ -95,8 +95,8 @@ func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64)
 		}
 	}
 	u := &url.URL{
-		Scheme: "https",
-		Host:   "storage.googleapis.com",
+		Scheme: o.c.scheme,
+		Host:   o.c.readHost,
 		Path:   fmt.Sprintf("/%s/%s", o.bucket, o.object),
 	}
 	verb := "GET"

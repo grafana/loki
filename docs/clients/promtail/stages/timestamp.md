@@ -19,6 +19,11 @@ timestamp:
 
   # IANA Timezone Database string.
   [location: <string>]
+
+  # Which action should be taken in case the timestamp can't
+  # be extracted or parsed. Valid values are: [skip, fudge].
+  # Defaults to "fudge".
+  [action_on_failure: <string>]
 ```
 
 The `format` field can be provided as an "example" of what timestamps look like
@@ -67,6 +72,15 @@ should be used in the custom format.
 | Timezone name       | `MST`                                                                                                                                |
 | Timezone offset     | `-0700`, `-070000` (with seconds), `-07`, `07:00`, `-07:00:00` (with seconds)                                                        |
 | Timezone ISO-8601   | `Z0700` (Z for UTC or time offset), `Z070000`, `Z07`, `Z07:00`, `Z07:00:00`                                                          |
+
+The `action_on_failure` setting defines which action should be taken by the
+stage in case the `source` field doesn't exist in the extracted data or the
+timestamp parsing fails. The supported actions are:
+
+- `fudge` (default): change the timestamp to the last known timestamp, summing
+  up 1 nanosecond (to guarantee log entries ordering)
+- `skip`: do not change the timestamp and keep the time when the log entry has
+  been scraped by Promtail
 
 ## Examples
 

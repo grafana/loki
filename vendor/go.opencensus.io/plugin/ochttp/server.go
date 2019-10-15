@@ -118,12 +118,18 @@ func (h *Handler) startTrace(w http.ResponseWriter, r *http.Request) (*http.Requ
 			span.AddLink(trace.Link{
 				TraceID:    sc.TraceID,
 				SpanID:     sc.SpanID,
-				Type:       trace.LinkTypeChild,
+				Type:       trace.LinkTypeParent,
 				Attributes: nil,
 			})
 		}
 	}
 	span.AddAttributes(requestAttrs(r)...)
+	if r.Body == nil {
+		// TODO: Handle cases where ContentLength is not set.
+	} else if r.ContentLength > 0 {
+		span.AddMessageReceiveEvent(0, /* TODO: messageID */
+			r.ContentLength, -1)
+	}
 	return r.WithContext(ctx), span.End
 }
 
@@ -136,7 +142,7 @@ func (h *Handler) extractSpanContext(r *http.Request) (trace.SpanContext, bool) 
 
 func (h *Handler) startStats(w http.ResponseWriter, r *http.Request) (http.ResponseWriter, func(tags *addedTags)) {
 	ctx, _ := tag.New(r.Context(),
-		tag.Upsert(Host, r.URL.Host),
+		tag.Upsert(Host, r.Host),
 		tag.Upsert(Path, r.URL.Path),
 		tag.Upsert(Method, r.Method))
 	track := &trackingResponseWriter{
@@ -167,8 +173,6 @@ type trackingResponseWriter struct {
 
 // Compile time assertion for ResponseWriter interface
 var _ http.ResponseWriter = (*trackingResponseWriter)(nil)
-
-var logTagsErrorOnce sync.Once
 
 func (t *trackingResponseWriter) end(tags *addedTags) {
 	t.endOnce.Do(func() {
@@ -201,6 +205,9 @@ func (t *trackingResponseWriter) Header() http.Header {
 func (t *trackingResponseWriter) Write(data []byte) (int, error) {
 	n, err := t.writer.Write(data)
 	t.respSize += int64(n)
+	// Add message event for request bytes sent.
+	span := trace.FromContext(t.ctx)
+	span.AddMessageSendEvent(0 /* TODO: messageID */, int64(n), -1)
 	return n, err
 }
 

@@ -2,15 +2,15 @@ package ingester
 
 import (
 	"encoding/binary"
-	"fmt"
 	"hash/fnv"
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
@@ -91,7 +91,10 @@ func (t *tailer) loop() {
 			tailResponse := logproto.TailResponse{Stream: stream, DroppedStreams: t.popDroppedStreams()}
 			err = t.conn.Send(&tailResponse)
 			if err != nil {
-				level.Error(util.Logger).Log("Error writing to tail client", fmt.Sprintf("%v", err))
+				// Don't log any error due to tail client closing the connection
+				if !util.IsConnCanceled(err) {
+					level.Error(cortex_util.Logger).Log("msg", "Error writing to tail client", "err", err)
+				}
 				t.close()
 				return
 			}
@@ -128,9 +131,14 @@ func (t *tailer) send(stream logproto.Stream) {
 }
 
 func (t *tailer) filterEntriesInStream(stream *logproto.Stream) {
+	// Optimization: skip filtering entirely, if no filter is set
+	if t.filter == nil {
+		return
+	}
+
 	var filteredEntries []logproto.Entry
 	for _, e := range stream.Entries {
-		if t.filter == nil || t.filter([]byte(e.Line)) {
+		if t.filter([]byte(e.Line)) {
 			filteredEntries = append(filteredEntries, e)
 		}
 	}

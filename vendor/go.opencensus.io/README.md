@@ -29,7 +29,7 @@ integration with your RPC framework:
 
 * [net/http](https://godoc.org/go.opencensus.io/plugin/ochttp)
 * [gRPC](https://godoc.org/go.opencensus.io/plugin/ocgrpc)
-* [database/sql](https://godoc.org/github.com/basvanbeek/ocsql)
+* [database/sql](https://godoc.org/github.com/opencensus-integrations/ocsql)
 * [Go kit](https://godoc.org/github.com/go-kit/kit/tracing/opencensus)
 * [Groupcache](https://godoc.org/github.com/orijtech/groupcache)
 * [Caddy webserver](https://godoc.org/github.com/orijtech/caddy)
@@ -78,7 +78,7 @@ Package `tag` allows adding or modifying tags in the current context.
 
 [embedmd]:# (internal/readme/tags.go new)
 ```go
-ctx, err = tag.New(ctx,
+ctx, err := tag.New(ctx,
 	tag.Insert(osKey, "macOS-10.12.5"),
 	tag.Upsert(userIDKey, "cde36753ed"),
 )
@@ -123,7 +123,7 @@ Currently three types of aggregations are supported:
 
 [embedmd]:# (internal/readme/stats.go aggs)
 ```go
-distAgg := view.Distribution(0, 1<<32, 2<<32, 3<<32)
+distAgg := view.Distribution(1<<32, 2<<32, 3<<32)
 countAgg := view.Count()
 sumAgg := view.Sum()
 ```
@@ -136,7 +136,7 @@ if err := view.Register(&view.View{
 	Name:        "example.com/video_size_distribution",
 	Description: "distribution of processed video size over time",
 	Measure:     videoSize,
-	Aggregation: view.Distribution(0, 1<<32, 2<<32, 3<<32),
+	Aggregation: view.Distribution(1<<32, 2<<32, 3<<32),
 }); err != nil {
 	log.Fatalf("Failed to register view: %v", err)
 }
@@ -253,10 +253,10 @@ release in which the functionality was marked *Deprecated*.
 [new-ex]: https://godoc.org/go.opencensus.io/tag#example-NewMap
 [new-replace-ex]: https://godoc.org/go.opencensus.io/tag#example-NewMap--Replace
 
-[exporter-prom]: https://godoc.org/go.opencensus.io/exporter/prometheus
+[exporter-prom]: https://godoc.org/contrib.go.opencensus.io/exporter/prometheus
 [exporter-stackdriver]: https://godoc.org/contrib.go.opencensus.io/exporter/stackdriver
-[exporter-zipkin]: https://godoc.org/go.opencensus.io/exporter/zipkin
-[exporter-jaeger]: https://godoc.org/go.opencensus.io/exporter/jaeger
+[exporter-zipkin]: https://godoc.org/contrib.go.opencensus.io/exporter/zipkin
+[exporter-jaeger]: https://godoc.org/contrib.go.opencensus.io/exporter/jaeger
 [exporter-xray]: https://github.com/census-ecosystem/opencensus-go-exporter-aws
 [exporter-datadog]: https://github.com/DataDog/opencensus-go-exporter-datadog
 [exporter-graphite]: https://github.com/census-ecosystem/opencensus-go-exporter-graphite

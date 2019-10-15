@@ -535,10 +535,11 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	// Init everything with default values.
 	flagext.RegisterFlags(&cfg)
 
-	// Make promtail listen on localhost to avoid prompts on MacOS.
-	cfg.ServerConfig.HTTPListenHost = "localhost"
+	const hostname = "localhost"
+	cfg.ServerConfig.HTTPListenHost = hostname
+	cfg.ServerConfig.ExternalURL = hostname
+	cfg.ServerConfig.GRPCListenHost = hostname
 	cfg.ServerConfig.HTTPListenPort = httpTestPort
-	cfg.ServerConfig.GRPCListenHost = "localhost"
 
 	// Override some of those defaults
 	cfg.ClientConfig.URL = clientURL

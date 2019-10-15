@@ -9,12 +9,12 @@ RUN apk add --no-cache curl && \
 FROM alpine as golangci
 RUN apk add --no-cache curl && \
     cd / && \
-    curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.17.1
+    curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.19.1
 
 FROM alpine:edge as docker
 RUN apk add --no-cache docker-cli
 
-FROM golang:1.11.4-stretch
+FROM golang:1.13.1-stretch
 RUN apt-get update && \
     apt-get install -qy \
       musl \

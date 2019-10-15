@@ -70,6 +70,7 @@ type Ingester struct {
 	cfg          Config
 	clientConfig client.Config
 
+	shutdownMtx  sync.Mutex // Allows processes to grab a lock and prevent a shutdown
 	instancesMtx sync.RWMutex
 	instances    map[string]*instance
 	readonly     bool

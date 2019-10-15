@@ -77,7 +77,7 @@ func NewReader(writer io.Writer, receivedChan chan time.Time, tls bool,
 	go func() {
 		<-rd.quit
 		if rd.conn != nil {
-			_, _ = fmt.Fprintf(rd.w, "shutting down reader\n")
+			fmt.Fprintf(rd.w, "shutting down reader\n")
 			rd.shuttingDown = true
 			_ = rd.conn.Close()
 		}
@@ -107,9 +107,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 			"&query=" + url.QueryEscape(fmt.Sprintf("{stream=\"stdout\",%v=\"%v\"}", r.lName, r.lVal)) +
 			"&limit=1000",
 	}
-	_, _ = fmt.Fprintf(r.w, "Querying loki for missing values with query: %v\n", u.String())
-
-	client := &http.Client{}
+	fmt.Fprintf(r.w, "Querying loki for missing values with query: %v\n", u.String())
 
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
@@ -118,7 +116,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 
 	req.SetBasicAuth(r.user, r.pass)
 
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +142,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 		for _, entry := range stream.Entries {
 			ts, err := parseResponse(&entry)
 			if err != nil {
-				_, _ = fmt.Fprint(r.w, err)
+				fmt.Fprint(r.w, err)
 				continue
 			}
 			tss = append(tss, *ts)
@@ -168,7 +166,7 @@ func (r *Reader) run() {
 				close(r.done)
 				return
 			}
-			_, _ = fmt.Fprintf(r.w, "error reading websocket: %s\n", err)
+			fmt.Fprintf(r.w, "error reading websocket: %s\n", err)
 			r.closeAndReconnect()
 			continue
 		}
@@ -176,7 +174,7 @@ func (r *Reader) run() {
 			for _, entry := range stream.Entries {
 				ts, err := parseResponse(&entry)
 				if err != nil {
-					_, _ = fmt.Fprint(r.w, err)
+					fmt.Fprint(r.w, err)
 					continue
 				}
 				r.recv <- *ts
@@ -205,11 +203,11 @@ func (r *Reader) closeAndReconnect() {
 			RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("{stream=\"stdout\",%v=\"%v\"}", r.lName, r.lVal)),
 		}
 
-		_, _ = fmt.Fprintf(r.w, "Connecting to loki at %v, querying for label '%v' with value '%v'\n", u.String(), r.lName, r.lVal)
+		fmt.Fprintf(r.w, "Connecting to loki at %v, querying for label '%v' with value '%v'\n", u.String(), r.lName, r.lVal)
 
 		c, _, err := websocket.DefaultDialer.Dial(u.String(), r.header)
 		if err != nil {
-			_, _ = fmt.Fprintf(r.w, "failed to connect to %s with err %s\n", u.String(), err)
+			fmt.Fprintf(r.w, "failed to connect to %s with err %s\n", u.String(), err)
 			<-time.After(5 * time.Second)
 			continue
 		}

@@ -58,11 +58,16 @@ func (c *ApplicationAutoScaling) DeleteScalingPolicyRequest(input *DeleteScaling
 
 // DeleteScalingPolicy API operation for Application Auto Scaling.
 //
-// Deletes the specified Application Auto Scaling scaling policy.
+// Deletes the specified scaling policy for an Application Auto Scaling scalable
+// target.
 //
-// Deleting a policy deletes the underlying alarm action, but does not delete
-// the CloudWatch alarm associated with the scaling policy, even if it no longer
-// has an associated action.
+// Deleting a step scaling policy deletes the underlying alarm action, but does
+// not delete the CloudWatch alarm associated with the scaling policy, even
+// if it no longer has an associated action.
+//
+// For more information, see Delete a Step Scaling Policy (https://docs.aws.amazon.com/autoscaling/application/userguide/application-auto-scaling-step-scaling-policies.html#delete-step-scaling-policy)
+// and Delete a Target Tracking Scaling Policy (https://docs.aws.amazon.com/autoscaling/application/userguide/application-auto-scaling-target-tracking.html#delete-target-tracking-policy)
+// in the Application Auto Scaling User Guide.
 //
 // To create a scaling policy or update an existing one, see PutScalingPolicy.
 //
@@ -159,7 +164,11 @@ func (c *ApplicationAutoScaling) DeleteScheduledActionRequest(input *DeleteSched
 
 // DeleteScheduledAction API operation for Application Auto Scaling.
 //
-// Deletes the specified Application Auto Scaling scheduled action.
+// Deletes the specified scheduled action for an Application Auto Scaling scalable
+// target.
+//
+// For more information, see Delete a Scheduled Action (https://docs.aws.amazon.com/autoscaling/application/userguide/application-auto-scaling-scheduled-scaling.html#delete-scheduled-action)
+// in the Application Auto Scaling User Guide.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -254,7 +263,7 @@ func (c *ApplicationAutoScaling) DeregisterScalableTargetRequest(input *Deregist
 
 // DeregisterScalableTarget API operation for Application Auto Scaling.
 //
-// Deregisters a scalable target.
+// Deregisters an Application Auto Scaling scalable target.
 //
 // Deregistering a scalable target deletes the scaling policies that are associated
 // with it.
@@ -361,7 +370,7 @@ func (c *ApplicationAutoScaling) DescribeScalableTargetsRequest(input *DescribeS
 //
 // Gets information about the scalable targets in the specified namespace.
 //
-// You can filter the results using the ResourceIds and ScalableDimension parameters.
+// You can filter the results using ResourceIds and ScalableDimension.
 //
 // To create a scalable target or update an existing one, see RegisterScalableTarget.
 // If you are no longer using a scalable target, you can deregister it using
@@ -422,7 +431,7 @@ func (c *ApplicationAutoScaling) DescribeScalableTargetsWithContext(ctx aws.Cont
 //    // Example iterating over at most 3 pages of a DescribeScalableTargets operation.
 //    pageNum := 0
 //    err := client.DescribeScalableTargetsPages(params,
-//        func(page *DescribeScalableTargetsOutput, lastPage bool) bool {
+//        func(page *applicationautoscaling.DescribeScalableTargetsOutput, lastPage bool) bool {
 //            pageNum++
 //            fmt.Println(page)
 //            return pageNum <= 3
@@ -514,7 +523,7 @@ func (c *ApplicationAutoScaling) DescribeScalingActivitiesRequest(input *Describ
 // Provides descriptive information about the scaling activities in the specified
 // namespace from the previous six weeks.
 //
-// You can filter the results using the ResourceId and ScalableDimension parameters.
+// You can filter the results using ResourceId and ScalableDimension.
 //
 // Scaling activities are triggered by CloudWatch alarms that are associated
 // with scaling policies. To view the scaling policies for a service namespace,
@@ -576,7 +585,7 @@ func (c *ApplicationAutoScaling) DescribeScalingActivitiesWithContext(ctx aws.Co
 //    // Example iterating over at most 3 pages of a DescribeScalingActivities operation.
 //    pageNum := 0
 //    err := client.DescribeScalingActivitiesPages(params,
-//        func(page *DescribeScalingActivitiesOutput, lastPage bool) bool {
+//        func(page *applicationautoscaling.DescribeScalingActivitiesOutput, lastPage bool) bool {
 //            pageNum++
 //            fmt.Println(page)
 //            return pageNum <= 3
@@ -665,10 +674,10 @@ func (c *ApplicationAutoScaling) DescribeScalingPoliciesRequest(input *DescribeS
 
 // DescribeScalingPolicies API operation for Application Auto Scaling.
 //
-// Describes the scaling policies for the specified service namespace.
+// Describes the Application Auto Scaling scaling policies for the specified
+// service namespace.
 //
-// You can filter the results using the ResourceId, ScalableDimension, and PolicyNames
-// parameters.
+// You can filter the results using ResourceId, ScalableDimension, and PolicyNames.
 //
 // To create a scaling policy or update an existing one, see PutScalingPolicy.
 // If you are no longer using a scaling policy, you can delete it using DeleteScalingPolicy.
@@ -690,7 +699,7 @@ func (c *ApplicationAutoScaling) DescribeScalingPoliciesRequest(input *DescribeS
 //   when Application Auto Scaling is unable to retrieve the alarms associated
 //   with a scaling policy due to a client error, for example, if the role ARN
 //   specified for a scalable target does not have permission to call the CloudWatch
-//   DescribeAlarms (http://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_DescribeAlarms.html)
+//   DescribeAlarms (https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_DescribeAlarms.html)
 //   on your behalf.
 //
 //   * ErrCodeInvalidNextTokenException "InvalidNextTokenException"
@@ -736,7 +745,7 @@ func (c *ApplicationAutoScaling) DescribeScalingPoliciesWithContext(ctx aws.Cont
 //    // Example iterating over at most 3 pages of a DescribeScalingPolicies operation.
 //    pageNum := 0
 //    err := client.DescribeScalingPoliciesPages(params,
-//        func(page *DescribeScalingPoliciesOutput, lastPage bool) bool {
+//        func(page *applicationautoscaling.DescribeScalingPoliciesOutput, lastPage bool) bool {
 //            pageNum++
 //            fmt.Println(page)
 //            return pageNum <= 3
@@ -806,6 +815,12 @@ func (c *ApplicationAutoScaling) DescribeScheduledActionsRequest(input *Describe
 		Name:       opDescribeScheduledActions,
 		HTTPMethod: "POST",
 		HTTPPath:   "/",
+		Paginator: &request.Paginator{
+			InputTokens:     []string{"NextToken"},
+			OutputTokens:    []string{"NextToken"},
+			LimitToken:      "MaxResults",
+			TruncationToken: "",
+		},
 	}
 
 	if input == nil {
@@ -819,7 +834,8 @@ func (c *ApplicationAutoScaling) DescribeScheduledActionsRequest(input *Describe
 
 // DescribeScheduledActions API operation for Application Auto Scaling.
 //
-// Describes the scheduled actions for the specified service namespace.
+// Describes the Application Auto Scaling scheduled actions for the specified
+// service namespace.
 //
 // You can filter the results using the ResourceId, ScalableDimension, and ScheduledActionNames
 // parameters.
@@ -871,6 +887,56 @@ func (c *ApplicationAutoScaling) DescribeScheduledActionsWithContext(ctx aws.Con
 	return out, req.Send()
 }
 
+// DescribeScheduledActionsPages iterates over the pages of a DescribeScheduledActions operation,
+// calling the "fn" function with the response data for each page. To stop
+// iterating, return false from the fn function.
+//
+// See DescribeScheduledActions method for more information on how to use this operation.
+//
+// Note: This operation can generate multiple requests to a service.
+//
+//    // Example iterating over at most 3 pages of a DescribeScheduledActions operation.
+//    pageNum := 0
+//    err := client.DescribeScheduledActionsPages(params,
+//        func(page *applicationautoscaling.DescribeScheduledActionsOutput, lastPage bool) bool {
+//            pageNum++
+//            fmt.Println(page)
+//            return pageNum <= 3
+//        })
+//
+func (c *ApplicationAutoScaling) DescribeScheduledActionsPages(input *DescribeScheduledActionsInput, fn func(*DescribeScheduledActionsOutput, bool) bool) error {
+	return c.DescribeScheduledActionsPagesWithContext(aws.BackgroundContext(), input, fn)
+}
+
+// DescribeScheduledActionsPagesWithContext same as DescribeScheduledActionsPages except
+// it takes a Context and allows setting request options on the pages.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *ApplicationAutoScaling) DescribeScheduledActionsPagesWithContext(ctx aws.Context, input *DescribeScheduledActionsInput, fn func(*DescribeScheduledActionsOutput, bool) bool, opts ...request.Option) error {
+	p := request.Pagination{
+		NewRequest: func() (*request.Request, error) {
+			var inCpy *DescribeScheduledActionsInput
+			if input != nil {
+				tmp := *input
+				inCpy = &tmp
+			}
+			req, _ := c.DescribeScheduledActionsRequest(inCpy)
+			req.SetContext(ctx)
+			req.ApplyOptions(opts...)
+			return req, nil
+		},
+	}
+
+	cont := true
+	for p.Next() && cont {
+		cont = fn(p.Page().(*DescribeScheduledActionsOutput), !p.HasNextPage())
+	}
+	return p.Err()
+}
+
 const opPutScalingPolicy = "PutScalingPolicy"
 
 // PutScalingPolicyRequest generates a "aws/request.Request" representing the
@@ -919,8 +985,8 @@ func (c *ApplicationAutoScaling) PutScalingPolicyRequest(input *PutScalingPolicy
 //
 // Each scalable target is identified by a service namespace, resource ID, and
 // scalable dimension. A scaling policy applies to the scalable target identified
-// by those three attributes. You cannot create a scaling policy until you register
-// the scalable target using RegisterScalableTarget.
+// by those three attributes. You cannot create a scaling policy until you have
+// registered the resource as a scalable target using RegisterScalableTarget.
 //
 // To update a policy, specify its policy name and the parameters that you want
 // to change. Any parameters that you don't specify are not changed by this
@@ -928,6 +994,20 @@ func (c *ApplicationAutoScaling) PutScalingPolicyRequest(input *PutScalingPolicy
 //
 // You can view the scaling policies for a service namespace using DescribeScalingPolicies.
 // If you are no longer using a scaling policy, you can delete it using DeleteScalingPolicy.
+//
+// Multiple scaling policies can be in force at the same time for the same scalable
+// target. You can have one or more target tracking scaling policies, one or
+// more step scaling policies, or both. However, there is a chance that multiple
+// policies could conflict, instructing the scalable target to scale out or
+// in at the same time. Application Auto Scaling gives precedence to the policy
+// that provides the largest capacity for both scale in and scale out. For example,
+// if one policy increases capacity by 3, another policy increases capacity
+// by 200 percent, and the current capacity is 10, Application Auto Scaling
+// uses the policy with the highest calculated capacity (200% of 10 = 20) and
+// scales out to 30.
+//
+// Learn more about how to work with scaling policies in the Application Auto
+// Scaling User Guide (https://docs.aws.amazon.com/autoscaling/application/userguide/what-is-application-auto-scaling.html).
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -943,7 +1023,7 @@ func (c *ApplicationAutoScaling) PutScalingPolicyRequest(input *PutScalingPolicy
 //
 //   * ErrCodeLimitExceededException "LimitExceededException"
 //   A per-account resource limit is exceeded. For more information, see Application
-//   Auto Scaling Limits (http://docs.aws.amazon.com/ApplicationAutoScaling/latest/userguide/application-auto-scaling-limits.html).
+//   Auto Scaling Limits (https://docs.aws.amazon.com/ApplicationAutoScaling/latest/userguide/application-auto-scaling-limits.html).
 //
 //   * ErrCodeObjectNotFoundException "ObjectNotFoundException"
 //   The specified object could not be found. For any operation that depends on
@@ -961,7 +1041,7 @@ func (c *ApplicationAutoScaling) PutScalingPolicyRequest(input *PutScalingPolicy
 //   when Application Auto Scaling is unable to retrieve the alarms associated
 //   with a scaling policy due to a client error, for example, if the role ARN
 //   specified for a scalable target does not have permission to call the CloudWatch
-//   DescribeAlarms (http://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_DescribeAlarms.html)
+//   DescribeAlarms (https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_DescribeAlarms.html)
 //   on your behalf.
 //
 //   * ErrCodeInternalServiceException "InternalServiceException"
@@ -1040,7 +1120,7 @@ func (c *ApplicationAutoScaling) PutScheduledActionRequest(input *PutScheduledAc
 // Each scalable target is identified by a service namespace, resource ID, and
 // scalable dimension. A scheduled action applies to the scalable target identified
 // by those three attributes. You cannot create a scheduled action until you
-// register the scalable target using RegisterScalableTarget.
+// have registered the resource as a scalable target using RegisterScalableTarget.
 //
 // To update an action, specify its name and the parameters that you want to
 // change. If you don't specify start and end times, the old values are deleted.
@@ -1049,6 +1129,9 @@ func (c *ApplicationAutoScaling) PutScheduledActionRequest(input *PutScheduledAc
 //
 // You can view the scheduled actions using DescribeScheduledActions. If you
 // are no longer using a scheduled action, you can delete it using DeleteScheduledAction.
+//
+// Learn more about how to work with scheduled actions in the Application Auto
+// Scaling User Guide (https://docs.aws.amazon.com/autoscaling/application/userguide/what-is-application-auto-scaling.html).
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -1064,7 +1147,7 @@ func (c *ApplicationAutoScaling) PutScheduledActionRequest(input *PutScheduledAc
 //
 //   * ErrCodeLimitExceededException "LimitExceededException"
 //   A per-account resource limit is exceeded. For more information, see Application
-//   Auto Scaling Limits (http://docs.aws.amazon.com/ApplicationAutoScaling/latest/userguide/application-auto-scaling-limits.html).
+//   Auto Scaling Limits (https://docs.aws.amazon.com/ApplicationAutoScaling/latest/userguide/application-auto-scaling-limits.html).
 //
 //   * ErrCodeObjectNotFoundException "ObjectNotFoundException"
 //   The specified object could not be found. For any operation that depends on
@@ -1148,14 +1231,25 @@ func (c *ApplicationAutoScaling) RegisterScalableTargetRequest(input *RegisterSc
 // RegisterScalableTarget API operation for Application Auto Scaling.
 //
 // Registers or updates a scalable target. A scalable target is a resource that
-// Application Auto Scaling can scale out or scale in. After you have registered
-// a scalable target, you can use this operation to update the minimum and maximum
-// values for its scalable dimension.
+// Application Auto Scaling can scale out and scale in. Scalable targets are
+// uniquely identified by the combination of resource ID, scalable dimension,
+// and namespace.
 //
-// After you register a scalable target, you can create and apply scaling policies
-// using PutScalingPolicy. You can view the scaling policies for a service namespace
-// using DescribeScalableTargets. If you no longer need a scalable target, you
-// can deregister it using DeregisterScalableTarget.
+// When you register a new scalable target, you must specify values for minimum
+// and maximum capacity. Application Auto Scaling will not scale capacity to
+// values that are outside of this range.
+//
+// To update a scalable target, specify the parameter that you want to change
+// as well as the following parameters that identify the scalable target: resource
+// ID, scalable dimension, and namespace. Any parameters that you don't specify
+// are not changed by this update request.
+//
+// After you register a scalable target, you do not need to register it again
+// to use other Application Auto Scaling operations. To see which resources
+// have been registered, use DescribeScalableTargets. You can also view the
+// scaling policies for a service namespace by using DescribeScalableTargets.
+//
+// If you no longer need a scalable target, you can deregister it by using DeregisterScalableTarget.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -1171,7 +1265,7 @@ func (c *ApplicationAutoScaling) RegisterScalableTargetRequest(input *RegisterSc
 //
 //   * ErrCodeLimitExceededException "LimitExceededException"
 //   A per-account resource limit is exceeded. For more information, see Application
-//   Auto Scaling Limits (http://docs.aws.amazon.com/ApplicationAutoScaling/latest/userguide/application-auto-scaling-limits.html).
+//   Auto Scaling Limits (https://docs.aws.amazon.com/ApplicationAutoScaling/latest/userguide/application-auto-scaling-limits.html).
 //
 //   * ErrCodeConcurrentUpdateException "ConcurrentUpdateException"
 //   Concurrent updates caused an exception, for example, if you request an update
@@ -1239,11 +1333,30 @@ func (s *Alarm) SetAlarmName(v string) *Alarm {
 	return s
 }
 
-// Configures a customized metric for a target tracking policy.
+// Represents a CloudWatch metric of your choosing for a target tracking scaling
+// policy to use with Application Auto Scaling.
+//
+// To create your customized metric specification:
+//
+//    * Add values for each required parameter from CloudWatch. You can use
+//    an existing metric, or a new metric that you create. To use your own metric,
+//    you must first publish the metric to CloudWatch. For more information,
+//    see Publish Custom Metrics (https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/publishingMetrics.html)
+//    in the Amazon CloudWatch User Guide.
+//
+//    * Choose a metric that changes proportionally with capacity. The value
+//    of the metric should increase or decrease in inverse proportion to the
+//    number of capacity units. That is, the value of the metric should decrease
+//    when capacity increases.
+//
+// For more information about CloudWatch, see Amazon CloudWatch Concepts (https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/cloudwatch_concepts.html).
 type CustomizedMetricSpecification struct {
 	_ struct{} `type:"structure"`
 
 	// The dimensions of the metric.
+	//
+	// Conditional: If you published your metric with dimensions, you must specify
+	// the same dimensions in your scaling policy.
 	Dimensions []*MetricDimension `type:"list"`
 
 	// The name of the metric.
@@ -1348,8 +1461,8 @@ type DeleteScalingPolicyInput struct {
 	//    * ECS service - The resource type is service and the unique identifier
 	//    is the cluster name and service name. Example: service/default/sample-webapp.
 	//
-	//    * Spot fleet request - The resource type is spot-fleet-request and the
-	//    unique identifier is the Spot fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
+	//    * Spot Fleet request - The resource type is spot-fleet-request and the
+	//    unique identifier is the Spot Fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
 	//
 	//    * EMR cluster - The resource type is instancegroup and the unique identifier
 	//    is the cluster ID and instance group ID. Example: instancegroup/j-2EEZNYKUA1NTV/ig-1791Y4E1L8YI0.
@@ -1372,7 +1485,7 @@ type DeleteScalingPolicyInput struct {
 	//    * Custom resources are not supported with a resource type. This parameter
 	//    must specify the OutputValue from the CloudFormation template stack used
 	//    to access the resources. The unique identifier is defined by the service
-	//    provider.
+	//    provider. More information is available in our GitHub repository (https://github.com/aws/aws-auto-scaling-custom-resource).
 	//
 	// ResourceId is a required field
 	ResourceId *string `min:"1" type:"string" required:"true"`
@@ -1383,7 +1496,7 @@ type DeleteScalingPolicyInput struct {
 	//    * ecs:service:DesiredCount - The desired task count of an ECS service.
 	//
 	//    * ec2:spot-fleet-request:TargetCapacity - The target capacity of a Spot
-	//    fleet request.
+	//    Fleet request.
 	//
 	//    * elasticmapreduce:instancegroup:InstanceCount - The instance count of
 	//    an EMR Instance Group.
@@ -1404,7 +1517,8 @@ type DeleteScalingPolicyInput struct {
 	//    a DynamoDB global secondary index.
 	//
 	//    * rds:cluster:ReadReplicaCount - The count of Aurora Replicas in an Aurora
-	//    DB cluster. Available for Aurora MySQL-compatible edition.
+	//    DB cluster. Available for Aurora MySQL-compatible edition and Aurora PostgreSQL-compatible
+	//    edition.
 	//
 	//    * sagemaker:variant:DesiredInstanceCount - The number of EC2 instances
 	//    for an Amazon SageMaker model endpoint variant.
@@ -1509,8 +1623,8 @@ type DeleteScheduledActionInput struct {
 	//    * ECS service - The resource type is service and the unique identifier
 	//    is the cluster name and service name. Example: service/default/sample-webapp.
 	//
-	//    * Spot fleet request - The resource type is spot-fleet-request and the
-	//    unique identifier is the Spot fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
+	//    * Spot Fleet request - The resource type is spot-fleet-request and the
+	//    unique identifier is the Spot Fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
 	//
 	//    * EMR cluster - The resource type is instancegroup and the unique identifier
 	//    is the cluster ID and instance group ID. Example: instancegroup/j-2EEZNYKUA1NTV/ig-1791Y4E1L8YI0.
@@ -1533,7 +1647,7 @@ type DeleteScheduledActionInput struct {
 	//    * Custom resources are not supported with a resource type. This parameter
 	//    must specify the OutputValue from the CloudFormation template stack used
 	//    to access the resources. The unique identifier is defined by the service
-	//    provider.
+	//    provider. More information is available in our GitHub repository (https://github.com/aws/aws-auto-scaling-custom-resource).
 	//
 	// ResourceId is a required field
 	ResourceId *string `min:"1" type:"string" required:"true"`
@@ -1544,7 +1658,7 @@ type DeleteScheduledActionInput struct {
 	//    * ecs:service:DesiredCount - The desired task count of an ECS service.
 	//
 	//    * ec2:spot-fleet-request:TargetCapacity - The target capacity of a Spot
-	//    fleet request.
+	//    Fleet request.
 	//
 	//    * elasticmapreduce:instancegroup:InstanceCount - The instance count of
 	//    an EMR Instance Group.
@@ -1565,14 +1679,17 @@ type DeleteScheduledActionInput struct {
 	//    a DynamoDB global secondary index.
 	//
 	//    * rds:cluster:ReadReplicaCount - The count of Aurora Replicas in an Aurora
-	//    DB cluster. Available for Aurora MySQL-compatible edition.
+	//    DB cluster. Available for Aurora MySQL-compatible edition and Aurora PostgreSQL-compatible
+	//    edition.
 	//
 	//    * sagemaker:variant:DesiredInstanceCount - The number of EC2 instances
 	//    for an Amazon SageMaker model endpoint variant.
 	//
 	//    * custom-resource:ResourceType:Property - The scalable dimension for a
 	//    custom resource provided by your own application or service.
-	ScalableDimension *string `type:"string" enum:"ScalableDimension"`
+	//
+	// ScalableDimension is a required field
+	ScalableDimension *string `type:"string" required:"true" enum:"ScalableDimension"`
 
 	// The name of the scheduled action.
 	//
@@ -1606,6 +1723,9 @@ func (s *DeleteScheduledActionInput) Validate() error {
 	}
 	if s.ResourceId != nil && len(*s.ResourceId) < 1 {
 		invalidParams.Add(request.NewErrParamMinLen("ResourceId", 1))
+	}
+	if s.ScalableDimension == nil {
+		invalidParams.Add(request.NewErrParamRequired("ScalableDimension"))
 	}
 	if s.ScheduledActionName == nil {
 		invalidParams.Add(request.NewErrParamRequired("ScheduledActionName"))
@@ -1670,8 +1790,8 @@ type DeregisterScalableTargetInput struct {
 	//    * ECS service - The resource type is service and the unique identifier
 	//    is the cluster name and service name. Example: service/default/sample-webapp.
 	//
-	//    * Spot fleet request - The resource type is spot-fleet-request and the
-	//    unique identifier is the Spot fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
+	//    * Spot Fleet request - The resource type is spot-fleet-request and the
+	//    unique identifier is the Spot Fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
 	//
 	//    * EMR cluster - The resource type is instancegroup and the unique identifier
 	//    is the cluster ID and instance group ID. Example: instancegroup/j-2EEZNYKUA1NTV/ig-1791Y4E1L8YI0.
@@ -1694,7 +1814,7 @@ type DeregisterScalableTargetInput struct {
 	//    * Custom resources are not supported with a resource type. This parameter
 	//    must specify the OutputValue from the CloudFormation template stack used
 	//    to access the resources. The unique identifier is defined by the service
-	//    provider.
+	//    provider. More information is available in our GitHub repository (https://github.com/aws/aws-auto-scaling-custom-resource).
 	//
 	// ResourceId is a required field
 	ResourceId *string `min:"1" type:"string" required:"true"`
@@ -1705,7 +1825,7 @@ type DeregisterScalableTargetInput struct {
 	//    * ecs:service:DesiredCount - The desired task count of an ECS service.
 	//
 	//    * ec2:spot-fleet-request:TargetCapacity - The target capacity of a Spot
-	//    fleet request.
+	//    Fleet request.
 	//
 	//    * elasticmapreduce:instancegroup:InstanceCount - The instance count of
 	//    an EMR Instance Group.
@@ -1726,7 +1846,8 @@ type DeregisterScalableTargetInput struct {
 	//    a DynamoDB global secondary index.
 	//
 	//    * rds:cluster:ReadReplicaCount - The count of Aurora Replicas in an Aurora
-	//    DB cluster. Available for Aurora MySQL-compatible edition.
+	//    DB cluster. Available for Aurora MySQL-compatible edition and Aurora PostgreSQL-compatible
+	//    edition.
 	//
 	//    * sagemaker:variant:DesiredInstanceCount - The number of EC2 instances
 	//    for an Amazon SageMaker model endpoint variant.
@@ -1832,8 +1953,8 @@ type DescribeScalableTargetsInput struct {
 	//    * ECS service - The resource type is service and the unique identifier
 	//    is the cluster name and service name. Example: service/default/sample-webapp.
 	//
-	//    * Spot fleet request - The resource type is spot-fleet-request and the
-	//    unique identifier is the Spot fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
+	//    * Spot Fleet request - The resource type is spot-fleet-request and the
+	//    unique identifier is the Spot Fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
 	//
 	//    * EMR cluster - The resource type is instancegroup and the unique identifier
 	//    is the cluster ID and instance group ID. Example: instancegroup/j-2EEZNYKUA1NTV/ig-1791Y4E1L8YI0.
@@ -1856,7 +1977,7 @@ type DescribeScalableTargetsInput struct {
 	//    * Custom resources are not supported with a resource type. This parameter
 	//    must specify the OutputValue from the CloudFormation template stack used
 	//    to access the resources. The unique identifier is defined by the service
-	//    provider.
+	//    provider. More information is available in our GitHub repository (https://github.com/aws/aws-auto-scaling-custom-resource).
 	ResourceIds []*string `type:"list"`
 
 	// The scalable dimension associated with the scalable target. This string consists
@@ -1866,7 +1987,7 @@ type DescribeScalableTargetsInput struct {
 	//    * ecs:service:DesiredCount - The desired task count of an ECS service.
 	//
 	//    * ec2:spot-fleet-request:TargetCapacity - The target capacity of a Spot
-	//    fleet request.
+	//    Fleet request.
 	//
 	//    * elasticmapreduce:instancegroup:InstanceCount - The instance count of
 	//    an EMR Instance Group.
@@ -1887,7 +2008,8 @@ type DescribeScalableTargetsInput struct {
 	//    a DynamoDB global secondary index.
 	//
 	//    * rds:cluster:ReadReplicaCount - The count of Aurora Replicas in an Aurora
-	//    DB cluster. Available for Aurora MySQL-compatible edition.
+	//    DB cluster. Available for Aurora MySQL-compatible edition and Aurora PostgreSQL-compatible
+	//    edition.
 	//
 	//    * sagemaker:variant:DesiredInstanceCount - The number of EC2 instances
 	//    for an Amazon SageMaker model endpoint variant.
@@ -2013,8 +2135,8 @@ type DescribeScalingActivitiesInput struct {
 	//    * ECS service - The resource type is service and the unique identifier
 	//    is the cluster name and service name. Example: service/default/sample-webapp.
 	//
-	//    * Spot fleet request - The resource type is spot-fleet-request and the
-	//    unique identifier is the Spot fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
+	//    * Spot Fleet request - The resource type is spot-fleet-request and the
+	//    unique identifier is the Spot Fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
 	//
 	//    * EMR cluster - The resource type is instancegroup and the unique identifier
 	//    is the cluster ID and instance group ID. Example: instancegroup/j-2EEZNYKUA1NTV/ig-1791Y4E1L8YI0.
@@ -2037,7 +2159,7 @@ type DescribeScalingActivitiesInput struct {
 	//    * Custom resources are not supported with a resource type. This parameter
 	//    must specify the OutputValue from the CloudFormation template stack used
 	//    to access the resources. The unique identifier is defined by the service
-	//    provider.
+	//    provider. More information is available in our GitHub repository (https://github.com/aws/aws-auto-scaling-custom-resource).
 	ResourceId *string `min:"1" type:"string"`
 
 	// The scalable dimension. This string consists of the service namespace, resource
@@ -2047,7 +2169,7 @@ type DescribeScalingActivitiesInput struct {
 	//    * ecs:service:DesiredCount - The desired task count of an ECS service.
 	//
 	//    * ec2:spot-fleet-request:TargetCapacity - The target capacity of a Spot
-	//    fleet request.
+	//    Fleet request.
 	//
 	//    * elasticmapreduce:instancegroup:InstanceCount - The instance count of
 	//    an EMR Instance Group.
@@ -2068,7 +2190,8 @@ type DescribeScalingActivitiesInput struct {
 	//    a DynamoDB global secondary index.
 	//
 	//    * rds:cluster:ReadReplicaCount - The count of Aurora Replicas in an Aurora
-	//    DB cluster. Available for Aurora MySQL-compatible edition.
+	//    DB cluster. Available for Aurora MySQL-compatible edition and Aurora PostgreSQL-compatible
+	//    edition.
 	//
 	//    * sagemaker:variant:DesiredInstanceCount - The number of EC2 instances
 	//    for an Amazon SageMaker model endpoint variant.
@@ -2200,8 +2323,8 @@ type DescribeScalingPoliciesInput struct {
 	//    * ECS service - The resource type is service and the unique identifier
 	//    is the cluster name and service name. Example: service/default/sample-webapp.
 	//
-	//    * Spot fleet request - The resource type is spot-fleet-request and the
-	//    unique identifier is the Spot fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
+	//    * Spot Fleet request - The resource type is spot-fleet-request and the
+	//    unique identifier is the Spot Fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
 	//
 	//    * EMR cluster - The resource type is instancegroup and the unique identifier
 	//    is the cluster ID and instance group ID. Example: instancegroup/j-2EEZNYKUA1NTV/ig-1791Y4E1L8YI0.
@@ -2224,7 +2347,7 @@ type DescribeScalingPoliciesInput struct {
 	//    * Custom resources are not supported with a resource type. This parameter
 	//    must specify the OutputValue from the CloudFormation template stack used
 	//    to access the resources. The unique identifier is defined by the service
-	//    provider.
+	//    provider. More information is available in our GitHub repository (https://github.com/aws/aws-auto-scaling-custom-resource).
 	ResourceId *string `min:"1" type:"string"`
 
 	// The scalable dimension. This string consists of the service namespace, resource
@@ -2234,7 +2357,7 @@ type DescribeScalingPoliciesInput struct {
 	//    * ecs:service:DesiredCount - The desired task count of an ECS service.
 	//
 	//    * ec2:spot-fleet-request:TargetCapacity - The target capacity of a Spot
-	//    fleet request.
+	//    Fleet request.
 	//
 	//    * elasticmapreduce:instancegroup:InstanceCount - The instance count of
 	//    an EMR Instance Group.
@@ -2255,7 +2378,8 @@ type DescribeScalingPoliciesInput struct {
 	//    a DynamoDB global secondary index.
 	//
 	//    * rds:cluster:ReadReplicaCount - The count of Aurora Replicas in an Aurora
-	//    DB cluster. Available for Aurora MySQL-compatible edition.
+	//    DB cluster. Available for Aurora MySQL-compatible edition and Aurora PostgreSQL-compatible
+	//    edition.
 	//
 	//    * sagemaker:variant:DesiredInstanceCount - The number of EC2 instances
 	//    for an Amazon SageMaker model endpoint variant.
@@ -2390,8 +2514,8 @@ type DescribeScheduledActionsInput struct {
 	//    * ECS service - The resource type is service and the unique identifier
 	//    is the cluster name and service name. Example: service/default/sample-webapp.
 	//
-	//    * Spot fleet request - The resource type is spot-fleet-request and the
-	//    unique identifier is the Spot fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
+	//    * Spot Fleet request - The resource type is spot-fleet-request and the
+	//    unique identifier is the Spot Fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
 	//
 	//    * EMR cluster - The resource type is instancegroup and the unique identifier
 	//    is the cluster ID and instance group ID. Example: instancegroup/j-2EEZNYKUA1NTV/ig-1791Y4E1L8YI0.
@@ -2414,7 +2538,7 @@ type DescribeScheduledActionsInput struct {
 	//    * Custom resources are not supported with a resource type. This parameter
 	//    must specify the OutputValue from the CloudFormation template stack used
 	//    to access the resources. The unique identifier is defined by the service
-	//    provider.
+	//    provider. More information is available in our GitHub repository (https://github.com/aws/aws-auto-scaling-custom-resource).
 	ResourceId *string `min:"1" type:"string"`
 
 	// The scalable dimension. This string consists of the service namespace, resource
@@ -2424,7 +2548,7 @@ type DescribeScheduledActionsInput struct {
 	//    * ecs:service:DesiredCount - The desired task count of an ECS service.
 	//
 	//    * ec2:spot-fleet-request:TargetCapacity - The target capacity of a Spot
-	//    fleet request.
+	//    Fleet request.
 	//
 	//    * elasticmapreduce:instancegroup:InstanceCount - The instance count of
 	//    an EMR Instance Group.
@@ -2445,7 +2569,8 @@ type DescribeScheduledActionsInput struct {
 	//    a DynamoDB global secondary index.
 	//
 	//    * rds:cluster:ReadReplicaCount - The count of Aurora Replicas in an Aurora
-	//    DB cluster. Available for Aurora MySQL-compatible edition.
+	//    DB cluster. Available for Aurora MySQL-compatible edition and Aurora PostgreSQL-compatible
+	//    edition.
 	//
 	//    * sagemaker:variant:DesiredInstanceCount - The number of EC2 instances
 	//    for an Amazon SageMaker model endpoint variant.
@@ -2561,7 +2686,7 @@ func (s *DescribeScheduledActionsOutput) SetScheduledActions(v []*ScheduledActio
 	return s
 }
 
-// Describes the dimension of a metric.
+// Describes the dimension names and values associated with a metric.
 type MetricDimension struct {
 	_ struct{} `type:"structure"`
 
@@ -2614,19 +2739,20 @@ func (s *MetricDimension) SetValue(v string) *MetricDimension {
 	return s
 }
 
-// Configures a predefined metric for a target tracking policy.
+// Represents a predefined metric for a target tracking scaling policy to use
+// with Application Auto Scaling.
 type PredefinedMetricSpecification struct {
 	_ struct{} `type:"structure"`
 
 	// The metric type. The ALBRequestCountPerTarget metric type applies only to
-	// Spot fleet requests and ECS services.
+	// Spot Fleet requests and ECS services.
 	//
 	// PredefinedMetricType is a required field
 	PredefinedMetricType *string `type:"string" required:"true" enum:"MetricType"`
 
 	// Identifies the resource associated with the metric type. You can't specify
 	// a resource label unless the metric type is ALBRequestCountPerTarget and there
-	// is a target group attached to the Spot fleet request or ECS service.
+	// is a target group attached to the Spot Fleet request or ECS service.
 	//
 	// The format is app/<load-balancer-name>/<load-balancer-id>/targetgroup/<target-group-name>/<target-group-id>,
 	// where:
@@ -2685,11 +2811,19 @@ type PutScalingPolicyInput struct {
 	// PolicyName is a required field
 	PolicyName *string `min:"1" type:"string" required:"true"`
 
-	// The policy type. This parameter is required if you are creating a policy.
+	// The policy type. This parameter is required if you are creating a scaling
+	// policy.
 	//
-	// For DynamoDB, only TargetTrackingScaling is supported. For Amazon ECS, Spot
-	// Fleet, and Amazon RDS, both StepScaling and TargetTrackingScaling are supported.
-	// For any other service, only StepScaling is supported.
+	// The following policy types are supported:
+	//
+	// TargetTrackingScaling—Not supported for Amazon EMR or AppStream
+	//
+	// StepScaling—Not supported for Amazon DynamoDB
+	//
+	// For more information, see Step Scaling Policies for Application Auto Scaling
+	// (https://docs.aws.amazon.com/autoscaling/application/userguide/application-auto-scaling-step-scaling-policies.html)
+	// and Target Tracking Scaling Policies for Application Auto Scaling (https://docs.aws.amazon.com/autoscaling/application/userguide/application-auto-scaling-target-tracking.html)
+	// in the Application Auto Scaling User Guide.
 	PolicyType *string `type:"string" enum:"PolicyType"`
 
 	// The identifier of the resource associated with the scaling policy. This string
@@ -2698,8 +2832,8 @@ type PutScalingPolicyInput struct {
 	//    * ECS service - The resource type is service and the unique identifier
 	//    is the cluster name and service name. Example: service/default/sample-webapp.
 	//
-	//    * Spot fleet request - The resource type is spot-fleet-request and the
-	//    unique identifier is the Spot fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
+	//    * Spot Fleet request - The resource type is spot-fleet-request and the
+	//    unique identifier is the Spot Fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
 	//
 	//    * EMR cluster - The resource type is instancegroup and the unique identifier
 	//    is the cluster ID and instance group ID. Example: instancegroup/j-2EEZNYKUA1NTV/ig-1791Y4E1L8YI0.
@@ -2722,7 +2856,7 @@ type PutScalingPolicyInput struct {
 	//    * Custom resources are not supported with a resource type. This parameter
 	//    must specify the OutputValue from the CloudFormation template stack used
 	//    to access the resources. The unique identifier is defined by the service
-	//    provider.
+	//    provider. More information is available in our GitHub repository (https://github.com/aws/aws-auto-scaling-custom-resource).
 	//
 	// ResourceId is a required field
 	ResourceId *string `min:"1" type:"string" required:"true"`
@@ -2733,7 +2867,7 @@ type PutScalingPolicyInput struct {
 	//    * ecs:service:DesiredCount - The desired task count of an ECS service.
 	//
 	//    * ec2:spot-fleet-request:TargetCapacity - The target capacity of a Spot
-	//    fleet request.
+	//    Fleet request.
 	//
 	//    * elasticmapreduce:instancegroup:InstanceCount - The instance count of
 	//    an EMR Instance Group.
@@ -2754,7 +2888,8 @@ type PutScalingPolicyInput struct {
 	//    a DynamoDB global secondary index.
 	//
 	//    * rds:cluster:ReadReplicaCount - The count of Aurora Replicas in an Aurora
-	//    DB cluster. Available for Aurora MySQL-compatible edition.
+	//    DB cluster. Available for Aurora MySQL-compatible edition and Aurora PostgreSQL-compatible
+	//    edition.
 	//
 	//    * sagemaker:variant:DesiredInstanceCount - The number of EC2 instances
 	//    for an Amazon SageMaker model endpoint variant.
@@ -2779,7 +2914,8 @@ type PutScalingPolicyInput struct {
 	// is StepScaling.
 	StepScalingPolicyConfiguration *StepScalingPolicyConfiguration `type:"structure"`
 
-	// A target tracking policy.
+	// A target tracking scaling policy. Includes support for predefined or customized
+	// metrics.
 	//
 	// This parameter is required if you are creating a policy and the policy type
 	// is TargetTrackingScaling.
@@ -2879,7 +3015,7 @@ func (s *PutScalingPolicyInput) SetTargetTrackingScalingPolicyConfiguration(v *T
 type PutScalingPolicyOutput struct {
 	_ struct{} `type:"structure"`
 
-	// The CloudWatch alarms created for the target tracking policy.
+	// The CloudWatch alarms created for the target tracking scaling policy.
 	Alarms []*Alarm `type:"list"`
 
 	// The Amazon Resource Name (ARN) of the resulting scaling policy.
@@ -2922,8 +3058,8 @@ type PutScheduledActionInput struct {
 	//    * ECS service - The resource type is service and the unique identifier
 	//    is the cluster name and service name. Example: service/default/sample-webapp.
 	//
-	//    * Spot fleet request - The resource type is spot-fleet-request and the
-	//    unique identifier is the Spot fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
+	//    * Spot Fleet request - The resource type is spot-fleet-request and the
+	//    unique identifier is the Spot Fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
 	//
 	//    * EMR cluster - The resource type is instancegroup and the unique identifier
 	//    is the cluster ID and instance group ID. Example: instancegroup/j-2EEZNYKUA1NTV/ig-1791Y4E1L8YI0.
@@ -2946,19 +3082,18 @@ type PutScheduledActionInput struct {
 	//    * Custom resources are not supported with a resource type. This parameter
 	//    must specify the OutputValue from the CloudFormation template stack used
 	//    to access the resources. The unique identifier is defined by the service
-	//    provider.
+	//    provider. More information is available in our GitHub repository (https://github.com/aws/aws-auto-scaling-custom-resource).
 	//
 	// ResourceId is a required field
 	ResourceId *string `min:"1" type:"string" required:"true"`
 
-	// The scalable dimension. This parameter is required if you are creating a
-	// scheduled action. This string consists of the service namespace, resource
+	// The scalable dimension. This string consists of the service namespace, resource
 	// type, and scaling property.
 	//
 	//    * ecs:service:DesiredCount - The desired task count of an ECS service.
 	//
 	//    * ec2:spot-fleet-request:TargetCapacity - The target capacity of a Spot
-	//    fleet request.
+	//    Fleet request.
 	//
 	//    * elasticmapreduce:instancegroup:InstanceCount - The instance count of
 	//    an EMR Instance Group.
@@ -2979,14 +3114,17 @@ type PutScheduledActionInput struct {
 	//    a DynamoDB global secondary index.
 	//
 	//    * rds:cluster:ReadReplicaCount - The count of Aurora Replicas in an Aurora
-	//    DB cluster. Available for Aurora MySQL-compatible edition.
+	//    DB cluster. Available for Aurora MySQL-compatible edition and Aurora PostgreSQL-compatible
+	//    edition.
 	//
 	//    * sagemaker:variant:DesiredInstanceCount - The number of EC2 instances
 	//    for an Amazon SageMaker model endpoint variant.
 	//
 	//    * custom-resource:ResourceType:Property - The scalable dimension for a
 	//    custom resource provided by your own application or service.
-	ScalableDimension *string `type:"string" enum:"ScalableDimension"`
+	//
+	// ScalableDimension is a required field
+	ScalableDimension *string `type:"string" required:"true" enum:"ScalableDimension"`
 
 	// The new minimum and maximum capacity. You can set both values or just one.
 	// During the scheduled time, if the current capacity is below the minimum capacity,
@@ -2997,18 +3135,18 @@ type PutScheduledActionInput struct {
 
 	// The schedule for this action. The following formats are supported:
 	//
-	//    * At expressions - at(yyyy-mm-ddThh:mm:ss)
+	//    * At expressions - "at(yyyy-mm-ddThh:mm:ss)"
 	//
-	//    * Rate expressions - rate(valueunit)
+	//    * Rate expressions - "rate(value unit)"
 	//
-	//    * Cron expressions - cron(fields)
+	//    * Cron expressions - "cron(fields)"
 	//
 	// At expressions are useful for one-time schedules. Specify the time, in UTC.
 	//
 	// For rate expressions, value is a positive integer and unit is minute | minutes
 	// | hour | hours | day | days.
 	//
-	// For more information about cron expressions, see Cron Expressions (http://docs.aws.amazon.com/AmazonCloudWatch/latest/events/ScheduledEvents.html#CronExpressions)
+	// For more information about cron expressions, see Cron Expressions (https://docs.aws.amazon.com/AmazonCloudWatch/latest/events/ScheduledEvents.html#CronExpressions)
 	// in the Amazon CloudWatch Events User Guide.
 	Schedule *string `min:"1" type:"string"`
 
@@ -3047,6 +3185,9 @@ func (s *PutScheduledActionInput) Validate() error {
 	}
 	if s.ResourceId != nil && len(*s.ResourceId) < 1 {
 		invalidParams.Add(request.NewErrParamMinLen("ResourceId", 1))
+	}
+	if s.ScalableDimension == nil {
+		invalidParams.Add(request.NewErrParamRequired("ScalableDimension"))
 	}
 	if s.Schedule != nil && len(*s.Schedule) < 1 {
 		invalidParams.Add(request.NewErrParamMinLen("Schedule", 1))
@@ -3132,22 +3273,22 @@ func (s PutScheduledActionOutput) GoString() string {
 type RegisterScalableTargetInput struct {
 	_ struct{} `type:"structure"`
 
-	// The maximum value to scale to in response to a scale out event. This parameter
-	// is required if you are registering a scalable target.
+	// The maximum value to scale to in response to a scale-out event. MaxCapacity
+	// is required to register a scalable target.
 	MaxCapacity *int64 `type:"integer"`
 
-	// The minimum value to scale to in response to a scale in event. This parameter
-	// is required if you are registering a scalable target.
+	// The minimum value to scale to in response to a scale-in event. MinCapacity
+	// is required to register a scalable target.
 	MinCapacity *int64 `type:"integer"`
 
-	// The identifier of the resource associated with the scalable target. This
-	// string consists of the resource type and unique identifier.
+	// The identifier of the resource that is associated with the scalable target.
+	// This string consists of the resource type and unique identifier.
 	//
 	//    * ECS service - The resource type is service and the unique identifier
 	//    is the cluster name and service name. Example: service/default/sample-webapp.
 	//
-	//    * Spot fleet request - The resource type is spot-fleet-request and the
-	//    unique identifier is the Spot fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
+	//    * Spot Fleet request - The resource type is spot-fleet-request and the
+	//    unique identifier is the Spot Fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
 	//
 	//    * EMR cluster - The resource type is instancegroup and the unique identifier
 	//    is the cluster ID and instance group ID. Example: instancegroup/j-2EEZNYKUA1NTV/ig-1791Y4E1L8YI0.
@@ -3170,17 +3311,17 @@ type RegisterScalableTargetInput struct {
 	//    * Custom resources are not supported with a resource type. This parameter
 	//    must specify the OutputValue from the CloudFormation template stack used
 	//    to access the resources. The unique identifier is defined by the service
-	//    provider.
+	//    provider. More information is available in our GitHub repository (https://github.com/aws/aws-auto-scaling-custom-resource).
 	//
 	// ResourceId is a required field
 	ResourceId *string `min:"1" type:"string" required:"true"`
 
 	// Application Auto Scaling creates a service-linked role that grants it permissions
 	// to modify the scalable target on your behalf. For more information, see Service-Linked
-	// Roles for Application Auto Scaling (http://docs.aws.amazon.com/autoscaling/application/userguide/application-autoscaling-service-linked-roles.html).
+	// Roles for Application Auto Scaling (https://docs.aws.amazon.com/autoscaling/application/userguide/application-auto-scaling-service-linked-roles.html).
 	//
 	// For resources that are not supported using a service-linked role, this parameter
-	// is required and must specify the ARN of an IAM role that allows Application
+	// is required, and it must specify the ARN of an IAM role that allows Application
 	// Auto Scaling to modify the scalable target on your behalf.
 	RoleARN *string `min:"1" type:"string"`
 
@@ -3190,7 +3331,7 @@ type RegisterScalableTargetInput struct {
 	//    * ecs:service:DesiredCount - The desired task count of an ECS service.
 	//
 	//    * ec2:spot-fleet-request:TargetCapacity - The target capacity of a Spot
-	//    fleet request.
+	//    Fleet request.
 	//
 	//    * elasticmapreduce:instancegroup:InstanceCount - The instance count of
 	//    an EMR Instance Group.
@@ -3211,7 +3352,8 @@ type RegisterScalableTargetInput struct {
 	//    a DynamoDB global secondary index.
 	//
 	//    * rds:cluster:ReadReplicaCount - The count of Aurora Replicas in an Aurora
-	//    DB cluster. Available for Aurora MySQL-compatible edition.
+	//    DB cluster. Available for Aurora MySQL-compatible edition and Aurora PostgreSQL-compatible
+	//    edition.
 	//
 	//    * sagemaker:variant:DesiredInstanceCount - The number of EC2 instances
 	//    for an Amazon SageMaker model endpoint variant.
@@ -3229,6 +3371,26 @@ type RegisterScalableTargetInput struct {
 	//
 	// ServiceNamespace is a required field
 	ServiceNamespace *string `type:"string" required:"true" enum:"ServiceNamespace"`
+
+	// An embedded object that contains attributes and attribute values that are
+	// used to suspend and resume automatic scaling. Setting the value of an attribute
+	// to true suspends the specified scaling activities. Setting it to false (default)
+	// resumes the specified scaling activities.
+	//
+	// Suspension Outcomes
+	//
+	//    * For DynamicScalingInSuspended, while a suspension is in effect, all
+	//    scale-in activities that are triggered by a scaling policy are suspended.
+	//
+	//    * For DynamicScalingOutSuspended, while a suspension is in effect, all
+	//    scale-out activities that are triggered by a scaling policy are suspended.
+	//
+	//    * For ScheduledScalingSuspended, while a suspension is in effect, all
+	//    scaling activities that involve scheduled actions are suspended.
+	//
+	// For more information, see Suspend and Resume Application Auto Scaling (https://docs.aws.amazon.com/autoscaling/application/userguide/application-auto-scaling-suspend-resume-scaling.html)
+	// in the Application Auto Scaling User Guide.
+	SuspendedState *SuspendedState `type:"structure"`
 }
 
 // String returns the string representation
@@ -3302,6 +3464,12 @@ func (s *RegisterScalableTargetInput) SetServiceNamespace(v string) *RegisterSca
 	return s
 }
 
+// SetSuspendedState sets the SuspendedState field's value.
+func (s *RegisterScalableTargetInput) SetSuspendedState(v *SuspendedState) *RegisterScalableTargetInput {
+	s.SuspendedState = v
+	return s
+}
+
 type RegisterScalableTargetOutput struct {
 	_ struct{} `type:"structure"`
 }
@@ -3325,12 +3493,12 @@ type ScalableTarget struct {
 	// CreationTime is a required field
 	CreationTime *time.Time `type:"timestamp" required:"true"`
 
-	// The maximum value to scale to in response to a scale out event.
+	// The maximum value to scale to in response to a scale-out event.
 	//
 	// MaxCapacity is a required field
 	MaxCapacity *int64 `type:"integer" required:"true"`
 
-	// The minimum value to scale to in response to a scale in event.
+	// The minimum value to scale to in response to a scale-in event.
 	//
 	// MinCapacity is a required field
 	MinCapacity *int64 `type:"integer" required:"true"`
@@ -3341,8 +3509,8 @@ type ScalableTarget struct {
 	//    * ECS service - The resource type is service and the unique identifier
 	//    is the cluster name and service name. Example: service/default/sample-webapp.
 	//
-	//    * Spot fleet request - The resource type is spot-fleet-request and the
-	//    unique identifier is the Spot fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
+	//    * Spot Fleet request - The resource type is spot-fleet-request and the
+	//    unique identifier is the Spot Fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
 	//
 	//    * EMR cluster - The resource type is instancegroup and the unique identifier
 	//    is the cluster ID and instance group ID. Example: instancegroup/j-2EEZNYKUA1NTV/ig-1791Y4E1L8YI0.
@@ -3365,7 +3533,7 @@ type ScalableTarget struct {
 	//    * Custom resources are not supported with a resource type. This parameter
 	//    must specify the OutputValue from the CloudFormation template stack used
 	//    to access the resources. The unique identifier is defined by the service
-	//    provider.
+	//    provider. More information is available in our GitHub repository (https://github.com/aws/aws-auto-scaling-custom-resource).
 	//
 	// ResourceId is a required field
 	ResourceId *string `min:"1" type:"string" required:"true"`
@@ -3382,7 +3550,7 @@ type ScalableTarget struct {
 	//    * ecs:service:DesiredCount - The desired task count of an ECS service.
 	//
 	//    * ec2:spot-fleet-request:TargetCapacity - The target capacity of a Spot
-	//    fleet request.
+	//    Fleet request.
 	//
 	//    * elasticmapreduce:instancegroup:InstanceCount - The instance count of
 	//    an EMR Instance Group.
@@ -3403,7 +3571,8 @@ type ScalableTarget struct {
 	//    a DynamoDB global secondary index.
 	//
 	//    * rds:cluster:ReadReplicaCount - The count of Aurora Replicas in an Aurora
-	//    DB cluster. Available for Aurora MySQL-compatible edition.
+	//    DB cluster. Available for Aurora MySQL-compatible edition and Aurora PostgreSQL-compatible
+	//    edition.
 	//
 	//    * sagemaker:variant:DesiredInstanceCount - The number of EC2 instances
 	//    for an Amazon SageMaker model endpoint variant.
@@ -3421,6 +3590,10 @@ type ScalableTarget struct {
 	//
 	// ServiceNamespace is a required field
 	ServiceNamespace *string `type:"string" required:"true" enum:"ServiceNamespace"`
+
+	// Specifies whether the scaling activities for a scalable target are in a suspended
+	// state.
+	SuspendedState *SuspendedState `type:"structure"`
 }
 
 // String returns the string representation
@@ -3472,6 +3645,12 @@ func (s *ScalableTarget) SetScalableDimension(v string) *ScalableTarget {
 // SetServiceNamespace sets the ServiceNamespace field's value.
 func (s *ScalableTarget) SetServiceNamespace(v string) *ScalableTarget {
 	s.ServiceNamespace = &v
+	return s
+}
+
+// SetSuspendedState sets the SuspendedState field's value.
+func (s *ScalableTarget) SetSuspendedState(v *SuspendedState) *ScalableTarget {
+	s.SuspendedState = v
 	return s
 }
 
@@ -3539,8 +3718,8 @@ type ScalingActivity struct {
 	//    * ECS service - The resource type is service and the unique identifier
 	//    is the cluster name and service name. Example: service/default/sample-webapp.
 	//
-	//    * Spot fleet request - The resource type is spot-fleet-request and the
-	//    unique identifier is the Spot fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
+	//    * Spot Fleet request - The resource type is spot-fleet-request and the
+	//    unique identifier is the Spot Fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
 	//
 	//    * EMR cluster - The resource type is instancegroup and the unique identifier
 	//    is the cluster ID and instance group ID. Example: instancegroup/j-2EEZNYKUA1NTV/ig-1791Y4E1L8YI0.
@@ -3563,7 +3742,7 @@ type ScalingActivity struct {
 	//    * Custom resources are not supported with a resource type. This parameter
 	//    must specify the OutputValue from the CloudFormation template stack used
 	//    to access the resources. The unique identifier is defined by the service
-	//    provider.
+	//    provider. More information is available in our GitHub repository (https://github.com/aws/aws-auto-scaling-custom-resource).
 	//
 	// ResourceId is a required field
 	ResourceId *string `min:"1" type:"string" required:"true"`
@@ -3574,7 +3753,7 @@ type ScalingActivity struct {
 	//    * ecs:service:DesiredCount - The desired task count of an ECS service.
 	//
 	//    * ec2:spot-fleet-request:TargetCapacity - The target capacity of a Spot
-	//    fleet request.
+	//    Fleet request.
 	//
 	//    * elasticmapreduce:instancegroup:InstanceCount - The instance count of
 	//    an EMR Instance Group.
@@ -3595,7 +3774,8 @@ type ScalingActivity struct {
 	//    a DynamoDB global secondary index.
 	//
 	//    * rds:cluster:ReadReplicaCount - The count of Aurora Replicas in an Aurora
-	//    DB cluster. Available for Aurora MySQL-compatible edition.
+	//    DB cluster. Available for Aurora MySQL-compatible edition and Aurora PostgreSQL-compatible
+	//    edition.
 	//
 	//    * sagemaker:variant:DesiredInstanceCount - The number of EC2 instances
 	//    for an Amazon SageMaker model endpoint variant.
@@ -3704,7 +3884,7 @@ func (s *ScalingActivity) SetStatusMessage(v string) *ScalingActivity {
 	return s
 }
 
-// Represents a scaling policy.
+// Represents a scaling policy to use with Application Auto Scaling.
 type ScalingPolicy struct {
 	_ struct{} `type:"structure"`
 
@@ -3737,8 +3917,8 @@ type ScalingPolicy struct {
 	//    * ECS service - The resource type is service and the unique identifier
 	//    is the cluster name and service name. Example: service/default/sample-webapp.
 	//
-	//    * Spot fleet request - The resource type is spot-fleet-request and the
-	//    unique identifier is the Spot fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
+	//    * Spot Fleet request - The resource type is spot-fleet-request and the
+	//    unique identifier is the Spot Fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
 	//
 	//    * EMR cluster - The resource type is instancegroup and the unique identifier
 	//    is the cluster ID and instance group ID. Example: instancegroup/j-2EEZNYKUA1NTV/ig-1791Y4E1L8YI0.
@@ -3761,7 +3941,7 @@ type ScalingPolicy struct {
 	//    * Custom resources are not supported with a resource type. This parameter
 	//    must specify the OutputValue from the CloudFormation template stack used
 	//    to access the resources. The unique identifier is defined by the service
-	//    provider.
+	//    provider. More information is available in our GitHub repository (https://github.com/aws/aws-auto-scaling-custom-resource).
 	//
 	// ResourceId is a required field
 	ResourceId *string `min:"1" type:"string" required:"true"`
@@ -3772,7 +3952,7 @@ type ScalingPolicy struct {
 	//    * ecs:service:DesiredCount - The desired task count of an ECS service.
 	//
 	//    * ec2:spot-fleet-request:TargetCapacity - The target capacity of a Spot
-	//    fleet request.
+	//    Fleet request.
 	//
 	//    * elasticmapreduce:instancegroup:InstanceCount - The instance count of
 	//    an EMR Instance Group.
@@ -3793,7 +3973,8 @@ type ScalingPolicy struct {
 	//    a DynamoDB global secondary index.
 	//
 	//    * rds:cluster:ReadReplicaCount - The count of Aurora Replicas in an Aurora
-	//    DB cluster. Available for Aurora MySQL-compatible edition.
+	//    DB cluster. Available for Aurora MySQL-compatible edition and Aurora PostgreSQL-compatible
+	//    edition.
 	//
 	//    * sagemaker:variant:DesiredInstanceCount - The number of EC2 instances
 	//    for an Amazon SageMaker model endpoint variant.
@@ -3815,7 +3996,7 @@ type ScalingPolicy struct {
 	// A step scaling policy.
 	StepScalingPolicyConfiguration *StepScalingPolicyConfiguration `type:"structure"`
 
-	// A target tracking policy.
+	// A target tracking scaling policy.
 	TargetTrackingScalingPolicyConfiguration *TargetTrackingScalingPolicyConfiguration `type:"structure"`
 }
 
@@ -3907,8 +4088,8 @@ type ScheduledAction struct {
 	//    * ECS service - The resource type is service and the unique identifier
 	//    is the cluster name and service name. Example: service/default/sample-webapp.
 	//
-	//    * Spot fleet request - The resource type is spot-fleet-request and the
-	//    unique identifier is the Spot fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
+	//    * Spot Fleet request - The resource type is spot-fleet-request and the
+	//    unique identifier is the Spot Fleet request ID. Example: spot-fleet-request/sfr-73fbd2ce-aa30-494c-8788-1cee4EXAMPLE.
 	//
 	//    * EMR cluster - The resource type is instancegroup and the unique identifier
 	//    is the cluster ID and instance group ID. Example: instancegroup/j-2EEZNYKUA1NTV/ig-1791Y4E1L8YI0.
@@ -3931,7 +4112,7 @@ type ScheduledAction struct {
 	//    * Custom resources are not supported with a resource type. This parameter
 	//    must specify the OutputValue from the CloudFormation template stack used
 	//    to access the resources. The unique identifier is defined by the service
-	//    provider.
+	//    provider. More information is available in our GitHub repository (https://github.com/aws/aws-auto-scaling-custom-resource).
 	//
 	// ResourceId is a required field
 	ResourceId *string `min:"1" type:"string" required:"true"`
@@ -3942,7 +4123,7 @@ type ScheduledAction struct {
 	//    * ecs:service:DesiredCount - The desired task count of an ECS service.
 	//
 	//    * ec2:spot-fleet-request:TargetCapacity - The target capacity of a Spot
-	//    fleet request.
+	//    Fleet request.
 	//
 	//    * elasticmapreduce:instancegroup:InstanceCount - The instance count of
 	//    an EMR Instance Group.
@@ -3963,7 +4144,8 @@ type ScheduledAction struct {
 	//    a DynamoDB global secondary index.
 	//
 	//    * rds:cluster:ReadReplicaCount - The count of Aurora Replicas in an Aurora
-	//    DB cluster. Available for Aurora MySQL-compatible edition.
+	//    DB cluster. Available for Aurora MySQL-compatible edition and Aurora PostgreSQL-compatible
+	//    edition.
 	//
 	//    * sagemaker:variant:DesiredInstanceCount - The number of EC2 instances
 	//    for an Amazon SageMaker model endpoint variant.
@@ -3981,18 +4163,18 @@ type ScheduledAction struct {
 
 	// The schedule for this action. The following formats are supported:
 	//
-	//    * At expressions - at(yyyy-mm-ddThh:mm:ss)
+	//    * At expressions - "at(yyyy-mm-ddThh:mm:ss)"
 	//
-	//    * Rate expressions - rate(valueunit)
+	//    * Rate expressions - "rate(value unit)"
 	//
-	//    * Cron expressions - cron(fields)
+	//    * Cron expressions - "cron(fields)"
 	//
 	// At expressions are useful for one-time schedules. Specify the time, in UTC.
 	//
 	// For rate expressions, value is a positive integer and unit is minute | minutes
 	// | hour | hours | day | days.
 	//
-	// For more information about cron expressions, see Cron Expressions (http://docs.aws.amazon.com/AmazonCloudWatch/latest/events/ScheduledEvents.html#CronExpressions)
+	// For more information about cron expressions, see Cron Expressions (https://docs.aws.amazon.com/AmazonCloudWatch/latest/events/ScheduledEvents.html#CronExpressions)
 	// in the Amazon CloudWatch Events User Guide.
 	//
 	// Schedule is a required field
@@ -4187,44 +4369,52 @@ func (s *StepAdjustment) SetScalingAdjustment(v int64) *StepAdjustment {
 	return s
 }
 
-// Represents a step scaling policy configuration.
+// Represents a step scaling policy configuration to use with Application Auto
+// Scaling.
 type StepScalingPolicyConfiguration struct {
 	_ struct{} `type:"structure"`
 
-	// The adjustment type, which specifies how the ScalingAdjustment parameter
-	// in a StepAdjustment is interpreted.
+	// Specifies whether the ScalingAdjustment value in a StepAdjustment is an absolute
+	// number or a percentage of the current capacity.
 	AdjustmentType *string `type:"string" enum:"AdjustmentType"`
 
 	// The amount of time, in seconds, after a scaling activity completes where
 	// previous trigger-related scaling activities can influence future scaling
 	// events.
 	//
-	// For scale out policies, while the cooldown period is in effect, the capacity
-	// that has been added by the previous scale out event that initiated the cooldown
+	// For scale-out policies, while the cooldown period is in effect, the capacity
+	// that has been added by the previous scale-out event that initiated the cooldown
 	// is calculated as part of the desired capacity for the next scale out. The
 	// intention is to continuously (but not excessively) scale out. For example,
 	// an alarm triggers a step scaling policy to scale out an Amazon ECS service
 	// by 2 tasks, the scaling activity completes successfully, and a cooldown period
-	// of 5 minutes starts. During the Cooldown period, if the alarm triggers the
+	// of 5 minutes starts. During the cooldown period, if the alarm triggers the
 	// same policy again but at a more aggressive step adjustment to scale out the
-	// service by 3 tasks, the 2 tasks that were added in the previous scale out
+	// service by 3 tasks, the 2 tasks that were added in the previous scale-out
 	// event are considered part of that capacity and only 1 additional task is
 	// added to the desired count.
 	//
-	// For scale in policies, the cooldown period is used to block subsequent scale
-	// in requests until it has expired. The intention is to scale in conservatively
+	// For scale-in policies, the cooldown period is used to block subsequent scale-in
+	// requests until it has expired. The intention is to scale in conservatively
 	// to protect your application's availability. However, if another alarm triggers
-	// a scale out policy during the cooldown period after a scale-in, Application
+	// a scale-out policy during the cooldown period after a scale-in, Application
 	// Auto Scaling scales out your scalable target immediately.
 	Cooldown *int64 `type:"integer"`
 
 	// The aggregation type for the CloudWatch metrics. Valid values are Minimum,
-	// Maximum, and Average.
+	// Maximum, and Average. If the aggregation type is null, the value is treated
+	// as Average.
 	MetricAggregationType *string `type:"string" enum:"MetricAggregationType"`
 
 	// The minimum number to adjust your scalable dimension as a result of a scaling
 	// activity. If the adjustment type is PercentChangeInCapacity, the scaling
 	// policy changes the scalable dimension of the scalable target by this amount.
+	//
+	// For example, suppose that you create a step scaling policy to scale out an
+	// Amazon ECS service by 25 percent and you specify a MinAdjustmentMagnitude
+	// of 2. If the service has 4 tasks and the scaling policy is performed, 25
+	// percent of 4 is 1. However, because you specified a MinAdjustmentMagnitude
+	// of 2, Application Auto Scaling scales out the service by 2 tasks.
 	MinAdjustmentMagnitude *int64 `type:"integer"`
 
 	// A set of adjustments that enable you to scale based on the size of the alarm
@@ -4292,38 +4482,90 @@ func (s *StepScalingPolicyConfiguration) SetStepAdjustments(v []*StepAdjustment)
 	return s
 }
 
-// Represents a target tracking scaling policy configuration.
+// Specifies whether the scaling activities for a scalable target are in a suspended
+// state.
+type SuspendedState struct {
+	_ struct{} `type:"structure"`
+
+	// Whether scale in by a target tracking scaling policy or a step scaling policy
+	// is suspended. Set the value to true if you don't want Application Auto Scaling
+	// to remove capacity when a scaling policy is triggered. The default is false.
+	DynamicScalingInSuspended *bool `type:"boolean"`
+
+	// Whether scale out by a target tracking scaling policy or a step scaling policy
+	// is suspended. Set the value to true if you don't want Application Auto Scaling
+	// to add capacity when a scaling policy is triggered. The default is false.
+	DynamicScalingOutSuspended *bool `type:"boolean"`
+
+	// Whether scheduled scaling is suspended. Set the value to true if you don't
+	// want Application Auto Scaling to add or remove capacity by initiating scheduled
+	// actions. The default is false.
+	ScheduledScalingSuspended *bool `type:"boolean"`
+}
+
+// String returns the string representation
+func (s SuspendedState) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s SuspendedState) GoString() string {
+	return s.String()
+}
+
+// SetDynamicScalingInSuspended sets the DynamicScalingInSuspended field's value.
+func (s *SuspendedState) SetDynamicScalingInSuspended(v bool) *SuspendedState {
+	s.DynamicScalingInSuspended = &v
+	return s
+}
+
+// SetDynamicScalingOutSuspended sets the DynamicScalingOutSuspended field's value.
+func (s *SuspendedState) SetDynamicScalingOutSuspended(v bool) *SuspendedState {
+	s.DynamicScalingOutSuspended = &v
+	return s
+}
+
+// SetScheduledScalingSuspended sets the ScheduledScalingSuspended field's value.
+func (s *SuspendedState) SetScheduledScalingSuspended(v bool) *SuspendedState {
+	s.ScheduledScalingSuspended = &v
+	return s
+}
+
+// Represents a target tracking scaling policy configuration to use with Application
+// Auto Scaling.
 type TargetTrackingScalingPolicyConfiguration struct {
 	_ struct{} `type:"structure"`
 
-	// A customized metric.
+	// A customized metric. You can specify either a predefined metric or a customized
+	// metric.
 	CustomizedMetricSpecification *CustomizedMetricSpecification `type:"structure"`
 
-	// Indicates whether scale in by the target tracking policy is disabled. If
-	// the value is true, scale in is disabled and the target tracking policy won't
-	// remove capacity from the scalable resource. Otherwise, scale in is enabled
-	// and the target tracking policy can remove capacity from the scalable resource.
-	// The default value is false.
+	// Indicates whether scale in by the target tracking scaling policy is disabled.
+	// If the value is true, scale in is disabled and the target tracking scaling
+	// policy won't remove capacity from the scalable resource. Otherwise, scale
+	// in is enabled and the target tracking scaling policy can remove capacity
+	// from the scalable resource. The default value is false.
 	DisableScaleIn *bool `type:"boolean"`
 
-	// A predefined metric.
+	// A predefined metric. You can specify either a predefined metric or a customized
+	// metric.
 	PredefinedMetricSpecification *PredefinedMetricSpecification `type:"structure"`
 
-	// The amount of time, in seconds, after a scale in activity completes before
+	// The amount of time, in seconds, after a scale-in activity completes before
 	// another scale in activity can start.
 	//
-	// The cooldown period is used to block subsequent scale in requests until it
+	// The cooldown period is used to block subsequent scale-in requests until it
 	// has expired. The intention is to scale in conservatively to protect your
-	// application's availability. However, if another alarm triggers a scale out
+	// application's availability. However, if another alarm triggers a scale-out
 	// policy during the cooldown period after a scale-in, Application Auto Scaling
 	// scales out your scalable target immediately.
 	ScaleInCooldown *int64 `type:"integer"`
 
-	// The amount of time, in seconds, after a scale out activity completes before
-	// another scale out activity can start.
+	// The amount of time, in seconds, after a scale-out activity completes before
+	// another scale-out activity can start.
 	//
 	// While the cooldown period is in effect, the capacity that has been added
-	// by the previous scale out event that initiated the cooldown is calculated
+	// by the previous scale-out event that initiated the cooldown is calculated
 	// as part of the desired capacity for the next scale out. The intention is
 	// to continuously (but not excessively) scale out.
 	ScaleOutCooldown *int64 `type:"integer"`

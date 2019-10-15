@@ -6,6 +6,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
@@ -70,9 +71,14 @@ func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.Ent
 		return nil, err
 	}
 
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	matchers = append(matchers, nameLabelMatcher)
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
-	chks, fetchers, err := s.GetChunkRefs(ctx, from, through, matchers...)
+	chks, fetchers, err := s.GetChunkRefs(ctx, userID, from, through, matchers...)
 	if err != nil {
 		return nil, err
 	}
