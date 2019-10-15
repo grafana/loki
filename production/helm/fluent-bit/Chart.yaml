@@ -1,5 +1,5 @@
 name: fluent-bit
-version: 0.0.1
+version: 0.0.2
 appVersion: v0.0.1
 kubeVersion: "^1.10.0-0"
 description: "Uses fluent-bit Loki go plugin for gathering logs and sending them to Loki"
