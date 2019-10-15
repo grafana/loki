@@ -1,14 +1,16 @@
 package distributor
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/util"
 
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/unmarshal"
+	unmarshal_legacy "github.com/grafana/loki/pkg/logql/unmarshal/legacy"
 )
 
 var contentType = http.CanonicalHeaderKey("Content-Type")
@@ -21,7 +23,15 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Header.Get(contentType) {
 	case applicationJSON:
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var err error
+
+		if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
+			err = unmarshal.DecodePushRequest(r.Body, &req)
+		} else {
+			err = unmarshal_legacy.DecodePushRequest(r.Body, &req)
+		}
+
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}

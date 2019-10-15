@@ -87,7 +87,7 @@ module Fluent
         body = { 'streams': payload }
 
         # add ingest path to loki url
-        uri = URI.parse(url + '/loki/api/v1/push')
+        uri = URI.parse(url + '/api/prom/push')
 
         req = Net::HTTP::Post.new(
           uri.request_uri

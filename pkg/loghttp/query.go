@@ -23,6 +23,11 @@ type QueryResponse struct {
 	Data   QueryResponseData `json:"data"`
 }
 
+// PushRequest models a log stream push
+type PushRequest struct {
+	Streams []*Stream `json:"streams"`
+}
+
 // ResultType holds the type of the result
 type ResultType string
 
