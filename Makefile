@@ -211,7 +211,7 @@ publish: dist
 ########
 
 lint:
-	GO111MODULE=on GOGC=10 golangci-lint run --timeout=5m
+	GO111MODULE=on GOGC=10 golangci-lint run --timeout=5m -j 16
 
 ########
 # Test #
