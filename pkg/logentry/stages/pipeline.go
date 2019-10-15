@@ -12,6 +12,8 @@ import (
 	"github.com/grafana/loki/pkg/promtail/api"
 )
 
+const dropLabel = "__drop__"
+
 // PipelineStages contains configuration for each stage within a pipeline
 type PipelineStages = []interface{}
 
@@ -109,6 +111,10 @@ func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 	return api.EntryHandlerFunc(func(labels model.LabelSet, timestamp time.Time, line string) error {
 		extracted := map[string]interface{}{}
 		p.Process(labels, extracted, &timestamp, &line)
+		// if the labels set contains the __drop__ label we don't send this entry to the next EntryHandler
+		if _, ok := labels[dropLabel]; ok {
+			return nil
+		}
 		return next.Handle(labels, timestamp, line)
 	})
 }
