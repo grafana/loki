@@ -10,8 +10,10 @@ To install the chart with the release name `my-release` using our helm repositor
 ```bash
 helm repo add loki https://grafana.github.io/loki/charts
 helm upgrade --install my-release loki/fluent-bit \
-    --set loki.serviceName=loki.svc.cluster.local
+    --set loki.serviceName=loki.default.svc.cluster.local
 ```
+
+If you deploy Loki with a custom namespace or service name, you must change the value above for `loki.serviceName` to the appropriate value.
 
 The command deploys Fluent Bit on the Kubernetes cluster with the default configuration. The [configuration](#configuration) section lists the parameters that can be configured during installation.
 
