@@ -3,6 +3,7 @@ loki:
   serviceName: ""  # Defaults to "${RELEASE}-loki" if not set
   servicePort: 3100
   serviceScheme: http
+  servicePath: /api/prom/push
   # user: user
   # password: pass
 config:
