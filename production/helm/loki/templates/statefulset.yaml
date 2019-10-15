@@ -85,6 +85,7 @@ spec:
 {{- end }}
 {{- if .Values.extraContainers }}
 {{ toYaml .Values.extraContainers | indent 8}}
+{{- end }}
       nodeSelector:
         {{- toYaml .Values.nodeSelector | nindent 8 }}
       affinity:
