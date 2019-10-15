@@ -20,7 +20,7 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.7.2
+BUILD_IMAGE_VERSION := 0.7.3
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -212,7 +212,7 @@ publish: dist
 ########
 
 lint:
-	GO111MODULE=on GOGC=10 golangci-lint run -j 4
+	GO111MODULE=on GOGC=10 golangci-lint run --timeout=5m -j 16
 
 ########
 # Test #

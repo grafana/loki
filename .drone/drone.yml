@@ -5,19 +5,19 @@ steps:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.7.2
+  image: grafana/loki-build-image:0.7.3
   name: test
 - commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.7.2
+  image: grafana/loki-build-image:0.7.3
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.7.2
+  image: grafana/loki-build-image:0.7.3
   name: check-generated-files
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
@@ -25,7 +25,7 @@ steps:
   - clone
   - test
   - lint
-  image: grafana/loki-build-image:0.7.2
+  image: grafana/loki-build-image:0.7.3
   name: check-mod
 workspace:
   base: /src
@@ -492,7 +492,7 @@ steps:
   environment:
     CIRCLE_TOKEN:
       from_secret: circle_token
-  image: grafana/loki-build-image:0.7.2
+  image: grafana/loki-build-image:0.7.3
   name: trigger
 trigger:
   ref:

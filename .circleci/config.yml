@@ -47,7 +47,7 @@ workflows:
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 .defaults: &defaults
   docker:
-    - image: grafana/loki-build-image:0.7.2
+    - image: grafana/loki-build-image:0.7.3
   working_directory: /src/loki
 
 jobs:
