@@ -2,6 +2,7 @@ package gcp
 
 import (
 	"context"
+	"time"
 
 	"google.golang.org/grpc/codes"
 
@@ -15,6 +16,9 @@ import (
 type tableClient struct {
 	cfg    Config
 	client *bigtable.AdminClient
+
+	tableInfo       map[string]*bigtable.TableInfo
+	tableExpiration time.Time
 }
 
 // NewTableClient returns a new TableClient.
@@ -27,25 +31,37 @@ func NewTableClient(ctx context.Context, cfg Config) (chunk.TableClient, error) 
 	return &tableClient{
 		cfg:    cfg,
 		client: client,
+
+		tableInfo: map[string]*bigtable.TableInfo{},
 	}, nil
 }
 
+// ListTables lists all of the correctly specified cortex tables in bigtable
 func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 	tables, err := c.client.Tables(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "client.Tables")
 	}
 
-	// Check each table has the right column family.  If not, omit it.
+	if c.tableExpiration.Before(time.Now()) {
+		c.tableInfo = map[string]*bigtable.TableInfo{}
+		c.tableExpiration = time.Now().Add(c.cfg.TableCacheExpiration)
+	}
+
 	output := make([]string, 0, len(tables))
 	for _, table := range tables {
-		info, err := c.client.TableInfo(ctx, table)
-		if err != nil {
-			return nil, errors.Wrap(err, "client.TableInfo")
+		info, exists := c.tableInfo[table]
+		if !c.cfg.TableCacheEnabled || !exists {
+			info, err = c.client.TableInfo(ctx, table)
+			if err != nil {
+				return nil, errors.Wrap(err, "client.TableInfo")
+			}
 		}
 
+		// Check each table has the right column family.  If not, omit it.
 		if hasColumnFamily(info.FamilyInfos) {
 			output = append(output, table)
+			c.tableInfo[table] = info
 		}
 	}
 
@@ -86,6 +102,7 @@ func (c *tableClient) DeleteTable(ctx context.Context, name string) error {
 	if err := c.client.DeleteTable(ctx, name); err != nil {
 		return errors.Wrap(err, "client.DeleteTable")
 	}
+	delete(c.tableInfo, name)
 
 	return nil
 }
