@@ -7,10 +7,10 @@ run:
   modules-download-mode: vendor
 
   # default concurrency is a available CPU number
-  concurrency: 2
+  concurrency: 16
 
   # timeout for analysis, e.g. 30s, 5m, default is 1m
-  deadline: 5m
+  timeout: 5m
 
   # exit code when at least one issue was found, default is 1
   issues-exit-code: 1
@@ -66,4 +66,4 @@ linters:
 
 issues:
   exclude:
-    - Error return value of .*log\.Logger\)\.Log\x60 is not checked 
+    - Error return value of .*log\.Logger\)\.Log\x60 is not checked
