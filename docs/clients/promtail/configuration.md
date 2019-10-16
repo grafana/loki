@@ -897,7 +897,7 @@ positions:
   filename: /tmp/positions.yaml
 
 client:
-  url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
+  url: http://ip_or_hostname_where_Loki_run:3100/api/prom/push
 
 scrape_configs:
  - job_name: system
@@ -934,7 +934,7 @@ positions:
   filename: /tmp/positions.yaml
 
 clients:
-  - url: http://ip_or_hostname_where_loki_runns:3100/loki/api/v1/push
+  - url: http://ip_or_hostname_where_loki_runns:3100/api/prom/push
 
 scrape_configs:
   - job_name: journal
