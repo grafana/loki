@@ -61,6 +61,7 @@ func (s *DroppedStream) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ParseTailQuery parses a TailRequest request from an http request.
 func ParseTailQuery(r *http.Request) (*logproto.TailRequest, error) {
 	var err error
 	req := logproto.TailRequest{

@@ -159,6 +159,7 @@ type Vector []model.Sample
 // Matrix is a slice of SampleStreams
 type Matrix []model.SampleStream
 
+// InstantQuery defines a log instant query.
 type InstantQuery struct {
 	Query     string
 	Ts        time.Time
@@ -166,6 +167,7 @@ type InstantQuery struct {
 	Direction logproto.Direction
 }
 
+// ParseInstantQuery parses an InstantQuery request from an http request.
 func ParseInstantQuery(r *http.Request) (*InstantQuery, error) {
 	var err error
 	request := &InstantQuery{
@@ -189,16 +191,17 @@ func ParseInstantQuery(r *http.Request) (*InstantQuery, error) {
 	return request, nil
 }
 
+// RangeQuery defines a log range query.
 type RangeQuery struct {
 	Start     time.Time
 	End       time.Time
 	Step      time.Duration
-	Timeout   time.Duration
 	Query     string
 	Direction logproto.Direction
 	Limit     uint32
 }
 
+// ParseRangeQuery parses a RangeQuery request from an http request.
 func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 	var result RangeQuery
 	var err error

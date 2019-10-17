@@ -42,6 +42,7 @@ func (l LabelSet) String() string {
 	return b.String()
 }
 
+// ParseLabelQuery parses a LabelRequest request from an http request.
 func ParseLabelQuery(r *http.Request) (*logproto.LabelRequest, error) {
 	name, ok := mux.Vars(r)["name"]
 	req := &logproto.LabelRequest{
