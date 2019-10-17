@@ -78,9 +78,11 @@ type IndexEntry struct {
 	Value []byte
 }
 
+type schemaBucketsFunc func(from, through model.Time, userID string) []Bucket
+
 // schema implements Schema given a bucketing function and and set of range key callbacks
 type schema struct {
-	buckets func(from, through model.Time, userID string) []Bucket
+	buckets schemaBucketsFunc
 	entries entries
 }
 

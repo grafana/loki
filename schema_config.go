@@ -1,6 +1,7 @@
 package chunk
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -21,6 +22,11 @@ const (
 	secondsInDay       = int64(24 * time.Hour / time.Second)
 	millisecondsInHour = int64(time.Hour / time.Millisecond)
 	millisecondsInDay  = int64(24 * time.Hour / time.Millisecond)
+)
+
+var (
+	errInvalidSchemaVersion = errors.New("invalid schema version")
+	errInvalidTablePeriod   = errors.New("the table period must be a multiple of 24h (1h for schema v1)")
 )
 
 // PeriodConfig defines the schema and tables to use for a period of time
@@ -116,8 +122,7 @@ func (cfg *LegacySchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ChunkTables.RegisterFlags("dynamodb.chunk-table", "cortex_chunks_", f)
 }
 
-// translate from command-line parameters into new config data structure
-func (cfg *SchemaConfig) translate() error {
+func (cfg *SchemaConfig) loadFromFlags() error {
 	cfg.Configs = []PeriodConfig{}
 
 	add := func(t string, f model.Time) {
@@ -172,6 +177,30 @@ func (cfg *SchemaConfig) translate() error {
 	return nil
 }
 
+// loadFromFile loads the schema config from a yaml file
+func (cfg *SchemaConfig) loadFromFile() error {
+	f, err := os.Open(cfg.fileName)
+	if err != nil {
+		return err
+	}
+
+	decoder := yaml.NewDecoder(f)
+	decoder.SetStrict(true)
+	return decoder.Decode(&cfg)
+}
+
+// Validate the schema config and returns an error if the validation
+// doesn't pass
+func (cfg *SchemaConfig) Validate() error {
+	for _, periodCfg := range cfg.Configs {
+		if err := periodCfg.validate(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // ForEachAfter will call f() on every entry after t, splitting
 // entries if necessary so there is an entry starting at t
 func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)) {
@@ -190,33 +219,70 @@ func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)
 
 // CreateSchema returns the schema defined by the PeriodConfig
 func (cfg PeriodConfig) CreateSchema() Schema {
-	var s schema
+	var e entries
+
 	switch cfg.Schema {
 	case "v1":
-		s = schema{cfg.hourlyBuckets, originalEntries{}}
+		e = originalEntries{}
 	case "v2":
-		s = schema{cfg.dailyBuckets, originalEntries{}}
+		e = originalEntries{}
 	case "v3":
-		s = schema{cfg.dailyBuckets, base64Entries{originalEntries{}}}
+		e = base64Entries{originalEntries{}}
 	case "v4":
-		s = schema{cfg.dailyBuckets, labelNameInHashKeyEntries{}}
+		e = labelNameInHashKeyEntries{}
 	case "v5":
-		s = schema{cfg.dailyBuckets, v5Entries{}}
+		e = v5Entries{}
 	case "v6":
-		s = schema{cfg.dailyBuckets, v6Entries{}}
+		e = v6Entries{}
 	case "v9":
-		s = schema{cfg.dailyBuckets, v9Entries{}}
+		e = v9Entries{}
 	case "v10":
 		rowShards := uint32(16)
 		if cfg.RowShards > 0 {
 			rowShards = cfg.RowShards
 		}
 
-		s = schema{cfg.dailyBuckets, v10Entries{
+		e = v10Entries{
 			rowShards: rowShards,
-		}}
+		}
+	default:
+		return nil
 	}
-	return s
+
+	buckets, _ := cfg.createBucketsFunc()
+
+	return schema{buckets, e}
+}
+
+func (cfg PeriodConfig) createBucketsFunc() (schemaBucketsFunc, time.Duration) {
+	switch cfg.Schema {
+	case "v1":
+		return cfg.hourlyBuckets, 1 * time.Hour
+	default:
+		return cfg.dailyBuckets, 24 * time.Hour
+	}
+}
+
+// validate the period config
+func (cfg PeriodConfig) validate() error {
+	// Ensure the schema version exists
+	schema := cfg.CreateSchema()
+	if schema == nil {
+		return errInvalidSchemaVersion
+	}
+
+	// Ensure the tables period is a multiple of the bucket period
+	_, bucketsPeriod := cfg.createBucketsFunc()
+
+	if cfg.IndexTables.Period > 0 && cfg.IndexTables.Period%bucketsPeriod != 0 {
+		return errInvalidTablePeriod
+	}
+
+	if cfg.ChunkTables.Period > 0 && cfg.ChunkTables.Period%bucketsPeriod != 0 {
+		return errInvalidTablePeriod
+	}
+
+	return nil
 }
 
 // Load the yaml file, or build the config from legacy command-line flags
@@ -224,18 +290,21 @@ func (cfg *SchemaConfig) Load() error {
 	if len(cfg.Configs) > 0 {
 		return nil
 	}
+
+	// Load config from file (if provided), falling back to CLI flags
+	var err error
+
 	if cfg.fileName == "" {
-		return cfg.translate()
+		err = cfg.loadFromFlags()
+	} else {
+		err = cfg.loadFromFile()
 	}
 
-	f, err := os.Open(cfg.fileName)
 	if err != nil {
 		return err
 	}
 
-	decoder := yaml.NewDecoder(f)
-	decoder.SetStrict(true)
-	return decoder.Decode(&cfg)
+	return cfg.Validate()
 }
 
 // PrintYaml dumps the yaml to stdout, to aid in migration
