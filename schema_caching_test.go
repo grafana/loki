@@ -55,7 +55,7 @@ func TestCachingSchema(t *testing.T) {
 			// Mix of both.
 			baseTime.Add(-50 * time.Hour),
 			baseTime.Add(-2 * time.Hour),
-			0,
+			-1,
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {

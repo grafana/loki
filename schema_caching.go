@@ -14,81 +14,52 @@ type schemaCaching struct {
 }
 
 func (s *schemaCaching) GetReadQueriesForMetric(from, through model.Time, userID string, metricName string) ([]IndexQuery, error) {
-	return s.splitTimesByCacheability(from, through, func(from, through model.Time) ([]IndexQuery, error) {
-		return s.Schema.GetReadQueriesForMetric(from, through, userID, metricName)
-	})
+	queries, err := s.Schema.GetReadQueriesForMetric(from, through, userID, metricName)
+	if err != nil {
+		return nil, err
+	}
+	return s.setImmutability(from, through, queries), nil
 }
 
 func (s *schemaCaching) GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName string, labelName string) ([]IndexQuery, error) {
-	return s.splitTimesByCacheability(from, through, func(from, through model.Time) ([]IndexQuery, error) {
-		return s.Schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
-	})
+	queries, err := s.Schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
+	if err != nil {
+		return nil, err
+	}
+	return s.setImmutability(from, through, queries), nil
 }
 
 func (s *schemaCaching) GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName string, labelName string, labelValue string) ([]IndexQuery, error) {
-	return s.splitTimesByCacheability(from, through, func(from, through model.Time) ([]IndexQuery, error) {
-		return s.Schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, labelName, labelValue)
-	})
+	queries, err := s.Schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, labelName, labelValue)
+	if err != nil {
+		return nil, err
+	}
+	return s.setImmutability(from, through, queries), nil
 }
 
 // If the query resulted in series IDs, use this method to find chunks.
 func (s *schemaCaching) GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
-	return s.splitTimesByCacheability(from, through, func(from, through model.Time) ([]IndexQuery, error) {
-		return s.Schema.GetChunksForSeries(from, through, userID, seriesID)
-	})
+	queries, err := s.Schema.GetChunksForSeries(from, through, userID, seriesID)
+	if err != nil {
+		return nil, err
+	}
+	return s.setImmutability(from, through, queries), nil
 }
 
-func (s *schemaCaching) splitTimesByCacheability(from, through model.Time, f func(from, through model.Time) ([]IndexQuery, error)) ([]IndexQuery, error) {
-	var (
-		cacheableQueries []IndexQuery
-		activeQueries    []IndexQuery
-		err              error
-		cacheBefore      = model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix())
-	)
+func (s *schemaCaching) setImmutability(from, through model.Time, queries []IndexQuery) []IndexQuery {
+	cacheBefore := model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix())
 
-	if from.After(cacheBefore) {
-		activeQueries, err = f(from, through)
-		if err != nil {
-			return nil, err
-		}
-	} else if through.Before(cacheBefore) {
-		cacheableQueries, err = f(from, through)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		cacheableQueries, err = f(from, cacheBefore)
-		if err != nil {
-			return nil, err
-		}
-
-		activeQueries, err = f(cacheBefore, through)
-		if err != nil {
-			return nil, err
+	// If the entire query is cacheable then cache it.
+	// While not super effective stand-alone, when combined with query-frontend and splitting,
+	// old queries will mostly be all behind boundary.
+	// To cleanly split cacheable and non-cacheable ranges, we'd need bucket start and end times
+	// which we don't know.
+	// See: https://github.com/cortexproject/cortex/issues/1698
+	if through.Before(cacheBefore) {
+		for i := range queries {
+			queries[i].Immutable = true
 		}
 	}
 
-	return mergeCacheableAndActiveQueries(cacheableQueries, activeQueries), nil
-}
-
-func mergeCacheableAndActiveQueries(cacheableQueries []IndexQuery, activeQueries []IndexQuery) []IndexQuery {
-	finalQueries := make([]IndexQuery, 0, len(cacheableQueries)+len(activeQueries))
-
-Outer:
-	for _, cq := range cacheableQueries {
-		for _, aq := range activeQueries {
-			// When deduping, the bucket values only influence TableName and HashValue
-			// and just checking those is enough.
-			if cq.TableName == aq.TableName && cq.HashValue == aq.HashValue {
-				continue Outer
-			}
-		}
-
-		cq.Immutable = true
-		finalQueries = append(finalQueries, cq)
-	}
-
-	finalQueries = append(finalQueries, activeQueries...)
-
-	return finalQueries
+	return queries
 }
