@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"net/http"
 	"sync"
@@ -11,6 +10,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -20,12 +20,13 @@ import (
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	util2 "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
 // attempted.
-var ErrReadOnly = errors.New("Ingester is shutting down")
+const ErrReadOnly = "Ingester is shutting down"
 
 var readinessProbeSuccess = []byte("Ready")
 
@@ -167,14 +168,27 @@ func (i *Ingester) Stopping() {
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	instanceID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return nil, err
+		return nil, httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+			Code: int32(http.StatusBadRequest),
+			Body: []byte(err.Error()),
+		})
 	} else if i.readonly {
-		return nil, ErrReadOnly
+		return nil, httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+			Code: int32(http.StatusServiceUnavailable),
+			Body: []byte(ErrReadOnly),
+		})
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
 	err = instance.Push(ctx, req)
-	return &logproto.PushResponse{}, err
+	if err != nil {
+		_, cd := util2.IsCodedError(err)
+		return nil, httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+			Code: int32(cd),
+			Body: []byte(err.Error()),
+		})
+	}
+	return &logproto.PushResponse{}, nil
 }
 
 func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
@@ -197,18 +211,32 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
 	instanceID, err := user.ExtractOrgID(queryServer.Context())
 	if err != nil {
-		return err
+		return httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+			Code: int32(http.StatusBadRequest),
+			Body: []byte(err.Error()),
+		})
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	return instance.Query(req, queryServer)
+	err = instance.Query(req, queryServer)
+	if err != nil {
+		_, cd := util2.IsCodedError(err)
+		return httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+			Code: int32(cd),
+			Body: []byte(err.Error()),
+		})
+	}
+	return nil
 }
 
 // Label returns the set of labels for the stream this ingester knows about.
 func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	instanceID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return nil, err
+		return nil, httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+			Code: int32(http.StatusBadRequest),
+			Body: []byte(err.Error()),
+		})
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
@@ -263,19 +291,30 @@ func (i *Ingester) getInstances() []*instance {
 func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
 	select {
 	case <-i.quitting:
-		return errors.New("Ingester is stopping")
+		return httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+			Code: int32(http.StatusServiceUnavailable),
+			Body: []byte(ErrReadOnly),
+		})
 	default:
 	}
 
 	instanceID, err := user.ExtractOrgID(queryServer.Context())
 	if err != nil {
-		return err
+		return httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+			Code: int32(http.StatusBadRequest),
+			Body: []byte(err.Error()),
+		})
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
+
 	tailer, err := newTailer(instanceID, req.Query, queryServer)
 	if err != nil {
-		return err
+		_, cd := util2.IsCodedError(err)
+		return httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+			Code: int32(cd),
+			Body: []byte(err.Error()),
+		})
 	}
 
 	instance.addNewTailer(tailer)

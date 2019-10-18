@@ -5,16 +5,14 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/ingester/index"
+	cutil "github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/weaveworks/common/httpgrpc"
-
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/ingester/index"
-	cutil "github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
@@ -108,31 +106,40 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	i.streamsMtx.Lock()
 	defer i.streamsMtx.Unlock()
+	errSampler := util.NewCodedErrorSampler(5)
 
-	var appendErr error
 	for _, s := range req.Streams {
 		labels, err := util.ToClientLabels(s.Labels)
 		if err != nil {
-			appendErr = err
+			if !errSampler.IsFull(err) {
+				errSampler.AddEntry(errors.Wrapf(err, "failed to process labels for stream: %v", s.Labels))
+			}
 			continue
 		}
 
 		stream, err := i.getOrCreateStream(labels)
 		if err != nil {
-			appendErr = err
+			errSampler.AddEntry(errors.Wrapf(err, "failed to save stream: %v", s.Labels))
 			continue
 		}
 
 		prevNumChunks := len(stream.chunks)
-		if err := stream.Push(ctx, s.Entries); err != nil {
-			appendErr = err
+		err = stream.Push(ctx, s.Entries)
+		if err != nil {
+			if !errSampler.IsFull(err) {
+				errSampler.AddEntry(errors.Wrapf(err, "failed to save some entries for stream: %v", s.Labels))
+			}
 			continue
 		}
 
 		memoryChunks.Add(float64(len(stream.chunks) - prevNumChunks))
 	}
 
-	return appendErr
+	if errSampler.Size() > 0 {
+		return errSampler
+	}
+
+	return nil
 }
 
 func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, error) {
@@ -144,7 +151,7 @@ func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, err
 	}
 
 	if len(i.streams) >= i.limits.MaxStreamsPerUser(i.instanceID) {
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user streams limit (%d) exceeded", i.limits.MaxStreamsPerUser(i.instanceID))
+		return nil, util.NewCodedErrorf(http.StatusTooManyRequests, "per-user streams limit (%d) exceeded", i.limits.MaxStreamsPerUser(i.instanceID))
 	}
 	stream = newStream(fp, labels, i.blockSize)
 	i.index.Add(labels, fp)
@@ -159,11 +166,11 @@ func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, err
 func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
 	expr, err := (logql.SelectParams{QueryRequest: req}).LogSelector()
 	if err != nil {
-		return err
+		return util.NewCodedError(http.StatusBadRequest, err.Error())
 	}
 	filter, err := expr.Filter()
 	if err != nil {
-		return err
+		return util.NewCodedError(http.StatusBadRequest, err.Error())
 	}
 	iters, err := i.lookupStreams(req, expr.Matchers(), filter)
 	if err != nil {

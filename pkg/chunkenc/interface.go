@@ -1,22 +1,23 @@
 package chunkenc
 
 import (
-	"errors"
 	"io"
+	"net/http"
 	"time"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/util"
 )
 
 // Errors returned by the chunk interface.
 var (
-	ErrChunkFull       = errors.New("chunk full")
-	ErrOutOfOrder      = errors.New("entry out of order")
-	ErrInvalidSize     = errors.New("invalid size")
-	ErrInvalidFlag     = errors.New("invalid flag")
-	ErrInvalidChecksum = errors.New("invalid checksum")
+	ErrChunkFull       = util.NewCodedError(http.StatusInternalServerError, "chunk full")
+	ErrOutOfOrder      = util.NewCodedError(http.StatusBadRequest, "entry out of order")
+	ErrInvalidSize     = util.NewCodedError(http.StatusInternalServerError, "invalid size")
+	ErrInvalidFlag     = util.NewCodedError(http.StatusInternalServerError, "invalid flag")
+	ErrInvalidChecksum = util.NewCodedError(http.StatusInternalServerError, "invalid checksum")
 )
 
 // Encoding is the identifier for a chunk encoding.

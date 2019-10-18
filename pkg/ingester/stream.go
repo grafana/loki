@@ -1,22 +1,20 @@
 package ingester
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/util"
 )
 
 var (
@@ -60,11 +58,6 @@ type chunkDesc struct {
 	lastUpdated time.Time
 }
 
-type entryWithError struct {
-	entry *logproto.Entry
-	e     error
-}
-
 func newStream(fp model.Fingerprint, labels []client.LabelAdapter, blockSize int) *stream {
 	return &stream{
 		fp:        fp,
@@ -98,7 +91,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 	}
 
 	storedEntries := []logproto.Entry{}
-	failedEntriesWithError := []entryWithError{}
+	errSampler := util.NewCodedErrorSampler(5)
 
 	// Don't fail on the first append error - if samples are sent out of order,
 	// we still want to append the later ones.
@@ -116,7 +109,9 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 			chunk = &s.chunks[len(s.chunks)-1]
 		}
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err})
+			if !errSampler.IsFull(err) {
+				errSampler.AddEntry(errors.Wrapf(err, "failed to save entry: %v %v", entries[i].Timestamp.UnixNano(), entries[i].Line))
+			}
 		} else {
 			// send only stored entries to tailers
 			storedEntries = append(storedEntries, entries[i])
@@ -151,24 +146,8 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 		}()
 	}
 
-	if len(failedEntriesWithError) > 0 {
-		lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
-		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
-			// return bad http status request response with all failed entries
-			buf := bytes.Buffer{}
-			streamName := client.FromLabelAdaptersToLabels(s.labels).String()
-
-			for _, entryWithError := range failedEntriesWithError {
-				_, _ = fmt.Fprintf(&buf,
-					"entry with timestamp %s ignored, reason: '%s' for stream: %s,\n",
-					entryWithError.entry.Timestamp.String(), entryWithError.e.Error(), streamName)
-			}
-
-			_, _ = fmt.Fprintf(&buf, "total ignored: %d out of %d", len(failedEntriesWithError), len(entries))
-
-			return httpgrpc.Errorf(http.StatusBadRequest, buf.String())
-		}
-		return lastEntryWithErr.e
+	if errSampler.Size() > 0 {
+		return errSampler
 	}
 
 	return nil

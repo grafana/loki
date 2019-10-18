@@ -11,7 +11,7 @@ import (
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
-	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/pkg/errors"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing/opentracing-go"
@@ -29,8 +29,7 @@ import (
 )
 
 const (
-	metricName = "logs"
-	bytesInMB  = 1048576
+	bytesInMB = 1048576
 )
 
 var readinessProbeSuccess = []byte("Ready")
@@ -169,7 +168,10 @@ func (d *Distributor) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return nil, err
+		return nil, httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+			Code: int32(http.StatusBadRequest),
+			Body: []byte(err.Error()),
+		})
 	}
 
 	// Track metrics.
@@ -189,21 +191,25 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// We also work out the hash value at the same time.
 	streams := make([]streamTracker, 0, len(req.Streams))
 	keys := make([]uint32, 0, len(req.Streams))
-	var validationErr error
+	errSampler := util.NewCodedErrorSampler(5)
 	validatedSamplesSize := 0
 
 	for _, stream := range req.Streams {
 		if err := d.validateLabels(userID, stream.Labels); err != nil {
-			validationErr = err
+			if !errSampler.IsFull(err) {
+				errSampler.AddEntry(errors.Wrapf(err, "failed to validate labels for stream: %v", stream.Labels))
+			}
 			continue
 		}
 
 		entries := make([]logproto.Entry, 0, len(stream.Entries))
 		for _, entry := range stream.Entries {
-			if err := cortex_validation.ValidateSample(d.overrides, userID, metricName, cortex_client.Sample{
+			if err := validation.ValidateSample(d.overrides, userID, stream.Labels, cortex_client.Sample{
 				TimestampMs: entry.Timestamp.UnixNano() / int64(time.Millisecond),
 			}); err != nil {
-				validationErr = err
+				if !errSampler.IsFull(err) {
+					errSampler.AddEntry(err)
+				}
 				continue
 			}
 			entries = append(entries, entry)
@@ -221,7 +227,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	if len(streams) == 0 {
-		return &logproto.PushResponse{}, validationErr
+		if errSampler.Size() > 0 {
+			return nil, httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+				Code: int32(errSampler.Code()),
+				Body: []byte(errSampler.Error()),
+			})
+		}
+		return &logproto.PushResponse{}, nil
 	}
 
 	limiter := d.getOrCreateIngestLimiter(userID)
@@ -270,22 +282,33 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 	select {
 	case err := <-tracker.err:
-		return nil, err
+		_, cd := util.IsCodedError(err)
+		return nil, httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+			Code: int32(cd),
+			Body: []byte(err.Error()),
+		})
 	case <-tracker.done:
-		return &logproto.PushResponse{}, validationErr
+		if errSampler.Size() > 0 {
+			return nil, httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+				Code: int32(errSampler.Code()),
+				Body: []byte(errSampler.Error()),
+			})
+		}
+		return &logproto.PushResponse{}, nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+			Code: int32(http.StatusInternalServerError),
+			Body: []byte(ctx.Err().Error()),
+		})
 	}
 }
 
 func (d *Distributor) validateLabels(userID, labels string) error {
 	ls, err := util.ToClientLabels(labels)
 	if err != nil {
-		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return util.NewCodedError(http.StatusBadRequest, err.Error())
 	}
-
-	// everything in `ValidateLabels` returns `httpgrpc.Errorf` errors, no sugaring needed
-	return cortex_validation.ValidateLabels(d.overrides, userID, ls)
+	return validation.ValidateLabels(d.overrides, userID, labels, ls)
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.

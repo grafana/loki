@@ -3,6 +3,7 @@ package ingester
 import (
 	"encoding/binary"
 	"hash/fnv"
+	"net/http"
 	"sync"
 	"time"
 
@@ -41,11 +42,11 @@ type tailer struct {
 func newTailer(orgID, query string, conn logproto.Querier_TailServer) (*tailer, error) {
 	expr, err := logql.ParseLogSelector(query)
 	if err != nil {
-		return nil, err
+		return nil, util.NewCodedError(http.StatusBadRequest, err.Error())
 	}
 	filter, err := expr.Filter()
 	if err != nil {
-		return nil, err
+		return nil, util.NewCodedError(http.StatusBadRequest, err.Error())
 	}
 	matchers := expr.Matchers()
 
