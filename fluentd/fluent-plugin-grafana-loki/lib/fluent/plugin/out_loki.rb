@@ -24,36 +24,38 @@ require 'time'
 module Fluent
   module Plugin
     # Subclass of Fluent Plugin Output
-    class LokiOutput < Fluent::Plugin::Output
+    class LokiOutput < Fluent::Plugin::Output # rubocop:disable Metrics/ClassLength
       Fluent::Plugin.register_output('loki', self)
 
-      helpers :compat_parameters
+      helpers :compat_parameters, :record_accessor
+
+      attr_accessor :record_accessors
 
       DEFAULT_BUFFER_TYPE = 'memory'
 
-      # url of loki server
+      desc 'url of loki server'
       config_param :url, :string, default: 'https://logs-us-west1.grafana.net'
 
-      # BasicAuth credentials
+      desc 'BasicAuth credentials'
       config_param :username, :string, default: nil
       config_param :password, :string, default: nil, secret: true
 
-      # Loki tenant id
+      desc 'Loki tenant id'
       config_param :tenant, :string, default: nil
 
-      # extra labels to add to all log streams
+      desc 'extra labels to add to all log streams'
       config_param :extra_labels, :hash, default: {}
 
-      # format to use when flattening the record to a log line
+      desc 'format to use when flattening the record to a log line'
       config_param :line_format, :enum, list: %i[json key_value], default: :key_value
 
-      # comma separated list of keys to use as stream lables.  All other keys will be placed into the log line
-      config_param :label_keys, :string, default: 'job,instance'
+      desc 'extract kubernetes labels as loki labels'
+      config_param :extract_kubernetes_labels, :bool, default: false
 
-      # comma separated list of needless record keys to remove
-      config_param :remove_keys, :string, default: nil
+      desc 'comma separated list of needless record keys to remove'
+      config_param :remove_keys, :array, default: %w[], value_type: :string
 
-      # if a record only has 1 key, then just set the log line to the value and discard the key.
+      desc 'if a record only has 1 key, then just set the log line to the value and discard the key.'
       config_param :drop_single_key, :bool, default: false
 
       config_section :buffer do
@@ -64,9 +66,18 @@ module Fluent
       def configure(conf)
         compat_parameters_convert(conf, :buffer)
         super
-
-        @label_keys = @label_keys.split(/\s*,\s*/) if @label_keys
-        @remove_keys = @remove_keys.split(',').map(&:strip) if @remove_keys
+        @record_accessors = {}
+        conf.elements.select { |element| element.name == 'label' }.each do |element|
+          element.each_pair do |k, v|
+            element.key?(k) # to suppress unread configuration warning
+            v = k if v.empty?
+            @record_accessors[k] = record_accessor_create(v)
+          end
+        end
+        @remove_keys_accessors = []
+        @remove_keys.each do |key|
+          @remove_keys_accessors.push(record_accessor_create(key))
+        end
       end
 
       def multi_workers_ready?
@@ -84,7 +95,7 @@ module Fluent
       def write(chunk)
         # streams by label
         payload = generic_to_loki(chunk)
-        body = { 'streams': payload }
+        body = { 'streams' => payload }
 
         # add ingest path to loki url
         uri = URI.parse(url + '/api/prom/push')
@@ -101,7 +112,7 @@ module Fluent
         }
         log.debug "sending #{req.body.length} bytes to loki"
         res = Net::HTTP.start(uri.hostname, uri.port, **opts) { |http| http.request(req) }
-        unless res && res.is_a?(Net::HTTPSuccess)
+        unless res&.is_a?(Net::HTTPSuccess)
           res_summary = if res
                           "#{res.code} #{res.message} #{res.body}"
                         else
@@ -136,7 +147,7 @@ module Fluent
         data_labels = data_labels.merge(@extra_labels)
 
         data_labels.each do |k, v|
-          formatted_labels.push("#{k}=\"#{v.gsub('"','\\"')}\"") if v
+          formatted_labels.push(%(#{k}="#{v}")) if v
         end
         '{' + formatted_labels.join(',') + '}'
       end
@@ -145,7 +156,7 @@ module Fluent
         payload = []
         streams.each do |k, v|
           # create a stream for each label set.
-          # Additionally sort the entries by timestamp just incase we
+          # Additionally sort the entries by timestamp just in case we
           # got them out of order.
           # 'labels' => '{worker="0"}',
           payload.push(
@@ -167,7 +178,7 @@ module Fluent
           when :key_value
             formatted_labels = []
             record.each do |k, v|
-              formatted_labels.push("#{k}=\"#{v}\"")
+              formatted_labels.push(%(#{k}="#{v}"))
             end
             line = formatted_labels.join(' ')
           end
@@ -175,22 +186,31 @@ module Fluent
         line
       end
 
+      #
       # convert a line to loki line with labels
       def line_to_loki(record)
         chunk_labels = {}
         line = ''
         if record.is_a?(Hash)
-          # remove needless keys.
-          @remove_keys.each { |v|
-            record.delete(v)
-          } if @remove_keys
-          # extract white listed record keys into labels.
-          @label_keys.each do |k|
-            if record.key?(k)
-              chunk_labels[k] = record[k]
-              record.delete(k)
+          @record_accessors&.each do |name, accessor|
+            new_key = name.gsub(%r{/[.\-\/]/}, '_')
+            chunk_labels[new_key] = accessor.call(record)
+            accessor.delete(record)
+          end
+
+          if @extract_kubernetes_labels && record.key?('kubernetes')
+            kubernetes_labels = record['kubernetes']['labels']
+            kubernetes_labels.each_key do |l|
+              new_key = l.gsub(%r{/[.\-\/]/}, '_')
+              chunk_labels[new_key] = kubernetes_labels[l]
             end
-          end if @label_keys
+          end
+
+          # remove needless keys.
+          @remove_keys_accessors&.each do |deleter|
+            deleter.delete(record)
+          end
+
           line = record_to_line(record)
         else
           line = record.to_s

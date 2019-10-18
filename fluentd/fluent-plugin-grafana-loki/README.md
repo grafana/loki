@@ -6,7 +6,7 @@ This plugin offers two line formats and uses protobuf to send compressed data to
 
 Key features:
   * extra_labels - labels to be added to every line of a logfile, useful for designating environments
-  * label_keys - customizable list of keys for stream labels
+  * label - This section allows you to specify labels from your log fields
 
 ## Installation
 
@@ -29,6 +29,64 @@ In your Fluentd configuration, use `@type loki`. Additional configuration is opt
 </match>
 ```
 
+### Using labels
+
+Simple label from top level attribute
+```
+<match mytag>
+  @type loki
+  # ...
+  <label>
+    fluentd_worker 
+  </label>
+  # ...
+</match>
+```
+
+You can rewrite the label keys as well as the following
+
+```
+<match mytag>
+  @type loki
+  # ...
+  <label>
+    worker fluentd_worker
+  </label>
+  # ...
+</match>
+```
+
+You can use record accessor syntax for nested field. https://docs.fluentd.org/filter/record_transformer#use-dig-method-for-nested-field
+
+```
+<match mytag>
+  @type loki
+  # ...
+  <label>
+    container ${record.dig("kubernetes", "container")}
+  </label>
+  # ...
+</match>
+```
+
+### Extracting Kubernetes labels
+
+As Kubernetes labels are a list of nested key-value pairs there is a separate option to extract them.
+Note that special characters like "`. - /`" will be overwritten with `_`.
+Use with the `remove_keys kubernetes` option to eliminate metadata from the log.
+``` 
+<match mytag>
+  @type loki
+  # ...
+  extract_kubernetes_labels true
+  remove_keys kubernetes
+  <label>
+    container ${record.dig("kubernetes", "container")}
+  </label>
+  # ...
+</match>
+```
+
 ### Multi-worker usage
 
 Loki doesn't currently support out-of-order inserts - if you try to insert a log entry an earlier timestamp after a log entry with with identical labels but a later timestamp, the insert will fail with `HTTP status code: 500, message: rpc error: code = Unknown desc = Entry out of order`. Therefore, in order to use this plugin in a multi worker Fluentd setup, you'll need to include the worker ID in the labels.
@@ -45,7 +103,9 @@ For example, using [fluent-plugin-record-modifier](https://github.com/repeatedly
 <match mytag>
   @type loki
   # ...
-  label_keys "fluentd_worker"
+  <label>
+    fluentd_worker
+  </label>
   # ...
 </match>
 ```

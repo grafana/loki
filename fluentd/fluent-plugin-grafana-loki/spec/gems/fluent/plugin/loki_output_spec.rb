@@ -22,8 +22,12 @@ RSpec.describe Fluent::Plugin::LokiOutput do
       tenant 1234
       extra_labels {}
       line_format key_value
-      label_keys "job,instance"
       drop_single_key true
+      remove_keys a, b
+      <label>
+        job
+        instance instance
+      </label>
     CONF
 
     expect(driver.instance.url).to eq 'https://logs-us-west1.grafana.net'
@@ -32,7 +36,8 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     expect(driver.instance.tenant).to eq '1234'
     expect(driver.instance.extra_labels).to eq({})
     expect(driver.instance.line_format).to eq :key_value
-    expect(driver.instance.label_keys).to eq %w[job instance]
+    expect(driver.instance.record_accessors.keys).to eq %w[job instance]
+    expect(driver.instance.remove_keys).to eq %w[a b]
     expect(driver.instance.drop_single_key).to eq true
   end
 
@@ -139,7 +144,9 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     config = <<-CONF
       url     https://logs-us-west1.grafana.net
       line_format json
-      label_keys "stream"
+      <label>
+        stream
+      </label>
     CONF
     driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
@@ -153,12 +160,55 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     expect(body[:streams][0]['entries'][0]['line']).to eq Yajl.dump('message' => content[0])
   end
 
+  it 'extracts nested record key as label' do
+    config = <<-CONF
+      url     https://logs-us-west1.grafana.net
+      line_format json
+      <label>
+        pod $.kubernetes.pod
+      </label>
+    CONF
+    driver = Fluent::Test::Driver::Output.new(described_class)
+    driver.configure(config)
+    content = File.readlines('spec/gems/fluent/plugin/data/syslog')
+    line1 = [1_546_270_458, { 'message' => content[0], 'kubernetes' => { 'pod' => 'podname' } }]
+    payload = driver.instance.generic_to_loki([line1])
+    body = { 'streams': payload }
+    expect(body[:streams][0]['labels']).to eq '{pod="podname"}'
+    expect(body[:streams][0]['entries'].count).to eq 1
+    expect(body[:streams][0]['entries'][0]['ts']).to eq '2018-12-31T15:34:18.000000Z'
+    expect(body[:streams][0]['entries'][0]['line']).to eq Yajl.dump('message' => content[0], 'kubernetes' => {})
+  end
+
+  it 'extracts nested record key as label and drop key after' do
+    config = <<-CONF
+      url     https://logs-us-west1.grafana.net
+      line_format json
+      remove_keys kubernetes
+      <label>
+        pod $.kubernetes.pod
+      </label>
+    CONF
+    driver = Fluent::Test::Driver::Output.new(described_class)
+    driver.configure(config)
+    content = File.readlines('spec/gems/fluent/plugin/data/syslog')
+    line1 = [1_546_270_458, { 'message' => content[0], 'kubernetes' => { 'pod' => 'podname' } }]
+    payload = driver.instance.generic_to_loki([line1])
+    body = { 'streams': payload }
+    expect(body[:streams][0]['labels']).to eq '{pod="podname"}'
+    expect(body[:streams][0]['entries'].count).to eq 1
+    expect(body[:streams][0]['entries'][0]['ts']).to eq '2018-12-31T15:34:18.000000Z'
+    expect(body[:streams][0]['entries'][0]['line']).to eq Yajl.dump('message' => content[0])
+  end
+
   it 'formats as simple string when only 1 record key' do
     config = <<-CONF
       url     https://logs-us-west1.grafana.net
       line_format json
-      label_keys "stream"
       drop_single_key true
+      <label>
+        stream
+      </label>
     CONF
     driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
