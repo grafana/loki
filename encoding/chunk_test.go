@@ -29,7 +29,7 @@ import (
 
 func TestLen(t *testing.T) {
 	chunks := []Chunk{}
-	for _, encoding := range []Encoding{Delta, DoubleDelta, Varbit} {
+	for _, encoding := range []Encoding{DoubleDelta, Varbit, Bigchunk} {
 		c, err := NewForEncoding(encoding)
 		if err != nil {
 			t.Fatal(err)
@@ -43,11 +43,12 @@ func TestLen(t *testing.T) {
 				t.Errorf("chunk type %s should have %d samples, had %d", c.Encoding(), i, c.Len())
 			}
 
-			cs, _ := c.Add(model.SamplePair{
+			cs, err := c.Add(model.SamplePair{
 				Timestamp: model.Time(i),
 				Value:     model.SampleValue(i),
 			})
-			c = cs[0]
+			require.NoError(t, err)
+			require.Nil(t, cs)
 		}
 	}
 }
@@ -95,13 +96,12 @@ func mkChunk(t *testing.T, encoding Encoding, samples int) Chunk {
 	require.NoError(t, err)
 
 	for i := 0; i < samples; i++ {
-		chunks, err := chunk.Add(model.SamplePair{
+		newChunk, err := chunk.Add(model.SamplePair{
 			Timestamp: model.Time(i * step),
 			Value:     model.SampleValue(i),
 		})
 		require.NoError(t, err)
-		require.Len(t, chunks, 1)
-		chunk = chunks[0]
+		require.Nil(t, newChunk)
 	}
 
 	return chunk

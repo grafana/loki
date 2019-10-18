@@ -36,11 +36,13 @@ func dummyChunkForEncoding(now model.Time, metric labels.Labels, enc encoding.En
 	c, _ := encoding.NewForEncoding(enc)
 	for i := 0; i < samples; i++ {
 		t := time.Duration(i) * 15 * time.Second
-		cs, err := c.Add(model.SamplePair{Timestamp: now.Add(t), Value: 0})
+		nc, err := c.Add(model.SamplePair{Timestamp: now.Add(t), Value: 0})
 		if err != nil {
 			panic(err)
 		}
-		c = cs[0]
+		if nc != nil {
+			panic("returned chunk was not nil")
+		}
 	}
 	chunk := NewChunk(
 		userID,

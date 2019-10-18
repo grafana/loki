@@ -27,10 +27,13 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
 	chunks := []chunk.Chunk{}
 	for i := 0; i < 100; i++ {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
-		promChunk, _ := prom_chunk.New().Add(model.SamplePair{
+		promChunk := prom_chunk.New()
+		nc, err := promChunk.Add(model.SamplePair{
 			Timestamp: ts,
 			Value:     model.SampleValue(i),
 		})
+		require.NoError(t, err)
+		require.Nil(t, nc)
 		c := chunk.NewChunk(
 			userID,
 			model.Fingerprint(1),
@@ -38,12 +41,12 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
 				{Name: model.MetricNameLabel, Value: "foo"},
 				{Name: "bar", Value: "baz"},
 			},
-			promChunk[0],
+			promChunk,
 			ts,
 			ts.Add(chunkLen),
 		)
 
-		err := c.Encode()
+		err = c.Encode()
 		require.NoError(t, err)
 		buf, err := c.Encoded()
 		require.NoError(t, err)

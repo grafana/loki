@@ -12,12 +12,12 @@ import (
 func TestSliceBiggerChunk(t *testing.T) {
 	var c Chunk = newBigchunk()
 	for i := 0; i < 12*3600/15; i++ {
-		cs, err := c.Add(model.SamplePair{
+		nc, err := c.Add(model.SamplePair{
 			Timestamp: model.Time(i * step),
 			Value:     model.SampleValue(i),
 		})
 		require.NoError(t, err)
-		c = cs[0]
+		require.Nil(t, nc)
 	}
 
 	// Test for when the slice aligns perfectly with the sub-chunk boundaries.
@@ -69,12 +69,12 @@ func BenchmarkBiggerChunkMemory(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var c Chunk = newBigchunk()
 		for i := 0; i < 12*3600/15; i++ {
-			cs, err := c.Add(model.SamplePair{
+			nc, err := c.Add(model.SamplePair{
 				Timestamp: model.Time(i * step),
 				Value:     model.SampleValue(i),
 			})
 			require.NoError(b, err)
-			c = cs[0]
+			require.Nil(b, nc)
 		}
 
 		c.(*bigchunk).printSize()

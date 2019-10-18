@@ -38,12 +38,10 @@ var (
 // goroutine-safe.
 type Chunk interface {
 	// Add adds a SamplePair to the chunks, performs any necessary
-	// re-encoding, and adds any necessary overflow chunks. It returns the
-	// new version of the original chunk, followed by overflow chunks, if
-	// any. The first chunk returned might be the same as the original one
-	// or a newly allocated version. In any case, take the returned chunk as
-	// the relevant one and discard the original chunk.
-	Add(sample model.SamplePair) ([]Chunk, error)
+	// re-encoding, and creates any necessary overflow chunk.
+	// The returned Chunk is the overflow chunk if it was created.
+	// The returned Chunk is nil if the sample got appended to the same chunk.
+	Add(sample model.SamplePair) (Chunk, error)
 	// NewIterator returns an iterator for the chunks.
 	// The iterator passed as argument is for re-use. Depending on implementation,
 	// the iterator can be re-used or a new iterator can be allocated.
@@ -123,12 +121,13 @@ func RangeValues(it Iterator, in metric.Interval) ([]model.SamplePair, error) {
 // addToOverflowChunk is a utility function that creates a new chunk as overflow
 // chunk, adds the provided sample to it, and returns a chunk slice containing
 // the provided old chunk followed by the new overflow chunk.
-func addToOverflowChunk(c Chunk, s model.SamplePair) ([]Chunk, error) {
-	overflowChunks, err := New().Add(s)
+func addToOverflowChunk(s model.SamplePair) (Chunk, error) {
+	overflowChunk := New()
+	_, err := overflowChunk.Add(s)
 	if err != nil {
 		return nil, err
 	}
-	return []Chunk{c, overflowChunks[0]}, nil
+	return overflowChunk, nil
 }
 
 // transcodeAndAdd is a utility function that transcodes the dst chunk into the
@@ -139,27 +138,33 @@ func transcodeAndAdd(dst Chunk, src Chunk, s model.SamplePair) ([]Chunk, error) 
 	Ops.WithLabelValues(Transcode).Inc()
 
 	var (
-		head            = dst
-		body, NewChunks []Chunk
-		err             error
+		head     = dst
+		newChunk Chunk
+		body     = []Chunk{head}
+		err      error
 	)
 
 	it := src.NewIterator(nil)
 	for it.Scan() {
-		if NewChunks, err = head.Add(it.Value()); err != nil {
+		if newChunk, err = head.Add(it.Value()); err != nil {
 			return nil, err
 		}
-		body = append(body, NewChunks[:len(NewChunks)-1]...)
-		head = NewChunks[len(NewChunks)-1]
+		if newChunk != nil {
+			body = append(body, newChunk)
+			head = newChunk
+		}
 	}
 	if it.Err() != nil {
 		return nil, it.Err()
 	}
 
-	if NewChunks, err = head.Add(s); err != nil {
+	if newChunk, err = head.Add(s); err != nil {
 		return nil, err
 	}
-	return append(body, NewChunks...), nil
+	if newChunk != nil {
+		body = append(body, newChunk)
+	}
+	return body, nil
 }
 
 // indexAccessor allows accesses to samples by index.
