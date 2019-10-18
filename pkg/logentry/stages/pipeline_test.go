@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
 	"gopkg.in/yaml.v2"
 )
 
@@ -29,11 +28,15 @@ pipeline_stages:
     - docker:
     - regex:
         expression: "^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<action>\\S+)\\s?(?P<path>\\S+)?\\s?(?P<protocol>\\S+)?\" (?P<status>\\d{3}|-) (?P<size>\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$"
+    - regex:
+        source:     filename
+        expression: "(?P<service>[^\\/]+)\\.log"
     - timestamp:
         source: timestamp
         format: "02/Jan/2006:15:04:05 -0700"
     - labels:
         action:
+        service:
         status_code: "status"
 `
 
@@ -106,6 +109,24 @@ func TestPipeline_MultiStage(t *testing.T) {
 				"nomatch": "true",
 			},
 		},
+		"should initialize the extracted map with the initial labels": {
+			rawTestLine,
+			processedTestLine,
+			time.Now(),
+			time.Date(2000, 01, 25, 14, 00, 01, 0, est),
+			map[model.LabelName]model.LabelValue{
+				"match":    "true",
+				"filename": "/var/log/nginx/frontend.log",
+			},
+			map[model.LabelName]model.LabelValue{
+				"filename":    "/var/log/nginx/frontend.log",
+				"match":       "true",
+				"stream":      "stderr",
+				"service":     "frontend",
+				"action":      "GET",
+				"status_code": "200",
+			},
+		},
 	}
 
 	for tName, tt := range tests {
@@ -165,6 +186,67 @@ func BenchmarkPipeline(b *testing.B) {
 				extracted := map[string]interface{}{}
 				pl.Process(lb, extracted, &ts, &entry)
 			}
+		})
+	}
+}
+
+type stubHandler struct {
+	bool
+}
+
+func (s *stubHandler) Handle(labels model.LabelSet, time time.Time, entry string) error {
+	s.bool = true
+	return nil
+}
+
+func TestPipeline_Wrap(t *testing.T) {
+	now := time.Now()
+	var config map[string]interface{}
+	err := yaml.Unmarshal([]byte(testYaml), &config)
+	if err != nil {
+		panic(err)
+	}
+	p, err := NewPipeline(util.Logger, config["pipeline_stages"].([]interface{}), nil, prometheus.DefaultRegisterer)
+	if err != nil {
+		panic(err)
+	}
+
+	tests := map[string]struct {
+		labels     model.LabelSet
+		shouldSend bool
+	}{
+		"should drop": {
+			map[model.LabelName]model.LabelValue{
+				dropLabel:     "true",
+				"stream":      "stderr",
+				"action":      "GET",
+				"status_code": "200",
+			},
+			false,
+		},
+		"should send": {
+			map[model.LabelName]model.LabelValue{
+				"stream":      "stderr",
+				"action":      "GET",
+				"status_code": "200",
+			},
+			true,
+		},
+	}
+
+	for tName, tt := range tests {
+		tt := tt
+		t.Run(tName, func(t *testing.T) {
+			t.Parallel()
+			extracted := map[string]interface{}{}
+			p.Process(tt.labels, extracted, &now, &rawTestLine)
+			stub := &stubHandler{}
+			handler := p.Wrap(stub)
+			if err := handler.Handle(tt.labels, now, rawTestLine); err != nil {
+				t.Fatalf("failed to handle entry: %v", err)
+			}
+			assert.Equal(t, stub.bool, tt.shouldSend)
+
 		})
 	}
 }

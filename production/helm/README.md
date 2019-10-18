@@ -48,14 +48,14 @@ $ helm upgrade --install loki loki/loki
 $ helm upgrade --install promtail loki/promtail --set "loki.serviceName=loki"
 ```
 
-## Deploy Loki and fluent-bit to your cluster
+## Deploy Loki and Fluent Bit to your cluster
 
 ```bash
 $ helm upgrade --install loki loki/loki-stack \
     --set fluent-bit.enabled=true,promtail.enabled=false
 ```
 
-## Deploy fluent-bit only
+## Deploy Fluent Bit only
 
 ```bash
 $ helm upgrade --install fluent-bit loki/fluent-bit \
@@ -85,14 +85,14 @@ $ kubectl port-forward --namespace <YOUR-NAMESPACE> service/loki-grafana 3000:80
 ```
 
 Navigate to http://localhost:3000 and login with `admin` and the password output above.
-Then follow the [instructions for adding the loki datasource](/docs/querying.md#grafana), using the URL `http://loki:3100/`.
+Then follow the [instructions for adding the loki datasource](/docs/getting-started/grafana.md), using the URL `http://loki:3100/`.
 
 ## Run Loki behind https ingress
 
 If Loki and Promtail are deployed on different clusters you can add an Ingress in front of Loki.
 By adding a certificate you create an https endpoint. For extra security enable basic authentication on the Ingress.
 
-In promtail set the following values to communicate with https and basic auth
+In Promtail set the following values to communicate with https and basic auth
 
 ```
 loki:

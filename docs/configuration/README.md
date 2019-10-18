@@ -745,7 +745,8 @@ and how to provision tables when DynamoDB is used as the backing store.
 [retention_deletes_enabled: <boolean> | default = false]
 
 # How far back tables will be kept before they are deleted. 0s disables
-# deletion.
+# deletion. The retention period must be a multiple of the index / chunks
+# table "period" (see period_config).
 [retention_period: <duration> | default = 0s]
 
 # Period with which the table manager will poll for tables.

@@ -97,6 +97,9 @@ type ApplicationAutoScalingAPI interface {
 	DescribeScheduledActionsWithContext(aws.Context, *applicationautoscaling.DescribeScheduledActionsInput, ...request.Option) (*applicationautoscaling.DescribeScheduledActionsOutput, error)
 	DescribeScheduledActionsRequest(*applicationautoscaling.DescribeScheduledActionsInput) (*request.Request, *applicationautoscaling.DescribeScheduledActionsOutput)
 
+	DescribeScheduledActionsPages(*applicationautoscaling.DescribeScheduledActionsInput, func(*applicationautoscaling.DescribeScheduledActionsOutput, bool) bool) error
+	DescribeScheduledActionsPagesWithContext(aws.Context, *applicationautoscaling.DescribeScheduledActionsInput, func(*applicationautoscaling.DescribeScheduledActionsOutput, bool) bool, ...request.Option) error
+
 	PutScalingPolicy(*applicationautoscaling.PutScalingPolicyInput) (*applicationautoscaling.PutScalingPolicyOutput, error)
 	PutScalingPolicyWithContext(aws.Context, *applicationautoscaling.PutScalingPolicyInput, ...request.Option) (*applicationautoscaling.PutScalingPolicyOutput, error)
 	PutScalingPolicyRequest(*applicationautoscaling.PutScalingPolicyInput) (*request.Request, *applicationautoscaling.PutScalingPolicyOutput)

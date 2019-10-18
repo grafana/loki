@@ -52,7 +52,23 @@ func (Facade) Encoding() encoding.Encoding {
 	return GzipLogChunk
 }
 
+// Utilization implements encoding.Chunk.
+func (f Facade) Utilization() float64 {
+	return f.c.Utilization()
+}
+
 // LokiChunk returns the chunkenc.Chunk.
 func (f Facade) LokiChunk() Chunk {
 	return f.c
+}
+
+// UncompressedSize is a helper function to hide the type assertion kludge when wanting the uncompressed size of the Cortex interface encoding.Chunk.
+func UncompressedSize(c encoding.Chunk) (int, bool) {
+	f, ok := c.(*Facade)
+
+	if !ok {
+		return 0, false
+	}
+
+	return f.c.UncompressedSize(), true
 }

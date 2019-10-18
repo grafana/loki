@@ -32,6 +32,10 @@ var (
 )
 
 var (
+	memoryStreams = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "loki_ingester_memory_streams",
+		Help: "The total number of streams in memory.",
+	})
 	streamsCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "ingester_streams_created_total",
@@ -89,10 +93,16 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 		i.index.Add(labels, fp)
 		i.streams[fp] = stream
 		i.streamsCreatedTotal.Inc()
+		memoryStreams.Inc()
 		i.addTailersToNewStream(stream)
 	}
 
-	return stream.consumeChunk(ctx, chunk)
+	err := stream.consumeChunk(ctx, chunk)
+	if err == nil {
+		memoryChunks.Inc()
+	}
+
+	return err
 }
 
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
@@ -113,10 +123,13 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
+		prevNumChunks := len(stream.chunks)
 		if err := stream.Push(ctx, s.Entries); err != nil {
 			appendErr = err
 			continue
 		}
+
+		memoryChunks.Add(float64(len(stream.chunks) - prevNumChunks))
 	}
 
 	return appendErr
@@ -136,6 +149,7 @@ func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, err
 	stream = newStream(fp, labels, i.blockSize)
 	i.index.Add(labels, fp)
 	i.streams[fp] = stream
+	memoryStreams.Inc()
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(stream)
 

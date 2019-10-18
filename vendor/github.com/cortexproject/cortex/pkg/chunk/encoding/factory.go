@@ -28,6 +28,9 @@ func (Config) RegisterFlags(f *flag.FlagSet) {
 
 // String implements flag.Value.
 func (e Encoding) String() string {
+	if known, found := encodings[e]; found {
+		return known.Name
+	}
 	return fmt.Sprintf("%d", e)
 }
 

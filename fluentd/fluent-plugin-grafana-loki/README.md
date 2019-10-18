@@ -92,6 +92,7 @@ services:
 ## Configuration
 
 ### url
+
 The url of the Loki server to send logs to.  When sending data the publish path (`/loki/api/v1/push`) will automatically be appended.
 By default the url is set to `https://logs-us-west1.grafana.net`, the url of the [Grafana Cloud](https://grafana.com/oss/loki) service.
 

@@ -3,8 +3,15 @@ package loghttp
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/grafana/loki/pkg/logproto"
+)
+
+const (
+	maxDelayForInTailing = 5
 )
 
 // TailResponse represents the http json response to a tail query
@@ -52,4 +59,30 @@ func (s *DroppedStream) UnmarshalJSON(data []byte) error {
 	s.Labels = unmarshal.Labels
 
 	return nil
+}
+
+// ParseTailQuery parses a TailRequest request from an http request.
+func ParseTailQuery(r *http.Request) (*logproto.TailRequest, error) {
+	var err error
+	req := logproto.TailRequest{
+		Query: query(r),
+	}
+
+	req.Limit, err = limit(r)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Start, _, err = bounds(r)
+	if err != nil {
+		return nil, err
+	}
+	req.DelayFor, err = tailDelay(r)
+	if err != nil {
+		return nil, err
+	}
+	if req.DelayFor > maxDelayForInTailing {
+		return nil, fmt.Errorf("delay_for can't be greater than %d", maxDelayForInTailing)
+	}
+	return &req, nil
 }

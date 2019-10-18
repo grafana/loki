@@ -1,20 +1,24 @@
 # `match` stage
 
 The match stage is a filtering stage that conditionally applies a set of stages
-when a log entry matches a configurable [LogQL](../../../logql.md) stream
-selector.
+or drop entries when a log entry matches a configurable [LogQL](../../../logql.md)
+stream selector and filter expressions.
 
 ## Schema
 
 ```yaml
 match:
-  # LogQL stream selector.
+  # LogQL stream selector and filter expressions.
   selector: <string>
 
   # Names the pipeline. When defined, creates an additional label in
   # the pipeline_duration_seconds histogram, where the value is
   # concatenated with job_name using an underscore.
-  [pipieline_name: <string>]
+  [pipeline_name: <string>]
+
+  # When set to drop (default to keep), all entries matching the selector will
+  # be dropped. Stages must not be defined when dropping entries.
+  [action: <keep|drop>]
 
   # Nested set of pipeline stages only if the selector
   # matches the labels of the log entries:
@@ -46,39 +50,48 @@ pipeline_stages:
 - labels:
     app:
 - match:
-    selector: "{app=\"loki\"}"
+    selector: '{app="loki"}'
     stages:
     - json:
         expressions:
           msg: message
 - match:
     pipeline_name: "app2"
-    selector: "{app=\"pokey\"}"
+    selector: '{app="pokey"}'
+    action: keep
     stages:
     - json:
         expressions:
           msg: msg
+- match:
+    selector: '{app="promtail"} |~ ".*noisy error.*"'
+    action: drop
 - output:
     source: msg
 ```
 
-And the given log line:
+And given log lines:
 
-```
+```json
 { "time":"2012-11-01T22:08:41+00:00", "app":"loki", "component": ["parser","type"], "level" : "WARN", "message" : "app1 log line" }
+{ "time":"2012-11-01T22:08:41+00:00", "app":"promtail", "component": ["parser","type"], "level" : "ERROR", "message" : "foo noisy error" }
 ```
 
-The first stage will add `app` with a value of `loki` into the extracted map,
+The first stage will add `app` with a value of `loki` into the extracted map for the first log line,
 while the second stage will add `app` as a label (again with the value of `loki`).
+The second line will follow the same flow and will be added the label `app` with a value of `promtail`.
 
 The third stage uses LogQL to only execute the nested stages when there is a
-label of `app` whose value is `loki`. This matches in our case; the nested
+label of `app` whose value is `loki`. This matches the first line in our case; the nested
 `json` stage then adds `msg` into the extracted map with a value of `app1 log
 line`.
 
 The fourth stage uses LogQL to only executed the nested stages when there is a
 label of `app` whose value is `pokey`. This does **not** match in our case, so
 the nested `json` stage is not ran.
+
+The fifth stage will drop any entries from the application `promtail` that matches
+the regex `.*noisy error`.
 
 The final `output` stage changes the contents of the log line to be the value of
 `msg` from the extracted map. In this case, the log line is changed to `app1 log

@@ -14,6 +14,7 @@ The HTTP API includes the following endpoints:
 - [`POST /loki/api/v1/push`](#post-lokiapiv1push)
 - [`GET /api/prom/tail`](#get-apipromtail)
 - [`GET /api/prom/query`](#get-apipromquery)
+- [`POST /api/prom/push`](#post-apiprompush)
 - [`GET /ready`](#get-ready)
 - [`POST /flush`](#post-flush)
 - [`GET /metrics`](#get-metrics)
@@ -48,7 +49,7 @@ And these endpoints are exposed by just the ingester:
 
 The API endpoints starting with `/loki/` are [Prometheus API-compatible](https://prometheus.io/docs/prometheus/latest/querying/api/) and the result formats can be used interchangeably.
 
-[Example clients](#example-clients) can be found at the bottom of this document.
+A [list of clients](./clients) can be found in the clients documentation.
 
 ## Matrix, Vector, And Streams
 
@@ -445,8 +446,6 @@ Response (streamed):
 
 ## `POST /loki/api/v1/push`
 
-Alias (DEPRECATED): `POST /api/prom/push`
-
 `/loki/api/v1/push` is the endpoint used to send log entries to Loki. The default
 behavior is for the POST body to be a snappy-compressed protobuf messsage:
 
@@ -460,12 +459,12 @@ JSON post body can be sent in the following format:
 {
   "streams": [
     {
-      "labels": "<LogQL label key-value pairs>",
-      "entries": [
-        {
-          "ts": "<RFC3339Nano string>",
-          "line": "<log line>"
-        }
+      "stream": {
+        "label": "value"
+      },
+      "values": [
+          [ "<unix epoch in nanoseconds>", "<log line>" ],
+          [ "<unix epoch in nanoseconds>", "<log line>" ]
       ]
     }
   ]
@@ -482,8 +481,8 @@ In microservices mode, `/loki/api/v1/push` is exposed by the distributor.
 ### Examples
 
 ```bash
-$ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/loki/api/v1/push" --data-raw \
-  '{"streams": [{ "labels": "{foo=\"bar\"}", "entries": [{ "ts": "2018-12-18T08:28:06.801064-04:00", "line": "fizzbuzz" }] }]}'
+$ curl -v -H "Content-Type: application/json" -XPOST -s "http://localhost:3100/loki/api/v1/push" --data-raw \
+  '{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}'
 ```
 
 ## `GET /api/prom/tail`
@@ -534,8 +533,6 @@ and `Labels` instead of `labels` and `ts` like in the entries for the stream.
 
 As the response is streamed, the object defined by the response format above
 will be sent over the WebSocket multiple times.
-
-
 
 ## `GET /api/prom/query`
 
@@ -607,6 +604,50 @@ $ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/lok
   '{"streams": [{ "labels": "{foo=\"bar\"}", "entries": [{ "ts": "2018-12-18T08:28:06.801064-04:00", "line": "fizzbuzz" }] }]}'
 ```
 
+## `POST /api/prom/push`
+
+> **WARNING**: `/api/prom/push` is DEPRECATED; use `/loki/api/v1/push`
+> instead.
+
+`/api/prom/push` is the endpoint used to send log entries to Loki. The default
+behavior is for the POST body to be a snappy-compressed protobuf messsage:
+
+- [Protobuf definition](/pkg/logproto/logproto.proto)
+- [Go client library](/pkg/promtail/client/client.go)
+
+Alternatively, if the `Content-Type` header is set to `application/json`, a
+JSON post body can be sent in the following format:
+
+```
+{
+  "streams": [
+    {
+      "labels": "<LogQL label key-value pairs>",
+      "entries": [
+        {
+          "ts": "<RFC3339Nano string>",
+          "line": "<log line>"
+        }
+      ]
+    }
+  ]
+}
+```
+
+> **NOTE**: logs sent to Loki for every stream must be in timestamp-ascending
+> order, meaning each log line must be more recent than the one last received.
+> If logs do not follow this order, Loki will reject the log with an out of
+> order error.
+
+In microservices mode, `/api/prom/push` is exposed by the distributor.
+
+### Examples
+
+```bash
+$ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/api/prom/push" --data-raw \
+  '{"streams": [{ "labels": "{foo=\"bar\"}", "entries": [{ "ts": "2018-12-18T08:28:06.801064-04:00", "line": "fizzbuzz" }] }]}'
+```
+
 ## `GET /ready`
 
 `/ready` returns HTTP 200 when the Loki ingester is ready to accept traffic. If
@@ -628,12 +669,3 @@ In microservices mode, the `/flush` endpoint is exposed by the ingester.
 for a list of exported metrics.
 
 In microservices mode, the `/metrics` endpoint is exposed by all components.
-
-## Example Clients
-
-Please note that the Loki API is not stable yet and breaking changes may occur
-when using or writing a third-party client.
-
-- [Promtail](https://github.com/grafana/loki/tree/master/pkg/promtail) (Official, Go)
-- [promtail-client](https://github.com/afiskon/promtail-client) (Go)
-- [push-to-loki.py](https://github.com/sleleko/devops-kb/blob/master/python/push-to-loki.py) (Python 3)

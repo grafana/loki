@@ -42,7 +42,7 @@ $ helm upgrade --install loki loki/loki --set "key1=val1,key2=val2,..."
 $ helm upgrade --install loki loki/loki-stack  --set grafana.enabled=true,prometheus.enabled=true,prometheus.alertmanager.persistentVolume.enabled=false,prometheus.server.persistentVolume.enabled=false
 ```
 
-### Deploy Loki Stack (Loki, fluent-bit, Grafana, Prometheus)
+### Deploy Loki Stack (Loki, Fluent Bit, Grafana, Prometheus)
 
 ```bash
 $ helm upgrade --install loki loki/loki-stack \

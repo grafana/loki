@@ -37,7 +37,7 @@ The Docker daemon on each Docker host has a default logging driver; each contain
 
 When you start a container, you can configure it to use a different logging driver than the Docker daemon’s default, using the `--log-driver` flag. If the logging driver has configurable options, you can set them using one or more instances of the `--log-opt <NAME>=<VALUE>` flag. Even if the container uses the default logging driver, it can use different configurable options.
 
-The following command configure the container `grafana` to start with the loki drivers which will send logs to `logs-us-west1.grafana.net` Loki instance, using a batch size of 400 entries and will retry maximum 5 times if it fails.
+The following command configure the container `grafana` to start with the Loki drivers which will send logs to `logs-us-west1.grafana.net` Loki instance, using a batch size of 400 entries and will retry maximum 5 times if it fails.
 
 ```bash
 docker run --log-driver=loki \

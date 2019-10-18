@@ -78,7 +78,7 @@
  - [ENHANCEMENT] When closing the db any running compaction will be cancelled so it doesn't block.
    - `NewLeveledCompactor` takes a context.
  - [CHANGE] `prometheus_tsdb_storage_blocks_bytes_total` is now `prometheus_tsdb_storage_blocks_bytes`.
- - [BUGFIX] Improved Postings Merge performance. Fixes a regression from the the previous release.
+ - [BUGFIX] Improved Postings Merge performance. Fixes a regression from the previous release.
  - [BUGFIX] LiveReader can get into an infinite loop on corrupt WALs.
 
 ## 0.4.0
@@ -91,7 +91,7 @@
    - `OpenBlock` signature changed to take a logger.
  - [REMOVED] `PrefixMatcher` is considered unused so was removed.
  - [CLEANUP] `Options.WALFlushInterval` is removed as it wasn't used anywhere.
- - [FEATURE] Add new `LiveReader` to WAL pacakge. Added to allow live tailing of a WAL segment, used by Prometheus Remote Write after refactor. The main difference between the new reader and the existing `Reader` is that for `LiveReader` a call to `Next()` that returns false does not mean that there will never be more data to read.
+ - [FEATURE] Add new `LiveReader` to WAL package. Added to allow live tailing of a WAL segment, used by Prometheus Remote Write after refactor. The main difference between the new reader and the existing `Reader` is that for `LiveReader` a call to `Next()` that returns false does not mean that there will never be more data to read.
 
 ## 0.3.1
 

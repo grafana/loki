@@ -1,8 +1,8 @@
-# fluent-bit output plugin
+# Fluent Bit output plugin
 
-[Fluent-bit](https://fluentbit.io/) is a Fast and Lightweight Data Forwarder, it can be configured with the [Loki output plugin](https://fluentbit.io/documentation/0.12/output/) to ship logs to Loki. You can define which log files you want to collect using the [`Tail`](https://fluentbit.io/documentation/0.12/input/tail.html)  [input plugin](https://fluentbit.io/documentation/0.12/getting_started/input.html). Additionally fluent-bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc..) to structure and alter log lines.
+[Fluent Bit](https://fluentbit.io/) is a Fast and Lightweight Data Forwarder, it can be configured with the [Loki output plugin](https://fluentbit.io/documentation/0.12/output/) to ship logs to Loki. You can define which log files you want to collect using the [`Tail`](https://fluentbit.io/documentation/0.12/input/tail.html)  [input plugin](https://fluentbit.io/documentation/0.12/getting_started/input.html). Additionally Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc..) to structure and alter log lines.
 
-This plugin is implemented with [fluent-bit's go plugin](https://github.com/fluent/fluent-bit-go) interface. It pushes logs to Loki using a GRPC connection.
+This plugin is implemented with [Fluent Bit's Go plugin](https://github.com/fluent/fluent-bit-go) interface. It pushes logs to Loki using a GRPC connection.
 
 > syslog and systemd input plugin have not been tested yet, feedback appreciated.
 
@@ -29,7 +29,7 @@ You can use `Labels`, `RemoveKeys` , `LabelKeys` and `LabelMapPath` to how the o
 
 ### LabelMapPath
 
-When using the `Parser` and `Filter` plugins fluent-bit can extract and add data to the current record/log data. While Loki labels are key value pair, record data can be nested structures.
+When using the `Parser` and `Filter` plugins Fluent Bit can extract and add data to the current record/log data. While Loki labels are key value pair, record data can be nested structures.
 You can pass a json file that defines how to extract [labels](../../docs/overview/README.md#overview-of-loki) from each record. Each json key from the file will be matched with the log record to find label values. Values from the configuration are used as label names.
 
 Considering the record below :
@@ -103,7 +103,7 @@ make fluent-bit-plugin
 
 ## Local
 
-If you have fluent-bit installed in your `$PATH` you can run the plugin using:
+If you have Fluent Bit installed in your `$PATH` you can run the plugin using:
 
 ```bash
 fluent-bit -e /path/to/built/out_loki.so -c fluent-bit.conf
@@ -111,7 +111,7 @@ fluent-bit -e /path/to/built/out_loki.so -c fluent-bit.conf
 
 ## Docker
 
-You can run a fluent-bit container with Loki output plugin pre-installed using our [docker hub](https://cloud.docker.com/u/grafana/repository/docker/grafana/fluent-bit-plugin-loki) image:
+You can run a Fluent Bit container with Loki output plugin pre-installed using our [docker hub](https://cloud.docker.com/u/grafana/repository/docker/grafana/fluent-bit-plugin-loki) image:
 
 ```bash
 docker run -v /var/log:/var/log \
@@ -121,9 +121,9 @@ docker run -v /var/log:/var/log \
 
 ## Kubernetes
 
-You can run fluent-bit as a [Daemonset](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/) to collect all your Kubernetes workload logs.
+You can run Fluent Bit as a [Daemonset](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/) to collect all your Kubernetes workload logs.
 
-To do so you can use our [fluent-bit helm chart](../../production/helm/fluent-bit/README.md):
+To do so you can use our [Fluent Bit helm chart](../../production/helm/fluent-bit/README.md):
 
 > Make sure [tiller](https://helm.sh/docs/install/) is installed correctly in your cluster
 
@@ -136,7 +136,7 @@ helm upgrade --install fluent-bit loki/fluent-bit \
 
 By default it will collect all containers logs and extract labels from Kubernetes API (`container_name`, `namespace`, etc..).
 
-Alternatively you can install the Loki and fluent-bit all together using:
+Alternatively you can install the Loki and Fluent Bit all together using:
 
 ```bash
 helm upgrade --install loki-stack loki/loki-stack \

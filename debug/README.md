@@ -11,7 +11,7 @@ You can use the `docker-compose.yaml` in this directory to launch the debug vers
 
 ## Promtail in kubernetes
 
-If you want to debug promtail in kubernetes, I have done so with the ksonnet setup:
+If you want to debug Promtail in kubernetes, I have done so with the ksonnet setup:
 
 ```shell
 ks init promtail
@@ -48,9 +48,9 @@ promtail + {
 }
 ```
 
-change the `some_cluster_name` to anything meaningful to help find your logs in loki
+change the `some_cluster_name` to anything meaningful to help find your logs in Loki
 
-also update the `hostname`, `username`, and `password` for your loki instance.
+also update the `hostname`, `username`, and `password` for your Loki instance.
 
 ## Loki in kubernetes
 

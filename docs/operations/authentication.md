@@ -10,5 +10,5 @@ of populating this value should be handled by the authenticating reverse proxy.
 For more information on multi-tenancy please read its
 [documentation](multi-tenancy.md).
 
-For information on authenticating promtail, please see the docs for [how to
+For information on authenticating Promtail, please see the docs for [how to
 configure Promtail](../clients/promtail/configuration.md).
