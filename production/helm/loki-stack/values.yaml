@@ -17,5 +17,3 @@ grafana:
 
 prometheus:
   enabled: false
-  server:
-    fullnameOverride: prometheus-server

@@ -30,3 +30,11 @@ Create chart name and version as used by the chart label.
 {{- define "loki-stack.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
+
+{{/*
+Override the naming defined by the prometheus chart.
+Added as a fix for https://github.com/grafana/loki/issues/1169
+*/}}
+{{- define "prometheus.fullname" -}}
+{{- printf "%s-%s" .Release.Name "prometheus-server" | trunc 63 | trimSuffix "-" -}}
+{{- end -}}

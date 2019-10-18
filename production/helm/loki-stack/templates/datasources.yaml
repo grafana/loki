@@ -25,7 +25,7 @@ data:
     - name: Prometheus
       type: prometheus
       access: proxy
-      url: http://{{ .Values.prometheus.server.fullnameOverride }}:{{ .Values.prometheus.server.service.servicePort }}
+      url: http://{{ include "prometheus.fullname" .}}:{{ .Values.prometheus.server.service.servicePort }}
       version: 1
 {{- end }}
 {{- end }}
