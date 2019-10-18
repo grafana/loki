@@ -10,6 +10,10 @@ json:
   # Set of key/value pairs of JMESPath expressions. The key will be
   # the key in the extracted data while the expression will the value,
   # evaluated as a JMESPath from the source data.
+  #
+  # Literal JMESPath expressions can be done by wrapping a key in
+  # double quotes, which then must be wrapped in single quotes in
+  # YAML so they get passed to the JMESPath parser.
   expressions:
     [ <string>: <string> ... ]
 
@@ -89,3 +93,33 @@ The second stage will parse the value of `extra` from the extracted data as JSON
 and append the following key-value pairs to the set of extracted data:
 
 - `user`: `marco`
+
+### Using a JMESPath Literal
+
+This pipeline uses a literal JMESPath expression to parse JSON fields with
+special characters in the name, like `@` or `.`
+
+For the given pipeline:
+
+```yaml
+- json:
+    expressions:
+      output: log
+      stream: '"grpc.stream"'
+      timestamp: time
+```
+
+Given the following log line:
+
+```
+{"log":"log message\n","grpc.stream":"stderr","time":"2019-04-30T02:12:41.8443515Z"}
+```
+
+The following key-value pairs would be created in the set of extracted data:
+
+- `output`: `log message\n`
+- `stream`: `stderr`
+- `timestamp`: `2019-04-30T02:12:41.8443515`
+
+Note that referring to `grpc.stream` without the combination of double quotes
+wrapped in single quotes will not work properly.
