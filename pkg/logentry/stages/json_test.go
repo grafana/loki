@@ -21,6 +21,7 @@ pipeline_stages:
       app:
       nested:
       duration:
+      unknown:
 `
 
 var testJSONYamlMultiStageWithSource = `
@@ -63,6 +64,7 @@ func TestPipeline_JSON(t *testing.T) {
 				"app":      "loki",
 				"nested":   "{\"child\":\"value\"}",
 				"duration": float64(125),
+				"unknown":  nil,
 			},
 		},
 		"successfully run a pipeline with 2 json stages with source": {

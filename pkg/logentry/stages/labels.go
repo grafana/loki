@@ -64,8 +64,7 @@ type labelStage struct {
 // Process implements Stage
 func (l *labelStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	for lName, lSrc := range l.cfgs {
-		if _, ok := extracted[*lSrc]; ok {
-			lValue := extracted[*lSrc]
+		if lValue, ok := extracted[*lSrc]; ok {
 			s, err := getString(lValue)
 			if err != nil {
 				if Debug {
