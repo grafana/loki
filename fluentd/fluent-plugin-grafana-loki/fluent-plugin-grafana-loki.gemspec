@@ -4,7 +4,7 @@ $LOAD_PATH.push File.expand_path('lib', __dir__)
 
 Gem::Specification.new do |spec|
   spec.name    = 'fluent-plugin-grafana-loki'
-  spec.version = '1.0.2'
+  spec.version = '1.1.0'
   spec.authors = %w[woodsaj briangann]
   spec.email   = ['awoods@grafana.com', 'brian@grafana.com']
 

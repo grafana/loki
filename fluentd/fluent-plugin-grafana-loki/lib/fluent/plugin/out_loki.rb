@@ -147,7 +147,7 @@ module Fluent
         data_labels = data_labels.merge(@extra_labels)
 
         data_labels.each do |k, v|
-          formatted_labels.push(%(#{k}="#{v}")) if v
+          formatted_labels.push(%(#{k}="#{v.gsub('"', '\\"')}")) if v
         end
         '{' + formatted_labels.join(',') + '}'
       end
@@ -193,7 +193,7 @@ module Fluent
         line = ''
         if record.is_a?(Hash)
           @record_accessors&.each do |name, accessor|
-            new_key = name.gsub(%r{/[.\-\/]/}, '_')
+            new_key = name.gsub(%r{[.\-\/]}, '_')
             chunk_labels[new_key] = accessor.call(record)
             accessor.delete(record)
           end
@@ -201,7 +201,7 @@ module Fluent
           if @extract_kubernetes_labels && record.key?('kubernetes')
             kubernetes_labels = record['kubernetes']['labels']
             kubernetes_labels.each_key do |l|
-              new_key = l.gsub(%r{/[.\-\/]/}, '_')
+              new_key = l.gsub(%r{[.\-\/]}, '_')
               chunk_labels[new_key] = kubernetes_labels[l]
             end
           end

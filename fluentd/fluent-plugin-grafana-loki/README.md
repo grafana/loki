@@ -56,14 +56,14 @@ You can rewrite the label keys as well as the following
 </match>
 ```
 
-You can use record accessor syntax for nested field. https://docs.fluentd.org/filter/record_transformer#use-dig-method-for-nested-field
+You can use record accessor syntax for nested field. https://docs.fluentd.org/plugin-helper-overview/api-plugin-helper-record_accessor#syntax
 
 ```
 <match mytag>
   @type loki
   # ...
   <label>
-    container ${record.dig("kubernetes", "container")}
+    container $.kubernetes.container
   </label>
   # ...
 </match>
@@ -81,7 +81,7 @@ Use with the `remove_keys kubernetes` option to eliminate metadata from the log.
   extract_kubernetes_labels true
   remove_keys kubernetes
   <label>
-    container ${record.dig("kubernetes", "container")}
+    container $.kubernetes.container
   </label>
   # ...
 </match>
@@ -172,8 +172,7 @@ Loki is intended to index and group log streams using only a small set of labels
 
 There are few configurations settings to control the output format.
  - extra_labels: (default: nil) set of labels to include with every Loki stream. eg `{"env":"dev", "datacenter": "dc1"}`
- - remove_keys: (default: nil) comma separated list of needless record keys to remove. All other keys will be placed into the log line
- - label_keys: (default: "job,instance") comma separated list of keys to use as stream labels. All other keys will be placed into the log line
+ - remove_keys: (default: nil) comma separated list of needless record keys to remove. All other keys will be placed into the log line. You can use [record_accessor syntax](https://docs.fluentd.org/plugin-helper-overview/api-plugin-helper-record_accessor#syntax).
  - line_format: format to use when flattening the record to a log line. Valid values are "json" or "key_value". If set to "json" the log line sent to Loki will be the fluentd record (excluding any keys extracted out as labels) dumped as json. If set to "key_value", the log line will be each item in the record concatenated together (separated by a single space) in the format `<key>=<value>`.
  - drop_single_key: if set to true and after extracting label_keys a record only has a single key remaining, the log line sent to Loki will just be the value of the record key.
 
