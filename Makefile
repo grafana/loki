@@ -263,6 +263,8 @@ endif
 
 protos: $(PROTO_GOS)
 
+# Ensure protobuf is recompiled when the tooling is updated and proto sources are not
+.PHONY: $(PROTO_DEFS)
 %.pb.go: $(PROTO_DEFS)
 ifeq ($(BUILD_IN_CONTAINER),true)
 	@mkdir -p $(shell pwd)/.pkg
