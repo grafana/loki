@@ -55,6 +55,11 @@ var (
 		Name:      "dropped_entries_total",
 		Help:      "Number of log entries dropped because failed to be sent to the ingester after all retries.",
 	}, []string{"host"})
+	queueLen = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "promtail",
+		Name:      "output_queue_len",
+		Help:      "Number of entries waiting to be sent.",
+	})
 	requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "promtail",
 		Name:      "request_duration_seconds",
@@ -69,6 +74,7 @@ func init() {
 	prometheus.MustRegister(sentEntries)
 	prometheus.MustRegister(droppedEntries)
 	prometheus.MustRegister(requestDuration)
+	prometheus.MustRegister(queueLen)
 }
 
 // Client pushes entries to Loki and can be stopped
@@ -87,6 +93,7 @@ type client struct {
 	once    sync.Once
 	entries chan entry
 	wg      sync.WaitGroup
+	out     chan outBatch
 
 	externalLabels model.LabelSet
 }
@@ -96,6 +103,11 @@ type entry struct {
 	logproto.Entry
 }
 
+type outBatch struct {
+	data  []byte
+	count int
+}
+
 // New makes a new Client.
 func New(cfg Config, logger log.Logger) (Client, error) {
 	c := &client{
@@ -103,6 +115,7 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 		cfg:     cfg,
 		quit:    make(chan struct{}),
 		entries: make(chan entry),
+		out:     make(chan outBatch, cfg.OutBufferCap),
 
 		externalLabels: cfg.ExternalLabels.LabelSet,
 	}
@@ -121,6 +134,8 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 
 	c.wg.Add(1)
 	go c.run()
+	c.wg.Add(1)
+	go c.sender()
 	return c, nil
 }
 
@@ -178,34 +193,65 @@ func (c *client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 	}
 	bufBytes := float64(len(buf))
 	encodedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
+	c.out <- outBatch{
+		data:  buf,
+		count: entriesCount,
+	}
+}
 
-	ctx := context.Background()
-	backoff := util.NewBackoff(ctx, c.cfg.BackoffConfig)
-	var status int
-	for backoff.Ongoing() {
-		start := time.Now()
-		status, err = c.send(ctx, buf)
-		requestDuration.WithLabelValues(strconv.Itoa(status), c.cfg.URL.Host).Observe(time.Since(start).Seconds())
+func (c *client) sender() {
+	var ob outBatch
+	var bufBytes float64
+	var err error
+	var buf []byte
+	var entriesCount int
+	var ql int
+	quit := false
+	for {
+		select {
+		case <-c.quit:
+			quit = true
+		case ob = <-c.out:
+			buf = ob.data
+			entriesCount = ob.count
+			bufBytes = float64(len(buf))
+			ctx := context.Background()
+			backOff := util.NewBackoff(ctx, c.cfg.BackoffConfig)
+			var status int
+			for backOff.Ongoing() {
+				start := time.Now()
+				status, err = c.send(ctx, buf)
+				requestDuration.WithLabelValues(strconv.Itoa(status), c.cfg.URL.Host).Observe(time.Since(start).Seconds())
 
-		if err == nil {
-			sentBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
-			sentEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
+				if err == nil {
+					sentBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
+					sentEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
+					break
+				}
+
+				// Only retry 500s and connection-level errors.
+				if status > 0 && status/100 != 5 {
+					break
+				}
+
+				level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err)
+				backOff.Wait()
+			}
+
+			if err != nil {
+				level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "error", err)
+				droppedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
+				droppedEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
+			}
+		}
+		ql = len(c.out)
+		queueLen.Set(float64(ql))
+
+		// send all messages and then quit (when exiting)
+		if quit && ql == 0 {
+			c.wg.Done()
 			return
 		}
-
-		// Only retry 500s and connection-level errors.
-		if status > 0 && status/100 != 5 {
-			break
-		}
-
-		level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err)
-		backoff.Wait()
-	}
-
-	if err != nil {
-		level.Error(c.logger).Log("msg", "final error sending batch", "status", status, "error", err)
-		droppedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
-		droppedEntries.WithLabelValues(c.cfg.URL.Host).Add(float64(entriesCount))
 	}
 }
 
