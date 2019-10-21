@@ -151,6 +151,8 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 			extracted[n] = r
 		case bool:
 			extracted[n] = r
+		case nil:
+			extracted[n] = nil
 		default:
 			// If the value wasn't a string or a number, marshal it back to json
 			jm, err := json.Marshal(r)
