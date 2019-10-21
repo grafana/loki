@@ -19,6 +19,7 @@
         "graphTooltip": 1,
         "id": 35,
         "iteration": 1571671540701,
+        "rows": [],
         "links": [],
         "panels": [
             {

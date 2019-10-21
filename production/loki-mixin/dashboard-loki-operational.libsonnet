@@ -19,6 +19,7 @@
         "graphTooltip": 1,
         "id": 36,
         "iteration": 1571672865407,
+        "rows": [],
         "links": [
             {
             "icon": "dashboard",
