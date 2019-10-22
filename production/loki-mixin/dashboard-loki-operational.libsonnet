@@ -17,8 +17,8 @@
         "editable": true,
         "gnetId": null,
         "graphTooltip": 1,
-        "id": 36,
-        "iteration": 1571672865407,
+        "id": 35,
+        "iteration": 1571755301581,
         "rows": [],
         "links": [
             {
@@ -3051,6 +3051,420 @@
                 "x": 0,
                 "y": 29
             },
+            "id": 52,
+            "panels": [
+                {
+                "aliasColors": {},
+                "bars": false,
+                "dashLength": 10,
+                "dashes": false,
+                "datasource": "$datasource",
+                "fill": 1,
+                "fillGradient": 0,
+                "gridPos": {
+                    "h": 8,
+                    "w": 24,
+                    "x": 0,
+                    "y": 22
+                },
+                "id": 53,
+                "interval": "",
+                "legend": {
+                    "alignAsTable": true,
+                    "avg": false,
+                    "current": false,
+                    "max": false,
+                    "min": false,
+                    "rightSide": true,
+                    "show": true,
+                    "total": false,
+                    "values": false
+                },
+                "lines": true,
+                "linewidth": 1,
+                "nullPointMode": "null",
+                "options": {
+                    "dataLinks": []
+                },
+                "percentage": false,
+                "pointradius": 1,
+                "points": false,
+                "renderer": "flot",
+                "seriesOverrides": [],
+                "spaceLength": 10,
+                "stack": false,
+                "steppedLine": false,
+                "targets": [
+                    {
+                    "expr": "histogram_quantile(.99, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (method, name, le))",
+                    "intervalFactor": 1,
+                    "legendFormat": ".99-{{method}}-{{name}}",
+                    "refId": "A"
+                    },
+                    {
+                    "expr": "histogram_quantile(.9, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (method, name, le))",
+                    "hide": false,
+                    "legendFormat": ".9-{{method}}-{{name}}",
+                    "refId": "B"
+                    },
+                    {
+                    "expr": "histogram_quantile(.5, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (method, name, le))",
+                    "hide": false,
+                    "legendFormat": ".5-{{method}}-{{name}}",
+                    "refId": "C"
+                    }
+                ],
+                "thresholds": [],
+                "timeFrom": null,
+                "timeRegions": [],
+                "timeShift": null,
+                "title": "Latency By Method",
+                "tooltip": {
+                    "shared": true,
+                    "sort": 2,
+                    "value_type": "individual"
+                },
+                "type": "graph",
+                "xaxis": {
+                    "buckets": null,
+                    "mode": "time",
+                    "name": null,
+                    "show": true,
+                    "values": []
+                },
+                "yaxes": [
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    },
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    }
+                ],
+                "yaxis": {
+                    "align": false,
+                    "alignLevel": null
+                }
+                },
+                {
+                "aliasColors": {},
+                "bars": false,
+                "dashLength": 10,
+                "dashes": false,
+                "datasource": "$datasource",
+                "fill": 1,
+                "fillGradient": 0,
+                "gridPos": {
+                    "h": 8,
+                    "w": 24,
+                    "x": 0,
+                    "y": 30
+                },
+                "id": 54,
+                "interval": "",
+                "legend": {
+                    "alignAsTable": true,
+                    "avg": false,
+                    "current": false,
+                    "max": false,
+                    "min": false,
+                    "rightSide": true,
+                    "show": true,
+                    "total": false,
+                    "values": false
+                },
+                "lines": true,
+                "linewidth": 1,
+                "nullPointMode": "null",
+                "options": {
+                    "dataLinks": []
+                },
+                "percentage": false,
+                "pointradius": 1,
+                "points": false,
+                "renderer": "flot",
+                "seriesOverrides": [],
+                "spaceLength": 10,
+                "stack": false,
+                "steppedLine": false,
+                "targets": [
+                    {
+                    "expr": "sum(rate(cortex_memcache_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (status_code, method, name)",
+                    "intervalFactor": 1,
+                    "legendFormat": "{{status_code}}-{{method}}-{{name}}",
+                    "refId": "A"
+                    }
+                ],
+                "thresholds": [],
+                "timeFrom": null,
+                "timeRegions": [],
+                "timeShift": null,
+                "title": "Status By Method",
+                "tooltip": {
+                    "shared": true,
+                    "sort": 2,
+                    "value_type": "individual"
+                },
+                "type": "graph",
+                "xaxis": {
+                    "buckets": null,
+                    "mode": "time",
+                    "name": null,
+                    "show": true,
+                    "values": []
+                },
+                "yaxes": [
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    },
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    }
+                ],
+                "yaxis": {
+                    "align": false,
+                    "alignLevel": null
+                }
+                }
+            ],
+            "title": "Memcached",
+            "type": "row"
+            },
+            {
+            "collapsed": true,
+            "datasource": null,
+            "gridPos": {
+                "h": 1,
+                "w": 24,
+                "x": 0,
+                "y": 30
+            },
+            "id": 57,
+            "panels": [
+                {
+                "aliasColors": {},
+                "bars": false,
+                "dashLength": 10,
+                "dashes": false,
+                "datasource": "$datasource",
+                "fill": 1,
+                "fillGradient": 0,
+                "gridPos": {
+                    "h": 8,
+                    "w": 24,
+                    "x": 0,
+                    "y": 31
+                },
+                "id": 55,
+                "interval": "",
+                "legend": {
+                    "alignAsTable": true,
+                    "avg": false,
+                    "current": false,
+                    "max": false,
+                    "min": false,
+                    "rightSide": true,
+                    "show": true,
+                    "total": false,
+                    "values": false
+                },
+                "lines": true,
+                "linewidth": 1,
+                "nullPointMode": "null",
+                "options": {
+                    "dataLinks": []
+                },
+                "percentage": false,
+                "pointradius": 1,
+                "points": false,
+                "renderer": "flot",
+                "seriesOverrides": [],
+                "spaceLength": 10,
+                "stack": false,
+                "steppedLine": false,
+                "targets": [
+                    {
+                    "expr": "histogram_quantile(.99, sum(rate(cortex_consul_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "intervalFactor": 1,
+                    "legendFormat": ".99-{{operation}}",
+                    "refId": "A"
+                    },
+                    {
+                    "expr": "histogram_quantile(.9, sum(rate(cortex_consul_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "hide": false,
+                    "legendFormat": ".9-{{operation}}",
+                    "refId": "B"
+                    },
+                    {
+                    "expr": "histogram_quantile(.5, sum(rate(cortex_consul_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "hide": false,
+                    "legendFormat": ".5-{{operation}}",
+                    "refId": "C"
+                    }
+                ],
+                "thresholds": [],
+                "timeFrom": null,
+                "timeRegions": [],
+                "timeShift": null,
+                "title": "Latency By Operation",
+                "tooltip": {
+                    "shared": true,
+                    "sort": 2,
+                    "value_type": "individual"
+                },
+                "type": "graph",
+                "xaxis": {
+                    "buckets": null,
+                    "mode": "time",
+                    "name": null,
+                    "show": true,
+                    "values": []
+                },
+                "yaxes": [
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    },
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    }
+                ],
+                "yaxis": {
+                    "align": false,
+                    "alignLevel": null
+                }
+                },
+                {
+                "aliasColors": {},
+                "bars": false,
+                "dashLength": 10,
+                "dashes": false,
+                "datasource": "$datasource",
+                "fill": 1,
+                "fillGradient": 0,
+                "gridPos": {
+                    "h": 8,
+                    "w": 24,
+                    "x": 0,
+                    "y": 39
+                },
+                "id": 58,
+                "interval": "",
+                "legend": {
+                    "alignAsTable": true,
+                    "avg": false,
+                    "current": false,
+                    "max": false,
+                    "min": false,
+                    "rightSide": true,
+                    "show": true,
+                    "total": false,
+                    "values": false
+                },
+                "lines": true,
+                "linewidth": 1,
+                "nullPointMode": "null",
+                "options": {
+                    "dataLinks": []
+                },
+                "percentage": false,
+                "pointradius": 1,
+                "points": false,
+                "renderer": "flot",
+                "seriesOverrides": [],
+                "spaceLength": 10,
+                "stack": false,
+                "steppedLine": false,
+                "targets": [
+                    {
+                    "expr": "sum(rate(cortex_consul_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, status_code, method)",
+                    "intervalFactor": 1,
+                    "legendFormat": "{{status_code}}-{{operation}}",
+                    "refId": "A"
+                    }
+                ],
+                "thresholds": [],
+                "timeFrom": null,
+                "timeRegions": [],
+                "timeShift": null,
+                "title": "Status By Operation",
+                "tooltip": {
+                    "shared": true,
+                    "sort": 2,
+                    "value_type": "individual"
+                },
+                "type": "graph",
+                "xaxis": {
+                    "buckets": null,
+                    "mode": "time",
+                    "name": null,
+                    "show": true,
+                    "values": []
+                },
+                "yaxes": [
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    },
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    }
+                ],
+                "yaxis": {
+                    "align": false,
+                    "alignLevel": null
+                }
+                }
+            ],
+            "title": "Consul",
+            "type": "row"
+            },
+            {
+            "collapsed": true,
+            "datasource": null,
+            "gridPos": {
+                "h": 1,
+                "w": 24,
+                "x": 0,
+                "y": 31
+            },
             "id": 43,
             "panels": [
                 {
@@ -3800,7 +4214,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 30
+                "y": 32
             },
             "id": 60,
             "panels": [
@@ -3816,7 +4230,7 @@
                     "h": 8,
                     "w": 24,
                     "x": 0,
-                    "y": 5
+                    "y": 8
                 },
                 "id": 61,
                 "interval": "",
@@ -3918,7 +4332,7 @@
                     "h": 8,
                     "w": 24,
                     "x": 0,
-                    "y": 13
+                    "y": 16
                 },
                 "id": 62,
                 "interval": "",
@@ -4007,10 +4421,446 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 31
+                "y": 33
             },
-            "id": 52,
+            "id": 76,
             "panels": [
+                {
+                "aliasColors": {},
+                "bars": false,
+                "dashLength": 10,
+                "dashes": false,
+                "datasource": null,
+                "fill": 1,
+                "fillGradient": 0,
+                "gridPos": {
+                    "h": 6,
+                    "w": 6,
+                    "x": 0,
+                    "y": 9
+                },
+                "id": 82,
+                "legend": {
+                    "avg": false,
+                    "current": false,
+                    "max": false,
+                    "min": false,
+                    "show": true,
+                    "total": false,
+                    "values": false
+                },
+                "lines": true,
+                "linewidth": 1,
+                "nullPointMode": "null",
+                "options": {
+                    "dataLinks": []
+                },
+                "percentage": false,
+                "pointradius": 2,
+                "points": false,
+                "renderer": "flot",
+                "seriesOverrides": [],
+                "spaceLength": 10,
+                "stack": false,
+                "steppedLine": false,
+                "targets": [
+                    {
+                    "expr": "sum(rate(cortex_dynamo_failures_total{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval]))",
+                    "refId": "A"
+                    }
+                ],
+                "thresholds": [],
+                "timeFrom": null,
+                "timeRegions": [],
+                "timeShift": null,
+                "title": "Failure Rate",
+                "tooltip": {
+                    "shared": true,
+                    "sort": 0,
+                    "value_type": "individual"
+                },
+                "type": "graph",
+                "xaxis": {
+                    "buckets": null,
+                    "mode": "time",
+                    "name": null,
+                    "show": true,
+                    "values": []
+                },
+                "yaxes": [
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    },
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    }
+                ],
+                "yaxis": {
+                    "align": false,
+                    "alignLevel": null
+                }
+                },
+                {
+                "aliasColors": {},
+                "bars": false,
+                "dashLength": 10,
+                "dashes": false,
+                "datasource": null,
+                "fill": 1,
+                "fillGradient": 0,
+                "gridPos": {
+                    "h": 6,
+                    "w": 6,
+                    "x": 6,
+                    "y": 9
+                },
+                "id": 83,
+                "legend": {
+                    "avg": false,
+                    "current": false,
+                    "max": false,
+                    "min": false,
+                    "show": true,
+                    "total": false,
+                    "values": false
+                },
+                "lines": true,
+                "linewidth": 1,
+                "nullPointMode": "null",
+                "options": {
+                    "dataLinks": []
+                },
+                "percentage": false,
+                "pointradius": 2,
+                "points": false,
+                "renderer": "flot",
+                "seriesOverrides": [],
+                "spaceLength": 10,
+                "stack": false,
+                "steppedLine": false,
+                "targets": [
+                    {
+                    "expr": "sum(rate(cortex_dynamo_consumed_capacity_total{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval]))",
+                    "refId": "A"
+                    }
+                ],
+                "thresholds": [],
+                "timeFrom": null,
+                "timeRegions": [],
+                "timeShift": null,
+                "title": "Consumed Capacity Rate",
+                "tooltip": {
+                    "shared": true,
+                    "sort": 0,
+                    "value_type": "individual"
+                },
+                "type": "graph",
+                "xaxis": {
+                    "buckets": null,
+                    "mode": "time",
+                    "name": null,
+                    "show": true,
+                    "values": []
+                },
+                "yaxes": [
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    },
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    }
+                ],
+                "yaxis": {
+                    "align": false,
+                    "alignLevel": null
+                }
+                },
+                {
+                "aliasColors": {},
+                "bars": false,
+                "dashLength": 10,
+                "dashes": false,
+                "datasource": null,
+                "fill": 1,
+                "fillGradient": 0,
+                "gridPos": {
+                    "h": 6,
+                    "w": 6,
+                    "x": 12,
+                    "y": 9
+                },
+                "id": 84,
+                "legend": {
+                    "avg": false,
+                    "current": false,
+                    "max": false,
+                    "min": false,
+                    "show": true,
+                    "total": false,
+                    "values": false
+                },
+                "lines": true,
+                "linewidth": 1,
+                "nullPointMode": "null",
+                "options": {
+                    "dataLinks": []
+                },
+                "percentage": false,
+                "pointradius": 2,
+                "points": false,
+                "renderer": "flot",
+                "seriesOverrides": [],
+                "spaceLength": 10,
+                "stack": false,
+                "steppedLine": false,
+                "targets": [
+                    {
+                    "expr": "sum(rate(cortex_dynamo_throttled_total{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval]))",
+                    "refId": "A"
+                    }
+                ],
+                "thresholds": [],
+                "timeFrom": null,
+                "timeRegions": [],
+                "timeShift": null,
+                "title": "Throttled Rate",
+                "tooltip": {
+                    "shared": true,
+                    "sort": 0,
+                    "value_type": "individual"
+                },
+                "type": "graph",
+                "xaxis": {
+                    "buckets": null,
+                    "mode": "time",
+                    "name": null,
+                    "show": true,
+                    "values": []
+                },
+                "yaxes": [
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    },
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    }
+                ],
+                "yaxis": {
+                    "align": false,
+                    "alignLevel": null
+                }
+                },
+                {
+                "aliasColors": {},
+                "bars": false,
+                "dashLength": 10,
+                "dashes": false,
+                "datasource": null,
+                "fill": 1,
+                "fillGradient": 0,
+                "gridPos": {
+                    "h": 6,
+                    "w": 6,
+                    "x": 18,
+                    "y": 9
+                },
+                "id": 85,
+                "legend": {
+                    "avg": false,
+                    "current": false,
+                    "max": false,
+                    "min": false,
+                    "show": true,
+                    "total": false,
+                    "values": false
+                },
+                "lines": true,
+                "linewidth": 1,
+                "nullPointMode": "null",
+                "options": {
+                    "dataLinks": []
+                },
+                "percentage": false,
+                "pointradius": 2,
+                "points": false,
+                "renderer": "flot",
+                "seriesOverrides": [],
+                "spaceLength": 10,
+                "stack": false,
+                "steppedLine": false,
+                "targets": [
+                    {
+                    "expr": "sum(rate(cortex_dynamo_dropped_requests_total{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval]))",
+                    "refId": "A"
+                    }
+                ],
+                "thresholds": [],
+                "timeFrom": null,
+                "timeRegions": [],
+                "timeShift": null,
+                "title": "Dropped Rate",
+                "tooltip": {
+                    "shared": true,
+                    "sort": 0,
+                    "value_type": "individual"
+                },
+                "type": "graph",
+                "xaxis": {
+                    "buckets": null,
+                    "mode": "time",
+                    "name": null,
+                    "show": true,
+                    "values": []
+                },
+                "yaxes": [
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    },
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    }
+                ],
+                "yaxis": {
+                    "align": false,
+                    "alignLevel": null
+                }
+                },
+                {
+                "aliasColors": {},
+                "bars": false,
+                "dashLength": 10,
+                "dashes": false,
+                "datasource": null,
+                "fill": 1,
+                "fillGradient": 0,
+                "gridPos": {
+                    "h": 6,
+                    "w": 6,
+                    "x": 0,
+                    "y": 15
+                },
+                "id": 86,
+                "legend": {
+                    "avg": false,
+                    "current": false,
+                    "max": false,
+                    "min": false,
+                    "show": true,
+                    "total": false,
+                    "values": false
+                },
+                "lines": true,
+                "linewidth": 1,
+                "nullPointMode": "null",
+                "options": {
+                    "dataLinks": []
+                },
+                "percentage": false,
+                "pointradius": 2,
+                "points": false,
+                "renderer": "flot",
+                "seriesOverrides": [],
+                "spaceLength": 10,
+                "stack": false,
+                "steppedLine": false,
+                "targets": [
+                    {
+                    "expr": "histogram_quantile(.99, sum(rate(cortex_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])))",
+                    "legendFormat": ".99",
+                    "refId": "A"
+                    },
+                    {
+                    "expr": "histogram_quantile(.9, sum(rate(cortex_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])))",
+                    "legendFormat": ".9",
+                    "refId": "B"
+                    },
+                    {
+                    "expr": "histogram_quantile(.5, sum(rate(cortex_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])))",
+                    "legendFormat": ".5",
+                    "refId": "C"
+                    }
+                ],
+                "thresholds": [],
+                "timeFrom": null,
+                "timeRegions": [],
+                "timeShift": null,
+                "title": "Query Pages",
+                "tooltip": {
+                    "shared": true,
+                    "sort": 0,
+                    "value_type": "individual"
+                },
+                "type": "graph",
+                "xaxis": {
+                    "buckets": null,
+                    "mode": "time",
+                    "name": null,
+                    "show": true,
+                    "values": []
+                },
+                "yaxes": [
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    },
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    }
+                ],
+                "yaxis": {
+                    "align": false,
+                    "alignLevel": null
+                }
+                },
                 {
                 "aliasColors": {},
                 "bars": false,
@@ -4020,12 +4870,12 @@
                 "fill": 1,
                 "fillGradient": 0,
                 "gridPos": {
-                    "h": 8,
-                    "w": 24,
-                    "x": 0,
-                    "y": 22
+                    "h": 6,
+                    "w": 9,
+                    "x": 6,
+                    "y": 15
                 },
-                "id": 53,
+                "id": 87,
                 "interval": "",
                 "legend": {
                     "alignAsTable": true,
@@ -4054,21 +4904,21 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "histogram_quantile(.99, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (method, name, le))",
+                    "expr": "histogram_quantile(.99, sum(rate(cortex_dynamo_request_duration_seconds_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
                     "intervalFactor": 1,
-                    "legendFormat": ".99-{{method}}-{{name}}",
+                    "legendFormat": ".99-{{operation}}",
                     "refId": "A"
                     },
                     {
-                    "expr": "histogram_quantile(.9, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (method, name, le))",
+                    "expr": "histogram_quantile(.9, sum(rate(cortex_dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
                     "hide": false,
-                    "legendFormat": ".9-{{method}}-{{name}}",
+                    "legendFormat": ".9-{{operation}}",
                     "refId": "B"
                     },
                     {
-                    "expr": "histogram_quantile(.5, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (method, name, le))",
+                    "expr": "histogram_quantile(.5, sum(rate(cortex_dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
                     "hide": false,
-                    "legendFormat": ".5-{{method}}-{{name}}",
+                    "legendFormat": ".5-{{operation}}",
                     "refId": "C"
                     }
                 ],
@@ -4076,7 +4926,7 @@
                 "timeFrom": null,
                 "timeRegions": [],
                 "timeShift": null,
-                "title": "Latency By Method",
+                "title": "Latency By Operation",
                 "tooltip": {
                     "shared": true,
                     "sort": 2,
@@ -4122,12 +4972,12 @@
                 "fill": 1,
                 "fillGradient": 0,
                 "gridPos": {
-                    "h": 8,
-                    "w": 24,
-                    "x": 0,
-                    "y": 30
+                    "h": 6,
+                    "w": 9,
+                    "x": 15,
+                    "y": 15
                 },
-                "id": 54,
+                "id": 88,
                 "interval": "",
                 "legend": {
                     "alignAsTable": true,
@@ -4156,9 +5006,9 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(cortex_memcache_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (status_code, method, name)",
+                    "expr": "sum(rate(cortex_dynamo_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (status_code, operation)",
                     "intervalFactor": 1,
-                    "legendFormat": "{{status_code}}-{{method}}-{{name}}",
+                    "legendFormat": "{{status_code}}-{{operation}}",
                     "refId": "A"
                     }
                 ],
@@ -4204,7 +5054,7 @@
                 }
                 }
             ],
-            "title": "Memcached",
+            "title": "Dynamo",
             "type": "row"
             },
             {
@@ -4214,9 +5064,9 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 32
+                "y": 34
             },
-            "id": 57,
+            "id": 78,
             "panels": [
                 {
                 "aliasColors": {},
@@ -4230,9 +5080,9 @@
                     "h": 8,
                     "w": 24,
                     "x": 0,
-                    "y": 31
+                    "y": 10
                 },
-                "id": 55,
+                "id": 79,
                 "interval": "",
                 "legend": {
                     "alignAsTable": true,
@@ -4261,19 +5111,19 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "histogram_quantile(.99, sum(rate(cortex_consul_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.99, sum(rate(cortex_s3_request_duration_seconds_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
                     "intervalFactor": 1,
                     "legendFormat": ".99-{{operation}}",
                     "refId": "A"
                     },
                     {
-                    "expr": "histogram_quantile(.9, sum(rate(cortex_consul_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.9, sum(rate(cortex_s3_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
                     "hide": false,
                     "legendFormat": ".9-{{operation}}",
                     "refId": "B"
                     },
                     {
-                    "expr": "histogram_quantile(.5, sum(rate(cortex_consul_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.5, sum(rate(cortex_s3_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
                     "hide": false,
                     "legendFormat": ".5-{{operation}}",
                     "refId": "C"
@@ -4332,9 +5182,9 @@
                     "h": 8,
                     "w": 24,
                     "x": 0,
-                    "y": 39
+                    "y": 18
                 },
-                "id": 58,
+                "id": 80,
                 "interval": "",
                 "legend": {
                     "alignAsTable": true,
@@ -4363,7 +5213,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(cortex_consul_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, status_code, method)",
+                    "expr": "sum(rate(cortex_s3_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (status_code, operation)",
                     "intervalFactor": 1,
                     "legendFormat": "{{status_code}}-{{operation}}",
                     "refId": "A"
@@ -4373,7 +5223,7 @@
                 "timeFrom": null,
                 "timeRegions": [],
                 "timeShift": null,
-                "title": "Status By Operation",
+                "title": "Status By Method",
                 "tooltip": {
                     "shared": true,
                     "sort": 2,
@@ -4411,7 +5261,7 @@
                 }
                 }
             ],
-            "title": "Consul",
+            "title": "S3",
             "type": "row"
             }
         ],
@@ -4457,7 +5307,6 @@
             },
             {
                 "current": {
-                "tags": [],
                 "text": "Loki-Prometheus",
                 "value": "Loki-Prometheus"
                 },
@@ -4613,7 +5462,7 @@
         "timezone": "",
         "title": "Loki Operational",
         "uid": "4k3hZFTWz",
-        "version": 2
+        "version": 1
         }
   },
 }
