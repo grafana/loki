@@ -20,7 +20,7 @@ require (
 	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
 	github.com/go-kit/kit v0.9.0
 	github.com/gocql/gocql v0.0.0-20181124151448-70385f88b28b // indirect
-	github.com/gogo/protobuf v1.3.0
+	github.com/gogo/protobuf v1.3.0 // remember to update loki-build-image/Dockerfile too
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/mux v1.6.2
 	github.com/gorilla/websocket v1.4.0
