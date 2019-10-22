@@ -31,7 +31,6 @@ const ChunkLen = 1024
 
 var (
 	errChunkBoundsExceeded = errors.New("attempted access outside of chunk boundaries")
-	errAddedToEvictedChunk = errors.New("attempted to add sample to evicted chunk")
 )
 
 // Chunk is the interface for all chunks. Chunks are generally not

@@ -27,7 +27,6 @@ const (
 	column       = "c"
 	separator    = "\000"
 	maxRowReads  = 100
-	null         = string('\xff')
 )
 
 // Config for a StorageClient

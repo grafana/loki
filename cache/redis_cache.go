@@ -141,14 +141,3 @@ func (c *RedisCache) ping(ctx context.Context) error {
 	}
 	return err
 }
-
-func redisStatusCode(err error) string {
-	switch err {
-	case nil:
-		return "200"
-	case redis.ErrNil:
-		return "404"
-	default:
-		return "500"
-	}
-}
