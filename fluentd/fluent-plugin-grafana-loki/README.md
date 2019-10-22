@@ -166,6 +166,22 @@ If using the GrafanaLab's hosted Loki, the username needs to be set to your inst
 ### tenant
 Loki is a multi-tenant log storage platform and all requests sent must include a tenant.  For some installations the tenant will be set automatically by an authenticating proxy.  Otherwise you can define a tenant to be passed through.  The tenant can be any string value.
 
+### client certificate verification
+Specify a pair of client certificate and private key with `cert` and `key` if a reverse proxy with client certificate verification is configured in front of Loki. `ca_cert` can also be specified if the server uses custom certificate authority.
+
+```
+<match **>
+  @type loki
+
+  url "https://loki"
+
+  cert /path/to/certificate.pem
+  key /path/to/key.key
+  ca_cert /path/to/ca.pem
+
+  ...
+</match>
+```
 
 ### output format
 Loki is intended to index and group log streams using only a small set of labels.  It is not intended for full-text indexing.  When sending logs to Loki the majority of log message will be sent as a single log "line".
