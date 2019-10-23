@@ -470,6 +470,10 @@ loki-canary-push: loki-canary-image-cross
 build-image: OCI_PLATFORMS=
 build-image:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
+build-image-push: build-image
+	$(call push,loki-build-image,$(BUILD_IMAGE_VERSION))
+	$(call push,loki-build-image,latest)
+
 
 ########
 # Misc #
