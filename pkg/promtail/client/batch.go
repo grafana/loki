@@ -9,6 +9,10 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+// batch holds pending log streams waiting to be sent to Loki, and it's used
+// to reduce the number of push requests to Loki aggregating multiple log streams
+// and entries in a single batch request. In case of multi-tenant Promtail, log
+// streams for each tenant are stored in a dedicated batch.
 type batch struct {
 	streams   map[model.Fingerprint]*logproto.Stream
 	bytes     int
