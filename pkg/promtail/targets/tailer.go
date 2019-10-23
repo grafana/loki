@@ -123,6 +123,14 @@ func (t *tailer) markPosition() error {
 	return nil
 }
 
+func (t *tailer) size() (int64, error) {
+	if s, err := t.tail.Size(); err != nil {
+		return 0, err
+	} else {
+		return s, nil
+	}
+}
+
 func (t *tailer) stop() error {
 	// Save the current position before shutting down tailer
 	err := t.markPosition()

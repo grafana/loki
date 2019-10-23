@@ -158,6 +158,17 @@ func (tail *Tail) Tell() (offset int64, err error) {
 	return
 }
 
+// Size returns the length in bytes of the file being tailed,
+// or 0 with an error if there was an error Stat'ing the file.
+func (tail *Tail) Size() (size int64, err error) {
+	fi, err := tail.file.Stat()
+	if err != nil {
+		return
+	}
+	size = fi.Size()
+	return
+}
+
 // Stop stops the tailing activity.
 func (tail *Tail) Stop() error {
 	tail.Kill(nil)
