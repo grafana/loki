@@ -122,7 +122,7 @@ elements but with aggregated values:
 - `topk`: Select largest k elements by sample value
 
 The aggregation operators can either be used to aggregate over all label
-values or a set of distinct label values by including a `withou` or a
+values or a set of distinct label values by including a `without` or a
 `by` clause:
 
 > `<aggr-op>([parameter,] <vector expression>) [without|by (<label list>)]`
