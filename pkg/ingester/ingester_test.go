@@ -23,7 +23,7 @@ import (
 
 func TestIngester(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	store := &mockStore{
@@ -190,7 +190,7 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	defaultLimits := defaultLimitsTestConfig()
 	defaultLimits.MaxLocalStreamsPerUser = 1
-	overrides, err := validation.NewOverrides(defaultLimits)
+	overrides, err := validation.NewOverrides(defaultLimits, nil)
 
 	require.NoError(t, err)
 

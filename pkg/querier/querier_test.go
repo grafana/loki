@@ -45,7 +45,7 @@ func TestQuerier_Label_QueryTimeoutConfigFlag(t *testing.T) {
 	store := newStoreMock()
 	store.On("LabelValuesForMetricName", mock.Anything, "test", model.TimeFromUnixNano(startTime.UnixNano()), model.TimeFromUnixNano(endTime.UnixNano()), "logs", "test").Return([]string{"foo", "bar"}, nil)
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	q, err := newQuerier(
@@ -96,7 +96,7 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
 	ingesterClient.On("Tail", mock.Anything, &request, mock.Anything).Return(tailClient, nil)
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	q, err := newQuerier(
@@ -197,7 +197,7 @@ func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
 			ingesterClient := newQuerierClientMock()
 			ingesterClient.On("Tail", mock.Anything, &req, mock.Anything).Return(newTailClientMock(), nil)
 
-			limits, err := validation.NewOverrides(defaultLimitsTestConfig())
+			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 			require.NoError(t, err)
 
 			q, err := newQuerier(
@@ -271,7 +271,7 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 	defaultLimits.MaxStreamsMatchersPerQuery = 1
 	defaultLimits.MaxQueryLength = 2 * time.Minute
 
-	limits, err := validation.NewOverrides(defaultLimits)
+	limits, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
 	q, err := newQuerier(
@@ -428,7 +428,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				tc.setup(store, queryClient, ingesterClient, defaultLimits, tc.req)
 			}
 
-			limits, err := validation.NewOverrides(defaultLimits)
+			limits, err := validation.NewOverrides(defaultLimits, nil)
 			require.NoError(t, err)
 
 			q, err := newQuerier(

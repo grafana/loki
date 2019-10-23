@@ -39,10 +39,7 @@ func main() {
 	// This global is set to the config passed into the last call to `NewOverrides`. If we don't
 	// call it atleast once, the defaults are set to an empty struct.
 	// We call it with the flag values so that the config file unmarshalling only overrides the values set in the config.
-	if _, err := validation.NewOverrides(config.LimitsConfig); err != nil {
-		level.Error(util.Logger).Log("msg", "setting up overrides", "error", err)
-		os.Exit(1)
-	}
+	validation.SetDefaultLimitsForYAMLUnmarshalling(config.LimitsConfig)
 
 	// Init the logger which will honor the log level set in config.Server
 	if reflect.DeepEqual(&config.Server.LogLevel, &logging.Level{}) {

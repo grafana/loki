@@ -8,6 +8,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -43,6 +44,8 @@ type Config struct {
 	Worker           frontend.WorkerConfig    `yaml:"frontend_worker,omitempty"`
 	Frontend         frontend.Config          `yaml:"frontend,omitempty"`
 	QueryRange       queryrange.Config        `yaml:"query_range,omitempty"`
+
+	RuntimeConfig runtimeconfig.ManagerConfig `yaml:"runtime_config,omitempty"`
 }
 
 // RegisterFlags registers flag.
@@ -66,23 +69,25 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Frontend.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
 	c.QueryRange.RegisterFlags(f)
+	c.RuntimeConfig.RegisterFlags(f)
 }
 
 // Loki is the root datastructure for Loki.
 type Loki struct {
 	cfg Config
 
-	server       *server.Server
-	ring         *ring.Ring
-	overrides    *validation.Overrides
-	distributor  *distributor.Distributor
-	ingester     *ingester.Ingester
-	querier      *querier.Querier
-	store        storage.Store
-	tableManager *chunk.TableManager
-	worker       frontend.Worker
-	frontend     *frontend.Frontend
-	stopper      queryrange.Stopper
+	server        *server.Server
+	ring          *ring.Ring
+	overrides     *validation.Overrides
+	distributor   *distributor.Distributor
+	ingester      *ingester.Ingester
+	querier       *querier.Querier
+	store         storage.Store
+	tableManager  *chunk.TableManager
+	worker        frontend.Worker
+	frontend      *frontend.Frontend
+	stopper       queryrange.Stopper
+	runtimeConfig *runtimeconfig.Manager
 
 	httpAuthMiddleware middleware.Interface
 }
