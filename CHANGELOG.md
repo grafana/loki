@@ -1,6 +1,6 @@
 # 0.4.0 (2019-10-24)
 
-A **huge** thanks to the **36 contributors** who submitted **146 PR's** since 0.3.0!
+A **huge** thanks to the **36 contributors** who submitted **148 PR's** since 0.3.0!
 
 ## Notable Changes
 
@@ -84,6 +84,7 @@ A **huge** thanks to the **36 contributors** who submitted **146 PR's** since 0.
 
 ### Bugfixes
 
+* **Promtail** [1194](https://github.com/grafana/loki/pull/1194) **slim-bean**: Improve how we record file size metric to avoid a race in our file lagging alert
 * **Promtail/journal** [1072](https://github.com/grafana/loki/pull/1072) **rfratto**: build: enable journal in promtail linux release build
 
 ## Docs
@@ -164,6 +165,7 @@ A **huge** thanks to the **36 contributors** who submitted **146 PR's** since 0.
 * **Helm** [1110](https://github.com/grafana/loki/pull/1110) **marcosnils**: Bump grafana image in loki helm chart
 * **Helm** [1104](https://github.com/grafana/loki/pull/1104) **marcosnils**: <Examples>: Deploy prometheus from helm chart
 * **Helm** [1058](https://github.com/grafana/loki/pull/1058) **polar3130**: Helm: Remove default value of storageClassName in loki/loki helm chart
+* **Helm** [1056](https://github.com/grafana/loki/pull/1056) **polar3130**: Helm: Fix the reference error of loki/loki helm chart
 * **Helm** [967](https://github.com/grafana/loki/pull/967) **makocchi-git**: helm chart: Add missing operator to promtail
 * **Helm** [937](https://github.com/grafana/loki/pull/937) **minhdanh**: helm chart: Add support for additional labels and scrapeTimeout for serviceMonitors
 * **Helm** [909](https://github.com/grafana/loki/pull/909) **angelbarrera92**: Feature: Add extra containers to loki helm chart
