@@ -67,7 +67,7 @@ require (
 
 replace github.com/weaveworks/common => github.com/sandlis/weaveworks-common v0.0.0-20190822064708-8fa0a1ca9d89
 
-replace github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20191023161049-4de054d0954f
+replace github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20191024143944-0b54ddf21fe7
 
 // Override reference that causes an error from Go proxy - see https://github.com/golang/go/issues/33558
 replace k8s.io/client-go => k8s.io/client-go v0.0.0-20190620085101-78d2af792bab

@@ -309,7 +309,7 @@ github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
 # github.com/hashicorp/serf v0.8.3
 github.com/hashicorp/serf/coordinate
-# github.com/hpcloud/tail v1.0.0 => github.com/grafana/tail v0.0.0-20191023161049-4de054d0954f
+# github.com/hpcloud/tail v1.0.0 => github.com/grafana/tail v0.0.0-20191024143944-0b54ddf21fe7
 github.com/hpcloud/tail
 github.com/hpcloud/tail/ratelimiter
 github.com/hpcloud/tail/util
