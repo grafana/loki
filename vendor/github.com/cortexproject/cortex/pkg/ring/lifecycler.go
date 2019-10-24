@@ -191,7 +191,7 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 		return fmt.Errorf("waiting for %v after startup", i.cfg.MinReadyDuration)
 	}
 
-	ringDesc, err := i.KVStore.Get(ctx, ConsulKey)
+	desc, err := i.KVStore.Get(ctx, ConsulKey)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error talking to consul", "err", err)
 		return fmt.Errorf("error talking to consul: %s", err)
@@ -200,7 +200,13 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 	if len(i.getTokens()) == 0 {
 		return fmt.Errorf("this ingester owns no tokens")
 	}
-	if err := ringDesc.(*Desc).Ready(i.cfg.RingConfig.HeartbeatTimeout); err != nil {
+
+	ringDesc, ok := desc.(*Desc)
+	if !ok || ringDesc == nil {
+		return fmt.Errorf("no ring returned from consul")
+	}
+
+	if err := ringDesc.Ready(i.cfg.RingConfig.HeartbeatTimeout); err != nil {
 		return err
 	}
 

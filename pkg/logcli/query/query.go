@@ -30,6 +30,7 @@ type Query struct {
 	End             time.Time
 	Limit           int
 	Forward         bool
+	Step            time.Duration
 	Quiet           bool
 	NoLabels        bool
 	IgnoreLabelsKey []string
@@ -47,7 +48,7 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 	if q.isInstant() {
 		resp, err = c.Query(q.QueryString, q.Limit, q.Start, d, q.Quiet)
 	} else {
-		resp, err = c.QueryRange(q.QueryString, q.Limit, q.Start, q.End, d, q.Quiet)
+		resp, err = c.QueryRange(q.QueryString, q.Limit, q.Start, q.End, d, q.Step, q.Quiet)
 	}
 
 	if err != nil {

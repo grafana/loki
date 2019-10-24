@@ -7,13 +7,12 @@ import (
 	"reflect"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 
-	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail"
 	"github.com/grafana/loki/pkg/promtail/config"
@@ -24,33 +23,24 @@ func init() {
 }
 
 func main() {
-	var (
-		configFile = "cmd/promtail/promtail-local-config.yaml"
-		config     config.Config
-	)
-	flag.StringVar(&configFile, "config.file", "promtail.yml", "The config file.")
-	flagext.RegisterFlags(&config)
-
 	printVersion := flag.Bool("version", false, "Print this builds version information")
-	flag.Parse()
 
+	// Load config, merging config file and CLI flags
+	var config config.Config
+	if err := cfg.Parse(&config); err != nil {
+		fmt.Println("Unable to parse config:", err)
+		os.Exit(1)
+	}
+
+	// Handle -version CLI flag
 	if *printVersion {
-		fmt.Print(version.Print("promtail"))
+		fmt.Println(version.Print("promtail"))
 		os.Exit(0)
 	}
 
-	util.InitLogger(&config.ServerConfig.Config)
-
-	if configFile != "" {
-		if err := helpers.LoadConfig(configFile, &config); err != nil {
-			level.Error(util.Logger).Log("msg", "error loading config", "filename", configFile, "err", err)
-			os.Exit(1)
-		}
-	}
-
-	// Re-init the logger which will now honor a different log level set in ServerConfig.Config
+	// Init the logger which will honor the log level set in cfg.Server
 	if reflect.DeepEqual(&config.ServerConfig.Config.LogLevel, &logging.Level{}) {
-		level.Error(util.Logger).Log("msg", "invalid log level")
+		fmt.Println("Invalid log level")
 		os.Exit(1)
 	}
 	util.InitLogger(&config.ServerConfig.Config)

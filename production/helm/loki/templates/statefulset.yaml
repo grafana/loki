@@ -51,6 +51,9 @@ spec:
             - "-{{ $key }}={{ $value }}"
           {{- end }}
           volumeMounts:
+            {{- if .Values.extraVolumeMounts }}
+              {{ toYaml .Values.extraVolumeMounts | nindent 12}}
+            {{- end }}
             - name: config
               mountPath: /etc/loki
             - name: storage
@@ -69,10 +72,16 @@ spec:
           securityContext:
             readOnlyRootFilesystem: true
           env:
+            {{- if .Values.env }}
+              {{- toYaml .Values.env | nindent 12 }}
+            {{- end }}
             {{- if .Values.tracing.jaegerAgentHost }}
             - name: JAEGER_AGENT_HOST
               value: "{{ .Values.tracing.jaegerAgentHost }}"
             {{- end }}
+{{- if .Values.extraContainers }}
+{{ toYaml .Values.extraContainers | indent 8}}
+{{- end }}
       nodeSelector:
         {{- toYaml .Values.nodeSelector | nindent 8 }}
       affinity:
@@ -84,6 +93,9 @@ spec:
         - name: config
           secret:
             secretName: {{ template "loki.fullname" . }}
+{{- if .Values.extraVolumes }}
+{{ toYaml .Values.extraVolumes | indent 8}}
+{{- end }}
   {{- if not .Values.persistence.enabled }}
         - name: storage
           emptyDir: {}

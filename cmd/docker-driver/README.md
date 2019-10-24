@@ -37,11 +37,11 @@ The Docker daemon on each Docker host has a default logging driver; each contain
 
 When you start a container, you can configure it to use a different logging driver than the Docker daemon’s default, using the `--log-driver` flag. If the logging driver has configurable options, you can set them using one or more instances of the `--log-opt <NAME>=<VALUE>` flag. Even if the container uses the default logging driver, it can use different configurable options.
 
-The following command configure the container `grafana` to start with the loki drivers which will send logs to `logs-us-west1.grafana.net` Loki instance, using a batch size of 400 entries and will retry maximum 5 times if it fails.
+The following command configure the container `grafana` to start with the Loki drivers which will send logs to `logs-us-west1.grafana.net` Loki instance, using a batch size of 400 entries and will retry maximum 5 times if it fails.
 
 ```bash
 docker run --log-driver=loki \
-    --log-opt loki-url="https://<user_id>:<password>@logs-us-west1.grafana.net/api/prom/push" \
+    --log-opt loki-url="https://<user_id>:<password>@logs-us-west1.grafana.net/loki/api/v1/push" \
     --log-opt loki-retries=5 \
     --log-opt loki-batch-size=400 \
     grafana/grafana
@@ -68,7 +68,7 @@ The logging driver has configurable options, you can set them in the `daemon.jso
     "debug" : true,
     "log-driver": "loki",
     "log-opts": {
-        "loki-url": "https://<user_id>:<password>@logs-us-west1.grafana.net/api/prom/push",
+        "loki-url": "https://<user_id>:<password>@logs-us-west1.grafana.net/loki/api/v1/push",
         "loki-batch-size": "400"
     }
 }
@@ -90,7 +90,7 @@ services:
     logging:
       driver: loki
       options:
-        loki-url: "https://<user_id>:<password>@logs-us-west1.grafana.net/api/prom/push"
+        loki-url: "https://<user_id>:<password>@logs-us-west1.grafana.net/loki/api/v1/push"
 ```
 
 You can then deploy your stack using:

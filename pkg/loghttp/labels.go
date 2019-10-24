@@ -2,8 +2,12 @@ package loghttp
 
 import (
 	"bytes"
+	"net/http"
 	"sort"
 	"strconv"
+
+	"github.com/gorilla/mux"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 // LabelResponse represents the http json response to a label query
@@ -36,4 +40,21 @@ func (l LabelSet) String() string {
 	}
 	b.WriteByte('}')
 	return b.String()
+}
+
+// ParseLabelQuery parses a LabelRequest request from an http request.
+func ParseLabelQuery(r *http.Request) (*logproto.LabelRequest, error) {
+	name, ok := mux.Vars(r)["name"]
+	req := &logproto.LabelRequest{
+		Values: ok,
+		Name:   name,
+	}
+
+	start, end, err := bounds(r)
+	if err != nil {
+		return nil, err
+	}
+	req.Start = &start
+	req.End = &end
+	return req, nil
 }

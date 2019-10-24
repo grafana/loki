@@ -50,6 +50,8 @@ type Chunk interface {
 	Iterator(from, through time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error)
 	Size() int
 	Bytes() ([]byte, error)
+	Utilization() float64
+	UncompressedSize() int
 }
 
 // CompressionWriter is the writer that compresses the data passed to it.

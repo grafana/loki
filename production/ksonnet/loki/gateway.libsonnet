@@ -52,6 +52,14 @@
             location ~ /api/prom/.* {
               proxy_pass      http://querier.%(namespace)s.svc.cluster.local$request_uri;
             }
+
+            location = /loki/api/v1/push {
+              proxy_pass      http://distributor.%(namespace)s.svc.cluster.local$request_uri;
+            }
+
+            location ~ /loki/api/.* {
+              proxy_pass      http://querier.%(namespace)s.svc.cluster.local$request_uri;
+            }
           }
         }
       ||| % $._config,

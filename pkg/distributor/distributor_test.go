@@ -133,25 +133,14 @@ type mockRing struct {
 	replicationFactor uint32
 }
 
-func (r mockRing) Get(key uint32, op ring.Operation) (ring.ReplicationSet, error) {
+func (r mockRing) Get(key uint32, op ring.Operation, buf []ring.IngesterDesc) (ring.ReplicationSet, error) {
 	result := ring.ReplicationSet{
 		MaxErrors: 1,
+		Ingesters: buf[:0],
 	}
 	for i := uint32(0); i < r.replicationFactor; i++ {
 		n := (key + i) % uint32(len(r.ingesters))
 		result.Ingesters = append(result.Ingesters, r.ingesters[n])
-	}
-	return result, nil
-}
-
-func (r mockRing) BatchGet(keys []uint32, op ring.Operation) ([]ring.ReplicationSet, error) {
-	result := []ring.ReplicationSet{}
-	for i := 0; i < len(keys); i++ {
-		rs, err := r.Get(keys[i], op)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, rs)
 	}
 	return result, nil
 }
@@ -165,4 +154,8 @@ func (r mockRing) GetAll() (ring.ReplicationSet, error) {
 
 func (r mockRing) ReplicationFactor() int {
 	return int(r.replicationFactor)
+}
+
+func (r mockRing) IngesterCount() int {
+	return len(r.ingesters)
 }

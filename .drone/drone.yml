@@ -5,23 +5,31 @@ steps:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.5.0
+  image: grafana/loki-build-image:0.7.4
   name: test
 - commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.5.0
+  image: grafana/loki-build-image:0.7.4
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
-  image: grafana/loki-build-image:0.5.0
+  image: grafana/loki-build-image:0.7.4
   name: check-generated-files
+- commands:
+  - make BUILD_IN_CONTAINER=false check-mod
+  depends_on:
+  - clone
+  - test
+  - lint
+  image: grafana/loki-build-image:0.7.4
+  name: check-mod
 workspace:
-  base: /go/src
-  path: github.com/grafana/loki
+  base: /src
+  path: loki
 ---
 depends_on:
 - check
@@ -375,6 +383,55 @@ steps:
       - refs/tags/v*
 ---
 depends_on:
+- check
+kind: pipeline
+name: fluent-bit-amd64
+platform:
+  arch: amd64
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-amd64 > .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-fluent-bit-image
+  settings:
+    dockerfile: cmd/fluent-bit/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/fluent-bit-plugin-loki
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/tags/v*
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-fluent-bit-image
+  settings:
+    dockerfile: cmd/fluent-bit/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/fluent-bit-plugin-loki
+    username:
+      from_secret: docker_username
+  when:
+    ref:
+      include:
+      - refs/heads/master
+      - refs/tags/v*
+---
+depends_on:
 - docker-amd64
 - docker-arm64
 - docker-arm
@@ -435,7 +492,7 @@ steps:
   environment:
     CIRCLE_TOKEN:
       from_secret: circle_token
-  image: grafana/loki-build-image:0.5.0
+  image: grafana/loki-build-image:0.7.4
   name: trigger
 trigger:
   ref:

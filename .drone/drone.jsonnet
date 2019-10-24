@@ -43,7 +43,7 @@ local docker(arch, app) = {
   },
 };
 
-local multiarch_image(arch) = pipeline('docker-' + arch) {
+local arch_image(arch) = {
   platform: {
     os: 'linux',
     arch: arch,
@@ -56,7 +56,35 @@ local multiarch_image(arch) = pipeline('docker-' + arch) {
       'git fetch origin --tags',
       'echo $(./tools/image-tag)-%s > .tags' % arch,
     ],
-  }] + [
+  }],
+};
+
+local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64') {
+ steps+: [
+    // dry run for everything that is not tag or master
+    docker('amd64', 'fluent-bit') {
+      depends_on: ['image-tag'],
+      when: condition('exclude').tagMaster,
+      settings+: {
+        dry_run: true,
+        repo: 'grafana/fluent-bit-plugin-loki',
+      },
+    }
+  ] + [
+    // publish for tag or master
+    docker('amd64', 'fluent-bit') {
+      depends_on: ['image-tag'],
+      when: condition('include').tagMaster,
+      settings+: {
+        repo: 'grafana/fluent-bit-plugin-loki',
+      },
+    }
+  ],
+  depends_on: ['check'],
+};
+
+local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
+  steps+: [
     // dry run for everything that is not tag or master
     docker(arch, app) {
       depends_on: ['image-tag'],
@@ -102,18 +130,21 @@ local manifest(apps) = pipeline('manifest') {
 local drone = [
   pipeline('check') {
     workspace: {
-      base: "/go/src",
-      path: "github.com/grafana/loki"
+      base: "/src",
+      path: "loki"
     },
     steps: [
       make('test', container=false) { depends_on: ['clone'] },
       make('lint', container=false) { depends_on: ['clone'] },
       make('check-generated-files', container=false) { depends_on: ['clone'] },
+      make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
     ],
   },
 ] + [
   multiarch_image(arch)
   for arch in archs
+] + [
+ fluentbit()
 ] + [
   manifest(['promtail', 'loki', 'loki-canary']) {
     trigger: condition('include').tagMaster,

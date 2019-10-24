@@ -26,7 +26,7 @@ import (
 
 // Repo is the current version of the client libraries in this
 // repo. It should be a date in YYYYMMDD format.
-const Repo = "20180226"
+const Repo = "20190802"
 
 // Go returns the Go runtime version. The returned string
 // has no whitespace.
@@ -67,5 +67,5 @@ func goVer(s string) string {
 }
 
 func notSemverRune(r rune) bool {
-	return strings.IndexRune("0123456789.", r) < 0
+	return !strings.ContainsRune("0123456789.", r)
 }

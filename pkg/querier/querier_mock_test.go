@@ -176,13 +176,13 @@ func (s *storeMock) LazyQuery(ctx context.Context, req logql.SelectParams) (iter
 	return args.Get(0).(iter.EntryIterator), args.Error(1)
 }
 
-func (s *storeMock) Get(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
-	args := s.Called(ctx, from, through, matchers)
+func (s *storeMock) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+	args := s.Called(ctx, userID, from, through, matchers)
 	return args.Get(0).([]chunk.Chunk), args.Error(1)
 }
 
-func (s *storeMock) GetChunkRefs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
-	args := s.Called(ctx, from, through, matchers)
+func (s *storeMock) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
+	args := s.Called(ctx, userID, from, through, matchers)
 	return args.Get(0).([][]chunk.Chunk), args.Get(0).([]*chunk.Fetcher), args.Error(2)
 }
 
@@ -194,13 +194,13 @@ func (s *storeMock) PutOne(ctx context.Context, from, through model.Time, chunk 
 	return errors.New("storeMock.PutOne() has not been mocked")
 }
 
-func (s *storeMock) LabelValuesForMetricName(ctx context.Context, from, through model.Time, metricName string, labelName string) ([]string, error) {
-	args := s.Called(ctx, from, through, metricName, labelName)
+func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error) {
+	args := s.Called(ctx, userID, from, through, metricName, labelName)
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (s *storeMock) LabelNamesForMetricName(ctx context.Context, from, through model.Time, metricName string) ([]string, error) {
-	args := s.Called(ctx, from, through, metricName)
+func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+	args := s.Called(ctx, userID, from, through, metricName)
 	return args.Get(0).([]string), args.Error(1)
 }
 
@@ -229,7 +229,7 @@ func (r *readRingMock) Describe(ch chan<- *prometheus.Desc) {
 func (r *readRingMock) Collect(ch chan<- prometheus.Metric) {
 }
 
-func (r *readRingMock) Get(key uint32, op ring.Operation) (ring.ReplicationSet, error) {
+func (r *readRingMock) Get(key uint32, op ring.Operation, buf []ring.IngesterDesc) (ring.ReplicationSet, error) {
 	return r.replicationSet, nil
 }
 
@@ -243,6 +243,10 @@ func (r *readRingMock) GetAll() (ring.ReplicationSet, error) {
 
 func (r *readRingMock) ReplicationFactor() int {
 	return 1
+}
+
+func (r *readRingMock) IngesterCount() int {
+	return len(r.replicationSet.Ingesters)
 }
 
 func mockReadRingWithOneActiveIngester() *readRingMock {

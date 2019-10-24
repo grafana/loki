@@ -1,5 +1,6 @@
 <p align="center"><img src="docs/logo_and_name.png" alt="Loki Logo"></p>
 
+<a href="https://cloud.drone.io/grafana/loki"><img src="https://cloud.drone.io/api/badges/grafana/loki/status.svg" alt="Drone CI" /></a>
 <a href="https://circleci.com/gh/grafana/loki/tree/master"><img src="https://circleci.com/gh/grafana/loki.svg?style=shield&circle-token=618193e5787b2951c1ea3352ad5f254f4f52313d" alt="CircleCI" /></a>
 <a href="https://goreportcard.com/report/github.com/grafana/loki"><img src="https://goreportcard.com/badge/github.com/grafana/loki" alt="Go Report Card" /></a>
 <a href="http://slack.raintank.io/"><img src="https://img.shields.io/badge/join%20slack-%23loki-brightgreen.svg" alt="Slack" /></a>
@@ -28,21 +29,32 @@ Loki differs from Prometheus by focussing on logs instead of metrics, and delive
 
 ## Getting started
 
-The [getting started docs](./production/README.md) have instructions on how to install Loki via Docker images, Helm charts, Jsonnet, or from source.
+The [Installation docs](./docs/installation/README.md) have instructions on how
+to install Loki via Docker images, Helm charts, Jsonnet, or from source.
 
-Once you have promtail, Loki, and Grafana running, continue with [our usage docs](./docs/querying.md) on how to query your logs.
+You may also be interested in [installing
+Promtail](./docs/clients/promtail/installation.md) to send logs to Loki.
+
+Once you have Promtail, Loki, and Grafana running, continue with our [Getting
+Started Guide](./docs/getting-started/README.md) to get up and running with
+querying logs.
 
 ### Documentation
 
-- [API documentation](./docs/loki/api.md) for alternative ways of getting logs into Loki.
-- [Operations](./docs/loki/operations.md) for important aspects of running Loki.
-- [Promtail](./docs/promtail.md) is an agent which can tail your log files and push them to Loki.
-- [Processing Log Lines](./docs/logentry/processing-log-lines.md) for detailed log processing pipeline documentation
-- [Docker Logging Driver](./cmd/docker-driver/README.md) is a docker plugin to send logs directly to Loki from Docker containers.
-- [Logcli](./docs/logcli.md) on how to query your logs without Grafana.
-- [Loki Canary](./docs/canary/README.md) for monitoring your Loki installation for missing logs.
-- [Troubleshooting](./docs/troubleshooting.md) for help around frequent error messages.
-- [Usage](./docs/querying.md) for how to set up a Loki datasource in Grafana and query your logs.
+The documentation with a Table of Contents can be found in
+[`docs/`](./docs/README.md).
+
+Some key documents to read:
+
+- [API documentation](./docs/api.md) for alternative ways of getting logs into Loki.
+- [Operations](./docs/operations) for important aspects of running Loki.
+- [Promtail](./docs/clients/promtail) is an agent which can tail your log files and push them to Loki.
+- [Pipelines](./docs/clients/promtail/pipelines.md) for detailed log processing pipeline documentation
+- [Docker Logging Driver](./docs/clients/docker-driver) is a docker plugin to send logs directly to Loki from Docker containers.
+- [LogCLI](./docs/getting-started/logcli.md) on how to query your logs without Grafana.
+- [Loki Canary](./docs/operations/loki-canary.md) for monitoring your Loki installation for missing logs.
+- [Troubleshooting](./docs/getting-started/troubleshooting.md) for help around frequent error messages.
+- [Loki in Grafana](./docs/getting-started/grafana.md) for how to set up a Loki datasource in Grafana and query your logs.
 
 ## Getting Help
 
@@ -63,7 +75,7 @@ Your feedback is always welcome.
 - Julien Garcia Gonzalez' March 2019 blog post "[Grafana Logging using Loki][giant-swarm-blog]".
 - Tom Wilkie's early-2019 CNCF Paris/FOSDEM talk "[Grafana Loki: like Prometheus, but for logs][fosdem19-talk]" ([slides][fosdem19-slides], [video][fosdem19-video]).
 - David Kaltschmidt's KubeCon 2018 talk "[On the OSS Path to Full Observability with Grafana][kccna18-event]" ([slides][kccna18-slides], [video][kccna18-video]) on how Loki fits into a cloud-native environment.
-- Goutham Veeramachaneni's blog post "[Loki: Prometheus-inspired, open source logging for cloud natives](https://grafana.com/blog/2018/12/12/loki-prometheus-inspired-open-source-logging-for-cloud-natives/)" on details of the Loki architectire.
+- Goutham Veeramachaneni's blog post "[Loki: Prometheus-inspired, open source logging for cloud natives](https://grafana.com/blog/2018/12/12/loki-prometheus-inspired-open-source-logging-for-cloud-natives/)" on details of the Loki architecture.
 - David Kaltschmidt's blog post "[Closer look at Grafana's user interface for Loki](https://grafana.com/blog/2019/01/02/closer-look-at-grafanas-user-interface-for-loki/)" on the ideas that went into the logging user interface.
 
 [devopsdays19-talk]: https://grafana.com/blog/2019/05/06/how-loki-correlates-metrics-and-logs-and-saves-you-money/

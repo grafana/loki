@@ -62,8 +62,8 @@ def ensure_backups(args):
             bigtable_backup_job_last_active_table_backup_time_seconds.set_to_current_time()
 
     num_backups_deleted = 0
-            
-    print("Checking whether all the backups are created after their period is over and deleting old unwanted backups")
+
+    print("Checking whether all the backups are created after their period is over")
     for table_id, timestamps in backups.items():
         table_number = int(table_id.rsplit("_", 1)[-1])
         last_timestamp_from_table_number = find_last_timestamp_from_table_number(table_number,
@@ -72,6 +72,13 @@ def ensure_backups(args):
         # Checking whether backup is created after last timestamp of tables period.
         if last_timestamp_from_table_number > timestamps[-1]:
             create_backup(table_id, args)
+
+    # list backups again to consider for deletion of unwanted backups since new backups might have been created above
+    backups = list_backups(args.destination_path)
+
+    print("Deleting old unwanted backups")
+    for table_id, timestamps in backups.items():
+        table_number = int(table_id.rsplit("_", 1)[-1])
 
         # Retain only most recent backup for non active table
         if table_number != active_table_number and len(timestamps) > 1:

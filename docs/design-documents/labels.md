@@ -56,7 +56,7 @@ The Docker log format is an example where multiple levels of processing may be r
 
 A pipelined approach should allow for handling these more challenging scenarios
 
-There are 2 interfaces within promtail already that should support constructing a pipeline:
+There are 2 interfaces within Promtail already that should support constructing a pipeline:
 
 ```go
 type EntryMiddleware interface {

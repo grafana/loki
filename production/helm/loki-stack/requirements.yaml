@@ -7,6 +7,10 @@ dependencies:
   condition: promtail.enabled
   repository: "file://../promtail"
   version: "^0.6.0"
+- name: "fluent-bit"
+  condition: fluent-bit.enabled
+  repository: "file://../fluent-bit"
+  version: "^0.0.1"
 - name: "grafana"
   condition: grafana.enabled
   version: "~3.4.3"

@@ -117,10 +117,14 @@ func (w *Writer) open() error {
 		if w.MD5 != nil {
 			rawObj.Md5Hash = base64.StdEncoding.EncodeToString(w.MD5)
 		}
+		if w.o.c.envHost != "" {
+			w.o.c.raw.BasePath = fmt.Sprintf("%s://%s", w.o.c.scheme, w.o.c.envHost)
+		}
 		call := w.o.c.raw.Objects.Insert(w.o.bucket, rawObj).
 			Media(pr, mediaOpts...).
 			Projection("full").
 			Context(w.ctx)
+
 		if w.ProgressFunc != nil {
 			call.ProgressUpdater(func(n, _ int64) { w.ProgressFunc(n) })
 		}

@@ -61,7 +61,8 @@ type block struct {
 
 	mint, maxt int64
 
-	offset int // The offset of the block in the chunk.
+	offset           int // The offset of the block in the chunk.
+	uncompressedSize int // Total uncompressed size in bytes when the chunk is cut.
 }
 
 // This block holds the un-compressed entries. Once it has enough data, this is
@@ -313,6 +314,28 @@ func (c *MemChunk) SpaceFor(*logproto.Entry) bool {
 	return len(c.blocks) < blocksPerChunk
 }
 
+// UncompressedSize implements Chunk.
+func (c *MemChunk) UncompressedSize() int {
+	size := 0
+
+	if !c.head.isEmpty() {
+		size += c.head.size
+	}
+
+	for _, b := range c.blocks {
+		size += b.uncompressedSize
+	}
+
+	return size
+}
+
+// Utilization implements Chunk.  It is the bytes used as a percentage of the
+func (c *MemChunk) Utilization() float64 {
+	size := c.UncompressedSize()
+
+	return float64(size) / float64(blocksPerChunk*c.blockSize)
+}
+
 // Append implements Chunk.
 func (c *MemChunk) Append(entry *logproto.Entry) error {
 	entryTimestamp := entry.Timestamp.UnixNano()
@@ -352,10 +375,11 @@ func (c *MemChunk) cut() error {
 	}
 
 	c.blocks = append(c.blocks, block{
-		b:          b,
-		numEntries: len(c.head.entries),
-		mint:       c.head.mint,
-		maxt:       c.head.maxt,
+		b:                b,
+		numEntries:       len(c.head.entries),
+		mint:             c.head.mint,
+		maxt:             c.head.maxt,
+		uncompressedSize: c.head.size,
 	})
 
 	c.head.entries = c.head.entries[:0]

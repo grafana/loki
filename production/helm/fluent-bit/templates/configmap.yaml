@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "fluent-bit-loki.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ template "fluent-bit-loki.name" . }}
+    chart: {{ template "fluent-bit-loki.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+data:
+  fluent-bit.conf: |-
+    [SERVICE]
+        Flush          1
+        Daemon         Off
+        Log_Level      {{ .Values.config.loglevel }}
+        Parsers_File   parsers.conf
+    [INPUT]
+        Name           tail
+        Tag            kube.*
+        Path           /var/log/containers/*.log
+        Parser         docker
+        DB             /run/fluent-bit/flb_kube.db
+        Mem_Buf_Limit  5MB
+    [FILTER]
+        Name           kubernetes
+        Match          kube.*
+        Kube_URL       https://kubernetes.default.svc:443
+        Merge_Log On
+    [Output]
+        Name loki
+        Match *
+        {{- if and .Values.loki.user .Values.loki.password }}
+        Url {{ .Values.loki.serviceScheme }}://{{ .Values.loki.user }}:{{ .Values.loki.password }}@{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}{{ .Values.loki.servicePath }}
+          {{- else }}
+        Url {{ .Values.loki.serviceScheme }}://{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}{{ .Values.loki.servicePath }}
+        {{- end }}
+        Labels {{ .Values.config.labels }}
+        RemoveKeys {{ include "helm-toolkit.utils.joinListWithComma" .Values.config.removeKeys }}
+        LabelMapPath /fluent-bit/etc/labelmap.json
+        LineFormat {{ .Values.config.lineFormat }}
+        LogLevel {{ .Values.config.loglevel }}
+
+  parsers.conf: |-
+    [PARSER]
+        Name        docker
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+
+  labelmap.json: |-
+    {{- .Values.config.labelMap | toPrettyJson | nindent 4}}

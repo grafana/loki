@@ -7,11 +7,14 @@
 requirements.lock
 mixin/vendor/
 cmd/loki/loki
+cmd/logcli/logcli
 cmd/promtail/promtail
 cmd/loki/loki-debug
 cmd/promtail/promtail-debug
 cmd/docker-driver/docker-driver
 cmd/loki-canary/loki-canary
+cmd/fluent-bit/out_loki.so
+cmd/fluent-bit/out_loki.h
 /loki
 /promtail
 /logcli
