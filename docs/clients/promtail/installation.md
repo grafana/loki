@@ -9,8 +9,8 @@ Every Loki release includes binaries for Promtail:
 
 ```bash
 # download a binary (modify app, os, and arch as needed)
-# Installs v0.3.0. Go to the releases page for the latest version
-$ curl -fSL -o "/usr/local/bin/promtail.gz" "https://github.com/grafana/loki/releases/download/v0.3.0/promtail_linux_amd64.gz"
+# Installs v0.4.0. Go to the releases page for the latest version
+$ curl -fSL -o "/usr/local/bin/promtail.gz" "https://github.com/grafana/loki/releases/download/v0.4.0/promtail_linux_amd64.gz"
 $ gunzip "/usr/local/bin/promtail.gz"
 
 # make sure it is executable
@@ -24,7 +24,7 @@ Binaries for macOS and Windows are also provided at the
 
 ```bash
 # modify tag to most recent version
-$ docker pull grafana/promtail:v0.3.0
+$ docker pull grafana/promtail:v0.4.0
 ```
 
 ## Helm
