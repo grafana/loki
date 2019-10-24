@@ -208,7 +208,7 @@ func (t *FileTarget) sync() error {
 	}
 
 	// Record the size of all the files matched by the Glob pattern.
-	matches = t.reportSizeAndRemoveMissing(matches)
+	t.reportSize(matches)
 
 	// Get the current unique set of dirs to watch.
 	dirs := map[string]struct{}{}
@@ -318,19 +318,30 @@ func toStopTailing(nt []string, et map[string]*tailer) []string {
 	return ta
 }
 
-func (t *FileTarget) reportSizeAndRemoveMissing(ms []string) []string {
-	mso := ms[:0]
+func (t *FileTarget) reportSize(ms []string) {
 	for _, m := range ms {
-		fi, err := os.Stat(m)
-		if err != nil {
-			level.Warn(t.logger).Log("msg", "failed to stat glob matched file, "+
-				"file will not be tailed", "file", m, "error", err)
-			continue
+		// Ask the tailer for the file size as it keeps a direct handle on the file
+		// and avoids issues with renaming/replacing a file
+		if tailer, ok := t.tails[m]; ok {
+			s, err := tailer.size()
+			if err != nil {
+				level.Warn(t.logger).Log("msg", "failed to get file size from tailer, ", "file", m, "error", err)
+				return
+			}
+			totalBytes.WithLabelValues(m).Set(float64(s))
+		} else {
+			// Must be a new file, just directly read the size of it
+			fi, err := os.Stat(m)
+			if err != nil {
+				// If the file was deleted between when the glob match and here,
+				// we just ignore recording a size for it,
+				// the tail code will also check if the file exists before creating a tailer.
+				return
+			}
+			totalBytes.WithLabelValues(m).Set(float64(fi.Size()))
 		}
-		mso = append(mso, m)
-		totalBytes.WithLabelValues(m).Set(float64(fi.Size()))
+
 	}
-	return mso
 }
 
 // Returns the elements from set b which are missing from set a
