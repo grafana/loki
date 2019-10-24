@@ -1,3 +1,4 @@
+apiVersion: "v1"
 name: fluent-bit
 version: 0.0.2
 appVersion: v0.0.1

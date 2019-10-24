@@ -1,3 +1,4 @@
+apiVersion: "v1"
 name: loki
 version: 0.16.1
 appVersion: v0.3.0
