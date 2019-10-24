@@ -19,7 +19,7 @@ spec:
     - from:
       - podSelector:
           matchLabels:
-            app: {{ template "promtail.name" . }}
+            app: {{ template "client.name" . }}
             release: {{ .Release.Name }}
     - ports:
       - port: {{ .Values.service.port }}

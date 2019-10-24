@@ -1,3 +1,4 @@
+apiVersion: "v1"
 name: promtail
 version: 0.12.3
 appVersion: v0.3.0
