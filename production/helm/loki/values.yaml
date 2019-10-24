@@ -67,7 +67,7 @@ config:
 
 image:
   repository: grafana/loki
-  tag: v0.3.0
+  tag: v0.4.0
   pullPolicy: IfNotPresent
 
 ## Additional Loki container arguments, e.g. log level (debug, info, warn, error)
