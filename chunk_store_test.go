@@ -37,6 +37,7 @@ var schemas = []struct {
 	{"v6", true},
 	{"v9", true},
 	{"v10", true},
+	{"v11", true},
 }
 
 var stores = []struct {
@@ -416,11 +417,11 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 	}{
 		{
 			`foo`,
-			[]string{"bar", "flip", "toms"},
+			[]string{labels.MetricName, "bar", "flip", "toms"},
 		},
 		{
 			`bar`,
-			[]string{"bar", "toms"},
+			[]string{labels.MetricName, "bar", "toms"},
 		},
 	} {
 		for _, schema := range schemas {

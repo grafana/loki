@@ -219,8 +219,12 @@ func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)
 
 // CreateSchema returns the schema defined by the PeriodConfig
 func (cfg PeriodConfig) CreateSchema() Schema {
-	var e entries
+	rowShards := uint32(16)
+	if cfg.RowShards > 0 {
+		rowShards = cfg.RowShards
+	}
 
+	var e entries
 	switch cfg.Schema {
 	case "v1":
 		e = originalEntries{}
@@ -237,13 +241,14 @@ func (cfg PeriodConfig) CreateSchema() Schema {
 	case "v9":
 		e = v9Entries{}
 	case "v10":
-		rowShards := uint32(16)
-		if cfg.RowShards > 0 {
-			rowShards = cfg.RowShards
-		}
-
 		e = v10Entries{
 			rowShards: rowShards,
+		}
+	case "v11":
+		e = v11Entries{
+			v10Entries: v10Entries{
+				rowShards: rowShards,
+			},
 		}
 	default:
 		return nil

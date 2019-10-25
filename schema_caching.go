@@ -46,6 +46,14 @@ func (s *schemaCaching) GetChunksForSeries(from, through model.Time, userID stri
 	return s.setImmutability(from, through, queries), nil
 }
 
+func (s *schemaCaching) GetLabelNamesForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
+	queries, err := s.Schema.GetLabelNamesForSeries(from, through, userID, seriesID)
+	if err != nil {
+		return nil, err
+	}
+	return s.setImmutability(from, through, queries), nil
+}
+
 func (s *schemaCaching) setImmutability(from, through model.Time, queries []IndexQuery) []IndexQuery {
 	cacheBefore := model.TimeFromUnix(mtime.Now().Add(-s.cacheOlderThan).Unix())
 

@@ -8,8 +8,10 @@ import (
 	"sort"
 	"testing"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
 )
@@ -332,4 +334,57 @@ func TestSchemaRangeKey(t *testing.T) {
 			}
 		})
 	}
+}
+
+func BenchmarkEncodeLabelsJson(b *testing.B) {
+	decoded := &labels.Labels{}
+	lbs := labels.FromMap(map[string]string{
+		"foo":      "bar",
+		"fuzz":     "buzz",
+		"cluster":  "test",
+		"test":     "test1",
+		"instance": "cortex-01",
+		"bar":      "foo",
+		"version":  "0.1",
+	})
+	json := jsoniter.ConfigFastest
+	var data []byte
+	var err error
+	for n := 0; n < b.N; n++ {
+		data, err = json.Marshal(lbs)
+		if err != nil {
+			panic(err)
+		}
+		err = json.Unmarshal(data, decoded)
+		if err != nil {
+			panic(err)
+		}
+	}
+	b.Log("data size", len(data))
+	b.Log("decode", decoded)
+}
+
+func BenchmarkEncodeLabelsString(b *testing.B) {
+	var decoded labels.Labels
+	lbs := labels.FromMap(map[string]string{
+		"foo":      "bar",
+		"fuzz":     "buzz",
+		"cluster":  "test",
+		"test":     "test1",
+		"instance": "cortex-01",
+		"bar":      "foo",
+		"version":  "0.1",
+	})
+	var data []byte
+	var err error
+	for n := 0; n < b.N; n++ {
+		data = []byte(lbs.String())
+		decoded, err = promql.ParseMetric(string(data))
+		if err != nil {
+			panic(err)
+		}
+	}
+	b.Log("data size", len(data))
+	b.Log("decode", decoded)
+
 }
