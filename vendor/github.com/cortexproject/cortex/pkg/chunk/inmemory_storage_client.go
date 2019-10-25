@@ -165,6 +165,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 			itemComponents := decodeRangeKey(items[i].rangeValue)
 			if !bytes.Equal(itemComponents[3], metricNameRangeKeyV1) &&
 				!bytes.Equal(itemComponents[3], seriesRangeKeyV1) &&
+				!bytes.Equal(itemComponents[3], labelNamesRangeKeyV1) &&
 				!bytes.Equal(itemComponents[3], labelSeriesRangeKeyV1) {
 				return fmt.Errorf("Dupe write")
 			}

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 
 	"github.com/blang/semver"
@@ -57,30 +56,45 @@ func CompressionTypeFor(version string) CompressionType {
 }
 
 // ParseProtoReader parses a compressed proto from an io.Reader.
-func ParseProtoReader(ctx context.Context, reader io.Reader, req proto.Message, compression CompressionType) ([]byte, error) {
+func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSize int, req proto.Message, compression CompressionType) ([]byte, error) {
 	var body []byte
 	var err error
 	sp := opentracing.SpanFromContext(ctx)
 	if sp != nil {
 		sp.LogFields(otlog.String("event", "util.ParseProtoRequest[start reading]"))
 	}
+	var buf bytes.Buffer
+	if expectedSize > 0 {
+		if expectedSize > maxSize {
+			return nil, fmt.Errorf("message expected size larger than max (%d vs %d)", expectedSize, maxSize)
+		}
+		buf.Grow(expectedSize + bytes.MinRead) // extra space guarantees no reallocation
+	}
 	switch compression {
 	case NoCompression:
-		body, err = ioutil.ReadAll(reader)
+		// Read from LimitReader with limit max+1. So if the underlying
+		// reader is over limit, the result will be bigger than max.
+		_, err = buf.ReadFrom(io.LimitReader(reader, int64(maxSize)+1))
+		body = buf.Bytes()
 	case FramedSnappy:
-		body, err = ioutil.ReadAll(snappy.NewReader(reader))
+		_, err = buf.ReadFrom(io.LimitReader(snappy.NewReader(reader), int64(maxSize)+1))
+		body = buf.Bytes()
 	case RawSnappy:
-		body, err = ioutil.ReadAll(reader)
+		_, err = buf.ReadFrom(reader)
+		body = buf.Bytes()
 		if sp != nil {
 			sp.LogFields(otlog.String("event", "util.ParseProtoRequest[decompress]"),
 				otlog.Int("size", len(body)))
 		}
-		if err == nil {
+		if err == nil && len(body) <= maxSize {
 			body, err = snappy.Decode(nil, body)
 		}
 	}
 	if err != nil {
 		return nil, err
+	}
+	if len(body) > maxSize {
+		return nil, fmt.Errorf("received message larger than max (%d vs %d)", len(body), maxSize)
 	}
 
 	if sp != nil {

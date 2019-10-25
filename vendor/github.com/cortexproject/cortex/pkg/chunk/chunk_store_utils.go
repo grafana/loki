@@ -42,11 +42,9 @@ func labelNamesFromChunks(chunks []Chunk) []string {
 	var result []string
 	for _, c := range chunks {
 		for _, l := range c.Metric {
-			if l.Name != model.MetricNameLabel {
-				if _, ok := keys[string(l.Name)]; !ok {
-					keys[string(l.Name)] = struct{}{}
-					result = append(result, string(l.Name))
-				}
+			if _, ok := keys[string(l.Name)]; !ok {
+				keys[string(l.Name)] = struct{}{}
+				result = append(result, string(l.Name))
 			}
 		}
 	}

@@ -22,7 +22,6 @@ var bucketName = []byte("index")
 
 const (
 	separator      = "\000"
-	null           = string('\xff')
 	dbReloadPeriod = 10 * time.Minute
 )
 
