@@ -274,7 +274,24 @@ func BenchmarkReadGZIP(b *testing.B) {
 		}
 		wg.Wait()
 	}
+}
 
+func BenchmarkHeadBlockIterator(b *testing.B) {
+	h := headBlock{}
+
+	// insert 10k entries
+	for i := 0; i < 10000; i++ {
+		h.append(int64(i), "this is the append string")
+	}
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		iter := h.iterator(0, 10000, nil)
+
+		for iter.Next() {
+			//e := iter.Entry()
+		}
+	}
 }
 
 func randSizeEntry(ts int64) *logproto.Entry {
