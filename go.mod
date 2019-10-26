@@ -20,7 +20,7 @@ require (
 	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
 	github.com/go-kit/kit v0.9.0
 	github.com/gocql/gocql v0.0.0-20181124151448-70385f88b28b // indirect
-	github.com/gogo/protobuf v1.3.0
+	github.com/gogo/protobuf v1.3.0 // remember to update loki-build-image/Dockerfile too
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/mux v1.6.2
 	github.com/gorilla/websocket v1.4.0
@@ -67,7 +67,7 @@ require (
 
 replace github.com/weaveworks/common => github.com/sandlis/weaveworks-common v0.0.0-20190822064708-8fa0a1ca9d89
 
-replace github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20190416211555-5ab7a9e9e921
+replace github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20191024143944-0b54ddf21fe7
 
 // Override reference that causes an error from Go proxy - see https://github.com/golang/go/issues/33558
 replace k8s.io/client-go => k8s.io/client-go v0.0.0-20190620085101-78d2af792bab

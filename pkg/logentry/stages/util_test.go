@@ -65,6 +65,9 @@ func TestGetString(t *testing.T) {
 	assert.Equal(t, "1", s64)
 	assert.Equal(t, "2.02", s32)
 	assert.Equal(t, "1562723913000", s64_1)
+
+	_, err = getString(nil)
+	assert.Error(t, err)
 }
 
 var (

@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := all
-.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos
+.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources
 .PHONY: helm helm-install helm-upgrade helm-publish helm-debug helm-clean
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
@@ -20,7 +20,7 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.7.3
+BUILD_IMAGE_VERSION := 0.7.4
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -106,15 +106,22 @@ binfmt:
 all: promtail logcli loki loki-canary check-generated-files
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
-check-generated-files: yacc protos pkg/promtail/server/ui/assets_vfsdata.go
+check-generated-files: touch-protobuf-sources yacc protos pkg/promtail/server/ui/assets_vfsdata.go
 	@if ! (git diff --exit-code $(YACC_GOS) $(PROTO_GOS) $(PROMTAIL_GENERATED_FILE)); then \
 		echo "\nChanges found in generated files"; \
-		echo "Run 'make all' and commit the changes to fix this error."; \
+		echo "Run 'make check-generated-files' and commit the changes to fix this error."; \
 		echo "If you are actively developing these files you can ignore this error"; \
 		echo "(Don't forget to check in the generated files when finished)\n"; \
 		exit 1; \
 	fi
 
+# Trick used to ensure that protobuf files are always compiled even if not changed, because the
+# tooling may have been upgraded and the compiled output may be different. We're not using a
+# PHONY target so that we can control where we want to touch it.
+touch-protobuf-sources:
+	for def in $(PROTO_DEFS); do \
+		touch $$def; \
+	done
 
 ##########
 # Logcli #
@@ -192,9 +199,9 @@ cmd/promtail/promtail-debug: $(APP_GO_FILES) pkg/promtail/server/ui/assets_vfsda
 #############
 # Releasing #
 #############
-# concurrency is limited to 4 to prevent CircleCI from OOMing. Sorry
-GOX = gox $(GO_FLAGS) -parallel=4 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
-CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -parallel=4 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
+# concurrency is limited to 2 to prevent CircleCI from OOMing. Sorry
+GOX = gox $(GO_FLAGS) -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
+CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 dist: clean
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm windows/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
@@ -463,6 +470,10 @@ loki-canary-push: loki-canary-image-cross
 build-image: OCI_PLATFORMS=
 build-image:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
+build-image-push: build-image
+	$(call push,loki-build-image,$(BUILD_IMAGE_VERSION))
+	$(call push,loki-build-image,latest)
+
 
 ########
 # Misc #

@@ -25,19 +25,22 @@ func init() {
 func main() {
 	printVersion := flag.Bool("version", false, "Print this builds version information")
 
+	// Load config, merging config file and CLI flags
 	var config config.Config
 	if err := cfg.Parse(&config); err != nil {
-		level.Error(util.Logger).Log("msg", "parsing config", "error", err)
+		fmt.Println("Unable to parse config:", err)
 		os.Exit(1)
 	}
+
+	// Handle -version CLI flag
 	if *printVersion {
-		fmt.Print(version.Print("promtail"))
+		fmt.Println(version.Print("promtail"))
 		os.Exit(0)
 	}
 
 	// Init the logger which will honor the log level set in cfg.Server
 	if reflect.DeepEqual(&config.ServerConfig.Config.LogLevel, &logging.Level{}) {
-		level.Error(util.Logger).Log("msg", "invalid log level")
+		fmt.Println("Invalid log level")
 		os.Exit(1)
 	}
 	util.InitLogger(&config.ServerConfig.Config)
