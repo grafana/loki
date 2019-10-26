@@ -486,6 +486,10 @@ func (li *listIterator) Next() bool {
 }
 
 func (li *listIterator) Entry() logproto.Entry {
+	if li.cur < 0 || li.cur >= len(li.entries) {
+		return logproto.Entry{}
+	}
+
 	cur := li.entries[li.cur]
 
 	return logproto.Entry{
