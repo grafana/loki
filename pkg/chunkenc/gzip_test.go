@@ -289,7 +289,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 		iter := h.iterator(0, 10000, nil)
 
 		for iter.Next() {
-			//e := iter.Entry()
+			_ = iter.Entry()
 		}
 	}
 }
