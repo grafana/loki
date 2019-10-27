@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"time"
+	"strings"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -52,12 +53,16 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 			return l.client.Handle(lbs, ts, fmt.Sprintf("%v", v))
 		}
 	}
-	line, err := createLine(records, l.cfg.lineFormat)
+	kuberneteslbs, line, err := createLine(records, l.cfg.lineFormat)
 	if err != nil {
 		level.Error(l.logger).Log("msg", "error creating line", "error", err)
 		return nil
 	}
-	return l.client.Handle(lbs, ts, line)
+	if len(kuberneteslbs) == 0 {
+	 	return l.client.Handle(lbs, ts, line)
+	} else {
+		return l.client.Handle(kuberneteslbs, ts, line)
+  }
 }
 
 func toStringMap(record map[interface{}]interface{}) map[string]interface{} {
@@ -145,14 +150,15 @@ func removeKeys(records map[string]interface{}, keys []string) {
 	}
 }
 
-func createLine(records map[string]interface{}, f format) (string, error) {
+func createLine(records map[string]interface{}, f format) (model.LabelSet, string, error) {
+	kuberneteslbs := model.LabelSet{}
 	switch f {
 	case jsonFormat:
 		js, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(records)
 		if err != nil {
-			return "", err
+			return kuberneteslbs, "", err
 		}
-		return string(js), nil
+		return kuberneteslbs, string(js), nil
 	case kvPairFormat:
 		buff := &bytes.Buffer{}
 		var keys []string
@@ -163,16 +169,45 @@ func createLine(records map[string]interface{}, f format) (string, error) {
 		for _, k := range keys {
 			_, err := fmt.Fprintf(buff, "%s=%v ", k, records[k])
 			if err != nil {
-				return "", err
+				return kuberneteslbs, "", err
 			}
 		}
 		res := buff.String()
 		if len(records) > 0 {
-			return res[:len(res)-1], nil
+			return kuberneteslbs, res[:len(res)-1], nil
 		}
-		return res, nil
+		return kuberneteslbs, res, nil
+	case kubernetesFormat:
+		replacer := strings.NewReplacer("/", "_", ".", "_", "-", "_")
+		for k, v := range records["kubernetes"].(map[interface{}]interface{}) {
+			if k.(string) == "labels" {
+				for m, n := range v.(map[interface{}]interface{}) {
+					switch t := n.(type) {
+					case []byte:
+						kuberneteslbs[model.LabelName(replacer.Replace(m.(string)))] = model.LabelValue(string(t))
+					default:
+						kuberneteslbs[model.LabelName(replacer.Replace(m.(string)))] = model.LabelValue(fmt.Sprintf("%v",n))
+					}
+				}
+			} else if k.(string) == "docker_id" || k.(string) == "pod_id" || k.(string) == "annotations" {
+				// do nothing
+			} else {
+				switch t := v.(type) {
+				case []byte:
+					kuberneteslbs[model.LabelName(k.(string))] = model.LabelValue(string(t))
+				default:
+					kuberneteslbs[model.LabelName(k.(string))] = model.LabelValue(fmt.Sprintf("%v",v))
+				}
+			}
+		}
+		delete(records, "kubernetes");
+		js, err := jsoniter.Marshal(records)
+		if err != nil {
+			return kuberneteslbs, "", err
+		}
+		return kuberneteslbs, string(js), nil
 	default:
-		return "", fmt.Errorf("invalid line format: %v", f)
+		return kuberneteslbs, "", fmt.Errorf("invalid line format: %v", f)
 	}
 }
 

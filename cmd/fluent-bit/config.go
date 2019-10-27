@@ -33,6 +33,7 @@ type format int
 const (
 	jsonFormat format = iota
 	kvPairFormat
+  kubernetesFormat
 )
 
 type config struct {
@@ -132,6 +133,8 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 		res.lineFormat = jsonFormat
 	case "key_value":
 		res.lineFormat = kvPairFormat
+	case "kubernetes":
+		res.lineFormat = kubernetesFormat
 	default:
 		return nil, fmt.Errorf("invalid format: %s", lineFormat)
 	}

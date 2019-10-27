@@ -18,7 +18,7 @@ This plugin is implemented with [Fluent Bit's Go plugin](https://github.com/flue
 | LogLevel      | LogLevel for plugin logger.                    | "info"                              |
 | RemoveKeys    | Specify removing keys.                         | none                                |
 | LabelKeys     | Comma separated list of keys to use as stream labels. All other keys will be placed into the log line. LabelKeys is deactivated when using `LabelMapPath` label mapping configuration. | none |
-| LineFormat    | Format to use when flattening the record to a log line. Valid values are "json" or "key_value". If set to "json" the log line sent to Loki will be the fluentd record (excluding any keys extracted out as labels) dumped as json. If set to "key_value", the log line will be each item in the record concatenated together (separated by a single space) in the format <key>=<value>. | json |
+| LineFormat    | Format to use when flattening the record to a log line. Valid values are "json", "key_value" or "kubernetes". If set to "json" the log line sent to Loki will be the fluentd record (excluding any keys extracted out as labels) dumped as json. If set to "key_value", the log line will be each item in the record concatenated together (separated by a single space) in the format <key>=<value>. if set to "kubernetes", the log line will auto parse kubernetes metadata into Labels. | json |
 | DropSingleKey | If set to true and after extracting label_keys a record only has a single key remaining, the log line sent to Loki will just be the value of the record key.| true |
 | LabelMapPath | Path to a json file defining how to transform nested records. | none
 
