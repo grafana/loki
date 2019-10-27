@@ -33,7 +33,7 @@ type format int
 const (
 	jsonFormat format = iota
 	kvPairFormat
-  kubernetesFormat
+	kubernetesFormat
 )
 
 type config struct {
