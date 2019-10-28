@@ -97,7 +97,7 @@ value or transformed to a final external label, such as `__job__`.
 * Drop the target if a label (`__service__` in the example) is empty:
 ```yaml
   - action: drop
-    regex: ^$
+    regex: ''
     source_labels:
     - __service__
 ```
