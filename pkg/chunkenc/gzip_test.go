@@ -279,7 +279,7 @@ func BenchmarkReadGZIP(b *testing.B) {
 
 func BenchmarkHeadBlockIterator(b *testing.B) {
 
-	for _, j := range []int{10000, 15000, 50000, 100000} {
+	for _, j := range []int{100000, 50000, 15000, 10000} {
 		b.Run(fmt.Sprintf("Size %d", j), func(b *testing.B) {
 
 			h := headBlock{}
