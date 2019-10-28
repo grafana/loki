@@ -468,6 +468,7 @@ func (hb *headBlock) iterator(mint, maxt int64, filter logql.Filter) iter.EntryI
 
 	return &listIterator{
 		entries: entries,
+		cur:     -1,
 	}
 }
 
@@ -475,25 +476,25 @@ var emptyIterator = &listIterator{}
 
 type listIterator struct {
 	entries []entry
-
-	cur entry
+	cur     int
 }
 
 func (li *listIterator) Next() bool {
-	if len(li.entries) > 0 {
-		li.cur = li.entries[0]
-		li.entries = li.entries[1:]
+	li.cur++
 
-		return true
-	}
-
-	return false
+	return li.cur < len(li.entries)
 }
 
 func (li *listIterator) Entry() logproto.Entry {
+	if li.cur < 0 || li.cur >= len(li.entries) {
+		return logproto.Entry{}
+	}
+
+	cur := li.entries[li.cur]
+
 	return logproto.Entry{
-		Timestamp: time.Unix(0, li.cur.t),
-		Line:      li.cur.s,
+		Timestamp: time.Unix(0, cur.t),
+		Line:      cur.s,
 	}
 }
 
