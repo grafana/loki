@@ -108,7 +108,7 @@
         lifecycler: {
           ring: {
             heartbeat_timeout: '1m',
-            replication_factor: 3,
+            replication_factor: $._config.replication_factor,
             kvstore: {
               store: 'consul',
               consul: {
