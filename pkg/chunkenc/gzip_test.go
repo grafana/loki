@@ -2,6 +2,7 @@ package chunkenc
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"math/rand"
 	"sync"
@@ -277,20 +278,26 @@ func BenchmarkReadGZIP(b *testing.B) {
 }
 
 func BenchmarkHeadBlockIterator(b *testing.B) {
-	h := headBlock{}
 
-	// insert 10k entries
-	for i := 0; i < 10000; i++ {
-		h.append(int64(i), "this is the append string")
-	}
+	for _, j := range []int{10000, 15000, 50000, 100000} {
+		b.Run(fmt.Sprintf("Size %d", j), func(b *testing.B) {
 
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		iter := h.iterator(0, 10000, nil)
+			h := headBlock{}
 
-		for iter.Next() {
-			_ = iter.Entry()
-		}
+			for i := 0; i < j; i++ {
+				h.append(int64(i), "this is the append string")
+			}
+
+			b.ResetTimer()
+
+			for n := 0; n < b.N; n++ {
+				iter := h.iterator(0, math.MaxInt64, nil)
+
+				for iter.Next() {
+					_ = iter.Entry()
+				}
+			}
+		})
 	}
 }
 
