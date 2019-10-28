@@ -130,7 +130,7 @@ func Test_createLine(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, got, err := createLine(tt.records, tt.f)
+			got, err := createLine(tt.records, tt.f)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("createLine() error = %v, wantErr %v", err, tt.wantErr)
 				return

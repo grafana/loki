@@ -33,12 +33,12 @@ type format int
 const (
 	jsonFormat format = iota
 	kvPairFormat
-	kubernetesFormat
 )
 
 type config struct {
 	clientConfig  client.Config
 	logLevel      logging.Level
+	autoKubernetesLabels bool
 	removeKeys    []string
 	labelKeys     []string
 	lineFormat    format
@@ -107,6 +107,16 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 	}
 	res.logLevel = level
 
+	autoKubernetesLabels := cfg.Get("AutoKubernetesLabels")
+	switch autoKubernetesLabels {
+	case "false", "":
+		res.autoKubernetesLabels = false
+	case "true":
+		res.autoKubernetesLabels = true
+	default:
+		return nil, fmt.Errorf("invalid boolean AutoKubernetesLabels: %v", autoKubernetesLabels)
+	}
+
 	removeKey := cfg.Get("RemoveKeys")
 	if removeKey != "" {
 		res.removeKeys = strings.Split(removeKey, ",")
@@ -133,8 +143,6 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 		res.lineFormat = jsonFormat
 	case "key_value":
 		res.lineFormat = kvPairFormat
-	case "kubernetes":
-		res.lineFormat = kubernetesFormat
 	default:
 		return nil, fmt.Errorf("invalid format: %s", lineFormat)
 	}
