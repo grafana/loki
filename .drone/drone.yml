@@ -394,6 +394,7 @@ steps:
   - apk add --no-cache bash git
   - git fetch origin --tags
   - echo $(./tools/image-tag)-amd64 > .tags
+  - echo ",latest,master" >> .tags
   image: alpine
   name: image-tag
 - depends_on:

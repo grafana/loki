@@ -43,7 +43,7 @@ local docker(arch, app) = {
   },
 };
 
-local arch_image(arch) = {
+local arch_image(arch,tags='') = {
   platform: {
     os: 'linux',
     arch: arch,
@@ -55,11 +55,11 @@ local arch_image(arch) = {
       'apk add --no-cache bash git',
       'git fetch origin --tags',
       'echo $(./tools/image-tag)-%s > .tags' % arch,
-    ],
+    ] + if tags != '' then ['echo ",%s" >> .tags' % tags] else [],
   }],
 };
 
-local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64') {
+local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64','latest,master') {
  steps+: [
     // dry run for everything that is not tag or master
     docker('amd64', 'fluent-bit') {
