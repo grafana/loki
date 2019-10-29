@@ -14,7 +14,7 @@ import (
 const (
 	defaultQueryLimit = 100
 	defaultSince      = 1 * time.Hour
-	defaultStep       = 1 // 1 seconds
+	defaultStep       = "1s" // 1 seconds
 )
 
 func limit(r *http.Request) (uint32, error) {
@@ -51,11 +51,11 @@ func bounds(r *http.Request) (time.Time, time.Time, error) {
 }
 
 func step(r *http.Request, start, end time.Time) (time.Duration, error) {
-	s, err := parseInt(r.URL.Query().Get("step"), defaultQueryRangeStep(start, end))
+	m, err := time.ParseDuration(r.URL.Query().Get("step"))
 	if err != nil {
 		return 0, err
 	}
-	return time.Duration(s) * time.Second, nil
+	return time.Duration(m.Seconds()), nil
 }
 
 // defaultQueryRangeStep returns the default step used in the query range API,

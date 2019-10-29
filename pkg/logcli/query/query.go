@@ -30,7 +30,7 @@ type Query struct {
 	End             time.Time
 	Limit           int
 	Forward         bool
-	Step            time.Duration
+	Step            string
 	Quiet           bool
 	NoLabels        bool
 	IgnoreLabelsKey []string

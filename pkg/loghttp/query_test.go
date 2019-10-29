@@ -43,7 +43,7 @@ func TestParseRangeQuery(t *testing.T) {
 			&http.Request{
 				URL: mustParseURL(`?query={foo="bar"}&start=2017-06-10T21:42:24.760738998Z&end=2017-07-10T21:42:24.760738998Z&limit=1000&direction=BACKWARD&step=3600`),
 			}, &RangeQuery{
-				Step:      time.Hour,
+				Step:      "1h",
 				Query:     `{foo="bar"}`,
 				Direction: logproto.BACKWARD,
 				Start:     time.Date(2017, 06, 10, 21, 42, 24, 760738998, time.UTC),

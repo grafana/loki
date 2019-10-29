@@ -195,7 +195,7 @@ func ParseInstantQuery(r *http.Request) (*InstantQuery, error) {
 type RangeQuery struct {
 	Start     time.Time
 	End       time.Time
-	Step      time.Duration
+	Step      string
 	Query     string
 	Direction logproto.Direction
 	Limit     uint32

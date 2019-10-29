@@ -53,7 +53,7 @@ func (c *Client) Query(queryStr string, limit int, time time.Time, direction log
 // QueryRange uses the /api/v1/query_range endpoint to execute a range query
 // excluding interfacer b/c it suggests taking the interface promql.Node instead of logproto.Direction b/c it happens to have a String() method
 // nolint:interfacer
-func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
+func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step string, quiet bool) (*loghttp.QueryResponse, error) {
 	params := util.NewQueryStringBuilder()
 	params.SetString("query", queryStr)
 	params.SetInt32("limit", limit)
@@ -63,8 +63,12 @@ func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time,
 
 	// The step is optional, so we do set it only if provided,
 	// otherwise we do leverage on the API defaults
-	if step != 0 {
-		params.SetInt("step", int64(step.Seconds()))
+	if step != "" {
+		m, err := time.ParseDuration(step)
+		if err != nil {
+			return nil, err
+		}
+		params.SetInt("step", int64(m.Seconds()))
 	}
 
 	return c.doQuery(params.EncodeWithPath(queryRangePath), quiet)
