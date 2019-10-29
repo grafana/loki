@@ -6,6 +6,8 @@ import (
 	"os"
 	"reflect"
 
+	"k8s.io/klog"
+
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -44,6 +46,9 @@ func main() {
 		os.Exit(1)
 	}
 	util.InitLogger(&config.ServerConfig.Config)
+
+	// Use Stderr instead of files for the klog.
+	klog.SetOutput(os.Stderr)
 
 	// Set the global debug variable in the stages package which is used to conditionally log
 	// debug messages which otherwise cause huge allocations processing log lines for log messages never printed
