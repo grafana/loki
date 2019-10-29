@@ -15,10 +15,6 @@ var overridesReloadSuccess = promauto.NewGauge(prometheus.GaugeOpts{
 	Help: "Whether the last overrides reload attempt was successful.",
 })
 
-func init() {
-	overridesReloadSuccess.Set(1) // Default to 1
-}
-
 // OverridesLoader loads the overrides
 type OverridesLoader func(string) (map[string]interface{}, error)
 
@@ -48,6 +44,10 @@ func NewOverridesManager(cfg OverridesManagerConfig) (*OverridesManager, error) 
 	}
 
 	if cfg.OverridesLoadPath != "" {
+		if err := overridesManager.loadOverrides(); err != nil {
+			// Log but don't stop on error - we don't want to halt all ingesters because of a typo
+			level.Error(util.Logger).Log("msg", "failed to load limit overrides", "err", err)
+		}
 		go overridesManager.loop()
 	} else {
 		level.Info(util.Logger).Log("msg", "per-tenant overrides disabled")
@@ -65,6 +65,7 @@ func (om *OverridesManager) loop() {
 		case <-ticker.C:
 			err := om.loadOverrides()
 			if err != nil {
+				// Log but don't stop on error - we don't want to halt all ingesters because of a typo
 				level.Error(util.Logger).Log("msg", "failed to load limit overrides", "err", err)
 			}
 		case <-om.quit:

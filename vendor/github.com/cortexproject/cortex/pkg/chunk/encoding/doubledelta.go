@@ -84,26 +84,28 @@ func newDoubleDeltaEncodedChunk(tb, vb deltaBytes, isInt bool, length int) *doub
 }
 
 // Add implements chunk.
-func (c doubleDeltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
+func (c *doubleDeltaEncodedChunk) Add(s model.SamplePair) (Chunk, error) {
 	// TODO(beorn7): Since we return &c, this method might cause an unnecessary allocation.
 	if c.Len() == 0 {
-		return c.addFirstSample(s), nil
+		c.addFirstSample(s)
+		return nil, nil
 	}
 
 	tb := c.timeBytes()
 	vb := c.valueBytes()
 
 	if c.Len() == 1 {
-		return c.addSecondSample(s, tb, vb)
+		err := c.addSecondSample(s, tb, vb)
+		return nil, err
 	}
 
-	remainingBytes := cap(c) - len(c)
+	remainingBytes := cap(*c) - len(*c)
 	sampleSize := c.sampleSize()
 
 	// Do we generally have space for another sample in this chunk? If not,
 	// overflow into a new one.
 	if remainingBytes < sampleSize {
-		return addToOverflowChunk(&c, s)
+		return addToOverflowChunk(s)
 	}
 
 	projectedTime := c.baseTime() + model.Time(c.Len())*c.baseTimeDelta()
@@ -133,26 +135,47 @@ func (c doubleDeltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 		}
 	}
 	if tb != ntb || vb != nvb || c.isInt() != nInt {
-		if len(c)*2 < cap(c) {
-			return transcodeAndAdd(newDoubleDeltaEncodedChunk(ntb, nvb, nInt, cap(c)), &c, s)
+		if len(*c)*2 < cap(*c) {
+			result, err := transcodeAndAdd(newDoubleDeltaEncodedChunk(ntb, nvb, nInt, cap(*c)), c, s)
+			if err != nil {
+				return nil, err
+			}
+			// We cannot handle >2 chunks returned as we can only return 1 chunk.
+			// Ideally there wont be >2 chunks, but if it happens to be >2,
+			// we fall through to perfom `addToOverflowChunk` instead.
+			if len(result) == 1 {
+				// Replace the current chunk with the new bigger chunk.
+				c0 := result[0].(*doubleDeltaEncodedChunk)
+				*c = *c0
+				return nil, nil
+			} else if len(result) == 2 {
+				// Replace the current chunk with the new bigger chunk
+				// and return the additional chunk.
+				c0 := result[0].(*doubleDeltaEncodedChunk)
+				c1 := result[1].(*doubleDeltaEncodedChunk)
+				*c = *c0
+				return c1, nil
+			}
 		}
+
 		// Chunk is already half full. Better create a new one and save the transcoding efforts.
-		return addToOverflowChunk(&c, s)
+		// We also perform this if `transcodeAndAdd` resulted in >2 chunks.
+		return addToOverflowChunk(s)
 	}
 
-	offset := len(c)
-	c = c[:offset+sampleSize]
+	offset := len(*c)
+	(*c) = (*c)[:offset+sampleSize]
 
 	switch tb {
 	case d1:
-		c[offset] = byte(ddt)
+		(*c)[offset] = byte(ddt)
 	case d2:
-		binary.LittleEndian.PutUint16(c[offset:], uint16(ddt))
+		binary.LittleEndian.PutUint16((*c)[offset:], uint16(ddt))
 	case d4:
-		binary.LittleEndian.PutUint32(c[offset:], uint32(ddt))
+		binary.LittleEndian.PutUint32((*c)[offset:], uint32(ddt))
 	case d8:
 		// Store the absolute value (no delta) in case of d8.
-		binary.LittleEndian.PutUint64(c[offset:], uint64(s.Timestamp))
+		binary.LittleEndian.PutUint64((*c)[offset:], uint64(s.Timestamp))
 	default:
 		return nil, fmt.Errorf("invalid number of bytes for time delta: %d", tb)
 	}
@@ -164,11 +187,11 @@ func (c doubleDeltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 		case d0:
 			// No-op. Constant delta is stored as base value.
 		case d1:
-			c[offset] = byte(int8(ddv))
+			(*c)[offset] = byte(int8(ddv))
 		case d2:
-			binary.LittleEndian.PutUint16(c[offset:], uint16(int16(ddv)))
+			binary.LittleEndian.PutUint16((*c)[offset:], uint16(int16(ddv)))
 		case d4:
-			binary.LittleEndian.PutUint32(c[offset:], uint32(int32(ddv)))
+			binary.LittleEndian.PutUint32((*c)[offset:], uint32(int32(ddv)))
 		// d8 must not happen. Those samples are encoded as float64.
 		default:
 			return nil, fmt.Errorf("invalid number of bytes for integer delta: %d", vb)
@@ -176,15 +199,15 @@ func (c doubleDeltaEncodedChunk) Add(s model.SamplePair) ([]Chunk, error) {
 	} else {
 		switch vb {
 		case d4:
-			binary.LittleEndian.PutUint32(c[offset:], math.Float32bits(float32(ddv)))
+			binary.LittleEndian.PutUint32((*c)[offset:], math.Float32bits(float32(ddv)))
 		case d8:
 			// Store the absolute value (no delta) in case of d8.
-			binary.LittleEndian.PutUint64(c[offset:], math.Float64bits(float64(s.Value)))
+			binary.LittleEndian.PutUint64((*c)[offset:], math.Float64bits(float64(s.Value)))
 		default:
 			return nil, fmt.Errorf("invalid number of bytes for floating point delta: %d", vb)
 		}
 	}
-	return []Chunk{&c}, nil
+	return nil, nil
 }
 
 // FirstTime implements chunk.
@@ -243,15 +266,15 @@ func (c doubleDeltaEncodedChunk) MarshalToBuf(buf []byte) error {
 
 // UnmarshalFromBuf implements chunk.
 func (c *doubleDeltaEncodedChunk) UnmarshalFromBuf(buf []byte) error {
-	*c = (*c)[:cap(*c)]
-	copy(*c, buf)
+	(*c) = (*c)[:cap((*c))]
+	copy((*c), buf)
 	return c.setLen()
 }
 
 // setLen sets the length of the underlying slice and performs some sanity checks.
 func (c *doubleDeltaEncodedChunk) setLen() error {
 	l := binary.LittleEndian.Uint16((*c)[doubleDeltaHeaderBufLenOffset:])
-	if int(l) > cap(*c) {
+	if int(l) > cap((*c)) {
 		return fmt.Errorf("doubledelta chunk length exceeded during unmarshalling: %d", l)
 	}
 	if int(l) < doubleDeltaHeaderMinBytes {
@@ -269,7 +292,7 @@ func (c *doubleDeltaEncodedChunk) setLen() error {
 	default:
 		return fmt.Errorf("invalid number of value bytes in doubledelta chunk: %d", c.valueBytes())
 	}
-	*c = (*c)[:l]
+	(*c) = (*c)[:l]
 	return nil
 }
 
@@ -356,40 +379,39 @@ func (c doubleDeltaEncodedChunk) isInt() bool {
 
 // addFirstSample is a helper method only used by c.add(). It adds timestamp and
 // value as base time and value.
-func (c doubleDeltaEncodedChunk) addFirstSample(s model.SamplePair) []Chunk {
-	c = c[:doubleDeltaHeaderBaseValueOffset+8]
+func (c *doubleDeltaEncodedChunk) addFirstSample(s model.SamplePair) {
+	(*c) = (*c)[:doubleDeltaHeaderBaseValueOffset+8]
 	binary.LittleEndian.PutUint64(
-		c[doubleDeltaHeaderBaseTimeOffset:],
+		(*c)[doubleDeltaHeaderBaseTimeOffset:],
 		uint64(s.Timestamp),
 	)
 	binary.LittleEndian.PutUint64(
-		c[doubleDeltaHeaderBaseValueOffset:],
+		(*c)[doubleDeltaHeaderBaseValueOffset:],
 		math.Float64bits(float64(s.Value)),
 	)
-	return []Chunk{&c}
 }
 
 // addSecondSample is a helper method only used by c.add(). It calculates the
 // base delta from the provided sample and adds it to the chunk.
-func (c doubleDeltaEncodedChunk) addSecondSample(s model.SamplePair, tb, vb deltaBytes) ([]Chunk, error) {
+func (c *doubleDeltaEncodedChunk) addSecondSample(s model.SamplePair, tb, vb deltaBytes) error {
 	baseTimeDelta := s.Timestamp - c.baseTime()
 	if baseTimeDelta < 0 {
-		return nil, fmt.Errorf("base time delta is less than zero: %v", baseTimeDelta)
+		return fmt.Errorf("base time delta is less than zero: %v", baseTimeDelta)
 	}
-	c = c[:doubleDeltaHeaderBytes]
+	(*c) = (*c)[:doubleDeltaHeaderBytes]
 	if tb >= d8 || bytesNeededForUnsignedTimestampDelta(baseTimeDelta) >= d8 {
 		// If already the base delta needs d8 (or we are at d8
 		// already, anyway), we better encode this timestamp
 		// directly rather than as a delta and switch everything
 		// to d8.
-		c[doubleDeltaHeaderTimeBytesOffset] = byte(d8)
+		(*c)[doubleDeltaHeaderTimeBytesOffset] = byte(d8)
 		binary.LittleEndian.PutUint64(
-			c[doubleDeltaHeaderBaseTimeDeltaOffset:],
+			(*c)[doubleDeltaHeaderBaseTimeDeltaOffset:],
 			uint64(s.Timestamp),
 		)
 	} else {
 		binary.LittleEndian.PutUint64(
-			c[doubleDeltaHeaderBaseTimeDeltaOffset:],
+			(*c)[doubleDeltaHeaderBaseTimeDeltaOffset:],
 			uint64(baseTimeDelta),
 		)
 	}
@@ -400,19 +422,19 @@ func (c doubleDeltaEncodedChunk) addSecondSample(s model.SamplePair, tb, vb delt
 		// if we are at d8 already, anyway), we better encode
 		// this value directly rather than as a delta and switch
 		// everything to d8.
-		c[doubleDeltaHeaderValueBytesOffset] = byte(d8)
-		c[doubleDeltaHeaderIsIntOffset] = 0
+		(*c)[doubleDeltaHeaderValueBytesOffset] = byte(d8)
+		(*c)[doubleDeltaHeaderIsIntOffset] = 0
 		binary.LittleEndian.PutUint64(
-			c[doubleDeltaHeaderBaseValueDeltaOffset:],
+			(*c)[doubleDeltaHeaderBaseValueDeltaOffset:],
 			math.Float64bits(float64(s.Value)),
 		)
 	} else {
 		binary.LittleEndian.PutUint64(
-			c[doubleDeltaHeaderBaseValueDeltaOffset:],
+			(*c)[doubleDeltaHeaderBaseValueDeltaOffset:],
 			math.Float64bits(float64(baseValueDelta)),
 		)
 	}
-	return []Chunk{&c}, nil
+	return nil
 }
 
 // doubleDeltaEncodedIndexAccessor implements indexAccessor.

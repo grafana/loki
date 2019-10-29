@@ -10,8 +10,9 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
-	cleanhttp "github.com/hashicorp/go-cleanhttp"
+	"github.com/hashicorp/go-cleanhttp"
 	"github.com/weaveworks/common/instrument"
+	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -39,6 +40,8 @@ type Config struct {
 	ACLToken          string
 	HTTPClientTimeout time.Duration
 	ConsistentReads   bool
+	WatchKeyRateLimit float64 // Zero disables rate limit
+	WatchKeyBurstSize int     // Burst when doing rate-limit, defaults to 1
 }
 
 type kv interface {
@@ -62,6 +65,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.ACLToken, prefix+"consul.acltoken", "", "ACL Token used to interact with Consul.")
 	f.DurationVar(&cfg.HTTPClientTimeout, prefix+"consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to Consul")
 	f.BoolVar(&cfg.ConsistentReads, prefix+"consul.consistent-reads", true, "Enable consistent reads to Consul.")
+	f.Float64Var(&cfg.WatchKeyRateLimit, prefix+"consul.watch-rate-limit", 0, "Rate limit when watching key or prefix in Consul, in requests per second. 0 disables the rate limit.")
+	f.IntVar(&cfg.WatchKeyBurstSize, prefix+"consul.watch-burst-size", 1, "Burst size used in rate limit. Values less than 1 are treated as 1.")
 }
 
 // NewClient returns a new Client.
@@ -170,8 +175,17 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 	var (
 		backoff = util.NewBackoff(ctx, backoffConfig)
 		index   = uint64(0)
+		limiter = c.createRateLimiter()
 	)
+
 	for backoff.Ongoing() {
+		err := limiter.Wait(ctx)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error while rate-limiting", "key", key, "err", err)
+			backoff.Wait()
+			continue
+		}
+
 		queryOptions := &consul.QueryOptions{
 			AllowStale:        !c.cfg.ConsistentReads,
 			RequireConsistent: c.cfg.ConsistentReads,
@@ -187,12 +201,11 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 		}
 		backoff.Reset()
 
-		// Skip if the index is the same as last time, because the key value is
-		// guaranteed to be the same as last time
-		if index == meta.LastIndex {
+		skip := false
+		index, skip = checkLastIndex(index, meta.LastIndex)
+		if skip {
 			continue
 		}
-		index = meta.LastIndex
 
 		out, err := c.codec.Decode(kvp.Value)
 		if err != nil {
@@ -212,8 +225,16 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 	var (
 		backoff = util.NewBackoff(ctx, backoffConfig)
 		index   = uint64(0)
+		limiter = c.createRateLimiter()
 	)
 	for backoff.Ongoing() {
+		err := limiter.Wait(ctx)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error while rate-limiting", "prefix", prefix, "err", err)
+			backoff.Wait()
+			continue
+		}
+
 		queryOptions := &consul.QueryOptions{
 			AllowStale:        !c.cfg.ConsistentReads,
 			RequireConsistent: c.cfg.ConsistentReads,
@@ -228,13 +249,13 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 			continue
 		}
 		backoff.Reset()
-		// Skip if the index is the same as last time, because the key value is
-		// guaranteed to be the same as last time
-		if index == meta.LastIndex {
+
+		skip := false
+		index, skip = checkLastIndex(index, meta.LastIndex)
+		if skip {
 			continue
 		}
 
-		index = meta.LastIndex
 		for _, kvp := range kvps {
 			out, err := c.codec.Decode(kvp.Value)
 			if err != nil {
@@ -263,4 +284,34 @@ func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 		return nil, nil
 	}
 	return c.codec.Decode(kvp.Value)
+}
+
+func checkLastIndex(index, metaLastIndex uint64) (newIndex uint64, skip bool) {
+	// See https://www.consul.io/api/features/blocking.html#implementation-details for logic behind these checks.
+	if metaLastIndex == 0 {
+		// Don't just keep using index=0.
+		// After blocking request, returned index must be at least 1.
+		return 1, false
+	} else if metaLastIndex < index {
+		// Index reset.
+		return 0, false
+	} else if index == metaLastIndex {
+		// Skip if the index is the same as last time, because the key value is
+		// guaranteed to be the same as last time
+		return metaLastIndex, true
+	} else {
+		return metaLastIndex, false
+	}
+}
+
+func (c *Client) createRateLimiter() *rate.Limiter {
+	if c.cfg.WatchKeyRateLimit <= 0 {
+		// burst is ignored when limit = rate.Inf
+		return rate.NewLimiter(rate.Inf, 0)
+	}
+	burst := c.cfg.WatchKeyBurstSize
+	if burst < 1 {
+		burst = 1
+	}
+	return rate.NewLimiter(rate.Limit(c.cfg.WatchKeyRateLimit), burst)
 }

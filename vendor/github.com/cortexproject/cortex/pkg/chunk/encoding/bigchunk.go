@@ -32,10 +32,10 @@ func newBigchunk() *bigchunk {
 	return &bigchunk{}
 }
 
-func (b *bigchunk) Add(sample model.SamplePair) ([]Chunk, error) {
+func (b *bigchunk) Add(sample model.SamplePair) (Chunk, error) {
 	if b.remainingSamples == 0 {
 		if bigchunkSizeCapBytes > 0 && b.Size() > bigchunkSizeCapBytes {
-			return addToOverflowChunk(b, sample)
+			return addToOverflowChunk(sample)
 		}
 		if err := b.addNextChunk(sample.Timestamp); err != nil {
 			return nil, err
@@ -44,7 +44,7 @@ func (b *bigchunk) Add(sample model.SamplePair) ([]Chunk, error) {
 
 	b.appender.Append(int64(sample.Timestamp), float64(sample.Value))
 	b.remainingSamples--
-	return []Chunk{b}, nil
+	return nil, nil
 }
 
 // addNextChunk adds a new XOR "subchunk" to the internal list of chunks.
