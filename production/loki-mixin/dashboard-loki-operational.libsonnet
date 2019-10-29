@@ -11,14 +11,24 @@
                 "iconColor": "rgba(0, 211, 255, 1)",
                 "name": "Annotations & Alerts",
                 "type": "dashboard"
+            },
+            {
+                "datasource": "$logs",
+                "enable": true,
+                "expr": "{cluster=\"$cluster\", diff_namespace=\"$namespace\", container_name=\"kube-diff-logger\"}",
+                "hide": true,
+                "iconColor": "rgba(255, 96, 96, 1)",
+                "name": "deployments",
+                "showIn": 0,
+                "target": {}
             }
             ]
         },
         "editable": true,
         "gnetId": null,
         "graphTooltip": 1,
-        "id": 35,
-        "iteration": 1571755301581,
+        "id": 37,
+        "iteration": 1572381524593,
         "rows": [],
         "links": [
             {
@@ -130,7 +140,7 @@
             "steppedLine": false,
             "targets": [
                 {
-                "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n        rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/cortex-gw\", route=~\"api_prom_query|api_prom_label|api_prom_label_name_values\"}[$__interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\")\n)",
+                "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n        rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/cortex-gw\", route=~\"api_prom_query|api_prom_label|api_prom_label_name_values\"}[5m]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\")\n)",
                 "legendFormat": "{{status}}",
                 "refId": "A"
                 }
@@ -218,7 +228,7 @@
             "steppedLine": false,
             "targets": [
                 {
-                "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n          rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/cortex-gw\", route=~\"api_prom_push\"}[$__interval]),\n   \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))",
+                "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n          rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/cortex-gw\", route=~\"api_prom_push\"}[5m]),\n   \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))",
                 "legendFormat": "{{status}}",
                 "refId": "A"
                 }
@@ -306,7 +316,7 @@
             "steppedLine": false,
             "targets": [
                 {
-                "expr": "topk(5, rate(promtail_custom_bad_words_total{cluster=\"$cluster\", exported_namespace=\"$namespace\"}[$__interval]) - \nrate(promtail_custom_bad_words_total{cluster=\"$cluster\", exported_namespace=\"$namespace\"}[$__interval] offset 1h))",
+                "expr": "topk(5, rate(promtail_custom_bad_words_total{cluster=\"$cluster\", exported_namespace=\"$namespace\"}[5m]) - \nrate(promtail_custom_bad_words_total{cluster=\"$cluster\", exported_namespace=\"$namespace\"}[5m] offset 1h))",
                 "legendFormat": "{{exported_instance}}-{{level}}",
                 "refId": "A"
                 }
@@ -393,7 +403,7 @@
             "steppedLine": false,
             "targets": [
                 {
-                "expr": "topk(10, sum(rate(loki_distributor_lines_received_total{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (tenant))",
+                "expr": "topk(10, sum(rate(loki_distributor_lines_received_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (tenant))",
                 "legendFormat": "{{tenant}}",
                 "refId": "A"
                 }
@@ -479,7 +489,7 @@
             "steppedLine": false,
             "targets": [
                 {
-                "expr": "topk(10, sum(rate(loki_distributor_bytes_received_total{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (tenant)) / 1024 / 1024",
+                "expr": "topk(10, sum(rate(loki_distributor_bytes_received_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (tenant)) / 1024 / 1024",
                 "legendFormat": "{{tenant}}",
                 "refId": "A"
                 }
@@ -849,7 +859,7 @@
             "steppedLine": false,
             "targets": [
                 {
-                "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\", status_code=~\"success|200\"}[$__interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"}[$__interval])) by (route)",
+                "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\", status_code=~\"success|200\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"}[5m])) by (route)",
                 "legendFormat": "{{route}}",
                 "refId": "A"
                 }
@@ -1038,7 +1048,7 @@
             "steppedLine": false,
             "targets": [
                 {
-                "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", status_code=~\"success|200\", route=\"/logproto.Pusher/Push\"}[$__interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", route=\"/logproto.Pusher/Push\"}[$__interval])) by (route)",
+                "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", status_code=~\"success|200\", route=\"/logproto.Pusher/Push\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", route=\"/logproto.Pusher/Push\"}[5m])) by (route)",
                 "legendFormat": "{{route}}",
                 "refId": "A"
                 }
@@ -1325,7 +1335,7 @@
             "steppedLine": false,
             "targets": [
                 {
-                "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\", status_code=~\"success|200\"}[$__interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"}[$__interval])) by (route)",
+                "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\", status_code=~\"success|200\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"}[5m])) by (route)",
                 "legendFormat": "{{route}}",
                 "refId": "A"
                 }
@@ -1513,7 +1523,7 @@
             "steppedLine": false,
             "targets": [
                 {
-                "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", status_code=~\"success|200\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label\"}[$__interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label\"}[$__interval])) by (route)",
+                "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", status_code=~\"success|200\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label\"}[5m])) by (route)",
                 "legendFormat": "{{route}}",
                 "refId": "A"
                 }
@@ -1916,7 +1926,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\", status_code=~\"success|200\"}[$__interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"}[$__interval])) by (route)",
+                    "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\", status_code=~\"success|200\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"}[5m])) by (route)",
                     "intervalFactor": 1,
                     "legendFormat": "{{route}}",
                     "refId": "A"
@@ -2473,7 +2483,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", level!~\"debug|info\"}[$__interval])) by (level)",
+                    "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", level!~\"debug|info\"}[5m])) by (level)",
                     "intervalFactor": 3,
                     "legendFormat": "{{level}}",
                     "refId": "A"
@@ -2584,7 +2594,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", status_code=~\"success|200\"}[$__interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"}[$__interval])) by (route)",
+                    "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", status_code=~\"success|200\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"}[5m])) by (route)",
                     "intervalFactor": 1,
                     "legendFormat": "{{route}}",
                     "refId": "A"
@@ -2880,7 +2890,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\", level!~\"debug|info\"}[$__interval])) by (level)",
+                    "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\", level!~\"debug|info\"}[5m])) by (level)",
                     "intervalFactor": 3,
                     "legendFormat": "{{level}}",
                     "refId": "A"
@@ -2991,7 +3001,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\", status_code=~\"success|200\"}[$__interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"}[$__interval])) by (route)",
+                    "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\", status_code=~\"success|200\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"}[5m])) by (route)",
                     "intervalFactor": 1,
                     "legendFormat": "{{route}}",
                     "refId": "A"
@@ -3096,19 +3106,19 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "histogram_quantile(.99, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (method, name, le))",
+                    "expr": "histogram_quantile(.99, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (method, name, le))",
                     "intervalFactor": 1,
                     "legendFormat": ".99-{{method}}-{{name}}",
                     "refId": "A"
                     },
                     {
-                    "expr": "histogram_quantile(.9, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (method, name, le))",
+                    "expr": "histogram_quantile(.9, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (method, name, le))",
                     "hide": false,
                     "legendFormat": ".9-{{method}}-{{name}}",
                     "refId": "B"
                     },
                     {
-                    "expr": "histogram_quantile(.5, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (method, name, le))",
+                    "expr": "histogram_quantile(.5, sum(rate(cortex_memcache_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (method, name, le))",
                     "hide": false,
                     "legendFormat": ".5-{{method}}-{{name}}",
                     "refId": "C"
@@ -3198,7 +3208,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(cortex_memcache_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (status_code, method, name)",
+                    "expr": "sum(rate(cortex_memcache_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, method, name)",
                     "intervalFactor": 1,
                     "legendFormat": "{{status_code}}-{{method}}-{{name}}",
                     "refId": "A"
@@ -3303,19 +3313,19 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "histogram_quantile(.99, sum(rate(cortex_consul_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.99, sum(rate(cortex_consul_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
                     "intervalFactor": 1,
                     "legendFormat": ".99-{{operation}}",
                     "refId": "A"
                     },
                     {
-                    "expr": "histogram_quantile(.9, sum(rate(cortex_consul_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.9, sum(rate(cortex_consul_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
                     "hide": false,
                     "legendFormat": ".9-{{operation}}",
                     "refId": "B"
                     },
                     {
-                    "expr": "histogram_quantile(.5, sum(rate(cortex_consul_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.5, sum(rate(cortex_consul_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
                     "hide": false,
                     "legendFormat": ".5-{{operation}}",
                     "refId": "C"
@@ -3405,7 +3415,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(cortex_consul_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, status_code, method)",
+                    "expr": "sum(rate(cortex_consul_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, status_code, method)",
                     "intervalFactor": 1,
                     "legendFormat": "{{status_code}}-{{operation}}",
                     "refId": "A"
@@ -3508,17 +3518,17 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "histogram_quantile(.99, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/MutateRows\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.99, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/MutateRows\"}[5m])) by (operation, le))",
                     "intervalFactor": 1,
                     "legendFormat": ".9",
                     "refId": "A"
                     },
                     {
-                    "expr": "histogram_quantile(.9, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/MutateRows\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.9, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/MutateRows\"}[5m])) by (operation, le))",
                     "refId": "B"
                     },
                     {
-                    "expr": "histogram_quantile(.5, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/MutateRows\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.5, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/MutateRows\"}[5m])) by (operation, le))",
                     "refId": "C"
                     }
                 ],
@@ -3604,17 +3614,17 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "histogram_quantile(.99, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/ReadRows\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.99, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/ReadRows\"}[5m])) by (operation, le))",
                     "intervalFactor": 1,
                     "legendFormat": ".9",
                     "refId": "A"
                     },
                     {
-                    "expr": "histogram_quantile(.9, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/ReadRows\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.9, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/ReadRows\"}[5m])) by (operation, le))",
                     "refId": "B"
                     },
                     {
-                    "expr": "histogram_quantile(.5, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/ReadRows\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.5, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/ReadRows\"}[5m])) by (operation, le))",
                     "refId": "C"
                     }
                 ],
@@ -3700,17 +3710,17 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "histogram_quantile(.99, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/GetTable\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.99, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/GetTable\"}[5m])) by (operation, le))",
                     "intervalFactor": 1,
                     "legendFormat": ".9",
                     "refId": "A"
                     },
                     {
-                    "expr": "histogram_quantile(.9, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/GetTable\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.9, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/GetTable\"}[5m])) by (operation, le))",
                     "refId": "B"
                     },
                     {
-                    "expr": "histogram_quantile(.5, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/GetTable\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.5, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/GetTable\"}[5m])) by (operation, le))",
                     "refId": "C"
                     }
                 ],
@@ -3796,17 +3806,17 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "histogram_quantile(.99, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/ListTables\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.99, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/ListTables\"}[5m])) by (operation, le))",
                     "intervalFactor": 1,
                     "legendFormat": ".9",
                     "refId": "A"
                     },
                     {
-                    "expr": "histogram_quantile(.9, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/ListTables\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.9, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/ListTables\"}[5m])) by (operation, le))",
                     "refId": "B"
                     },
                     {
-                    "expr": "histogram_quantile(.5, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/ListTables\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.5, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/ListTables\"}[5m])) by (operation, le))",
                     "refId": "C"
                     }
                 ],
@@ -3892,7 +3902,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(cortex_bigtable_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/MutateRows\"}[$__interval])) by (status_code)",
+                    "expr": "sum(rate(cortex_bigtable_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/MutateRows\"}[5m])) by (status_code)",
                     "intervalFactor": 1,
                     "legendFormat": "{{status_code}}",
                     "refId": "A"
@@ -3980,7 +3990,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(cortex_bigtable_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/ReadRows\"}[$__interval])) by (status_code)",
+                    "expr": "sum(rate(cortex_bigtable_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/ReadRows\"}[5m])) by (status_code)",
                     "intervalFactor": 1,
                     "legendFormat": "{{status_code}}",
                     "refId": "A"
@@ -4068,7 +4078,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(cortex_bigtable_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/GetTable\"}[$__interval])) by (status_code)",
+                    "expr": "sum(rate(cortex_bigtable_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/GetTable\"}[5m])) by (status_code)",
                     "intervalFactor": 1,
                     "legendFormat": "{{status_code}}",
                     "refId": "A"
@@ -4156,7 +4166,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(cortex_bigtable_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/ListTables\"}[$__interval])) by (status_code)",
+                    "expr": "sum(rate(cortex_bigtable_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/ListTables\"}[5m])) by (status_code)",
                     "intervalFactor": 1,
                     "legendFormat": "{{status_code}}",
                     "refId": "A"
@@ -4261,19 +4271,19 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "histogram_quantile(.99, sum(rate(cortex_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.99, sum(rate(cortex_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
                     "intervalFactor": 1,
                     "legendFormat": ".99-{{operation}}",
                     "refId": "A"
                     },
                     {
-                    "expr": "histogram_quantile(.9, sum(rate(cortex_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.9, sum(rate(cortex_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
                     "hide": false,
                     "legendFormat": ".9-{{operation}}",
                     "refId": "B"
                     },
                     {
-                    "expr": "histogram_quantile(.5, sum(rate(cortex_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.5, sum(rate(cortex_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
                     "hide": false,
                     "legendFormat": ".5-{{operation}}",
                     "refId": "C"
@@ -4363,7 +4373,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(cortex_gcs_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (status_code, operation)",
+                    "expr": "sum(rate(cortex_gcs_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, operation)",
                     "intervalFactor": 1,
                     "legendFormat": "{{status_code}}-{{operation}}",
                     "refId": "A"
@@ -4465,7 +4475,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(cortex_dynamo_failures_total{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval]))",
+                    "expr": "sum(rate(cortex_dynamo_failures_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
                     "refId": "A"
                     }
                 ],
@@ -4550,7 +4560,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(cortex_dynamo_consumed_capacity_total{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval]))",
+                    "expr": "sum(rate(cortex_dynamo_consumed_capacity_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
                     "refId": "A"
                     }
                 ],
@@ -4635,7 +4645,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(cortex_dynamo_throttled_total{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval]))",
+                    "expr": "sum(rate(cortex_dynamo_throttled_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
                     "refId": "A"
                     }
                 ],
@@ -4720,7 +4730,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(cortex_dynamo_dropped_requests_total{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval]))",
+                    "expr": "sum(rate(cortex_dynamo_dropped_requests_total{cluster=\"$cluster\", namespace=\"$namespace\"}[5m]))",
                     "refId": "A"
                     }
                 ],
@@ -4805,17 +4815,17 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "histogram_quantile(.99, sum(rate(cortex_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])))",
+                    "expr": "histogram_quantile(.99, sum(rate(cortex_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])))",
                     "legendFormat": ".99",
                     "refId": "A"
                     },
                     {
-                    "expr": "histogram_quantile(.9, sum(rate(cortex_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])))",
+                    "expr": "histogram_quantile(.9, sum(rate(cortex_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])))",
                     "legendFormat": ".9",
                     "refId": "B"
                     },
                     {
-                    "expr": "histogram_quantile(.5, sum(rate(cortex_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])))",
+                    "expr": "histogram_quantile(.5, sum(rate(cortex_dynamo_query_pages_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])))",
                     "legendFormat": ".5",
                     "refId": "C"
                     }
@@ -4904,19 +4914,19 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "histogram_quantile(.99, sum(rate(cortex_dynamo_request_duration_seconds_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.99, sum(rate(cortex_dynamo_request_duration_seconds_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
                     "intervalFactor": 1,
                     "legendFormat": ".99-{{operation}}",
                     "refId": "A"
                     },
                     {
-                    "expr": "histogram_quantile(.9, sum(rate(cortex_dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.9, sum(rate(cortex_dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
                     "hide": false,
                     "legendFormat": ".9-{{operation}}",
                     "refId": "B"
                     },
                     {
-                    "expr": "histogram_quantile(.5, sum(rate(cortex_dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.5, sum(rate(cortex_dynamo_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
                     "hide": false,
                     "legendFormat": ".5-{{operation}}",
                     "refId": "C"
@@ -5006,7 +5016,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(cortex_dynamo_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (status_code, operation)",
+                    "expr": "sum(rate(cortex_dynamo_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, operation)",
                     "intervalFactor": 1,
                     "legendFormat": "{{status_code}}-{{operation}}",
                     "refId": "A"
@@ -5111,19 +5121,19 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "histogram_quantile(.99, sum(rate(cortex_s3_request_duration_seconds_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.99, sum(rate(cortex_s3_request_duration_seconds_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
                     "intervalFactor": 1,
                     "legendFormat": ".99-{{operation}}",
                     "refId": "A"
                     },
                     {
-                    "expr": "histogram_quantile(.9, sum(rate(cortex_s3_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.9, sum(rate(cortex_s3_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
                     "hide": false,
                     "legendFormat": ".9-{{operation}}",
                     "refId": "B"
                     },
                     {
-                    "expr": "histogram_quantile(.5, sum(rate(cortex_s3_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (operation, le))",
+                    "expr": "histogram_quantile(.5, sum(rate(cortex_s3_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
                     "hide": false,
                     "legendFormat": ".5-{{operation}}",
                     "refId": "C"
@@ -5213,7 +5223,7 @@
                 "steppedLine": false,
                 "targets": [
                     {
-                    "expr": "sum(rate(cortex_s3_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[$__interval])) by (status_code, operation)",
+                    "expr": "sum(rate(cortex_s3_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, operation)",
                     "intervalFactor": 1,
                     "legendFormat": "{{status_code}}-{{operation}}",
                     "refId": "A"
@@ -5262,6 +5272,213 @@
                 }
             ],
             "title": "S3",
+            "type": "row"
+            },
+            {
+            "collapsed": true,
+            "datasource": null,
+            "gridPos": {
+                "h": 1,
+                "w": 24,
+                "x": 0,
+                "y": 35
+            },
+            "id": 90,
+            "panels": [
+                {
+                "aliasColors": {},
+                "bars": false,
+                "dashLength": 10,
+                "dashes": false,
+                "datasource": "$datasource",
+                "fill": 1,
+                "fillGradient": 0,
+                "gridPos": {
+                    "h": 8,
+                    "w": 24,
+                    "x": 0,
+                    "y": 36
+                },
+                "id": 91,
+                "interval": "",
+                "legend": {
+                    "alignAsTable": true,
+                    "avg": false,
+                    "current": false,
+                    "max": false,
+                    "min": false,
+                    "rightSide": true,
+                    "show": true,
+                    "total": false,
+                    "values": false
+                },
+                "lines": true,
+                "linewidth": 1,
+                "nullPointMode": "null",
+                "options": {
+                    "dataLinks": []
+                },
+                "percentage": false,
+                "pointradius": 1,
+                "points": false,
+                "renderer": "flot",
+                "seriesOverrides": [],
+                "spaceLength": 10,
+                "stack": false,
+                "steppedLine": false,
+                "targets": [
+                    {
+                    "expr": "histogram_quantile(.99, sum(rate(cortex_cassandra_request_duration_seconds_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
+                    "intervalFactor": 1,
+                    "legendFormat": ".99-{{operation}}",
+                    "refId": "A"
+                    },
+                    {
+                    "expr": "histogram_quantile(.9, sum(rate(cortex_cassandra_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
+                    "hide": false,
+                    "legendFormat": ".9-{{operation}}",
+                    "refId": "B"
+                    },
+                    {
+                    "expr": "histogram_quantile(.5, sum(rate(cortex_cassandra_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (operation, le))",
+                    "hide": false,
+                    "legendFormat": ".5-{{operation}}",
+                    "refId": "C"
+                    }
+                ],
+                "thresholds": [],
+                "timeFrom": null,
+                "timeRegions": [],
+                "timeShift": null,
+                "title": "Latency By Operation",
+                "tooltip": {
+                    "shared": true,
+                    "sort": 2,
+                    "value_type": "individual"
+                },
+                "type": "graph",
+                "xaxis": {
+                    "buckets": null,
+                    "mode": "time",
+                    "name": null,
+                    "show": true,
+                    "values": []
+                },
+                "yaxes": [
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    },
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    }
+                ],
+                "yaxis": {
+                    "align": false,
+                    "alignLevel": null
+                }
+                },
+                {
+                "aliasColors": {},
+                "bars": false,
+                "dashLength": 10,
+                "dashes": false,
+                "datasource": "$datasource",
+                "fill": 1,
+                "fillGradient": 0,
+                "gridPos": {
+                    "h": 8,
+                    "w": 24,
+                    "x": 0,
+                    "y": 44
+                },
+                "id": 92,
+                "interval": "",
+                "legend": {
+                    "alignAsTable": true,
+                    "avg": false,
+                    "current": false,
+                    "max": false,
+                    "min": false,
+                    "rightSide": true,
+                    "show": true,
+                    "total": false,
+                    "values": false
+                },
+                "lines": true,
+                "linewidth": 1,
+                "nullPointMode": "null",
+                "options": {
+                    "dataLinks": []
+                },
+                "percentage": false,
+                "pointradius": 1,
+                "points": false,
+                "renderer": "flot",
+                "seriesOverrides": [],
+                "spaceLength": 10,
+                "stack": false,
+                "steppedLine": false,
+                "targets": [
+                    {
+                    "expr": "sum(rate(cortex_cassandra_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[5m])) by (status_code, operation)",
+                    "intervalFactor": 1,
+                    "legendFormat": "{{status_code}}-{{operation}}",
+                    "refId": "A"
+                    }
+                ],
+                "thresholds": [],
+                "timeFrom": null,
+                "timeRegions": [],
+                "timeShift": null,
+                "title": "Status By Method",
+                "tooltip": {
+                    "shared": true,
+                    "sort": 2,
+                    "value_type": "individual"
+                },
+                "type": "graph",
+                "xaxis": {
+                    "buckets": null,
+                    "mode": "time",
+                    "name": null,
+                    "show": true,
+                    "values": []
+                },
+                "yaxes": [
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    },
+                    {
+                    "format": "short",
+                    "label": null,
+                    "logBase": 1,
+                    "max": null,
+                    "min": null,
+                    "show": true
+                    }
+                ],
+                "yaxis": {
+                    "align": false,
+                    "alignLevel": null
+                }
+                }
+            ],
+            "title": "Cassandra",
             "type": "row"
             }
         ],
@@ -5325,6 +5542,7 @@
             {
                 "allValue": null,
                 "current": {
+                "tags": [],
                 "text": "ops-tools1",
                 "value": "ops-tools1"
                 },
@@ -5424,6 +5642,11 @@
                 },
                 {
                     "selected": false,
+                    "text": "cortex-ops",
+                    "value": "cortex-ops"
+                },
+                {
+                    "selected": false,
                     "text": "default",
                     "value": "default"
                 }
@@ -5442,7 +5665,7 @@
             ]
         },
         "time": {
-            "from": "now-12h",
+            "from": "now-3h",
             "to": "now"
         },
         "timepicker": {
@@ -5461,7 +5684,7 @@
         },
         "timezone": "",
         "title": "Loki Operational",
-        "uid": "4k3hZFTWz",
+        "uid": "f6fe30815b172c9da7e810c15ddfe607",
         "version": 1
         }
   },
