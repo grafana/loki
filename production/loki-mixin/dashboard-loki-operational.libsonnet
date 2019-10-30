@@ -315,11 +315,11 @@
             "stack": false,
             "steppedLine": false,
             "targets": [
-                {
-                "expr": "topk(5, rate(promtail_custom_bad_words_total{cluster=\"$cluster\", exported_namespace=\"$namespace\"}[5m]) - \nrate(promtail_custom_bad_words_total{cluster=\"$cluster\", exported_namespace=\"$namespace\"}[5m] offset 1h))",
-                "legendFormat": "{{exported_instance}}-{{level}}",
+              {
+                "expr": "topk(5, sum by (name,level) (rate(promtail_custom_bad_words_total{cluster=\"$cluster\", exported_namespace=\"$namespace\"}[$__interval])) - \nsum by (name,level) (rate(promtail_custom_bad_words_total{cluster=\"$cluster\", exported_namespace=\"$namespace\"}[$__interval] offset 1h)))",
+                "legendFormat": "{{name}}-{{level}}",
                 "refId": "A"
-                }
+              }
             ],
             "thresholds": [],
             "timeFrom": null,
