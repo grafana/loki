@@ -80,7 +80,7 @@ livenessProbe:
     port: http-metrics
   initialDelaySeconds: 45
 
-## Enable persistence using Persistent Volume Claims
+## ref: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 networkPolicy:
   enabled: false
 
@@ -88,10 +88,10 @@ networkPolicy:
 client: {}
   # name:
 
-## ref: https://kubernetes.io/docs/user-guide/node-selection/
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
 nodeSelector: {}
 
-## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+## ref: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
 ## If you set enabled as "True", you need :
 ## - create a pv which above 10Gi and has same namespace with loki
 ## - keep storageClassName same with below setting
