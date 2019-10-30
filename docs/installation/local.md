@@ -8,7 +8,7 @@ prebuilt binaries:
 ```bash
 # download a binary (modify app, os, and arch as needed)
 # Installs v0.4.0. Go to the releases page for the latest version
-$ curl -fSL -o "/usr/local/bin/loki.gz" "https://github.com/grafana/loki/releases/download/v0.4.0/loki_linux_amd64.gz"
+$ curl -fSL -o "/usr/local/bin/loki.gz" "https://github.com/grafana/loki/releases/download/v0.4.0/loki-linux-amd64.gz"
 $ gunzip "/usr/local/bin/loki.gz"
 
 # make sure it is executable
