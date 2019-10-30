@@ -1,6 +1,8 @@
 image: grafana/{{config.target}}:{{#if build.tag}}{{build.tag}}{{else}}{{build.branch}}-{{substr 0 7 build.commit}}{{/if}}
-{{#if build.tags}}
 tags:
+  - latest
+  - master
+{{#if build.tags}}
 {{#each build.tags}}
   - {{this}}
 {{/each}}
