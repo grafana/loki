@@ -87,7 +87,11 @@ module Fluent
         end
 
         @cert = OpenSSL::X509::Certificate.new(File.read(@cert)) if @cert
-        @key = OpenSSL::PKey::RSA.new(File.read(key)) if @key
+        @key = OpenSSL::PKey.read(File.read(key)) if @key
+
+        if !@key.is_a?(OpenSSL::PKey::RSA) && !@key.is_a?(OpenSSL::PKey::DSA)
+          raise "Unsupported private key type #{key.class}"
+        end
 
         if !@ca_cert.nil? && !File.exist?(@ca_cert)
           raise "CA certificate file #{@ca_cert} not found"
