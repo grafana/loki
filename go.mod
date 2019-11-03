@@ -48,7 +48,7 @@ require (
 	github.com/stretchr/testify v1.4.0
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 	github.com/ugorji/go v1.1.7 // indirect
-	github.com/weaveworks/common v0.0.0-20190822150010-afb9996716e4
+	github.com/weaveworks/common v0.0.0-20191103151037-0e7cefadc44f
 	go.etcd.io/etcd v0.0.0-20190815204525-8f85f0dc2607 // indirect
 	go.opencensus.io v0.22.1 // indirect
 	go.uber.org/atomic v1.4.0 // indirect
@@ -66,8 +66,6 @@ require (
 	gotest.tools v2.2.0+incompatible // indirect
 	k8s.io/klog v0.4.0
 )
-
-replace github.com/weaveworks/common => github.com/sandlis/weaveworks-common v0.0.0-20190822064708-8fa0a1ca9d89
 
 replace github.com/hpcloud/tail => github.com/grafana/tail v0.0.0-20191024143944-0b54ddf21fe7
 
