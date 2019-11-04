@@ -187,6 +187,9 @@ func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (
 
 	// v3 schema had four components - label name, label value, chunk ID and version.
 	// "version" is 1 and label value is base64 encoded.
+	// (older code wrote "version" as 1, not '1')
+	case bytes.Equal(components[3], chunkTimeRangeKeyV1a):
+		fallthrough
 	case bytes.Equal(components[3], chunkTimeRangeKeyV1):
 		chunkID = string(components[2])
 		labelValue, err = decodeBase64Value(components[1])
