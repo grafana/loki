@@ -2,4 +2,5 @@
 
 1. [Installing using Tanka (recommended)](./tanka.md)
 2. [Installing through Helm](./helm.md)
-3. [Installing locally](./local.md)
+3. [Installing through Docker/Docker-compose](./docker.md)
+4. [Installing locally](./local.md)
