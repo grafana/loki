@@ -43,7 +43,7 @@ local docker(arch, app) = {
   },
 };
 
-local arch_image(arch,tags='') = {
+local arch_image(arch, tags='') = {
   platform: {
     os: 'linux',
     arch: arch,
@@ -59,8 +59,8 @@ local arch_image(arch,tags='') = {
   }],
 };
 
-local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64','latest,master') {
- steps+: [
+local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,master') {
+  steps+: [
     // dry run for everything that is not tag or master
     docker('amd64', 'fluent-bit') {
       depends_on: ['image-tag'],
@@ -69,7 +69,7 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64','latest,ma
         dry_run: true,
         repo: 'grafana/fluent-bit-plugin-loki',
       },
-    }
+    },
   ] + [
     // publish for tag or master
     docker('amd64', 'fluent-bit') {
@@ -78,7 +78,7 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64','latest,ma
       settings+: {
         repo: 'grafana/fluent-bit-plugin-loki',
       },
-    }
+    },
   ],
   depends_on: ['check'],
 };
@@ -130,8 +130,8 @@ local manifest(apps) = pipeline('manifest') {
 local drone = [
   pipeline('check') {
     workspace: {
-      base: "/src",
-      path: "loki"
+      base: '/src',
+      path: 'loki',
     },
     steps: [
       make('test', container=false) { depends_on: ['clone'] },
@@ -144,28 +144,28 @@ local drone = [
   multiarch_image(arch)
   for arch in archs
 ] + [
- fluentbit()
+  fluentbit(),
 ] + [
   manifest(['promtail', 'loki', 'loki-canary']) {
     trigger: condition('include').tagMaster,
   },
 ] + [
-  pipeline("deploy") {
+  pipeline('deploy') {
     trigger: condition('include').tagMaster,
-    depends_on: ["manifest"],
+    depends_on: ['manifest'],
     steps: [
       {
-        name: "trigger",
+        name: 'trigger',
         image: 'grafana/loki-build-image:%s' % build_image_version,
         environment: {
-          CIRCLE_TOKEN: {from_secret: "circle_token"}
+          CIRCLE_TOKEN: { from_secret: 'circle_token' },
         },
         commands: [
-          'curl -s --header "Content-Type: application/json" --data "{\\"build_parameters\\": {\\"CIRCLE_JOB\\": \\"deploy\\", \\"IMAGE_NAMES\\": \\"$(make print-images)\\"}}" --request POST https://circleci.com/api/v1.1/project/github/raintank/deployment_tools/tree/master?circle-token=$CIRCLE_TOKEN'
-        ]
-      }
+          './tools/deploy.sh',
+        ],
+      },
     ],
-  }
+  },
 ];
 
 {
