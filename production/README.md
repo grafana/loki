@@ -2,7 +2,7 @@
 
 Currently there are five ways to try out Loki, in order from easier to hardest:
 
-- [Get a free hosted demo of Grafana Cloud: Logs](#get-a-free-hosted-demo-of-grafana-cloud-logs)
+- [Grafana Cloud: Hosted Logs](#grafana-cloud-logs)
 - [Run Loki locally with Docker](#run-locally-using-docker)
 - [Use Helm to deploy on Kubernetes](#using-helm-to-deploy-on-kubernetes)
 - [Build Loki from source](#build-and-run-from-source)
@@ -10,11 +10,9 @@ Currently there are five ways to try out Loki, in order from easier to hardest:
 
 For the various ways to run `promtail`, the tailing agent, see our [Promtail documentation](../docs/promtail.md).
 
-## Get a free hosted demo of Grafana Cloud: Logs
+## Grafana Cloud: Hosted Logs
 
-Grafana is running a free, hosted demo cluster of Loki. Find instructions for getting access at [grafana.com/loki](https://grafana.com/loki).
-
-The demo includes complimentary metrics (Prometheus or Graphite) that help illustrate the experience of easily switching between logs and metrics.
+Grafana is offering hosted Loki as part of our broader Grafana Cloud platform. Learn more at [grafana.com/loki](https://grafana.com/oss/loki/#products-and-services).
 
 ## Run locally using Docker
 
