@@ -16,9 +16,10 @@ match:
   # concatenated with job_name using an underscore.
   [pipeline_name: <string>]
 
-  # When set to drop (default to keep), all entries matching the selector will
-  # be dropped. Stages must not be defined when dropping entries.
-  [action: <keep|drop>]
+  # Determines what action is taken when the selector matches the log 
+  # line. Defaults to keep. When set to drop, entries will be dropped. 
+  # Stages must be not defined when dropping entries. 
+  [action: <string> | default = "keep"]
 
   # Nested set of pipeline stages only if the selector
   # matches the labels of the log entries:
