@@ -12,7 +12,7 @@ For the various ways to run `promtail`, the tailing agent, see our [Promtail doc
 
 ## Grafana Cloud: Hosted Logs
 
-Grafana is offering hosted Loki as part of our broader Grafana Cloud platform. Find instructions for getting access at [grafana.com/loki](https://grafana.com/loki).
+Grafana is offering hosted Loki as part of our broader Grafana Cloud platform. Learn more at [grafana.com/loki](https://grafana.com/oss/loki/#products-and-services).
 
 ## Run locally using Docker
 
