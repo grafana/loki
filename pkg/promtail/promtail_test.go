@@ -537,9 +537,9 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	flagext.RegisterFlags(&cfg)
 
 	const hostname = "localhost"
-	cfg.ServerConfig.HTTPListenHost = hostname
+	cfg.ServerConfig.HTTPListenAddress = hostname
 	cfg.ServerConfig.ExternalURL = hostname
-	cfg.ServerConfig.GRPCListenHost = hostname
+	cfg.ServerConfig.GRPCListenAddress = hostname
 	cfg.ServerConfig.HTTPListenPort = httpTestPort
 
 	// Override some of those defaults
