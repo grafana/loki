@@ -40,6 +40,13 @@ module Fluent
       config_param :username, :string, default: nil
       config_param :password, :string, default: nil, secret: true
 
+      desc 'Client certificate'
+      config_param :cert, :string, default: nil
+      config_param :key, :string, default: nil
+
+      desc 'TLS'
+      config_param :ca_cert, :string, default: nil
+
       desc 'Loki tenant id'
       config_param :tenant, :string, default: nil
 
@@ -78,6 +85,17 @@ module Fluent
         @remove_keys.each do |key|
           @remove_keys_accessors.push(record_accessor_create(key))
         end
+
+        @cert = OpenSSL::X509::Certificate.new(File.read(@cert)) if @cert
+        @key = OpenSSL::PKey.read(File.read(key)) if @key
+
+        if !@key.is_a?(OpenSSL::PKey::RSA) && !@key.is_a?(OpenSSL::PKey::DSA)
+          raise "Unsupported private key type #{key.class}"
+        end
+
+        if !@ca_cert.nil? && !File.exist?(@ca_cert)
+          raise "CA certificate file #{@ca_cert} not found"
+        end
       end
 
       def multi_workers_ready?
@@ -110,6 +128,21 @@ module Fluent
         opts = {
           use_ssl: uri.scheme == 'https'
         }
+
+        if !@cert.nil? && !@key.nil?
+          opts = opts.merge(
+            verify_mode: OpenSSL::SSL::VERIFY_PEER,
+            cert: @cert,
+            key: @key
+          )
+        end
+
+        if !@ca_cert.nil?
+          opts = opts.merge(
+            ca_file: @ca_cert
+          )
+        end
+
         log.debug "sending #{req.body.length} bytes to loki"
         res = Net::HTTP.start(uri.hostname, uri.port, **opts) { |http| http.request(req) }
         unless res&.is_a?(Net::HTTPSuccess)
