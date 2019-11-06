@@ -26,7 +26,7 @@
   "description": "Stores and retrieves potentially large, immutable data objects.",
   "discoveryVersion": "v1",
   "documentationLink": "https://developers.google.com/storage/docs/json_api/",
-  "etag": "\"9eZ1uxVRThTDhLJCZHhqs3eQWz4/9Oh4KBZowCPgFtht1bjglfUQ9l0\"",
+  "etag": "\"9eZ1uxVRThTDhLJCZHhqs3eQWz4/m18VxIxuaQHJN-C1B3-yQYvta24\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -449,13 +449,6 @@
               "location": "path",
               "required": true,
               "type": "string"
-            },
-            "optionsRequestedPolicyVersion": {
-              "description": "The IAM policy format version to be returned. If the optionsRequestedPolicyVersion is for an older version that doesn't support part of the requested IAM policy, the request fails.",
-              "format": "int32",
-              "location": "query",
-              "minimum": "1",
-              "type": "integer"
             },
             "provisionalUserProject": {
               "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
@@ -3203,7 +3196,7 @@
       }
     }
   },
-  "revision": "20190812",
+  "revision": "20190624",
   "rootUrl": "https://www.googleapis.com/",
   "schemas": {
     "Bucket": {
@@ -3319,6 +3312,7 @@
                 },
                 "lockedTime": {
                   "description": "The deadline for changing iamConfiguration.uniformBucketLevelAccess.enabled from true to false in RFC 3339  format. iamConfiguration.uniformBucketLevelAccess.enabled may be changed from true to false until the locked time, after which the field is immutable.",
+                  "format": "date-time",
                   "type": "string"
                 }
               },
@@ -4311,11 +4305,6 @@
         "resourceId": {
           "description": "The ID of the resource to which this policy belongs. Will be of the form projects/_/buckets/bucket for buckets, and projects/_/buckets/bucket/objects/object for objects. A specific generation may be specified by appending #generationNumber to the end of the object name, e.g. projects/_/buckets/my-bucket/objects/data.txt#17. The current generation can be denoted with #0. This field is ignored on input.",
           "type": "string"
-        },
-        "version": {
-          "description": "The IAM policy format version.",
-          "format": "int32",
-          "type": "integer"
         }
       },
       "type": "object"
