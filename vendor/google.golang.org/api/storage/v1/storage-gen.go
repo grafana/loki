@@ -2068,9 +2068,6 @@ type Policy struct {
 	// generation can be denoted with #0. This field is ignored on input.
 	ResourceId string `json:"resourceId,omitempty"`
 
-	// Version: The IAM policy format version.
-	Version int64 `json:"version,omitempty"`
-
 	// ServerResponse contains the HTTP response code and headers from the
 	// server.
 	googleapi.ServerResponse `json:"-"`
@@ -3724,16 +3721,6 @@ func (r *BucketsService) GetIamPolicy(bucket string) *BucketsGetIamPolicyCall {
 	return c
 }
 
-// OptionsRequestedPolicyVersion sets the optional parameter
-// "optionsRequestedPolicyVersion": The IAM policy format version to be
-// returned. If the optionsRequestedPolicyVersion is for an older
-// version that doesn't support part of the requested IAM policy, the
-// request fails.
-func (c *BucketsGetIamPolicyCall) OptionsRequestedPolicyVersion(optionsRequestedPolicyVersion int64) *BucketsGetIamPolicyCall {
-	c.urlParams_.Set("optionsRequestedPolicyVersion", fmt.Sprint(optionsRequestedPolicyVersion))
-	return c
-}
-
 // ProvisionalUserProject sets the optional parameter
 // "provisionalUserProject": The project to be billed for this request
 // if the target bucket is requester-pays bucket.
@@ -3860,13 +3847,6 @@ func (c *BucketsGetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, err
 	//       "location": "path",
 	//       "required": true,
 	//       "type": "string"
-	//     },
-	//     "optionsRequestedPolicyVersion": {
-	//       "description": "The IAM policy format version to be returned. If the optionsRequestedPolicyVersion is for an older version that doesn't support part of the requested IAM policy, the request fails.",
-	//       "format": "int32",
-	//       "location": "query",
-	//       "minimum": "1",
-	//       "type": "integer"
 	//     },
 	//     "provisionalUserProject": {
 	//       "description": "The project to be billed for this request if the target bucket is requester-pays bucket.",
