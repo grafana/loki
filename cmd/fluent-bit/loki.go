@@ -88,7 +88,7 @@ func autoLabels(records map[string]interface{}) model.LabelSet {
 	kuberneteslbs := model.LabelSet{}
 	replacer := strings.NewReplacer("/", "_", ".", "_", "-", "_")
 	for k, v := range records["kubernetes"].(map[interface{}]interface{}) {
-		switch key := k.(string); {
+		switch key := k.(string); key {
 		case "labels":
 			for m, n := range v.(map[interface{}]interface{}) {
 				switch t := n.(type) {
