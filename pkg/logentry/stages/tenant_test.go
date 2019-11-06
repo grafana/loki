@@ -19,21 +19,40 @@ func TestTenantStage_Validation(t *testing.T) {
 		config      *TenantConfig
 		expectedErr *string
 	}{
-		"should pass on required config set": {
+		"should pass on source config option set": {
 			config: &TenantConfig{
 				Source: "tenant",
 			},
 			expectedErr: nil,
 		},
-		"should fail on missing source": {
+		"should pass on value config option set": {
+			config: &TenantConfig{
+				Value: "team-a",
+			},
+			expectedErr: nil,
+		},
+		"should fail on missing source and value": {
 			config:      &TenantConfig{},
-			expectedErr: lokiutil.StringRef(ErrEmptyTenantStageSource),
+			expectedErr: lokiutil.StringRef(ErrTenantStageEmptySourceOrValue),
 		},
 		"should fail on empty source": {
 			config: &TenantConfig{
 				Source: "",
 			},
-			expectedErr: lokiutil.StringRef(ErrEmptyTenantStageSource),
+			expectedErr: lokiutil.StringRef(ErrTenantStageEmptySourceOrValue),
+		},
+		"should fail on empty value": {
+			config: &TenantConfig{
+				Value: "",
+			},
+			expectedErr: lokiutil.StringRef(ErrTenantStageEmptySourceOrValue),
+		},
+		"should fail on both source and value set": {
+			config: &TenantConfig{
+				Source: "tenant",
+				Value:  "team-a",
+			},
+			expectedErr: lokiutil.StringRef(ErrTenantStageConflictingSourceAndValue),
 		},
 	}
 
@@ -58,34 +77,52 @@ func TestTenantStage_Process(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
+		config         *TenantConfig
 		inputLabels    model.LabelSet
 		inputExtracted map[string]interface{}
 		expectedTenant *string
 	}{
 		"should not set the tenant if the source field is not defined in the extracted map": {
+			config:         &TenantConfig{Source: "tenant_id"},
 			inputLabels:    model.LabelSet{},
 			inputExtracted: map[string]interface{}{},
 			expectedTenant: nil,
 		},
 		"should not override the tenant if the source field is not defined in the extracted map": {
+			config:         &TenantConfig{Source: "tenant_id"},
 			inputLabels:    model.LabelSet{constants.ReservedLabelTenantID: "foo"},
 			inputExtracted: map[string]interface{}{},
 			expectedTenant: lokiutil.StringRef("foo"),
 		},
 		"should set the tenant if the source field is defined in the extracted map": {
+			config:         &TenantConfig{Source: "tenant_id"},
 			inputLabels:    model.LabelSet{},
 			inputExtracted: map[string]interface{}{"tenant_id": "bar"},
 			expectedTenant: lokiutil.StringRef("bar"),
 		},
 		"should override the tenant if the source field is defined in the extracted map": {
+			config:         &TenantConfig{Source: "tenant_id"},
 			inputLabels:    model.LabelSet{constants.ReservedLabelTenantID: "foo"},
 			inputExtracted: map[string]interface{}{"tenant_id": "bar"},
 			expectedTenant: lokiutil.StringRef("bar"),
 		},
 		"should not set the tenant if the source field data type can't be converted to string": {
+			config:         &TenantConfig{Source: "tenant_id"},
 			inputLabels:    model.LabelSet{},
 			inputExtracted: map[string]interface{}{"tenant_id": []string{"bar"}},
 			expectedTenant: nil,
+		},
+		"should set the tenant with the configured static value": {
+			config:         &TenantConfig{Value: "bar"},
+			inputLabels:    model.LabelSet{},
+			inputExtracted: map[string]interface{}{},
+			expectedTenant: lokiutil.StringRef("bar"),
+		},
+		"should override the tenant with the configured static value": {
+			config:         &TenantConfig{Value: "bar"},
+			inputLabels:    model.LabelSet{constants.ReservedLabelTenantID: "foo"},
+			inputExtracted: map[string]interface{}{},
+			expectedTenant: lokiutil.StringRef("bar"),
 		},
 	}
 
@@ -93,11 +130,7 @@ func TestTenantStage_Process(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			config := &TenantConfig{
-				Source: "tenant_id",
-			}
-
-			stage, err := newTenantStage(util.Logger, config)
+			stage, err := newTenantStage(util.Logger, testData.config)
 			require.NoError(t, err)
 
 			// Process and dummy line and ensure nothing has changed except

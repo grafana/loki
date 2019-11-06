@@ -550,8 +550,14 @@ picking it from a field in the extracted data map.
 
 ```yaml
 tenant:
-  # Name from extracted data to whose value should be set as tenant ID
-  source: <string>
+  # Name from extracted data to whose value should be set as tenant ID.
+  # Either source or value config option is required, but not both (they
+  # are mutually exclusive).
+  [ source: <string> ]
+
+  # Value to use to set the tenant ID when this stage is executed. Useful
+  # when this stage is included within a conditional pipeline with "match".
+  [ value: <string> ]
 ```
 
 ### journal_config

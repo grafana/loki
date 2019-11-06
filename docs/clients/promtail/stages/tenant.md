@@ -10,8 +10,14 @@ be used.
 
 ```yaml
 tenant:
-  # Name from extracted data to whose value should be set as tenant ID
-  source: <string>
+  # Name from extracted data to whose value should be set as tenant ID.
+  # Either source or value config option is required, but not both (they
+  # are mutually exclusive).
+  [ source: <string> ]
+
+  # Value to use to set the tenant ID when this stage is executed. Useful
+  # when this stage is included within a conditional pipeline with "match".
+  [ value: <string> ]
 ```
 
 ### Example: extract the tenant ID from a structured log
@@ -38,7 +44,7 @@ The first stage would extract `customer_id` into the extracted map with a value 
 identify the tenant) to the value of the `customer_id` extracted data, which is `1`.
 
 
-### Example: override the tenant ID based on the value of another field
+### Example: override the tenant ID with the configured value
 
 For the given pipeline:
 
@@ -53,11 +59,8 @@ pipeline_stages:
   - match:
       selector: '{app="api"}'
       stages:
-        - template:
-            source: tenant_id
-            template: 'team-api'
         - tenant:
-            source: tenant_id
+            value: "team-api"
   - output:
       source: message
 ```
@@ -68,8 +71,10 @@ Given the following log line:
 {"app":"api","log":"log message\n","stream":"stderr","time":"2019-04-30T02:12:41.8443515Z"}
 ```
 
-The pipeline would decode the JSON log, set the label `app="api"`, process the match
-stage checking if the `{app="api"}` selector matches and - given it matches -
-run the sub stages. The match's stages would set the field `tenant_id` with
-value `"team-api"` into the extracted map, and finally the tenant stage would
-override the tenant with the value of `tenant_id`, which is `"team-api"`.
+The pipeline would:
+
+1. Decode the JSON log
+2. Set the label `app="api"`
+3. Process the `match` stage checking if the `{app="api"}` selector matches
+   and - whenever it matches - run the sub stages. The `tenant` sub stage
+   would override the tenant with the value `"team-api"`.

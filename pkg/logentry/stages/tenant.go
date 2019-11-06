@@ -13,7 +13,8 @@ import (
 )
 
 const (
-	ErrEmptyTenantStageSource = "missing or empty source"
+	ErrTenantStageEmptySourceOrValue        = "source or value config are required"
+	ErrTenantStageConflictingSourceAndValue = "source and value are mutually exclusive: you should set source or value but not both"
 )
 
 type tenantStage struct {
@@ -23,12 +24,17 @@ type tenantStage struct {
 
 type TenantConfig struct {
 	Source string `mapstructure:"source"`
+	Value  string `mapstructure:"value"`
 }
 
 // validateTenantConfig validates the tenant stage configuration
 func validateTenantConfig(c TenantConfig) error {
-	if c.Source == "" {
-		return errors.New(ErrEmptyTenantStageSource)
+	if c.Source == "" && c.Value == "" {
+		return errors.New(ErrTenantStageEmptySourceOrValue)
+	}
+
+	if c.Source != "" && c.Value != "" {
+		return errors.New(ErrTenantStageConflictingSourceAndValue)
 	}
 
 	return nil
@@ -55,21 +61,17 @@ func newTenantStage(logger log.Logger, configs interface{}) (*tenantStage, error
 
 // Process implements Stage
 func (s *tenantStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
-	// Get the tenant ID from the source data
-	value, ok := extracted[s.cfg.Source]
-	if !ok {
-		if Debug {
-			level.Debug(s.logger).Log("msg", "the tenant source does not exist in the extracted data", "source", s.cfg.Source)
-		}
-		return
+	var tenantID string
+
+	// Get tenant ID from source or configured value
+	if s.cfg.Source != "" {
+		tenantID = s.getTenantFromSourceField(extracted)
+	} else {
+		tenantID = s.cfg.Value
 	}
 
-	// Convert the value to string
-	tenantID, err := getString(value)
-	if err != nil {
-		if Debug {
-			level.Debug(s.logger).Log("msg", "failed to convert value to string", "err", err, "type", reflect.TypeOf(value).String())
-		}
+	// Skip an empty tenant ID (ie. failed to get the tenant from the source)
+	if tenantID == "" {
 		return
 	}
 
@@ -79,4 +81,26 @@ func (s *tenantStage) Process(labels model.LabelSet, extracted map[string]interf
 // Name implements Stage
 func (s *tenantStage) Name() string {
 	return StageTypeTenant
+}
+
+func (s *tenantStage) getTenantFromSourceField(extracted map[string]interface{}) string {
+	// Get the tenant ID from the source data
+	value, ok := extracted[s.cfg.Source]
+	if !ok {
+		if Debug {
+			level.Debug(s.logger).Log("msg", "the tenant source does not exist in the extracted data", "source", s.cfg.Source)
+		}
+		return ""
+	}
+
+	// Convert the value to string
+	tenantID, err := getString(value)
+	if err != nil {
+		if Debug {
+			level.Debug(s.logger).Log("msg", "failed to convert value to string", "err", err, "type", reflect.TypeOf(value).String())
+		}
+		return ""
+	}
+
+	return tenantID
 }
