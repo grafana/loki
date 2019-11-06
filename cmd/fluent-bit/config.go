@@ -36,14 +36,14 @@ const (
 )
 
 type config struct {
-	clientConfig  client.Config
-	logLevel      logging.Level
+	clientConfig         client.Config
+	logLevel             logging.Level
 	autoKubernetesLabels bool
-	removeKeys    []string
-	labelKeys     []string
-	lineFormat    format
-	dropSingleKey bool
-	labelMap      map[string]interface{}
+	removeKeys           []string
+	labelKeys            []string
+	lineFormat           format
+	dropSingleKey        bool
+	labelMap             map[string]interface{}
 }
 
 func parseConfig(cfg ConfigGetter) (*config, error) {

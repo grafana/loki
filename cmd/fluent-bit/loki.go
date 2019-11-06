@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"time"
 	"strings"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -88,23 +88,25 @@ func autoLabels(records map[string]interface{}) model.LabelSet {
 	kuberneteslbs := model.LabelSet{}
 	replacer := strings.NewReplacer("/", "_", ".", "_", "-", "_")
 	for k, v := range records["kubernetes"].(map[interface{}]interface{}) {
-		if k.(string) == "labels" {
+		switch key := k.(string); {
+		case "labels":
 			for m, n := range v.(map[interface{}]interface{}) {
 				switch t := n.(type) {
 				case []byte:
 					kuberneteslbs[model.LabelName(replacer.Replace(m.(string)))] = model.LabelValue(string(t))
 				default:
-					kuberneteslbs[model.LabelName(replacer.Replace(m.(string)))] = model.LabelValue(fmt.Sprintf("%v",n))
+					kuberneteslbs[model.LabelName(replacer.Replace(m.(string)))] = model.LabelValue(fmt.Sprintf("%v", n))
 				}
 			}
-		} else if k.(string) == "docker_id" || k.(string) == "pod_id" || k.(string) == "annotations" {
+		case "docker_id", "pod_id", "annotations":
 			// do nothing
-		} else {
+			continue
+		default:
 			switch t := v.(type) {
 			case []byte:
 				kuberneteslbs[model.LabelName(k.(string))] = model.LabelValue(string(t))
 			default:
-				kuberneteslbs[model.LabelName(k.(string))] = model.LabelValue(fmt.Sprintf("%v",v))
+				kuberneteslbs[model.LabelName(k.(string))] = model.LabelValue(fmt.Sprintf("%v", v))
 			}
 		}
 	}
