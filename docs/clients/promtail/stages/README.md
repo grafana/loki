@@ -20,6 +20,7 @@ Action stages:
   * [output](./output.md): Set the log line text.
   * [labels](./labels.md): Update the label set for the log entry.
   * [metrics](./metrics.md): Calculate metrics based on extracted data.
+  * [tenant](./tenant.md): Set the tenant ID value to use for the log entry.
 
 Filtering stages:
 

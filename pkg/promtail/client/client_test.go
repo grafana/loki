@@ -27,18 +27,27 @@ var (
 		{labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(1, 0).UTC(), Line: "line1"}},
 		{labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(2, 0).UTC(), Line: "line2"}},
 		{labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(3, 0).UTC(), Line: "line3"}},
+		{labels: model.LabelSet{"__tenant_id__": "tenant-1"}, Entry: logproto.Entry{Timestamp: time.Unix(4, 0).UTC(), Line: "line4"}},
+		{labels: model.LabelSet{"__tenant_id__": "tenant-1"}, Entry: logproto.Entry{Timestamp: time.Unix(5, 0).UTC(), Line: "line5"}},
+		{labels: model.LabelSet{"__tenant_id__": "tenant-2"}, Entry: logproto.Entry{Timestamp: time.Unix(6, 0).UTC(), Line: "line6"}},
 	}
 )
+
+type receivedReq struct {
+	tenantID string
+	pushReq  logproto.PushRequest
+}
 
 func TestClient_Handle(t *testing.T) {
 	tests := map[string]struct {
 		clientBatchSize      int
 		clientBatchWait      time.Duration
 		clientMaxRetries     int
+		clientTenantID       string
 		serverResponseStatus int
 		inputEntries         []entry
 		inputDelay           time.Duration
-		expectedBatches      [][]*logproto.Stream
+		expectedReqs         []receivedReq
 		expectedMetrics      string
 	}{
 		"batch log entries together until the batch size is reached": {
@@ -47,12 +56,14 @@ func TestClient_Handle(t *testing.T) {
 			clientMaxRetries:     3,
 			serverResponseStatus: 200,
 			inputEntries:         []entry{logEntries[0], logEntries[1], logEntries[2]},
-			expectedBatches: [][]*logproto.Stream{
+			expectedReqs: []receivedReq{
 				{
-					{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}},
+					tenantID: "",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
 				},
 				{
-					{Labels: "{}", Entries: []logproto.Entry{logEntries[2].Entry}},
+					tenantID: "",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[2].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -68,12 +79,14 @@ func TestClient_Handle(t *testing.T) {
 			serverResponseStatus: 200,
 			inputEntries:         []entry{logEntries[0], logEntries[1]},
 			inputDelay:           110 * time.Millisecond,
-			expectedBatches: [][]*logproto.Stream{
+			expectedReqs: []receivedReq{
 				{
-					{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}},
+					tenantID: "",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
-					{Labels: "{}", Entries: []logproto.Entry{logEntries[1].Entry}},
+					tenantID: "",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[1].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -88,15 +101,18 @@ func TestClient_Handle(t *testing.T) {
 			clientMaxRetries:     3,
 			serverResponseStatus: 500,
 			inputEntries:         []entry{logEntries[0]},
-			expectedBatches: [][]*logproto.Stream{
+			expectedReqs: []receivedReq{
 				{
-					{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}},
+					tenantID: "",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
-					{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}},
+					tenantID: "",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
-					{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}},
+					tenantID: "",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -111,15 +127,62 @@ func TestClient_Handle(t *testing.T) {
 			clientMaxRetries:     3,
 			serverResponseStatus: 400,
 			inputEntries:         []entry{logEntries[0]},
-			expectedBatches: [][]*logproto.Stream{
+			expectedReqs: []receivedReq{
 				{
-					{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}},
+					tenantID: "",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 			},
 			expectedMetrics: `
 				# HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
 				# TYPE promtail_dropped_entries_total counter
 				promtail_dropped_entries_total{host="__HOST__"} 1.0
+			`,
+		},
+		"batch log entries together honoring the client tenant ID": {
+			clientBatchSize:      100,
+			clientBatchWait:      100 * time.Millisecond,
+			clientMaxRetries:     3,
+			clientTenantID:       "tenant-default",
+			serverResponseStatus: 200,
+			inputEntries:         []entry{logEntries[0], logEntries[1]},
+			expectedReqs: []receivedReq{
+				{
+					tenantID: "tenant-default",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
+				},
+			},
+			expectedMetrics: `
+				# HELP promtail_sent_entries_total Number of log entries sent to the ingester.
+				# TYPE promtail_sent_entries_total counter
+				promtail_sent_entries_total{host="__HOST__"} 2.0
+			`,
+		},
+		"batch log entries together honoring the tenant ID overridden while processing the pipeline stages": {
+			clientBatchSize:      100,
+			clientBatchWait:      100 * time.Millisecond,
+			clientMaxRetries:     3,
+			clientTenantID:       "tenant-default",
+			serverResponseStatus: 200,
+			inputEntries:         []entry{logEntries[0], logEntries[3], logEntries[4], logEntries[5]},
+			expectedReqs: []receivedReq{
+				{
+					tenantID: "tenant-default",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+				},
+				{
+					tenantID: "tenant-1",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[3].Entry, logEntries[4].Entry}}}},
+				},
+				{
+					tenantID: "tenant-2",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[5].Entry}}}},
+				},
+			},
+			expectedMetrics: `
+				# HELP promtail_sent_entries_total Number of log entries sent to the ingester.
+				# TYPE promtail_sent_entries_total counter
+				promtail_sent_entries_total{host="__HOST__"} 4.0
 			`,
 		},
 	}
@@ -131,7 +194,7 @@ func TestClient_Handle(t *testing.T) {
 			droppedEntries.Reset()
 
 			// Create a buffer channel where we do enqueue received requests
-			receivedReqsChan := make(chan logproto.PushRequest, 10)
+			receivedReqsChan := make(chan receivedReq, 10)
 
 			// Start a local HTTP server
 			server := httptest.NewServer(createServerHandler(receivedReqsChan, testData.serverResponseStatus))
@@ -152,6 +215,7 @@ func TestClient_Handle(t *testing.T) {
 				BackoffConfig:  util.BackoffConfig{MinBackoff: 1 * time.Millisecond, MaxBackoff: 2 * time.Millisecond, MaxRetries: testData.clientMaxRetries},
 				ExternalLabels: lokiflag.LabelSet{},
 				Timeout:        1 * time.Second,
+				TenantID:       testData.clientTenantID,
 			}
 
 			c, err := New(cfg, log.NewNopLogger())
@@ -169,7 +233,7 @@ func TestClient_Handle(t *testing.T) {
 
 			// Wait until the expected push requests are received (with a timeout)
 			deadline := time.Now().Add(1 * time.Second)
-			for len(receivedReqsChan) < len(testData.expectedBatches) && time.Now().Before(deadline) {
+			for len(receivedReqsChan) < len(testData.expectedReqs) && time.Now().Before(deadline) {
 				time.Sleep(5 * time.Millisecond)
 			}
 
@@ -178,15 +242,15 @@ func TestClient_Handle(t *testing.T) {
 			close(receivedReqsChan)
 
 			// Get all push requests received on the server side
-			receivedReqs := make([]logproto.PushRequest, 0)
+			receivedReqs := make([]receivedReq, 0)
 			for req := range receivedReqsChan {
 				receivedReqs = append(receivedReqs, req)
 			}
 
-			require.Equal(t, len(testData.expectedBatches), len(receivedReqs))
-			for i, batch := range receivedReqs {
-				assert.Equal(t, testData.expectedBatches[i], batch.Streams)
-			}
+			// Due to implementation details (maps iteration ordering is random) we just check
+			// that the expected requests are equal to the received requests, without checking
+			// the exact order which is not guaranteed in case of multi-tenant
+			require.ElementsMatch(t, testData.expectedReqs, receivedReqs)
 
 			expectedMetrics := strings.Replace(testData.expectedMetrics, "__HOST__", serverURL.Host, -1)
 			err = testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(expectedMetrics), "promtail_sent_entries_total", "promtail_dropped_entries_total")
@@ -195,52 +259,7 @@ func TestClient_Handle(t *testing.T) {
 	}
 }
 
-func TestClient_encodeBatch(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]struct {
-		inputBatch           map[model.Fingerprint]*logproto.Stream
-		expectedEntriesCount int
-	}{
-		"empty batch": {
-			inputBatch:           map[model.Fingerprint]*logproto.Stream{},
-			expectedEntriesCount: 0,
-		},
-		"single stream with single log entry": {
-			inputBatch: map[model.Fingerprint]*logproto.Stream{
-				model.Fingerprint(1): {Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}},
-			},
-			expectedEntriesCount: 1,
-		},
-		"single stream with multiple log entries": {
-			inputBatch: map[model.Fingerprint]*logproto.Stream{
-				model.Fingerprint(1): {Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}},
-			},
-			expectedEntriesCount: 2,
-		},
-		"multiple streams with multiple log entries": {
-			inputBatch: map[model.Fingerprint]*logproto.Stream{
-				model.Fingerprint(1): {Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}},
-				model.Fingerprint(2): {Labels: "{}", Entries: []logproto.Entry{logEntries[2].Entry}},
-			},
-			expectedEntriesCount: 3,
-		},
-	}
-
-	for testName, testData := range tests {
-		testData := testData
-
-		t.Run(testName, func(t *testing.T) {
-			t.Parallel()
-
-			_, entriesCount, err := encodeBatch(testData.inputBatch)
-			require.NoError(t, err)
-			assert.Equal(t, testData.expectedEntriesCount, entriesCount)
-		})
-	}
-}
-
-func createServerHandler(receivedReqsChan chan logproto.PushRequest, status int) http.HandlerFunc {
+func createServerHandler(receivedReqsChan chan receivedReq, status int) http.HandlerFunc {
 	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		// Parse the request
 		var pushReq logproto.PushRequest
@@ -249,7 +268,11 @@ func createServerHandler(receivedReqsChan chan logproto.PushRequest, status int)
 			return
 		}
 
-		receivedReqsChan <- pushReq
+		receivedReqsChan <- receivedReq{
+			tenantID: req.Header.Get("X-Scope-OrgID"),
+			pushReq:  pushReq,
+		}
+
 		rw.WriteHeader(status)
 	})
 }

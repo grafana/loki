@@ -32,7 +32,8 @@ match:
         <timestamp_stage> |
         <output_stage> |
         <labels_stage> |
-        <metrics_stage>
+        <metrics_stage> |
+        <tenant_stage>
       ]
 ```
 
