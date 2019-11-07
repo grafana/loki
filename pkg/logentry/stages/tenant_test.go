@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/grafana/loki/pkg/promtail/constants"
+	"github.com/grafana/loki/pkg/promtail/client"
 	lokiutil "github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -90,7 +90,7 @@ func TestTenantStage_Process(t *testing.T) {
 		},
 		"should not override the tenant if the source field is not defined in the extracted map": {
 			config:         &TenantConfig{Source: "tenant_id"},
-			inputLabels:    model.LabelSet{constants.ReservedLabelTenantID: "foo"},
+			inputLabels:    model.LabelSet{client.ReservedLabelTenantID: "foo"},
 			inputExtracted: map[string]interface{}{},
 			expectedTenant: lokiutil.StringRef("foo"),
 		},
@@ -102,7 +102,7 @@ func TestTenantStage_Process(t *testing.T) {
 		},
 		"should override the tenant if the source field is defined in the extracted map": {
 			config:         &TenantConfig{Source: "tenant_id"},
-			inputLabels:    model.LabelSet{constants.ReservedLabelTenantID: "foo"},
+			inputLabels:    model.LabelSet{client.ReservedLabelTenantID: "foo"},
 			inputExtracted: map[string]interface{}{"tenant_id": "bar"},
 			expectedTenant: lokiutil.StringRef("bar"),
 		},
@@ -120,7 +120,7 @@ func TestTenantStage_Process(t *testing.T) {
 		},
 		"should override the tenant with the configured static value": {
 			config:         &TenantConfig{Value: "bar"},
-			inputLabels:    model.LabelSet{constants.ReservedLabelTenantID: "foo"},
+			inputLabels:    model.LabelSet{client.ReservedLabelTenantID: "foo"},
 			inputExtracted: map[string]interface{}{},
 			expectedTenant: lokiutil.StringRef("bar"),
 		},
@@ -145,7 +145,7 @@ func TestTenantStage_Process(t *testing.T) {
 			assert.Equal(t, time.Unix(1, 1), timestamp)
 			assert.Equal(t, "hello world", entry)
 
-			actualTenant, ok := labels[constants.ReservedLabelTenantID]
+			actualTenant, ok := labels[client.ReservedLabelTenantID]
 			if testData.expectedTenant == nil {
 				assert.False(t, ok)
 			} else {

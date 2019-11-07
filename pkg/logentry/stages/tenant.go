@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/promtail/constants"
+	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -75,7 +75,7 @@ func (s *tenantStage) Process(labels model.LabelSet, extracted map[string]interf
 		return
 	}
 
-	labels[constants.ReservedLabelTenantID] = model.LabelValue(tenantID)
+	labels[client.ReservedLabelTenantID] = model.LabelValue(tenantID)
 }
 
 // Name implements Stage
