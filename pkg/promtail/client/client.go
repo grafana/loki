@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/promtail/constants"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
@@ -25,8 +24,14 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-const contentType = "application/x-protobuf"
-const maxErrMsgLen = 1024
+const (
+	contentType  = "application/x-protobuf"
+	maxErrMsgLen = 1024
+
+	// Label reserved to override the tenant ID while processing
+	// pipeline stages
+	ReservedLabelTenantID = "__tenant_id__"
+)
 
 var (
 	encodedBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -264,7 +269,7 @@ func (c *client) send(ctx context.Context, tenantID string, buf []byte) (int, er
 
 func (c *client) getTenantID(labels model.LabelSet) string {
 	// Check if it has been overridden while processing the pipeline stages
-	if value, ok := labels[constants.ReservedLabelTenantID]; ok {
+	if value, ok := labels[ReservedLabelTenantID]; ok {
 		return string(value)
 	}
 
@@ -293,10 +298,10 @@ func (c *client) Handle(ls model.LabelSet, t time.Time, s string) error {
 	// Get the tenant  ID in case it has been overridden while processing
 	// the pipeline stages, then remove the special label
 	tenantID := c.getTenantID(ls)
-	if _, ok := ls[constants.ReservedLabelTenantID]; ok {
+	if _, ok := ls[ReservedLabelTenantID]; ok {
 		// Clone the label set to not manipulate the input one
 		ls = ls.Clone()
-		delete(ls, constants.ReservedLabelTenantID)
+		delete(ls, ReservedLabelTenantID)
 	}
 
 	c.entries <- entry{tenantID, ls, logproto.Entry{
