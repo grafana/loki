@@ -9,10 +9,21 @@
 
 SHELL = /usr/bin/env bash
 
-VENDOR?=true
-MOD_VENDOR=
-ifeq ($(VENDOR),true)
-  MOD_VENDOR=-mod=vendor
+# Empty value = no -mod parameter is used.
+# If not empty, GOMOD is passed to -mod= parameter.
+# In Go 1.13, "readonly" and "vendor" are accepted.
+# In Go 1.14, "readonly", "vendor" and "mod" values are accepted.
+# If no value is specified, defaults to "vendor".
+#
+# Can be used from command line by using "GOMOD= make" (empty = no -mod parameter), or "GOMOD=vendor make" (default).
+
+GOMOD?=vendor
+ifeq ($(strip $(GOMOD)),) # Is empty?
+	MOD_VENDOR=
+	GOLANGCI_ARG=
+else
+	MOD_VENDOR=-mod=$(GOMOD)
+	GOLANGCI_ARG=--modules-download-mode=$(GOMOD)
 endif
 
 #############
@@ -226,7 +237,7 @@ publish: dist
 ########
 
 lint:
-	GO111MODULE=on GOGC=10 golangci-lint run -v
+	GO111MODULE=on GOGC=10 golangci-lint run -v $(GOLANGCI_ARG)
 
 ########
 # Test #
