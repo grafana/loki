@@ -31,7 +31,7 @@ func main() {
 		os.Exit(1)
 	}
 	if *printVersion {
-		fmt.Print(version.Print("loki"))
+		fmt.Println(version.Print("loki"))
 		os.Exit(0)
 	}
 

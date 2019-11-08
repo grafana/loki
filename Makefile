@@ -58,7 +58,7 @@ DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -
 APP_GO_FILES := $(shell find . $(DONT_FIND) -name .y.go -prune -o -name .pb.go -prune -o -name cmd -prune -o -type f -name '*.go' -print)
 
 # Build flags
-VPREFIX := github.com/grafana/loki/vendor/github.com/prometheus/common/version
+VPREFIX := github.com/grafana/loki/pkg/loki
 GO_LDFLAGS   := -s -w -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION) -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GO_FLAGS     := -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo $(MOD_VENDOR)
 DYN_GO_FLAGS := -ldflags "$(GO_LDFLAGS)" -tags netgo $(MOD_VENDOR)

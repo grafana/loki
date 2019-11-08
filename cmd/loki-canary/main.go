@@ -39,7 +39,7 @@ func main() {
 	flag.Parse()
 
 	if *printVersion {
-		fmt.Print(version.Print("loki-canary"))
+		fmt.Println(version.Print("loki-canary"))
 		os.Exit(0)
 	}
 
