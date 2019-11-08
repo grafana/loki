@@ -86,11 +86,13 @@ module Fluent
           @remove_keys_accessors.push(record_accessor_create(key))
         end
 
-        @cert = OpenSSL::X509::Certificate.new(File.read(@cert)) if @cert
-        @key = OpenSSL::PKey.read(File.read(key)) if @key
+        if !@key.nil? && !@cert.nil?
+          @cert = OpenSSL::X509::Certificate.new(File.read(@cert)) if @cert
+          @key = OpenSSL::PKey.read(File.read(@key)) if @key
 
-        if !@key.is_a?(OpenSSL::PKey::RSA) && !@key.is_a?(OpenSSL::PKey::DSA)
-          raise "Unsupported private key type #{key.class}"
+          if !@key.is_a?(OpenSSL::PKey::RSA) && !@key.is_a?(OpenSSL::PKey::DSA)
+            raise "Unsupported private key type #{key.class}"
+          end
         end
 
         if !@ca_cert.nil? && !File.exist?(@ca_cert)
