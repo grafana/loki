@@ -19,10 +19,10 @@ SHELL = /usr/bin/env bash
 
 GOMOD?=vendor
 ifeq ($(strip $(GOMOD)),) # Is empty?
-	MOD_VENDOR=
+	MOD_FLAG=
 	GOLANGCI_ARG=
 else
-	MOD_VENDOR=-mod=$(GOMOD)
+	MOD_FLAG=-mod=$(GOMOD)
 	GOLANGCI_ARG=--modules-download-mode=$(GOMOD)
 endif
 
@@ -60,13 +60,13 @@ APP_GO_FILES := $(shell find . $(DONT_FIND) -name .y.go -prune -o -name .pb.go -
 # Build flags
 VPREFIX := github.com/grafana/loki/pkg/loki
 GO_LDFLAGS   := -s -w -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION) -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-GO_FLAGS     := -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo $(MOD_VENDOR)
-DYN_GO_FLAGS := -ldflags "$(GO_LDFLAGS)" -tags netgo $(MOD_VENDOR)
+GO_FLAGS     := -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
+DYN_GO_FLAGS := -ldflags "$(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
 # Per some websites I've seen to add `-gcflags "all=-N -l"`, the gcflags seem poorly if at all documented
 # the best I could dig up is -N disables optimizations and -l disables inlining which should make debugging match source better.
 # Also remove the -s and -w flags present in the normal build which strip the symbol table and the DWARF symbol table.
-DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo $(MOD_VENDOR)
-DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo $(MOD_VENDOR)
+DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
+DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
 
 NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
        rm $@; \
@@ -204,7 +204,7 @@ promtail-clean-assets:
 # Rule to generate promtail static assets file
 $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 	@echo ">> writing assets"
-	GOFLAGS="$(MOD_VENDOR)" GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
+	GOFLAGS="$(MOD_FLAG)" GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
 
 cmd/promtail/promtail: $(APP_GO_FILES) $(PROMTAIL_GENERATED_FILE) cmd/promtail/main.go
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
@@ -244,7 +244,7 @@ lint:
 ########
 
 test: all
-	GOGC=10 go test $(MOD_VENDOR) -p=4 ./...
+	GOGC=10 go test $(MOD_FLAG) -p=4 ./...
 
 #########
 # Clean #
@@ -260,7 +260,7 @@ clean:
 	rm -rf dist/
 	rm -rf cmd/fluent-bit/out_loki.h
 	rm -rf cmd/fluent-bit/out_loki.so
-	go clean $(MOD_VENDOR) ./...
+	go clean $(MOD_FLAG) ./...
 
 #########
 # YACCs #
@@ -500,8 +500,8 @@ build-image-push: build-image
 ########
 
 benchmark-store:
-	go run $(MOD_VENDOR) ./pkg/storage/hack/main.go
-	go test $(MOD_VENDOR) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
+	go run $(MOD_FLAG) ./pkg/storage/hack/main.go
+	go test $(MOD_FLAG) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
 
 # regenerate drone yaml
 drone:
