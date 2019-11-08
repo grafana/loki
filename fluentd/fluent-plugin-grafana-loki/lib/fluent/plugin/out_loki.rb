@@ -76,7 +76,7 @@ module Fluent
         @record_accessors = {}
         conf.elements.select { |element| element.name == 'label' }.each do |element|
           element.each_pair do |k, v|
-            element.key?(k) # to suppress unread configuration warning
+            element.has_key?(k) # rubocop:disable Style/PreferredHashMethods #to suppress unread configuration warning
             v = k if v.empty?
             @record_accessors[k] = record_accessor_create(v)
           end
