@@ -117,7 +117,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 	case "inmemory":
 		store := chunk.NewMockStorage()
 		return store, nil
-	case "aws", "aws-dynamo", "dynamo":
+	case "aws", "aws-dynamo":
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
 		}
@@ -150,7 +150,7 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 		return store, nil
 	case "aws", "s3":
 		return aws.NewS3ObjectClient(cfg.AWSStorageConfig, schemaCfg)
-	case "aws-dynamo", "dynamo":
+	case "aws-dynamo":
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
 		}
