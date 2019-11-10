@@ -10,7 +10,7 @@ Every Loki release includes binaries for Promtail:
 ```bash
 # download a binary (modify app, os, and arch as needed)
 # Installs v0.4.0. Go to the releases page for the latest version
-$ curl -fSL -o "/usr/local/bin/promtail.gz" "https://github.com/grafana/loki/releases/download/v0.4.0/promtail_linux_amd64.gz"
+$ curl -fSL -o "/usr/local/bin/promtail.gz" "https://github.com/grafana/loki/releases/download/v0.4.0/promtail-linux-amd64.gz"
 $ gunzip "/usr/local/bin/promtail.gz"
 
 # make sure it is executable
