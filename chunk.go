@@ -291,7 +291,7 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	metadataRead := len(input) - r.Len()
 	// Older versions of Cortex included the initial length word; newer versions do not.
 	if !(metadataRead == int(metadataLen) || metadataRead == int(metadataLen)+4) {
-		return ErrMetadataLength
+		return errors.Wrapf(ErrMetadataLength, "expected %d, got %d", metadataLen, metadataRead)
 	}
 
 	// Next, confirm the chunks matches what we expected.  Easiest way to do this

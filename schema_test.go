@@ -171,7 +171,7 @@ func parseRangeValueType(rangeValue []byte) (int, error) {
 		return SeriesRangeValue, nil
 
 	default:
-		return 0, fmt.Errorf("unrecognised range value type. version: '%v'", string(components[3]))
+		return 0, fmt.Errorf("unrecognised range value type. version: %q", string(components[3]))
 	}
 }
 
