@@ -15,7 +15,6 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/grafana/loki/pkg/chunkenc"
 	loki_util "github.com/grafana/loki/pkg/util"
@@ -206,7 +205,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	return nil
 }
 
-func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, []client.LabelAdapter) {
+func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels) {
 	instance.streamsMtx.Lock()
 	defer instance.streamsMtx.Unlock()
 
@@ -261,19 +260,19 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 
 	if len(stream.chunks) == 0 {
 		delete(instance.streams, stream.fp)
-		instance.index.Delete(client.FromLabelAdaptersToLabels(stream.labels), stream.fp)
+		instance.index.Delete(stream.labels, stream.fp)
 		instance.streamsRemovedTotal.Inc()
 		memoryStreams.Dec()
 	}
 }
 
-func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs []client.LabelAdapter, cs []*chunkDesc) error {
+func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs labels.Labels, cs []*chunkDesc) error {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err
 	}
 
-	labelsBuilder := labels.NewBuilder(client.FromLabelAdaptersToLabels(labelPairs))
+	labelsBuilder := labels.NewBuilder(labelPairs)
 	labelsBuilder.Set(nameLabel, logsValue)
 	metric := labelsBuilder.Labels()
 
