@@ -1,13 +1,13 @@
 package loghttp
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
+	json "github.com/json-iterator/go"
 )
 
 const (

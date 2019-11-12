@@ -1,11 +1,11 @@
 package output
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	json "github.com/json-iterator/go"
 	"github.com/stretchr/testify/assert"
 )
 

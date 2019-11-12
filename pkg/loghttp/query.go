@@ -1,7 +1,6 @@
 package loghttp
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,6 +8,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
+	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 )
 

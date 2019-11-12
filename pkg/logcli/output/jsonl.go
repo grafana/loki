@@ -1,11 +1,11 @@
 package output
 
 import (
-	"encoding/json"
 	"log"
 	"time"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	json "github.com/json-iterator/go"
 )
 
 // JSONLOutput prints logs and metadata as JSON Lines, suitable for scripts

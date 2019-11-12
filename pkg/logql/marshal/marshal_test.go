@@ -2,18 +2,16 @@ package marshal
 
 import (
 	"bytes"
-	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
-
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/promql"
-
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	json "github.com/json-iterator/go"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 )
 

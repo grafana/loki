@@ -2,7 +2,6 @@ package marshal
 
 import (
 	"bytes"
-	"encoding/json"
 	"log"
 	"testing"
 	"time"
@@ -10,6 +9,7 @@ import (
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	json "github.com/json-iterator/go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,7 +37,7 @@ var queryTests = []struct {
 					"entries":[
 						{
 							"ts": "2019-09-13T18:32:22.380001319Z",
-							"line": "super line"	
+							"line": "super line"
 						}
 					]
 				}
@@ -95,7 +95,7 @@ var tailTests = []struct {
 					"entries": [
 						{
 							"ts": "2019-09-13T18:32:22.380001319Z",
-							"line": "super line"	
+							"line": "super line"
 						}
 					]
 				}
