@@ -15,6 +15,7 @@ import (
 // streams for each tenant are stored in a dedicated batch.
 type batch struct {
 	streams   map[model.Fingerprint]*logproto.Stream
+	mappings  map[model.Fingerprint]model.LabelSet // to handle hash collisions, we keep the real mapping here.
 	bytes     int
 	createdAt time.Time
 }
@@ -22,6 +23,7 @@ type batch struct {
 func newBatch(entries ...entry) *batch {
 	b := &batch{
 		streams:   map[model.Fingerprint]*logproto.Stream{},
+		mappings:  map[model.Fingerprint]model.LabelSet{},
 		bytes:     0,
 		createdAt: time.Now(),
 	}
@@ -39,7 +41,7 @@ func (b *batch) add(entry entry) {
 	b.bytes += len(entry.Line)
 
 	// Append the entry to an already existing stream (if any)
-	fp := entry.labels.FastFingerprint()
+	fp := b.uniqueFingerprint(entry.labels)
 	if stream, ok := b.streams[fp]; ok {
 		stream.Entries = append(stream.Entries, entry.Entry)
 		return
@@ -49,6 +51,27 @@ func (b *batch) add(entry entry) {
 	b.streams[fp] = &logproto.Stream{
 		Labels:  entry.labels.String(),
 		Entries: []logproto.Entry{entry.Entry},
+	}
+}
+
+func (b *batch) uniqueFingerprint(labels model.LabelSet) model.Fingerprint {
+	// fast fingerprint generates similar values for similar label sets.
+	// by using large prime, we get away from those close clusters quickly
+	const prime = 960119528882528219
+
+	fp := labels.FastFingerprint()
+	for {
+		if b.mappings[fp] == nil {
+			b.mappings[fp] = labels
+			return fp
+		}
+
+		if b.mappings[fp].Equal(labels) {
+			return fp
+		}
+
+		// otherwise, just try next one
+		fp += prime
 	}
 }
 
@@ -71,6 +94,17 @@ func (b *batch) age() time.Duration {
 // encode the batch as snappy-compressed push request, and returns
 // the encoded bytes and the number of encoded entries
 func (b *batch) encode() ([]byte, int, error) {
+	req, entriesCount := b.createPushRequest()
+	buf, err := proto.Marshal(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	buf = snappy.Encode(nil, buf)
+	return buf, entriesCount, nil
+}
+
+// creates push request and returns it, together with number of entries
+func (b *batch) createPushRequest() (*logproto.PushRequest, int) {
 	req := logproto.PushRequest{
 		Streams: make([]*logproto.Stream, 0, len(b.streams)),
 	}
@@ -80,11 +114,5 @@ func (b *batch) encode() ([]byte, int, error) {
 		req.Streams = append(req.Streams, stream)
 		entriesCount += len(stream.Entries)
 	}
-
-	buf, err := proto.Marshal(&req)
-	if err != nil {
-		return nil, 0, err
-	}
-	buf = snappy.Encode(nil, buf)
-	return buf, entriesCount, nil
+	return &req, entriesCount
 }

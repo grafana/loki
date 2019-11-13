@@ -1,8 +1,11 @@
 package client
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -101,5 +104,35 @@ func TestBatch_encode(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, testData.expectedEntriesCount, entriesCount)
 		})
+	}
+}
+
+func TestHashCollisions(t *testing.T) {
+	b := newBatch()
+
+	ls1 := model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}
+	ls2 := model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}
+
+	require.False(t, ls1.Equal(ls2))
+	require.Equal(t, ls1.FastFingerprint(), ls2.FastFingerprint())
+
+	const entriesPerLabel = 10
+
+	for i := 0; i < entriesPerLabel; i++ {
+		b.add(entry{labels: ls1, Entry: logproto.Entry{time.Now(), fmt.Sprintf("line %d", i)}})
+		b.add(entry{labels: ls2, Entry: logproto.Entry{time.Now(), fmt.Sprintf("line %d", i)}})
+	}
+
+	// make sure that colliding labels are stored properly as independent streams
+	req, entries := b.createPushRequest()
+	assert.Len(t, req.Streams, 2)
+	assert.Equal(t, 2*entriesPerLabel, entries)
+
+	if req.Streams[0].Labels == ls1.String() {
+		assert.Equal(t, ls1.String(), req.Streams[0].Labels)
+		assert.Equal(t, ls2.String(), req.Streams[1].Labels)
+	} else {
+		assert.Equal(t, ls2.String(), req.Streams[0].Labels)
+		assert.Equal(t, ls1.String(), req.Streams[1].Labels)
 	}
 }
