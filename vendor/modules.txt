@@ -91,6 +91,8 @@ github.com/beorn7/perks/quantile
 github.com/blang/semver
 # github.com/bmatcuk/doublestar v1.1.1
 github.com/bmatcuk/doublestar
+# github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869
+github.com/bmizerany/assert
 # github.com/bradfitz/gomemcache v0.0.0-20190329173943-551aad21a668
 github.com/bradfitz/gomemcache/memcache
 # github.com/census-instrumentation/opencensus-proto v0.2.1
@@ -332,6 +334,10 @@ github.com/klauspost/cpuid
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/kr/logfmt v0.0.0-20140226030751-b84e30acd515
 github.com/kr/logfmt
+# github.com/kr/pretty v0.1.0
+github.com/kr/pretty
+# github.com/kr/text v0.1.0
+github.com/kr/text
 # github.com/mattn/go-colorable v0.0.9
 github.com/mattn/go-colorable
 # github.com/mattn/go-isatty v0.0.4
