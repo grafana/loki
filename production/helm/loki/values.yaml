@@ -154,7 +154,7 @@ serviceAccount:
   create: true
   name:
 
-terminationGracePeriodSeconds: 30
+terminationGracePeriodSeconds: 4800
 
 ## Tolerations for pod assignment
 ## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
