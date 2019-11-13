@@ -100,12 +100,13 @@ func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
 type flushOp struct {
 	from      model.Time
 	userID    string
-	fp        model.Fingerprint
+	rawFP     model.Fingerprint
+	mappedFP  model.Fingerprint
 	immediate bool
 }
 
 func (o *flushOp) Key() string {
-	return fmt.Sprintf("%s-%s-%v", o.userID, o.fp, o.immediate)
+	return fmt.Sprintf("%s-%s-%v", o.userID, o.mappedFP, o.immediate)
 }
 
 func (o *flushOp) Priority() int64 {
@@ -141,11 +142,14 @@ func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate boo
 		return
 	}
 
-	flushQueueIndex := int(uint64(stream.fp) % uint64(i.cfg.ConcurrentFlushes))
+	flushQueueIndex := int(uint64(stream.mappedFP) % uint64(i.cfg.ConcurrentFlushes))
 	firstTime, _ := stream.chunks[0].chunk.Bounds()
 	i.flushQueues[flushQueueIndex].Enqueue(&flushOp{
-		model.TimeFromUnixNano(firstTime.UnixNano()), instance.instanceID,
-		stream.fp, immediate,
+		from:      model.TimeFromUnixNano(firstTime.UnixNano()),
+		userID:    instance.instanceID,
+		rawFP:     stream.rawFP,
+		mappedFP:  stream.mappedFP,
+		immediate: immediate,
 	})
 }
 
@@ -162,9 +166,9 @@ func (i *Ingester) flushLoop(j int) {
 		}
 		op := o.(*flushOp)
 
-		level.Debug(util.Logger).Log("msg", "flushing stream", "userid", op.userID, "fp", op.fp, "immediate", op.immediate)
+		level.Debug(util.Logger).Log("msg", "flushing stream", "userid", op.userID, "rawFP", op.rawFP, "mappedFP", op.mappedFP, "immediate", op.immediate)
 
-		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
+		err := i.flushUserSeries(op.userID, op.rawFP, op.mappedFP, op.immediate)
 		if err != nil {
 			level.Error(util.WithUserID(op.userID, util.Logger)).Log("msg", "failed to flush user", "err", err)
 		}
@@ -178,13 +182,13 @@ func (i *Ingester) flushLoop(j int) {
 	}
 }
 
-func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediate bool) error {
+func (i *Ingester) flushUserSeries(userID string, rawFP, mappedFP model.Fingerprint, immediate bool) error {
 	instance, ok := i.getInstanceByID(userID)
 	if !ok {
 		return nil
 	}
 
-	chunks, labels := i.collectChunksToFlush(instance, fp, immediate)
+	chunks, labels := i.collectChunksToFlush(instance, mappedFP, immediate)
 	if len(chunks) < 1 {
 		return nil
 	}
@@ -192,7 +196,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	ctx := user.InjectOrgID(context.Background(), userID)
 	ctx, cancel := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
 	defer cancel()
-	err := i.flushChunks(ctx, fp, labels, chunks)
+	err := i.flushChunks(ctx, rawFP, labels, chunks)
 	if err != nil {
 		return err
 	}
@@ -205,11 +209,11 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	return nil
 }
 
-func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels) {
+func (i *Ingester) collectChunksToFlush(instance *instance, mappedFP model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels) {
 	instance.streamsMtx.Lock()
 	defer instance.streamsMtx.Unlock()
 
-	stream, ok := instance.streams[fp]
+	stream, ok := instance.streams[mappedFP]
 	if !ok {
 		return nil, nil
 	}
@@ -259,14 +263,14 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 	memoryChunks.Sub(float64(prevNumChunks - len(stream.chunks)))
 
 	if len(stream.chunks) == 0 {
-		delete(instance.streams, stream.fp)
-		instance.index.Delete(stream.labels, stream.fp)
+		delete(instance.streams, stream.mappedFP)
+		instance.index.Delete(stream.labels, stream.mappedFP)
 		instance.streamsRemovedTotal.Inc()
 		memoryStreams.Dec()
 	}
 }
 
-func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs labels.Labels, cs []*chunkDesc) error {
+func (i *Ingester) flushChunks(ctx context.Context, rawFP model.Fingerprint, labelPairs labels.Labels, cs []*chunkDesc) error {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err
@@ -280,7 +284,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	for _, c := range cs {
 		firstTime, lastTime := loki_util.RoundToMilliseconds(c.chunk.Bounds())
 		c := chunk.NewChunk(
-			userID, fp, metric,
+			userID, rawFP, metric,
 			chunkenc.NewFacade(c.chunk),
 			firstTime,
 			lastTime,

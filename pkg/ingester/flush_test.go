@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bmizerany/assert"
 	"github.com/cortexproject/cortex/pkg/chunk"
+	cclient "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -42,18 +44,62 @@ func TestChunkFlushingIdle(t *testing.T) {
 	cfg.RetainPeriod = 500 * time.Millisecond
 
 	store, ing := newTestStore(t, cfg)
-	userIDs, testData := pushTestSamples(t, ing)
+	testData := pushTestSamples(t, ing)
 
 	// wait beyond idle time so samples flush
 	time.Sleep(cfg.MaxChunkIdle * 2)
-	store.checkData(t, userIDs, testData)
+	store.checkData(t, testData)
 }
 
 func TestChunkFlushingShutdown(t *testing.T) {
 	store, ing := newTestStore(t, defaultIngesterTestConfig(t))
-	userIDs, testData := pushTestSamples(t, ing)
+	testData := pushTestSamples(t, ing)
 	ing.Shutdown()
-	store.checkData(t, userIDs, testData)
+	store.checkData(t, testData)
+}
+
+func TestFlushingCollidingLabels(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.FlushCheckPeriod = 20 * time.Millisecond
+	cfg.MaxChunkIdle = 100 * time.Millisecond
+	cfg.RetainPeriod = 500 * time.Millisecond
+
+	store, ing := newTestStore(t, cfg)
+	defer store.Stop()
+
+	const userID = "testUser"
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	// checkData only iterates between unix seconds 0 and 1000
+	now := time.Unix(0, 0)
+
+	req := &logproto.PushRequest{Streams: []*logproto.Stream{
+		// some colliding label sets
+		{Labels: model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}.String(), Entries: entries(5, now.Add(time.Minute))},
+		{Labels: model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}.String(), Entries: entries(5, now)},
+		{Labels: model.LabelSet{"app": "l", "uniq0": "1", "uniq1": "0"}.String(), Entries: entries(5, now.Add(time.Minute))},
+		{Labels: model.LabelSet{"app": "m", "uniq0": "0", "uniq1": "0"}.String(), Entries: entries(5, now)},
+		{Labels: model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "0"}.String(), Entries: entries(5, now.Add(time.Minute))},
+		{Labels: model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "0"}.String(), Entries: entries(5, now)},
+	}}
+
+	sort.Slice(req.Streams, func(i, j int) bool {
+		return req.Streams[i].Labels < req.Streams[j].Labels
+	})
+
+	_, err := ing.Push(ctx, req)
+	require.NoError(t, err)
+
+	// force flush
+	ing.Shutdown()
+
+	// verify that we get all the data back
+	store.checkData(t, map[string][]*logproto.Stream{userID: req.Streams})
+
+	// make sure original fingerprints survived all the mapping and flushing work
+	for _, c := range store.getChunksForUser(userID) {
+		assert.Equal(t, cclient.FastFingerprint(cclient.FromLabelsToLabelAdapters(c.Metric)), c.Fingerprint)
+	}
 }
 
 type testStore struct {
@@ -103,11 +149,18 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	if err != nil {
 		return err
 	}
-	for _, chunk := range chunks {
+	for ix, chunk := range chunks {
 		for _, label := range chunk.Metric {
 			if label.Value == "" {
 				return fmt.Errorf("Chunk has blank label %q", label.Name)
 			}
+		}
+
+		// remove __name__ label
+		if chunk.Metric.Has("__name__") {
+			labelsBuilder := labels.NewBuilder(chunk.Metric)
+			labelsBuilder.Del("__name__")
+			chunks[ix].Metric = labelsBuilder.Labels()
 		}
 	}
 	s.chunks[userID] = append(s.chunks[userID], chunks...)
@@ -124,7 +177,7 @@ func (s *testStore) LazyQuery(ctx context.Context, req *logproto.QueryRequest) (
 
 func (s *testStore) Stop() {}
 
-func pushTestSamples(t *testing.T, ing logproto.PusherServer) ([]string, map[string][]*logproto.Stream) {
+func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]*logproto.Stream {
 	userIDs := []string{"1", "2", "3"}
 
 	// Create test samples.
@@ -141,7 +194,7 @@ func pushTestSamples(t *testing.T, ing logproto.PusherServer) ([]string, map[str
 		})
 		require.NoError(t, err)
 	}
-	return userIDs, testData
+	return testData
 }
 
 func buildTestStreams(offset int) []*logproto.Stream {
@@ -170,27 +223,30 @@ func buildTestStreams(offset int) []*logproto.Stream {
 }
 
 // check that the store is holding data equivalent to what we expect
-func (s *testStore) checkData(t *testing.T, userIDs []string, testData map[string][]*logproto.Stream) {
+func (s *testStore) checkData(t *testing.T, testData map[string][]*logproto.Stream) {
+	for userID, expected := range testData {
+		streams := s.getStreamsForUser(t, userID)
+		require.Equal(t, expected, streams)
+	}
+}
+
+func (s *testStore) getStreamsForUser(t *testing.T, userID string) []*logproto.Stream {
+	var streams []*logproto.Stream
+	for _, c := range s.getChunksForUser(userID) {
+		lokiChunk := c.Data.(*chunkenc.Facade).LokiChunk()
+		streams = append(streams, buildStreamsFromChunk(t, c.Metric.String(), lokiChunk))
+	}
+	sort.Slice(streams, func(i, j int) bool {
+		return streams[i].Labels < streams[j].Labels
+	})
+	return streams
+}
+
+func (s *testStore) getChunksForUser(userID string) []chunk.Chunk {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	for _, userID := range userIDs {
-		chunks := s.chunks[userID]
-		streams := []*logproto.Stream{}
-		for _, chunk := range chunks {
-			lokiChunk := chunk.Data.(*chunkenc.Facade).LokiChunk()
-			if chunk.Metric.Has("__name__") {
-				labelsBuilder := labels.NewBuilder(chunk.Metric)
-				labelsBuilder.Del("__name__")
-				chunk.Metric = labelsBuilder.Labels()
-			}
-			labels := chunk.Metric.String()
-			streams = append(streams, buildStreamsFromChunk(t, labels, lokiChunk))
-		}
-		sort.Slice(streams, func(i, j int) bool {
-			return streams[i].Labels < streams[j].Labels
-		})
-		require.Equal(t, testData[userID], streams)
-	}
+
+	return s.chunks[userID]
 }
 
 func buildStreamsFromChunk(t *testing.T, labels string, chk chunkenc.Chunk) *logproto.Stream {

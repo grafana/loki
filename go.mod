@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go v1.23.13 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/bmatcuk/doublestar v1.1.1
+	github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
 	github.com/cortexproject/cortex v0.3.1-0.20191025190927-77a09cc7c953

@@ -143,7 +143,7 @@ func (m *fpMapper) maybeAddMapping(fp model.Fingerprint, collidingMetric []clien
 			"msg", "fingerprint collision detected, mapping to new fingerprint",
 			"old_fp", fp,
 			"new_fp", mappedFP,
-			"metric", collidingMetric,
+			"metric", ms,
 		)
 		return mappedFP
 	}
