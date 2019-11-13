@@ -9,11 +9,9 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
-
-	"github.com/prometheus/prometheus/pkg/labels"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
