@@ -52,6 +52,13 @@ config:
       index:
         prefix: index_
         period: 168h
+    - from: 2019-11-14
+      store: boltdb
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_v11_
+        period: 168h
   server:
     http_listen_port: 3100
   storage_config:

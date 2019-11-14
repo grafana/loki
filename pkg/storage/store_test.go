@@ -151,7 +151,7 @@ func getLocalStore() Store {
 				From:       chunk.DayTime{Time: start},
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
-				Schema:     "v9",
+				Schema:     "v11",
 				IndexTables: chunk.PeriodicTableConfig{
 					Prefix: "index_",
 					Period: time.Hour * 168,

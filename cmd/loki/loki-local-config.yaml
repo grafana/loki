@@ -24,6 +24,13 @@ schema_config:
     index:
       prefix: index_
       period: 168h
+  - from: 2019-11-14
+    store: boltdb
+    object_store: filesystem
+    schema: v11
+    index:
+      prefix: index_v11_
+      period: 168h
 
 storage_config:
   boltdb:
@@ -53,4 +60,3 @@ table_manager:
     provisioned_write_throughput: 0
   retention_deletes_enabled: false
   retention_period: 0
-

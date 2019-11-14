@@ -628,7 +628,9 @@ store: <string>
 # cassandra. If omitted, defaults to same value as store.
 [object_store: <string>]
 
-# The schema to use. Set to v9 or v10.
+# The schema to use. Set to v9 or v11.
+# v11 also indexes all label names per unique series which improve labels queries latency.
+# v11 is the current recommended version.
 schema: <string>
 
 # Configures how the index is updated and stored.

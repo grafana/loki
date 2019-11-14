@@ -29,7 +29,7 @@ schema_config:
   - from: 2018-04-15
     store: boltdb
     object_store: filesystem
-    schema: v9
+    schema: v11
     index:
       prefix: index_
       period: 168h
@@ -73,11 +73,11 @@ stores, respectively.
 schema_config:
   configs:
   - from: 2018-04-15
-    store: bigtable
-    object_store: gcs
-    schema: v9
+    store: boltdb
+    object_store: filesystem
+    schema: v11
     index:
-      prefix: loki_index_
+      prefix: index_
       period: 168h
 
 storage_config:
@@ -99,7 +99,7 @@ schema_config:
   - from: 2018-04-15
     store: cassandra
     object_store: filesystem
-    schema: v9
+    schema: v11
     index:
       prefix: cassandra_table
       period: 168h
@@ -127,7 +127,7 @@ schema_config:
     - from: 2018-04-15
       store: dynamo
       object_store: s3
-      schema: v9
+      schema: v11
       index:
         prefix: dynamodb_table_name
         period: 0

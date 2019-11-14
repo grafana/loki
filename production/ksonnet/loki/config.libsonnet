@@ -135,34 +135,34 @@
       },
 
       storage_config: {
-        index_queries_cache_config: {
-          memcached: {
-            batch_size: 100,
-            parallelism: 100,
-          },
+                        index_queries_cache_config: {
+                          memcached: {
+                            batch_size: 100,
+                            parallelism: 100,
+                          },
 
-          memcached_client: {
-            host: 'memcached-index-queries.%s.svc.cluster.local' % $._config.namespace,
-            service: 'memcached-client',
-            consistent_hash: true,
-          },
-        },
-      } +
-      (if std.count($._config.enabledBackends, 'gcs') > 0 then {
-        gcs: $._config.client_configs.gcs,
-       } else {}) +
-      (if std.count($._config.enabledBackends, 's3') > 0 then {
-        aws+: $._config.client_configs.s3
-       } else {}) +
-      (if std.count($._config.enabledBackends, 'bigtable') > 0 then {
-        bigtable: $._config.client_configs.gcp,
-       } else {}) +
-      (if std.count($._config.enabledBackends, 'cassandra') > 0 then {
-        cassandra: $._config.client_configs.cassandra,
-       } else {}) +
-      (if std.count($._config.enabledBackends, 'dynamodb') > 0 then {
-        aws+: $._config.client_configs.dynamo
-       } else {}),
+                          memcached_client: {
+                            host: 'memcached-index-queries.%s.svc.cluster.local' % $._config.namespace,
+                            service: 'memcached-client',
+                            consistent_hash: true,
+                          },
+                        },
+                      } +
+                      (if std.count($._config.enabledBackends, 'gcs') > 0 then {
+                         gcs: $._config.client_configs.gcs,
+                       } else {}) +
+                      (if std.count($._config.enabledBackends, 's3') > 0 then {
+                         aws+: $._config.client_configs.s3,
+                       } else {}) +
+                      (if std.count($._config.enabledBackends, 'bigtable') > 0 then {
+                         bigtable: $._config.client_configs.gcp,
+                       } else {}) +
+                      (if std.count($._config.enabledBackends, 'cassandra') > 0 then {
+                         cassandra: $._config.client_configs.cassandra,
+                       } else {}) +
+                      (if std.count($._config.enabledBackends, 'dynamodb') > 0 then {
+                         aws+: $._config.client_configs.dynamo,
+                       } else {}),
 
       chunk_store_config: {
         chunk_cache_config: {
@@ -195,16 +195,28 @@
 
       // Default schema config is bigtable/gcs, this will need to be overriden for other stores
       schema_config: {
-        configs: [{
-          from: '2018-04-15',
-          store: 'bigtable',
-          object_store: 'gcs',
-          schema: 'v9',
-          index: {
-            prefix: '%s_index_' % $._config.table_prefix,
-            period: '%dh' % $._config.index_period_hours,
+        configs: [
+          {
+            from: '2018-04-15',
+            store: 'bigtable',
+            object_store: 'gcs',
+            schema: 'v9',
+            index: {
+              prefix: '%s_index_' % $._config.table_prefix,
+              period: '%dh' % $._config.index_period_hours,
+            },
           },
-        }],
+          {
+            from: '2019-11-14',
+            store: 'bigtable',
+            object_store: 'gcs',
+            schema: 'v11',
+            index: {
+              prefix: '%s_index_v11_' % $._config.table_prefix,
+              period: '%dh' % $._config.index_period_hours,
+            },
+          },
+        ],
       },
 
       table_manager: {
