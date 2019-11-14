@@ -46,6 +46,8 @@ When using S3 as object storage, the following permissions are needed:
 * `s3:PutObject`
 * `s3:GetObject`
 
+Resources: `arn:aws:s3:::<bucket_name>`, `arn:aws:s3:::<bucket_name>/*`
+
 ### DynamoDB
 
 When using DynamoDB for the index, the following permissions are needed:
@@ -62,6 +64,36 @@ When using DynamoDB for the index, the following permissions are needed:
 * `dynamodb:UntagResource`
 * `dynamodb:UpdateItem`
 * `dynamodb:UpdateTable`
+
+Resources: `arn:aws:dynamodb:<aws_region>:<aws_account_id>:table/<prefix>*`
+
+#### AutoScaling 
+
+If you enable autoscaling from table manager, the following permissions are needed:
+
+##### Deletion
+
+* `dynamodb:DeleteTable`
+
+Resources: `arn:aws:dynamodb:<aws_region>:<aws_account_id>:table/<prefix>*`
+
+##### Application Autoscaling
+
+* `dynamodb:ListTables`
+* `application-autoscaling:DescribeScalableTargets`
+* `application-autoscaling:DescribeScalingPolicies`
+* `application-autoscaling:RegisterScalableTarget`
+* `application-autoscaling:PutScalingPolicy`
+
+Resources: `*`
+
+##### IAM
+
+* `iam:GetRole`
+* `iam:PassRole`
+
+Resources: `arn:aws:iam::<aws_account_id>:role/<role_name>`
+
 
 ## Chunk Format
 
