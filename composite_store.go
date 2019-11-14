@@ -100,30 +100,30 @@ func (c compositeStore) Get(ctx context.Context, userID string, from, through mo
 
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
 func (c compositeStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error) {
-	var result []string
+	var result UniqueStrings
 	err := c.forStores(from, through, func(from, through model.Time, store Store) error {
 		labelValues, err := store.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName)
 		if err != nil {
 			return err
 		}
-		result = append(result, labelValues...)
+		result.Add(labelValues...)
 		return nil
 	})
-	return result, err
+	return result.Strings(), err
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
 func (c compositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
-	var result []string
+	var result UniqueStrings
 	err := c.forStores(from, through, func(from, through model.Time, store Store) error {
 		labelNames, err := store.LabelNamesForMetricName(ctx, userID, from, through, metricName)
 		if err != nil {
 			return err
 		}
-		result = append(result, labelNames...)
+		result.Add(labelNames...)
 		return nil
 	})
-	return result, err
+	return result.Strings(), err
 }
 
 func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {

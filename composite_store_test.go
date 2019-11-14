@@ -180,3 +180,64 @@ func TestCompositeStore(t *testing.T) {
 		})
 	}
 }
+
+type mockStoreLabel struct {
+	mockStore
+	values []string
+}
+
+func (m mockStoreLabel) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error) {
+	return m.values, nil
+}
+
+func (m mockStoreLabel) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+	return m.values, nil
+}
+
+func TestCompositeStoreLabels(t *testing.T) {
+	t.Parallel()
+
+	cs := compositeStore{
+		stores: []compositeStoreEntry{
+			{model.TimeFromUnix(0), mockStore(1)},
+			{model.TimeFromUnix(20), mockStoreLabel{mockStore(1), []string{"b", "c", "e"}}},
+			{model.TimeFromUnix(40), mockStoreLabel{mockStore(1), []string{"a", "b", "c", "f"}}},
+		},
+	}
+
+	for i, tc := range []struct {
+		from, through int64
+		want          []string
+	}{
+		{
+			0, 10,
+			nil,
+		},
+		{
+			0, 30,
+			[]string{"b", "c", "e"},
+		},
+		{
+			0, 40,
+			[]string{"a", "b", "c", "e", "f"},
+		},
+	} {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			have, err := cs.LabelNamesForMetricName(context.Background(), "", model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through), "")
+			if err != nil {
+				t.Fatalf("err - %s", err)
+			}
+			if !reflect.DeepEqual(tc.want, have) {
+				t.Fatalf("wrong label names - %s", test.Diff(tc.want, have))
+			}
+			have, err = cs.LabelValuesForMetricName(context.Background(), "", model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through), "", "")
+			if err != nil {
+				t.Fatalf("err - %s", err)
+			}
+			if !reflect.DeepEqual(tc.want, have) {
+				t.Fatalf("wrong label values - %s", test.Diff(tc.want, have))
+			}
+		})
+	}
+
+}

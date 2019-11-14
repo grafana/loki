@@ -851,3 +851,49 @@ func TestStoreMaxLookBack(t *testing.T) {
 	require.Equal(t, 1, len(chunks))
 	chunks[0].Through.Equal(now)
 }
+
+func benchmarkParseIndexEntries(i int64, b *testing.B) {
+	b.ReportAllocs()
+	b.StopTimer()
+	store := &store{}
+	ctx := context.Background()
+	entries := generateIndexEntries(i)
+	matcher, err := labels.NewMatcher(labels.MatchRegexp, "", ".*")
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.StartTimer()
+	for n := 0; n < b.N; n++ {
+		keys, err := store.parseIndexEntries(ctx, entries, matcher)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if len(keys) != len(entries)/2 {
+			b.Fatalf("expected keys:%d got:%d", len(entries)/2, len(keys))
+		}
+	}
+}
+
+func BenchmarkParseIndexEntries500(b *testing.B)   { benchmarkParseIndexEntries(500, b) }
+func BenchmarkParseIndexEntries2500(b *testing.B)  { benchmarkParseIndexEntries(2500, b) }
+func BenchmarkParseIndexEntries10000(b *testing.B) { benchmarkParseIndexEntries(10000, b) }
+func BenchmarkParseIndexEntries50000(b *testing.B) { benchmarkParseIndexEntries(50000, b) }
+
+func generateIndexEntries(n int64) []IndexEntry {
+	res := make([]IndexEntry, 0, n)
+	for i := int64(n - 1); i >= 0; i-- {
+		labelValue := fmt.Sprintf("labelvalue%d", i%(n/2))
+		chunkID := fmt.Sprintf("chunkid%d", i%(n/2))
+		rangeValue := []byte{}
+		rangeValue = append(rangeValue, []byte("component1")...)
+		rangeValue = append(rangeValue, 0)
+		rangeValue = append(rangeValue, []byte(labelValue)...)
+		rangeValue = append(rangeValue, 0)
+		rangeValue = append(rangeValue, []byte(chunkID)...)
+		rangeValue = append(rangeValue, 0)
+		res = append(res, IndexEntry{
+			RangeValue: rangeValue,
+		})
+	}
+	return res
+}
