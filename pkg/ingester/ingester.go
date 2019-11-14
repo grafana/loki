@@ -124,6 +124,8 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		return nil, err
 	}
 
+	i.lifecycler.Start()
+
 	i.done.Add(1)
 	go i.loop()
 
