@@ -75,6 +75,37 @@ relabel_configs:
 
 See [Relabeling](#relabeling) for more information.
 
+## Journal Scraping (Linux Only)
+
+On systems with `systemd`, Promtail also supports reading from the journal. Unlike 
+file scraping which is defined in the `static_configs` stanza, journal scraping is 
+defined in a `journal` stanza:
+
+```yaml
+scrape_configs:
+  - job_name: journal
+    journal:
+      max_age: 12h
+      path: /var/log/journal
+      labels:
+        job: systemd-journal
+    relabel_configs:
+      - source_labels: ['__journal__systemd_unit']
+        target_label: 'unit'
+```
+
+All fields defined in the `journal` section are optional, and are just provided 
+here for reference. The `max_age` field ensures that no older entry than the 
+time specified will be sent to Loki; this circumvents "entry too old" errors.
+The `path` field tells Promtail where to read journal entries from. The labels 
+map defines a constant list of labels to add to every journal entry that Promtail
+reads. 
+
+When Promtail reads from the journal, it brings in all fields prefixed with 
+`__journal_` as internal labels. Like in the example above, the `_SYSTEMD_UNIT` 
+field from the journal was transformed into a label called `unit` through 
+`relabel_configs`. See [Relabeling](#relabeling) for more information.
+
 ## Relabeling
 
 Each `scrape_configs` entry can contain a `relabel_configs` stanza.
