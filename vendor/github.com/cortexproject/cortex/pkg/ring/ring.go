@@ -94,6 +94,7 @@ type Ring struct {
 	numMembersDesc      *prometheus.Desc
 	totalTokensDesc     *prometheus.Desc
 	numTokensDesc       *prometheus.Desc
+	oldestTimestampDesc *prometheus.Desc
 }
 
 // New creates a new Ring
@@ -133,6 +134,11 @@ func New(cfg Config, name string) (*Ring, error) {
 			"The number of tokens in the ring owned by the member",
 			[]string{"member", "name"}, nil,
 		),
+		oldestTimestampDesc: prometheus.NewDesc(
+			"cortex_ring_oldest_member_timestamp",
+			"Timestamp of the oldest member in the ring.",
+			[]string{"state", "name"}, nil,
+		),
 	}
 	var ctx context.Context
 	ctx, r.quit = context.WithCancel(context.Background())
@@ -161,6 +167,8 @@ func (r *Ring) loop(ctx context.Context) {
 		r.ringDesc = ringDesc
 		return true
 	})
+
+	r.KVClient.Stop()
 }
 
 // migrateRing will denormalise the ring's tokens if stored in normal form.
@@ -334,23 +342,27 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		)
 	}
 
+	numByState := map[string]int{}
+	oldestTimestampByState := map[string]int64{}
+
 	// Initialised to zero so we emit zero-metrics (instead of not emitting anything)
-	byState := map[string]int{
-		unhealthy:        0,
-		ACTIVE.String():  0,
-		LEAVING.String(): 0,
-		PENDING.String(): 0,
-		JOINING.String(): 0,
+	for _, s := range []string{unhealthy, ACTIVE.String(), LEAVING.String(), PENDING.String(), JOINING.String()} {
+		numByState[s] = 0
+		oldestTimestampByState[s] = 0
 	}
+
 	for _, ingester := range r.ringDesc.Ingesters {
+		s := ingester.State.String()
 		if !r.IsHealthy(&ingester, Reporting) {
-			byState[unhealthy]++
-		} else {
-			byState[ingester.State.String()]++
+			s = unhealthy
+		}
+		numByState[s]++
+		if oldestTimestampByState[s] == 0 || ingester.Timestamp < oldestTimestampByState[s] {
+			oldestTimestampByState[s] = ingester.Timestamp
 		}
 	}
 
-	for state, count := range byState {
+	for state, count := range numByState {
 		ch <- prometheus.MustNewConstMetric(
 			r.numMembersDesc,
 			prometheus.GaugeValue,
@@ -359,6 +371,16 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 			r.name,
 		)
 	}
+	for state, timestamp := range oldestTimestampByState {
+		ch <- prometheus.MustNewConstMetric(
+			r.oldestTimestampDesc,
+			prometheus.GaugeValue,
+			float64(timestamp),
+			state,
+			r.name,
+		)
+	}
+
 	ch <- prometheus.MustNewConstMetric(
 		r.totalTokensDesc,
 		prometheus.GaugeValue,

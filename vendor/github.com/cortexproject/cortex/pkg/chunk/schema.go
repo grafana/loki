@@ -13,6 +13,7 @@ import (
 )
 
 var (
+	chunkTimeRangeKeyV1a = []byte{1}
 	chunkTimeRangeKeyV1  = []byte{'1'}
 	chunkTimeRangeKeyV2  = []byte{'2'}
 	chunkTimeRangeKeyV3  = []byte{'3'}

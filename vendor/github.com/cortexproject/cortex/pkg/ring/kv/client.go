@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 )
 
 // The NewInMemoryKVClient returned by NewClient() is a singleton, so
@@ -20,10 +23,11 @@ var inmemoryStore Client
 // Config is config for a KVStore currently used by ring and HA tracker,
 // where store can be consul or inmemory.
 type Config struct {
-	Store  string        `yaml:"store,omitempty"`
-	Consul consul.Config `yaml:"consul,omitempty"`
-	Etcd   etcd.Config   `yaml:"etcd,omitempty"`
-	Prefix string        `yaml:"prefix,omitempty"`
+	Store      string            `yaml:"store,omitempty"`
+	Consul     consul.Config     `yaml:"consul,omitempty"`
+	Etcd       etcd.Config       `yaml:"etcd,omitempty"`
+	Memberlist memberlist.Config `yaml:"memberlist,omitempty"`
+	Prefix     string            `yaml:"prefix,omitempty"`
 
 	Mock Client
 }
@@ -40,11 +44,12 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	// be easier to have everything under ring, so ring.consul.<flag-name>
 	cfg.Consul.RegisterFlags(f, prefix)
 	cfg.Etcd.RegisterFlagsWithPrefix(f, prefix)
+	cfg.Memberlist.RegisterFlags(f, prefix)
 	if prefix == "" {
 		prefix = "ring."
 	}
 	f.StringVar(&cfg.Prefix, prefix+"prefix", "collectors/", "The prefix for the keys in the store. Should end with a /.")
-	f.StringVar(&cfg.Store, prefix+"store", "consul", "Backend storage to use for the ring (consul, etcd, inmemory).")
+	f.StringVar(&cfg.Store, prefix+"store", "consul", "Backend storage to use for the ring (consul, etcd, inmemory, memberlist [experimental]).")
 }
 
 // Client is a high-level client for key-value stores (such as Etcd and
@@ -69,6 +74,9 @@ type Client interface {
 
 	// WatchPrefix calls f whenever any value stored under prefix changes.
 	WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool)
+
+	// If client needs to do some cleanup, it can do it here.
+	Stop()
 }
 
 // NewClient creates a new Client (consul, etcd or inmemory) based on the config,
@@ -95,6 +103,10 @@ func NewClient(cfg Config, codec codec.Codec) (Client, error) {
 			inmemoryStore = consul.NewInMemoryClient(codec)
 		})
 		client = inmemoryStore
+
+	case "memberlist":
+		cfg.Memberlist.MetricsRegisterer = prometheus.DefaultRegisterer
+		client, err = memberlist.NewMemberlistClient(cfg.Memberlist, codec)
 
 	default:
 		return nil, fmt.Errorf("invalid KV store type: %s", cfg.Store)

@@ -2,8 +2,10 @@ package kv
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
 )
 
@@ -16,6 +18,17 @@ var requestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVe
 
 func init() {
 	requestDuration.Register()
+}
+
+// errorCode converts an error into an HTTP status code, modified from weaveworks/common/instrument
+func errorCode(err error) string {
+	if err == nil {
+		return "200"
+	}
+	if resp, ok := httpgrpc.HTTPResponseFromError(err); ok {
+		return strconv.Itoa(int(resp.GetCode()))
+	}
+	return "500"
 }
 
 type metrics struct {
@@ -33,7 +46,7 @@ func (m metrics) Get(ctx context.Context, key string) (interface{}, error) {
 }
 
 func (m metrics) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
-	return instrument.CollectedRequest(ctx, "CAS", requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "CAS", requestDuration, errorCode, func(ctx context.Context) error {
 		return m.c.CAS(ctx, key, f)
 	})
 }
@@ -50,4 +63,8 @@ func (m metrics) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 		m.c.WatchPrefix(ctx, prefix, f)
 		return nil
 	})
+}
+
+func (m metrics) Stop() {
+	m.c.Stop()
 }

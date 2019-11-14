@@ -1000,7 +1000,7 @@ func (c *ApplicationAutoScaling) PutScalingPolicyRequest(input *PutScalingPolicy
 // more step scaling policies, or both. However, there is a chance that multiple
 // policies could conflict, instructing the scalable target to scale out or
 // in at the same time. Application Auto Scaling gives precedence to the policy
-// that provides the largest capacity for both scale in and scale out. For example,
+// that provides the largest capacity for both scale out and scale in. For example,
 // if one policy increases capacity by 3, another policy increases capacity
 // by 200 percent, and the current capacity is 10, Application Auto Scaling
 // uses the policy with the highest calculated capacity (200% of 10 = 20) and
@@ -2820,9 +2820,8 @@ type PutScalingPolicyInput struct {
 	//
 	// StepScaling—Not supported for Amazon DynamoDB
 	//
-	// For more information, see Step Scaling Policies for Application Auto Scaling
-	// (https://docs.aws.amazon.com/autoscaling/application/userguide/application-auto-scaling-step-scaling-policies.html)
-	// and Target Tracking Scaling Policies for Application Auto Scaling (https://docs.aws.amazon.com/autoscaling/application/userguide/application-auto-scaling-target-tracking.html)
+	// For more information, see Target Tracking Scaling Policies (https://docs.aws.amazon.com/autoscaling/application/userguide/application-auto-scaling-target-tracking.html)
+	// and Step Scaling Policies (https://docs.aws.amazon.com/autoscaling/application/userguide/application-auto-scaling-step-scaling-policies.html)
 	// in the Application Auto Scaling User Guide.
 	PolicyType *string `type:"string" enum:"PolicyType"`
 
@@ -3320,9 +3319,9 @@ type RegisterScalableTargetInput struct {
 	// to modify the scalable target on your behalf. For more information, see Service-Linked
 	// Roles for Application Auto Scaling (https://docs.aws.amazon.com/autoscaling/application/userguide/application-auto-scaling-service-linked-roles.html).
 	//
-	// For resources that are not supported using a service-linked role, this parameter
-	// is required, and it must specify the ARN of an IAM role that allows Application
-	// Auto Scaling to modify the scalable target on your behalf.
+	// For Amazon EMR, this parameter is required, and it must specify the ARN of
+	// an IAM role that allows Application Auto Scaling to modify the scalable target
+	// on your behalf.
 	RoleARN *string `min:"1" type:"string"`
 
 	// The scalable dimension associated with the scalable target. This string consists

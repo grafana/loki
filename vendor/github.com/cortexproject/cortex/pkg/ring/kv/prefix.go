@@ -37,3 +37,7 @@ func (c *prefixedKVClient) WatchPrefix(ctx context.Context, prefix string, f fun
 func (c *prefixedKVClient) Get(ctx context.Context, key string) (interface{}, error) {
 	return c.client.Get(ctx, c.prefix+key)
 }
+
+func (c *prefixedKVClient) Stop() {
+	c.client.Stop()
+}

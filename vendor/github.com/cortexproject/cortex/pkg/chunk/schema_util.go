@@ -139,7 +139,7 @@ func parseMetricNameRangeValue(rangeValue []byte, value []byte) (model.LabelValu
 		return model.LabelValue(value), nil
 
 	default:
-		return "", fmt.Errorf("unrecognised metricNameRangeKey version: '%v'", string(components[3]))
+		return "", fmt.Errorf("unrecognised metricNameRangeKey version: %q", string(components[3]))
 	}
 }
 
@@ -160,7 +160,7 @@ func parseSeriesRangeValue(rangeValue []byte, value []byte) (model.Metric, error
 		return series, nil
 
 	default:
-		return nil, fmt.Errorf("unrecognised seriesRangeKey version: '%v'", string(components[3]))
+		return nil, fmt.Errorf("unrecognised seriesRangeKey version: %q", string(components[3]))
 	}
 }
 
@@ -187,6 +187,9 @@ func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (
 
 	// v3 schema had four components - label name, label value, chunk ID and version.
 	// "version" is 1 and label value is base64 encoded.
+	// (older code wrote "version" as 1, not '1')
+	case bytes.Equal(components[3], chunkTimeRangeKeyV1a):
+		fallthrough
 	case bytes.Equal(components[3], chunkTimeRangeKeyV1):
 		chunkID = string(components[2])
 		labelValue, err = decodeBase64Value(components[1])
@@ -229,7 +232,7 @@ func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (
 		return
 
 	default:
-		err = fmt.Errorf("unrecognised chunkTimeRangeKey version: '%v'", string(components[3]))
+		err = fmt.Errorf("unrecognised chunkTimeRangeKey version: %q", string(components[3]))
 		return
 	}
 }

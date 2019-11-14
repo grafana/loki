@@ -16,7 +16,7 @@ message IngesterDesc {
 	reserved 4, 5; // old, deprecated fields
 
 	string addr = 1;
-	int64 timestamp = 2;
+	int64 timestamp = 2; // unix timestamp
 	IngesterState state = 3;
 	repeated uint32 tokens = 6;
 }
@@ -32,4 +32,8 @@ enum IngesterState {
 
 	PENDING = 2;
 	JOINING = 3;
+
+	// This state is only used by gossiping code to distribute information about
+	// ingesters that have been removed from the ring. Ring users should not use it directly.
+	LEFT = 4;
 }
