@@ -22,12 +22,14 @@ and how to scrape logs from files.
             * [metric_gauge](#metric_gauge)
             * [metric_histogram](#metric_histogram)
         * [tenant_stage](#tenant_stage)
+    * [http_config](#http_config)
     * [journal_config](#journal_config)
     * [relabel_config](#relabel_config)
     * [static_config](#static_config)
     * [file_sd_config](#file_sd_config)
     * [kubernetes_sd_config](#kubernetes_sd_config)
 * [target_config](#target_config)
+* [Example HTTP Config](#example-http-config)
 * [Example Docker Config](#example-docker-config)
 * [Example Journal Config](#example-journal-config)
 
@@ -240,6 +242,9 @@ job_name: <string>
 
 # Describes how to transform logs from targets.
 [pipeline_stages: <pipeline_stages>]
+
+# Describes how to receieve logs over HTTP.
+[http: <http_config>]
 
 # Describes how to scrape logs from the journal.
 [journal: <journal_config>]
@@ -558,6 +563,19 @@ tenant:
   # Value to use to set the tenant ID when this stage is executed. Useful
   # when this stage is included within a conditional pipeline with "match".
   [ value: <string> ]
+```
+
+### http_config
+
+The `http_config` block configures an endpoint on the Promtail server (`/push`)
+that allows users to push logs directly to Promtail.
+See the [push API](./README.md##post-pushlabel-pairs) docs for information on
+how to invoke the endpoint.
+
+```yaml
+# Label map to add to every log pushed to Promtail.
+labels:
+  [ <labelname>: <labelvalue> ... ]
 ```
 
 ### journal_config
@@ -908,6 +926,24 @@ targets.
 # Period to resync directories being watched and files being tailed to discover
 # new ones or stop watching removed ones.
 sync_period: "10s"
+```
+
+## Example HTTP Config
+
+```yaml
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+client:
+  url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
+
+scrape_configs:
+ - job_name: http
+   http: {}
 ```
 
 ## Example Docker Config

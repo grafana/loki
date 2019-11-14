@@ -11,7 +11,8 @@ It primarily:
 3. Pushes them to the Loki instance.
 
 Currently, Promtail can tail logs from two sources: local log files and the
-systemd journal (on AMD64 machines only).
+systemd journal (on AMD64 machines only). Promtail also supports receiving
+log lines over [HTTP](./scraping.md#http-target).
 
 ## Log File Discovery
 
@@ -71,6 +72,22 @@ This endpoint returns 200 when Promtail is up and running, and there's at least 
 This endpoint returns Promtail metrics for Prometheus. See
 "[Operations > Observability](../../operations/observability.md)" to get a list
 of exported metrics.
+
+### `POST /push/<label pairs>`
+
+When the [HTTP Target](./scraping.md#http-target) is being used, a `/push`
+endpoint is enabled that allows for writing logs:
+
+```
+curl -XPOST "http://promtail/push/label1/value1/label2/value2" -d 'hello, world!'
+```
+
+An RFC 3339 timestamp can also be provided in the URL through the `ts` query
+parameter:
+
+```
+curl -XPOST "http://promtail/push/label1/value1?ts=2009-11-10T23:00:00Z" -d 'hello, world!'
+```
 
 ### Promtail web server config
 

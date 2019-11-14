@@ -32,6 +32,7 @@ func NewTargetManagers(
 	var targetManagers []targetManager
 	var fileScrapeConfigs []scrape.Config
 	var journalScrapeConfigs []scrape.Config
+	var httpScrapeConfigs []scrape.Config
 
 	for _, cfg := range scrapeConfigs {
 		if cfg.HasServiceDiscoveryConfig() {
@@ -70,8 +71,20 @@ func NewTargetManagers(
 		targetManagers = append(targetManagers, journalTargetManager)
 	}
 
-	return &TargetManagers{targetManagers: targetManagers}, nil
+	for _, cfg := range scrapeConfigs {
+		if cfg.HTTPConfig != nil {
+			httpScrapeConfigs = append(httpScrapeConfigs, cfg)
+		}
+	}
+	if len(httpScrapeConfigs) > 0 {
+		httpTargetManager, err := NewHTTPTargetManager(logger, client, httpScrapeConfigs)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to make HTTP target manager")
+		}
+		targetManagers = append(targetManagers, httpTargetManager)
+	}
 
+	return &TargetManagers{targetManagers: targetManagers}, nil
 }
 
 // ActiveTargets returns active targets per jobs

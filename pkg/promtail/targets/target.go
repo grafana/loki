@@ -14,6 +14,9 @@ const (
 	// JournalTargetType is a journalctl target
 	JournalTargetType = TargetType("Journal")
 
+	// HTTPTargetType is an HTTP target
+	HTTPTargetType = TargetType("HTTP")
+
 	// DroppedTargetType is a target that's been dropped.
 	DroppedTargetType = TargetType("dropped")
 )

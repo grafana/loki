@@ -9,6 +9,8 @@ clients:
   - url: http://localhost:3100/loki/api/v1/push
 
 scrape_configs:
+- job_name: http
+  http: {}
 - job_name: system
   static_configs:
   - targets:

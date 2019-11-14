@@ -19,8 +19,15 @@ type Config struct {
 	EntryParser            api.EntryParser                  `yaml:"entry_parser"`
 	PipelineStages         stages.PipelineStages            `yaml:"pipeline_stages,omitempty"`
 	JournalConfig          *JournalTargetConfig             `yaml:"journal,omitempty"`
+	HTTPConfig             *HTTPTargetConfig                `yaml:"http,omitempty"`
 	RelabelConfigs         []*relabel.Config                `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
+}
+
+// HTTPTargetConfig describes a scrape config that listens for requests over HTTP.
+type HTTPTargetConfig struct {
+	// Labels optionally holds labels to associate with each record read from HTTP.
+	Labels model.LabelSet `yaml:"labels"`
 }
 
 // JournalTargetConfig describes systemd journal records to scrape.

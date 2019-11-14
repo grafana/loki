@@ -75,6 +75,40 @@ relabel_configs:
 
 See [Relabeling](#relabeling) for more information.
 
+## HTTP Target
+
+Promtail supports a special type of target for shipping logs through Promtail
+rather than to Loki directly. Pushing data directly to Promtail is useful to
+take advantage of Promtail's log transformation capabilities.
+
+The `http` target enables a `/push` endpoint on the Promtail server, and is
+configured with the following stanza:
+
+```yaml
+scrape_configs:
+  - job_name: http_job
+    http:
+      labels:
+        job: http
+```
+
+Providing `labels` is optional and defines a static list of labels to append to
+every entry. If labels is omitted, define the `http` stanza simply as `http:
+{}`. `http` _must_ be present for the target to be enabled.
+
+When using the `http` target, `relabel_configs` and `pipeline_stages` will work
+as usual.
+
+### HTTP Target Limitations
+
+When using the HTTP target, note of the following limitations:
+
+1. Only one `scrape_config` entry can define `http`. If multiple `http` blocks
+   are found, all but the first will be ignored.
+2. For any given service, only ship logs to a single Promtail instance's HTTP
+   target. If logs are delivered to more than one instance, using the metrics
+   step in a pipeline will not work, and out of order errors may occur.
+
 ## Relabeling
 
 Each `scrape_configs` entry can contain a `relabel_configs` stanza.

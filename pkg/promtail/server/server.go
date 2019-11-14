@@ -62,8 +62,8 @@ func New(cfg Config, tms *targets.TargetManagers) (*Server, error) {
 	serv.HTTP.PathPrefix("/static/").Handler(http.FileServer(ui.Assets))
 	serv.HTTP.Path("/service-discovery").Handler(http.HandlerFunc(serv.serviceDiscovery))
 	serv.HTTP.Path("/targets").Handler(http.HandlerFunc(serv.targets))
+	serv.HTTP.PathPrefix("/push/").Handler(http.StripPrefix("/push/", serv.findPushHandler()))
 	return serv, nil
-
 }
 
 // serviceDiscovery serves the service discovery page.
@@ -178,6 +178,33 @@ func (s *Server) ready(rw http.ResponseWriter, _ *http.Request) {
 	if _, err := rw.Write(readinessProbeSuccess); err != nil {
 		level.Error(logutil.Logger).Log("msg", "error writing success message", "error", err)
 	}
+}
+
+// findPushHandler searches the targets for an HTTPTarget and returns its
+// push handler. If an HTTPTarget could not be found, generates a handler that
+// returns 5xx and logs an error message.
+func (s *Server) findPushHandler() http.Handler {
+outer:
+	for _, tgts := range s.tms.AllTargets() {
+		for _, tgt := range tgts {
+			if tgt.Type() != targets.HTTPTargetType {
+				continue
+			}
+
+			handler, ok := tgt.(http.Handler)
+			if !ok {
+				level.Warn(logutil.Logger).Log("msg", "HTTPTarget does not implement http.Handler interface")
+				break outer
+			}
+
+			return handler
+		}
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		level.Error(logutil.Logger).Log("msg", "log endpoint called but no handler found")
+		http.Error(w, "log handler not found", http.StatusNotImplemented)
+	})
 }
 
 // computeExternalURL computes a sanitized external URL from a raw input. It infers unset
