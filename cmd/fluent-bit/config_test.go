@@ -49,6 +49,7 @@ func Test_parseConfig(t *testing.T) {
 		{"setting values",
 			map[string]string{
 				"URL":           "http://somewhere.com:3100/loki/api/v1/push",
+				"TenantID":      "my-tenant-id",
 				"LineFormat":    "key_value",
 				"LogLevel":      "warn",
 				"Labels":        `{app="foo"}`,
@@ -62,6 +63,7 @@ func Test_parseConfig(t *testing.T) {
 				lineFormat: kvPairFormat,
 				clientConfig: client.Config{
 					URL:            mustParseURL("http://somewhere.com:3100/loki/api/v1/push"),
+					TenantID:       "my-tenant-id",
 					BatchSize:      100,
 					BatchWait:      30 * time.Second,
 					ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"app": "foo"}},
@@ -89,6 +91,7 @@ func Test_parseConfig(t *testing.T) {
 				lineFormat: kvPairFormat,
 				clientConfig: client.Config{
 					URL:            mustParseURL("http://somewhere.com:3100/loki/api/v1/push"),
+					TenantID:       "", // empty as not set in fluent-bit plugin config map
 					BatchSize:      100,
 					BatchWait:      30 * time.Second,
 					ExternalLabels: lokiflag.LabelSet{LabelSet: model.LabelSet{"app": "foo"}},
@@ -147,6 +150,9 @@ func assertConfig(t *testing.T, expected, actual *config) {
 	}
 	if !reflect.DeepEqual(expected.clientConfig.URL, actual.clientConfig.URL) {
 		t.Errorf("incorrect URL want:%v got:%v", expected.clientConfig.URL, actual.clientConfig.URL)
+	}
+	if !reflect.DeepEqual(expected.clientConfig.TenantID, actual.clientConfig.TenantID) {
+		t.Errorf("incorrect TenantID want:%v got:%v", expected.clientConfig.TenantID, actual.clientConfig.TenantID)
 	}
 	if !reflect.DeepEqual(expected.lineFormat, actual.lineFormat) {
 		t.Errorf("incorrect lineFormat want:%v got:%v", expected.lineFormat, actual.lineFormat)

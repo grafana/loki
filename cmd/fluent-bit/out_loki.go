@@ -48,6 +48,7 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 	logger = newLogger(conf.logLevel)
 	level.Info(logger).Log("[flb-go]", "Starting fluent-bit-go-loki", "version", version.Info())
 	level.Info(logger).Log("[flb-go]", "provided parameter", "URL", conf.clientConfig.URL)
+	level.Info(logger).Log("[flb-go]", "provided parameter", "TenantID", conf.clientConfig.TenantID)
 	level.Info(logger).Log("[flb-go]", "provided parameter", "BatchWait", conf.clientConfig.BatchWait)
 	level.Info(logger).Log("[flb-go]", "provided parameter", "BatchSize", conf.clientConfig.BatchSize)
 	level.Info(logger).Log("[flb-go]", "provided parameter", "Labels", conf.clientConfig.ExternalLabels)

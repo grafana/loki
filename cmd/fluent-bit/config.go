@@ -61,6 +61,9 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 	}
 	res.clientConfig.URL = clientURL
 
+	// cfg.Get will return empty string if not set, which is handled by the client library as no tenant
+	res.clientConfig.TenantID = cfg.Get("TenantID")
+
 	batchWait := cfg.Get("BatchWait")
 	if batchWait != "" {
 		batchWaitValue, err := strconv.Atoi(batchWait)
