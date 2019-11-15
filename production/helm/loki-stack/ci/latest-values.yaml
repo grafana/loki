@@ -1,0 +1,6 @@
+promtail:
+  image:
+    tag: latest
+loki:
+  image:
+    tag: latest
