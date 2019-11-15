@@ -79,7 +79,7 @@ local helm_test(arch) = {
   environment:{
     CT_VERSION: '2.3.3',
   },
-  // image: 'ubuntu:16.04',
+  image: 'ubuntu:16.04',
   //   depends_on: [
   //   'build-%s-image' % app
   //   for app in apps

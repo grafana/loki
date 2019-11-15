@@ -32,6 +32,7 @@ steps:
   - ct install--build-id=${CI_BUILD_NUMBER} --charts production/helm/loki-stack
   environment:
     CT_VERSION: 2.3.3
+  image: ubuntu:16.04
   name: helm-test
   when:
     ref:
@@ -124,6 +125,7 @@ steps:
   - ct install--build-id=${CI_BUILD_NUMBER} --charts production/helm/loki-stack
   environment:
     CT_VERSION: 2.3.3
+  image: ubuntu:16.04
   name: helm-test
   when:
     ref:
@@ -216,6 +218,7 @@ steps:
   - ct install--build-id=${CI_BUILD_NUMBER} --charts production/helm/loki-stack
   environment:
     CT_VERSION: 2.3.3
+  image: ubuntu:16.04
   name: helm-test
   when:
     ref:
