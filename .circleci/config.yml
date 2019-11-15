@@ -129,7 +129,7 @@ jobs:
           name: Run Chart Tests
           command: |
             ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
-            ct install --helm-extra-args="--set loki.image.tag=latest,promtail.image.tag=latest" --build-id=${CIRCLE_BUILD_NUM} --charts production/helm/loki-stack
+            ct install --build-id=${CIRCLE_BUILD_NUM} --charts production/helm/loki-stack
 
   publish-helm:
     <<: *defaults
