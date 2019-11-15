@@ -31,11 +31,11 @@ local make(target, container=true) = run(target, [
   'make ' + (if !container then 'BUILD_IN_CONTAINER=false ' else '') + target,
 ]);
 
-local docker(arch, app) = {
+local docker(arch, app,repo='grafana') = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
   image: 'plugins/docker',
   settings: {
-    repo: 'grafana/%s' % app,
+    repo: '%s/%s' % [repo, app],
     dockerfile: 'cmd/%s/Dockerfile' % app,
     username: { from_secret: 'docker_username' },
     password: { from_secret: 'docker_password' },
@@ -85,11 +85,10 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,m
 
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
   steps+: [
-    // dry run for everything that is not tag or master
-    docker(arch, app) {
+    // for everything that is not tag or master push to temporary repo.
+    docker(arch, app, 'grafanasaur') {
       depends_on: ['image-tag'],
       when: condition('exclude').tagMaster,
-      settings+: { dry_run: true },
     }
     for app in apps
   ] + [
