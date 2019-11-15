@@ -40,6 +40,7 @@ local docker_build(app) = {
     dry_run: false,
     tags: 'latest',
     insecure: true,
+    registry: 'registry:5000',
   },
 };
 
