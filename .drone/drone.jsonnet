@@ -32,7 +32,7 @@ local make(target, container=true) = run(target, [
 ]);
 
 local docker(arch, app,repo='grafana') = {
-  name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
+  name: '%s-image' % if repo!='grafana' then 'build-' + app else 'publish-' + app,
   image: 'plugins/docker',
   settings: {
     repo: '%s/%s' % [repo, app],

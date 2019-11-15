@@ -48,7 +48,7 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: publish-loki-image
+  name: build-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
     dry_run: false
@@ -65,7 +65,7 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: publish-loki-canary-image
+  name: build-loki-canary-image
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: false
@@ -82,7 +82,7 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: publish-promtail-image
+  name: build-promtail-image
   settings:
     dockerfile: cmd/promtail/Dockerfile
     dry_run: false
@@ -96,31 +96,6 @@ steps:
       exclude:
       - refs/heads/master
       - refs/tags/v*
-- depends_on:
-    - build-promtail-image
-    - build-loki-image
-  name: helm test
-  image: ubuntu:16.04
-  environment:
-    CT_VERSION: 2.3.3
-  command:
-    - curl -sfL https://get.k3s.io | sh -
-    - sudo chmod 755 /etc/rancher/k3s/k3s.yaml
-    - mkdir -p ~/.kube
-    - cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-    - curl -L https://git.io/get_helm.sh | bash
-    - kubectl apply -f tools/helm.yaml
-    - helm init --service-account helm --wait
-    - pip install yamale yamllint
-    - curl -Lo ct.tgz https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz
-    - sudo tar -C /usr/local/bin -xvf ct.tgz
-    - sudo mv /usr/local/bin/etc /etc/ct/
-    - ct lint --build-id=${CI_BUILD_NUMBER} --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
-  when:
-    ref:
-      exclude:
-        - refs/heads/master
-        - refs/tags/v*
 - depends_on:
   - image-tag
   image: plugins/docker
@@ -190,7 +165,7 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: publish-loki-image
+  name: build-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
     dry_run: false
@@ -207,7 +182,7 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: publish-loki-canary-image
+  name: build-loki-canary-image
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: false
@@ -224,7 +199,7 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: publish-promtail-image
+  name: build-promtail-image
   settings:
     dockerfile: cmd/promtail/Dockerfile
     dry_run: false
@@ -307,7 +282,7 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: publish-loki-image
+  name: build-loki-image
   settings:
     dockerfile: cmd/loki/Dockerfile
     dry_run: false
@@ -324,7 +299,7 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: publish-loki-canary-image
+  name: build-loki-canary-image
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: false
@@ -341,7 +316,7 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: publish-promtail-image
+  name: build-promtail-image
   settings:
     dockerfile: cmd/promtail/Dockerfile
     dry_run: false
@@ -425,7 +400,7 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: build-fluent-bit-image
+  name: publish-fluent-bit-image
   settings:
     dockerfile: cmd/fluent-bit/Dockerfile
     dry_run: true
