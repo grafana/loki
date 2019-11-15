@@ -132,15 +132,15 @@ local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
   //   }
   //   for app in apps
   // ] +
-   [helm_test(arch)]
-   + [
-    // publish for tag or master
-    docker_push(app) {
-      depends_on: ['image-tag'],
-      when: condition('include').tagMaster,
-    }
-    for app in apps
-  ],
+   [helm_test(arch)],
+  //  + [
+  //   // publish for tag or master
+  //   docker_push(app) {
+  //     depends_on: ['image-tag'],
+  //     when: condition('include').tagMaster,
+  //   }
+  //   for app in apps
+  // ],
   services: [{
     name: 'registry',
     image: 'registry:2'
@@ -189,28 +189,28 @@ local drone = [
   multiarch_image(arch)
   for arch in archs
 ] + [
-  fluentbit(),
+  // fluentbit(),
 ] + [
-  manifest(['promtail', 'loki', 'loki-canary']) {
-    trigger: condition('include').tagMaster,
-  },
+  // manifest(['promtail', 'loki', 'loki-canary']) {
+  //   trigger: condition('include').tagMaster,
+  // },
 ] + [
-  pipeline('deploy') {
-    trigger: condition('include').tagMaster,
-    depends_on: ['manifest'],
-    steps: [
-      {
-        name: 'trigger',
-        image: 'grafana/loki-build-image:%s' % build_image_version,
-        environment: {
-          CIRCLE_TOKEN: { from_secret: 'circle_token' },
-        },
-        commands: [
-          './tools/deploy.sh',
-        ],
-      },
-    ],
-  },
+  // pipeline('deploy') {
+  //   trigger: condition('include').tagMaster,
+  //   depends_on: ['manifest'],
+  //   steps: [
+  //     {
+  //       name: 'trigger',
+  //       image: 'grafana/loki-build-image:%s' % build_image_version,
+  //       environment: {
+  //         CIRCLE_TOKEN: { from_secret: 'circle_token' },
+  //       },
+  //       commands: [
+  //         './tools/deploy.sh',
+  //       ],
+  //     },
+  //   ],
+  // },
 ];
 
 {
