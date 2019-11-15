@@ -95,7 +95,7 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 	stream, ok := i.streams[fp]
 	if !ok {
 		sortedLabels := i.index.Add(labels, fp)
-		stream = newStream(rawFp, fp, sortedLabels, i.blockSize)
+		stream = newStream(fp, sortedLabels, i.blockSize)
 		i.streams[fp] = stream
 		i.streamsCreatedTotal.Inc()
 		memoryStreams.Inc()
@@ -142,9 +142,9 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, error) {
 	rawFp := client.FastFingerprint(labels)
-	mappedFP := i.mapper.mapFP(rawFp, labels)
+	fp := i.mapper.mapFP(rawFp, labels)
 
-	stream, ok := i.streams[mappedFP]
+	stream, ok := i.streams[fp]
 	if ok {
 		return stream, nil
 	}
@@ -152,9 +152,9 @@ func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, err
 	if len(i.streams) >= i.limits.MaxStreamsPerUser(i.instanceID) {
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user streams limit (%d) exceeded", i.limits.MaxStreamsPerUser(i.instanceID))
 	}
-	sortedLabels := i.index.Add(labels, mappedFP)
-	stream = newStream(rawFp, mappedFP, sortedLabels, i.blockSize)
-	i.streams[mappedFP] = stream
+	sortedLabels := i.index.Add(labels, fp)
+	stream = newStream(fp, sortedLabels, i.blockSize)
+	i.streams[fp] = stream
 	memoryStreams.Inc()
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(stream)

@@ -45,8 +45,7 @@ type stream struct {
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
 	chunks    []chunkDesc
-	rawFP     model.Fingerprint // original fingerprint for the labels
-	mappedFP  model.Fingerprint // mapped fingerprint, used in the streams map
+	fp        model.Fingerprint // possibly remapped fingerprint, used in the streams map
 	labels    labels.Labels
 	blockSize int
 
@@ -67,10 +66,9 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(rawFP, mappedFP model.Fingerprint, labels labels.Labels, blockSize int) *stream {
+func newStream(fp model.Fingerprint, labels labels.Labels, blockSize int) *stream {
 	return &stream{
-		rawFP:     rawFP,
-		mappedFP:  mappedFP,
+		fp:        fp,
 		labels:    labels,
 		blockSize: blockSize,
 		tailers:   map[uint32]*tailer{},

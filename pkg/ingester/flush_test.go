@@ -7,9 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bmizerany/assert"
 	"github.com/cortexproject/cortex/pkg/chunk"
-	cclient "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -96,9 +94,11 @@ func TestFlushingCollidingLabels(t *testing.T) {
 	// verify that we get all the data back
 	store.checkData(t, map[string][]*logproto.Stream{userID: req.Streams})
 
-	// make sure original fingerprints survived all the mapping and flushing work
+	// make sure all chunks have different fingerprint, even colliding ones.
+	chunkFingerprints := map[model.Fingerprint]bool{}
 	for _, c := range store.getChunksForUser(userID) {
-		assert.Equal(t, cclient.FastFingerprint(cclient.FromLabelsToLabelAdapters(c.Metric)), c.Fingerprint)
+		require.False(t, chunkFingerprints[c.Fingerprint])
+		chunkFingerprints[c.Fingerprint] = true
 	}
 }
 
