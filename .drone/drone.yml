@@ -13,8 +13,13 @@ steps:
   - echo $(./tools/image-tag)-amd64 > .tags
   image: alpine
   name: image-tag
-- command:
-  - apt-get update && apt-get install -y curl docker kubectl python-pip
+- commands:
+  - apt-get update && apt-get install -y curl docker python-pip apt-transport-https
+  - curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add
+    -
+  - echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
+  - apt-get update
+  - apt-get install -y kubectl
   - curl -sfL https://get.k3s.io | sh -
   - chmod 755 /etc/rancher/k3s/k3s.yaml
   - mkdir -p ~/.kube
@@ -53,8 +58,13 @@ steps:
   - echo $(./tools/image-tag)-arm64 > .tags
   image: alpine
   name: image-tag
-- command:
-  - apt-get update && apt-get install -y curl docker kubectl python-pip
+- commands:
+  - apt-get update && apt-get install -y curl docker python-pip apt-transport-https
+  - curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add
+    -
+  - echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
+  - apt-get update
+  - apt-get install -y kubectl
   - curl -sfL https://get.k3s.io | sh -
   - chmod 755 /etc/rancher/k3s/k3s.yaml
   - mkdir -p ~/.kube
@@ -93,8 +103,26 @@ steps:
   - echo $(./tools/image-tag)-arm > .tags
   image: alpine
   name: image-tag
-- command:
-  - apt-get update && apt-get install -y curl docker python-pip
+- commands:
+  - apt-get update && apt-get install -y curl docker python-pip apt-transport-https
+  - curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add
+    -
+  - echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
+  - apt-get update
+  - apt-get install -y kubectl
+  - curl -sfL https://get.k3s.io | sh -
+  - chmod 755 /etc/rancher/k3s/k3s.yaml
+  - mkdir -p ~/.kube
+  - cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+  - curl -L https://git.io/get_helm.sh | bash
+  - kubectl apply -f tools/helm.yaml
+  - helm init --service-account helm --wait
+  - pip install yamale yamllint
+  - curl -Lo ct.tgz https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz
+  - tar -C /usr/local/bin -xvf ct.tgz
+  - mv /usr/local/bin/etc /etc/ct/
+  - ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
+  - ct install--build-id=${CI_BUILD_NUMBER} --charts production/helm/loki-stack
   environment:
     CT_VERSION: 2.3.3
   image: ubuntu:16.04

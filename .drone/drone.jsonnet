@@ -84,8 +84,12 @@ local helm_test(arch) = {
   //   'build-%s-image' % app
   //   for app in apps
   // ],
-  command:[
-    'apt-get update && apt-get install -y curl docker kubectl python-pip',
+  commands:[
+    'apt-get update && apt-get install -y curl docker python-pip apt-transport-https',
+    'curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -',
+    'echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list',
+    'apt-get update',
+    'apt-get install -y kubectl',
     'curl -sfL https://get.k3s.io | sh -',
     'chmod 755 /etc/rancher/k3s/k3s.yaml',
     'mkdir -p ~/.kube',
