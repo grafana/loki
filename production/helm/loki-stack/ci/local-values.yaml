@@ -1,0 +1,11 @@
+loki:
+  enabled: true
+  image:
+    tag: latest
+    repository: registry:5000/loki
+
+promtail:
+  enabled: true
+  image:
+    tag: latest
+    repository: registry:5000/promtail

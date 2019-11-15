@@ -31,8 +31,19 @@ local make(target, container=true) = run(target, [
   'make ' + (if !container then 'BUILD_IN_CONTAINER=false ' else '') + target,
 ]);
 
-local docker(arch, app) = {
-  name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
+local docker_build(app) = {
+  name: 'build-%s-image' % app,
+  image: 'plugins/docker',
+  settings: {
+    repo: 'registry:5000/%s' % app,
+    dockerfile: 'cmd/%s/Dockerfile' % app,
+    dry_run: false,
+    tags: 'latest',
+  },
+};
+
+local docker_push(app) = {
+  name: 'publish-%s-image' % app,
   image: 'plugins/docker',
   settings: {
     repo: 'grafana/%s' % app,
@@ -43,16 +54,6 @@ local docker(arch, app) = {
   },
 };
 
-local docker_build(arch, app) = {
-  name: 'build-%s-image' % app,
-  image: 'docker',
-  commands: [
-    'docker build -f cmd/%s/Dockerfile -t grafana/%s:$(./tools/image-tag)-%s' % [app, app, arch],
-  ],
-  volumes: [
-    "/var/run/docker.sock:/var/run/docker.sock",
-  ],
-};
 
 local arch_image(arch, tags='') = {
   platform: {
@@ -70,14 +71,17 @@ local arch_image(arch, tags='') = {
   }],
 };
 
-local helm_test() = {
+local helm_test(arch) = {
   name: 'helm-test',
   when: condition('exclude').tagMaster,
   environment:{
     CT_VERSION: '2.3.3',
   },
   image: 'ubuntu:16.04',
-  depends_on: ['docker-amd64'],
+    depends_on: [
+    'build-%s-image' % app
+    for app in apps
+  ],
   command:[
     'curl -sfL https://get.k3s.io | sh -',
     'sudo chmod 755 /etc/rancher/k3s/k3s.yaml',
@@ -90,27 +94,23 @@ local helm_test() = {
     'curl -Lo ct.tgz https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz',
     'sudo tar -C /usr/local/bin -xvf ct.tgz',
     'sudo mv /usr/local/bin/etc /etc/ct/',
-    "ct lint "+
-      "--helm-extra-args='"+
-      "--set loki.image.tag=$(./tools/image-tag)-amd64 --set promtail.image.tag=$(./tools/image-tag)-amd64'"+
-      "--chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false",
+    "ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false",
+    "ct install--build-id=${CI_BUILD_NUMBER} --charts production/helm/loki-stack"
   ],
 };
 
 local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,master') {
   steps+: [
     // dry run for everything that is not tag or master
-    docker('amd64', 'fluent-bit') {
-      depends_on: ['image-tag'],
+    docker_build('fluent-bit') {
       when: condition('exclude').tagMaster,
       settings+: {
         dry_run: true,
-        repo: 'grafanasaur/fluent-bit-plugin-loki',
       },
     },
   ] + [
     // publish for tag or master
-    docker('amd64', 'fluent-bit') {
+    docker_push('fluent-bit') {
       depends_on: ['image-tag'],
       when: condition('include').tagMaster,
       settings+: {
@@ -124,18 +124,22 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,m
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
   steps+: [
     // for everything that is not tag or master: build and tag only.
-    docker_build(arch, app) {
+    docker_build(app) {
       when: condition('exclude').tagMaster,
     }
     for app in apps
-  ] + [helm_test()] + [
+  ] + [helm_test(arch)] + [
     // publish for tag or master
-    docker(arch, app) {
+    docker_push(app) {
       depends_on: ['image-tag'],
       when: condition('include').tagMaster,
     }
     for app in apps
   ],
+  services: [{
+    name: 'registry',
+    image: 'registry:2'
+  },],
   depends_on: ['check'],
 };
 
