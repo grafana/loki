@@ -53,6 +53,7 @@ steps:
   settings:
     dockerfile: cmd/loki/Dockerfile
     dry_run: false
+    insecure: true
     repo: registry:5000/loki
     tags: latest
   when:
@@ -65,6 +66,7 @@ steps:
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: false
+    insecure: true
     repo: registry:5000/loki-canary
     tags: latest
   when:
@@ -77,6 +79,7 @@ steps:
   settings:
     dockerfile: cmd/promtail/Dockerfile
     dry_run: false
+    insecure: true
     repo: registry:5000/promtail
     tags: latest
   when:
@@ -185,6 +188,7 @@ steps:
   settings:
     dockerfile: cmd/loki/Dockerfile
     dry_run: false
+    insecure: true
     repo: registry:5000/loki
     tags: latest
   when:
@@ -197,6 +201,7 @@ steps:
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: false
+    insecure: true
     repo: registry:5000/loki-canary
     tags: latest
   when:
@@ -209,6 +214,7 @@ steps:
   settings:
     dockerfile: cmd/promtail/Dockerfile
     dry_run: false
+    insecure: true
     repo: registry:5000/promtail
     tags: latest
   when:
@@ -317,6 +323,7 @@ steps:
   settings:
     dockerfile: cmd/loki/Dockerfile
     dry_run: false
+    insecure: true
     repo: registry:5000/loki
     tags: latest
   when:
@@ -329,6 +336,7 @@ steps:
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: false
+    insecure: true
     repo: registry:5000/loki-canary
     tags: latest
   when:
@@ -341,6 +349,7 @@ steps:
   settings:
     dockerfile: cmd/promtail/Dockerfile
     dry_run: false
+    insecure: true
     repo: registry:5000/promtail
     tags: latest
   when:
@@ -447,6 +456,7 @@ steps:
   settings:
     dockerfile: cmd/fluent-bit/Dockerfile
     dry_run: true
+    insecure: true
     repo: registry:5000/fluent-bit
     tags: latest
   when:

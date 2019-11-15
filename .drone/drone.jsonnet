@@ -39,6 +39,7 @@ local docker_build(app) = {
     dockerfile: 'cmd/%s/Dockerfile' % app,
     dry_run: false,
     tags: 'latest',
+    insecure: true,
   },
 };
 
