@@ -45,52 +45,60 @@ steps:
   - echo $(./tools/image-tag)-amd64 > .tags
   image: alpine
   name: image-tag
-- depends_on:
-  - image-tag
-  image: plugins/docker
+- commands:
+  - docker build -f cmd/loki/Dockerfile -t grafana/loki:$(./tools/image-tag)-amd64
+  image: docker
   name: build-loki-image
-  settings:
-    dockerfile: cmd/loki/Dockerfile
-    dry_run: false
-    password:
-      from_secret: docker_password
-    repo: grafanasaur/loki
-    username:
-      from_secret: docker_username
+  volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
   when:
     ref:
       exclude:
       - refs/heads/master
       - refs/tags/v*
-- depends_on:
-  - image-tag
-  image: plugins/docker
+- commands:
+  - docker build -f cmd/loki-canary/Dockerfile -t grafana/loki-canary:$(./tools/image-tag)-amd64
+  image: docker
   name: build-loki-canary-image
-  settings:
-    dockerfile: cmd/loki-canary/Dockerfile
-    dry_run: false
-    password:
-      from_secret: docker_password
-    repo: grafanasaur/loki-canary
-    username:
-      from_secret: docker_username
+  volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
   when:
     ref:
       exclude:
       - refs/heads/master
       - refs/tags/v*
-- depends_on:
-  - image-tag
-  image: plugins/docker
+- commands:
+  - docker build -f cmd/promtail/Dockerfile -t grafana/promtail:$(./tools/image-tag)-amd64
+  image: docker
   name: build-promtail-image
-  settings:
-    dockerfile: cmd/promtail/Dockerfile
-    dry_run: false
-    password:
-      from_secret: docker_password
-    repo: grafanasaur/promtail
-    username:
-      from_secret: docker_username
+  volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/tags/v*
+- command:
+  - curl -sfL https://get.k3s.io | sh -
+  - sudo chmod 755 /etc/rancher/k3s/k3s.yaml
+  - mkdir -p ~/.kube
+  - cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+  - curl -L https://git.io/get_helm.sh | bash
+  - kubectl apply -f tools/helm.yaml
+  - helm init --service-account helm --wait
+  - pip install yamale yamllint
+  - curl -Lo ct.tgz https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz
+  - sudo tar -C /usr/local/bin -xvf ct.tgz
+  - sudo mv /usr/local/bin/etc /etc/ct/
+  - ct lint --helm-extra-args='--set loki.image.tag=$(./tools/image-tag)-amd64 --set
+    promtail.image.tag=$(./tools/image-tag)-amd64'--chart-dirs=production/helm --check-version-increment=false
+    --validate-maintainers=false
+  depends_on:
+  - docker-amd64
+  environment:
+    CT_VERSION: 2.3.3
+  image: ubuntu:16.04
+  name: helm-test
   when:
     ref:
       exclude:
@@ -162,52 +170,60 @@ steps:
   - echo $(./tools/image-tag)-arm64 > .tags
   image: alpine
   name: image-tag
-- depends_on:
-  - image-tag
-  image: plugins/docker
+- commands:
+  - docker build -f cmd/loki/Dockerfile -t grafana/loki:$(./tools/image-tag)-arm64
+  image: docker
   name: build-loki-image
-  settings:
-    dockerfile: cmd/loki/Dockerfile
-    dry_run: false
-    password:
-      from_secret: docker_password
-    repo: grafanasaur/loki
-    username:
-      from_secret: docker_username
+  volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
   when:
     ref:
       exclude:
       - refs/heads/master
       - refs/tags/v*
-- depends_on:
-  - image-tag
-  image: plugins/docker
+- commands:
+  - docker build -f cmd/loki-canary/Dockerfile -t grafana/loki-canary:$(./tools/image-tag)-arm64
+  image: docker
   name: build-loki-canary-image
-  settings:
-    dockerfile: cmd/loki-canary/Dockerfile
-    dry_run: false
-    password:
-      from_secret: docker_password
-    repo: grafanasaur/loki-canary
-    username:
-      from_secret: docker_username
+  volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
   when:
     ref:
       exclude:
       - refs/heads/master
       - refs/tags/v*
-- depends_on:
-  - image-tag
-  image: plugins/docker
+- commands:
+  - docker build -f cmd/promtail/Dockerfile -t grafana/promtail:$(./tools/image-tag)-arm64
+  image: docker
   name: build-promtail-image
-  settings:
-    dockerfile: cmd/promtail/Dockerfile
-    dry_run: false
-    password:
-      from_secret: docker_password
-    repo: grafanasaur/promtail
-    username:
-      from_secret: docker_username
+  volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/tags/v*
+- command:
+  - curl -sfL https://get.k3s.io | sh -
+  - sudo chmod 755 /etc/rancher/k3s/k3s.yaml
+  - mkdir -p ~/.kube
+  - cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+  - curl -L https://git.io/get_helm.sh | bash
+  - kubectl apply -f tools/helm.yaml
+  - helm init --service-account helm --wait
+  - pip install yamale yamllint
+  - curl -Lo ct.tgz https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz
+  - sudo tar -C /usr/local/bin -xvf ct.tgz
+  - sudo mv /usr/local/bin/etc /etc/ct/
+  - ct lint --helm-extra-args='--set loki.image.tag=$(./tools/image-tag)-amd64 --set
+    promtail.image.tag=$(./tools/image-tag)-amd64'--chart-dirs=production/helm --check-version-increment=false
+    --validate-maintainers=false
+  depends_on:
+  - docker-amd64
+  environment:
+    CT_VERSION: 2.3.3
+  image: ubuntu:16.04
+  name: helm-test
   when:
     ref:
       exclude:
@@ -279,52 +295,60 @@ steps:
   - echo $(./tools/image-tag)-arm > .tags
   image: alpine
   name: image-tag
-- depends_on:
-  - image-tag
-  image: plugins/docker
+- commands:
+  - docker build -f cmd/loki/Dockerfile -t grafana/loki:$(./tools/image-tag)-arm
+  image: docker
   name: build-loki-image
-  settings:
-    dockerfile: cmd/loki/Dockerfile
-    dry_run: false
-    password:
-      from_secret: docker_password
-    repo: grafanasaur/loki
-    username:
-      from_secret: docker_username
+  volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
   when:
     ref:
       exclude:
       - refs/heads/master
       - refs/tags/v*
-- depends_on:
-  - image-tag
-  image: plugins/docker
+- commands:
+  - docker build -f cmd/loki-canary/Dockerfile -t grafana/loki-canary:$(./tools/image-tag)-arm
+  image: docker
   name: build-loki-canary-image
-  settings:
-    dockerfile: cmd/loki-canary/Dockerfile
-    dry_run: false
-    password:
-      from_secret: docker_password
-    repo: grafanasaur/loki-canary
-    username:
-      from_secret: docker_username
+  volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
   when:
     ref:
       exclude:
       - refs/heads/master
       - refs/tags/v*
-- depends_on:
-  - image-tag
-  image: plugins/docker
+- commands:
+  - docker build -f cmd/promtail/Dockerfile -t grafana/promtail:$(./tools/image-tag)-arm
+  image: docker
   name: build-promtail-image
-  settings:
-    dockerfile: cmd/promtail/Dockerfile
-    dry_run: false
-    password:
-      from_secret: docker_password
-    repo: grafanasaur/promtail
-    username:
-      from_secret: docker_username
+  volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
+  when:
+    ref:
+      exclude:
+      - refs/heads/master
+      - refs/tags/v*
+- command:
+  - curl -sfL https://get.k3s.io | sh -
+  - sudo chmod 755 /etc/rancher/k3s/k3s.yaml
+  - mkdir -p ~/.kube
+  - cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+  - curl -L https://git.io/get_helm.sh | bash
+  - kubectl apply -f tools/helm.yaml
+  - helm init --service-account helm --wait
+  - pip install yamale yamllint
+  - curl -Lo ct.tgz https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz
+  - sudo tar -C /usr/local/bin -xvf ct.tgz
+  - sudo mv /usr/local/bin/etc /etc/ct/
+  - ct lint --helm-extra-args='--set loki.image.tag=$(./tools/image-tag)-amd64 --set
+    promtail.image.tag=$(./tools/image-tag)-amd64'--chart-dirs=production/helm --check-version-increment=false
+    --validate-maintainers=false
+  depends_on:
+  - docker-amd64
+  environment:
+    CT_VERSION: 2.3.3
+  image: ubuntu:16.04
+  name: helm-test
   when:
     ref:
       exclude:
