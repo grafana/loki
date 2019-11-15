@@ -1,36 +1,3 @@
-kind: pipeline
-name: check
-steps:
-- commands:
-  - make BUILD_IN_CONTAINER=false test
-  depends_on:
-  - clone
-  image: grafana/loki-build-image:0.7.4
-  name: test
-- commands:
-  - make BUILD_IN_CONTAINER=false lint
-  depends_on:
-  - clone
-  image: grafana/loki-build-image:0.7.4
-  name: lint
-- commands:
-  - make BUILD_IN_CONTAINER=false check-generated-files
-  depends_on:
-  - clone
-  image: grafana/loki-build-image:0.7.4
-  name: check-generated-files
-- commands:
-  - make BUILD_IN_CONTAINER=false check-mod
-  depends_on:
-  - clone
-  - test
-  - lint
-  image: grafana/loki-build-image:0.7.4
-  name: check-mod
-workspace:
-  base: /src
-  path: loki
----
 depends_on:
 - check
 kind: pipeline
@@ -48,51 +15,10 @@ steps:
   - echo $(./tools/image-tag)-amd64 > .tags
   image: alpine
   name: image-tag
-- image: plugins/docker
-  name: build-loki-image
-  settings:
-    dockerfile: cmd/loki/Dockerfile
-    dry_run: false
-    insecure: true
-    registry: registry:5000
-    repo: registry:5000/loki
-    tags: latest
-  when:
-    ref:
-      exclude:
-      - refs/heads/master
-      - refs/tags/v*
-- image: plugins/docker
-  name: build-loki-canary-image
-  settings:
-    dockerfile: cmd/loki-canary/Dockerfile
-    dry_run: false
-    insecure: true
-    registry: registry:5000
-    repo: registry:5000/loki-canary
-    tags: latest
-  when:
-    ref:
-      exclude:
-      - refs/heads/master
-      - refs/tags/v*
-- image: plugins/docker
-  name: build-promtail-image
-  settings:
-    dockerfile: cmd/promtail/Dockerfile
-    dry_run: false
-    insecure: true
-    registry: registry:5000
-    repo: registry:5000/promtail
-    tags: latest
-  when:
-    ref:
-      exclude:
-      - refs/heads/master
-      - refs/tags/v*
 - command:
+  - apt-get update && apt-get install -y curl docker kubectl python-pip
   - curl -sfL https://get.k3s.io | sh -
-  - sudo chmod 755 /etc/rancher/k3s/k3s.yaml
+  - chmod 755 /etc/rancher/k3s/k3s.yaml
   - mkdir -p ~/.kube
   - cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
   - curl -L https://git.io/get_helm.sh | bash
@@ -100,8 +26,8 @@ steps:
   - helm init --service-account helm --wait
   - pip install yamale yamllint
   - curl -Lo ct.tgz https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz
-  - sudo tar -C /usr/local/bin -xvf ct.tgz
-  - sudo mv /usr/local/bin/etc /etc/ct/
+  - tar -C /usr/local/bin -xvf ct.tgz
+  - mv /usr/local/bin/etc /etc/ct/
   - ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
   - ct install--build-id=${CI_BUILD_NUMBER} --charts production/helm/loki-stack
   depends_on:
@@ -186,51 +112,10 @@ steps:
   - echo $(./tools/image-tag)-arm64 > .tags
   image: alpine
   name: image-tag
-- image: plugins/docker
-  name: build-loki-image
-  settings:
-    dockerfile: cmd/loki/Dockerfile
-    dry_run: false
-    insecure: true
-    registry: registry:5000
-    repo: registry:5000/loki
-    tags: latest
-  when:
-    ref:
-      exclude:
-      - refs/heads/master
-      - refs/tags/v*
-- image: plugins/docker
-  name: build-loki-canary-image
-  settings:
-    dockerfile: cmd/loki-canary/Dockerfile
-    dry_run: false
-    insecure: true
-    registry: registry:5000
-    repo: registry:5000/loki-canary
-    tags: latest
-  when:
-    ref:
-      exclude:
-      - refs/heads/master
-      - refs/tags/v*
-- image: plugins/docker
-  name: build-promtail-image
-  settings:
-    dockerfile: cmd/promtail/Dockerfile
-    dry_run: false
-    insecure: true
-    registry: registry:5000
-    repo: registry:5000/promtail
-    tags: latest
-  when:
-    ref:
-      exclude:
-      - refs/heads/master
-      - refs/tags/v*
 - command:
+  - apt-get update && apt-get install -y curl docker kubectl python-pip
   - curl -sfL https://get.k3s.io | sh -
-  - sudo chmod 755 /etc/rancher/k3s/k3s.yaml
+  - chmod 755 /etc/rancher/k3s/k3s.yaml
   - mkdir -p ~/.kube
   - cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
   - curl -L https://git.io/get_helm.sh | bash
@@ -238,8 +123,8 @@ steps:
   - helm init --service-account helm --wait
   - pip install yamale yamllint
   - curl -Lo ct.tgz https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz
-  - sudo tar -C /usr/local/bin -xvf ct.tgz
-  - sudo mv /usr/local/bin/etc /etc/ct/
+  - tar -C /usr/local/bin -xvf ct.tgz
+  - mv /usr/local/bin/etc /etc/ct/
   - ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
   - ct install--build-id=${CI_BUILD_NUMBER} --charts production/helm/loki-stack
   depends_on:
@@ -324,51 +209,10 @@ steps:
   - echo $(./tools/image-tag)-arm > .tags
   image: alpine
   name: image-tag
-- image: plugins/docker
-  name: build-loki-image
-  settings:
-    dockerfile: cmd/loki/Dockerfile
-    dry_run: false
-    insecure: true
-    registry: registry:5000
-    repo: registry:5000/loki
-    tags: latest
-  when:
-    ref:
-      exclude:
-      - refs/heads/master
-      - refs/tags/v*
-- image: plugins/docker
-  name: build-loki-canary-image
-  settings:
-    dockerfile: cmd/loki-canary/Dockerfile
-    dry_run: false
-    insecure: true
-    registry: registry:5000
-    repo: registry:5000/loki-canary
-    tags: latest
-  when:
-    ref:
-      exclude:
-      - refs/heads/master
-      - refs/tags/v*
-- image: plugins/docker
-  name: build-promtail-image
-  settings:
-    dockerfile: cmd/promtail/Dockerfile
-    dry_run: false
-    insecure: true
-    registry: registry:5000
-    repo: registry:5000/promtail
-    tags: latest
-  when:
-    ref:
-      exclude:
-      - refs/heads/master
-      - refs/tags/v*
 - command:
+  - apt-get update && apt-get install -y curl docker kubectl python-pip
   - curl -sfL https://get.k3s.io | sh -
-  - sudo chmod 755 /etc/rancher/k3s/k3s.yaml
+  - chmod 755 /etc/rancher/k3s/k3s.yaml
   - mkdir -p ~/.kube
   - cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
   - curl -L https://git.io/get_helm.sh | bash
@@ -376,8 +220,8 @@ steps:
   - helm init --service-account helm --wait
   - pip install yamale yamllint
   - curl -Lo ct.tgz https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz
-  - sudo tar -C /usr/local/bin -xvf ct.tgz
-  - sudo mv /usr/local/bin/etc /etc/ct/
+  - tar -C /usr/local/bin -xvf ct.tgz
+  - mv /usr/local/bin/etc /etc/ct/
   - ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
   - ct install--build-id=${CI_BUILD_NUMBER} --charts production/helm/loki-stack
   depends_on:

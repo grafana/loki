@@ -85,8 +85,9 @@ local helm_test(arch) = {
     for app in apps
   ],
   command:[
+    'apt-get update && apt-get install -y curl docker kubectl python-pip',
     'curl -sfL https://get.k3s.io | sh -',
-    'sudo chmod 755 /etc/rancher/k3s/k3s.yaml',
+    'chmod 755 /etc/rancher/k3s/k3s.yaml',
     'mkdir -p ~/.kube',
     'cp /etc/rancher/k3s/k3s.yaml ~/.kube/config',
     'curl -L https://git.io/get_helm.sh | bash',
@@ -94,8 +95,8 @@ local helm_test(arch) = {
     'helm init --service-account helm --wait',
     'pip install yamale yamllint',
     'curl -Lo ct.tgz https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz',
-    'sudo tar -C /usr/local/bin -xvf ct.tgz',
-    'sudo mv /usr/local/bin/etc /etc/ct/',
+    'tar -C /usr/local/bin -xvf ct.tgz',
+    'mv /usr/local/bin/etc /etc/ct/',
     "ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false",
     "ct install--build-id=${CI_BUILD_NUMBER} --charts production/helm/loki-stack"
   ],
@@ -124,13 +125,15 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,m
 };
 
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
-  steps+: [
+  steps+:
     // for everything that is not tag or master: build and tag only.
-    docker_build(app) {
-      when: condition('exclude').tagMaster,
-    }
-    for app in apps
-  ] + [helm_test(arch)] + [
+  //   docker_build(app) {
+  //     when: condition('exclude').tagMaster,
+  //   }
+  //   for app in apps
+  // ] +
+   [helm_test(arch)]
+   + [
     // publish for tag or master
     docker_push(app) {
       depends_on: ['image-tag'],
@@ -170,18 +173,18 @@ local manifest(apps) = pipeline('manifest') {
 };
 
 local drone = [
-  pipeline('check') {
-    workspace: {
-      base: '/src',
-      path: 'loki',
-    },
-    steps: [
-      make('test', container=false) { depends_on: ['clone'] },
-      make('lint', container=false) { depends_on: ['clone'] },
-      make('check-generated-files', container=false) { depends_on: ['clone'] },
-      make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
-    ],
-  },
+  // pipeline('check') {
+  //   workspace: {
+  //     base: '/src',
+  //     path: 'loki',
+  //   },
+  //   steps: [
+  //     make('test', container=false) { depends_on: ['clone'] },
+  //     make('lint', container=false) { depends_on: ['clone'] },
+  //     make('check-generated-files', container=false) { depends_on: ['clone'] },
+  //     make('check-mod', container=false) { depends_on: ['clone', 'test', 'lint'] },
+  //   ],
+  // },
 ] + [
   multiarch_image(arch)
   for arch in archs
