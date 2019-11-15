@@ -1,5 +1,3 @@
-depends_on:
-- check
 kind: pipeline
 name: docker-amd64
 platform:
@@ -40,8 +38,6 @@ steps:
       - refs/heads/master
       - refs/tags/v*
 ---
-depends_on:
-- check
 kind: pipeline
 name: docker-arm64
 platform:
@@ -82,8 +78,6 @@ steps:
       - refs/heads/master
       - refs/tags/v*
 ---
-depends_on:
-- check
 kind: pipeline
 name: docker-arm
 platform:

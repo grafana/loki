@@ -145,7 +145,7 @@ local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
     name: 'registry',
     image: 'registry:2'
   },],
-  depends_on: ['check'],
+  // depends_on: ['check'],
 };
 
 local manifest(apps) = pipeline('manifest') {
