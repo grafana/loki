@@ -79,11 +79,11 @@ local helm_test(arch) = {
   environment:{
     CT_VERSION: '2.3.3',
   },
-  image: 'ubuntu:16.04',
-    depends_on: [
-    'build-%s-image' % app
-    for app in apps
-  ],
+  // image: 'ubuntu:16.04',
+  //   depends_on: [
+  //   'build-%s-image' % app
+  //   for app in apps
+  // ],
   command:[
     'apt-get update && apt-get install -y curl docker kubectl python-pip',
     'curl -sfL https://get.k3s.io | sh -',

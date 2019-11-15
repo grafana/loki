@@ -30,13 +30,8 @@ steps:
   - mv /usr/local/bin/etc /etc/ct/
   - ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
   - ct install--build-id=${CI_BUILD_NUMBER} --charts production/helm/loki-stack
-  depends_on:
-  - build-loki-image
-  - build-loki-canary-image
-  - build-promtail-image
   environment:
     CT_VERSION: 2.3.3
-  image: ubuntu:16.04
   name: helm-test
   when:
     ref:
@@ -127,13 +122,8 @@ steps:
   - mv /usr/local/bin/etc /etc/ct/
   - ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
   - ct install--build-id=${CI_BUILD_NUMBER} --charts production/helm/loki-stack
-  depends_on:
-  - build-loki-image
-  - build-loki-canary-image
-  - build-promtail-image
   environment:
     CT_VERSION: 2.3.3
-  image: ubuntu:16.04
   name: helm-test
   when:
     ref:
@@ -224,13 +214,8 @@ steps:
   - mv /usr/local/bin/etc /etc/ct/
   - ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
   - ct install--build-id=${CI_BUILD_NUMBER} --charts production/helm/loki-stack
-  depends_on:
-  - build-loki-image
-  - build-loki-canary-image
-  - build-promtail-image
   environment:
     CT_VERSION: 2.3.3
-  image: ubuntu:16.04
   name: helm-test
   when:
     ref:
