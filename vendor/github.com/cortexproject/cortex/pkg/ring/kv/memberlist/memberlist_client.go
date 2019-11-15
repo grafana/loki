@@ -616,7 +616,7 @@ func (m *Client) LocalState(join bool) []byte {
 			level.Error(util.Logger).Log("msg", "key too long", "key", key)
 			continue
 		}
-		if len(val.value) > math.MaxUint32 {
+		if uint(len(val.value)) > math.MaxUint32 {
 			level.Error(util.Logger).Log("msg", "value too long", "key", key, "value_length", len(val.value))
 			continue
 		}

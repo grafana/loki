@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 
 	"github.com/go-kit/kit/log/level"
 	jsoniter "github.com/json-iterator/go"
@@ -405,18 +406,23 @@ func (c *seriesStore) lookupLabelNamesBySeries(ctx context.Context, from, throug
 		return nil, err
 	}
 	level.Debug(log).Log("entries", len(entries))
-
-	var result UniqueStrings
-	result.Add(model.MetricNameLabel)
+	result := []string{model.MetricNameLabel}
+	uniqueLabelNames := map[string]struct{}{model.MetricNameLabel: {}}
 	for _, entry := range entries {
 		lbs := []string{}
 		err := jsoniter.ConfigFastest.Unmarshal(entry.Value, &lbs)
 		if err != nil {
 			return nil, err
 		}
-		result.Add(lbs...)
+		for _, l := range lbs {
+			if _, ok := uniqueLabelNames[l]; !ok {
+				uniqueLabelNames[l] = struct{}{}
+				result = append(result, l)
+			}
+		}
 	}
-	return result.Strings(), nil
+	sort.Strings(result)
+	return result, nil
 }
 
 // Put implements ChunkStore
