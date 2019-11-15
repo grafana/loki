@@ -50,7 +50,7 @@ local docker_build(arch, app) = {
     'docker build -f cmd/%s/Dockerfile -t grafana/%s:$(./tools/image-tag)-%s' % [app, app, arch],
   ],
   volumes: [
-    "/var/run/docker.sock:/var/run/docker.sock"
+    "/var/run/docker.sock:/var/run/docker.sock",
   ],
 };
 
