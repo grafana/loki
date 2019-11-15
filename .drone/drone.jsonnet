@@ -62,12 +62,12 @@ local arch_image(arch, tags='') = {
 local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,master') {
   steps+: [
     // dry run for everything that is not tag or master
-    docker('amd64', 'fluent-bit') {
+    docker('amd64', 'fluent-bit','grafanasaur') {
       depends_on: ['image-tag'],
       when: condition('exclude').tagMaster,
       settings+: {
         dry_run: true,
-        repo: 'grafana/fluent-bit-plugin-loki',
+        repo: 'grafanasaur/fluent-bit-plugin-loki',
       },
     },
   ] + [

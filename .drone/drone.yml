@@ -400,13 +400,13 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
-  name: publish-fluent-bit-image
+  name: build-fluent-bit-image
   settings:
     dockerfile: cmd/fluent-bit/Dockerfile
     dry_run: true
     password:
       from_secret: docker_password
-    repo: grafana/fluent-bit-plugin-loki
+    repo: grafanasaur/fluent-bit-plugin-loki
     username:
       from_secret: docker_username
   when:
