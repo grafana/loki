@@ -97,6 +97,33 @@ steps:
           - refs/heads/master
           - refs/tags/v*
   - depends_on:
+      - build-promtail-image
+      - build-loki-image
+    image: plugins/docker
+    name: helm test
+    image: ubuntu-1604:201903-01
+    command:
+      - docker images | grep loki
+      - curl -sfL https://get.k3s.io | sh -
+      - sudo chmod 755 /etc/rancher/k3s/k3s.yaml
+      - mkdir -p ~/.kube
+      - cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - curl -L https://git.io/get_helm.sh | bash
+      - kubectl apply -f tools/helm.yaml
+      - helm init --service-account helm --wait
+      - pip install yamale yamllint
+      - curl -Lo ct.tgz https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz
+      - sudo tar -C /usr/local/bin -xvf ct.tgz
+      - sudo mv /usr/local/bin/etc /etc/ct/
+      - ct lint --chart-dirs=production/helm --check-version-increment=false --validate-maintainers=false
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    when:
+      ref:
+        exclude:
+          - refs/heads/master
+          - refs/tags/v*
+  - depends_on:
       - image-tag
     image: plugins/docker
     name: publish-loki-image
