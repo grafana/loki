@@ -32,6 +32,7 @@ func NewTargetManagers(
 	var targetManagers []targetManager
 	var fileScrapeConfigs []scrape.Config
 	var journalScrapeConfigs []scrape.Config
+	var syslogScrapeConfigs []scrape.Config
 
 	for _, cfg := range scrapeConfigs {
 		if cfg.HasServiceDiscoveryConfig() {
@@ -68,6 +69,19 @@ func NewTargetManagers(
 			return nil, errors.Wrap(err, "failed to make journal target manager")
 		}
 		targetManagers = append(targetManagers, journalTargetManager)
+	}
+
+	for _, cfg := range scrapeConfigs {
+		if cfg.SyslogConfig != nil {
+			syslogScrapeConfigs = append(syslogScrapeConfigs, cfg)
+		}
+	}
+	if len(syslogScrapeConfigs) > 0 {
+		syslogTargetManager, err := NewSyslogTargetManager(logger, client, syslogScrapeConfigs)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to make syslog target manager")
+		}
+		targetManagers = append(targetManagers, syslogTargetManager)
 	}
 
 	return &TargetManagers{targetManagers: targetManagers}, nil

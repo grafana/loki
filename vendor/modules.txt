@@ -326,6 +326,11 @@ github.com/hpcloud/tail/ratelimiter
 github.com/hpcloud/tail/util
 github.com/hpcloud/tail/watch
 github.com/hpcloud/tail/winfile
+# github.com/influxdata/go-syslog v1.0.2-0.20190814180256-831896502726
+github.com/influxdata/go-syslog
+github.com/influxdata/go-syslog/common
+github.com/influxdata/go-syslog/octetcounting
+github.com/influxdata/go-syslog/rfc5424
 # github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
 github.com/jmespath/go-jmespath
 # github.com/jonboulle/clockwork v0.1.0

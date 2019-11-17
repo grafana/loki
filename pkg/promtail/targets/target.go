@@ -14,6 +14,9 @@ const (
 	// JournalTargetType is a journalctl target
 	JournalTargetType = TargetType("Journal")
 
+	// SyslogTargetType is a syslog target
+	SyslogTargetType = TargetType("Syslog")
+
 	// DroppedTargetType is a target that's been dropped.
 	DroppedTargetType = TargetType("dropped")
 )

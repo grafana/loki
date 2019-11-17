@@ -1,0 +1,8 @@
+debug.test
+
+docs/*.png
+
+.vscode/
+
+*.out
+*.html
