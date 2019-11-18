@@ -9,7 +9,7 @@ require (
 	github.com/bmatcuk/doublestar v1.1.1
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
-	github.com/cortexproject/cortex v0.3.1-0.20191114160321-37c1f1787d67
+	github.com/cortexproject/cortex v0.3.1-0.20191117214907-06c4340e652d
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/docker/docker v0.0.0-20190607191414-238f8eaa31aa
@@ -56,7 +56,7 @@ require (
 	golang.org/x/tools v0.0.0-20190925134113-a044388aa56f // indirect
 	google.golang.org/appengine v1.6.3 // indirect
 	google.golang.org/genproto v0.0.0-20190916214212-f660b8655731 // indirect
-	google.golang.org/grpc v1.23.1
+	google.golang.org/grpc v1.25.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/fsnotify.v1 v1.4.7
 	gopkg.in/yaml.v2 v2.2.2
@@ -71,6 +71,3 @@ replace k8s.io/client-go => k8s.io/client-go v0.0.0-20190620085101-78d2af792bab
 
 // Override reference causing proxy error.  Otherwise it attempts to download https://proxy.golang.org/golang.org/x/net/@v/v0.0.0-20190813000000-74dc4d7220e7.info
 replace golang.org/x/net => golang.org/x/net v0.0.0-20190923162816-aa69164e4478
-
-// Override cortex to get ARM support.
-replace github.com/cortexproject/cortex => github.com/cyriltovena/cortex v0.0.0-20191114231131-3e991d87dfa9
