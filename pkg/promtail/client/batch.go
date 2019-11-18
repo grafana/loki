@@ -6,7 +6,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/prometheus/common/model"
 )
 
 // batch holds pending log streams waiting to be sent to Loki, and it's used
@@ -14,16 +13,14 @@ import (
 // and entries in a single batch request. In case of multi-tenant Promtail, log
 // streams for each tenant are stored in a dedicated batch.
 type batch struct {
-	streams   map[model.Fingerprint]*logproto.Stream
-	mappings  map[model.Fingerprint]model.LabelSet // to handle hash collisions, we keep the real mapping here.
+	streams   map[string]*logproto.Stream
 	bytes     int
 	createdAt time.Time
 }
 
 func newBatch(entries ...entry) *batch {
 	b := &batch{
-		streams:   map[model.Fingerprint]*logproto.Stream{},
-		mappings:  map[model.Fingerprint]model.LabelSet{},
+		streams:   map[string]*logproto.Stream{},
 		bytes:     0,
 		createdAt: time.Now(),
 	}
@@ -41,37 +38,16 @@ func (b *batch) add(entry entry) {
 	b.bytes += len(entry.Line)
 
 	// Append the entry to an already existing stream (if any)
-	fp := b.uniqueFingerprint(entry.labels)
-	if stream, ok := b.streams[fp]; ok {
+	labels := entry.labels.String()
+	if stream, ok := b.streams[labels]; ok {
 		stream.Entries = append(stream.Entries, entry.Entry)
 		return
 	}
 
 	// Add the entry as a new stream
-	b.streams[fp] = &logproto.Stream{
-		Labels:  entry.labels.String(),
+	b.streams[labels] = &logproto.Stream{
+		Labels:  labels,
 		Entries: []logproto.Entry{entry.Entry},
-	}
-}
-
-func (b *batch) uniqueFingerprint(labels model.LabelSet) model.Fingerprint {
-	// fast fingerprint generates similar values for similar label sets.
-	// by using large prime, we get away from those close clusters quickly
-	const prime = 960119528882528219
-
-	fp := labels.FastFingerprint()
-	for {
-		if b.mappings[fp] == nil {
-			b.mappings[fp] = labels
-			return fp
-		}
-
-		if b.mappings[fp].Equal(labels) {
-			return fp
-		}
-
-		// otherwise, just try next one
-		fp += prime
 	}
 }
 
