@@ -78,8 +78,10 @@ To configure the Loki output plugin add this section to fluent-bit.conf
     Name loki
     Match *
     Url http://localhost:3100/loki/api/v1/push
-    BatchWait 1 # (1sec)
-    BatchSize 30720 # (30KiB)
+    BatchWait 1
+    # (1sec)
+    BatchSize 30720
+    # (30KiB)
     Labels {test="fluent-bit-go", lang="Golang"}
     RemoveKeys key1,key2
     LabelKeys key3,key4
@@ -107,6 +109,13 @@ If you have Fluent Bit installed in your `$PATH` you can run the plugin using:
 
 ```bash
 fluent-bit -e /path/to/built/out_loki.so -c fluent-bit.conf
+```
+
+You can also adapt your plugins.conf, removing the need to change the command line options:
+
+```
+[PLUGINS]
+    Path /path/to/built/out_loki.so
 ```
 
 ## Docker
