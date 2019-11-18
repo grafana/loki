@@ -106,6 +106,10 @@ To configure the Loki output plugin add this section to fluent-bit.conf
 ```
 A full [example configuration file](fluent-bit.conf) is also available in this repository.
 
+### Running multiple plugin instances
+
+You can run multiple plugin instances in the same fluent-bit process, for example if you want to push to different Loki servers or route logs into different Loki tenant IDs. To do so, add additional `[Output]` sections.
+
 ## Building
 
 ## Prerequisites
