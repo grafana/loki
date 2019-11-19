@@ -68,8 +68,8 @@ YACC_DEFS := $(shell find . $(DONT_FIND) -type f -name *.y -print)
 YACC_GOS := $(patsubst %.y,%.y.go,$(YACC_DEFS))
 
 # Promtail UI files
-PROMTAIL_GENERATED_FILE := pkg/promtail/server/ui/assets_vfsdata.go
-PROMTAIL_UI_FILES := $(shell find ./pkg/promtail/server/ui -type f -name assets_vfsdata.go -prune -o -print)
+PROMTAIL_GENERATED_FILE := internal/promtail/server/ui/assets_vfsdata.go
+PROMTAIL_UI_FILES := $(shell find ./internal/promtail/server/ui -type f -name assets_vfsdata.go -prune -o -print)
 
 ##########
 # Docker #
@@ -106,7 +106,7 @@ binfmt:
 all: promtail logcli loki loki-canary check-generated-files
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
-check-generated-files: touch-protobuf-sources yacc protos pkg/promtail/server/ui/assets_vfsdata.go
+check-generated-files: touch-protobuf-sources yacc protos internal/promtail/server/ui/assets_vfsdata.go
 	@if ! (git diff --exit-code $(YACC_GOS) $(PROTO_GOS) $(PROMTAIL_GENERATED_FILE)); then \
 		echo "\nChanges found in generated files"; \
 		echo "Run 'make check-generated-files' and commit the changes to fix this error."; \
@@ -181,18 +181,18 @@ promtail: yacc cmd/promtail/promtail
 promtail-debug: yacc cmd/promtail/promtail-debug
 
 promtail-clean-assets:
-	rm -rf pkg/promtail/server/ui/assets_vfsdata.go
+	rm -rf internal/promtail/server/ui/assets_vfsdata.go
 
 # Rule to generate promtail static assets file
 $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 	@echo ">> writing assets"
-	GOFLAGS=-mod=vendor GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
+	GOFLAGS=-mod=vendor GOOS=$(shell go env GOHOSTOS) go generate -x -v ./internal/promtail/server/ui
 
 cmd/promtail/promtail: $(APP_GO_FILES) $(PROMTAIL_GENERATED_FILE) cmd/promtail/main.go
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
-cmd/promtail/promtail-debug: $(APP_GO_FILES) pkg/promtail/server/ui/assets_vfsdata.go cmd/promtail/main.go
+cmd/promtail/promtail-debug: $(APP_GO_FILES) internal/promtail/server/ui/assets_vfsdata.go cmd/promtail/main.go
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) -o $@ ./$(@D)
 	$(NETGO_CHECK)
 
@@ -480,8 +480,8 @@ build-image-push: build-image
 ########
 
 benchmark-store:
-	go run -mod=vendor ./pkg/storage/hack/main.go
-	go test -mod=vendor ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
+	go run -mod=vendor ./internal/storage/hack/main.go
+	go test -mod=vendor ./internal/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
 
 # regenerate drone yaml
 drone:

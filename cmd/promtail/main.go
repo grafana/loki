@@ -14,10 +14,10 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 
-	"github.com/grafana/loki/pkg/cfg"
-	"github.com/grafana/loki/pkg/logentry/stages"
-	"github.com/grafana/loki/pkg/promtail"
-	"github.com/grafana/loki/pkg/promtail/config"
+	"github.com/grafana/loki/internal/cfg"
+	"github.com/grafana/loki/internal/logentry/stages"
+	"github.com/grafana/loki/internal/promtail"
+	"github.com/grafana/loki/internal/promtail/config"
 )
 
 func init() {

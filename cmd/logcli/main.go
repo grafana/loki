@@ -6,10 +6,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/grafana/loki/pkg/logcli/client"
-	"github.com/grafana/loki/pkg/logcli/labelquery"
-	"github.com/grafana/loki/pkg/logcli/output"
-	"github.com/grafana/loki/pkg/logcli/query"
+	"github.com/grafana/loki/internal/logcli/client"
+	"github.com/grafana/loki/internal/logcli/labelquery"
+	"github.com/grafana/loki/internal/logcli/output"
+	"github.com/grafana/loki/internal/logcli/query"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
 

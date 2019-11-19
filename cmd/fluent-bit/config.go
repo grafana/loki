@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/promtail/client"
-	lokiflag "github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/internal/logql"
+	"github.com/grafana/loki/internal/promtail/client"
+	lokiflag "github.com/grafana/loki/internal/util/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/logging"
 )

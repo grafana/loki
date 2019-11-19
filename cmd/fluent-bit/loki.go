@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/promtail/client"
+	"github.com/grafana/loki/internal/promtail/client"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/logging"

@@ -7,15 +7,15 @@ import (
 	"reflect"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/cfg"
-	"github.com/grafana/loki/pkg/loki"
+	"github.com/grafana/loki/internal/cfg"
+	"github.com/grafana/loki/internal/loki"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/tracing"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/internal/util/validation"
 )
 
 func init() {
