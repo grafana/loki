@@ -8,6 +8,7 @@ Configuration examples can be found in the [Configuration Examples](examples.md)
 
 * [Configuration File Reference](#configuration-file-reference)
 * [server_config](#server_config)
+* [distributor_config](#distributor_config)
 * [querier_config](#querier_config)
 * [ingester_client_config](#ingester_client_config)
   * [grpc_client_config](#grpc_client_config)
@@ -57,6 +58,9 @@ Supported contents and default values of `loki.yaml`:
 
 # Configures the server of the launched module(s).
 [server: <server_config>]
+
+# Configures the distributor.
+[distributor: <distributor_config>]
 
 # Configures the querier. Only appropriate when running all modules or
 # just the querier.
@@ -133,6 +137,15 @@ The `server_config` block configures Promtail's behavior as an HTTP server:
 
 # Base path to server all API routes from (e.g., /v1/).
 [http_path_prefix: <string>]
+```
+
+## distributor_config
+
+The `distributor_config` block configures the Loki Distributor.
+
+```yaml
+# Period at which to reload user ingestion limits.
+[limiter_reload_period: <duration> | default = 5m]
 ```
 
 ## querier_config
@@ -666,7 +679,9 @@ logs in Loki.
 # Per-user ingestion rate limit in sample size per second. Units in MB.
 [ingestion_rate_mb: <float> | default = 4]
 
-# Per-user allowed ingestion burst size (in number of samples). Units in MB.
+# Per-user allowed ingestion burst size (in sample size). Units in MB. Warning,
+# very high limits will be reset every limiter_reload_period defined in
+# distributor_config.
 [ingestion_burst_size_mb: <int> | default = 6]
 
 # Maximum length of a label name.
