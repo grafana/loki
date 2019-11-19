@@ -46,6 +46,7 @@ type LifecyclerConfig struct {
 	ListenPort       *int
 	NumTokens        int           `yaml:"num_tokens,omitempty"`
 	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period,omitempty"`
+	ObservePeriod    time.Duration `yaml:"observe_period,omitempty"`
 	JoinAfter        time.Duration `yaml:"join_after,omitempty"`
 	MinReadyDuration time.Duration `yaml:"min_ready_duration,omitempty"`
 	UnusedFlag       bool          `yaml:"claim_on_rollout,omitempty"` // DEPRECATED - left for backwards-compatibility
@@ -78,6 +79,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.IntVar(&cfg.NumTokens, prefix+"num-tokens", 128, "Number of tokens for each ingester.")
 	f.DurationVar(&cfg.HeartbeatPeriod, prefix+"heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul.")
 	f.DurationVar(&cfg.JoinAfter, prefix+"join-after", 0*time.Second, "Period to wait for a claim from another member; will join automatically after this.")
+	f.DurationVar(&cfg.ObservePeriod, prefix+"observe-period", 0*time.Second, "Observe tokens after generating to resolve collisions. Useful when using gossiping ring.")
 	f.DurationVar(&cfg.MinReadyDuration, prefix+"min-ready-duration", 1*time.Minute, "Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring.")
 	flagext.DeprecatedFlag(f, prefix+"claim-on-rollout", "DEPRECATED. This feature is no longer optional.")
 	f.BoolVar(&cfg.NormaliseTokens, prefix+"normalise-tokens", false, "Store tokens in a normalised fashion to reduce allocations.")
@@ -129,6 +131,10 @@ type Lifecycler struct {
 	readyLock sync.Mutex
 	startTime time.Time
 	ready     bool
+
+	// Keeps stats updated at every heartbeat period
+	countersLock          sync.RWMutex
+	healthyInstancesCount int
 }
 
 // NewLifecycler makes and starts a new Lifecycler.
@@ -169,9 +175,13 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name s
 
 	tokensToOwn.WithLabelValues(l.RingName).Set(float64(cfg.NumTokens))
 
-	l.done.Add(1)
-	go l.loop()
 	return l, nil
+}
+
+// Start the lifecycler
+func (i *Lifecycler) Start() {
+	i.done.Add(1)
+	go i.loop()
 }
 
 // CheckReady is used to rate limit the number of ingesters that can be coming or
@@ -206,7 +216,7 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 		return fmt.Errorf("no ring returned from consul")
 	}
 
-	if err := ringDesc.Ready(i.cfg.RingConfig.HeartbeatTimeout); err != nil {
+	if err := ringDesc.Ready(time.Now(), i.cfg.RingConfig.HeartbeatTimeout); err != nil {
 		return err
 	}
 
@@ -251,6 +261,11 @@ func (i *Lifecycler) setTokens(tokens []uint32) {
 }
 
 // ClaimTokensFor takes all the tokens for the supplied ingester and assigns them to this ingester.
+//
+// For this method to work correctly (especially when using gossiping), source ingester (specified by
+// ingesterID) must be in the LEAVING state, otherwise ring's merge function may detect token conflict and
+// assign token to the wrong ingester. While we could check for that state here, when this method is called,
+// transfers have already finished -- it's better to check for this *before* transfers start.
 func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) error {
 	err := make(chan error)
 
@@ -264,6 +279,10 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 			}
 
 			tokens = ringDesc.ClaimTokens(ingesterID, i.ID, i.cfg.NormaliseTokens)
+			// update timestamp to give gossiping client a chance register ring change.
+			ing := ringDesc.Ingesters[i.ID]
+			ing.Timestamp = time.Now().Unix()
+			ringDesc.Ingesters[i.ID] = ing
 			return ringDesc, true, nil
 		}
 
@@ -276,6 +295,15 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 	}
 
 	return <-err
+}
+
+// HealthyInstancesCount returns the number of healthy instances in the ring, updated
+// during the last heartbeat period
+func (i *Lifecycler) HealthyInstancesCount() int {
+	i.countersLock.RLock()
+	defer i.countersLock.RUnlock()
+
+	return i.healthyInstancesCount
 }
 
 // Shutdown the lifecycle.  It will:
@@ -308,6 +336,7 @@ func (i *Lifecycler) loop() {
 
 	// We do various period tasks
 	autoJoinAfter := time.After(i.cfg.JoinAfter)
+	var observeChan <-chan time.Time = nil
 
 	heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
 	defer heartbeatTicker.Stop()
@@ -321,10 +350,45 @@ loop:
 			// then pick some tokens and enter ACTIVE state.
 			if i.GetState() == PENDING {
 				level.Info(util.Logger).Log("msg", "auto-joining cluster after timeout")
-				if err := i.autoJoin(context.Background()); err != nil {
-					level.Error(util.Logger).Log("msg", "failed to pick tokens in consul", "err", err)
-					os.Exit(1)
+
+				if i.cfg.ObservePeriod > 0 {
+					// let's observe the ring. By using JOINING state, this ingester will be ignored by LEAVING
+					// ingesters, but we also signal that it is not fully functional yet.
+					if err := i.autoJoin(context.Background(), JOINING); err != nil {
+						level.Error(util.Logger).Log("msg", "failed to pick tokens in consul", "err", err)
+						os.Exit(1)
+					}
+
+					level.Info(util.Logger).Log("msg", "observing tokens before going ACTIVE")
+					observeChan = time.After(i.cfg.ObservePeriod)
+				} else {
+					if err := i.autoJoin(context.Background(), ACTIVE); err != nil {
+						level.Error(util.Logger).Log("msg", "failed to pick tokens in consul", "err", err)
+						os.Exit(1)
+					}
 				}
+			}
+
+		case <-observeChan:
+			// if observeChan is nil, this case is ignored. We keep updating observeChan while observing the ring.
+			// When observing is done, observeChan is set to nil.
+
+			observeChan = nil
+			if s := i.GetState(); s != JOINING {
+				level.Error(util.Logger).Log("msg", "unexpected state while observing tokens", "state", s)
+			}
+
+			if i.verifyTokens(context.Background()) {
+				level.Info(util.Logger).Log("msg", "token verification successful")
+
+				err := i.changeState(context.Background(), ACTIVE)
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "failed to set state to ACTIVE", "err", err)
+				}
+			} else {
+				level.Info(util.Logger).Log("msg", "token verification failed, observing")
+				// keep observing
+				observeChan = time.After(i.cfg.ObservePeriod)
 			}
 
 		case <-heartbeatTicker.C:
@@ -373,14 +437,17 @@ heartbeatLoop:
 		}
 		level.Info(util.Logger).Log("msg", "ingester removed from consul")
 	}
+
+	i.KVStore.Stop()
 }
 
 // initRing is the first thing we do when we start. It:
 // - add an ingester entry to the ring
 // - copies out our state and tokens if they exist
 func (i *Lifecycler) initRing(ctx context.Context) error {
-	return i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
-		var ringDesc *Desc
+	var ringDesc *Desc
+
+	err := i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -401,14 +468,88 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		i.setTokens(tokens)
 
 		level.Info(util.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens))
-		return ringDesc, true, nil
+		// we haven't modified the ring, don't try to store it.
+		return nil, true, nil
 	})
+
+	// Update counters
+	if err == nil {
+		i.updateCounters(ringDesc)
+	}
+
+	return err
 }
 
-// autoJoin selects random tokens & moves state to ACTIVE
-func (i *Lifecycler) autoJoin(ctx context.Context) error {
-	return i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
+// Verifies that tokens that this ingester has registered to the ring still belong to it.
+// Gossiping ring may change the ownership of tokens in case of conflicts.
+// If ingester doesn't own its tokens anymore, this method generates new tokens and puts them to the ring.
+func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
+	result := false
+
+	err := i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		var ringDesc *Desc
+		if in == nil {
+			ringDesc = NewDesc()
+		} else {
+			ringDesc = in.(*Desc)
+		}
+
+		// At this point, we should have the same tokens as we have registered before
+		ringTokens, takenTokens := ringDesc.TokensFor(i.ID)
+
+		if !i.compareTokens(ringTokens) {
+			// uh, oh... our tokens are not our anymore. Let's try new ones.
+			needTokens := i.cfg.NumTokens - len(ringTokens)
+
+			level.Info(util.Logger).Log("msg", "generating new tokens", "count", needTokens)
+			newTokens := GenerateTokens(needTokens, takenTokens)
+
+			ringTokens = append(ringTokens, newTokens...)
+			sort.Sort(sortableUint32(ringTokens))
+
+			ringDesc.AddIngester(i.ID, i.Addr, ringTokens, i.GetState(), i.cfg.NormaliseTokens)
+
+			i.setTokens(ringTokens)
+
+			return ringDesc, true, nil
+		}
+
+		// all is good, this ingester owns its tokens
+		result = true
+		return nil, true, nil
+	})
+
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "failed to verify tokens", "err", err)
+		return false
+	}
+
+	return result
+}
+
+func (i *Lifecycler) compareTokens(fromRing []uint32) bool {
+	sort.Sort(sortableUint32(fromRing))
+
+	tokens := i.getTokens()
+	sort.Sort(sortableUint32(tokens))
+
+	if len(tokens) != len(fromRing) {
+		return false
+	}
+
+	for i := 0; i < len(tokens); i++ {
+		if tokens[i] != fromRing[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// autoJoin selects random tokens & moves state to targetState
+func (i *Lifecycler) autoJoin(ctx context.Context, targetState IngesterState) error {
+	var ringDesc *Desc
+
+	err := i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -422,7 +563,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context) error {
 		}
 
 		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
-		i.setState(ACTIVE)
+		i.setState(targetState)
 		ringDesc.AddIngester(i.ID, i.Addr, newTokens, i.GetState(), i.cfg.NormaliseTokens)
 
 		tokens := append(myTokens, newTokens...)
@@ -431,13 +572,21 @@ func (i *Lifecycler) autoJoin(ctx context.Context) error {
 
 		return ringDesc, true, nil
 	})
+
+	// Update counters
+	if err == nil {
+		i.updateCounters(ringDesc)
+	}
+
+	return err
 }
 
 // updateConsul updates our entries in consul, heartbeating and dealing with
 // consul restarts.
 func (i *Lifecycler) updateConsul(ctx context.Context) error {
-	return i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
-		var ringDesc *Desc
+	var ringDesc *Desc
+
+	err := i.KVStore.CAS(ctx, ConsulKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -458,6 +607,13 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 
 		return ringDesc, true, nil
 	})
+
+	// Update counters
+	if err == nil {
+		i.updateCounters(ringDesc)
+	}
+
+	return err
 }
 
 // changeState updates consul with state transitions for us.  NB this must be
@@ -476,6 +632,24 @@ func (i *Lifecycler) changeState(ctx context.Context, state IngesterState) error
 	level.Info(util.Logger).Log("msg", "changing ingester state from", "old_state", currState, "new_state", state)
 	i.setState(state)
 	return i.updateConsul(ctx)
+}
+
+func (i *Lifecycler) updateCounters(ringDesc *Desc) {
+	// Count the number of healthy instances for Write operation
+	healthyInstancesCount := 0
+
+	if ringDesc != nil {
+		for _, ingester := range ringDesc.Ingesters {
+			if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout) {
+				healthyInstancesCount++
+			}
+		}
+	}
+
+	// Update counters
+	i.countersLock.Lock()
+	i.healthyInstancesCount = healthyInstancesCount
+	i.countersLock.Unlock()
 }
 
 func (i *Lifecycler) processShutdown(ctx context.Context) {

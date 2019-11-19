@@ -18,6 +18,12 @@ import (
 	"github.com/pkg/errors"
 )
 
+// Supported storage engines
+const (
+	StorageEngineChunks = "chunks"
+	StorageEngineTSDB   = "tsdb"
+)
+
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
 	CardinalityLimit(userID string) int
@@ -27,6 +33,7 @@ type StoreLimits interface {
 
 // Config chooses which storage client to use.
 type Config struct {
+	Engine                 string             `yaml:"engine"`
 	AWSStorageConfig       aws.StorageConfig  `yaml:"aws"`
 	GCPStorageConfig       gcp.Config         `yaml:"bigtable"`
 	GCSConfig              gcp.GCSConfig      `yaml:"gcs"`
@@ -48,8 +55,18 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
 
+	f.StringVar(&cfg.Engine, "store.engine", "chunks", "The storage engine to use: chunks or tsdb. Be aware tsdb is experimental and shouldn't be used in production.")
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
+}
+
+// Validate config and returns error on failure
+func (cfg *Config) Validate() error {
+	if cfg.Engine != StorageEngineChunks && cfg.Engine != StorageEngineTSDB {
+		return errors.New("unsupported storage engine")
+	}
+
+	return nil
 }
 
 // NewStore makes the storage clients based on the configuration.
@@ -100,7 +117,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 	case "inmemory":
 		store := chunk.NewMockStorage()
 		return store, nil
-	case "aws", "aws-dynamo", "dynamo":
+	case "aws", "aws-dynamo":
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
 		}
@@ -133,7 +150,7 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 		return store, nil
 	case "aws", "s3":
 		return aws.NewS3ObjectClient(cfg.AWSStorageConfig, schemaCfg)
-	case "aws-dynamo", "dynamo":
+	case "aws-dynamo":
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
 		}
