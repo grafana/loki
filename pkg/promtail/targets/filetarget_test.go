@@ -70,7 +70,7 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	}
 
 	countdown := 10000
-	for len(client.messages) != 10 && countdown > 0 {
+	for client.messageCount() != 10 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -163,7 +163,7 @@ func TestWatchEntireDirectory(t *testing.T) {
 	}
 
 	countdown := 10000
-	for len(client.messages) != 10 && countdown > 0 {
+	for client.messageCount() != 10 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -252,7 +252,7 @@ func TestFileRolls(t *testing.T) {
 	}
 
 	countdown := 10000
-	for len(client.messages) != 10 && countdown > 0 {
+	for client.messageCount() != 10 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -276,7 +276,7 @@ func TestFileRolls(t *testing.T) {
 	}
 
 	countdown = 10000
-	for len(client.messages) != 20 && countdown > 0 {
+	for client.messageCount() != 20 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -350,7 +350,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	countdown := 10000
-	for len(client.messages) != 10 && countdown > 0 {
+	for client.messageCount() != 10 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -384,7 +384,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	countdown = 10000
-	for len(client.messages) != 20 && countdown > 0 {
+	for client.messageCount() != 20 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -469,7 +469,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	}
 
 	countdown := 10000
-	for len(client.messages) != 20 && countdown > 0 {
+	for client.messageCount() != 20 && countdown > 0 {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
@@ -735,6 +735,13 @@ func (c *TestClient) Handle(ls model.LabelSet, t time.Time, s string) error {
 	defer c.Unlock()
 	c.messages = append(c.messages, s)
 	return nil
+}
+
+func (c *TestClient) messageCount() int {
+	c.Lock()
+	defer c.Unlock()
+
+	return len(c.messages)
 }
 
 func initRandom() {

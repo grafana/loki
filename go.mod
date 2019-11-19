@@ -51,7 +51,7 @@ require (
 	github.com/weaveworks/common v0.0.0-20191103151037-0e7cefadc44f
 	go.etcd.io/etcd v0.0.0-20190815204525-8f85f0dc2607 // indirect
 	go.opencensus.io v0.22.1 // indirect
-	go.uber.org/atomic v1.4.0 // indirect
+	go.uber.org/atomic v1.4.0
 	golang.org/x/net v0.0.0-20190923162816-aa69164e4478
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0

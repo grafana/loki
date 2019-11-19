@@ -10,6 +10,7 @@ import (
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/pkg/errors"
+	"go.uber.org/atomic"
 )
 
 const (
@@ -43,7 +44,7 @@ type Tailer struct {
 	querierTailClients    map[string]logproto.Querier_TailClient // addr -> grpc clients for tailing logs from ingesters
 	querierTailClientsMtx sync.RWMutex
 
-	stopped         bool
+	stopped         *atomic.Bool
 	delayFor        time.Duration
 	responseChan    chan *loghttp.TailResponse
 	closeErrChan    chan error
@@ -74,7 +75,7 @@ func (t *Tailer) loop() {
 
 	droppedEntries := make([]loghttp.DroppedEntry, 0)
 
-	for !t.stopped {
+	for !t.stopped.Load() {
 		select {
 		case <-checkConnectionTicker.C:
 			// Try to reconnect dropped ingesters and connect to new ingesters
@@ -196,7 +197,7 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 	var err error
 	defer t.dropTailClient(addr)
 	for {
-		if t.stopped {
+		if t.stopped.Load() {
 			if err := querierTailClient.CloseSend(); err != nil {
 				level.Error(util.Logger).Log("msg", "Error closing grpc tail client", "err", err)
 			}
@@ -205,7 +206,7 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 		resp, err = querierTailClient.Recv()
 		if err != nil {
 			// We don't want to log error when its due to stopping the tail request
-			if !t.stopped {
+			if !t.stopped.Load() {
 				level.Error(util.Logger).Log("msg", "Error receiving response from grpc tail client", "err", err)
 			}
 			break
@@ -241,7 +242,7 @@ func (t *Tailer) close() error {
 	t.streamMtx.Lock()
 	defer t.streamMtx.Unlock()
 
-	t.stopped = true
+	t.stopped.Store(true)
 	return t.openStreamIterator.Close()
 }
 
@@ -276,6 +277,7 @@ func newTailer(
 		tailDisconnectedIngesters: tailDisconnectedIngesters,
 		tailMaxDuration:           tailMaxDuration,
 		waitEntryThrottle:         waitEntryThrottle,
+		stopped:                   atomic.NewBool(false),
 	}
 
 	t.readTailClients()

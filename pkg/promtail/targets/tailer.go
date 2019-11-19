@@ -42,6 +42,7 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions
 		positions.Remove(path)
 	}
 
+	logger = log.With(logger, "component", "tailer")
 	tail, err := tail.TailFile(path, tail.Config{
 		Follow: true,
 		Poll:   true,
@@ -50,12 +51,12 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions
 			Offset: pos,
 			Whence: 0,
 		},
+		Logger: util.NewLogAdapater(logger),
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	logger = log.With(logger, "component", "tailer")
 	tailer := &tailer{
 		logger:    logger,
 		handler:   api.AddLabelsMiddleware(model.LabelSet{FilenameLabel: model.LabelValue(path)}).Wrap(handler),
@@ -66,7 +67,6 @@ func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions
 		quit: make(chan struct{}),
 		done: make(chan struct{}),
 	}
-	tail.Logger = util.NewLogAdapater(logger)
 
 	go tailer.run()
 	filesActive.Add(1.)
