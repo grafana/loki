@@ -226,7 +226,7 @@ lint:
 ########
 
 test: all
-	GOGC=10 go test -mod=vendor -p=4 ./...
+	GOGC=10 go test -mod=vendor -race -p=4 ./...
 
 #########
 # Clean #
