@@ -663,7 +663,7 @@ The `limits_config` block configures global and per-tenant limits for ingesting
 logs in Loki.
 
 ```yaml
-# Per-user ingestion rate limit in samples per second. Units in MB.
+# Per-user ingestion rate limit in sample size per second. Units in MB.
 [ingestion_rate_mb: <float> | default = 4]
 
 # Per-user allowed ingestion burst size (in number of samples). Units in MB.
