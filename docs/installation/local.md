@@ -30,6 +30,11 @@ The community provides packages of Loki for openSUSE Linux. To install:
 
 ### Building
 
+Enable go modules
+```
+$ export GO111MODULE=on
+```
+
 Clone Loki to `$GOPATH/src/github.com/grafana/loki`:
 
 ```bash
