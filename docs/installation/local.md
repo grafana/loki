@@ -2,18 +2,9 @@
 
 ## Release Binaries
 
-Every [Loki release](https://github.com/grafana/loki/releases) includes
-prebuilt binaries:
+Every release includes binaries for Loki which can be found on the
+[Releases page](https://github.com/grafana/loki/releases).
 
-```bash
-# download a binary (modify app, os, and arch as needed)
-# Installs v0.4.0. Go to the releases page for the latest version
-$ curl -fSL -o "/usr/local/bin/loki.gz" "https://github.com/grafana/loki/releases/download/v0.4.0/loki-linux-amd64.gz"
-$ gunzip "/usr/local/bin/loki.gz"
-
-# make sure it is executable
-$ chmod a+x "/usr/local/bin/loki"
-```
 
 ## Community openSUSE Linux packages
 
