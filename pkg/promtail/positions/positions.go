@@ -205,5 +205,13 @@ func writePositionFile(filename string, positions map[string]string) error {
 		return err
 	}
 
-	return ioutil.WriteFile(filepath.Clean(filename), buf, os.FileMode(positionFileMode))
+	target := filepath.Clean(filename)
+	temp := target + "-new"
+
+	err = ioutil.WriteFile(temp, buf, os.FileMode(positionFileMode))
+	if err != nil {
+		return err
+	}
+
+	return os.Rename(temp, target)
 }
