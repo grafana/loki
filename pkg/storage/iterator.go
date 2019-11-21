@@ -77,6 +77,17 @@ type batchChunkIterator struct {
 
 // newBatchChunkIterator creates a new batch iterator with the given batchSize.
 func newBatchChunkIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, batchSize int, matchers []*labels.Matcher, filter logql.Filter, req *logproto.QueryRequest) *batchChunkIterator {
+	// overlapping chunks (according to batchSize) will go through
+	// buildHeapIterator() multiple times. Because of that, we can't use the
+	// __name__ matcher since buildHeapIterator() will remove that label from the
+	// chunks that went through it.
+	for i := range matchers {
+		if matchers[i].Name == "__name__" {
+			matchers = append(matchers[:i], matchers[i+1:]...)
+			break
+		}
+	}
+
 	res := &batchChunkIterator{
 		batchSize: batchSize,
 		matchers:  matchers,
@@ -112,6 +123,9 @@ func (it *batchChunkIterator) Next() bool {
 }
 
 func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
+	// the first chunk of the batch
+	headChunk := it.chunks.Peek()
+
 	// pop the next batch of chunks and append/preprend previous overlapping chunks
 	// so we can merge/de-dupe overlapping entries.
 	batch := make([]*chunkenc.LazyChunk, 0, it.batchSize+len(it.lastOverlapping))
@@ -130,6 +144,14 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 		// so that overlapping chunks are together
 		if it.req.Direction == logproto.BACKWARD {
 			from = time.Unix(0, nextChunk.Chunk.Through.UnixNano())
+
+			// we have to reverse the inclusivity of the chunk iterator from
+			// [from, through) to (from, through] for backward queries, except when
+			// the batch's `from` is equal to the query's Start. This can be achieved
+			// by shifting `from` by one nanosecond.
+			if !from.Equal(it.req.Start) {
+				from = from.Add(time.Nanosecond)
+			}
 		} else {
 			through = time.Unix(0, nextChunk.Chunk.From.UnixNano())
 		}
@@ -149,7 +171,7 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 		//                        └────────────────────┘
 		//
 		//  And nextChunk is # 49, we need to keep references to #47 and #48 as they won't be
-		//  iterated over completely (we're clipping through to #49's from)  and then add them to the next batch.
+		//  iterated over completely (we're clipping through to #49's from) and then add them to the next batch.
 		it.lastOverlapping = it.lastOverlapping[:0]
 		for _, c := range batch {
 			if it.req.Direction == logproto.BACKWARD {
@@ -162,14 +184,20 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 				}
 			}
 		}
-	} else {
-		if len(it.lastOverlapping) > 0 {
-			if it.req.Direction == logproto.BACKWARD {
-				through = time.Unix(0, it.lastOverlapping[0].Chunk.From.UnixNano())
-			} else {
-				from = time.Unix(0, it.lastOverlapping[0].Chunk.Through.UnixNano())
-			}
+	}
+
+	if it.req.Direction == logproto.BACKWARD {
+		through = time.Unix(0, headChunk.Chunk.Through.UnixNano())
+
+		// we have to reverse the inclusivity of the chunk iterator from
+		// [from, through) to (from, through] for backward queries, except when
+		// the batch's `through` is equal to the query's End. This can be achieved
+		// by shifting `through` by one nanosecond.
+		if !through.Equal(it.req.End) {
+			through = through.Add(time.Nanosecond)
 		}
+	} else {
+		from = time.Unix(0, headChunk.Chunk.From.UnixNano())
 	}
 
 	// create the new chunks iterator from the current batch.
