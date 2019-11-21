@@ -189,6 +189,10 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 	if it.req.Direction == logproto.BACKWARD {
 		through = time.Unix(0, headChunk.Chunk.Through.UnixNano())
 
+		if through.After(it.req.End) {
+			through = it.req.End
+		}
+
 		// we have to reverse the inclusivity of the chunk iterator from
 		// [from, through) to (from, through] for backward queries, except when
 		// the batch's `through` is equal to the query's End. This can be achieved
@@ -198,6 +202,10 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 		}
 	} else {
 		from = time.Unix(0, headChunk.Chunk.From.UnixNano())
+
+		if from.Before(it.req.Start) {
+			from = it.req.Start
+		}
 	}
 
 	// create the new chunks iterator from the current batch.
