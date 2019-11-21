@@ -104,7 +104,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 			},
 			[]*logproto.Stream{
 				{
-					Labels: fooLabelsWithName,
+					Labels: fooLabels,
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -191,7 +191,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 			},
 			[]*logproto.Stream{
 				{
-					Labels: fooLabelsWithName,
+					Labels: fooLabels,
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -296,7 +296,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 			},
 			[]*logproto.Stream{
 				{
-					Labels: fooLabelsWithName,
+					Labels: fooLabels,
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(3 * time.Millisecond),
@@ -379,7 +379,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 			},
 			[]*logproto.Stream{
 				{
-					Labels: fooLabelsWithName,
+					Labels: fooLabels,
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(7 * time.Millisecond),
@@ -457,7 +457,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 			},
 			[]*logproto.Stream{
 				{
-					Labels: fooLabelsWithName,
+					Labels: fooLabels,
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
@@ -515,7 +515,7 @@ func Test_newBatchChunkIterator(t *testing.T) {
 			},
 			[]*logproto.Stream{
 				{
-					Labels: fooLabelsWithName,
+					Labels: fooLabels,
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from.Add(2 * time.Millisecond),
