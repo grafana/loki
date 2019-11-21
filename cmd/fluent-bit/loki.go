@@ -38,8 +38,8 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	records := toStringMap(r)
 	level.Debug(l.logger).Log("msg", "processing records", "records", fmt.Sprintf("%+v", records))
 	lbs := model.LabelSet{}
-	if l.cfg.labeMap != nil {
-		mapLabels(records, l.cfg.labeMap, lbs)
+	if l.cfg.labelMap != nil {
+		mapLabels(records, l.cfg.labelMap, lbs)
 	} else {
 		lbs = extractLabels(records, l.cfg.labelKeys)
 	}

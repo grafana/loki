@@ -42,7 +42,7 @@ type config struct {
 	labelKeys     []string
 	lineFormat    format
 	dropSingleKey bool
-	labeMap       map[string]interface{}
+	labelMap      map[string]interface{}
 }
 
 func parseConfig(cfg ConfigGetter) (*config, error) {
@@ -139,7 +139,7 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to open LabelMap file: %s", err)
 		}
-		if err := json.Unmarshal(content, &res.labeMap); err != nil {
+		if err := json.Unmarshal(content, &res.labelMap); err != nil {
 			return nil, fmt.Errorf("failed to Unmarshal LabelMap file: %s", err)
 		}
 		res.labelKeys = nil
