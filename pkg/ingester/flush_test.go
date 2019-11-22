@@ -45,7 +45,7 @@ func TestChunkFlushingIdle(t *testing.T) {
 	userIDs, testData := pushTestSamples(t, ing)
 
 	// wait beyond idle time so samples flush
-	time.Sleep(cfg.MaxChunkIdle * 2)
+	time.Sleep(cfg.MaxChunkIdle * 4)
 	store.checkData(t, userIDs, testData)
 }
 

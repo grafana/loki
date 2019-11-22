@@ -193,16 +193,18 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	ctx := user.InjectOrgID(context.Background(), userID)
 	ctx, cancel := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
 	defer cancel()
+
+	instance.streamsMtx.Lock()
+	defer instance.streamsMtx.Unlock()
+
 	err := i.flushChunks(ctx, fp, labels, chunks)
 	if err != nil {
 		return err
 	}
 
-	instance.streamsMtx.Lock()
 	for _, chunk := range chunks {
 		chunk.flushed = time.Now()
 	}
-	instance.streamsMtx.Unlock()
 	return nil
 }
 

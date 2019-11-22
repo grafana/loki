@@ -76,6 +76,9 @@ func TestTransferOut(t *testing.T) {
 	ing2 := f.getIngester(time.Second*60, t)
 	ing.Shutdown()
 
+	ing2.instancesMtx.Lock()
+	defer ing2.instancesMtx.Unlock()
+
 	assert.Len(t, ing2.instances, 1)
 	if assert.Contains(t, ing2.instances, "test") {
 		assert.Len(t, ing2.instances["test"].streams, 2)
