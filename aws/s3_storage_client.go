@@ -51,7 +51,11 @@ func NewS3ObjectClient(cfg StorageConfig, schemaCfg chunk.SchemaConfig) (chunk.O
 	s3Config = s3Config.WithS3ForcePathStyle(cfg.S3ForcePathStyle) // support for Path Style S3 url if has the flag
 
 	s3Config = s3Config.WithMaxRetries(0) // We do our own retries, so we can monitor them
-	s3Client := s3.New(session.New(s3Config))
+	sess, err := session.NewSession(s3Config)
+	if err != nil {
+		return nil, err
+	}
+	s3Client := s3.New(sess)
 	bucketNames := []string{strings.TrimPrefix(cfg.S3.URL.Path, "/")}
 	if cfg.BucketNames != "" {
 		bucketNames = strings.Split(cfg.BucketNames, ",") // comma separated list of bucket names
