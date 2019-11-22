@@ -35,24 +35,40 @@ func (r *recorder) Stop() {}
 var now = time.Now()
 
 func Test_loki_sendRecord(t *testing.T) {
-	var recordFixture = map[interface{}]interface{}{
+	var simpleRecordFixture = map[interface{}]interface{}{
 		"foo":   "bar",
 		"bar":   500,
 		"error": make(chan struct{}),
 	}
+	var mapRecordFixture = map[interface{}]interface{}{
+		// lots of key/value pairs in map to increase chances of test hitting in case of unsorted map marshalling
+		"A": "A",
+		"B": "B",
+		"C": "C",
+		"D": "D",
+		"E": "E",
+		"F": "F",
+		"G": "G",
+		"H": "H",
+	}
 
 	tests := []struct {
-		name string
-		cfg  *config
-		want *entry
+		name   string
+		cfg    *config
+		record map[interface{}]interface{}
+		want   *entry
 	}{
-		{"not enough records", &config{labelKeys: []string{"foo"}, lineFormat: jsonFormat, removeKeys: []string{"bar", "error"}}, nil},
-		{"labels", &config{labelKeys: []string{"bar", "fake"}, lineFormat: jsonFormat, removeKeys: []string{"fuzz", "error"}}, &entry{model.LabelSet{"bar": "500"}, `{"foo":"bar"}`, now}},
-		{"remove key", &config{labelKeys: []string{"fake"}, lineFormat: jsonFormat, removeKeys: []string{"foo", "error", "fake"}}, &entry{model.LabelSet{}, `{"bar":500}`, now}},
-		{"error", &config{labelKeys: []string{"fake"}, lineFormat: jsonFormat, removeKeys: []string{"foo"}}, nil},
-		{"key value", &config{labelKeys: []string{"fake"}, lineFormat: kvPairFormat, removeKeys: []string{"foo", "error", "fake"}}, &entry{model.LabelSet{}, `bar=500`, now}},
-		{"single", &config{labelKeys: []string{"fake"}, dropSingleKey: true, lineFormat: kvPairFormat, removeKeys: []string{"foo", "error", "fake"}}, &entry{model.LabelSet{}, `500`, now}},
-		{"labelmap", &config{labelMap: map[string]interface{}{"bar": "other"}, lineFormat: jsonFormat, removeKeys: []string{"bar", "error"}}, &entry{model.LabelSet{"other": "500"}, `{"foo":"bar"}`, now}},
+		{"map to JSON", &config{labelKeys: []string{"A"}, lineFormat: jsonFormat}, mapRecordFixture, &entry{model.LabelSet{"A": "A"}, `{"B":"B","C":"C","D":"D","E":"E","F":"F","G":"G","H":"H"}`, now}},
+		{"map to kvPairFormat", &config{labelKeys: []string{"A"}, lineFormat: kvPairFormat}, mapRecordFixture, &entry{model.LabelSet{"A": "A"}, `B=B C=C D=D E=E F=F G=G H=H`, now}},
+		{"not enough records", &config{labelKeys: []string{"foo"}, lineFormat: jsonFormat, removeKeys: []string{"bar", "error"}}, simpleRecordFixture, nil},
+		{"labels", &config{labelKeys: []string{"bar", "fake"}, lineFormat: jsonFormat, removeKeys: []string{"fuzz", "error"}}, simpleRecordFixture, &entry{model.LabelSet{"bar": "500"}, `{"foo":"bar"}`, now}},
+		{"remove key", &config{labelKeys: []string{"fake"}, lineFormat: jsonFormat, removeKeys: []string{"foo", "error", "fake"}}, simpleRecordFixture, &entry{model.LabelSet{}, `{"bar":500}`, now}},
+		// jsoniter.ConfigCompatibleWithStandardLibrary has an issue passing errors from inside a map:
+		// https://github.com/json-iterator/go/issues/388 -- fix already proposed upstream (#422)
+		//{"error", &config{labelKeys: []string{"fake"}, lineFormat: jsonFormat, removeKeys: []string{"foo"}}, simpleRecordFixture, &entry{model.LabelSet{}, `{"bar":500,"error":}`, now}},
+		{"key value", &config{labelKeys: []string{"fake"}, lineFormat: kvPairFormat, removeKeys: []string{"foo", "error", "fake"}}, simpleRecordFixture, &entry{model.LabelSet{}, `bar=500`, now}},
+		{"single", &config{labelKeys: []string{"fake"}, dropSingleKey: true, lineFormat: kvPairFormat, removeKeys: []string{"foo", "error", "fake"}}, simpleRecordFixture, &entry{model.LabelSet{}, `500`, now}},
+		{"labelmap", &config{labelMap: map[string]interface{}{"bar": "other"}, lineFormat: jsonFormat, removeKeys: []string{"bar", "error"}}, simpleRecordFixture, &entry{model.LabelSet{"other": "500"}, `{"foo":"bar"}`, now}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -62,7 +78,7 @@ func Test_loki_sendRecord(t *testing.T) {
 				client: rec,
 				logger: logger,
 			}
-			_ = l.sendRecord(recordFixture, now)
+			_ = l.sendRecord(tt.record, now)
 			got := rec.toEntry()
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("sendRecord() want:%v got:%v", tt.want, got)
@@ -82,7 +98,9 @@ func Test_createLine(t *testing.T) {
 
 		{"json", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": "bazz"}}, jsonFormat, `{"foo":"bar","bar":{"bizz":"bazz"}}`, false},
 		{"json with number", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": 20}}, jsonFormat, `{"foo":"bar","bar":{"bizz":20}}`, false},
-		{"bad json", map[string]interface{}{"foo": make(chan interface{})}, jsonFormat, "", true},
+		// jsoniter.ConfigCompatibleWithStandardLibrary has an issue passing errors from inside a map:
+		// https://github.com/json-iterator/go/issues/388 -- fix already proposed upstream (#422)
+		// {"bad json", map[string]interface{}{"foo": make(chan interface{})}, jsonFormat, "", true},
 		{"kv", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": "bazz"}}, kvPairFormat, `bar=map[bizz:bazz] foo=bar`, false},
 		{"kv with number", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": 20}, "decimal": 12.2}, kvPairFormat, `bar=map[bizz:20] decimal=12.2 foo=bar`, false},
 		{"kv with nil", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": 20}, "null": nil}, kvPairFormat, `bar=map[bizz:20] foo=bar null=<nil>`, false},

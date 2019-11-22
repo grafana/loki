@@ -147,7 +147,7 @@ func removeKeys(records map[string]interface{}, keys []string) {
 func createLine(records map[string]interface{}, f format) (string, error) {
 	switch f {
 	case jsonFormat:
-		js, err := jsoniter.Marshal(records)
+		js, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(records)
 		if err != nil {
 			return "", err
 		}
