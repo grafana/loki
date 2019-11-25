@@ -77,8 +77,8 @@ See [Relabeling](#relabeling) for more information.
 
 ## Journal Scraping (Linux Only)
 
-On systems with `systemd`, Promtail also supports reading from the journal. Unlike 
-file scraping which is defined in the `static_configs` stanza, journal scraping is 
+On systems with `systemd`, Promtail also supports reading from the journal. Unlike
+file scraping which is defined in the `static_configs` stanza, journal scraping is
 defined in a `journal` stanza:
 
 ```yaml
@@ -94,16 +94,32 @@ scrape_configs:
         target_label: 'unit'
 ```
 
-All fields defined in the `journal` section are optional, and are just provided 
-here for reference. The `max_age` field ensures that no older entry than the 
+All fields defined in the `journal` section are optional, and are just provided
+here for reference. The `max_age` field ensures that no older entry than the
 time specified will be sent to Loki; this circumvents "entry too old" errors.
-The `path` field tells Promtail where to read journal entries from. The labels 
+The `path` field tells Promtail where to read journal entries from. The labels
 map defines a constant list of labels to add to every journal entry that Promtail
-reads. 
+reads.
 
-When Promtail reads from the journal, it brings in all fields prefixed with 
-`__journal_` as internal labels. Like in the example above, the `_SYSTEMD_UNIT` 
-field from the journal was transformed into a label called `unit` through 
+By default, Promtail reads from the journal by looking in the `/var/log/journal`
+and `/run/log/journal` paths. If running Promtail inside of a Docker container,
+the path appropriate to your distribution should be bind mounted inside of
+Promtail along with binding `/etc/machine-id`. Bind mounting `/etc/machine-id`
+to the path of the same name is required for the journal reader to know which
+specific journal to read from. For example:
+
+```bash
+docker run \
+  -v /var/log/journal/:/var/log/journal/ \
+  -v /run/log/journal/:/run/log/journal/ \
+  -v /etc/machine-id:/etc/machine-id \
+  grafana/promtail:latest \
+  -config.file=/path/to/config/file.yaml
+```
+
+When Promtail reads from the journal, it brings in all fields prefixed with
+`__journal_` as internal labels. Like in the example above, the `_SYSTEMD_UNIT`
+field from the journal was transformed into a label called `unit` through
 `relabel_configs`. See [Relabeling](#relabeling) for more information.
 
 ## Relabeling

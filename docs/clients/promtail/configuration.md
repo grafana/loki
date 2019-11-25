@@ -576,7 +576,7 @@ labels:
   [ <labelname>: <labelvalue> ... ]
 
 # Path to a directory to read entries from. Defaults to system
-# path when empty.
+# paths (/var/log/journal and /run/log/journal) when empty.
 [path: <string>]
 ```
 
@@ -964,7 +964,6 @@ scrape_configs:
   - job_name: journal
     journal:
       max_age: 12h
-      path: /var/log/journal
       labels:
         job: systemd-journal
     relabel_configs:
