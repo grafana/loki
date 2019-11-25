@@ -13,7 +13,7 @@ and download the `logcli` binary for your OS:
 ```bash
 # download a binary (adapt app, os and arch as needed)
 # installs v0.3.0. For up to date URLs refer to the release's description
-$ curl -fSL -o "/usr/local/bin/logcli.gz" "https://github.com/grafana/loki/releases/download/v0.3.0/logcli_linux_amd64.gz"
+$ curl -fSL -o "/usr/local/bin/logcli.gz" "https://github.com/grafana/loki/releases/download/v1.0.0/logcli-linux-amd64.gz"
 $ gunzip "/usr/local/bin/logcli.gz"
 
 # make sure it is executable
