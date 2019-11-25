@@ -23,47 +23,56 @@ import (
 
 var (
 	chunkUtilization = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "loki_ingester_chunk_utilization",
-		Help:    "Distribution of stored chunk utilization (when stored).",
-		Buckets: prometheus.LinearBuckets(0, 0.2, 6),
+		Namespace: "loki",
+		Name:      "ingester_chunk_utilization",
+		Help:      "Distribution of stored chunk utilization (when stored).",
+		Buckets:   prometheus.LinearBuckets(0, 0.2, 6),
 	})
 	memoryChunks = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "loki_ingester_memory_chunks",
-		Help: "The total number of chunks in memory.",
+		Namespace: "loki",
+		Name:      "ingester_memory_chunks",
+		Help:      "The total number of chunks in memory.",
 	})
 	chunkEntries = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "loki_ingester_chunk_entries",
-		Help:    "Distribution of stored lines per chunk (when stored).",
-		Buckets: prometheus.ExponentialBuckets(200, 2, 9), // biggest bucket is 200*2^(9-1) = 51200
+		Namespace: "loki",
+		Name:      "ingester_chunk_entries",
+		Help:      "Distribution of stored lines per chunk (when stored).",
+		Buckets:   prometheus.ExponentialBuckets(200, 2, 9), // biggest bucket is 200*2^(9-1) = 51200
 	})
 	chunkSize = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "loki_ingester_chunk_size_bytes",
-		Help:    "Distribution of stored chunk sizes (when stored).",
-		Buckets: prometheus.ExponentialBuckets(10000, 2, 7), // biggest bucket is 10000*2^(7-1) = 640000 (~640KB)
+		Namespace: "loki",
+		Name:      "ingester_chunk_size_bytes",
+		Help:      "Distribution of stored chunk sizes (when stored).",
+		Buckets:   prometheus.ExponentialBuckets(10000, 2, 7), // biggest bucket is 10000*2^(7-1) = 640000 (~640KB)
 	})
 	chunkCompressionRatio = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "loki_ingester_chunk_compression_ratio",
-		Help:    "Compression ratio of chunks (when stored).",
-		Buckets: prometheus.LinearBuckets(.75, 2, 10),
+		Namespace: "loki",
+		Name:      "ingester_chunk_compression_ratio",
+		Help:      "Compression ratio of chunks (when stored).",
+		Buckets:   prometheus.LinearBuckets(.75, 2, 10),
 	})
 	chunksPerTenant = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "loki_ingester_chunks_stored_total",
-		Help: "Total stored chunks per tenant.",
+		Namespace: "loki",
+		Name:      "ingester_chunks_stored_total",
+		Help:      "Total stored chunks per tenant.",
 	}, []string{"tenant"})
 	chunkSizePerTenant = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "loki_ingester_chunk_stored_bytes_total",
-		Help: "Total bytes stored in chunks per tenant.",
+		Namespace: "loki",
+		Name:      "ingester_chunk_stored_bytes_total",
+		Help:      "Total bytes stored in chunks per tenant.",
 	}, []string{"tenant"})
 	chunkAge = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name: "loki_ingester_chunk_age_seconds",
-		Help: "Distribution of chunk ages (when stored).",
+		Namespace: "loki",
+		Name:      "ingester_chunk_age_seconds",
+		Help:      "Distribution of chunk ages (when stored).",
 		// with default settings chunks should flush between 5 min and 12 hours
 		// so buckets at 1min, 5min, 10min, 30min, 1hr, 2hr, 4hr, 10hr, 12hr, 16hr
 		Buckets: []float64{60, 300, 600, 1800, 3600, 7200, 14400, 36000, 43200, 57600},
 	})
 	chunkEncodeTime = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name: "loki_ingester_chunk_encode_time_seconds",
-		Help: "Distribution of chunk encode times.",
+		Namespace: "loki",
+		Name:      "ingester_chunk_encode_time_seconds",
+		Help:      "Distribution of chunk encode times.",
 		// 10ms to 10s.
 		Buckets: prometheus.ExponentialBuckets(0.01, 4, 6),
 	})

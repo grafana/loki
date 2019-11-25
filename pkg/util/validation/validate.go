@@ -13,8 +13,9 @@ const (
 // DiscardedBytes is a metric of the total discarded bytes, by reason.
 var DiscardedBytes = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "loki_discarded_bytes_total",
-		Help: "The total number of bytes that were discarded.",
+		Namespace: "loki",
+		Name:      "discarded_bytes_total",
+		Help:      "The total number of bytes that were discarded.",
 	},
 	[]string{discardReasonLabel, "tenant"},
 )
@@ -22,8 +23,9 @@ var DiscardedBytes = prometheus.NewCounterVec(
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
 var DiscardedSamples = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "loki_discarded_samples_total",
-		Help: "The total number of samples that were discarded.",
+		Namespace: "loki",
+		Name:      "discarded_samples_total",
+		Help:      "The total number of samples that were discarded.",
 	},
 	[]string{discardReasonLabel, "tenant"},
 )
