@@ -29,7 +29,7 @@ COPY --from=golangci /bin/golangci-lint /usr/local/bin
 
 # Enable go 1.11 modules to be able to install pinned version of dependencies
 # even if we're installing them in the GOPATH
-RUN GO111MODULE=on go get \
+RUN go get \
     github.com/golang/protobuf/protoc-gen-go@v1.3.0 \
     github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0 \
     github.com/gogo/protobuf/gogoproto@v1.3.0 \
