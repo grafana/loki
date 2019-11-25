@@ -141,7 +141,7 @@ elements of the vector.
 
 Get the top 10 applications by the highest log throughput:
 
-> `topk(10,sum(rate({region="us-east1"}[5m]) by (name))`
+> `topk(10,sum(rate({region="us-east1"}[5m])) by (name))`
 
 Get the count of logs during the last five minutes, grouping
 by level:
