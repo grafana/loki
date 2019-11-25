@@ -29,5 +29,5 @@ var DiscardedSamples = prometheus.NewCounterVec(
 )
 
 func init() {
-	prometheus.MustRegister(DiscardedSamples)
+	prometheus.MustRegister(DiscardedSamples, DiscardedBytes)
 }
