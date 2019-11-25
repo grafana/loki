@@ -16,7 +16,7 @@ var DiscardedBytes = prometheus.NewCounterVec(
 		Name: "loki_discarded_bytes_total",
 		Help: "The total number of bytes that were discarded.",
 	},
-	[]string{discardReasonLabel, "user"},
+	[]string{discardReasonLabel, "tenant"},
 )
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
@@ -25,7 +25,7 @@ var DiscardedSamples = prometheus.NewCounterVec(
 		Name: "loki_discarded_samples_total",
 		Help: "The total number of samples that were discarded.",
 	},
-	[]string{discardReasonLabel, "user"},
+	[]string{discardReasonLabel, "tenant"},
 )
 
 func init() {
