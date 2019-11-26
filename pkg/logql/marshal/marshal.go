@@ -1,5 +1,5 @@
-// Package marshal converts internal objects to loghttp model objects.  This package is designed to work with
-//  models in pkg/loghttp.
+// Package marshal converts internal objects to loghttp model objects.  This
+// package is designed to work with models in pkg/loghttp.
 package marshal
 
 import (
@@ -14,7 +14,8 @@ import (
 	"github.com/prometheus/prometheus/promql"
 )
 
-// WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then writes it to the provided io.Writer
+// WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
+// writes it to the provided io.Writer.
 func WriteQueryResponseJSON(v promql.Value, w io.Writer) error {
 
 	value, err := NewResultValue(v)
@@ -34,9 +35,8 @@ func WriteQueryResponseJSON(v promql.Value, w io.Writer) error {
 	return json.NewEncoder(w).Encode(q)
 }
 
-// WriteLabelResponseJSON marshals a logproto.LabelResponse to v1 loghttp JSON and then writes it to the provided io.Writer
-//  Note that it simply directly marshals the value passed in.  This is because the label currently marshals
-//  cleanly to the v1 http protocol.  If this ever changes, it will be caught by testing.
+// WriteLabelResponseJSON marshals a logproto.LabelResponse to v1 loghttp JSON
+// and then writes it to the provided io.Writer.
 func WriteLabelResponseJSON(l logproto.LabelResponse, w io.Writer) error {
 	v1Response := loghttp.LabelResponse{
 		Status: "success",
@@ -46,7 +46,8 @@ func WriteLabelResponseJSON(l logproto.LabelResponse, w io.Writer) error {
 	return json.NewEncoder(w).Encode(v1Response)
 }
 
-// WriteTailResponseJSON marshals the legacy.TailResponse to v1 loghttp JSON and then writes it to the provided connection
+// WriteTailResponseJSON marshals the legacy.TailResponse to v1 loghttp JSON and
+// then writes it to the provided connection.
 func WriteTailResponseJSON(r legacy.TailResponse, c *websocket.Conn) error {
 	v1Response, err := NewTailResponse(r)
 
