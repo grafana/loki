@@ -127,7 +127,7 @@ local manifest(apps) = pipeline('manifest') {
   ],
 };
 
-local drone = [
+[
   pipeline('check') {
     workspace: {
       base: '/src',
@@ -166,8 +166,4 @@ local drone = [
       },
     ],
   },
-];
-
-{
-  drone: std.manifestYamlStream(drone),
-}
+]

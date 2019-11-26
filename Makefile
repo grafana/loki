@@ -485,7 +485,7 @@ benchmark-store:
 
 # regenerate drone yaml
 drone:
-	jsonnet -V __build-image-version=$(BUILD_IMAGE_VERSION) .drone/drone.jsonnet | jq .drone -r | yq -y . > .drone/drone.yml
+	drone jsonnet --stream --format -V __build-image-version=$(BUILD_IMAGE_VERSION) --source .drone/drone.jsonnet --target .drone/drone.yml
 
 # support go modules
 check-mod:
