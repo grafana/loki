@@ -340,6 +340,29 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 				time.Unix(1, 0),
 			},
 		},
+		"labels with colliding fingerprints should have independent timestamps when fudging": {
+			config: TimestampConfig{
+				Source:          "time",
+				Format:          time.RFC3339Nano,
+				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
+			},
+			inputEntries: []inputEntry{
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.800000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}, extracted: map[string]interface{}{}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}, extracted: map[string]interface{}{}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}, extracted: map[string]interface{}{}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}, extracted: map[string]interface{}{}},
+			},
+			expectedTimestamps: []time.Time{
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.800000000Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000001Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.800000001Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000002Z"),
+				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.800000002Z"),
+			},
+		},
 	}
 
 	for testName, testData := range tests {
@@ -360,7 +383,7 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 				entry := ""
 
 				s.Process(inputEntry.labels, extracted, &timestamp, &entry)
-				assert.Equal(t, testData.expectedTimestamps[i], timestamp)
+				assert.Equal(t, testData.expectedTimestamps[i], timestamp, "entry: %d", i)
 			}
 		})
 	}

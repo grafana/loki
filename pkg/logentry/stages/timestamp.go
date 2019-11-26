@@ -145,7 +145,7 @@ func (ts *timestampStage) Process(labels model.LabelSet, extracted map[string]in
 	// The timestamp has been correctly parsed, so we should store it in the map
 	// containing the last known timestamp used by the "fudge" action on failure.
 	if *ts.cfg.ActionOnFailure == TimestampActionOnFailureFudge {
-		ts.lastKnownTimestamps.Add(labels.FastFingerprint(), *t)
+		ts.lastKnownTimestamps.Add(labels.String(), *t)
 	}
 }
 
@@ -193,8 +193,8 @@ func (ts *timestampStage) processActionOnFailure(labels model.LabelSet, t *time.
 }
 
 func (ts *timestampStage) processActionOnFailureFudge(labels model.LabelSet, t *time.Time) {
-	labelsFingerprint := labels.FastFingerprint()
-	lastTimestamp, ok := ts.lastKnownTimestamps.Get(labelsFingerprint)
+	labelsStr := labels.String()
+	lastTimestamp, ok := ts.lastKnownTimestamps.Get(labelsStr)
 
 	// If the last known timestamp is unknown (ie. has not been successfully parsed yet)
 	// there's nothing we can do, so we're going to keep the current timestamp
@@ -206,5 +206,5 @@ func (ts *timestampStage) processActionOnFailureFudge(labels model.LabelSet, t *
 	*t = lastTimestamp.(time.Time).Add(1 * time.Nanosecond)
 
 	// Store the fudged timestamp, so that a subsequent fudged timestamp will be 1ns after it
-	ts.lastKnownTimestamps.Add(labelsFingerprint, *t)
+	ts.lastKnownTimestamps.Add(labelsStr, *t)
 }
