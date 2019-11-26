@@ -14,6 +14,8 @@ The HTTP API includes the following endpoints:
 - [`POST /loki/api/v1/push`](#post-lokiapiv1push)
 - [`GET /api/prom/tail`](#get-apipromtail)
 - [`GET /api/prom/query`](#get-apipromquery)
+- [`GET /api/prom/label`](#get-apipromlabel)
+- [`GET /api/prom/label/<name>/values`](#get-apipromlabelnamevalues)
 - [`POST /api/prom/push`](#post-apiprompush)
 - [`GET /ready`](#get-ready)
 - [`POST /flush`](#post-flush)
@@ -38,6 +40,8 @@ These endpoints are exposed by just the querier:
 - [`GET /loki/api/v1/tail`](#get-lokiapiv1tail)
 - [`GET /api/prom/tail`](#get-lokiapipromtail)
 - [`GET /api/prom/query`](#get-apipromquery)
+- [`GET /api/prom/label`](#get-apipromlabel)
+- [`GET /api/prom/label/<name>/values`](#get-apipromlabelnamevalues)
 
 While these endpoints are exposed by just the distributor:
 
@@ -348,7 +352,8 @@ Response:
 
 ```
 {
-  "values": [
+  "status": "success",
+  "data": [
     <label string>,
     ...
   ]
@@ -360,7 +365,8 @@ Response:
 ```bash
 $ curl -G -s  "http://localhost:3100/loki/api/v1/label" | jq
 {
-  "values": [
+  "status": "success",
+  "data": [
     "foo",
     "bar",
     "baz"
@@ -383,7 +389,8 @@ Response:
 
 ```
 {
-  "values": [
+  "status": "success",
+  "data": [
     <label value>,
     ...
   ]
@@ -395,7 +402,8 @@ Response:
 ```bash
 $ curl -G -s  "http://localhost:3100/loki/api/v1/label/foo/values" | jq
 {
-  "values": [
+  "status": "success",
+  "data": [
     "cat",
     "dog",
     "axolotl"
@@ -597,11 +605,77 @@ $ curl -G -s  "http://localhost:3100/api/prom/query" --data-urlencode '{foo="bar
 }
 ```
 
+## `GET /api/prom/label`
+
+> **WARNING**: `/api/prom/label` is DEPRECATED; use `/loki/api/v1/label`
+
+`/api/prom/label` retrieves the list of known labels within a given time span. It
+accepts the following query parameters in the URL:
+
+- `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
+- `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
+
+In microservices mode, `/api/prom/label` is exposed by the querier.
+
+Response:
+
+```
+{
+  "values": [
+    <label string>,
+    ...
+  ]
+}
+```
+
 ### Examples
 
 ```bash
-$ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/loki/api/v1/push" --data-raw \
-  '{"streams": [{ "labels": "{foo=\"bar\"}", "entries": [{ "ts": "2018-12-18T08:28:06.801064-04:00", "line": "fizzbuzz" }] }]}'
+$ curl -G -s  "http://localhost:3100/api/prom/label" | jq
+{
+  "values": [
+    "foo",
+    "bar",
+    "baz"
+  ]
+}
+```
+
+## `GET /api/prom/label/<name>/values`
+
+> **WARNING**: `/api/prom/label/<name>/values` is DEPRECATED; use `/loki/api/v1/label/<name>/values`
+
+`/api/prom/label/<name>/values` retrieves the list of known values for a given
+label within a given time span. It accepts the following query parameters in
+the URL:
+
+- `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
+- `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
+
+In microservices mode, `/api/prom/label/<name>/values` is exposed by the querier.
+
+Response:
+
+```
+{
+  "values": [
+    <label value>,
+    ...
+  ]
+}
+```
+
+### Examples
+
+```bash
+$ curl -G -s  "http://localhost:3100/api/prom/label/foo/values" | jq
+{
+  "values": [
+    "cat",
+    "dog",
+    "axolotl"
+  ]
+}
 ```
 
 ## `POST /api/prom/push`
