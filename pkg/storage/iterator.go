@@ -77,12 +77,11 @@ type batchChunkIterator struct {
 
 // newBatchChunkIterator creates a new batch iterator with the given batchSize.
 func newBatchChunkIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, batchSize int, matchers []*labels.Matcher, filter logql.Filter, req *logproto.QueryRequest) *batchChunkIterator {
-	// overlapping chunks (according to batchSize) will go through
-	// buildHeapIterator() multiple times. Because of that, we can't use the
-	// __name__ matcher since buildHeapIterator() will remove that label from the
-	// chunks that went through it.
+
+	// __name__ is not something we filter by because it's a constant in loki and only used for upstream compatibility.
+	// Therefore remove it
 	for i := range matchers {
-		if matchers[i].Name == "__name__" {
+		if matchers[i].Name == labels.MetricName {
 			matchers = append(matchers[:i], matchers[i+1:]...)
 			break
 		}
@@ -286,12 +285,9 @@ func buildIterators(ctx context.Context, chks map[model.Fingerprint][][]*chunken
 
 func buildHeapIterator(ctx context.Context, chks [][]*chunkenc.LazyChunk, filter logql.Filter, direction logproto.Direction, from, through time.Time) (iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
-	if chks[0][0].Chunk.Metric.Has("__name__") {
-		labelsBuilder := labels.NewBuilder(chks[0][0].Chunk.Metric)
-		labelsBuilder.Del("__name__")
-		chks[0][0].Chunk.Metric = labelsBuilder.Labels()
-	}
-	labels := chks[0][0].Chunk.Metric.String()
+
+	// __name__ is only used for upstream compatibility and is hardcoded within loki. Strip it from the return label set.
+	labels := dropLabels(chks[0][0].Chunk.Metric, labels.MetricName).String()
 
 	for i := range chks {
 		iterators := make([]iter.EntryIterator, 0, len(chks[i]))
@@ -435,4 +431,21 @@ outer:
 	}
 
 	return css
+}
+
+// dropLabels returns a new label set with certain labels dropped
+func dropLabels(ls labels.Labels, removals ...string) (dst labels.Labels) {
+	toDel := make(map[string]struct{})
+	for _, r := range removals {
+		toDel[r] = struct{}{}
+	}
+
+	for _, l := range ls {
+		_, remove := toDel[l.Name]
+		if !remove {
+			dst = append(dst, l)
+		}
+	}
+
+	return dst
 }

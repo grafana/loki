@@ -9,6 +9,8 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_newBatchChunkIterator(t *testing.T) {
@@ -553,19 +555,127 @@ func Test_newBatchChunkIterator(t *testing.T) {
 
 		})
 	}
+}
 
-	for name, tt := range tests {
-		tt := tt
-		t.Run(fmt.Sprintf("large-batchsize/%s", name), func(t *testing.T) {
-			it := newBatchChunkIterator(context.Background(), tt.chunks, 1000, newMatchers(tt.matchers), nil, newQuery("", tt.start, tt.end, tt.direction))
-			streams, _, err := iter.ReadBatch(it, 1000)
-			_ = it.Close()
-			if err != nil {
-				t.Fatalf("error reading batch %s", err)
-			}
+func TestPartitionOverlappingchunks(t *testing.T) {
+	var (
+		oneThroughFour = newLazyChunk(logproto.Stream{
+			Labels: fooLabelsWithName,
+			Entries: []logproto.Entry{
+				{
+					Timestamp: from,
+					Line:      "1",
+				},
+				{
+					Timestamp: from.Add(3 * time.Millisecond),
+					Line:      "4",
+				},
+			},
+		})
+		two = newLazyChunk(logproto.Stream{
+			Labels: fooLabelsWithName,
+			Entries: []logproto.Entry{
+				{
+					Timestamp: from.Add(1 * time.Millisecond),
+					Line:      "2",
+				},
+			},
+		})
+		three = newLazyChunk(logproto.Stream{
+			Labels: fooLabelsWithName,
+			Entries: []logproto.Entry{
+				{
+					Timestamp: from.Add(2 * time.Millisecond),
+					Line:      "3",
+				},
+			},
+		})
+	)
 
-			assertStream(t, tt.expected, streams.Streams)
+	for i, tc := range []struct {
+		input    []*chunkenc.LazyChunk
+		expected [][]*chunkenc.LazyChunk
+	}{
+		{
+			input: []*chunkenc.LazyChunk{
+				oneThroughFour,
+				two,
+				three,
+			},
+			expected: [][]*chunkenc.LazyChunk{
+				[]*chunkenc.LazyChunk{oneThroughFour},
+				[]*chunkenc.LazyChunk{two, three},
+			},
+		},
+		{
+			input: []*chunkenc.LazyChunk{
+				two,
+				oneThroughFour,
+				three,
+			},
+			expected: [][]*chunkenc.LazyChunk{
+				[]*chunkenc.LazyChunk{oneThroughFour},
+				[]*chunkenc.LazyChunk{two, three},
+			},
+		},
+		{
+			input: []*chunkenc.LazyChunk{
+				two,
+				two,
+				three,
+				three,
+			},
+			expected: [][]*chunkenc.LazyChunk{
+				[]*chunkenc.LazyChunk{two, three},
+				[]*chunkenc.LazyChunk{two, three},
+			},
+		},
+	} {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			out := partitionOverlappingChunks(tc.input)
+			require.Equal(t, tc.expected, out)
+		})
+	}
+}
 
+func TestDropLabels(t *testing.T) {
+
+	for i, tc := range []struct {
+		ls       labels.Labels
+		drop     []string
+		expected labels.Labels
+	}{
+		{
+			ls: labels.Labels{
+				labels.Label{
+					Name:  "a",
+					Value: "1",
+				},
+				labels.Label{
+					Name:  "b",
+					Value: "2",
+				},
+				labels.Label{
+					Name:  "c",
+					Value: "3",
+				},
+			},
+			drop: []string{"b"},
+			expected: labels.Labels{
+				labels.Label{
+					Name:  "a",
+					Value: "1",
+				},
+				labels.Label{
+					Name:  "c",
+					Value: "3",
+				},
+			},
+		},
+	} {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			dropped := dropLabels(tc.ls, tc.drop...)
+			require.Equal(t, tc.expected, dropped)
 		})
 	}
 }
