@@ -29,7 +29,7 @@ func Unmarshal(dst interface{}, sources ...Source) error {
 
 	for _, source := range sources {
 		if err := source(dst); err != nil {
-			return errors.Wrap(err, "sourcing")
+			return err
 		}
 	}
 	return nil

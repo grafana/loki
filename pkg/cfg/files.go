@@ -5,7 +5,8 @@ import (
 	"flag"
 	"io/ioutil"
 
-	yaml "gopkg.in/yaml.v2"
+	"github.com/pkg/errors"
+	"gopkg.in/yaml.v2"
 )
 
 // JSON returns a Source that opens the supplied `.json` file and loads it.
@@ -20,7 +21,8 @@ func JSON(f *string) Source {
 			return err
 		}
 
-		return dJSON(j)(dst)
+		err = dJSON(j)(dst)
+		return errors.Wrap(err, *f)
 	}
 }
 
@@ -43,7 +45,8 @@ func YAML(f *string) Source {
 			return err
 		}
 
-		return dYAML(y)(dst)
+		err = dYAML(y)(dst)
+		return errors.Wrap(err, *f)
 	}
 }
 

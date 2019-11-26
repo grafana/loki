@@ -2,6 +2,7 @@ package positions
 
 import (
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -181,7 +182,8 @@ func (p *Positions) cleanup() {
 }
 
 func readPositionsFile(filename string) (map[string]string, error) {
-	buf, err := ioutil.ReadFile(filepath.Clean(filename))
+	cleanfn := filepath.Clean(filename)
+	buf, err := ioutil.ReadFile(cleanfn)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return map[string]string{}, nil
@@ -191,7 +193,7 @@ func readPositionsFile(filename string) (map[string]string, error) {
 
 	var p File
 	if err := yaml.UnmarshalStrict(buf, &p); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %v", cleanfn, err)
 	}
 
 	return p.Positions, nil
