@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var fooLabelsWithName = "{foo=\"bar\", __name__=\"log\"}"
 var fooLabels = "{foo=\"bar\"}"
 
 var from = time.Unix(0, time.Millisecond.Nanoseconds())
