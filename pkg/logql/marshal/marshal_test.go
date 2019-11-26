@@ -212,7 +212,7 @@ var labelTests = []struct {
 				"value",
 			},
 		},
-		`{"values": ["label1", "test", "value"]}`,
+		`{"status": "success", "data": ["label1", "test", "value"]}`,
 	},
 }
 
