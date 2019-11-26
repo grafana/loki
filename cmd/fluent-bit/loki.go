@@ -38,8 +38,8 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	records := toStringMap(r)
 	level.Debug(l.logger).Log("msg", "processing records", "records", fmt.Sprintf("%+v", records))
 	lbs := model.LabelSet{}
-	if l.cfg.labeMap != nil {
-		mapLabels(records, l.cfg.labeMap, lbs)
+	if l.cfg.labelMap != nil {
+		mapLabels(records, l.cfg.labelMap, lbs)
 	} else {
 		lbs = extractLabels(records, l.cfg.labelKeys)
 	}
@@ -72,6 +72,8 @@ func toStringMap(record map[interface{}]interface{}) map[string]interface{} {
 		case []byte:
 			// prevent encoding to base64
 			m[key] = string(t)
+		case map[interface{}]interface{}:
+			m[key] = toStringMap(t)
 		default:
 			m[key] = v
 		}
@@ -106,10 +108,9 @@ func mapLabels(records map[string]interface{}, mapping map[string]interface{}, r
 		switch nextKey := v.(type) {
 		// if the next level is a map we are expecting we need to move deeper in the tree
 		case map[string]interface{}:
-			if nextValue, ok := records[k].(map[interface{}]interface{}); ok {
-				recordsMap := toStringMap(nextValue)
+			if nextValue, ok := records[k].(map[string]interface{}); ok {
 				// recursively search through the next level map.
-				mapLabels(recordsMap, nextKey, res)
+				mapLabels(nextValue, nextKey, res)
 			}
 		// we found a value in the mapping meaning we need to save the corresponding record value for the given key.
 		case string:
@@ -147,7 +148,7 @@ func removeKeys(records map[string]interface{}, keys []string) {
 func createLine(records map[string]interface{}, f format) (string, error) {
 	switch f {
 	case jsonFormat:
-		js, err := jsoniter.Marshal(records)
+		js, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(records)
 		if err != nil {
 			return "", err
 		}

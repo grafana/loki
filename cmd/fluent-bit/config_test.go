@@ -97,7 +97,7 @@ func Test_parseConfig(t *testing.T) {
 				labelKeys:     nil,
 				removeKeys:    []string{"buzz", "fuzz"},
 				dropSingleKey: false,
-				labeMap: map[string]interface{}{
+				labelMap: map[string]interface{}{
 					"kubernetes": map[string]interface{}{
 						"container_name": "container",
 						"host":           "host",
@@ -160,8 +160,8 @@ func assertConfig(t *testing.T, expected, actual *config) {
 	if expected.logLevel.String() != actual.logLevel.String() {
 		t.Errorf("incorrect logLevel want:%v got:%v", expected.logLevel.String(), actual.logLevel.String())
 	}
-	if !reflect.DeepEqual(expected.labeMap, actual.labeMap) {
-		t.Errorf("incorrect labeMap want:%v got:%v", expected.labeMap, actual.labeMap)
+	if !reflect.DeepEqual(expected.labelMap, actual.labelMap) {
+		t.Errorf("incorrect labelMap want:%v got:%v", expected.labelMap, actual.labelMap)
 	}
 }
 
