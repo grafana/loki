@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -38,7 +39,9 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	records := toStringMap(r)
 	level.Debug(l.logger).Log("msg", "processing records", "records", fmt.Sprintf("%+v", records))
 	lbs := model.LabelSet{}
-	if l.cfg.labelMap != nil {
+	if l.cfg.autoKubernetesLabels {
+		lbs = autoLabels(records)
+	} else if l.cfg.labelMap != nil {
 		mapLabels(records, l.cfg.labelMap, lbs)
 	} else {
 		lbs = extractLabels(records, l.cfg.labelKeys)
@@ -79,6 +82,35 @@ func toStringMap(record map[interface{}]interface{}) map[string]interface{} {
 		}
 	}
 	return m
+}
+
+func autoLabels(records map[string]interface{}) model.LabelSet {
+	kuberneteslbs := model.LabelSet{}
+	replacer := strings.NewReplacer("/", "_", ".", "_", "-", "_")
+	for k, v := range records["kubernetes"].(map[interface{}]interface{}) {
+		switch key := k.(string); key {
+		case "labels":
+			for m, n := range v.(map[interface{}]interface{}) {
+				switch t := n.(type) {
+				case []byte:
+					kuberneteslbs[model.LabelName(replacer.Replace(m.(string)))] = model.LabelValue(string(t))
+				default:
+					kuberneteslbs[model.LabelName(replacer.Replace(m.(string)))] = model.LabelValue(fmt.Sprintf("%v", n))
+				}
+			}
+		case "docker_id", "pod_id", "annotations":
+			// do nothing
+			continue
+		default:
+			switch t := v.(type) {
+			case []byte:
+				kuberneteslbs[model.LabelName(k.(string))] = model.LabelValue(string(t))
+			default:
+				kuberneteslbs[model.LabelName(k.(string))] = model.LabelValue(fmt.Sprintf("%v", v))
+			}
+		}
+	}
+	return kuberneteslbs
 }
 
 func extractLabels(records map[string]interface{}, keys []string) model.LabelSet {

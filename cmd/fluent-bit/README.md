@@ -17,6 +17,7 @@ This plugin is implemented with [Fluent Bit's Go plugin](https://github.com/flue
 | Labels        | labels for API requests.                       | {job="fluent-bit"}                    |
 | LogLevel      | LogLevel for plugin logger.                    | "info"                              |
 | RemoveKeys    | Specify removing keys.                         | none                                |
+| AutoKubernetesLabels | If set to true, it will add all Kubernetes labels to Loki labels | false    |
 | LabelKeys     | Comma separated list of keys to use as stream labels. All other keys will be placed into the log line. LabelKeys is deactivated when using `LabelMapPath` label mapping configuration. | none |
 | LineFormat    | Format to use when flattening the record to a log line. Valid values are "json" or "key_value". If set to "json" the log line sent to Loki will be the fluentd record (excluding any keys extracted out as labels) dumped as json. If set to "key_value", the log line will be each item in the record concatenated together (separated by a single space) in the format <key>=<value>. | json |
 | DropSingleKey | If set to true and after extracting label_keys a record only has a single key remaining, the log line sent to Loki will just be the value of the record key.| true |
@@ -27,6 +28,10 @@ This plugin is implemented with [Fluent Bit's Go plugin](https://github.com/flue
 Labels are used to [query logs](../../docs/logql.md) `{container_name="nginx", cluster="us-west1"}`, they are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`).  In Loki labels are indexed consequently you should be cautious when choosing them (high cardinality label values can have performance drastic impact).
 
 You can use `Labels`, `RemoveKeys` , `LabelKeys` and `LabelMapPath` to how the output plugin will perform labels extraction.
+
+### AutoKubernetesLabels
+
+If set to true, it will add all Kubernetes labels to Loki labels automatically and ignore paramaters `LabelKeys`, LabelMapPath.
 
 ### LabelMapPath
 
@@ -89,6 +94,16 @@ To configure the Loki output plugin add this section to fluent-bit.conf
     LineFormat key_value
 ```
 
+```properties
+[Output]
+    Name loki
+    Match *
+    Url http://localhost:3100/loki/api/v1/push
+    BatchWait 1 # (1sec)
+    BatchSize 30720 # (30KiB)
+    AutoKubernetesLabels true
+    RemoveKeys key1,key2
+```
 A full [example configuration file](fluent-bit.conf) is also available in this repository.
 
 ## Building

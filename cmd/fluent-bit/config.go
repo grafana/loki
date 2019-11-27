@@ -36,13 +36,14 @@ const (
 )
 
 type config struct {
-	clientConfig  client.Config
-	logLevel      logging.Level
-	removeKeys    []string
-	labelKeys     []string
-	lineFormat    format
-	dropSingleKey bool
-	labelMap      map[string]interface{}
+	clientConfig         client.Config
+	logLevel             logging.Level
+	autoKubernetesLabels bool
+	removeKeys           []string
+	labelKeys            []string
+	lineFormat           format
+	dropSingleKey        bool
+	labelMap             map[string]interface{}
 }
 
 func parseConfig(cfg ConfigGetter) (*config, error) {
@@ -105,6 +106,16 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 		return nil, fmt.Errorf("invalid log level: %v", logLevel)
 	}
 	res.logLevel = level
+
+	autoKubernetesLabels := cfg.Get("AutoKubernetesLabels")
+	switch autoKubernetesLabels {
+	case "false", "":
+		res.autoKubernetesLabels = false
+	case "true":
+		res.autoKubernetesLabels = true
+	default:
+		return nil, fmt.Errorf("invalid boolean AutoKubernetesLabels: %v", autoKubernetesLabels)
+	}
 
 	removeKey := cfg.Get("RemoveKeys")
 	if removeKey != "" {
