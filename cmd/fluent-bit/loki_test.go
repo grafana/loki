@@ -139,7 +139,7 @@ func Test_createLine(t *testing.T) {
 				return
 			}
 			if tt.f == jsonFormat {
-				compareJson(t, got, tt.want)
+				compareJSON(t, got, tt.want)
 			} else {
 				if got != tt.want {
 					t.Errorf("createLine() = %v, want %v", got, tt.want)
@@ -151,7 +151,7 @@ func Test_createLine(t *testing.T) {
 
 // compareJson unmarshal both string to map[string]interface compare json result.
 // we can't compare string to string as jsoniter doesn't ensure field ordering.
-func compareJson(t *testing.T, got, want string) {
+func compareJSON(t *testing.T, got, want string) {
 	var w map[string]interface{}
 	err := jsoniter.Unmarshal([]byte(want), &w)
 	if err != nil {

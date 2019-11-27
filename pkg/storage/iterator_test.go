@@ -603,8 +603,8 @@ func TestPartitionOverlappingchunks(t *testing.T) {
 				three,
 			},
 			expected: [][]*chunkenc.LazyChunk{
-				[]*chunkenc.LazyChunk{oneThroughFour},
-				[]*chunkenc.LazyChunk{two, three},
+				{oneThroughFour},
+				{two, three},
 			},
 		},
 		{
@@ -614,8 +614,8 @@ func TestPartitionOverlappingchunks(t *testing.T) {
 				three,
 			},
 			expected: [][]*chunkenc.LazyChunk{
-				[]*chunkenc.LazyChunk{oneThroughFour},
-				[]*chunkenc.LazyChunk{two, three},
+				{oneThroughFour},
+				{two, three},
 			},
 		},
 		{
@@ -626,8 +626,8 @@ func TestPartitionOverlappingchunks(t *testing.T) {
 				three,
 			},
 			expected: [][]*chunkenc.LazyChunk{
-				[]*chunkenc.LazyChunk{two, three},
-				[]*chunkenc.LazyChunk{two, three},
+				{two, three},
+				{two, three},
 			},
 		},
 	} {

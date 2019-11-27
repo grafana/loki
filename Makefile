@@ -219,7 +219,7 @@ publish: dist
 ########
 
 lint:
-	GO111MODULE=on GOGC=10 golangci-lint run
+	GO111MODULE=on GOGC=10 golangci-lint run -v
 
 ########
 # Test #
@@ -262,6 +262,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
+	sed -i '/^\/\/line/ d' $@
 endif
 
 #############
