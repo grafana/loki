@@ -14,7 +14,6 @@ import (
 const (
 	defaultQueryLimit = 100
 	defaultSince      = 1 * time.Hour
-	defaultStep       = 1 // 1 seconds
 )
 
 func limit(r *http.Request) (uint32, error) {

@@ -285,7 +285,9 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 			h := headBlock{}
 
 			for i := 0; i < j; i++ {
-				h.append(int64(i), "this is the append string")
+				if err := h.append(int64(i), "this is the append string"); err != nil {
+					b.Fatal(err)
+				}
 			}
 
 			b.ResetTimer()
