@@ -262,7 +262,8 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
-	sed -i '/^\/\/line/ d' $@
+	sed -i.back '/^\/\/line/ d' $@
+	rm ${@}.back
 endif
 
 #############
