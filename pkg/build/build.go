@@ -1,4 +1,4 @@
-package loki
+package build
 
 import "github.com/prometheus/common/version"
 

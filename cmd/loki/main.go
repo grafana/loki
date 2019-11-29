@@ -7,6 +7,7 @@ import (
 	"reflect"
 
 	"github.com/go-kit/kit/log/level"
+	_ "github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/prometheus/client_golang/prometheus"
