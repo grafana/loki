@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/version"
 
+	_ "github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/canary/comparator"
 	"github.com/grafana/loki/pkg/canary/reader"
 	"github.com/grafana/loki/pkg/canary/writer"
@@ -39,7 +40,7 @@ func main() {
 	flag.Parse()
 
 	if *printVersion {
-		fmt.Print(version.Print("loki-canary"))
+		fmt.Println(version.Print("loki-canary"))
 		os.Exit(0)
 	}
 

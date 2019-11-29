@@ -8,6 +8,7 @@ import (
 	"github.com/docker/go-plugins-helpers/sdk"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	_ "github.com/grafana/loki/pkg/build"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 )

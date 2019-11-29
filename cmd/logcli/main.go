@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	_ "github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/labelquery"
 	"github.com/grafana/loki/pkg/logcli/output"
