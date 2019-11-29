@@ -176,6 +176,12 @@ serviceMonitor:
   additionalLabels: {}
   # scrapeTimeout: 10s
 
+initContainers: []
+## Init containers to be added to the loki pod.
+# - name: my-init-container
+#   image: busybox:latest
+#   command: ['sh', '-c', 'echo hello']
+
 extraContainers: []
 ## Additional containers to be added to the loki pod.
 # - name: reverse-proxy
