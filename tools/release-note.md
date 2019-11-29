@@ -3,18 +3,19 @@ This is release `${CIRCLE_TAG}` of Loki.
 ### Notable changes:
 :warning: **ADD RELEASE NOTES HERE** :warning:
 
+#### Binary
+We provide pre-compiled binary executables for the most common operating systems and architectures.
+Pick one from the list below and download it:
+
+```bash
+$ wget $YOUR_BINARY
+$ unzip $YOUR_BINARY
+$ chmod +x $YOUR_BINARY
+$ mv $YOUR_BINARY /usr/local/bin/$YOUR_BINARY
+```
+
 ### Installation:
 The components of Loki are currently distributed in plain binary form and as Docker container images. Choose what fits your use-case best.
-
-#### Binary:
-```bash
-# download a binary (adapt app, os and arch as needed)
-$ curl -fSL -o "/usr/local/bin/loki.zip" "https://github.com/grafana/loki/releases/download/${CIRCLE_TAG}/loki-linux-amd64.zip"
-$ unzip "/usr/local/bin/loki.zip"
-
-# make sure it is executable
-$ chmod a+x "/usr/local/bin/loki"
-```
 
 #### Docker container:
 * https://hub.docker.com/r/grafana/loki
