@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 
+	_ "github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail"

@@ -2,16 +2,17 @@ package main
 
 import (
 	"C"
+	"fmt"
 	"time"
 	"unsafe"
 
 	"github.com/fluent/fluent-bit-go/output"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	_ "github.com/grafana/loki/pkg/build"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 )
-import "fmt"
 
 var plugin *loki
 var logger log.Logger
