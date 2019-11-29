@@ -9,7 +9,7 @@ require (
 	github.com/bmatcuk/doublestar v1.1.1
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
-	github.com/cortexproject/cortex v0.3.1-0.20191117214907-06c4340e652d
+	github.com/cortexproject/cortex v0.3.1-0.20191122194007-ed7c302fd968
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/docker/docker v0.0.0-20190607191414-238f8eaa31aa
