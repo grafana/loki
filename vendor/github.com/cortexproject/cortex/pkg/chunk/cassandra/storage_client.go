@@ -14,10 +14,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/util"
 )
 
-const (
-	maxRowReads = 100
-)
-
 // Config for a StorageClient
 type Config struct {
 	Addresses                string        `yaml:"addresses,omitempty"`

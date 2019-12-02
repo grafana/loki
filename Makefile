@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := all
-.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos
+.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources
 .PHONY: helm helm-install helm-upgrade helm-publish helm-debug helm-clean
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
@@ -8,6 +8,24 @@
 .PHONY: benchmark-store, drone, check-mod
 
 SHELL = /usr/bin/env bash
+
+# Empty value = no -mod parameter is used.
+# If not empty, GOMOD is passed to -mod= parameter.
+# In Go 1.13, "readonly" and "vendor" are accepted.
+# In Go 1.14, "readonly", "vendor" and "mod" values are accepted.
+# If no value is specified, defaults to "vendor".
+#
+# Can be used from command line by using "GOMOD= make" (empty = no -mod parameter), or "GOMOD=vendor make" (default).
+
+GOMOD?=vendor
+ifeq ($(strip $(GOMOD)),) # Is empty?
+	MOD_FLAG=
+	GOLANGCI_ARG=
+else
+	MOD_FLAG=-mod=$(GOMOD)
+	GOLANGCI_ARG=--modules-download-mode=$(GOMOD)
+endif
+
 #############
 # Variables #
 #############
@@ -20,7 +38,7 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.7.3
+BUILD_IMAGE_VERSION := 0.8.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -40,15 +58,15 @@ DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -
 APP_GO_FILES := $(shell find . $(DONT_FIND) -name .y.go -prune -o -name .pb.go -prune -o -name cmd -prune -o -type f -name '*.go' -print)
 
 # Build flags
-VPREFIX := github.com/grafana/loki/vendor/github.com/prometheus/common/version
-GO_LDFLAGS   := -s -w -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION) -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-GO_FLAGS     := -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo -mod vendor
-DYN_GO_FLAGS := -ldflags "$(GO_LDFLAGS)" -tags netgo -mod vendor
+VPREFIX := github.com/grafana/loki/pkg/build
+GO_LDFLAGS   := -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION) -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+GO_FLAGS     := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
+DYN_GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
 # Per some websites I've seen to add `-gcflags "all=-N -l"`, the gcflags seem poorly if at all documented
 # the best I could dig up is -N disables optimizations and -l disables inlining which should make debugging match source better.
 # Also remove the -s and -w flags present in the normal build which strip the symbol table and the DWARF symbol table.
-DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo -mod vendor
-DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo -mod vendor
+DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
+DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo $(MOD_FLAG)
 
 NETGO_CHECK = @strings $@ | grep cgo_stub\\\.go >/dev/null || { \
        rm $@; \
@@ -106,15 +124,22 @@ binfmt:
 all: promtail logcli loki loki-canary check-generated-files
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
-check-generated-files: yacc protos pkg/promtail/server/ui/assets_vfsdata.go
+check-generated-files: touch-protobuf-sources yacc protos pkg/promtail/server/ui/assets_vfsdata.go
 	@if ! (git diff --exit-code $(YACC_GOS) $(PROTO_GOS) $(PROMTAIL_GENERATED_FILE)); then \
 		echo "\nChanges found in generated files"; \
-		echo "Run 'make all' and commit the changes to fix this error."; \
+		echo "Run 'make check-generated-files' and commit the changes to fix this error."; \
 		echo "If you are actively developing these files you can ignore this error"; \
 		echo "(Don't forget to check in the generated files when finished)\n"; \
 		exit 1; \
 	fi
 
+# Trick used to ensure that protobuf files are always compiled even if not changed, because the
+# tooling may have been upgraded and the compiled output may be different. We're not using a
+# PHONY target so that we can control where we want to touch it.
+touch-protobuf-sources:
+	for def in $(PROTO_DEFS); do \
+		touch $$def; \
+	done
 
 ##########
 # Logcli #
@@ -179,7 +204,7 @@ promtail-clean-assets:
 # Rule to generate promtail static assets file
 $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 	@echo ">> writing assets"
-	GOFLAGS=-mod=vendor GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
+	GOFLAGS="$(MOD_FLAG)" GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
 
 cmd/promtail/promtail: $(APP_GO_FILES) $(PROMTAIL_GENERATED_FILE) cmd/promtail/main.go
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
@@ -192,9 +217,9 @@ cmd/promtail/promtail-debug: $(APP_GO_FILES) pkg/promtail/server/ui/assets_vfsda
 #############
 # Releasing #
 #############
-# concurrency is limited to 4 to prevent CircleCI from OOMing. Sorry
-GOX = gox $(GO_FLAGS) -parallel=4 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
-CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -parallel=4 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
+# concurrency is limited to 2 to prevent CircleCI from OOMing. Sorry
+GOX = gox $(GO_FLAGS) -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
+CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 dist: clean
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm windows/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
@@ -212,14 +237,14 @@ publish: dist
 ########
 
 lint:
-	GO111MODULE=on GOGC=10 golangci-lint run --timeout=5m -j 16
+	GO111MODULE=on GOGC=10 golangci-lint run -v $(GOLANGCI_ARG)
 
 ########
 # Test #
 ########
 
 test: all
-	GOGC=10 go test -mod=vendor -p=4 ./...
+	GOGC=10 go test $(MOD_FLAG) -p=4 ./...
 
 #########
 # Clean #
@@ -235,7 +260,7 @@ clean:
 	rm -rf dist/
 	rm -rf cmd/fluent-bit/out_loki.h
 	rm -rf cmd/fluent-bit/out_loki.so
-	go clean -mod=vendor ./...
+	go clean $(MOD_FLAG) ./...
 
 #########
 # YACCs #
@@ -255,6 +280,8 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
+	sed -i.back '/^\/\/line/ d' $@
+	rm ${@}.back
 endif
 
 #############
@@ -463,18 +490,22 @@ loki-canary-push: loki-canary-image-cross
 build-image: OCI_PLATFORMS=
 build-image:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
+build-image-push: build-image
+	$(call push,loki-build-image,$(BUILD_IMAGE_VERSION))
+	$(call push,loki-build-image,latest)
+
 
 ########
 # Misc #
 ########
 
 benchmark-store:
-	go run -mod=vendor ./pkg/storage/hack/main.go
-	go test -mod=vendor ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
+	go run $(MOD_FLAG) ./pkg/storage/hack/main.go
+	go test $(MOD_FLAG) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
 
 # regenerate drone yaml
 drone:
-	jsonnet -V __build-image-version=$(BUILD_IMAGE_VERSION) .drone/drone.jsonnet | jq .drone -r | yq -y . > .drone/drone.yml
+	drone jsonnet --stream --format -V __build-image-version=$(BUILD_IMAGE_VERSION) --source .drone/drone.jsonnet --target .drone/drone.yml
 
 # support go modules
 check-mod:

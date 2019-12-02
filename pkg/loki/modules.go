@@ -42,6 +42,15 @@ const (
 	All
 )
 
+func (m *moduleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var val string
+	if err := unmarshal(&val); err != nil {
+		return err
+	}
+
+	return m.Set(val)
+}
+
 func (m moduleName) String() string {
 	switch m {
 	case Ring:

@@ -36,13 +36,14 @@ const (
 )
 
 type config struct {
-	clientConfig  client.Config
-	logLevel      logging.Level
-	removeKeys    []string
-	labelKeys     []string
-	lineFormat    format
-	dropSingleKey bool
-	labeMap       map[string]interface{}
+	clientConfig         client.Config
+	logLevel             logging.Level
+	autoKubernetesLabels bool
+	removeKeys           []string
+	labelKeys            []string
+	lineFormat           format
+	dropSingleKey        bool
+	labelMap             map[string]interface{}
 }
 
 func parseConfig(cfg ConfigGetter) (*config, error) {
@@ -60,6 +61,9 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 		return nil, errors.New("failed to parse client URL")
 	}
 	res.clientConfig.URL = clientURL
+
+	// cfg.Get will return empty string if not set, which is handled by the client library as no tenant
+	res.clientConfig.TenantID = cfg.Get("TenantID")
 
 	batchWait := cfg.Get("BatchWait")
 	if batchWait != "" {
@@ -103,6 +107,16 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 	}
 	res.logLevel = level
 
+	autoKubernetesLabels := cfg.Get("AutoKubernetesLabels")
+	switch autoKubernetesLabels {
+	case "false", "":
+		res.autoKubernetesLabels = false
+	case "true":
+		res.autoKubernetesLabels = true
+	default:
+		return nil, fmt.Errorf("invalid boolean AutoKubernetesLabels: %v", autoKubernetesLabels)
+	}
+
 	removeKey := cfg.Get("RemoveKeys")
 	if removeKey != "" {
 		res.removeKeys = strings.Split(removeKey, ",")
@@ -139,7 +153,7 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to open LabelMap file: %s", err)
 		}
-		if err := json.Unmarshal(content, &res.labeMap); err != nil {
+		if err := json.Unmarshal(content, &res.labelMap); err != nil {
 			return nil, fmt.Errorf("failed to Unmarshal LabelMap file: %s", err)
 		}
 		res.labelKeys = nil

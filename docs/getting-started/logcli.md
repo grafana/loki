@@ -7,18 +7,8 @@ queries against a Loki server.
 
 ### Binary (Recommended)
 
-Navigate to the [Loki Releases page](https://github.com/grafana/loki/releases)
-and download the `logcli` binary for your OS:
-
-```bash
-# download a binary (adapt app, os and arch as needed)
-# installs v0.3.0. For up to date URLs refer to the release's description
-$ curl -fSL -o "/usr/local/bin/logcli.gz" "https://github.com/grafana/logcli/releases/download/v0.3.0/logcli-linux-amd64.gz"
-$ gunzip "/usr/local/bin/logcli.gz"
-
-# make sure it is executable
-$ chmod a+x "/usr/local/bin/logcli"
-```
+Every release includes binaries for `logcli` which can be found on the
+[Releases page](https://github.com/grafana/loki/releases).
 
 ### From source
 

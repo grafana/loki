@@ -122,7 +122,7 @@ elements but with aggregated values:
 - `topk`: Select largest k elements by sample value
 
 The aggregation operators can either be used to aggregate over all label
-values or a set of distinct label values by including a `withou` or a
+values or a set of distinct label values by including a `without` or a
 `by` clause:
 
 > `<aggr-op>([parameter,] <vector expression>) [without|by (<label list>)]`
@@ -141,7 +141,7 @@ elements of the vector.
 
 Get the top 10 applications by the highest log throughput:
 
-> `topk(10,sum(rate({region="us-east1"}[5m]) by (name))`
+> `topk(10,sum(rate({region="us-east1"}[5m])) by (name))`
 
 Get the count of logs during the last five minutes, grouping
 by level:

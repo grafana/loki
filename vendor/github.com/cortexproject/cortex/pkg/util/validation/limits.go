@@ -1,11 +1,16 @@
 package validation
 
 import (
+	"errors"
 	"flag"
 	"os"
 	"time"
 
 	"gopkg.in/yaml.v2"
+)
+
+var (
+	errMaxGlobalSeriesPerUserValidation = errors.New("The ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled")
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -26,11 +31,13 @@ type Limits struct {
 	EnforceMetricName      bool          `yaml:"enforce_metric_name"`
 
 	// Ingester enforced limits.
-	MaxSeriesPerQuery  int `yaml:"max_series_per_query"`
-	MaxSamplesPerQuery int `yaml:"max_samples_per_query"`
-	MaxSeriesPerUser   int `yaml:"max_series_per_user"`
-	MaxSeriesPerMetric int `yaml:"max_series_per_metric"`
-	MinChunkLength     int `yaml:"min_chunk_length"`
+	MaxSeriesPerQuery        int `yaml:"max_series_per_query"`
+	MaxSamplesPerQuery       int `yaml:"max_samples_per_query"`
+	MaxLocalSeriesPerUser    int `yaml:"max_series_per_user"`
+	MaxLocalSeriesPerMetric  int `yaml:"max_series_per_metric"`
+	MaxGlobalSeriesPerUser   int `yaml:"max_global_series_per_user"`
+	MaxGlobalSeriesPerMetric int `yaml:"max_global_series_per_metric"`
+	MinChunkLength           int `yaml:"min_chunk_length"`
 
 	// Querier enforced limits.
 	MaxChunksPerQuery   int           `yaml:"max_chunks_per_query"`
@@ -60,8 +67,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.MaxSeriesPerQuery, "ingester.max-series-per-query", 100000, "The maximum number of series that a query can return.")
 	f.IntVar(&l.MaxSamplesPerQuery, "ingester.max-samples-per-query", 1000000, "The maximum number of samples that a query can return.")
-	f.IntVar(&l.MaxSeriesPerUser, "ingester.max-series-per-user", 5000000, "Maximum number of active series per user.")
-	f.IntVar(&l.MaxSeriesPerMetric, "ingester.max-series-per-metric", 50000, "Maximum number of active series per metric name.")
+	f.IntVar(&l.MaxLocalSeriesPerUser, "ingester.max-series-per-user", 5000000, "The maximum number of active series per user, per ingester. 0 to disable.")
+	f.IntVar(&l.MaxLocalSeriesPerMetric, "ingester.max-series-per-metric", 50000, "The maximum number of active series per metric name, per ingester. 0 to disable.")
+	f.IntVar(&l.MaxGlobalSeriesPerUser, "ingester.max-global-series-per-user", 0, "The maximum number of active series per user, across the cluster. 0 to disable. Supported only if -distributor.shard-by-all-labels is true.")
+	f.IntVar(&l.MaxGlobalSeriesPerMetric, "ingester.max-global-series-per-metric", 0, "The maximum number of active series per metric name, across the cluster. 0 to disable.")
 	f.IntVar(&l.MinChunkLength, "ingester.min-chunk-length", 0, "Minimum number of samples in an idle chunk to flush it to the store. Use with care, if chunks are less than this size they will be discarded.")
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
@@ -70,7 +79,19 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides.")
-	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with this to reload the overrides.")
+	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with which to reload the overrides.")
+}
+
+// Validate the limits config and returns an error if the validation
+// doesn't pass
+func (l *Limits) Validate(shardByAllLabels bool) error {
+	// The ingester.max-global-series-per-user metric is not supported
+	// if shard-by-all-labels is disabled
+	if l.MaxGlobalSeriesPerUser > 0 && !shardByAllLabels {
+		return errMaxGlobalSeriesPerUserValidation
+	}
+
+	return nil
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -195,14 +216,24 @@ func (o *Overrides) MaxSamplesPerQuery(userID string) int {
 	return o.overridesManager.GetLimits(userID).(*Limits).MaxSamplesPerQuery
 }
 
-// MaxSeriesPerUser returns the maximum number of series a user is allowed to store.
-func (o *Overrides) MaxSeriesPerUser(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxSeriesPerUser
+// MaxLocalSeriesPerUser returns the maximum number of series a user is allowed to store in a single ingester.
+func (o *Overrides) MaxLocalSeriesPerUser(userID string) int {
+	return o.overridesManager.GetLimits(userID).(*Limits).MaxLocalSeriesPerUser
 }
 
-// MaxSeriesPerMetric returns the maximum number of series allowed per metric.
-func (o *Overrides) MaxSeriesPerMetric(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxSeriesPerMetric
+// MaxLocalSeriesPerMetric returns the maximum number of series allowed per metric in a single ingester.
+func (o *Overrides) MaxLocalSeriesPerMetric(userID string) int {
+	return o.overridesManager.GetLimits(userID).(*Limits).MaxLocalSeriesPerMetric
+}
+
+// MaxGlobalSeriesPerUser returns the maximum number of series a user is allowed to store across the cluster.
+func (o *Overrides) MaxGlobalSeriesPerUser(userID string) int {
+	return o.overridesManager.GetLimits(userID).(*Limits).MaxGlobalSeriesPerUser
+}
+
+// MaxGlobalSeriesPerMetric returns the maximum number of series allowed per metric across the cluster.
+func (o *Overrides) MaxGlobalSeriesPerMetric(userID string) int {
+	return o.overridesManager.GetLimits(userID).(*Limits).MaxGlobalSeriesPerMetric
 }
 
 // MaxChunksPerQuery returns the maximum number of chunks allowed per query.

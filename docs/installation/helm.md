@@ -95,21 +95,21 @@ Sample Helm template for Ingress:
 apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
-annotations:
+  annotations:
     kubernetes.io/ingress.class: {{ .Values.ingress.class }}
     ingress.kubernetes.io/auth-type: "basic"
     ingress.kubernetes.io/auth-secret: {{ .Values.ingress.basic.secret }}
-name: loki
+  name: loki
 spec:
-rules:
-- host: {{ .Values.ingress.host }}
+  rules:
+  - host: {{ .Values.ingress.host }}
     http:
-    paths:
-    - backend:
-        serviceName: loki
-        servicePort: 3100
-tls:
-- secretName: {{ .Values.ingress.cert }}
+      paths:
+      - backend:
+          serviceName: loki
+          servicePort: 3100
+  tls:
+  - secretName: {{ .Values.ingress.cert }}
     hosts:
     - {{ .Values.ingress.host }}
 ```

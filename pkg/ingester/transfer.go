@@ -21,12 +21,14 @@ import (
 
 var (
 	sentChunks = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "loki_ingester_sent_chunks",
-		Help: "The total number of chunks sent by this ingester whilst leaving.",
+		Namespace: "loki",
+		Name:      "ingester_sent_chunks",
+		Help:      "The total number of chunks sent by this ingester whilst leaving.",
 	})
 	receivedChunks = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "loki_ingester_received_chunks",
-		Help: "The total number of chunks received by this ingester whilst joining.",
+		Namespace: "loki",
+		Name:      "ingester_received_chunks",
+		Help:      "The total number of chunks received by this ingester whilst joining.",
 	})
 )
 

@@ -35,5 +35,5 @@ func (q *LabelQuery) ListLabels(c *client.Client) []string {
 	if err != nil {
 		log.Fatalf("Error doing request: %+v", err)
 	}
-	return labelResponse.Values
+	return labelResponse.Data
 }

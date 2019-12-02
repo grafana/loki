@@ -16,8 +16,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/gogo/protobuf/proto"
-	"github.com/golang/snappy"
 
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
@@ -26,8 +24,14 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-const contentType = "application/x-protobuf"
-const maxErrMsgLen = 1024
+const (
+	contentType  = "application/x-protobuf"
+	maxErrMsgLen = 1024
+
+	// Label reserved to override the tenant ID while processing
+	// pipeline stages
+	ReservedLabelTenantID = "__tenant_id__"
+)
 
 var (
 	encodedBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -92,7 +96,8 @@ type client struct {
 }
 
 type entry struct {
-	labels model.LabelSet
+	tenantID string
+	labels   model.LabelSet
 	logproto.Entry
 }
 
@@ -125,13 +130,26 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 }
 
 func (c *client) run() {
-	batch := map[model.Fingerprint]*logproto.Stream{}
-	batchSize := 0
-	maxWait := time.NewTicker(c.cfg.BatchWait)
+	batches := map[string]*batch{}
+
+	// Given the client handles multiple batches (1 per tenant) and each batch
+	// can be created at a different point in time, we look for batches whose
+	// max wait time has been reached every 10 times per BatchWait, so that the
+	// maximum delay we have sending batches is 10% of the max waiting time.
+	// We apply a cap of 10ms to the ticker, to avoid too frequent checks in
+	// case the BatchWait is very low.
+	minWaitCheckFrequency := 10 * time.Millisecond
+	maxWaitCheckFrequency := c.cfg.BatchWait / 10
+	if maxWaitCheckFrequency < minWaitCheckFrequency {
+		maxWaitCheckFrequency = minWaitCheckFrequency
+	}
+
+	maxWaitCheck := time.NewTicker(maxWaitCheckFrequency)
 
 	defer func() {
-		if len(batch) > 0 {
-			c.sendBatch(batch)
+		// Send all pending batches
+		for tenantID, batch := range batches {
+			c.sendBatch(tenantID, batch)
 		}
 
 		c.wg.Done()
@@ -143,35 +161,42 @@ func (c *client) run() {
 			return
 
 		case e := <-c.entries:
-			if batchSize+len(e.Line) > c.cfg.BatchSize {
-				c.sendBatch(batch)
-				batchSize = 0
-				batch = map[model.Fingerprint]*logproto.Stream{}
-			}
+			batch, ok := batches[e.tenantID]
 
-			batchSize += len(e.Line)
-			fp := e.labels.FastFingerprint()
-			stream, ok := batch[fp]
+			// If the batch doesn't exist yet, we create a new one with the entry
 			if !ok {
-				stream = &logproto.Stream{
-					Labels: e.labels.String(),
-				}
-				batch[fp] = stream
+				batches[e.tenantID] = newBatch(e)
+				break
 			}
-			stream.Entries = append(stream.Entries, e.Entry)
 
-		case <-maxWait.C:
-			if len(batch) > 0 {
-				c.sendBatch(batch)
-				batchSize = 0
-				batch = map[model.Fingerprint]*logproto.Stream{}
+			// If adding the entry to the batch will increase the size over the max
+			// size allowed, we do send the current batch and then create a new one
+			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
+				c.sendBatch(e.tenantID, batch)
+
+				batches[e.tenantID] = newBatch(e)
+				break
+			}
+
+			// The max size of the batch isn't reached, so we can add the entry
+			batch.add(e)
+
+		case <-maxWaitCheck.C:
+			// Send all batches whose max wait time has been reached
+			for tenantID, batch := range batches {
+				if batch.age() < c.cfg.BatchWait {
+					continue
+				}
+
+				c.sendBatch(tenantID, batch)
+				delete(batches, tenantID)
 			}
 		}
 	}
 }
 
-func (c *client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
-	buf, entriesCount, err := encodeBatch(batch)
+func (c *client) sendBatch(tenantID string, batch *batch) {
+	buf, entriesCount, err := batch.encode()
 	if err != nil {
 		level.Error(c.logger).Log("msg", "error encoding batch", "error", err)
 		return
@@ -184,7 +209,7 @@ func (c *client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 	var status int
 	for backoff.Ongoing() {
 		start := time.Now()
-		status, err = c.send(ctx, buf)
+		status, err = c.send(ctx, tenantID, buf)
 		requestDuration.WithLabelValues(strconv.Itoa(status), c.cfg.URL.Host).Observe(time.Since(start).Seconds())
 
 		if err == nil {
@@ -209,26 +234,7 @@ func (c *client) sendBatch(batch map[model.Fingerprint]*logproto.Stream) {
 	}
 }
 
-func encodeBatch(batch map[model.Fingerprint]*logproto.Stream) ([]byte, int, error) {
-	req := logproto.PushRequest{
-		Streams: make([]*logproto.Stream, 0, len(batch)),
-	}
-
-	entriesCount := 0
-	for _, stream := range batch {
-		req.Streams = append(req.Streams, stream)
-		entriesCount += len(stream.Entries)
-	}
-
-	buf, err := proto.Marshal(&req)
-	if err != nil {
-		return nil, 0, err
-	}
-	buf = snappy.Encode(nil, buf)
-	return buf, entriesCount, nil
-}
-
-func (c *client) send(ctx context.Context, buf []byte) (int, error) {
+func (c *client) send(ctx context.Context, tenantID string, buf []byte) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
 	req, err := http.NewRequest("POST", c.cfg.URL.String(), bytes.NewReader(buf))
@@ -237,6 +243,12 @@ func (c *client) send(ctx context.Context, buf []byte) (int, error) {
 	}
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", contentType)
+
+	// If the tenant ID is not empty promtail is running in multi-tenant mode, so
+	// we should send it to Loki
+	if tenantID != "" {
+		req.Header.Set("X-Scope-OrgID", tenantID)
+	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -255,6 +267,22 @@ func (c *client) send(ctx context.Context, buf []byte) (int, error) {
 	return resp.StatusCode, err
 }
 
+func (c *client) getTenantID(labels model.LabelSet) string {
+	// Check if it has been overridden while processing the pipeline stages
+	if value, ok := labels[ReservedLabelTenantID]; ok {
+		return string(value)
+	}
+
+	// Check if has been specified in the config
+	if c.cfg.TenantID != "" {
+		return c.cfg.TenantID
+	}
+
+	// Defaults to an empty string, which means the X-Scope-OrgID header
+	// will not be sent
+	return ""
+}
+
 // Stop the client.
 func (c *client) Stop() {
 	c.once.Do(func() { close(c.quit) })
@@ -267,7 +295,16 @@ func (c *client) Handle(ls model.LabelSet, t time.Time, s string) error {
 		ls = c.externalLabels.Merge(ls)
 	}
 
-	c.entries <- entry{ls, logproto.Entry{
+	// Get the tenant  ID in case it has been overridden while processing
+	// the pipeline stages, then remove the special label
+	tenantID := c.getTenantID(ls)
+	if _, ok := ls[ReservedLabelTenantID]; ok {
+		// Clone the label set to not manipulate the input one
+		ls = ls.Clone()
+		delete(ls, ReservedLabelTenantID)
+	}
+
+	c.entries <- entry{tenantID, ls, logproto.Entry{
 		Timestamp: t,
 		Line:      s,
 	}}

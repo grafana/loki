@@ -28,7 +28,7 @@ data:
         - __meta_kubernetes_pod_node_name
         target_label: __host__
       - action: drop
-        regex: ^$
+        regex: ''
         source_labels:
         - __service__
       - action: labelmap
@@ -75,7 +75,7 @@ data:
         - __meta_kubernetes_pod_node_name
         target_label: __host__
       - action: drop
-        regex: ^$
+        regex: ''
         source_labels:
         - __service__
       - action: labelmap
@@ -118,7 +118,7 @@ data:
         - __meta_kubernetes_pod_label_name
         - __meta_kubernetes_pod_label_app
       - action: drop
-        regex: ^([0-9a-z-.]+)(-[0-9a-f]{8,10})$
+        regex: '[0-9a-z-.]+-[0-9a-f]{8,10}'
         source_labels:
         - __meta_kubernetes_pod_controller_name
       - source_labels:
@@ -128,7 +128,7 @@ data:
         - __meta_kubernetes_pod_node_name
         target_label: __host__
       - action: drop
-        regex: ^$
+        regex: ''
         source_labels:
         - __service__
       - action: labelmap
@@ -171,11 +171,11 @@ data:
         - __meta_kubernetes_pod_label_name
         - __meta_kubernetes_pod_label_app
       - action: keep
-        regex: ^([0-9a-z-.]+)(-[0-9a-f]{8,10})$
+        regex: '[0-9a-z-.]+-[0-9a-f]{8,10}'
         source_labels:
         - __meta_kubernetes_pod_controller_name
       - action: replace
-        regex: ^([0-9a-z-.]+)(-[0-9a-f]{8,10})$
+        regex: '([0-9a-z-.]+)-[0-9a-f]{8,10}'
         source_labels:
         - __meta_kubernetes_pod_controller_name
         target_label: __service__
@@ -183,7 +183,7 @@ data:
         - __meta_kubernetes_pod_node_name
         target_label: __host__
       - action: drop
-        regex: ^$
+        regex: ''
         source_labels:
         - __service__
       - action: labelmap
@@ -220,7 +220,7 @@ data:
       - role: pod
       relabel_configs:
       - action: drop
-        regex: ^$
+        regex: ''
         source_labels:
         - __meta_kubernetes_pod_annotation_kubernetes_io_config_mirror
       - action: replace
@@ -231,7 +231,7 @@ data:
         - __meta_kubernetes_pod_node_name
         target_label: __host__
       - action: drop
-        regex: ^$
+        regex: ''
         source_labels:
         - __service__
       - action: labelmap

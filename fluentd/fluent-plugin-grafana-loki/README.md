@@ -6,7 +6,7 @@ This plugin offers two line formats and uses protobuf to send compressed data to
 
 Key features:
   * extra_labels - labels to be added to every line of a logfile, useful for designating environments
-  * label_keys - customizable list of keys for stream labels
+  * label - This section allows you to specify labels from your log fields
 
 ## Installation
 
@@ -29,6 +29,64 @@ In your Fluentd configuration, use `@type loki`. Additional configuration is opt
 </match>
 ```
 
+### Using labels
+
+Simple label from top level attribute
+```
+<match mytag>
+  @type loki
+  # ...
+  <label>
+    fluentd_worker 
+  </label>
+  # ...
+</match>
+```
+
+You can rewrite the label keys as well as the following
+
+```
+<match mytag>
+  @type loki
+  # ...
+  <label>
+    worker fluentd_worker
+  </label>
+  # ...
+</match>
+```
+
+You can use record accessor syntax for nested field. https://docs.fluentd.org/plugin-helper-overview/api-plugin-helper-record_accessor#syntax
+
+```
+<match mytag>
+  @type loki
+  # ...
+  <label>
+    container $.kubernetes.container
+  </label>
+  # ...
+</match>
+```
+
+### Extracting Kubernetes labels
+
+As Kubernetes labels are a list of nested key-value pairs there is a separate option to extract them.
+Note that special characters like "`. - /`" will be overwritten with `_`.
+Use with the `remove_keys kubernetes` option to eliminate metadata from the log.
+``` 
+<match mytag>
+  @type loki
+  # ...
+  extract_kubernetes_labels true
+  remove_keys kubernetes
+  <label>
+    container $.kubernetes.container
+  </label>
+  # ...
+</match>
+```
+
 ### Multi-worker usage
 
 Loki doesn't currently support out-of-order inserts - if you try to insert a log entry an earlier timestamp after a log entry with with identical labels but a later timestamp, the insert will fail with `HTTP status code: 500, message: rpc error: code = Unknown desc = Entry out of order`. Therefore, in order to use this plugin in a multi worker Fluentd setup, you'll need to include the worker ID in the labels.
@@ -45,7 +103,9 @@ For example, using [fluent-plugin-record-modifier](https://github.com/repeatedly
 <match mytag>
   @type loki
   # ...
-  label_keys "fluentd_worker"
+  <label>
+    fluentd_worker
+  </label>
   # ...
 </match>
 ```
@@ -106,14 +166,29 @@ If using the GrafanaLab's hosted Loki, the username needs to be set to your inst
 ### tenant
 Loki is a multi-tenant log storage platform and all requests sent must include a tenant.  For some installations the tenant will be set automatically by an authenticating proxy.  Otherwise you can define a tenant to be passed through.  The tenant can be any string value.
 
+### client certificate verification
+Specify a pair of client certificate and private key with `cert` and `key` if a reverse proxy with client certificate verification is configured in front of Loki. `ca_cert` can also be specified if the server uses custom certificate authority.
+
+```
+<match **>
+  @type loki
+
+  url "https://loki"
+
+  cert /path/to/certificate.pem
+  key /path/to/key.key
+  ca_cert /path/to/ca.pem
+
+  ...
+</match>
+```
 
 ### output format
 Loki is intended to index and group log streams using only a small set of labels.  It is not intended for full-text indexing.  When sending logs to Loki the majority of log message will be sent as a single log "line".
 
 There are few configurations settings to control the output format.
  - extra_labels: (default: nil) set of labels to include with every Loki stream. eg `{"env":"dev", "datacenter": "dc1"}`
- - remove_keys: (default: nil) comma separated list of needless record keys to remove. All other keys will be placed into the log line
- - label_keys: (default: "job,instance") comma separated list of keys to use as stream labels. All other keys will be placed into the log line
+ - remove_keys: (default: nil) comma separated list of needless record keys to remove. All other keys will be placed into the log line. You can use [record_accessor syntax](https://docs.fluentd.org/plugin-helper-overview/api-plugin-helper-record_accessor#syntax).
  - line_format: format to use when flattening the record to a log line. Valid values are "json" or "key_value". If set to "json" the log line sent to Loki will be the fluentd record (excluding any keys extracted out as labels) dumped as json. If set to "key_value", the log line will be each item in the record concatenated together (separated by a single space) in the format `<key>=<value>`.
  - drop_single_key: if set to true and after extracting label_keys a record only has a single key remaining, the log line sent to Loki will just be the value of the record key.
 

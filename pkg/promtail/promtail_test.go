@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"math/rand"
 	"net/http"
 	"os"
@@ -435,7 +436,7 @@ type testServerHandler struct {
 
 func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req logproto.PushRequest
-	if _, err := util.ParseProtoReader(r.Context(), r.Body, &req, util.RawSnappy); err != nil {
+	if _, err := util.ParseProtoReader(r.Context(), r.Body, int(r.ContentLength), math.MaxInt32, &req, util.RawSnappy); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -536,9 +537,9 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	flagext.RegisterFlags(&cfg)
 
 	const hostname = "localhost"
-	cfg.ServerConfig.HTTPListenHost = hostname
+	cfg.ServerConfig.HTTPListenAddress = hostname
 	cfg.ServerConfig.ExternalURL = hostname
-	cfg.ServerConfig.GRPCListenHost = hostname
+	cfg.ServerConfig.GRPCListenAddress = hostname
 	cfg.ServerConfig.HTTPListenPort = httpTestPort
 
 	// Override some of those defaults

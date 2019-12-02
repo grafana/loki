@@ -204,17 +204,15 @@ func (c *store) LabelValuesForMetricName(ctx context.Context, userID string, fro
 		return nil, err
 	}
 
-	var result []string
+	var result UniqueStrings
 	for _, entry := range entries {
 		_, labelValue, _, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, string(labelValue))
+		result.Add(string(labelValue))
 	}
-	sort.Strings(result)
-	result = uniqueStrings(result)
-	return result, nil
+	return result.Strings(), nil
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
@@ -462,7 +460,6 @@ func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery
 
 func (c *store) parseIndexEntries(ctx context.Context, entries []IndexEntry, matcher *labels.Matcher) ([]string, error) {
 	result := make([]string, 0, len(entries))
-
 	for _, entry := range entries {
 		chunkKey, labelValue, _, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
@@ -474,7 +471,6 @@ func (c *store) parseIndexEntries(ctx context.Context, entries []IndexEntry, mat
 		}
 		result = append(result, chunkKey)
 	}
-
 	// Return ids sorted and deduped because they will be merged with other sets.
 	sort.Strings(result)
 	result = uniqueStrings(result)

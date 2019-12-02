@@ -8,6 +8,7 @@ Configuration examples can be found in the [Configuration Examples](examples.md)
 
 * [Configuration File Reference](#configuration-file-reference)
 * [server_config](#server_config)
+* [distributor_config](#distributor_config)
 * [querier_config](#querier_config)
 * [ingester_client_config](#ingester_client_config)
   * [grpc_client_config](#grpc_client_config)
@@ -57,6 +58,9 @@ Supported contents and default values of `loki.yaml`:
 
 # Configures the server of the launched module(s).
 [server: <server_config>]
+
+# Configures the distributor.
+[distributor: <distributor_config>]
 
 # Configures the querier. Only appropriate when running all modules or
 # just the querier.
@@ -133,6 +137,15 @@ The `server_config` block configures Promtail's behavior as an HTTP server:
 
 # Base path to server all API routes from (e.g., /v1/).
 [http_path_prefix: <string>]
+```
+
+## distributor_config
+
+The `distributor_config` block configures the Loki Distributor.
+
+```yaml
+# Period at which to reload user ingestion limits.
+[limiter_reload_period: <duration> | default = 5m]
 ```
 
 ## querier_config
@@ -663,23 +676,13 @@ The `limits_config` block configures global and per-tenant limits for ingesting
 logs in Loki.
 
 ```yaml
-# Per-user ingestion rate limit in samples per second.
-[ingestion_rate: <float> | default = 25000]
+# Per-user ingestion rate limit in sample size per second. Units in MB.
+[ingestion_rate_mb: <float> | default = 4]
 
-# Per-user allowed ingestion burst size (in number of samples).
-[ingestion_burst_size: <int> | default = 50000]
-
-# Whether or not, for all users, samples with external labels
-# identifying replicas in an HA Prometheus setup will be handled.
-[accept_ha_samples: <boolean> | default = false]
-
-# Prometheus label to look for in samples to identify a
-# Prometheus HA cluster.
-[ha_cluster_label: <string> | default = "cluster"]
-
-# Prometheus label to look for in samples to identify a Prometheus HA
-# replica.
-[ha_replica_label: <string> | default = "__replica__"]
+# Per-user allowed ingestion burst size (in sample size). Units in MB. Warning,
+# very high limits will be reset every limiter_reload_period defined in
+# distributor_config.
+[ingestion_burst_size_mb: <int> | default = 6]
 
 # Maximum length of a label name.
 [max_label_name_length: <int> | default = 1024]
@@ -703,14 +706,8 @@ logs in Loki.
 # Enforce every sample has a metric name.
 [enforce_metric_name: <boolean> | default = true]
 
-# Maximum number of samples that a query can return.
-[max_samples_per_query: <int> | default = 1000000]
-
-# Maximum number of active series per user.
-[max_series_per_user: <int> | default = 5000000]
-
-# Maximum number of active series per metric name.
-[max_series_per_metric: <int> | default = 50000]
+# Maximum number of active streams per user.
+[max_streams_per_user: <int> | default = 10e3]
 
 # Maximum number of chunks that can be fetched by a single query.
 [max_chunks_per_query: <int> | default = 2000000]
@@ -724,6 +721,9 @@ logs in Loki.
 
 # Cardinality limit for index queries
 [cardinality_limit: <int> | default = 100000]
+
+# Maximum number of stream matchers per query.
+[max_streams_matchers_per_query: <int> | default = 1000]
 
 # Filename of per-user overrides file
 [per_tenant_override_config: <string>]

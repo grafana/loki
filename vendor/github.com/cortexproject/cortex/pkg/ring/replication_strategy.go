@@ -2,7 +2,6 @@ package ring
 
 import (
 	"fmt"
-	"time"
 )
 
 // replicationStrategy decides, given the set of ingesters eligible for a key,
@@ -47,12 +46,7 @@ func (r *Ring) replicationStrategy(ingesters []IngesterDesc, op Operation) ([]In
 
 // IsHealthy checks whether an ingester appears to be alive and heartbeating
 func (r *Ring) IsHealthy(ingester *IngesterDesc, op Operation) bool {
-	if op == Write && ingester.State != ACTIVE {
-		return false
-	} else if op == Read && ingester.State == JOINING {
-		return false
-	}
-	return time.Now().Sub(time.Unix(ingester.Timestamp, 0)) <= r.cfg.HeartbeatTimeout
+	return ingester.IsHealthy(op, r.cfg.HeartbeatTimeout)
 }
 
 // ReplicationFactor of the ring.

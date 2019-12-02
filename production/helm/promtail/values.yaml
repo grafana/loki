@@ -8,7 +8,7 @@ deploymentStrategy: RollingUpdate
 
 image:
   repository: grafana/promtail
-  tag: v0.3.0
+  tag: v1.0.0
   pullPolicy: IfNotPresent
 
 livenessProbe: {}
@@ -23,7 +23,7 @@ loki:
 nameOverride: promtail
 
 ## Node labels for pod assignment
-## ref: https://kubernetes.io/docs/user-guide/node-selection/
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
 nodeSelector: {}
 
 pipelineStages:

@@ -7,6 +7,7 @@ import (
 	"reflect"
 
 	"github.com/go-kit/kit/log/level"
+	_ "github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/prometheus/client_golang/prometheus"
@@ -27,11 +28,11 @@ func main() {
 
 	var config loki.Config
 	if err := cfg.Parse(&config); err != nil {
-		level.Error(util.Logger).Log("msg", "parsing config", "error", err)
+		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 		os.Exit(1)
 	}
 	if *printVersion {
-		fmt.Print(version.Print("loki"))
+		fmt.Println(version.Print("loki"))
 		os.Exit(0)
 	}
 

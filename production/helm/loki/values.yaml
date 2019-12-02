@@ -67,7 +67,7 @@ config:
 
 image:
   repository: grafana/loki
-  tag: v0.3.0
+  tag: v1.0.0
   pullPolicy: IfNotPresent
 
 ## Additional Loki container arguments, e.g. log level (debug, info, warn, error)
@@ -80,14 +80,18 @@ livenessProbe:
     port: http-metrics
   initialDelaySeconds: 45
 
-## Enable persistence using Persistent Volume Claims
+## ref: https://kubernetes.io/docs/concepts/services-networking/network-policies/
 networkPolicy:
   enabled: false
 
-## ref: https://kubernetes.io/docs/user-guide/node-selection/
+## The app name of loki clients
+client: {}
+  # name:
+
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
 nodeSelector: {}
 
-## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+## ref: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
 ## If you set enabled as "True", you need :
 ## - create a pv which above 10Gi and has same namespace with loki
 ## - keep storageClassName same with below setting
@@ -150,7 +154,7 @@ serviceAccount:
   create: true
   name:
 
-terminationGracePeriodSeconds: 30
+terminationGracePeriodSeconds: 4800
 
 ## Tolerations for pod assignment
 ## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/

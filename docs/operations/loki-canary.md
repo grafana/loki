@@ -58,7 +58,7 @@ Loki Canary is also provided as a Docker container image:
 
 ```bash
 # change tag to the most recent release
-$ docker pull grafana/loki-canary:v0.2.0
+$ docker pull grafana/loki-canary:v1.0.0
 ```
 
 ### Kubernetes

@@ -1,7 +1,8 @@
 package consul
 
 import (
-	fmt "fmt"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,14 +22,23 @@ type mockKV struct {
 
 // NewInMemoryClient makes a new mock consul client.
 func NewInMemoryClient(codec codec.Codec) *Client {
+	return NewInMemoryClientWithConfig(codec, Config{})
+}
+
+// NewInMemoryClientWithConfig makes a new mock consul client with supplied Config.
+func NewInMemoryClientWithConfig(codec codec.Codec, cfg Config) *Client {
 	m := mockKV{
 		kvps: map[string]*consul.KVPair{},
+		// Always start from 1, we NEVER want to report back index 0 in the responses.
+		// This is in line with Consul, and our new checks for index return value in client.go.
+		current: 1,
 	}
 	m.cond = sync.NewCond(&m.mtx)
 	go m.loop()
 	return &Client{
 		kv:    &m,
 		codec: codec,
+		cfg:   cfg,
 	}
 }
 
@@ -67,6 +77,8 @@ func (m *mockKV) Put(p *consul.KVPair, q *consul.WriteOptions) (*consul.WriteMet
 	}
 
 	m.cond.Broadcast()
+
+	level.Debug(util.Logger).Log("msg", "Put", "key", p.Key, "value", fmt.Sprintf("%.40q", p.Value), "modify_index", m.current)
 	return nil, nil
 }
 
@@ -103,21 +115,45 @@ func (m *mockKV) Get(key string, q *consul.QueryOptions) (*consul.KVPair, *consu
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	value, ok := m.kvps[key]
-	if !ok {
+	value := m.kvps[key]
+	if value == nil && q.WaitIndex == 0 {
 		level.Debug(util.Logger).Log("msg", "Get - not found", "key", key)
 		return nil, &consul.QueryMeta{LastIndex: m.current}, nil
 	}
 
-	if q.WaitTime > 0 {
+	var valueModifyIndex uint64
+	if value != nil {
+		valueModifyIndex = value.ModifyIndex
+	} else {
+		valueModifyIndex = m.current
+	}
+
+	if q.WaitIndex >= valueModifyIndex && q.WaitTime > 0 {
 		deadline := time.Now().Add(q.WaitTime)
-		for q.WaitIndex >= value.ModifyIndex && time.Now().Before(deadline) {
+		if ctxDeadline, ok := q.Context().Deadline(); ok && ctxDeadline.Before(deadline) {
+			// respect deadline from context, if set.
+			deadline = ctxDeadline
+		}
+
+		// simply wait until value.ModifyIndex changes. This allows us to test reporting old index values by resetting them.
+		startModify := valueModifyIndex
+		for startModify == valueModifyIndex && time.Now().Before(deadline) {
 			m.cond.Wait()
+			value = m.kvps[key]
+
+			if value != nil {
+				valueModifyIndex = value.ModifyIndex
+			}
 		}
 		if time.Now().After(deadline) {
 			level.Debug(util.Logger).Log("msg", "Get - deadline exceeded", "key", key)
 			return nil, &consul.QueryMeta{LastIndex: q.WaitIndex}, nil
 		}
+	}
+
+	if value == nil {
+		level.Debug(util.Logger).Log("msg", "Get - not found", "key", key)
+		return nil, &consul.QueryMeta{LastIndex: m.current}, nil
 	}
 
 	level.Debug(util.Logger).Log("msg", "Get", "key", key, "modify_index", value.ModifyIndex, "value", fmt.Sprintf("%.40q", value.Value))
@@ -129,6 +165,11 @@ func (m *mockKV) List(prefix string, q *consul.QueryOptions) (consul.KVPairs, *c
 	defer m.mtx.Unlock()
 
 	deadline := time.Now().Add(q.WaitTime)
+	if ctxDeadline, ok := q.Context().Deadline(); ok && ctxDeadline.Before(deadline) {
+		// respect deadline from context, if set.
+		deadline = ctxDeadline
+	}
+
 	for q.WaitIndex >= m.current && time.Now().Before(deadline) {
 		m.cond.Wait()
 	}
@@ -138,9 +179,32 @@ func (m *mockKV) List(prefix string, q *consul.QueryOptions) (consul.KVPairs, *c
 
 	result := consul.KVPairs{}
 	for _, kvp := range m.kvps {
-		if kvp.ModifyIndex >= q.WaitIndex {
+		if strings.HasPrefix(kvp.Key, prefix) && kvp.ModifyIndex >= q.WaitIndex {
+			// unfortunately real consul doesn't do index check and returns everything with given prefix.
 			result = append(result, copyKVPair(kvp))
 		}
 	}
 	return result, &consul.QueryMeta{LastIndex: m.current}, nil
+}
+
+func (m *mockKV) ResetIndex() {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	m.current = 0
+	m.cond.Broadcast()
+
+	level.Debug(util.Logger).Log("msg", "Reset")
+}
+
+func (m *mockKV) ResetIndexForKey(key string) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	if value, ok := m.kvps[key]; ok {
+		value.ModifyIndex = 0
+	}
+
+	m.cond.Broadcast()
+	level.Debug(util.Logger).Log("msg", "ResetIndexForKey", "key", key)
 }

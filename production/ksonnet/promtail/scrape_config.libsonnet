@@ -20,7 +20,7 @@ config + {
       {
         source_labels: ['__service__'],
         action: 'drop',
-        regex: '^$',
+        regex: '',
       },
 
       // Include all the other labels on the pod.
@@ -122,7 +122,7 @@ config + {
           {
             source_labels: ['__meta_kubernetes_pod_controller_name'],
             action: 'drop',
-            regex: '^([0-9a-z-.]+)(-[0-9a-f]{8,10})$',
+            regex: '[0-9a-z-.]+-[0-9a-f]{8,10}',
           },
 
           // Use controller name as __service__.
@@ -149,15 +149,15 @@ config + {
           // Drop pods not from an indirect controller. eg StatefulSets, DaemonSets
           {
             source_labels: ['__meta_kubernetes_pod_controller_name'],
-            regex: '^([0-9a-z-.]+)(-[0-9a-f]{8,10})$',
+            regex: '[0-9a-z-.]+-[0-9a-f]{8,10}',
             action: 'keep',
           },
 
-          // put the indirect controller name into a temp label.
+          // Put the indirect controller name into a temp label.
           {
             source_labels: ['__meta_kubernetes_pod_controller_name'],
             action: 'replace',
-            regex: '^([0-9a-z-.]+)(-[0-9a-f]{8,10})$',
+            regex: '([0-9a-z-.]+)-[0-9a-f]{8,10}',
             target_label: '__service__',
           },
         ]
@@ -171,7 +171,7 @@ config + {
           {
             action: 'drop',
             source_labels: ['__meta_kubernetes_pod_annotation_kubernetes_io_config_mirror'],
-            regex: '^$',
+            regex: '',
           },
 
           // Static control plane pods usually have a component label that identifies them

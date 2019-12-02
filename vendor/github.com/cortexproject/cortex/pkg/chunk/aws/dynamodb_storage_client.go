@@ -861,5 +861,5 @@ func awsSessionFromURL(awsURL *url.URL) (client.ConfigProvider, error) {
 		return nil, err
 	}
 	config = config.WithMaxRetries(0) // We do our own retries, so we can monitor them
-	return session.New(config), nil
+	return session.NewSession(config)
 }

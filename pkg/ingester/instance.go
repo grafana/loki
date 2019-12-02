@@ -33,8 +33,9 @@ var (
 
 var (
 	memoryStreams = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "loki_ingester_memory_streams",
-		Help: "The total number of streams in memory.",
+		Namespace: "loki",
+		Name:      "ingester_memory_streams",
+		Help:      "The total number of streams in memory.",
 	})
 	streamsCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",

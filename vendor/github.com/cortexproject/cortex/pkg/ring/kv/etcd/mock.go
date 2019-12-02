@@ -27,6 +27,7 @@ func Mock(codec codec.Codec) (*Client, io.Closer, error) {
 	}
 
 	cfg := embed.NewConfig()
+	cfg.Logger = "zap"
 	cfg.Dir = dir
 	lpurl, _ := url.Parse("http://localhost:0")
 	lcurl, _ := url.Parse("http://localhost:0")
