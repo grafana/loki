@@ -153,6 +153,7 @@ service:
 serviceAccount:
   create: true
   name:
+  annotations: {}
 
 terminationGracePeriodSeconds: 4800
 
