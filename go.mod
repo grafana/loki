@@ -28,7 +28,7 @@ require (
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/golang-lru v0.5.3
 	github.com/hpcloud/tail v1.0.0
-	github.com/influxdata/go-syslog v1.0.2-0.20190814180256-831896502726
+	github.com/influxdata/go-syslog/v2 v2.0.1
 	github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
 	github.com/json-iterator/go v1.1.7
 	github.com/klauspost/compress v1.7.4

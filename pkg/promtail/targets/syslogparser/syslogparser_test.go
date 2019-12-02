@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/grafana/loki/pkg/promtail/targets/syslogparser"
-	"github.com/influxdata/go-syslog"
+	"github.com/influxdata/go-syslog/v2"
 	"github.com/stretchr/testify/require"
 )
 

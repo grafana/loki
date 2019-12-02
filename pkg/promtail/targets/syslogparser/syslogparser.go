@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/influxdata/go-syslog"
-	"github.com/influxdata/go-syslog/octetcounting"
-	"github.com/influxdata/go-syslog/rfc5424"
+	"github.com/influxdata/go-syslog/v2"
+	"github.com/influxdata/go-syslog/v2/octetcounting"
+	"github.com/influxdata/go-syslog/v2/rfc5424"
 )
 
 // ParseStream parses a rfc5424 syslog stream from the given Reader, returning a channel

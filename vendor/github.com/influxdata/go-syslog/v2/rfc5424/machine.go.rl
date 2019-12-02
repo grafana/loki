@@ -3,9 +3,9 @@ package rfc5424
 import (
 	"time"
 	"fmt"
-	
-	"github.com/influxdata/go-syslog"
-	"github.com/influxdata/go-syslog/common"
+
+	"github.com/influxdata/go-syslog/v2"
+	"github.com/influxdata/go-syslog/v2/common"
 )
 
 // ColumnPositionTemplate is the template used to communicate the column where errors occur.
@@ -24,23 +24,23 @@ const (
 	ErrHostname       = "expecting an hostname (from 1 to max 255 US-ASCII characters) or a nil value"
 	// ErrAppname represents an error in the APP-NAME part of the RFC5424 syslog message.
 	ErrAppname        = "expecting an app-name (from 1 to max 48 US-ASCII characters) or a nil value"
-	// ErrProcID represents an error in the PROCID part of the RFC5424 syslog message.	
+	// ErrProcID represents an error in the PROCID part of the RFC5424 syslog message.
 	ErrProcID         = "expecting a procid (from 1 to max 128 US-ASCII characters) or a nil value"
-	// ErrMsgID represents an error in the MSGID part of the RFC5424 syslog message.	
+	// ErrMsgID represents an error in the MSGID part of the RFC5424 syslog message.
 	ErrMsgID          = "expecting a msgid (from 1 to max 32 US-ASCII characters) or a nil value"
-	// ErrStructuredData represents an error in the STRUCTURED DATA part of the RFC5424 syslog message.	
+	// ErrStructuredData represents an error in the STRUCTURED DATA part of the RFC5424 syslog message.
 	ErrStructuredData = "expecting a structured data section containing one or more elements (`[id( key=\"value\")*]+`) or a nil value"
-	// ErrSdID represents an error regarding the ID of a STRUCTURED DATA element of the RFC5424 syslog message.	
+	// ErrSdID represents an error regarding the ID of a STRUCTURED DATA element of the RFC5424 syslog message.
 	ErrSdID           = "expecting a structured data element id (from 1 to max 32 US-ASCII characters; except `=`, ` `, `]`, and `\"`"
-	// ErrSdIDDuplicated represents an error occurring when two STRUCTURED DATA elementes have the same ID in a RFC5424 syslog message.	
+	// ErrSdIDDuplicated represents an error occurring when two STRUCTURED DATA elementes have the same ID in a RFC5424 syslog message.
 	ErrSdIDDuplicated = "duplicate structured data element id"
-	// ErrSdParam represents an error regarding a STRUCTURED DATA PARAM of the RFC5424 syslog message.	
+	// ErrSdParam represents an error regarding a STRUCTURED DATA PARAM of the RFC5424 syslog message.
 	ErrSdParam        = "expecting a structured data parameter (`key=\"value\"`, both part from 1 to max 32 US-ASCII characters; key cannot contain `=`, ` `, `]`, and `\"`, while value cannot contain `]`, backslash, and `\"` unless escaped)"
-	// ErrMsg represents an error in the MESSAGE part of the RFC5424 syslog message.	
+	// ErrMsg represents an error in the MESSAGE part of the RFC5424 syslog message.
 	ErrMsg            = "expecting a free-form optional message in UTF-8 (starting with or without BOM)"
 	// ErrEscape represents the error for a RFC5424 syslog message occurring when a STRUCTURED DATA PARAM value contains '"', '\', or ']' not escaped.
 	ErrEscape         = "expecting chars `]`, `\"`, and `\\` to be escaped within param value"
-	// ErrParse represents a general parsing error for a RFC5424 syslog message.	
+	// ErrParse represents a general parsing error for a RFC5424 syslog message.
 	ErrParse          = "parsing error"
 )
 
@@ -135,7 +135,7 @@ action set_paramvalue {
 
 		// Store text
 		text := m.text()
-		
+
 		// Strip backslashes only when there are ...
 		if len(m.backslashat) > 0 {
 			text = common.RemoveBytes(text, m.backslashat, m.pb)

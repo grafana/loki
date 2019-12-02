@@ -5,7 +5,7 @@ import (
     "sort"
     "fmt"
 
-    "github.com/influxdata/go-syslog/common"
+    "github.com/influxdata/go-syslog/v2/common"
 )
 
 %%{
@@ -51,7 +51,7 @@ action set_sdid {
     if sm.structuredData == nil {
         sm.structuredData = &(map[string]map[string]string{})
     }
-    
+
     id := string(data[pb:p])
     elements := *sm.structuredData
     if _, ok := elements[id]; !ok {
@@ -226,7 +226,7 @@ func (sm *SyslogMessage) SetElementID(value string) *SyslogMessage {
 func (sm *SyslogMessage) SetParameter(id string, name string, value string) *SyslogMessage {
     // Create an element with the given id (or re-use the existing one)
     sm.set(sdid, id)
-    
+
     // We can create parameter iff the given element id exists
     if sm.structuredData != nil {
         elements := *sm.structuredData
@@ -240,7 +240,7 @@ func (sm *SyslogMessage) SetParameter(id string, name string, value string) *Sys
             }
         }
     }
-    
+
     return sm
 }
 
