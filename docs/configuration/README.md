@@ -707,7 +707,7 @@ logs in Loki.
 [enforce_metric_name: <boolean> | default = true]
 
 # Maximum number of active streams per user.
-[max_streams_per_user: <int> | default = 10e3]
+[max_streams_per_user: <int> | default = 10000]
 
 # Maximum number of chunks that can be fetched by a single query.
 [max_chunks_per_query: <int> | default = 2000000]
