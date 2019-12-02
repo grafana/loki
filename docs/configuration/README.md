@@ -36,7 +36,7 @@ Generic placeholders are defined as follows:
 
 * `<boolean>`: a boolean that can take the values `true` or `false`
 * `<int>`: any integer matching the regular expression `[1-9]+[0-9]*`
-* `<duration>`: a duration matching the regular expression `[0-9]+(ms|[smhdwy])`
+* `<duration>`: a duration matching the regular expression `[0-9]+(ns|us|µs|ms|[smh])`
 * `<labelname>`: a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
 * `<labelvalue>`: a string of unicode characters
 * `<filename>`: a valid path relative to current working directory or an
