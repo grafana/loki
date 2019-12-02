@@ -1,12 +1,12 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
+	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 )
 

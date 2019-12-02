@@ -2,7 +2,6 @@ package marshal
 
 import (
 	"bytes"
-	"encoding/json"
 	"log"
 	"testing"
 	"time"
@@ -10,6 +9,7 @@ import (
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	json "github.com/json-iterator/go"
 	"github.com/stretchr/testify/require"
 )
 

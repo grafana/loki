@@ -3,14 +3,13 @@
 package marshal
 
 import (
-	"encoding/json"
 	"io"
 
 	"github.com/gorilla/websocket"
 	"github.com/grafana/loki/pkg/loghttp"
 	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
-
 	"github.com/grafana/loki/pkg/logproto"
+	json "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/promql"
 )
 
