@@ -68,7 +68,9 @@ func testSyslogTarget(t *testing.T, octetCounting bool) {
 		},
 	})
 	require.NoError(t, err)
-	defer tgt.Stop()
+	defer func() {
+		require.NoError(t, tgt.Stop())
+	}()
 
 	addr := tgt.ListenAddress().String()
 	c, err := net.Dial("tcp", addr)
@@ -161,7 +163,9 @@ func TestSyslogTarget_InvalidData(t *testing.T) {
 		ListenAddress: "127.0.0.1:0",
 	})
 	require.NoError(t, err)
-	defer tgt.Stop()
+	defer func() {
+		require.NoError(t, tgt.Stop())
+	}()
 
 	addr := tgt.ListenAddress().String()
 	c, err := net.Dial("tcp", addr)
@@ -169,9 +173,12 @@ func TestSyslogTarget_InvalidData(t *testing.T) {
 	defer c.Close()
 
 	_, err = fmt.Fprint(c, "xxx")
+	require.NoError(t, err)
 
 	// syslog target should immediately close the connection if sent invalid data
-	c.SetDeadline(time.Now().Add(time.Second))
+	err = c.SetDeadline(time.Now().Add(time.Second))
+	require.NoError(t, err)
+
 	buf := make([]byte, 1)
 	_, err = c.Read(buf)
 	require.EqualError(t, err, "EOF")
@@ -187,7 +194,9 @@ func TestSyslogTarget_IdleTimeout(t *testing.T) {
 		IdleTimeout:   time.Millisecond,
 	})
 	require.NoError(t, err)
-	defer tgt.Stop()
+	defer func() {
+		require.NoError(t, tgt.Stop())
+	}()
 
 	addr := tgt.ListenAddress().String()
 	c, err := net.Dial("tcp", addr)
@@ -196,7 +205,9 @@ func TestSyslogTarget_IdleTimeout(t *testing.T) {
 
 	// connection should be closed before the higher timeout
 	// from SetDeadline fires
-	c.SetDeadline(time.Now().Add(time.Second))
+	err = c.SetDeadline(time.Now().Add(time.Second))
+	require.NoError(t, err)
+
 	buf := make([]byte, 1)
 	_, err = c.Read(buf)
 	require.EqualError(t, err, "EOF")

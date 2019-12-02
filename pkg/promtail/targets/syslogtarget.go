@@ -221,7 +221,9 @@ func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Messag
 
 func (t *SyslogTarget) messageSender() {
 	for msg := range t.messages {
-		t.handler.Handle(msg.labels, time.Now(), msg.message)
+		if err := t.handler.Handle(msg.labels, time.Now(), msg.message); err != nil {
+			level.Error(t.logger).Log("msg", "error handling line", "error", err)
+		}
 		syslogEntries.Inc()
 	}
 }
@@ -317,5 +319,5 @@ func (c *idleTimeoutConn) Read(b []byte) (int, error) {
 }
 
 func (c *idleTimeoutConn) setDeadline() {
-	c.Conn.SetDeadline(time.Now().Add(c.idleTimeout))
+	_ = c.Conn.SetDeadline(time.Now().Add(c.idleTimeout))
 }

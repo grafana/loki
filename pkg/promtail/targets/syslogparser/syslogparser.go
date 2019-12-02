@@ -44,7 +44,7 @@ func ParseStream(r io.Reader) <-chan *syslog.Result {
 	return results
 }
 
-func octetCounting(r *bufio.Reader, results chan<- *syslog.Result) {
+func octetCounting(r io.Reader, results chan<- *syslog.Result) {
 	defer close(results)
 
 	callback := func(res *syslog.Result) {
@@ -54,7 +54,7 @@ func octetCounting(r *bufio.Reader, results chan<- *syslog.Result) {
 	octetcounting.NewParser(syslog.WithListener(callback)).Parse(r)
 }
 
-func newlineSeparated(r *bufio.Reader, results chan<- *syslog.Result) {
+func newlineSeparated(r io.Reader, results chan<- *syslog.Result) {
 	defer close(results)
 
 	s := bufio.NewScanner(r)
