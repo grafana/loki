@@ -17,11 +17,13 @@ $ docker pull "grafana/promtail:${CIRCLE_TAG}"
 
 #### Binary
 We provide pre-compiled binary executables for the most common operating systems and architectures.
-Pick one from the list below and download it:
+Choose from the assets below for the application and architecture matching your system.
+Example for `Loki` on the `linux` operating system and `amd64` architecture:
 
 ```bash
-$ wget $YOUR_BINARY
-$ unzip $YOUR_BINARY
-$ chmod +x $YOUR_BINARY
-$ mv $YOUR_BINARY /usr/local/bin/$YOUR_BINARY
+$ curl -O -L "https://github.com/grafana/loki/releases/download/${CIRCLE_TAG}/loki-linux-amd64.zip"
+# extract the binary
+$ unzip "loki-linux-amd64.zip"
+# make sure it is executable
+$ chmod a+x "loki-linux-amd64"
 ```
