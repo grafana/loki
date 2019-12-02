@@ -265,7 +265,7 @@ func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from 
 
 	if from.After(now) {
 		// time-span start is in future ... regard as legal
-		level.Error(log).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
+		level.Info(log).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
 		return true, nil
 	}
 
@@ -283,7 +283,7 @@ func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from 
 
 	if through.After(now.Add(5 * time.Minute)) {
 		// time-span end is in future ... regard as legal
-		level.Error(log).Log("msg", "adjusting end timerange from future to now", "old_through", through, "new_through", now)
+		level.Info(log).Log("msg", "adjusting end timerange from future to now", "old_through", through, "new_through", now)
 		*through = now // Avoid processing future part - otherwise some schemas could fail with eg non-existent table gripes
 	}
 
