@@ -83,7 +83,9 @@ Resources: `arn:aws:dynamodb:<aws_region>:<aws_account_id>:table/<prefix>*`
 * `application-autoscaling:DescribeScalableTargets`
 * `application-autoscaling:DescribeScalingPolicies`
 * `application-autoscaling:RegisterScalableTarget`
+* `application-autoscaling:DeregisterScalableTarget`
 * `application-autoscaling:PutScalingPolicy`
+* `application-autoscaling:DeleteScalingPolicy`
 
 Resources: `*`
 
