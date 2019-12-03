@@ -50,11 +50,20 @@ func bounds(r *http.Request) (time.Time, time.Time, error) {
 }
 
 func step(r *http.Request, start, end time.Time) (time.Duration, error) {
-	s, err := parseInt(r.URL.Query().Get("step"), defaultQueryRangeStep(start, end))
-	if err != nil {
-		return 0, err
+	value := r.URL.Query().Get("step")
+	if value == "" {
+		return time.Duration(defaultQueryRangeStep(start, end)) * time.Second, nil
 	}
-	return time.Duration(s) * time.Second, nil
+
+	d, err := time.ParseDuration(value)
+	if err == nil {
+		return d, nil
+	}
+	f, err := strconv.ParseFloat(value, 64)
+	if err == nil {
+		return time.Duration(f) * time.Second, nil
+	}
+	return 0, err
 }
 
 // defaultQueryRangeStep returns the default step used in the query range API,
