@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"text/scanner"
 	"time"
+
+	"github.com/prometheus/common/model"
 )
 
 var tokens = map[string]int{
@@ -64,12 +66,12 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		d := ""
 		for r := l.Next(); r != scanner.EOF; r = l.Next() {
 			if string(r) == "]" {
-				i, err := time.ParseDuration(d)
+				i, err := model.ParseDuration(d)
 				if err != nil {
 					l.Error(err.Error())
 					return 0
 				}
-				lval.duration = i
+				lval.duration = time.Duration(i)
 				return DURATION
 			}
 			d += string(r)

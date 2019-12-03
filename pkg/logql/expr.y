@@ -66,7 +66,7 @@ logExpr:
     ;
 
 
-logRangeExpr: logExpr DURATION { $$ = mustNewRange($1, $2) };
+logRangeExpr: logExpr DURATION { $$ = newLogRange($1, $2) };
 
 
 rangeAggregationExpr: rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS { $$ = newRangeAggregationExpr($3,$1) };

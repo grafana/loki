@@ -582,7 +582,7 @@ exprdefault:
 	case 10:
 		exprDollar = exprS[exprpt-2 : exprpt+1]
 		{
-			exprVAL.LogRangeExpr = mustNewRange(exprDollar[1].LogExpr, exprDollar[2].duration)
+			exprVAL.LogRangeExpr = newLogRange(exprDollar[1].LogExpr, exprDollar[2].duration)
 		}
 	case 11:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
