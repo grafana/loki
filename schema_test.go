@@ -325,7 +325,7 @@ func TestSchemaRangeKey(t *testing.T) {
 					_, err := parseMetricNameRangeValue(entry.RangeValue, entry.Value)
 					require.NoError(t, err)
 				case ChunkTimeRangeValue:
-					_, _, _, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+					_, _, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 					require.NoError(t, err)
 				case SeriesRangeValue:
 					_, err := parseSeriesRangeValue(entry.RangeValue, entry.Value)

@@ -164,11 +164,10 @@ func parseSeriesRangeValue(rangeValue []byte, value []byte) (model.Metric, error
 	}
 }
 
-// parseChunkTimeRangeValue returns the chunkKey, labelValue and metadataInIndex
-// for chunk time range values.
+// parseChunkTimeRangeValue returns the chunkID and labelValue for chunk time
+// range values.
 func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (
-	chunkID string, labelValue model.LabelValue, metadataInIndex bool,
-	isSeriesID bool, err error,
+	chunkID string, labelValue model.LabelValue, isSeriesID bool, err error,
 ) {
 	components := decodeRangeKey(rangeValue)
 
@@ -182,7 +181,6 @@ func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (
 	case len(components) == 3:
 		chunkID = string(components[2])
 		labelValue = model.LabelValue(components[1])
-		metadataInIndex = true
 		return
 
 	// v3 schema had four components - label name, label value, chunk ID and version.

@@ -57,10 +57,6 @@ type Chunk struct {
 	Encoding prom_chunk.Encoding `json:"encoding"`
 	Data     prom_chunk.Chunk    `json:"-"`
 
-	// This flag is used for very old chunks, where the metadata is read out
-	// of the index.
-	metadataInIndex bool
-
 	// The encoded version of the chunk, held so we don't need to re-encode it
 	encoded []byte
 }
@@ -258,17 +254,6 @@ func NewDecodeContext() *DecodeContext {
 // Decode the chunk from the given buffer, and confirm the chunk is the one we
 // expected.
 func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
-	// Legacy chunks were written with metadata in the index.
-	if c.metadataInIndex {
-		var err error
-		c.Data, err = prom_chunk.NewForEncoding(prom_chunk.DoubleDelta)
-		if err != nil {
-			return err
-		}
-		c.encoded = input
-		return errors.Wrap(c.Data.UnmarshalFromBuf(input), "when unmarshalling legacy chunk")
-	}
-
 	// First, calculate the checksum of the chunk and confirm it matches
 	// what we expected.
 	if c.ChecksumSet && c.Checksum != crc32.Checksum(input, castagnoliTable) {

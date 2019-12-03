@@ -206,7 +206,7 @@ func (c *store) LabelValuesForMetricName(ctx context.Context, userID string, fro
 
 	var result UniqueStrings
 	for _, entry := range entries {
-		_, labelValue, _, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+		_, labelValue, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -461,7 +461,7 @@ func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery
 func (c *store) parseIndexEntries(ctx context.Context, entries []IndexEntry, matcher *labels.Matcher) ([]string, error) {
 	result := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		chunkKey, labelValue, _, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+		chunkKey, labelValue, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
 		}
