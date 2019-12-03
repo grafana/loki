@@ -55,7 +55,7 @@ func bounds(r *http.Request) (time.Time, time.Time, error) {
 func step(r *http.Request, start, end time.Time) (time.Duration, error) {
 	value := r.URL.Query().Get("step")
 	if value == "" {
-		return time.Duration(defaultQueryRangeStep(start, end)) * time.Second, nil
+		return defaultQueryRangeStep(start, end), nil
 	}
 
 	if d, err := strconv.ParseFloat(value, 64); err == nil {
@@ -73,8 +73,8 @@ func step(r *http.Request, start, end time.Time) (time.Duration, error) {
 
 // defaultQueryRangeStep returns the default step used in the query range API,
 // which is dinamically calculated based on the time range
-func defaultQueryRangeStep(start time.Time, end time.Time) int {
-	return int(math.Max(math.Floor(end.Sub(start).Seconds()/250), 1))
+func defaultQueryRangeStep(start time.Time, end time.Time) time.Duration {
+	return end.Sub(start) / 250
 }
 
 func tailDelay(r *http.Request) (uint32, error) {

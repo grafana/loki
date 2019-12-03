@@ -17,22 +17,27 @@ func TestHttp_defaultQueryRangeStep(t *testing.T) {
 	tests := map[string]struct {
 		start    time.Time
 		end      time.Time
-		expected int
+		expected time.Duration
 	}{
-		"should not be lower then 1s": {
+		"should return 0.8s if input time range is 200s": {
 			start:    time.Unix(60, 0),
-			end:      time.Unix(60, 0),
-			expected: 1,
+			end:      time.Unix(260, 0),
+			expected: 800 * time.Millisecond,
 		},
-		"should return 1s if input time range is 5m": {
+		"should return 1s if input time range is 250s": {
+			start:    time.Unix(60, 0),
+			end:      time.Unix(310, 0),
+			expected: 1 * time.Second,
+		},
+		"should return 1.2s if input time range is 5m": {
 			start:    time.Unix(60, 0),
 			end:      time.Unix(360, 0),
-			expected: 1,
+			expected: 1200 * time.Millisecond,
 		},
-		"should return 14s if input time range is 1h": {
+		"should return 14.4s if input time range is 1h": {
 			start:    time.Unix(60, 0),
 			end:      time.Unix(3660, 0),
-			expected: 14,
+			expected: 14400 * time.Millisecond,
 		},
 	}
 
@@ -58,7 +63,7 @@ func TestHttp_ParseRangeQuery_Step(t *testing.T) {
 				Query:     "{}",
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(3600, 0),
-				Step:      14 * time.Second,
+				Step:      14400 * time.Millisecond,
 				Limit:     100,
 				Direction: logproto.BACKWARD,
 			},
@@ -91,7 +96,7 @@ func TestHttp_ParseRangeQuery_Step(t *testing.T) {
 				Query:     "{}",
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(3600, 0),
-				Step:      5.5 * 1e9,
+				Step:      5500 * time.Millisecond,
 				Limit:     100,
 				Direction: logproto.BACKWARD,
 			},
@@ -113,7 +118,7 @@ func TestHttp_ParseRangeQuery_Step(t *testing.T) {
 				Query:     "{}",
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(3600, 0),
-				Step:      5 * 24 * 3600 * time.Second,
+				Step:      5 * 24 * time.Hour,
 				Limit:     100,
 				Direction: logproto.BACKWARD,
 			},
