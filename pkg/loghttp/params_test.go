@@ -63,13 +63,57 @@ func TestHttp_ParseRangeQuery_Step(t *testing.T) {
 				Direction: logproto.BACKWARD,
 			},
 		},
-		"should use the input step parameter if provided": {
+		"should use the input step parameter if provided as an integer": {
 			reqPath: "/loki/api/v1/query_range?query={}&start=0&end=3600000000000&step=5",
 			expected: &RangeQuery{
 				Query:     "{}",
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(3600, 0),
 				Step:      5 * time.Second,
+				Limit:     100,
+				Direction: logproto.BACKWARD,
+			},
+		},
+		"should use the input step parameter if provided as a float without decimals": {
+			reqPath: "/loki/api/v1/query_range?query={}&start=0&end=3600000000000&step=5.000",
+			expected: &RangeQuery{
+				Query:     "{}",
+				Start:     time.Unix(0, 0),
+				End:       time.Unix(3600, 0),
+				Step:      5 * time.Second,
+				Limit:     100,
+				Direction: logproto.BACKWARD,
+			},
+		},
+		"should use the input step parameter if provided as a float with decimals": {
+			reqPath: "/loki/api/v1/query_range?query={}&start=0&end=3600000000000&step=5.500",
+			expected: &RangeQuery{
+				Query:     "{}",
+				Start:     time.Unix(0, 0),
+				End:       time.Unix(3600, 0),
+				Step:      5.5 * 1e9,
+				Limit:     100,
+				Direction: logproto.BACKWARD,
+			},
+		},
+		"should use the input step parameter if provided as a duration in seconds": {
+			reqPath: "/loki/api/v1/query_range?query={}&start=0&end=3600000000000&step=5s",
+			expected: &RangeQuery{
+				Query:     "{}",
+				Start:     time.Unix(0, 0),
+				End:       time.Unix(3600, 0),
+				Step:      5 * time.Second,
+				Limit:     100,
+				Direction: logproto.BACKWARD,
+			},
+		},
+		"should use the input step parameter if provided as a duration in days": {
+			reqPath: "/loki/api/v1/query_range?query={}&start=0&end=3600000000000&step=5d",
+			expected: &RangeQuery{
+				Query:     "{}",
+				Start:     time.Unix(0, 0),
+				End:       time.Unix(3600, 0),
+				Step:      5 * 24 * 3600 * time.Second,
 				Limit:     100,
 				Direction: logproto.BACKWARD,
 			},
