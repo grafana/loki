@@ -2,6 +2,8 @@ package loghttp
 
 import (
 	"fmt"
+	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"math"
 	"net/http"
 	"strconv"
@@ -55,15 +57,17 @@ func step(r *http.Request, start, end time.Time) (time.Duration, error) {
 		return time.Duration(defaultQueryRangeStep(start, end)) * time.Second, nil
 	}
 
-	d, err := time.ParseDuration(value)
-	if err == nil {
-		return d, nil
+	if d, err := strconv.ParseFloat(value, 64); err == nil {
+		ts := d * float64(time.Second)
+		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
+			return 0, errors.Errorf("cannot parse %q to a valid duration. It overflows int64", value)
+		}
+		return time.Duration(ts), nil
 	}
-	f, err := strconv.ParseFloat(value, 64)
-	if err == nil {
-		return time.Duration(f) * time.Second, nil
+	if d, err := model.ParseDuration(value); err == nil {
+		return time.Duration(d), nil
 	}
-	return 0, err
+	return 0, errors.Errorf("cannot parse %q to a valid duration", value)
 }
 
 // defaultQueryRangeStep returns the default step used in the query range API,
