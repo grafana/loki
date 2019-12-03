@@ -2,13 +2,14 @@ package loghttp
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 	"math"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
