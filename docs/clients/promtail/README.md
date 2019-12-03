@@ -78,6 +78,6 @@ The web server exposed by Promtail can be configured in the Promtail `.yaml` con
 
 ```yaml
 server:
-  http_listen_host: 127.0.0.1
+  http_listen_address: 127.0.0.1
   http_listen_port: 9080
 ```
