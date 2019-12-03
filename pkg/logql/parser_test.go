@@ -60,11 +60,41 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			in: `rate({ foo !~ "bar" }[5d])`,
+			exp: &rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 5 * 24 * time.Hour,
+				},
+				operation: "rate",
+			},
+		},
+		{
+			in: `count_over_time({ foo !~ "bar" }[1w])`,
+			exp: &rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 7 * 24 * time.Hour,
+				},
+				operation: "count_over_time",
+			},
+		},
+		{
 			in: `sum(rate({ foo !~ "bar" }[5h]))`,
 			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
 				left: &logRange{
 					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
 					interval: 5 * time.Hour,
+				},
+				operation: "rate",
+			}, "sum", nil, nil),
+		},
+		{
+			in: `sum(rate({ foo !~ "bar" }[1y]))`,
+			exp: mustNewVectorAggregationExpr(&rangeAggregationExpr{
+				left: &logRange{
+					left:     &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+					interval: 365 * 24 * time.Hour,
 				},
 				operation: "rate",
 			}, "sum", nil, nil),
@@ -149,7 +179,7 @@ func TestParse(t *testing.T) {
 		{
 			in: `rate({ foo !~ "bar" }[5minutes])`,
 			err: ParseError{
-				msg:  "time: unknown unit minutes in duration 5minutes",
+				msg:  `not a valid duration string: "5minutes"`,
 				line: 0,
 				col:  22,
 			},

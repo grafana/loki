@@ -176,7 +176,7 @@ type logRange struct {
 	interval time.Duration
 }
 
-func mustNewRange(left LogSelectorExpr, interval time.Duration) *logRange {
+func newLogRange(left LogSelectorExpr, interval time.Duration) *logRange {
 	return &logRange{
 		left:     left,
 		interval: interval,
