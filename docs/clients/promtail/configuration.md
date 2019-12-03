@@ -892,7 +892,7 @@ Where `<role>` must be `endpoints`, `service`, `pod`, `node`, or
 `ingress`.
 
 See
-[this example Prometheus configuration file](/documentation/examples/prometheus-kubernetes.yml)
+[this example Prometheus configuration file](https://github.com/prometheus/prometheus/blob/master/documentation/examples/prometheus-kubernetes.yml)
 for a detailed example of configuring Prometheus for Kubernetes.
 
 You may wish to check out the 3rd party
