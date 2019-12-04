@@ -43,26 +43,26 @@ Binaries will now be zipped instead of gzipped as many people voiced their opini
 
 ## Notable Fixes and Improvements
 
-Broken version info in startup log message:
+* Broken version info in startup log message:
+    
+    [1095](https://github.com/grafana/loki/pull/1095) **pstibrany**: Makefile changes to allow easy builds with or without vendoring. Also fixes version bug for both cases.
 
-* [1095](https://github.com/grafana/loki/pull/1095) **pstibrany**: Makefile changes to allow easy builds with or without vendoring. Also fixes version bug for both cases.
+* The hashing algorithm used to calculate the hash for a stream was creating hash collisions in some instances.  
+**Please Note** this is just one part of the fix and is only in Promtail, the second part for Loki can be tracked [here](https://github.com/grafana/loki/pull/1247) which didn't quite make the cut for 1.1.0 and will be in 1.2.0:
 
-The hashing algorithm used to calculate the hash for a stream was creating hash collisions in some instances:  
-**Please Note** this is just one part of the fix and is only in Promtail, the second part for Loki can be tracked [here](https://github.com/grafana/loki/pull/1247) which didn't quite make the cut for 1.1.0 and will be in 1.2.0
+    [1254](https://github.com/grafana/loki/pull/1254) **pstibrany**: pkg/promtail/client: Handle fingerprint hash collisions
 
-* [1254](https://github.com/grafana/loki/pull/1254) **pstibrany**: pkg/promtail/client: Handle fingerprint hash collisions
+* Thank you @putrasattvika for finding and fixing an important bug where logs were some logs were missed in a query shortly after a flush!
 
-Thank you @putrasattvika for finding and fixing an important bug where logs were some logs were missed in a query shortly after a flush!
+    [1299](https://github.com/grafana/loki/pull/1299) **putrasattvika**: storage: fix missing logs with batched chunk iterator
 
-* [1299](https://github.com/grafana/loki/pull/1299) **putrasattvika**: storage: fix missing logs with batched chunk iterator
+* Thank you @danieldabate for helping to again improve our API to be more Prometheus compatible:
 
-Thank you @danieldabate for helping to again improve our API to be more Prometheus compatible:
+    [1355](https://github.com/grafana/loki/pull/1355) **danieldabate**: HTTP API: Support duration and float formats for step parameter
 
-* [1355](https://github.com/grafana/loki/pull/1355) **danieldabate**: HTTP API: Support duration and float formats for step parameter
+* LogQL will support duration formats that are not typically handled by Go like [1d] or [1w]
 
-LogQL will support duration formats that are not typically handled by Go like [1d] or [1w]
-
-* [1357](https://github.com/grafana/loki/pull/1357) **cyriltovena**: Supports same duration format in LogQL as Prometheus
+    [1357](https://github.com/grafana/loki/pull/1357) **cyriltovena**: Supports same duration format in LogQL as Prometheus
 
 
 ## Everything Else
