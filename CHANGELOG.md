@@ -47,7 +47,8 @@ Broken version info in startup log message:
 
 * [1095](https://github.com/grafana/loki/pull/1095) **pstibrany**: Makefile changes to allow easy builds with or without vendoring. Also fixes version bug for both cases.
 
-The hashing algorithm used to calculate the hash for a stream was creating hash collisions in some instances:
+The hashing algorithm used to calculate the hash for a stream was creating hash collisions in some instances:  
+** Please Note ** this is just one part of the fix and is only in Promtail, the second part for Loki can be tracked [here](https://github.com/grafana/loki/pull/1247) which didn't quite make the cut for 1.1.0 and will be in 1.2.0
 
 * [1254](https://github.com/grafana/loki/pull/1254) **pstibrany**: pkg/promtail/client: Handle fingerprint hash collisions
 
