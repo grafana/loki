@@ -1,3 +1,107 @@
+# 1.1.0 (2019-12-04)
+
+It's been a busy 2 weeks since the 1.0.0 release and quite a few important PR's have been merged to Loki.
+
+The most significant:
+
+* [1322](https://github.com/grafana/loki/pull/1322) **rfratto**: Fix v1 label API to be Prometheus-compatible
+
+Some might call this a **breaking change**, we are instead calling it a bug fix as our goal was to be prometheus compatible and we were not :smiley:  
+
+**But please be aware if you are using the `/loki/api/v1/label` or `/loki/api/v1/label/<name>/values` the JSON result will be different in 1.1.0**
+
+Old result:
+```json
+{
+  "values": [
+    "label1",
+    "label2",
+    "labeln"
+  ]
+}
+```
+New result:
+
+```json
+{
+  "status": "success",
+  "data": [
+    "label1",
+    "label2",
+    "labeln"
+  ]
+}
+``` 
+
+**ALSO IMPORTANT**
+
+* [1160](https://github.com/grafana/loki/pull/1160) **daixiang0**: replace gzip with zip
+
+Binaries will now be zipped instead of gzipped as many people voiced their opinion that zip is likely to be installed on more systems by default.
+
+**If you had existing automation to download and install binaries this will have to be updated to use zip instead of gzip**
+
+## Notable Fixes and Improvements
+
+* Broken version info in startup log message:
+    
+    [1095](https://github.com/grafana/loki/pull/1095) **pstibrany**: Makefile changes to allow easy builds with or without vendoring. Also fixes version bug for both cases.
+
+* The hashing algorithm used to calculate the hash for a stream was creating hash collisions in some instances.  
+**Please Note** this is just one part of the fix and is only in Promtail, the second part for Loki can be tracked [in PR1247](https://github.com/grafana/loki/pull/1247) which didn't quite make the cut for 1.1.0 and will be in 1.2.0:
+
+    [1254](https://github.com/grafana/loki/pull/1254) **pstibrany**: pkg/promtail/client: Handle fingerprint hash collisions
+
+* Thank you @putrasattvika for finding and fixing an important bug where logs were some logs were missed in a query shortly after a flush!
+
+    [1299](https://github.com/grafana/loki/pull/1299) **putrasattvika**: storage: fix missing logs with batched chunk iterator
+
+* Thank you @danieldabate for helping to again improve our API to be more Prometheus compatible:
+
+    [1355](https://github.com/grafana/loki/pull/1355) **danieldabate**: HTTP API: Support duration and float formats for step parameter
+
+* LogQL will support duration formats that are not typically handled by Go like [1d] or [1w]
+
+    [1357](https://github.com/grafana/loki/pull/1357) **cyriltovena**: Supports same duration format in LogQL as Prometheus
+
+
+## Everything Else
+
+:heart: All PR's are important to us, thanks everyone for continuing to help support and improve Loki! :heart:
+
+* [1349](https://github.com/grafana/loki/pull/1349) **Eraac**: documentation: using parsable value in example
+* [1343](https://github.com/grafana/loki/pull/1343) **dgzlopes**: doc(configuration): Fix duration format.
+* [1342](https://github.com/grafana/loki/pull/1342) **whothey**: Makefile: add debug symbols to loki and promtail debug builds
+* [1341](https://github.com/grafana/loki/pull/1341) **adamjohnson01**: Update loki helm chart to support service account annotations
+* [1340](https://github.com/grafana/loki/pull/1340) **adamjohnson01**: Pull in cortex changes to support IAM roles for EKS
+* [1339](https://github.com/grafana/loki/pull/1339) **cyriltovena**: Update gem version.
+* [1333](https://github.com/grafana/loki/pull/1333) **daixiang0**: fix broken link
+* [1328](https://github.com/grafana/loki/pull/1328) **cyriltovena**: Fixes linter warning from the yacc file.
+* [1326](https://github.com/grafana/loki/pull/1326) **dawidmalina**: Wrong api endpoint in fluent-plugin-grafana-loki
+* [1320](https://github.com/grafana/loki/pull/1320) **roidelapluie**: Metrics: use Namespace everywhere when declaring metrics
+* [1318](https://github.com/grafana/loki/pull/1318) **roidelapluie**: Use tenant as label name for discarded_samples metrics
+* [1317](https://github.com/grafana/loki/pull/1317) **roidelapluie**: Expose discarded bytes metric
+* [1316](https://github.com/grafana/loki/pull/1316) **slim-bean**: Removing old file needed for dep (no longer needed)
+* [1312](https://github.com/grafana/loki/pull/1312) **ekeih**: Docs: Add missing ) in LogQL example
+* [1311](https://github.com/grafana/loki/pull/1311) **pstibrany**: Include positions filename in the error when YAML unmarshal fails.
+* [1310](https://github.com/grafana/loki/pull/1310) **JensErat**: fluent-bit: sorted JSON and properly convert []byte to string
+* [1304](https://github.com/grafana/loki/pull/1304) **pstibrany**: promtail: write positions to new file first, move to target location afterwards
+* [1303](https://github.com/grafana/loki/pull/1303) **zhangjianweibj**: https://github.com/grafana/loki/issues/1302
+* [1298](https://github.com/grafana/loki/pull/1298) **rfratto**: pkg/promtail: remove journal target forced path
+* [1279](https://github.com/grafana/loki/pull/1279) **rfratto**: Fix loki_discarded_samples_total metric
+* [1278](https://github.com/grafana/loki/pull/1278) **rfratto**: docs: update limits_config to new structure from #948
+* [1276](https://github.com/grafana/loki/pull/1276) **roidelapluie**: Update fluentbit README.md based on my experience
+* [1274](https://github.com/grafana/loki/pull/1274) **sh0rez**: chore(ci): drone-cli
+* [1273](https://github.com/grafana/loki/pull/1273) **JensErat**: fluent-bit: tenant ID configuration
+* [1266](https://github.com/grafana/loki/pull/1266) **polar3130**: add description about tenant stage
+* [1262](https://github.com/grafana/loki/pull/1262) **Eraac**: documentation: iam requirement for autoscaling
+* [1261](https://github.com/grafana/loki/pull/1261) **rfratto**: Document systemd journal scraping
+* [1249](https://github.com/grafana/loki/pull/1249) **cyriltovena**: Move to jsoniter instead of default json package
+* [1223](https://github.com/grafana/loki/pull/1223) **jgehrcke**: authentication.md: replace "user" with "tenant"
+* [1204](https://github.com/grafana/loki/pull/1204) **allanhung**: fluent-bit-plugin: Auto add Kubernetes labels to Loki labels
+
+
+
 # 1.0.0 (2019-11-19)
 
 :tada: Nearly a year since Loki was announced at KubeCon in Seattle 2018 we are very excited to announce the 1.0.0 release of Loki! :tada:
