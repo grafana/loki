@@ -14,11 +14,17 @@ RUN apk add --no-cache curl && \
 FROM alpine:edge as docker
 RUN apk add --no-cache docker-cli
 
+# TODO this should be fixed to download and extract the specific release binary from github as we do for golangci and helm above
+# however we need a commit which hasn't been released yet: https://github.com/drone/drone-cli/commit/1fad337d74ca0ecf420993d9d2d7229a1c99f054
+# Read the comment below regarding GO111MODULE=on and why it is necessary
+FROM golang:1.13.4 as drone
+RUN GO111MODULE=on go get github.com/drone/drone-cli/drone@1fad337d74ca0ecf420993d9d2d7229a1c99f054
+
 FROM golang:1.13.4-stretch
 RUN apt-get update && \
     apt-get install -qy \
       musl \
-      file unzip jq gettext\
+      file zip unzip jq gettext\
       protobuf-compiler libprotobuf-dev \
       libsystemd-dev && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
@@ -26,10 +32,14 @@ RUN apt-get update && \
 COPY --from=docker /usr/bin/docker /usr/bin/docker
 COPY --from=helm /usr/bin/helm /usr/bin/helm
 COPY --from=golangci /bin/golangci-lint /usr/local/bin
+COPY --from=drone /go/bin/drone /usr/bin/drone
 
-# Enable go 1.11 modules to be able to install pinned version of dependencies
-# even if we're installing them in the GOPATH
-RUN go get \
+# Install some necessary dependencies.
+# Forcing GO111MODULE=on is required to specify dependencies at specific versions using the go mod notation.
+# If we don't force this, Go is going to default to GOPATH mode as we do not have an active project or go.mod
+# file for it to detect and switch to Go Modules automatically.
+# It's possible this can be revisited in newer versions of Go if the behavior around GOPATH vs GO111MODULES changes
+RUN GO111MODULE=on go get \
     github.com/golang/protobuf/protoc-gen-go@v1.3.0 \
     github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0 \
     github.com/gogo/protobuf/gogoproto@v1.3.0 \
