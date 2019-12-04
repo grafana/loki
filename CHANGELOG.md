@@ -35,7 +35,7 @@ New result:
 
 **ALSO IMPORTANT**
 
-* [1160](https://github.com/grafana/loki/pull/1160) **daixiang0**: replace zip with gzip
+* [1160](https://github.com/grafana/loki/pull/1160) **daixiang0**: replace gzip with zip
 
 Binaries will now be zipped instead of gzipped as many people voiced their opinion that zip is likely to be installed on more systems by default.
 
@@ -48,7 +48,7 @@ Binaries will now be zipped instead of gzipped as many people voiced their opini
     [1095](https://github.com/grafana/loki/pull/1095) **pstibrany**: Makefile changes to allow easy builds with or without vendoring. Also fixes version bug for both cases.
 
 * The hashing algorithm used to calculate the hash for a stream was creating hash collisions in some instances.  
-**Please Note** this is just one part of the fix and is only in Promtail, the second part for Loki can be tracked [here](https://github.com/grafana/loki/pull/1247) which didn't quite make the cut for 1.1.0 and will be in 1.2.0:
+**Please Note** this is just one part of the fix and is only in Promtail, the second part for Loki can be tracked [in PR1247](https://github.com/grafana/loki/pull/1247) which didn't quite make the cut for 1.1.0 and will be in 1.2.0:
 
     [1254](https://github.com/grafana/loki/pull/1254) **pstibrany**: pkg/promtail/client: Handle fingerprint hash collisions
 
