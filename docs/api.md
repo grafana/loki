@@ -8,7 +8,7 @@ The HTTP API includes the following endpoints:
 
 - [`GET /loki/api/v1/query`](#get-lokiapiv1query)
 - [`GET /loki/api/v1/query_range`](#get-lokiapiv1query_range)
-- [`GET /loki/api/v1/label`](#get-lokiapiv1label)
+- [`GET /loki/api/v1/labels`](#get-lokiapiv1labels)
 - [`GET /loki/api/v1/label/<name>/values`](#get-lokiapiv1labelnamevalues)
 - [`GET /loki/api/v1/tail`](#get-lokiapiv1tail)
 - [`POST /loki/api/v1/push`](#post-lokiapiv1push)
@@ -35,7 +35,7 @@ These endpoints are exposed by just the querier:
 
 - [`GET /loki/api/v1/query`](#get-lokiapiv1query)
 - [`GET /loki/api/v1/query_range`](#get-lokiapiv1query_range)
-- [`GET /loki/api/v1/label`](#get-lokiapiv1label)
+- [`GET /loki/api/v1/labels`](#get-lokiapiv1labels)
 - [`GET /loki/api/v1/label/<name>/values`](#get-lokiapiv1labelnamevalues)
 - [`GET /loki/api/v1/tail`](#get-lokiapiv1tail)
 - [`GET /api/prom/tail`](#get-lokiapipromtail)
@@ -338,15 +338,15 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
 }
 ```
 
-## `GET /loki/api/v1/label`
+## `GET /loki/api/v1/labels`
 
-`/loki/api/v1/label` retrieves the list of known labels within a given time span. It
+`/loki/api/v1/labels` retrieves the list of known labels within a given time span. It
 accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
 
-In microservices mode, `/loki/api/v1/label` is exposed by the querier.
+In microservices mode, `/loki/api/v1/labels` is exposed by the querier.
 
 Response:
 
@@ -363,7 +363,7 @@ Response:
 ### Examples
 
 ```bash
-$ curl -G -s  "http://localhost:3100/loki/api/v1/label" | jq
+$ curl -G -s  "http://localhost:3100/loki/api/v1/labels" | jq
 {
   "status": "success",
   "data": [

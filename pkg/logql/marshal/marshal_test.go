@@ -197,7 +197,7 @@ var queryTests = []struct {
 	},
 }
 
-// covers responses from /loki/api/v1/label and /loki/api/v1/label/{name}/values
+// covers responses from /loki/api/v1/labels and /loki/api/v1/label/{name}/values
 var labelTests = []struct {
 	actual   logproto.LabelResponse
 	expected string
