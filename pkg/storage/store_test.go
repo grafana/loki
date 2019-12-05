@@ -139,6 +139,12 @@ func printHeap(b *testing.B, show bool) {
 }
 
 func getLocalStore() Store {
+	limits, err := validation.NewOverrides(validation.Limits{
+		MaxQueryLength: 6000 * time.Hour,
+	})
+	if err != nil {
+		panic(err)
+	}
 	store, err := NewStore(Config{
 		Config: storage.Config{
 			BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
@@ -158,7 +164,7 @@ func getLocalStore() Store {
 				},
 			},
 		},
-	}, &validation.Overrides{})
+	}, limits)
 	if err != nil {
 		panic(err)
 	}
