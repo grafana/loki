@@ -71,11 +71,12 @@ func TestNewDocker(t *testing.T) {
 			}
 			lbs := toLabelSet(tt.labels)
 			extr := map[string]interface{}{}
-			p.Process(lbs, extr, &tt.t, &tt.entry)
+			result := &resultChain{}
+			p.Process(lbs, extr, tt.t, tt.entry, result)
 
-			assertLabels(t, tt.expectedLabels, lbs)
-			assert.Equal(t, tt.expectedEntry, tt.entry, "did not receive expected log entry")
-			if tt.t.Unix() != tt.expectedT.Unix() {
+			assertLabels(t, tt.expectedLabels, result.labels)
+			assert.Equal(t, tt.expectedEntry, result.entry, "did not receive expected log entry")
+			if result.time.Unix() != tt.expectedT.Unix() {
 				t.Fatalf("mismatch ts want: %s got:%s", tt.expectedT, tt.t)
 			}
 		})
@@ -147,11 +148,12 @@ func TestNewCri(t *testing.T) {
 			}
 			lbs := toLabelSet(tt.labels)
 			extr := map[string]interface{}{}
-			p.Process(lbs, extr, &tt.t, &tt.entry)
+			result := &resultChain{}
+			p.Process(lbs, extr, tt.t, tt.entry, result)
 
-			assertLabels(t, tt.expectedLabels, lbs)
-			assert.Equal(t, tt.expectedEntry, tt.entry, "did not receive expected log entry")
-			if tt.t.Unix() != tt.expectedT.Unix() {
+			assertLabels(t, tt.expectedLabels, result.labels)
+			assert.Equal(t, tt.expectedEntry, result.entry, "did not receive expected log entry")
+			if result.time.Unix() != tt.expectedT.Unix() {
 				t.Fatalf("mismatch ts want: %s got:%s", tt.expectedT, tt.t)
 			}
 		})

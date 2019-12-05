@@ -68,7 +68,7 @@ func validateMatcherConfig(cfg *MatcherConfig) (logql.LogSelectorExpr, error) {
 }
 
 // newMatcherStage creates a new matcherStage from config
-func newMatcherStage(logger log.Logger, jobName *string, config interface{}, registerer prometheus.Registerer) (Stage, error) {
+func newMatcherStage(logger log.Logger, jobName *string, config interface{}, registerer prometheus.Registerer) (*matcherStage, error) {
 	cfg := &MatcherConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -116,19 +116,22 @@ type matcherStage struct {
 }
 
 // Process implements Stage
-func (m *matcherStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+func (m *matcherStage) Process(labels model.LabelSet, extracted map[string]interface{}, time time.Time, entry string, chain StageChain) {
 	for _, filter := range m.matchers {
 		if !filter.Matches(string(labels[model.LabelName(filter.Name)])) {
+			chain.NextStage(labels, extracted, time, entry)
 			return
 		}
 	}
-	if m.filter == nil || m.filter([]byte(*entry)) {
+	if m.filter == nil || m.filter([]byte(entry)) {
 		switch m.action {
 		case MatchActionDrop:
 			// Adds the drop label to not be sent by the api.EntryHandler
 			labels[dropLabel] = ""
+			chain.NextStage(labels, extracted, time, entry)
 		case MatchActionKeep:
-			m.pipeline.Process(labels, extracted, t, entry)
+			// run all stages in the pipeline, and then continue with our original chain afterwards
+			m.pipeline.Process(labels, extracted, time, entry, matcherChain{chain: chain})
 		}
 	}
 }
@@ -136,4 +139,12 @@ func (m *matcherStage) Process(labels model.LabelSet, extracted map[string]inter
 // Name implements Stage
 func (m *matcherStage) Name() string {
 	return StageTypeMatch
+}
+
+type matcherChain struct {
+	chain StageChain
+}
+
+func (mc matcherChain) NextStage(labels model.LabelSet, extracted map[string]interface{}, time time.Time, entry string) {
+	mc.chain.NextStage(labels, extracted, time, entry)
 }

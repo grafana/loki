@@ -179,11 +179,12 @@ func TestPipeline_Process(t *testing.T) {
 			require.NoError(t, err)
 
 			extracted := map[string]interface{}{}
-			p.Process(tt.initialLabels, extracted, &tt.t, &tt.entry)
+			result := &resultChain{}
+			p.Process(tt.initialLabels, extracted, tt.t, tt.entry, result)
 
-			assert.Equal(t, tt.expectedLabels, tt.initialLabels, "did not get expected labels")
-			assert.Equal(t, tt.expectedEntry, tt.entry, "did not receive expected log entry")
-			if tt.t.Unix() != tt.expectedT.Unix() {
+			assert.Equal(t, tt.expectedLabels, result.labels, "did not get expected labels")
+			assert.Equal(t, tt.expectedEntry, result.entry, "did not receive expected log entry")
+			if result.time.Unix() != tt.expectedT.Unix() {
 				t.Fatalf("mismatch ts want: %s got:%s", tt.expectedT, tt.t)
 			}
 		})
@@ -225,9 +226,9 @@ func BenchmarkPipeline(b *testing.B) {
 			lb := model.LabelSet{}
 			ts := time.Now()
 			for i := 0; i < b.N; i++ {
-				entry := bm.entry
 				extracted := map[string]interface{}{}
-				pl.Process(lb, extracted, &ts, &entry)
+
+				pl.Process(lb, extracted, ts, bm.entry, &resultChain{})
 			}
 		})
 	}
@@ -243,7 +244,6 @@ func (s *stubHandler) Handle(labels model.LabelSet, time time.Time, entry string
 }
 
 func TestPipeline_Wrap(t *testing.T) {
-	now := time.Now()
 	var config map[string]interface{}
 	err := yaml.Unmarshal([]byte(testMultiStageYaml), &config)
 	if err != nil {
@@ -282,10 +282,10 @@ func TestPipeline_Wrap(t *testing.T) {
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
 			extracted := map[string]interface{}{}
-			p.Process(tt.labels, extracted, &now, &rawTestLine)
+			p.Process(tt.labels, extracted, time.Now(), rawTestLine, &resultChain{})
 			stub := &stubHandler{}
 			handler := p.Wrap(stub)
-			if err := handler.Handle(tt.labels, now, rawTestLine); err != nil {
+			if err := handler.Handle(tt.labels, time.Now(), rawTestLine); err != nil {
 				t.Fatalf("failed to handle entry: %v", err)
 			}
 			assert.Equal(t, stub.bool, tt.shouldSend)

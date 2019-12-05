@@ -91,8 +91,9 @@ func TestPipeline_JSON(t *testing.T) {
 			ts := time.Now()
 			entry := testData.entry
 			extracted := map[string]interface{}{}
-			pl.Process(lbls, extracted, &ts, &entry)
-			assert.Equal(t, testData.expectedExtract, extracted)
+			result := &resultChain{}
+			pl.Process(lbls, extracted, ts, entry, result)
+			assert.Equal(t, testData.expectedExtract, result.extracted)
 		})
 	}
 }
@@ -351,10 +352,10 @@ func TestJSONParser_Parse(t *testing.T) {
 			}
 			lbs := model.LabelSet{}
 			extr := tt.extracted
-			ts := time.Now()
-			p.Process(lbs, extr, &ts, &tt.entry)
+			result := &resultChain{}
+			p.Process(lbs, extr, time.Now(), tt.entry, result)
 
-			assert.Equal(t, tt.expectedExtract, extr)
+			assert.Equal(t, tt.expectedExtract, result.extracted)
 		})
 	}
 }

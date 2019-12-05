@@ -57,8 +57,9 @@ type outputStage struct {
 }
 
 // Process implements Stage
-func (o *outputStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+func (o *outputStage) Process(labels model.LabelSet, extracted map[string]interface{}, time time.Time, entry string, chain StageChain) {
 	if o.cfgs == nil {
+		chain.NextStage(labels, extracted, time, entry)
 		return
 	}
 	if v, ok := extracted[o.cfgs.Source]; ok {
@@ -69,12 +70,14 @@ func (o *outputStage) Process(labels model.LabelSet, extracted map[string]interf
 			}
 			return
 		}
-		*entry = s
+		entry = s
 	} else {
 		if Debug {
 			level.Debug(o.logger).Log("msg", "extracted data did not contain output source")
 		}
 	}
+
+	chain.NextStage(labels, extracted, time, entry)
 }
 
 // Name implements Stage

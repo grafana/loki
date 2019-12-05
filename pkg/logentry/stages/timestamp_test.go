@@ -40,11 +40,10 @@ func TestTimestampPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	lbls := model.LabelSet{}
-	ts := time.Now()
-	entry := testTimestampLogLine
 	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	assert.Equal(t, time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", -4*60*60)).Unix(), ts.Unix())
+	result := &resultChain{}
+	pl.Process(lbls, extracted, time.Now(), testTimestampLogLine, result)
+	assert.Equal(t, time.Date(2012, 11, 01, 22, 8, 41, 0, time.FixedZone("", -4*60*60)).Unix(), result.time.Unix())
 }
 
 var (
@@ -235,10 +234,10 @@ func TestTimestampStage_Process(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			ts := time.Now()
 			lbls := model.LabelSet{}
-			st.Process(lbls, test.extracted, &ts, nil)
-			assert.Equal(t, test.expected.UnixNano(), ts.UnixNano())
+			result := &resultChain{}
+			st.Process(lbls, test.extracted, time.Now(), "", result)
+			assert.Equal(t, test.expected.UnixNano(), result.time.UnixNano())
 		})
 	}
 }
@@ -378,12 +377,10 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 			require.NoError(t, err)
 
 			for i, inputEntry := range testData.inputEntries {
-				extracted := inputEntry.extracted
-				timestamp := inputEntry.timestamp
-				entry := ""
+				result := &resultChain{}
 
-				s.Process(inputEntry.labels, extracted, &timestamp, &entry)
-				assert.Equal(t, testData.expectedTimestamps[i], timestamp, "entry: %d", i)
+				s.Process(inputEntry.labels, inputEntry.extracted, inputEntry.timestamp, "", result)
+				assert.Equal(t, testData.expectedTimestamps[i], result.time, "entry: %d", i)
 			}
 		})
 	}

@@ -48,17 +48,15 @@ func TestPipeline_Template(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lbls := model.LabelSet{}
 	expectedLbls := model.LabelSet{
 		"app":   "LOKI doki",
 		"level": "OK",
 		"type":  "TEST",
 	}
-	ts := time.Now()
-	entry := testTemplateLogLine
-	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	assert.Equal(t, expectedLbls, lbls)
+
+	result := &resultChain{}
+	pl.Process(model.LabelSet{}, map[string]interface{}{}, time.Now(), testTemplateLogLine, result)
+	assert.Equal(t, expectedLbls, result.labels)
 }
 
 func TestTemplateValidation(t *testing.T) {
@@ -197,9 +195,9 @@ func TestTemplateStage_Process(t *testing.T) {
 				t.Fatal(err)
 			}
 			lbls := model.LabelSet{}
-			entry := "not important for this test"
-			st.Process(lbls, test.extracted, nil, &entry)
-			assert.Equal(t, test.expectedExtracted, test.extracted)
+			result := &resultChain{}
+			st.Process(lbls, test.extracted, time.Now(), "not important for this test", result)
+			assert.Equal(t, test.expectedExtracted, result.extracted)
 		})
 	}
 }

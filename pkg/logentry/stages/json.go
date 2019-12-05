@@ -92,7 +92,9 @@ func parseJSONConfig(config interface{}) (*JSONConfig, error) {
 }
 
 // Process implements Stage
-func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interface{}, time time.Time, entry string, chain StageChain) {
+	defer chain.NextStage(labels, extracted, time, entry) // we can use defer, as we don't update time or entry
+
 	// If a source key is provided, the json stage should process it
 	// from the exctracted map, otherwise should fallback to the entry
 	input := entry
@@ -113,19 +115,12 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 			return
 		}
 
-		input = &value
-	}
-
-	if input == nil {
-		if Debug {
-			level.Debug(j.logger).Log("msg", "cannot parse a nil entry")
-		}
-		return
+		input = value
 	}
 
 	var data map[string]interface{}
 
-	if err := json.Unmarshal([]byte(*input), &data); err != nil {
+	if err := json.Unmarshal([]byte(input), &data); err != nil {
 		if Debug {
 			level.Debug(j.logger).Log("msg", "failed to unmarshal log line", "err", err)
 		}

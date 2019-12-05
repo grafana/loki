@@ -128,28 +128,32 @@ func (ts *timestampStage) Name() string {
 }
 
 // Process implements Stage
-func (ts *timestampStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+func (ts *timestampStage) Process(labels model.LabelSet, extracted map[string]interface{}, time time.Time, entry string, chain StageChain) {
 	if ts.cfg == nil {
+		chain.NextStage(labels, extracted, time, entry)
 		return
 	}
 
 	parsedTs, err := ts.parseTimestampFromSource(extracted)
 	if err != nil {
-		ts.processActionOnFailure(labels, t)
+		time = ts.processActionOnFailure(labels, time)
+		chain.NextStage(labels, extracted, time, entry)
 		return
 	}
 
 	// Update the log entry timestamp with the parsed one
-	*t = *parsedTs
+	time = parsedTs
 
 	// The timestamp has been correctly parsed, so we should store it in the map
 	// containing the last known timestamp used by the "fudge" action on failure.
 	if *ts.cfg.ActionOnFailure == TimestampActionOnFailureFudge {
-		ts.lastKnownTimestamps.Add(labels.String(), *t)
+		ts.lastKnownTimestamps.Add(labels.String(), time)
 	}
+
+	chain.NextStage(labels, extracted, time, entry)
 }
 
-func (ts *timestampStage) parseTimestampFromSource(extracted map[string]interface{}) (*time.Time, error) {
+func (ts *timestampStage) parseTimestampFromSource(extracted map[string]interface{}) (time.Time, error) {
 	// Ensure the extracted data contains the timestamp source
 	v, ok := extracted[ts.cfg.Source]
 	if !ok {
@@ -157,7 +161,7 @@ func (ts *timestampStage) parseTimestampFromSource(extracted map[string]interfac
 			level.Debug(ts.logger).Log("msg", ErrTimestampSourceMissing)
 		}
 
-		return nil, errors.New(ErrTimestampSourceMissing)
+		return time.Time{}, errors.New(ErrTimestampSourceMissing)
 	}
 
 	// Convert the timestamp source to string (if it's not a string yet)
@@ -167,7 +171,7 @@ func (ts *timestampStage) parseTimestampFromSource(extracted map[string]interfac
 			level.Debug(ts.logger).Log("msg", ErrTimestampConversionFailed, "err", err, "type", reflect.TypeOf(v).String())
 		}
 
-		return nil, errors.New(ErrTimestampConversionFailed)
+		return time.Time{}, errors.New(ErrTimestampConversionFailed)
 	}
 
 	// Parse the timestamp source according to the configured format
@@ -177,34 +181,36 @@ func (ts *timestampStage) parseTimestampFromSource(extracted map[string]interfac
 			level.Debug(ts.logger).Log("msg", ErrTimestampParsingFailed, "err", err, "format", ts.cfg.Format, "value", s)
 		}
 
-		return nil, errors.New(ErrTimestampParsingFailed)
+		return time.Time{}, errors.New(ErrTimestampParsingFailed)
 	}
 
-	return &parsedTs, nil
+	return parsedTs, nil
 }
 
-func (ts *timestampStage) processActionOnFailure(labels model.LabelSet, t *time.Time) {
+func (ts *timestampStage) processActionOnFailure(labels model.LabelSet, t time.Time) time.Time {
 	switch *ts.cfg.ActionOnFailure {
 	case TimestampActionOnFailureFudge:
-		ts.processActionOnFailureFudge(labels, t)
+		return ts.processActionOnFailureFudge(labels, t)
 	case TimestampActionOnFailureSkip:
 		// Nothing to do
 	}
+	return t
 }
 
-func (ts *timestampStage) processActionOnFailureFudge(labels model.LabelSet, t *time.Time) {
+func (ts *timestampStage) processActionOnFailureFudge(labels model.LabelSet, t time.Time) time.Time {
 	labelsStr := labels.String()
 	lastTimestamp, ok := ts.lastKnownTimestamps.Get(labelsStr)
 
 	// If the last known timestamp is unknown (ie. has not been successfully parsed yet)
 	// there's nothing we can do, so we're going to keep the current timestamp
 	if !ok {
-		return
+		return t
 	}
 
 	// Fudge the timestamp
-	*t = lastTimestamp.(time.Time).Add(1 * time.Nanosecond)
+	t = lastTimestamp.(time.Time).Add(1 * time.Nanosecond)
 
 	// Store the fudged timestamp, so that a subsequent fudged timestamp will be 1ns after it
-	ts.lastKnownTimestamps.Add(labelsStr, *t)
+	ts.lastKnownTimestamps.Add(labelsStr, t)
+	return t
 }

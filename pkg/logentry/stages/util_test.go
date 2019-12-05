@@ -39,6 +39,20 @@ func assertLabels(t *testing.T, expect map[string]string, got model.LabelSet) {
 	}
 }
 
+type resultChain struct {
+	labels    model.LabelSet
+	extracted map[string]interface{}
+	time      time.Time
+	entry     string
+}
+
+func (rc *resultChain) NextStage(labels model.LabelSet, extracted map[string]interface{}, time time.Time, entry string) {
+	rc.labels = labels
+	rc.extracted = extracted
+	rc.time = time
+	rc.entry = entry
+}
+
 // Verify the formatting of float conversion to make sure there are not any trailing zeros,
 // and also make sure unix timestamps are converted properly
 func TestGetString(t *testing.T) {

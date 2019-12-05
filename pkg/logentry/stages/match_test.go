@@ -65,18 +65,18 @@ func TestMatchPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	lbls := model.LabelSet{}
-	ts := time.Now()
+
 	// Process the first log line which should extract the output from the `message` field
-	entry := testMatchLogLineApp1
 	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	assert.Equal(t, "app1 log line", entry)
+	result := &resultChain{}
+	pl.Process(lbls, extracted, time.Now(), testMatchLogLineApp1, result)
+	assert.Equal(t, "app1 log line", result.entry)
 
 	// Process the second log line which should extract the output from the `msg` field
-	entry = testMatchLogLineApp2
 	extracted = map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	assert.Equal(t, "app2 log line", entry)
+	result = &resultChain{}
+	pl.Process(lbls, extracted, time.Now(), testMatchLogLineApp2, result)
+	assert.Equal(t, "app2 log line", result.entry)
 
 	got, err := registry.Gather()
 	if err != nil {
@@ -170,21 +170,21 @@ func TestMatcher(t *testing.T) {
 				return
 			}
 			if s != nil {
-				ts, entry := time.Now(), "foo"
 				extracted := map[string]interface{}{
 					"test_label": "unimportant value",
 				}
 				labels := toLabelSet(tt.labels)
-				s.Process(labels, extracted, &ts, &entry)
+				result := &resultChain{}
+				s.Process(labels, extracted, time.Now(), "foo", result)
 
 				// test_label should only be in the label set if the stage ran
-				if _, ok := labels["test_label"]; ok {
+				if _, ok := result.labels["test_label"]; ok {
 					if !tt.shouldRun {
 						t.Error("stage ran but should have not")
 					}
 				}
 				if tt.shouldDrop {
-					if _, ok := labels[dropLabel]; !ok {
+					if _, ok := result.labels[dropLabel]; !ok {
 						t.Error("stage should have been dropped")
 					}
 				}

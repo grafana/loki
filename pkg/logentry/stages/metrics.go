@@ -115,7 +115,7 @@ type metricStage struct {
 }
 
 // Process implements Stage
-func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interface{}, time time.Time, entry string, chain StageChain) {
 	for name, collector := range m.metrics {
 		if v, ok := extracted[*m.cfg[name].Source]; ok {
 			switch vec := collector.(type) {
@@ -128,6 +128,8 @@ func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interf
 			}
 		}
 	}
+
+	chain.NextStage(labels, extracted, time, entry)
 }
 
 // Name implements Stage

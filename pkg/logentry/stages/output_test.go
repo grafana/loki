@@ -37,11 +37,10 @@ func TestPipeline_Output(t *testing.T) {
 		t.Fatal(err)
 	}
 	lbls := model.LabelSet{}
-	ts := time.Now()
-	entry := testOutputLogLine
 	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	assert.Equal(t, "this is a log line", entry)
+	result := &resultChain{}
+	pl.Process(lbls, extracted, time.Now(), testOutputLogLine, result)
+	assert.Equal(t, "this is a log line", result.entry)
 }
 
 func TestOutputValidation(t *testing.T) {
@@ -103,9 +102,9 @@ func TestOutputStage_Process(t *testing.T) {
 				t.Fatal(err)
 			}
 			lbls := model.LabelSet{}
-			entry := "replaceme"
-			st.Process(lbls, test.extracted, nil, &entry)
-			assert.Equal(t, test.expectedOutput, entry)
+			result := &resultChain{}
+			st.Process(lbls, test.extracted, time.Now(), "replaceme", result)
+			assert.Equal(t, test.expectedOutput, result.entry)
 		})
 	}
 }

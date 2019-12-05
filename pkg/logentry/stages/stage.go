@@ -24,24 +24,29 @@ const (
 	StageTypeTenant    = "tenant"
 )
 
-// Stage takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
-// timestamp and log entry
+// StageChain is supplied to the Stage, and gives stage an option to continue with the next stage (if it so decides)
+type StageChain interface {
+	NextStage(labels model.LabelSet, extracted map[string]interface{}, time time.Time, entry string)
+}
+
+// Stage takes an existing set of labels, timestamp and log entry and a chain. It can modify these and pass
+// to the next stage in the chain by calling chain.NextStage method.
+// If stage doesn't call next stage, no further processing is done.
 type Stage interface {
-	Process(labels model.LabelSet, extracted map[string]interface{}, time *time.Time, entry *string)
+	Process(labels model.LabelSet, extracted map[string]interface{}, time time.Time, entry string, chain StageChain)
 	Name() string
 }
 
 // StageFunc is modelled on http.HandlerFunc.
-type StageFunc func(labels model.LabelSet, extracted map[string]interface{}, time *time.Time, entry *string)
+type StageFunc func(labels model.LabelSet, extracted map[string]interface{}, time time.Time, entry string, chain StageChain)
 
 // Process implements EntryHandler.
-func (s StageFunc) Process(labels model.LabelSet, extracted map[string]interface{}, time *time.Time, entry *string) {
-	s(labels, extracted, time, entry)
+func (s StageFunc) Process(labels model.LabelSet, extracted map[string]interface{}, time time.Time, entry string, chain StageChain) {
+	s(labels, extracted, time, entry, chain)
 }
 
 // New creates a new stage for the given type and configuration.
-func New(logger log.Logger, jobName *string, stageType string,
-	cfg interface{}, registerer prometheus.Registerer) (Stage, error) {
+func New(logger log.Logger, jobName *string, stageType string, cfg interface{}, registerer prometheus.Registerer) (Stage, error) {
 	var s Stage
 	var err error
 	switch stageType {

@@ -42,11 +42,10 @@ func TestLabelsPipeline_Labels(t *testing.T) {
 		"level": "WARN",
 		"app":   "loki",
 	}
-	ts := time.Now()
-	entry := testLabelsLogLine
 	extracted := map[string]interface{}{}
-	pl.Process(lbls, extracted, &ts, &entry)
-	assert.Equal(t, expectedLbls, lbls)
+	result := &resultChain{}
+	pl.Process(lbls, extracted, time.Now(), testLabelsLogLine, result)
+	assert.Equal(t, expectedLbls, result.labels)
 }
 
 var (
@@ -157,8 +156,11 @@ func TestLabelStage_Process(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			st.Process(test.inputLabels, test.extractedData, nil, nil)
-			assert.Equal(t, test.expectedLabels, test.inputLabels)
+
+			result := &resultChain{}
+
+			st.Process(test.inputLabels, test.extractedData, time.Now(), "", result)
+			assert.Equal(t, test.expectedLabels, result.labels)
 		})
 	}
 }

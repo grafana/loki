@@ -83,7 +83,9 @@ type templateStage struct {
 }
 
 // Process implements Stage
-func (o *templateStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+func (o *templateStage) Process(labels model.LabelSet, extracted map[string]interface{}, time time.Time, entry string, chain StageChain) {
+	defer chain.NextStage(labels, extracted, time, entry) // we can use defer, because this stage doesn't modify time or entry
+
 	if o.cfgs == nil {
 		return
 	}

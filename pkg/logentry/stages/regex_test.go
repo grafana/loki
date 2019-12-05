@@ -87,11 +87,10 @@ func TestPipeline_Regex(t *testing.T) {
 			}
 
 			lbls := model.LabelSet{}
-			ts := time.Now()
-			entry := testData.entry
 			extracted := map[string]interface{}{}
-			pl.Process(lbls, extracted, &ts, &entry)
-			assert.Equal(t, testData.expectedExtract, extracted)
+			result := &resultChain{}
+			pl.Process(lbls, extracted, time.Now(), testData.entry, result)
+			assert.Equal(t, testData.expectedExtract, result.extracted)
 		})
 	}
 }
@@ -294,10 +293,9 @@ func TestRegexParser_Parse(t *testing.T) {
 				t.Fatalf("failed to create regex parser: %s", err)
 			}
 			lbs := model.LabelSet{}
-			extr := tt.extracted
-			ts := time.Now()
-			p.Process(lbs, extr, &ts, &tt.entry)
-			assert.Equal(t, tt.expectedExtract, extr)
+			result := &resultChain{}
+			p.Process(lbs, tt.extracted, time.Now(), tt.entry, result)
+			assert.Equal(t, tt.expectedExtract, result.extracted)
 
 		})
 	}
@@ -339,8 +337,7 @@ func BenchmarkRegexStage(b *testing.B) {
 			ts := time.Now()
 			extr := map[string]interface{}{}
 			for i := 0; i < b.N; i++ {
-				entry := bm.entry
-				stage.Process(labels, extr, &ts, &entry)
+				stage.Process(labels, extr, ts, bm.entry, &resultChain{})
 			}
 		})
 	}

@@ -84,12 +84,9 @@ func TestMetricsPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	lbls := model.LabelSet{}
-	ts := time.Now()
 	extracted := map[string]interface{}{}
-	entry := testMetricLogLine1
-	pl.Process(lbls, extracted, &ts, &entry)
-	entry = testMetricLogLine2
-	pl.Process(lbls, extracted, &ts, &entry)
+	pl.Process(lbls, extracted, time.Now(), testMetricLogLine1, &resultChain{})
+	pl.Process(lbls, extracted, time.Now(), testMetricLogLine2, &resultChain{})
 
 	if err := testutil.GatherAndCompare(registry,
 		strings.NewReader(expectedMetrics)); err != nil {
@@ -244,14 +241,14 @@ func TestMetricStage_Process(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create stage with metrics: %v", err)
 	}
-	var ts = time.Now()
-	var entry = logFixture
+
 	extr := map[string]interface{}{}
-	jsonStage.Process(labelFoo, extr, &ts, &entry)
-	regexStage.Process(labelFoo, extr, &ts, &regexLogFixture)
-	metricStage.Process(labelFoo, extr, &ts, &entry)
+
+	jsonStage.Process(labelFoo, extr, time.Now(), logFixture, &resultChain{})
+	regexStage.Process(labelFoo, extr, time.Now(), regexLogFixture, &resultChain{})
+	metricStage.Process(labelFoo, extr, time.Now(), logFixture, &resultChain{})
 	// Process the same extracted values again with different labels so we can verify proper metric/label assignments
-	metricStage.Process(labelFu, extr, &ts, &entry)
+	metricStage.Process(labelFu, extr, time.Now(), logFixture, &resultChain{})
 
 	names := metricNames(metricsConfig)
 	if err := testutil.GatherAndCompare(registry,

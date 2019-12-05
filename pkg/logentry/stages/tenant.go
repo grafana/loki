@@ -60,7 +60,7 @@ func newTenantStage(logger log.Logger, configs interface{}) (*tenantStage, error
 }
 
 // Process implements Stage
-func (s *tenantStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+func (s *tenantStage) Process(labels model.LabelSet, extracted map[string]interface{}, time time.Time, entry string, chain StageChain) {
 	var tenantID string
 
 	// Get tenant ID from source or configured value
@@ -71,11 +71,11 @@ func (s *tenantStage) Process(labels model.LabelSet, extracted map[string]interf
 	}
 
 	// Skip an empty tenant ID (ie. failed to get the tenant from the source)
-	if tenantID == "" {
-		return
+	if tenantID != "" {
+		labels[client.ReservedLabelTenantID] = model.LabelValue(tenantID)
 	}
 
-	labels[client.ReservedLabelTenantID] = model.LabelValue(tenantID)
+	chain.NextStage(labels, extracted, time, entry)
 }
 
 // Name implements Stage
