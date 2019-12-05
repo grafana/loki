@@ -352,7 +352,7 @@ func TestJSONParser_Parse(t *testing.T) {
 			lbs := model.LabelSet{}
 			extr := tt.extracted
 			ts := time.Now()
-			p.Process(lbs, extr, &ts, &tt.entry)
+			RunSync(p, lbs, extr, &ts, &tt.entry)
 
 			assert.Equal(t, tt.expectedExtract, extr)
 		})

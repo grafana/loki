@@ -1,14 +1,12 @@
 package stages
 
 import (
-	"bytes"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 )
@@ -58,9 +56,8 @@ var testMatchLogLineApp2 = `
 `
 
 func TestMatchPipeline(t *testing.T) {
-	registry := prometheus.NewRegistry()
 	plName := "test_pipeline"
-	pl, err := NewPipeline(util.Logger, loadConfig(testMatchYaml), &plName, registry)
+	pl, err := NewPipeline(util.Logger, loadConfig(testMatchYaml), &plName, prometheus.DefaultRegisterer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,23 +74,6 @@ func TestMatchPipeline(t *testing.T) {
 	extracted = map[string]interface{}{}
 	pl.Process(lbls, extracted, &ts, &entry)
 	assert.Equal(t, "app2 log line", entry)
-
-	got, err := registry.Gather()
-	if err != nil {
-		t.Fatalf("gathering metrics failed: %s", err)
-	}
-	var gotBuf bytes.Buffer
-	enc := expfmt.NewEncoder(&gotBuf, expfmt.FmtText)
-	for _, mf := range got {
-		if err := enc.Encode(mf); err != nil {
-			t.Fatalf("encoding gathered metrics failed: %s", err)
-		}
-	}
-	gotStr := gotBuf.String()
-	// We should only get metrics from the main pipeline and the second match which defines the pipeline_name
-	assert.Contains(t, gotStr, "logentry_pipeline_duration_seconds_bucket{job_name=\"test_pipeline\"")
-	assert.Contains(t, gotStr, "logentry_pipeline_duration_seconds_bucket{job_name=\"test_pipeline_app2\"")
-	assert.NotContains(t, gotStr, "logentry_pipeline_duration_seconds_bucket{job_name=\"test_pipeline_app1\"")
 }
 
 func TestMatcher(t *testing.T) {

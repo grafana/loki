@@ -247,11 +247,12 @@ func TestMetricStage_Process(t *testing.T) {
 	var ts = time.Now()
 	var entry = logFixture
 	extr := map[string]interface{}{}
-	jsonStage.Process(labelFoo, extr, &ts, &entry)
-	regexStage.Process(labelFoo, extr, &ts, &regexLogFixture)
-	metricStage.Process(labelFoo, extr, &ts, &entry)
+
+	RunSync(jsonStage, labelFoo, extr, &ts, &entry)
+	RunSync(regexStage, labelFoo, extr, &ts, &regexLogFixture)
+	RunSync(metricStage, labelFoo, extr, &ts, &entry)
 	// Process the same extracted values again with different labels so we can verify proper metric/label assignments
-	metricStage.Process(labelFu, extr, &ts, &entry)
+	RunSync(metricStage, labelFu, extr, &ts, &entry)
 
 	names := metricNames(metricsConfig)
 	if err := testutil.GatherAndCompare(registry,
