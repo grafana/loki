@@ -86,17 +86,26 @@ module Fluent
           @remove_keys_accessors.push(record_accessor_create(key))
         end
 
-        if !@key.nil? && !@cert.nil?
-          @cert = OpenSSL::X509::Certificate.new(File.read(@cert)) if @cert
-          @key = OpenSSL::PKey.read(File.read(@key)) if @key
-
-          if !@key.is_a?(OpenSSL::PKey::RSA) && !@key.is_a?(OpenSSL::PKey::DSA)
-            raise "Unsupported private key type #{key.class}"
-          end
+        if ssl_cert?
+          load_ssl
+          validate_ssl_key
         end
 
-        if !@ca_cert.nil? && !File.exist?(@ca_cert)
-          raise "CA certificate file #{@ca_cert} not found"
+        raise "CA certificate file #{@ca_cert} not found" if !@ca_cert.nil? && !File.exist?(@ca_cert)
+      end
+
+      def ssl_cert?
+        !@key.nil? && !@cert.nil?
+      end
+
+      def load_ssl
+        @cert = OpenSSL::X509::Certificate.new(File.read(@cert)) if @cert
+        @key = OpenSSL::PKey.read(File.read(@key)) if @key
+      end
+
+      def validate_ssl_key
+        if !@key.is_a?(OpenSSL::PKey::RSA) && !@key.is_a?(OpenSSL::PKey::DSA)
+          raise "Unsupported private key type #{key.class}"
         end
       end
 
@@ -127,23 +136,8 @@ module Fluent
         req.add_field('X-Scope-OrgID', @tenant) if @tenant
         req.body = Yajl.dump(body)
         req.basic_auth(@username, @password) if @username
-        opts = {
-          use_ssl: uri.scheme == 'https'
-        }
 
-        if !@cert.nil? && !@key.nil?
-          opts = opts.merge(
-            verify_mode: OpenSSL::SSL::VERIFY_PEER,
-            cert: @cert,
-            key: @key
-          )
-        end
-
-        if !@ca_cert.nil?
-          opts = opts.merge(
-            ca_file: @ca_cert
-          )
-        end
+        opts = ssl_opts(uri)
 
         log.debug "sending #{req.body.length} bytes to loki"
         res = Net::HTTP.start(uri.hostname, uri.port, **opts) { |http| http.request(req) }
@@ -157,6 +151,27 @@ module Fluent
           log.warn Yajl.dump(body)
 
         end
+      end
+
+      def ssl_opts(uri)
+        opts = {
+          use_ssl: uri.scheme == 'https'
+        }
+
+        if !@cert.nil? && !@key.nil?
+          opts = opts.merge(
+            verify_mode: OpenSSL::SSL::VERIFY_PEER,
+            cert: @cert,
+            key: @key
+          )
+        end
+
+        unless @ca_cert.nil?
+          opts = opts.merge(
+            ca_file: @ca_cert
+          )
+        end
+        opts
       end
 
       def generic_to_loki(chunk)
@@ -174,17 +189,14 @@ module Fluent
         false
       end
 
-      def labels_to_protocol(data_labels)
-        formatted_labels = []
-
+      def format_labels(data_labels)
+        formatted_labels = {}
         # merge extra_labels with data_labels. If there are collisions extra_labels win.
         data_labels = {} if data_labels.nil?
         data_labels = data_labels.merge(@extra_labels)
-
-        data_labels.each do |k, v|
-          formatted_labels.push(%(#{k}="#{v.gsub('"', '\\"')}")) if v
-        end
-        '{' + formatted_labels.join(',') + '}'
+        # sanitize label values
+        data_labels.each { |k, v| formatted_labels[k] = v.gsub('"', '\\"') }
+        formatted_labels
       end
 
       def payload_builder(streams)
@@ -193,13 +205,17 @@ module Fluent
           # create a stream for each label set.
           # Additionally sort the entries by timestamp just in case we
           # got them out of order.
-          # 'labels' => '{worker="0"}',
+          entries = v.sort_by.with_index { |hsh, i| [hsh['ts'], i] }
           payload.push(
-            'labels' => labels_to_protocol(k),
-            'entries' => v.sort_by.with_index { |hsh, i| [Time.parse(hsh['ts']), i] }
+            'stream' => format_labels(k),
+            'values' => entries.map { |e| [e['ts'].to_s, e['line']] }
           )
         end
         payload
+      end
+
+      def to_nano(time)
+        time.to_i * (10**9) + time.nsec
       end
 
       def record_to_line(record)
@@ -272,7 +288,7 @@ module Fluent
           # NOTE: timestamp must include nanoseconds
           # append to matching chunk_labels key
           streams[chunk_labels].push(
-            'ts' => Time.at(time.to_f).gmtime.iso8601(6),
+            'ts' => to_nano(time),
             'line' => result[:line]
           )
         end
