@@ -1,7 +1,6 @@
 package stages
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -256,10 +255,6 @@ func BenchmarkPipeline_Concurrency(b *testing.B) {
 				panic(err)
 			}
 
-			ctx, quit := context.WithCancel(context.Background())
-			defer quit()
-			pl.Start(ctx)
-
 			var wg sync.WaitGroup
 
 			lines := make(chan string)
@@ -319,10 +314,6 @@ func TestPipeline_Wrap(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	p.Start(ctx)
 
 	tests := map[string]struct {
 		labels     model.LabelSet

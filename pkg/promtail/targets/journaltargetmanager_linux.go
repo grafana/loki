@@ -3,8 +3,6 @@
 package targets
 
 import (
-	"context"
-
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/logentry/stages"
@@ -18,7 +16,6 @@ import (
 type JournalTargetManager struct {
 	logger  log.Logger
 	targets map[string]*JournalTarget
-	quit    func()
 }
 
 // NewJournalTargetManager creates a new JournalTargetManager.
@@ -28,12 +25,9 @@ func NewJournalTargetManager(
 	client api.EntryHandler,
 	scrapeConfigs []scrape.Config,
 ) (*JournalTargetManager, error) {
-	ctx, quit := context.WithCancel(context.Background())
-
 	tm := &JournalTargetManager{
 		logger:  logger,
 		targets: make(map[string]*JournalTarget),
-		quit:    quit,
 	}
 
 	for _, cfg := range scrapeConfigs {
@@ -46,9 +40,6 @@ func NewJournalTargetManager(
 		if err != nil {
 			return nil, err
 		}
-
-		// Run the pipeline
-		pipeline.Start(ctx)
 
 		t, err := NewJournalTarget(
 			logger,
@@ -85,8 +76,6 @@ func (tm *JournalTargetManager) Stop() {
 			level.Error(t.logger).Log("msg", "error stopping JournalTarget", "err", err.Error())
 		}
 	}
-
-	tm.quit()
 }
 
 // ActiveTargets returns the list of JournalTargets where journal data

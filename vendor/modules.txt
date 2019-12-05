@@ -31,12 +31,6 @@ github.com/Azure/go-autorest/logger
 github.com/Azure/go-autorest/tracing
 # github.com/Microsoft/go-winio v0.4.12
 github.com/Microsoft/go-winio
-# github.com/alecthomas/assert v0.0.0-20170929043011-405dbfeb8e38
-github.com/alecthomas/assert
-# github.com/alecthomas/colour v0.1.0
-github.com/alecthomas/colour
-# github.com/alecthomas/repr v0.0.0-20181024024818-d37bc2a10ba1
-github.com/alecthomas/repr
 # github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 github.com/alecthomas/template
 github.com/alecthomas/template/parse
@@ -457,8 +451,6 @@ github.com/samuel/go-zookeeper/zk
 github.com/sean-/seed
 # github.com/sercand/kuberesolver v2.1.0+incompatible
 github.com/sercand/kuberesolver
-# github.com/sergi/go-diff v1.0.0
-github.com/sergi/go-diff/diffmatchpatch
 # github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 github.com/shurcooL/httpfs/filter
 github.com/shurcooL/httpfs/union

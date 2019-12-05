@@ -1,7 +1,6 @@
 package stages
 
 import (
-	"context"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -42,11 +41,10 @@ func (s StageFunc) Process(labels model.LabelSet, extracted map[string]interface
 
 func (s StageFunc) Name() string { return "function" }
 
-// AsyncStage is like Stage, but runs forever, or until the provided context is cancelled. Throughout
-// its execution, AsyncStage should read lines as input, modify them as needed, and pass through
-// zero or more output lines.
-type AsyncStage interface {
-	ProcessAsync(ctx context.Context, in <-chan StageData, out chan<- StageData)
+// ChainedStage is like Stage, but should call the next method as many times as desired for passing
+// through data.
+type ChainedStage interface {
+	ProcessChain(data StageData, next func(StageData))
 	Name() string
 }
 
@@ -67,10 +65,10 @@ type StageData struct {
 
 // New creates a new AsyncStage for the given type and configuration.
 func New(logger log.Logger, jobName *string, stageType string,
-	cfg interface{}, registerer prometheus.Registerer) (AsyncStage, error) {
+	cfg interface{}, registerer prometheus.Registerer) (ChainedStage, error) {
 	var (
 		s   Stage
-		as  AsyncStage
+		cs  ChainedStage
 		err error
 	)
 
@@ -134,54 +132,56 @@ func New(logger log.Logger, jobName *string, stageType string,
 		return nil, errors.Errorf("Unknown stage type: %s", stageType)
 	}
 
-	if as == nil && s != nil {
-		as = MakeAsync(s)
+	if cs == nil && s != nil {
+		cs = MakeChained(s)
 	}
-	return as, nil
+	return cs, nil
 }
 
-// MakeAsync takes a synchronous stage and converts it into an AsyncStage.
-func MakeAsync(s Stage) AsyncStage {
-	return &asyncWrapper{s}
+// MakeChained takes a synchronous stage and converts it into an ChainedStage.
+func MakeChained(s Stage) ChainedStage {
+	return &chainedWrapper{s}
 }
 
-type asyncWrapper struct{ s Stage }
+type chainedWrapper struct{ s Stage }
 
-func (w *asyncWrapper) ProcessAsync(ctx context.Context, in <-chan StageData, out chan<- StageData) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case data := <-in:
-			w.s.Process(data.Labels, data.Extracted, &data.Time, &data.Entry)
-			out <- data
-		}
-	}
+func (w *chainedWrapper) ProcessChain(data StageData, next func(StageData)) {
+	w.s.Process(data.Labels, data.Extracted, &data.Time, &data.Entry)
+	next(data)
 }
 
-func (w *asyncWrapper) Name() string {
+func (w *chainedWrapper) Name() string {
 	return w.s.Name()
 }
 
-func RunSync(s AsyncStage, labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+// FlattenStage creates a normal Stage from a Chain stage, allowing it to be executed by waiting for the
+// callback to be called.
+func FlattenStage(s ChainedStage) Stage {
+	return &unchainedWrapper{s}
+}
 
-	in := make(chan StageData)
-	out := make(chan StageData)
+type unchainedWrapper struct {
+	s ChainedStage
+}
 
+func (w *unchainedWrapper) Process(labels model.LabelSet, extracted map[string]interface{}, time *time.Time, entry *string) {
+	wait := make(chan bool)
 	go func() {
-		s.ProcessAsync(ctx, in, out)
+		in := StageData{
+			Labels:    labels,
+			Extracted: extracted,
+			Time:      *time,
+			Entry:     *entry,
+		}
+
+		w.s.ProcessChain(in, func(out StageData) {
+			*time = out.Time
+			*entry = out.Entry
+			close(wait)
+		})
 	}()
 
-	in <- StageData{
-		Labels:    labels,
-		Extracted: extracted,
-		Time:      *t,
-		Entry:     *entry,
-	}
-
-	data := <-out
-	*t = data.Time
-	*entry = data.Entry
+	<-wait
 }
+
+func (w *unchainedWrapper) Name() string { return w.s.Name() }
