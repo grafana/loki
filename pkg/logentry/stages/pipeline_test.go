@@ -225,10 +225,11 @@ func BenchmarkPipeline(b *testing.B) {
 			}
 			lb := model.LabelSet{}
 			ts := time.Now()
+			r := &resultChain{}
 			for i := 0; i < b.N; i++ {
 				extracted := map[string]interface{}{}
 
-				pl.Process(lb, extracted, ts, bm.entry, &resultChain{})
+				pl.Process(lb, extracted, ts, bm.entry, r)
 			}
 		})
 	}

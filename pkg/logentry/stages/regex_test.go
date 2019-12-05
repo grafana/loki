@@ -336,8 +336,9 @@ func BenchmarkRegexStage(b *testing.B) {
 			labels := model.LabelSet{}
 			ts := time.Now()
 			extr := map[string]interface{}{}
+			r := &resultChain{}
 			for i := 0; i < b.N; i++ {
-				stage.Process(labels, extr, ts, bm.entry, &resultChain{})
+				stage.Process(labels, extr, ts, bm.entry, r)
 			}
 		})
 	}

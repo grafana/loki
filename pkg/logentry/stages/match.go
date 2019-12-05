@@ -111,7 +111,7 @@ func newMatcherStage(logger log.Logger, jobName *string, config interface{}, reg
 type matcherStage struct {
 	matchers []*labels.Matcher
 	filter   logql.Filter
-	pipeline Stage
+	pipeline *Pipeline
 	action   string
 }
 

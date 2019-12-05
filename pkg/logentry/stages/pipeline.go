@@ -77,6 +77,7 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, regist
 }
 
 // Process implements Stage allowing a pipeline stage to also be an entire pipeline
+// All pipeline stages are processed first before running chain.NextStage.
 func (p *Pipeline) Process(labels model.LabelSet, extracted map[string]interface{}, ts time.Time, entry string, chain StageChain) {
 	// Initialize the extracted map with the initial labels (ie. "filename"),
 	// so that stages can operate on initial labels too
@@ -84,7 +85,7 @@ func (p *Pipeline) Process(labels model.LabelSet, extracted map[string]interface
 		extracted[string(labelName)] = string(labelValue)
 	}
 
-	pc := pipelineChain{
+	pc := &pipelineChain{
 		pipeline:  p,
 		nextStage: 0,
 		chain:     chain,
@@ -128,27 +129,26 @@ type pipelineChain struct {
 	startTime time.Time
 }
 
-func (pc pipelineChain) NextStage(labels model.LabelSet, extracted map[string]interface{}, ts time.Time, entry string) {
+func (pc *pipelineChain) NextStage(labels model.LabelSet, extracted map[string]interface{}, ts time.Time, entry string) {
 	if pc.nextStage < len(pc.pipeline.stages) {
 		stage := pc.pipeline.stages[pc.nextStage]
 		if Debug {
 			level.Debug(pc.pipeline.logger).Log("msg", "processing pipeline", "stage", pc.nextStage, "name", stage.Name(), "labels", labels, "time", ts, "entry", entry)
 		}
 
-		stage.Process(labels, extracted, ts, entry, pipelineChain{
-			pipeline:  pc.pipeline,
-			nextStage: pc.nextStage + 1,
-			chain:     pc.chain,
-			startTime: pc.startTime,
-		})
-	} else {
-		dur := time.Since(pc.startTime).Seconds()
-		if Debug {
-			level.Debug(pc.pipeline.logger).Log("msg", "pipeline finished", "labels", labels, "time", ts, "entry", entry, "duration_s", dur)
-		}
+		pc.nextStage++
 
-		if pc.pipeline.jobName != nil {
-			pc.pipeline.plDuration.WithLabelValues(*pc.pipeline.jobName).Observe(dur)
+		stage.Process(labels, extracted, ts, entry, pc)
+	} else {
+		if Debug || pc.pipeline.jobName != nil {
+			dur := time.Since(pc.startTime).Seconds()
+			if Debug {
+				level.Debug(pc.pipeline.logger).Log("msg", "pipeline finished", "labels", labels, "time", ts, "entry", entry, "duration_s", dur)
+			}
+
+			if pc.pipeline.jobName != nil {
+				pc.pipeline.plDuration.WithLabelValues(*pc.pipeline.jobName).Observe(dur)
+			}
 		}
 
 		pc.chain.NextStage(labels, extracted, ts, entry)
