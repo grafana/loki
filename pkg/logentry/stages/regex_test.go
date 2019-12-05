@@ -296,7 +296,7 @@ func TestRegexParser_Parse(t *testing.T) {
 			lbs := model.LabelSet{}
 			extr := tt.extracted
 			ts := time.Now()
-			p.Process(lbs, extr, &ts, &tt.entry)
+			RunSync(p, lbs, extr, &ts, &tt.entry)
 			assert.Equal(t, tt.expectedExtract, extr)
 
 		})
@@ -340,7 +340,7 @@ func BenchmarkRegexStage(b *testing.B) {
 			extr := map[string]interface{}{}
 			for i := 0; i < b.N; i++ {
 				entry := bm.entry
-				stage.Process(labels, extr, &ts, &entry)
+				RunSync(stage, labels, extr, &ts, &entry)
 			}
 		})
 	}

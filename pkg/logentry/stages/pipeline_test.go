@@ -1,12 +1,17 @@
 package stages
 
 import (
+	"context"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -233,6 +238,67 @@ func BenchmarkPipeline(b *testing.B) {
 	}
 }
 
+func BenchmarkPipeline_Concurrency(b *testing.B) {
+	tt := []struct {
+		concurrency int
+	}{
+		{concurrency: 1},
+		{concurrency: 10},
+		{concurrency: 100},
+		{concurrency: 1000},
+	}
+
+	for _, tc := range tt {
+		b.Run(fmt.Sprintf("%d clients", tc.concurrency), func(b *testing.B) {
+
+			pl, err := NewPipeline(infoLogger, loadConfig(testMultiStageYaml), nil, prometheus.DefaultRegisterer)
+			if err != nil {
+				panic(err)
+			}
+
+			ctx, quit := context.WithCancel(context.Background())
+			defer quit()
+			pl.Start(ctx)
+
+			var wg sync.WaitGroup
+
+			lines := make(chan string)
+			cli := pl.Wrap(api.EntryHandlerFunc(func(labels model.LabelSet, time time.Time, entry string) error {
+				lines <- entry
+				return nil
+			}))
+
+			go func() {
+				for range lines {
+					wg.Done()
+				}
+			}()
+
+			// Test time for concurrent clients to send many lines.
+			linesPerClient := 1000
+			numClients := tc.concurrency
+			for i := 0; i < numClients; i++ {
+				wg.Add(linesPerClient)
+
+				go func() {
+					for i := 0; i < linesPerClient; i++ {
+						lbs := map[model.LabelName]model.LabelValue{
+							"stream":      "stderr",
+							"action":      "GET",
+							"status_code": "200",
+						}
+
+						err := cli.Handle(lbs, time.Now(), rawTestLine)
+						assert.NoError(b, err)
+					}
+				}()
+			}
+
+			wg.Wait()
+		})
+	}
+}
+
 type stubHandler struct {
 	bool
 }
@@ -253,6 +319,10 @@ func TestPipeline_Wrap(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	p.Start(ctx)
 
 	tests := map[string]struct {
 		labels     model.LabelSet
@@ -280,7 +350,6 @@ func TestPipeline_Wrap(t *testing.T) {
 	for tName, tt := range tests {
 		tt := tt
 		t.Run(tName, func(t *testing.T) {
-			t.Parallel()
 			extracted := map[string]interface{}{}
 			p.Process(tt.labels, extracted, &now, &rawTestLine)
 			stub := &stubHandler{}
@@ -288,8 +357,10 @@ func TestPipeline_Wrap(t *testing.T) {
 			if err := handler.Handle(tt.labels, now, rawTestLine); err != nil {
 				t.Fatalf("failed to handle entry: %v", err)
 			}
-			assert.Equal(t, stub.bool, tt.shouldSend)
 
+			test.Poll(t, time.Millisecond*500, tt.shouldSend, func() interface{} {
+				return stub.bool
+			})
 		})
 	}
 }

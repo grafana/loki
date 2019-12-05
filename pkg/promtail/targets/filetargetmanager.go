@@ -108,6 +108,9 @@ func NewFileTargetManager(
 			}
 		}
 
+		// Run the pipeline
+		pipeline.Start(ctx)
+
 		s := &targetSyncer{
 			log:            logger,
 			positions:      positions,
