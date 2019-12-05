@@ -2,7 +2,6 @@ package stages
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -24,34 +23,13 @@ type PipelineStage = map[interface{}]interface{}
 
 // Pipeline pass down a log entry to each stage for mutation and/or label extraction.
 type Pipeline struct {
-	logger     log.Logger
-	stages     []AsyncStage
-	jobName    *string
-	plDuration *prometheus.HistogramVec
-	input      chan StageData
-
-	watcherMut sync.Mutex
-	watchers   []func(StageData)
+	logger  log.Logger
+	stages  []AsyncStage
+	jobName *string
 }
 
 // NewPipeline creates a new log entry pipeline from a configuration
 func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, registerer prometheus.Registerer) (*Pipeline, error) {
-	hist := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "logentry",
-		Name:      "pipeline_duration_seconds",
-		Help:      "Label and metric extraction pipeline processing time, in seconds",
-		Buckets:   []float64{.000005, .000010, .000025, .000050, .000100, .000250, .000500, .001000, .002500, .005000, .010000, .025000},
-	}, []string{"job_name"})
-	err := registerer.Register(hist)
-	if err != nil {
-		if existing, ok := err.(prometheus.AlreadyRegisteredError); ok {
-			hist = existing.ExistingCollector.(*prometheus.HistogramVec)
-		} else {
-			// Same behavior as MustRegister if the error is not for AlreadyRegistered
-			panic(err)
-		}
-	}
-
 	st := []AsyncStage{}
 	for _, s := range stgs {
 		stage, ok := s.(PipelineStage)
@@ -75,85 +53,27 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, regist
 		}
 	}
 	return &Pipeline{
-		logger:     log.With(logger, "component", "pipeline"),
-		stages:     st,
-		jobName:    jobName,
-		plDuration: hist,
-		input:      make(chan StageData),
+		logger:  log.With(logger, "component", "pipeline"),
+		stages:  st,
+		jobName: jobName,
 	}, nil
 }
 
-// Start runs the pipeline until the provided context is cancelled.
-func (p *Pipeline) Start(ctx context.Context) {
-	out := make(chan StageData)
-
-	go func() {
-		p.ProcessAsync(ctx, p.input, out)
-	}()
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case data := <-out:
-				p.notify(data)
-			}
-		}
-	}()
-}
-
-func (p *Pipeline) notify(data StageData) {
-	p.watcherMut.Lock()
-	defer p.watcherMut.Unlock()
-
-	for _, watcher := range p.watchers {
-		watcher(data)
-	}
-}
-
-func (p *Pipeline) AddWatcher(watcher func(StageData)) {
-	p.watcherMut.Lock()
-	defer p.watcherMut.Unlock()
-
-	p.watchers = append(p.watchers, watcher)
-}
-
-// TODO(rfratto): remove this, added for testing to make sure there are no out of
-// order problems.
-type delayStage struct{}
-
-func (s *delayStage) Name() string { return "delay" }
-func (s *delayStage) ProcessAsync(ctx context.Context, in <-chan StageData, out chan<- StageData) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case data := <-in:
-			out <- data
-			time.Sleep(time.Millisecond * 20)
-		}
-
-	}
-}
-
 // ProcessAsync implements AsyncStage, allowing a pipeline stage to also be an entire pipeline.
-func (p *Pipeline) ProcessAsync(ctx context.Context, in <-chan StageData, out chan<- StageData) {
-	currentIn := in
+func (p *Pipeline) ProcessAsync(ctx context.Context, stream DataStream) {
+	currentIn := stream.In
 
 	// Prepend a stage to extract labels into the metadata
 	allStages := append([]AsyncStage{
-		&delayStage{},
-		MakeAsync(StageFunc(p.extractLabels)),
+		AsyncStageFunc(initializeLabelsStage),
 	}, p.stages...)
 
+	// Launch all the stages and wire the channels together. The output of one stage should be the
+	// input of the next.
 	for _, stage := range allStages {
 		out := make(chan StageData)
-
-		go func(s AsyncStage, in <-chan StageData, out chan<- StageData) {
-			s.ProcessAsync(ctx, in, out)
-		}(stage, currentIn, out)
-
+		stream := DataStream{In: currentIn, Out: out}
+		go stage.ProcessAsync(ctx, stream)
 		currentIn = out
 	}
 
@@ -162,17 +82,21 @@ func (p *Pipeline) ProcessAsync(ctx context.Context, in <-chan StageData, out ch
 		case <-ctx.Done():
 			return
 		case data := <-currentIn:
-			out <- data
+			stream.Send(data)
 		}
 	}
 }
 
-func (p *Pipeline) extractLabels(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
-	// Initialize the extracted map with the initial labels (ie. "filename"),
-	// so that stages can operate on initial labels too
-	for labelName, labelValue := range labels {
-		extracted[string(labelName)] = string(labelValue)
-	}
+func initializeLabelsStage(ctx context.Context, stream DataStream) {
+	stream.Do(ctx, func(data StageData) {
+		// Initialize the extracted map with the initial labels (ie. "filename"),
+		// so that stages can operate on initial labels too
+		for labelName, labelValue := range data.Labels {
+			data.Extracted[string(labelName)] = string(labelValue)
+		}
+
+		stream.Send(data)
+	})
 }
 
 // Process implements Stage, allowing a pipeline stage to also be an entire pipeline.
@@ -185,21 +109,31 @@ func (p *Pipeline) Name() string {
 	return StageTypePipeline
 }
 
-// Wrap implements EntryMiddleware
-func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
-	p.AddWatcher(func(data StageData) {
-		// if the labels set contains the __drop__ label we don't send this entry to the next EntryHandler
-		if _, ok := data.Labels[dropLabel]; ok {
-			return
-		}
+// Wrap implements EntryMiddleware. When the function is invoked, data will be sent to the
+// pipeline over a channel. Whenever the pipeline returns data, next will be invoked.
+func (p *Pipeline) Wrap(ctx context.Context, next api.EntryHandler) api.EntryHandler {
+	in := make(chan StageData)
+	out := make(chan StageData)
 
-		err := next.Handle(data.Labels, data.Time, data.Entry)
-		level.Error(p.logger).Log("msg", "error calling next", "err", err)
-	})
+	stream := DataStream{In: in, Out: out}
+	go p.ProcessAsync(ctx, stream)
+
+	go func() {
+		// Wait for data coming through the pipeline.
+		for data := range out {
+			// if the labels set contains the __drop__ label we don't send this entry to the next EntryHandler
+			if _, ok := data.Labels[dropLabel]; ok {
+				continue
+			}
+
+			err := next.Handle(data.Labels, data.Time, data.Entry)
+			level.Error(p.logger).Log("msg", "error calling next", "err", err)
+		}
+	}()
 
 	return api.EntryHandlerFunc(func(labels model.LabelSet, timestamp time.Time, line string) error {
 		extracted := map[string]interface{}{}
-		p.input <- StageData{
+		in <- StageData{
 			Labels:    labels,
 			Extracted: extracted,
 			Time:      timestamp,

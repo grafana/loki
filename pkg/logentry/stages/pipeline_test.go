@@ -258,12 +258,11 @@ func BenchmarkPipeline_Concurrency(b *testing.B) {
 
 			ctx, quit := context.WithCancel(context.Background())
 			defer quit()
-			pl.Start(ctx)
 
 			var wg sync.WaitGroup
 
 			lines := make(chan string)
-			cli := pl.Wrap(api.EntryHandlerFunc(func(labels model.LabelSet, time time.Time, entry string) error {
+			cli := pl.Wrap(ctx, api.EntryHandlerFunc(func(labels model.LabelSet, time time.Time, entry string) error {
 				lines <- entry
 				return nil
 			}))
@@ -322,7 +321,6 @@ func TestPipeline_Wrap(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	p.Start(ctx)
 
 	tests := map[string]struct {
 		labels     model.LabelSet
@@ -353,7 +351,7 @@ func TestPipeline_Wrap(t *testing.T) {
 			extracted := map[string]interface{}{}
 			p.Process(tt.labels, extracted, &now, &rawTestLine)
 			stub := &stubHandler{}
-			handler := p.Wrap(stub)
+			handler := p.Wrap(ctx, stub)
 			if err := handler.Handle(tt.labels, now, rawTestLine); err != nil {
 				t.Fatalf("failed to handle entry: %v", err)
 			}

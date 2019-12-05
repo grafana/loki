@@ -32,22 +32,47 @@ type Stage interface {
 	Name() string
 }
 
-// StageFunc is modelled on http.HandlerFunc.
-type StageFunc func(labels model.LabelSet, extracted map[string]interface{}, time *time.Time, entry *string)
-
-// Process implements EntryHandler.
-func (s StageFunc) Process(labels model.LabelSet, extracted map[string]interface{}, time *time.Time, entry *string) {
-	s(labels, extracted, time, entry)
-}
-
-func (s StageFunc) Name() string { return "function" }
-
 // AsyncStage is like Stage, but runs forever, or until the provided context is cancelled. Throughout
 // its execution, AsyncStage should read lines as input, modify them as needed, and pass through
 // zero or more output lines.
 type AsyncStage interface {
-	ProcessAsync(ctx context.Context, in <-chan StageData, out chan<- StageData)
+	ProcessAsync(ctx context.Context, stream DataStream)
 	Name() string
+}
+
+// AsyncStageFunc is a function that implements AsyncStage.
+type AsyncStageFunc func(ctx context.Context, stream DataStream)
+
+// ProcessAsync implements AsyncStage.
+func (f AsyncStageFunc) ProcessAsync(ctx context.Context, stream DataStream) {
+	f(ctx, stream)
+}
+
+// Name implements AsyncStage.
+func (f AsyncStageFunc) Name() string { return "function" }
+
+// DataStream is a combination of an input and output channel for StageData. Used as an
+// argument in AsyncStage.
+type DataStream struct {
+	In  <-chan StageData
+	Out chan<- StageData
+}
+
+// Send sends data on the out channel.
+func (s DataStream) Send(data StageData) { s.Out <- data }
+
+// Do will continually listen for data coming in from the DataStream's In channel, calling
+// f each time data is received. If the provided context is cancelled, f will
+// no longer be called.
+func (s DataStream) Do(ctx context.Context, f func(data StageData)) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case data := <-s.In:
+			f(data)
+		}
+	}
 }
 
 // StageData holds data that is passed through stages.
@@ -147,22 +172,16 @@ func MakeAsync(s Stage) AsyncStage {
 
 type asyncWrapper struct{ s Stage }
 
-func (w *asyncWrapper) ProcessAsync(ctx context.Context, in <-chan StageData, out chan<- StageData) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case data := <-in:
-			w.s.Process(data.Labels, data.Extracted, &data.Time, &data.Entry)
-			out <- data
-		}
-	}
+func (w *asyncWrapper) Name() string { return w.s.Name() }
+
+func (w *asyncWrapper) ProcessAsync(ctx context.Context, stream DataStream) {
+	stream.Do(ctx, func(data StageData) {
+		w.s.Process(data.Labels, data.Extracted, &data.Time, &data.Entry)
+		stream.Send(data)
+	})
 }
 
-func (w *asyncWrapper) Name() string {
-	return w.s.Name()
-}
-
+// RunSync runs a stage synchronously, returning as soon as data is received.
 func RunSync(s AsyncStage, labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -170,9 +189,8 @@ func RunSync(s AsyncStage, labels model.LabelSet, extracted map[string]interface
 	in := make(chan StageData)
 	out := make(chan StageData)
 
-	go func() {
-		s.ProcessAsync(ctx, in, out)
-	}()
+	stream := DataStream{In: in, Out: out}
+	go s.ProcessAsync(ctx, stream)
 
 	in <- StageData{
 		Labels:    labels,

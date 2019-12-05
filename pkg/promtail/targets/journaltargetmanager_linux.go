@@ -47,12 +47,9 @@ func NewJournalTargetManager(
 			return nil, err
 		}
 
-		// Run the pipeline
-		pipeline.Start(ctx)
-
 		t, err := NewJournalTarget(
 			logger,
-			pipeline.Wrap(client),
+			pipeline.Wrap(ctx, client),
 			positions,
 			cfg.JobName,
 			cfg.RelabelConfigs,

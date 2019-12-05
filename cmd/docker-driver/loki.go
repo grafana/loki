@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 
 	"github.com/docker/docker/daemon/logger"
 	"github.com/go-kit/kit/log"
@@ -20,6 +21,7 @@ type loki struct {
 	handler api.EntryHandler
 	labels  model.LabelSet
 	logger  log.Logger
+	quit    func()
 }
 
 // New create a new Loki logger that forward logs to Loki instance
@@ -33,19 +35,24 @@ func New(logCtx logger.Info, logger log.Logger) (logger.Logger, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	ctx, quit := context.WithCancel(context.Background())
 	var handler api.EntryHandler = c
 	if len(cfg.pipeline.PipelineStages) != 0 {
 		pipeline, err := stages.NewPipeline(logger, cfg.pipeline.PipelineStages, &jobName, prometheus.DefaultRegisterer)
 		if err != nil {
+			quit()
 			return nil, err
 		}
-		handler = pipeline.Wrap(c)
+		handler = pipeline.Wrap(ctx, c)
 	}
+
 	return &loki{
 		client:  c,
 		labels:  cfg.labels,
 		logger:  logger,
 		handler: handler,
+		quit:    quit,
 	}, nil
 }
 
@@ -70,5 +77,6 @@ func (l *loki) Name() string {
 // Log implements `logger.Logger`
 func (l *loki) Close() error {
 	l.client.Stop()
+	l.quit()
 	return nil
 }

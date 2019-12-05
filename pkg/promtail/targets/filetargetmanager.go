@@ -108,9 +108,6 @@ func NewFileTargetManager(
 			}
 		}
 
-		// Run the pipeline
-		pipeline.Start(ctx)
-
 		s := &targetSyncer{
 			log:            logger,
 			positions:      positions,
@@ -118,7 +115,7 @@ func NewFileTargetManager(
 			targets:        map[string]*FileTarget{},
 			droppedTargets: []Target{},
 			hostname:       hostname,
-			entryHandler:   pipeline.Wrap(client),
+			entryHandler:   pipeline.Wrap(ctx, client),
 			targetConfig:   targetConfig,
 		}
 		tm.syncers[cfg.JobName] = s
