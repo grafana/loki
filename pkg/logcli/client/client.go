@@ -21,7 +21,7 @@ import (
 const (
 	queryPath       = "/loki/api/v1/query?query=%s&limit=%d&time=%d&direction=%s"
 	queryRangePath  = "/loki/api/v1/query_range"
-	labelsPath      = "/loki/api/v1/label"
+	labelsPath      = "/loki/api/v1/labels"
 	labelValuesPath = "/loki/api/v1/label/%s/values"
 	tailPath        = "/loki/api/v1/tail?query=%s&delay_for=%d&limit=%d&start=%d"
 )
