@@ -8,9 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -44,8 +45,8 @@ type stream struct {
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
 	chunks    []chunkDesc
-	fp        model.Fingerprint
-	labels    []client.LabelAdapter
+	fp        model.Fingerprint // possibly remapped fingerprint, used in the streams map
+	labels    labels.Labels
 	blockSize int
 
 	tailers   map[uint32]*tailer
@@ -65,7 +66,7 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(fp model.Fingerprint, labels []client.LabelAdapter, blockSize int) *stream {
+func newStream(fp model.Fingerprint, labels labels.Labels, blockSize int) *stream {
 	return &stream{
 		fp:        fp,
 		labels:    labels,
@@ -126,7 +127,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 
 	if len(storedEntries) != 0 {
 		go func() {
-			stream := logproto.Stream{Labels: client.FromLabelAdaptersToLabels(s.labels).String(), Entries: storedEntries}
+			stream := logproto.Stream{Labels: s.labels.String(), Entries: storedEntries}
 
 			closedTailers := []uint32{}
 
@@ -156,7 +157,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 		if lastEntryWithErr.e == chunkenc.ErrOutOfOrder {
 			// return bad http status request response with all failed entries
 			buf := bytes.Buffer{}
-			streamName := client.FromLabelAdaptersToLabels(s.labels).String()
+			streamName := s.labels.String()
 
 			for _, entryWithError := range failedEntriesWithError {
 				_, _ = fmt.Fprintf(&buf,
@@ -193,7 +194,7 @@ func (s *stream) Iterator(from, through time.Time, direction logproto.Direction,
 		}
 	}
 
-	return iter.NewNonOverlappingIterator(iterators, client.FromLabelAdaptersToLabels(s.labels).String()), nil
+	return iter.NewNonOverlappingIterator(iterators, s.labels.String()), nil
 }
 
 func (s *stream) addTailer(t *tailer) {
@@ -204,6 +205,6 @@ func (s *stream) addTailer(t *tailer) {
 }
 
 func (s *stream) matchesTailer(t *tailer) bool {
-	metric := client.FromLabelAdaptersToMetric(s.labels)
+	metric := util.LabelsToMetric(s.labels)
 	return t.isWatchingLabels(metric)
 }

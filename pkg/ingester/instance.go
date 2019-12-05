@@ -51,8 +51,9 @@ var (
 
 type instance struct {
 	streamsMtx sync.RWMutex
-	streams    map[model.Fingerprint]*stream
+	streams    map[model.Fingerprint]*stream // we use 'mapped' fingerprints here.
 	index      *index.InvertedIndex
+	mapper     *fpMapper // using of mapper needs streamsMtx because it calls back
 
 	instanceID string
 
@@ -67,7 +68,7 @@ type instance struct {
 }
 
 func newInstance(instanceID string, blockSize int, limits *validation.Overrides) *instance {
-	return &instance{
+	i := &instance{
 		streams:    map[model.Fingerprint]*stream{},
 		index:      index.New(),
 		instanceID: instanceID,
@@ -79,6 +80,8 @@ func newInstance(instanceID string, blockSize int, limits *validation.Overrides)
 		tailers:   map[uint32]*tailer{},
 		limits:    limits,
 	}
+	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
+	return i
 }
 
 // consumeChunk manually adds a chunk that was received during ingester chunk
@@ -87,11 +90,13 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 	i.streamsMtx.Lock()
 	defer i.streamsMtx.Unlock()
 
-	fp := client.FastFingerprint(labels)
+	rawFp := client.FastFingerprint(labels)
+	fp := i.mapper.mapFP(rawFp, labels)
+
 	stream, ok := i.streams[fp]
 	if !ok {
-		stream = newStream(fp, labels, i.blockSize)
-		i.index.Add(labels, fp)
+		sortedLabels := i.index.Add(labels, fp)
+		stream = newStream(fp, sortedLabels, i.blockSize)
 		i.streams[fp] = stream
 		i.streamsCreatedTotal.Inc()
 		memoryStreams.Inc()
@@ -137,7 +142,8 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 }
 
 func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, error) {
-	fp := client.FastFingerprint(labels)
+	rawFp := client.FastFingerprint(labels)
+	fp := i.mapper.mapFP(rawFp, labels)
 
 	stream, ok := i.streams[fp]
 	if ok {
@@ -147,14 +153,23 @@ func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, err
 	if len(i.streams) >= i.limits.MaxStreamsPerUser(i.instanceID) {
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user streams limit (%d) exceeded", i.limits.MaxStreamsPerUser(i.instanceID))
 	}
-	stream = newStream(fp, labels, i.blockSize)
-	i.index.Add(labels, fp)
+	sortedLabels := i.index.Add(labels, fp)
+	stream = newStream(fp, sortedLabels, i.blockSize)
 	i.streams[fp] = stream
 	memoryStreams.Inc()
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(stream)
 
 	return stream, nil
+}
+
+// Return labels associated with given fingerprint. Used by fingerprint mapper. Must hold streamsMtx.
+func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels {
+	s := i.streams[fp]
+	if s == nil {
+		return nil
+	}
+	return s.labels
 }
 
 func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
@@ -211,9 +226,8 @@ outer:
 		if !ok {
 			return nil, ErrStreamMissing
 		}
-		lbs := client.FromLabelAdaptersToLabels(stream.labels)
 		for _, filter := range filters {
-			if !filter.Matches(lbs.Get(filter.Name)) {
+			if !filter.Matches(stream.labels.Get(filter.Name)) {
 				continue outer
 			}
 		}
