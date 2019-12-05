@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"runtime"
@@ -120,7 +119,7 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 		}
 		iter.Close()
 		printHeap(b, true)
-		log.Println("line fetched", len(res))
+		// log.Println("line fetched", len(res))
 	}
 	close(stop)
 }
@@ -128,14 +127,14 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 var maxHeapInuse uint64
 
 func printHeap(b *testing.B, show bool) {
-	runtime.ReadMemStats(&m)
-	if m.HeapInuse > maxHeapInuse {
-		maxHeapInuse = m.HeapInuse
-	}
-	if show {
-		log.Printf("Benchmark %d maxHeapInuse: %d Mbytes\n", b.N, maxHeapInuse/1024/1024)
-		log.Printf("Benchmark %d currentHeapInuse: %d Mbytes\n", b.N, m.HeapInuse/1024/1024)
-	}
+	// runtime.ReadMemStats(&m)
+	// if m.HeapInuse > maxHeapInuse {
+	// 	maxHeapInuse = m.HeapInuse
+	// }
+	// if show {
+	// 	log.Printf("Benchmark %d maxHeapInuse: %d Mbytes\n", b.N, maxHeapInuse/1024/1024)
+	// 	log.Printf("Benchmark %d currentHeapInuse: %d Mbytes\n", b.N, m.HeapInuse/1024/1024)
+	// }
 }
 
 func getLocalStore() Store {

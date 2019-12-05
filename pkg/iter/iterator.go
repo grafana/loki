@@ -602,26 +602,27 @@ type PeekingEntryIterator interface {
 func NewPeekingIterator(iter EntryIterator) PeekingEntryIterator {
 	// initialize the next entry so we can peek right from the start.
 	var cache *entryWithLabels
+	next := &entryWithLabels{}
 	if iter.Next() {
 		cache = &entryWithLabels{
 			entry:  iter.Entry(),
 			labels: iter.Labels(),
 		}
+		next.entry = cache.entry
+		next.labels = cache.labels
 	}
 	return &peekingEntryIterator{
 		iter:  iter,
 		cache: cache,
-		next:  cache,
+		next:  next,
 	}
 }
 
 // Next implements `EntryIterator`
 func (it *peekingEntryIterator) Next() bool {
 	if it.cache != nil {
-		it.next = &entryWithLabels{
-			entry:  it.cache.entry,
-			labels: it.cache.labels,
-		}
+		it.next.entry = it.cache.entry
+		it.next.labels = it.cache.labels
 		it.cacheNext()
 		return true
 	}
@@ -631,10 +632,8 @@ func (it *peekingEntryIterator) Next() bool {
 // cacheNext caches the next element if it exists.
 func (it *peekingEntryIterator) cacheNext() {
 	if it.iter.Next() {
-		it.cache = &entryWithLabels{
-			entry:  it.iter.Entry(),
-			labels: it.iter.Labels(),
-		}
+		it.cache.entry = it.iter.Entry()
+		it.cache.labels = it.iter.Labels()
 		return
 	}
 	// nothing left removes the cached entry
