@@ -125,6 +125,8 @@ func TestHttp_ParseRangeQuery_Step(t *testing.T) {
 
 		t.Run(testName, func(t *testing.T) {
 			req := httptest.NewRequest("GET", testData.reqPath, nil)
+			err := req.ParseForm()
+			require.Nil(t, err)
 			actual, err := ParseRangeQuery(req)
 
 			require.NoError(t, err)

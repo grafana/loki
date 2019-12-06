@@ -20,7 +20,7 @@ const (
 )
 
 func limit(r *http.Request) (uint32, error) {
-	l, err := parseInt(r.URL.Query().Get("limit"), defaultQueryLimit)
+	l, err := parseInt(r.Form.Get("limit"), defaultQueryLimit)
 	if err != nil {
 		return 0, err
 	}
@@ -28,24 +28,24 @@ func limit(r *http.Request) (uint32, error) {
 }
 
 func query(r *http.Request) string {
-	return r.URL.Query().Get("query")
+	return r.Form.Get("query")
 }
 
 func ts(r *http.Request) (time.Time, error) {
-	return parseTimestamp(r.URL.Query().Get("time"), time.Now())
+	return parseTimestamp(r.Form.Get("time"), time.Now())
 }
 
 func direction(r *http.Request) (logproto.Direction, error) {
-	return parseDirection(r.URL.Query().Get("direction"), logproto.BACKWARD)
+	return parseDirection(r.Form.Get("direction"), logproto.BACKWARD)
 }
 
 func bounds(r *http.Request) (time.Time, time.Time, error) {
 	now := time.Now()
-	start, err := parseTimestamp(r.URL.Query().Get("start"), now.Add(-defaultSince))
+	start, err := parseTimestamp(r.Form.Get("start"), now.Add(-defaultSince))
 	if err != nil {
 		return time.Time{}, time.Time{}, err
 	}
-	end, err := parseTimestamp(r.URL.Query().Get("end"), now)
+	end, err := parseTimestamp(r.Form.Get("end"), now)
 	if err != nil {
 		return time.Time{}, time.Time{}, err
 	}
@@ -53,7 +53,7 @@ func bounds(r *http.Request) (time.Time, time.Time, error) {
 }
 
 func step(r *http.Request, start, end time.Time) (time.Duration, error) {
-	value := r.URL.Query().Get("step")
+	value := r.Form.Get("step")
 	if value == "" {
 		return time.Duration(defaultQueryRangeStep(start, end)) * time.Second, nil
 	}
@@ -78,7 +78,7 @@ func defaultQueryRangeStep(start time.Time, end time.Time) int {
 }
 
 func tailDelay(r *http.Request) (uint32, error) {
-	l, err := parseInt(r.URL.Query().Get("delay_for"), 0)
+	l, err := parseInt(r.Form.Get("delay_for"), 0)
 	if err != nil {
 		return 0, err
 	}

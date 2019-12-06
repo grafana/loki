@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/middleware"
 )
 
 const (
@@ -215,6 +216,36 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+// NewPrepopulateMiddleware creates a middleware which will parse incoming http forms.
+// This is important because some endpoints can POST x-www-form-urlencoded bodies instead of GET w/ query strings.
+func NewPrepopulateMiddleware() middleware.Interface {
+	return middleware.Func(func(next http.Handler) http.Handler {
+		return &prepop{
+			next: next,
+		}
+	})
+}
+
+type prepop struct {
+	next http.Handler
+}
+
+func (p *prepop) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	err := req.ParseForm()
+	if err != nil {
+		status := http.StatusBadRequest
+		http.Error(
+			w,
+			httpgrpc.Errorf(http.StatusBadRequest, err.Error()).Error(),
+			status,
+		)
+		return
+
+	}
+	p.next.ServeHTTP(w, req)
+
 }
 
 // parseRegexQuery parses regex and query querystring from httpRequest and returns the combined LogQL query.
