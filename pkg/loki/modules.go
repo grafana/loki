@@ -13,6 +13,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -120,6 +121,7 @@ func (t *Loki) initRing() (err error) {
 	if err != nil {
 		return
 	}
+	prometheus.MustRegister(t.ring)
 	t.server.HTTP.Handle("/ring", t.ring)
 	return
 }
