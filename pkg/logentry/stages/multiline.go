@@ -18,7 +18,7 @@ const (
 	ErrFirstLineRequired         = "firstLine regular expression required"
 )
 
-// MatcherConfig contains the configuration for a matcherStage
+// MultilineConfig contains the configuration for a multilineStage
 type MultilineConfig struct {
 	PipelineName    *string `mapstructure:"pipeline_name"`
 	FirstLineRegexp string  `mapstructure:"firstline"`
@@ -57,7 +57,7 @@ func newMultilineStage(logger log.Logger, config interface{}) (*multilineStage, 
 
 	return &multilineStage{
 		firstLine:  re,
-		multilines: map[string][]string{},
+		multilines: map[string]*multilineEntry{},
 	}, nil
 }
 
@@ -65,7 +65,13 @@ type multilineStage struct {
 	firstLine *regexp.Regexp
 
 	mapMu      sync.Mutex
-	multilines map[string][]string
+	multilines map[string]*multilineEntry
+}
+
+type multilineEntry struct {
+	lines     []string
+	labels    model.LabelSet
+	lastWrite time.Time
 }
 
 func (m *multilineStage) Name() string {
@@ -73,28 +79,44 @@ func (m *multilineStage) Name() string {
 }
 
 // Process implements Stage
-func (m *multilineStage) Process(labels model.LabelSet, extracted map[string]interface{}, time time.Time, entry string, chain StageChain) {
+func (m *multilineStage) Process(labels model.LabelSet, extracted map[string]interface{}, timestamp time.Time, entry string, chain StageChain) {
 	isFirstLine := m.firstLine.MatchString(entry)
 	key := labels.String()
 
 	m.mapMu.Lock()
-	previous := m.multilines[key]
+
+	ent := m.multilines[key]
 
 	if isFirstLine {
 		// flush previous entry, if there is any, and store new one
-		if previous != nil {
+		if ent != nil && len(ent.lines) > 0 {
 			delete(m.multilines, key)
 			m.mapMu.Unlock()
 
-			chain.NextStage(labels, extracted, time, strings.Join(previous, "\n"))
+			// extracted + timestamp are just passed forward
+			chain.NextStage(labels, extracted, timestamp, strings.Join(ent.lines, "\n"))
 
 			m.mapMu.Lock()
 		}
 
-		m.multilines[key] = []string{entry} // start new multiline entry
+		m.multilines[key] = &multilineEntry{
+			lines:     []string{entry}, // start new multiline entry,
+			labels:    labels.Clone(),
+			lastWrite: time.Now(),
+		}
+
+		m.mapMu.Unlock()
 	} else {
-		// buffer current entry, add it to previous (if any), and wait for more lines.
-		m.multilines[key] = append(previous, entry)
+		if ent == nil || len(ent.lines) == 0 {
+			m.mapMu.Unlock()
+
+			// no started multiline? just pass it forward then.
+			chain.NextStage(labels, extracted, timestamp, entry)
+		} else {
+			// add it to existing line, and wait for more lines.
+			ent.lines = append(ent.lines, entry)
+			ent.lastWrite = time.Now()
+			m.mapMu.Unlock()
+		}
 	}
-	m.mapMu.Unlock()
 }
