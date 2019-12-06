@@ -22,6 +22,7 @@ const (
 	StageTypeTemplate  = "template"
 	StageTypePipeline  = "pipeline"
 	StageTypeTenant    = "tenant"
+	StageTypeMultiline = "multiline"
 )
 
 // StageChain is supplied to the Stage, and gives stage an option to continue with the next stage (if it so decides)
@@ -102,6 +103,11 @@ func New(logger log.Logger, jobName *string, stageType string, cfg interface{}, 
 		}
 	case StageTypeTenant:
 		s, err = newTenantStage(logger, cfg)
+		if err != nil {
+			return nil, err
+		}
+	case StageTypeMultiline:
+		s, err = newMultilineStage(logger, cfg)
 		if err != nil {
 			return nil, err
 		}
