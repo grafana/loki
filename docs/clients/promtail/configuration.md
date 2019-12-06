@@ -82,13 +82,13 @@ The `server_config` block configures Promtail's behavior as an HTTP server:
 
 ```yaml
 # HTTP server listen host
-[http_listen_host: <string>]
+[http_listen_address: <string>]
 
 # HTTP server listen port
 [http_listen_port: <int> | default = 80]
 
 # gRPC server listen host
-[grpc_listen_host: <string>]
+[grpc_listen_address: <string>]
 
 # gRPC server listen port
 [grpc_listen_port: <int> | default = 9095]
@@ -131,7 +131,7 @@ The `client_config` block configures how Promtail connects to an instance of
 Loki:
 
 ```yaml
-# The URL where Loki is listening, denoted in Loki as http_listen_host and
+# The URL where Loki is listening, denoted in Loki as http_listen_address and
 # http_listen_port. If Loki is running in microservices mode, this is the HTTP
 # URL for the Distributor.
 url: <string>

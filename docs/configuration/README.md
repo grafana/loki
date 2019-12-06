@@ -96,13 +96,13 @@ The `server_config` block configures Promtail's behavior as an HTTP server:
 
 ```yaml
 # HTTP server listen host
-[http_listen_host: <string>]
+[http_listen_address: <string>]
 
 # HTTP server listen port
 [http_listen_port: <int> | default = 80]
 
 # gRPC server listen host
-[grpc_listen_host: <string>]
+[grpc_listen_address: <string>]
 
 # gRPC server listen port
 [grpc_listen_port: <int> | default = 9095]
