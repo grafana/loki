@@ -38,6 +38,18 @@ type Stage interface {
 	Name() string
 }
 
+// FlushableStage is a stage that can be flushed.
+type FlushableStage interface {
+	Stage
+	Flush(chain RepeatableStageChain)
+}
+
+// RepeatableStageChain is a chain, that can be cloned and run again later.
+type RepeatableStageChain interface {
+	StageChain
+	Clone() RepeatableStageChain
+}
+
 // StageFunc is modelled on http.HandlerFunc.
 type StageFunc func(labels model.LabelSet, extracted map[string]interface{}, time time.Time, entry string, chain StageChain)
 

@@ -1,6 +1,7 @@
 package stages
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ const (
 type MultilineConfig struct {
 	PipelineName    *string `mapstructure:"pipeline_name"`
 	FirstLineRegexp string  `mapstructure:"firstline"`
+	MaxWait         string  `mapstructure:"max_wait_time"`
 }
 
 func validateMultilineConfig(cfg *MultilineConfig) (*regexp.Regexp, error) {
@@ -50,19 +52,30 @@ func newMultilineStage(logger log.Logger, config interface{}) (*multilineStage, 
 	if err != nil {
 		return nil, err
 	}
+
 	re, err := validateMultilineConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 
+	maxWait := time.Duration(0)
+	if cfg.MaxWait != "" {
+		maxWait, err = time.ParseDuration(cfg.MaxWait)
+		if err != nil {
+			return nil, errors.Wrap(err, "multiline: invalid max_wait_time duration")
+		}
+	}
+
 	return &multilineStage{
 		firstLine:  re,
+		maxWait:    maxWait,
 		multilines: map[string]*multilineEntry{},
 	}, nil
 }
 
 type multilineStage struct {
 	firstLine *regexp.Regexp
+	maxWait   time.Duration
 
 	mapMu      sync.Mutex
 	multilines map[string]*multilineEntry
@@ -86,19 +99,25 @@ func (m *multilineStage) Process(labels model.LabelSet, extracted map[string]int
 	m.mapMu.Lock()
 
 	ent := m.multilines[key]
+	hasPrevious := ent != nil && len(ent.lines) > 0
 
-	if isFirstLine {
-		// flush previous entry, if there is any, and store new one
-		if ent != nil && len(ent.lines) > 0 {
-			delete(m.multilines, key)
-			m.mapMu.Unlock()
+	switch {
+	case isFirstLine && hasPrevious:
+		delete(m.multilines, key)
 
-			// extracted + timestamp are just passed forward
-			chain.NextStage(labels, extracted, timestamp, strings.Join(ent.lines, "\n"))
-
-			m.mapMu.Lock()
+		// put new multiline entry to the map before unlocking
+		m.multilines[key] = &multilineEntry{
+			lines:     []string{entry},
+			labels:    labels.Clone(),
+			lastWrite: time.Now(),
 		}
 
+		m.mapMu.Unlock()
+
+		// extracted + timestamp are just passed forward
+		chain.NextStage(labels, extracted, timestamp, strings.Join(ent.lines, "\n"))
+
+	case isFirstLine && !hasPrevious:
 		m.multilines[key] = &multilineEntry{
 			lines:     []string{entry}, // start new multiline entry,
 			labels:    labels.Clone(),
@@ -106,17 +125,43 @@ func (m *multilineStage) Process(labels model.LabelSet, extracted map[string]int
 		}
 
 		m.mapMu.Unlock()
-	} else {
-		if ent == nil || len(ent.lines) == 0 {
+
+	case !isFirstLine && hasPrevious:
+		// add it to existing line, and wait for more lines.
+		ent.lines = append(ent.lines, entry)
+		ent.lastWrite = time.Now()
+
+		m.mapMu.Unlock()
+
+	case !isFirstLine && !hasPrevious:
+		m.mapMu.Unlock()
+
+		// no started multiline? just pass it forward then.
+		chain.NextStage(labels, extracted, timestamp, entry)
+	}
+}
+
+func (m *multilineStage) Flush(chain RepeatableStageChain) {
+	if m.maxWait <= 0 {
+		return
+	}
+
+	now := time.Now()
+
+	m.mapMu.Lock()
+	for key, e := range m.multilines {
+		if now.Sub(e.lastWrite) > m.maxWait {
+			delete(m.multilines, key) // remove from map before unlocking
 			m.mapMu.Unlock()
 
-			// no started multiline? just pass it forward then.
-			chain.NextStage(labels, extracted, timestamp, entry)
-		} else {
-			// add it to existing line, and wait for more lines.
-			ent.lines = append(ent.lines, entry)
-			ent.lastWrite = time.Now()
-			m.mapMu.Unlock()
+			entry := strings.Join(e.lines, "\n")
+
+			fmt.Println("flushing", key)
+			// only use chain clones, so that original chain can be reused
+			chain.Clone().NextStage(e.labels, map[string]interface{}{}, e.lastWrite, entry)
+
+			m.mapMu.Lock()
 		}
 	}
+	m.mapMu.Unlock()
 }

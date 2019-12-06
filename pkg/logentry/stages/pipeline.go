@@ -95,6 +95,18 @@ func (p *Pipeline) Process(labels model.LabelSet, extracted map[string]interface
 	pc.NextStage(labels, extracted, ts, entry)
 }
 
+// Flushes are flushable stages in this pipeline
+func (p *Pipeline) Flush(chain RepeatableStageChain) {
+	pc := &pipelineChain{
+		pipeline:  p,
+		nextStage: 0,
+		chain:     chain,
+		startTime: time.Time{},
+	}
+
+	pc.Flush()
+}
+
 // Name implements Stage
 func (p *Pipeline) Name() string {
 	return StageTypePipeline
@@ -102,11 +114,20 @@ func (p *Pipeline) Name() string {
 
 // Wrap implements EntryMiddleware
 func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
+	// start flushing every 100ms
+	go func() {
+		for range time.Tick(100 * time.Millisecond) {
+			fhc := handlerChain{next: next}
+			p.Flush(fhc)
+			if fhc.error != nil {
+				level.Error(p.logger).Log("msg", "failed to flush", "err", fhc.error)
+			}
+		}
+	}()
+
 	return api.EntryHandlerFunc(func(labels model.LabelSet, timestamp time.Time, line string) error {
 		extracted := map[string]interface{}{}
-		hc := handlerChain{
-			next: next,
-		}
+		hc := handlerChain{next: next}
 		p.Process(labels, extracted, timestamp, line, hc)
 		return hc.error
 	})
@@ -140,7 +161,7 @@ func (pc *pipelineChain) NextStage(labels model.LabelSet, extracted map[string]i
 
 		stage.Process(labels, extracted, ts, entry, pc)
 	} else {
-		if Debug || pc.pipeline.jobName != nil {
+		if !pc.startTime.IsZero() && (Debug || pc.pipeline.jobName != nil) {
 			dur := time.Since(pc.startTime).Seconds()
 			if Debug {
 				level.Debug(pc.pipeline.logger).Log("msg", "pipeline finished", "labels", labels, "time", ts, "entry", entry, "duration_s", dur)
@@ -155,9 +176,41 @@ func (pc *pipelineChain) NextStage(labels model.LabelSet, extracted map[string]i
 	}
 }
 
+// Flush all remaining flushable stages.
+func (pc *pipelineChain) Flush() {
+	for pc.nextStage < len(pc.pipeline.stages) {
+		s := pc.pipeline.stages[pc.nextStage]
+
+		// increase nextStage before making a clone, so that NextStage actually calls NEXT stage
+		pc.nextStage++
+
+		if f, ok := s.(FlushableStage); ok {
+			// send a copy of this chain, so that we can continue with flushing later stages
+			f.Flush(pc.Clone())
+		}
+	}
+}
+
+// Clone returns new copy of this chain, so that it can be called again.
+func (pc *pipelineChain) Clone() RepeatableStageChain {
+	rsc := pc.chain.(RepeatableStageChain)
+
+	return &pipelineChain{
+		pipeline:  pc.pipeline,
+		nextStage: pc.nextStage,
+		chain:     rsc.Clone(),
+		startTime: time.Time{},
+	}
+}
+
 type handlerChain struct {
 	next  api.EntryHandler
 	error error
+}
+
+func (hc handlerChain) Clone() RepeatableStageChain {
+	// no need to clone
+	return hc
 }
 
 func (hc handlerChain) NextStage(labels model.LabelSet, extracted map[string]interface{}, ts time.Time, entry string) {
