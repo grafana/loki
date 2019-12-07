@@ -161,6 +161,7 @@ func (t *Loki) initQuerier() (err error) {
 
 	httpMiddleware := middleware.Merge(
 		t.httpAuthMiddleware,
+		querier.NewPrepopulateMiddleware(),
 	)
 	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.querier.ReadinessHandler))
 

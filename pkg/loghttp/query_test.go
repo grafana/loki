@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseRangeQuery(t *testing.T) {
@@ -53,6 +54,9 @@ func TestParseRangeQuery(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			err := tt.r.ParseForm()
+			require.Nil(t, err)
+
 			got, err := ParseRangeQuery(tt.r)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseRangeQuery() error = %v, wantErr %v", err, tt.wantErr)
@@ -91,6 +95,8 @@ func TestParseInstantQuery(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			err := tt.r.ParseForm()
+			require.Nil(t, err)
 			got, err := ParseInstantQuery(tt.r)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseInstantQuery() error = %v, wantErr %v", err, tt.wantErr)

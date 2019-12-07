@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseLabelQuery(t *testing.T) {
@@ -42,6 +43,8 @@ func TestParseLabelQuery(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			err := tt.r.ParseForm()
+			require.Nil(t, err)
 			got, err := ParseLabelQuery(tt.r)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseLabelQuery() error = %v, wantErr %v", err, tt.wantErr)
