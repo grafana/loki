@@ -12,9 +12,9 @@ import (
 )
 
 func TestPrepopulate(t *testing.T) {
-
 	success := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		w.Write([]byte("ok"))
+		_, err := w.Write([]byte("ok"))
+		require.Nil(t, err)
 	})
 
 	for _, tc := range []struct {

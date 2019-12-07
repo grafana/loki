@@ -222,30 +222,21 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 // This is important because some endpoints can POST x-www-form-urlencoded bodies instead of GET w/ query strings.
 func NewPrepopulateMiddleware() middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
-		return &prepop{
-			next: next,
-		}
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			err := req.ParseForm()
+			if err != nil {
+				status := http.StatusBadRequest
+				http.Error(
+					w,
+					httpgrpc.Errorf(http.StatusBadRequest, err.Error()).Error(),
+					status,
+				)
+				return
+
+			}
+			next.ServeHTTP(w, req)
+		})
 	})
-}
-
-type prepop struct {
-	next http.Handler
-}
-
-func (p *prepop) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	err := req.ParseForm()
-	if err != nil {
-		status := http.StatusBadRequest
-		http.Error(
-			w,
-			httpgrpc.Errorf(http.StatusBadRequest, err.Error()).Error(),
-			status,
-		)
-		return
-
-	}
-	p.next.ServeHTTP(w, req)
-
 }
 
 // parseRegexQuery parses regex and query querystring from httpRequest and returns the combined LogQL query.
