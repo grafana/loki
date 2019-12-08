@@ -182,6 +182,23 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	responseChan := tailer.getResponseChan()
 	closeErrChan := tailer.getCloseErrorChan()
 
+	doneChan := make(chan struct{})
+	go func() {
+		for {
+			_, _, err := conn.ReadMessage()
+			if err != nil {
+				if closeErr, ok := err.(*websocket.CloseError); ok {
+					if closeErr.Code == websocket.CloseNormalClosure {
+						break
+					}
+					level.Error(util.Logger).Log("msg", "Error from client", "err", err)
+					break
+				}
+			}
+		}
+		doneChan <- struct{}{}
+	}()
+
 	for {
 		select {
 		case response = <-responseChan:
@@ -214,6 +231,8 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				return
 			}
+		case <-doneChan:
+			return
 		}
 	}
 }
