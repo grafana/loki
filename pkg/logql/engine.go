@@ -296,8 +296,9 @@ type groupedAggregation struct {
 // Evaluator implements `SampleExpr` for a vectorAggregationExpr
 // this is copied and adapted from Prometheus vector aggregation code.
 func (v *vectorAggregationExpr) Evaluator() StepEvaluator {
+	nextEvaluator := v.left.Evaluator()
 	return StepEvaluatorFn(func() (bool, int64, promql.Vector) {
-		next, ts, vec := v.left.Evaluator().Next()
+		next, ts, vec := nextEvaluator.Next()
 		if !next {
 			return false, 0, promql.Vector{}
 		}
