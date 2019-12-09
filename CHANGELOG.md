@@ -1,3 +1,37 @@
+# 1.2.0 (2019-12-09)
+
+One week has passed since the last Loki release, and it's time for a new one!
+
+## Notable Changes
+
+We have continued our work making our API Prometheus-compatible. The key
+changes centered around API compatibility are:
+
+* [1370](https://github.com/grafana/loki/pull/1370) **slim-bean**: Change `/loki/api/v1/label` to `loki/api/v1/labels`
+* [1381](https://github.com/grafana/loki/pull/1381) **owen-d**: application/x-www-form-urlencoded support
+
+Meanwhile, @pstibrany has done great work ensuring that Loki handles hash
+collisions properly:
+
+* [1247](https://github.com/grafana/loki/pull/1247) **pstibrany**: pkg/ingester: handle labels mapping to the same fast fingerprint.
+
+## Other Changes
+
+:heart: All PR's are important to us, thanks everyone for continuing to help support and improve Loki! :heart:
+
+### Features
+
+* [1372](https://github.com/grafana/loki/pull/1372) **cyriltovena**: Let Loki start when using the debug image.
+* [1300](https://github.com/grafana/loki/pull/1300) **pstibrany**: pkg/ingester: check that ingester is in LEAVING state when transferring chunks and claiming tokens. Required when using memberlist client.
+
+### Bug Fixes/Improvements
+
+* [1376](https://github.com/grafana/loki/pull/1376) **jstaffans**: Fluentd: guard against nil values when sanitizing labels
+* [1371](https://github.com/grafana/loki/pull/1371) **cyriltovena**: Logql benchmark and performance improvement.
+* [1363](https://github.com/grafana/loki/pull/1363) **cyriltovena**: Fixes fluentd new push path API.
+* [1353](https://github.com/grafana/loki/pull/1353) **pstibrany**: docs: Fix grpc_listen_host and http_listen_host.
+* [1350](https://github.com/grafana/loki/pull/1350) **Eraac**: documentation: iam requirement for autoscaling
+
 # 1.1.0 (2019-12-04)
 
 It's been a busy 2 weeks since the 1.0.0 release and quite a few important PR's have been merged to Loki.
@@ -6,7 +40,7 @@ The most significant:
 
 * [1322](https://github.com/grafana/loki/pull/1322) **rfratto**: Fix v1 label API to be Prometheus-compatible
 
-Some might call this a **breaking change**, we are instead calling it a bug fix as our goal was to be prometheus compatible and we were not :smiley:  
+Some might call this a **breaking change**, we are instead calling it a bug fix as our goal was to be prometheus compatible and we were not :smiley:
 
 **But please be aware if you are using the `/loki/api/v1/label` or `/loki/api/v1/label/<name>/values` the JSON result will be different in 1.1.0**
 
@@ -31,7 +65,7 @@ New result:
     "labeln"
   ]
 }
-``` 
+```
 
 **ALSO IMPORTANT**
 
@@ -44,10 +78,10 @@ Binaries will now be zipped instead of gzipped as many people voiced their opini
 ## Notable Fixes and Improvements
 
 * Broken version info in startup log message:
-    
+
     [1095](https://github.com/grafana/loki/pull/1095) **pstibrany**: Makefile changes to allow easy builds with or without vendoring. Also fixes version bug for both cases.
 
-* The hashing algorithm used to calculate the hash for a stream was creating hash collisions in some instances.  
+* The hashing algorithm used to calculate the hash for a stream was creating hash collisions in some instances.
 **Please Note** this is just one part of the fix and is only in Promtail, the second part for Loki can be tracked [in PR1247](https://github.com/grafana/loki/pull/1247) which didn't quite make the cut for 1.1.0 and will be in 1.2.0:
 
     [1254](https://github.com/grafana/loki/pull/1254) **pstibrany**: pkg/promtail/client: Handle fingerprint hash collisions
@@ -169,14 +203,14 @@ A **huge** thanks to the **36 contributors** who submitted **148 PR's** since 0.
     > IMPORTANT: The new `/api/v1/*` endpoints contain breaking changes on the query paths (push path is unchanged) Eventually the `/api/prom/*` endpoints will be removed
 * PR [847](https://github.com/grafana/loki/pull/847) owes a big thanks to @cosmo0920 for contributing his Fluent Bit go plugin, now loki has Fluent Bit plugin support!!
 
-* PR [982](https://github.com/grafana/loki/pull/982) was a couple weeks of painstaking work by @rfratto for a much needed improvement to Loki's docs! [Check them out!](https://github.com/grafana/loki/tree/master/docs) 
+* PR [982](https://github.com/grafana/loki/pull/982) was a couple weeks of painstaking work by @rfratto for a much needed improvement to Loki's docs! [Check them out!](https://github.com/grafana/loki/tree/master/docs)
 
 * PR [980](https://github.com/grafana/loki/pull/980) by @sh0rez improved how flags and config file's are loaded to honor a more traditional order of precedence:
     1. Defaults
     2. Config file
     3. User-supplied flag values (command line arguments)
     > PLEASE NOTE: This is potentially a breaking change if you were passing command line arguments that also existed in a config file in which case the order they are given priority now has changed!
-  
+
 * PR [1062](https://github.com/grafana/loki/pull/1062) and [1089](https://github.com/grafana/loki/pull/1089) have moved Loki from Dep to Go Modules and to Go 1.13
 
 
@@ -350,7 +384,7 @@ A **huge** thanks to the **36 contributors** who submitted **148 PR's** since 0.
 * **Dashboards** [1126](https://github.com/grafana/loki/pull/1126) **joe-elliott**: Fix Loki Chunks Dashboard
 * **Tools** [1108](https://github.com/grafana/loki/pull/1108) **joe-elliott**: Updated push path to current prod
 
-## Plugins 
+## Plugins
 
 * **DockerDriver** [972](https://github.com/grafana/loki/pull/972) **cyriltovena**: Add stream label to docker driver
 * **DockerDriver** [971](https://github.com/grafana/loki/pull/971) **cyriltovena**: Allow to pass max-size and max-file to the docker driver
@@ -404,7 +438,7 @@ Loki is now using a Bot to help keep issues and PR's pruned based on age/relevan
 * **Promtail** [809](https://github.com/grafana/loki/pull/809) **rfratto**: Makefile: build promtail with CGO_ENABLED if GOHOSTOS=GOOS=linux
 * **Promtail** [730](https://github.com/grafana/loki/pull/730) **rfratto**: promtail: Add systemd journal support
 
-> 809, 730 NOTE: Systemd journal support is currently limited to amd64 images, arm support should come in the future when the transition to building the arm image and binaries is done natively via an arm container 
+> 809, 730 NOTE: Systemd journal support is currently limited to amd64 images, arm support should come in the future when the transition to building the arm image and binaries is done natively via an arm container
 <!-- -->
 * **Docs** [896](https://github.com/grafana/loki/pull/896) **dalance**: docs: fix link format
 * **Docs** [876](https://github.com/grafana/loki/pull/876) **BouchaaraAdil**: update Docs: update Retention section on Operations doc file
