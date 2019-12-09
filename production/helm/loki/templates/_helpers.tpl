@@ -59,3 +59,27 @@ Create the app name of loki clients. Defaults to the same logic as "loki.fullnam
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Get configuration as a string.
+.Values.config is undefined by default, meaning it is only ever defined by the user.
+If .Values.config is unspecified, we simply template and return .Values.configDefaults as a YAML string.
+Otherwise, we check the type of .Values.config, if it's a string, we template it and return it, otherwise we assume it is a map and merge it with the .Values.configDefaults, convert it from the merged map into a YAML string, and return that string templated.
+*/}}
+{{- define "loki.config" -}}
+{{- if .Values.config }}
+{{- if kindIs "string" .Values.config }}
+{{ tpl .Values.config . }}
+{{- else }}
+{{- $srcCopy := deepCopy .Values.configDefaults -}}
+{{- $destCopy := deepCopy .Values.config -}}
+{{- $newDict := mergeOverwrite $destCopy $srcCopy -}}
+{{ tpl (toYaml $newDict) . }}
+{{- end -}}{{/* end if kindIs string */}}
+{{- else }}{{/* else is when .Values.config is not truthy */}}
+{{ tpl (toYaml .Values.configDefaults) . }}
+{{- end -}}{{/* end if .Values.config */}}
+{{- end -}}{{/* end define */}}
+
+
+

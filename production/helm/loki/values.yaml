@@ -18,8 +18,8 @@ annotations: {}
 tracing:
   jaegerAgentHost:
 
-configString: ""
-config:
+# config: null
+configDefaults:
   auth_enabled: false
   ingester:
     chunk_idle_period: 3m

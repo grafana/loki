@@ -61,11 +61,7 @@ spec:
               subPath: {{ .Values.persistence.subPath }}
           ports:
             - name: http-metrics
-{{- if .Values.configString }}
-              containerPort: {{ (.Values.configString | fromYaml ).server.http_listen_port }}
-{{- else }}
-              containerPort: {{ .Values.config.server.http_listen_port }}
-{{- end }}
+              containerPort: {{ (include "loki.config" . | fromYaml).server.http_listen_port }}
               protocol: TCP
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
