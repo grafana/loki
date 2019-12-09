@@ -1,5 +1,8 @@
 # Releasing Loki
 
+This document is a series of instructions for core Loki maintainers to be able
+to publish a new Loki release.
+
 ## Prerequisites
 
 Each maintainer performing a release should perform the following steps once
