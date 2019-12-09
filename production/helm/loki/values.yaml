@@ -18,6 +18,7 @@ annotations: {}
 tracing:
   jaegerAgentHost:
 
+configString: ""
 config:
   auth_enabled: false
   ingester:
