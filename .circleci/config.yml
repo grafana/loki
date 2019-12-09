@@ -34,7 +34,6 @@ workflows:
 
       - publish/binaries:
           requires: [ test ]
-          filters: { <<: *only-tags }
 
       - test-helm:
           requires: [ test ]
