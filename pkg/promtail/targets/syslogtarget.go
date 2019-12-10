@@ -1,6 +1,7 @@
 package targets
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -8,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/influxdata/go-syslog/v2"
@@ -48,8 +50,9 @@ type SyslogTarget struct {
 	listener net.Listener
 	messages chan message
 
-	shutdown          chan struct{}
-	connectionsClosed *sync.WaitGroup
+	ctx             context.Context
+	ctxCancel       context.CancelFunc
+	openConnections *sync.WaitGroup
 }
 
 type message struct {
@@ -65,14 +68,17 @@ func NewSyslogTarget(
 	config *scrape.SyslogTargetConfig,
 ) (*SyslogTarget, error) {
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	t := &SyslogTarget{
 		logger:        logger,
 		handler:       handler,
 		config:        config,
 		relabelConfig: relabel,
 
-		shutdown:          make(chan struct{}),
-		connectionsClosed: new(sync.WaitGroup),
+		ctx:             ctx,
+		ctxCancel:       cancel,
+		openConnections: new(sync.WaitGroup),
 	}
 
 	t.messages = make(chan message)
@@ -91,63 +97,57 @@ func (t *SyslogTarget) run() error {
 	t.listener = l
 	level.Info(t.logger).Log("msg", "syslog listening on address", "address", t.ListenAddress().String())
 
-	t.connectionsClosed.Add(1)
+	t.openConnections.Add(1)
 	go t.acceptConnections()
 
 	return nil
 }
 
 func (t *SyslogTarget) acceptConnections() {
-	defer t.connectionsClosed.Done()
+	defer t.openConnections.Done()
 
 	l := log.With(t.logger, "address", t.listener.Addr().String())
-	var backoff time.Duration
+
+	backoff := util.NewBackoff(t.ctx, util.BackoffConfig{
+		MinBackoff: 5 * time.Millisecond,
+		MaxBackoff: 1 * time.Second,
+	})
 
 	for {
 		c, err := t.listener.Accept()
 		if err != nil {
 			select {
-			case <-t.shutdown:
+			case <-t.ctx.Done():
 				level.Info(l).Log("msg", "syslog server shutting down")
 				return
 			default:
 			}
 			if ne, ok := err.(net.Error); ok && ne.Temporary() {
-				if backoff == 0 {
-					backoff = 5 * time.Millisecond
-				} else {
-					backoff *= 2
-				}
-				if max := 1 * time.Second; backoff > max {
-					backoff = max
-				}
-				level.Warn(l).Log("msg", "failed to accept syslog connection", "err", err, "retry_in", backoff)
-				time.Sleep(backoff)
+				level.Warn(l).Log("msg", "failed to accept syslog connection", "err", err, "num_retries", backoff.NumRetries())
+				backoff.Wait()
 				continue
 			}
 
 			level.Error(l).Log("msg", "failed to accept syslog connection. quiting", "err", err)
 			return
 		}
+		backoff.Reset()
 
-		t.connectionsClosed.Add(1)
+		t.openConnections.Add(1)
 		go t.handleConnection(c)
 	}
 }
 
 func (t *SyslogTarget) handleConnection(cn net.Conn) {
-	defer t.connectionsClosed.Done()
+	defer t.openConnections.Done()
 
 	c := &idleTimeoutConn{cn, t.idleTimeout()}
 
-	done := make(chan struct{})
-	defer close(done)
+	handlerCtx, cancel := context.WithCancel(t.ctx)
+	defer cancel()
 	go func() {
-		select {
-		case <-done:
-		case <-t.shutdown:
-		}
-		c.Close()
+		<-handlerCtx.Done()
+		_ = c.Close()
 	}()
 
 	connLabels := t.connectionLabels(c)
@@ -210,7 +210,7 @@ func (t *SyslogTarget) handleMessage(connLabels labels.Labels, msg syslog.Messag
 
 	filtered := make(model.LabelSet)
 	for _, lbl := range processed {
-		if len(lbl.Name) >= 2 && lbl.Name[0:2] == "__" {
+		if strings.HasPrefix(lbl.Name, "__") {
 			continue
 		}
 		filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
@@ -284,9 +284,9 @@ func (t *SyslogTarget) Details() interface{} {
 
 // Stop shuts down the SyslogTarget.
 func (t *SyslogTarget) Stop() error {
-	close(t.shutdown)
+	t.ctxCancel()
 	err := t.listener.Close()
-	t.connectionsClosed.Wait()
+	t.openConnections.Wait()
 	close(t.messages)
 	return err
 }

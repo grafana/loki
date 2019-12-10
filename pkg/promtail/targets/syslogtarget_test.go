@@ -26,23 +26,24 @@ type ClientMessage struct {
 }
 
 type TestLabeledClient struct {
-	log      log.Logger
-	messages []ClientMessage
-	sync.RWMutex
+	log log.Logger
+
+	messages    []ClientMessage
+	messagesMtx sync.RWMutex
 }
 
 func (c *TestLabeledClient) Handle(ls model.LabelSet, t time.Time, s string) error {
 	level.Debug(c.log).Log("msg", "received log", "log", s)
 
-	c.Lock()
-	defer c.Unlock()
+	c.messagesMtx.Lock()
+	defer c.messagesMtx.Unlock()
 	c.messages = append(c.messages, ClientMessage{ls, t, s})
 	return nil
 }
 
 func (c *TestLabeledClient) Messages() []ClientMessage {
-	c.RLock()
-	defer c.RUnlock()
+	c.messagesMtx.RLock()
+	defer c.messagesMtx.RUnlock()
 
 	return c.messages
 }
