@@ -616,13 +616,13 @@ labels:
 
 * `__syslog_connection_ip_address`: The remote IP address.
 * `__syslog_connection_hostname`: The remote hostname.
-* `__syslog_message_severity`: The syslog severity parsed from the message.
-* `__syslog_message_facility`: The syslog facility parsed from the message.
-* `__syslog_message_hostname`: The hostname parsed from the message.
-* `__syslog_message_app_name`: The app name parsed from the message.
-* `__syslog_message_proc_id`: The proc id parsed from the message.
-* `__syslog_message_msg_id`: The message id parsed from the message.
-* `__syslog_message_sd_<sd_id>[_<iana_enterprise_id>]_<sd_name>`: The parsed structured data fields from the message.
+* `__syslog_message_severity`: The [syslog severity](https://tools.ietf.org/html/rfc5424#section-6.2.1) parsed from the message. Symbolic name as per [syslog_message.go](https://github.com/influxdata/go-syslog/blob/v2.0.1/rfc5424/syslog_message.go#L184).
+* `__syslog_message_facility`: The [syslog facility](https://tools.ietf.org/html/rfc5424#section-6.2.1) parsed from the message. Symbolic name as per [syslog_message.go](https://github.com/influxdata/go-syslog/blob/v2.0.1/rfc5424/syslog_message.go#L235) and `syslog(3)`.
+* `__syslog_message_hostname`: The [hostname](https://tools.ietf.org/html/rfc5424#section-6.2.4) parsed from the message.
+* `__syslog_message_app_name`: The [app-name field](https://tools.ietf.org/html/rfc5424#section-6.2.5) parsed from the message.
+* `__syslog_message_proc_id`: The [procid field](https://tools.ietf.org/html/rfc5424#section-6.2.6) parsed from the message.
+* `__syslog_message_msg_id`: The [msgid field](https://tools.ietf.org/html/rfc5424#section-6.2.7) parsed from the message.
+* `__syslog_message_sd_<sd_id>[_<iana_enterprise_id>]_<sd_name>`: The [structured-data field](https://tools.ietf.org/html/rfc5424#section-6.3) parsed from the message. The data field `[custom@99770 example="1"]` becomes `__syslog_message_sd_custom_99770_example`.
 
 ### relabel_config
 
