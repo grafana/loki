@@ -3,7 +3,9 @@ package cfg
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/ioutil"
+	"os"
 
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
@@ -61,7 +63,21 @@ func dYAML(y []byte) Source {
 func YAMLFlag(name, value, help string) Source {
 	return func(dst interface{}) error {
 		f := flag.String(name, value, help)
-		flag.Parse()
+
+		usage := flag.CommandLine.Usage
+		flag.CommandLine.Usage = func() { /* don't do anything by default, we will print usage ourselves, but only when requested. */ }
+
+		flag.CommandLine.Init(flag.CommandLine.Name(), flag.ContinueOnError)
+		err := flag.CommandLine.Parse(os.Args[1:])
+		if err == flag.ErrHelp {
+			// print available parameters to stdout, so that users can grep/less it easily
+			flag.CommandLine.SetOutput(os.Stdout)
+			usage()
+			os.Exit(2)
+		} else if err != nil {
+			fmt.Fprintln(flag.CommandLine.Output(), "Run with -help to get list of available parameters")
+			os.Exit(2)
+		}
 
 		if *f == "" {
 			f = nil
