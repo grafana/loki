@@ -28,8 +28,8 @@ type ClientMessage struct {
 type TestLabeledClient struct {
 	log log.Logger
 
-	messages    []ClientMessage
 	messagesMtx sync.RWMutex
+	messages    []ClientMessage
 }
 
 func (c *TestLabeledClient) Handle(ls model.LabelSet, t time.Time, s string) error {

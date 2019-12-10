@@ -13,11 +13,13 @@ import (
 func TestParseStream_OctetCounting(t *testing.T) {
 	r := strings.NewReader("23 <13>1 - - - - - - First24 <13>1 - - - - - - Second")
 
-	resultsC := syslogparser.ParseStream(r)
 	results := make([]*syslog.Result, 0)
-	for res := range resultsC {
+	cb := func(res *syslog.Result) {
 		results = append(results, res)
 	}
+
+	err := syslogparser.ParseStream(r, cb)
+	require.NoError(t, err)
 
 	require.Equal(t, 2, len(results))
 	require.NoError(t, results[0].Error)
@@ -29,11 +31,13 @@ func TestParseStream_OctetCounting(t *testing.T) {
 func TestParseStream_NewlineSeparated(t *testing.T) {
 	r := strings.NewReader("<13>1 - - - - - - First\n<13>1 - - - - - - Second")
 
-	resultsC := syslogparser.ParseStream(r)
 	results := make([]*syslog.Result, 0)
-	for res := range resultsC {
+	cb := func(res *syslog.Result) {
 		results = append(results, res)
 	}
+
+	err := syslogparser.ParseStream(r, cb)
+	require.NoError(t, err)
 
 	require.Equal(t, 2, len(results))
 	require.NoError(t, results[0].Error)
@@ -45,19 +49,13 @@ func TestParseStream_NewlineSeparated(t *testing.T) {
 func TestParseStream_InvalidStream(t *testing.T) {
 	r := strings.NewReader("invalid")
 
-	resultsC := syslogparser.ParseStream(r)
-	require.EqualError(t, (<-resultsC).Error, "invalid or unsupported framing. first byte: 'i'")
-
-	_, ok := <-resultsC
-	require.Equal(t, false, ok, "channel should be closed after unrecoverable error")
+	err := syslogparser.ParseStream(r, func(res *syslog.Result) {})
+	require.EqualError(t, err, "invalid or unsupported framing. first byte: 'i'")
 }
 
 func TestParseStream_EmptyStream(t *testing.T) {
 	r := strings.NewReader("")
 
-	resultsC := syslogparser.ParseStream(r)
-	require.Equal(t, (<-resultsC).Error, io.EOF)
-
-	_, ok := <-resultsC
-	require.Equal(t, false, ok, "channel should be closed after unrecoverable error")
+	err := syslogparser.ParseStream(r, func(res *syslog.Result) {})
+	require.Equal(t, err, io.EOF)
 }
