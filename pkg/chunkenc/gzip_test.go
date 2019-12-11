@@ -218,7 +218,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 
 var result []Chunk
 
-func BenchmarkWriteGZIP(b *testing.B) {
+func benchmarkWrite(b *testing.B, enc Encoding) {
 	chunks := []Chunk{}
 
 	entry := &logproto.Entry{
@@ -228,7 +228,7 @@ func BenchmarkWriteGZIP(b *testing.B) {
 	i := int64(0)
 
 	for n := 0; n < b.N; n++ {
-		c := NewMemChunk(EncGZIP)
+		c := NewMemChunk(enc)
 		// adds until full so we trigger cut which serialize using gzip
 		for c.SpaceFor(entry) {
 			_ = c.Append(entry)
@@ -240,12 +240,19 @@ func BenchmarkWriteGZIP(b *testing.B) {
 	result = chunks
 }
 
-func BenchmarkReadGZIP(b *testing.B) {
+func BenchmarkWriteGzip(b *testing.B) {
+	benchmarkWrite(b, EncGZIP)
+}
+func BenchmarkWriteLZ4(b *testing.B) {
+	benchmarkWrite(b, EncLZ4)
+}
+
+func benchmarkRead(b *testing.B, enc Encoding) {
 	chunks := []Chunk{}
 	i := int64(0)
 	for n := 0; n < 50; n++ {
 		entry := randSizeEntry(0)
-		c := NewMemChunk(EncGZIP)
+		c := NewMemChunk(enc)
 		// adds until full so we trigger cut which serialize using gzip
 		for c.SpaceFor(entry) {
 			_ = c.Append(entry)
@@ -275,6 +282,14 @@ func BenchmarkReadGZIP(b *testing.B) {
 		}
 		wg.Wait()
 	}
+}
+
+func BenchmarkReadGZIP(b *testing.B) {
+	benchmarkRead(b, EncGZIP)
+}
+
+func BenchmarkReadLZ4(b *testing.B) {
+	benchmarkRead(b, EncLZ4)
 }
 
 func BenchmarkHeadBlockIterator(b *testing.B) {
