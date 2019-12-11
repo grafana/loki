@@ -1,4 +1,5 @@
-FROM golang:1.13 as build
+ARG BUILD_IMAGE=grafana/loki-build-image:0.9.0
+FROM $BUILD_IMAGE as build
 COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false fluent-bit-plugin
