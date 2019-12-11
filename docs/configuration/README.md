@@ -577,6 +577,18 @@ memcached_client:
   # servers.
   [consistent_hash: <bool>]
 
+redis:
+  # Redis service endpoint to use when caching chunks. If empty, no redis will be used.
+  [endpoint: <string>]
+  # Maximum time to wait before giving up on redis requests.
+  [timeout: <duration> | default = 100ms]
+  # How long keys stay in the redis.
+  [expiration: <duration> | default = 0s]
+  # Maximum number of idle connections in pool.
+  [max_idle_conns: <int> | default = 80]
+  # Maximum number of active connections in pool.
+  [max_active_conns: <int> | default = 0]
+
 fifocache:
   # Number of entries to cache in-memory.
   [size: <int> | default = 0]
