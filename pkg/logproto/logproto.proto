@@ -78,6 +78,12 @@ message TailResponse {
   repeated DroppedStream droppedStreams = 2;
 }
 
+message SeriesRequest {
+  google.protobuf.Timestamp start = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp end = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  repeated LabelMatchers groups = 3;
+}
+
 message DroppedStream {
   google.protobuf.Timestamp from = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   google.protobuf.Timestamp to = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
@@ -102,4 +108,21 @@ message Chunk {
 
 message TransferChunksResponse {
 
+}
+
+enum MatchType {
+  EQUAL = 0;
+  NOT_EQUAL = 1;
+  REGEX_MATCH = 2;
+  REGEX_NO_MATCH = 3;
+}
+
+message LabelMatchers {
+  repeated LabelMatcher matchers = 1;
+}
+
+message LabelMatcher {
+  MatchType type = 1;
+  string name = 2;
+  string value = 3;
 }
