@@ -40,6 +40,8 @@ func (e Encoding) String() string {
 		return "dumb"
 	case EncLZ4:
 		return "lz4"
+	case EncSnappy:
+		return "snappy"
 	default:
 		return "unknown"
 	}

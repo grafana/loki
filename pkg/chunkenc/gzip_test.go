@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/dustin/go-humanize"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
 )
@@ -213,6 +214,37 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 
 			tester(t, NewMemChunk(EncGZIP))
 		})
+	}
+}
+
+func TestChunkSize(t *testing.T) {
+	encs := []Encoding{EncGZIP, EncLZ4, EncSnappy}
+	for _, enc := range encs {
+		t.Run(enc.String(), func(t *testing.T) {
+			i := int64(0)
+			c := NewMemChunk(enc)
+			entry := &logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      RandString(512),
+			}
+			for c.SpaceFor(entry) {
+				err := c.Append(entry)
+				if err != nil {
+					t.Fatal(err)
+				}
+				entry.Timestamp = time.Unix(0, i)
+				i++
+			}
+			b, err := c.Bytes()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Log("Chunk size", humanize.Bytes(uint64(len(b))))
+			t.Log("Lines", i)
+			t.Log("characters ", i*int64(len(entry.Line)))
+
+		})
+
 	}
 }
 
