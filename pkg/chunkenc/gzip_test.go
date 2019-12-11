@@ -218,7 +218,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 }
 
 func TestChunkSize(t *testing.T) {
-	encs := []Encoding{EncGZIP, EncLZ4, EncSnappy}
+	encs := []Encoding{EncGZIP, EncLZ4, EncSnappy, EncSnappyV2}
 	for _, enc := range encs {
 		t.Run(enc.String(), func(t *testing.T) {
 			i := int64(0)
@@ -283,6 +283,10 @@ func BenchmarkWriteSnappy(b *testing.B) {
 	benchmarkWrite(b, EncSnappy)
 }
 
+func BenchmarkWriteSnappyV2(b *testing.B) {
+	benchmarkWrite(b, EncSnappyV2)
+}
+
 func benchmarkRead(b *testing.B, enc Encoding) {
 	chunks := []Chunk{}
 	i := int64(0)
@@ -330,6 +334,10 @@ func BenchmarkReadLZ4(b *testing.B) {
 
 func BenchmarkReadSnappy(b *testing.B) {
 	benchmarkRead(b, EncSnappy)
+}
+
+func BenchmarkReadSnappyV2(b *testing.B) {
+	benchmarkRead(b, EncSnappyV2)
 }
 
 func BenchmarkHeadBlockIterator(b *testing.B) {

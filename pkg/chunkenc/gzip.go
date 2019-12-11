@@ -147,6 +147,8 @@ func NewMemChunkSize(enc Encoding, blockSize int) *MemChunk {
 		c.readers, c.writers = &LZ4, &LZ4
 	case EncSnappy:
 		c.readers, c.writers = &Snappy, &Snappy
+	case EncSnappyV2:
+		c.readers, c.writers = &Snappy, &Snappy
 	default:
 		panic("unknown encoding")
 	}

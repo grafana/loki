@@ -28,6 +28,7 @@ const (
 	EncDumb
 	EncLZ4
 	EncSnappy
+	EncSnappyV2
 )
 
 func (e Encoding) String() string {
@@ -42,6 +43,8 @@ func (e Encoding) String() string {
 		return "lz4"
 	case EncSnappy:
 		return "snappy"
+	case EncSnappyV2:
+		return "snappyv2"
 	default:
 		return "unknown"
 	}
