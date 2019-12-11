@@ -84,6 +84,14 @@ message SeriesRequest {
   repeated LabelMatchers groups = 3;
 }
 
+message SeriesResponse {
+  repeated SeriesIdentifier series = 1;
+}
+
+message SeriesIdentifier {
+  map<string,string> labels = 1;
+}
+
 message DroppedStream {
   google.protobuf.Timestamp from = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   google.protobuf.Timestamp to = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
