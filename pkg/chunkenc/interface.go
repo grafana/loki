@@ -27,6 +27,7 @@ const (
 	EncGZIP
 	EncDumb
 	EncLZ4
+	EncSnappy
 )
 
 func (e Encoding) String() string {

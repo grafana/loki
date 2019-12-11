@@ -5,6 +5,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/golang/snappy"
 	"github.com/klauspost/compress/gzip"
 	"github.com/pierrec/lz4"
 	"github.com/prometheus/prometheus/pkg/pool"
@@ -28,6 +29,8 @@ var (
 	Gzip GzipPool
 	// LZ4 is the l4z compression pool
 	LZ4 LZ4Pool
+	// Snappy is the snappy compression pool
+	Snappy SnappyPool
 	// BufReaderPool is bufio.Reader pool
 	BufReaderPool = &BufioReaderPool{
 		pool: sync.Pool{
@@ -114,6 +117,41 @@ func (pool *LZ4Pool) GetWriter(dst io.Writer) io.WriteCloser {
 
 // PutWriter places back in the pool a CompressionWriter
 func (pool *LZ4Pool) PutWriter(writer io.WriteCloser) {
+	pool.writers.Put(writer)
+}
+
+type SnappyPool struct {
+	readers sync.Pool
+	writers sync.Pool
+}
+
+// GetReader gets or creates a new CompressionReader and reset it to read from src
+func (pool *SnappyPool) GetReader(src io.Reader) io.Reader {
+	if r := pool.readers.Get(); r != nil {
+		reader := r.(*snappy.Reader)
+		reader.Reset(src)
+		return reader
+	}
+	return snappy.NewReader(src)
+}
+
+// PutReader places back in the pool a CompressionReader
+func (pool *SnappyPool) PutReader(reader io.Reader) {
+	pool.readers.Put(reader)
+}
+
+// GetWriter gets or creates a new CompressionWriter and reset it to write to dst
+func (pool *SnappyPool) GetWriter(dst io.Writer) io.WriteCloser {
+	if w := pool.writers.Get(); w != nil {
+		writer := w.(*snappy.Writer)
+		writer.Reset(dst)
+		return writer
+	}
+	return snappy.NewBufferedWriter(dst)
+}
+
+// PutWriter places back in the pool a CompressionWriter
+func (pool *SnappyPool) PutWriter(writer io.WriteCloser) {
 	pool.writers.Put(writer)
 }
 

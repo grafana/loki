@@ -247,6 +247,10 @@ func BenchmarkWriteLZ4(b *testing.B) {
 	benchmarkWrite(b, EncLZ4)
 }
 
+func BenchmarkWriteSnappy(b *testing.B) {
+	benchmarkWrite(b, EncSnappy)
+}
+
 func benchmarkRead(b *testing.B, enc Encoding) {
 	chunks := []Chunk{}
 	i := int64(0)
@@ -290,6 +294,10 @@ func BenchmarkReadGZIP(b *testing.B) {
 
 func BenchmarkReadLZ4(b *testing.B) {
 	benchmarkRead(b, EncLZ4)
+}
+
+func BenchmarkReadSnappy(b *testing.B) {
+	benchmarkRead(b, EncSnappy)
 }
 
 func BenchmarkHeadBlockIterator(b *testing.B) {
