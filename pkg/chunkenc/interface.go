@@ -2,7 +2,6 @@ package chunkenc
 
 import (
 	"errors"
-	"io"
 	"time"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -27,6 +26,7 @@ const (
 	EncNone Encoding = iota
 	EncGZIP
 	EncDumb
+	EncLZ4
 )
 
 func (e Encoding) String() string {
@@ -37,6 +37,8 @@ func (e Encoding) String() string {
 		return "none"
 	case EncDumb:
 		return "dumb"
+	case EncLZ4:
+		return "lz4"
 	default:
 		return "unknown"
 	}
@@ -52,18 +54,4 @@ type Chunk interface {
 	Bytes() ([]byte, error)
 	Utilization() float64
 	UncompressedSize() int
-}
-
-// CompressionWriter is the writer that compresses the data passed to it.
-type CompressionWriter interface {
-	Write(p []byte) (int, error)
-	Close() error
-	Flush() error
-	Reset(w io.Writer)
-}
-
-// CompressionReader reads the compressed data.
-type CompressionReader interface {
-	Read(p []byte) (int, error)
-	Reset(r io.Reader) error
 }

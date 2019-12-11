@@ -51,7 +51,8 @@ type MemChunk struct {
 	head *headBlock
 
 	encoding Encoding
-	cPool    CompressionPool
+	readers  ReaderPool
+	writers  WriterPool
 }
 
 type block struct {
@@ -94,7 +95,7 @@ func (hb *headBlock) append(ts int64, line string) error {
 	return nil
 }
 
-func (hb *headBlock) serialise(pool CompressionPool) ([]byte, error) {
+func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
 	buf := &bytes.Buffer{}
 	encBuf := make([]byte, binary.MaxVarintLen64)
 	compressedWriter := pool.GetWriter(buf)
@@ -141,7 +142,9 @@ func NewMemChunkSize(enc Encoding, blockSize int) *MemChunk {
 
 	switch enc {
 	case EncGZIP:
-		c.cPool = &Gzip
+		c.readers, c.writers = &Gzip, &Gzip
+	case EncLZ4:
+		c.readers, c.writers = &LZ4, &LZ4
 	default:
 		panic("unknown encoding")
 	}
@@ -156,11 +159,13 @@ func NewMemChunk(enc Encoding) *MemChunk {
 
 // NewByteChunk returns a MemChunk on the passed bytes.
 func NewByteChunk(b []byte) (*MemChunk, error) {
+	// todo read from bytes encoding.
 	bc := &MemChunk{
-		cPool:    &Gzip,
+		// cPool:    &Gzip,
 		encoding: EncGZIP,
 		head:     &headBlock{}, // Dummy, empty headblock.
 	}
+	bc.writers, bc.readers = &Gzip, &Gzip
 
 	db := decbuf{b: b}
 
@@ -369,7 +374,7 @@ func (c *MemChunk) cut() error {
 		return nil
 	}
 
-	b, err := c.head.serialise(c.cPool)
+	b, err := c.head.serialise(c.writers)
 	if err != nil {
 		return err
 	}
@@ -417,7 +422,7 @@ func (c *MemChunk) Iterator(mintT, maxtT time.Time, direction logproto.Direction
 
 	for _, b := range c.blocks {
 		if maxt > b.mint && b.maxt > mint {
-			its = append(its, b.iterator(c.cPool, filter))
+			its = append(its, b.iterator(c.readers, filter))
 		}
 	}
 
@@ -438,7 +443,7 @@ func (c *MemChunk) Iterator(mintT, maxtT time.Time, direction logproto.Direction
 	return iter.NewEntryIteratorBackward(iterForward)
 }
 
-func (b block) iterator(pool CompressionPool, filter logql.Filter) iter.EntryIterator {
+func (b block) iterator(pool ReaderPool, filter logql.Filter) iter.EntryIterator {
 	if len(b.b) == 0 {
 		return emptyIterator
 	}
@@ -504,8 +509,8 @@ func (li *listIterator) Labels() string { return "" }
 
 type bufferedIterator struct {
 	s      *bufio.Reader
-	reader CompressionReader
-	pool   CompressionPool
+	reader io.Reader
+	pool   ReaderPool
 
 	cur logproto.Entry
 
@@ -519,7 +524,7 @@ type bufferedIterator struct {
 	filter logql.Filter
 }
 
-func newBufferedIterator(pool CompressionPool, b []byte, filter logql.Filter) *bufferedIterator {
+func newBufferedIterator(pool ReaderPool, b []byte, filter logql.Filter) *bufferedIterator {
 	r := pool.GetReader(bytes.NewBuffer(b))
 	return &bufferedIterator{
 		s:      BufReaderPool.Get(r),

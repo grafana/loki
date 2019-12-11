@@ -6,21 +6,28 @@ import (
 	"sync"
 
 	"github.com/klauspost/compress/gzip"
+	"github.com/pierrec/lz4"
 	"github.com/prometheus/prometheus/pkg/pool"
 )
 
-// CompressionPool is a pool of CompressionWriter and CompressionReader
+// WriterPool is a pool of io.Writer
 // This is used by every chunk to avoid unnecessary allocations.
-type CompressionPool interface {
-	GetWriter(io.Writer) CompressionWriter
-	PutWriter(CompressionWriter)
-	GetReader(io.Reader) CompressionReader
-	PutReader(CompressionReader)
+type WriterPool interface {
+	GetWriter(io.Writer) io.WriteCloser
+	PutWriter(io.WriteCloser)
+}
+
+// ReaderPool similar to WriterPool but for reading chunks.
+type ReaderPool interface {
+	GetReader(io.Reader) io.Reader
+	PutReader(io.Reader)
 }
 
 var (
 	// Gzip is the gun zip compression pool
 	Gzip GzipPool
+	// LZ4 is the l4z compression pool
+	LZ4 LZ4Pool
 	// BufReaderPool is bufio.Reader pool
 	BufReaderPool = &BufioReaderPool{
 		pool: sync.Pool{
@@ -39,41 +46,74 @@ type GzipPool struct {
 }
 
 // GetReader gets or creates a new CompressionReader and reset it to read from src
-func (pool *GzipPool) GetReader(src io.Reader) (reader CompressionReader) {
+func (pool *GzipPool) GetReader(src io.Reader) io.Reader {
 	if r := pool.readers.Get(); r != nil {
-		reader = r.(CompressionReader)
+		reader := r.(*gzip.Reader)
 		err := reader.Reset(src)
 		if err != nil {
 			panic(err)
 		}
-	} else {
-		var err error
-		reader, err = gzip.NewReader(src)
-		if err != nil {
-			panic(err)
-		}
+		return reader
+	}
+	reader, err := gzip.NewReader(src)
+	if err != nil {
+		panic(err)
 	}
 	return reader
 }
 
 // PutReader places back in the pool a CompressionReader
-func (pool *GzipPool) PutReader(reader CompressionReader) {
+func (pool *GzipPool) PutReader(reader io.Reader) {
 	pool.readers.Put(reader)
 }
 
 // GetWriter gets or creates a new CompressionWriter and reset it to write to dst
-func (pool *GzipPool) GetWriter(dst io.Writer) (writer CompressionWriter) {
+func (pool *GzipPool) GetWriter(dst io.Writer) io.WriteCloser {
 	if w := pool.writers.Get(); w != nil {
-		writer = w.(CompressionWriter)
+		writer := w.(*gzip.Writer)
 		writer.Reset(dst)
-	} else {
-		writer = gzip.NewWriter(dst)
+		return writer
 	}
-	return writer
+	return gzip.NewWriter(dst)
 }
 
 // PutWriter places back in the pool a CompressionWriter
-func (pool *GzipPool) PutWriter(writer CompressionWriter) {
+func (pool *GzipPool) PutWriter(writer io.WriteCloser) {
+	pool.writers.Put(writer)
+}
+
+type LZ4Pool struct {
+	readers sync.Pool
+	writers sync.Pool
+}
+
+// GetReader gets or creates a new CompressionReader and reset it to read from src
+func (pool *LZ4Pool) GetReader(src io.Reader) io.Reader {
+	if r := pool.readers.Get(); r != nil {
+		reader := r.(*lz4.Reader)
+		reader.Reset(src)
+		return reader
+	}
+	return lz4.NewReader(src)
+}
+
+// PutReader places back in the pool a CompressionReader
+func (pool *LZ4Pool) PutReader(reader io.Reader) {
+	pool.readers.Put(reader)
+}
+
+// GetWriter gets or creates a new CompressionWriter and reset it to write to dst
+func (pool *LZ4Pool) GetWriter(dst io.Writer) io.WriteCloser {
+	if w := pool.writers.Get(); w != nil {
+		writer := w.(*lz4.Writer)
+		writer.Reset(dst)
+		return writer
+	}
+	return lz4.NewWriter(dst)
+}
+
+// PutWriter places back in the pool a CompressionWriter
+func (pool *LZ4Pool) PutWriter(writer io.WriteCloser) {
 	pool.writers.Put(writer)
 }
 
