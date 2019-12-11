@@ -329,6 +329,7 @@ github.com/hpcloud/tail/winfile
 # github.com/influxdata/go-syslog/v2 v2.0.1
 github.com/influxdata/go-syslog/v2
 github.com/influxdata/go-syslog/v2/common
+github.com/influxdata/go-syslog/v2/nontransparent
 github.com/influxdata/go-syslog/v2/octetcounting
 github.com/influxdata/go-syslog/v2/rfc5424
 # github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
@@ -348,6 +349,9 @@ github.com/klauspost/cpuid
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/kr/logfmt v0.0.0-20140226030751-b84e30acd515
 github.com/kr/logfmt
+# github.com/leodido/ragel-machinery v0.0.0-20181214104525-299bdde78165
+github.com/leodido/ragel-machinery
+github.com/leodido/ragel-machinery/parser
 # github.com/mattn/go-colorable v0.0.9
 github.com/mattn/go-colorable
 # github.com/mattn/go-isatty v0.0.4

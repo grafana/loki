@@ -76,7 +76,6 @@ func testSyslogTarget(t *testing.T, octetCounting bool) {
 	addr := tgt.ListenAddress().String()
 	c, err := net.Dial("tcp", addr)
 	require.NoError(t, err)
-	defer c.Close()
 
 	messages := []string{
 		`<165>1 2018-10-11T22:14:15.003Z host5 e - id1 [custom@32473 exkey="1"] An application event log entry...`,
@@ -86,6 +85,7 @@ func testSyslogTarget(t *testing.T, octetCounting bool) {
 
 	err = writeMessagesToStream(c, messages, octetCounting)
 	require.NoError(t, err)
+	require.NoError(t, c.Close())
 
 	require.Eventuallyf(t, func() bool {
 		return len(client.Messages()) == len(messages)

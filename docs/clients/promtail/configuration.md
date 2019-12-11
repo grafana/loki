@@ -592,6 +592,15 @@ logs to promtail with the syslog protocol.
 Currently supported is [IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424)
 with and without octet counting.
 
+The recommended deployment is to have a dedicated syslog forwarder like **syslog-ng** or **rsyslog**
+in front of promtail. The forwarder can take care of the various specifications
+and transports that exist (UDP, BSD syslog, ...).
+
+[Octet counting](https://tools.ietf.org/html/rfc6587#section-3.4.1) is recommended as the
+message framing method. In a stream with [non-transparent framing](https://tools.ietf.org/html/rfc6587#section-3.4.2),
+promtail needs to wait for the next message to catch multi-line messages,
+therefore delays between messages can occur.
+
 You may need to increase the open files limit for the promtail process
 if many clients are connected. (`ulimit -Sn`)
 
@@ -610,6 +619,20 @@ label_structured_data: <bool>
 # Label map to add to every log message.
 labels:
   [ <labelname>: <labelvalue> ... ]
+```
+
+#### Syslog-NG Output Configuration
+
+```
+destination d_syslog {
+  syslog("localhost" transport("tcp") port(<promtail_port>));
+};
+```
+
+#### Rsyslog Output Configuration
+
+```
+action(type="omfwd" protocol="tcp" port="<promtail_port>" Template="RSYSLOG_SyslogProtocol23Format" TCP_Framing="octet-counted")
 ```
 
 #### Available Labels

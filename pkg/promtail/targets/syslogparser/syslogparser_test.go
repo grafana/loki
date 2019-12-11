@@ -29,7 +29,7 @@ func TestParseStream_OctetCounting(t *testing.T) {
 }
 
 func TestParseStream_NewlineSeparated(t *testing.T) {
-	r := strings.NewReader("<13>1 - - - - - - First\n<13>1 - - - - - - Second")
+	r := strings.NewReader("<13>1 - - - - - - First\n<13>1 - - - - - - Second\n")
 
 	results := make([]*syslog.Result, 0)
 	cb := func(res *syslog.Result) {
