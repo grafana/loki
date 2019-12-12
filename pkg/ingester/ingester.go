@@ -236,6 +236,17 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	return instance.Label(ctx, req)
 }
 
+// Series queries the ingester for log stream identifiers (label sets) matching a set of matchers
+func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+	instanceID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	instance := i.getOrCreateInstance(instanceID)
+	return instance.Series(ctx, req)
+}
+
 // Check implements grpc_health_v1.HealthCheck.
 func (*Ingester) Check(ctx context.Context, req *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil

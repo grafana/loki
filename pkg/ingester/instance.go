@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util"
@@ -190,7 +191,20 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	if err != nil {
 		return err
 	}
-	iters, err := i.lookupStreams(queryServer.Context(), req, expr.Matchers(), filter)
+
+	var iters []iter.EntryIterator
+
+	err = i.forMatchingStreams(
+		expr.Matchers(),
+		func(stream *stream) error {
+			iter, err := stream.Iterator(req.Start, req.End, req.Direction, filter)
+			if err != nil {
+				return err
+			}
+			iters = append(iters, iter)
+			return nil
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -221,32 +235,69 @@ func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logpro
 	}, nil
 }
 
-func (i *instance) lookupStreams(ctx context.Context, req *logproto.QueryRequest, matchers []*labels.Matcher, filter logql.Filter) ([]iter.EntryIterator, error) {
+func (i *instance) Series(_ context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+	groups, err := loghttp.Match(req.GetGroups())
+	if err != nil {
+		return nil, err
+	}
+
+	dedupedSeries := make(map[uint64]logproto.SeriesIdentifier)
+	for _, matchers := range groups {
+		err = i.forMatchingStreams(matchers, func(stream *stream) error {
+			// exit early when this stream was added by an earlier group
+			key := stream.labels.Hash()
+			if _, found := dedupedSeries[key]; found {
+				return nil
+			}
+
+			dedupedSeries[key] = logproto.SeriesIdentifier{
+				Labels: stream.labels.Map(),
+			}
+			return nil
+		})
+
+		if err != nil {
+			return nil, err
+		}
+	}
+	series := make([]logproto.SeriesIdentifier, 0, len(dedupedSeries))
+	for _, v := range dedupedSeries {
+		series = append(series, v)
+
+	}
+	return &logproto.SeriesResponse{Series: series}, nil
+}
+
+// forMatchingStreams will execute a function for each stream that satisfies a set of requirements (time range, matchers, etc).
+// It uses a function in order to enable generic stream acces without accidentally leaking streams under the mutex.
+func (i *instance) forMatchingStreams(
+	matchers []*labels.Matcher,
+	fn func(*stream) error,
+) error {
 	i.streamsMtx.RLock()
 	defer i.streamsMtx.RUnlock()
 
 	filters, matchers := cutil.SplitFiltersAndMatchers(matchers)
 	ids := i.index.Lookup(matchers)
-	iterators := make([]iter.EntryIterator, 0, len(ids))
 
 outer:
 	for _, streamID := range ids {
 		stream, ok := i.streams[streamID]
 		if !ok {
-			return nil, ErrStreamMissing
+			return ErrStreamMissing
 		}
 		for _, filter := range filters {
 			if !filter.Matches(stream.labels.Get(filter.Name)) {
 				continue outer
 			}
 		}
-		iter, err := stream.Iterator(ctx, req.Start, req.End, req.Direction, filter)
+
+		err := fn(stream)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		iterators = append(iterators, iter)
 	}
-	return iterators, nil
+	return nil
 }
 
 func (i *instance) addNewTailer(t *tailer) {
