@@ -268,7 +268,7 @@ The `ingester_config` block configures Ingesters.
 [chunk_idle_period: <duration> | default = 30m]
 
 # The targeted _uncompressed_ size in bytes of a chunk block
-# When this threshold is exceeded the head block will be cut and compressed inside the chunk 
+# When this threshold is exceeded the head block will be cut and compressed inside the chunk
 [chunk_block_size: <int> | default = 262144]
 
 # A target _compressed_ size in bytes for chunks.
@@ -277,6 +277,16 @@ The `ingester_config` block configures Ingesters.
 # The default value of 0 for this will create chunks with a fixed 10 blocks,
 # A non zero value will create chunks with a variable number of blocks to meet the target size.
 [chunk_target_size: <int> | default = 0]
+
+# The compression algorithm to use for chunks. (supported: gzip, gzip-1, lz4, none, snappy, snappyv2)
+# You should choose your algorithm depending on your need:
+# - `none` no compression (2.7 MB per chunk)
+# - `gzip` highest compression ratio but also slowest decompression speed. (144 kB per chunk)
+# - `gzip-1` same as gzip but with a lower compression ratio. (158 kB per chunk)
+# - `lz4` fastest compression speed (188 kB per chunk)
+# - `snappy` fast and popular compression algorithm (272 kB per chunk)
+# - `snappyv2`same as snappy but optimized version see https://github.com/klauspost/compress/tree/master/s2 (205 kB per chunk)
+[chunk_encoding: <string> | default = gzip]
 ```
 
 ### lifecycler_config
