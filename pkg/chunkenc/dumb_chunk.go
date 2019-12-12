@@ -55,6 +55,11 @@ func (c *dumbChunk) UncompressedSize() int {
 	return c.Size()
 }
 
+// CompressedSize implements Chunk.
+func (c *dumbChunk) CompressedSize() int {
+	return 0
+}
+
 // Utilization implements Chunk
 func (c *dumbChunk) Utilization() float64 {
 	return float64(len(c.entries)) / float64(tmpNumEntries)
@@ -89,6 +94,14 @@ func (c *dumbChunk) Iterator(from, through time.Time, direction logproto.Directi
 
 func (c *dumbChunk) Bytes() ([]byte, error) {
 	return nil, nil
+}
+
+func (c *dumbChunk) Blocks() int {
+	return 0
+}
+
+func (c *dumbChunk) Close() error {
+	return nil
 }
 
 type dumbChunkIterator struct {

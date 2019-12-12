@@ -267,8 +267,16 @@ The `ingester_config` block configures Ingesters.
 # period as long as they receieve no further activity.
 [chunk_idle_period: <duration> | default = 30m]
 
-# The maximum size in bytes a chunk can be before it should be flushed.
+# The maximum _uncompressed_ size in bytes of a chunk block, 
+# if chunk_target_size == 0 a chunk will have a fixed 10 blocks.
+# If chunk_target_size != 0 the chunk will have a variable number of blocks
+# to try to meet the target size
 [chunk_block_size: <int> | default = 262144]
+
+# A target _compressed_ size in bytes for chunks.
+# This is a desired size not an exact size, chunks may be slightly bigger
+# or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period)
+[chunk_target_size: <int> | default = 0]
 ```
 
 ### lifecycler_config
