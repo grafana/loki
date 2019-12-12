@@ -138,13 +138,15 @@ func (e *filterExpr) Filter() (Filter, error) {
 		}
 
 	case labels.MatchEqual:
+		mb := []byte(e.match)
 		f = func(line []byte) bool {
-			return bytes.Contains(line, []byte(e.match))
+			return bytes.Contains(line, mb)
 		}
 
 	case labels.MatchNotEqual:
+		mb := []byte(e.match)
 		f = func(line []byte) bool {
-			return !bytes.Contains(line, []byte(e.match))
+			return !bytes.Contains(line, mb)
 		}
 
 	default:

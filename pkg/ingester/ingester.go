@@ -47,6 +47,7 @@ type Config struct {
 	RetainPeriod      time.Duration `yaml:"chunk_retain_period"`
 	MaxChunkIdle      time.Duration `yaml:"chunk_idle_period"`
 	BlockSize         int           `yaml:"chunk_block_size"`
+	TargetChunkSize   int           `yaml:"chunk_target_size"`
 
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(cfg client.Config, addr string) (grpc_health_v1.HealthClient, error)
@@ -63,6 +64,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 15*time.Minute, "")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "")
+	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 0, "")
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -189,7 +191,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(instanceID, i.cfg.BlockSize, i.limits)
+		inst = newInstance(instanceID, i.cfg.BlockSize, i.cfg.TargetChunkSize, i.limits)
 		i.instances[instanceID] = inst
 	}
 	return inst

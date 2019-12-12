@@ -60,14 +60,15 @@ type instance struct {
 	streamsCreatedTotal prometheus.Counter
 	streamsRemovedTotal prometheus.Counter
 
-	blockSize int
-	tailers   map[uint32]*tailer
-	tailerMtx sync.RWMutex
+	blockSize       int
+	targetChunkSize int // Compressed bytes
+	tailers         map[uint32]*tailer
+	tailerMtx       sync.RWMutex
 
 	limits *validation.Overrides
 }
 
-func newInstance(instanceID string, blockSize int, limits *validation.Overrides) *instance {
+func newInstance(instanceID string, blockSize, targetChunkSize int, limits *validation.Overrides) *instance {
 	i := &instance{
 		streams:    map[model.Fingerprint]*stream{},
 		index:      index.New(),
@@ -76,9 +77,10 @@ func newInstance(instanceID string, blockSize int, limits *validation.Overrides)
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
 
-		blockSize: blockSize,
-		tailers:   map[uint32]*tailer{},
-		limits:    limits,
+		blockSize:       blockSize,
+		targetChunkSize: targetChunkSize,
+		tailers:         map[uint32]*tailer{},
+		limits:          limits,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i
@@ -96,7 +98,7 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 	stream, ok := i.streams[fp]
 	if !ok {
 		sortedLabels := i.index.Add(labels, fp)
-		stream = newStream(fp, sortedLabels, i.blockSize)
+		stream = newStream(fp, sortedLabels, i.blockSize, i.targetChunkSize)
 		i.streams[fp] = stream
 		i.streamsCreatedTotal.Inc()
 		memoryStreams.Inc()
@@ -154,7 +156,7 @@ func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, err
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user streams limit (%d) exceeded", i.limits.MaxStreamsPerUser(i.instanceID))
 	}
 	sortedLabels := i.index.Add(labels, fp)
-	stream = newStream(fp, sortedLabels, i.blockSize)
+	stream = newStream(fp, sortedLabels, i.blockSize, i.targetChunkSize)
 	i.streams[fp] = stream
 	memoryStreams.Inc()
 	i.streamsCreatedTotal.Inc()

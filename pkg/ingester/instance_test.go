@@ -8,18 +8,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/logproto"
+
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 func TestLabelsCollisions(t *testing.T) {
 	o, err := validation.NewOverrides(validation.Limits{MaxStreamsPerUser: 1000})
 	require.NoError(t, err)
 
-	i := newInstance("test", 512, o)
+	i := newInstance("test", 512, 0, o)
 
 	// avoid entries from the future.
 	tt := time.Now().Add(-5 * time.Minute)
@@ -45,7 +47,7 @@ func TestConcurrentPushes(t *testing.T) {
 	o, err := validation.NewOverrides(validation.Limits{MaxStreamsPerUser: 1000})
 	require.NoError(t, err)
 
-	inst := newInstance("test", 512, o)
+	inst := newInstance("test", 512, 0, o)
 
 	const (
 		concurrent          = 10

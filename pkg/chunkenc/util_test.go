@@ -9,7 +9,7 @@ import (
 
 // newMemChunk returns a new in-mem chunk for query.
 func newMemChunk(enc Encoding) *MemChunk {
-	return NewMemChunkSize(enc, 256*1024)
+	return NewMemChunkSize(enc, 256*1024, 0)
 }
 
 func logString(index int64) string {

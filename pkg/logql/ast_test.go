@@ -111,3 +111,25 @@ func Test_FilterMatcher(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkContainsFilter(b *testing.B) {
+	expr, err := ParseLogSelector(`{app="foo"} |= "foo"`)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	f, err := expr.Filter()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	line := []byte("hello world foo bar")
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if !f(line) {
+			b.Fatal("doesn't match")
+		}
+	}
+}

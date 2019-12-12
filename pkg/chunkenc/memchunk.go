@@ -10,10 +10,11 @@ import (
 	"io"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/pkg/errors"
 )
 
 const blocksPerChunk = 10
@@ -44,9 +45,13 @@ func newCRC32() hash.Hash32 {
 type MemChunk struct {
 	// The number of uncompressed bytes per block.
 	blockSize int
+	// Target size in compressed bytes
+	targetSize int
 
 	// The finished blocks.
 	blocks []block
+	// The compressed size of all the blocks
+	cutBlockSize int
 
 	// Current in-mem block being appended to.
 	head *headBlock
@@ -136,10 +141,11 @@ type entry struct {
 
 // NewMemChunkSize returns a new in-mem chunk.
 // Mainly for config push size.
-func NewMemChunkSize(enc Encoding, blockSize int) *MemChunk {
+func NewMemChunkSize(enc Encoding, blockSize, targetSize int) *MemChunk {
 	c := &MemChunk{
-		blockSize: blockSize, // The blockSize in bytes.
-		blocks:    []block{},
+		blockSize:  blockSize,  // The blockSize in bytes.
+		targetSize: targetSize, // Desired chunk size in compressed bytes
+		blocks:     []block{},
 
 		head:   &headBlock{},
 		format: chunkFormatV2,
@@ -320,8 +326,20 @@ func (c *MemChunk) Size() int {
 	return ne
 }
 
+// Blocks implements Chunk.
+func (c *MemChunk) Blocks() int {
+	return len(c.blocks)
+}
+
 // SpaceFor implements Chunk.
-func (c *MemChunk) SpaceFor(*logproto.Entry) bool {
+func (c *MemChunk) SpaceFor(e *logproto.Entry) bool {
+	if c.targetSize > 0 {
+		// This is looking to see if the uncompressed lines will fit which is not
+		// a great check, but it will guarantee we are always under the target size
+		newHBSize := c.head.size + len(e.Line)
+		return (c.cutBlockSize + newHBSize) < c.targetSize
+	}
+	// if targetSize is not defined, default to the original behavior of fixed blocks per chunk
 	return len(c.blocks) < blocksPerChunk
 }
 
@@ -340,11 +358,25 @@ func (c *MemChunk) UncompressedSize() int {
 	return size
 }
 
-// Utilization implements Chunk.  It is the bytes used as a percentage of the
-func (c *MemChunk) Utilization() float64 {
-	size := c.UncompressedSize()
+// CompressedSize implements Chunk
+func (c *MemChunk) CompressedSize() int {
+	size := 0
+	// Better to account for any uncompressed data than ignore it even though this isn't accurate.
+	if !c.head.isEmpty() {
+		size += c.head.size
+	}
+	size += c.cutBlockSize
+	return size
+}
 
+// Utilization implements Chunk.
+func (c *MemChunk) Utilization() float64 {
+	if c.targetSize != 0 {
+		return float64(c.CompressedSize()) / float64(c.targetSize)
+	}
+	size := c.UncompressedSize()
 	return float64(size) / float64(blocksPerChunk*c.blockSize)
+
 }
 
 // Append implements Chunk.
@@ -392,6 +424,8 @@ func (c *MemChunk) cut() error {
 		maxt:             c.head.maxt,
 		uncompressedSize: c.head.size,
 	})
+
+	c.cutBlockSize += len(b)
 
 	c.head.entries = c.head.entries[:0]
 	c.head.mint = 0 // Will be set on first append.

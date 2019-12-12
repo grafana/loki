@@ -96,7 +96,7 @@ func fillStore() error {
 			labelsBuilder.Set(labels.MetricName, "logs")
 			metric := labelsBuilder.Labels()
 			fp := client.FastFingerprint(lbs)
-			chunkEnc := chunkenc.NewMemChunkSize(chunkenc.EncGZIP, 262144)
+			chunkEnc := chunkenc.NewMemChunkSize(chunkenc.EncGZIP, 262144, 0)
 			for ts := start.UnixNano(); ts < start.UnixNano()+time.Hour.Nanoseconds(); ts = ts + time.Millisecond.Nanoseconds() {
 				entry := &logproto.Entry{
 					Timestamp: time.Unix(0, ts),
@@ -119,7 +119,7 @@ func fillStore() error {
 					if flushCount >= maxChunks {
 						return
 					}
-					chunkEnc = chunkenc.NewMemChunkSize(chunkenc.EncGZIP, 262144)
+					chunkEnc = chunkenc.NewMemChunkSize(chunkenc.EncGZIP, 262144, 0)
 				}
 			}
 
