@@ -13,6 +13,7 @@ service Querier {
   rpc Query(QueryRequest) returns (stream QueryResponse) {};
   rpc Label(LabelRequest) returns (LabelResponse) {};
   rpc Tail(TailRequest) returns (stream TailResponse) {};
+  rpc Series(SeriesRequest) returns (SeriesResponse) {};
 }
 
 service Ingester {
@@ -81,11 +82,11 @@ message TailResponse {
 message SeriesRequest {
   google.protobuf.Timestamp start = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   google.protobuf.Timestamp end = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
-  repeated LabelMatchers groups = 3;
+  repeated string groups = 3;
 }
 
 message SeriesResponse {
-  repeated SeriesIdentifier series = 1;
+  repeated SeriesIdentifier series = 1 [(gogoproto.nullable) = false];
 }
 
 message SeriesIdentifier {
@@ -116,21 +117,4 @@ message Chunk {
 
 message TransferChunksResponse {
 
-}
-
-enum MatchType {
-  EQUAL = 0;
-  NOT_EQUAL = 1;
-  REGEX_MATCH = 2;
-  REGEX_NO_MATCH = 3;
-}
-
-message LabelMatchers {
-  repeated LabelMatcher matchers = 1;
-}
-
-message LabelMatcher {
-  MatchType type = 1;
-  string name = 2;
-  string value = 3;
 }
