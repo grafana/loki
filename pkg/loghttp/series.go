@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/pkg/errors"
 )
 
 type SeriesResponse struct {
@@ -20,32 +20,14 @@ func ParseSeriesQuery(r *http.Request) (*logproto.SeriesRequest, error) {
 
 	xs := r.Form["match"]
 
-	groups, err := match(xs)
-	if err != nil {
-		return nil, err
+	if len(xs) == 0 {
+		return nil, errors.New("0 matcher groups supplied")
 	}
 
 	return &logproto.SeriesRequest{
 		Start:  start,
 		End:    end,
-		Groups: toLabelMatchers(groups),
+		Groups: xs,
 	}, nil
 
-}
-
-func toLabelMatchers(groups [][]*labels.Matcher) []*logproto.LabelMatchers {
-	res := make([]*logproto.LabelMatchers, 0, len(groups))
-	for _, group := range groups {
-		mapped := &logproto.LabelMatchers{}
-		for _, m := range group {
-			matcher := &logproto.LabelMatcher{}
-			matcher.Type = logproto.MatchType(int32(m.Type))
-			matcher.Name = m.Name
-			matcher.Value = m.Value
-			mapped.Matchers = append(mapped.Matchers, matcher)
-		}
-		res = append(res, mapped)
-	}
-
-	return res
 }
