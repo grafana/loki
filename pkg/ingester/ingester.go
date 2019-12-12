@@ -18,6 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -48,6 +49,7 @@ type Config struct {
 	MaxChunkIdle      time.Duration `yaml:"chunk_idle_period"`
 	BlockSize         int           `yaml:"chunk_block_size"`
 	TargetChunkSize   int           `yaml:"chunk_target_size"`
+	ChunkEncoding     string        `yaml:"chunk_encoding"`
 
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(cfg client.Config, addr string) (grpc_health_v1.HealthClient, error)
@@ -65,6 +67,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "")
 	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 0, "")
+	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", chunkenc.EncGZIP.String(), "The algorithm to use for compressing chunk. (gzip, gzip-1, lz4, none, snappy, snappyv2)")
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -89,7 +92,8 @@ type Ingester struct {
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
-	limits *validation.Overrides
+	limits  *validation.Overrides
+	factory func() chunkenc.Chunk
 }
 
 // ChunkStore is the interface we need to store chunks.
@@ -102,6 +106,10 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
+	enc, err := chunkenc.ParseEncoding(cfg.ChunkEncoding)
+	if err != nil {
+		return nil, err
+	}
 
 	i := &Ingester{
 		cfg:          cfg,
@@ -112,6 +120,9 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		quitting:     make(chan struct{}),
 		limits:       limits,
+		factory: func() chunkenc.Chunk {
+			return chunkenc.NewMemChunkSize(enc, cfg.BlockSize, cfg.TargetChunkSize)
+		},
 	}
 
 	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
@@ -120,7 +131,6 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		go i.flushLoop(j)
 	}
 
-	var err error
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester")
 	if err != nil {
 		return nil, err
@@ -191,7 +201,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(instanceID, i.cfg.BlockSize, i.cfg.TargetChunkSize, i.limits)
+		inst = newInstance(instanceID, i.factory, i.limits)
 		i.instances[instanceID] = inst
 	}
 	return inst

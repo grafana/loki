@@ -7,11 +7,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-// newMemChunk returns a new in-mem chunk for query.
-func newMemChunk(enc Encoding) *MemChunk {
-	return NewMemChunkSize(enc, 256*1024, 0)
-}
-
 func logString(index int64) string {
 	if index > int64(len(logs)-1) {
 		index = index % int64(len(logs))
@@ -31,7 +26,7 @@ func generateData(enc Encoding) []Chunk {
 	i := int64(0)
 	for n := 0; n < 50; n++ {
 		entry := logprotoEntry(0, logString(0))
-		c := newMemChunk(enc)
+		c := NewMemChunk(enc)
 		for c.SpaceFor(entry) {
 			_ = c.Append(entry)
 			i++

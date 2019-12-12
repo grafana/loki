@@ -139,6 +139,11 @@ type entry struct {
 	s string
 }
 
+// NewMemChunk returns a new in-mem chunk for query.
+func NewMemChunk(enc Encoding) *MemChunk {
+	return NewMemChunkSize(enc, 256*1024, 0)
+}
+
 // NewMemChunkSize returns a new in-mem chunk.
 // Mainly for config push size.
 func NewMemChunkSize(enc Encoding, blockSize, targetSize int) *MemChunk {

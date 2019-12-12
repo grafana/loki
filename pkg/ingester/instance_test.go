@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/stretchr/testify/require"
@@ -17,11 +18,15 @@ import (
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
+var defaultFactory = func() chunkenc.Chunk {
+	return chunkenc.NewMemChunkSize(chunkenc.EncGZIP, 512, 0)
+}
+
 func TestLabelsCollisions(t *testing.T) {
 	o, err := validation.NewOverrides(validation.Limits{MaxStreamsPerUser: 1000})
 	require.NoError(t, err)
 
-	i := newInstance("test", 512, 0, o)
+	i := newInstance("test", defaultFactory, o)
 
 	// avoid entries from the future.
 	tt := time.Now().Add(-5 * time.Minute)
@@ -47,7 +52,7 @@ func TestConcurrentPushes(t *testing.T) {
 	o, err := validation.NewOverrides(validation.Limits{MaxStreamsPerUser: 1000})
 	require.NoError(t, err)
 
-	inst := newInstance("test", 512, 0, o)
+	inst := newInstance("test", defaultFactory, o)
 
 	const (
 		concurrent          = 10

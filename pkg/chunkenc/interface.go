@@ -2,6 +2,8 @@ package chunkenc
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -32,6 +34,16 @@ const (
 	EncSnappyV2
 )
 
+var supportedEncoding = []Encoding{
+	EncNone,
+	EncGZIP,
+	EncGZIPBestSpeed,
+	EncLZ4,
+	EncSnappy,
+	EncSnappyV2,
+	EncDumb,
+}
+
 func (e Encoding) String() string {
 	switch e {
 	case EncGZIP:
@@ -51,6 +63,17 @@ func (e Encoding) String() string {
 	default:
 		return "unknown"
 	}
+}
+
+// ParseEncoding parses an chunk encoding (compression algorithm) by its name.
+func ParseEncoding(enc string) (Encoding, error) {
+	for _, e := range supportedEncoding {
+		if strings.EqualFold(e.String(), enc) {
+			return e, nil
+		}
+	}
+	return 0, fmt.Errorf("invalid encoding: %s", enc)
+
 }
 
 // Chunk is the interface for the compressed logs chunk format.
