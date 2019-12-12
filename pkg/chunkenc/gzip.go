@@ -522,9 +522,11 @@ func (li *listIterator) Close() error   { return nil }
 func (li *listIterator) Labels() string { return "" }
 
 type bufferedIterator struct {
-	s      *bufio.Reader
-	reader io.Reader
-	pool   ReaderPool
+	origBytes []byte
+
+	bufReader *bufio.Reader
+	reader    io.Reader
+	pool      ReaderPool
 
 	cur logproto.Entry
 
@@ -539,17 +541,23 @@ type bufferedIterator struct {
 }
 
 func newBufferedIterator(pool ReaderPool, b []byte, filter logql.Filter) *bufferedIterator {
-	r := pool.GetReader(bytes.NewBuffer(b))
 	return &bufferedIterator{
-		s:      BufReaderPool.Get(r),
-		reader: r,
-		pool:   pool,
-		filter: filter,
-		decBuf: make([]byte, binary.MaxVarintLen64),
+		origBytes: b,
+		reader:    nil, // will be initialized later
+		bufReader: nil, // will be initialized later
+		pool:      pool,
+		filter:    filter,
+		decBuf:    make([]byte, binary.MaxVarintLen64),
 	}
 }
 
 func (si *bufferedIterator) Next() bool {
+	if !si.closed && si.reader == nil {
+		// initialize reader now, hopefully reusing one of the previous readers
+		si.reader = si.pool.GetReader(bytes.NewBuffer(si.origBytes))
+		si.bufReader = BufReaderPool.Get(si.reader)
+	}
+
 	for {
 		ts, line, ok := si.moveNext()
 		if !ok {
@@ -567,7 +575,7 @@ func (si *bufferedIterator) Next() bool {
 
 // moveNext moves the buffer to the next entry
 func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
-	ts, err := binary.ReadVarint(si.s)
+	ts, err := binary.ReadVarint(si.bufReader)
 	if err != nil {
 		if err != io.EOF {
 			si.err = err
@@ -575,7 +583,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 		return 0, nil, false
 	}
 
-	l, err := binary.ReadUvarint(si.s)
+	l, err := binary.ReadUvarint(si.bufReader)
 	if err != nil {
 		if err != io.EOF {
 			si.err = err
@@ -597,13 +605,13 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 	}
 
 	// Then process reading the line.
-	n, err := si.s.Read(si.buf[:lineSize])
+	n, err := si.bufReader.Read(si.buf[:lineSize])
 	if err != nil && err != io.EOF {
 		si.err = err
 		return 0, nil, false
 	}
 	for n < lineSize {
-		r, err := si.s.Read(si.buf[n:lineSize])
+		r, err := si.bufReader.Read(si.buf[n:lineSize])
 		if err != nil {
 			si.err = err
 			return 0, nil, false
@@ -623,11 +631,12 @@ func (si *bufferedIterator) Close() error {
 	if !si.closed {
 		si.closed = true
 		si.pool.PutReader(si.reader)
-		BufReaderPool.Put(si.s)
+		BufReaderPool.Put(si.bufReader)
 		if si.buf != nil {
 			BytesBufferPool.Put(si.buf)
 		}
-		si.s = nil
+		si.origBytes = nil
+		si.bufReader = nil
 		si.buf = nil
 		si.decBuf = nil
 		si.reader = nil
