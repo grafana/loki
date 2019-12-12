@@ -8,6 +8,7 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -28,9 +29,14 @@ var (
 // with any other use of the crc32 package anywhere. Thus we initialize it
 // before.
 var castagnoliTable *crc32.Table
+var serialiseBytesBufferPool sync.Pool
 
 func init() {
 	castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
+
+	serialiseBytesBufferPool.New = func() interface{} {
+		return &bytes.Buffer{}
+	}
 }
 
 // newCRC32 initializes a CRC32 hash with a preconfigured polynomial, so the
@@ -96,31 +102,33 @@ func (hb *headBlock) append(ts int64, line string) error {
 }
 
 func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
-	buf := &bytes.Buffer{}
+	inBuf := serialiseBytesBufferPool.Get().(*bytes.Buffer)
+	outBuf := &bytes.Buffer{}
+
 	encBuf := make([]byte, binary.MaxVarintLen64)
-	compressedWriter := pool.GetWriter(buf)
+	compressedWriter := pool.GetWriter(outBuf)
 	for _, logEntry := range hb.entries {
 		n := binary.PutVarint(encBuf, logEntry.t)
-		_, err := compressedWriter.Write(encBuf[:n])
-		if err != nil {
-			return nil, errors.Wrap(err, "appending entry")
-		}
+		inBuf.Write(encBuf[:n])
 
 		n = binary.PutUvarint(encBuf, uint64(len(logEntry.s)))
-		_, err = compressedWriter.Write(encBuf[:n])
-		if err != nil {
-			return nil, errors.Wrap(err, "appending entry")
-		}
-		_, err = compressedWriter.Write([]byte(logEntry.s))
-		if err != nil {
-			return nil, errors.Wrap(err, "appending entry")
-		}
+		inBuf.Write(encBuf[:n])
+
+		inBuf.WriteString(logEntry.s)
+	}
+
+	if _, err := compressedWriter.Write(inBuf.Bytes()); err != nil {
+		return nil, errors.Wrap(err, "appending entry")
 	}
 	if err := compressedWriter.Close(); err != nil {
 		return nil, errors.Wrap(err, "flushing pending compress buffer")
 	}
+
+	inBuf.Reset()
+	serialiseBytesBufferPool.Put(inBuf)
+
 	pool.PutWriter(compressedWriter)
-	return buf.Bytes(), nil
+	return outBuf.Bytes(), nil
 }
 
 type entry struct {
