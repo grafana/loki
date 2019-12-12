@@ -122,6 +122,62 @@ When Promtail reads from the journal, it brings in all fields prefixed with
 field from the journal was transformed into a label called `unit` through
 `relabel_configs`. See [Relabeling](#relabeling) for more information.
 
+## Syslog Receiver
+
+Promtail supports receiving [IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424)
+messages from a tcp stream. Receiving syslog messages is defined in a `syslog`
+stanza:
+
+```yaml
+scrape_configs:
+  - job_name: syslog
+    syslog:
+      listen_address: 0.0.0.0:1514
+      idle_timeout: 60s
+      label_structured_data: yes
+      labels:
+        job: "syslog"
+    relabel_configs:
+      - source_labels: ['__syslog_message_hostname']
+        target_label: 'host'
+```
+
+The only required field in the syslog section is the `listen_address` field,
+where a valid network address should be provided. The `idle_timeout` can help
+with cleaning up stale syslog connections. If `label_structured_data` is set,
+[structured data](https://tools.ietf.org/html/rfc5424#section-6.3) in the
+syslog header will be translated to internal labels in the form of
+`__syslog_message_sd_<ID>_<KEY>`.
+The labels map defines a constant list of labels to add to every journal entry
+that Promtail reads.
+
+Note that it is recommended to deploy a dedicated syslog forwarder
+like **syslog-ng** or **rsyslog** in front of Promtail.
+The forwarder can take care of the various specifications
+and transports that exist (UDP, BSD syslog, ...). See recommended output
+configurations for [syslog-ng](#syslog-ng-output-configuration) and
+[rsyslog](#rsyslog-output-configuration).
+
+When Promtail receives syslog messages, it brings in all header fields,
+parsed from the received message, prefixed with `__syslog_` as internal labels.
+Like in the example above, the `__syslog_message_hostname`
+field from the journal was transformed into a label called `host` through
+`relabel_configs`. See [Relabeling](#relabeling) for more information.
+
+### Syslog-NG Output Configuration
+
+```
+destination d_loki {
+  syslog("localhost" transport("tcp") port(<promtail_port>));
+};
+```
+
+### Rsyslog Output Configuration
+
+```
+action(type="omfwd" protocol="tcp" port="<promtail_port>" Template="RSYSLOG_SyslogProtocol23Format" TCP_Framing="octet-counted")
+```
+
 ## Relabeling
 
 Each `scrape_configs` entry can contain a `relabel_configs` stanza.

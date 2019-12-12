@@ -601,6 +601,11 @@ message framing method. In a stream with [non-transparent framing](https://tools
 promtail needs to wait for the next message to catch multi-line messages,
 therefore delays between messages can occur.
 
+See recommended output configurations for
+[syslog-ng](scraping.md#syslog-ng-output-configuration) and
+[rsyslog](scraping.md#rsyslog-output-configuration). Both configurations enable
+IETF Syslog with octet-counting.
+
 You may need to increase the open files limit for the promtail process
 if many clients are connected. (`ulimit -Sn`)
 
@@ -619,20 +624,6 @@ label_structured_data: <bool>
 # Label map to add to every log message.
 labels:
   [ <labelname>: <labelvalue> ... ]
-```
-
-#### Syslog-NG Output Configuration
-
-```
-destination d_syslog {
-  syslog("localhost" transport("tcp") port(<promtail_port>));
-};
-```
-
-#### Rsyslog Output Configuration
-
-```
-action(type="omfwd" protocol="tcp" port="<promtail_port>" Template="RSYSLOG_SyslogProtocol23Format" TCP_Framing="octet-counted")
 ```
 
 #### Available Labels
@@ -1049,7 +1040,7 @@ positions:
   filename: /tmp/positions.yaml
 
 clients:
-  - url: http://ip_or_hostname_where_loki_runns:3100/loki/api/v1/push
+  - url: http://loki_addr:3100/loki/api/v1/push
 
 scrape_configs:
   - job_name: syslog
