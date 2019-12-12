@@ -25,9 +25,11 @@ type ReaderPool interface {
 	PutReader(io.Reader)
 }
 
+// Gzip is the gun zip compression pool
+var Gzip = GzipPool{level: gzip.DefaultCompression}
+var GzipBestSpeed = GzipPool{level: gzip.BestSpeed}
+
 var (
-	// Gzip is the gun zip compression pool
-	Gzip GzipPool
 	// LZ4 is the l4z compression pool
 	LZ4 LZ4Pool
 	// Snappy is the snappy compression pool
@@ -50,6 +52,7 @@ var (
 type GzipPool struct {
 	readers sync.Pool
 	writers sync.Pool
+	level   int
 }
 
 // GetReader gets or creates a new CompressionReader and reset it to read from src
@@ -81,7 +84,16 @@ func (pool *GzipPool) GetWriter(dst io.Writer) io.WriteCloser {
 		writer.Reset(dst)
 		return writer
 	}
-	return gzip.NewWriter(dst)
+
+	level := pool.level
+	if level == 0 {
+		level = gzip.DefaultCompression
+	}
+	w, err := gzip.NewWriterLevel(dst, level)
+	if err != nil {
+		panic(err) // never happens, error is only returned on wrong compression level.
+	}
+	return w
 }
 
 // PutWriter places back in the pool a CompressionWriter

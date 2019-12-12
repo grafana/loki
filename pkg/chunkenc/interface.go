@@ -25,6 +25,7 @@ type Encoding uint8
 const (
 	EncNone Encoding = iota
 	EncGZIP
+	EncGZIPBestSpeed
 	EncDumb
 	EncLZ4
 	EncSnappy
@@ -35,6 +36,8 @@ func (e Encoding) String() string {
 	switch e {
 	case EncGZIP:
 		return "gzip"
+	case EncGZIPBestSpeed:
+		return "gzip-1"
 	case EncNone:
 		return "none"
 	case EncDumb:

@@ -216,7 +216,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 	}
 }
 
-var encodingTests = []Encoding{EncGZIP, EncLZ4, EncSnappy, EncSnappyV2}
+var encodingTests = []Encoding{EncGZIPBestSpeed, EncGZIP, EncLZ4, EncSnappy, EncSnappyV2}
 
 func TestChunkSize(t *testing.T) {
 	for _, enc := range encodingTests {
@@ -297,7 +297,7 @@ func BenchmarkRead(b *testing.B) {
 			}
 			b.ResetTimer()
 			bytesRead := int64(0)
-			now := time.Now()
+			//now := time.Now()
 			for n := 0; n < b.N; n++ {
 				for _, c := range chunks {
 					iterator, err := c.Iterator(time.Unix(0, 0), time.Now(), logproto.BACKWARD, nil)
@@ -314,8 +314,8 @@ func BenchmarkRead(b *testing.B) {
 					}
 				}
 			}
-			b.Log("bytes per second ", humanize.Bytes(uint64(float64(bytesRead)/time.Since(now).Seconds())))
-			b.Log("n=", b.N)
+			//b.Log("bytes per second ", humanize.Bytes(uint64(float64(bytesRead)/time.Since(now).Seconds())))
+			//b.Log("n=", b.N)
 		})
 	}
 }

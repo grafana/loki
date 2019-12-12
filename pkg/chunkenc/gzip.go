@@ -151,6 +151,8 @@ func NewMemChunkSize(enc Encoding, blockSize int) *MemChunk {
 	switch enc {
 	case EncGZIP:
 		c.readers, c.writers = &Gzip, &Gzip
+	case EncGZIPBestSpeed:
+		c.readers, c.writers = &GzipBestSpeed, &GzipBestSpeed
 	case EncLZ4:
 		c.readers, c.writers = &LZ4, &LZ4
 	case EncSnappy:
