@@ -105,7 +105,7 @@ func (hb *headBlock) append(ts int64, line string) error {
 }
 
 func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
-	inBuf := serialiseBytesBufferPool.Get().(*bytes.Buffer)
+	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
 	outBuf := &bytes.Buffer{}
 
 	encBuf := make([]byte, binary.MaxVarintLen64)
@@ -128,7 +128,7 @@ func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
 	}
 
 	inBuf.Reset()
-	serialiseBytesBufferPool.Put(inBuf)
+	serializeBytesBufferPool.Put(inBuf)
 
 	pool.PutWriter(compressedWriter)
 	return outBuf.Bytes(), nil

@@ -37,6 +37,8 @@ var (
 	Snappy SnappyPool
 	// SnappyV2 is the snappy v2 compression pool
 	SnappyV2 SnappyV2Pool
+	// Noop is the no compression pool
+	Noop NoopPool
 
 	// BufReaderPool is bufio.Reader pool
 	BufReaderPool = &BufioReaderPool{
@@ -47,7 +49,7 @@ var (
 	// BytesBufferPool is a bytes buffer used for lines decompressed.
 	// Buckets [0.5KB,1KB,2KB,4KB,8KB]
 	BytesBufferPool          = pool.New(1<<9, 1<<13, 2, func(size int) interface{} { return make([]byte, 0, size) })
-	serialiseBytesBufferPool = sync.Pool{
+	serializeBytesBufferPool = sync.Pool{
 		New: func() interface{} {
 			return &bytes.Buffer{}
 		},
@@ -70,6 +72,8 @@ func getReaderPool(enc Encoding) ReaderPool {
 		return &Snappy
 	case EncSnappyV2:
 		return &SnappyV2
+	case EncNone:
+		return &Noop
 	default:
 		panic("unknown encoding")
 	}
@@ -232,6 +236,30 @@ func (pool *SnappyV2Pool) GetWriter(dst io.Writer) io.WriteCloser {
 func (pool *SnappyV2Pool) PutWriter(writer io.WriteCloser) {
 	pool.writers.Put(writer)
 }
+
+type NoopPool struct{}
+
+// GetReader gets or creates a new CompressionReader and reset it to read from src
+func (pool *NoopPool) GetReader(src io.Reader) io.Reader {
+	return src
+}
+
+// PutReader places back in the pool a CompressionReader
+func (pool *NoopPool) PutReader(reader io.Reader) {}
+
+type noopCloser struct {
+	io.Writer
+}
+
+func (noopCloser) Close() error { return nil }
+
+// GetWriter gets or creates a new CompressionWriter and reset it to write to dst
+func (pool *NoopPool) GetWriter(dst io.Writer) io.WriteCloser {
+	return noopCloser{dst}
+}
+
+// PutWriter places back in the pool a CompressionWriter
+func (pool *NoopPool) PutWriter(writer io.WriteCloser) {}
 
 // BufioReaderPool is a bufio reader that uses sync.Pool.
 type BufioReaderPool struct {

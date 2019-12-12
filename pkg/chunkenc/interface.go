@@ -41,7 +41,6 @@ var supportedEncoding = []Encoding{
 	EncLZ4,
 	EncSnappy,
 	EncSnappyV2,
-	EncDumb,
 }
 
 func (e Encoding) String() string {
