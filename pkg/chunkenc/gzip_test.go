@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"sync"
 	"testing"
 	"time"
 
@@ -217,9 +216,10 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 	}
 }
 
+var encodingTests = []Encoding{EncGZIP, EncLZ4, EncSnappy, EncSnappyV2}
+
 func TestChunkSize(t *testing.T) {
-	encs := []Encoding{EncGZIP, EncLZ4, EncSnappy, EncSnappyV2}
-	for _, enc := range encs {
+	for _, enc := range encodingTests {
 		t.Run(enc.String(), func(t *testing.T) {
 			i := int64(0)
 			c := NewMemChunk(enc)
@@ -250,7 +250,7 @@ func TestChunkSize(t *testing.T) {
 
 var result []Chunk
 
-func benchmarkWrite(b *testing.B, enc Encoding) {
+func BenchmarkWrite(b *testing.B) {
 	chunks := []Chunk{}
 
 	entry := &logproto.Entry{
@@ -259,85 +259,65 @@ func benchmarkWrite(b *testing.B, enc Encoding) {
 	}
 	i := int64(0)
 
-	for n := 0; n < b.N; n++ {
-		c := NewMemChunk(enc)
-		// adds until full so we trigger cut which serialize using gzip
-		for c.SpaceFor(entry) {
-			_ = c.Append(entry)
-			entry.Timestamp = time.Unix(0, i)
-			i++
-		}
-		chunks = append(chunks, c)
-	}
-	result = chunks
-}
-
-func BenchmarkWriteGzip(b *testing.B) {
-	benchmarkWrite(b, EncGZIP)
-}
-func BenchmarkWriteLZ4(b *testing.B) {
-	benchmarkWrite(b, EncLZ4)
-}
-
-func BenchmarkWriteSnappy(b *testing.B) {
-	benchmarkWrite(b, EncSnappy)
-}
-
-func BenchmarkWriteSnappyV2(b *testing.B) {
-	benchmarkWrite(b, EncSnappyV2)
-}
-
-func benchmarkRead(b *testing.B, enc Encoding) {
-	chunks := []Chunk{}
-	i := int64(0)
-	for n := 0; n < 50; n++ {
-		entry := randSizeEntry(0)
-		c := NewMemChunk(enc)
-		// adds until full so we trigger cut which serialize using gzip
-		for c.SpaceFor(entry) {
-			_ = c.Append(entry)
-			i++
-			entry = randSizeEntry(i)
-		}
-		c.Close()
-		chunks = append(chunks, c)
-	}
-	entries := []logproto.Entry{}
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		var wg sync.WaitGroup
-		for _, c := range chunks {
-			wg.Add(1)
-			go func(c Chunk) {
-				iterator, err := c.Iterator(time.Unix(0, 0), time.Now(), logproto.BACKWARD, nil)
-				if err != nil {
-					panic(err)
+	for _, enc := range encodingTests {
+		b.Run(enc.String(), func(b *testing.B) {
+			for n := 0; n < b.N; n++ {
+				c := NewMemChunk(enc)
+				// adds until full so we trigger cut which serialize using gzip
+				for c.SpaceFor(entry) {
+					_ = c.Append(entry)
+					entry.Timestamp = time.Unix(0, i)
+					i++
 				}
-				for iterator.Next() {
-					entries = append(entries, iterator.Entry())
-				}
-				iterator.Close()
-				wg.Done()
-			}(c)
-		}
-		wg.Wait()
+				chunks = append(chunks, c)
+			}
+			result = chunks
+		})
 	}
+
 }
 
-func BenchmarkReadGZIP(b *testing.B) {
-	benchmarkRead(b, EncGZIP)
-}
+var entries = []logproto.Entry{}
 
-func BenchmarkReadLZ4(b *testing.B) {
-	benchmarkRead(b, EncLZ4)
-}
-
-func BenchmarkReadSnappy(b *testing.B) {
-	benchmarkRead(b, EncSnappy)
-}
-
-func BenchmarkReadSnappyV2(b *testing.B) {
-	benchmarkRead(b, EncSnappyV2)
+func BenchmarkRead(b *testing.B) {
+	for _, enc := range encodingTests {
+		b.Run(enc.String(), func(b *testing.B) {
+			chunks := []Chunk{}
+			i := int64(0)
+			for n := 0; n < 50; n++ {
+				entry := randSizeEntry(0)
+				c := NewMemChunk(enc)
+				for c.SpaceFor(entry) {
+					_ = c.Append(entry)
+					i++
+					entry = randSizeEntry(i)
+				}
+				c.Close()
+				chunks = append(chunks, c)
+			}
+			b.ResetTimer()
+			bytesRead := int64(0)
+			now := time.Now()
+			for n := 0; n < b.N; n++ {
+				for _, c := range chunks {
+					iterator, err := c.Iterator(time.Unix(0, 0), time.Now(), logproto.BACKWARD, nil)
+					if err != nil {
+						panic(err)
+					}
+					for iterator.Next() {
+						e := iterator.Entry()
+						bytesRead += int64(len(e.Line))
+						entries = append(entries, e)
+					}
+					if err := iterator.Close(); err != nil {
+						b.Fatal(err)
+					}
+				}
+			}
+			b.Log("bytes per second ", humanize.Bytes(uint64(float64(bytesRead)/time.Since(now).Seconds())))
+			b.Log("n=", b.N)
+		})
+	}
 }
 
 func BenchmarkHeadBlockIterator(b *testing.B) {
@@ -396,7 +376,11 @@ func RandStringWithCharset(length int, charset string) string {
 }
 
 func RandString(length int) string {
-	return RandStringWithCharset(length, charset)
+	return fmt.Sprintf(
+		`level=error ts=2019-12-11T21:22:17.913Z caller=klog.go:%d component=k8s_client_runtime func=ErrorDepth msg="/app/discovery/kubernetes/kubernetes.go:263: Failed to list *v1.Endpoints: endpoints is forbidden: User \"system:serviceaccount:malcolm-default:prometheus-one\" cannot list resource \"endpoints\" in API group \"\" at the cluster scope"`,
+		rand.Int(),
+	)
+	// return RandStringWithCharset(length, charset)
 }
 
 func logprotoEntry(ts int64, line string) *logproto.Entry {
