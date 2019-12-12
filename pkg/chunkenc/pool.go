@@ -54,6 +54,27 @@ var (
 	}
 )
 
+func getWriterPool(enc Encoding) WriterPool {
+	return getReaderPool(enc).(WriterPool)
+}
+
+func getReaderPool(enc Encoding) ReaderPool {
+	switch enc {
+	case EncGZIP:
+		return &Gzip
+	case EncGZIPBestSpeed:
+		return &GzipBestSpeed
+	case EncLZ4:
+		return &LZ4
+	case EncSnappy:
+		return &Snappy
+	case EncSnappyV2:
+		return &SnappyV2
+	default:
+		panic("unknown encoding")
+	}
+}
+
 // GzipPool is a gun zip compression pool
 type GzipPool struct {
 	readers sync.Pool

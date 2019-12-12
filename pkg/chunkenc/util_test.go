@@ -7,6 +7,11 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+// newMemChunk returns a new in-mem chunk for query.
+func newMemChunk(enc Encoding) *MemChunk {
+	return NewMemChunkSize(enc, 256*1024)
+}
+
 func logString(index int64) string {
 	if index > int64(len(logs)-1) {
 		index = index % int64(len(logs))
@@ -26,7 +31,7 @@ func generateData(enc Encoding) []Chunk {
 	i := int64(0)
 	for n := 0; n < 50; n++ {
 		entry := logprotoEntry(0, logString(0))
-		c := NewMemChunk(enc)
+		c := newMemChunk(enc)
 		for c.SpaceFor(entry) {
 			_ = c.Append(entry)
 			i++
@@ -36,6 +41,27 @@ func generateData(enc Encoding) []Chunk {
 		chunks = append(chunks, c)
 	}
 	return chunks
+}
+
+func fillChunk(c Chunk) int64 {
+	i := int64(0)
+	inserted := int64(0)
+	entry := &logproto.Entry{
+		Timestamp: time.Unix(0, 0),
+		Line:      logString(i),
+	}
+	for c.SpaceFor(entry) {
+		err := c.Append(entry)
+		if err != nil {
+			panic(err)
+		}
+		i++
+		inserted += int64(len(entry.Line))
+		entry.Timestamp = time.Unix(0, i)
+		entry.Line = logString(i)
+
+	}
+	return inserted
 }
 
 var logs = strings.Split(`level=info ts=2019-12-12T15:00:08.325Z caller=compact.go:441 component=tsdb msg="compact blocks" count=3 mint=1576130400000 maxt=1576152000000 ulid=01DVX9ZHNM71GRCJS7M34Q0EV7 sources="[01DVWNC6NWY1A60AZV3Z6DGS65 01DVWW7XXX75GHA6ZDTD170CSZ 01DVX33N5W86CWJJVRPAVXJRWJ]" duration=2.897213221s

@@ -22,6 +22,7 @@ var (
 	magicNumber = uint32(0x12EE56A)
 
 	chunkFormatV1 = byte(1)
+	chunkFormatV2 = byte(2)
 )
 
 // The table gets initialized with sync.Once but may still cause a race
@@ -50,9 +51,12 @@ type MemChunk struct {
 	// Current in-mem block being appended to.
 	head *headBlock
 
+	// the chunk format default to v2
+	format   byte
 	encoding Encoding
-	readers  ReaderPool
-	writers  WriterPool
+
+	readers ReaderPool
+	writers WriterPool
 }
 
 type block struct {
@@ -137,44 +141,23 @@ func NewMemChunkSize(enc Encoding, blockSize int) *MemChunk {
 		blockSize: blockSize, // The blockSize in bytes.
 		blocks:    []block{},
 
-		head: &headBlock{},
+		head:   &headBlock{},
+		format: chunkFormatV2,
 
 		encoding: enc,
-	}
-
-	switch enc {
-	case EncGZIP:
-		c.readers, c.writers = &Gzip, &Gzip
-	case EncGZIPBestSpeed:
-		c.readers, c.writers = &GzipBestSpeed, &GzipBestSpeed
-	case EncLZ4:
-		c.readers, c.writers = &LZ4, &LZ4
-	case EncSnappy:
-		c.readers, c.writers = &Snappy, &Snappy
-	case EncSnappyV2:
-		c.readers, c.writers = &SnappyV2, &SnappyV2
-	default:
-		panic("unknown encoding")
+		writers:  getWriterPool(enc),
+		readers:  getReaderPool(enc),
 	}
 
 	return c
 }
 
-// NewMemChunk returns a new in-mem chunk for query.
-func NewMemChunk(enc Encoding) *MemChunk {
-	return NewMemChunkSize(enc, 256*1024)
-}
-
 // NewByteChunk returns a MemChunk on the passed bytes.
 func NewByteChunk(b []byte) (*MemChunk, error) {
-	// todo read from bytes encoding.
 	bc := &MemChunk{
-		// cPool:    &Gzip,
 		encoding: EncGZIP,
 		head:     &headBlock{}, // Dummy, empty headblock.
 	}
-	bc.writers, bc.readers = &Gzip, &Gzip
-
 	db := decbuf{b: b}
 
 	// Verify the header.
@@ -185,7 +168,18 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 	if m != magicNumber {
 		return nil, errors.Errorf("invalid magic number %x", m)
 	}
-	if version != 1 {
+	bc.format = version
+	switch version {
+	case chunkFormatV1:
+		bc.readers, bc.writers = &Gzip, &Gzip
+	case chunkFormatV2:
+		// format v2 has a byte for block encoding.
+		enc := Encoding(db.byte())
+		if db.err() != nil {
+			return nil, errors.Wrap(db.err(), "verifying encoding")
+		}
+		bc.readers, bc.writers = getReaderPool(enc), getWriterPool(enc)
+	default:
 		return nil, errors.Errorf("invalid version %d", version)
 	}
 
@@ -249,7 +243,11 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 
 	// Write the header (magicNum + version).
 	eb.putBE32(magicNumber)
-	eb.putByte(chunkFormatV1)
+	eb.putByte(c.format)
+	if c.format == chunkFormatV2 {
+		// chunk format v2 has a byte for encoding.
+		eb.putByte(byte(c.encoding))
+	}
 
 	n, err := buf.Write(eb.get())
 	if err != nil {

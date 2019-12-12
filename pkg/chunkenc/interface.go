@@ -19,7 +19,7 @@ var (
 )
 
 // Encoding is the identifier for a chunk encoding.
-type Encoding uint8
+type Encoding byte
 
 // The different available encodings.
 const (

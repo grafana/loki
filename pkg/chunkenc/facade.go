@@ -7,13 +7,18 @@ import (
 )
 
 // GzipLogChunk is a cortex encoding type for our chunks.
+// Deprecated: the chunk encoding/compression format is inside the chunk data.
 const GzipLogChunk = encoding.Encoding(128)
+
+// LogChunk is a cortex encoding type for our chunks.
+const LogChunk = encoding.Encoding(129)
 
 func init() {
 	encoding.MustRegisterEncoding(GzipLogChunk, "GzipLogChunk", func() encoding.Chunk {
-		return &Facade{
-			c: NewMemChunk(EncGZIP),
-		}
+		return &Facade{}
+	})
+	encoding.MustRegisterEncoding(LogChunk, "LogChunk", func() encoding.Chunk {
+		return &Facade{}
 	})
 }
 
@@ -32,6 +37,9 @@ func NewFacade(c Chunk) encoding.Chunk {
 
 // Marshal implements encoding.Chunk.
 func (f Facade) Marshal(w io.Writer) error {
+	if f.c == nil {
+		return nil
+	}
 	buf, err := f.c.Bytes()
 	if err != nil {
 		return err
@@ -49,11 +57,14 @@ func (f *Facade) UnmarshalFromBuf(buf []byte) error {
 
 // Encoding implements encoding.Chunk.
 func (Facade) Encoding() encoding.Encoding {
-	return GzipLogChunk
+	return LogChunk
 }
 
 // Utilization implements encoding.Chunk.
 func (f Facade) Utilization() float64 {
+	if f.c == nil {
+		return 0
+	}
 	return f.c.Utilization()
 }
 
@@ -66,7 +77,7 @@ func (f Facade) LokiChunk() Chunk {
 func UncompressedSize(c encoding.Chunk) (int, bool) {
 	f, ok := c.(*Facade)
 
-	if !ok {
+	if !ok || f.c == nil {
 		return 0, false
 	}
 

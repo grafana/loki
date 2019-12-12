@@ -19,7 +19,7 @@ var encodingTests = []Encoding{EncGZIPBestSpeed, EncGZIP, EncLZ4, EncSnappy, Enc
 func TestBlock(t *testing.T) {
 	for _, enc := range encodingTests {
 		t.Run(enc.String(), func(t *testing.T) {
-			chk := NewMemChunk(enc)
+			chk := newMemChunk(enc)
 			cases := []struct {
 				ts  int64
 				str string
@@ -111,10 +111,40 @@ func TestBlock(t *testing.T) {
 	}
 }
 
+func TestReadFormatV1(t *testing.T) {
+	c := newMemChunk(EncGZIP)
+	fillChunk(c)
+	// overrides default v2 format
+	c.format = chunkFormatV1
+
+	b, err := c.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := NewByteChunk(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	it, err := r.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	i := int64(0)
+	for it.Next() {
+		require.Equal(t, i, it.Entry().Timestamp.UnixNano())
+		require.Equal(t, logString(i), it.Entry().Line)
+
+		i++
+	}
+}
+
 func TestSerialization(t *testing.T) {
 	for _, enc := range encodingTests {
 		t.Run(enc.String(), func(t *testing.T) {
-			chk := NewMemChunk(enc)
+			chk := newMemChunk(enc)
 
 			numSamples := 500000
 
@@ -151,7 +181,7 @@ func TestSerialization(t *testing.T) {
 func TestChunkFilling(t *testing.T) {
 	for _, enc := range encodingTests {
 		t.Run(enc.String(), func(t *testing.T) {
-			chk := NewMemChunk(enc)
+			chk := newMemChunk(enc)
 			chk.blockSize = 1024
 
 			// We should be able to append only 10KB of logs.
@@ -223,7 +253,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			tester(t, NewMemChunk(EncGZIP))
+			tester(t, newMemChunk(EncGZIP))
 		})
 	}
 }
@@ -231,29 +261,14 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 func TestChunkSize(t *testing.T) {
 	for _, enc := range encodingTests {
 		t.Run(enc.String(), func(t *testing.T) {
-			i := int64(0)
-			c := NewMemChunk(enc)
-			entry := &logproto.Entry{
-				Timestamp: time.Unix(0, 0),
-				Line:      logString(i),
-			}
-			for c.SpaceFor(entry) {
-				err := c.Append(entry)
-				if err != nil {
-					t.Fatal(err)
-				}
-				entry.Timestamp = time.Unix(0, i)
-				entry.Line = logString(i)
-				i++
-			}
+			c := newMemChunk(enc)
+			inserted := fillChunk(c)
 			b, err := c.Bytes()
 			if err != nil {
 				t.Fatal(err)
 			}
 			t.Log("Chunk size", humanize.Bytes(uint64(len(b))))
-			t.Log("Lines", i)
-			t.Log("characters ", i*int64(len(entry.Line)))
-
+			t.Log("characters ", inserted)
 		})
 
 	}
@@ -273,7 +288,7 @@ func BenchmarkWrite(b *testing.B) {
 	for _, enc := range encodingTests {
 		b.Run(enc.String(), func(b *testing.B) {
 			for n := 0; n < b.N; n++ {
-				c := NewMemChunk(enc)
+				c := newMemChunk(enc)
 				// adds until full so we trigger cut which serialize using gzip
 				for c.SpaceFor(entry) {
 					_ = c.Append(entry)
