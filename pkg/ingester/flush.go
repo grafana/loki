@@ -42,7 +42,7 @@ var (
 		Namespace: "loki",
 		Name:      "ingester_chunk_size_bytes",
 		Help:      "Distribution of stored chunk sizes (when stored).",
-		Buckets:   prometheus.ExponentialBuckets(50000, 2, 10), // biggest bucket is 50000*2^(10-1) = 25,600,000 (~25.6MB)
+		Buckets:   prometheus.ExponentialBuckets(20000, 2, 10), // biggest bucket is 20000*2^(10-1) = 10,240,000 (~10.2MB)
 	})
 	chunkCompressionRatio = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "loki",
