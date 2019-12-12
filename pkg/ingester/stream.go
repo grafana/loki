@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -34,6 +35,14 @@ var (
 
 		Buckets: prometheus.LinearBuckets(4096, 2048, 6),
 	})
+	blocksPerChunk = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "loki",
+		Subsystem: "ingester",
+		Name:      "blocks_per_chunk",
+		Help:      "The number of blocks in a chunk.",
+
+		Buckets: prometheus.ExponentialBuckets(5, 2, 6),
+	})
 )
 
 func init() {
@@ -44,10 +53,11 @@ func init() {
 type stream struct {
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
-	chunks    []chunkDesc
-	fp        model.Fingerprint // possibly remapped fingerprint, used in the streams map
-	labels    labels.Labels
-	blockSize int
+	chunks          []chunkDesc
+	fp              model.Fingerprint // possibly remapped fingerprint, used in the streams map
+	labels          labels.Labels
+	blockSize       int
+	targetChunkSize int // Compressed bytes
 
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
@@ -66,12 +76,13 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(fp model.Fingerprint, labels labels.Labels, blockSize int) *stream {
+func newStream(fp model.Fingerprint, labels labels.Labels, blockSize, targetChunkSize int) *stream {
 	return &stream{
-		fp:        fp,
-		labels:    labels,
-		blockSize: blockSize,
-		tailers:   map[uint32]*tailer{},
+		fp:              fp,
+		labels:          labels,
+		blockSize:       blockSize,
+		targetChunkSize: targetChunkSize,
+		tailers:         map[uint32]*tailer{},
 	}
 }
 
@@ -93,7 +104,7 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 	if len(s.chunks) == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
-			chunk: chunkenc.NewMemChunkSize(chunkenc.EncGZIP, s.blockSize),
+			chunk: chunkenc.NewMemChunkSize(chunkenc.EncGZIP, s.blockSize, s.targetChunkSize),
 		})
 		chunksCreatedTotal.Inc()
 	}
@@ -106,13 +117,21 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 	for i := range entries {
 		chunk := &s.chunks[len(s.chunks)-1]
 		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) {
+			// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
+			err := chunk.chunk.Close()
+			if err != nil {
+				// This should be an unlikely situation, returning an error up the stack doesn't help much here
+				// so instead log this to help debug the issue if it ever arises.
+				level.Error(util.Logger).Log("msg", "failed to Close chunk", "err", err)
+			}
 			chunk.closed = true
 
 			samplesPerChunk.Observe(float64(chunk.chunk.Size()))
+			blocksPerChunk.Observe(float64(chunk.chunk.Blocks()))
 			chunksCreatedTotal.Inc()
 
 			s.chunks = append(s.chunks, chunkDesc{
-				chunk: chunkenc.NewMemChunkSize(chunkenc.EncGZIP, s.blockSize),
+				chunk: chunkenc.NewMemChunkSize(chunkenc.EncGZIP, s.blockSize, s.targetChunkSize),
 			})
 			chunk = &s.chunks[len(s.chunks)-1]
 		}

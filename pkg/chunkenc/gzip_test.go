@@ -11,8 +11,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func TestGZIPBlock(t *testing.T) {
@@ -173,6 +174,57 @@ func TestGZIPChunkFilling(t *testing.T) {
 	}
 
 	require.Equal(t, int64(lines), i)
+}
+
+func TestGZIPChunkTargetSize(t *testing.T) {
+	targetSize := 1024 * 1024
+	chk := NewMemChunkSize(EncGZIP, 1024, targetSize)
+
+	lineSize := 512
+	entry := &logproto.Entry{
+		Timestamp: time.Unix(0, 0),
+		Line:      "",
+	}
+
+	// Use a random number to generate random log data, otherwise the gzip compression is way too good
+	// and the following loop has to run waaayyyyy to many times
+	// Using the same seed should guarantee the same random numbers and same test data.
+	r := rand.New(rand.NewSource(99))
+
+	i := int64(0)
+
+	for ; chk.SpaceFor(entry) && i < 5000; i++ {
+		logLine := make([]byte, lineSize)
+		for j := range logLine {
+			logLine[j] = byte(r.Int())
+		}
+		entry = &logproto.Entry{
+			Timestamp: time.Unix(0, 0),
+			Line:      string(logLine),
+		}
+		entry.Timestamp = time.Unix(0, i)
+		require.NoError(t, chk.Append(entry))
+	}
+
+	// 5000 is a limit ot make sure the test doesn't run away, we shouldn't need this many log lines to make 1MB chunk
+	require.NotEqual(t, 5000, i)
+
+	require.NoError(t, chk.Close())
+
+	require.Equal(t, 0, chk.head.size)
+
+	// Even though the seed is static above and results should be deterministic,
+	// we will allow +/- 10% variance
+	minSize := int(float64(targetSize) * 0.9)
+	maxSize := int(float64(targetSize) * 1.1)
+	require.Greater(t, chk.CompressedSize(), minSize)
+	require.Less(t, chk.CompressedSize(), maxSize)
+
+	// Also verify our utilization is close to 1.0
+	ut := chk.Utilization()
+	require.Greater(t, ut, 0.99)
+	require.Less(t, ut, 1.01)
+
 }
 
 func TestMemChunk_AppendOutOfOrder(t *testing.T) {
