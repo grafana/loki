@@ -166,8 +166,7 @@ func NewMemChunkSize(enc Encoding, blockSize, targetSize int) *MemChunk {
 // NewByteChunk returns a MemChunk on the passed bytes.
 func NewByteChunk(b []byte) (*MemChunk, error) {
 	bc := &MemChunk{
-		encoding: EncGZIP,
-		head:     &headBlock{}, // Dummy, empty headblock.
+		head: &headBlock{}, // Dummy, empty headblock.
 	}
 	db := decbuf{b: b}
 
