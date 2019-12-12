@@ -327,10 +327,9 @@ func (c *MemChunk) SpaceFor(e *logproto.Entry) bool {
 		// a great check, but it will guarantee we are always under the target size
 		newHBSize := c.head.size + len(e.Line)
 		return (c.cutBlockSize + newHBSize) < c.targetSize
-	} else {
-		// if targetSize is not defined, default to the original behavior of fixed blocks per chunk
-		return len(c.blocks) < blocksPerChunk
 	}
+	// if targetSize is not defined, default to the original behavior of fixed blocks per chunk
+	return len(c.blocks) < blocksPerChunk
 }
 
 // UncompressedSize implements Chunk.
@@ -362,11 +361,11 @@ func (c *MemChunk) CompressedSize() int {
 // Utilization implements Chunk.
 func (c *MemChunk) Utilization() float64 {
 	if c.targetSize != 0 {
-		return float64(c.targetSize) / float64(c.CompressedSize())
-	} else {
-		size := c.UncompressedSize()
-		return float64(size) / float64(blocksPerChunk*c.blockSize)
+		return float64(c.CompressedSize()) / float64(c.targetSize)
 	}
+	size := c.UncompressedSize()
+	return float64(size) / float64(blocksPerChunk*c.blockSize)
+
 }
 
 // Append implements Chunk.

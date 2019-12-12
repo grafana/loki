@@ -267,15 +267,15 @@ The `ingester_config` block configures Ingesters.
 # period as long as they receieve no further activity.
 [chunk_idle_period: <duration> | default = 30m]
 
-# The maximum _uncompressed_ size in bytes of a chunk block, 
-# if chunk_target_size == 0 a chunk will have a fixed 10 blocks.
-# If chunk_target_size != 0 the chunk will have a variable number of blocks
-# to try to meet the target size
+# The targeted _uncompressed_ size in bytes of a chunk block
+# When this threshold is exceeded the head block will be cut and compressed inside the chunk 
 [chunk_block_size: <int> | default = 262144]
 
 # A target _compressed_ size in bytes for chunks.
 # This is a desired size not an exact size, chunks may be slightly bigger
 # or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period)
+# The default value of 0 for this will create chunks with a fixed 10 blocks,
+# A non zero value will create chunks with a variable number of blocks to meet the target size.
 [chunk_target_size: <int> | default = 0]
 ```
 

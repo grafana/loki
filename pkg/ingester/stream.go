@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -116,9 +117,12 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 	for i := range entries {
 		chunk := &s.chunks[len(s.chunks)-1]
 		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) {
+			// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
 			err := chunk.chunk.Close()
 			if err != nil {
-				//TODO what the heck do we do with this error?
+				// This should be an unlikely situation, returning an error up the stack doesn't help much here
+				// so instead log this to help debug the issue if it ever arises.
+				level.Error(util.Logger).Log("msg", "failed to Close chunk", "err", err)
 			}
 			chunk.closed = true
 
