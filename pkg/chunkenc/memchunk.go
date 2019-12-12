@@ -8,7 +8,6 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"sync"
 	"time"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -29,14 +28,9 @@ var (
 // with any other use of the crc32 package anywhere. Thus we initialize it
 // before.
 var castagnoliTable *crc32.Table
-var serialiseBytesBufferPool sync.Pool
 
 func init() {
 	castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
-
-	serialiseBytesBufferPool.New = func() interface{} {
-		return &bytes.Buffer{}
-	}
 }
 
 // newCRC32 initializes a CRC32 hash with a preconfigured polynomial, so the
@@ -158,7 +152,7 @@ func NewMemChunkSize(enc Encoding, blockSize int) *MemChunk {
 	case EncSnappy:
 		c.readers, c.writers = &Snappy, &Snappy
 	case EncSnappyV2:
-		c.readers, c.writers = &Snappy, &Snappy
+		c.readers, c.writers = &SnappyV2, &SnappyV2
 	default:
 		panic("unknown encoding")
 	}

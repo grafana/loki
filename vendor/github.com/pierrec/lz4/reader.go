@@ -88,10 +88,10 @@ func (z *Reader) readHeader(first bool) error {
 	z.NoChecksum = b>>2&1 == 0
 
 	bmsID := buf[1] >> 4 & 0x7
-	bSize, ok := bsMapID[bmsID]
-	if !ok {
+	if bmsID < 4 || bmsID > 7 {
 		return fmt.Errorf("lz4: invalid block max size ID: %d", bmsID)
 	}
+	bSize := blockSizeIndexToValue(bmsID - 4)
 	z.BlockMaxSize = bSize
 
 	// Allocate the compressed/uncompressed buffers.

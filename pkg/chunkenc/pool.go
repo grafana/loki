@@ -2,6 +2,7 @@ package chunkenc
 
 import (
 	"bufio"
+	"bytes"
 	"io"
 	"sync"
 
@@ -25,11 +26,11 @@ type ReaderPool interface {
 	PutReader(io.Reader)
 }
 
-// Gzip is the gun zip compression pool
-var Gzip = GzipPool{level: gzip.DefaultCompression}
-var GzipBestSpeed = GzipPool{level: gzip.BestSpeed}
-
 var (
+	// Gzip is the gun zip compression pool
+	Gzip = GzipPool{level: gzip.DefaultCompression}
+	// GzipBestSpeed is the gun zip compression pool with best speed configuration
+	GzipBestSpeed = GzipPool{level: gzip.BestSpeed}
 	// LZ4 is the l4z compression pool
 	LZ4 LZ4Pool
 	// Snappy is the snappy compression pool
@@ -45,7 +46,12 @@ var (
 	}
 	// BytesBufferPool is a bytes buffer used for lines decompressed.
 	// Buckets [0.5KB,1KB,2KB,4KB,8KB]
-	BytesBufferPool = pool.New(1<<9, 1<<13, 2, func(size int) interface{} { return make([]byte, 0, size) })
+	BytesBufferPool          = pool.New(1<<9, 1<<13, 2, func(size int) interface{} { return make([]byte, 0, size) })
+	serialiseBytesBufferPool = sync.Pool{
+		New: func() interface{} {
+			return &bytes.Buffer{}
+		},
+	}
 )
 
 // GzipPool is a gun zip compression pool
