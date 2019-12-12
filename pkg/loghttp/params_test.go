@@ -200,10 +200,16 @@ func Test_match(t *testing.T) {
 			},
 			false,
 		},
+		{
+			"errors on empty group",
+			[]string{`{}`},
+			nil,
+			true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := match(tt.input)
+			got, err := Match(tt.input)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {

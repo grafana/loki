@@ -73,10 +73,10 @@ func step(r *http.Request, start, end time.Time) (time.Duration, error) {
 	return 0, errors.Errorf("cannot parse %q to a valid duration", value)
 }
 
-func match(xs []string) ([][]*labels.Matcher, error) {
-	// TODO(owen-d): is a 0 length matches parameter valid? It'd resolve to ALL streams
+// Match extracts and parses multiple matcher groups from a slice of strings
+func Match(xs []string) ([][]*labels.Matcher, error) {
 	if len(xs) == 0 {
-		return nil, errors.New("0 matchers supplied")
+		return nil, errors.New("0 matcher groups supplied")
 	}
 
 	groups := make([][]*labels.Matcher, 0, len(xs))
@@ -84,6 +84,9 @@ func match(xs []string) ([][]*labels.Matcher, error) {
 		ms, err := logql.ParseMatchers(x)
 		if err != nil {
 			return nil, err
+		}
+		if len(ms) == 0 {
+			return nil, errors.Errorf("0 matchers in group: %s", x)
 		}
 		groups = append(groups, ms)
 	}
