@@ -282,32 +282,21 @@ var entries = []logproto.Entry{}
 func BenchmarkRead(b *testing.B) {
 	for _, enc := range encodingTests {
 		b.Run(enc.String(), func(b *testing.B) {
-			chunks := []Chunk{}
-			i := int64(0)
-			for n := 0; n < 50; n++ {
-				entry := randSizeEntry(0)
-				c := NewMemChunk(enc)
-				for c.SpaceFor(entry) {
-					_ = c.Append(entry)
-					i++
-					entry = randSizeEntry(i)
-				}
-				c.Close()
-				chunks = append(chunks, c)
-			}
+			chunks := generateData(enc)
 			b.ResetTimer()
 			bytesRead := int64(0)
 			//now := time.Now()
 			for n := 0; n < b.N; n++ {
 				for _, c := range chunks {
-					iterator, err := c.Iterator(time.Unix(0, 0), time.Now(), logproto.BACKWARD, nil)
+					// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
+					iterator, err := c.Iterator(time.Unix(0, 0), time.Now(), logproto.FORWARD, nil)
 					if err != nil {
 						panic(err)
 					}
 					for iterator.Next() {
 						e := iterator.Entry()
 						bytesRead += int64(len(e.Line))
-						entries = append(entries, e)
+						// entries = append(entries, e) // adds extra allocation, we don't need this
 					}
 					if err := iterator.Close(); err != nil {
 						b.Fatal(err)
@@ -318,6 +307,23 @@ func BenchmarkRead(b *testing.B) {
 			//b.Log("n=", b.N)
 		})
 	}
+}
+
+func generateData(enc Encoding) []Chunk {
+	chunks := []Chunk{}
+	i := int64(0)
+	for n := 0; n < 50; n++ {
+		entry := randSizeEntry(0)
+		c := NewMemChunk(enc)
+		for c.SpaceFor(entry) {
+			_ = c.Append(entry)
+			i++
+			entry = randSizeEntry(i)
+		}
+		c.Close()
+		chunks = append(chunks, c)
+	}
+	return chunks
 }
 
 func BenchmarkHeadBlockIterator(b *testing.B) {
