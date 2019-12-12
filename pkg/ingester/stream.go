@@ -48,6 +48,7 @@ var (
 func init() {
 	prometheus.MustRegister(chunksCreatedTotal)
 	prometheus.MustRegister(samplesPerChunk)
+	prometheus.MustRegister(blocksPerChunk)
 }
 
 type stream struct {
