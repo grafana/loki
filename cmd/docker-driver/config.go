@@ -38,6 +38,7 @@ const (
 	cfgMaxBackoffKey     = "loki-max-backoff"
 	cfgMaxRetriesKey     = "loki-retries"
 	cfgPipelineStagesKey = "loki-pipeline-stage-file"
+	cfgTenantIDKey       = "loki-tenant-id"
 
 	swarmServiceLabelKey = "com.docker.swarm.service.name"
 	swarmStackLabelKey   = "com.docker.stack.namespace"
@@ -98,6 +99,7 @@ func validateDriverOpt(loggerInfo logger.Info) error {
 		case cfgMaxBackoffKey:
 		case cfgMaxRetriesKey:
 		case cfgPipelineStagesKey:
+		case cfgTenantIDKey:
 		case "labels":
 		case "env":
 		case "env-regex":
@@ -187,6 +189,12 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 			return nil, fmt.Errorf("%s: option %s is invalid %s", driverName, cfgProxyURLKey, err)
 		}
 		clientConfig.Client.ProxyURL.URL = proxyURL
+	}
+
+	// parse tenant id
+	tenantID, ok := logCtx.Config[cfgTenantIDKey]
+	if ok && tenantID != "" {
+		clientConfig.TenantID = tenantID
 	}
 
 	// parse external labels
