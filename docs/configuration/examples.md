@@ -125,7 +125,7 @@ index storage:
 schema_config:
   configs:
     - from: 2018-04-15
-      store: dynamo
+      store: aws
       object_store: s3
       schema: v9
       index:
