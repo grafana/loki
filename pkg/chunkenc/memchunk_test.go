@@ -12,6 +12,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/chunkenc/testdata"
 	"github.com/stretchr/testify/require"
 )
 
@@ -141,7 +142,7 @@ func TestReadFormatV1(t *testing.T) {
 	i := int64(0)
 	for it.Next() {
 		require.Equal(t, i, it.Entry().Timestamp.UnixNano())
-		require.Equal(t, logString(i), it.Entry().Line)
+		require.Equal(t, testdata.LogString(i), it.Entry().Line)
 
 		i++
 	}
@@ -338,7 +339,7 @@ func BenchmarkWrite(b *testing.B) {
 
 	entry := &logproto.Entry{
 		Timestamp: time.Unix(0, 0),
-		Line:      logString(0),
+		Line:      testdata.LogString(0),
 	}
 	i := int64(0)
 
@@ -350,7 +351,7 @@ func BenchmarkWrite(b *testing.B) {
 				for c.SpaceFor(entry) {
 					_ = c.Append(entry)
 					entry.Timestamp = time.Unix(0, i)
-					entry.Line = logString(i)
+					entry.Line = testdata.LogString(i)
 					i++
 				}
 				chunks = append(chunks, c)

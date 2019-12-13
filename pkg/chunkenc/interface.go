@@ -62,8 +62,20 @@ func ParseEncoding(enc string) (Encoding, error) {
 			return e, nil
 		}
 	}
-	return 0, fmt.Errorf("invalid encoding: %s", enc)
+	return 0, fmt.Errorf("invalid encoding: %s, supported: %s", enc, SupportedEncoding())
 
+}
+
+// SupportedEncoding returns the list of supported Encoding.
+func SupportedEncoding() string {
+	var sb strings.Builder
+	for i := range supportedEncoding {
+		sb.WriteString(supportedEncoding[i].String())
+		if i != len(supportedEncoding)-1 {
+			sb.WriteString(", ")
+		}
+	}
+	return sb.String()
 }
 
 // Chunk is the interface for the compressed logs chunk format.
