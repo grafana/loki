@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/dustin/go-humanize"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/chunkenc/testdata"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
 )
 
