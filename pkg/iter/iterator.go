@@ -79,10 +79,18 @@ type iteratorMinHeap struct {
 
 func (h iteratorMinHeap) Less(i, j int) bool {
 	t1, t2 := h.iteratorHeap[i].Entry().Timestamp, h.iteratorHeap[j].Entry().Timestamp
-	if !t1.Equal(t2) {
-		return t1.Before(t2)
+
+	un1 := t1.UnixNano()
+	un2 := t2.UnixNano()
+
+	switch {
+	case un1 < un2:
+		return true
+	case un1 > un2:
+		return false
+	default: // un1 == un2:
+		return h.iteratorHeap[i].Labels() < h.iteratorHeap[j].Labels()
 	}
-	return h.iteratorHeap[i].Labels() < h.iteratorHeap[j].Labels()
 }
 
 type iteratorMaxHeap struct {
@@ -91,10 +99,18 @@ type iteratorMaxHeap struct {
 
 func (h iteratorMaxHeap) Less(i, j int) bool {
 	t1, t2 := h.iteratorHeap[i].Entry().Timestamp, h.iteratorHeap[j].Entry().Timestamp
-	if !t1.Equal(t2) {
-		return t1.After(t2)
+
+	un1 := t1.UnixNano()
+	un2 := t2.UnixNano()
+
+	switch {
+	case un1 < un2:
+		return false
+	case un1 > un2:
+		return true
+	default: // un1 == un2
+		return h.iteratorHeap[i].Labels() > h.iteratorHeap[j].Labels()
 	}
-	return h.iteratorHeap[i].Labels() > h.iteratorHeap[j].Labels()
 }
 
 // HeapIterator iterates over a heap of iterators with ability to push new iterators and get some properties like time of entry at peek and len

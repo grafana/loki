@@ -2,7 +2,6 @@ package iter
 
 import (
 	"fmt"
-	"math/rand"
 	"sort"
 	"testing"
 	"time"
