@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/pkg/errors"
 )
 
 type SeriesResponse struct {
@@ -20,8 +19,11 @@ func ParseSeriesQuery(r *http.Request) (*logproto.SeriesRequest, error) {
 
 	xs := r.Form["match"]
 
-	if len(xs) == 0 {
-		return nil, errors.New("0 matcher groups supplied")
+	// ensure matchers are valid before fanning out to ingesters/store as well as returning valuable parsing errors
+	// instead of 500s
+	_, err = Match(xs)
+	if err != nil {
+		return nil, err
 	}
 
 	return &logproto.SeriesRequest{

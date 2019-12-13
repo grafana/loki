@@ -23,6 +23,14 @@ func TestParseSeriesQuery(t *testing.T) {
 			nil,
 		},
 		{
+			"malformed",
+			withForm(url.Values{
+				"match": []string{`{a="}`},
+			}),
+			true,
+			nil,
+		},
+		{
 			"multiple matches",
 			withForm(url.Values{
 				"start": []string{"1000"},
@@ -38,6 +46,7 @@ func TestParseSeriesQuery(t *testing.T) {
 			if tc.shouldErr {
 				require.Error(t, err)
 			} else {
+				require.Nil(t, err)
 				require.Equal(t, tc.expected, out)
 			}
 		})
