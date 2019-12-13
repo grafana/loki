@@ -3,6 +3,7 @@ package scrape
 import (
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/prometheus/common/model"
 
@@ -19,6 +20,7 @@ type Config struct {
 	EntryParser            api.EntryParser                  `yaml:"entry_parser"`
 	PipelineStages         stages.PipelineStages            `yaml:"pipeline_stages,omitempty"`
 	JournalConfig          *JournalTargetConfig             `yaml:"journal,omitempty"`
+	SyslogConfig           *SyslogTargetConfig              `yaml:"syslog,omitempty"`
 	RelabelConfigs         []*relabel.Config                `yaml:"relabel_configs,omitempty"`
 	ServiceDiscoveryConfig sd_config.ServiceDiscoveryConfig `yaml:",inline"`
 }
@@ -40,6 +42,23 @@ type JournalTargetConfig struct {
 	// Path to a directory to read journal entries from. Defaults to system path
 	// if empty.
 	Path string `yaml:"path"`
+}
+
+// SyslogTargetConfig describes a scrape config that listens for log lines over syslog.
+type SyslogTargetConfig struct {
+	// ListenAddress is the address to listen on for syslog messages.
+	ListenAddress string `yaml:"listen_address"`
+
+	// IdleTimeout is the idle timeout for tcp connections.
+	IdleTimeout time.Duration `yaml:"idle_timeout"`
+
+	// LabelStructuredData sets if the structured data part of a syslog message
+	// is translated to a label.
+	// [example@99999 test="yes"] => {__syslog_message_sd_example_99999_test="yes"}
+	LabelStructuredData bool `yaml:"label_structured_data"`
+
+	// Labels optionally holds labels to associate with each record read from syslog.
+	Labels model.LabelSet `yaml:"labels"`
 }
 
 // DefaultScrapeConfig is the default Config.

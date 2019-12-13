@@ -23,6 +23,7 @@ and how to scrape logs from files.
             * [metric_histogram](#metric_histogram)
         * [tenant_stage](#tenant_stage)
     * [journal_config](#journal_config)
+    * [syslog_config](#syslog_config)
     * [relabel_config](#relabel_config)
     * [static_config](#static_config)
     * [file_sd_config](#file_sd_config)
@@ -30,6 +31,7 @@ and how to scrape logs from files.
 * [target_config](#target_config)
 * [Example Docker Config](#example-docker-config)
 * [Example Journal Config](#example-journal-config)
+* [Example Syslog Config](#example-syslog-config)
 
 ## Configuration File Reference
 
@@ -243,6 +245,9 @@ job_name: <string>
 
 # Describes how to scrape logs from the journal.
 [journal: <journal_config>]
+
+# Describes how to receive logs from syslog.
+[syslog: <syslog_config>]
 
 # Describes how to relabel targets to determine if they should
 # be processed.
@@ -579,6 +584,59 @@ labels:
 # paths (/var/log/journal and /run/log/journal) when empty.
 [path: <string>]
 ```
+
+### syslog_config
+
+The `syslog_config` block configures a syslog listener allowing users to push
+logs to promtail with the syslog protocol.
+Currently supported is [IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424)
+with and without octet counting.
+
+The recommended deployment is to have a dedicated syslog forwarder like **syslog-ng** or **rsyslog**
+in front of promtail. The forwarder can take care of the various specifications
+and transports that exist (UDP, BSD syslog, ...).
+
+[Octet counting](https://tools.ietf.org/html/rfc6587#section-3.4.1) is recommended as the
+message framing method. In a stream with [non-transparent framing](https://tools.ietf.org/html/rfc6587#section-3.4.2),
+promtail needs to wait for the next message to catch multi-line messages,
+therefore delays between messages can occur.
+
+See recommended output configurations for
+[syslog-ng](scraping.md#syslog-ng-output-configuration) and
+[rsyslog](scraping.md#rsyslog-output-configuration). Both configurations enable
+IETF Syslog with octet-counting.
+
+You may need to increase the open files limit for the promtail process
+if many clients are connected. (`ulimit -Sn`)
+
+```yaml
+# TCP address to listen on. Has the format of "host:port".
+listen_address: <string>
+
+# The idle timeout for tcp syslog connections, default is 120 seconds.
+idle_timeout: <duration>
+
+# Whether to convert syslog structured data to labels.
+# A structured data entry of [example@99999 test="yes"] would become
+# the label "__syslog_message_sd_example_99999_test" with the value "yes".
+label_structured_data: <bool>
+
+# Label map to add to every log message.
+labels:
+  [ <labelname>: <labelvalue> ... ]
+```
+
+#### Available Labels
+
+* `__syslog_connection_ip_address`: The remote IP address.
+* `__syslog_connection_hostname`: The remote hostname.
+* `__syslog_message_severity`: The [syslog severity](https://tools.ietf.org/html/rfc5424#section-6.2.1) parsed from the message. Symbolic name as per [syslog_message.go](https://github.com/influxdata/go-syslog/blob/v2.0.1/rfc5424/syslog_message.go#L184).
+* `__syslog_message_facility`: The [syslog facility](https://tools.ietf.org/html/rfc5424#section-6.2.1) parsed from the message. Symbolic name as per [syslog_message.go](https://github.com/influxdata/go-syslog/blob/v2.0.1/rfc5424/syslog_message.go#L235) and `syslog(3)`.
+* `__syslog_message_hostname`: The [hostname](https://tools.ietf.org/html/rfc5424#section-6.2.4) parsed from the message.
+* `__syslog_message_app_name`: The [app-name field](https://tools.ietf.org/html/rfc5424#section-6.2.5) parsed from the message.
+* `__syslog_message_proc_id`: The [procid field](https://tools.ietf.org/html/rfc5424#section-6.2.6) parsed from the message.
+* `__syslog_message_msg_id`: The [msgid field](https://tools.ietf.org/html/rfc5424#section-6.2.7) parsed from the message.
+* `__syslog_message_sd_<sd_id>[_<iana_enterprise_id>]_<sd_name>`: The [structured-data field](https://tools.ietf.org/html/rfc5424#section-6.3) parsed from the message. The data field `[custom@99770 example="1"]` becomes `__syslog_message_sd_custom_99770_example`.
 
 ### relabel_config
 
@@ -969,4 +1027,28 @@ scrape_configs:
     relabel_configs:
       - source_labels: ['__journal__systemd_unit']
         target_label: 'unit'
+```
+
+## Example Syslog Config
+
+```yaml
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki_addr:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: syslog
+    syslog:
+      listen_address: 0.0.0.0:1514
+      labels:
+        job: "syslog"
+    relabel_configs:
+      - source_labels: ['__syslog_message_hostname']
+        target_label: 'host'
 ```

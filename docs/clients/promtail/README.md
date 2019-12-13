@@ -32,6 +32,11 @@ Just like Prometheus, `promtail` is configured using a `scrape_configs` stanza.
 drop, and the final metadata to attach to the log line. Refer to the docs for
 [configuring Promtail](configuration.md) for more details.
 
+## Receiving Logs From Syslog
+
+When the [Syslog Target](./scraping.md#syslog-target) is being used, logs
+can be written with the syslog protocol to the configured port.
+
 ## Labeling and Parsing
 
 During service discovery, metadata is determined (pod name, filename, etc.) that
