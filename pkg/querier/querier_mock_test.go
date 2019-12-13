@@ -51,6 +51,15 @@ func (c *querierClientMock) Tail(ctx context.Context, in *logproto.TailRequest, 
 	return args.Get(0).(logproto.Querier_TailClient), args.Error(1)
 }
 
+func (c *querierClientMock) Series(ctx context.Context, in *logproto.SeriesRequest, opts ...grpc.CallOption) (*logproto.SeriesResponse, error) {
+	args := c.Called(ctx, in)
+	res := args.Get(0)
+	if res == nil {
+		return (*logproto.SeriesResponse)(nil), args.Error(1)
+	}
+	return res.(*logproto.SeriesResponse), args.Error(1)
+}
+
 // newIngesterClientMockFactory creates a factory function always returning
 // the input querierClientMock
 func newIngesterClientMockFactory(c *querierClientMock) cortex_client.Factory {
@@ -173,7 +182,11 @@ func newStoreMock() *storeMock {
 
 func (s *storeMock) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error) {
 	args := s.Called(ctx, req)
-	return args.Get(0).(iter.EntryIterator), args.Error(1)
+	res := args.Get(0)
+	if res == nil {
+		return iter.EntryIterator(nil), args.Error(1)
+	}
+	return res.(iter.EntryIterator), args.Error(1)
 }
 
 func (s *storeMock) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
@@ -271,9 +284,22 @@ func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 	return iter.NewStreamIterator(mockStream(from, quantity))
 }
 
+func mockStreamIterFromLabelSets(from, quantity int, sets []string) iter.EntryIterator {
+	var streams []*logproto.Stream
+	for _, s := range sets {
+		streams = append(streams, mockStreamWithLabels(from, quantity, s))
+	}
+
+	return iter.NewStreamsIterator(streams, logproto.FORWARD)
+}
+
 // mockStream return a stream with quantity entries, where entries timestamp and
 // line string are constructed as sequential numbers starting at from
 func mockStream(from int, quantity int) *logproto.Stream {
+	return mockStreamWithLabels(from, quantity, `{type="test"}`)
+}
+
+func mockStreamWithLabels(from int, quantity int, labels string) *logproto.Stream {
 	entries := make([]logproto.Entry, 0, quantity)
 
 	for i := from; i < from+quantity; i++ {
@@ -285,6 +311,6 @@ func mockStream(from int, quantity int) *logproto.Stream {
 
 	return &logproto.Stream{
 		Entries: entries,
-		Labels:  `{type="test"}`,
+		Labels:  labels,
 	}
 }

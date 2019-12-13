@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 	"time"
@@ -293,4 +294,152 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 	request.Start = request.End.Add(-3 * time.Minute)
 	_, err = q.Select(ctx, logql.SelectParams{QueryRequest: &request})
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "invalid query, length > limit (3m0s > 2m0s)"), err)
+}
+
+func TestQuerier_SeriesAPI(t *testing.T) {
+	mkReq := func(groups []string) *logproto.SeriesRequest {
+		return &logproto.SeriesRequest{
+			Start:  time.Unix(0, 0),
+			End:    time.Unix(10, 0),
+			Groups: groups,
+		}
+	}
+
+	mockSeriesResponse := func(series []map[string]string) *logproto.SeriesResponse {
+		resp := &logproto.SeriesResponse{}
+		for _, s := range series {
+			resp.Series = append(resp.Series, logproto.SeriesIdentifier{
+				Labels: s,
+			})
+		}
+		return resp
+	}
+
+	for _, tc := range []struct {
+		desc  string
+		req   *logproto.SeriesRequest
+		setup func(*storeMock, *queryClientMock, *querierClientMock, validation.Limits, *logproto.SeriesRequest)
+		run   func(*testing.T, *Querier, *logproto.SeriesRequest)
+	}{
+		{
+			"ingester error",
+			mkReq([]string{`{a="1"}`}),
+			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
+				ingester.On("Series", mock.Anything, req, mock.Anything).Return(nil, errors.New("tst-err"))
+
+				store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(0, 0), nil)
+			},
+			func(t *testing.T, q *Querier, req *logproto.SeriesRequest) {
+				ctx := user.InjectOrgID(context.Background(), "test")
+				_, err := q.Series(ctx, req)
+				require.Error(t, err)
+			},
+		},
+		{
+			"store error",
+			mkReq([]string{`{a="1"}`}),
+			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
+				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse([]map[string]string{
+					{"a": "1"},
+				}), nil)
+
+				store.On("LazyQuery", mock.Anything, mock.Anything).Return(nil, context.DeadlineExceeded)
+			},
+			func(t *testing.T, q *Querier, req *logproto.SeriesRequest) {
+				ctx := user.InjectOrgID(context.Background(), "test")
+				_, err := q.Series(ctx, req)
+				require.Error(t, err)
+			},
+		},
+		{
+			"no matches",
+			mkReq([]string{`{a="1"}`}),
+			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
+				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse(nil), nil)
+
+				store.On("LazyQuery", mock.Anything, mock.Anything).
+					Return(mockStreamIterator(0, 0), nil)
+			},
+			func(t *testing.T, q *Querier, req *logproto.SeriesRequest) {
+				ctx := user.InjectOrgID(context.Background(), "test")
+				resp, err := q.Series(ctx, req)
+				require.Nil(t, err)
+				require.Equal(t, &logproto.SeriesResponse{Series: make([]logproto.SeriesIdentifier, 0)}, resp)
+			},
+		},
+		{
+			"returns series",
+			mkReq([]string{`{a="1"}`}),
+			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
+				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse([]map[string]string{
+					{"a": "1", "b": "2"},
+					{"a": "1", "b": "3"},
+				}), nil)
+
+				store.On("LazyQuery", mock.Anything, mock.Anything).
+					Return(mockStreamIterFromLabelSets(0, 10, []string{
+						`{a="1",b="4"}`,
+						`{a="1",b="5"}`,
+					}), nil)
+			},
+			func(t *testing.T, q *Querier, req *logproto.SeriesRequest) {
+				ctx := user.InjectOrgID(context.Background(), "test")
+				resp, err := q.Series(ctx, req)
+				require.Nil(t, err)
+				require.ElementsMatch(t, []logproto.SeriesIdentifier{
+					{Labels: map[string]string{"a": "1", "b": "2"}},
+					{Labels: map[string]string{"a": "1", "b": "3"}},
+					{Labels: map[string]string{"a": "1", "b": "4"}},
+					{Labels: map[string]string{"a": "1", "b": "5"}},
+				}, resp.GetSeries())
+			},
+		},
+		{
+			"dedupes",
+			mkReq([]string{`{a="1"}`}),
+			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
+				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse([]map[string]string{
+					{"a": "1", "b": "2"},
+				}), nil)
+
+				store.On("LazyQuery", mock.Anything, mock.Anything).
+					Return(mockStreamIterFromLabelSets(0, 10, []string{
+						`{a="1",b="2"}`,
+						`{a="1",b="3"}`,
+					}), nil)
+			},
+			func(t *testing.T, q *Querier, req *logproto.SeriesRequest) {
+				ctx := user.InjectOrgID(context.Background(), "test")
+				resp, err := q.Series(ctx, req)
+				require.Nil(t, err)
+				require.ElementsMatch(t, []logproto.SeriesIdentifier{
+					{Labels: map[string]string{"a": "1", "b": "2"}},
+					{Labels: map[string]string{"a": "1", "b": "3"}},
+				}, resp.GetSeries())
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			store := newStoreMock()
+			queryClient := newQueryClientMock()
+			ingesterClient := newQuerierClientMock()
+			defaultLimits := defaultLimitsTestConfig()
+			if tc.setup != nil {
+				tc.setup(store, queryClient, ingesterClient, defaultLimits, tc.req)
+			}
+
+			limits, err := validation.NewOverrides(defaultLimits)
+			require.NoError(t, err)
+
+			q, err := newQuerier(
+				mockQuerierConfig(),
+				mockIngesterClientConfig(),
+				newIngesterClientMockFactory(ingesterClient),
+				mockReadRingWithOneActiveIngester(),
+				store, limits)
+			require.NoError(t, err)
+
+			tc.run(t, q, tc.req)
+		})
+	}
 }

@@ -19,8 +19,10 @@ import (
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/marshal"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -375,6 +377,152 @@ func (q *Querier) tailDisconnectedIngesters(ctx context.Context, req *logproto.T
 	}
 
 	return reconnectClientsMap, nil
+}
+
+// Series fetches any matching series for a list of matcher sets
+func (q *Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = q.validateQueryTimeRange(userID, &req.Start, &req.End); err != nil {
+		return nil, err
+	}
+
+	// Enforce the query timeout while querying backends
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
+	defer cancel()
+
+	series, errs := make(chan [][]logproto.SeriesIdentifier, 2), make(chan error, 2)
+
+	go func() {
+		// fetch series identifiers from ingesters
+		resps, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
+			return client.Series(ctx, req)
+		})
+		if err != nil {
+			errs <- err
+			return
+		}
+		var acc [][]logproto.SeriesIdentifier
+		for _, resp := range resps {
+			acc = append(acc, resp.response.(*logproto.SeriesResponse).Series)
+		}
+		series <- acc
+	}()
+
+	go func() {
+		storeValues, err := q.seriesForMatchers(ctx, req.Start, req.End, req.GetGroups())
+		if err != nil {
+			errs <- err
+			return
+		}
+		series <- [][]logproto.SeriesIdentifier{storeValues}
+	}()
+
+	var sets [][]logproto.SeriesIdentifier
+	for i := 0; i < 2; i++ {
+		select {
+		case err = <-errs:
+			return nil, err
+		case s := <-series:
+			sets = append(sets, s...)
+		}
+	}
+
+	deduped := make(map[string]logproto.SeriesIdentifier)
+	for _, set := range sets {
+		for _, s := range set {
+			key := loghttp.LabelSet(s.Labels).String()
+			if _, exists := deduped[key]; !exists {
+				deduped[key] = s
+			}
+		}
+	}
+
+	response := &logproto.SeriesResponse{
+		Series: make([]logproto.SeriesIdentifier, 0, len(deduped)),
+	}
+
+	for _, s := range deduped {
+		response.Series = append(response.Series, s)
+	}
+
+	return response, nil
+}
+
+// seriesForMatchers fetches series from the store for each matcher set
+// TODO: make efficient if/when the index supports labels so we don't have to read chunks
+func (q *Querier) seriesForMatchers(
+	ctx context.Context,
+	from, through time.Time,
+	groups []string,
+) ([]logproto.SeriesIdentifier, error) {
+	var maxConcurrent = 10
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	outbound, inbound, errs :=
+		make(chan logql.SelectParams, len(groups)),
+		make(chan []logproto.SeriesIdentifier, len(groups)),
+		make(chan error, len(groups))
+
+	// feed inputs into channel bounded by maxConcurrent
+	for _, group := range groups {
+		outbound <- logql.SelectParams{
+			QueryRequest: &logproto.QueryRequest{
+				Selector:  group,
+				Limit:     1,
+				Start:     from,
+				End:       through,
+				Direction: logproto.FORWARD,
+			},
+		}
+	}
+	close(outbound)
+
+	// start maxConcurrent worker goroutines
+	for i := 0; i < maxConcurrent; i++ {
+		go func() {
+			for params := range outbound {
+				iter, err := q.store.LazyQuery(ctx, params)
+				if err != nil {
+					errs <- err
+					return
+				}
+
+				var results []logproto.SeriesIdentifier
+				for iter.Next() {
+					ls, err := marshal.NewLabelSet(iter.Labels())
+					if err != nil {
+						errs <- err
+						return
+					}
+
+					results = append(results, logproto.SeriesIdentifier{
+						Labels: ls.Map(),
+					})
+				}
+				inbound <- results
+			}
+
+		}()
+
+	}
+
+	var collected []logproto.SeriesIdentifier
+	for range groups {
+		select {
+		case err := <-errs:
+			return nil, err
+		case series := <-inbound:
+			collected = append(collected, series...)
+		}
+	}
+
+	return collected, nil
 }
 
 func (q *Querier) validateQueryRequest(ctx context.Context, req *logproto.QueryRequest) error {

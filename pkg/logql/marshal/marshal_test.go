@@ -376,7 +376,7 @@ func Test_WriteSeriesResponseJSON(t *testing.T) {
 	}{
 		{
 			logproto.SeriesResponse{
-				Series: []*logproto.SeriesIdentifier{
+				Series: []logproto.SeriesIdentifier{
 					{
 						Labels: map[string]string{
 							"a": "1",
