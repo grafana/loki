@@ -340,11 +340,9 @@ github.com/jonboulle/clockwork
 github.com/jpillora/backoff
 # github.com/json-iterator/go v1.1.7
 github.com/json-iterator/go
-# github.com/klauspost/compress v1.7.4
+# github.com/klauspost/compress v1.9.4
 github.com/klauspost/compress/flate
 github.com/klauspost/compress/gzip
-# github.com/klauspost/cpuid v1.2.1
-github.com/klauspost/cpuid
 # github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/kr/logfmt v0.0.0-20140226030751-b84e30acd515
@@ -387,6 +385,9 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
+# github.com/pierrec/lz4 v2.3.1-0.20191115212037-9085dacd1e1e+incompatible
+github.com/pierrec/lz4
+github.com/pierrec/lz4/internal/xxh32
 # github.com/pkg/errors v0.8.1
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0

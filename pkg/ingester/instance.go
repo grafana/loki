@@ -16,6 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/index"
 	cutil "github.com/cortexproject/cortex/pkg/util"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -60,15 +61,14 @@ type instance struct {
 	streamsCreatedTotal prometheus.Counter
 	streamsRemovedTotal prometheus.Counter
 
-	blockSize       int
-	targetChunkSize int // Compressed bytes
-	tailers         map[uint32]*tailer
-	tailerMtx       sync.RWMutex
+	tailers   map[uint32]*tailer
+	tailerMtx sync.RWMutex
 
-	limits *validation.Overrides
+	limits  *validation.Overrides
+	factory func() chunkenc.Chunk
 }
 
-func newInstance(instanceID string, blockSize, targetChunkSize int, limits *validation.Overrides) *instance {
+func newInstance(instanceID string, factory func() chunkenc.Chunk, limits *validation.Overrides) *instance {
 	i := &instance{
 		streams:    map[model.Fingerprint]*stream{},
 		index:      index.New(),
@@ -77,10 +77,9 @@ func newInstance(instanceID string, blockSize, targetChunkSize int, limits *vali
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
 
-		blockSize:       blockSize,
-		targetChunkSize: targetChunkSize,
-		tailers:         map[uint32]*tailer{},
-		limits:          limits,
+		factory: factory,
+		tailers: map[uint32]*tailer{},
+		limits:  limits,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i
@@ -98,7 +97,7 @@ func (i *instance) consumeChunk(ctx context.Context, labels []client.LabelAdapte
 	stream, ok := i.streams[fp]
 	if !ok {
 		sortedLabels := i.index.Add(labels, fp)
-		stream = newStream(fp, sortedLabels, i.blockSize, i.targetChunkSize)
+		stream = newStream(fp, sortedLabels, i.factory)
 		i.streams[fp] = stream
 		i.streamsCreatedTotal.Inc()
 		memoryStreams.Inc()
@@ -156,7 +155,7 @@ func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, err
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user streams limit (%d) exceeded", i.limits.MaxStreamsPerUser(i.instanceID))
 	}
 	sortedLabels := i.index.Add(labels, fp)
-	stream = newStream(fp, sortedLabels, i.blockSize, i.targetChunkSize)
+	stream = newStream(fp, sortedLabels, i.factory)
 	i.streams[fp] = stream
 	memoryStreams.Inc()
 	i.streamsCreatedTotal.Inc()

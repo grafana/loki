@@ -23,6 +23,7 @@ var (
 	magicNumber = uint32(0x12EE56A)
 
 	chunkFormatV1 = byte(1)
+	chunkFormatV2 = byte(2)
 )
 
 // The table gets initialized with sync.Once but may still cause a race
@@ -55,8 +56,12 @@ type MemChunk struct {
 	// Current in-mem block being appended to.
 	head *headBlock
 
+	// the chunk format default to v2
+	format   byte
 	encoding Encoding
-	cPool    CompressionPool
+
+	readers ReaderPool
+	writers WriterPool
 }
 
 type block struct {
@@ -99,37 +104,44 @@ func (hb *headBlock) append(ts int64, line string) error {
 	return nil
 }
 
-func (hb *headBlock) serialise(pool CompressionPool) ([]byte, error) {
-	buf := &bytes.Buffer{}
+func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
+	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
+	outBuf := &bytes.Buffer{}
+
 	encBuf := make([]byte, binary.MaxVarintLen64)
-	compressedWriter := pool.GetWriter(buf)
+	compressedWriter := pool.GetWriter(outBuf)
 	for _, logEntry := range hb.entries {
 		n := binary.PutVarint(encBuf, logEntry.t)
-		_, err := compressedWriter.Write(encBuf[:n])
-		if err != nil {
-			return nil, errors.Wrap(err, "appending entry")
-		}
+		inBuf.Write(encBuf[:n])
 
 		n = binary.PutUvarint(encBuf, uint64(len(logEntry.s)))
-		_, err = compressedWriter.Write(encBuf[:n])
-		if err != nil {
-			return nil, errors.Wrap(err, "appending entry")
-		}
-		_, err = compressedWriter.Write([]byte(logEntry.s))
-		if err != nil {
-			return nil, errors.Wrap(err, "appending entry")
-		}
+		inBuf.Write(encBuf[:n])
+
+		inBuf.WriteString(logEntry.s)
+	}
+
+	if _, err := compressedWriter.Write(inBuf.Bytes()); err != nil {
+		return nil, errors.Wrap(err, "appending entry")
 	}
 	if err := compressedWriter.Close(); err != nil {
 		return nil, errors.Wrap(err, "flushing pending compress buffer")
 	}
+
+	inBuf.Reset()
+	serializeBytesBufferPool.Put(inBuf)
+
 	pool.PutWriter(compressedWriter)
-	return buf.Bytes(), nil
+	return outBuf.Bytes(), nil
 }
 
 type entry struct {
 	t int64
 	s string
+}
+
+// NewMemChunk returns a new in-mem chunk for query.
+func NewMemChunk(enc Encoding) *MemChunk {
+	return NewMemChunkSize(enc, 256*1024, 0)
 }
 
 // NewMemChunkSize returns a new in-mem chunk.
@@ -140,34 +152,22 @@ func NewMemChunkSize(enc Encoding, blockSize, targetSize int) *MemChunk {
 		targetSize: targetSize, // Desired chunk size in compressed bytes
 		blocks:     []block{},
 
-		head: &headBlock{},
+		head:   &headBlock{},
+		format: chunkFormatV2,
 
 		encoding: enc,
-	}
-
-	switch enc {
-	case EncGZIP:
-		c.cPool = &Gzip
-	default:
-		panic("unknown encoding")
+		writers:  getWriterPool(enc),
+		readers:  getReaderPool(enc),
 	}
 
 	return c
 }
 
-// NewMemChunk returns a new in-mem chunk for query.
-func NewMemChunk(enc Encoding) *MemChunk {
-	return NewMemChunkSize(enc, 256*1024, 0)
-}
-
 // NewByteChunk returns a MemChunk on the passed bytes.
 func NewByteChunk(b []byte) (*MemChunk, error) {
 	bc := &MemChunk{
-		cPool:    &Gzip,
-		encoding: EncGZIP,
-		head:     &headBlock{}, // Dummy, empty headblock.
+		head: &headBlock{}, // Dummy, empty headblock.
 	}
-
 	db := decbuf{b: b}
 
 	// Verify the header.
@@ -178,7 +178,18 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 	if m != magicNumber {
 		return nil, errors.Errorf("invalid magic number %x", m)
 	}
-	if version != 1 {
+	bc.format = version
+	switch version {
+	case chunkFormatV1:
+		bc.readers, bc.writers = &Gzip, &Gzip
+	case chunkFormatV2:
+		// format v2 has a byte for block encoding.
+		enc := Encoding(db.byte())
+		if db.err() != nil {
+			return nil, errors.Wrap(db.err(), "verifying encoding")
+		}
+		bc.readers, bc.writers = getReaderPool(enc), getWriterPool(enc)
+	default:
 		return nil, errors.Errorf("invalid version %d", version)
 	}
 
@@ -242,7 +253,11 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 
 	// Write the header (magicNum + version).
 	eb.putBE32(magicNumber)
-	eb.putByte(chunkFormatV1)
+	eb.putByte(c.format)
+	if c.format == chunkFormatV2 {
+		// chunk format v2 has a byte for encoding.
+		eb.putByte(byte(c.encoding))
+	}
 
 	n, err := buf.Write(eb.get())
 	if err != nil {
@@ -401,7 +416,7 @@ func (c *MemChunk) cut() error {
 		return nil
 	}
 
-	b, err := c.head.serialise(c.cPool)
+	b, err := c.head.serialise(c.writers)
 	if err != nil {
 		return err
 	}
@@ -451,7 +466,7 @@ func (c *MemChunk) Iterator(mintT, maxtT time.Time, direction logproto.Direction
 
 	for _, b := range c.blocks {
 		if maxt > b.mint && b.maxt > mint {
-			its = append(its, b.iterator(c.cPool, filter))
+			its = append(its, b.iterator(c.readers, filter))
 		}
 	}
 
@@ -472,7 +487,7 @@ func (c *MemChunk) Iterator(mintT, maxtT time.Time, direction logproto.Direction
 	return iter.NewEntryIteratorBackward(iterForward)
 }
 
-func (b block) iterator(pool CompressionPool, filter logql.Filter) iter.EntryIterator {
+func (b block) iterator(pool ReaderPool, filter logql.Filter) iter.EntryIterator {
 	if len(b.b) == 0 {
 		return emptyIterator
 	}
@@ -537,9 +552,11 @@ func (li *listIterator) Close() error   { return nil }
 func (li *listIterator) Labels() string { return "" }
 
 type bufferedIterator struct {
-	s      *bufio.Reader
-	reader CompressionReader
-	pool   CompressionPool
+	origBytes []byte
+
+	bufReader *bufio.Reader
+	reader    io.Reader
+	pool      ReaderPool
 
 	cur logproto.Entry
 
@@ -553,18 +570,24 @@ type bufferedIterator struct {
 	filter logql.Filter
 }
 
-func newBufferedIterator(pool CompressionPool, b []byte, filter logql.Filter) *bufferedIterator {
-	r := pool.GetReader(bytes.NewBuffer(b))
+func newBufferedIterator(pool ReaderPool, b []byte, filter logql.Filter) *bufferedIterator {
 	return &bufferedIterator{
-		s:      BufReaderPool.Get(r),
-		reader: r,
-		pool:   pool,
-		filter: filter,
-		decBuf: make([]byte, binary.MaxVarintLen64),
+		origBytes: b,
+		reader:    nil, // will be initialized later
+		bufReader: nil, // will be initialized later
+		pool:      pool,
+		filter:    filter,
+		decBuf:    make([]byte, binary.MaxVarintLen64),
 	}
 }
 
 func (si *bufferedIterator) Next() bool {
+	if !si.closed && si.reader == nil {
+		// initialize reader now, hopefully reusing one of the previous readers
+		si.reader = si.pool.GetReader(bytes.NewBuffer(si.origBytes))
+		si.bufReader = BufReaderPool.Get(si.reader)
+	}
+
 	for {
 		ts, line, ok := si.moveNext()
 		if !ok {
@@ -582,7 +605,7 @@ func (si *bufferedIterator) Next() bool {
 
 // moveNext moves the buffer to the next entry
 func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
-	ts, err := binary.ReadVarint(si.s)
+	ts, err := binary.ReadVarint(si.bufReader)
 	if err != nil {
 		if err != io.EOF {
 			si.err = err
@@ -590,7 +613,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 		return 0, nil, false
 	}
 
-	l, err := binary.ReadUvarint(si.s)
+	l, err := binary.ReadUvarint(si.bufReader)
 	if err != nil {
 		if err != io.EOF {
 			si.err = err
@@ -612,13 +635,13 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 	}
 
 	// Then process reading the line.
-	n, err := si.s.Read(si.buf[:lineSize])
+	n, err := si.bufReader.Read(si.buf[:lineSize])
 	if err != nil && err != io.EOF {
 		si.err = err
 		return 0, nil, false
 	}
 	for n < lineSize {
-		r, err := si.s.Read(si.buf[n:lineSize])
+		r, err := si.bufReader.Read(si.buf[n:lineSize])
 		if err != nil {
 			si.err = err
 			return 0, nil, false
@@ -638,11 +661,12 @@ func (si *bufferedIterator) Close() error {
 	if !si.closed {
 		si.closed = true
 		si.pool.PutReader(si.reader)
-		BufReaderPool.Put(si.s)
+		BufReaderPool.Put(si.bufReader)
 		if si.buf != nil {
 			BytesBufferPool.Put(si.buf)
 		}
-		si.s = nil
+		si.origBytes = nil
+		si.bufReader = nil
 		si.buf = nil
 		si.decBuf = nil
 		si.reader = nil

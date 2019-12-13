@@ -2,7 +2,8 @@ package chunkenc
 
 import (
 	"errors"
-	"io"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -20,14 +21,22 @@ var (
 )
 
 // Encoding is the identifier for a chunk encoding.
-type Encoding uint8
+type Encoding byte
 
 // The different available encodings.
 const (
 	EncNone Encoding = iota
 	EncGZIP
 	EncDumb
+	EncLZ4
+	EncSnappy
 )
+
+var supportedEncoding = []Encoding{
+	EncGZIP,
+	EncLZ4,
+	EncSnappy,
+}
 
 func (e Encoding) String() string {
 	switch e {
@@ -37,9 +46,36 @@ func (e Encoding) String() string {
 		return "none"
 	case EncDumb:
 		return "dumb"
+	case EncLZ4:
+		return "lz4"
+	case EncSnappy:
+		return "snappy"
 	default:
 		return "unknown"
 	}
+}
+
+// ParseEncoding parses an chunk encoding (compression algorithm) by its name.
+func ParseEncoding(enc string) (Encoding, error) {
+	for _, e := range supportedEncoding {
+		if strings.EqualFold(e.String(), enc) {
+			return e, nil
+		}
+	}
+	return 0, fmt.Errorf("invalid encoding: %s, supported: %s", enc, SupportedEncoding())
+
+}
+
+// SupportedEncoding returns the list of supported Encoding.
+func SupportedEncoding() string {
+	var sb strings.Builder
+	for i := range supportedEncoding {
+		sb.WriteString(supportedEncoding[i].String())
+		if i != len(supportedEncoding)-1 {
+			sb.WriteString(", ")
+		}
+	}
+	return sb.String()
 }
 
 // Chunk is the interface for the compressed logs chunk format.
@@ -55,18 +91,4 @@ type Chunk interface {
 	UncompressedSize() int
 	CompressedSize() int
 	Close() error
-}
-
-// CompressionWriter is the writer that compresses the data passed to it.
-type CompressionWriter interface {
-	Write(p []byte) (int, error)
-	Close() error
-	Flush() error
-	Reset(w io.Writer)
-}
-
-// CompressionReader reads the compressed data.
-type CompressionReader interface {
-	Read(p []byte) (int, error)
-	Reset(r io.Reader) error
 }

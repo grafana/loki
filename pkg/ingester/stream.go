@@ -54,11 +54,10 @@ func init() {
 type stream struct {
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
-	chunks          []chunkDesc
-	fp              model.Fingerprint // possibly remapped fingerprint, used in the streams map
-	labels          labels.Labels
-	blockSize       int
-	targetChunkSize int // Compressed bytes
+	chunks  []chunkDesc
+	fp      model.Fingerprint // possibly remapped fingerprint, used in the streams map
+	labels  labels.Labels
+	factory func() chunkenc.Chunk
 
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
@@ -77,13 +76,12 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(fp model.Fingerprint, labels labels.Labels, blockSize, targetChunkSize int) *stream {
+func newStream(fp model.Fingerprint, labels labels.Labels, factory func() chunkenc.Chunk) *stream {
 	return &stream{
-		fp:              fp,
-		labels:          labels,
-		blockSize:       blockSize,
-		targetChunkSize: targetChunkSize,
-		tailers:         map[uint32]*tailer{},
+		fp:      fp,
+		labels:  labels,
+		factory: factory,
+		tailers: map[uint32]*tailer{},
 	}
 }
 
@@ -105,7 +103,7 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 	if len(s.chunks) == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
-			chunk: chunkenc.NewMemChunkSize(chunkenc.EncGZIP, s.blockSize, s.targetChunkSize),
+			chunk: s.factory(),
 		})
 		chunksCreatedTotal.Inc()
 	}
@@ -132,7 +130,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 			chunksCreatedTotal.Inc()
 
 			s.chunks = append(s.chunks, chunkDesc{
-				chunk: chunkenc.NewMemChunkSize(chunkenc.EncGZIP, s.blockSize, s.targetChunkSize),
+				chunk: s.factory(),
 			})
 			chunk = &s.chunks[len(s.chunks)-1]
 		}

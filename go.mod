@@ -16,8 +16,10 @@ require (
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect
 	github.com/docker/go-plugins-helpers v0.0.0-20181025120712-1e6269c305b8
+	github.com/dustin/go-humanize v1.0.0
 	github.com/fatih/color v1.7.0
 	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
+	github.com/frankban/quicktest v1.7.2 // indirect
 	github.com/go-kit/kit v0.9.0
 	github.com/gocql/gocql v0.0.0-20181124151448-70385f88b28b // indirect
 	github.com/gogo/protobuf v1.3.0 // remember to update loki-build-image/Dockerfile too
@@ -31,14 +33,14 @@ require (
 	github.com/influxdata/go-syslog/v2 v2.0.1
 	github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
 	github.com/json-iterator/go v1.1.7
-	github.com/klauspost/compress v1.7.4
-	github.com/klauspost/cpuid v1.2.1 // indirect
+	github.com/klauspost/compress v1.9.4
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/morikuni/aec v0.0.0-20170113033406-39771216ff4c // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/opentracing/opentracing-go v1.1.0
+	github.com/pierrec/lz4 v2.3.1-0.20191115212037-9085dacd1e1e+incompatible
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/client_golang v1.1.0
 	github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4
