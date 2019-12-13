@@ -27,28 +27,21 @@ type Encoding byte
 const (
 	EncNone Encoding = iota
 	EncGZIP
-	EncGZIPBestSpeed
 	EncDumb
 	EncLZ4
 	EncSnappy
-	EncSnappyV2
 )
 
 var supportedEncoding = []Encoding{
-	EncNone,
 	EncGZIP,
-	EncGZIPBestSpeed,
 	EncLZ4,
 	EncSnappy,
-	EncSnappyV2,
 }
 
 func (e Encoding) String() string {
 	switch e {
 	case EncGZIP:
 		return "gzip"
-	case EncGZIPBestSpeed:
-		return "gzip-1"
 	case EncNone:
 		return "none"
 	case EncDumb:
@@ -57,8 +50,6 @@ func (e Encoding) String() string {
 		return "lz4"
 	case EncSnappy:
 		return "snappy"
-	case EncSnappyV2:
-		return "snappyv2"
 	default:
 		return "unknown"
 	}

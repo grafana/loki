@@ -337,7 +337,6 @@ github.com/json-iterator/go
 # github.com/klauspost/compress v1.9.4
 github.com/klauspost/compress/flate
 github.com/klauspost/compress/gzip
-github.com/klauspost/compress/s2
 # github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/kr/logfmt v0.0.0-20140226030751-b84e30acd515

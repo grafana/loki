@@ -15,8 +15,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var testEncoding = []Encoding{
+	EncNone,
+	EncGZIP,
+	EncLZ4,
+	EncSnappy,
+}
+
 func TestBlock(t *testing.T) {
-	for _, enc := range supportedEncoding {
+	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
 			chk := NewMemChunk(enc)
 			cases := []struct {
@@ -141,7 +148,7 @@ func TestReadFormatV1(t *testing.T) {
 }
 
 func TestSerialization(t *testing.T) {
-	for _, enc := range supportedEncoding {
+	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
 			chk := NewMemChunk(enc)
 
@@ -178,7 +185,7 @@ func TestSerialization(t *testing.T) {
 }
 
 func TestChunkFilling(t *testing.T) {
-	for _, enc := range supportedEncoding {
+	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
 			chk := NewMemChunk(enc)
 			chk.blockSize = 1024
@@ -309,7 +316,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 }
 
 func TestChunkSize(t *testing.T) {
-	for _, enc := range supportedEncoding {
+	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
 			c := NewMemChunk(enc)
 			inserted := fillChunk(c)
@@ -335,7 +342,7 @@ func BenchmarkWrite(b *testing.B) {
 	}
 	i := int64(0)
 
-	for _, enc := range supportedEncoding {
+	for _, enc := range testEncoding {
 		b.Run(enc.String(), func(b *testing.B) {
 			for n := 0; n < b.N; n++ {
 				c := NewMemChunk(enc)
@@ -355,7 +362,7 @@ func BenchmarkWrite(b *testing.B) {
 }
 
 func BenchmarkRead(b *testing.B) {
-	for _, enc := range supportedEncoding {
+	for _, enc := range testEncoding {
 		b.Run(enc.String(), func(b *testing.B) {
 			chunks := generateData(enc)
 			b.ResetTimer()

@@ -67,7 +67,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "")
 	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 0, "")
-	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", chunkenc.EncGZIP.String(), "The algorithm to use for compressing chunk. (gzip, gzip-1, lz4, none, snappy, snappyv2)")
+	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", chunkenc.EncGZIP.String(), "The algorithm to use for compressing chunk. (gzip, lz4, snappy)")
 }
 
 // Ingester builds chunks for incoming log streams.

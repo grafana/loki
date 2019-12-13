@@ -280,12 +280,9 @@ The `ingester_config` block configures Ingesters.
 
 # The compression algorithm to use for chunks. (supported: gzip, gzip-1, lz4, none, snappy, snappyv2)
 # You should choose your algorithm depending on your need:
-# - `none` no compression (2.7 MB per chunk)
 # - `gzip` highest compression ratio but also slowest decompression speed. (144 kB per chunk)
-# - `gzip-1` same as gzip but with a lower compression ratio. (158 kB per chunk)
 # - `lz4` fastest compression speed (188 kB per chunk)
 # - `snappy` fast and popular compression algorithm (272 kB per chunk)
-# - `snappyv2`same as snappy but optimized version see https://github.com/klauspost/compress/tree/master/s2 (205 kB per chunk)
 [chunk_encoding: <string> | default = gzip]
 ```
 
