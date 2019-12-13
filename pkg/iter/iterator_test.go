@@ -2,6 +2,7 @@ package iter
 
 import (
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -241,16 +242,37 @@ func TestMostCommon(t *testing.T) {
 	}
 	require.Equal(t, "a", mostCommon(tuples).Entry.Line)
 
-	// Last is most common
 	tuples = []tuple{
 		{Entry: logproto.Entry{Line: "a"}},
 		{Entry: logproto.Entry{Line: "b"}},
-		{Entry: logproto.Entry{Line: "c"}},
 		{Entry: logproto.Entry{Line: "b"}},
 		{Entry: logproto.Entry{Line: "c"}},
 		{Entry: logproto.Entry{Line: "c"}},
+		{Entry: logproto.Entry{Line: "c"}},
+		{Entry: logproto.Entry{Line: "d"}},
 	}
 	require.Equal(t, "c", mostCommon(tuples).Entry.Line)
+}
+
+func TestInsert(t *testing.T) {
+	toInsert := []tuple{
+		{Entry: logproto.Entry{Line: "a"}},
+		{Entry: logproto.Entry{Line: "e"}},
+		{Entry: logproto.Entry{Line: "c"}},
+		{Entry: logproto.Entry{Line: "b"}},
+		{Entry: logproto.Entry{Line: "d"}},
+		{Entry: logproto.Entry{Line: "a"}},
+		{Entry: logproto.Entry{Line: "c"}},
+	}
+
+	var ts []tuple
+	for _, e := range toInsert {
+		ts = insert(ts, e)
+	}
+
+	require.True(t, sort.SliceIsSorted(ts, func(i, j int) bool {
+		return ts[i].Line < ts[j].Line
+	}))
 }
 
 func TestEntryIteratorForward(t *testing.T) {

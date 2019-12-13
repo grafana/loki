@@ -764,6 +764,11 @@ func getLocalQuerier(size int64) Querier {
 		iter.NewStreamIterator(newStream(size, identity, `{app="bar",bar="foo"}`)),
 		iter.NewStreamIterator(newStream(size, identity, `{app="bar",bar="bazz"}`)),
 		iter.NewStreamIterator(newStream(size, identity, `{app="bar",bar="fuzz"}`)),
+		// some duplicates
+		iter.NewStreamIterator(newStream(size, identity, `{app="foo"}`)),
+		iter.NewStreamIterator(newStream(size, identity, `{app="bar"}`)),
+		iter.NewStreamIterator(newStream(size, identity, `{app="bar",bar="bazz"}`)),
+		iter.NewStreamIterator(newStream(size, identity, `{app="bar"}`)),
 	}
 	return QuerierFunc(func(ctx context.Context, p SelectParams) (iter.EntryIterator, error) {
 		return iter.NewHeapIterator(iters, p.Direction), nil

@@ -4,7 +4,6 @@ import (
 	"container/heap"
 	"fmt"
 	"io"
-	"sort"
 	"time"
 
 	"github.com/grafana/loki/pkg/helpers"
@@ -80,10 +79,18 @@ type iteratorMinHeap struct {
 
 func (h iteratorMinHeap) Less(i, j int) bool {
 	t1, t2 := h.iteratorHeap[i].Entry().Timestamp, h.iteratorHeap[j].Entry().Timestamp
-	if !t1.Equal(t2) {
-		return t1.Before(t2)
+
+	un1 := t1.UnixNano()
+	un2 := t2.UnixNano()
+
+	switch {
+	case un1 < un2:
+		return true
+	case un1 > un2:
+		return false
+	default: // un1 == un2:
+		return h.iteratorHeap[i].Labels() < h.iteratorHeap[j].Labels()
 	}
-	return h.iteratorHeap[i].Labels() < h.iteratorHeap[j].Labels()
 }
 
 type iteratorMaxHeap struct {
@@ -92,10 +99,18 @@ type iteratorMaxHeap struct {
 
 func (h iteratorMaxHeap) Less(i, j int) bool {
 	t1, t2 := h.iteratorHeap[i].Entry().Timestamp, h.iteratorHeap[j].Entry().Timestamp
-	if !t1.Equal(t2) {
-		return t1.After(t2)
+
+	un1 := t1.UnixNano()
+	un2 := t2.UnixNano()
+
+	switch {
+	case un1 < un2:
+		return false
+	case un1 > un2:
+		return true
+	default: // un1 == un2
+		return h.iteratorHeap[i].Labels() > h.iteratorHeap[j].Labels()
 	}
-	return h.iteratorHeap[i].Labels() > h.iteratorHeap[j].Labels()
 }
 
 // HeapIterator iterates over a heap of iterators with ability to push new iterators and get some properties like time of entry at peek and len
@@ -116,7 +131,7 @@ type heapIterator struct {
 	is         []EntryIterator
 	prefetched bool
 
-	tuples     tuples
+	tuples     []tuple
 	currEntry  logproto.Entry
 	currLabels string
 	errs       []error
@@ -184,12 +199,6 @@ type tuple struct {
 	EntryIterator
 }
 
-type tuples []tuple
-
-func (t tuples) Len() int           { return len(t) }
-func (t tuples) Swap(i, j int)      { t[i], t[j] = t[j], t[i] }
-func (t tuples) Less(i, j int) bool { return t[i].Line < t[j].Line }
-
 func (i *heapIterator) Next() bool {
 	i.prefetch()
 
@@ -209,7 +218,8 @@ func (i *heapIterator) Next() bool {
 		}
 
 		heap.Pop(i.heap)
-		i.tuples = append(i.tuples, tuple{
+		// insert keeps i.tuples sorted
+		i.tuples = insert(i.tuples, tuple{
 			Entry:         entry,
 			EntryIterator: next,
 		})
@@ -229,8 +239,30 @@ func (i *heapIterator) Next() bool {
 	return true
 }
 
-func mostCommon(tuples tuples) tuple {
-	sort.Sort(tuples)
+// Insert new tuple to correct position into ordered set of tuples.
+// Insert sort is fast for small number of elements, and here we only expect max [number of replicas] elements.
+func insert(ts []tuple, n tuple) []tuple {
+	ix := 0
+	for ix < len(ts) && ts[ix].Line <= n.Line {
+		ix++
+	}
+	if ix < len(ts) {
+		ts = append(ts, tuple{}) // zero element
+		copy(ts[ix+1:], ts[ix:])
+		ts[ix] = n
+	} else {
+		ts = append(ts, n)
+	}
+	return ts
+}
+
+// Expects that tuples are sorted already. We achieve that by using insert.
+func mostCommon(tuples []tuple) tuple {
+	// trivial case, no need to do extra work.
+	if len(tuples) == 1 {
+		return tuples[0]
+	}
+
 	result := tuples[0]
 	count, max := 0, 0
 	for i := 0; i < len(tuples)-1; i++ {
