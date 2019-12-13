@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -103,6 +104,10 @@ type entry struct {
 
 // New makes a new Client.
 func New(cfg Config, logger log.Logger) (Client, error) {
+	if cfg.URL.URL == nil {
+		return nil, errors.New("client needs target URL")
+	}
+
 	c := &client{
 		logger:  log.With(logger, "component", "client", "host", cfg.URL.Host),
 		cfg:     cfg,
