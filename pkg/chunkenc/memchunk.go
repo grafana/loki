@@ -188,6 +188,7 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 		if db.err() != nil {
 			return nil, errors.Wrap(db.err(), "verifying encoding")
 		}
+		bc.encoding = enc
 		bc.readers, bc.writers = getReaderPool(enc), getWriterPool(enc)
 	default:
 		return nil, errors.Errorf("invalid version %d", version)
