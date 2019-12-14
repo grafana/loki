@@ -160,6 +160,7 @@ func TestRoundtripV2(t *testing.T) {
 			populated := fillChunk(c)
 
 			assertLines := func(c *MemChunk) {
+				require.Equal(t, enc, c.Encoding())
 				it, err := c.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
 				if err != nil {
 					t.Fatal(err)
