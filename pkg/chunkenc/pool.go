@@ -26,10 +26,14 @@ type ReaderPool interface {
 }
 
 var (
-	// Gzip is the gun zip compression pool
+	// Gzip is the gnu zip compression pool
 	Gzip = GzipPool{level: gzip.DefaultCompression}
 	// LZ4 is the l4z compression pool
-	LZ4 LZ4Pool
+	LZ4_64k  = LZ4Pool{bufferSize: 1 << 16}
+	LZ4_256k = LZ4Pool{bufferSize: 1 << 18}
+	LZ4_1M   = LZ4Pool{bufferSize: 1 << 20}
+	LZ4_4M   = LZ4Pool{bufferSize: 1 << 22}
+
 	// Snappy is the snappy compression pool
 	Snappy SnappyPool
 	// Noop is the no compression pool
@@ -59,8 +63,14 @@ func getReaderPool(enc Encoding) ReaderPool {
 	switch enc {
 	case EncGZIP:
 		return &Gzip
-	case EncLZ4:
-		return &LZ4
+	case EncLZ4_64k:
+		return &LZ4_64k
+	case EncLZ4_256k:
+		return &LZ4_256k
+	case EncLZ4_1M:
+		return &LZ4_1M
+	case EncLZ4_4M:
+		return &LZ4_4M
 	case EncSnappy:
 		return &Snappy
 	case EncNone:
@@ -124,8 +134,9 @@ func (pool *GzipPool) PutWriter(writer io.WriteCloser) {
 }
 
 type LZ4Pool struct {
-	readers sync.Pool
-	writers sync.Pool
+	readers    sync.Pool
+	writers    sync.Pool
+	bufferSize int // available values: 1<<16 (64k), 1<<18 (256k), 1<<20 (1M), 1<<22 (4M). Defaults to 4MB, if not set.
 }
 
 // GetReader gets or creates a new CompressionReader and reset it to read from src
@@ -135,6 +146,8 @@ func (pool *LZ4Pool) GetReader(src io.Reader) io.Reader {
 		reader.Reset(src)
 		return reader
 	}
+	// no need to set buffer size here. Reader uses buffer size based on
+	// LZ4 header that it is reading.
 	return lz4.NewReader(src)
 }
 
@@ -150,7 +163,9 @@ func (pool *LZ4Pool) GetWriter(dst io.Writer) io.WriteCloser {
 		writer.Reset(dst)
 		return writer
 	}
-	return lz4.NewWriter(dst)
+	w := lz4.NewWriter(dst)
+	w.BlockMaxSize = pool.bufferSize
+	return w
 }
 
 // PutWriter places back in the pool a CompressionWriter
