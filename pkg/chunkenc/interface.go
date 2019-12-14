@@ -24,17 +24,23 @@ var (
 type Encoding byte
 
 // The different available encodings.
+// Make sure to preserve the order, as these numeric values are written to the chunks!
 const (
 	EncNone Encoding = iota
 	EncGZIP
 	EncDumb
-	EncLZ4
+	EncLZ4_64k
 	EncSnappy
+
+	// Added for testing.
+	EncLZ4_256k
+	EncLZ4_1M
+	EncLZ4_4M
 )
 
 var supportedEncoding = []Encoding{
 	EncGZIP,
-	EncLZ4,
+	EncLZ4_64k,
 	EncSnappy,
 }
 
@@ -46,8 +52,14 @@ func (e Encoding) String() string {
 		return "none"
 	case EncDumb:
 		return "dumb"
-	case EncLZ4:
+	case EncLZ4_64k:
 		return "lz4"
+	case EncLZ4_256k:
+		return "lz4-256k"
+	case EncLZ4_1M:
+		return "lz4-1M"
+	case EncLZ4_4M:
+		return "lz4-4M"
 	case EncSnappy:
 		return "snappy"
 	default:
