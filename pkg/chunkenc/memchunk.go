@@ -17,7 +17,10 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 )
 
-const blocksPerChunk = 10
+const (
+	blocksPerChunk = 10
+	maxLineLength  = 1024 * 1024 * 1024
+)
 
 var (
 	magicNumber = uint32(0x12EE56A)
@@ -623,6 +626,10 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 	}
 	lineSize := int(l)
 
+	if lineSize >= maxLineLength {
+		si.err = fmt.Errorf("line too long %d, maximun %d", lineSize, maxLineLength)
+		return 0, nil, false
+	}
 	// If the buffer is not yet initialize or too small, we get a new one.
 	if si.buf == nil || lineSize > cap(si.buf) {
 		// in case of a replacement we replace back the buffer in the pool
@@ -631,7 +638,8 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 		}
 		si.buf = BytesBufferPool.Get(lineSize).([]byte)
 		if lineSize > cap(si.buf) {
-			fmt.Println("oups ", lineSize, " ", len(si.buf), " ", cap(si.buf))
+			si.err = fmt.Errorf("could not get a line buffer of size %d, actual %d", lineSize, cap(si.buf))
+			return 0, nil, false
 		}
 	}
 
