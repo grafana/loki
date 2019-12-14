@@ -148,34 +148,61 @@ func TestReadFormatV1(t *testing.T) {
 	}
 }
 
-func TestReadFormatV2(t *testing.T) {
-	c := NewMemChunk(EncLZ4)
-	fillChunk(c)
+// Test all encodings by populating a memchunk, serializing it,
+// re-loading with NewByteChunk, serializing it again, and re-loading into via NewByteChunk once more.
+// This tests the integrity of transfer between the following:
+// 1) memory populated chunks <-> []byte loaded chunks
+// 2) []byte loaded chunks <-> []byte loaded chunks
+func TestRoundtripV2(t *testing.T) {
+	for _, enc := range testEncoding {
+		t.Run(enc.String(), func(t *testing.T) {
+			c := NewMemChunk(enc)
+			populated := fillChunk(c)
 
-	b, err := c.Bytes()
-	if err != nil {
-		t.Fatal(err)
+			assertLines := func(c *MemChunk) {
+				it, err := c.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				i := int64(0)
+				var data int64
+				for it.Next() {
+					require.Equal(t, i, it.Entry().Timestamp.UnixNano())
+					require.Equal(t, testdata.LogString(i), it.Entry().Line)
+
+					data += int64(len(it.Entry().Line))
+					i++
+				}
+				require.Equal(t, populated, data)
+			}
+
+			assertLines(c)
+
+			// test MemChunk -> NewByteChunk loading
+			b, err := c.Bytes()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			r, err := NewByteChunk(b)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertLines(r)
+
+			// test NewByteChunk -> NewByteChunk loading
+			rOut, err := r.Bytes()
+			require.Nil(t, err)
+
+			loaded, err := NewByteChunk(rOut)
+			require.Nil(t, err)
+
+			assertLines(loaded)
+		})
+
 	}
 
-	r, err := NewByteChunk(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	require.Equal(t, r.encoding, EncLZ4)
-
-	it, err := r.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	i := int64(0)
-	for it.Next() {
-		require.Equal(t, i, it.Entry().Timestamp.UnixNano())
-		require.Equal(t, testdata.LogString(i), it.Entry().Line)
-
-		i++
-	}
 }
 
 func TestSerialization(t *testing.T) {
