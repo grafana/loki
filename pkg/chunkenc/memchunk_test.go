@@ -148,6 +148,36 @@ func TestReadFormatV1(t *testing.T) {
 	}
 }
 
+func TestReadFormatV2(t *testing.T) {
+	c := NewMemChunk(EncLZ4)
+	fillChunk(c)
+
+	b, err := c.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := NewByteChunk(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	require.Equal(t, r.encoding, EncLZ4)
+
+	it, err := r.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	i := int64(0)
+	for it.Next() {
+		require.Equal(t, i, it.Entry().Timestamp.UnixNano())
+		require.Equal(t, testdata.LogString(i), it.Entry().Line)
+
+		i++
+	}
+}
+
 func TestSerialization(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
