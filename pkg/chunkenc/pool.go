@@ -178,8 +178,7 @@ func (pool *LZ4Pool) GetReader(src io.Reader) io.Reader {
 	}
 	// no need to set buffer size here. Reader uses buffer size based on
 	// LZ4 header that it is reading.
-	r := newLz4Reader(src)
-	return r
+	return newLz4Reader(src)
 }
 
 // PutReader places back in the pool a CompressionReader
