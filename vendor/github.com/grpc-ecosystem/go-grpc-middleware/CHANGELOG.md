@@ -15,6 +15,7 @@ Types of changes:
 ## [Unreleased]
 ### Added
 - This CHANGELOG file to keep track of changes.
+- Support for go modules.
 
 ## 1.0.0 - 2018-05-08
 ### Added

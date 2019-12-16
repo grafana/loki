@@ -71,6 +71,7 @@ myServer := grpc.NewServer(
 #### Server
    * [`grpc_validator`](validator/) - codegen inbound message validation from `.proto` options
    * [`grpc_recovery`](recovery/) - turn panics into gRPC errors
+   * [`ratelimit`](ratelimit/) - grpc rate limiting by your own limiter
 
 
 ## Status

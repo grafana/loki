@@ -28,6 +28,7 @@ var (
 		"org.apache.cassandra.auth.PasswordAuthenticator",
 		"com.instaclustr.cassandra.auth.SharedSecretAuthenticator",
 		"com.datastax.bdp.cassandra.auth.DseAuthenticator",
+		"io.aiven.cassandra.auth.AivenAuthenticator",
 	}
 )
 
@@ -252,10 +253,11 @@ func (s *Session) dial(host *HostInfo, cfg *ConnConfig, errorHandler ConnErrorHa
 
 	// dont coalesce startup frames
 	if s.cfg.WriteCoalesceWaitTime > 0 && !cfg.disableCoalesce {
-		c.w = newWriteCoalescer(c.w, s.cfg.WriteCoalesceWaitTime, c.quit)
+		c.w = newWriteCoalescer(conn, c.timeout, s.cfg.WriteCoalesceWaitTime, c.quit)
 	}
 
 	go c.serve()
+	go c.heartBeat()
 
 	return c, nil
 }
@@ -506,6 +508,53 @@ func (p *protocolError) Error() string {
 	return fmt.Sprintf("gocql: received unexpected frame on stream %d: %v", p.frame.Header().stream, p.frame)
 }
 
+func (c *Conn) heartBeat() {
+	sleepTime := 1 * time.Second
+	timer := time.NewTimer(sleepTime)
+	defer timer.Stop()
+
+	var failures int
+
+	for {
+		if failures > 5 {
+			c.closeWithError(fmt.Errorf("gocql: heartbeat failed"))
+			return
+		}
+
+		timer.Reset(sleepTime)
+
+		select {
+		case <-c.quit:
+			return
+		case <-timer.C:
+		}
+
+		framer, err := c.exec(context.Background(), &writeOptionsFrame{}, nil)
+		if err != nil {
+			failures++
+			continue
+		}
+
+		resp, err := framer.parseFrame()
+		if err != nil {
+			// invalid frame
+			failures++
+			continue
+		}
+
+		switch resp.(type) {
+		case *supportedFrame:
+			// Everything ok
+			sleepTime = 5 * time.Second
+			failures = 0
+		case error:
+			// TODO: should we do something here?
+		default:
+			panic(fmt.Sprintf("gocql: unknown frame in response to options: %T", resp))
+		}
+	}
+}
+
 func (c *Conn) recv() error {
 	// not safe for concurrent reads
 
@@ -652,19 +701,20 @@ func (c *deadlineWriter) Write(p []byte) (int, error) {
 	return c.w.Write(p)
 }
 
-func newWriteCoalescer(w io.Writer, d time.Duration, quit <-chan struct{}) *writeCoalescer {
+func newWriteCoalescer(conn net.Conn, timeout time.Duration, d time.Duration, quit <-chan struct{}) *writeCoalescer {
 	wc := &writeCoalescer{
 		writeCh: make(chan struct{}), // TODO: could this be sync?
 		cond:    sync.NewCond(&sync.Mutex{}),
-		w:       w,
+		c:       conn,
 		quit:    quit,
+		timeout: timeout,
 	}
 	go wc.writeFlusher(d)
 	return wc
 }
 
 type writeCoalescer struct {
-	w io.Writer
+	c net.Conn
 
 	quit    <-chan struct{}
 	writeCh chan struct{}
@@ -673,6 +723,7 @@ type writeCoalescer struct {
 	// cond waits for the buffer to be flushed
 	cond    *sync.Cond
 	buffers net.Buffers
+	timeout time.Duration
 
 	// result of the write
 	err error
@@ -684,10 +735,14 @@ func (w *writeCoalescer) flushLocked() {
 		return
 	}
 
+	if w.timeout > 0 {
+		w.c.SetWriteDeadline(time.Now().Add(w.timeout))
+	}
+
 	// Given we are going to do a fanout n is useless and according to
 	// the docs WriteTo should return 0 and err or bytes written and
 	// no error.
-	_, w.err = w.buffers.WriteTo(w.w)
+	_, w.err = w.buffers.WriteTo(w.c)
 	if w.err != nil {
 		w.buffers = nil
 	}

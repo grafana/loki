@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package logproto;
 
+option go_package = "github.com/grafana/loki/pkg/logproto";
+
 import "google/protobuf/timestamp.proto";
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/querier"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -26,6 +28,7 @@ import (
 type Config struct {
 	Target      moduleName `yaml:"target,omitempty"`
 	AuthEnabled bool       `yaml:"auth_enabled,omitempty"`
+	HTTPPrefix  string     `yaml:"http_prefix"`
 
 	Server           server.Config            `yaml:"server,omitempty"`
 	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
@@ -37,6 +40,9 @@ type Config struct {
 	SchemaConfig     chunk.SchemaConfig       `yaml:"schema_config,omitempty"`
 	LimitsConfig     validation.Limits        `yaml:"limits_config,omitempty"`
 	TableManager     chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
+	Worker           frontend.WorkerConfig    `yaml:"frontend_worker,omitempty"`
+	Frontend         frontend.Config          `yaml:"frontend,omitempty"`
+	QueryRange       queryrange.Config        `yaml:"query_range,omitempty"`
 }
 
 // RegisterFlags registers flag.
@@ -57,6 +63,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.SchemaConfig.RegisterFlags(f)
 	c.LimitsConfig.RegisterFlags(f)
 	c.TableManager.RegisterFlags(f)
+	c.Frontend.RegisterFlags(f)
+	c.Worker.RegisterFlags(f)
+	c.QueryRange.RegisterFlags(f)
 }
 
 // Loki is the root datastructure for Loki.
@@ -71,6 +80,9 @@ type Loki struct {
 	querier      *querier.Querier
 	store        storage.Store
 	tableManager *chunk.TableManager
+	worker       frontend.Worker
+	frontend     *frontend.Frontend
+	stopper      queryrange.Stopper
 
 	httpAuthMiddleware middleware.Interface
 }
@@ -96,7 +108,19 @@ func (t *Loki) setupAuthMiddleware() {
 			middleware.ServerUserHeaderInterceptor,
 		}
 		t.cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
-			middleware.StreamServerUserHeaderInterceptor,
+			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+				switch info.FullMethod {
+				// Don't check auth header on TransferChunks, as we weren't originally
+				// sending it and this could cause transfers to fail on update.
+				//
+				// Also don't check auth /frontend.Frontend/Process, as this handles
+				// queries for multiple users.
+				case "/frontend.Frontend/Process":
+					return handler(srv, ss)
+				default:
+					return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
+				}
+			},
 		}
 		t.httpAuthMiddleware = middleware.AuthenticateUser
 	} else {

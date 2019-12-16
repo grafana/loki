@@ -9,6 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
+	"github.com/cortexproject/cortex/pkg/chunk/azure"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/cassandra"
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
@@ -33,13 +34,14 @@ type StoreLimits interface {
 
 // Config chooses which storage client to use.
 type Config struct {
-	Engine                 string             `yaml:"engine"`
-	AWSStorageConfig       aws.StorageConfig  `yaml:"aws"`
-	GCPStorageConfig       gcp.Config         `yaml:"bigtable"`
-	GCSConfig              gcp.GCSConfig      `yaml:"gcs"`
-	CassandraStorageConfig cassandra.Config   `yaml:"cassandra"`
-	BoltDBConfig           local.BoltDBConfig `yaml:"boltdb"`
-	FSConfig               local.FSConfig     `yaml:"filesystem"`
+	Engine                 string                  `yaml:"engine"`
+	AWSStorageConfig       aws.StorageConfig       `yaml:"aws"`
+	AzureStorageConfig     azure.BlobStorageConfig `yaml:"azure"`
+	GCPStorageConfig       gcp.Config              `yaml:"bigtable"`
+	GCSConfig              gcp.GCSConfig           `yaml:"gcs"`
+	CassandraStorageConfig cassandra.Config        `yaml:"cassandra"`
+	BoltDBConfig           local.BoltDBConfig      `yaml:"boltdb"`
+	FSConfig               local.FSConfig          `yaml:"filesystem"`
 
 	IndexCacheValidity time.Duration
 
@@ -49,6 +51,7 @@ type Config struct {
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.AWSStorageConfig.RegisterFlags(f)
+	cfg.AzureStorageConfig.RegisterFlags(f)
 	cfg.GCPStorageConfig.RegisterFlags(f)
 	cfg.GCSConfig.RegisterFlags(f)
 	cfg.CassandraStorageConfig.RegisterFlags(f)
@@ -159,6 +162,8 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 			level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 		}
 		return aws.NewDynamoDBObjectClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
+	case "azure":
+		return azure.NewBlobStorage(&cfg.AzureStorageConfig), nil
 	case "gcp":
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcp-columnkey", "bigtable", "bigtable-hashed":
@@ -170,7 +175,7 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 	case "filesystem":
 		return local.NewFSObjectClient(cfg.FSConfig)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, azure, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
 	}
 }
 

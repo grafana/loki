@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package frontend;
+
+option go_package = "frontend";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/weaveworks/common/httpgrpc/httpgrpc.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+service Frontend {
+  rpc Process(stream ProcessResponse) returns (stream ProcessRequest) {};
+}
+
+message ProcessRequest {
+  httpgrpc.HTTPRequest httpRequest = 1;
+}
+
+message ProcessResponse {
+  httpgrpc.HTTPResponse httpResponse = 1;
+}

@@ -22,8 +22,9 @@ import (
 )
 
 const (
-	// We encode key length as one byte
-	maxKeyLength = 255
+	maxKeyLength               = 255         // We encode key length as one byte
+	maxCasRetries              = 10          // max retries in CAS operation
+	noChangeDetectedRetrySleep = time.Second // how long to sleep after no change was detected in CAS
 )
 
 // Config for memberlist-based Client
@@ -106,9 +107,13 @@ type Client struct {
 	storeValuesDesc *prometheus.Desc
 	storeSizesDesc  *prometheus.Desc
 
-	memberlistMembersCount    prometheus.GaugeFunc
-	memberlistHealthScore     prometheus.GaugeFunc
-	memberlistMembersInfoDesc *prometheus.Desc
+	memberlistMembersCount prometheus.GaugeFunc
+	memberlistHealthScore  prometheus.GaugeFunc
+
+	// make this configurable for tests. Default value is fine for normal usage
+	// where updates are coming from network, but when running tests with many
+	// goroutines using same KV, default can be too low.
+	maxCasRetries int
 }
 
 type valueDesc struct {
@@ -122,7 +127,9 @@ type valueDesc struct {
 
 var (
 	// if merge fails because of CAS version mismatch, this error is returned. CAS operation reacts on it
-	errVersionMismatch = errors.New("version mismatch")
+	errVersionMismatch  = errors.New("version mismatch")
+	errNoChangeDetected = errors.New("no change detected")
+	errTooManyRetries   = errors.New("too many retries")
 )
 
 // NewMemberlistClient creates new Client instance. If cfg.JoinMembers is set, it will also try to connect
@@ -175,6 +182,7 @@ func NewMemberlistClient(cfg Config, codec codec.Codec) (*Client, error) {
 		prefixWatchers: make(map[string][]chan string),
 		codec:          codec,
 		shutdown:       make(chan struct{}),
+		maxCasRetries:  maxCasRetries,
 	}
 
 	mlCfg.Delegate = memberlistClient
@@ -432,70 +440,96 @@ func (m *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 		return fmt.Errorf("key too long: %d", len(key))
 	}
 
-	sleep := false
-	for retries := 10; retries > 0; retries-- {
+	var lastError error = nil
+
+outer:
+	for retries := m.maxCasRetries; retries > 0; retries-- {
 		m.casAttempts.Inc()
 
-		if sleep {
+		if lastError == errNoChangeDetected {
 			// We only get here, if 'f' reports some change, but Merge function reports no change. This can happen
 			// with Ring's merge function, which depends on timestamps (and not the tokens) with 1-second resolution.
 			// By waiting for one second, we hope that Merge will be able to detect change from 'f' function.
 
 			select {
-			case <-time.After(1 * time.Second):
+			case <-time.After(noChangeDetectedRetrySleep):
 				// ok
 			case <-ctx.Done():
-				break
+				lastError = ctx.Err()
+				break outer
 			}
 		}
 
-		val, ver, err := m.get(key)
+		change, newver, retry, err := m.trySingleCas(key, f)
 		if err != nil {
-			return err
-		}
+			level.Debug(util.Logger).Log("msg", "CAS attempt failed", "err", err, "retry", retry)
 
-		out, retry, err := f(val)
-		if err != nil {
-			return err
-		}
-
-		if out == nil {
-			// no change to be done
-			return nil
-		}
-
-		// Don't even try
-		r, ok := out.(Mergeable)
-		if !ok {
-			return fmt.Errorf("invalid type: %T, expected Mergeable", out)
-		}
-
-		// To support detection of removed items from value, we will only allow CAS operation to
-		// succeed if version hasn't changed, i.e. state hasn't changed since running 'f'.
-		change, newver, err := m.mergeValueForKey(key, r, ver)
-		if err != nil && err != errVersionMismatch {
-			return err
-		}
-
-		if newver == 0 {
-			// 'f' didn't do any update that we can merge. Let's give it a new chance?
+			lastError = err
 			if !retry {
 				break
 			}
-
-			// If merge failed because of version mismatch, don't sleep.
-			sleep = (err != errVersionMismatch)
 			continue
 		}
 
-		m.casSuccesses.Inc()
-		m.notifyWatchers(key)
-		m.broadcastNewValue(key, change, newver)
+		if change != nil {
+			m.casSuccesses.Inc()
+			m.notifyWatchers(key)
+			m.broadcastNewValue(key, change, newver)
+		}
+
 		return nil
 	}
 
+	if lastError == errVersionMismatch {
+		// this is more likely error than version mismatch.
+		lastError = errTooManyRetries
+	}
+
 	m.casFailures.Inc()
-	return fmt.Errorf("failed to CAS-update key %s", key)
+	return fmt.Errorf("failed to CAS-update key %s: %v", key, lastError)
+}
+
+// returns change, error (or nil, if CAS succeeded), and whether to retry or not.
+// returns errNoChangeDetected if merge failed to detect change in f's output.
+func (m *Client) trySingleCas(key string, f func(in interface{}) (out interface{}, retry bool, err error)) (Mergeable, uint, bool, error) {
+	val, ver, err := m.get(key)
+	if err != nil {
+		return nil, 0, false, fmt.Errorf("failed to get value: %v", err)
+	}
+
+	out, retry, err := f(val)
+	if err != nil {
+		return nil, 0, retry, fmt.Errorf("fn returned error: %v", err)
+	}
+
+	if out == nil {
+		// no change to be done
+		return nil, 0, false, nil
+	}
+
+	// Don't even try
+	r, ok := out.(Mergeable)
+	if !ok || r == nil {
+		return nil, 0, retry, fmt.Errorf("invalid type: %T, expected Mergeable", out)
+	}
+
+	// To support detection of removed items from value, we will only allow CAS operation to
+	// succeed if version hasn't changed, i.e. state hasn't changed since running 'f'.
+	change, newver, err := m.mergeValueForKey(key, r, ver)
+	if err == errVersionMismatch {
+		return nil, 0, retry, err
+	}
+
+	if err != nil {
+		return nil, 0, retry, fmt.Errorf("merge failed: %v", err)
+	}
+
+	if newver == 0 {
+		// CAS method reacts on this error
+		return nil, 0, retry, errNoChangeDetected
+	}
+
+	return change, newver, retry, nil
 }
 
 func (m *Client) broadcastNewValue(key string, change Mergeable, version uint) {
@@ -727,6 +761,7 @@ func (m *Client) mergeValueForKey(key string, incomingValue Mergeable, casVersio
 	defer m.storeMu.Unlock()
 
 	curr := m.store[key]
+	// if casVersion is 0, then there was no previous value, so we will just do normal merge, without localCAS flag set.
 	if casVersion > 0 && curr.version != casVersion {
 		return nil, 0, errVersionMismatch
 	}

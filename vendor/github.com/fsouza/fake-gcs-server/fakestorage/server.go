@@ -25,7 +25,7 @@ import (
 type Server struct {
 	backend   backend.Storage
 	uploads   map[string]Object
-	transport *http.Transport
+	transport http.RoundTripper
 	ts        *httptest.Server
 	mux       *mux.Router
 	mtx       sync.RWMutex
@@ -52,20 +52,29 @@ func NewServerWithHostPort(objects []Object, host string, port uint16) (*Server,
 // Options are used to configure the server on creation
 type Options struct {
 	InitialObjects []Object
+	StorageRoot    string
 	Host           string
 	Port           uint16
-	StorageRoot    string
+
+	// when set to true, the server will not actually start a TCP listener,
+	// client requests will get processed by an internal mocked transport.
+	NoListener bool
 }
 
 // NewServerWithOptions creates a new server with custom options
 func NewServerWithOptions(options Options) (*Server, error) {
-	s, err := newUnstartedServer(options.InitialObjects, options.StorageRoot)
+	s, err := newServer(options.InitialObjects, options.StorageRoot)
 	if err != nil {
 		return nil, err
 	}
-	var addr string
+	if options.NoListener {
+		s.setTransportToMux()
+		return s, nil
+	}
+
+	s.ts = httptest.NewUnstartedServer(s.mux)
 	if options.Port != 0 {
-		addr = fmt.Sprintf("%s:%d", options.Host, options.Port)
+		addr := fmt.Sprintf("%s:%d", options.Host, options.Port)
 		l, err := net.Listen("tcp", addr)
 		if err != nil {
 			return nil, err
@@ -73,15 +82,14 @@ func NewServerWithOptions(options Options) (*Server, error) {
 		s.ts.Listener.Close()
 		s.ts.Listener = l
 		s.ts.StartTLS()
-		s.setTransportToAddr(addr)
 	} else {
-		s.setTransportToAddr(s.ts.Listener.Addr().String())
 		s.ts.StartTLS()
 	}
+	s.setTransportToAddr(s.ts.Listener.Addr().String())
 	return s, nil
 }
 
-func newUnstartedServer(objects []Object, storageRoot string) (*Server, error) {
+func newServer(objects []Object, storageRoot string) (*Server, error) {
 	backendObjects := toBackendObjects(objects)
 	var backendStorage backend.Storage
 	var err error
@@ -98,11 +106,11 @@ func newUnstartedServer(objects []Object, storageRoot string) (*Server, error) {
 		uploads: make(map[string]Object),
 	}
 	s.buildMuxer()
-	s.ts = httptest.NewUnstartedServer(s.mux)
 	return &s, nil
 }
 
 func (s *Server) setTransportToAddr(addr string) {
+	// #nosec
 	tlsConfig := tls.Config{InsecureSkipVerify: true}
 	s.transport = &http.Transport{
 		TLSClientConfig: &tlsConfig,
@@ -112,9 +120,14 @@ func (s *Server) setTransportToAddr(addr string) {
 	}
 }
 
+func (s *Server) setTransportToMux() {
+	s.transport = &muxTransport{router: s.mux}
+}
+
 func (s *Server) buildMuxer() {
 	s.mux = mux.NewRouter()
-	s.mux.Host("storage.googleapis.com").Path("/{bucketName}/{objectName:.+}").Methods("GET").HandlerFunc(s.downloadObject)
+	s.mux.Host("storage.googleapis.com").Path("/{bucketName}/{objectName:.+}").Methods("GET", "HEAD").HandlerFunc(s.downloadObject)
+	s.mux.Host("{bucketName}.storage.googleapis.com").Path("/{objectName:.+}").Methods("GET", "HEAD").HandlerFunc(s.downloadObject)
 	r := s.mux.PathPrefix("/storage/v1").Subrouter()
 	r.Path("/b").Methods("GET").HandlerFunc(s.listBuckets)
 	r.Path("/b/{bucketName}").Methods("GET").HandlerFunc(s.getBucket)
@@ -123,24 +136,37 @@ func (s *Server) buildMuxer() {
 	r.Path("/b/{bucketName}/o/{objectName:.+}").Methods("GET").HandlerFunc(s.getObject)
 	r.Path("/b/{bucketName}/o/{objectName:.+}").Methods("DELETE").HandlerFunc(s.deleteObject)
 	r.Path("/b/{sourceBucket}/o/{sourceObject:.+}/rewriteTo/b/{destinationBucket}/o/{destinationObject:.+}").HandlerFunc(s.rewriteObject)
+	s.mux.Path("/download/storage/v1/b/{bucketName}/o/{objectName}").Methods("GET").HandlerFunc(s.downloadObject)
 	s.mux.Path("/upload/storage/v1/b/{bucketName}/o").Methods("POST").HandlerFunc(s.insertObject)
 	s.mux.Path("/upload/resumable/{uploadId}").Methods("PUT", "POST").HandlerFunc(s.uploadFileContent)
 }
 
 // Stop stops the server, closing all connections.
 func (s *Server) Stop() {
-	s.transport.CloseIdleConnections()
-	s.ts.Close()
+	if s.ts != nil {
+		if transport, ok := s.transport.(*http.Transport); ok {
+			transport.CloseIdleConnections()
+		}
+		s.ts.Close()
+	}
 }
 
 // URL returns the server URL.
 func (s *Server) URL() string {
-	return s.ts.URL
+	if s.ts != nil {
+		return s.ts.URL
+	}
+	return ""
+}
+
+// HTTPClient returns an HTTP client configured to talk to the server.
+func (s *Server) HTTPClient() *http.Client {
+	return &http.Client{Transport: s.transport}
 }
 
 // Client returns a GCS client configured to talk to the server.
 func (s *Server) Client() *storage.Client {
-	opt := option.WithHTTPClient(&http.Client{Transport: s.transport})
+	opt := option.WithHTTPClient(s.HTTPClient())
 	client, _ := storage.NewClient(context.Background(), opt)
 	return client
 }

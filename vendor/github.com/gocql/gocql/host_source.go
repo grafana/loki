@@ -89,6 +89,10 @@ func (c cassVersion) Before(major, minor, patch int) bool {
 	return false
 }
 
+func (c cassVersion) AtLeast(major, minor, patch int) bool {
+	return !c.Before(major, minor, patch)
+}
+
 func (c cassVersion) String() string {
 	return fmt.Sprintf("v%d.%d.%d", c.Major, c.Minor, c.Patch)
 }

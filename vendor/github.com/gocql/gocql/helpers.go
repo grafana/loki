@@ -91,6 +91,8 @@ func getCassandraBaseType(name string) Type {
 		return TypeFloat
 	case "int":
 		return TypeInt
+	case "tinyint":
+		return TypeTinyInt
 	case "timestamp":
 		return TypeTimestamp
 	case "uuid":

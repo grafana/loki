@@ -23,11 +23,17 @@ import (
 const (
 	unhealthy = "Unhealthy"
 
-	// ConsulKey is the key under which we store the ring in consul.
-	ConsulKey = "ring"
+	// IngesterRingKey is the key under which we store the ingesters ring in the KVStore.
+	IngesterRingKey = "ring"
+
+	// RulerRingKey is the key under which we store the rulers ring in the KVStore.
+	RulerRingKey = "ring"
+
+	// DistributorRingKey is the key under which we store the distributors ring in the KVStore.
+	DistributorRingKey = "distributor"
 )
 
-// ReadRing represents the read inferface to the ring.
+// ReadRing represents the read interface to the ring.
 type ReadRing interface {
 	prometheus.Collector
 
@@ -82,6 +88,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 // Ring holds the information about the members of the consistent hash ring.
 type Ring struct {
 	name     string
+	key      string
 	cfg      Config
 	KVClient kv.Client
 	done     chan struct{}
@@ -98,7 +105,7 @@ type Ring struct {
 }
 
 // New creates a new Ring
-func New(cfg Config, name string) (*Ring, error) {
+func New(cfg Config, name, key string) (*Ring, error) {
 	if cfg.ReplicationFactor <= 0 {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
 	}
@@ -110,6 +117,7 @@ func New(cfg Config, name string) (*Ring, error) {
 
 	r := &Ring{
 		name:     name,
+		key:      key,
 		cfg:      cfg,
 		KVClient: store,
 		done:     make(chan struct{}),
@@ -154,7 +162,7 @@ func (r *Ring) Stop() {
 
 func (r *Ring) loop(ctx context.Context) {
 	defer close(r.done)
-	r.KVClient.WatchKey(ctx, ConsulKey, func(value interface{}) bool {
+	r.KVClient.WatchKey(ctx, r.key, func(value interface{}) bool {
 		if value == nil {
 			level.Info(util.Logger).Log("msg", "ring doesn't exist in consul yet")
 			return true

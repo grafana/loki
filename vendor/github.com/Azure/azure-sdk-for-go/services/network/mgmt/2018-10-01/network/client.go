@@ -115,8 +115,8 @@ func (client BaseClient) CheckDNSNameAvailabilityPreparer(ctx context.Context, l
 // CheckDNSNameAvailabilitySender sends the CheckDNSNameAvailability request. The method will close the
 // http.Response Body if it receives an error.
 func (client BaseClient) CheckDNSNameAvailabilitySender(req *http.Request) (*http.Response, error) {
-	return autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
+	return autorest.SendWithSender(client, req, sd...)
 }
 
 // CheckDNSNameAvailabilityResponder handles the response to the CheckDNSNameAvailability request. The method always
@@ -192,8 +192,8 @@ func (client BaseClient) SupportedSecurityProvidersPreparer(ctx context.Context,
 // SupportedSecurityProvidersSender sends the SupportedSecurityProviders request. The method will close the
 // http.Response Body if it receives an error.
 func (client BaseClient) SupportedSecurityProvidersSender(req *http.Request) (*http.Response, error) {
-	return autorest.SendWithSender(client, req,
-		azure.DoRetryWithRegistration(client.Client))
+	sd := autorest.GetSendDecorators(req.Context(), azure.DoRetryWithRegistration(client.Client))
+	return autorest.SendWithSender(client, req, sd...)
 }
 
 // SupportedSecurityProvidersResponder handles the response to the SupportedSecurityProviders request. The method always

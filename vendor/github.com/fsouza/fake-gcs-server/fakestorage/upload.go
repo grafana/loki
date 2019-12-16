@@ -5,6 +5,7 @@
 package fakestorage
 
 import (
+	"crypto/md5" // #nosec G501
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
@@ -61,7 +62,7 @@ func (s *Server) simpleUpload(bucketName string, w http.ResponseWriter, r *http.
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	obj := Object{BucketName: bucketName, Name: name, Content: data, Crc32c: encodedCrc32cChecksum(data)}
+	obj := Object{BucketName: bucketName, Name: name, Content: data, Crc32c: encodedCrc32cChecksum(data), Md5Hash: encodedMd5Hash(data)}
 	err = s.createObject(obj)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -85,6 +86,21 @@ func encodedChecksum(checksum []byte) string {
 
 func encodedCrc32cChecksum(content []byte) string {
 	return encodedChecksum(crc32cChecksum(content))
+}
+
+func md5Hash(b []byte) []byte {
+	/* #nosec G401 */
+	h := md5.New()
+	h.Write(b)
+	return h.Sum(nil)
+}
+
+func encodedHash(hash []byte) string {
+	return base64.StdEncoding.EncodeToString(hash)
+}
+
+func encodedMd5Hash(content []byte) string {
+	return encodedHash(md5Hash(content))
 }
 
 func (s *Server) multipartUpload(bucketName string, w http.ResponseWriter, r *http.Request) {
@@ -114,7 +130,7 @@ func (s *Server) multipartUpload(bucketName string, w http.ResponseWriter, r *ht
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	obj := Object{BucketName: bucketName, Name: metadata.Name, Content: content, Crc32c: encodedCrc32cChecksum(content)}
+	obj := Object{BucketName: bucketName, Name: metadata.Name, Content: content, Crc32c: encodedCrc32cChecksum(content), Md5Hash: encodedMd5Hash(content)}
 	err = s.createObject(obj)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -165,6 +181,7 @@ func (s *Server) uploadFileContent(w http.ResponseWriter, r *http.Request) {
 	objLength := len(obj.Content)
 	obj.Content = append(obj.Content, content...)
 	obj.Crc32c = encodedCrc32cChecksum(obj.Content)
+	obj.Md5Hash = encodedMd5Hash(obj.Content)
 	if contentRange := r.Header.Get("Content-Range"); contentRange != "" {
 		commit, err = parseRange(contentRange, objLength, len(content), w)
 		if err != nil {

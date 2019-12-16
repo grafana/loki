@@ -6,6 +6,8 @@
     replication_factor: 3,
     memcached_replicas: 3,
 
+    querierConcurrency: 4,
+
     // Default to GCS and Bigtable for chunk and index store
     storage_backend: 'bigtable,gcs',
 
@@ -91,13 +93,42 @@
       server: {
         graceful_shutdown_timeout: '5s',
         http_server_idle_timeout: '120s',
-        grpc_server_max_recv_msg_size: 1024 * 1024 * 64,
+        grpc_server_max_recv_msg_size: 100 << 20,
+        http_server_write_timeout: '1m',
       },
-
+      frontend: {
+        compress_responses: true,
+      },
+      frontend_worker: {
+        address: 'query-frontend.%s.svc.cluster.local:9095' % $._config.namespace,
+        // Limit to N/2 worker threads per frontend, as we have two frontends.
+        parallelism:  $._config.querierConcurrency / 2,
+        grpc_client_config:{
+          max_send_msg_size: 100 << 20,
+        },
+      },
+      query_range: {
+        split_queries_by_interval: '4h',
+        align_queries_with_step: true,
+        cache_results: true,
+        results_cache: {
+          split_interval: '4h',
+          max_freshness: '10m',
+          cache: {
+            memcached_client: {
+              timeout: '500ms',
+              consistent_hash: true,
+              service: 'memcached-client',
+              host: 'memcached-frontend.%s.svc.cluster.local' % $._config.namespace,
+            },
+          },
+        },
+      },
       limits_config: {
         enforce_metric_name: false,
         reject_old_samples: true,
         reject_old_samples_max_age: '168h',
+        max_query_length: '12000h', // 500 days
       },
 
       ingester: {
