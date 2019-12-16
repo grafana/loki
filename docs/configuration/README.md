@@ -278,7 +278,7 @@ The `ingester_config` block configures Ingesters.
 # A non zero value will create chunks with a variable number of blocks to meet the target size.
 [chunk_target_size: <int> | default = 0]
 
-# The compression algorithm to use for chunks. (supported: gzip, gzip-1, lz4, none, snappy, snappyv2)
+# The compression algorithm to use for chunks. (supported: gzip, lz4, snappy, none)
 # You should choose your algorithm depending on your need:
 # - `gzip` highest compression ratio but also slowest decompression speed. (144 kB per chunk)
 # - `lz4` fastest compression speed (188 kB per chunk)
