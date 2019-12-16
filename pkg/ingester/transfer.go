@@ -171,6 +171,10 @@ func (i *Ingester) StopIncomingRequests() {
 
 // TransferOut implements ring.Lifecycler.
 func (i *Ingester) TransferOut(ctx context.Context) error {
+	if i.cfg.MaxTransferRetries <= 0 {
+		return fmt.Errorf("transfers disabled")
+	}
+
 	backoff := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: 5 * time.Second,
