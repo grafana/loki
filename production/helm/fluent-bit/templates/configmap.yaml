@@ -27,6 +27,7 @@ data:
         Match          kube.*
         Kube_URL       https://kubernetes.default.svc:443
         Merge_Log On
+        K8S-Logging.Parser {{ .Values.config.k8sLoggingParser }}
     [Output]
         Name loki
         Match *
@@ -47,6 +48,13 @@ data:
         Format      json
         Time_Key    time
         Time_Format %Y-%m-%dT%H:%M:%S.%L
+    {{- range $parser:= .Values.config.parsers }}
+    [PARSER]
+    {{- range $key,$value := $parser }}
+        {{ $key }} = {{ $value }}
+    {{- end }}
+    {{- end }}
 
   labelmap.json: |-
     {{- .Values.config.labelMap | toPrettyJson | nindent 4}}
+
