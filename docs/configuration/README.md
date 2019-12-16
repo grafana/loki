@@ -244,7 +244,7 @@ The `ingester_config` block configures Ingesters.
 [lifecycler: <lifecycler_config>]
 
 # Number of times to try and transfer chunks when leaving before
-# falling back to flushing to the store.
+# falling back to flushing to the store. Zero = no transfers are done.
 [max_transfer_retries: <int> | default = 10]
 
 # How many flushes can happen concurrently from each stream.
