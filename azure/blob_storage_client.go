@@ -18,16 +18,16 @@ const blobURLFmt = "https://%s.blob.core.windows.net/%s/%s"
 
 // BlobStorageConfig defines the configurable flags that can be defined when using azure blob storage.
 type BlobStorageConfig struct {
-	ContainerName      string        `yaml:"containerName"`
-	AccountName        string        `yaml:"accountName"`
-	AccountKey         string        `yaml:"accountKey"`
-	DownloadBufferSize int           `yaml:"downloadBufferSize"`
-	UploadBufferSize   int           `yaml:"uploadBufferSize"`
-	UploadBufferCount  int           `yaml:"uploadBufferCount"`
-	RequestTimeout     time.Duration `yaml:"requestTimeout"`
-	MaxRetries         int           `yaml:"maxRetries"`
-	MinRetryDelay      time.Duration `yaml:"minretryDelay"`
-	MaxRetryDelay      time.Duration `yaml:"maxRetryDelay"`
+	ContainerName      string        `yaml:"container_name"`
+	AccountName        string        `yaml:"account_name"`
+	AccountKey         string        `yaml:"account_key"`
+	DownloadBufferSize int           `yaml:"download_buffer_size"`
+	UploadBufferSize   int           `yaml:"upload_buffer_size"`
+	UploadBufferCount  int           `yaml:"upload_buffer_count"`
+	RequestTimeout     time.Duration `yaml:"request_timeout"`
+	MaxRetries         int           `yaml:"max_retries"`
+	MinRetryDelay      time.Duration `yaml:"min_retry_delay"`
+	MaxRetryDelay      time.Duration `yaml:"max_retry_delay"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
