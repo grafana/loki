@@ -365,28 +365,58 @@ func BenchmarkWrite(b *testing.B) {
 func BenchmarkRead(b *testing.B) {
 	for _, enc := range testEncoding {
 		b.Run(enc.String(), func(b *testing.B) {
-			chunks := generateData(enc)
+			chunks, size := generateData(enc)
 			b.ResetTimer()
-			bytesRead := int64(0)
+			bytesRead := uint64(0)
 			now := time.Now()
 			for n := 0; n < b.N; n++ {
 				for _, c := range chunks {
 					// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
-					iterator, err := c.Iterator(time.Unix(0, 0), time.Now(), logproto.FORWARD, nil)
+					iterator, err := c.Iterator(time.Unix(0, 0), time.Now(), logproto.FORWARD, func(line []byte) bool {
+						return false
+					})
 					if err != nil {
 						panic(err)
 					}
 					for iterator.Next() {
-						e := iterator.Entry()
-						bytesRead += int64(len(e.Line))
+						_ = iterator.Entry()
 					}
 					if err := iterator.Close(); err != nil {
 						b.Fatal(err)
 					}
 				}
+				bytesRead += size
 			}
 			b.Log("bytes per second ", humanize.Bytes(uint64(float64(bytesRead)/time.Since(now).Seconds())))
 			b.Log("n=", b.N)
+		})
+	}
+}
+
+func TestGenerateDataSize(t *testing.T) {
+	for _, enc := range testEncoding {
+		t.Run(enc.String(), func(t *testing.T) {
+			chunks, size := generateData(enc)
+
+			bytesRead := uint64(0)
+			for _, c := range chunks {
+				// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
+				iterator, err := c.Iterator(time.Unix(0, 0), time.Now(), logproto.FORWARD, func(line []byte) bool {
+					return true // return all
+				})
+				if err != nil {
+					panic(err)
+				}
+				for iterator.Next() {
+					e := iterator.Entry()
+					bytesRead += uint64(len(e.Line))
+				}
+				if err := iterator.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			require.Equal(t, size, bytesRead)
 		})
 	}
 }
