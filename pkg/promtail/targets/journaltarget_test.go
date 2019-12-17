@@ -117,6 +117,67 @@ func TestJournalTarget(t *testing.T) {
 	require.NoError(t, jt.Stop())
 }
 
+func TestJournalTarget_JSON(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	initRandom()
+	dirName := "/tmp/" + randName()
+	positionsFileName := dirName + "/positions.yml"
+
+	// Set the sync period to a really long value, to guarantee the sync timer
+	// never runs, this way we know everything saved was done through channel
+	// notifications when target.stop() was called.
+	ps, err := positions.New(logger, positions.Config{
+		SyncPeriod:    10 * time.Second,
+		PositionsFile: positionsFileName,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client := &TestClient{
+		log:      logger,
+		messages: make([]string, 0),
+	}
+
+	relabelCfg := `
+- source_labels: ['__journal_code_file']
+  regex: 'journaltarget_test\.go'
+  action: 'keep'
+- source_labels: ['__journal_code_file']
+  target_label: 'code_file'`
+
+	var relabels []*relabel.Config
+	err = yaml.Unmarshal([]byte(relabelCfg), &relabels)
+	require.NoError(t, err)
+
+	cfg := &scrape.JournalTargetConfig{JSON: true}
+
+	jt, err := journalTargetWithReader(logger, client, ps, "test", relabels,
+		cfg, newMockJournalReader, newMockJournalEntry(nil))
+	require.NoError(t, err)
+
+	r := jt.r.(*mockJournalReader)
+	r.t = t
+
+	for i := 0; i < 10; i++ {
+		r.Write("ping", map[string]string{
+			"CODE_FILE":   "journaltarget_test.go",
+			"OTHER_FIELD": "foobar",
+		})
+		assert.NoError(t, err)
+
+		expectMsg := `{"CODE_FILE":"journaltarget_test.go","MESSAGE":"ping","OTHER_FIELD":"foobar"}`
+
+		require.Greater(t, len(client.messages), 0)
+		require.Equal(t, expectMsg, client.messages[len(client.messages)-1])
+	}
+
+	assert.Len(t, client.messages, 10)
+	require.NoError(t, jt.Stop())
+}
+
 func TestJournalTarget_Since(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)

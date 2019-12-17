@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/relabel"
 
@@ -231,11 +232,26 @@ func (t *JournalTarget) generateJournalConfig(
 func (t *JournalTarget) formatter(entry *sdjournal.JournalEntry) (string, error) {
 	ts := time.Unix(0, int64(entry.RealtimeTimestamp)*int64(time.Microsecond))
 
-	msg, ok := entry.Fields["MESSAGE"]
-	if !ok {
-		level.Debug(t.logger).Log("msg", "received journal entry with no MESSAGE field")
-		return journalEmptyStr, nil
+	var msg string
+
+	if t.config.JSON {
+		json := jsoniter.ConfigCompatibleWithStandardLibrary
+
+		bb, err := json.Marshal(entry.Fields)
+		if err != nil {
+			level.Error(t.logger).Log("msg", "could not marshal journal fields to JSON", "err", err)
+			return journalEmptyStr, nil
+		}
+		msg = string(bb)
+	} else {
+		var ok bool
+		msg, ok = entry.Fields["MESSAGE"]
+		if !ok {
+			level.Debug(t.logger).Log("msg", "received journal entry with no MESSAGE field")
+			return journalEmptyStr, nil
+		}
 	}
+
 	entryLabels := makeJournalFields(entry.Fields)
 
 	// Add constant labels

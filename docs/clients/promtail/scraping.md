@@ -85,6 +85,7 @@ defined in a `journal` stanza:
 scrape_configs:
   - job_name: journal
     journal:
+      json: false
       max_age: 12h
       path: /var/log/journal
       labels:
@@ -100,6 +101,11 @@ time specified will be sent to Loki; this circumvents "entry too old" errors.
 The `path` field tells Promtail where to read journal entries from. The labels
 map defines a constant list of labels to add to every journal entry that Promtail
 reads.
+
+When the `json` field is set to `true`, messages from the journal will be
+passed through the pipeline as JSON, keeping all of the original fields from the
+journal entry. This is useful when you don't want to index some fields but you
+still want to know what values they contained.
 
 By default, Promtail reads from the journal by looking in the `/var/log/journal`
 and `/run/log/journal` paths. If running Promtail inside of a Docker container,
