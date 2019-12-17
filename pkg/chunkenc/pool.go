@@ -27,12 +27,11 @@ type ReaderPool interface {
 
 var (
 	// Gzip is the gnu zip compression pool
-	Gzip = GzipPool{level: gzip.DefaultCompression}
-	// LZ4 is the l4z compression pool
-	Lz4_64k  = LZ4Pool{bufferSize: 1 << 16}
-	Lz4_256k = LZ4Pool{bufferSize: 1 << 18}
-	Lz4_1M   = LZ4Pool{bufferSize: 1 << 20}
-	Lz4_4M   = LZ4Pool{bufferSize: 1 << 22}
+	Gzip     = GzipPool{level: gzip.DefaultCompression}
+	Lz4_64k  = LZ4Pool{bufferSize: 1 << 16} // Lz4_64k is the l4z compression pool, with 64k buffer size
+	Lz4_256k = LZ4Pool{bufferSize: 1 << 18} // Lz4_256k uses 256k buffer
+	Lz4_1M   = LZ4Pool{bufferSize: 1 << 20} // Lz4_1M uses 1M buffer
+	Lz4_4M   = LZ4Pool{bufferSize: 1 << 22} // Lz4_4M uses 4M buffer
 
 	// Snappy is the snappy compression pool
 	Snappy SnappyPool
