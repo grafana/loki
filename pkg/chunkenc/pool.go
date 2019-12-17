@@ -29,10 +29,10 @@ var (
 	// Gzip is the gnu zip compression pool
 	Gzip = GzipPool{level: gzip.DefaultCompression}
 	// LZ4 is the l4z compression pool
-	LZ4_64k  = LZ4Pool{bufferSize: 1 << 16}
-	LZ4_256k = LZ4Pool{bufferSize: 1 << 18}
-	LZ4_1M   = LZ4Pool{bufferSize: 1 << 20}
-	LZ4_4M   = LZ4Pool{bufferSize: 1 << 22}
+	Lz4_64k  = LZ4Pool{bufferSize: 1 << 16}
+	Lz4_256k = LZ4Pool{bufferSize: 1 << 18}
+	Lz4_1M   = LZ4Pool{bufferSize: 1 << 20}
+	Lz4_4M   = LZ4Pool{bufferSize: 1 << 22}
 
 	// Snappy is the snappy compression pool
 	Snappy SnappyPool
@@ -64,13 +64,13 @@ func getReaderPool(enc Encoding) ReaderPool {
 	case EncGZIP:
 		return &Gzip
 	case EncLZ4_64k:
-		return &LZ4_64k
+		return &Lz4_64k
 	case EncLZ4_256k:
-		return &LZ4_256k
+		return &Lz4_256k
 	case EncLZ4_1M:
-		return &LZ4_1M
+		return &Lz4_1M
 	case EncLZ4_4M:
-		return &LZ4_4M
+		return &Lz4_4M
 	case EncSnappy:
 		return &Snappy
 	case EncNone:
