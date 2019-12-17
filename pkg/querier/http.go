@@ -41,7 +41,7 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, httpgrpc.Errorf(http.StatusBadRequest, err.Error()).Error(), http.StatusBadRequest)
 		return
 	}
-	query := q.engine.NewRangeQuery(q, request.Query, request.Start, request.End, request.Step, request.Direction, request.Limit)
+	query := q.engine.NewRangeQuery(request.Query, request.Start, request.End, request.Step, request.Direction, request.Limit)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -65,7 +65,7 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, httpgrpc.Errorf(http.StatusBadRequest, err.Error()).Error(), http.StatusBadRequest)
 		return
 	}
-	query := q.engine.NewInstantQuery(q, request.Query, request.Ts, request.Direction, request.Limit)
+	query := q.engine.NewInstantQuery(request.Query, request.Ts, request.Direction, request.Limit)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -111,7 +111,7 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := q.engine.NewRangeQuery(q, request.Query, request.Start, request.End, request.Step, request.Direction, request.Limit)
+	query := q.engine.NewRangeQuery(request.Query, request.Start, request.End, request.Step, request.Direction, request.Limit)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

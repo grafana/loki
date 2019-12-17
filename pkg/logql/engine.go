@@ -60,18 +60,38 @@ func (opts *EngineOpts) applyDefault() {
 	}
 }
 
-// Engine is the LogQL engine.
-type Engine struct {
+/*
+Engine interface
+function/agg Nodes should have Associative method to allow ad-hoc parallelization?
+limit + filter (regexp) queries can be parallelized well
+non filtered queries can be executed in roughly 1/shard_factor time, but require 2x decode cost: sending all (unfiltered) data back to frontend
+
+custom downstream impl may require it's own endpoint (in order to pass shard info not encoded in labels)
+*/
+type Engine interface {
+	NewRangeQuery(qs string, start, end time.Time, step time.Duration, direction logproto.Direction, limit uint32) Query
+	NewInstantQuery(qs string, ts time.Time, direction logproto.Direction, limit uint32) Query
+}
+
+// engine is the LogQL engine.
+type engine struct {
 	timeout           time.Duration
 	maxLookBackPeriod time.Duration
+	querier           Querier
 }
 
 // NewEngine creates a new LogQL engine.
-func NewEngine(opts EngineOpts) *Engine {
+func NewEngine(opts EngineOpts, q Querier) Engine {
+	if q == nil {
+		panic("nil Querier")
+	}
+
 	opts.applyDefault()
-	return &Engine{
+
+	return &engine{
 		timeout:           opts.Timeout,
 		maxLookBackPeriod: opts.MaxLookBackPeriod,
+		querier:           q,
 	}
 }
 
@@ -82,14 +102,13 @@ type Query interface {
 }
 
 type query struct {
-	querier    Querier
 	qs         string
 	start, end time.Time
 	step       time.Duration
 	direction  logproto.Direction
 	limit      uint32
 
-	ng *Engine
+	ng *engine
 }
 
 func (q *query) isInstant() bool {
@@ -110,13 +129,11 @@ func (q *query) Exec(ctx context.Context) (promql.Value, error) {
 }
 
 // NewRangeQuery creates a new LogQL range query.
-func (ng *Engine) NewRangeQuery(
-	q Querier,
+func (ng *engine) NewRangeQuery(
 	qs string,
 	start, end time.Time, step time.Duration,
 	direction logproto.Direction, limit uint32) Query {
 	return &query{
-		querier:   q,
 		qs:        qs,
 		start:     start,
 		end:       end,
@@ -128,13 +145,11 @@ func (ng *Engine) NewRangeQuery(
 }
 
 // NewInstantQuery creates a new LogQL instant query.
-func (ng *Engine) NewInstantQuery(
-	q Querier,
+func (ng *engine) NewInstantQuery(
 	qs string,
 	ts time.Time,
 	direction logproto.Direction, limit uint32) Query {
 	return &query{
-		querier:   q,
 		qs:        qs,
 		start:     ts,
 		end:       ts,
@@ -145,7 +160,7 @@ func (ng *Engine) NewInstantQuery(
 	}
 }
 
-func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, error) {
+func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 	log, ctx := spanlogger.New(ctx, "Engine.exec")
 	defer log.Finish()
 	ctx, cancel := context.WithTimeout(ctx, ng.timeout)
@@ -191,7 +206,7 @@ func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 		if q.isInstant() {
 			params.Start = params.Start.Add(-ng.maxLookBackPeriod)
 		}
-		iter, err := q.querier.Select(ctx, params)
+		iter, err := ng.querier.Select(ctx, params)
 		if err != nil {
 			return nil, err
 		}
@@ -203,7 +218,7 @@ func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 }
 
 // setupIterators walk through the AST tree and build iterators required to eval samples.
-func (ng *Engine) setupIterators(ctx context.Context, expr SampleExpr, q *query) error {
+func (ng *engine) setupIterators(ctx context.Context, expr SampleExpr, q *query) error {
 	if expr == nil {
 		return nil
 	}
@@ -211,7 +226,7 @@ func (ng *Engine) setupIterators(ctx context.Context, expr SampleExpr, q *query)
 	case *vectorAggregationExpr:
 		return ng.setupIterators(ctx, e.left, q)
 	case *rangeAggregationExpr:
-		iter, err := q.querier.Select(ctx, SelectParams{
+		iter, err := ng.querier.Select(ctx, SelectParams{
 			&logproto.QueryRequest{
 				Start:     q.start.Add(-e.left.interval),
 				End:       q.end,
@@ -230,7 +245,7 @@ func (ng *Engine) setupIterators(ctx context.Context, expr SampleExpr, q *query)
 }
 
 // evalSample evaluate a sampleExpr
-func (ng *Engine) evalSample(expr SampleExpr, q *query) promql.Value {
+func (ng *engine) evalSample(expr SampleExpr, q *query) promql.Value {
 	defer helpers.LogError("closing SampleExpr", expr.Close)
 
 	stepEvaluator := expr.Evaluator()

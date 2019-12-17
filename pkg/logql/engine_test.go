@@ -18,7 +18,6 @@ var testSize = int64(300)
 
 func TestEngine_NewInstantQuery(t *testing.T) {
 	t.Parallel()
-	eng := NewEngine(EngineOpts{})
 	for _, test := range []struct {
 		qs        string
 		ts        time.Time
@@ -291,7 +290,8 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
-			q := eng.NewInstantQuery(newQuerierRecorder(test.streams, test.params), test.qs, test.ts, test.direction, test.limit)
+			eng := NewEngine(EngineOpts{}, newQuerierRecorder(test.streams, test.params))
+			q := eng.NewInstantQuery(test.qs, test.ts, test.direction, test.limit)
 			res, err := q.Exec(context.Background())
 			if err != nil {
 				t.Fatal(err)
@@ -303,7 +303,6 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 
 func TestEngine_NewRangeQuery(t *testing.T) {
 	t.Parallel()
-	eng := NewEngine(EngineOpts{})
 	for _, test := range []struct {
 		qs        string
 		start     time.Time
@@ -680,7 +679,9 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
-			q := eng.NewRangeQuery(newQuerierRecorder(test.streams, test.params), test.qs, test.start, test.end, test.step, test.direction, test.limit)
+			eng := NewEngine(EngineOpts{}, newQuerierRecorder(test.streams, test.params))
+
+			q := eng.NewRangeQuery(test.qs, test.start, test.end, test.step, test.direction, test.limit)
 			res, err := q.Exec(context.Background())
 			if err != nil {
 				t.Fatal(err)
@@ -709,10 +710,9 @@ var result promql.Value
 
 func benchmarkRangeQuery(testsize int64, b *testing.B) {
 	b.ReportAllocs()
-	eng := NewEngine(EngineOpts{})
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(testsize))
 	start := time.Unix(0, 0)
 	end := time.Unix(testsize, 0)
-	querier := getLocalQuerier(testsize)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for _, test := range []struct {
@@ -741,7 +741,7 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 			{`bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, logproto.FORWARD},
 			{`bottomk(3,rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app)`, logproto.FORWARD},
 		} {
-			q := eng.NewRangeQuery(querier, test.qs, start, end, 60*time.Second, test.direction, 1000)
+			q := eng.NewRangeQuery(test.qs, start, end, 60*time.Second, test.direction, 1000)
 			res, err := q.Exec(context.Background())
 			if err != nil {
 				b.Fatal(err)
