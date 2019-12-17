@@ -41,3 +41,25 @@ tls:
 		},
 	}, data)
 }
+
+func TestParseWithInvalidYAML(t *testing.T) {
+	yamlSource := dYAML([]byte(`
+servers:
+  ports: 2000
+  timeoutz: 60h
+tls:
+  keey: YAML
+`))
+
+	fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
+	flagSource := dFlags(fs, []string{"-verbose", "-server.port=21"})
+
+	data := Data{}
+	err := dParse(&data,
+		dDefaults(fs),
+		yamlSource,
+		flagSource,
+	)
+	require.Error(t, err)
+	require.Equal(t, err.Error(), "yaml: unmarshal errors:\n  line 2: field servers not found in type cfg.Data\n  line 6: field keey not found in type cfg.TLS")
+}

@@ -55,7 +55,7 @@ func YAML(f *string) Source {
 // dYAML returns a YAML source and allows dependency injection
 func dYAML(y []byte) Source {
 	return func(dst interface{}) error {
-		return yaml.Unmarshal(y, dst)
+		return yaml.UnmarshalStrict(y, dst)
 	}
 }
 
