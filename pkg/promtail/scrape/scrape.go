@@ -35,6 +35,11 @@ type JournalTargetConfig struct {
 	// if the cursor is older than the MaxAge value, it will not be used.
 	MaxAge string `yaml:"max_age"`
 
+	// JSON forces the output message of entries read from the journal to be
+	// JSON. The message will contain all original fields from the source
+	// journal entry.
+	JSON bool `yaml:"json"`
+
 	// Labels optionally holds labels to associate with each record coming out
 	// of the journal.
 	Labels model.LabelSet `yaml:"labels"`

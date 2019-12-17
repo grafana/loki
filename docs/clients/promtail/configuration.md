@@ -572,6 +572,12 @@ Promtail. Requires a build of Promtail that has journal support _enabled_. If
 using the AMD64 Docker image, this is enabled by default.
 
 ```yaml
+# When true, log messages from the journal are passed through the
+# pipeline as a JSON message with all of the journal entries' original
+# fields. When false, the log message is the text content of the MESSAGE
+# field from the journal entry.
+[json: <boolean> | default = false]
+
 # The oldest relative time from process start that will be read
 # and sent to Loki.
 [max_age: <duration> | default = 7h]
