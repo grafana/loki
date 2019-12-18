@@ -284,6 +284,13 @@ The `ingester_config` block configures Ingesters.
 # - `lz4` fastest compression speed (188 kB per chunk)
 # - `snappy` fast and popular compression algorithm (272 kB per chunk)
 [chunk_encoding: <string> | default = gzip]
+
+# Parameters used to synchronize ingesters to cut chunks at the same moment.
+# Sync period is used to roll over incoming entry to a new chunk. If chunk's utilization
+# isn't high enough (eg. less than 50% when sync_min_utilization is set to 0.5), then
+# this chunk rollover doesn't happen.
+[sync_period: <duration> | default = 0]
+[sync_min_utilization: <float> | Default = 0]
 ```
 
 ### lifecycler_config

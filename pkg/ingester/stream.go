@@ -100,12 +100,15 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 	return nil
 }
 
-func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
+func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePeriod time.Duration, minUtilization float64) error {
+	var lastChunkTimestamp time.Time
 	if len(s.chunks) == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
 			chunk: s.factory(),
 		})
 		chunksCreatedTotal.Inc()
+	} else {
+		_, lastChunkTimestamp = s.chunks[len(s.chunks)-1].chunk.Bounds()
 	}
 
 	storedEntries := []logproto.Entry{}
@@ -115,7 +118,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 	// we still want to append the later ones.
 	for i := range entries {
 		chunk := &s.chunks[len(s.chunks)-1]
-		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) {
+		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, lastChunkTimestamp, chunk.chunk, synchronizePeriod, minUtilization) {
 			// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
 			err := chunk.chunk.Close()
 			if err != nil {
@@ -133,12 +136,14 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 				chunk: s.factory(),
 			})
 			chunk = &s.chunks[len(s.chunks)-1]
+			lastChunkTimestamp = time.Time{}
 		}
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], err})
 		} else {
 			// send only stored entries to tailers
 			storedEntries = append(storedEntries, entries[i])
+			lastChunkTimestamp = entries[i].Timestamp
 		}
 		chunk.lastUpdated = time.Now()
 	}
@@ -191,6 +196,32 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 	}
 
 	return nil
+}
+
+// Returns true, if chunk should be cut before adding new entry. This is done to make ingesters
+// cut the chunk for this stream at the same moment, so that new chunk will contain exactly the same entries.
+func (s *stream) cutChunkForSynchronization(entryTimestamp, prevEntryTimestamp time.Time, chunk chunkenc.Chunk, synchronizePeriod time.Duration, minUtilization float64) bool {
+	if synchronizePeriod <= 0 || prevEntryTimestamp.IsZero() {
+		return false
+	}
+
+	// we use fingerprint as a jitter here, basically offsetting stream synchronization points to different
+	// this breaks if streams are mapped to different fingerprints on different ingesters, which is too bad.
+	cts := (uint64(entryTimestamp.UnixNano()) + uint64(s.fp)) % uint64(synchronizePeriod.Nanoseconds())
+	pts := (uint64(prevEntryTimestamp.UnixNano()) + uint64(s.fp)) % uint64(synchronizePeriod.Nanoseconds())
+
+	// if current entry timestamp has rolled over synchronization period
+	if cts < pts {
+		if minUtilization <= 0 {
+			return true
+		}
+
+		if chunk.Utilization() > minUtilization {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Returns an iterator.

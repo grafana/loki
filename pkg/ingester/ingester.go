@@ -52,6 +52,10 @@ type Config struct {
 	TargetChunkSize   int           `yaml:"chunk_target_size"`
 	ChunkEncoding     string        `yaml:"chunk_encoding"`
 
+	// Synchronization settings. Used to make sure that ingesters cut their chunks at the same moments.
+	SyncPeriod         time.Duration `yaml:"sync_period"`
+	SyncMinUtilization float64       `yaml:"sync_min_utilization"`
+
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(cfg client.Config, addr string) (grpc_health_v1.HealthClient, error)
 }
@@ -69,6 +73,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "")
 	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 0, "")
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", chunkenc.EncGZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", chunkenc.SupportedEncoding()))
+	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 0, "How often to cut chunks to synchronize ingesters.")
+	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0, "Minimum utilization of chunk when doing synchronization.")
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -202,7 +208,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(instanceID, i.factory, i.limits)
+		inst = newInstance(instanceID, i.factory, i.limits, i.cfg.SyncPeriod, i.cfg.SyncMinUtilization)
 		i.instances[instanceID] = inst
 	}
 	return inst
