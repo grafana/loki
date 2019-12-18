@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -66,9 +67,13 @@ type instance struct {
 
 	limits  *validation.Overrides
 	factory func() chunkenc.Chunk
+
+	// sync
+	syncPeriod  time.Duration
+	syncMinUtil float64
 }
 
-func newInstance(instanceID string, factory func() chunkenc.Chunk, limits *validation.Overrides) *instance {
+func newInstance(instanceID string, factory func() chunkenc.Chunk, limits *validation.Overrides, syncPeriod time.Duration, syncMinUtil float64) *instance {
 	i := &instance{
 		streams:    map[model.Fingerprint]*stream{},
 		index:      index.New(),
@@ -80,6 +85,9 @@ func newInstance(instanceID string, factory func() chunkenc.Chunk, limits *valid
 		factory: factory,
 		tailers: map[uint32]*tailer{},
 		limits:  limits,
+
+		syncPeriod:  syncPeriod,
+		syncMinUtil: syncMinUtil,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i
@@ -131,7 +139,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		}
 
 		prevNumChunks := len(stream.chunks)
-		if err := stream.Push(ctx, s.Entries); err != nil {
+		if err := stream.Push(ctx, s.Entries, i.syncPeriod, i.syncMinUtil); err != nil {
 			appendErr = err
 			continue
 		}

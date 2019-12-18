@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -26,7 +27,7 @@ func TestLabelsCollisions(t *testing.T) {
 	o, err := validation.NewOverrides(validation.Limits{MaxStreamsPerUser: 1000})
 	require.NoError(t, err)
 
-	i := newInstance("test", defaultFactory, o)
+	i := newInstance("test", defaultFactory, o, 0, 0)
 
 	// avoid entries from the future.
 	tt := time.Now().Add(-5 * time.Minute)
@@ -52,7 +53,7 @@ func TestConcurrentPushes(t *testing.T) {
 	o, err := validation.NewOverrides(validation.Limits{MaxStreamsPerUser: 1000})
 	require.NoError(t, err)
 
-	inst := newInstance("test", defaultFactory, o)
+	inst := newInstance("test", defaultFactory, o, 0, 0)
 
 	const (
 		concurrent          = 10
@@ -96,6 +97,50 @@ func TestConcurrentPushes(t *testing.T) {
 
 	wg.Wait()
 	// test passes if no goroutine reports error
+}
+
+func TestSyncPeriod(t *testing.T) {
+	o, err := validation.NewOverrides(validation.Limits{MaxStreamsPerUser: 1000})
+	require.NoError(t, err)
+
+	const (
+		syncPeriod = 1 * time.Minute
+		randomStep = time.Second
+		entries    = 1000
+		minUtil    = 0.20
+	)
+
+	inst := newInstance("test", defaultFactory, o, syncPeriod, minUtil)
+	lbls := makeRandomLabels()
+
+	tt := time.Now()
+
+	var result []logproto.Entry
+	for i := 0; i < entries; i++ {
+		result = append(result, logproto.Entry{Timestamp: tt, Line: fmt.Sprintf("hello %d", i)})
+		tt = tt.Add(time.Duration(1 + rand.Int63n(randomStep.Nanoseconds())))
+	}
+
+	err = inst.Push(context.Background(), &logproto.PushRequest{Streams: []*logproto.Stream{{Labels: lbls, Entries: result}}})
+	require.NoError(t, err)
+
+	// let's verify results.
+	ls, err := util.ToClientLabels(lbls)
+	require.NoError(t, err)
+
+	s, err := inst.getOrCreateStream(ls)
+	require.NoError(t, err)
+
+	// make sure each chunk spans max 'sync period' time
+	for _, c := range s.chunks {
+		start, end := c.chunk.Bounds()
+		span := end.Sub(start)
+
+		const format = "15:04:05.000"
+		t.Log(start.Format(format), "--", end.Format(format), span, c.chunk.Utilization())
+
+		require.True(t, span < syncPeriod || c.chunk.Utilization() >= minUtil)
+	}
 }
 
 func entries(n int, t time.Time) []logproto.Entry {
