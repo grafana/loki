@@ -31,7 +31,7 @@ You can use `Labels`, `RemoveKeys` , `LabelKeys` and `LabelMapPath` to how the o
 
 ### AutoKubernetesLabels
 
-If set to true, it will add all Kubernetes labels to Loki labels automatically and ignore paramaters `LabelKeys`, LabelMapPath.
+If set to true, it will add all Kubernetes labels to Loki labels automatically and ignore parameters `LabelKeys`, LabelMapPath.
 
 ### LabelMapPath
 

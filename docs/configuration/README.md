@@ -204,7 +204,7 @@ pool_config:
 The `grpc_client_config` block configures a client connection to a gRPC service.
 
 ```yaml
-# The maximum size in bytes the client can recieve
+# The maximum size in bytes the client can receive
 [max_recv_msg_size: <int> | default = 104857600]
 
 # The maximum size in bytes the client can send
@@ -297,7 +297,7 @@ ring.
 [ring: <ring_config>]
 
 # The number of tokens the lifecycler will generate and put into the ring if
-# it joined without transfering tokens from another lifecycler.
+# it joined without transferring tokens from another lifecycler.
 [num_tokens: <int> | default = 128]
 
 # Period at which to heartbeat to the underlying ring.
@@ -363,9 +363,9 @@ kvstore:
     # The maximum number of retries to do for failed ops to ETCD.
     [max_retries: <int> | default = 10]
 
-# The heartbeart timeout after which ingesters are skipped for
+# The heartbeat timeout after which ingesters are skipped for
 # reading and writing.
-[heartbeart_timeout: <duration> | default = 1m]
+[heartbeat_timeout: <duration> | default = 1m]
 
 # The number of ingesters to write to and read from. Must be at least
 # 1.
@@ -390,7 +390,7 @@ aws:
   # Set to true to force the request to use path-style addressing
   [s3forcepathstyle: <boolean> | default = false]
 
-  # Configure the DynamoDB conection
+  # Configure the DynamoDB connection
   dynamodbconfig:
     # URL for DynamoDB with escaped Key and Secret encoded. If only region is specified as a
     # host, the proper endpoint will be deduced. Use inmemory:///<bucket-name> to
@@ -546,7 +546,7 @@ the index to a backing cache store.
 # Enable in-memory cache.
 [enable_fifocache: <boolean>]
 
-# The default validity of entries for caches unless overriden.
+# The default validity of entries for caches unless overridden.
 # "defaul" is correct.
 [defaul_validity: <duration>]
 

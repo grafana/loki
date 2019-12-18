@@ -124,7 +124,7 @@ the hash ring. Each ingester has a state of either `PENDING`, `JOINING`,
    read requests for data it still has in memory.
 
 5. `UNHEALTHY` is an Ingester's state when it has failed to heartbeat to
-   Consul. `UNHEALHTY` is set by the distributor when it periodically checks the ring.
+   Consul. `UNHEALTHY` is set by the distributor when it periodically checks the ring.
 
 Each log stream that an ingester receives is built up into a set of many
 "chunks" in memory and flushed to the backing storage backend at a configurable

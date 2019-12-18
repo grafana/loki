@@ -282,7 +282,7 @@ A **huge** thanks to the **36 contributors** who submitted **148 PR's** since 0.
 
 ## Docs
 
-* **Docs** [1176](https://github.com/grafana/loki/pull/1176) **rfratto**: docs: add exmaple and documentation about using JMESPath literals
+* **Docs** [1176](https://github.com/grafana/loki/pull/1176) **rfratto**: docs: add example and documentation about using JMESPath literals
 * **Docs** [1139](https://github.com/grafana/loki/pull/1139) **joe-elliott**: Moved client docs and add serilog example
 * **Docs** [1132](https://github.com/grafana/loki/pull/1132) **kailwallin**: FixedTypo.Update README.md
 * **Docs** [1130](https://github.com/grafana/loki/pull/1130) **pracucci**: docs: fix Promtail / Loki capitalization
