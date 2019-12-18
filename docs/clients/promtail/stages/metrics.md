@@ -130,7 +130,7 @@ increment the counter by one rather than by using the value of `time`.
 - regex:
     expression: "^.*(?P<order_success>order successful).*$"
 - metrics:
-    succesful_orders_total:
+    successful_orders_total:
       type: Counter
       description: "log lines with the message `order successful`"
       source: order_success
@@ -140,7 +140,7 @@ increment the counter by one rather than by using the value of `time`.
 
 This pipeline first tries to find `order successful` in the log line, extracting
 it as the `order_success` field in the extracted map. The metrics stage then
-creates a metric called `succesful_orders_total` whose value only increases when
+creates a metric called `successful_orders_total` whose value only increases when
 `order_success` was found in the extracted map.
 
 The result of this pipeline is a metric whose value only increases when a log
@@ -150,7 +150,7 @@ line with the text `order successful` was scraped by Promtail.
 - regex:
     expression: "^.* order_status=(?P<order_status>.*?) .*$"
 - metrics:
-    succesful_orders_total:
+    successful_orders_total:
       type: Counter
       description: "successful orders"
       source: order_status
@@ -170,7 +170,7 @@ This pipeline first tries to find text in the format `order_status=<value>` in
 the log line, pulling out the `<value>` into the extracted map with the key
 `order_status`.
 
-The metric stages creates `succesful_orders_total` and `failed_orders_total`
+The metric stages creates `successful_orders_total` and `failed_orders_total`
 metrics that only increment when the value of `order_status` in the extracted
 map is `success` or `fail` respectively.
 

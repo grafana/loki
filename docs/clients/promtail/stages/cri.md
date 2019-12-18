@@ -16,7 +16,7 @@ space-delimited values with the following components:
 2. `stream`: Either stdout or stderr
 3. `log`: The contents of the log line
 
-No whitespace is permitted between the components. In the following exmaple,
+No whitespace is permitted between the components. In the following example,
 only the first log line can be properly formatted using the `cri` stage:
 
 ```

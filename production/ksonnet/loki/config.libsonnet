@@ -193,7 +193,7 @@
         max_look_back_period: 0,
       },
 
-      // Default schema config is bigtable/gcs, this will need to be overriden for other stores
+      // Default schema config is bigtable/gcs, this will need to be overridden for other stores
       schema_config: {
         configs: [{
           from: '2018-04-15',
