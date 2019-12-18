@@ -224,7 +224,366 @@ func Test_codec_MergeResponse(t *testing.T) {
 		want      queryrange.Response
 		wantErr   bool
 	}{
-		{"one", []queryrange.Response{}, nil, true},
+		{"empty", []queryrange.Response{}, nil, true},
+		{"unknown response", []queryrange.Response{&badResponse{}}, nil, true},
+		{"prom", []queryrange.Response{
+			&queryrange.PrometheusResponse{
+				Status: loghttp.QueryStatusSuccess,
+				Data: queryrange.PrometheusData{
+					ResultType: loghttp.ResultTypeMatrix,
+					Result:     sampleStreams,
+				},
+			}},
+			&queryrange.PrometheusResponse{
+				Status: loghttp.QueryStatusSuccess,
+				Data: queryrange.PrometheusData{
+					ResultType: loghttp.ResultTypeMatrix,
+					Result:     sampleStreams,
+				},
+			},
+			false,
+		},
+		{
+			"loki backward",
+			[]queryrange.Response{
+				&LokiResponse{
+					Status:    loghttp.QueryStatusSuccess,
+					Direction: logproto.BACKWARD,
+					Limit:     100,
+					Version:   1,
+					Data: LokiData{
+						ResultType: loghttp.ResultTypeStream,
+						Result: []logproto.Stream{
+							{
+								Labels: `{foo="bar", level="error"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 1), Line: "1"},
+									{Timestamp: time.Unix(0, 2), Line: "2"},
+								},
+							},
+							{
+								Labels: `{foo="bar", level="debug"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 5), Line: "5"},
+									{Timestamp: time.Unix(0, 6), Line: "6"},
+								},
+							},
+						},
+					},
+				},
+				&LokiResponse{
+					Status:    loghttp.QueryStatusSuccess,
+					Direction: logproto.BACKWARD,
+					Limit:     100,
+					Version:   1,
+					Data: LokiData{
+						ResultType: loghttp.ResultTypeStream,
+						Result: []logproto.Stream{
+							{
+								Labels: `{foo="bar", level="error"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 10), Line: "10"},
+									{Timestamp: time.Unix(0, 9), Line: "9"},
+									{Timestamp: time.Unix(0, 9), Line: "9"},
+								},
+							},
+							{
+								Labels: `{foo="bar", level="debug"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 15), Line: "15"},
+									{Timestamp: time.Unix(0, 16), Line: "16"},
+								},
+							},
+						},
+					},
+				},
+			},
+			&LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: logproto.BACKWARD,
+				Limit:     100,
+				Version:   1,
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result: []logproto.Stream{
+						{
+							Labels: `{foo="bar", level="debug"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 16), Line: "16"},
+								{Timestamp: time.Unix(0, 15), Line: "15"},
+								{Timestamp: time.Unix(0, 6), Line: "6"},
+								{Timestamp: time.Unix(0, 5), Line: "5"},
+							},
+						},
+						{
+							Labels: `{foo="bar", level="error"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 10), Line: "10"},
+								{Timestamp: time.Unix(0, 9), Line: "9"},
+								{Timestamp: time.Unix(0, 9), Line: "9"},
+								{Timestamp: time.Unix(0, 2), Line: "2"},
+								{Timestamp: time.Unix(0, 1), Line: "1"},
+							},
+						},
+					},
+				},
+			},
+			false,
+		},
+		{
+			"loki backward limited",
+			[]queryrange.Response{
+				&LokiResponse{
+					Status:    loghttp.QueryStatusSuccess,
+					Direction: logproto.BACKWARD,
+					Limit:     4,
+					Version:   1,
+					Data: LokiData{
+						ResultType: loghttp.ResultTypeStream,
+						Result: []logproto.Stream{
+							{
+								Labels: `{foo="bar", level="error"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 1), Line: "1"},
+									{Timestamp: time.Unix(0, 2), Line: "2"},
+								},
+							},
+							{
+								Labels: `{foo="bar", level="debug"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 5), Line: "5"},
+									{Timestamp: time.Unix(0, 6), Line: "6"},
+								},
+							},
+						},
+					},
+				},
+				&LokiResponse{
+					Status:    loghttp.QueryStatusSuccess,
+					Direction: logproto.BACKWARD,
+					Limit:     4,
+					Version:   1,
+					Data: LokiData{
+						ResultType: loghttp.ResultTypeStream,
+						Result: []logproto.Stream{
+							{
+								Labels: `{foo="bar", level="error"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 10), Line: "10"},
+									{Timestamp: time.Unix(0, 9), Line: "9"},
+									{Timestamp: time.Unix(0, 9), Line: "9"},
+								},
+							},
+							{
+								Labels: `{foo="bar", level="debug"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 15), Line: "15"},
+									{Timestamp: time.Unix(0, 16), Line: "16"},
+								},
+							},
+						},
+					},
+				},
+			},
+			&LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: logproto.BACKWARD,
+				Limit:     4,
+				Version:   1,
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result: []logproto.Stream{
+						{
+							Labels: `{foo="bar", level="debug"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 16), Line: "16"},
+								{Timestamp: time.Unix(0, 15), Line: "15"},
+							},
+						},
+						{
+							Labels: `{foo="bar", level="error"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 10), Line: "10"},
+								{Timestamp: time.Unix(0, 9), Line: "9"},
+							},
+						},
+					},
+				},
+			},
+			false,
+		},
+		{
+			"loki forward",
+			[]queryrange.Response{
+				&LokiResponse{
+					Status:    loghttp.QueryStatusSuccess,
+					Direction: logproto.FORWARD,
+					Limit:     100,
+					Version:   1,
+					Data: LokiData{
+						ResultType: loghttp.ResultTypeStream,
+						Result: []logproto.Stream{
+							{
+								Labels: `{foo="bar", level="error"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 1), Line: "1"},
+									{Timestamp: time.Unix(0, 2), Line: "2"},
+								},
+							},
+							{
+								Labels: `{foo="bar", level="debug"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 5), Line: "5"},
+									{Timestamp: time.Unix(0, 6), Line: "6"},
+								},
+							},
+						},
+					},
+				},
+				&LokiResponse{
+					Status:    loghttp.QueryStatusSuccess,
+					Direction: logproto.FORWARD,
+					Limit:     100,
+					Version:   1,
+					Data: LokiData{
+						ResultType: loghttp.ResultTypeStream,
+						Result: []logproto.Stream{
+							{
+								Labels: `{foo="bar", level="error"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 10), Line: "10"},
+									{Timestamp: time.Unix(0, 9), Line: "9"},
+								},
+							},
+							{
+								Labels: `{foo="bar", level="debug"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 15), Line: "15"},
+									{Timestamp: time.Unix(0, 15), Line: "15"},
+									{Timestamp: time.Unix(0, 16), Line: "16"},
+								},
+							},
+						},
+					},
+				},
+			},
+			&LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: logproto.FORWARD,
+				Limit:     100,
+				Version:   1,
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result: []logproto.Stream{
+						{
+							Labels: `{foo="bar", level="debug"}`,
+							Entries: []logproto.Entry{
+
+								{Timestamp: time.Unix(0, 5), Line: "5"},
+								{Timestamp: time.Unix(0, 6), Line: "6"},
+								{Timestamp: time.Unix(0, 15), Line: "15"},
+								{Timestamp: time.Unix(0, 15), Line: "15"},
+								{Timestamp: time.Unix(0, 16), Line: "16"},
+							},
+						},
+						{
+							Labels: `{foo="bar", level="error"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 1), Line: "1"},
+								{Timestamp: time.Unix(0, 2), Line: "2"},
+								{Timestamp: time.Unix(0, 9), Line: "9"},
+								{Timestamp: time.Unix(0, 10), Line: "10"},
+							},
+						},
+					},
+				},
+			},
+			false,
+		},
+		{
+			"loki forward limited",
+			[]queryrange.Response{
+				&LokiResponse{
+					Status:    loghttp.QueryStatusSuccess,
+					Direction: logproto.FORWARD,
+					Limit:     5,
+					Version:   1,
+					Data: LokiData{
+						ResultType: loghttp.ResultTypeStream,
+						Result: []logproto.Stream{
+							{
+								Labels: `{foo="bar", level="error"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 1), Line: "1"},
+									{Timestamp: time.Unix(0, 2), Line: "2"},
+								},
+							},
+							{
+								Labels: `{foo="bar", level="debug"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 5), Line: "5"},
+									{Timestamp: time.Unix(0, 6), Line: "6"},
+								},
+							},
+						},
+					},
+				},
+				&LokiResponse{
+					Status:    loghttp.QueryStatusSuccess,
+					Direction: logproto.FORWARD,
+					Limit:     5,
+					Version:   1,
+					Data: LokiData{
+						ResultType: loghttp.ResultTypeStream,
+						Result: []logproto.Stream{
+							{
+								Labels: `{foo="bar", level="error"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 10), Line: "10"},
+									{Timestamp: time.Unix(0, 9), Line: "9"},
+								},
+							},
+							{
+								Labels: `{foo="bar", level="debug"}`,
+								Entries: []logproto.Entry{
+									{Timestamp: time.Unix(0, 15), Line: "15"},
+									{Timestamp: time.Unix(0, 15), Line: "15"},
+									{Timestamp: time.Unix(0, 16), Line: "16"},
+								},
+							},
+						},
+					},
+				},
+			},
+			&LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: logproto.FORWARD,
+				Limit:     5,
+				Version:   1,
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result: []logproto.Stream{
+						{
+							Labels: `{foo="bar", level="debug"}`,
+							Entries: []logproto.Entry{
+
+								{Timestamp: time.Unix(0, 5), Line: "5"},
+								{Timestamp: time.Unix(0, 6), Line: "6"},
+							},
+						},
+						{
+							Labels: `{foo="bar", level="error"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 1), Line: "1"},
+								{Timestamp: time.Unix(0, 2), Line: "2"},
+								{Timestamp: time.Unix(0, 9), Line: "9"},
+							},
+						},
+					},
+				},
+			},
+			false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -233,9 +592,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				t.Errorf("codec.MergeResponse() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("codec.MergeResponse() = %v, want %v", got, tt.want)
-			}
+			require.Equal(t, tt.want, got)
 		})
 	}
 }

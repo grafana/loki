@@ -228,7 +228,7 @@ type byDirection struct {
 func (a byDirection) Len() int      { return len(a.entries) }
 func (a byDirection) Swap(i, j int) { a.entries[i], a.entries[j] = a.entries[j], a.entries[i] }
 func (a byDirection) Less(i, j int) bool {
-	e1, e2 := a.entries[i], a.entries[i]
+	e1, e2 := a.entries[i], a.entries[j]
 	if a.direction == logproto.BACKWARD {
 		switch {
 		case e1.entry.Timestamp.UnixNano() < e2.entry.Timestamp.UnixNano():
