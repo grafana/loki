@@ -108,8 +108,8 @@ func TestMetricsTripperware(t *testing.T) {
 	count, h := counter()
 	rt.setHandler(h)
 	_, err = tpw(rt).RoundTrip(req)
-	// 2 split so 6 retries
-	require.Equal(t, 6, *count)
+	// 3 retries configured.
+	require.Equal(t, 3, *count)
 	require.Error(t, err)
 
 	// testing split interval
@@ -188,8 +188,7 @@ func TestLogFilterTripperware(t *testing.T) {
 	retry, h := counter()
 	rt.setHandler(h)
 	_, err = tpw(rt).RoundTrip(req)
-	// the first batch will stop on error so we expect more than 32 requests.
-	require.Greater(t, *retry, 32)
+	require.Equal(t, *retry, 3)
 	require.Error(t, err)
 }
 
@@ -258,7 +257,7 @@ func (fakeLimits) MaxQueryLength(string) time.Duration {
 }
 
 func (fakeLimits) MaxQueryParallelism(string) int {
-	return 32
+	return 1
 }
 
 func counter() (*int, http.Handler) {

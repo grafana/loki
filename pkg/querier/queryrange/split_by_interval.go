@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
@@ -31,7 +32,13 @@ type splitByInterval struct {
 func (s splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
 	lokiRequest := r.(*LokiRequest)
 	intervals := splitByTime(lokiRequest, s.interval)
-	var result *LokiResponse
+	var result queryrange.Response
+
+	if lokiRequest.Direction == logproto.BACKWARD {
+		for i, j := 0, len(intervals)-1; i < j; i, j = i+1, j-1 {
+			intervals[i], intervals[j] = intervals[j], intervals[i]
+		}
+	}
 
 	for _, interval := range intervals {
 		linterval := interval.(*LokiRequest)
@@ -59,9 +66,8 @@ func (s splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryran
 		if lokiRes.isFull() {
 			return resp, nil
 		}
-		if result == nil {
-			result = lokiRes
-		}
+
+		result = lokiRes
 	}
 
 	return result, nil
