@@ -22,27 +22,58 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-var testTime = time.Date(2019, 12, 02, 11, 10, 10, 10, time.UTC)
-var testConfig = Config{
-	IntervalBatchSize: 32,
-	Config: queryrange.Config{
-		SplitQueriesByInterval: 4 * time.Hour,
-		AlignQueriesWithStep:   true,
-		MaxRetries:             3,
-		CacheResults:           true,
-		ResultsCacheConfig: queryrange.ResultsCacheConfig{
-			MaxCacheFreshness: 1 * time.Minute,
-			SplitInterval:     4 * time.Hour,
-			CacheConfig: cache.Config{
-				EnableFifoCache: true,
-				Fifocache: cache.FifoCacheConfig{
-					Size:     1024,
-					Validity: 24 * time.Hour,
+var (
+	testTime   = time.Date(2019, 12, 02, 11, 10, 10, 10, time.UTC)
+	testConfig = Config{
+		IntervalBatchSize: 32,
+		Config: queryrange.Config{
+			SplitQueriesByInterval: 4 * time.Hour,
+			AlignQueriesWithStep:   true,
+			MaxRetries:             3,
+			CacheResults:           true,
+			ResultsCacheConfig: queryrange.ResultsCacheConfig{
+				MaxCacheFreshness: 1 * time.Minute,
+				SplitInterval:     4 * time.Hour,
+				CacheConfig: cache.Config{
+					EnableFifoCache: true,
+					Fifocache: cache.FifoCacheConfig{
+						Size:     1024,
+						Validity: 24 * time.Hour,
+					},
 				},
 			},
 		},
-	},
-}
+	}
+	matrix = promql.Matrix{
+		{
+			Points: []promql.Point{
+				{
+					T: toMs(testTime.Add(-4 * time.Hour)),
+					V: 0.013333333333333334,
+				},
+			},
+			Metric: []labels.Label{
+				{
+					Name:  "filename",
+					Value: `/var/hostlog/apport.log`,
+				},
+				{
+					Name:  "job",
+					Value: "varlogs",
+				},
+			},
+		},
+	}
+	streams = logql.Streams{
+		{
+			Entries: []logproto.Entry{
+				{Timestamp: testTime.Add(-4 * time.Hour), Line: "foo"},
+				{Timestamp: testTime.Add(-1 * time.Hour), Line: "barr"},
+			},
+			Labels: `{filename="/var/hostlog/apport.log", job="varlogs"}`,
+		},
+	}
+)
 
 func TestMetricsTripperware(t *testing.T) {
 
@@ -69,42 +100,32 @@ func TestMetricsTripperware(t *testing.T) {
 	req = req.WithContext(ctx)
 	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 	require.NoError(t, err)
+	rt, err := newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
 
+	// testing retry
 	count, h := counter()
-	_, err = tpw(newfakeRoundTripper(t, h)).RoundTrip(req)
+	rt.setHandler(h)
+	_, err = tpw(rt).RoundTrip(req)
 	// 2 split so 6 retries
 	require.Equal(t, 6, *count)
 	require.Error(t, err)
 
-	count, h = promqlResult(promql.Matrix{
-		{
-			Points: []promql.Point{
-				{
-					T: toMs(testTime.Add(-4 * time.Hour)),
-					V: 0.013333333333333334,
-				},
-			},
-			Metric: []labels.Label{
-				{
-					Name:  "filename",
-					Value: `/var/hostlog/apport.log`,
-				},
-				{
-					Name:  "job",
-					Value: "varlogs",
-				},
-			},
-		},
-	})
-	resp, err := tpw(newfakeRoundTripper(t, h)).RoundTrip(req)
+	// testing split interval
+	count, h = promqlResult(matrix)
+	rt.setHandler(h)
+	resp, err := tpw(rt).RoundTrip(req)
 	// 2 queries
 	require.Equal(t, 2, *count)
 	require.NoError(t, err)
 	lokiResponse, err := lokiCodec.DecodeResponse(ctx, resp, lreq)
 	require.NoError(t, err)
 
+	// testing cache
 	count, h = counter()
-	cacheResp, err := tpw(newfakeRoundTripper(t, h)).RoundTrip(req)
+	rt.setHandler(h)
+	cacheResp, err := tpw(rt).RoundTrip(req)
 	// 0 queries result are cached.
 	require.Equal(t, 0, *count)
 	require.NoError(t, err)
@@ -121,9 +142,69 @@ func TestLogFilterTripperware(t *testing.T) {
 		defer func() { _ = stopper.Stop() }()
 	}
 	require.NoError(t, err)
+	rt, err := newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
 
 	lreq := &LokiRequest{
 		Query:     `{app="foo"} |= "foo"`,
+		Limit:     1000,
+		StartTs:   testTime.Add(-10 * time.Hour), // bigger than the limit
+		EndTs:     testTime,
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query_range",
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	require.NoError(t, err)
+
+	req = req.WithContext(ctx)
+	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+	require.NoError(t, err)
+
+	//testing limit
+	count, h := promqlResult(streams)
+	rt.setHandler(h)
+	_, err = tpw(rt).RoundTrip(req)
+	require.Equal(t, 0, *count)
+	require.Error(t, err)
+
+	// set the query length back to normal
+	lreq.StartTs = testTime.Add(-6 * time.Hour)
+	req, err = lokiCodec.EncodeRequest(ctx, lreq)
+	require.NoError(t, err)
+
+	// testing split 2 queries with 32 batch size
+	split, h := promqlResult(streams)
+	rt.setHandler(h)
+	resp, err := tpw(rt).RoundTrip(req)
+	require.Equal(t, 64, *split)
+	require.NoError(t, err)
+	_, err = lokiCodec.DecodeResponse(ctx, resp, lreq)
+	require.NoError(t, err)
+
+	// testing retry
+	retry, h := counter()
+	rt.setHandler(h)
+	_, err = tpw(rt).RoundTrip(req)
+	// the first batch will stop on error so we expect more than 32 requests.
+	require.Greater(t, *retry, 32)
+	require.Error(t, err)
+}
+
+func TestLogNoRegex(t *testing.T) {
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
+	if stopper != nil {
+		defer func() { _ = stopper.Stop() }()
+	}
+	require.NoError(t, err)
+	rt, err := newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
+
+	lreq := &LokiRequest{
+		Query:     `{app="foo"}`, // no regex so it should go to the querier
 		Limit:     1000,
 		StartTs:   testTime.Add(-6 * time.Hour),
 		EndTs:     testTime,
@@ -139,33 +220,45 @@ func TestLogFilterTripperware(t *testing.T) {
 	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 	require.NoError(t, err)
 
-	count, h := promqlResult(logql.Streams{
-		{
-			Entries: []logproto.Entry{
-				{Timestamp: testTime.Add(-4 * time.Hour), Line: "foo"},
-				{Timestamp: testTime.Add(-1 * time.Hour), Line: "barr"},
-			},
-			Labels: `{filename="/var/hostlog/apport.log", job="varlogs"}`,
-		},
-	})
-	resp, err := tpw(newfakeRoundTripper(t, h)).RoundTrip(req)
-	// 2 queries
-	require.Equal(t, 64, *count)
+	count, h := promqlResult(streams)
+	rt.setHandler(h)
+	_, err = tpw(rt).RoundTrip(req)
+	require.Equal(t, 1, *count)
 	require.NoError(t, err)
-	lokiResponse, err := lokiCodec.DecodeResponse(ctx, resp, lreq)
-	require.NoError(t, err)
-	t.Log(lokiResponse)
+}
 
+func TestUnhandledPath(t *testing.T) {
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
+	if stopper != nil {
+		defer func() { _ = stopper.Stop() }()
+	}
+	require.NoError(t, err)
+	rt, err := newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req, err := http.NewRequest(http.MethodGet, "/loki/api/v1/labels", nil)
+	require.NoError(t, err)
+	req = req.WithContext(ctx)
+	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+	require.NoError(t, err)
+
+	count, h := errorResult()
+	rt.setHandler(h)
+	_, err = tpw(rt).RoundTrip(req)
+	require.Equal(t, 1, *count)
+	require.NoError(t, err)
 }
 
 type fakeLimits struct{}
 
 func (fakeLimits) MaxQueryLength(string) time.Duration {
-	return 0 // Disable.
+	return time.Hour * 7
 }
 
 func (fakeLimits) MaxQueryParallelism(string) int {
-	return 14 // Flag default.
+	return 32
 }
 
 func counter() (*int, http.Handler) {
@@ -175,6 +268,17 @@ func counter() (*int, http.Handler) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++
+	})
+}
+
+func errorResult() (*int, http.Handler) {
+	count := 0
+	var lock sync.Mutex
+	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lock.Lock()
+		defer lock.Unlock()
+		count++
+		w.WriteHeader(http.StatusInternalServerError)
 	})
 }
 
@@ -197,19 +301,20 @@ type fakeRoundTripper struct {
 	host string
 }
 
-func newfakeRoundTripper(t *testing.T, handler http.Handler) *fakeRoundTripper {
-	s := httptest.NewServer(
-		middleware.AuthenticateUser.Wrap(
-			handler,
-		),
-	)
-
+func newfakeRoundTripper() (*fakeRoundTripper, error) {
+	s := httptest.NewServer(nil)
 	u, err := url.Parse(s.URL)
-	require.NoError(t, err)
+	if err != nil {
+		return nil, err
+	}
 	return &fakeRoundTripper{
 		Server: s,
 		host:   u.Host,
-	}
+	}, nil
+}
+
+func (s *fakeRoundTripper) setHandler(h http.Handler) {
+	s.Config.Handler = middleware.AuthenticateUser.Wrap(h)
 }
 
 func (s fakeRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {

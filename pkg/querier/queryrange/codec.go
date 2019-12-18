@@ -55,8 +55,8 @@ func (codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Reque
 		Query:     req.Query,
 		Limit:     req.Limit,
 		Direction: req.Direction,
-		StartTs:   req.Start,
-		EndTs:     req.End,
+		StartTs:   req.Start.UTC(),
+		EndTs:     req.End.UTC(),
 		// GetStep must return milliseconds
 		Step: int64(req.Step) / 1e6,
 		Path: r.URL.Path,
@@ -76,7 +76,7 @@ func (codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 		"limit":     []string{fmt.Sprintf("%d", lokiReq.Limit)},
 	}
 	if lokiReq.Step != 0 {
-		params["step"] = []string{fmt.Sprintf("%d", lokiReq.Step/int64(1e3))}
+		params["step"] = []string{fmt.Sprintf("%f", float64(lokiReq.Step)/float64(1e3))}
 	}
 	u := &url.URL{
 		// the request could come /api/prom/query but we want to only use the new api.

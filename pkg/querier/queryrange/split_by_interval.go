@@ -68,7 +68,6 @@ func (s splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryran
 }
 
 func splitByTime(r *LokiRequest, interval time.Duration) []queryrange.Request {
-
 	var reqs []queryrange.Request
 	for start := r.StartTs; start.Before(r.EndTs); start = start.Add(interval) {
 		end := start.Add(interval)

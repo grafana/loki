@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 )
 
+// Config is the configuration for the queryrange tripperware
 type Config struct {
 	queryrange.Config `yaml:",inline"`
 	IntervalBatchSize int `yaml:"interval_batch_size"`
@@ -22,6 +23,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.IntervalBatchSize, "interval-batch-size", 16, "The number of batched requests per interval. (only applied to regex)")
 }
 
+// Stopper gracefully shutdown resources created
 type Stopper interface {
 	Stop() error
 }
