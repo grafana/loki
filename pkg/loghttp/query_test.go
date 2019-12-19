@@ -116,3 +116,53 @@ func mustParseURL(u string) *url.URL {
 	}
 	return url
 }
+
+func TestStreams_ToProto(t *testing.T) {
+	tests := []struct {
+		name string
+		s    Streams
+		want []logproto.Stream
+	}{
+		{"empty", nil, nil},
+		{"some", []Stream{
+			{
+				Labels: map[string]string{"foo": "bar"},
+				Entries: []Entry{
+					{Timestamp: time.Unix(0, 1), Line: "1"},
+					{Timestamp: time.Unix(0, 2), Line: "2"},
+				},
+			},
+			{
+				Labels: map[string]string{"foo": "bar", "lvl": "error"},
+				Entries: []Entry{
+					{Timestamp: time.Unix(0, 3), Line: "3"},
+					{Timestamp: time.Unix(0, 4), Line: "4"},
+				},
+			},
+		},
+			[]logproto.Stream{
+				{
+					Labels: `{foo="bar"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 1), Line: "1"},
+						{Timestamp: time.Unix(0, 2), Line: "2"},
+					},
+				},
+				{
+					Labels: `{foo="bar", lvl="error"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 3), Line: "3"},
+						{Timestamp: time.Unix(0, 4), Line: "4"},
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.s.ToProto(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Streams.ToProto() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
