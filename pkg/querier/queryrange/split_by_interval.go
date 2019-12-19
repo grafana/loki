@@ -6,6 +6,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 )
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
@@ -41,11 +43,14 @@ func (s splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryran
 	}
 
 	for _, interval := range intervals {
+		sp, ctx := opentracing.StartSpanFromContext(ctx, "splitByInterval.interval")
 		linterval := interval.(*LokiRequest)
+		logRequest(sp, linterval)
 		reqs := splitByTime(linterval, linterval.EndTs.Sub(linterval.StartTs)/time.Duration(s.batchSize))
 
 		reqResps, err := queryrange.DoRequests(ctx, s.next, reqs, s.limits)
 		if err != nil {
+			sp.Finish()
 			return nil, err
 		}
 
@@ -59,15 +64,18 @@ func (s splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryran
 
 		resp, err := s.merger.MergeResponse(resps...)
 		if err != nil {
+			sp.Finish()
 			return nil, err
 		}
 
 		lokiRes := resp.(*LokiResponse)
 		if lokiRes.isFull() {
+			sp.Finish()
 			return resp, nil
 		}
 
 		result = lokiRes
+		sp.Finish()
 	}
 
 	return result, nil
@@ -91,4 +99,16 @@ func splitByTime(r *LokiRequest, interval time.Duration) []queryrange.Request {
 		})
 	}
 	return reqs
+}
+
+func logRequest(span opentracing.Span, r *LokiRequest) {
+	span.LogFields(
+		otlog.String("query", r.GetQuery()),
+		otlog.String("start", r.StartTs.String()),
+		otlog.String("end", r.EndTs.String()),
+		otlog.Int64("step (ms)", r.GetStep()),
+		otlog.String("direction", r.Direction.String()),
+		otlog.Uint32("limit", r.Limit),
+		otlog.String("path", r.Path),
+	)
 }
