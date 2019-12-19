@@ -647,11 +647,11 @@ var (
 	"status": "success"
   }`
 	sampleStreams = []queryrange.SampleStream{
-		queryrange.SampleStream{
+		{
 			Labels:  []client.LabelAdapter{{Name: "filename", Value: "/var/hostlog/apport.log"}, {Name: "job", Value: "varlogs"}},
 			Samples: []client.Sample{{Value: 0.013333333333333334, TimestampMs: 1568404331324}},
 		},
-		queryrange.SampleStream{
+		{
 			Labels:  []client.LabelAdapter{{Name: "filename", Value: "/var/hostlog/syslog"}, {Name: "job", Value: "varlogs"}},
 			Samples: []client.Sample{{Value: 3.45, TimestampMs: 1568404331324}, {Value: 4.45, TimestampMs: 1568404331339}},
 		},
@@ -674,10 +674,10 @@ var (
 	}`
 	streamsStringLegacy = `{"streams":[{"labels":"{test=\"test\"}","entries":[{"ts":"1970-01-02T05:17:36.789012345-05:00","line":"super line"}]}]}`
 	logStreams          = []logproto.Stream{
-		logproto.Stream{
+		{
 			Labels: `{test="test"}`,
 			Entries: []logproto.Entry{
-				logproto.Entry{
+				{
 					Line:      "super line",
 					Timestamp: time.Unix(0, 123456789012345),
 				},
