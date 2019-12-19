@@ -26,6 +26,7 @@ const (
 
 	Unix   = "Unix"
 	UnixMs = "UnixMs"
+	UnixUs = "UnixUs"
 	UnixNs = "UnixNs"
 
 	TimestampActionOnFailureSkip    = "skip"

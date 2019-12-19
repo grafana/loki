@@ -78,6 +78,14 @@ func convertDateLayout(predef string, location *time.Location) parser {
 			}
 			return time.Unix(0, i*int64(time.Millisecond)), nil
 		}
+	case "UnixUs":
+		return func(t string) (time.Time, error) {
+			i, err := strconv.ParseInt(t, 10, 64)
+			if err != nil {
+				return time.Time{}, err
+			}
+			return time.Unix(0, i*int64(time.Microsecond)), nil
+		}
 	case "UnixNs":
 		return func(t string) (time.Time, error) {
 			i, err := strconv.ParseInt(t, 10, 64)

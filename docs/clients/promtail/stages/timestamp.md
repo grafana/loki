@@ -14,7 +14,7 @@ timestamp:
   # Determines how to parse the time string. Can use
   # pre-defined formats by name: [ANSIC UnixDate RubyDate RFC822
   # RFC822Z RFC850 RFC1123 RFC1123Z RFC3339 RFC3339Nano Unix
-  # UnixMs UnixNs].
+  # UnixMs UnixUs UnixNs].
   format: <string>
 
   # IANA Timezone Database string.
@@ -46,6 +46,7 @@ Additionally, support for common Unix timestamps is supported with the following
 
 - `Unix`: `1562708916`
 - `UnixMs`: `1562708916414`
+- `UnixUs`: `1562708916414123`
 - `UnixNs`: `1562708916000000123`
 
 Custom formats are passed directly to the layout parameter in Go's

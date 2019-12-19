@@ -203,6 +203,17 @@ func TestTimestampStage_Process(t *testing.T) {
 			},
 			time.Date(2019, 7, 9, 21, 48, 36, 414*1000000, time.UTC),
 		},
+		"unix microsecond success": {
+			TimestampConfig{
+				Source: "ts",
+				Format: "UnixUs",
+			},
+			map[string]interface{}{
+				"somethigelse": "notimportant",
+				"ts":           "1562708916414123",
+			},
+			time.Date(2019, 7, 9, 21, 48, 36, 414123*1000, time.UTC),
+		},
 		"unix nano success": {
 			TimestampConfig{
 				Source: "ts",
