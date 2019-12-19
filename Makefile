@@ -534,3 +534,16 @@ else
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod vendor
 endif
 	@git diff --exit-code -- go.sum go.mod vendor/
+
+
+lint-jsonnet:
+	@RESULT=0; \
+	for f in $$(find . -name 'vendor' -prune -o -name '*.libsonnet' -print -o -name '*.jsonnet' -print); do \
+		jsonnetfmt -- "$$f" | diff -u "$$f" -; \
+		RESULT=$$(($$RESULT + $$?)); \
+	done; \
+	exit $$RESULT
+
+fmt-jsonnet:
+	@find . -name 'vendor' -prune -o -name '*.libsonnet' -print -o -name '*.jsonnet' -print | \
+		xargs -n 1 -- jsonnetfmt -i

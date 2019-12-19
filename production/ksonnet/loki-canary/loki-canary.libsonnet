@@ -1,5 +1,5 @@
-local k = import 'ksonnet-util/kausal.libsonnet';
 local config = import 'config.libsonnet';
+local k = import 'ksonnet-util/kausal.libsonnet';
 
 k + config {
   namespace: $.core.v1.namespace.new($._config.namespace),
@@ -7,7 +7,7 @@ k + config {
   local container = $.core.v1.container,
 
   loki_canary_args:: {
-    labelvalue: "$(POD_NAME)",
+    labelvalue: '$(POD_NAME)',
   },
 
   loki_canary_container::

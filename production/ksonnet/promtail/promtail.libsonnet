@@ -1,6 +1,6 @@
-local k = import 'ksonnet-util/kausal.libsonnet';
-local config = import 'config.libsonnet';
 local scrape_config = import './scrape_config.libsonnet';
+local config = import 'config.libsonnet';
+local k = import 'ksonnet-util/kausal.libsonnet';
 
 k + config + scrape_config {
   namespace:
@@ -23,11 +23,11 @@ k + config + scrape_config {
       else
         '%(scheme)s://%(hostname)s/loki/api/v1/push' % client,
 
-    local client_config(client) = client + {
+    local client_config(client) = client {
       url: service_url(client),
     },
 
-    clients: std.map(client_config,$._config.promtail_config.clients)
+    clients: std.map(client_config, $._config.promtail_config.clients),
   },
 
   local configMap = $.core.v1.configMap,

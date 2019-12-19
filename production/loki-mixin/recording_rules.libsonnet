@@ -1,4 +1,4 @@
-local utils = import "mixin-utils/utils.libsonnet";
+local utils = import 'mixin-utils/utils.libsonnet';
 
 {
   prometheusRules+:: {

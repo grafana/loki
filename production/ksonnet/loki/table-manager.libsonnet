@@ -2,9 +2,9 @@
   local container = $.core.v1.container,
 
   table_manager_args::
-  $._config.commonArgs {
-    target: 'table-manager',
-  },
+    $._config.commonArgs {
+      target: 'table-manager',
+    },
 
   table_manager_container::
     container.new('table-manager', $._images.tableManager) +

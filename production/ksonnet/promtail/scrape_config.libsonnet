@@ -1,6 +1,6 @@
 local config = import 'config.libsonnet';
 
-config + {
+config {
   local gen_scrape_config(job_name, pod_uid) = {
     job_name: job_name,
     pipeline_stages: $._config.promtail_config.pipeline_stages,
@@ -81,7 +81,7 @@ config + {
           {
             source_labels: ['__meta_kubernetes_pod_label_name'],
             target_label: '__service__',
-          }
+          },
         ],
       },
 
@@ -160,7 +160,7 @@ config + {
             regex: '([0-9a-z-.]+)-[0-9a-f]{8,10}',
             target_label: '__service__',
           },
-        ]
+        ],
       },
 
       // Scrape config to scrape any control plane static pods (e.g. kube-apiserver
@@ -180,7 +180,7 @@ config + {
             source_labels: ['__meta_kubernetes_pod_label_component'],
             target_label: '__service__',
           },
-        ]
+        ],
       },
     ],
   },

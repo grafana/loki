@@ -6,7 +6,7 @@
     replication_factor: 3,
     memcached_replicas: 3,
 
-    querierConcurrency: 4,
+    querierConcurrency: 16,
 
     // Default to GCS and Bigtable for chunk and index store
     storage_backend: 'bigtable,gcs',
@@ -94,23 +94,28 @@
         graceful_shutdown_timeout: '5s',
         http_server_idle_timeout: '120s',
         grpc_server_max_recv_msg_size: 100 << 20,
+        grpc_server_max_send_msg_size: 100 << 20,
+        grpc_server_max_concurrent_streams: 1000,
         http_server_write_timeout: '1m',
       },
       frontend: {
         compress_responses: true,
+        max_outstanding_per_tenant: 200,
       },
       frontend_worker: {
         address: 'query-frontend.%s.svc.cluster.local:9095' % $._config.namespace,
         // Limit to N/2 worker threads per frontend, as we have two frontends.
-        parallelism:  $._config.querierConcurrency / 2,
-        grpc_client_config:{
+        parallelism: $._config.querierConcurrency / 2,
+        grpc_client_config: {
           max_send_msg_size: 100 << 20,
         },
       },
       query_range: {
         split_queries_by_interval: '4h',
+        interval_batch_size: 16,
         align_queries_with_step: true,
         cache_results: true,
+        max_retries: 5,
         results_cache: {
           split_interval: '4h',
           max_freshness: '10m',
@@ -120,15 +125,18 @@
               consistent_hash: true,
               service: 'memcached-client',
               host: 'memcached-frontend.%s.svc.cluster.local' % $._config.namespace,
+              update_interval: '1m',
+              max_idle_conns: 16,
             },
           },
         },
       },
       limits_config: {
         enforce_metric_name: false,
+        max_query_parallelism: 32,
         reject_old_samples: true,
         reject_old_samples_max_age: '168h',
-        max_query_length: '12000h', // 500 days
+        max_query_length: '12000h',  // 500 days
       },
 
       ingester: {
@@ -166,34 +174,34 @@
       },
 
       storage_config: {
-        index_queries_cache_config: {
-          memcached: {
-            batch_size: 100,
-            parallelism: 100,
-          },
+                        index_queries_cache_config: {
+                          memcached: {
+                            batch_size: 100,
+                            parallelism: 100,
+                          },
 
-          memcached_client: {
-            host: 'memcached-index-queries.%s.svc.cluster.local' % $._config.namespace,
-            service: 'memcached-client',
-            consistent_hash: true,
-          },
-        },
-      } +
-      (if std.count($._config.enabledBackends, 'gcs') > 0 then {
-        gcs: $._config.client_configs.gcs,
-       } else {}) +
-      (if std.count($._config.enabledBackends, 's3') > 0 then {
-        aws+: $._config.client_configs.s3
-       } else {}) +
-      (if std.count($._config.enabledBackends, 'bigtable') > 0 then {
-        bigtable: $._config.client_configs.gcp,
-       } else {}) +
-      (if std.count($._config.enabledBackends, 'cassandra') > 0 then {
-        cassandra: $._config.client_configs.cassandra,
-       } else {}) +
-      (if std.count($._config.enabledBackends, 'dynamodb') > 0 then {
-        aws+: $._config.client_configs.dynamo
-       } else {}),
+                          memcached_client: {
+                            host: 'memcached-index-queries.%s.svc.cluster.local' % $._config.namespace,
+                            service: 'memcached-client',
+                            consistent_hash: true,
+                          },
+                        },
+                      } +
+                      (if std.count($._config.enabledBackends, 'gcs') > 0 then {
+                         gcs: $._config.client_configs.gcs,
+                       } else {}) +
+                      (if std.count($._config.enabledBackends, 's3') > 0 then {
+                         aws+: $._config.client_configs.s3,
+                       } else {}) +
+                      (if std.count($._config.enabledBackends, 'bigtable') > 0 then {
+                         bigtable: $._config.client_configs.gcp,
+                       } else {}) +
+                      (if std.count($._config.enabledBackends, 'cassandra') > 0 then {
+                         cassandra: $._config.client_configs.cassandra,
+                       } else {}) +
+                      (if std.count($._config.enabledBackends, 'dynamodb') > 0 then {
+                         aws+: $._config.client_configs.dynamo,
+                       } else {}),
 
       chunk_store_config: {
         chunk_cache_config: {

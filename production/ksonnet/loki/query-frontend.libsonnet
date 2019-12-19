@@ -2,7 +2,9 @@
   local container = $.core.v1.container,
 
   query_frontend_args:: {
+    'config.file': '/etc/loki/config.yaml',
     target: 'query-frontend',
+    'log.level': 'debug',
   },
 
   query_frontend_container::
