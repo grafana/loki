@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"reflect"
 	strings "strings"
 	"testing"
 	"time"
@@ -113,9 +112,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 				t.Errorf("codec.DecodeResponse() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("codec.DecodeResponse() = %v, want %v", got, tt.want)
-			}
+			require.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -672,14 +669,14 @@ var (
 			]
 		}
 	}`
-	streamsStringLegacy = `{"streams":[{"labels":"{test=\"test\"}","entries":[{"ts":"1970-01-02T05:17:36.789012345-05:00","line":"super line"}]}]}`
+	streamsStringLegacy = `{"streams":[{"labels":"{test=\"test\"}","entries":[{"ts":"1970-01-02T10:17:36.789012345Z","line":"super line"}]}]}`
 	logStreams          = []logproto.Stream{
 		{
 			Labels: `{test="test"}`,
 			Entries: []logproto.Entry{
 				{
 					Line:      "super line",
-					Timestamp: time.Unix(0, 123456789012345),
+					Timestamp: time.Unix(0, 123456789012345).UTC(),
 				},
 			},
 		},
