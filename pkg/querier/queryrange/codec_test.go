@@ -17,6 +17,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func init() {
+	time.Local = nil // for easier tests comparison
+}
+
 var (
 	start = testTime //  Marshalling the time drops the monotonic clock so we can't use time.Now
 	end   = start.Add(1 * time.Hour)

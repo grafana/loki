@@ -160,7 +160,7 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	e.Timestamp = time.Unix(0, t).UTC()
+	e.Timestamp = time.Unix(0, t)
 	e.Line = unmarshal[1]
 
 	return nil
