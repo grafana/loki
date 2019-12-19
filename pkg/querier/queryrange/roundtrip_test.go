@@ -103,7 +103,6 @@ func TestMetricsTripperware(t *testing.T) {
 	require.NoError(t, err)
 	rt, err := newfakeRoundTripper()
 	require.NoError(t, err)
-	defer rt.Close()
 
 	// testing retry
 	retries, h := counter()
@@ -112,6 +111,11 @@ func TestMetricsTripperware(t *testing.T) {
 	// 3 retries configured.
 	require.GreaterOrEqual(t, *retries, 3)
 	require.Error(t, err)
+	rt.Close()
+
+	rt, err = newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
 
 	// testing split interval
 	count, h := promqlResult(matrix)
