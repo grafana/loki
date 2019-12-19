@@ -75,6 +75,7 @@ var (
 	}
 )
 
+// those tests are mostly for testing the glue between all component and make sure they activate correctly.
 func TestMetricsTripperware(t *testing.T) {
 
 	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
@@ -105,15 +106,15 @@ func TestMetricsTripperware(t *testing.T) {
 	defer rt.Close()
 
 	// testing retry
-	count, h := counter()
+	retries, h := counter()
 	rt.setHandler(h)
 	_, err = tpw(rt).RoundTrip(req)
 	// 3 retries configured.
-	require.Equal(t, 3, *count)
+	require.GreaterOrEqual(t, *retries, 3)
 	require.Error(t, err)
 
 	// testing split interval
-	count, h = promqlResult(matrix)
+	count, h := promqlResult(matrix)
 	rt.setHandler(h)
 	resp, err := tpw(rt).RoundTrip(req)
 	// 2 queries
@@ -185,10 +186,10 @@ func TestLogFilterTripperware(t *testing.T) {
 	require.NoError(t, err)
 
 	// testing retry
-	retry, h := counter()
+	retries, h := counter()
 	rt.setHandler(h)
 	_, err = tpw(rt).RoundTrip(req)
-	require.Equal(t, *retry, 3)
+	require.GreaterOrEqual(t, *retries, 3)
 	require.Error(t, err)
 }
 
