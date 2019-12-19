@@ -85,6 +85,7 @@ func TestTransferOut(t *testing.T) {
 		// Get all the lines back and make sure the blocks transferred successfully
 		for _, stream := range ing2.instances["test"].streams {
 			it, err := stream.Iterator(
+				context.TODO(),
 				time.Unix(0, 0),
 				time.Unix(10, 0),
 				logproto.FORWARD,

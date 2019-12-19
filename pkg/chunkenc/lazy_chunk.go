@@ -22,7 +22,7 @@ func (c *LazyChunk) Iterator(ctx context.Context, from, through time.Time, direc
 	// If the chunk is already loaded, then use that.
 	if c.Chunk.Data != nil {
 		lokiChunk := c.Chunk.Data.(*Facade).LokiChunk()
-		return lokiChunk.Iterator(from, through, direction, filter)
+		return lokiChunk.Iterator(ctx, from, through, direction, filter)
 	}
 
 	return nil, errors.New("chunk is not loaded")

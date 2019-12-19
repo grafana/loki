@@ -7,9 +7,12 @@ import (
 	"sort"
 	"time"
 
+	"github.com/grafana/loki/pkg/chunkenc/decompression"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -144,6 +147,8 @@ func (ng *Engine) NewInstantQuery(
 }
 
 func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "LogQL.Engine")
+	defer span.Finish()
 	ctx, cancel := context.WithTimeout(ctx, ng.timeout)
 	defer cancel()
 
@@ -159,6 +164,18 @@ func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 		return nil, err
 	}
 
+	ctx = decompression.NewContext(ctx)
+	start := time.Now()
+	defer func() {
+		stats := decompression.GetStats(ctx)
+		span.LogFields(
+			otlog.Int64("Time Decompressing (ms)", stats.TimeDecompress.Nanoseconds()/time.Hour.Milliseconds()),
+			otlog.Int64("TimeFiltering (ms)", stats.TimeFiltering.Nanoseconds()/time.Hour.Milliseconds()),
+			otlog.Int64("Total exec time (ms)", time.Since(start).Nanoseconds()/time.Hour.Milliseconds()),
+			otlog.Int64("Total bytes compressed (MB)", stats.BytesCompressed/1024/1024),
+			otlog.Int64("Total bytes uncompressed (MB)", stats.BytesDecompressed/1024/1024),
+		)
+	}()
 	switch e := expr.(type) {
 	case SampleExpr:
 		if err := ng.setupIterators(ctx, e, q); err != nil {

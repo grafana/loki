@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -40,7 +41,7 @@ func TestStreamIterator(t *testing.T) {
 			for i := 0; i < 100; i++ {
 				from := rand.Intn(chunks*entries - 1)
 				len := rand.Intn(chunks*entries-from) + 1
-				iter, err := s.Iterator(time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.FORWARD, nil)
+				iter, err := s.Iterator(context.TODO(), time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.FORWARD, nil)
 				require.NotNil(t, iter)
 				require.NoError(t, err)
 				testIteratorForward(t, iter, int64(from), int64(from+len))
@@ -50,7 +51,7 @@ func TestStreamIterator(t *testing.T) {
 			for i := 0; i < 100; i++ {
 				from := rand.Intn(entries - 1)
 				len := rand.Intn(chunks*entries-from) + 1
-				iter, err := s.Iterator(time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.BACKWARD, nil)
+				iter, err := s.Iterator(context.TODO(), time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.BACKWARD, nil)
 				require.NotNil(t, iter)
 				require.NoError(t, err)
 				testIteratorBackward(t, iter, int64(from), int64(from+len))

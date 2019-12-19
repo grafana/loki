@@ -3,6 +3,7 @@ package chunkenc
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"hash"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/grafana/loki/pkg/chunkenc/decompression"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -464,13 +466,13 @@ func (c *MemChunk) Bounds() (fromT, toT time.Time) {
 }
 
 // Iterator implements Chunk.
-func (c *MemChunk) Iterator(mintT, maxtT time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error) {
+func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error) {
 	mint, maxt := mintT.UnixNano(), maxtT.UnixNano()
 	its := make([]iter.EntryIterator, 0, len(c.blocks)+1)
 
 	for _, b := range c.blocks {
 		if maxt > b.mint && b.maxt > mint {
-			its = append(its, b.iterator(c.readers, filter))
+			its = append(its, b.iterator(ctx, c.readers, filter))
 		}
 	}
 
@@ -491,11 +493,11 @@ func (c *MemChunk) Iterator(mintT, maxtT time.Time, direction logproto.Direction
 	return iter.NewEntryIteratorBackward(iterForward)
 }
 
-func (b block) iterator(pool ReaderPool, filter logql.Filter) iter.EntryIterator {
+func (b block) iterator(ctx context.Context, pool ReaderPool, filter logql.Filter) iter.EntryIterator {
 	if len(b.b) == 0 {
 		return emptyIterator
 	}
-	return newBufferedIterator(pool, b.b, filter)
+	return newBufferedIterator(ctx, pool, b.b, filter)
 }
 
 func (hb *headBlock) iterator(mint, maxt int64, filter logql.Filter) iter.EntryIterator {
@@ -557,6 +559,8 @@ func (li *listIterator) Labels() string { return "" }
 
 type bufferedIterator struct {
 	origBytes []byte
+	rootCtx   context.Context
+	stats     *decompression.Stats
 
 	bufReader *bufio.Reader
 	reader    io.Reader
@@ -574,8 +578,10 @@ type bufferedIterator struct {
 	filter logql.Filter
 }
 
-func newBufferedIterator(pool ReaderPool, b []byte, filter logql.Filter) *bufferedIterator {
+func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte, filter logql.Filter) *bufferedIterator {
 	return &bufferedIterator{
+		rootCtx:   ctx,
+		stats:     &decompression.Stats{BytesCompressed: int64(len(b))},
 		origBytes: b,
 		reader:    nil, // will be initialized later
 		bufReader: nil, // will be initialized later
@@ -593,14 +599,21 @@ func (si *bufferedIterator) Next() bool {
 	}
 
 	for {
+		start := time.Now()
 		ts, line, ok := si.moveNext()
+		si.stats.TimeDecompress += time.Since(start)
 		if !ok {
 			si.Close()
 			return false
 		}
+		// we decode always the line length and ts as varint
+		si.stats.BytesDecompressed += int64(len(line)) + 2*binary.MaxVarintLen64
+		start = time.Now()
 		if si.filter != nil && !si.filter(line) {
+			si.stats.TimeFiltering += time.Since(start)
 			continue
 		}
+		si.stats.TimeFiltering += time.Since(start)
 		si.cur.Line = string(line)
 		si.cur.Timestamp = time.Unix(0, ts)
 		return true
@@ -669,19 +682,24 @@ func (si *bufferedIterator) Error() error { return si.err }
 func (si *bufferedIterator) Close() error {
 	if !si.closed {
 		si.closed = true
-		si.pool.PutReader(si.reader)
-		BufReaderPool.Put(si.bufReader)
-		if si.buf != nil {
-			BytesBufferPool.Put(si.buf)
-		}
-		si.origBytes = nil
-		si.bufReader = nil
-		si.buf = nil
-		si.decBuf = nil
-		si.reader = nil
+		si.close()
 		return si.err
 	}
 	return si.err
+}
+
+func (si *bufferedIterator) close() {
+	decompression.Merge(si.rootCtx, si.stats)
+	si.pool.PutReader(si.reader)
+	BufReaderPool.Put(si.bufReader)
+	if si.buf != nil {
+		BytesBufferPool.Put(si.buf)
+	}
+	si.origBytes = nil
+	si.bufReader = nil
+	si.buf = nil
+	si.decBuf = nil
+	si.reader = nil
 }
 
 func (si *bufferedIterator) Labels() string { return "" }

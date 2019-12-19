@@ -190,7 +190,7 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	if err != nil {
 		return err
 	}
-	iters, err := i.lookupStreams(req, expr.Matchers(), filter)
+	iters, err := i.lookupStreams(queryServer.Context(), req, expr.Matchers(), filter)
 	if err != nil {
 		return err
 	}
@@ -221,7 +221,7 @@ func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logpro
 	}, nil
 }
 
-func (i *instance) lookupStreams(req *logproto.QueryRequest, matchers []*labels.Matcher, filter logql.Filter) ([]iter.EntryIterator, error) {
+func (i *instance) lookupStreams(ctx context.Context, req *logproto.QueryRequest, matchers []*labels.Matcher, filter logql.Filter) ([]iter.EntryIterator, error) {
 	i.streamsMtx.RLock()
 	defer i.streamsMtx.RUnlock()
 
@@ -240,7 +240,7 @@ outer:
 				continue outer
 			}
 		}
-		iter, err := stream.Iterator(req.Start, req.End, req.Direction, filter)
+		iter, err := stream.Iterator(ctx, req.Start, req.End, req.Direction, filter)
 		if err != nil {
 			return nil, err
 		}
