@@ -25,7 +25,7 @@ A Loki-based logging stack consists of 3 components:
 - [Grafana](https://github.com/grafana/grafana) for querying and displaying the logs.
 
 Loki is like Prometheus, but for logs: we prefer a multidimensional label-based approach to indexing, and want a single-binary, easy to operate system with no dependencies.
-Loki differs from Prometheus by focussing on logs instead of metrics, and delivering logs via push, instead of pull.
+Loki differs from Prometheus by focusing on logs instead of metrics, and delivering logs via push, instead of pull.
 
 ## Getting started
 
