@@ -235,7 +235,7 @@ func (sid *SID) String() string {
 		return ""
 	}
 	defer LocalFree((Handle)(unsafe.Pointer(s)))
-	return UTF16ToString((*[(1 << 30) - 1]uint16)(unsafe.Pointer(s))[:])
+	return UTF16ToString((*[256]uint16)(unsafe.Pointer(s))[:])
 }
 
 // Len returns the length, in bytes, of a valid security identifier SID.
@@ -650,12 +650,12 @@ type Token Handle
 // OpenCurrentProcessToken opens an access token associated with current
 // process with TOKEN_QUERY access. It is a real token that needs to be closed.
 //
-// Deprecated: Explicitly call OpenProcessToken(GetCurrentProcess(), ...)
+// Deprecated: Explicitly call OpenProcessToken(CurrentProcess(), ...)
 // with the desired access instead, or use GetCurrentProcessToken for a
 // TOKEN_QUERY token.
 func OpenCurrentProcessToken() (Token, error) {
 	var token Token
-	err := OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)
+	err := OpenProcessToken(CurrentProcess(), TOKEN_QUERY, &token)
 	return token, err
 }
 

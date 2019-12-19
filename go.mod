@@ -52,6 +52,7 @@ require (
 	go.opencensus.io v0.22.1 // indirect
 	golang.org/x/net v0.0.0-20190923162816-aa69164e4478
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
+	golang.org/x/sys v0.0.0-20191218084908-4a24b4065292 // indirect
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	golang.org/x/tools v0.0.0-20190925134113-a044388aa56f // indirect
 	google.golang.org/appengine v1.6.3 // indirect
