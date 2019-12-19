@@ -169,9 +169,9 @@ func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 	defer func() {
 		stats := decompression.GetStats(ctx)
 		span.LogFields(
-			otlog.Int64("Time Decompressing (ms)", stats.TimeDecompress.Nanoseconds()/time.Hour.Milliseconds()),
-			otlog.Int64("TimeFiltering (ms)", stats.TimeFiltering.Nanoseconds()/time.Hour.Milliseconds()),
-			otlog.Int64("Total exec time (ms)", time.Since(start).Nanoseconds()/time.Hour.Milliseconds()),
+			otlog.Int64("Time Decompressing (ms)", stats.TimeDecompress.Nanoseconds()/int64(time.Millisecond)),
+			otlog.Int64("TimeFiltering (ms)", stats.TimeFiltering.Nanoseconds()/int64(time.Millisecond)),
+			otlog.Int64("Total exec time (ms)", time.Since(start).Nanoseconds()/int64(time.Millisecond)),
 			otlog.Int64("Total bytes compressed (MB)", stats.BytesCompressed/1024/1024),
 			otlog.Int64("Total bytes uncompressed (MB)", stats.BytesDecompressed/1024/1024),
 		)
