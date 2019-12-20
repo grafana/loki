@@ -197,7 +197,7 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	err = i.forMatchingStreams(
 		expr.Matchers(),
 		func(stream *stream) error {
-			iter, err := stream.Iterator(req.Start, req.End, req.Direction, filter)
+			iter, err := stream.Iterator(queryServer.Context(), req.Start, req.End, req.Direction, filter)
 			if err != nil {
 				return err
 			}
