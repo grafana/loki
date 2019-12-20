@@ -115,7 +115,7 @@ func (t *Loki) setupAuthMiddleware() {
 				//
 				// Also don't check auth /frontend.Frontend/Process, as this handles
 				// queries for multiple users.
-				case "/frontend.Frontend/Process":
+				case "/logproto.Ingester/TransferChunks", "/frontend.Frontend/Process":
 					return handler(srv, ss)
 				default:
 					return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
