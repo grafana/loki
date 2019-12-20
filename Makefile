@@ -505,7 +505,7 @@ endif
 
 benchmark-store:
 	go run $(MOD_FLAG) ./pkg/storage/hack/main.go
-	go test $(MOD_FLAG) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
+	go test $(MOD_FLAG) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out -trace trace.out
 
 # regenerate drone yaml
 drone:

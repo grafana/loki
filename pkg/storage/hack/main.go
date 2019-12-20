@@ -28,7 +28,7 @@ import (
 var (
 	start     = model.Time(1523750400000)
 	ctx       = user.InjectOrgID(context.Background(), "fake")
-	maxChunks = 600 // 600 chunks is 1.2bib of data enough to run benchmark
+	maxChunks = 1200 // 1200 chunks is 2gib ish of data enough to run benchmark
 )
 
 // fill up the local filesystem store with 1gib of data to run benchmark
@@ -96,7 +96,7 @@ func fillStore() error {
 			labelsBuilder.Set(labels.MetricName, "logs")
 			metric := labelsBuilder.Labels()
 			fp := client.FastFingerprint(lbs)
-			chunkEnc := chunkenc.NewMemChunkSize(chunkenc.EncGZIP, 262144, 0)
+			chunkEnc := chunkenc.NewMemChunkSize(chunkenc.EncLZ4_64k, 262144, 1572864)
 			for ts := start.UnixNano(); ts < start.UnixNano()+time.Hour.Nanoseconds(); ts = ts + time.Millisecond.Nanoseconds() {
 				entry := &logproto.Entry{
 					Timestamp: time.Unix(0, ts),
@@ -119,7 +119,7 @@ func fillStore() error {
 					if flushCount >= maxChunks {
 						return
 					}
-					chunkEnc = chunkenc.NewMemChunkSize(chunkenc.EncGZIP, 262144, 0)
+					chunkEnc = chunkenc.NewMemChunkSize(chunkenc.EncLZ4_64k, 262144, 1572864)
 				}
 			}
 
