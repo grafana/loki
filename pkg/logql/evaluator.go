@@ -14,28 +14,81 @@ import (
 	"github.com/prometheus/prometheus/promql"
 )
 
-type Qry interface {
+// Params details the parameters associated with a loki request
+type Params interface {
 	String() string
 	Start() time.Time
 	End() time.Time
 	Step() time.Duration
 	Limit() uint32
+	Direction() logproto.Direction
 }
 
-func IsInstant(q Qry) bool {
+// LiteralParams impls Params
+type LiteralParams struct {
+	qs         string
+	start, end time.Time
+	step       time.Duration
+	direction  logproto.Direction
+	limit      uint32
+}
+
+// String impls Params
+func (p LiteralParams) String() string { return p.qs }
+
+// Start impls Params
+func (p LiteralParams) Start() time.Time { return p.start }
+
+// End impls Params
+func (p LiteralParams) End() time.Time { return p.end }
+
+// Step impls Params
+func (p LiteralParams) Step() time.Duration { return p.step }
+
+// Limit impls Params
+func (p LiteralParams) Limit() uint32 { return p.limit }
+
+// Direction impls Params
+func (p LiteralParams) Direction() logproto.Direction { return p.direction }
+
+// IsInstant returns whether a query is an instant query
+func IsInstant(q Params) bool {
 	return q.Start() == q.End() && q.Step() == 0
 }
 
+// Evaluator is an interface for iterating over data at different nodes in the AST
 type Evaluator interface {
-	Evaluator(context.Context, SampleExpr, Qry) (StepEvaluator, error)
-	Iterator(context.Context, LogSelectorExpr, Qry) (iter.EntryIterator, error)
+	// Evaluator returns a StepEvaluator for a given SampleExpr
+	Evaluator(context.Context, SampleExpr, Params) (StepEvaluator, error)
+	// Iterator returns the iter.EntryIterator for a given LogSelectorExpr
+	Iterator(context.Context, LogSelectorExpr, Params) (iter.EntryIterator, error)
 }
 
 type defaultEvaluator struct {
-	querier Querier
+	maxLookBackPeriod time.Duration
+	querier           Querier
 }
 
-func (ev *defaultEvaluator) Evaluator(ctx context.Context, expr SampleExpr, q Qry) (StepEvaluator, error) {
+func (ev *defaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, q Params) (iter.EntryIterator, error) {
+	params := SelectParams{
+		QueryRequest: &logproto.QueryRequest{
+			Start:     q.Start(),
+			End:       q.End(),
+			Limit:     q.Limit(),
+			Direction: q.Direction(),
+			Selector:  expr.String(),
+		},
+	}
+
+	if IsInstant(q) {
+		params.Start = params.Start.Add(-ev.maxLookBackPeriod)
+	}
+
+	return ev.querier.Select(ctx, params)
+
+}
+
+func (ev *defaultEvaluator) Evaluator(ctx context.Context, expr SampleExpr, q Params) (StepEvaluator, error) {
 	switch e := expr.(type) {
 	case *vectorAggregationExpr:
 		return ev.vectorAggEvaluator(ctx, e, q)
@@ -47,13 +100,13 @@ func (ev *defaultEvaluator) Evaluator(ctx context.Context, expr SampleExpr, q Qr
 	}
 }
 
-func (ev *defaultEvaluator) vectorAggEvaluator(ctx context.Context, expr *vectorAggregationExpr, q Qry) (StepEvaluator, error) {
+func (ev *defaultEvaluator) vectorAggEvaluator(ctx context.Context, expr *vectorAggregationExpr, q Params) (StepEvaluator, error) {
 	nextEvaluator, err := ev.Evaluator(ctx, expr.left, q)
 	if err != nil {
 		return nil, err
 	}
 
-	return StepEvaluatorFn(func() (bool, int64, promql.Vector) {
+	return newStepEvaluator(func() (bool, int64, promql.Vector) {
 		next, ts, vec := nextEvaluator.Next()
 		if !next {
 			return false, 0, promql.Vector{}
@@ -232,10 +285,11 @@ func (ev *defaultEvaluator) vectorAggEvaluator(ctx context.Context, expr *vector
 			})
 		}
 		return next, ts, vec
-	}), nil
+
+	}, nextEvaluator.Close)
 }
 
-func (ev *defaultEvaluator) rangeAggEvaluator(ctx context.Context, expr *rangeAggregationExpr, q Qry) (StepEvaluator, error) {
+func (ev *defaultEvaluator) rangeAggEvaluator(ctx context.Context, expr *rangeAggregationExpr, q Params) (StepEvaluator, error) {
 	entryIter, err := ev.querier.Select(ctx, SelectParams{
 		&logproto.QueryRequest{
 			Start:     q.Start().Add(-expr.left.interval),
@@ -260,12 +314,14 @@ func (ev *defaultEvaluator) rangeAggEvaluator(ctx context.Context, expr *rangeAg
 	case OpTypeCountOverTime:
 		fn = count
 	}
-	return StepEvaluatorFn(func() (bool, int64, promql.Vector) {
+
+	return newStepEvaluator(func() (bool, int64, promql.Vector) {
 		next := vecIter.Next()
 		if !next {
 			return false, 0, promql.Vector{}
 		}
 		ts, vec := vecIter.At(fn)
 		return true, ts, vec
-	}), nil
+
+	}, vecIter.Close)
 }

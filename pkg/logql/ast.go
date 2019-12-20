@@ -3,6 +3,7 @@ package logql
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -212,30 +213,46 @@ const (
 type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
 	Selector() LogSelectorExpr
-	// Evaluator returns a `StepEvaluator` that can evaluate the expression step by step
-	Evaluator() StepEvaluator
-	// Close all resources used.
-	Close() error
 }
 
 // StepEvaluator evaluate a single step of a query.
 type StepEvaluator interface {
 	Next() (bool, int64, promql.Vector)
+	// Close all resources used.
+	Close() error
 }
 
-// StepEvaluatorFn is a function to chain multiple `StepEvaluator`.
-type StepEvaluatorFn func() (bool, int64, promql.Vector)
+type stepEvaluator struct {
+	fn    func() (bool, int64, promql.Vector)
+	close func() error
+}
 
-// Next implements `StepEvaluator`
-func (s StepEvaluatorFn) Next() (bool, int64, promql.Vector) {
-	return s()
+func newStepEvaluator(fn func() (bool, int64, promql.Vector), close func() error) (StepEvaluator, error) {
+	if fn == nil {
+		return nil, errors.New("nil step evaluator fn")
+	}
+
+	if close == nil {
+		close = func() error { return nil }
+	}
+
+	return &stepEvaluator{
+		fn:    fn,
+		close: close,
+	}, nil
+}
+
+func (e *stepEvaluator) Next() (bool, int64, promql.Vector) {
+	return e.fn()
+}
+
+func (e *stepEvaluator) Close() error {
+	return e.close()
 }
 
 type rangeAggregationExpr struct {
 	left      *logRange
 	operation string
-
-	iterator RangeVectorIterator
 }
 
 func newRangeAggregationExpr(left *logRange, operation string) SampleExpr {
@@ -243,13 +260,6 @@ func newRangeAggregationExpr(left *logRange, operation string) SampleExpr {
 		left:      left,
 		operation: operation,
 	}
-}
-
-func (e *rangeAggregationExpr) Close() error {
-	if e.iterator == nil {
-		return nil
-	}
-	return e.iterator.Close()
 }
 
 func (e *rangeAggregationExpr) Selector() LogSelectorExpr {
@@ -294,10 +304,6 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *groupin
 		grouping:  gr,
 		params:    p,
 	}
-}
-
-func (v *vectorAggregationExpr) Close() error {
-	return v.left.Close()
 }
 
 func (v *vectorAggregationExpr) Selector() LogSelectorExpr {
