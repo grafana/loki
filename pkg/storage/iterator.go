@@ -9,6 +9,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/chunkenc/decompression"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -375,7 +376,9 @@ func fetchLazyChunks(ctx context.Context, chunks []*chunkenc.LazyChunk) error {
 			lastErr = err
 		}
 	}
-
+	decompression.Mutate(ctx, func(m *decompression.Stats) {
+		m.FetchedChunks += int64(totalChunks)
+	})
 	return lastErr
 }
 

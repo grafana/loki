@@ -7,6 +7,9 @@ import (
 	"sort"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/loki/pkg/chunkenc/decompression"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -144,6 +147,8 @@ func (ng *Engine) NewInstantQuery(
 }
 
 func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, error) {
+	log, ctx := spanlogger.New(ctx, "Engine.exec")
+	defer log.Finish()
 	ctx, cancel := context.WithTimeout(ctx, ng.timeout)
 	defer cancel()
 
@@ -159,6 +164,19 @@ func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 		return nil, err
 	}
 
+	ctx = decompression.NewContext(ctx)
+	start := time.Now()
+	defer func() {
+		stats := decompression.GetStats(ctx)
+		level.Debug(log).Log(
+			"Time Decompressing (ms)", stats.TimeDecompress.Nanoseconds()/int64(time.Millisecond),
+			"Time Filtering (ms)", stats.TimeFiltering.Nanoseconds()/int64(time.Millisecond),
+			"Fetched chunks", stats.FetchedChunks,
+			"Total bytes compressed (MB)", stats.BytesCompressed/1024/1024,
+			"Total bytes uncompressed (MB)", stats.BytesDecompressed/1024/1024,
+			"Total exec time (ms)", time.Since(start).Nanoseconds()/int64(time.Millisecond),
+		)
+	}()
 	switch e := expr.(type) {
 	case SampleExpr:
 		if err := ng.setupIterators(ctx, e, q); err != nil {

@@ -2,6 +2,7 @@ package chunkenc
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"math/rand"
@@ -89,7 +90,7 @@ func TestBlock(t *testing.T) {
 				}
 			}
 
-			it, err := chk.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
+			it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
 			require.NoError(t, err)
 
 			idx := 0
@@ -104,7 +105,7 @@ func TestBlock(t *testing.T) {
 			require.Equal(t, len(cases), idx)
 
 			t.Run("bounded-iteration", func(t *testing.T) {
-				it, err := chk.Iterator(time.Unix(0, 3), time.Unix(0, 7), logproto.FORWARD, nil)
+				it, err := chk.Iterator(context.Background(), time.Unix(0, 3), time.Unix(0, 7), logproto.FORWARD, nil)
 				require.NoError(t, err)
 
 				idx := 2
@@ -137,7 +138,7 @@ func TestReadFormatV1(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	it, err := r.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
+	it, err := r.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +165,7 @@ func TestRoundtripV2(t *testing.T) {
 
 			assertLines := func(c *MemChunk) {
 				require.Equal(t, enc, c.Encoding())
-				it, err := c.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
+				it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -226,7 +227,7 @@ func TestSerialization(t *testing.T) {
 			bc, err := NewByteChunk(byt)
 			require.NoError(t, err)
 
-			it, err := bc.Iterator(time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
+			it, err := bc.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
 			require.NoError(t, err)
 			for i := 0; i < numSamples; i++ {
 				require.True(t, it.Next())
@@ -271,7 +272,7 @@ func TestChunkFilling(t *testing.T) {
 
 			require.Equal(t, int64(lines), i)
 
-			it, err := chk.Iterator(time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, nil)
+			it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, nil)
 			require.NoError(t, err)
 			i = 0
 			for it.Next() {
@@ -433,9 +434,7 @@ func BenchmarkRead(b *testing.B) {
 			for n := 0; n < b.N; n++ {
 				for _, c := range chunks {
 					// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
-					iterator, err := c.Iterator(time.Unix(0, 0), time.Now(), logproto.FORWARD, func(line []byte) bool {
-						return false
-					})
+					iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.FORWARD, nil)
 					if err != nil {
 						panic(err)
 					}
@@ -462,7 +461,7 @@ func TestGenerateDataSize(t *testing.T) {
 			bytesRead := uint64(0)
 			for _, c := range chunks {
 				// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
-				iterator, err := c.Iterator(time.Unix(0, 0), time.Now(), logproto.FORWARD, func(line []byte) bool {
+				iterator, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Now(), logproto.FORWARD, func(line []byte) bool {
 					return true // return all
 				})
 				if err != nil {
