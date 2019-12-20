@@ -15,6 +15,7 @@ type Stats struct {
 	TimeFiltering     time.Duration // Time spent filtering lines
 	BytesDecompressed int64         // Total bytes decompressed data size
 	BytesCompressed   int64         // Total bytes compressed read
+	FetchedChunks     int64         // Total number of chunks fetched.
 }
 
 // NewContext creates a new decompression context
@@ -31,15 +32,11 @@ func GetStats(ctx context.Context) Stats {
 	return *d
 }
 
-// Merge merges/adds new stats into the current context.
-func Merge(ctx context.Context, m *Stats) {
+// Mutate mutates the current context statistic using a mutator function
+func Mutate(ctx context.Context, mutator func(m *Stats)) {
 	d, ok := ctx.Value(ctxKey).(*Stats)
-	if !ok || m == nil {
-		// Log this issue
+	if !ok {
 		return
 	}
-	d.TimeDecompress += m.TimeDecompress
-	d.TimeFiltering += m.TimeFiltering
-	d.BytesDecompressed += m.BytesDecompressed
-	d.BytesCompressed += m.BytesCompressed
+	mutator(d)
 }

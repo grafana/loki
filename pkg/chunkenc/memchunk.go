@@ -558,9 +558,11 @@ func (li *listIterator) Close() error   { return nil }
 func (li *listIterator) Labels() string { return "" }
 
 type bufferedIterator struct {
-	origBytes []byte
-	rootCtx   context.Context
-	stats     *decompression.Stats
+	origBytes         []byte
+	rootCtx           context.Context
+	timeDecompress    time.Duration
+	timeFiltering     time.Duration
+	bytesDecompressed int64
 
 	bufReader *bufio.Reader
 	reader    io.Reader
@@ -581,7 +583,6 @@ type bufferedIterator struct {
 func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte, filter logql.Filter) *bufferedIterator {
 	return &bufferedIterator{
 		rootCtx:   ctx,
-		stats:     &decompression.Stats{BytesCompressed: int64(len(b))},
 		origBytes: b,
 		reader:    nil, // will be initialized later
 		bufReader: nil, // will be initialized later
@@ -601,19 +602,19 @@ func (si *bufferedIterator) Next() bool {
 	for {
 		start := time.Now()
 		ts, line, ok := si.moveNext()
-		si.stats.TimeDecompress += time.Since(start)
+		si.timeDecompress += time.Since(start)
 		if !ok {
 			si.Close()
 			return false
 		}
 		// we decode always the line length and ts as varint
-		si.stats.BytesDecompressed += int64(len(line)) + 2*binary.MaxVarintLen64
+		si.bytesDecompressed += int64(len(line)) + 2*binary.MaxVarintLen64
 		start = time.Now()
 		if si.filter != nil && !si.filter(line) {
-			si.stats.TimeFiltering += time.Since(start)
+			si.timeFiltering += time.Since(start)
 			continue
 		}
-		si.stats.TimeFiltering += time.Since(start)
+		si.timeFiltering += time.Since(start)
 		si.cur.Line = string(line)
 		si.cur.Timestamp = time.Unix(0, ts)
 		return true
@@ -683,13 +684,17 @@ func (si *bufferedIterator) Close() error {
 	if !si.closed {
 		si.closed = true
 		si.close()
-		return si.err
 	}
 	return si.err
 }
 
 func (si *bufferedIterator) close() {
-	decompression.Merge(si.rootCtx, si.stats)
+	decompression.Mutate(si.rootCtx, func(current *decompression.Stats) {
+		current.TimeDecompress += si.timeDecompress
+		current.TimeFiltering += si.timeFiltering
+		current.BytesDecompressed += si.bytesDecompressed
+		current.BytesCompressed += int64(len(si.origBytes))
+	})
 	si.pool.PutReader(si.reader)
 	BufReaderPool.Put(si.bufReader)
 	if si.buf != nil {
