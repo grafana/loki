@@ -27,6 +27,8 @@ module Fluent
     class LokiOutput < Fluent::Plugin::Output # rubocop:disable Metrics/ClassLength
       Fluent::Plugin.register_output('loki', self)
 
+      class RetryableResponse < StandardError; end
+
       helpers :compat_parameters, :record_accessor
 
       attr_accessor :record_accessors
@@ -64,6 +66,14 @@ module Fluent
 
       desc 'if a record only has 1 key, then just set the log line to the value and discard the key.'
       config_param :drop_single_key, :bool, default: false
+
+      desc 'If a log stream is unable to be sent to loki, log the content of it'
+      config_param :log_failed_streams, :bool, default: false
+
+      desc 'Raise UnrecoverableError when the response is non success, 4xx/5xx'
+      config_param :error_response_as_unrecoverable, :bool, default: true
+      desc 'The list of retryable response code'
+      config_param :retryable_response_codes, :array, value_type: :integer, default: [503]
 
       config_section :buffer do
         config_set_default :@type, DEFAULT_BUFFER_TYPE
@@ -141,15 +151,22 @@ module Fluent
 
         log.debug "sending #{req.body.length} bytes to loki"
         res = Net::HTTP.start(uri.hostname, uri.port, **opts) { |http| http.request(req) }
-        unless res&.is_a?(Net::HTTPSuccess)
-          res_summary = if res
-                          "#{res.code} #{res.message} #{res.body}"
-                        else
-                          'res=nil'
-                        end
-          log.warn "failed to #{req.method} #{uri} (#{res_summary})"
-          log.warn Yajl.dump(body)
 
+
+        if res.is_a?(Net::HTTPSuccess)
+          log.debug { "#{res.code} #{res.message}#{res.body}" }
+        else
+          msg = "##{res.code} #{res.message} #{res.body}"
+
+          if @retryable_response_codes.include?(res.code.to_i)
+            raise RetryableResponse, msg
+          end
+
+          if @error_response_as_unrecoverable
+            raise Fluent::UnrecoverableError, msg
+          else
+            log.error "got error response from '#{req.method.capitalize} #{uri.to_s}' : #{msg}"
+          end
         end
       end
 
