@@ -2,6 +2,7 @@ package marshal
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 	"time"
 
@@ -364,6 +365,42 @@ func Test_TailResponseMarshalLoop(t *testing.T) {
 		require.NoError(t, err)
 
 		testJSONBytesEqual(t, []byte(tailTest.expected), jsonOut, "Tail Marshal Loop %d failed", i)
+	}
+}
+
+func Test_WriteSeriesResponseJSON(t *testing.T) {
+
+	for i, tc := range []struct {
+		input    logproto.SeriesResponse
+		expected string
+	}{
+		{
+			logproto.SeriesResponse{
+				Series: []logproto.SeriesIdentifier{
+					{
+						Labels: map[string]string{
+							"a": "1",
+							"b": "2",
+						},
+					},
+					{
+						Labels: map[string]string{
+							"c": "3",
+							"d": "4",
+						},
+					},
+				},
+			},
+			`{"status":"success","data":[{"a":"1","b":"2"},{"c":"3","d":"4"}]}`,
+		},
+	} {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			var b bytes.Buffer
+			err := WriteSeriesResponseJSON(tc.input, &b)
+			require.NoError(t, err)
+
+			testJSONBytesEqual(t, []byte(tc.expected), b.Bytes(), "Label Test %d failed", i)
+		})
 	}
 }
 

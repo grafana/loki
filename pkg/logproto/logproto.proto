@@ -13,6 +13,7 @@ service Querier {
   rpc Query(QueryRequest) returns (stream QueryResponse) {};
   rpc Label(LabelRequest) returns (LabelResponse) {};
   rpc Tail(TailRequest) returns (stream TailResponse) {};
+  rpc Series(SeriesRequest) returns (SeriesResponse) {};
 }
 
 service Ingester {
@@ -76,6 +77,20 @@ message TailRequest {
 message TailResponse {
   Stream stream = 1;
   repeated DroppedStream droppedStreams = 2;
+}
+
+message SeriesRequest {
+  google.protobuf.Timestamp start = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp end = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  repeated string groups = 3;
+}
+
+message SeriesResponse {
+  repeated SeriesIdentifier series = 1 [(gogoproto.nullable) = false];
+}
+
+message SeriesIdentifier {
+  map<string,string> labels = 1;
 }
 
 message DroppedStream {

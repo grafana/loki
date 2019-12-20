@@ -99,6 +99,91 @@ func TestIngester(t *testing.T) {
 	require.Len(t, result.resps, 1)
 	require.Len(t, result.resps[0].Streams, 1)
 	require.Equal(t, `{bar="baz2", foo="bar"}`, result.resps[0].Streams[0].Labels)
+
+	// Series
+
+	// empty matchers
+	_, err = i.Series(ctx, &logproto.SeriesRequest{
+		Start: time.Unix(0, 0),
+		End:   time.Unix(1, 0),
+	})
+	require.Error(t, err)
+
+	// wrong matchers fmt
+	_, err = i.Series(ctx, &logproto.SeriesRequest{
+		Start:  time.Unix(0, 0),
+		End:    time.Unix(1, 0),
+		Groups: []string{`{a="b`},
+	})
+	require.Error(t, err)
+
+	// no selectors
+	_, err = i.Series(ctx, &logproto.SeriesRequest{
+		Start:  time.Unix(0, 0),
+		End:    time.Unix(1, 0),
+		Groups: []string{`{foo="bar"}`, `{}`},
+	})
+	require.Error(t, err)
+
+	// foo=bar
+	resp, err := i.Series(ctx, &logproto.SeriesRequest{
+		Start:  time.Unix(0, 0),
+		End:    time.Unix(1, 0),
+		Groups: []string{`{foo="bar"}`},
+	})
+	require.Nil(t, err)
+	require.ElementsMatch(t, []logproto.SeriesIdentifier{
+		{
+			Labels: map[string]string{
+				"foo": "bar",
+				"bar": "baz1",
+			},
+		},
+		{
+			Labels: map[string]string{
+				"foo": "bar",
+				"bar": "baz2",
+			},
+		},
+	}, resp.GetSeries())
+
+	// foo=bar, bar=~"baz[2-9]"
+	resp, err = i.Series(ctx, &logproto.SeriesRequest{
+		Start:  time.Unix(0, 0),
+		End:    time.Unix(1, 0),
+		Groups: []string{`{foo="bar", bar=~"baz[2-9]"}`},
+	})
+	require.Nil(t, err)
+	require.ElementsMatch(t, []logproto.SeriesIdentifier{
+		{
+			Labels: map[string]string{
+				"foo": "bar",
+				"bar": "baz2",
+			},
+		},
+	}, resp.GetSeries())
+
+	// foo=bar, bar=~"baz[2-9]" in different groups should OR the results
+	resp, err = i.Series(ctx, &logproto.SeriesRequest{
+		Start:  time.Unix(0, 0),
+		End:    time.Unix(1, 0),
+		Groups: []string{`{foo="bar"}`, `{bar=~"baz[2-9]"}`},
+	})
+	require.Nil(t, err)
+	require.ElementsMatch(t, []logproto.SeriesIdentifier{
+		{
+			Labels: map[string]string{
+				"foo": "bar",
+				"bar": "baz1",
+			},
+		},
+		{
+			Labels: map[string]string{
+				"foo": "bar",
+				"bar": "baz2",
+			},
+		},
+	}, resp.GetSeries())
 }
 
 func TestIngesterStreamLimitExceeded(t *testing.T) {

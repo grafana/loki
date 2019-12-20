@@ -11,11 +11,15 @@ The HTTP API includes the following endpoints:
 - [`GET /loki/api/v1/labels`](#get-lokiapiv1labels)
 - [`GET /loki/api/v1/label/<name>/values`](#get-lokiapiv1labelnamevalues)
 - [`GET /loki/api/v1/tail`](#get-lokiapiv1tail)
+- [`GET /loki/api/v1/series`](#series)
+- [`POST /loki/api/v1/series`](#series)
 - [`POST /loki/api/v1/push`](#post-lokiapiv1push)
 - [`GET /api/prom/tail`](#get-apipromtail)
 - [`GET /api/prom/query`](#get-apipromquery)
 - [`GET /api/prom/label`](#get-apipromlabel)
 - [`GET /api/prom/label/<name>/values`](#get-apipromlabelnamevalues)
+- [`GET /api/prom/series`](#series)
+- [`POST /api/prom/series`](#series)
 - [`POST /api/prom/push`](#post-apiprompush)
 - [`GET /ready`](#get-ready)
 - [`POST /flush`](#post-flush)
@@ -743,3 +747,75 @@ In microservices mode, the `/flush` endpoint is exposed by the ingester.
 for a list of exported metrics.
 
 In microservices mode, the `/metrics` endpoint is exposed by all components.
+
+## Series
+
+The Series API is available under the following:
+- `GET /loki/api/v1/series`
+- `POST /loki/api/v1/series`
+- `GET /api/prom/series`
+- `POST /api/prom/series`
+
+This endpoint returns the list of time series that match a certain label set.
+
+URL query parameters:
+
+- `match[]=<series_selector>`: Repeated log stream selector argument that selects the streams to return. At least one `match[]` argument must be provided.
+- `start=<nanosecond Unix epoch>`: Start timestamp.
+- `end=<nanosecond Unix epoch>`: End timestamp.
+
+You can URL-encode these parameters directly in the request body by using the POST method and `Content-Type: application/x-www-form-urlencoded` header. This is useful when specifying a large or dynamic number of stream selectors that may breach server-side URL character limits.
+
+In microservices mode, these endpoints are exposed by the querier.
+
+### Examples
+
+``` bash
+$ curl -s "http://localhost:3100/loki/api/v1/series" --data-urlencode 'match={container_name=~"prometheus.*", component="server"}' --data-urlencode 'match={app="loki"}' | jq '.'
+{
+  "status": "success",
+  "data": [
+    {
+      "container_name": "loki",
+      "app": "loki",
+      "stream": "stderr",
+      "filename": "/var/log/pods/default_loki-stack-0_50835643-1df0-11ea-ba79-025000000001/loki/0.log",
+      "name": "loki",
+      "job": "default/loki",
+      "controller_revision_hash": "loki-stack-757479754d",
+      "statefulset_kubernetes_io_pod_name": "loki-stack-0",
+      "release": "loki-stack",
+      "namespace": "default",
+      "instance": "loki-stack-0"
+    },
+    {
+      "chart": "prometheus-9.3.3",
+      "container_name": "prometheus-server-configmap-reload",
+      "filename": "/var/log/pods/default_loki-stack-prometheus-server-696cc9ddff-87lmq_507b1db4-1df0-11ea-ba79-025000000001/prometheus-server-configmap-reload/0.log",
+      "instance": "loki-stack-prometheus-server-696cc9ddff-87lmq",
+      "pod_template_hash": "696cc9ddff",
+      "app": "prometheus",
+      "component": "server",
+      "heritage": "Tiller",
+      "job": "default/prometheus",
+      "namespace": "default",
+      "release": "loki-stack",
+      "stream": "stderr"
+    },
+    {
+      "app": "prometheus",
+      "component": "server",
+      "filename": "/var/log/pods/default_loki-stack-prometheus-server-696cc9ddff-87lmq_507b1db4-1df0-11ea-ba79-025000000001/prometheus-server/0.log",
+      "release": "loki-stack",
+      "namespace": "default",
+      "pod_template_hash": "696cc9ddff",
+      "stream": "stderr",
+      "chart": "prometheus-9.3.3",
+      "container_name": "prometheus-server",
+      "heritage": "Tiller",
+      "instance": "loki-stack-prometheus-server-696cc9ddff-87lmq",
+      "job": "default/prometheus"
+    }
+  ]
+}
+```

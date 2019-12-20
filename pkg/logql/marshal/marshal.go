@@ -56,3 +56,25 @@ func WriteTailResponseJSON(r legacy.TailResponse, c *websocket.Conn) error {
 
 	return c.WriteJSON(v1Response)
 }
+
+// WriteSeriesResponseJSON marshals a logproto.SeriesResponse to v1 loghttp JSON and then
+// writes it to the provided io.Writer.
+func WriteSeriesResponseJSON(r logproto.SeriesResponse, w io.Writer) error {
+	adapter := &seriesResponseAdapter{
+		Status: "success",
+		Data:   make([]map[string]string, 0, len(r.GetSeries())),
+	}
+
+	for _, series := range r.GetSeries() {
+		adapter.Data = append(adapter.Data, series.GetLabels())
+	}
+
+	return json.NewEncoder(w).Encode(adapter)
+}
+
+// This struct exists primarily because we can't specify a repeated map in proto v3.
+// Otherwise, we'd use that + gogoproto.jsontag to avoid this layer of indirection
+type seriesResponseAdapter struct {
+	Status string              `json:"status"`
+	Data   []map[string]string `json:"data"`
+}

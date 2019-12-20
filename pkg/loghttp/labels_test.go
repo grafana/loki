@@ -57,6 +57,22 @@ func TestParseLabelQuery(t *testing.T) {
 	}
 }
 
+func TestLabelsMap(t *testing.T) {
+	ls := LabelSet{
+		"a": "1",
+		"b": "2",
+	}
+
+	require.Equal(
+		t,
+		map[string]string{
+			"a": "1",
+			"b": "2",
+		},
+		ls.Map(),
+	)
+}
+
 func timePtr(t time.Time) *time.Time {
 	return &t
 }
