@@ -394,7 +394,17 @@ func (q *Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*log
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
 
-	series, errs := make(chan [][]logproto.SeriesIdentifier, 2), make(chan error, 2)
+	return q.awaitSeries(ctx, req)
+
+}
+
+func (q *Querier) awaitSeries(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+
+	// buffer the channels to the # of calls they're expecting su
+	series := make(chan [][]logproto.SeriesIdentifier, 2)
+	errs := make(chan error, 2)
+
+	// fetch series from ingesters and store concurrently
 
 	go func() {
 		// fetch series identifiers from ingesters
@@ -424,7 +434,7 @@ func (q *Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*log
 	var sets [][]logproto.SeriesIdentifier
 	for i := 0; i < 2; i++ {
 		select {
-		case err = <-errs:
+		case err := <-errs:
 			return nil, err
 		case s := <-series:
 			sets = append(sets, s...)

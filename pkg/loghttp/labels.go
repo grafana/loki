@@ -21,7 +21,7 @@ type LabelSet map[string]string
 
 // Map coerces LabelSet into a map[string]string. This is useful for working with adapter types.
 func (l LabelSet) Map() map[string]string {
-	return map[string]string(l)
+	return l
 }
 
 // String implements the Stringer interface.  It returns a formatted/sorted set of label key/value pairs.
