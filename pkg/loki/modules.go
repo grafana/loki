@@ -303,14 +303,15 @@ func (t *Loki) initQueryFrontend() (err error) {
 	return
 }
 
-func (t *Loki) stopQueryFrontend() (err error) {
+func (t *Loki) stopQueryFrontend() error {
 	t.frontend.Close()
 	if t.stopper != nil {
 		if err := t.stopper.Stop(); err != nil {
 			level.Error(util.Logger).Log("msg", "error while stopping middleware", "err", err)
+			return err
 		}
 	}
-	return
+	return nil
 }
 
 // listDeps recursively gets a list of dependencies for a passed moduleName
