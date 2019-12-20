@@ -459,19 +459,13 @@ func (q *Querier) seriesForMatchers(
 	from, through time.Time,
 	groups []string,
 ) ([]logproto.SeriesIdentifier, error) {
-	var maxConcurrent = 10
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	outbound, inbound, errs :=
-		make(chan logql.SelectParams, len(groups)),
-		make(chan []logproto.SeriesIdentifier, len(groups)),
-		make(chan error, len(groups))
-
-	// feed inputs into channel bounded by maxConcurrent
+	var results []logproto.SeriesIdentifier
 	for _, group := range groups {
-		outbound <- logql.SelectParams{
+		iter, err := q.store.LazyQuery(ctx, logql.SelectParams{
 			QueryRequest: &logproto.QueryRequest{
 				Selector:  group,
 				Limit:     1,
@@ -479,50 +473,24 @@ func (q *Querier) seriesForMatchers(
 				End:       through,
 				Direction: logproto.FORWARD,
 			},
+		})
+		if err != nil {
+			return nil, err
 		}
-	}
-	close(outbound)
 
-	// start maxConcurrent worker goroutines
-	for i := 0; i < maxConcurrent; i++ {
-		go func() {
-			for params := range outbound {
-				iter, err := q.store.LazyQuery(ctx, params)
-				if err != nil {
-					errs <- err
-					return
-				}
-
-				var results []logproto.SeriesIdentifier
-				for iter.Next() {
-					ls, err := marshal.NewLabelSet(iter.Labels())
-					if err != nil {
-						errs <- err
-						return
-					}
-
-					results = append(results, logproto.SeriesIdentifier{
-						Labels: ls.Map(),
-					})
-				}
-				inbound <- results
+		for iter.Next() {
+			ls, err := marshal.NewLabelSet(iter.Labels())
+			if err != nil {
+				return nil, err
 			}
 
-		}()
-
-	}
-
-	var collected []logproto.SeriesIdentifier
-	for range groups {
-		select {
-		case err := <-errs:
-			return nil, err
-		case series := <-inbound:
-			collected = append(collected, series...)
+			results = append(results, logproto.SeriesIdentifier{
+				Labels: ls.Map(),
+			})
 		}
 	}
+	return results, nil
 
-	return collected, nil
 }
 
 func (q *Querier) validateQueryRequest(ctx context.Context, req *logproto.QueryRequest) error {
