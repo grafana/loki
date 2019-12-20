@@ -7,6 +7,7 @@
     memcached_replicas: 3,
 
     querierConcurrency: 16,
+    grpc_server_max_msg_size: 100 << 20,  // 100MB
 
     // Default to GCS and Bigtable for chunk and index store
     storage_backend: 'bigtable,gcs',
@@ -93,8 +94,8 @@
       server: {
         graceful_shutdown_timeout: '5s',
         http_server_idle_timeout: '120s',
-        grpc_server_max_recv_msg_size: 100 << 20,
-        grpc_server_max_send_msg_size: 100 << 20,
+        grpc_server_max_recv_msg_size: $._config.grpc_server_max_msg_size,
+        grpc_server_max_send_msg_size: $._config.grpc_server_max_msg_size,
         grpc_server_max_concurrent_streams: 1000,
         http_server_write_timeout: '1m',
       },
@@ -107,7 +108,7 @@
         // Limit to N/2 worker threads per frontend, as we have two frontends.
         parallelism: $._config.querierConcurrency / 2,
         grpc_client_config: {
-          max_send_msg_size: 100 << 20,
+          max_send_msg_size: $._config.grpc_server_max_msg_size,
         },
       },
       query_range: {
