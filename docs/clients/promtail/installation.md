@@ -64,17 +64,18 @@ spec:
       - name: logs
         hostPath: HOST_PATH
       - name: promtail-config
-        configMap
+        configMap: 
           name: promtail-configmap
       containers:
       - name: promtail-container
-         args:
-         - -config.file=/etc/promtail/promtail.yaml
-         volumeMounts:
-         - name: logs
-            mountPath: MOUNT_PATH
-         - name: promtail-config
-            mountPath: /etc/promtail
+        image: grafana/promtail
+        args:
+        - -config.file=/etc/promtail/promtail.yaml
+        volumeMounts:
+        - name: logs
+          mountPath: MOUNT_PATH
+        - name: promtail-config
+          mountPath: /etc/promtail
   ...
 
 ---configmap.yaml
@@ -92,11 +93,11 @@ kind: ClusterRole
 metadata:
   name: promtail-clusterrole
 rules:
-  - apiGroups:
-     resources:
-     - nodes
-     - services
-     - pod
+  - apiGroups:[""]
+    resources:
+    - nodes
+    - services
+    - pod
     verbs:
     - get
     - watch
@@ -108,7 +109,7 @@ metadata:
   name: promtail-serviceaccount
 
 ---Rolebinding
-apiVersion: rbac.authorization.k9s.io/v1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: promtail-clusterrolebinding
