@@ -65,6 +65,10 @@ var (
 		Name:      "request_duration_seconds",
 		Help:      "Duration of send requests.",
 	}, []string{"status_code", "host"})
+
+	countersWithHost = []*prometheus.CounterVec{
+		encodedBytes, sentBytes, droppedBytes, sentEntries, droppedEntries,
+	}
 )
 
 func init() {
@@ -128,6 +132,12 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 	}
 
 	c.client.Timeout = cfg.Timeout
+
+	// Initialize counters to 0 so the metrics are exported before the first
+	// occurrence of incrementing to avoid missing metrics.
+	for _, counter := range countersWithHost {
+		counter.WithLabelValues(c.cfg.URL.Host).Add(0)
+	}
 
 	c.wg.Add(1)
 	go c.run()
