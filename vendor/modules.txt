@@ -338,7 +338,7 @@ github.com/jmespath/go-jmespath
 github.com/jonboulle/clockwork
 # github.com/jpillora/backoff v0.0.0-20180909062703-3050d21c67d7
 github.com/jpillora/backoff
-# github.com/json-iterator/go v1.1.7
+# github.com/json-iterator/go v1.1.9
 github.com/json-iterator/go
 # github.com/klauspost/compress v1.9.4
 github.com/klauspost/compress/flate

@@ -57,8 +57,7 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	}
 	line, err := createLine(records, l.cfg.lineFormat)
 	if err != nil {
-		level.Error(l.logger).Log("msg", "error creating line", "error", err)
-		return nil
+		return fmt.Errorf("error creating line: %v", err)
 	}
 	return l.client.Handle(lbs, ts, line)
 }
