@@ -64,18 +64,14 @@ When using DynamoDB for the index, the following permissions are needed:
 * `dynamodb:UntagResource`
 * `dynamodb:UpdateItem`
 * `dynamodb:UpdateTable`
+* `dynamodb:CreateTable`
+* `dynamodb:DeleteTable` (if `table_manager.retention_period` is more than 0s)
 
 Resources: `arn:aws:dynamodb:<aws_region>:<aws_account_id>:table/<prefix>*`
 
 #### AutoScaling 
 
 If you enable autoscaling from table manager, the following permissions are needed:
-
-##### Deletion
-
-* `dynamodb:DeleteTable`
-
-Resources: `arn:aws:dynamodb:<aws_region>:<aws_account_id>:table/<prefix>*`
 
 ##### Application Autoscaling
 
