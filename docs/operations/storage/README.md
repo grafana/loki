@@ -69,13 +69,16 @@ When using DynamoDB for the index, the following permissions are needed:
 
 Resources: `arn:aws:dynamodb:<aws_region>:<aws_account_id>:table/<prefix>*`
 
+* `dynamodb:ListTables`
+
+Resources: `*`
+
 #### AutoScaling 
 
 If you enable autoscaling from table manager, the following permissions are needed:
 
 ##### Application Autoscaling
 
-* `dynamodb:ListTables`
 * `application-autoscaling:DescribeScalableTargets`
 * `application-autoscaling:DescribeScalingPolicies`
 * `application-autoscaling:RegisterScalableTarget`
