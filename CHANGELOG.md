@@ -1,3 +1,7 @@
+## master / unreleased
+
+* [FEATURE] promtail positions file corruptions can be ignored with the `positions.ignore-corruptions` flag. In the case the positions yaml is corrupted an empty positions config will be used and should later overwrite the malformed yaml.
+
 # 1.2.0 (2019-12-09)
 
 One week has passed since the last Loki release, and it's time for a new one!

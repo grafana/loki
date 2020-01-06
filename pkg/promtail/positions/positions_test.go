@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,7 +45,10 @@ func TestReadPositionsOK(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pos, err := readPositionsFile(temp)
+	pos, err := readPositionsFile(Config{
+		PositionsFile: temp,
+	}, log.NewNopLogger())
+
 	require.NoError(t, err)
 	require.Equal(t, "17623", pos["/tmp/random.log"])
 }
@@ -60,7 +64,10 @@ func TestReadPositionsFromDir(t *testing.T) {
 		_ = os.Remove(temp)
 	}()
 
-	_, err = readPositionsFile(temp)
+	_, err = readPositionsFile(Config{
+		PositionsFile: temp,
+	}, log.NewNopLogger())
+
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), temp)) // error must contain filename
 }
@@ -79,7 +86,33 @@ func TestReadPositionsFromBadYaml(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = readPositionsFile(temp)
+	_, err = readPositionsFile(Config{
+		PositionsFile: temp,
+	}, log.NewNopLogger())
+
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), temp)) // error must contain filename
+}
+
+func TestReadPositionsFromBadYamlIgnoreCorruption(t *testing.T) {
+	temp := tempFilename(t)
+	defer func() {
+		_ = os.Remove(temp)
+	}()
+
+	badYaml := []byte(`positions:
+  /tmp/random.log: "176
+`)
+	err := ioutil.WriteFile(temp, badYaml, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := readPositionsFile(Config{
+		PositionsFile:     temp,
+		IgnoreCorruptions: true,
+	}, log.NewNopLogger())
+
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{}, out)
 }

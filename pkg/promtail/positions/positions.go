@@ -20,14 +20,16 @@ const positionFileMode = 0600
 
 // Config describes where to get postition information from.
 type Config struct {
-	SyncPeriod    time.Duration `yaml:"sync_period"`
-	PositionsFile string        `yaml:"filename"`
+	SyncPeriod        time.Duration `yaml:"sync_period"`
+	PositionsFile     string        `yaml:"filename"`
+	IgnoreCorruptions bool          `yaml:"ignore_corruptions"`
 }
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
 	flags.DurationVar(&cfg.SyncPeriod, "positions.sync-period", 10*time.Second, "Period with this to sync the position file.")
 	flag.StringVar(&cfg.PositionsFile, "positions.file", "/var/log/positions.yaml", "Location to read/write positions from.")
+	flag.BoolVar(&cfg.IgnoreCorruptions, "positions.ignore-corruptions", false, "whether to ignore & later overwrite positions files that are corrupted")
 }
 
 // Positions tracks how far through each file we've read.
@@ -47,7 +49,7 @@ type File struct {
 
 // New makes a new Positions.
 func New(logger log.Logger, cfg Config) (*Positions, error) {
-	positions, err := readPositionsFile(cfg.PositionsFile)
+	positions, err := readPositionsFile(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -181,8 +183,9 @@ func (p *Positions) cleanup() {
 	}
 }
 
-func readPositionsFile(filename string) (map[string]string, error) {
-	cleanfn := filepath.Clean(filename)
+func readPositionsFile(cfg Config, logger log.Logger) (map[string]string, error) {
+
+	cleanfn := filepath.Clean(cfg.PositionsFile)
 	buf, err := ioutil.ReadFile(cleanfn)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -192,8 +195,15 @@ func readPositionsFile(filename string) (map[string]string, error) {
 	}
 
 	var p File
-	if err := yaml.UnmarshalStrict(buf, &p); err != nil {
-		return nil, fmt.Errorf("%s: %v", cleanfn, err)
+	err = yaml.UnmarshalStrict(buf, &p)
+	if err != nil {
+		// return empty if cfg option enabled
+		if cfg.IgnoreCorruptions {
+			level.Debug(logger).Log("msg", "ignoring corrupted positions file", "file", cleanfn, "error", err)
+			return map[string]string{}, nil
+		}
+
+		return nil, fmt.Errorf("invalid yaml positions file [%s]: %v", cleanfn, err)
 	}
 
 	return p.Positions, nil
