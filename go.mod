@@ -32,7 +32,7 @@ require (
 	github.com/hpcloud/tail v1.0.0
 	github.com/influxdata/go-syslog/v2 v2.0.1
 	github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
-	github.com/json-iterator/go v1.1.7
+	github.com/json-iterator/go v1.1.9
 	github.com/klauspost/compress v1.9.4
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/morikuni/aec v0.0.0-20170113033406-39771216ff4c // indirect
