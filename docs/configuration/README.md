@@ -161,6 +161,10 @@ The `querier_config` block configures the Loki Querier.
 # served.
 [tail_max_duration: <duration> | default = 1h]
 
+# Time to wait before sending more than the minimum successful query
+# requests.
+[extra_query_delay: <duration> | default = 0s]
+
 # Configuration options for the LogQL engine.
 engine:
   # Timeout for query execution
