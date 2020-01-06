@@ -1,7 +1,7 @@
 # Stages
 
 This section is a collection of all stages Promtail supports in a
-[Pipeline](../ppipelines.md).
+[Pipeline](../pipelines.md).
 
 Parsing stages:
 
