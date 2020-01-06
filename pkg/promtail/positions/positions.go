@@ -199,7 +199,7 @@ func readPositionsFile(cfg Config, logger log.Logger) (map[string]string, error)
 	if err != nil {
 		// return empty if cfg option enabled
 		if cfg.IgnoreInvalidYaml {
-			level.Debug(logger).Log("msg", "ignoring corrupted positions file", "file", cleanfn, "error", err)
+			level.Debug(logger).Log("msg", "ignoring invalid positions file", "file", cleanfn, "error", err)
 			return map[string]string{}, nil
 		}
 
