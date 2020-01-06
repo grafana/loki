@@ -36,8 +36,8 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 	f.DurationVar(&cfg.Expiration, prefix+"redis.expiration", 0, description+"How long keys stay in the redis.")
 	f.IntVar(&cfg.MaxIdleConns, prefix+"redis.max-idle-conns", 80, description+"Maximum number of idle connections in pool.")
 	f.IntVar(&cfg.MaxActiveConns, prefix+"redis.max-active-conns", 0, description+"Maximum number of active connections in pool.")
-	f.StringVar(&cfg.Password, prefix+"redis.password", "", "password to use when connecting to redis.")
-	f.BoolVar(&cfg.EnableTLS, prefix+"redis.enable-tls", false, "enables connecting to redis with TLS.")
+	f.StringVar(&cfg.Password, prefix+"redis.password", "", description+"Password to use when connecting to redis.")
+	f.BoolVar(&cfg.EnableTLS, prefix+"redis.enable-tls", false, description+"Enables connecting to redis with TLS.")
 }
 
 // NewRedisCache creates a new RedisCache
