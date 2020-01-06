@@ -14,13 +14,11 @@ import (
 // Config is the configuration for the queryrange tripperware
 type Config struct {
 	queryrange.Config `yaml:",inline"`
-	IntervalBatchSize int `yaml:"interval_batch_size"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Config.RegisterFlags(f)
-	f.IntVar(&cfg.IntervalBatchSize, "interval-batch-size", 16, "The number of batched requests per interval. (only applied to regex)")
 }
 
 // Stopper gracefully shutdown resources created
@@ -77,7 +75,7 @@ func NewLogFilterTripperware(
 ) (frontend.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{queryrange.LimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, cfg.IntervalBatchSize, limits, codec))
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))
 	}
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry"), queryrange.NewRetryMiddleware(log, cfg.MaxRetries))

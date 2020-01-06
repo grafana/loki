@@ -258,15 +258,15 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="error"}`,
 								Entries: []logproto.Entry{
-									{Timestamp: time.Unix(0, 1), Line: "1"},
 									{Timestamp: time.Unix(0, 2), Line: "2"},
+									{Timestamp: time.Unix(0, 1), Line: "1"},
 								},
 							},
 							{
 								Labels: `{foo="bar", level="debug"}`,
 								Entries: []logproto.Entry{
-									{Timestamp: time.Unix(0, 5), Line: "5"},
 									{Timestamp: time.Unix(0, 6), Line: "6"},
+									{Timestamp: time.Unix(0, 5), Line: "5"},
 								},
 							},
 						},
@@ -291,8 +291,8 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="debug"}`,
 								Entries: []logproto.Entry{
-									{Timestamp: time.Unix(0, 15), Line: "15"},
 									{Timestamp: time.Unix(0, 16), Line: "16"},
+									{Timestamp: time.Unix(0, 15), Line: "15"},
 								},
 							},
 						},
@@ -345,15 +345,16 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="error"}`,
 								Entries: []logproto.Entry{
-									{Timestamp: time.Unix(0, 1), Line: "1"},
-									{Timestamp: time.Unix(0, 2), Line: "2"},
+									{Timestamp: time.Unix(0, 10), Line: "10"},
+									{Timestamp: time.Unix(0, 9), Line: "9"},
+									{Timestamp: time.Unix(0, 9), Line: "9"},
 								},
 							},
 							{
 								Labels: `{foo="bar", level="debug"}`,
 								Entries: []logproto.Entry{
-									{Timestamp: time.Unix(0, 5), Line: "5"},
-									{Timestamp: time.Unix(0, 6), Line: "6"},
+									{Timestamp: time.Unix(0, 16), Line: "16"},
+									{Timestamp: time.Unix(0, 15), Line: "15"},
 								},
 							},
 						},
@@ -370,16 +371,15 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="error"}`,
 								Entries: []logproto.Entry{
-									{Timestamp: time.Unix(0, 10), Line: "10"},
-									{Timestamp: time.Unix(0, 9), Line: "9"},
-									{Timestamp: time.Unix(0, 9), Line: "9"},
+									{Timestamp: time.Unix(0, 2), Line: "2"},
+									{Timestamp: time.Unix(0, 1), Line: "1"},
 								},
 							},
 							{
 								Labels: `{foo="bar", level="debug"}`,
 								Entries: []logproto.Entry{
-									{Timestamp: time.Unix(0, 15), Line: "15"},
-									{Timestamp: time.Unix(0, 16), Line: "16"},
+									{Timestamp: time.Unix(0, 6), Line: "6"},
+									{Timestamp: time.Unix(0, 5), Line: "5"},
 								},
 							},
 						},
@@ -452,8 +452,8 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="error"}`,
 								Entries: []logproto.Entry{
-									{Timestamp: time.Unix(0, 10), Line: "10"},
 									{Timestamp: time.Unix(0, 9), Line: "9"},
+									{Timestamp: time.Unix(0, 10), Line: "10"},
 								},
 							},
 							{
@@ -540,8 +540,8 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="error"}`,
 								Entries: []logproto.Entry{
-									{Timestamp: time.Unix(0, 10), Line: "10"},
 									{Timestamp: time.Unix(0, 9), Line: "9"},
+									{Timestamp: time.Unix(0, 10), Line: "10"},
 								},
 							},
 							{
@@ -686,3 +686,73 @@ var (
 		},
 	}
 )
+
+func BenchmarkResponseMerge(b *testing.B) {
+	const (
+		resps         = 10
+		streams       = 100
+		logsPerStream = 1000
+	)
+
+	for _, tc := range []struct {
+		desc  string
+		limit uint32
+		fn    func([]*LokiResponse, uint32, logproto.Direction) []logproto.Stream
+	}{
+		{
+			"mergeStreams unlimited",
+			uint32(streams * logsPerStream),
+			mergeStreams,
+		},
+		{
+			"mergeOrderedNonOverlappingStreams unlimited",
+			uint32(streams * logsPerStream),
+			mergeOrderedNonOverlappingStreams,
+		},
+		{
+			"mergeStreams limited",
+			uint32(streams*logsPerStream - 1),
+			mergeStreams,
+		},
+		{
+			"mergeOrderedNonOverlappingStreams limited",
+			uint32(streams*logsPerStream - 1),
+			mergeOrderedNonOverlappingStreams,
+		},
+	} {
+		input := mkResps(resps, streams, logsPerStream, logproto.FORWARD)
+		b.Run(tc.desc, func(b *testing.B) {
+			for n := 0; n < b.N; n++ {
+				tc.fn(input, tc.limit, logproto.FORWARD)
+			}
+		})
+	}
+
+}
+
+func mkResps(nResps, nStreams, nLogs int, direction logproto.Direction) (resps []*LokiResponse) {
+	for i := 0; i < nResps; i++ {
+		r := &LokiResponse{}
+		for j := 0; j < nStreams; j++ {
+			stream := logproto.Stream{
+				Labels: fmt.Sprintf(`{foo="%d"}`, j),
+			}
+			// split nLogs evenly across all responses
+			for k := i * (nLogs / nResps); k < (i+1)*(nLogs/nResps); k++ {
+				stream.Entries = append(stream.Entries, logproto.Entry{
+					Timestamp: time.Unix(int64(k), 0),
+					Line:      fmt.Sprintf("%d", k),
+				})
+
+				if direction == logproto.BACKWARD {
+					for x, y := 0, len(stream.Entries)-1; x < len(stream.Entries)/2; x, y = x+1, y-1 {
+						stream.Entries[x], stream.Entries[y] = stream.Entries[y], stream.Entries[x]
+					}
+				}
+			}
+			r.Data.Result = append(r.Data.Result, stream)
+		}
+		resps = append(resps, r)
+	}
+	return resps
+}

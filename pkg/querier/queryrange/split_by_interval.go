@@ -8,33 +8,107 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/weaveworks/common/user"
 )
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
-func SplitByIntervalMiddleware(interval time.Duration, batchSize int, limits queryrange.Limits, merger queryrange.Merger) queryrange.Middleware {
+func SplitByIntervalMiddleware(interval time.Duration, limits queryrange.Limits, merger queryrange.Merger) queryrange.Middleware {
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
-		return splitByInterval{
-			next:      next,
-			limits:    limits,
-			merger:    merger,
-			interval:  interval,
-			batchSize: batchSize,
+		return &splitByInterval{
+			next:     next,
+			limits:   limits,
+			merger:   merger,
+			interval: interval,
 		}
 	})
 }
 
-type splitByInterval struct {
-	next      queryrange.Handler
-	limits    queryrange.Limits
-	merger    queryrange.Merger
-	interval  time.Duration
-	batchSize int
+type lokiResult struct {
+	req  queryrange.Request
+	resp chan queryrange.Response
+	err  chan error
 }
 
-func (s splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
+type splitByInterval struct {
+	next     queryrange.Handler
+	limits   queryrange.Limits
+	merger   queryrange.Merger
+	interval time.Duration
+}
+
+func (h *splitByInterval) Feed(ctx context.Context, input []*lokiResult) chan *lokiResult {
+	ch := make(chan *lokiResult)
+
+	go func() {
+		defer close(ch)
+		for _, d := range input {
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- d:
+				continue
+			}
+		}
+	}()
+
+	return ch
+}
+
+func (h *splitByInterval) Process(
+	ctx context.Context,
+	parallelism int,
+	threshold int64,
+	input []*lokiResult,
+) (responses []queryrange.Response, err error) {
+	ch := h.Feed(ctx, input)
+
+	for i := 0; i < parallelism; i++ {
+		go h.loop(ctx, ch)
+	}
+
+	for _, x := range input {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case err := <-x.err:
+			return nil, err
+		case resp := <-x.resp:
+
+			responses = append(responses, resp)
+
+			// see if we can exit early if a limit has been reached
+			threshold -= resp.(*LokiResponse).Count()
+			if threshold <= 0 {
+				return responses, nil
+			}
+		}
+
+	}
+
+	return responses, nil
+}
+
+func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult) {
+
+	for data := range ch {
+		resp, err := h.next.Do(ctx, data.req)
+		if err != nil {
+			data.err <- err
+		} else {
+			data.resp <- resp
+		}
+	}
+}
+
+func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
 	lokiRequest := r.(*LokiRequest)
-	intervals := splitByTime(lokiRequest, s.interval)
-	var result queryrange.Response
+
+	userid, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	intervals := splitByTime(lokiRequest, h.interval)
 
 	if lokiRequest.Direction == logproto.BACKWARD {
 		for i, j := 0, len(intervals)-1; i < j; i, j = i+1, j-1 {
@@ -42,43 +116,21 @@ func (s splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryran
 		}
 	}
 
+	input := make([]*lokiResult, 0, len(intervals))
 	for _, interval := range intervals {
-		sp, ctx := opentracing.StartSpanFromContext(ctx, "splitByInterval.interval")
-		linterval := interval.(*LokiRequest)
-		logRequest(sp, linterval)
-		reqs := splitByTime(linterval, linterval.EndTs.Sub(linterval.StartTs)/time.Duration(s.batchSize))
-
-		reqResps, err := queryrange.DoRequests(ctx, s.next, reqs, s.limits)
-		if err != nil {
-			sp.Finish()
-			return nil, err
-		}
-
-		resps := make([]queryrange.Response, 0, len(reqResps))
-		if result != nil {
-			resps = append(resps, result)
-		}
-		for _, reqResp := range reqResps {
-			resps = append(resps, reqResp.Response)
-		}
-
-		resp, err := s.merger.MergeResponse(resps...)
-		if err != nil {
-			sp.Finish()
-			return nil, err
-		}
-
-		lokiRes := resp.(*LokiResponse)
-		if lokiRes.isFull() {
-			sp.Finish()
-			return resp, nil
-		}
-
-		result = lokiRes
-		sp.Finish()
+		input = append(input, &lokiResult{
+			req:  interval,
+			resp: make(chan queryrange.Response),
+			err:  make(chan error),
+		})
 	}
 
-	return result, nil
+	resps, err := h.Process(ctx, h.limits.MaxQueryParallelism(userid), int64(lokiRequest.Limit), input)
+	if err != nil {
+		return nil, err
+	}
+
+	return h.merger.MergeResponse(resps...)
 }
 
 func splitByTime(r *LokiRequest, interval time.Duration) []queryrange.Request {

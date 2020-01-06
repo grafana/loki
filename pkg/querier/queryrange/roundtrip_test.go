@@ -24,26 +24,23 @@ import (
 
 var (
 	testTime   = time.Date(2019, 12, 02, 11, 10, 10, 10, time.UTC)
-	testConfig = Config{
-		IntervalBatchSize: 32,
-		Config: queryrange.Config{
-			SplitQueriesByInterval: 4 * time.Hour,
-			AlignQueriesWithStep:   true,
-			MaxRetries:             3,
-			CacheResults:           true,
-			ResultsCacheConfig: queryrange.ResultsCacheConfig{
-				MaxCacheFreshness: 1 * time.Minute,
-				SplitInterval:     4 * time.Hour,
-				CacheConfig: cache.Config{
-					EnableFifoCache: true,
-					Fifocache: cache.FifoCacheConfig{
-						Size:     1024,
-						Validity: 24 * time.Hour,
-					},
+	testConfig = Config{queryrange.Config{
+		SplitQueriesByInterval: 4 * time.Hour,
+		AlignQueriesWithStep:   true,
+		MaxRetries:             3,
+		CacheResults:           true,
+		ResultsCacheConfig: queryrange.ResultsCacheConfig{
+			MaxCacheFreshness: 1 * time.Minute,
+			SplitInterval:     4 * time.Hour,
+			CacheConfig: cache.Config{
+				EnableFifoCache: true,
+				Fifocache: cache.FifoCacheConfig{
+					Size:     1024,
+					Validity: 24 * time.Hour,
 				},
 			},
 		},
-	}
+	}}
 	matrix = promql.Matrix{
 		{
 			Points: []promql.Point{
@@ -178,15 +175,6 @@ func TestLogFilterTripperware(t *testing.T) {
 	// set the query length back to normal
 	lreq.StartTs = testTime.Add(-6 * time.Hour)
 	req, err = lokiCodec.EncodeRequest(ctx, lreq)
-	require.NoError(t, err)
-
-	// testing split 2 queries with 32 batch size
-	split, h := promqlResult(streams)
-	rt.setHandler(h)
-	resp, err := tpw(rt).RoundTrip(req)
-	require.Equal(t, 64, *split)
-	require.NoError(t, err)
-	_, err = lokiCodec.DecodeResponse(ctx, resp, lreq)
 	require.NoError(t, err)
 
 	// testing retry

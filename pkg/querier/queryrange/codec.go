@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"bytes"
+	"container/heap"
 	"context"
 	"errors"
 	"fmt"
@@ -210,91 +211,102 @@ func (codec) MergeResponse(responses ...queryrange.Response) (queryrange.Respons
 		Error:     lokiRes.Error,
 		Data: LokiData{
 			ResultType: loghttp.ResultTypeStream,
-			Result:     mergeStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
+			Result:     mergeOrderedNonOverlappingStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
 		},
 	}, nil
 }
 
-type entry struct {
-	entry  logproto.Entry
-	labels string
-}
+// mergeOrderedNonOverlappingStreams merges a set of ordered, nonoverlapping responses by concatenating matching streams then running them through a heap to pull out limit values
+func mergeOrderedNonOverlappingStreams(resps []*LokiResponse, limit uint32, direction logproto.Direction) []logproto.Stream {
 
-type byDirection struct {
-	direction logproto.Direction
-	entries   []entry
-}
+	var total int
 
-func (a byDirection) Len() int      { return len(a.entries) }
-func (a byDirection) Swap(i, j int) { a.entries[i], a.entries[j] = a.entries[j], a.entries[i] }
-func (a byDirection) Less(i, j int) bool {
-	e1, e2 := a.entries[i], a.entries[j]
-	if a.direction == logproto.BACKWARD {
-		switch {
-		case e1.entry.Timestamp.UnixNano() < e2.entry.Timestamp.UnixNano():
-			return false
-		case e1.entry.Timestamp.UnixNano() > e2.entry.Timestamp.UnixNano():
-			return true
-		default:
-			return e1.labels > e2.labels
-		}
-	}
-	switch {
-	case e1.entry.Timestamp.UnixNano() < e2.entry.Timestamp.UnixNano():
-		return true
-	case e1.entry.Timestamp.UnixNano() > e2.entry.Timestamp.UnixNano():
-		return false
-	default:
-		return e1.labels < e2.labels
-	}
-}
-
-func mergeStreams(resps []*LokiResponse, limit uint32, direction logproto.Direction) []logproto.Stream {
-	output := byDirection{
-		direction: direction,
-		entries:   []entry{},
-	}
+	// turn resps -> map[labels] []entries
+	groups := make(map[string]*byDir)
 	for _, resp := range resps {
 		for _, stream := range resp.Data.Result {
-			for _, e := range stream.Entries {
-				output.entries = append(output.entries, entry{
-					entry:  e,
-					labels: stream.Labels,
-				})
+			s, ok := groups[stream.Labels]
+			if !ok {
+				s = &byDir{
+					direction: direction,
+					labels:    stream.Labels,
+				}
+				groups[stream.Labels] = s
 			}
+
+			s.markers = append(s.markers, stream.Entries)
+			total += len(stream.Entries)
+		}
+
+		// optimization: since limit has been reached, no need to append entries from subsequent responses
+		if total >= int(limit) {
+			break
 		}
 	}
-	sort.Sort(output)
-	// limit result
-	if len(output.entries) >= int(limit) {
-		output.entries = output.entries[:limit]
-	}
 
-	resultDict := map[string]*logproto.Stream{}
-	for _, e := range output.entries {
-		stream, ok := resultDict[e.labels]
-		if !ok {
-			stream = &logproto.Stream{
-				Labels:  e.labels,
-				Entries: []logproto.Entry{},
-			}
-			resultDict[e.labels] = stream
-		}
-		stream.Entries = append(stream.Entries, e.entry)
-
-	}
-	keys := make([]string, 0, len(resultDict))
-	for key := range resultDict {
+	keys := make([]string, 0, len(groups))
+	for key := range groups {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 
-	result := make([]logproto.Stream, 0, len(resultDict))
-	for _, key := range keys {
-		result = append(result, *resultDict[key])
+	// escape hatch, can just return all the streams
+	if total <= int(limit) {
+		results := make([]logproto.Stream, 0, len(keys))
+		for _, key := range keys {
+			results = append(results, logproto.Stream{
+				Labels:  key,
+				Entries: groups[key].merge(),
+			})
+		}
+		return results
 	}
 
-	return result
+	pq := &priorityqueue{
+		direction: direction,
+	}
+
+	for _, key := range keys {
+		stream := &logproto.Stream{
+			Labels:  key,
+			Entries: groups[key].merge(),
+		}
+		if len(stream.Entries) > 0 {
+			pq.streams = append(pq.streams, stream)
+		}
+	}
+
+	heap.Init(pq)
+
+	resultDict := make(map[string]*logproto.Stream)
+
+	// we want the min(limit, num_entries)
+	for i := 0; i < int(limit) && pq.Len() > 0; i++ {
+		// grab the next entry off the queue. This will be a stream (to preserve labels) with one entry.
+		next := heap.Pop(pq).(*logproto.Stream)
+
+		s, ok := resultDict[next.Labels]
+		if !ok {
+			s = &logproto.Stream{
+				Labels:  next.Labels,
+				Entries: make([]logproto.Entry, 0, int(limit)/len(keys)), // allocation hack -- assume uniform distribution across labels
+			}
+			resultDict[next.Labels] = s
+		}
+		// TODO: make allocation friendly
+		s.Entries = append(s.Entries, next.Entries...)
+	}
+
+	results := make([]logproto.Stream, 0, len(resultDict))
+	for _, key := range keys {
+		stream, ok := resultDict[key]
+		if ok {
+			results = append(results, *stream)
+		}
+	}
+
+	return results
+
 }
 
 func toProto(m loghttp.Matrix) []queryrange.SampleStream {
@@ -318,17 +330,11 @@ func toProto(m loghttp.Matrix) []queryrange.SampleStream {
 	return res
 }
 
-func (res LokiResponse) isFull() bool {
-	return countEntries(res.Data.Result) >= int64(res.Limit)
-}
+func (res LokiResponse) Count() int64 {
+	var result int64
+	for _, s := range res.Data.Result {
+		result += int64(len(s.Entries))
+	}
+	return result
 
-func countEntries(streams []logproto.Stream) int64 {
-	if len(streams) == 0 {
-		return 0
-	}
-	res := int64(0)
-	for _, s := range streams {
-		res += int64(len(s.Entries))
-	}
-	return res
 }

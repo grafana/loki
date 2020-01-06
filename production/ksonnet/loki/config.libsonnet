@@ -112,8 +112,7 @@
         },
       },
       query_range: {
-        split_queries_by_interval: '4h',
-        interval_batch_size: 16,
+        split_queries_by_interval: '30m',
         align_queries_with_step: true,
         cache_results: true,
         max_retries: 5,

@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -98,10 +99,9 @@ func Test_splitByInterval_Do(t *testing.T) {
 				},
 			}, nil
 		}),
-		limits:    fakeLimits{},
-		merger:    lokiCodec,
-		interval:  time.Hour,
-		batchSize: 1,
+		limits:   fakeLimits{},
+		merger:   lokiCodec,
+		interval: time.Hour,
 	}
 
 	tests := []struct {
@@ -243,4 +243,87 @@ func Test_splitByInterval_Do(t *testing.T) {
 		})
 	}
 
+}
+
+func Test_ExitEarly(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	var callCt int
+	var mtx sync.Mutex
+
+	split := splitByInterval{
+		next: queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
+			time.Sleep(time.Millisecond) // artificial delay to minimize race condition exposure in test
+
+			mtx.Lock()
+			defer mtx.Unlock()
+			callCt++
+
+			return &LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: r.(*LokiRequest).Direction,
+				Limit:     r.(*LokiRequest).Limit,
+				Version:   uint32(loghttp.VersionV1),
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result: []logproto.Stream{
+						{
+							Labels: `{foo="bar", level="debug"}`,
+							Entries: []logproto.Entry{
+
+								{
+									Timestamp: time.Unix(0, r.(*LokiRequest).StartTs.UnixNano()),
+									Line:      fmt.Sprintf("%d", r.(*LokiRequest).StartTs.UnixNano()),
+								},
+							},
+						},
+					},
+				},
+			}, nil
+		}),
+		limits:   fakeLimits{},
+		merger:   lokiCodec,
+		interval: time.Hour,
+	}
+
+	req := &LokiRequest{
+		StartTs:   time.Unix(0, 0),
+		EndTs:     time.Unix(0, (4 * time.Hour).Nanoseconds()),
+		Query:     "",
+		Limit:     2,
+		Step:      1,
+		Direction: logproto.FORWARD,
+		Path:      "/api/prom/query_range",
+	}
+
+	expected := &LokiResponse{
+		Status:    loghttp.QueryStatusSuccess,
+		Direction: logproto.FORWARD,
+		Limit:     2,
+		Version:   1,
+		Data: LokiData{
+			ResultType: loghttp.ResultTypeStream,
+			Result: []logproto.Stream{
+				{
+					Labels: `{foo="bar", level="debug"}`,
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(0, 0),
+							Line:      fmt.Sprintf("%d", 0),
+						},
+						{
+							Timestamp: time.Unix(0, time.Hour.Nanoseconds()),
+							Line:      fmt.Sprintf("%d", time.Hour.Nanoseconds()),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	res, err := split.Do(ctx, req)
+
+	require.Equal(t, int(req.Limit), callCt)
+	require.NoError(t, err)
+	require.Equal(t, expected, res)
 }
