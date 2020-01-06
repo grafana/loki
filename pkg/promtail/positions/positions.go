@@ -22,14 +22,14 @@ const positionFileMode = 0600
 type Config struct {
 	SyncPeriod        time.Duration `yaml:"sync_period"`
 	PositionsFile     string        `yaml:"filename"`
-	IgnoreCorruptions bool          `yaml:"ignore_corruptions"`
+	IgnoreInvalidYaml bool          `yaml:"ignore_invalid_yaml"`
 }
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
 	flags.DurationVar(&cfg.SyncPeriod, "positions.sync-period", 10*time.Second, "Period with this to sync the position file.")
 	flag.StringVar(&cfg.PositionsFile, "positions.file", "/var/log/positions.yaml", "Location to read/write positions from.")
-	flag.BoolVar(&cfg.IgnoreCorruptions, "positions.ignore-corruptions", false, "whether to ignore & later overwrite positions files that are corrupted")
+	flag.BoolVar(&cfg.IgnoreInvalidYaml, "positions.ignore-invalid-yaml", false, "whether to ignore & later overwrite positions files that are corrupted")
 }
 
 // Positions tracks how far through each file we've read.
@@ -198,7 +198,7 @@ func readPositionsFile(cfg Config, logger log.Logger) (map[string]string, error)
 	err = yaml.UnmarshalStrict(buf, &p)
 	if err != nil {
 		// return empty if cfg option enabled
-		if cfg.IgnoreCorruptions {
+		if cfg.IgnoreInvalidYaml {
 			level.Debug(logger).Log("msg", "ignoring corrupted positions file", "file", cleanfn, "error", err)
 			return map[string]string{}, nil
 		}

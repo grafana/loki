@@ -228,7 +228,7 @@ is restarted to allow it to continue from where it left off.
 [sync_period: <duration> | default = 10s]
 
 # Whether to ignore & later overwrite positions files that are corrupted
-[ignore_corruptions: <boolean> | default = false]
+[ignore_invalid_yaml: <boolean> | default = false]
 ```
 
 ## scrape_config

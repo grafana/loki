@@ -110,7 +110,7 @@ func TestReadPositionsFromBadYamlIgnoreCorruption(t *testing.T) {
 
 	out, err := readPositionsFile(Config{
 		PositionsFile:     temp,
-		IgnoreCorruptions: true,
+		IgnoreInvalidYaml: true,
 	}, log.NewNopLogger())
 
 	require.NoError(t, err)
