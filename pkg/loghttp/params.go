@@ -26,6 +26,9 @@ func limit(r *http.Request) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+	if l <= 0 {
+		return 0, errors.New("limit must be a positive value")
+	}
 	return uint32(l), nil
 }
 
