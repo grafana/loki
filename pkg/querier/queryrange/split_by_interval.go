@@ -6,8 +6,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/weaveworks/common/user"
 )
 
@@ -151,16 +149,4 @@ func splitByTime(r *LokiRequest, interval time.Duration) []queryrange.Request {
 		})
 	}
 	return reqs
-}
-
-func logRequest(span opentracing.Span, r *LokiRequest) {
-	span.LogFields(
-		otlog.String("query", r.GetQuery()),
-		otlog.String("start", r.StartTs.String()),
-		otlog.String("end", r.EndTs.String()),
-		otlog.Int64("step (ms)", r.GetStep()),
-		otlog.String("direction", r.Direction.String()),
-		otlog.Uint32("limit", r.Limit),
-		otlog.String("path", r.Path),
-	)
 }
