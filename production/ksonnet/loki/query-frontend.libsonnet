@@ -26,6 +26,6 @@
   local service = $.core.v1.service,
 
   query_frontend_service:
-    $.util.serviceFor($.query_frontend_deployment) +
-    service.mixin.spec.withClusterIp('None'),
+    $.util.serviceFor($.query_frontend_deployment),
+
 }
