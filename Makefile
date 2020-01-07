@@ -288,8 +288,8 @@ endif
 
 protos: $(PROTO_GOS)
 
-touch-protos: $(PROTO_GOS)
-	for proto in $^; do touch "$${proto}"; done
+touch-protos:
+	for proto in $(PROTO_GOS); do [ -f "./$${proto}" ] && touch "$${proto}" && echo "touched $${proto}"; done
 
 %.pb.go: $(PROTO_DEFS)
 ifeq ($(BUILD_IN_CONTAINER),true)
