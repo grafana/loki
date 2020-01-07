@@ -30,7 +30,7 @@ func TestFactoryStop(t *testing.T) {
 		},
 	}
 
-	limits, err := validation.NewOverrides(defaults)
+	limits, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
 
 	store, err := NewStore(cfg, storeConfig, schemaConfig, limits)

@@ -88,7 +88,7 @@ func newTestChunkStoreConfig(t require.TestingT, schemaName string, storeCfg Sto
 	var limits validation.Limits
 	flagext.DefaultValues(&limits)
 	limits.MaxQueryLength = 30 * 24 * time.Hour
-	overrides, err := validation.NewOverrides(limits)
+	overrides, err := validation.NewOverrides(limits, nil)
 	require.NoError(t, err)
 
 	store := NewCompositeStore()
