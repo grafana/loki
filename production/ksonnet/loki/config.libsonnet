@@ -117,7 +117,7 @@
         cache_results: true,
         max_retries: 5,
         results_cache: {
-          split_interval: '30m',
+          cache_split_interval: '30m',
           max_freshness: '10m',
           cache: {
             memcached_client: {
