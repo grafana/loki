@@ -5,7 +5,7 @@ go 1.13
 require (
 	github.com/Microsoft/go-winio v0.4.12 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
-	github.com/bmatcuk/doublestar v1.1.1
+	github.com/bmatcuk/doublestar v1.2.2
 	github.com/containerd/containerd v1.3.2 // indirect
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
@@ -46,7 +46,7 @@ require (
 	github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd
 	github.com/stretchr/testify v1.4.0
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
-	github.com/ugorji/go v1.1.7 // indirect
+	github.com/ugorji/go/codec v1.1.7 // indirect
 	github.com/weaveworks/common v0.0.0-20191103151037-0e7cefadc44f
 	go.etcd.io/etcd v0.0.0-20190815204525-8f85f0dc2607 // indirect
 	go.opencensus.io v0.22.1 // indirect
