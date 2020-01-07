@@ -644,8 +644,8 @@ to wait before saving them to the backing store.
 [cache_lookups_older_than: <duration>]
 
 # Limit how long back data can be queries. Default is disabled.
-# If you configure `table_manager_config.retention_period` > 0
-# then you can set the same value here.
+# This should always be set to a value less than or equal to
+# what is set in `table_manager.retention_period`.
 [max_look_back_period: <duration>]
 ```
 
