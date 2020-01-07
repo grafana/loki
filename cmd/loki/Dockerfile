@@ -4,7 +4,6 @@ FROM golang:1.13 as build
 ARG TOUCH_PROTOS
 COPY . /src/loki
 WORKDIR /src/loki
-RUN echo touch protos "${TOUCH_PROTOS}"
 RUN make clean && (if [ "${TOUCH_PROTOS}" ]; then make touch-protos; fi) && make BUILD_IN_CONTAINER=false loki
 
 FROM alpine:3.9
