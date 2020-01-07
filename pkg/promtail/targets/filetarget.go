@@ -195,16 +195,21 @@ func (t *FileTarget) run() {
 
 func (t *FileTarget) sync() error {
 
-	// Find list of directories to add to watcher.
-	path, err := filepath.Abs(t.path)
-	if err != nil {
-		return errors.Wrap(err, "filetarget.sync.filepath.Abs")
-	}
-
 	// Gets current list of files to tail.
-	matches, err := doublestar.Glob(path)
+	matches, err := doublestar.Glob(t.path)
 	if err != nil {
 		return errors.Wrap(err, "filetarget.sync.filepath.Glob")
+	}
+
+	// Gets absolute path for each pattern.
+	for i := 0; i < len(matches); i++ {
+		if ! filepath.IsAbs(matches[i]) {
+			path, err := filepath.Abs(matches[i])
+			if err != nil {
+				return errors.Wrap(err, "filetarget.sync.filepath.Abs")
+			}
+			matches[i] = path
+		}
 	}
 
 	// Record the size of all the files matched by the Glob pattern.
