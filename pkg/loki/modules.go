@@ -9,11 +9,13 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -22,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -38,6 +41,7 @@ const (
 	Distributor
 	Ingester
 	Querier
+	QueryFrontend
 	Store
 	TableManager
 	All
@@ -68,6 +72,8 @@ func (m moduleName) String() string {
 		return "ingester"
 	case Querier:
 		return "querier"
+	case QueryFrontend:
+		return "query-frontend"
 	case TableManager:
 		return "table-manager"
 	case All:
@@ -100,6 +106,9 @@ func (m *moduleName) Set(s string) error {
 	case "querier":
 		*m = Querier
 		return nil
+	case "query-frontend":
+		*m = QueryFrontend
+		return nil
 	case "table-manager":
 		*m = TableManager
 		return nil
@@ -117,7 +126,7 @@ func (t *Loki) initServer() (err error) {
 }
 
 func (t *Loki) initRing() (err error) {
-	t.ring, err = ring.New(t.cfg.Ingester.LifecyclerConfig.RingConfig, "ingester")
+	t.ring, err = ring.New(t.cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
 	if err != nil {
 		return
 	}
@@ -154,6 +163,11 @@ func (t *Loki) stopDistributor() (err error) {
 }
 
 func (t *Loki) initQuerier() (err error) {
+	level.Debug(util.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.cfg.Worker))
+	t.worker, err = frontend.NewWorker(t.cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
+	if err != nil {
+		return
+	}
 	t.querier, err = querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store, t.overrides)
 	if err != nil {
 		return
@@ -263,6 +277,43 @@ func (t *Loki) stopStore() error {
 	return nil
 }
 
+func (t *Loki) initQueryFrontend() (err error) {
+	level.Debug(util.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.cfg.Frontend))
+	t.frontend, err = frontend.New(t.cfg.Frontend, util.Logger)
+	if err != nil {
+		return
+	}
+	level.Debug(util.Logger).Log("msg", "initializing query range tripperware",
+		"config", fmt.Sprintf("%+v", t.cfg.QueryRange),
+		"limits", fmt.Sprintf("%+v", t.cfg.LimitsConfig),
+	)
+	tripperware, stopper, err := queryrange.NewTripperware(t.cfg.QueryRange, util.Logger, t.overrides)
+	if err != nil {
+		return err
+	}
+	t.stopper = stopper
+	t.frontend.Wrap(tripperware)
+
+	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
+	t.server.HTTP.PathPrefix(t.cfg.HTTPPrefix).Handler(
+		t.httpAuthMiddleware.Wrap(
+			t.frontend.Handler(),
+		),
+	)
+	return
+}
+
+func (t *Loki) stopQueryFrontend() error {
+	t.frontend.Close()
+	if t.stopper != nil {
+		if err := t.stopper.Stop(); err != nil {
+			level.Error(util.Logger).Log("msg", "error while stopping middleware", "err", err)
+			return err
+		}
+	}
+	return nil
+}
+
 // listDeps recursively gets a list of dependencies for a passed moduleName
 func listDeps(m moduleName) []moduleName {
 	deps := modules[m].deps
@@ -364,6 +415,12 @@ var modules = map[moduleName]module{
 	Querier: {
 		deps: []moduleName{Store, Ring, Server},
 		init: (*Loki).initQuerier,
+	},
+
+	QueryFrontend: {
+		deps: []moduleName{Server, Overrides},
+		init: (*Loki).initQueryFrontend,
+		stop: (*Loki).stopQueryFrontend,
 	},
 
 	TableManager: {

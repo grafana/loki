@@ -1,3 +1,7 @@
+// Copyright 2018 Francisco Souza. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package backend
 
 import (
@@ -50,7 +54,7 @@ func (s *StorageMemory) GetBucket(name string) error {
 	defer s.mtx.Unlock()
 
 	if _, ok := s.buckets[name]; !ok {
-		return fmt.Errorf("No bucket named %s", name)
+		return fmt.Errorf("no bucket named %s", name)
 	}
 	return nil
 }
@@ -111,7 +115,7 @@ func (s *StorageMemory) DeleteObject(bucketName, objectName string) error {
 	obj := Object{BucketName: bucketName, Name: objectName}
 	index := s.findObject(obj)
 	if index < 0 {
-		return fmt.Errorf("No such object in bucket %s: %s", bucketName, objectName)
+		return fmt.Errorf("no such object in bucket %s: %s", bucketName, objectName)
 	}
 	bucket := s.buckets[obj.BucketName]
 	bucket[index] = bucket[len(bucket)-1]

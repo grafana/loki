@@ -35,8 +35,9 @@ func NewDesc() *Desc {
 	}
 }
 
-// AddIngester adds the given ingester to the ring.
-func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState, normaliseTokens bool) {
+// AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
+// any other tokens are removed.
+func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState) {
 	if d.Ingesters == nil {
 		d.Ingesters = map[string]IngesterDesc{}
 	}
@@ -45,18 +46,18 @@ func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState
 		Addr:      addr,
 		Timestamp: time.Now().Unix(),
 		State:     state,
+		Tokens:    tokens,
 	}
 
-	if normaliseTokens {
-		ingester.Tokens = tokens
-	} else {
-		for _, token := range tokens {
-			d.Tokens = append(d.Tokens, TokenDesc{
-				Token:    token,
-				Ingester: id,
-			})
+	// Since this ingester is only using normalised tokens, let's delete any denormalised
+	// tokens for this ingester. There may be such tokens eg. if previous instance
+	// of the same ingester was running with denormalized tokens.
+	for ix := 0; ix < len(d.Tokens); {
+		if d.Tokens[ix].Ingester == id {
+			d.Tokens = append(d.Tokens[:ix], d.Tokens[ix+1:]...)
+		} else {
+			ix++
 		}
-		sort.Sort(ByToken(d.Tokens))
 	}
 
 	d.Ingesters[id] = ingester
@@ -79,57 +80,32 @@ func (d *Desc) RemoveIngester(id string) {
 // This method assumes that Ring is in the correct state, 'from' ingester has no tokens anywhere,
 // and 'to' ingester uses either normalised or non-normalised tokens, but not both. Tokens list must
 // be sorted properly. If all of this is true, everything will be fine.
-func (d *Desc) ClaimTokens(from, to string, normaliseTokens bool) []uint32 {
-	var result []uint32
+func (d *Desc) ClaimTokens(from, to string) Tokens {
+	var result Tokens
 
-	if normaliseTokens {
-
-		// If the ingester we are claiming from is normalising, get its tokens then erase them from the ring.
-		if fromDesc, found := d.Ingesters[from]; found {
-			result = fromDesc.Tokens
-			fromDesc.Tokens = nil
-			d.Ingesters[from] = fromDesc
-		}
-
-		// If we are storing the tokens in a normalise form, we need to deal with
-		// the migration from denormalised by removing the tokens from the tokens
-		// list.
-		// When all ingesters are in normalised mode, d.Tokens is empty here
-		for i := 0; i < len(d.Tokens); {
-			if d.Tokens[i].Ingester == from {
-				result = append(result, d.Tokens[i].Token)
-				d.Tokens = append(d.Tokens[:i], d.Tokens[i+1:]...)
-				continue
-			}
-			i++
-		}
-
-		ing := d.Ingesters[to]
-		ing.Tokens = result
-		d.Ingesters[to] = ing
-
-	} else {
-		// If source ingester is normalising, copy its tokens to d.Tokens, and set new owner
-		if fromDesc, found := d.Ingesters[from]; found {
-			result = fromDesc.Tokens
-			fromDesc.Tokens = nil
-			d.Ingesters[from] = fromDesc
-
-			for _, t := range result {
-				d.Tokens = append(d.Tokens, TokenDesc{Ingester: to, Token: t})
-			}
-
-			sort.Sort(ByToken(d.Tokens))
-		}
-
-		// if source was normalising, this should not find new tokens
-		for i := 0; i < len(d.Tokens); i++ {
-			if d.Tokens[i].Ingester == from {
-				d.Tokens[i].Ingester = to
-				result = append(result, d.Tokens[i].Token)
-			}
-		}
+	// If the ingester we are claiming from is normalising, get its tokens then erase them from the ring.
+	if fromDesc, found := d.Ingesters[from]; found {
+		result = fromDesc.Tokens
+		fromDesc.Tokens = nil
+		d.Ingesters[from] = fromDesc
 	}
+
+	// If we are storing the tokens in a normalise form, we need to deal with
+	// the migration from denormalised by removing the tokens from the tokens
+	// list.
+	// When all ingesters are in normalised mode, d.Tokens is empty here
+	for i := 0; i < len(d.Tokens); {
+		if d.Tokens[i].Ingester == from {
+			result = append(result, d.Tokens[i].Token)
+			d.Tokens = append(d.Tokens[:i], d.Tokens[i+1:]...)
+			continue
+		}
+		i++
+	}
+
+	ing := d.Ingesters[to]
+	ing.Tokens = result
+	d.Ingesters[to] = ing
 
 	// not necessary, but makes testing simpler
 	if len(d.Tokens) == 0 {
@@ -169,8 +145,8 @@ func (d *Desc) Ready(now time.Time, heartbeatTimeout time.Duration) error {
 }
 
 // TokensFor partitions the tokens into those for the given ID, and those for others.
-func (d *Desc) TokensFor(id string) (tokens, other []uint32) {
-	var takenTokens, myTokens []uint32
+func (d *Desc) TokensFor(id string) (tokens, other Tokens) {
+	takenTokens, myTokens := Tokens{}, Tokens{}
 	for _, token := range migrateRing(d) {
 		takenTokens = append(takenTokens, token.Token)
 		if token.Ingester == id {
@@ -182,12 +158,20 @@ func (d *Desc) TokensFor(id string) (tokens, other []uint32) {
 
 // IsHealthy checks whether the ingester appears to be alive and heartbeating
 func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) bool {
-	if op == Write && i.State != ACTIVE {
-		return false
-	} else if op == Read && i.State == JOINING {
-		return false
+	healthy := false
+
+	switch op {
+	case Write:
+		healthy = (i.State == ACTIVE)
+
+	case Read:
+		healthy = (i.State == ACTIVE) || (i.State == LEAVING) || (i.State == PENDING)
+
+	case Reporting:
+		healthy = true
 	}
-	return time.Now().Sub(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
+
+	return healthy && time.Now().Sub(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
 }
 
 // Merge merges other ring into this one. Returns sub-ring that represents the change,
@@ -319,8 +303,8 @@ func buildNormalizedIngestersMap(inputRing *Desc) map[string]IngesterDesc {
 			continue
 		}
 
-		if !sort.IsSorted(sortableUint32(ing.Tokens)) {
-			sort.Sort(sortableUint32(ing.Tokens))
+		if !sort.IsSorted(Tokens(ing.Tokens)) {
+			sort.Sort(Tokens(ing.Tokens))
 		}
 
 		seen := make(map[uint32]bool)
@@ -407,7 +391,7 @@ func resolveConflicts(normalizedIngesters map[string]IngesterDesc) {
 		}
 	}
 
-	sort.Sort(sortableUint32(tokens))
+	sort.Sort(Tokens(tokens))
 
 	// let's store the resolved result back
 	newTokenLists := map[string][]uint32{}

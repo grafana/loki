@@ -6,7 +6,7 @@
   _config+:: {
     prometheus_insecure_skip_verify: false,
     promtail_config: {
-      clients:[{
+      clients: [{
         username:: '',
         password:: '',
         scheme:: 'https',

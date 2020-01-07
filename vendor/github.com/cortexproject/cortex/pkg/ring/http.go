@@ -57,6 +57,12 @@ const tpl = `
 					{{ end }}
 				</tbody>
 			</table>
+			<br>
+			{{ if .ShowTokens }}
+			<input type="button" value="Hide Ingester Tokens" onclick="window.location.href = '?tokens=false' " />
+			{{ else }}
+			<input type="button" value="Show Ingester Tokens" onclick="window.location.href = '?tokens=true'" />
+			{{ end }}
 			<pre>{{ .Ring }}</pre>
 		</form>
 	</body>
@@ -80,7 +86,7 @@ func (r *Ring) forget(ctx context.Context, id string) error {
 		ringDesc.RemoveIngester(id)
 		return ringDesc, true, nil
 	}
-	return r.KVClient.CAS(ctx, ConsulKey, unregister)
+	return r.KVClient.CAS(ctx, r.key, unregister)
 }
 
 func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -92,7 +98,13 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 		// Implement PRG pattern to prevent double-POST and work with CSRF middleware.
 		// https://en.wikipedia.org/wiki/Post/Redirect/Get
-		http.Redirect(w, req, req.RequestURI, http.StatusFound)
+
+		// http.Redirect() would convert our relative URL to absolute, which is not what we want.
+		// Browser knows how to do that, and it also knows real URL. Furthermore it will also preserve tokens parameter.
+		// Note that relative Location URLs are explicitly allowed by specification, so we're not doing anything wrong here.
+		w.Header().Set("Location", "#")
+		w.WriteHeader(http.StatusFound)
+
 		return
 	}
 
@@ -129,14 +141,23 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		})
 	}
 
+	tokensParam := req.URL.Query().Get("tokens")
+	var ringDescString string
+	showTokens := false
+	if tokensParam == "true" {
+		ringDescString = proto.MarshalTextString(r.ringDesc)
+		showTokens = true
+	}
 	if err := tmpl.Execute(w, struct {
-		Ingesters []interface{}
-		Now       time.Time
-		Ring      string
+		Ingesters  []interface{}
+		Now        time.Time
+		Ring       string
+		ShowTokens bool
 	}{
-		Ingesters: ingesters,
-		Now:       time.Now(),
-		Ring:      proto.MarshalTextString(r.ringDesc),
+		Ingesters:  ingesters,
+		Now:        time.Now(),
+		Ring:       ringDescString,
+		ShowTokens: showTokens,
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

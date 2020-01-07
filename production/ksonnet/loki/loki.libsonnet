@@ -9,6 +9,7 @@
 (import 'ingester.libsonnet') +
 (import 'querier.libsonnet') +
 (import 'table-manager.libsonnet') +
+(import 'query-frontend.libsonnet') +
 
 // Supporting services
 (import 'memcached.libsonnet')

@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package queryrange;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "pkg/logproto/logproto.proto";
+import "google/protobuf/timestamp.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message LokiRequest {
+  string query = 1;
+  uint32 limit = 2;
+  int64 step = 3;
+  google.protobuf.Timestamp startTs = 4 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp endTs = 5 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  logproto.Direction direction = 6;
+  string path = 7;
+}
+
+message LokiResponse {
+  string Status = 1 [(gogoproto.jsontag) = "status"];
+  LokiData Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
+  string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
+  string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
+  logproto.Direction direction = 5;
+  uint32 limit = 6;
+  uint32 version = 7;
+}
+
+message LokiData {
+  string ResultType = 1 [(gogoproto.jsontag) = "resultType"];
+  repeated logproto.Stream Result = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "result"];
+}

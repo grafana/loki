@@ -7,28 +7,38 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v2"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 var (
 	errMaxGlobalSeriesPerUserValidation = errors.New("The ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled")
 )
 
+// Supported values for enum limits
+const (
+	LocalIngestionRateStrategy  = "local"
+	GlobalIngestionRateStrategy = "global"
+)
+
 // Limits describe all the limits for users; can be used to describe global default
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
 	// Distributor enforced limits.
-	IngestionRate          float64       `yaml:"ingestion_rate"`
-	IngestionBurstSize     int           `yaml:"ingestion_burst_size"`
-	AcceptHASamples        bool          `yaml:"accept_ha_samples"`
-	HAClusterLabel         string        `yaml:"ha_cluster_label"`
-	HAReplicaLabel         string        `yaml:"ha_replica_label"`
-	MaxLabelNameLength     int           `yaml:"max_label_name_length"`
-	MaxLabelValueLength    int           `yaml:"max_label_value_length"`
-	MaxLabelNamesPerSeries int           `yaml:"max_label_names_per_series"`
-	RejectOldSamples       bool          `yaml:"reject_old_samples"`
-	RejectOldSamplesMaxAge time.Duration `yaml:"reject_old_samples_max_age"`
-	CreationGracePeriod    time.Duration `yaml:"creation_grace_period"`
-	EnforceMetricName      bool          `yaml:"enforce_metric_name"`
+	IngestionRate          float64             `yaml:"ingestion_rate"`
+	IngestionRateStrategy  string              `yaml:"ingestion_rate_strategy"`
+	IngestionBurstSize     int                 `yaml:"ingestion_burst_size"`
+	AcceptHASamples        bool                `yaml:"accept_ha_samples"`
+	HAClusterLabel         string              `yaml:"ha_cluster_label"`
+	HAReplicaLabel         string              `yaml:"ha_replica_label"`
+	DropLabels             flagext.StringSlice `yaml:"drop_labels"`
+	MaxLabelNameLength     int                 `yaml:"max_label_name_length"`
+	MaxLabelValueLength    int                 `yaml:"max_label_value_length"`
+	MaxLabelNamesPerSeries int                 `yaml:"max_label_names_per_series"`
+	RejectOldSamples       bool                `yaml:"reject_old_samples"`
+	RejectOldSamplesMaxAge time.Duration       `yaml:"reject_old_samples_max_age"`
+	CreationGracePeriod    time.Duration       `yaml:"creation_grace_period"`
+	EnforceMetricName      bool                `yaml:"enforce_metric_name"`
 
 	// Ingester enforced limits.
 	MaxSeriesPerQuery        int `yaml:"max_series_per_query"`
@@ -53,10 +63,12 @@ type Limits struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
-	f.IntVar(&l.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples). Warning, very high limits will be reset every -distributor.limiter-reload-period.")
+	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "local", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global).")
+	f.IntVar(&l.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
 	f.BoolVar(&l.AcceptHASamples, "distributor.ha-tracker.enable-for-all-users", false, "Flag to enable, for all users, handling of samples with external labels identifying replicas in an HA Prometheus setup.")
-	f.StringVar(&l.HAReplicaLabel, "distributor.ha-tracker.replica", "__replica__", "Prometheus label to look for in samples to identify a Prometheus HA replica.")
 	f.StringVar(&l.HAClusterLabel, "distributor.ha-tracker.cluster", "cluster", "Prometheus label to look for in samples to identify a Prometheus HA cluster.")
+	f.StringVar(&l.HAReplicaLabel, "distributor.ha-tracker.replica", "__replica__", "Prometheus label to look for in samples to identify a Prometheus HA replica.")
+	f.Var(&l.DropLabels, "distributor.drop-label", "This flag can be used to specify label names that to drop during sample ingestion within the distributor and can be repeated in order to drop multiple labels.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
@@ -153,6 +165,14 @@ func (o *Overrides) IngestionRate(userID string) float64 {
 	return o.overridesManager.GetLimits(userID).(*Limits).IngestionRate
 }
 
+// IngestionRateStrategy returns whether the ingestion rate limit should be individually applied
+// to each distributor instance (local) or evenly shared across the cluster (global).
+func (o *Overrides) IngestionRateStrategy() string {
+	// The ingestion rate strategy can't be overridden on a per-tenant basis
+	defaultLimits := o.overridesManager.cfg.Defaults
+	return defaultLimits.(*Limits).IngestionRateStrategy
+}
+
 // IngestionBurstSize returns the burst size for ingestion rate.
 func (o *Overrides) IngestionBurstSize(userID string) int {
 	return o.overridesManager.GetLimits(userID).(*Limits).IngestionBurstSize
@@ -163,14 +183,19 @@ func (o *Overrides) AcceptHASamples(userID string) bool {
 	return o.overridesManager.GetLimits(userID).(*Limits).AcceptHASamples
 }
 
+// HAClusterLabel returns the cluster label to look for when deciding whether to accept a sample from a Prometheus HA replica.
+func (o *Overrides) HAClusterLabel(userID string) string {
+	return o.overridesManager.GetLimits(userID).(*Limits).HAClusterLabel
+}
+
 // HAReplicaLabel returns the replica label to look for when deciding whether to accept a sample from a Prometheus HA replica.
 func (o *Overrides) HAReplicaLabel(userID string) string {
 	return o.overridesManager.GetLimits(userID).(*Limits).HAReplicaLabel
 }
 
-// HAClusterLabel returns the cluster label to look for when deciding whether to accept a sample from a Prometheus HA replica.
-func (o *Overrides) HAClusterLabel(userID string) string {
-	return o.overridesManager.GetLimits(userID).(*Limits).HAClusterLabel
+// DropLabels returns the list of labels to be dropped when ingesting HA samples for the user.
+func (o *Overrides) DropLabels(userID string) flagext.StringSlice {
+	return o.overridesManager.GetLimits(userID).(*Limits).DropLabels
 }
 
 // MaxLabelNameLength returns maximum length a label name can be.

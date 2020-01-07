@@ -1,6 +1,12 @@
 package memberlist
 
 import (
+	"time"
+
+	armonmetrics "github.com/armon/go-metrics"
+	armonprometheus "github.com/armon/go-metrics/prometheus"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -10,49 +16,49 @@ func (m *Client) createAndRegisterMetrics() {
 	m.numberOfReceivedMessages = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "received_broadcasts",
+		Name:      "received_broadcasts_total",
 		Help:      "Number of received broadcast user messages",
 	})
 
 	m.totalSizeOfReceivedMessages = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "received_broadcasts_size",
+		Name:      "received_broadcasts_bytes_total",
 		Help:      "Total size of received broadcast user messages",
 	})
 
 	m.numberOfInvalidReceivedMessages = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "received_broadcasts_invalid",
+		Name:      "received_broadcasts_invalid_total",
 		Help:      "Number of received broadcast user messages that were invalid. Hopefully 0.",
 	})
 
 	m.numberOfPushes = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "state_pushes_count",
+		Name:      "state_pushes_total",
 		Help:      "How many times did this node push its full state to another node",
 	})
 
 	m.totalSizeOfPushes = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "state_pushes_bytes",
+		Name:      "state_pushes_bytes_total",
 		Help:      "Total size of pushed state",
 	})
 
 	m.numberOfPulls = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "state_pulls_count",
+		Name:      "state_pulls_total",
 		Help:      "How many times did this node pull full state from another node",
 	})
 
 	m.totalSizeOfPulls = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "state_pulls_bytes",
+		Name:      "state_pulls_bytes_total",
 		Help:      "Total size of pulled state",
 	})
 
@@ -68,39 +74,38 @@ func (m *Client) createAndRegisterMetrics() {
 	m.totalSizeOfBroadcastMessagesInQueue = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "messages_in_broadcast_size_total",
+		Name:      "messages_in_broadcast_queue_bytes",
 		Help:      "Total size of messages waiting in the broadcast queue",
 	})
 
 	m.casAttempts = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "cas_attempt_count",
+		Name:      "cas_attempt_total",
 		Help:      "Attempted CAS operations",
 	})
 
 	m.casSuccesses = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "cas_success_count",
+		Name:      "cas_success_total",
 		Help:      "Successful CAS operations",
 	})
 
 	m.casFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
-		Name:      "cas_failure_count",
+		Name:      "cas_failure_total",
 		Help:      "Failed CAS operations",
 	})
 
 	m.storeValuesDesc = prometheus.NewDesc(
-		prometheus.BuildFQName(m.cfg.MetricsNamespace, subsystem, "kv_store_count"),
+		prometheus.BuildFQName(m.cfg.MetricsNamespace, subsystem, "kv_store_count"), // gauge
 		"Number of values in KV Store",
-		nil, nil,
-	)
+		nil, nil)
 
 	m.storeSizesDesc = prometheus.NewDesc(
-		prometheus.BuildFQName(m.cfg.MetricsNamespace, subsystem, "kv_store_value_size"),
+		prometheus.BuildFQName(m.cfg.MetricsNamespace, subsystem, "kv_store_value_bytes"), // gauge
 		"Sizes of values in KV Store in bytes",
 		[]string{"key"}, nil)
 
@@ -117,15 +122,10 @@ func (m *Client) createAndRegisterMetrics() {
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
 		Name:      "cluster_node_health_score",
-		Help:      "Health score of this cluster. Lower the better. 0 = totally health",
+		Help:      "Health score of this cluster. Lower value is better. 0 = healthy",
 	}, func() float64 {
 		return float64(m.memberlist.GetHealthScore())
 	})
-
-	m.memberlistMembersInfoDesc = prometheus.NewDesc(
-		prometheus.BuildFQName(m.cfg.MetricsNamespace, subsystem, "cluster_members_last_timestamp"),
-		"State information about memberlist cluster members",
-		[]string{"name", "address"}, nil)
 
 	m.watchPrefixDroppedNotifications = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: m.cfg.MetricsNamespace,
@@ -161,13 +161,30 @@ func (m *Client) createAndRegisterMetrics() {
 	}
 
 	m.cfg.MetricsRegisterer.MustRegister(m)
+
+	// memberlist uses armonmetrics package for internal usage
+	// here we configure armonmetrics to use prometheus
+	sink, err := armonprometheus.NewPrometheusSink() // there is no option to pass registrerer, this uses default
+	if err == nil {
+		cfg := armonmetrics.DefaultConfig("")
+		cfg.EnableHostname = false         // no need to put hostname into metric
+		cfg.EnableHostnameLabel = false    // no need to put hostname into labels
+		cfg.EnableRuntimeMetrics = false   // metrics about Go runtime already provided by prometheus
+		cfg.EnableTypePrefix = true        // to make better sense of internal memberlist metrics
+		cfg.TimerGranularity = time.Second // timers are in seconds in prometheus world
+
+		_, err = armonmetrics.NewGlobal(cfg, sink)
+	}
+
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "failed to register prometheus metrics for memberlist", "err", err)
+	}
 }
 
 // Describe returns prometheus descriptions via supplied channel
 func (m *Client) Describe(ch chan<- *prometheus.Desc) {
 	ch <- m.storeValuesDesc
 	ch <- m.storeSizesDesc
-	ch <- m.memberlistMembersInfoDesc
 }
 
 // Collect returns extra metrics via supplied channel

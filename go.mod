@@ -3,17 +3,16 @@ module github.com/grafana/loki
 go 1.13
 
 require (
-	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
 	github.com/Microsoft/go-winio v0.4.12 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/bmatcuk/doublestar v1.1.1
+	github.com/containerd/containerd v1.3.2 // indirect
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
-	github.com/cortexproject/cortex v0.3.1-0.20191122194007-ed7c302fd968
+	github.com/cortexproject/cortex v0.4.1-0.20191217132644-cd4009e2f8e7
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/distribution v2.7.1+incompatible // indirect
-	github.com/docker/docker v0.0.0-20190607191414-238f8eaa31aa
-	github.com/docker/go-connections v0.4.0 // indirect
+	github.com/docker/docker v0.7.3-0.20190817195342-4760db040282
 	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect
 	github.com/docker/go-plugins-helpers v0.0.0-20181025120712-1e6269c305b8
 	github.com/dustin/go-humanize v1.0.0
@@ -21,10 +20,9 @@ require (
 	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
 	github.com/frankban/quicktest v1.7.2 // indirect
 	github.com/go-kit/kit v0.9.0
-	github.com/gocql/gocql v0.0.0-20181124151448-70385f88b28b // indirect
 	github.com/gogo/protobuf v1.3.0 // remember to update loki-build-image/Dockerfile too
 	github.com/golang/snappy v0.0.1
-	github.com/gorilla/mux v1.6.2
+	github.com/gorilla/mux v1.7.1
 	github.com/gorilla/websocket v1.4.0
 	github.com/grpc-ecosystem/grpc-gateway v1.9.6 // indirect
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
@@ -35,10 +33,8 @@ require (
 	github.com/json-iterator/go v1.1.9
 	github.com/klauspost/compress v1.9.4
 	github.com/mitchellh/mapstructure v1.1.2
-	github.com/morikuni/aec v0.0.0-20170113033406-39771216ff4c // indirect
+	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
-	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
-	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/opentracing/opentracing-go v1.1.0
 	github.com/pierrec/lz4 v2.3.1-0.20191115212037-9085dacd1e1e+incompatible
 	github.com/pkg/errors v0.8.1
@@ -56,7 +52,8 @@ require (
 	go.opencensus.io v0.22.1 // indirect
 	golang.org/x/net v0.0.0-20190923162816-aa69164e4478
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
-	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0
+	golang.org/x/sys v0.0.0-20191218084908-4a24b4065292 // indirect
+	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	golang.org/x/tools v0.0.0-20190925134113-a044388aa56f // indirect
 	google.golang.org/appengine v1.6.3 // indirect
 	google.golang.org/genproto v0.0.0-20190916214212-f660b8655731 // indirect
@@ -64,7 +61,6 @@ require (
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/fsnotify.v1 v1.4.7
 	gopkg.in/yaml.v2 v2.2.2
-	gotest.tools v2.2.0+incompatible // indirect
 	k8s.io/klog v0.4.0
 )
 
@@ -75,3 +71,7 @@ replace k8s.io/client-go => k8s.io/client-go v0.0.0-20190620085101-78d2af792bab
 
 // Override reference causing proxy error.  Otherwise it attempts to download https://proxy.golang.org/golang.org/x/net/@v/v0.0.0-20190813000000-74dc4d7220e7.info
 replace golang.org/x/net => golang.org/x/net v0.0.0-20190923162816-aa69164e4478
+
+replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
+
+replace github.com/Azure/go-autorest => github.com/Azure/go-autorest v13.3.0+incompatible

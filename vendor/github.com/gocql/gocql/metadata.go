@@ -22,6 +22,7 @@ type KeyspaceMetadata struct {
 	Tables          map[string]*TableMetadata
 	Functions       map[string]*FunctionMetadata
 	Aggregates      map[string]*AggregateMetadata
+	Views           map[string]*ViewMetadata
 }
 
 // schema metadata for a table (a.k.a. column family)
@@ -79,6 +80,14 @@ type AggregateMetadata struct {
 
 	stateFunc string
 	finalFunc string
+}
+
+// ViewMetadata holds the metadata for views.
+type ViewMetadata struct {
+	Keyspace   string
+	Name       string
+	FieldNames []string
+	FieldTypes []TypeInfo
 }
 
 // the ordering of the column with regard to its comparator
@@ -233,9 +242,13 @@ func (s *schemaDescriber) refreshSchema(keyspaceName string) error {
 	if err != nil {
 		return err
 	}
+	views, err := getViewsMetadata(s.session, keyspaceName)
+	if err != nil {
+		return err
+	}
 
 	// organize the schema data
-	compileMetadata(s.session.cfg.ProtoVersion, keyspace, tables, columns, functions, aggregates)
+	compileMetadata(s.session.cfg.ProtoVersion, keyspace, tables, columns, functions, aggregates, views)
 
 	// update the cache
 	s.cache[keyspaceName] = keyspace
@@ -255,6 +268,7 @@ func compileMetadata(
 	columns []ColumnMetadata,
 	functions []FunctionMetadata,
 	aggregates []AggregateMetadata,
+	views []ViewMetadata,
 ) {
 	keyspace.Tables = make(map[string]*TableMetadata)
 	for i := range tables {
@@ -271,6 +285,10 @@ func compileMetadata(
 		aggregate.FinalFunc = *keyspace.Functions[aggregate.finalFunc]
 		aggregate.StateFunc = *keyspace.Functions[aggregate.stateFunc]
 		keyspace.Aggregates[aggregate.Name] = &aggregate
+	}
+	keyspace.Views = make(map[string]*ViewMetadata, len(views))
+	for i := range views {
+		keyspace.Views[views[i].Name] = &views[i]
 	}
 
 	// add columns from the schema data
@@ -849,8 +867,53 @@ func getTypeInfo(t string) TypeInfo {
 	return getCassandraType(t)
 }
 
-func getFunctionsMetadata(session *Session, keyspaceName string) ([]FunctionMetadata, error) {
+func getViewsMetadata(session *Session, keyspaceName string) ([]ViewMetadata, error) {
 	if session.cfg.ProtoVersion == protoVersion1 {
+		return nil, nil
+	}
+	var tableName string
+	if session.useSystemSchema {
+		tableName = "system_schema.types"
+	} else {
+		tableName = "system.schema_usertypes"
+	}
+	stmt := fmt.Sprintf(`
+		SELECT
+			type_name,
+			field_names,
+			field_types
+		FROM %s
+		WHERE keyspace_name = ?`, tableName)
+
+	var views []ViewMetadata
+
+	rows := session.control.query(stmt, keyspaceName).Scanner()
+	for rows.Next() {
+		view := ViewMetadata{Keyspace: keyspaceName}
+		var argumentTypes []string
+		err := rows.Scan(&view.Name,
+			&view.FieldNames,
+			&argumentTypes,
+		)
+		if err != nil {
+			return nil, err
+		}
+		view.FieldTypes = make([]TypeInfo, len(argumentTypes))
+		for i, argumentType := range argumentTypes {
+			view.FieldTypes[i] = getTypeInfo(argumentType)
+		}
+		views = append(views, view)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return views, nil
+}
+
+func getFunctionsMetadata(session *Session, keyspaceName string) ([]FunctionMetadata, error) {
+	if session.cfg.ProtoVersion == protoVersion1 || !session.hasAggregatesAndFunctions {
 		return nil, nil
 	}
 	var tableName string
@@ -905,7 +968,7 @@ func getFunctionsMetadata(session *Session, keyspaceName string) ([]FunctionMeta
 }
 
 func getAggregatesMetadata(session *Session, keyspaceName string) ([]AggregateMetadata, error) {
-	if session.cfg.ProtoVersion == protoVersion1 {
+	if session.cfg.ProtoVersion == protoVersion1 || !session.hasAggregatesAndFunctions {
 		return nil, nil
 	}
 	var tableName string

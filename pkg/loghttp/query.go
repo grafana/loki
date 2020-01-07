@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+	"unsafe"
 
 	"github.com/grafana/loki/pkg/logproto"
 	json "github.com/json-iterator/go"
@@ -69,6 +70,18 @@ func (Matrix) Type() ResultType { return ResultTypeMatrix }
 
 // Streams is a slice of Stream
 type Streams []Stream
+
+func (s Streams) ToProto() []logproto.Stream {
+	if len(s) == 0 {
+		return nil
+	}
+	result := make([]logproto.Stream, 0, len(s))
+	for _, s := range s {
+		entries := *(*[]logproto.Entry)(unsafe.Pointer(&s.Entries))
+		result = append(result, logproto.Stream{Labels: s.Labels.String(), Entries: entries})
+	}
+	return result
+}
 
 //Stream represents a log stream.  It includes a set of log entries and their labels.
 type Stream struct {

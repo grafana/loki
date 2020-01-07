@@ -12,7 +12,9 @@ import (
 func MetricNameFromLabelAdapters(labels []client.LabelAdapter) (string, error) {
 	for _, label := range labels {
 		if label.Name == model.MetricNameLabel {
-			return label.Value, nil
+			// Force a string copy since LabelAdapter is often a pointer into
+			// a large gRPC buffer which we don't want to keep alive on the heap.
+			return string([]byte(label.Value)), nil
 		}
 	}
 	return "", fmt.Errorf("No metric name label")

@@ -22,7 +22,8 @@ type Object struct {
 	Name       string `json:"name"`
 	Content    []byte `json:"-"`
 	// Crc32c checksum of Content. calculated by server when it's upload methods are used.
-	Crc32c string `json:"crc32c,omitempty"`
+	Crc32c  string `json:"crc32c,omitempty"`
+	Md5Hash string `json:"md5hash,omitempty"`
 }
 
 func (o *Object) id() string {
@@ -73,10 +74,7 @@ func (s *Server) ListObjects(bucketName, prefix, delimiter string) ([]Object, []
 	objects := fromBackendObjects(backendObjects)
 	olist := objectList(objects)
 	sort.Sort(&olist)
-	var (
-		respObjects  []Object
-		respPrefixes []string
-	)
+	var respObjects []Object
 	prefixes := make(map[string]bool)
 	for _, obj := range olist {
 		if strings.HasPrefix(obj.Name, prefix) {
@@ -89,6 +87,7 @@ func (s *Server) ListObjects(bucketName, prefix, delimiter string) ([]Object, []
 			}
 		}
 	}
+	respPrefixes := make([]string, 0, len(prefixes))
 	for p := range prefixes {
 		respPrefixes = append(respPrefixes, p)
 	}
@@ -104,6 +103,7 @@ func toBackendObjects(objects []Object) []backend.Object {
 			Name:       o.Name,
 			Content:    o.Content,
 			Crc32c:     o.Crc32c,
+			Md5Hash:    o.Md5Hash,
 		})
 	}
 	return backendObjects
@@ -117,6 +117,7 @@ func fromBackendObjects(objects []backend.Object) []Object {
 			Name:       o.Name,
 			Content:    o.Content,
 			Crc32c:     o.Crc32c,
+			Md5Hash:    o.Md5Hash,
 		})
 	}
 	return backendObjects
@@ -189,6 +190,7 @@ func (s *Server) rewriteObject(w http.ResponseWriter, r *http.Request) {
 		Name:       vars["destinationObject"],
 		Content:    append([]byte(nil), obj.Content...),
 		Crc32c:     obj.Crc32c,
+		Md5Hash:    obj.Md5Hash,
 	}
 	s.CreateObject(newObject)
 	w.Header().Set("Content-Type", "application/json")
@@ -208,9 +210,12 @@ func (s *Server) downloadObject(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusPartialContent
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, len(obj.Content)))
 	}
+	w.Header().Set("Accept-Ranges", "bytes")
 	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
 	w.WriteHeader(status)
-	w.Write(content)
+	if r.Method == http.MethodGet {
+		w.Write(content)
+	}
 }
 
 func (s *Server) handleRange(obj Object, r *http.Request) (start, end int, content []byte) {

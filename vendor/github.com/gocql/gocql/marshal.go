@@ -1478,13 +1478,14 @@ func marshalMap(info TypeInfo, value interface{}) ([]byte, error) {
 	}
 
 	rv := reflect.ValueOf(value)
-	if rv.IsNil() {
-		return nil, nil
-	}
 
 	t := rv.Type()
 	if t.Kind() != reflect.Map {
 		return nil, marshalErrorf("can not marshal %T into %s", value, info)
+	}
+
+	if rv.IsNil() {
+		return nil, nil
 	}
 
 	buf := &bytes.Buffer{}

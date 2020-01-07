@@ -138,7 +138,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		go i.flushLoop(j)
 	}
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester")
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey)
 	if err != nil {
 		return nil, err
 	}

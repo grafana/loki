@@ -167,9 +167,6 @@ func (m *TableManager) Stop() {
 func (m *TableManager) loop() {
 	defer m.wait.Done()
 
-	// Sleep for a bit to spread the sync load across different times if the tablemanagers are all started at once.
-	time.Sleep(time.Duration(rand.Int63n(int64(m.cfg.DynamoDBPollInterval))))
-
 	ticker := time.NewTicker(m.cfg.DynamoDBPollInterval)
 	defer ticker.Stop()
 
@@ -178,6 +175,9 @@ func (m *TableManager) loop() {
 	}); err != nil {
 		level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
 	}
+
+	// Sleep for a bit to spread the sync load across different times if the tablemanagers are all started at once.
+	time.Sleep(time.Duration(rand.Int63n(int64(m.cfg.DynamoDBPollInterval))))
 
 	for {
 		select {

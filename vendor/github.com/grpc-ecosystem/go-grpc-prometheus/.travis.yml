@@ -1,25 +1,23 @@
 sudo: false
 language: go
-# * github.com/grpc/grpc-go still supports go1.6
-#   - When we drop support for go1.6 we can remove golang.org/x/net/context
-#     below as it is part of the Go std library since go1.7
-# * github.com/prometheus/client_golang already requires at least go1.7 since
-#   September 2017
 go:
-  - 1.6.x
-  - 1.7.x
-  - 1.8.x
   - 1.9.x
   - 1.10.x
+  - 1.11.x
+  - 1.12.x
   - master
 
+env:
+- GO111MODULE=on
+
 install:
-  - go get github.com/prometheus/client_golang/prometheus
-  - go get google.golang.org/grpc
-  - go get golang.org/x/net/context
-  - go get github.com/stretchr/testify
+# With Go modules (eg Go >= 1.11), it isn't necessary anymore to 'go get' the dependencies before running the tests.
+- if [[ $TRAVIS_GO_VERSION =~ ^1\.(7|8|9|10)\. ]]; then go get github.com/prometheus/client_golang/prometheus; fi
+- if [[ $TRAVIS_GO_VERSION =~ ^1\.(7|8|9|10)\. ]]; then go get google.golang.org/grpc; fi
+- if [[ $TRAVIS_GO_VERSION =~ ^1\.(7|8|9|10)\. ]]; then go get github.com/stretchr/testify; fi
+
 script:
- - make test 
+- make test
 
 after_success:
-  - bash <(curl -s https://codecov.io/bash)
+- bash <(curl -s https://codecov.io/bash)

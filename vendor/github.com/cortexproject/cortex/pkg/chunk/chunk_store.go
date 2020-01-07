@@ -206,7 +206,7 @@ func (c *store) LabelValuesForMetricName(ctx context.Context, userID string, fro
 
 	var result UniqueStrings
 	for _, entry := range entries {
-		_, labelValue, _, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+		_, labelValue, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -265,7 +265,7 @@ func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from 
 
 	if from.After(now) {
 		// time-span start is in future ... regard as legal
-		level.Error(log).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
+		level.Info(log).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
 		return true, nil
 	}
 
@@ -283,7 +283,7 @@ func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from 
 
 	if through.After(now.Add(5 * time.Minute)) {
 		// time-span end is in future ... regard as legal
-		level.Error(log).Log("msg", "adjusting end timerange from future to now", "old_through", through, "new_through", now)
+		level.Info(log).Log("msg", "adjusting end timerange from future to now", "old_through", through, "new_through", now)
 		*through = now // Avoid processing future part - otherwise some schemas could fail with eg non-existent table gripes
 	}
 
@@ -461,7 +461,7 @@ func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery
 func (c *store) parseIndexEntries(ctx context.Context, entries []IndexEntry, matcher *labels.Matcher) ([]string, error) {
 	result := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		chunkKey, labelValue, _, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+		chunkKey, labelValue, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
 		}
