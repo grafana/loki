@@ -236,6 +236,8 @@ steps:
   image: plugins/docker
   settings:
     dockerfile: cmd/loki/Dockerfile
+    build_args:
+      - TOUCH_PROTOS=1
     password:
       from_secret: docker_password
     repo: grafana/loki
