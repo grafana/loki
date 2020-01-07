@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := all
-.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources
+.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources touch-protos
 .PHONY: helm helm-install helm-upgrade helm-publish helm-debug helm-clean
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
@@ -287,6 +287,9 @@ endif
 #############
 
 protos: $(PROTO_GOS)
+
+touch-protos: $(PROTO_GOS)
+	for proto in $^; do touch "$${proto}"; done
 
 %.pb.go: $(PROTO_DEFS)
 ifeq ($(BUILD_IN_CONTAINER),true)
