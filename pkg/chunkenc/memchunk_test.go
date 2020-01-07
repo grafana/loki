@@ -13,6 +13,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/grafana/loki/pkg/chunkenc/testdata"
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
 )
@@ -391,6 +392,47 @@ func TestChunkSize(t *testing.T) {
 			t.Log("characters ", inserted)
 		})
 
+	}
+}
+
+func TestIteratorClose(t *testing.T) {
+	for _, enc := range testEncoding {
+		t.Run(enc.String(), func(t *testing.T) {
+			for _, test := range []func(iter iter.EntryIterator, t *testing.T){
+				func(iter iter.EntryIterator, t *testing.T) {
+					// close without iterating
+					if err := iter.Close(); err != nil {
+						t.Fatal(err)
+					}
+				},
+				func(iter iter.EntryIterator, t *testing.T) {
+					// close after iterating
+					for iter.Next() {
+						_ = iter.Entry()
+					}
+					if err := iter.Close(); err != nil {
+						t.Fatal(err)
+					}
+				},
+				func(iter iter.EntryIterator, t *testing.T) {
+					// close after a single iteration
+					iter.Next()
+					_ = iter.Entry()
+					if err := iter.Close(); err != nil {
+						t.Fatal(err)
+					}
+				},
+			} {
+				c := NewMemChunk(enc)
+				inserted := fillChunk(c)
+				iter, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, inserted), logproto.BACKWARD, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				test(iter, t)
+			}
+
+		})
 	}
 }
 

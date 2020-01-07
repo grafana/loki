@@ -695,16 +695,21 @@ func (si *bufferedIterator) close() {
 		current.BytesDecompressed += si.bytesDecompressed
 		current.BytesCompressed += int64(len(si.origBytes))
 	})
-	si.pool.PutReader(si.reader)
-	BufReaderPool.Put(si.bufReader)
+	if si.reader != nil {
+		si.pool.PutReader(si.reader)
+		si.reader = nil
+	}
+	if si.bufReader != nil {
+		BufReaderPool.Put(si.bufReader)
+		si.bufReader = nil
+	}
+
 	if si.buf != nil {
 		BytesBufferPool.Put(si.buf)
+		si.buf = nil
 	}
 	si.origBytes = nil
-	si.bufReader = nil
-	si.buf = nil
 	si.decBuf = nil
-	si.reader = nil
 }
 
 func (si *bufferedIterator) Labels() string { return "" }
