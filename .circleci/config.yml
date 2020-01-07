@@ -64,6 +64,7 @@ jobs:
     <<: *defaults
     steps:
       - checkout
+      - setup_remote_docker
       - run:
           name: build
           command: make GOOS=windows GOGC=10 promtail
