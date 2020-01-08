@@ -80,7 +80,7 @@ type Distributor struct {
 	pool          *cortex_client.Pool
 
 	// The global rate limiter requires a distributors ring to count
-	// the number of healthy instances
+	// the number of healthy instances.
 	distributorsRing *ring.Lifecycler
 
 	// Per-user rate limiter.
@@ -96,9 +96,7 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 		}
 	}
 
-	// Create the configured ingestion rate limit strategy (local or global). In case
-	// it's an internal dependency and can't join the distributors ring, we skip rate
-	// limiting.
+	// Create the configured ingestion rate limit strategy (local or global).
 	var ingestionRateStrategy limiter.RateLimiterStrategy
 	var distributorsRing *ring.Lifecycler
 
