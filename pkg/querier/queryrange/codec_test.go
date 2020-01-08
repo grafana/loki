@@ -308,15 +308,6 @@ func Test_codec_MergeResponse(t *testing.T) {
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
 						{
-							Labels: `{foo="bar", level="debug"}`,
-							Entries: []logproto.Entry{
-								{Timestamp: time.Unix(0, 16), Line: "16"},
-								{Timestamp: time.Unix(0, 15), Line: "15"},
-								{Timestamp: time.Unix(0, 6), Line: "6"},
-								{Timestamp: time.Unix(0, 5), Line: "5"},
-							},
-						},
-						{
 							Labels: `{foo="bar", level="error"}`,
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 10), Line: "10"},
@@ -324,6 +315,15 @@ func Test_codec_MergeResponse(t *testing.T) {
 								{Timestamp: time.Unix(0, 9), Line: "9"},
 								{Timestamp: time.Unix(0, 2), Line: "2"},
 								{Timestamp: time.Unix(0, 1), Line: "1"},
+							},
+						},
+						{
+							Labels: `{foo="bar", level="debug"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 16), Line: "16"},
+								{Timestamp: time.Unix(0, 15), Line: "15"},
+								{Timestamp: time.Unix(0, 6), Line: "6"},
+								{Timestamp: time.Unix(0, 5), Line: "5"},
 							},
 						},
 					},
@@ -395,17 +395,17 @@ func Test_codec_MergeResponse(t *testing.T) {
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
 						{
-							Labels: `{foo="bar", level="debug"}`,
-							Entries: []logproto.Entry{
-								{Timestamp: time.Unix(0, 16), Line: "16"},
-								{Timestamp: time.Unix(0, 15), Line: "15"},
-							},
-						},
-						{
 							Labels: `{foo="bar", level="error"}`,
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 10), Line: "10"},
 								{Timestamp: time.Unix(0, 9), Line: "9"},
+							},
+						},
+						{
+							Labels: `{foo="bar", level="debug"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 16), Line: "16"},
+								{Timestamp: time.Unix(0, 15), Line: "15"},
 							},
 						},
 					},
@@ -669,11 +669,19 @@ var (
 					"values":[
 						[ "123456789012345", "super line" ]
 					]
+				},
+				{
+					"stream": {
+						"test": "test2"
+					},
+					"values":[
+						[ "123456789012346", "super line2" ]
+					]
 				}
 			]
 		}
 	}`
-	streamsStringLegacy = `{"streams":[{"labels":"{test=\"test\"}","entries":[{"ts":"1970-01-02T10:17:36.789012345Z","line":"super line"}]}]}`
+	streamsStringLegacy = `{"streams":[{"labels":"{test=\"test\"}","entries":[{"ts":"1970-01-02T10:17:36.789012345Z","line":"super line"}]},{"labels":"{test=\"test2\"}","entries":[{"ts":"1970-01-02T10:17:36.789012346Z","line":"super line2"}]}]}`
 	logStreams          = []logproto.Stream{
 		{
 			Labels: `{test="test"}`,
@@ -681,6 +689,15 @@ var (
 				{
 					Line:      "super line",
 					Timestamp: time.Unix(0, 123456789012345).UTC(),
+				},
+			},
+		},
+		{
+			Labels: `{test="test2"}`,
+			Entries: []logproto.Entry{
+				{
+					Line:      "super line2",
+					Timestamp: time.Unix(0, 123456789012346).UTC(),
 				},
 			},
 		},
