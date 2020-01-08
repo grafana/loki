@@ -15,6 +15,10 @@ can be parsed using Go's [time.Duration](https://golang.org/pkg/time/#ParseDurat
 block. See the [Table Manager](./table-manager.md#retention) documentation for
 more information.
 
+> **NOTE**: To avoid querying of data beyond the retention period,
+`max_look_back_period` config in [`chunk_store_config`](../../configuration/README.md#chunk_store_config) must be set to a value less than or equal to
+what is set in `table_manager.retention_period`.
+
 When using S3 or GCS, the bucket storing the chunks needs to have the expiry
 policy set correctly. For more details check
 [S3's documentation](https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lifecycle-mgmt.html)
@@ -56,6 +60,9 @@ storage_config:
     project: BIGTABLE_PROJECT
   gcs:
     bucket_name: GCS_BUCKET_NAME
+
+chunk_store_config:
+  max_look_back_period: 720h
 
 table_manager:
   retention_deletes_enabled: true
