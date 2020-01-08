@@ -484,55 +484,76 @@ func (i *timeRangedIterator) Next() bool {
 	return ok
 }
 
-type entryIteratorBackward struct {
-	forwardIter EntryIterator
-	cur         logproto.Entry
-	entries     []logproto.Entry
-	loaded      bool
+type entryWithLabels struct {
+	entry  logproto.Entry
+	labels string
 }
 
-// NewEntryIteratorBackward returns an iterator which loads all the entries
+type reverseIterator struct {
+	iter              EntryIterator
+	cur               entryWithLabels
+	entriesWithLabels []entryWithLabels
+
+	loaded bool
+	limit  uint32
+}
+
+// NewReversedIter returns an iterator which loads all or up to N entries
 // of an existing iterator, and then iterates over them backward.
-func NewEntryIteratorBackward(it EntryIterator) (EntryIterator, error) {
-	return &entryIteratorBackward{entries: make([]logproto.Entry, 0, 1024), forwardIter: it}, it.Error()
+// Preload entries when they are being queried with a timeout.
+func NewReversedIter(it EntryIterator, limit uint32, preload bool) (EntryIterator, error) {
+	iter, err := &reverseIterator{
+		iter:              it,
+		entriesWithLabels: make([]entryWithLabels, 0, 1024),
+		limit:             limit,
+	}, it.Error()
+
+	if err != nil {
+		return nil, err
+	}
+
+	if preload {
+		iter.load()
+	}
+
+	return iter, nil
 }
 
-func (i *entryIteratorBackward) load() {
+func (i *reverseIterator) load() {
 	if !i.loaded {
 		i.loaded = true
-		for i.forwardIter.Next() {
-			entry := i.forwardIter.Entry()
-			i.entries = append(i.entries, entry)
+		for count := uint32(0); (i.limit == 0 || count < i.limit) && i.iter.Next(); count++ {
+			i.entriesWithLabels = append(i.entriesWithLabels, entryWithLabels{i.iter.Entry(), i.iter.Labels()})
 		}
-		i.forwardIter.Close()
+		i.iter.Close()
 	}
 }
 
-func (i *entryIteratorBackward) Next() bool {
+func (i *reverseIterator) Next() bool {
 	i.load()
-	if len(i.entries) == 0 {
-		i.entries = nil
+	if len(i.entriesWithLabels) == 0 {
+		i.entriesWithLabels = nil
 		return false
 	}
-	i.cur, i.entries = i.entries[len(i.entries)-1], i.entries[:len(i.entries)-1]
+	i.cur, i.entriesWithLabels = i.entriesWithLabels[len(i.entriesWithLabels)-1], i.entriesWithLabels[:len(i.entriesWithLabels)-1]
 	return true
 }
 
-func (i *entryIteratorBackward) Entry() logproto.Entry {
-	return i.cur
+func (i *reverseIterator) Entry() logproto.Entry {
+	return i.cur.entry
 }
 
-func (i *entryIteratorBackward) Close() error {
+func (i *reverseIterator) Labels() string {
+	return i.cur.labels
+}
+
+func (i *reverseIterator) Error() error { return nil }
+
+func (i *reverseIterator) Close() error {
 	if !i.loaded {
-		return i.forwardIter.Close()
+		return i.iter.Close()
 	}
 	return nil
-}
-
-func (i *entryIteratorBackward) Error() error { return nil }
-
-func (i *entryIteratorBackward) Labels() string {
-	return ""
 }
 
 // ReadBatch reads a set of entries off an iterator.
@@ -558,72 +579,6 @@ func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, e
 		result.Streams = append(result.Streams, stream)
 	}
 	return &result, respSize, i.Error()
-}
-
-type entryWithLabels struct {
-	entry  logproto.Entry
-	labels string
-}
-
-type entryIteratorForward struct {
-	backwardIter      EntryIterator
-	cur               entryWithLabels
-	entriesWithLabels []entryWithLabels
-	loaded            bool
-	limit             uint32
-}
-
-// NewEntryIteratorBackward returns an iterator which loads all or upton N entries
-// of an existing iterator, and then iterates over them backward.
-// preload entries when they are being queried with a timeout
-func NewEntryIteratorForward(it EntryIterator, limit uint32, preload bool) (EntryIterator, error) {
-	itr, err := &entryIteratorForward{entriesWithLabels: make([]entryWithLabels, 0, 1024), backwardIter: it, limit: limit}, it.Error()
-	if err != nil {
-		return nil, err
-	}
-
-	if preload {
-		itr.load()
-	}
-
-	return itr, nil
-}
-
-func (i *entryIteratorForward) load() {
-	if !i.loaded {
-		i.loaded = true
-		for count := uint32(0); (i.limit == 0 || count < i.limit) && i.backwardIter.Next(); count++ {
-			i.entriesWithLabels = append(i.entriesWithLabels, entryWithLabels{i.backwardIter.Entry(), i.backwardIter.Labels()})
-		}
-		i.backwardIter.Close()
-	}
-}
-
-func (i *entryIteratorForward) Next() bool {
-	i.load()
-	if len(i.entriesWithLabels) == 0 {
-		i.entriesWithLabels = nil
-		return false
-	}
-	i.cur, i.entriesWithLabels = i.entriesWithLabels[len(i.entriesWithLabels)-1], i.entriesWithLabels[:len(i.entriesWithLabels)-1]
-	return true
-}
-
-func (i *entryIteratorForward) Entry() logproto.Entry {
-	return i.cur.entry
-}
-
-func (i *entryIteratorForward) Close() error {
-	if !i.loaded {
-		return i.backwardIter.Close()
-	}
-	return nil
-}
-
-func (i *entryIteratorForward) Error() error { return nil }
-
-func (i *entryIteratorForward) Labels() string {
-	return i.cur.labels
 }
 
 type peekingEntryIterator struct {

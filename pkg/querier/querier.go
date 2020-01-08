@@ -303,7 +303,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		return nil, err
 	}
 
-	reversedIterator, err := iter.NewEntryIteratorForward(histIterators, req.Limit, true)
+	reversedIterator, err := iter.NewReversedIter(histIterators, req.Limit, true)
 	if err != nil {
 		return nil, err
 	}
