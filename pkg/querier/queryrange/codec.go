@@ -160,7 +160,10 @@ func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http
 	streams := make([]*logproto.Stream, len(proto.Data.Result))
 
 	for i, stream := range proto.Data.Result {
-		streams[i] = &stream
+		streams[i] = &logproto.Stream{
+			Labels:  stream.Labels,
+			Entries: stream.Entries,
+		}
 	}
 	var buf bytes.Buffer
 	if loghttp.Version(proto.Version) == loghttp.VersionLegacy {
@@ -248,7 +251,11 @@ func mergeOrderedNonOverlappingStreams(resps []*LokiResponse, limit uint32, dire
 	for key := range groups {
 		keys = append(keys, key)
 	}
-	sort.Strings(keys)
+	if direction == logproto.BACKWARD {
+		sort.Sort(sort.Reverse(sort.StringSlice(keys)))
+	} else {
+		sort.Strings(keys)
+	}
 
 	// escape hatch, can just return all the streams
 	if total <= int(limit) {
