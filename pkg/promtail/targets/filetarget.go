@@ -203,7 +203,7 @@ func (t *FileTarget) sync() error {
 
 	// Gets absolute path for each pattern.
 	for i := 0; i < len(matches); i++ {
-		if ! filepath.IsAbs(matches[i]) {
+		if !filepath.IsAbs(matches[i]) {
 			path, err := filepath.Abs(matches[i])
 			if err != nil {
 				return errors.Wrap(err, "filetarget.sync.filepath.Abs")
