@@ -63,7 +63,13 @@ func (h *splitByInterval) Process(
 
 	ch := h.Feed(ctx, input)
 
-	for i := 0; i < parallelism; i++ {
+	// don't spawn unnecessary goroutines
+	var p int = parallelism
+	if len(input) < parallelism {
+		p = len(input)
+	}
+
+	for i := 0; i < p; i++ {
 		go h.loop(ctx, ch)
 	}
 
