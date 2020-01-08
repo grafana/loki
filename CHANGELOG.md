@@ -1,6 +1,12 @@
 ## master / unreleased
 
+### Notable Changes
+* [1486](https://github.com/grafana/loki/pull/1486) **pracucci**: Deprecated `-distributor.limiter-reload-period` flag / distributor's `limiter_reload_period` config option.
+
+### Features
+
 * [FEATURE] promtail positions file corruptions can be ignored with the `positions.ignore-invalid-yaml` flag. In the case the positions yaml is corrupted an empty positions config will be used and should later overwrite the malformed yaml.
+* [1486](https://github.com/grafana/loki/pull/1486) **pracucci**: Added `global` ingestion rate limiter strategy support.
 
 # 1.2.0 (2019-12-09)
 
