@@ -522,7 +522,12 @@ func (i *entryIteratorBackward) Entry() logproto.Entry {
 	return i.cur
 }
 
-func (i *entryIteratorBackward) Close() error { return nil }
+func (i *entryIteratorBackward) Close() error {
+	if !i.loaded {
+		return i.forwardIter.Close()
+	}
+	return nil
+}
 
 func (i *entryIteratorBackward) Error() error { return nil }
 
@@ -608,7 +613,12 @@ func (i *entryIteratorForward) Entry() logproto.Entry {
 	return i.cur.entry
 }
 
-func (i *entryIteratorForward) Close() error { return nil }
+func (i *entryIteratorForward) Close() error {
+	if !i.loaded {
+		return i.backwardIter.Close()
+	}
+	return nil
+}
 
 func (i *entryIteratorForward) Error() error { return nil }
 
