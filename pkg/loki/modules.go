@@ -448,7 +448,7 @@ var modules = map[moduleName]module{
 	},
 
 	Ingester: {
-		deps:     []moduleName{Store, Server, RuntimeConfig},
+		deps:     []moduleName{Store, Server},
 		init:     (*Loki).initIngester,
 		stop:     (*Loki).stopIngester,
 		stopping: (*Loki).stoppingIngester,
