@@ -1,6 +1,12 @@
 package ring
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrTransferDisabled is the error returned by TransferOut when the transfers are disabled.
+var ErrTransferDisabled = errors.New("transfers disabled")
 
 // FlushTransferer controls the shutdown of an instance in the ring.
 type FlushTransferer interface {

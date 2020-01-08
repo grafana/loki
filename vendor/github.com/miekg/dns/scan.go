@@ -134,7 +134,7 @@ func ReadRR(r io.Reader, file string) (RR, error) {
 }
 
 // ParseZone reads a RFC 1035 style zonefile from r. It returns
-// *Tokens on the returned channel, each consisting of either a
+// Tokens on the returned channel, each consisting of either a
 // parsed RR and optional comment or a nil RR and an error. The
 // channel is closed by ParseZone when the end of r is reached.
 //
@@ -143,7 +143,8 @@ func ReadRR(r io.Reader, file string) (RR, error) {
 // origin, as if the file would start with an $ORIGIN directive.
 //
 // The directives $INCLUDE, $ORIGIN, $TTL and $GENERATE are all
-// supported.
+// supported. Note that $GENERATE's range support up to a maximum of
+// of 65535 steps.
 //
 // Basic usage pattern when reading from a string (z) containing the
 // zone data:
@@ -203,6 +204,7 @@ func parseZone(r io.Reader, origin, file string, t chan *Token) {
 //
 // The directives $INCLUDE, $ORIGIN, $TTL and $GENERATE are all
 // supported. Although $INCLUDE is disabled by default.
+// Note that $GENERATE's range support up to a maximum of 65535 steps.
 //
 // Basic usage pattern when reading from a string (z) containing the
 // zone data:
@@ -968,6 +970,11 @@ func (zl *zlexer) Next() (lex, bool) {
 				// was inside braces and we delayed adding it until now.
 				com[comi] = ' ' // convert newline to space
 				comi++
+				if comi >= len(com) {
+					l.token = "comment length insufficient for parsing"
+					l.err = true
+					return *l, true
+				}
 			}
 
 			com[comi] = ';'

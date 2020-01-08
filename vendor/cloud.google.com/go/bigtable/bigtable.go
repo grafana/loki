@@ -603,6 +603,9 @@ func NewMutation() *Mutation {
 // If the filter matches any cell in the row, mtrue is applied;
 // otherwise, mfalse is applied.
 // Either given mutation may be nil.
+//
+// The application of a ReadModifyWrite is atomic; concurrent ReadModifyWrites will
+// be executed serially by the server.
 func NewCondMutation(cond Filter, mtrue, mfalse *Mutation) *Mutation {
 	return &Mutation{cond: cond, mtrue: mtrue, mfalse: mfalse}
 }

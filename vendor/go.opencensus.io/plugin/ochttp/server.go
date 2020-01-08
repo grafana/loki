@@ -70,6 +70,12 @@ type Handler struct {
 	// from the information found in the incoming HTTP Request. By default the
 	// name equals the URL Path.
 	FormatSpanName func(*http.Request) string
+
+	// IsHealthEndpoint holds the function to use for determining if the
+	// incoming HTTP request should be considered a health check. This is in
+	// addition to the private isHealthEndpoint func which may also indicate
+	// tracing should be skipped.
+	IsHealthEndpoint func(*http.Request) bool
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +93,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) startTrace(w http.ResponseWriter, r *http.Request) (*http.Request, func()) {
-	if isHealthEndpoint(r.URL.Path) {
+	if h.IsHealthEndpoint != nil && h.IsHealthEndpoint(r) || isHealthEndpoint(r.URL.Path) {
 		return r, func() {}
 	}
 	var name string
