@@ -56,6 +56,9 @@ metadata:
   ...
 spec:
   ...
+  selector:
+    matchLabels:
+      name: promtail
   template:
     metadata:
       labels:
