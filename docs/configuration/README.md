@@ -716,12 +716,27 @@ The `limits_config` block configures global and per-tenant limits for ingesting
 logs in Loki.
 
 ```yaml
+# Whether the ingestion rate limit should be applied individually to each
+# distributor instance (local), or evenly shared across the cluster (global).
+# The ingestion rate strategy cannot be overridden on a per-tenant basis.
+#
+# - local: enforces the limit on a per distributor basis. The actual effective
+#   rate limit will be N times higher, where N is the number of distributor
+#   replicas.
+# - global: enforces the limit globally, configuring a per-distributor local
+#   rate limiter as "ingestion_rate / N", where N is the number of distributor
+#   replicas (it's automatically adjusted if the number of replicas change).
+#   The global strategy requires the distributors to form their own ring, which
+#   is used to keep track of the current number of healthy distributor replicas.
+[ingestion_rate_strategy: <string> | default = "local"]
+
 # Per-user ingestion rate limit in sample size per second. Units in MB.
 [ingestion_rate_mb: <float> | default = 4]
 
-# Per-user allowed ingestion burst size (in sample size). Units in MB. Warning,
-# very high limits will be reset every limiter_reload_period defined in
-# distributor_config.
+# Per-user allowed ingestion burst size (in sample size). Units in MB.
+# The burst size refers to the per-distributor local rate limiter even in the
+# case of the "global" strategy, and should be set at least to the maximum logs
+# size expected in a single push request.
 [ingestion_burst_size_mb: <int> | default = 6]
 
 # Maximum length of a label name.
