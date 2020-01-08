@@ -10,12 +10,23 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+const (
+	// Local ingestion rate strategy
+	LocalIngestionRateStrategy = "local"
+
+	// Global ingestion rate strategy
+	GlobalIngestionRateStrategy = "global"
+
+	bytesInMB = 1048576
+)
+
 // Limits describe all the limits for users; can be used to describe global default
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
 	// Distributor enforced limits.
-	IngestionRate          float64       `yaml:"ingestion_rate_mb"`
-	IngestionBurstSize     float64       `yaml:"ingestion_burst_size_mb"`
+	IngestionRateStrategy  string        `yaml:"ingestion_rate_strategy"`
+	IngestionRateMB        float64       `yaml:"ingestion_rate_mb"`
+	IngestionBurstSizeMB   float64       `yaml:"ingestion_burst_size_mb"`
 	MaxLabelNameLength     int           `yaml:"max_label_name_length"`
 	MaxLabelValueLength    int           `yaml:"max_label_value_length"`
 	MaxLabelNamesPerSeries int           `yaml:"max_label_names_per_series"`
@@ -41,8 +52,9 @@ type Limits struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
-	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit-mb", 4, "Per-user ingestion rate limit in sample size per second. Units in MB.")
-	f.Float64Var(&l.IngestionBurstSize, "distributor.ingestion-burst-size-mb", 6, "Per-user allowed ingestion burst size (in sample size). Units in MB. Warning, very high limits will be reset every -distributor.limiter-reload-period.")
+	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "local", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global).")
+	f.Float64Var(&l.IngestionRateMB, "distributor.ingestion-rate-limit-mb", 4, "Per-user ingestion rate limit in sample size per second. Units in MB.")
+	f.Float64Var(&l.IngestionBurstSizeMB, "distributor.ingestion-burst-size-mb", 6, "Per-user allowed ingestion burst size (in sample size). Units in MB.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
@@ -117,14 +129,22 @@ func (o *Overrides) Stop() {
 	o.overridesManager.Stop()
 }
 
-// IngestionRate returns the limit on ingester rate (samples per second).
-func (o *Overrides) IngestionRate(userID string) float64 {
-	return o.overridesManager.GetLimits(userID).(*Limits).IngestionRate
+// IngestionRateStrategy returns whether the ingestion rate limit should be individually applied
+// to each distributor instance (local) or evenly shared across the cluster (global).
+func (o *Overrides) IngestionRateStrategy() string {
+	// The ingestion rate strategy can't be overridden on a per-tenant basis,
+	// so here we just pick the value for a not-existing user ID (empty string).
+	return o.overridesManager.GetLimits("").(*Limits).IngestionRateStrategy
 }
 
-// IngestionBurstSize returns the burst size for ingestion rate.
-func (o *Overrides) IngestionBurstSize(userID string) float64 {
-	return o.overridesManager.GetLimits(userID).(*Limits).IngestionBurstSize
+// IngestionRateBytes returns the limit on ingester rate (MBs per second).
+func (o *Overrides) IngestionRateBytes(userID string) float64 {
+	return o.overridesManager.GetLimits(userID).(*Limits).IngestionRateMB * bytesInMB
+}
+
+// IngestionBurstSizeBytes returns the burst size for ingestion rate.
+func (o *Overrides) IngestionBurstSizeBytes(userID string) int {
+	return int(o.overridesManager.GetLimits(userID).(*Limits).IngestionBurstSizeMB * bytesInMB)
 }
 
 // MaxLabelNameLength returns maximum length a label name can be.
