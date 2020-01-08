@@ -144,8 +144,9 @@ The `server_config` block configures Promtail's behavior as an HTTP server:
 The `distributor_config` block configures the Loki Distributor.
 
 ```yaml
-# Period at which to reload user ingestion limits.
-[limiter_reload_period: <duration> | default = 5m]
+# Configures the distributors ring, used when the "global" ingestion rate
+# strategy is enabled.
+[ring: <ring_config>]
 ```
 
 ## querier_config
