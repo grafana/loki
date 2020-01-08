@@ -275,24 +275,43 @@ func TestInsert(t *testing.T) {
 	}))
 }
 
-func TestEntryIteratorForward(t *testing.T) {
+func TestReverseEntryIterator(t *testing.T) {
 	itr1 := mkStreamIterator(inverse(offset(testSize, identity)), defaultLabels)
 	itr2 := mkStreamIterator(inverse(offset(testSize, identity)), "{foobar: \"bazbar\"}")
 
 	heapIterator := NewHeapIterator([]EntryIterator{itr1, itr2}, logproto.BACKWARD)
-	forwardIterator, err := NewEntryIteratorForward(heapIterator, testSize, false)
+	reversedIter, err := NewReversedIter(heapIterator, testSize, false)
 	require.NoError(t, err)
 
 	for i := int64((testSize / 2) + 1); i <= testSize; i++ {
-		assert.Equal(t, true, forwardIterator.Next())
-		assert.Equal(t, identity(i), forwardIterator.Entry(), fmt.Sprintln("iteration", i))
-		assert.Equal(t, true, forwardIterator.Next())
-		assert.Equal(t, identity(i), forwardIterator.Entry(), fmt.Sprintln("iteration", i))
+		assert.Equal(t, true, reversedIter.Next())
+		assert.Equal(t, identity(i), reversedIter.Entry(), fmt.Sprintln("iteration", i))
+		assert.Equal(t, reversedIter.Labels(), itr1.Labels())
+		assert.Equal(t, true, reversedIter.Next())
+		assert.Equal(t, identity(i), reversedIter.Entry(), fmt.Sprintln("iteration", i))
+		assert.Equal(t, reversedIter.Labels(), itr2.Labels())
 	}
 
-	assert.Equal(t, false, forwardIterator.Next())
-	assert.Equal(t, nil, forwardIterator.Error())
-	assert.NoError(t, forwardIterator.Close())
+	assert.Equal(t, false, reversedIter.Next())
+	assert.Equal(t, nil, reversedIter.Error())
+	assert.NoError(t, reversedIter.Close())
+}
+
+func TestReverseEntryIteratorUnlimited(t *testing.T) {
+	itr1 := mkStreamIterator(offset(testSize, identity), defaultLabels)
+	itr2 := mkStreamIterator(offset(testSize, identity), "{foobar: \"bazbar\"}")
+
+	heapIterator := NewHeapIterator([]EntryIterator{itr1, itr2}, logproto.BACKWARD)
+	reversedIter, err := NewReversedIter(heapIterator, 0, false)
+	require.NoError(t, err)
+
+	var ct int
+	expected := 2 * testSize
+
+	for reversedIter.Next() {
+		ct++
+	}
+	require.Equal(t, expected, ct)
 }
 
 func Test_PeekingIterator(t *testing.T) {
