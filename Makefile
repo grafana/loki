@@ -288,6 +288,7 @@ endif
 
 protos: $(PROTO_GOS)
 
+# use with care. This signals to make that the proto definitions don't need recompiling.
 touch-protos:
 	for proto in $(PROTO_GOS); do [ -f "./$${proto}" ] && touch "$${proto}" && echo "touched $${proto}"; done
 
