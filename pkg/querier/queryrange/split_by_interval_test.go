@@ -378,12 +378,20 @@ func Test_DoesntDeadlock(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 
 	startingGoroutines := runtime.NumGoroutine()
-	res, err := split.Do(ctx, req)
-	time.Sleep(time.Millisecond) // allow for runtime scheduling to catch up before we check n_goroutines
+
+	// goroutines shouldn't blow up across 100 rounds
+	for i := 0; i < 100; i++ {
+		res, err := split.Do(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, 1, len(res.(*LokiResponse).Data.Result))
+		require.Equal(t, n/2, len(res.(*LokiResponse).Data.Result[0].Entries))
+
+	}
+	runtime.GC()
 	endingGoroutines := runtime.NumGoroutine()
-	require.NoError(t, err)
-	require.Equal(t, 1, len(res.(*LokiResponse).Data.Result))
-	require.Equal(t, n/2, len(res.(*LokiResponse).Data.Result[0].Entries))
-	require.Equal(t, startingGoroutines, endingGoroutines)
+
+	// give runtime a bit of slack when catching up -- this isn't an exact science :(
+	// Allow for 1% increase in goroutines
+	require.LessOrEqual(t, endingGoroutines, startingGoroutines*101/100)
 
 }
