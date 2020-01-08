@@ -337,7 +337,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				&LokiResponse{
 					Status:    loghttp.QueryStatusSuccess,
 					Direction: logproto.BACKWARD,
-					Limit:     4,
+					Limit:     6,
 					Version:   1,
 					Data: LokiData{
 						ResultType: loghttp.ResultTypeStream,
@@ -363,7 +363,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				&LokiResponse{
 					Status:    loghttp.QueryStatusSuccess,
 					Direction: logproto.BACKWARD,
-					Limit:     4,
+					Limit:     6,
 					Version:   1,
 					Data: LokiData{
 						ResultType: loghttp.ResultTypeStream,
@@ -389,7 +389,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 			&LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.BACKWARD,
-				Limit:     4,
+				Limit:     6,
 				Version:   1,
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
@@ -399,6 +399,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 10), Line: "10"},
 								{Timestamp: time.Unix(0, 9), Line: "9"},
+								{Timestamp: time.Unix(0, 9), Line: "9"},
 							},
 						},
 						{
@@ -406,6 +407,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 16), Line: "16"},
 								{Timestamp: time.Unix(0, 15), Line: "15"},
+								{Timestamp: time.Unix(0, 6), Line: "6"},
 							},
 						},
 					},

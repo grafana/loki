@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -326,4 +327,71 @@ func Test_ExitEarly(t *testing.T) {
 	require.Equal(t, int(req.Limit), callCt)
 	require.NoError(t, err)
 	require.Equal(t, expected, res)
+}
+
+func Test_DoesntDeadlock(t *testing.T) {
+	n := 10
+
+	split := splitByInterval{
+		next: queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
+
+			return &LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: r.(*LokiRequest).Direction,
+				Limit:     r.(*LokiRequest).Limit,
+				Version:   uint32(loghttp.VersionV1),
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result: []logproto.Stream{
+						{
+							Labels: `{foo="bar", level="debug"}`,
+							Entries: []logproto.Entry{
+
+								{
+									Timestamp: time.Unix(0, r.(*LokiRequest).StartTs.UnixNano()),
+									Line:      fmt.Sprintf("%d", r.(*LokiRequest).StartTs.UnixNano()),
+								},
+							},
+						},
+					},
+				},
+			}, nil
+		}),
+		limits: fakeLimits{
+			maxQueryParallelism: n,
+		},
+		merger:   lokiCodec,
+		interval: time.Hour,
+	}
+
+	// split into n requests w/ n/2 limit, ensuring unused responses are cleaned up properly
+	req := &LokiRequest{
+		StartTs:   time.Unix(0, 0),
+		EndTs:     time.Unix(0, (time.Duration(n) * time.Hour).Nanoseconds()),
+		Query:     "",
+		Limit:     uint32(n / 2),
+		Step:      1,
+		Direction: logproto.FORWARD,
+		Path:      "/api/prom/query_range",
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	startingGoroutines := runtime.NumGoroutine()
+
+	// goroutines shouldn't blow up across 100 rounds
+	for i := 0; i < 100; i++ {
+		res, err := split.Do(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, 1, len(res.(*LokiResponse).Data.Result))
+		require.Equal(t, n/2, len(res.(*LokiResponse).Data.Result[0].Entries))
+
+	}
+	runtime.GC()
+	endingGoroutines := runtime.NumGoroutine()
+
+	// give runtime a bit of slack when catching up -- this isn't an exact science :(
+	// Allow for 1% increase in goroutines
+	require.LessOrEqual(t, endingGoroutines, startingGoroutines*101/100)
+
 }

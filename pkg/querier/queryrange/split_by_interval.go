@@ -58,9 +58,18 @@ func (h *splitByInterval) Process(
 	threshold int64,
 	input []*lokiResult,
 ) (responses []queryrange.Response, err error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	ch := h.Feed(ctx, input)
 
-	for i := 0; i < parallelism; i++ {
+	// don't spawn unnecessary goroutines
+	var p int = parallelism
+	if len(input) < parallelism {
+		p = len(input)
+	}
+
+	for i := 0; i < p; i++ {
 		go h.loop(ctx, ch)
 	}
 
@@ -118,8 +127,8 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 	for _, interval := range intervals {
 		input = append(input, &lokiResult{
 			req:  interval,
-			resp: make(chan queryrange.Response),
-			err:  make(chan error),
+			resp: make(chan queryrange.Response, 1),
+			err:  make(chan error, 1),
 		})
 	}
 

@@ -243,14 +243,19 @@ func TestUnhandledPath(t *testing.T) {
 	require.NoError(t, err)
 }
 
-type fakeLimits struct{}
+type fakeLimits struct {
+	maxQueryParallelism int
+}
 
 func (fakeLimits) MaxQueryLength(string) time.Duration {
 	return time.Hour * 7
 }
 
-func (fakeLimits) MaxQueryParallelism(string) int {
-	return 1
+func (f fakeLimits) MaxQueryParallelism(string) int {
+	if f.maxQueryParallelism == 0 {
+		return 1
+	}
+	return f.maxQueryParallelism
 }
 
 func counter() (*int, http.Handler) {
