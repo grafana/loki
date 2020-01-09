@@ -60,6 +60,8 @@ steps:
 - name: build-loki-image
   image: plugins/docker
   settings:
+    build_args:
+    - TOUCH_PROTOS=1
     dockerfile: cmd/loki/Dockerfile
     dry_run: true
     password:
@@ -78,6 +80,8 @@ steps:
 - name: build-loki-canary-image
   image: plugins/docker
   settings:
+    build_args:
+    - TOUCH_PROTOS=1
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: true
     password:
@@ -96,6 +100,8 @@ steps:
 - name: build-promtail-image
   image: plugins/docker
   settings:
+    build_args:
+    - TOUCH_PROTOS=1
     dockerfile: cmd/promtail/Dockerfile
     dry_run: true
     password:
@@ -114,6 +120,8 @@ steps:
 - name: publish-loki-image
   image: plugins/docker
   settings:
+    build_args:
+    - TOUCH_PROTOS=1
     dockerfile: cmd/loki/Dockerfile
     password:
       from_secret: docker_password
@@ -130,6 +138,8 @@ steps:
 - name: publish-loki-canary-image
   image: plugins/docker
   settings:
+    build_args:
+    - TOUCH_PROTOS=1
     dockerfile: cmd/loki-canary/Dockerfile
     password:
       from_secret: docker_password
@@ -146,6 +156,8 @@ steps:
 - name: publish-promtail-image
   image: plugins/docker
   settings:
+    build_args:
+    - TOUCH_PROTOS=1
     dockerfile: cmd/promtail/Dockerfile
     password:
       from_secret: docker_password
@@ -181,9 +193,9 @@ steps:
 - name: build-loki-image
   image: plugins/docker
   settings:
-    dockerfile: cmd/loki/Dockerfile
     build_args:
     - TOUCH_PROTOS=1
+    dockerfile: cmd/loki/Dockerfile
     dry_run: true
     password:
       from_secret: docker_password
@@ -201,9 +213,9 @@ steps:
 - name: build-loki-canary-image
   image: plugins/docker
   settings:
-    dockerfile: cmd/loki-canary/Dockerfile
     build_args:
     - TOUCH_PROTOS=1
+    dockerfile: cmd/loki-canary/Dockerfile
     dry_run: true
     password:
       from_secret: docker_password
@@ -221,9 +233,9 @@ steps:
 - name: build-promtail-image
   image: plugins/docker
   settings:
-    dockerfile: cmd/promtail/Dockerfile
     build_args:
     - TOUCH_PROTOS=1
+    dockerfile: cmd/promtail/Dockerfile
     dry_run: true
     password:
       from_secret: docker_password
@@ -241,9 +253,9 @@ steps:
 - name: publish-loki-image
   image: plugins/docker
   settings:
-    dockerfile: cmd/loki/Dockerfile
     build_args:
     - TOUCH_PROTOS=1
+    dockerfile: cmd/loki/Dockerfile
     password:
       from_secret: docker_password
     repo: grafana/loki
@@ -259,9 +271,9 @@ steps:
 - name: publish-loki-canary-image
   image: plugins/docker
   settings:
-    dockerfile: cmd/loki-canary/Dockerfile
     build_args:
     - TOUCH_PROTOS=1
+    dockerfile: cmd/loki-canary/Dockerfile
     password:
       from_secret: docker_password
     repo: grafana/loki-canary
@@ -277,9 +289,9 @@ steps:
 - name: publish-promtail-image
   image: plugins/docker
   settings:
-    dockerfile: cmd/promtail/Dockerfile
     build_args:
     - TOUCH_PROTOS=1
+    dockerfile: cmd/promtail/Dockerfile
     password:
       from_secret: docker_password
     repo: grafana/promtail
@@ -314,6 +326,8 @@ steps:
 - name: build-loki-image
   image: plugins/docker
   settings:
+    build_args:
+    - TOUCH_PROTOS=1
     dockerfile: cmd/loki/Dockerfile
     dry_run: true
     password:
@@ -332,6 +346,8 @@ steps:
 - name: build-loki-canary-image
   image: plugins/docker
   settings:
+    build_args:
+    - TOUCH_PROTOS=1
     dockerfile: cmd/loki-canary/Dockerfile
     dry_run: true
     password:
@@ -350,6 +366,8 @@ steps:
 - name: build-promtail-image
   image: plugins/docker
   settings:
+    build_args:
+    - TOUCH_PROTOS=1
     dockerfile: cmd/promtail/Dockerfile
     dry_run: true
     password:
@@ -368,6 +386,8 @@ steps:
 - name: publish-loki-image
   image: plugins/docker
   settings:
+    build_args:
+    - TOUCH_PROTOS=1
     dockerfile: cmd/loki/Dockerfile
     password:
       from_secret: docker_password
@@ -384,6 +404,8 @@ steps:
 - name: publish-loki-canary-image
   image: plugins/docker
   settings:
+    build_args:
+    - TOUCH_PROTOS=1
     dockerfile: cmd/loki-canary/Dockerfile
     password:
       from_secret: docker_password
@@ -400,6 +422,8 @@ steps:
 - name: publish-promtail-image
   image: plugins/docker
   settings:
+    build_args:
+    - TOUCH_PROTOS=1
     dockerfile: cmd/promtail/Dockerfile
     password:
       from_secret: docker_password

@@ -89,7 +89,10 @@ local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
     docker(arch, app) {
       depends_on: ['image-tag'],
       when: condition('exclude').tagMaster,
-      settings+: { dry_run: true },
+      settings+: {
+        dry_run: true,
+        build_args: [ 'TOUCH_PROTOS=1' ]
+      },
     }
     for app in apps
   ] + [
@@ -97,6 +100,9 @@ local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
     docker(arch, app) {
       depends_on: ['image-tag'],
       when: condition('include').tagMaster,
+      settings+: {
+        build_args: [ 'TOUCH_PROTOS=1' ]
+      },
     }
     for app in apps
   ],
