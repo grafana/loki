@@ -99,7 +99,7 @@ type Ingester struct {
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
-	limits  *validation.Overrides
+	limiter *Limiter
 	factory func() chunkenc.Chunk
 }
 
@@ -126,7 +126,6 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		quit:         make(chan struct{}),
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		quitting:     make(chan struct{}),
-		limits:       limits,
 		factory: func() chunkenc.Chunk {
 			return chunkenc.NewMemChunkSize(enc, cfg.BlockSize, cfg.TargetChunkSize)
 		},
@@ -144,6 +143,10 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 	}
 
 	i.lifecycler.Start()
+
+	// Now that the lifecycler has been created, we can create the limiter
+	// which depends on it.
+	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
 
 	i.done.Add(1)
 	go i.loop()
@@ -208,7 +211,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(instanceID, i.factory, i.limits, i.cfg.SyncPeriod, i.cfg.SyncMinUtilization)
+		inst = newInstance(instanceID, i.factory, i.limiter, i.cfg.SyncPeriod, i.cfg.SyncMinUtilization)
 		i.instances[instanceID] = inst
 	}
 	return inst

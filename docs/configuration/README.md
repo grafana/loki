@@ -762,8 +762,14 @@ logs in Loki.
 # Enforce every sample has a metric name.
 [enforce_metric_name: <boolean> | default = true]
 
-# Maximum number of active streams per user.
+# Maximum number of active streams per user, per ingester. 0 to disable.
 [max_streams_per_user: <int> | default = 10000]
+
+# Maximum number of active streams per user, across the cluster. 0 to disable.
+# When the global limit is enabled, each ingester is configured with a dynamic
+# local limit based on the replication factor and the current number of healthy
+# ingesters, and is kept updated whenever the number of ingesters change.
+[max_global_streams_per_user: <int> | default = 0]
 
 # Maximum number of chunks that can be fetched by a single query.
 [max_chunks_per_query: <int> | default = 2000000]

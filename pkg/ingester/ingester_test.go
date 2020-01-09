@@ -189,7 +189,7 @@ func TestIngester(t *testing.T) {
 func TestIngesterStreamLimitExceeded(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	defaultLimits := defaultLimitsTestConfig()
-	defaultLimits.MaxStreamsPerUser = 1
+	defaultLimits.MaxLocalStreamsPerUser = 1
 	overrides, err := validation.NewOverrides(defaultLimits)
 
 	require.NoError(t, err)
