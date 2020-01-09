@@ -3,9 +3,13 @@ package query
 import (
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/fatih/color"
+	"github.com/gorilla/websocket"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -17,6 +21,16 @@ func (q *Query) TailQuery(delayFor int, c *client.Client, out output.LogOutput) 
 	if err != nil {
 		log.Fatalf("Tailing logs failed: %+v", err)
 	}
+
+	go func() {
+		stopChan := make(chan os.Signal, 1)
+		signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
+		<-stopChan
+		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
+			log.Println("Error closing websocket:", err)
+		}
+		os.Exit(0)
+	}()
 
 	tailReponse := new(loghttp.TailResponse)
 
