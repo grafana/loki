@@ -25,21 +25,21 @@ $ go get github.com/grafana/loki/cmd/logcli
 If you are running on Grafana Cloud, use:
 
 ```bash
-$ export GRAFANA_ADDR=https://logs-us-west1.grafana.net
-$ export GRAFANA_USERNAME=<username>
-$ export GRAFANA_PASSWORD=<password>
+$ export LOKI_ADDR=https://logs-us-west1.grafana.net
+$ export LOKI_USERNAME=<username>
+$ export LOKI_PASSWORD=<password>
 ```
 
 Otherwise you can point LogCLI to a local instance directly
 without needing a username and password:
 
 ```bash
-$ export GRAFANA_ADDR=http://localhost:3100
+$ export LOKI_ADDR=http://localhost:3100
 ```
 
 > Note: If you are running Loki behind a proxy server and you have
-> authentication configured, you will also have to pass in GRAFANA_USERNAME
-> and GRAFANA_PASSWORD accordingly.
+> authentication configured, you will also have to pass in LOKI_USERNAME
+> and LOKI_PASSWORD accordingly.
 
 ```bash
 $ logcli labels job

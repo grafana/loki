@@ -109,9 +109,9 @@ func newQueryClient(app *kingpin.Application) *client.Client {
 		return nil
 	}
 
-	app.Flag("addr", "Server address.").Default("https://logs-us-west1.grafana.net").Envar("GRAFANA_ADDR").Action(addressAction).StringVar(&client.Address)
-	app.Flag("username", "Username for HTTP basic auth.").Default("").Envar("GRAFANA_USERNAME").StringVar(&client.Username)
-	app.Flag("password", "Password for HTTP basic auth.").Default("").Envar("GRAFANA_PASSWORD").StringVar(&client.Password)
+	app.Flag("addr", "Server address.").Default("http://localhost:3100").Envar("LOKI_ADDR").Action(addressAction).StringVar(&client.Address)
+	app.Flag("username", "Username for HTTP basic auth.").Default("").Envar("LOKI_USERNAME").StringVar(&client.Username)
+	app.Flag("password", "Password for HTTP basic auth.").Default("").Envar("LOKI_PASSWORD").StringVar(&client.Password)
 	app.Flag("ca-cert", "Path to the server Certificate Authority.").Default("").Envar("LOKI_CA_CERT_PATH").StringVar(&client.TLSConfig.CAFile)
 	app.Flag("tls-skip-verify", "Server certificate TLS skip verify.").Default("false").BoolVar(&client.TLSConfig.InsecureSkipVerify)
 	app.Flag("cert", "Path to the client certificate.").Default("").Envar("LOKI_CLIENT_CERT_PATH").StringVar(&client.TLSConfig.CertFile)
