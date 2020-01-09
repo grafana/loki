@@ -6,15 +6,17 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/chunkenc/decompression"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 // lazyChunks is a slice of lazy chunks that can ordered by chunk boundaries
@@ -71,14 +73,18 @@ type batchChunkIterator struct {
 	lastOverlapping []*chunkenc.LazyChunk
 
 	ctx      context.Context
+	cancel   context.CancelFunc
 	matchers []*labels.Matcher
 	filter   logql.Filter
 	req      *logproto.QueryRequest
+	next     chan *struct {
+		iter iter.EntryIterator
+		err  error
+	}
 }
 
 // newBatchChunkIterator creates a new batch iterator with the given batchSize.
 func newBatchChunkIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, batchSize int, matchers []*labels.Matcher, filter logql.Filter, req *logproto.QueryRequest) *batchChunkIterator {
-
 	// __name__ is not something we filter by because it's a constant in loki and only used for upstream compatibility.
 	// Therefore remove it
 	for i := range matchers {
@@ -87,19 +93,45 @@ func newBatchChunkIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, ba
 			break
 		}
 	}
-
+	ctx, cancel := context.WithCancel(ctx)
 	res := &batchChunkIterator{
 		batchSize: batchSize,
 		matchers:  matchers,
 		filter:    filter,
 		req:       req,
 		ctx:       ctx,
+		cancel:    cancel,
 		chunks:    lazyChunks{direction: req.Direction, chunks: chunks},
+		next: make(chan *struct {
+			iter iter.EntryIterator
+			err  error
+		}),
 	}
 	sort.Sort(res.chunks)
+	go func() {
+		for {
+			if res.chunks.Len() == 0 {
+				close(res.next)
+				return
+			}
+			next, err := res.nextBatch()
+			select {
+			case <-ctx.Done():
+				close(res.next)
+				err = next.Close()
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "Failed to close the pre-fetched iterator when pre-fetching was canceled", "err", err)
+				}
+				return
+			case res.next <- &struct {
+				iter iter.EntryIterator
+				err  error
+			}{next, err}:
+			}
+		}
+	}()
 	return res
 }
-
 func (it *batchChunkIterator) Next() bool {
 	var err error
 	// for loop to avoid recursion
@@ -107,15 +139,16 @@ func (it *batchChunkIterator) Next() bool {
 		if it.curr != nil && it.curr.Next() {
 			return true
 		}
-		if it.chunks.Len() == 0 {
-			return false
-		}
 		// close previous iterator
 		if it.curr != nil {
 			it.err = it.curr.Close()
 		}
-		it.curr, err = it.nextBatch()
-		if err != nil {
+		next := <-it.next
+		if next == nil {
+			return false
+		}
+		it.curr = next.iter
+		if next.err != nil {
 			it.err = err
 			return false
 		}
@@ -231,6 +264,7 @@ func (it *batchChunkIterator) Error() error {
 }
 
 func (it *batchChunkIterator) Close() error {
+	it.cancel()
 	if it.curr != nil {
 		return it.curr.Close()
 	}
@@ -268,7 +302,7 @@ func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matche
 		return nil, err
 	}
 
-	return iter.NewHeapIterator(iters, direction), nil
+	return iter.NewHeapIterator(ctx, iters, direction), nil
 }
 
 func buildIterators(ctx context.Context, chks map[model.Fingerprint][][]*chunkenc.LazyChunk, filter logql.Filter, direction logproto.Direction, from, through time.Time) ([]iter.EntryIterator, error) {
@@ -307,7 +341,7 @@ func buildHeapIterator(ctx context.Context, chks [][]*chunkenc.LazyChunk, filter
 		result = append(result, iter.NewNonOverlappingIterator(iterators, labels))
 	}
 
-	return iter.NewHeapIterator(result, direction), nil
+	return iter.NewHeapIterator(ctx, result, direction), nil
 }
 
 func filterSeriesByMatchers(chks map[model.Fingerprint][][]*chunkenc.LazyChunk, matchers []*labels.Matcher) map[model.Fingerprint][][]*chunkenc.LazyChunk {
@@ -326,6 +360,10 @@ outer:
 func fetchLazyChunks(ctx context.Context, chunks []*chunkenc.LazyChunk) error {
 	log, ctx := spanlogger.New(ctx, "LokiStore.fetchLazyChunks")
 	defer log.Finish()
+	start := time.Now()
+	defer decompression.Mutate(ctx, func(m *decompression.Stats) {
+		m.TimeFetching += time.Since(start)
+	})
 
 	var totalChunks int
 	chksByFetcher := map[*chunk.Fetcher][]*chunkenc.LazyChunk{}

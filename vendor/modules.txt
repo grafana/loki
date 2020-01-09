@@ -131,6 +131,7 @@ github.com/cortexproject/cortex/pkg/chunk/local
 github.com/cortexproject/cortex/pkg/chunk/storage
 github.com/cortexproject/cortex/pkg/chunk/testutils
 github.com/cortexproject/cortex/pkg/chunk/util
+github.com/cortexproject/cortex/pkg/distributor
 github.com/cortexproject/cortex/pkg/ingester/client
 github.com/cortexproject/cortex/pkg/ingester/index
 github.com/cortexproject/cortex/pkg/prom1/storage/metric
@@ -146,8 +147,10 @@ github.com/cortexproject/cortex/pkg/util
 github.com/cortexproject/cortex/pkg/util/extract
 github.com/cortexproject/cortex/pkg/util/flagext
 github.com/cortexproject/cortex/pkg/util/grpcclient
+github.com/cortexproject/cortex/pkg/util/limiter
 github.com/cortexproject/cortex/pkg/util/middleware
 github.com/cortexproject/cortex/pkg/util/spanlogger
+github.com/cortexproject/cortex/pkg/util/test
 github.com/cortexproject/cortex/pkg/util/validation
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
@@ -210,6 +213,8 @@ github.com/facette/natsort
 github.com/fatih/color
 # github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
 github.com/fluent/fluent-bit-go/output
+# github.com/fluent/fluent-logger-golang v1.2.1
+github.com/fluent/fluent-logger-golang/fluent
 # github.com/fsnotify/fsnotify v1.4.7
 github.com/fsnotify/fsnotify
 # github.com/fsouza/fake-gcs-server v1.7.0
@@ -395,6 +400,8 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
+# github.com/philhofer/fwd v0.0.0-20160129035939-98c11a7a6ec8
+github.com/philhofer/fwd
 # github.com/pierrec/lz4 v2.3.1-0.20191115212037-9085dacd1e1e+incompatible
 github.com/pierrec/lz4
 github.com/pierrec/lz4/internal/xxh32
@@ -488,6 +495,8 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
+# github.com/tinylib/msgp v0.0.0-20161221055906-38a6f61a768d
+github.com/tinylib/msgp/msgp
 # github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5
 github.com/tmc/grpc-websocket-proxy/wsproxy
 # github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
@@ -515,6 +524,8 @@ github.com/uber/jaeger-lib/metrics
 github.com/uber/jaeger-lib/metrics/prometheus
 # github.com/ugorji/go/codec v1.1.7
 github.com/ugorji/go/codec
+# github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
+github.com/weaveworks/billing-client
 # github.com/weaveworks/common v0.0.0-20191103151037-0e7cefadc44f
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/errors

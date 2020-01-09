@@ -44,10 +44,12 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - "-config.file=/etc/promtail/promtail.yaml"
+            {{- if not (or .Values.config.client.url .Values.config.clients) }}
             {{- if and .Values.loki.user .Values.loki.password }}
             - "-client.url={{ .Values.loki.serviceScheme }}://{{ .Values.loki.user }}:{{ .Values.loki.password }}@{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/loki/api/v1/push"
             {{- else }}
             - "-client.url={{ .Values.loki.serviceScheme }}://{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/loki/api/v1/push"
+            {{- end }}
             {{- end }}
           volumeMounts:
             - name: config
@@ -93,4 +95,3 @@ spec:
         {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-

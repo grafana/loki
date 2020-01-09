@@ -1,6 +1,7 @@
 package iter
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"testing"
@@ -40,7 +41,7 @@ func TestIterator(t *testing.T) {
 
 		// Test dedupe of overlapping iterators with the heap iterator.
 		{
-			iterator: NewHeapIterator([]EntryIterator{
+			iterator: NewHeapIterator(context.Background(), []EntryIterator{
 				mkStreamIterator(offset(0, identity), defaultLabels),
 				mkStreamIterator(offset(testSize/2, identity), defaultLabels),
 				mkStreamIterator(offset(testSize, identity), defaultLabels),
@@ -52,7 +53,7 @@ func TestIterator(t *testing.T) {
 
 		// Test dedupe of overlapping iterators with the heap iterator (backward).
 		{
-			iterator: NewHeapIterator([]EntryIterator{
+			iterator: NewHeapIterator(context.Background(), []EntryIterator{
 				mkStreamIterator(inverse(offset(0, identity)), defaultLabels),
 				mkStreamIterator(inverse(offset(-testSize/2, identity)), defaultLabels),
 				mkStreamIterator(inverse(offset(-testSize, identity)), defaultLabels),
@@ -64,7 +65,7 @@ func TestIterator(t *testing.T) {
 
 		// Test dedupe of entries with the same timestamp but different entries.
 		{
-			iterator: NewHeapIterator([]EntryIterator{
+			iterator: NewHeapIterator(context.Background(), []EntryIterator{
 				mkStreamIterator(offset(0, constant(0)), defaultLabels),
 				mkStreamIterator(offset(0, constant(0)), defaultLabels),
 				mkStreamIterator(offset(testSize, constant(0)), defaultLabels),
@@ -105,7 +106,7 @@ func TestIteratorMultipleLabels(t *testing.T) {
 	}{
 		// Test merging with differing labels but same timestamps and values.
 		{
-			iterator: NewHeapIterator([]EntryIterator{
+			iterator: NewHeapIterator(context.Background(), []EntryIterator{
 				mkStreamIterator(identity, "{foobar: \"baz1\"}"),
 				mkStreamIterator(identity, "{foobar: \"baz2\"}"),
 			}, logproto.FORWARD),
@@ -123,7 +124,7 @@ func TestIteratorMultipleLabels(t *testing.T) {
 
 		// Test merging with differing labels but all the same timestamps and different values.
 		{
-			iterator: NewHeapIterator([]EntryIterator{
+			iterator: NewHeapIterator(context.Background(), []EntryIterator{
 				mkStreamIterator(constant(0), "{foobar: \"baz1\"}"),
 				mkStreamIterator(constant(0), "{foobar: \"baz2\"}"),
 			}, logproto.FORWARD),
@@ -177,7 +178,7 @@ func TestHeapIteratorPrefetch(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			i := NewHeapIterator([]EntryIterator{
+			i := NewHeapIterator(context.Background(), []EntryIterator{
 				mkStreamIterator(identity, "{foobar: \"baz1\"}"),
 				mkStreamIterator(identity, "{foobar: \"baz2\"}"),
 			}, logproto.FORWARD)
@@ -279,7 +280,7 @@ func TestReverseEntryIterator(t *testing.T) {
 	itr1 := mkStreamIterator(inverse(offset(testSize, identity)), defaultLabels)
 	itr2 := mkStreamIterator(inverse(offset(testSize, identity)), "{foobar: \"bazbar\"}")
 
-	heapIterator := NewHeapIterator([]EntryIterator{itr1, itr2}, logproto.BACKWARD)
+	heapIterator := NewHeapIterator(context.Background(), []EntryIterator{itr1, itr2}, logproto.BACKWARD)
 	reversedIter, err := NewReversedIter(heapIterator, testSize, false)
 	require.NoError(t, err)
 
@@ -301,7 +302,7 @@ func TestReverseEntryIteratorUnlimited(t *testing.T) {
 	itr1 := mkStreamIterator(offset(testSize, identity), defaultLabels)
 	itr2 := mkStreamIterator(offset(testSize, identity), "{foobar: \"bazbar\"}")
 
-	heapIterator := NewHeapIterator([]EntryIterator{itr1, itr2}, logproto.BACKWARD)
+	heapIterator := NewHeapIterator(context.Background(), []EntryIterator{itr1, itr2}, logproto.BACKWARD)
 	reversedIter, err := NewReversedIter(heapIterator, 0, false)
 	require.NoError(t, err)
 

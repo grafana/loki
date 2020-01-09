@@ -169,8 +169,8 @@ func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 	defer func() {
 		stats := decompression.GetStats(ctx)
 		level.Debug(log).Log(
-			"Time Decompressing (ms)", stats.TimeDecompress.Nanoseconds()/int64(time.Millisecond),
-			"Time Filtering (ms)", stats.TimeFiltering.Nanoseconds()/int64(time.Millisecond),
+			"Time Fetching chunk (ms)", stats.TimeFetching.Nanoseconds()/int64(time.Millisecond),
+			"Total Duplicates", stats.TotalDuplicates,
 			"Fetched chunks", stats.FetchedChunks,
 			"Total bytes compressed (MB)", stats.BytesCompressed/1024/1024,
 			"Total bytes uncompressed (MB)", stats.BytesDecompressed/1024/1024,

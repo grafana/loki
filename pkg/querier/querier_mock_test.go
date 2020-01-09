@@ -60,6 +60,10 @@ func (c *querierClientMock) Series(ctx context.Context, in *logproto.SeriesReque
 	return res.(*logproto.SeriesResponse), args.Error(1)
 }
 
+func (c *querierClientMock) Context() context.Context {
+	return context.Background()
+}
+
 // newIngesterClientMockFactory creates a factory function always returning
 // the input querierClientMock
 func newIngesterClientMockFactory(c *querierClientMock) cortex_client.Factory {
@@ -116,6 +120,10 @@ func (c *queryClientMock) SendMsg(m interface{}) error {
 
 func (c *queryClientMock) RecvMsg(m interface{}) error {
 	return nil
+}
+
+func (c *queryClientMock) Context() context.Context {
+	return context.Background()
 }
 
 // tailClientMock is mockable version of Querier_TailClient
@@ -290,7 +298,7 @@ func mockStreamIterFromLabelSets(from, quantity int, sets []string) iter.EntryIt
 		streams = append(streams, mockStreamWithLabels(from, quantity, s))
 	}
 
-	return iter.NewStreamsIterator(streams, logproto.FORWARD)
+	return iter.NewStreamsIterator(context.Background(), streams, logproto.FORWARD)
 }
 
 // mockStream return a stream with quantity entries, where entries timestamp and
