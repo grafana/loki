@@ -195,7 +195,7 @@ module Fluent
         data_labels = {} if data_labels.nil?
         data_labels = data_labels.merge(@extra_labels)
         # sanitize label values
-        data_labels.each { |k, v| formatted_labels[k] = v.gsub('"', '\\"') if v }
+        data_labels.each { |k, v| formatted_labels[k] = v.gsub('"', '\\"') if v && v&.is_a?(String) }
         formatted_labels
       end
 
