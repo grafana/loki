@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 	"time"
+	"context"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -29,7 +30,7 @@ var labelFoo, _ = promql.ParseMetric("{app=\"foo\"}")
 var labelBar, _ = promql.ParseMetric("{app=\"bar\"}")
 
 func newEntryIterator() iter.EntryIterator {
-	return iter.NewHeapIterator([]iter.EntryIterator{
+	return iter.NewHeapIterator(context.Background(), []iter.EntryIterator{
 		iter.NewStreamIterator(&logproto.Stream{
 			Labels:  labelFoo.String(),
 			Entries: entries,

@@ -771,7 +771,7 @@ func getLocalQuerier(size int64) Querier {
 		iter.NewStreamIterator(newStream(size, identity, `{app="bar"}`)),
 	}
 	return QuerierFunc(func(ctx context.Context, p SelectParams) (iter.EntryIterator, error) {
-		return iter.NewHeapIterator(iters, p.Direction), nil
+		return iter.NewHeapIterator(ctx, iters, p.Direction), nil
 	})
 }
 
@@ -799,7 +799,7 @@ func (q *querierRecorder) Select(ctx context.Context, p SelectParams) (iter.Entr
 	for _, s := range streams {
 		iters = append(iters, iter.NewStreamIterator(s))
 	}
-	return iter.NewHeapIterator(iters, p.Direction), nil
+	return iter.NewHeapIterator(ctx, iters, p.Direction), nil
 }
 
 func paramsID(p SelectParams) string {

@@ -158,7 +158,7 @@ func (q *Querier) Select(ctx context.Context, params logql.SelectParams) (iter.E
 		return nil, err
 	}
 	iterators := append(ingesterIterators, chunkStoreIterators)
-	return iter.NewHeapIterator(iterators, params.Direction), nil
+	return iter.NewHeapIterator(ctx, iterators, params.Direction), nil
 }
 
 func (q *Querier) queryIngesters(ctx context.Context, params logql.SelectParams) ([]iter.EntryIterator, error) {

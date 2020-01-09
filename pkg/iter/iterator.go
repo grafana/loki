@@ -2,10 +2,12 @@ package iter
 
 import (
 	"container/heap"
+	"context"
 	"fmt"
 	"io"
 	"time"
 
+	"github.com/grafana/loki/pkg/chunkenc/decompression"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -130,17 +132,20 @@ type heapIterator struct {
 	}
 	is         []EntryIterator
 	prefetched bool
+	ctx        context.Context
 
-	tuples     []tuple
-	currEntry  logproto.Entry
-	currLabels string
-	errs       []error
+	tuples         []tuple
+	currEntry      logproto.Entry
+	currLabels     string
+	errs           []error
+	timeDeduping   time.Duration
+	linesDuplicate int64
 }
 
 // NewHeapIterator returns a new iterator which uses a heap to merge together
 // entries for multiple interators.
-func NewHeapIterator(is []EntryIterator, direction logproto.Direction) HeapIterator {
-	result := &heapIterator{is: is}
+func NewHeapIterator(ctx context.Context, is []EntryIterator, direction logproto.Direction) HeapIterator {
+	result := &heapIterator{is: is, ctx: ctx}
 	switch direction {
 	case logproto.BACKWARD:
 		result.heap = &iteratorMaxHeap{}
@@ -233,7 +238,12 @@ func (i *heapIterator) Next() bool {
 
 	// Requeue the iterators, advancing them if they were consumed.
 	for j := range i.tuples {
-		i.requeue(i.tuples[j].EntryIterator, i.tuples[j].Line != i.currEntry.Line)
+		if i.tuples[j].Line != i.currEntry.Line {
+			i.requeue(i.tuples[j].EntryIterator, true)
+			continue
+		}
+		i.linesDuplicate++
+		i.requeue(i.tuples[j].EntryIterator, false)
 	}
 	i.tuples = i.tuples[:0]
 	return true
@@ -302,6 +312,9 @@ func (i *heapIterator) Error() error {
 }
 
 func (i *heapIterator) Close() error {
+	decompression.Mutate(i.ctx, func(m *decompression.Stats) {
+		m.TotalDuplicates += i.linesDuplicate
+	})
 	for i.heap.Len() > 0 {
 		if err := i.heap.Pop().(EntryIterator).Close(); err != nil {
 			return err
@@ -325,21 +338,21 @@ func (i *heapIterator) Len() int {
 }
 
 // NewStreamsIterator returns an iterator over logproto.Stream
-func NewStreamsIterator(streams []*logproto.Stream, direction logproto.Direction) EntryIterator {
+func NewStreamsIterator(ctx context.Context, streams []*logproto.Stream, direction logproto.Direction) EntryIterator {
 	is := make([]EntryIterator, 0, len(streams))
 	for i := range streams {
 		is = append(is, NewStreamIterator(streams[i]))
 	}
-	return NewHeapIterator(is, direction)
+	return NewHeapIterator(ctx, is, direction)
 }
 
 // NewQueryResponseIterator returns an iterator over a QueryResponse.
-func NewQueryResponseIterator(resp *logproto.QueryResponse, direction logproto.Direction) EntryIterator {
+func NewQueryResponseIterator(ctx context.Context, resp *logproto.QueryResponse, direction logproto.Direction) EntryIterator {
 	is := make([]EntryIterator, 0, len(resp.Streams))
 	for i := range resp.Streams {
 		is = append(is, NewStreamIterator(resp.Streams[i]))
 	}
-	return NewHeapIterator(is, direction)
+	return NewHeapIterator(ctx, is, direction)
 }
 
 type queryClientIterator struct {
@@ -367,7 +380,7 @@ func (i *queryClientIterator) Next() bool {
 			return false
 		}
 
-		i.curr = NewQueryResponseIterator(batch, i.direction)
+		i.curr = NewQueryResponseIterator(i.client.Context(), batch, i.direction)
 	}
 
 	return true

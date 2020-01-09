@@ -11,11 +11,11 @@ const ctxKey ctxKeyType = "decompression"
 
 // Stats is decompression statistic
 type Stats struct {
-	TimeDecompress    time.Duration // Time spent decompressing chunks
-	TimeFiltering     time.Duration // Time spent filtering lines
 	BytesDecompressed int64         // Total bytes decompressed data size
 	BytesCompressed   int64         // Total bytes compressed read
 	FetchedChunks     int64         // Total number of chunks fetched.
+	TotalDuplicates   int64         // Total number of line duplicates from replication.
+	TimeFetching      time.Duration // Time spent fetching chunks.
 }
 
 // NewContext creates a new decompression context

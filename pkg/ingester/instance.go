@@ -209,7 +209,7 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
-	iter := iter.NewHeapIterator(iters, req.Direction)
+	iter := iter.NewHeapIterator(queryServer.Context(), iters, req.Direction)
 	defer helpers.LogError("closing iterator", iter.Close)
 
 	return sendBatches(iter, queryServer, req.Limit)
