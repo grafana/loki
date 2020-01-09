@@ -57,6 +57,17 @@ local utils = import 'mixin-utils/utils.libsonnet';
         )
       )
       .addRow(
+        g.row('Frontend (query-frontend)')
+        .addPanel(
+          g.panel('QPS') +
+          g.qpsPanel('loki_request_duration_seconds_count{cluster="$cluster", job="$namespace/query-frontend", route=~"api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values"}')
+        )
+        .addPanel(
+          g.panel('Latency') +
+          utils.latencyRecordingRulePanel('loki_request_duration_seconds', [utils.selector.eq('job', '$namespace/query-frontend'), utils.selector.re('route', 'api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values')], extra_selectors=[utils.selector.eq('cluster', '$cluster')], sum_by=['route'])
+        )
+      )
+      .addRow(
         g.row('Querier')
         .addPanel(
           g.panel('QPS') +
