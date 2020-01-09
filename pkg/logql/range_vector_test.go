@@ -1,10 +1,10 @@
 package logql
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
-	"context"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"

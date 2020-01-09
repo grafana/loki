@@ -138,7 +138,6 @@ type heapIterator struct {
 	currEntry      logproto.Entry
 	currLabels     string
 	errs           []error
-	timeDeduping   time.Duration
 	linesDuplicate int64
 }
 
