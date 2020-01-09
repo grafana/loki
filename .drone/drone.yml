@@ -61,6 +61,8 @@ steps:
   image: plugins/docker
   settings:
     dockerfile: cmd/loki/Dockerfile
+    build_args:
+      - TOUCH_PROTOS=1
     dry_run: true
     password:
       from_secret: docker_password
@@ -79,6 +81,8 @@ steps:
   image: plugins/docker
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
+    build_args:
+      - TOUCH_PROTOS=1
     dry_run: true
     password:
       from_secret: docker_password
@@ -97,6 +101,8 @@ steps:
   image: plugins/docker
   settings:
     dockerfile: cmd/promtail/Dockerfile
+    build_args:
+      - TOUCH_PROTOS=1
     dry_run: true
     password:
       from_secret: docker_password
@@ -115,6 +121,8 @@ steps:
   image: plugins/docker
   settings:
     dockerfile: cmd/loki/Dockerfile
+    build_args:
+      - TOUCH_PROTOS=1
     password:
       from_secret: docker_password
     repo: grafana/loki
@@ -131,6 +139,8 @@ steps:
   image: plugins/docker
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
+    build_args:
+      - TOUCH_PROTOS=1
     password:
       from_secret: docker_password
     repo: grafana/loki-canary
@@ -147,6 +157,8 @@ steps:
   image: plugins/docker
   settings:
     dockerfile: cmd/promtail/Dockerfile
+    build_args:
+      - TOUCH_PROTOS=1
     password:
       from_secret: docker_password
     repo: grafana/promtail
@@ -315,6 +327,8 @@ steps:
   image: plugins/docker
   settings:
     dockerfile: cmd/loki/Dockerfile
+    build_args:
+      - TOUCH_PROTOS=1
     dry_run: true
     password:
       from_secret: docker_password
@@ -333,6 +347,8 @@ steps:
   image: plugins/docker
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
+    build_args:
+      - TOUCH_PROTOS=1
     dry_run: true
     password:
       from_secret: docker_password
@@ -351,6 +367,8 @@ steps:
   image: plugins/docker
   settings:
     dockerfile: cmd/promtail/Dockerfile
+    build_args:
+      - TOUCH_PROTOS=1
     dry_run: true
     password:
       from_secret: docker_password
@@ -369,6 +387,8 @@ steps:
   image: plugins/docker
   settings:
     dockerfile: cmd/loki/Dockerfile
+    build_args:
+      - TOUCH_PROTOS=1
     password:
       from_secret: docker_password
     repo: grafana/loki
@@ -385,6 +405,8 @@ steps:
   image: plugins/docker
   settings:
     dockerfile: cmd/loki-canary/Dockerfile
+    build_args:
+      - TOUCH_PROTOS=1
     password:
       from_secret: docker_password
     repo: grafana/loki-canary
@@ -401,6 +423,8 @@ steps:
   image: plugins/docker
   settings:
     dockerfile: cmd/promtail/Dockerfile
+    build_args:
+      - TOUCH_PROTOS=1
     password:
       from_secret: docker_password
     repo: grafana/promtail
