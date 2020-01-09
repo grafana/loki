@@ -302,7 +302,7 @@ func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matche
 		return nil, err
 	}
 
-	return iter.NewHeapIterator(iters, direction), nil
+	return iter.NewHeapIterator(ctx, iters, direction), nil
 }
 
 func buildIterators(ctx context.Context, chks map[model.Fingerprint][][]*chunkenc.LazyChunk, filter logql.Filter, direction logproto.Direction, from, through time.Time) ([]iter.EntryIterator, error) {
@@ -341,7 +341,7 @@ func buildHeapIterator(ctx context.Context, chks [][]*chunkenc.LazyChunk, filter
 		result = append(result, iter.NewNonOverlappingIterator(iterators, labels))
 	}
 
-	return iter.NewHeapIterator(result, direction), nil
+	return iter.NewHeapIterator(ctx, result, direction), nil
 }
 
 func filterSeriesByMatchers(chks map[model.Fingerprint][][]*chunkenc.LazyChunk, matchers []*labels.Matcher) map[model.Fingerprint][][]*chunkenc.LazyChunk {
@@ -360,6 +360,10 @@ outer:
 func fetchLazyChunks(ctx context.Context, chunks []*chunkenc.LazyChunk) error {
 	log, ctx := spanlogger.New(ctx, "LokiStore.fetchLazyChunks")
 	defer log.Finish()
+	start := time.Now()
+	defer decompression.Mutate(ctx, func(m *decompression.Stats) {
+		m.TimeFetching += time.Since(start)
+	})
 
 	var totalChunks int
 	chksByFetcher := map[*chunk.Fetcher][]*chunkenc.LazyChunk{}

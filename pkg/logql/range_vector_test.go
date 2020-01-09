@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -29,7 +30,7 @@ var labelFoo, _ = promql.ParseMetric("{app=\"foo\"}")
 var labelBar, _ = promql.ParseMetric("{app=\"bar\"}")
 
 func newEntryIterator() iter.EntryIterator {
-	return iter.NewHeapIterator([]iter.EntryIterator{
+	return iter.NewHeapIterator(context.Background(), []iter.EntryIterator{
 		iter.NewStreamIterator(&logproto.Stream{
 			Labels:  labelFoo.String(),
 			Entries: entries,

@@ -560,8 +560,6 @@ func (li *listIterator) Labels() string { return "" }
 type bufferedIterator struct {
 	origBytes         []byte
 	rootCtx           context.Context
-	timeDecompress    time.Duration
-	timeFiltering     time.Duration
 	bytesDecompressed int64
 
 	bufReader *bufio.Reader
@@ -600,21 +598,16 @@ func (si *bufferedIterator) Next() bool {
 	}
 
 	for {
-		start := time.Now()
 		ts, line, ok := si.moveNext()
-		si.timeDecompress += time.Since(start)
 		if !ok {
 			si.Close()
 			return false
 		}
 		// we decode always the line length and ts as varint
 		si.bytesDecompressed += int64(len(line)) + 2*binary.MaxVarintLen64
-		start = time.Now()
 		if si.filter != nil && !si.filter(line) {
-			si.timeFiltering += time.Since(start)
 			continue
 		}
-		si.timeFiltering += time.Since(start)
 		si.cur.Line = string(line)
 		si.cur.Timestamp = time.Unix(0, ts)
 		return true
@@ -690,8 +683,6 @@ func (si *bufferedIterator) Close() error {
 
 func (si *bufferedIterator) close() {
 	decompression.Mutate(si.rootCtx, func(current *decompression.Stats) {
-		current.TimeDecompress += si.timeDecompress
-		current.TimeFiltering += si.timeFiltering
 		current.BytesDecompressed += si.bytesDecompressed
 		current.BytesCompressed += int64(len(si.origBytes))
 	})
