@@ -2,6 +2,7 @@
 
 ### Notable Changes
 * [1486](https://github.com/grafana/loki/pull/1486) **pracucci**: Deprecated `-distributor.limiter-reload-period` flag / distributor's `limiter_reload_period` config option.
+* [1492](https://github.com/grafana/loki/pull/1492) **sandlis**: replaced GRAFANA_* with LOKI_* in logcli env vars, set default server url for logcli to http://localhost:3100.
 
 ### Features
 
