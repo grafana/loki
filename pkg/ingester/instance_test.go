@@ -24,10 +24,11 @@ var defaultFactory = func() chunkenc.Chunk {
 }
 
 func TestLabelsCollisions(t *testing.T) {
-	o, err := validation.NewOverrides(validation.Limits{MaxStreamsPerUser: 1000})
+	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000})
 	require.NoError(t, err)
+	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
-	i := newInstance("test", defaultFactory, o, 0, 0)
+	i := newInstance("test", defaultFactory, limiter, 0, 0)
 
 	// avoid entries from the future.
 	tt := time.Now().Add(-5 * time.Minute)
@@ -50,10 +51,11 @@ func TestLabelsCollisions(t *testing.T) {
 }
 
 func TestConcurrentPushes(t *testing.T) {
-	o, err := validation.NewOverrides(validation.Limits{MaxStreamsPerUser: 1000})
+	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000})
 	require.NoError(t, err)
+	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
-	inst := newInstance("test", defaultFactory, o, 0, 0)
+	inst := newInstance("test", defaultFactory, limiter, 0, 0)
 
 	const (
 		concurrent          = 10
@@ -100,8 +102,9 @@ func TestConcurrentPushes(t *testing.T) {
 }
 
 func TestSyncPeriod(t *testing.T) {
-	o, err := validation.NewOverrides(validation.Limits{MaxStreamsPerUser: 1000})
+	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000})
 	require.NoError(t, err)
+	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
 	const (
 		syncPeriod = 1 * time.Minute
@@ -110,7 +113,7 @@ func TestSyncPeriod(t *testing.T) {
 		minUtil    = 0.20
 	)
 
-	inst := newInstance("test", defaultFactory, o, syncPeriod, minUtil)
+	inst := newInstance("test", defaultFactory, limiter, syncPeriod, minUtil)
 	lbls := makeRandomLabels()
 
 	tt := time.Now()

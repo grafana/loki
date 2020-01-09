@@ -24,7 +24,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/validation"
 )
 
 const queryBatchSize = 128
@@ -66,7 +65,7 @@ type instance struct {
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
 
-	limits  *validation.Overrides
+	limiter *Limiter
 	factory func() chunkenc.Chunk
 
 	// sync
@@ -74,7 +73,7 @@ type instance struct {
 	syncMinUtil float64
 }
 
-func newInstance(instanceID string, factory func() chunkenc.Chunk, limits *validation.Overrides, syncPeriod time.Duration, syncMinUtil float64) *instance {
+func newInstance(instanceID string, factory func() chunkenc.Chunk, limiter *Limiter, syncPeriod time.Duration, syncMinUtil float64) *instance {
 	i := &instance{
 		streams:    map[model.Fingerprint]*stream{},
 		index:      index.New(),
@@ -85,7 +84,7 @@ func newInstance(instanceID string, factory func() chunkenc.Chunk, limits *valid
 
 		factory: factory,
 		tailers: map[uint32]*tailer{},
-		limits:  limits,
+		limiter: limiter,
 
 		syncPeriod:  syncPeriod,
 		syncMinUtil: syncMinUtil,
@@ -160,9 +159,11 @@ func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, err
 		return stream, nil
 	}
 
-	if len(i.streams) >= i.limits.MaxStreamsPerUser(i.instanceID) {
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "per-user streams limit (%d) exceeded", i.limits.MaxStreamsPerUser(i.instanceID))
+	err := i.limiter.AssertMaxStreamsPerUser(i.instanceID, len(i.streams))
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
 	}
+
 	sortedLabels := i.index.Add(labels, fp)
 	stream = newStream(fp, sortedLabels, i.factory)
 	i.streams[fp] = stream
