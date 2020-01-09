@@ -4,13 +4,14 @@ import (
 	"context"
 	"flag"
 	"net/http"
-	"sync"
 	"sync/atomic"
 	"time"
 
+	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
 
 	"github.com/go-kit/kit/log/level"
@@ -19,7 +20,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
-	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -30,7 +30,6 @@ import (
 
 const (
 	metricName = "logs"
-	bytesInMB  = 1048576
 )
 
 var readinessProbeSuccess = []byte("Ready")
@@ -60,32 +59,36 @@ var (
 
 // Config for a Distributor.
 type Config struct {
-	// For testing.
-	factory func(addr string) (grpc_health_v1.HealthClient, error)
+	// Distributors ring
+	DistributorRing cortex_distributor.RingConfig `yaml:"ring,omitempty"`
 
-	LimiterReloadPeriod time.Duration `yaml:"limiter_reload_period"`
+	// For testing.
+	factory func(addr string) (grpc_health_v1.HealthClient, error) `yaml:"-"`
 }
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.DurationVar(&cfg.LimiterReloadPeriod, "distributor.limiter-reload-period", 5*time.Minute, "Period at which to reload user ingestion limits.")
+	cfg.DistributorRing.RegisterFlags(f)
 }
 
 // Distributor coordinates replicates and distribution of log streams.
 type Distributor struct {
-	cfg       Config
-	clientCfg client.Config
-	ring      ring.ReadRing
-	overrides *validation.Overrides
-	pool      *cortex_client.Pool
+	cfg           Config
+	clientCfg     client.Config
+	ingestersRing ring.ReadRing
+	overrides     *validation.Overrides
+	pool          *cortex_client.Pool
 
-	ingestLimitersMtx sync.RWMutex
-	ingestLimiters    map[string]*rate.Limiter
-	quit              chan struct{}
+	// The global rate limiter requires a distributors ring to count
+	// the number of healthy instances.
+	distributorsRing *ring.Lifecycler
+
+	// Per-user rate limiter.
+	ingestionRateLimiter *limiter.RateLimiter
 }
 
 // New a distributor creates.
-func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, overrides *validation.Overrides) (*Distributor, error) {
+func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overrides *validation.Overrides) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
 		factory = func(addr string) (grpc_health_v1.HealthClient, error) {
@@ -93,44 +96,41 @@ func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, overrides *val
 		}
 	}
 
-	d := Distributor{
-		cfg:            cfg,
-		clientCfg:      clientCfg,
-		ring:           ring,
-		overrides:      overrides,
-		pool:           cortex_client.NewPool(clientCfg.PoolConfig, ring, factory, cortex_util.Logger),
-		ingestLimiters: map[string]*rate.Limiter{},
-		quit:           make(chan struct{}),
+	// Create the configured ingestion rate limit strategy (local or global).
+	var ingestionRateStrategy limiter.RateLimiterStrategy
+	var distributorsRing *ring.Lifecycler
+
+	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
+		var err error
+		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey)
+		if err != nil {
+			return nil, err
+		}
+
+		distributorsRing.Start()
+
+		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, distributorsRing)
+	} else {
+		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
 	}
 
-	go d.loop()
+	d := Distributor{
+		cfg:                  cfg,
+		clientCfg:            clientCfg,
+		ingestersRing:        ingestersRing,
+		distributorsRing:     distributorsRing,
+		overrides:            overrides,
+		pool:                 cortex_client.NewPool(clientCfg.PoolConfig, ingestersRing, factory, cortex_util.Logger),
+		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
+	}
 
 	return &d, nil
 }
 
-func (d *Distributor) loop() {
-	if d.cfg.LimiterReloadPeriod == 0 {
-		return
-	}
-
-	ticker := time.NewTicker(d.cfg.LimiterReloadPeriod)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			d.ingestLimitersMtx.Lock()
-			d.ingestLimiters = make(map[string]*rate.Limiter, len(d.ingestLimiters))
-			d.ingestLimitersMtx.Unlock()
-
-		case <-d.quit:
-			return
-		}
-	}
-}
-
 func (d *Distributor) Stop() {
-	close(d.quit)
+	if d.distributorsRing != nil {
+		d.distributorsRing.Shutdown()
+	}
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
@@ -153,7 +153,7 @@ type pushTracker struct {
 // ReadinessHandler is used to indicate to k8s when the distributor is ready.
 // Returns 200 when the distributor is ready, 500 otherwise.
 func (d *Distributor) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	_, err := d.ring.GetAll()
+	_, err := d.ingestersRing.GetAll()
 	if err != nil {
 		http.Error(w, "Not ready: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -226,13 +226,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	limiter := d.getOrCreateIngestLimiter(userID)
-	if !limiter.AllowN(time.Now(), validatedSamplesSize) {
+	now := time.Now()
+	if !d.ingestionRateLimiter.AllowN(now, userID, validatedSamplesSize) {
 		// Return a 4xx here to have the client discard the data and not retry. If a client
 		// is sending too much data consistently we will unlikely ever catch up otherwise.
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesSize))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%d) exceeded while adding %d lines", int(limiter.Limit()), validatedSamplesCount)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%d bytes) exceeded while adding %d lines for a total size of %d bytes", int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize)
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
@@ -241,7 +241,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	samplesByIngester := map[string][]*streamTracker{}
 	ingesterDescs := map[string]ring.IngesterDesc{}
 	for i, key := range keys {
-		replicationSet, err := d.ring.Get(key, ring.Write, descs[:0])
+		replicationSet, err := d.ingestersRing.Get(key, ring.Write, descs[:0])
 		if err != nil {
 			return nil, err
 		}
@@ -348,22 +348,4 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Ingester
 // Check implements the grpc healthcheck
 func (*Distributor) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
-}
-
-func (d *Distributor) getOrCreateIngestLimiter(userID string) *rate.Limiter {
-	d.ingestLimitersMtx.RLock()
-	limiter, ok := d.ingestLimiters[userID]
-	d.ingestLimitersMtx.RUnlock()
-
-	if ok {
-		return limiter
-	}
-
-	limiter = rate.NewLimiter(rate.Limit(int64(d.overrides.IngestionRate(userID)*bytesInMB)), int(d.overrides.IngestionBurstSize(userID)*bytesInMB))
-
-	d.ingestLimitersMtx.Lock()
-	d.ingestLimiters[userID] = limiter
-	d.ingestLimitersMtx.Unlock()
-
-	return limiter
 }
