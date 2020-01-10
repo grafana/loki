@@ -17,7 +17,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 )
 
-func TestMaxIgnoredStreamsErrors(t *testing.T) {
+func TestMaxReturnedStreamsErrors(t *testing.T) {
 	numLogs := 100
 
 	tt := []struct {
@@ -32,7 +32,7 @@ func TestMaxIgnoredStreamsErrors(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			s := newStream(
-				&Config{MaxIgnoredErrors: tc.limit},
+				&Config{MaxReturnedErrors: tc.limit},
 				model.Fingerprint(0),
 				labels.Labels{
 					{Name: "foo", Value: "bar"},

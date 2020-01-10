@@ -185,7 +185,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePe
 			streamName := s.labels.String()
 
 			limitedFailedEntries := failedEntriesWithError
-			if maxIgnore := s.cfg.MaxIgnoredErrors; maxIgnore > 0 && len(limitedFailedEntries) > maxIgnore {
+			if maxIgnore := s.cfg.MaxReturnedErrors; maxIgnore > 0 && len(limitedFailedEntries) > maxIgnore {
 				limitedFailedEntries = limitedFailedEntries[:maxIgnore]
 			}
 
