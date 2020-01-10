@@ -10,6 +10,7 @@ config:
   port: 2020
   loglevel: warn
   lineFormat: json
+  k8sLoggingParser: "Off"
   removeKeys:
     - kubernetes
     - stream
@@ -24,6 +25,12 @@ config:
       container_name: container
       pod_name: instance
     stream: stream
+  # parsers: # Allow to define custom parsers. The key here is the same as the one in the [PARSER] section of parsers.conf file.
+  #  - Name: json
+  #    Format: json
+  #    Time_Key: time
+  #    Time_Format: "%d/%b/%Y:%H:%M:%S %z"
+
 
 affinity: {}
 
