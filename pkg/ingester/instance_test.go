@@ -28,7 +28,7 @@ func TestLabelsCollisions(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
-	i := newInstance("test", defaultFactory, limiter, 0, 0)
+	i := newInstance(&Config{}, "test", defaultFactory, limiter, 0, 0)
 
 	// avoid entries from the future.
 	tt := time.Now().Add(-5 * time.Minute)
@@ -55,7 +55,7 @@ func TestConcurrentPushes(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
-	inst := newInstance("test", defaultFactory, limiter, 0, 0)
+	inst := newInstance(&Config{}, "test", defaultFactory, limiter, 0, 0)
 
 	const (
 		concurrent          = 10
@@ -113,7 +113,7 @@ func TestSyncPeriod(t *testing.T) {
 		minUtil    = 0.20
 	)
 
-	inst := newInstance("test", defaultFactory, limiter, syncPeriod, minUtil)
+	inst := newInstance(&Config{}, "test", defaultFactory, limiter, syncPeriod, minUtil)
 	lbls := makeRandomLabels()
 
 	tt := time.Now()
