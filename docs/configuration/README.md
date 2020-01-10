@@ -24,6 +24,7 @@ Configuration examples can be found in the [Configuration Examples](examples.md)
 * [table_manager_config](#table_manager_config)
   * [provision_config](#provision_config)
     * [auto_scaling_config](#auto_scaling_config)
+* [Runtime Configuration file](#runtime-configuration-file)
 
 ## Configuration File Reference
 
@@ -88,6 +89,9 @@ Supported contents and default values of `loki.yaml`:
 
 # Configures the table manager for retention
 [table_manager: <table_manager_config>]
+
+# Configuration for "runtime config" module, responsible for reloading runtime configuration file.
+[runtime_config: <runtime_config>]
 ```
 
 ## server_config
@@ -791,10 +795,10 @@ logs in Loki.
 # Maximum number of stream matchers per query.
 [max_streams_matchers_per_query: <int> | default = 1000]
 
-# Filename of per-user overrides file
+# Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file (runtime_config.file in YAML)
 [per_tenant_override_config: <string>]
 
-# Period with which to reload the overrides file if configured.
+# Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.reload-period (runtime_config.period in YAML)
 [per_tenant_override_period: <duration> | default = 10s]
 ```
 
@@ -897,4 +901,37 @@ The `auto_scaling_config` block configures autoscaling for DynamoDB.
 
 # DynamoDB target ratio of consumed capacity to provisioned capacity.
 [target: <float> | default = 80]
+```
+
+## Runtime Configuration file
+
+Loki has a concept of "runtime config" file, which is simply a file that is reloaded while Loki is running. It is used by some Loki components to allow operator to change some aspects of Loki configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.
+
+At the moment, two components use runtime configuration: limits and multi KV store.
+
+Options for runtime configuration reload can also be configured via YAML:
+
+```yaml
+# Configuration file to periodically check and reload.
+[file: <string>: default = empty]
+
+# How often to check the file.
+[period: <duration>: default 10 seconds]
+```
+
+Example runtime configuration file:
+
+```yaml
+overrides:
+  tenant1:
+    ingestion_rate_mb: 10
+    max_streams_per_user: 100000
+    max_chunks_per_query: 100000
+  tenant2:
+    max_streams_per_user: 1000000
+    max_chunks_per_query: 1000000
+
+multi_kv_config:
+    mirror-enabled: false
+    primary: consul
 ```
