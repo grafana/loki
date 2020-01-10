@@ -111,9 +111,6 @@ type Overrides struct {
 }
 
 // NewOverrides makes a new Overrides.
-// We store the supplied limits in a global variable to ensure per-tenant limits
-// are defaulted to those values.  As such, the last call to NewOverrides will
-// become the new global defaults.
 func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error) {
 	return &Overrides{
 		tenantLimits:  tenantLimits,
