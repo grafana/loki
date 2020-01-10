@@ -121,10 +121,6 @@ func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error
 	}, nil
 }
 
-// Stop background reloading of overrides.
-func (o *Overrides) Stop() {
-}
-
 // IngestionRateStrategy returns whether the ingestion rate limit should be individually applied
 // to each distributor instance (local) or evenly shared across the cluster (global).
 func (o *Overrides) IngestionRateStrategy() string {
