@@ -118,6 +118,11 @@ func newBatchChunkIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, ba
 			select {
 			case <-ctx.Done():
 				close(res.next)
+				// next can be nil if we are waiting to return that the nextBatch was empty and the context is closed
+				// or if another error occurred reading nextBatch
+				if next == nil {
+					return
+				}
 				err = next.Close()
 				if err != nil {
 					level.Error(util.Logger).Log("msg", "Failed to close the pre-fetched iterator when pre-fetching was canceled", "err", err)
