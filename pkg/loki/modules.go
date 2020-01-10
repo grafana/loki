@@ -293,13 +293,21 @@ func (t *Loki) initQueryFrontend() (err error) {
 	}
 	t.stopper = stopper
 	t.frontend.Wrap(tripperware)
-
 	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
-	t.server.HTTP.PathPrefix(t.cfg.HTTPPrefix).Handler(
-		t.httpAuthMiddleware.Wrap(
-			t.frontend.Handler(),
-		),
-	)
+
+	frontendHandler := t.httpAuthMiddleware.Wrap(t.frontend.Handler())
+	t.server.HTTP.Handle("/loki/api/v1/query_range", frontendHandler)
+	t.server.HTTP.Handle("/loki/api/v1/query", frontendHandler)
+	t.server.HTTP.Handle("/loki/api/v1/label", frontendHandler)
+	t.server.HTTP.Handle("/loki/api/v1/labels", frontendHandler)
+	t.server.HTTP.Handle("/loki/api/v1/label/{name}/values", frontendHandler)
+	t.server.HTTP.Handle("/loki/api/v1/series", frontendHandler)
+	t.server.HTTP.Handle("/api/prom/query", frontendHandler)
+	t.server.HTTP.Handle("/api/prom/label", frontendHandler)
+	t.server.HTTP.Handle("/api/prom/label/{name}/values", frontendHandler)
+	t.server.HTTP.Handle("/api/prom/series", frontendHandler)
+	// fallback route
+	t.server.HTTP.PathPrefix("/").Handler(frontendHandler)
 	return
 }
 
