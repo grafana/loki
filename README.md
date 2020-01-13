@@ -44,7 +44,7 @@ querying logs.
 Documentation for the latest release can be found
 [here](https://github.com/grafana/loki/tree/v1.2.0/docs/README.md). Documentation for
 the unreleased master master branch can be found inside the
-[`docs/` folder](.docs/README.md).
+[`docs/` folder](./docs/README.md).
 
 
 Some key documents to read:
