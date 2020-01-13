@@ -49,40 +49,44 @@ cluster. It's the best solution for a single-tenant model.
 
 ```yaml
 ---Daemonset.yaml
-apiVersion: extensions/v1beta1
-kind: Daemonset
+apiVersion: apps/v1
+kind: DaemonSet
 metadata:
   name: promtail-daemonset
-  ...
 spec:
-  ...
+  selector:
+    matchLabels:
+      name: promtail
   template:
+    metadata:
+      labels:
+        name: promtail
     spec:
       serviceAccount: SERVICE_ACCOUNT
       serviceAccountName: SERVICE_ACCOUNT
       volumes:
       - name: logs
-        hostPath: HOST_PATH
+        hostPath:
+          path: HOST_PATH
       - name: promtail-config
-        configMap
+        configMap: 
           name: promtail-configmap
       containers:
       - name: promtail-container
-         args:
-         - -config.file=/etc/promtail/promtail.yaml
-         volumeMounts:
-         - name: logs
-            mountPath: MOUNT_PATH
-         - name: promtail-config
-            mountPath: /etc/promtail
-  ...
+        image: grafana/promtail
+        args:
+        - -config.file=/etc/promtail/promtail.yaml
+        volumeMounts:
+        - name: logs
+          mountPath: MOUNT_PATH
+        - name: promtail-config
+          mountPath: /etc/promtail
 
 ---configmap.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: promtail-config
-  ...
 data:
   promtail.yaml: YOUR CONFIG
 
@@ -92,29 +96,31 @@ kind: ClusterRole
 metadata:
   name: promtail-clusterrole
 rules:
-  - apiGroups:
-     resources:
-     - nodes
-     - services
-     - pod
+  - apiGroups: [""]
+    resources:
+    - nodes
+    - services
+    - pod
     verbs:
     - get
     - watch
     - list
+
 ---ServiceAccount.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: promtail-serviceaccount
 
----Rolebinding
-apiVersion: rbac.authorization.k9s.io/v1
+---Rolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: promtail-clusterrolebinding
 subjects:
     - kind: ServiceAccount
-       name: promtail-serviceaccount
+      name: promtail-serviceaccount
+      namespace: default
 roleRef:
     kind: ClusterRole
     name: promtail-clusterrole
@@ -129,32 +135,36 @@ pods and deployments.
 
 ```yaml
 ---Deployment.yaml
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: my_test_app
-  ...
+  name: promtail-deployment
 spec:
-  ...
+  selector:
+    matchLabels:
+      name: promtail
   template:
+    metadata:
+      labels:
+        name: promtail
     spec:
       serviceAccount: SERVICE_ACCOUNT
       serviceAccountName: SERVICE_ACCOUNT
       volumes:
       - name: logs
-        hostPath: HOST_PATH
+        hostPath:
+          path: HOST_PATH
       - name: promtail-config
-        configMap
+        configMap:
           name: promtail-configmap
       containers:
       - name: promtail-container
-         args:
-         - -config.file=/etc/promtail/promtail.yaml
-         volumeMounts:
-         - name: logs
-            mountPath: MOUNT_PATH
-         - name: promtail-config
-            mountPath: /etc/promtail
-      ...
-  ...
+        image: grafana/promtail
+        args:
+        - -config.file=/etc/promtail/promtail.yaml
+        volumeMounts:
+        - name: logs
+          mountPath: MOUNT_PATH
+        - name: promtail-config
+          mountPath: /etc/promtail
 ```
