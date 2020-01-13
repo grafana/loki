@@ -193,6 +193,11 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 					}
 					level.Error(util.Logger).Log("msg", "Error from client", "err", err)
 					break
+				} else if tailer.stopped {
+					return
+				} else {
+					level.Error(util.Logger).Log("msg", "Unexpected error from client", "err", err)
+					break
 				}
 			}
 		}
