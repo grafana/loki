@@ -46,6 +46,11 @@ The same rules that apply for [Prometheus Label
 Selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors)
 apply for Loki log stream selectors.
 
+When using `=~` and `!~`,
+[Go RE2 syntax](https://github.com/google/re2/wiki/Syntax) regex may be used. The
+matching is case-sensitive by default and can be switched to case-insensitive
+prefixing the regex with `(?i)`.
+
 ### Filter Expression
 
 After writing the log stream selector, the resulting set of logs can be filtered
@@ -71,8 +76,7 @@ expression - resulting log lines must satisfy _every_ filter:
 
 When using `|~` and `!~`,
 [Go RE2 syntax](https://github.com/google/re2/wiki/Syntax) regex may be used. The
-matching is case-sensitive by default and can be switched to case-insensitive
-prefixing the regex with `(?i)`.
+matching is case-insensitive by default.
 
 ## Counting logs
 
