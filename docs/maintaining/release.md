@@ -46,7 +46,7 @@ export GPG_TTY=$(tty)
 ## Performing the Release
 
 1. Create a new branch to update `CHANGELOG.md` and references to version
-   numbers.
+   numbers across the entire repository (e.g. README.md in the project root).
 2. Modify `CHANGELOG.md` with the new version number and its release date.
 3. List all the merged PRs since the previous release. This command is helpful
    for generating the list (modifying the date to the date of the previous release): `curl https://api.github.com/search/issues?q=repo:grafana/loki+is:pr+"merged:>=2019-08-02" | jq -r ' .items[] | "* [" + (.number|tostring) + "](" + .html_url + ") **" + .user.login + "**: " + .title'`
