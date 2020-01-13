@@ -327,14 +327,14 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
           "level": "info"
         },
         "values": [
-          {
+          [
             "1569266497240578000",
             "foo"
-          },
-          {
+          ],
+          [
             "1569266492548155000",
             "bar"
-          }
+          ]
         ]
       }
     ]
