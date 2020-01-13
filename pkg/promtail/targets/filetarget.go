@@ -153,7 +153,7 @@ func (t *FileTarget) run() {
 	defer func() {
 		helpers.LogError("closing watcher", t.watcher.Close)
 		for _, v := range t.tails {
-			helpers.LogError("updating tailer last position", v.markPosition)
+			helpers.LogError("updating tailer last position", v.markPositionAndSize)
 			helpers.LogError("stopping tailer", v.stop)
 		}
 		level.Debug(t.logger).Log("msg", "watcher closed, tailer stopped, positions saved")
@@ -325,15 +325,13 @@ func toStopTailing(nt []string, et map[string]*tailer) []string {
 
 func (t *FileTarget) reportSize(ms []string) {
 	for _, m := range ms {
-		// Ask the tailer for the file size as it keeps a direct handle on the file
-		// and avoids issues with renaming/replacing a file
+		// Ask the tailer to update the size if a tailer exists, this keeps position and size metrics in sync
 		if tailer, ok := t.tails[m]; ok {
-			s, err := tailer.size()
+			err := tailer.markPositionAndSize()
 			if err != nil {
 				level.Warn(t.logger).Log("msg", "failed to get file size from tailer, ", "file", m, "error", err)
 				return
 			}
-			totalBytes.WithLabelValues(m).Set(float64(s))
 		} else {
 			// Must be a new file, just directly read the size of it
 			fi, err := os.Stat(m)

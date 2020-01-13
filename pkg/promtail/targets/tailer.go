@@ -2,6 +2,7 @@ package targets
 
 import (
 	"os"
+	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -21,6 +22,8 @@ type tailer struct {
 
 	path string
 	tail *tail.Tail
+
+	posAndSizeMtx sync.Mutex
 
 	quit chan struct{}
 	done chan struct{}
@@ -86,9 +89,9 @@ func (t *tailer) run() {
 	for {
 		select {
 		case <-positionWait.C:
-			err := t.markPosition()
+			err := t.markPositionAndSize()
 			if err != nil {
-				level.Error(t.logger).Log("msg", "error getting tail position", "path", t.path, "error", err)
+				level.Error(t.logger).Log("msg", "error getting tail position and/or size", "path", t.path, "error", err)
 				continue
 			}
 
@@ -112,28 +115,30 @@ func (t *tailer) run() {
 	}
 }
 
-func (t *tailer) markPosition() error {
+func (t *tailer) markPositionAndSize() error {
+	// Lock this update as there are 2 timers calling this routine, the sync in filetarget and the positions sync in this file.
+	t.posAndSizeMtx.Lock()
+	defer t.posAndSizeMtx.Unlock()
+
 	pos, err := t.tail.Tell()
 	if err != nil {
 		return err
 	}
-
 	readBytes.WithLabelValues(t.path).Set(float64(pos))
 	t.positions.Put(t.path, pos)
-	return nil
-}
 
-func (t *tailer) size() (int64, error) {
-	s, err := t.tail.Size()
+	size, err := t.tail.Size()
 	if err != nil {
-		return 0, err
+		return err
 	}
-	return s, nil
+	totalBytes.WithLabelValues(t.path).Set(float64(size))
+
+	return nil
 }
 
 func (t *tailer) stop() error {
 	// Save the current position before shutting down tailer
-	err := t.markPosition()
+	err := t.markPositionAndSize()
 	if err != nil {
 		level.Error(t.logger).Log("msg", "error getting tail position", "path", t.path, "error", err)
 	}
