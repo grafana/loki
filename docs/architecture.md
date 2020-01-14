@@ -150,6 +150,21 @@ if any write failed to one of the replicas, multiple differing chunk objects
 will be created in the backing store. See [Querier](#querier) for how data is
 deduplicated.
 
+#### Timestamp Ordering
+
+In general, all lines pushed to Loki for a given stream must have a newer
+timestamp than the line received before it. There are, however, two exceptions
+to this rule:
+
+1. If the incoming line exactly matches the previously received line (matching
+   both the previous timestamp and log text), the incoming line will be treated
+   as a duplicate log and ignored. To avoid having this happen, logs should be
+   pushed to Loki with at least millisecond precision.
+
+2. If the incoming line has the same timestamp as the previous line but
+   different content, the log line is accepted. This means it is possible to
+   have two different log lines for the same timestamp.
+
 #### Handoff
 
 By default, when an ingester is shutting down and tries to leave the hash ring,

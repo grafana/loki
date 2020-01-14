@@ -68,6 +68,11 @@ the sample to before responding to the user.
 The **ingester** service is responsible for writing log data to long-term
 storage backends (DynamoDB, S3, Cassandra, etc.).
 
+The ingester validates that ingested log lines are not out of order. When an
+ingester receives a log line that doesn't follow the expected order, the line
+is rejected and an error is returned to the user. See the section on [Timestamp
+ordering](#timestamp-ordering) for more information.
+
 The ingester validates that ingested log lines are received in
 timestamp-ascending order (i.e., each log has a timestamp that occurs at a later
 time than the log before it). When the ingester receives a log that does not
@@ -79,6 +84,21 @@ then flushed to the backing storage backend.
 If an ingester process crashes or exits abruptly, all the data that has not yet
 been flushed will be lost. Loki is usually configured to replicate multiple
 replicas (usually 3) of each log to mitigate this risk.
+
+#### Timestamp Ordering
+
+In general, all lines pushed to Loki for a given stream (unique combination of
+labels) must have a newer timestamp than the line before it. There are, however,
+two exceptions to this rule:
+
+1. If the incoming line exactly matches the previously received line (matching
+   both the previous timestamp and log text), the incoming line will be treated
+   as a duplicate log and ignored. To avoid having this happen, logs should be
+   pushed to Loki with at least millisecond precision.
+
+2. If the incoming line has the same timestamp as the previous line but
+   different content, the log line is accepted. This means it is possible to
+   have two different log lines for the same timestamp.
 
 #### Handoff
 
