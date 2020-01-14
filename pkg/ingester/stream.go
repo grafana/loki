@@ -131,7 +131,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePe
 		// This check is done at the stream level so it persists across cut and
 		// flushed chunks.
 		//
-		// N.B.: it's still possible for duplicates to be appended if a stream is
+		// NOTE: it's still possible for duplicates to be appended if a stream is
 		// deleted from inactivity.
 		if entries[i].Timestamp.Equal(s.lastLine.ts) && entries[i].Line == s.lastLine.content {
 			continue
