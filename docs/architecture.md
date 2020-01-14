@@ -158,8 +158,7 @@ handling logs for the same stream with identical nanosecond timestamps:
 
 1. If the incoming line exactly matches the previously received line (matching
    both the previous timestamp and log text), the incoming line will be treated
-   as a duplicate log and ignored. To avoid having this happen, logs should be
-   pushed to Loki with at least millisecond precision.
+   as an exact duplicate and ignored.
 
 2. If the incoming line has the same timestamp as the previous line but
    different content, the log line is accepted. This means it is possible to
