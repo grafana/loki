@@ -9,6 +9,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/go-kit/kit/log"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 // Config is the configuration for the queryrange tripperware
@@ -53,6 +54,13 @@ func NewTripperware(cfg Config, log log.Logger, limits queryrange.Limits) (front
 				return metricRT.RoundTrip(req)
 			}
 			if logSelector, ok := expr.(logql.LogSelectorExpr); ok {
+				// backport the old regexp params into the query params
+				regexp := params.Get("regexp")
+				if regexp != "" {
+					logSelector = logql.NewFilterExpr(logSelector, labels.MatchRegexp, regexp)
+					params.Set("query", logSelector.String())
+					req.URL.RawQuery = params.Encode()
+				}
 				filter, err := logSelector.Filter()
 				if err != nil {
 					return nil, err

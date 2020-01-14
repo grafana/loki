@@ -243,6 +243,49 @@ func TestUnhandledPath(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestRegexpParamsSupport(t *testing.T) {
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
+	if stopper != nil {
+		defer func() { _ = stopper.Stop() }()
+	}
+	require.NoError(t, err)
+	rt, err := newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
+
+	lreq := &LokiRequest{
+		Query:     `{app="foo"}`, // no regex so it should go to the querier
+		Limit:     1000,
+		StartTs:   testTime.Add(-6 * time.Hour),
+		EndTs:     testTime,
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query_range",
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	require.NoError(t, err)
+
+	// fudge a regexp params
+	params := req.URL.Query()
+	params.Set("regexp", "foo")
+	req.URL.RawQuery = params.Encode()
+
+	req = req.WithContext(ctx)
+	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+	require.NoError(t, err)
+
+	count, h := promqlResult(streams)
+	rt.setHandler(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		// the query params should contain the filter.
+		require.Contains(t, r.URL.Query().Get("query"), `|~"foo"`)
+		h.ServeHTTP(rw, r)
+	}))
+	_, err = tpw(rt).RoundTrip(req)
+	require.Equal(t, 2, *count) // expecting the query to also be splitted since it has a filter.
+	require.NoError(t, err)
+}
+
 type fakeLimits struct {
 	maxQueryParallelism int
 }
