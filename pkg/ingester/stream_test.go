@@ -68,6 +68,27 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 	}
 }
 
+func TestPushDeduplication(t *testing.T) {
+	s := newStream(
+		&Config{},
+		model.Fingerprint(0),
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		defaultFactory,
+	)
+
+	err := s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
+	}, 0, 0)
+	require.NoError(t, err)
+	require.Len(t, s.chunks, 1)
+	require.Equal(t, s.chunks[0].chunk.Size(), 2,
+		"expected exact duplicate to be dropped and newer content with same timestamp to be appended")
+}
+
 func TestStreamIterator(t *testing.T) {
 	const chunks = 3
 	const entries = 100

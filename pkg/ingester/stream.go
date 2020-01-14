@@ -51,14 +51,20 @@ func init() {
 	prometheus.MustRegister(blocksPerChunk)
 }
 
+type line struct {
+	ts      time.Time
+	content string
+}
+
 type stream struct {
 	cfg *Config
 	// Newest chunk at chunks[n-1].
 	// Not thread-safe; assume accesses to this are locked by caller.
-	chunks  []chunkDesc
-	fp      model.Fingerprint // possibly remapped fingerprint, used in the streams map
-	labels  labels.Labels
-	factory func() chunkenc.Chunk
+	chunks   []chunkDesc
+	fp       model.Fingerprint // possibly remapped fingerprint, used in the streams map
+	labels   labels.Labels
+	factory  func() chunkenc.Chunk
+	lastLine line
 
 	tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
@@ -119,6 +125,18 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePe
 	// Don't fail on the first append error - if samples are sent out of order,
 	// we still want to append the later ones.
 	for i := range entries {
+		// If this entry matches our last appended line's timestamp and contents,
+		// ignore it.
+		//
+		// This check is done at the stream level so it persists across cut and
+		// flushed chunks.
+		//
+		// N.B.: it's still possible for duplicates to be appended if a stream is
+		// deleted from inactivity.
+		if entries[i].Timestamp.Equal(s.lastLine.ts) && entries[i].Line == s.lastLine.content {
+			continue
+		}
+
 		chunk := &s.chunks[len(s.chunks)-1]
 		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, lastChunkTimestamp, chunk.chunk, synchronizePeriod, minUtilization) {
 			// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
@@ -146,6 +164,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePe
 			// send only stored entries to tailers
 			storedEntries = append(storedEntries, entries[i])
 			lastChunkTimestamp = entries[i].Timestamp
+			s.lastLine = line{ts: lastChunkTimestamp, content: entries[i].Line}
 		}
 		chunk.lastUpdated = time.Now()
 	}
