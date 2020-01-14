@@ -153,8 +153,8 @@ deduplicated.
 #### Timestamp Ordering
 
 In general, all lines pushed to Loki for a given stream must have a newer
-timestamp than the line received before it. There are, however, two exceptions
-to this rule:
+timestamp than the line received before it. There are, however, two cases for
+handling logs for the same stream with identical nanosecond timestamps:
 
 1. If the incoming line exactly matches the previously received line (matching
    both the previous timestamp and log text), the incoming line will be treated
