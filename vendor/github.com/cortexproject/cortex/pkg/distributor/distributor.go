@@ -250,10 +250,11 @@ func shardByAllLabels(userID string, labels []client.LabelAdapter) (uint32, erro
 	var lastLabelName string
 	for _, label := range labels {
 		if strings.Compare(lastLabelName, label.Name) >= 0 {
-			return 0, fmt.Errorf("Labels not sorted")
+			return 0, fmt.Errorf("labels not sorted")
 		}
 		h = client.HashAdd32(h, label.Name)
 		h = client.HashAdd32(h, label.Value)
+		lastLabelName = label.Name
 	}
 	return h, nil
 }

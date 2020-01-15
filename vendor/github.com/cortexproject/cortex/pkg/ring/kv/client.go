@@ -20,16 +20,24 @@ import (
 var inmemoryStoreInit sync.Once
 var inmemoryStore Client
 
-// Config is config for a KVStore currently used by ring and HA tracker,
-// where store can be consul or inmemory.
-type Config struct {
-	Store      string            `yaml:"store,omitempty"`
+// StoreConfig is a configuration used for building single store client, either
+// Consul, Etcd, Memberlist or MultiClient. It was extracted from Config to keep
+// single-client config separate from final client-config (with all the wrappers)
+type StoreConfig struct {
 	Consul     consul.Config     `yaml:"consul,omitempty"`
 	Etcd       etcd.Config       `yaml:"etcd,omitempty"`
 	Memberlist memberlist.Config `yaml:"memberlist,omitempty"`
-	Prefix     string            `yaml:"prefix,omitempty"`
+	Multi      MultiConfig       `yaml:"multi,omitempty"`
+}
 
-	Mock Client
+// Config is config for a KVStore currently used by ring and HA tracker,
+// where store can be consul or inmemory.
+type Config struct {
+	Store       string `yaml:"store,omitempty"`
+	Prefix      string `yaml:"prefix,omitempty"`
+	StoreConfig `yaml:",inline"`
+
+	Mock Client `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet.
@@ -44,12 +52,14 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	// be easier to have everything under ring, so ring.consul.<flag-name>
 	cfg.Consul.RegisterFlags(f, prefix)
 	cfg.Etcd.RegisterFlagsWithPrefix(f, prefix)
+	cfg.Multi.RegisterFlagsWithPrefix(f, prefix)
 	cfg.Memberlist.RegisterFlags(f, prefix)
+
 	if prefix == "" {
 		prefix = "ring."
 	}
 	f.StringVar(&cfg.Prefix, prefix+"prefix", "collectors/", "The prefix for the keys in the store. Should end with a /.")
-	f.StringVar(&cfg.Store, prefix+"store", "consul", "Backend storage to use for the ring (consul, etcd, inmemory, memberlist [experimental]).")
+	f.StringVar(&cfg.Store, prefix+"store", "consul", "Backend storage to use for the ring (consul, etcd, inmemory, multi, memberlist [experimental]).")
 }
 
 // Client is a high-level client for key-value stores (such as Etcd and
@@ -86,10 +96,14 @@ func NewClient(cfg Config, codec codec.Codec) (Client, error) {
 		return cfg.Mock, nil
 	}
 
+	return createClient(cfg.Store, cfg.Prefix, cfg.StoreConfig, codec)
+}
+
+func createClient(name string, prefix string, cfg StoreConfig, codec codec.Codec) (Client, error) {
 	var client Client
 	var err error
 
-	switch cfg.Store {
+	switch name {
 	case "consul":
 		client, err = consul.NewClient(cfg.Consul, codec)
 
@@ -108,17 +122,49 @@ func NewClient(cfg Config, codec codec.Codec) (Client, error) {
 		cfg.Memberlist.MetricsRegisterer = prometheus.DefaultRegisterer
 		client, err = memberlist.NewMemberlistClient(cfg.Memberlist, codec)
 
+	case "multi":
+		client, err = buildMultiClient(cfg, codec)
+
 	default:
-		return nil, fmt.Errorf("invalid KV store type: %s", cfg.Store)
+		return nil, fmt.Errorf("invalid KV store type: %s", name)
 	}
 
 	if err != nil {
 		return nil, err
 	}
 
-	if cfg.Prefix != "" {
-		client = PrefixClient(client, cfg.Prefix)
+	if prefix != "" {
+		client = PrefixClient(client, prefix)
 	}
 
 	return metrics{client}, nil
+}
+
+func buildMultiClient(cfg StoreConfig, codec codec.Codec) (Client, error) {
+	if cfg.Multi.Primary == "" || cfg.Multi.Secondary == "" {
+		return nil, fmt.Errorf("primary or secondary store not set")
+	}
+	if cfg.Multi.Primary == "multi" || cfg.Multi.Secondary == "multi" {
+		return nil, fmt.Errorf("primary and secondary stores cannot be multi-stores")
+	}
+	if cfg.Multi.Primary == cfg.Multi.Secondary {
+		return nil, fmt.Errorf("primary and secondary stores must be different")
+	}
+
+	primary, err := createClient(cfg.Multi.Primary, "", cfg, codec)
+	if err != nil {
+		return nil, err
+	}
+
+	secondary, err := createClient(cfg.Multi.Secondary, "", cfg, codec)
+	if err != nil {
+		return nil, err
+	}
+
+	clients := []kvclient{
+		{client: primary, name: cfg.Multi.Primary},
+		{client: secondary, name: cfg.Multi.Secondary},
+	}
+
+	return NewMultiClient(cfg.Multi, clients), nil
 }

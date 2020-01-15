@@ -17,6 +17,7 @@ limitations under the License.
 package bigtable
 
 import (
+	"container/list"
 	"context"
 	"errors"
 	"fmt"
@@ -287,6 +288,18 @@ func (ac *AdminClient) DropRowRange(ctx context.Context, table, rowKeyPrefix str
 	return err
 }
 
+// DropAllRows permanently deletes all rows from the specified table.
+func (ac *AdminClient) DropAllRows(ctx context.Context, table string) error {
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), ac.md)
+	prefix := ac.instancePrefix()
+	req := &btapb.DropRowRangeRequest{
+		Name:   prefix + "/tables/" + table,
+		Target: &btapb.DropRowRangeRequest_DeleteAllDataFromTable{DeleteAllDataFromTable: true},
+	}
+	_, err := ac.tClient.DropRowRange(ctx, req)
+	return err
+}
+
 // CreateTableFromSnapshot creates a table from snapshot.
 // The table will be created in the same cluster as the snapshot.
 //
@@ -544,6 +557,7 @@ func (ac *AdminClient) isConsistent(ctx context.Context, tableName, token string
 
 // WaitForReplication waits until all the writes committed before the call started have been propagated to all the clusters in the instance via replication.
 func (ac *AdminClient) WaitForReplication(ctx context.Context, table string) error {
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), ac.md)
 	// Get the token.
 	prefix := ac.instancePrefix()
 	tableName := prefix + "/tables/" + table
@@ -570,6 +584,12 @@ func (ac *AdminClient) WaitForReplication(ctx context.Context, table string) err
 		case <-timer.C:
 		}
 	}
+}
+
+// TableIAM creates an IAM client specific to a given Instance and Table within the configured project.
+func (ac *AdminClient) TableIAM(tableID string) *iam.Handle {
+	return iam.InternalNewHandleGRPCClient(ac.tClient,
+		"projects/"+ac.project+"/instances/"+ac.instance+"/tables/"+tableID)
 }
 
 const instanceAdminAddr = "bigtableadmin.googleapis.com:443"
@@ -638,6 +658,14 @@ func (st StorageType) proto() btapb.StorageType {
 		return btapb.StorageType_HDD
 	}
 	return btapb.StorageType_SSD
+}
+
+func storageTypeFromProto(st btapb.StorageType) StorageType {
+	if st == btapb.StorageType_HDD {
+		return HDD
+	}
+
+	return SSD
 }
 
 // InstanceType is the type of the instance
@@ -720,26 +748,11 @@ func (iac *InstanceAdminClient) CreateInstanceWithClusters(ctx context.Context, 
 	return longrunning.InternalNewOperation(iac.lroClient, lro).Wait(ctx, &resp)
 }
 
-// UpdateInstanceWithClusters updates an instance and its clusters.
-// The provided InstanceWithClustersConfig is used as follows:
-// - InstanceID is required
-// - DisplayName and InstanceType are updated only if they are not empty
-// - ClusterID is required for any provided cluster
-// - All other cluster fields are ignored except for NumNodes, which if set will be updated
-//
-// This method may return an error after partially succeeding, for example if the instance is updated
-// but a cluster update fails. If an error is returned, InstanceInfo and Clusters may be called to
-// determine the current state.
-func (iac *InstanceAdminClient) UpdateInstanceWithClusters(ctx context.Context, conf *InstanceWithClustersConfig) error {
-	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
-
+// updateInstance updates a single instance based on config fields that operate
+// at an instance level: DisplayName and InstanceType.
+func (iac *InstanceAdminClient) updateInstance(ctx context.Context, conf *InstanceWithClustersConfig) (updated bool, err error) {
 	if conf.InstanceID == "" {
-		return errors.New("InstanceID is required")
-	}
-	for _, cluster := range conf.Clusters {
-		if cluster.ClusterID == "" {
-			return errors.New("ClusterID is required for every cluster")
-		}
+		return false, errors.New("InstanceID is required")
 	}
 
 	// Update the instance, if necessary
@@ -758,17 +771,46 @@ func (iac *InstanceAdminClient) UpdateInstanceWithClusters(ctx context.Context, 
 		ireq.Instance.Type = btapb.Instance_Type(conf.InstanceType)
 		mask.Paths = append(mask.Paths, "type")
 	}
-	updatedInstance := false
-	if len(mask.Paths) > 0 {
-		lro, err := iac.iClient.PartialUpdateInstance(ctx, ireq)
-		if err != nil {
-			return err
+
+	if len(mask.Paths) == 0 {
+		return false, nil
+	}
+
+	lro, err := iac.iClient.PartialUpdateInstance(ctx, ireq)
+	if err != nil {
+		return false, err
+	}
+	err = longrunning.InternalNewOperation(iac.lroClient, lro).Wait(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+// UpdateInstanceWithClusters updates an instance and its clusters. Updateable
+// fields are instance display name, instance type and cluster size.
+// The provided InstanceWithClustersConfig is used as follows:
+// - InstanceID is required
+// - DisplayName and InstanceType are updated only if they are not empty
+// - ClusterID is required for any provided cluster
+// - All other cluster fields are ignored except for NumNodes, which if set will be updated
+//
+// This method may return an error after partially succeeding, for example if the instance is updated
+// but a cluster update fails. If an error is returned, InstanceInfo and Clusters may be called to
+// determine the current state.
+func (iac *InstanceAdminClient) UpdateInstanceWithClusters(ctx context.Context, conf *InstanceWithClustersConfig) error {
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
+
+	for _, cluster := range conf.Clusters {
+		if cluster.ClusterID == "" {
+			return errors.New("ClusterID is required for every cluster")
 		}
-		err = longrunning.InternalNewOperation(iac.lroClient, lro).Wait(ctx, nil)
-		if err != nil {
-			return err
-		}
-		updatedInstance = true
+	}
+
+	updatedInstance, err := iac.updateInstance(ctx, conf)
+	if err != nil {
+		return err
 	}
 
 	// Update any clusters
@@ -875,10 +917,11 @@ func (cc *ClusterConfig) proto(project string) *btapb.Cluster {
 
 // ClusterInfo represents information about a cluster.
 type ClusterInfo struct {
-	Name       string // name of the cluster
-	Zone       string // GCP zone of the cluster (e.g. "us-central1-a")
-	ServeNodes int    // number of allocated serve nodes
-	State      string // state of the cluster
+	Name        string      // name of the cluster
+	Zone        string      // GCP zone of the cluster (e.g. "us-central1-a")
+	ServeNodes  int         // number of allocated serve nodes
+	State       string      // state of the cluster
+	StorageType StorageType // the storage type of the cluster
 }
 
 // CreateCluster creates a new cluster in an instance.
@@ -940,10 +983,11 @@ func (iac *InstanceAdminClient) Clusters(ctx context.Context, instanceID string)
 		nameParts := strings.Split(c.Name, "/")
 		locParts := strings.Split(c.Location, "/")
 		cis = append(cis, &ClusterInfo{
-			Name:       nameParts[len(nameParts)-1],
-			Zone:       locParts[len(locParts)-1],
-			ServeNodes: int(c.ServeNodes),
-			State:      c.State.String(),
+			Name:        nameParts[len(nameParts)-1],
+			Zone:        locParts[len(locParts)-1],
+			ServeNodes:  int(c.ServeNodes),
+			State:       c.State.String(),
+			StorageType: storageTypeFromProto(c.DefaultStorageType),
 		})
 	}
 	return cis, nil
@@ -966,10 +1010,11 @@ func (iac *InstanceAdminClient) GetCluster(ctx context.Context, instanceID, clus
 	nameParts := strings.Split(c.Name, "/")
 	locParts := strings.Split(c.Location, "/")
 	cis := &ClusterInfo{
-		Name:       nameParts[len(nameParts)-1],
-		Zone:       locParts[len(locParts)-1],
-		ServeNodes: int(c.ServeNodes),
-		State:      c.State.String(),
+		Name:        nameParts[len(nameParts)-1],
+		Zone:        locParts[len(locParts)-1],
+		ServeNodes:  int(c.ServeNodes),
+		State:       c.State.String(),
+		StorageType: storageTypeFromProto(c.DefaultStorageType),
 	}
 	return cis, nil
 }
@@ -977,7 +1022,6 @@ func (iac *InstanceAdminClient) GetCluster(ctx context.Context, instanceID, clus
 // InstanceIAM returns the instance's IAM handle.
 func (iac *InstanceAdminClient) InstanceIAM(instanceID string) *iam.Handle {
 	return iam.InternalNewHandleGRPCClient(iac.iClient, "projects/"+iac.project+"/instances/"+instanceID)
-
 }
 
 // Routing policies.
@@ -1203,4 +1247,148 @@ func (iac *InstanceAdminClient) DeleteAppProfile(ctx context.Context, instanceID
 	_, err := iac.iClient.DeleteAppProfile(ctx, deleteProfileRequest)
 	return err
 
+}
+
+// UpdateInstanceResults contains information about the
+// changes made after invoking UpdateInstanceAndSyncClusters.
+type UpdateInstanceResults struct {
+	InstanceUpdated bool
+	CreatedClusters []string
+	DeletedClusters []string
+	UpdatedClusters []string
+}
+
+func (r *UpdateInstanceResults) String() string {
+	return fmt.Sprintf("Instance updated? %v Clusters added:%v Clusters deleted:%v Clusters updated:%v",
+		r.InstanceUpdated, r.CreatedClusters, r.DeletedClusters, r.UpdatedClusters)
+}
+
+func max(x, y int) int {
+	if x > y {
+		return x
+	}
+	return y
+}
+
+// UpdateInstanceAndSyncClusters updates an instance and its clusters, and will synchronize the
+// clusters in the instance with the provided clusters, creating and deleting them as necessary.
+// The provided InstanceWithClustersConfig is used as follows:
+// - InstanceID is required
+// - DisplayName and InstanceType are updated only if they are not empty
+// - ClusterID is required for any provided cluster
+// - Any cluster present in conf.Clusters but not part of the instance will be created using CreateCluster
+//   and the given ClusterConfig.
+// - Any cluster missing from conf.Clusters but present in the instance will be removed from the instance
+//   using DeleteCluster.
+// - Any cluster in conf.Clusters that also exists in the instance will be updated to contain the
+//   provided number of nodes if set.
+//
+// This method may return an error after partially succeeding, for example if the instance is updated
+// but a cluster update fails. If an error is returned, InstanceInfo and Clusters may be called to
+// determine the current state. The return UpdateInstanceResults will describe the work done by the
+// method, whether partial or complete.
+func UpdateInstanceAndSyncClusters(ctx context.Context, iac *InstanceAdminClient, conf *InstanceWithClustersConfig) (*UpdateInstanceResults, error) {
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), iac.md)
+
+	// First fetch the existing clusters so we know what to remove, add or update.
+	existingClusters, err := iac.Clusters(ctx, conf.InstanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	updatedInstance, err := iac.updateInstance(ctx, conf)
+	if err != nil {
+		return nil, err
+	}
+
+	results := &UpdateInstanceResults{InstanceUpdated: updatedInstance}
+
+	existingClusterNames := make(map[string]bool)
+	for _, cluster := range existingClusters {
+		existingClusterNames[cluster.Name] = true
+	}
+
+	// Synchronize clusters that were passed in with the existing clusters in the instance.
+	// First update any cluster we encounter that already exists in the instance.
+	// Collect the clusters that we will create and delete so that we can minimize disruption
+	// of the instance.
+	clustersToCreate := list.New()
+	clustersToDelete := list.New()
+	for _, cluster := range conf.Clusters {
+		_, clusterExists := existingClusterNames[cluster.ClusterID]
+		if !clusterExists {
+			// The cluster doesn't exist yet, so we must create it.
+			clustersToCreate.PushBack(cluster)
+			continue
+		}
+		delete(existingClusterNames, cluster.ClusterID)
+
+		if cluster.NumNodes <= 0 {
+			// We only synchronize clusters with a valid number of nodes.
+			continue
+		}
+
+		// We simply want to update this cluster
+		err = iac.UpdateCluster(ctx, conf.InstanceID, cluster.ClusterID, cluster.NumNodes)
+		if err != nil {
+			return results, fmt.Errorf("UpdateCluster %q failed %v; Progress: %v",
+				cluster.ClusterID, err, results)
+		}
+		results.UpdatedClusters = append(results.UpdatedClusters, cluster.ClusterID)
+	}
+
+	// Any cluster left in existingClusterNames was NOT in the given config and should be deleted.
+	for clusterToDelete := range existingClusterNames {
+		clustersToDelete.PushBack(clusterToDelete)
+	}
+
+	// Now that we have the clusters that we need to create and delete, we do so keeping the following
+	// in mind:
+	// - Don't delete the last cluster in the instance, as that will result in an error.
+	// - Attempt to offset each deletion with a creation before another deletion, so that instance
+	//   capacity is never reduced more than necessary.
+	// Note that there is a limit on number of clusters in an instance which we are not aware of here,
+	// so delete a cluster before adding one (as long as there are > 1 clusters left) so that we are
+	// less likely to exceed the maximum number of clusters.
+	numExistingClusters := len(existingClusters)
+	nextCreation := clustersToCreate.Front()
+	nextDeletion := clustersToDelete.Front()
+	for {
+		// We are done when both lists are empty.
+		if nextCreation == nil && nextDeletion == nil {
+			break
+		}
+
+		// If there is more than one existing cluster, we always want to delete first if possible.
+		// If there are no more creations left, always go ahead with the deletion.
+		if (numExistingClusters > 1 && nextDeletion != nil) || nextCreation == nil {
+			clusterToDelete := nextDeletion.Value.(string)
+			err = iac.DeleteCluster(ctx, conf.InstanceID, clusterToDelete)
+			if err != nil {
+				return results, fmt.Errorf("DeleteCluster %q failed %v; Progress: %v",
+					clusterToDelete, err, results)
+			}
+			results.DeletedClusters = append(results.DeletedClusters, clusterToDelete)
+			numExistingClusters--
+			nextDeletion = nextDeletion.Next()
+		}
+
+		// Now create a new cluster if required.
+		if nextCreation != nil {
+			clusterToCreate := nextCreation.Value.(ClusterConfig)
+			// Assume the cluster config is well formed and rely on the underlying call to error out.
+			// Make sure to set the InstanceID, though, since we know what it must be.
+			clusterToCreate.InstanceID = conf.InstanceID
+			err = iac.CreateCluster(ctx, &clusterToCreate)
+			if err != nil {
+				return results, fmt.Errorf("CreateCluster %v failed %v; Progress: %v",
+					clusterToCreate, err, results)
+			}
+			results.CreatedClusters = append(results.CreatedClusters, clusterToCreate.ClusterID)
+			numExistingClusters++
+			nextCreation = nextCreation.Next()
+		}
+	}
+
+	return results, nil
 }
