@@ -98,11 +98,11 @@ from there. This means that if new log entries have been read and pushed to the
 ingester between the last sync period and the crash, these log entries will be
 sent again to the ingester on `promtail` restart.
 
-However, for each log stream (set of unique labels) the Loki ingester skips all
-log entries received out of timestamp order. For this reason, even if duplicated
-logs may be sent from `promtail` to the ingester, entries whose timestamp is
-older than the latest received will be discarded to avoid having duplicated
-logs. To leverage this, it's important that your `pipeline_stages` include
-the `timestamp` stage, parsing the log entry timestamp from the log line instead
-of relying on the default behaviour of setting the timestamp as the point in
-time when the line is read by `promtail`.
+However, it's important to note that Loki will reject all log lines received in
+what it perceives is [out of
+order](../../overview/README.md#timestamp-ordering). If `promtail` happens to
+crash, it may re-send log lines that were sent prior to the crash. The default
+behavior of Promtail is to assign a timestamp to logs at the time it read the
+entry from the tailed file. This would result in duplicate log lines being sent
+to Loki; to avoid this issue, if your tailed file has a timestamp embedded in
+the log lines, a `timestamp` stage should be added to your pipeline.

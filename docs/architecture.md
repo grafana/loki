@@ -150,6 +150,11 @@ if any write failed to one of the replicas, multiple differing chunk objects
 will be created in the backing store. See [Querier](#querier) for how data is
 deduplicated.
 
+The ingesters validate timestamps for each log line received maintains a
+strict ordering. See the [Loki
+Overview](./overview/README.md#timestamp-ordering) for detailed documentation on
+the rules of timestamp order.
+
 #### Handoff
 
 By default, when an ingester is shutting down and tries to leave the hash ring,
