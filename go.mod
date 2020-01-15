@@ -51,7 +51,6 @@ require (
 	go.etcd.io/etcd v0.0.0-20190815204525-8f85f0dc2607 // indirect
 	golang.org/x/net v0.0.0-20191112182307-2180aed22343
 	golang.org/x/sys v0.0.0-20191218084908-4a24b4065292 // indirect
-	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	google.golang.org/grpc v1.25.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/fsnotify.v1 v1.4.7
