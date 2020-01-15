@@ -273,7 +273,7 @@
       'config.yaml': $.util.manifestYaml($._config.loki),
     }),
 
-  local deployment = $.apps.v1beta1.deployment,
+  local deployment = $.apps.v1.deployment,
 
   config_hash_mixin::
     deployment.mixin.spec.template.metadata.withAnnotationsMixin({

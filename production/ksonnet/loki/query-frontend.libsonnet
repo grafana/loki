@@ -15,7 +15,7 @@
     $.util.resourcesLimits(null, '1200Mi') +
     $.jaeger_mixin,
 
-  local deployment = $.apps.v1beta1.deployment,
+  local deployment = $.apps.v1.deployment,
 
   query_frontend_deployment:
     deployment.new('query-frontend', 2, [$.query_frontend_container]) +

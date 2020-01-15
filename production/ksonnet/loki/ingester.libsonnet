@@ -17,7 +17,7 @@
     $.util.resourcesRequests('1', '5Gi') +
     $.util.resourcesLimits('2', '10Gi'),
 
-  local deployment = $.apps.v1beta1.deployment,
+  local deployment = $.apps.v1.deployment,
 
   ingester_deployment:
     deployment.new('ingester', 3, [$.ingester_container]) +
