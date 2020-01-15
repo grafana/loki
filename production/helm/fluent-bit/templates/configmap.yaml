@@ -51,7 +51,7 @@ data:
     {{- range $parser:= .Values.config.parsers }}
     [PARSER]
     {{- range $key,$value := $parser }}
-        {{ $key }} = {{ $value }}
+        {{ $key }} {{ $value }}
     {{- end }}
     {{- end }}
 
