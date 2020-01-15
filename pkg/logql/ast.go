@@ -185,6 +185,15 @@ func newLogRange(left LogSelectorExpr, interval time.Duration) *logRange {
 	}
 }
 
+func addFilterToLogRangeExpr(left *logRange, ty labels.MatchType, match string) *logRange {
+	left.left = &filterExpr{
+		left:  left.left,
+		ty:    ty,
+		match: match,
+	}
+	return left
+}
+
 const (
 	OpTypeSum           = "sum"
 	OpTypeAvg           = "avg"
