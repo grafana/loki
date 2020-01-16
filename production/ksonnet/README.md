@@ -2,15 +2,15 @@
 
 ## Prerequisites
 
-Make sure you have a recent version of [Tanka](https://github.com/grafana/tanka). Follow their [install instructions](https://tanka.dev/#getting-started) to do so. Make sure to install [jsonnet-bundler](https://github.com/jsonnet-bundler/jsonnet-bundler) as well.
+Make sure you have a recent version of [Tanka](https://github.com/grafana/tanka). Follow their [install instructions](https://tanka.dev/install) to do so. Make sure to install [jsonnet-bundler](https://github.com/jsonnet-bundler/jsonnet-bundler) as well.
 
 ```bash
 # Verify it works
 $ tk --version
-tk version v0.5.0
+tk version v0.6.1
 ```
 
-In your config repo, if you don't yet have the directory structure of Tanka set up:
+In your config repo, if you don't yet have a Tanka project set up:
 
 ```bash
 # create a directory (any name works)
@@ -18,9 +18,6 @@ $ mkdir config && cd config/
 $ tk init
 $ tk env add environments/loki --namespace=loki
 $ tk env set environments/loki --server=https://${K8S_MASTER_ADDRESS}:6443
-# Ksonnet kubernetes libraries
-$ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k.libsonnet
-$ jb install github.com/ksonnet/ksonnet-lib/ksonnet.beta.3/k8s.libsonnet
 ```
 
 ## Deploying Promtail to your cluster.
