@@ -1,25 +1,25 @@
-# Installing Loki with Docker/Docker-compose
+# Installing Loki with Docker or Docker Compose
 
-You can installing Loki with Docker/Docker-compose for try, test or development.
+You can install Loki with Docker or Docker Compose for evaluating, testing, or developing Loki.
 For production, we recommend Tanka or Helm.
 
 ## Prerequisites
 
-Basically, you must install [docker](https://docs.docker.com/install).
-If you want to install Loki with [docker-compose](https://docs.docker.com/compose/install/), install it too.
+- [Docker](https://docs.docker.com/install)
+- [Docker Compose](https://docs.docker.com/compose/install) (optional, only needed for the Docker Compose install method)
 
 ## Install with Docker
 
 ```bash
 $ wget https://raw.githubusercontent.com/grafana/loki/v1.2.0/cmd/loki/loki-local-config.yaml -o loki-config.yaml
-$ docker run -v $(pwd):/mnt/config -config.file=/mnt/config/loki-config.yaml -p 3100:3100 grafana/loki:v1.2.0
+$ docker run -v $(pwd):/mnt/config -p 3100:3100 grafana/loki:v1.2.0 -config.file=/mnt/config/loki-config.yaml
 $ wget https://raw.githubusercontent.com/grafana/loki/v1.2.0/cmd/promtail/promtail-docker-config.yaml -o promtail-config.yaml
-$ docker run -v $(pwd):/mnt/config -v /var/log:/var/log -config.file=/mnt/config/promtail-config.yaml grafana/promtail:latest
+$ docker run -v $(pwd):/mnt/config -v /var/log:/var/log grafana/promtail:latest -config.file=/mnt/config/promtail-config.yaml
 ```
 
-## Install with Docker-compose
+## Install with Docker Compose
 
 ```bash
-$ wget https://raw.githubusercontent.com/grafana/loki/master/production/docker-compose.yaml -o docker-compose.yaml
+$ wget https://raw.githubusercontent.com/grafana/loki/v1.2.0/production/docker-compose.yaml -o docker-compose.yaml
 $ docker-compose -f docker-compose.yaml up
 ```
