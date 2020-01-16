@@ -36,8 +36,8 @@ type Config struct {
 
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 
-	ColumnKey      bool
-	DistributeKeys bool
+	ColumnKey      bool `yaml:"-"`
+	DistributeKeys bool `yaml:"-"`
 
 	TableCacheEnabled    bool
 	TableCacheExpiration time.Duration
