@@ -51,6 +51,11 @@ spec:
             - "-client.url={{ .Values.loki.serviceScheme }}://{{ include "loki.serviceName" . }}:{{ .Values.loki.servicePort }}/loki/api/v1/push"
             {{- end }}
             {{- end }}
+            {{- if .Values.extraCommandlineArgs }}
+            {{- range .Values.extraCommandlineArgs }}
+            - {{ . | quote }}
+            {{- end }}
+            {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/promtail
