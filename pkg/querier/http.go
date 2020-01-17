@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -91,6 +92,22 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 	request.Query, err = parseRegexQuery(r)
 	if err != nil {
 		http.Error(w, httpgrpc.Errorf(http.StatusBadRequest, err.Error()).Error(), http.StatusBadRequest)
+		return
+	}
+
+	expr, err := logql.ParseExpr(request.Query)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// short circuit metric queries
+	if _, ok := expr.(logql.SampleExpr); ok {
+		http.Error(
+			w,
+			fmt.Sprintf("legacy endpoints only support %s result type", logql.ValueTypeStreams),
+			http.StatusBadRequest,
+		)
 		return
 	}
 
@@ -288,9 +305,8 @@ func NewPrepopulateMiddleware() middleware.Interface {
 // parseRegexQuery parses regex and query querystring from httpRequest and returns the combined LogQL query.
 // This is used only to keep regexp query string support until it gets fully deprecated.
 func parseRegexQuery(httpRequest *http.Request) (string, error) {
-	params := httpRequest.URL.Query()
-	query := params.Get("query")
-	regexp := params.Get("regexp")
+	query := httpRequest.Form.Get("query")
+	regexp := httpRequest.Form.Get("regexp")
 	if regexp != "" {
 		expr, err := logql.ParseLogSelector(query)
 		if err != nil {
