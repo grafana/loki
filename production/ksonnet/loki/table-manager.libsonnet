@@ -13,7 +13,7 @@
     $.util.resourcesRequests('100m', '100Mi') +
     $.util.resourcesLimits('200m', '200Mi'),
 
-  local deployment = $.apps.v1beta1.deployment,
+  local deployment = $.apps.v1.deployment,
 
   table_manager_deployment:
     deployment.new('table-manager', 1, [$.table_manager_container]) +
