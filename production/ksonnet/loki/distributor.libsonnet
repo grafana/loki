@@ -18,7 +18,7 @@
     $.util.resourcesRequests('500m', '100Mi') +
     $.util.resourcesLimits('1', '200Mi'),
 
-  local deployment = $.apps.v1beta1.deployment,
+  local deployment = $.apps.v1.deployment,
 
   distributor_deployment:
     deployment.new('distributor', 3, [$.distributor_container]) +

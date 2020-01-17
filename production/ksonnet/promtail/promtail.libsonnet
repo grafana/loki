@@ -58,7 +58,7 @@ k + config + scrape_config {
     container.mixin.securityContext.withPrivileged(true) +
     container.mixin.securityContext.withRunAsUser(0),
 
-  local daemonSet = $.extensions.v1beta1.daemonSet,
+  local daemonSet = $.apps.v1.daemonSet,
 
   promtail_daemonset:
     daemonSet.new($._config.promtail_pod_name, [$.promtail_container]) +

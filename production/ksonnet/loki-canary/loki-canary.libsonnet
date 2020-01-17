@@ -20,7 +20,7 @@ k + config {
       container.envType.fromFieldPath('POD_NAME', 'metadata.name'),
     ]),
 
-  local daemonSet = $.extensions.v1beta1.daemonSet,
+  local daemonSet = $.apps.v1.daemonSet,
 
   loki_canary_daemonset:
     daemonSet.new('loki-canary', [$.loki_canary_container]),
