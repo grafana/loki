@@ -267,6 +267,15 @@ module Fluent
           line = record.to_s
         end
 
+        # add buffer flush thread title as a label if there are multiple flush threads
+        # this prevents "entry out of order" errors in loki by making the label constellation
+        # unique per flush thread
+        # note that flush thread != fluentd worker. if you use multiple workers you still need to
+        # add the worker id as a label
+        if @buffer_config.flush_thread_count > 1
+          chunk_labels['fluentd_thread'] = Thread.current[:_fluentd_plugin_helper_thread_title].to_s
+        end
+
         # return both the line content plus the labels found in the record
         {
           line: line,

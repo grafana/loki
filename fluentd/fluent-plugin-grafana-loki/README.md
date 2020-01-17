@@ -110,6 +110,14 @@ For example, using [fluent-plugin-record-modifier](https://github.com/repeatedly
 </match>
 ```
 
+### Using multiple buffer flush threads
+
+Similarly, when using `flush_thread_count` > 1 in the [`buffer`](https://docs.fluentd.org/configuration/buffer-section#flushing-parameters)
+section, a thread identifier must be added as a label to ensure that log chunks flushed in parallel to loki by fluentd always have increasing
+times for their unique label sets.
+
+This plugin automatically adds a `fluentd_thread` label with the name of the buffer flush thread when `flush_thread_count` > 1.
+
 ## Docker Image
 
 There is a Docker image `grafana/fluent-plugin-grafana-loki:master` which contains default configuration files to git log information
