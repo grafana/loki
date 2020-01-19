@@ -47,6 +47,9 @@ promtail + {
         }
       ],
       container_root_path: '/var/lib/docker',
+      pipeline_stages: [{
+        docker: {},
+      }],
     },
   },
 }
