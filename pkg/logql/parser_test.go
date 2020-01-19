@@ -387,6 +387,125 @@ func TestParse(t *testing.T) {
 				newString("5")),
 		},
 		{
+			in: `count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")`,
+			exp: newRangeAggregationExpr(
+				&logRange{
+					left: &filterExpr{
+						left: &filterExpr{
+							left: &filterExpr{
+								left: &filterExpr{
+									left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+									ty:    labels.MatchEqual,
+									match: "baz",
+								},
+								ty:    labels.MatchRegexp,
+								match: "blip",
+							},
+							ty:    labels.MatchNotEqual,
+							match: "flip",
+						},
+						ty:    labels.MatchNotRegexp,
+						match: "flap",
+					},
+					interval: 5 * time.Minute,
+				}, OpTypeCountOverTime),
+		},
+		{
+			in: `sum(count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) by (foo)`,
+			exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
+				&logRange{
+					left: &filterExpr{
+						left: &filterExpr{
+							left: &filterExpr{
+								left: &filterExpr{
+									left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+									ty:    labels.MatchEqual,
+									match: "baz",
+								},
+								ty:    labels.MatchRegexp,
+								match: "blip",
+							},
+							ty:    labels.MatchNotEqual,
+							match: "flip",
+						},
+						ty:    labels.MatchNotRegexp,
+						match: "flap",
+					},
+					interval: 5 * time.Minute,
+				}, OpTypeCountOverTime),
+				"sum",
+				&grouping{
+					without: false,
+					groups:  []string{"foo"},
+				},
+				nil),
+		},
+		{
+			in: `topk(5,count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) without (foo)`,
+			exp: mustNewVectorAggregationExpr(newRangeAggregationExpr(
+				&logRange{
+					left: &filterExpr{
+						left: &filterExpr{
+							left: &filterExpr{
+								left: &filterExpr{
+									left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+									ty:    labels.MatchEqual,
+									match: "baz",
+								},
+								ty:    labels.MatchRegexp,
+								match: "blip",
+							},
+							ty:    labels.MatchNotEqual,
+							match: "flip",
+						},
+						ty:    labels.MatchNotRegexp,
+						match: "flap",
+					},
+					interval: 5 * time.Minute,
+				}, OpTypeCountOverTime),
+				"topk",
+				&grouping{
+					without: true,
+					groups:  []string{"foo"},
+				},
+				newString("5")),
+		},
+		{
+			in: `topk(5,sum(rate({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) by (app))`,
+			exp: mustNewVectorAggregationExpr(
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						&logRange{
+							left: &filterExpr{
+								left: &filterExpr{
+									left: &filterExpr{
+										left: &filterExpr{
+											left:  &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
+											ty:    labels.MatchEqual,
+											match: "baz",
+										},
+										ty:    labels.MatchRegexp,
+										match: "blip",
+									},
+									ty:    labels.MatchNotEqual,
+									match: "flip",
+								},
+								ty:    labels.MatchNotRegexp,
+								match: "flap",
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeRate),
+					"sum",
+					&grouping{
+						without: false,
+						groups:  []string{"app"},
+					},
+					nil),
+				"topk",
+				nil,
+				newString("5")),
+		},
+		{
 			in: `{foo="bar}`,
 			err: ParseError{
 				msg:  "literal not terminated",

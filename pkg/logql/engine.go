@@ -47,7 +47,7 @@ func (Streams) String() string {
 type EngineOpts struct {
 	// Timeout for queries execution
 	Timeout time.Duration `yaml:"timeout"`
-	// MaxLookBackPeriod is the maximun amount of time to look back for log lines.
+	// MaxLookBackPeriod is the maximum amount of time to look back for log lines.
 	// only used for instant log queries.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
 }

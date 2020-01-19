@@ -634,7 +634,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, bool) {
 	lineSize := int(l)
 
 	if lineSize >= maxLineLength {
-		si.err = fmt.Errorf("line too long %d, maximun %d", lineSize, maxLineLength)
+		si.err = fmt.Errorf("line too long %d, maximum %d", lineSize, maxLineLength)
 		return 0, nil, false
 	}
 	// If the buffer is not yet initialize or too small, we get a new one.

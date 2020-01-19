@@ -140,7 +140,7 @@ scrape_configs:
       # which Promtail exposes. The counter is only incremented when panic
       # was extracted from the regex stage.
       - metrics:
-        - panic_total:
+          panic_total:
             type: Counter
             description: "total count of panic"
             source: panic

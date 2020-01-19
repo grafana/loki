@@ -52,3 +52,8 @@ To cleanly uninstall the plugin, disable and remove it:
 docker plugin disable loki
 docker plugin rm loki
 ```
+
+## Amazon ECS
+The Docker driver is not currently supported on [Amazon ECS](https://aws.amazon.com/ecs/), although you can work around this if you are using EC2 based ECS (as opposed to Fargate based ECS).
+The solution suggested in the [LogConfiguration Documentation](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_LogConfiguration.html) is to fork the ECS agent and modify it to work with your log driver of choice. 
+The other option is to configure the Loki Docker driver as the default Docker logging driver, and then specify no logging configuration within the ECS task.
