@@ -109,13 +109,13 @@ func newQueryClient(app *kingpin.Application) *client.Client {
 		return nil
 	}
 
-	app.Flag("addr", "Server address. Can also be set using LOKI_ADDR ENV VAR.").Default("http://localhost:3100").Envar("LOKI_ADDR").Action(addressAction).StringVar(&client.Address)
-	app.Flag("username", "Username for HTTP basic auth. Can also be set using LOKI_USERNAME ENV VAR.").Default("").Envar("LOKI_USERNAME").StringVar(&client.Username)
-	app.Flag("password", "Password for HTTP basic auth. Can also be set using LOKI_PASSWORD ENV VAR.").Default("").Envar("LOKI_PASSWORD").StringVar(&client.Password)
-	app.Flag("ca-cert", "Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH ENV VAR.").Default("").Envar("LOKI_CA_CERT_PATH").StringVar(&client.TLSConfig.CAFile)
+	app.Flag("addr", "Server address. Can also be set using LOKI_ADDR env var.").Default("http://localhost:3100").Envar("LOKI_ADDR").Action(addressAction).StringVar(&client.Address)
+	app.Flag("username", "Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.").Default("").Envar("LOKI_USERNAME").StringVar(&client.Username)
+	app.Flag("password", "Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.").Default("").Envar("LOKI_PASSWORD").StringVar(&client.Password)
+	app.Flag("ca-cert", "Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.").Default("").Envar("LOKI_CA_CERT_PATH").StringVar(&client.TLSConfig.CAFile)
 	app.Flag("tls-skip-verify", "Server certificate TLS skip verify.").Default("false").BoolVar(&client.TLSConfig.InsecureSkipVerify)
-	app.Flag("cert", "Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH ENV VAR.").Default("").Envar("LOKI_CLIENT_CERT_PATH").StringVar(&client.TLSConfig.CertFile)
-	app.Flag("key", "Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH ENV VAR.").Default("").Envar("LOKI_CLIENT_KEY_PATH").StringVar(&client.TLSConfig.KeyFile)
+	app.Flag("cert", "Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.").Default("").Envar("LOKI_CLIENT_CERT_PATH").StringVar(&client.TLSConfig.CertFile)
+	app.Flag("key", "Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.").Default("").Envar("LOKI_CLIENT_KEY_PATH").StringVar(&client.TLSConfig.KeyFile)
 
 	return client
 }
