@@ -102,6 +102,60 @@ func TestFlushingCollidingLabels(t *testing.T) {
 	}
 }
 
+func TestFlushMaxAge(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.FlushCheckPeriod = time.Millisecond
+	cfg.RetainPeriod = time.Millisecond
+	cfg.MaxChunkAge = time.Minute
+	cfg.MaxChunkIdle = time.Hour
+
+	store, ing := newTestStore(t, cfg)
+	defer store.Stop()
+
+	now := time.Unix(0, 0)
+
+	firstEntries := []logproto.Entry{
+		{Timestamp: now.Add(time.Nanosecond), Line: "1"},
+		{Timestamp: now.Add(time.Minute), Line: "2"},
+	}
+
+	secondEntries := []logproto.Entry{
+		{Timestamp: now.Add(time.Second * 61), Line: "3"},
+	}
+
+	req := &logproto.PushRequest{Streams: []*logproto.Stream{
+		{Labels: model.LabelSet{"app": "l"}.String(), Entries: firstEntries},
+	}}
+
+	const userID = "testUser"
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	_, err := ing.Push(ctx, req)
+	require.NoError(t, err)
+
+	time.Sleep(cfg.FlushCheckPeriod + time.Millisecond)
+
+	// ensure chunk is not flushed after flush period elapses
+	store.checkData(t, map[string][]*logproto.Stream{})
+
+	req2 := &logproto.PushRequest{Streams: []*logproto.Stream{
+		{Labels: model.LabelSet{"app": "l"}.String(), Entries: secondEntries},
+	}}
+
+	_, err = ing.Push(ctx, req2)
+	require.NoError(t, err)
+
+	time.Sleep(cfg.FlushCheckPeriod + time.Millisecond)
+
+	// assert stream is now both batches
+	store.checkData(t, map[string][]*logproto.Stream{
+		userID: []*logproto.Stream{
+			{Labels: model.LabelSet{"app": "l"}.String(), Entries: append(firstEntries, secondEntries...)},
+		},
+	})
+
+}
+
 type testStore struct {
 	mtx sync.Mutex
 	// Chunks keyed by userID.

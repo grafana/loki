@@ -51,6 +51,7 @@ type Config struct {
 	BlockSize         int           `yaml:"chunk_block_size"`
 	TargetChunkSize   int           `yaml:"chunk_target_size"`
 	ChunkEncoding     string        `yaml:"chunk_encoding"`
+	MaxChunkAge       time.Duration `yaml:"max_chunk_age"`
 
 	// Synchronization settings. Used to make sure that ingesters cut their chunks at the same moments.
 	SyncPeriod         time.Duration `yaml:"sync_period"`
@@ -78,6 +79,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 0, "How often to cut chunks to synchronize ingesters.")
 	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0, "Minimum utilization of chunk when doing synchronization.")
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "Maximum number of ignored stream errors to return. 0 to return all errors.")
+	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", time.Hour, "Maximum chunk age before flushing.")
 }
 
 // Ingester builds chunks for incoming log streams.
