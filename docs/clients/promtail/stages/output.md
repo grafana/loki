@@ -18,12 +18,12 @@ For the given pipeline:
 ```yaml
 - json:
     expressions:
-      user: log
-      message: stream
+      user: user
+      message: message
 - labels:
     user:
 - output:
-    source: content
+    source: message
 ```
 
 And the given log line:
