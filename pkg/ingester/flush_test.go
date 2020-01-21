@@ -104,7 +104,7 @@ func TestFlushingCollidingLabels(t *testing.T) {
 
 func TestFlushMaxAge(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
-	cfg.FlushCheckPeriod = time.Millisecond
+	cfg.FlushCheckPeriod = time.Millisecond * 100
 	cfg.MaxChunkAge = time.Minute
 	cfg.MaxChunkIdle = time.Hour
 
