@@ -156,7 +156,6 @@ Once again we can't thank our community and contributors enough for the signific
 #### New Members!
 * [1415](https://github.com/grafana/loki/pull/1415) **cyriltovena**: Add Joe as member of the team.
 
-
 # 1.2.0 (2019-12-09)
 
 One week has passed since the last Loki release, and it's time for a new one!
