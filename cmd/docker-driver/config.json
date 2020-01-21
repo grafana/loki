@@ -5,6 +5,14 @@
 	"network": {
 		"type": "host"
 	},
+	"mounts": [
+		{
+        		"destination": "/var/log",
+        		"type": "bind",
+        		"source": "/var/log",
+        		"options": ["rbind","rw"]
+		}
+	],
 	"interface": {
 		"types": ["docker.logdriver/1.0"],
 		"socket": "loki.sock"
