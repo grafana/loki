@@ -105,7 +105,6 @@ func TestFlushingCollidingLabels(t *testing.T) {
 func TestFlushMaxAge(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.FlushCheckPeriod = time.Millisecond
-	cfg.RetainPeriod = time.Millisecond
 	cfg.MaxChunkAge = time.Minute
 	cfg.MaxChunkIdle = time.Hour
 
@@ -133,7 +132,7 @@ func TestFlushMaxAge(t *testing.T) {
 	_, err := ing.Push(ctx, req)
 	require.NoError(t, err)
 
-	time.Sleep(cfg.FlushCheckPeriod + time.Millisecond)
+	time.Sleep(2 * cfg.FlushCheckPeriod)
 
 	// ensure chunk is not flushed after flush period elapses
 	store.checkData(t, map[string][]*logproto.Stream{})
@@ -145,7 +144,7 @@ func TestFlushMaxAge(t *testing.T) {
 	_, err = ing.Push(ctx, req2)
 	require.NoError(t, err)
 
-	time.Sleep(cfg.FlushCheckPeriod + time.Millisecond)
+	time.Sleep(2 * cfg.FlushCheckPeriod)
 
 	// assert stream is now both batches
 	store.checkData(t, map[string][]*logproto.Stream{
