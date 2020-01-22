@@ -285,6 +285,21 @@ func TestTableManager(t *testing.T) {
 		},
 	)
 
+	// Move ahead where we are short by just grace period before hitting next section
+	tmTest(t, client, tableManager,
+		"Move ahead where we are short by just grace period before hitting next section",
+		weeklyTable2Start.Add(-gracePeriod+time.Second),
+		[]TableDesc{
+			{Name: baseTableName, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: tablePrefix + week1Suffix, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
+			{Name: tablePrefix + week2Suffix, ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
+			{Name: table2Prefix + "5", ProvisionedRead: read, ProvisionedWrite: write, WriteScale: activeScalingConfig},
+			{Name: chunkTablePrefix + week1Suffix, ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: chunkTablePrefix + week2Suffix, ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTable2Prefix + "5", ProvisionedRead: read, ProvisionedWrite: write},
+		},
+	)
+
 	// Move to the next section of the config
 	tmTest(t, client, tableManager,
 		"Move forward to next section of schema config",
@@ -644,6 +659,20 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 			{Name: tablePrefix + "3", ProvisionedRead: read, ProvisionedWrite: write},
 			{Name: chunkTablePrefix + "1", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
 			{Name: chunkTablePrefix + "2", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "3", ProvisionedRead: read, ProvisionedWrite: write},
+		},
+	)
+
+	// Check after three weeks and a day short by grace period, we have three tables (two previous periods and the new one), table 0 was deleted
+	tmTest(t, client, tableManager,
+		"Move forward by three table periods and a day short by grace period",
+		baseTableStart.Add(tablePeriod*3+24*time.Hour-gracePeriod),
+		[]TableDesc{
+			{Name: tablePrefix + "1", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
+			{Name: tablePrefix + "2", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite, WriteScale: inactiveScalingConfig},
+			{Name: tablePrefix + "3", ProvisionedRead: read, ProvisionedWrite: write},
+			{Name: chunkTablePrefix + "1", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
+			{Name: chunkTablePrefix + "2", ProvisionedRead: inactiveRead, ProvisionedWrite: inactiveWrite},
 			{Name: chunkTablePrefix + "3", ProvisionedRead: read, ProvisionedWrite: write},
 		},
 	)

@@ -239,7 +239,8 @@ func (m *TableManager) calculateExpectedTables() []TableDesc {
 	result := []TableDesc{}
 
 	for i, config := range m.schemaCfg.Configs {
-		if config.From.Time.Time().After(mtime.Now()) {
+		// Consider configs which we are about to hit and requires tables to be created due to grace period
+		if config.From.Time.Time().After(mtime.Now().Add(m.cfg.CreationGracePeriod)) {
 			continue
 		}
 		if config.IndexTables.Period == 0 { // non-periodic table
