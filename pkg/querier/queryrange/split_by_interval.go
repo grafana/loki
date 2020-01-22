@@ -67,6 +67,12 @@ func (h *splitByInterval) Process(
 
 	ch := h.Feed(ctx, input)
 
+	// queries with 0 limits should not be exited early
+	var unlimited bool
+	if threshold == 0 {
+		unlimited = true
+	}
+
 	// don't spawn unnecessary goroutines
 	var p int = parallelism
 	if len(input) < parallelism {
@@ -89,10 +95,15 @@ func (h *splitByInterval) Process(
 			responses = append(responses, data.resp)
 
 			// see if we can exit early if a limit has been reached
-			threshold -= data.resp.(*LokiResponse).Count()
-			if threshold <= 0 {
-				return responses, nil
+			if casted, ok := resp.(*LokiResponse); !unlimited && ok {
+				threshold -= casted.Count()
+
+				if threshold <= 0 {
+					return responses, nil
+				}
+
 			}
+
 		}
 
 	}
