@@ -28,7 +28,7 @@ type Stopper interface {
 }
 
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
-func NewTripperware(cfg Config, log log.Logger, limits queryrange.Limits) (frontend.Tripperware, Stopper, error) {
+func NewTripperware(cfg Config, log log.Logger, limits Limits) (frontend.Tripperware, Stopper, error) {
 	metricsTripperware, cache, err := queryrange.NewTripperware(cfg.Config, log, limits, lokiCodec, queryrange.PrometheusResponseExtractor)
 	if err != nil {
 		return nil, nil, err
@@ -78,12 +78,12 @@ func NewTripperware(cfg Config, log log.Logger, limits queryrange.Limits) (front
 func NewLogFilterTripperware(
 	cfg Config,
 	log log.Logger,
-	limits queryrange.Limits,
+	limits Limits,
 	codec queryrange.Codec,
 ) (frontend.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{queryrange.LimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg, limits, codec))
 	}
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry"), queryrange.NewRetryMiddleware(log, cfg.MaxRetries))

@@ -12,13 +12,12 @@ import (
 )
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
-func SplitByIntervalMiddleware(interval time.Duration, limits queryrange.Limits, merger queryrange.Merger) queryrange.Middleware {
+func SplitByIntervalMiddleware(cfg Config, limits Limits, merger queryrange.Merger) queryrange.Middleware {
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
 		return &splitByInterval{
-			next:     next,
-			limits:   limits,
-			merger:   merger,
-			interval: interval,
+			next:   next,
+			limits: WithDefaultLimits(limits, cfg.Config),
+			merger: merger,
 		}
 	})
 }
@@ -34,10 +33,9 @@ type packedResp struct {
 }
 
 type splitByInterval struct {
-	next     queryrange.Handler
-	limits   queryrange.Limits
-	merger   queryrange.Merger
-	interval time.Duration
+	next   queryrange.Handler
+	limits Limits
+	merger queryrange.Merger
 }
 
 func (h *splitByInterval) Feed(ctx context.Context, input []*lokiResult) chan *lokiResult {
@@ -129,7 +127,13 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 		return nil, err
 	}
 
-	intervals := splitByTime(lokiRequest, h.interval)
+	interval := h.limits.QuerySplitDuration(userid)
+	// skip split by if unset
+	if interval == 0 {
+		return h.next.Do(ctx, r)
+	}
+
+	intervals := splitByTime(lokiRequest, interval)
 
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		sp.LogFields(otlog.Int("n_intervals", len(intervals)))
