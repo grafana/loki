@@ -43,7 +43,7 @@ type Limits struct {
 	MaxConcurrentTailRequests  int           `yaml:"max_concurrent_tail_requests"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
-	QuerySplitDuration time.Duration `yaml:"query_split_duration"`
+	QuerySplitDuration time.Duration `yaml:"split_queries_by_interval"`
 
 	// Config for overrides, convenient if it goes here.
 	PerTenantOverrideConfig string        `yaml:"per_tenant_override_config"`
