@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # sed-wrap runs the appropriate sed command based on the
 # underlying value of $OSTYPE
