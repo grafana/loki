@@ -99,7 +99,7 @@ Once again we can't thank our community and contributors enough for the signific
 #### Fluent Bit
 * [1455](https://github.com/grafana/loki/pull/1455) **JensErat**: fluent-bit-plugin: re-enable failing JSON marshaller tests; pass error instead of logging and ignoring
 * [1294](https://github.com/grafana/loki/pull/1294) **JensErat**: fluent-bit: multi-instance support
-* [1514](https://github.com/grafana/loki/pull/1514) **shane-axiom**: fluent-plugin-grafana-loki: Add `fluentd_thread` label when `flush_thread_count' > 1
+* [1514](https://github.com/grafana/loki/pull/1514) **shane-axiom**: fluent-plugin-grafana-loki: Add `fluentd_thread` label when `flush_thread_count` > 1
 
 #### FluentD
 * [1500](https://github.com/grafana/loki/pull/1500) **cyriltovena**: Bump fluentd plugin to 1.2.6.
