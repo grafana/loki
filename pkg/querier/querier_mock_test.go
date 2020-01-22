@@ -60,6 +60,11 @@ func (c *querierClientMock) Series(ctx context.Context, in *logproto.SeriesReque
 	return res.(*logproto.SeriesResponse), args.Error(1)
 }
 
+func (c *querierClientMock) TailersCount(ctx context.Context, in *logproto.TailersCountRequest, opts ...grpc.CallOption) (*logproto.TailersCountResponse, error) {
+	args := c.Called(ctx, in, opts)
+	return args.Get(0).(*logproto.TailersCountResponse), args.Error(1)
+}
+
 func (c *querierClientMock) Context() context.Context {
 	return context.Background()
 }

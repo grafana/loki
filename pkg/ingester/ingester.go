@@ -320,3 +320,20 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	tailer.loop()
 	return nil
 }
+
+// TailersCount returns count of active tail requests from a user
+func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
+	instanceID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := logproto.TailersCountResponse{}
+
+	instance, ok := i.getInstanceByID(instanceID)
+	if ok {
+		resp.Count = instance.openTailersCount()
+	}
+
+	return &resp, nil
+}

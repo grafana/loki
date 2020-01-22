@@ -265,6 +265,11 @@ func mergePair(s1, s2 []string) []string {
 
 // Tail keeps getting matching logs from all ingesters for given query
 func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
+	err := q.checkTailRequestLimit(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	histReq := logql.SelectParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  req.Query,
@@ -275,7 +280,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		},
 	}
 
-	err := q.validateQueryRequest(ctx, histReq.QueryRequest)
+	err = q.validateQueryRequest(ctx, histReq.QueryRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -526,4 +531,47 @@ func (q *Querier) validateQueryTimeRange(userID string, from *time.Time, through
 	}
 
 	return nil
+}
+
+func (q *Querier) checkTailRequestLimit(ctx context.Context) error {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return err
+	}
+
+	replicationSet, err := q.ring.GetAll()
+	if err != nil {
+		return err
+	}
+
+	// we want to check count of active tailers with only one of the active ingesters since
+	// all of them would be having same number of active tail connections
+	// Note: In worst-case scenario the ingester that we picked would have joined recently which might not have all the tail requests
+	ingesters := make([]ring.IngesterDesc, 0, 1)
+	for i := range replicationSet.Ingesters {
+		if replicationSet.Ingesters[i].State == ring.ACTIVE {
+			ingesters = append(ingesters, replicationSet.Ingesters[i])
+			break
+		}
+	}
+
+	if len(ingesters) == 0 {
+		return httpgrpc.Errorf(http.StatusInternalServerError, "no active ingester found")
+	}
+
+	_, err = q.forGivenIngesters(ctx, ring.ReplicationSet{Ingesters: ingesters}, func(querierClient logproto.QuerierClient) (interface{}, error) {
+		resp, err := querierClient.TailersCount(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		if resp.Count >= uint32(q.limits.MaxConcurrentTailRequests(userID)) {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest,
+				"max concurrent tail requests limit exceeded, count > limit (%d > %d)", resp.Count+1, 1)
+		}
+
+		return nil, nil
+	})
+
+	return err
 }
