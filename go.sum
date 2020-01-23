@@ -165,6 +165,8 @@ github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f h1:lBNOc5arjvs8E5mO2tbp
 github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f/go.mod h1:E3G3o1h8I7cfcXa63jLwjI0eiQQMgzzUDFVpN/nH/eA=
 github.com/cortexproject/cortex v0.4.1-0.20200107184852-b43bd745ddae h1:gKUdm6h/q0Nyw+PT5ZHW5L+2LN7tTMAL88acIPBN7ZM=
 github.com/cortexproject/cortex v0.4.1-0.20200107184852-b43bd745ddae/go.mod h1:2YWcRMJ3ad8yFXkEve3SSEL4VawiQcMM2FhkzUKO8YY=
+github.com/cortexproject/cortex v0.4.1-0.20200122092731-ab3e8360fe30 h1:eUzVHTW1754OBI5DuOF9KVg9iEDKnzeUjJasFJLQ3t4=
+github.com/cortexproject/cortex v0.4.1-0.20200122092731-ab3e8360fe30/go.mod h1:GI9wHA+WyoOnzkrOkpaobueBeRERdbistcSRuu4wXwA=
 github.com/creack/pty v1.1.7/go.mod h1:lj5s0c3V2DBrqTV7llrYr5NG6My20zk30Fl46Y7DoTY=
 github.com/cznic/b v0.0.0-20180115125044-35e9bbe41f07/go.mod h1:URriBxXwVq5ijiJ12C7iIZqlA69nTlI+LgI6/pwftG8=
 github.com/cznic/fileutil v0.0.0-20180108211300-6a051e75936f/go.mod h1:8S58EK26zhXSxzv7NQFpnliaOQsmDUxvoQO3rt154Vg=

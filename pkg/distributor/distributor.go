@@ -102,7 +102,7 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		var err error
-		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey)
+		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, false)
 		if err != nil {
 			return nil, err
 		}
