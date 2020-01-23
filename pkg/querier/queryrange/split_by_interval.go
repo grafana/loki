@@ -6,6 +6,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/weaveworks/common/user"
 )
 
@@ -98,12 +100,17 @@ func (h *splitByInterval) Process(
 func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult) {
 
 	for data := range ch {
+
+		sp, ctx := opentracing.StartSpanFromContext(ctx, "interval")
+		queryrange.LogToSpan(ctx, data.req)
+
 		resp, err := h.next.Do(ctx, data.req)
 		if err != nil {
 			data.err <- err
 		} else {
 			data.resp <- resp
 		}
+		sp.Finish()
 	}
 }
 
@@ -116,6 +123,11 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 	}
 
 	intervals := splitByTime(lokiRequest, h.interval)
+
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogFields(otlog.Int("n_intervals", len(intervals)))
+
+	}
 
 	if lokiRequest.Direction == logproto.BACKWARD {
 		for i, j := 0, len(intervals)-1; i < j; i, j = i+1, j-1 {
