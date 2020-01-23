@@ -300,6 +300,10 @@ The `ingester_config` block configures Ingesters.
 # The maximum number of errors a stream will report to the user
 # when a push fails. 0 to make unlimited.
 [max_returned_stream_errors: <int> | default = 10]
+
+# The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this the current chunk will be flushed to the store and a new chunk created.
+[max_chunk_age: <duration> | default = 1h]
+
 ```
 
 ### lifecycler_config

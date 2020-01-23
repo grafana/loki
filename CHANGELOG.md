@@ -1,3 +1,9 @@
+## master / unreleased
+
+### Features
+
+* [1558](https://github.com/grafana/loki/pull/1558) **owen-d**: Introduces `ingester.max-chunk-age` which specifies the maximum chunk age before it's cut.
+
 ## 1.3.0 (2019-01-16)
 
 ### What's New?? ###
@@ -155,7 +161,6 @@ Once again we can't thank our community and contributors enough for the signific
 
 #### New Members!
 * [1415](https://github.com/grafana/loki/pull/1415) **cyriltovena**: Add Joe as member of the team.
-
 
 # 1.2.0 (2019-12-09)
 
