@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -440,6 +441,84 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 			require.NoError(t, err)
 
 			tc.run(t, q, tc.req)
+		})
+	}
+}
+
+func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		desc          string
+		lookback      time.Duration
+		end           time.Time
+		skipIngesters bool
+	}{
+		{
+			desc:          "0 value always queries ingesters",
+			lookback:      0,
+			end:           time.Now().Add(time.Hour),
+			skipIngesters: false,
+		},
+		{
+			desc:          "query ingester",
+			lookback:      time.Hour,
+			end:           time.Now(),
+			skipIngesters: false,
+		},
+		{
+			desc:          "skip ingester",
+			lookback:      time.Hour,
+			end:           time.Now().Add(-2 * time.Hour),
+			skipIngesters: true,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+
+			req := logproto.QueryRequest{
+				Selector:  `{app="foo"}`,
+				Limit:     1000,
+				Start:     tc.end.Add(-6 * time.Hour),
+				End:       tc.end,
+				Direction: logproto.FORWARD,
+			}
+
+			queryClient := newQueryClientMock()
+			ingesterClient := newQuerierClientMock()
+
+			if !tc.skipIngesters {
+				ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
+				queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream(1, 1)}), nil).Once()
+				queryClient.On("Recv").Return(nil, io.EOF).Once()
+			}
+
+			store := newStoreMock()
+			store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(0, 1), nil)
+
+			conf := mockQuerierConfig()
+			conf.IngesterMaxQueryLookback = tc.lookback
+			q, err := newQuerier(
+				conf,
+				mockIngesterClientConfig(),
+				newIngesterClientMockFactory(ingesterClient),
+				mockReadRingWithOneActiveIngester(),
+				store, limits)
+			require.NoError(t, err)
+
+			ctx := user.InjectOrgID(context.Background(), "test")
+
+			res, err := q.Select(ctx, logql.SelectParams{QueryRequest: &req})
+			require.Nil(t, err)
+
+			// since streams are loaded lazily, force iterators to exhaust
+			for res.Next() {
+			}
+			queryClient.AssertExpectations(t)
+			ingesterClient.AssertExpectations(t)
+			store.AssertExpectations(t)
+
 		})
 	}
 }

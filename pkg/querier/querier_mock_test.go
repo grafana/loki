@@ -99,7 +99,12 @@ func newQueryClientMock() *queryClientMock {
 
 func (c *queryClientMock) Recv() (*logproto.QueryResponse, error) {
 	args := c.Called()
+	res := args.Get(0)
+	if res == nil {
+		return (*logproto.QueryResponse)(nil), args.Error(1)
+	}
 	return args.Get(0).(*logproto.QueryResponse), args.Error(1)
+
 }
 
 func (c *queryClientMock) Header() (grpc_metadata.MD, error) {
