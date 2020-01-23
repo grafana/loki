@@ -50,7 +50,7 @@ type MultiConfig struct {
 	MirrorTimeout time.Duration `yaml:"mirror_timeout"`
 
 	// ConfigProvider returns channel with MultiRuntimeConfig updates.
-	ConfigProvider func() <-chan MultiRuntimeConfig
+	ConfigProvider func() <-chan MultiRuntimeConfig `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix registers flags with prefix.

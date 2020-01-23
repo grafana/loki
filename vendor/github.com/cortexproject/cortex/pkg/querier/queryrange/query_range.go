@@ -33,6 +33,9 @@ var (
 
 	// PrometheusCodec is a codec to encode and decode Prometheus query range requests and responses.
 	PrometheusCodec Codec = &prometheusCodec{}
+
+	// Name of the cache control header.
+	cachecontrolHeader = "Cache-Control"
 )
 
 // Codec is used to encode/decode query range requests and responses so they can be passed down to middlewares.
@@ -220,6 +223,10 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 	var resp PrometheusResponse
 	if err := json.Unmarshal(buf, &resp); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+	}
+
+	for h, hv := range r.Header {
+		resp.Headers = append(resp.Headers, &PrometheusResponseHeader{Name: h, Values: hv})
 	}
 	return &resp, nil
 }

@@ -45,21 +45,21 @@ type Config struct {
 // store flag with the prefix ring, so ring.store. For everything else we pass the prefix
 // to the Consul flags.
 // If prefix is not an empty string it should end with a period.
-func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+func (cfg *Config) RegisterFlagsWithPrefix(flagsPrefix, defaultPrefix string, f *flag.FlagSet) {
 	// We need Consul flags to not have the ring prefix to maintain compatibility.
 	// This needs to be fixed in the future (1.0 release maybe?) when we normalize flags.
 	// At the moment we have consul.<flag-name>, and ring.store, going forward it would
 	// be easier to have everything under ring, so ring.consul.<flag-name>
-	cfg.Consul.RegisterFlags(f, prefix)
-	cfg.Etcd.RegisterFlagsWithPrefix(f, prefix)
-	cfg.Multi.RegisterFlagsWithPrefix(f, prefix)
-	cfg.Memberlist.RegisterFlags(f, prefix)
+	cfg.Consul.RegisterFlags(f, flagsPrefix)
+	cfg.Etcd.RegisterFlagsWithPrefix(f, flagsPrefix)
+	cfg.Multi.RegisterFlagsWithPrefix(f, flagsPrefix)
+	cfg.Memberlist.RegisterFlags(f, flagsPrefix)
 
-	if prefix == "" {
-		prefix = "ring."
+	if flagsPrefix == "" {
+		flagsPrefix = "ring."
 	}
-	f.StringVar(&cfg.Prefix, prefix+"prefix", "collectors/", "The prefix for the keys in the store. Should end with a /.")
-	f.StringVar(&cfg.Store, prefix+"store", "consul", "Backend storage to use for the ring (consul, etcd, inmemory, multi, memberlist [experimental]).")
+	f.StringVar(&cfg.Prefix, flagsPrefix+"prefix", defaultPrefix, "The prefix for the keys in the store. Should end with a /.")
+	f.StringVar(&cfg.Store, flagsPrefix+"store", "consul", "Backend storage to use for the ring. Supported values are: consul, etcd, inmemory, multi, memberlist (experimental).")
 }
 
 // Client is a high-level client for key-value stores (such as Etcd and

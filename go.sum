@@ -163,8 +163,6 @@ github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e/go.mod h1:F5haX7
 github.com/coreos/pkg v0.0.0-20160727233714-3ac0863d7acf/go.mod h1:E3G3o1h8I7cfcXa63jLwjI0eiQQMgzzUDFVpN/nH/eA=
 github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f h1:lBNOc5arjvs8E5mO2tbpBpLoyyu8B6e44T7hJy6potg=
 github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f/go.mod h1:E3G3o1h8I7cfcXa63jLwjI0eiQQMgzzUDFVpN/nH/eA=
-github.com/cortexproject/cortex v0.4.1-0.20200107184852-b43bd745ddae h1:gKUdm6h/q0Nyw+PT5ZHW5L+2LN7tTMAL88acIPBN7ZM=
-github.com/cortexproject/cortex v0.4.1-0.20200107184852-b43bd745ddae/go.mod h1:2YWcRMJ3ad8yFXkEve3SSEL4VawiQcMM2FhkzUKO8YY=
 github.com/cortexproject/cortex v0.4.1-0.20200122092731-ab3e8360fe30 h1:eUzVHTW1754OBI5DuOF9KVg9iEDKnzeUjJasFJLQ3t4=
 github.com/cortexproject/cortex v0.4.1-0.20200122092731-ab3e8360fe30/go.mod h1:GI9wHA+WyoOnzkrOkpaobueBeRERdbistcSRuu4wXwA=
 github.com/creack/pty v1.1.7/go.mod h1:lj5s0c3V2DBrqTV7llrYr5NG6My20zk30Fl46Y7DoTY=

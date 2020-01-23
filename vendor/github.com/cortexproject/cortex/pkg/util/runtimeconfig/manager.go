@@ -24,7 +24,7 @@ type Loader func(filename string) (interface{}, error)
 type ManagerConfig struct {
 	ReloadPeriod time.Duration `yaml:"period"`
 	LoadPath     string        `yaml:"file"`
-	Loader       Loader
+	Loader       Loader        `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
