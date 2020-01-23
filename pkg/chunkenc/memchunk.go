@@ -13,10 +13,10 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/chunkenc/decompression"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 const (
@@ -477,7 +477,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	}
 
 	if !c.head.isEmpty() {
-		its = append(its, c.head.iterator(mint, maxt, filter))
+		its = append(its, c.head.iterator(ctx, mint, maxt, filter))
 	}
 
 	iterForward := iter.NewTimeRangedIterator(
@@ -500,10 +500,12 @@ func (b block) iterator(ctx context.Context, pool ReaderPool, filter logql.Filte
 	return newBufferedIterator(ctx, pool, b.b, filter)
 }
 
-func (hb *headBlock) iterator(mint, maxt int64, filter logql.Filter) iter.EntryIterator {
+func (hb *headBlock) iterator(ctx context.Context, mint, maxt int64, filter logql.Filter) iter.EntryIterator {
 	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return emptyIterator
 	}
+
+	chunkStats := stats.GetChunkData(ctx)
 
 	// We are doing a copy everytime, this is because b.entries could change completely,
 	// the alternate would be that we allocate a new b.entries everytime we cut a block,
@@ -512,7 +514,10 @@ func (hb *headBlock) iterator(mint, maxt int64, filter logql.Filter) iter.EntryI
 
 	entries := make([]entry, 0, len(hb.entries))
 	for _, e := range hb.entries {
-		if filter == nil || filter([]byte(e.s)) {
+		line := []byte(e.s)
+		chunkStats.BytesUncompressed += int64(len(line))
+		chunkStats.LinesUncompressed++
+		if filter == nil || filter(line) {
 			entries = append(entries, e)
 		}
 	}
@@ -558,9 +563,8 @@ func (li *listIterator) Close() error   { return nil }
 func (li *listIterator) Labels() string { return "" }
 
 type bufferedIterator struct {
-	origBytes         []byte
-	rootCtx           context.Context
-	bytesDecompressed int64
+	origBytes []byte
+	stats     *stats.ChunkData
 
 	bufReader *bufio.Reader
 	reader    io.Reader
@@ -579,8 +583,10 @@ type bufferedIterator struct {
 }
 
 func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte, filter logql.Filter) *bufferedIterator {
+	chunkStats := stats.GetChunkData(ctx)
+	chunkStats.BytesCompressed += int64(len(b))
 	return &bufferedIterator{
-		rootCtx:   ctx,
+		stats:     chunkStats,
 		origBytes: b,
 		reader:    nil, // will be initialized later
 		bufReader: nil, // will be initialized later
@@ -604,7 +610,8 @@ func (si *bufferedIterator) Next() bool {
 			return false
 		}
 		// we decode always the line length and ts as varint
-		si.bytesDecompressed += int64(len(line)) + 2*binary.MaxVarintLen64
+		si.stats.BytesDecompressed += int64(len(line)) + 2*binary.MaxVarintLen64
+		si.stats.LinesDecompressed++
 		if si.filter != nil && !si.filter(line) {
 			continue
 		}
@@ -682,10 +689,6 @@ func (si *bufferedIterator) Close() error {
 }
 
 func (si *bufferedIterator) close() {
-	decompression.Mutate(si.rootCtx, func(current *decompression.Stats) {
-		current.BytesDecompressed += si.bytesDecompressed
-		current.BytesCompressed += int64(len(si.origBytes))
-	})
 	if si.reader != nil {
 		si.pool.PutReader(si.reader)
 		si.reader = nil
