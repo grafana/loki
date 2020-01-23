@@ -151,24 +151,23 @@ func (q *Querier) Select(ctx context.Context, params logql.SelectParams) (iter.E
 		return nil, err
 	}
 
-	var iters []iter.EntryIterator
-
-	// query ingesters if IngesterMaxQueryLookback is 0 (default) or
-	// the end of the query is later than the lookback
-	if lookback := time.Now().Add(-q.cfg.IngesterMaxQueryLookback); q.cfg.IngesterMaxQueryLookback == 0 || params.GetEnd().After(lookback) {
-		iters, err = q.queryIngesters(ctx, params)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	chunkStoreIter, err := q.store.LazyQuery(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-	iters = append(iters, chunkStoreIter)
 
-	return iter.NewHeapIterator(ctx, iters, params.Direction), nil
+	// skip ingester queries only when IngesterMaxQueryLookback is enabled (not the zero value) and
+	// the end of the query is earlier than the lookback
+	if lookback := time.Now().Add(-q.cfg.IngesterMaxQueryLookback); q.cfg.IngesterMaxQueryLookback != 0 && params.GetEnd().Before(lookback) {
+		return chunkStoreIter, nil
+	}
+
+	iters, err := q.queryIngesters(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	return iter.NewHeapIterator(ctx, append(iters, chunkStoreIter), params.Direction), nil
 }
 
 func (q *Querier) queryIngesters(ctx context.Context, params logql.SelectParams) ([]iter.EntryIterator, error) {
