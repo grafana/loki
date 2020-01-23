@@ -95,7 +95,7 @@ func (h *splitByInterval) Process(
 			responses = append(responses, data.resp)
 
 			// see if we can exit early if a limit has been reached
-			if casted, ok := resp.(*LokiResponse); !unlimited && ok {
+			if casted, ok := data.resp.(*LokiResponse); !unlimited && ok {
 				threshold -= casted.Count()
 
 				if threshold <= 0 {
