@@ -447,7 +447,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 
 func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
