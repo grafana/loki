@@ -85,11 +85,11 @@ func decodeTrailers(ctx context.Context) Ingester {
 		res.TotalChunksMatched += ing.TotalChunksMatched
 		res.TotalBatches += ing.TotalBatches
 		res.TotalLinesSent += ing.TotalLinesSent
-		res.BytesUncompressed += ing.BytesUncompressed
-		res.LinesUncompressed += ing.LinesUncompressed
-		res.BytesDecompressed += ing.BytesDecompressed
-		res.LinesDecompressed += ing.LinesDecompressed
-		res.BytesCompressed += ing.BytesCompressed
+		res.HeadChunkBytes += ing.HeadChunkBytes
+		res.HeadChunkLines += ing.HeadChunkLines
+		res.DecompressedBytes += ing.DecompressedBytes
+		res.DecompressedLines += ing.DecompressedLines
+		res.CompressedBytes += ing.CompressedBytes
 		res.TotalDuplicates += ing.TotalDuplicates
 	}
 	return res
