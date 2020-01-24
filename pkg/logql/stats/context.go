@@ -58,7 +58,7 @@ func Log(log log.Logger, r Result) {
 		"Ingester.BytesDecompressed", humanize.Bytes(uint64(r.Ingester.BytesDecompressed)),
 		"Ingester.LinesDecompressed", r.Ingester.LinesDecompressed,
 		"Ingester.BytesCompressed", humanize.Bytes(uint64(r.Ingester.BytesCompressed)),
-		"Ingester.BytesCompressed", r.Ingester.TotalDuplicates,
+		"Ingester.TotalDuplicates", r.Ingester.TotalDuplicates,
 
 		"Store.TotalChunksRef", r.Store.TotalChunksRef,
 		"Store.TotalDownloadedChunks", r.Store.TotalDownloadedChunks,
@@ -69,7 +69,7 @@ func Log(log log.Logger, r Result) {
 		"Store.BytesDecompressed", humanize.Bytes(uint64(r.Store.BytesDecompressed)),
 		"Store.LinesDecompressed", r.Store.LinesDecompressed,
 		"Store.BytesCompressed", humanize.Bytes(uint64(r.Store.BytesCompressed)),
-		"Store.BytesCompressed", r.Store.TotalDuplicates,
+		"Store.TotalDuplicates", r.Store.TotalDuplicates,
 
 		"Summary.BytesProcessedPerSeconds", humanize.Bytes(uint64(r.Summary.BytesProcessedPerSeconds)),
 		"Summary.LinesProcessedPerSeconds", r.Summary.LinesProcessedPerSeconds,
