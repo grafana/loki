@@ -333,7 +333,7 @@ used in further stages.
 ```yaml
 json:
   # Set of key/value pairs of JMESPath expressions. The key will be
-  # the key in the extracted data while the expression will the value,
+  # the key in the extracted data while the expression will be the value,
   # evaluated as a JMESPath from the source data.
   expressions:
     [ <string>: <string> ... ]
