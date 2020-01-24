@@ -9,7 +9,9 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
+	"reflect"
 	"time"
+	"unsafe"
 
 	"github.com/pkg/errors"
 
@@ -608,10 +610,22 @@ func (si *bufferedIterator) Next() bool {
 		if si.filter != nil && !si.filter(line) {
 			continue
 		}
-		si.cur.Line = string(line)
+		si.cur.Line = bytesToString(line)
 		si.cur.Timestamp = time.Unix(0, ts)
 		return true
 	}
+}
+
+// bytesToString convert bytes to string without doing a copy.
+// see https://github.com/golang/go/issues/25484
+func bytesToString(bytes []byte) (s string) {
+	if len(bytes) == 0 {
+		return ""
+	}
+	str := (*reflect.StringHeader)(unsafe.Pointer(&s))
+	str.Data = uintptr(unsafe.Pointer(&bytes[0]))
+	str.Len = len(bytes)
+	return s
 }
 
 // moveNext moves the buffer to the next entry
