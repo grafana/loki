@@ -3,10 +3,10 @@ package querier
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"testing"
 	"time"
-	"io"
 
 	"github.com/grafana/loki/pkg/logql"
 
@@ -445,7 +445,6 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		})
 	}
 }
-
 
 func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 
