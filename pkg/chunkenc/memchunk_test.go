@@ -539,7 +539,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
-				iter := h.iterator(0, math.MaxInt64, nil)
+				iter := h.iterator(context.Background(), 0, math.MaxInt64, nil)
 
 				for iter.Next() {
 					_ = iter.Entry()

@@ -8,11 +8,10 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/chunkenc/decompression"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -164,19 +163,13 @@ func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 		return nil, err
 	}
 
-	ctx = decompression.NewContext(ctx)
+	ctx = stats.NewContext(ctx)
 	start := time.Now()
 	defer func() {
-		stats := decompression.GetStats(ctx)
-		level.Debug(log).Log(
-			"Time Fetching chunk (ms)", stats.TimeFetching.Nanoseconds()/int64(time.Millisecond),
-			"Total Duplicates", stats.TotalDuplicates,
-			"Fetched chunks", stats.FetchedChunks,
-			"Total bytes compressed (MB)", stats.BytesCompressed/1024/1024,
-			"Total bytes uncompressed (MB)", stats.BytesDecompressed/1024/1024,
-			"Total exec time (ms)", time.Since(start).Nanoseconds()/int64(time.Millisecond),
-		)
+		resultStats := stats.Snapshot(ctx, time.Since(start))
+		stats.Log(log, resultStats)
 	}()
+
 	switch e := expr.(type) {
 	case SampleExpr:
 		if err := ng.setupIterators(ctx, e, q); err != nil {

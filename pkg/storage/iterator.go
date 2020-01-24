@@ -13,10 +13,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/chunkenc/decompression"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 // lazyChunks is a slice of lazy chunks that can ordered by chunk boundaries
@@ -366,11 +366,13 @@ func fetchLazyChunks(ctx context.Context, chunks []*chunkenc.LazyChunk) error {
 	log, ctx := spanlogger.New(ctx, "LokiStore.fetchLazyChunks")
 	defer log.Finish()
 	start := time.Now()
-	defer decompression.Mutate(ctx, func(m *decompression.Stats) {
-		m.TimeFetching += time.Since(start)
-	})
+	storeStats := stats.GetStoreData(ctx)
+	var totalChunks int64
+	defer func(){
+		storeStats.TimeDownloadingChunks += time.Since(start)
+		storeStats.TotalDownloadedChunks += totalChunks
+	}()
 
-	var totalChunks int
 	chksByFetcher := map[*chunk.Fetcher][]*chunkenc.LazyChunk{}
 	for _, c := range chunks {
 		if c.Chunk.Data == nil {
@@ -419,9 +421,6 @@ func fetchLazyChunks(ctx context.Context, chunks []*chunkenc.LazyChunk) error {
 			lastErr = err
 		}
 	}
-	decompression.Mutate(ctx, func(m *decompression.Stats) {
-		m.FetchedChunks += int64(totalChunks)
-	})
 	return lastErr
 }
 

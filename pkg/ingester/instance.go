@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -186,6 +187,10 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 }
 
 func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
+	// initialize stats collection for ingester queries and set grpc trailer with stats.
+	ctx := stats.NewContext(queryServer.Context())
+	defer stats.SendAsTrailer(ctx, queryServer)
+
 	expr, err := (logql.SelectParams{QueryRequest: req}).LogSelector()
 	if err != nil {
 		return err
@@ -195,12 +200,13 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
+	ingStats := stats.GetIngesterData(ctx)
 	var iters []iter.EntryIterator
-
 	err = i.forMatchingStreams(
 		expr.Matchers(),
 		func(stream *stream) error {
-			iter, err := stream.Iterator(queryServer.Context(), req.Start, req.End, req.Direction, filter)
+			ingStats.TotalChunksMatched += int64(len(stream.chunks))
+			iter, err := stream.Iterator(ctx, req.Start, req.End, req.Direction, filter)
 			if err != nil {
 				return err
 			}
@@ -212,10 +218,10 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
-	iter := iter.NewHeapIterator(queryServer.Context(), iters, req.Direction)
+	iter := iter.NewHeapIterator(ctx, iters, req.Direction)
 	defer helpers.LogError("closing iterator", iter.Close)
 
-	return sendBatches(iter, queryServer, req.Limit)
+	return sendBatches(ctx, iter, queryServer, req.Limit)
 }
 
 func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
@@ -381,10 +387,28 @@ func isDone(ctx context.Context) bool {
 	}
 }
 
-func sendBatches(i iter.EntryIterator, queryServer logproto.Querier_QueryServer, limit uint32) error {
+func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer logproto.Querier_QueryServer, limit uint32) error {
+	ingStats := stats.GetIngesterData(ctx)
 	if limit == 0 {
-		return sendAllBatches(i, queryServer)
+		// send all batches.
+		for !isDone(ctx) {
+			batch, size, err := iter.ReadBatch(i, queryBatchSize)
+			if err != nil {
+				return err
+			}
+			if len(batch.Streams) == 0 {
+				return nil
+			}
+
+			if err := queryServer.Send(batch); err != nil {
+				return err
+			}
+			ingStats.TotalLinesSent += int64(size)
+			ingStats.TotalBatches++
+		}
+		return nil
 	}
+	// send until the limit is reached.
 	sent := uint32(0)
 	for sent < limit && !isDone(queryServer.Context()) {
 		batch, batchSize, err := iter.ReadBatch(i, helpers.MinUint32(queryBatchSize, limit-sent))
@@ -400,23 +424,8 @@ func sendBatches(i iter.EntryIterator, queryServer logproto.Querier_QueryServer,
 		if err := queryServer.Send(batch); err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-func sendAllBatches(i iter.EntryIterator, queryServer logproto.Querier_QueryServer) error {
-	for !isDone(queryServer.Context()) {
-		batch, _, err := iter.ReadBatch(i, queryBatchSize)
-		if err != nil {
-			return err
-		}
-		if len(batch.Streams) == 0 {
-			return nil
-		}
-
-		if err := queryServer.Send(batch); err != nil {
-			return err
-		}
+		ingStats.TotalLinesSent += int64(batchSize)
+		ingStats.TotalBatches++
 	}
 	return nil
 }

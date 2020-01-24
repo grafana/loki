@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -55,6 +56,8 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 // LazyQuery returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
 // for that request.
 func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error) {
+	storeStats := stats.GetStoreData(ctx)
+
 	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -85,6 +88,7 @@ func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.Ent
 
 	var totalChunks int
 	for i := range chks {
+		storeStats.TotalChunksRef += int64(len(chks[i]))
 		chks[i] = filterChunksByTime(from, through, chks[i])
 		totalChunks += len(chks[i])
 	}

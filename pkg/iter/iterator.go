@@ -7,9 +7,9 @@ import (
 	"io"
 	"time"
 
-	"github.com/grafana/loki/pkg/chunkenc/decompression"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 // EntryIterator iterates over entries in time-order.
@@ -132,19 +132,18 @@ type heapIterator struct {
 	}
 	is         []EntryIterator
 	prefetched bool
-	ctx        context.Context
+	stats      *stats.ChunkData
 
-	tuples         []tuple
-	currEntry      logproto.Entry
-	currLabels     string
-	errs           []error
-	linesDuplicate int64
+	tuples     []tuple
+	currEntry  logproto.Entry
+	currLabels string
+	errs       []error
 }
 
 // NewHeapIterator returns a new iterator which uses a heap to merge together
 // entries for multiple interators.
 func NewHeapIterator(ctx context.Context, is []EntryIterator, direction logproto.Direction) HeapIterator {
-	result := &heapIterator{is: is, ctx: ctx}
+	result := &heapIterator{is: is, stats: stats.GetChunkData(ctx)}
 	switch direction {
 	case logproto.BACKWARD:
 		result.heap = &iteratorMaxHeap{}
@@ -241,7 +240,7 @@ func (i *heapIterator) Next() bool {
 			i.requeue(i.tuples[j].EntryIterator, true)
 			continue
 		}
-		i.linesDuplicate++
+		i.stats.TotalDuplicates++
 		i.requeue(i.tuples[j].EntryIterator, false)
 	}
 	i.tuples = i.tuples[:0]
@@ -311,9 +310,6 @@ func (i *heapIterator) Error() error {
 }
 
 func (i *heapIterator) Close() error {
-	decompression.Mutate(i.ctx, func(m *decompression.Stats) {
-		m.TotalDuplicates += i.linesDuplicate
-	})
 	for i.heap.Len() > 0 {
 		if err := i.heap.Pop().(EntryIterator).Close(); err != nil {
 			return err

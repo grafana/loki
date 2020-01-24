@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/marshal"
+	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -172,7 +173,7 @@ func (q *Querier) Select(ctx context.Context, params logql.SelectParams) (iter.E
 
 func (q *Querier) queryIngesters(ctx context.Context, params logql.SelectParams) ([]iter.EntryIterator, error) {
 	clients, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
-		return client.Query(ctx, params.QueryRequest)
+		return client.Query(ctx, params.QueryRequest, stats.CollectTrailer(ctx))
 	})
 	if err != nil {
 		return nil, err
