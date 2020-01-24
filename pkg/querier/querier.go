@@ -553,6 +553,18 @@ func (q *Querier) checkTailRequestLimit(ctx context.Context) error {
 		return err
 	}
 
+	// we want to check count of active tailers with only active ingesters
+	ingesters := make([]ring.IngesterDesc, 0, 1)
+	for i := range replicationSet.Ingesters {
+		if replicationSet.Ingesters[i].State == ring.ACTIVE {
+			ingesters = append(ingesters, replicationSet.Ingesters[i])
+		}
+	}
+
+	if len(ingesters) == 0 {
+		return httpgrpc.Errorf(http.StatusInternalServerError, "no active ingester found")
+	}
+
 	responses, err := q.forGivenIngesters(ctx, replicationSet, func(querierClient logproto.QuerierClient) (interface{}, error) {
 		resp, err := querierClient.TailersCount(ctx, nil)
 		if err != nil {
@@ -560,9 +572,9 @@ func (q *Querier) checkTailRequestLimit(ctx context.Context) error {
 		}
 		return resp.Count, nil
 	})
-
-	// Ignore the error if we got at least one response
-	if len(responses) == 0 && err != nil {
+	// We are only checking active ingesters, and any error returned stops checking other ingesters
+	// so return that error here as well.
+	if err != nil {
 		return err
 	}
 
