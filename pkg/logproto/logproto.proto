@@ -16,6 +16,7 @@ service Querier {
   rpc Label(LabelRequest) returns (LabelResponse) {};
   rpc Tail(TailRequest) returns (stream TailResponse) {};
   rpc Series(SeriesRequest) returns (SeriesResponse) {};
+  rpc TailersCount(TailersCountRequest) returns (TailersCountResponse) {};
 }
 
 service Ingester {
@@ -119,4 +120,12 @@ message Chunk {
 
 message TransferChunksResponse {
 
+}
+
+message TailersCountRequest {
+
+}
+
+message TailersCountResponse {
+  uint32 count = 1;
 }
