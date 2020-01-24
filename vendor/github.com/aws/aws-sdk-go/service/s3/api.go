@@ -4246,10 +4246,12 @@ func (c *S3) ListMultipartUploadsPagesWithContext(ctx aws.Context, input *ListMu
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*ListMultipartUploadsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*ListMultipartUploadsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -4376,10 +4378,12 @@ func (c *S3) ListObjectVersionsPagesWithContext(ctx aws.Context, input *ListObje
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*ListObjectVersionsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*ListObjectVersionsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -4513,10 +4517,12 @@ func (c *S3) ListObjectsPagesWithContext(ctx aws.Context, input *ListObjectsInpu
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*ListObjectsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*ListObjectsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -4651,10 +4657,12 @@ func (c *S3) ListObjectsV2PagesWithContext(ctx aws.Context, input *ListObjectsV2
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*ListObjectsV2Output), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*ListObjectsV2Output), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -4781,10 +4789,12 @@ func (c *S3) ListPartsPagesWithContext(ctx aws.Context, input *ListPartsInput, f
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*ListPartsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*ListPartsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -24704,6 +24714,9 @@ const (
 
 	// InventoryOptionalFieldObjectLockLegalHoldStatus is a InventoryOptionalField enum value
 	InventoryOptionalFieldObjectLockLegalHoldStatus = "ObjectLockLegalHoldStatus"
+
+	// InventoryOptionalFieldIntelligentTieringAccessTier is a InventoryOptionalField enum value
+	InventoryOptionalFieldIntelligentTieringAccessTier = "IntelligentTieringAccessTier"
 )
 
 const (

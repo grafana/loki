@@ -3,7 +3,6 @@ package distributor
 import (
 	"context"
 	"flag"
-	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -189,7 +188,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	if !canJoinDistributorsRing {
 		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
 	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
-		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey)
+		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, true)
 		if err != nil {
 			return nil, err
 		}
@@ -227,7 +226,7 @@ func (d *Distributor) Stop() {
 
 func (d *Distributor) tokenForLabels(userID string, labels []client.LabelAdapter) (uint32, error) {
 	if d.cfg.ShardByAllLabels {
-		return shardByAllLabels(userID, labels)
+		return shardByAllLabels(userID, labels), nil
 	}
 
 	metricName, err := extract.MetricNameFromLabelAdapters(labels)
@@ -244,18 +243,15 @@ func shardByMetricName(userID string, metricName string) uint32 {
 	return h
 }
 
-func shardByAllLabels(userID string, labels []client.LabelAdapter) (uint32, error) {
+// This function generates different values for different order of same labels.
+func shardByAllLabels(userID string, labels []client.LabelAdapter) uint32 {
 	h := client.HashNew32()
 	h = client.HashAdd32(h, userID)
-	var lastLabelName string
 	for _, label := range labels {
-		if strings.Compare(lastLabelName, label.Name) >= 0 {
-			return 0, fmt.Errorf("Labels not sorted")
-		}
 		h = client.HashAdd32(h, label.Name)
 		h = client.HashAdd32(h, label.Value)
 	}
-	return h, nil
+	return h
 }
 
 // Remove the label labelname from a slice of LabelPairs if it exists.
@@ -374,6 +370,13 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			continue
 		}
 
+		// We rely on sorted labels in different places:
+		// 1) When computing token for labels, and sharding by all labels. Here different order of labels returns
+		// different tokens, which is bad.
+		// 2) In validation code, when checking for duplicate label names. As duplicate label names are rejected
+		// later in the validation phase, we ignore them here.
+		sortLabelsIfNeeded(ts.Labels)
+
 		// Generate the sharding token based on the series labels without the HA replica
 		// label and dropped labels (if any)
 		key, err := d.tokenForLabels(userID, ts.Labels)
@@ -447,6 +450,28 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, err
 	}
 	return &client.WriteResponse{}, lastPartialErr
+}
+
+func sortLabelsIfNeeded(labels []client.LabelAdapter) {
+	// no need to run sort.Slice, if labels are already sorted, which is most of the time.
+	// we can avoid extra memory allocations (mostly interface-related) this way.
+	sorted := true
+	last := ""
+	for _, l := range labels {
+		if strings.Compare(last, l.Name) > 0 {
+			sorted = false
+			break
+		}
+		last = l.Name
+	}
+
+	if sorted {
+		return
+	}
+
+	sort.Slice(labels, func(i, j int) bool {
+		return strings.Compare(labels[i].Name, labels[j].Name) < 0
+	})
 }
 
 func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDesc, timeseries []client.PreallocTimeseries) error {

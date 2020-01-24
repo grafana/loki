@@ -190,8 +190,27 @@ func fromLabelMatchers(matchers []*LabelMatcher) ([]*labels.Matcher, error) {
 // FromLabelAdaptersToLabels casts []LabelAdapter to labels.Labels.
 // It uses unsafe, but as LabelAdapter == labels.Label this should be safe.
 // This allows us to use labels.Labels directly in protos.
+//
+// Note: while resulting labels.Labels is supposedly sorted, this function
+// doesn't enforce that. If input is not sorted, output will be wrong.
 func FromLabelAdaptersToLabels(ls []LabelAdapter) labels.Labels {
 	return *(*labels.Labels)(unsafe.Pointer(&ls))
+}
+
+// FromLabelAdaptersToLabelsWithCopy converts []LabelAdapter to labels.Labels.
+// Do NOT use unsafe to convert between data types because this function may
+// get in input labels whose data structure is reused.
+func FromLabelAdaptersToLabelsWithCopy(input []LabelAdapter) labels.Labels {
+	result := make(labels.Labels, len(input))
+
+	for i, l := range input {
+		result[i] = labels.Label{
+			Name:  l.Name,
+			Value: l.Value,
+		}
+	}
+
+	return result
 }
 
 // FromLabelsToLabelAdapters casts labels.Labels to []LabelAdapter.

@@ -22,10 +22,10 @@ type RingConfig struct {
 	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout,omitempty"`
 
 	// Instance details
-	InstanceID             string   `yaml:"instance_id"`
-	InstanceInterfaceNames []string `yaml:"instance_interface_names"`
-	InstancePort           int      `yaml:"instance_port"`
-	InstanceAddr           string   `yaml:"instance_addr"`
+	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
+	InstanceInterfaceNames []string `yaml:"instance_interface_names" doc:"hidden"`
+	InstancePort           int      `yaml:"instance_port" doc:"hidden"`
+	InstanceAddr           string   `yaml:"instance_addr" doc:"hidden"`
 
 	// Injected internally
 	ListenPort int `yaml:"-"`
@@ -40,7 +40,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	}
 
 	// Ring flags
-	cfg.KVStore.RegisterFlagsWithPrefix("distributor.ring.", f)
+	cfg.KVStore.RegisterFlagsWithPrefix("distributor.ring.", "collectors/", f)
 	f.DurationVar(&cfg.HeartbeatPeriod, "distributor.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring.")
 	f.DurationVar(&cfg.HeartbeatTimeout, "distributor.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which distributors are considered unhealthy within the ring.")
 

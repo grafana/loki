@@ -1,7 +1,9 @@
 package validation
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -14,14 +16,16 @@ import (
 const (
 	discardReasonLabel = "reason"
 
-	errMissingMetricName = "sample missing metric name"
-	errInvalidMetricName = "sample invalid metric name: %.200q"
-	errInvalidLabel      = "sample invalid label: %.200q metric %.200q"
-	errLabelNameTooLong  = "label name too long: %.200q metric %.200q"
-	errLabelValueTooLong = "label value too long: %.200q metric %.200q"
-	errTooManyLabels     = "sample for '%s' has %d label names; limit %d"
-	errTooOld            = "sample for '%s' has timestamp too old: %d"
-	errTooNew            = "sample for '%s' has timestamp too new: %d"
+	errMissingMetricName  = "sample missing metric name"
+	errInvalidMetricName  = "sample invalid metric name: %.200q"
+	errInvalidLabel       = "sample invalid label: %.200q metric %.200q"
+	errLabelNameTooLong   = "label name too long: %.200q metric %.200q"
+	errLabelValueTooLong  = "label value too long: %.200q metric %.200q"
+	errTooManyLabels      = "sample for '%s' has %d label names; limit %d"
+	errTooOld             = "sample for '%s' has timestamp too old: %d"
+	errTooNew             = "sample for '%s' has timestamp too new: %d"
+	errDuplicateLabelName = "duplicate label name: %.200q metric %.200q"
+	errLabelsNotSorted    = "labels not sorted: %.200q metric %.200q"
 
 	// ErrQueryTooLong is used in chunk store and query frontend.
 	ErrQueryTooLong = "invalid query, length > limit (%s > %s)"
@@ -31,6 +35,8 @@ const (
 	tooFarInFuture          = "too_far_in_future"
 	invalidLabel            = "label_invalid"
 	labelNameTooLong        = "label_name_too_long"
+	duplicateLabelNames     = "duplicate_label_names"
+	labelsNotSorted         = "labels_not_sorted"
 	labelValueTooLong       = "label_value_too_long"
 
 	// RateLimited is one of the values for the reason to discard samples.
@@ -102,6 +108,7 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []client.LabelA
 
 	maxLabelNameLength := cfg.MaxLabelNameLength(userID)
 	maxLabelValueLength := cfg.MaxLabelValueLength(userID)
+	lastLabelName := ""
 	for _, l := range ls {
 		var errTemplate string
 		var reason string
@@ -118,11 +125,48 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []client.LabelA
 			reason = labelValueTooLong
 			errTemplate = errLabelValueTooLong
 			cause = l.Value
+		} else if cmp := strings.Compare(lastLabelName, l.Name); cmp >= 0 {
+			if cmp == 0 {
+				reason = duplicateLabelNames
+				errTemplate = errDuplicateLabelName
+				cause = l.Name
+			} else {
+				reason = labelsNotSorted
+				errTemplate = errLabelsNotSorted
+				cause = l.Name
+			}
 		}
 		if errTemplate != "" {
 			DiscardedSamples.WithLabelValues(reason, userID).Inc()
-			return httpgrpc.Errorf(http.StatusBadRequest, errTemplate, cause, client.FromLabelAdaptersToMetric(ls).String())
+			return httpgrpc.Errorf(http.StatusBadRequest, errTemplate, cause, formatLabelSet(ls))
 		}
+		lastLabelName = l.Name
 	}
 	return nil
+}
+
+// this function formats label adapters as a metric name with labels, while preserving
+// label order, and keeping duplicates. If there are multiple "__name__" labels, only
+// first one is used as metric name, other ones will be included as regular labels.
+func formatLabelSet(ls []client.LabelAdapter) string {
+	metricName, hasMetricName := "", false
+
+	labelStrings := make([]string, 0, len(ls))
+	for _, l := range ls {
+		if l.Name == model.MetricNameLabel && !hasMetricName && l.Value != "" {
+			metricName = l.Value
+			hasMetricName = true
+		} else {
+			labelStrings = append(labelStrings, fmt.Sprintf("%s=%q", l.Name, l.Value))
+		}
+	}
+
+	if len(labelStrings) == 0 {
+		if hasMetricName {
+			return metricName
+		}
+		return "{}"
+	}
+
+	return fmt.Sprintf("%s{%s}", metricName, strings.Join(labelStrings, ", "))
 }

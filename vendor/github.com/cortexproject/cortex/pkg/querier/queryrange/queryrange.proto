@@ -21,11 +21,17 @@ message PrometheusRequest {
   string query = 6;
 }
 
+message PrometheusResponseHeader {
+  string Name = 1 [(gogoproto.jsontag) = "-"];
+  repeated string Values = 2 [(gogoproto.jsontag) = "-"];
+}
+
 message PrometheusResponse {
   string Status = 1 [(gogoproto.jsontag) = "status"];
   PrometheusData Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
   string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
   string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
+  repeated PrometheusResponseHeader Headers = 5 [(gogoproto.jsontag) = "-"];
 }
 
 message PrometheusData {

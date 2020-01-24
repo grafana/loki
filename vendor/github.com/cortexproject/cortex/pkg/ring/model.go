@@ -171,7 +171,7 @@ func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) b
 		healthy = true
 	}
 
-	return healthy && time.Now().Sub(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
+	return healthy && time.Since(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
 }
 
 // Merge merges other ring into this one. Returns sub-ring that represents the change,

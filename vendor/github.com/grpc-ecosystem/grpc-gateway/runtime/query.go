@@ -15,15 +15,13 @@ import (
 	"google.golang.org/grpc/grpclog"
 )
 
+var valuesKeyRegexp = regexp.MustCompile("^(.*)\\[(.*)\\]$")
+
 // PopulateQueryParameters populates "values" into "msg".
 // A value is ignored if its key starts with one of the elements in "filter".
 func PopulateQueryParameters(msg proto.Message, values url.Values, filter *utilities.DoubleArray) error {
 	for key, values := range values {
-		re, err := regexp.Compile("^(.*)\\[(.*)\\]$")
-		if err != nil {
-			return err
-		}
-		match := re.FindStringSubmatch(key)
+		match := valuesKeyRegexp.FindStringSubmatch(key)
 		if len(match) == 3 {
 			key = match[1]
 			values = append([]string{match[2]}, values...)

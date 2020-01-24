@@ -24,7 +24,7 @@ var defaultFactory = func() chunkenc.Chunk {
 }
 
 func TestLabelsCollisions(t *testing.T) {
-	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000})
+	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000}, nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
@@ -51,7 +51,7 @@ func TestLabelsCollisions(t *testing.T) {
 }
 
 func TestConcurrentPushes(t *testing.T) {
-	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000})
+	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000}, nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 
@@ -102,7 +102,7 @@ func TestConcurrentPushes(t *testing.T) {
 }
 
 func TestSyncPeriod(t *testing.T) {
-	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000})
+	limits, err := validation.NewOverrides(validation.Limits{MaxLocalStreamsPerUser: 1000}, nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, &ringCountMock{count: 1}, 1)
 

@@ -73,7 +73,7 @@ func TestLimiter_maxStreamsPerUser(t *testing.T) {
 			limits, err := validation.NewOverrides(validation.Limits{
 				MaxLocalStreamsPerUser:  testData.maxLocalStreamsPerUser,
 				MaxGlobalStreamsPerUser: testData.maxGlobalStreamsPerUser,
-			})
+			}, nil)
 			require.NoError(t, err)
 
 			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor)
@@ -130,7 +130,7 @@ func TestLimiter_AssertMaxStreamsPerUser(t *testing.T) {
 			limits, err := validation.NewOverrides(validation.Limits{
 				MaxLocalStreamsPerUser:  testData.maxLocalStreamsPerUser,
 				MaxGlobalStreamsPerUser: testData.maxGlobalStreamsPerUser,
-			})
+			}, nil)
 			require.NoError(t, err)
 
 			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor)

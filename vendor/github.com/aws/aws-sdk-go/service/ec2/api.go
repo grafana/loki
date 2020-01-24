@@ -5619,7 +5619,7 @@ func (c *EC2) CreateSnapshotsRequest(input *CreateSnapshotsInput) (req *request.
 // Creates crash-consistent snapshots of multiple EBS volumes and stores the
 // data in S3. Volumes are chosen by specifying an instance. Any attached volumes
 // will produce one snapshot each that is crash-consistent across the instance.
-// Boot volumes can be excluded by changing the paramaters.
+// Boot volumes can be excluded by changing the parameters.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -5958,8 +5958,10 @@ func (c *EC2) CreateTrafficMirrorFilterRequest(input *CreateTrafficMirrorFilterI
 // A Traffic Mirror filter is a set of rules that defines the traffic to mirror.
 //
 // By default, no traffic is mirrored. To mirror traffic, use CreateTrafficMirrorFilterRule
+// (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateTrafficMirrorFilterRule.htm)
 // to add Traffic Mirror rules to the filter. The rules you add define what
 // traffic gets mirrored. You can also use ModifyTrafficMirrorFilterNetworkServices
+// (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_ModifyTrafficMirrorFilterNetworkServices.html)
 // to mirror supported network services.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
@@ -6034,7 +6036,7 @@ func (c *EC2) CreateTrafficMirrorFilterRuleRequest(input *CreateTrafficMirrorFil
 
 // CreateTrafficMirrorFilterRule API operation for Amazon Elastic Compute Cloud.
 //
-// Creates a Traffic Mirror rule.
+// Creates a Traffic Mirror filter rule.
 //
 // A Traffic Mirror rule defines the Traffic Mirror source traffic to mirror.
 //
@@ -6122,8 +6124,8 @@ func (c *EC2) CreateTrafficMirrorSessionRequest(input *CreateTrafficMirrorSessio
 // can be in the same VPC, or in a different VPC connected via VPC peering or
 // a transit gateway.
 //
-// By default, no traffic is mirrored. Use CreateTrafficMirrorFilter to create
-// filter rules that specify the traffic to mirror.
+// By default, no traffic is mirrored. Use CreateTrafficMirrorFilter (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateTrafficMirrorFilter.htm)
+// to create filter rules that specify the traffic to mirror.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -6206,7 +6208,8 @@ func (c *EC2) CreateTrafficMirrorTargetRequest(input *CreateTrafficMirrorTargetI
 //
 // A Traffic Mirror target can be a network interface, or a Network Load Balancer.
 //
-// To use the target in a Traffic Mirror session, use CreateTrafficMirrorSession.
+// To use the target in a Traffic Mirror session, use CreateTrafficMirrorSession
+// (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateTrafficMirrorSession.htm).
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -11343,10 +11346,12 @@ func (c *EC2) DescribeByoipCidrsPagesWithContext(ctx aws.Context, input *Describ
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeByoipCidrsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeByoipCidrsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -11474,10 +11479,12 @@ func (c *EC2) DescribeCapacityReservationsPagesWithContext(ctx aws.Context, inpu
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeCapacityReservationsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeCapacityReservationsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -11607,10 +11614,12 @@ func (c *EC2) DescribeClassicLinkInstancesPagesWithContext(ctx aws.Context, inpu
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeClassicLinkInstancesOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeClassicLinkInstancesOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -11737,10 +11746,12 @@ func (c *EC2) DescribeClientVpnAuthorizationRulesPagesWithContext(ctx aws.Contex
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeClientVpnAuthorizationRulesOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeClientVpnAuthorizationRulesOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -11868,10 +11879,12 @@ func (c *EC2) DescribeClientVpnConnectionsPagesWithContext(ctx aws.Context, inpu
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeClientVpnConnectionsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeClientVpnConnectionsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -11998,10 +12011,12 @@ func (c *EC2) DescribeClientVpnEndpointsPagesWithContext(ctx aws.Context, input 
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeClientVpnEndpointsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeClientVpnEndpointsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -12128,10 +12143,12 @@ func (c *EC2) DescribeClientVpnRoutesPagesWithContext(ctx aws.Context, input *De
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeClientVpnRoutesOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeClientVpnRoutesOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -12258,10 +12275,12 @@ func (c *EC2) DescribeClientVpnTargetNetworksPagesWithContext(ctx aws.Context, i
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeClientVpnTargetNetworksOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeClientVpnTargetNetworksOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -12546,10 +12565,12 @@ func (c *EC2) DescribeDhcpOptionsPagesWithContext(ctx aws.Context, input *Descri
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeDhcpOptionsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeDhcpOptionsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -12676,10 +12697,12 @@ func (c *EC2) DescribeEgressOnlyInternetGatewaysPagesWithContext(ctx aws.Context
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeEgressOnlyInternetGatewaysOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeEgressOnlyInternetGatewaysOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -13179,10 +13202,12 @@ func (c *EC2) DescribeFleetsPagesWithContext(ctx aws.Context, input *DescribeFle
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeFleetsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeFleetsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -13311,10 +13336,12 @@ func (c *EC2) DescribeFlowLogsPagesWithContext(ctx aws.Context, input *DescribeF
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeFlowLogsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeFlowLogsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -13517,10 +13544,12 @@ func (c *EC2) DescribeFpgaImagesPagesWithContext(ctx aws.Context, input *Describ
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeFpgaImagesOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeFpgaImagesOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -13655,10 +13684,12 @@ func (c *EC2) DescribeHostReservationOfferingsPagesWithContext(ctx aws.Context, 
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeHostReservationOfferingsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeHostReservationOfferingsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -13785,10 +13816,12 @@ func (c *EC2) DescribeHostReservationsPagesWithContext(ctx aws.Context, input *D
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeHostReservationsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeHostReservationsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -13919,10 +13952,12 @@ func (c *EC2) DescribeHostsPagesWithContext(ctx aws.Context, input *DescribeHost
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeHostsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeHostsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -14049,10 +14084,12 @@ func (c *EC2) DescribeIamInstanceProfileAssociationsPagesWithContext(ctx aws.Con
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeIamInstanceProfileAssociationsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeIamInstanceProfileAssociationsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -14521,10 +14558,12 @@ func (c *EC2) DescribeImportImageTasksPagesWithContext(ctx aws.Context, input *D
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeImportImageTasksOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeImportImageTasksOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -14651,10 +14690,12 @@ func (c *EC2) DescribeImportSnapshotTasksPagesWithContext(ctx aws.Context, input
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeImportSnapshotTasksOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeImportSnapshotTasksOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -14882,10 +14923,12 @@ func (c *EC2) DescribeInstanceCreditSpecificationsPagesWithContext(ctx aws.Conte
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeInstanceCreditSpecificationsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeInstanceCreditSpecificationsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -15033,10 +15076,12 @@ func (c *EC2) DescribeInstanceStatusPagesWithContext(ctx aws.Context, input *Des
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeInstanceStatusOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeInstanceStatusOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -15178,10 +15223,12 @@ func (c *EC2) DescribeInstancesPagesWithContext(ctx aws.Context, input *Describe
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeInstancesOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeInstancesOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -15308,10 +15355,12 @@ func (c *EC2) DescribeInternetGatewaysPagesWithContext(ctx aws.Context, input *D
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeInternetGatewaysOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeInternetGatewaysOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -15516,10 +15565,12 @@ func (c *EC2) DescribeLaunchTemplateVersionsPagesWithContext(ctx aws.Context, in
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeLaunchTemplateVersionsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeLaunchTemplateVersionsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -15646,10 +15697,12 @@ func (c *EC2) DescribeLaunchTemplatesPagesWithContext(ctx aws.Context, input *De
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeLaunchTemplatesOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeLaunchTemplatesOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -15778,10 +15831,12 @@ func (c *EC2) DescribeMovingAddressesPagesWithContext(ctx aws.Context, input *De
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeMovingAddressesOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeMovingAddressesOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -15908,10 +15963,12 @@ func (c *EC2) DescribeNatGatewaysPagesWithContext(ctx aws.Context, input *Descri
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeNatGatewaysOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeNatGatewaysOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -16041,10 +16098,12 @@ func (c *EC2) DescribeNetworkAclsPagesWithContext(ctx aws.Context, input *Descri
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeNetworkAclsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeNetworkAclsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -16246,10 +16305,12 @@ func (c *EC2) DescribeNetworkInterfacePermissionsPagesWithContext(ctx aws.Contex
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeNetworkInterfacePermissionsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeNetworkInterfacePermissionsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -16376,10 +16437,12 @@ func (c *EC2) DescribeNetworkInterfacesPagesWithContext(ctx aws.Context, input *
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeNetworkInterfacesOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeNetworkInterfacesOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -16587,10 +16650,12 @@ func (c *EC2) DescribePrefixListsPagesWithContext(ctx aws.Context, input *Descri
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribePrefixListsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribePrefixListsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -16731,10 +16796,12 @@ func (c *EC2) DescribePrincipalIdFormatPagesWithContext(ctx aws.Context, input *
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribePrincipalIdFormatOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribePrincipalIdFormatOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -16861,10 +16928,12 @@ func (c *EC2) DescribePublicIpv4PoolsPagesWithContext(ctx aws.Context, input *De
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribePublicIpv4PoolsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribePublicIpv4PoolsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -17250,10 +17319,12 @@ func (c *EC2) DescribeReservedInstancesModificationsPagesWithContext(ctx aws.Con
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeReservedInstancesModificationsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeReservedInstancesModificationsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -17391,10 +17462,12 @@ func (c *EC2) DescribeReservedInstancesOfferingsPagesWithContext(ctx aws.Context
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeReservedInstancesOfferingsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeReservedInstancesOfferingsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -17529,10 +17602,12 @@ func (c *EC2) DescribeRouteTablesPagesWithContext(ctx aws.Context, input *Descri
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeRouteTablesOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeRouteTablesOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -17667,10 +17742,12 @@ func (c *EC2) DescribeScheduledInstanceAvailabilityPagesWithContext(ctx aws.Cont
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeScheduledInstanceAvailabilityOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeScheduledInstanceAvailabilityOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -17797,10 +17874,12 @@ func (c *EC2) DescribeScheduledInstancesPagesWithContext(ctx aws.Context, input 
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeScheduledInstancesOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeScheduledInstancesOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -18009,10 +18088,12 @@ func (c *EC2) DescribeSecurityGroupsPagesWithContext(ctx aws.Context, input *Des
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeSecurityGroupsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeSecurityGroupsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -18264,10 +18345,12 @@ func (c *EC2) DescribeSnapshotsPagesWithContext(ctx aws.Context, input *Describe
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeSnapshotsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeSnapshotsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -18626,10 +18709,12 @@ func (c *EC2) DescribeSpotFleetRequestsPagesWithContext(ctx aws.Context, input *
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeSpotFleetRequestsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeSpotFleetRequestsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -18772,10 +18857,12 @@ func (c *EC2) DescribeSpotInstanceRequestsPagesWithContext(ctx aws.Context, inpu
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeSpotInstanceRequestsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeSpotInstanceRequestsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -18909,10 +18996,12 @@ func (c *EC2) DescribeSpotPriceHistoryPagesWithContext(ctx aws.Context, input *D
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeSpotPriceHistoryOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeSpotPriceHistoryOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -19042,10 +19131,12 @@ func (c *EC2) DescribeStaleSecurityGroupsPagesWithContext(ctx aws.Context, input
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeStaleSecurityGroupsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeStaleSecurityGroupsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -19175,10 +19266,12 @@ func (c *EC2) DescribeSubnetsPagesWithContext(ctx aws.Context, input *DescribeSu
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeSubnetsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeSubnetsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -19308,10 +19401,12 @@ func (c *EC2) DescribeTagsPagesWithContext(ctx aws.Context, input *DescribeTagsI
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeTagsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeTagsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -19438,10 +19533,12 @@ func (c *EC2) DescribeTrafficMirrorFiltersPagesWithContext(ctx aws.Context, inpu
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeTrafficMirrorFiltersOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeTrafficMirrorFiltersOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -19569,10 +19666,12 @@ func (c *EC2) DescribeTrafficMirrorSessionsPagesWithContext(ctx aws.Context, inp
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeTrafficMirrorSessionsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeTrafficMirrorSessionsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -19699,10 +19798,12 @@ func (c *EC2) DescribeTrafficMirrorTargetsPagesWithContext(ctx aws.Context, inpu
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeTrafficMirrorTargetsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeTrafficMirrorTargetsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -19832,10 +19933,12 @@ func (c *EC2) DescribeTransitGatewayAttachmentsPagesWithContext(ctx aws.Context,
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeTransitGatewayAttachmentsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeTransitGatewayAttachmentsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -19963,10 +20066,12 @@ func (c *EC2) DescribeTransitGatewayRouteTablesPagesWithContext(ctx aws.Context,
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeTransitGatewayRouteTablesOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeTransitGatewayRouteTablesOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -20094,10 +20199,12 @@ func (c *EC2) DescribeTransitGatewayVpcAttachmentsPagesWithContext(ctx aws.Conte
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeTransitGatewayVpcAttachmentsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeTransitGatewayVpcAttachmentsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -20225,10 +20332,12 @@ func (c *EC2) DescribeTransitGatewaysPagesWithContext(ctx aws.Context, input *De
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeTransitGatewaysOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeTransitGatewaysOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -20468,10 +20577,12 @@ func (c *EC2) DescribeVolumeStatusPagesWithContext(ctx aws.Context, input *Descr
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeVolumeStatusOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeVolumeStatusOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -20608,10 +20719,12 @@ func (c *EC2) DescribeVolumesPagesWithContext(ctx aws.Context, input *DescribeVo
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeVolumesOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeVolumesOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -20751,10 +20864,12 @@ func (c *EC2) DescribeVolumesModificationsPagesWithContext(ctx aws.Context, inpu
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeVolumesModificationsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeVolumesModificationsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -21036,10 +21151,12 @@ func (c *EC2) DescribeVpcClassicLinkDnsSupportPagesWithContext(ctx aws.Context, 
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeVpcClassicLinkDnsSupportOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeVpcClassicLinkDnsSupportOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -21167,10 +21284,12 @@ func (c *EC2) DescribeVpcEndpointConnectionNotificationsPagesWithContext(ctx aws
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeVpcEndpointConnectionNotificationsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeVpcEndpointConnectionNotificationsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -21298,10 +21417,12 @@ func (c *EC2) DescribeVpcEndpointConnectionsPagesWithContext(ctx aws.Context, in
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeVpcEndpointConnectionsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeVpcEndpointConnectionsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -21428,10 +21549,12 @@ func (c *EC2) DescribeVpcEndpointServiceConfigurationsPagesWithContext(ctx aws.C
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeVpcEndpointServiceConfigurationsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeVpcEndpointServiceConfigurationsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -21559,10 +21682,12 @@ func (c *EC2) DescribeVpcEndpointServicePermissionsPagesWithContext(ctx aws.Cont
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeVpcEndpointServicePermissionsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeVpcEndpointServicePermissionsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -21763,10 +21888,12 @@ func (c *EC2) DescribeVpcEndpointsPagesWithContext(ctx aws.Context, input *Descr
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeVpcEndpointsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeVpcEndpointsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -21893,10 +22020,12 @@ func (c *EC2) DescribeVpcPeeringConnectionsPagesWithContext(ctx aws.Context, inp
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeVpcPeeringConnectionsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeVpcPeeringConnectionsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -22023,10 +22152,12 @@ func (c *EC2) DescribeVpcsPagesWithContext(ctx aws.Context, input *DescribeVpcsI
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*DescribeVpcsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*DescribeVpcsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -25149,10 +25280,12 @@ func (c *EC2) GetTransitGatewayAttachmentPropagationsPagesWithContext(ctx aws.Co
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*GetTransitGatewayAttachmentPropagationsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*GetTransitGatewayAttachmentPropagationsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -25280,10 +25413,12 @@ func (c *EC2) GetTransitGatewayRouteTableAssociationsPagesWithContext(ctx aws.Co
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*GetTransitGatewayRouteTableAssociationsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*GetTransitGatewayRouteTableAssociationsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -25411,10 +25546,12 @@ func (c *EC2) GetTransitGatewayRouteTablePropagationsPagesWithContext(ctx aws.Co
 		},
 	}
 
-	cont := true
-	for p.Next() && cont {
-		cont = fn(p.Page().(*GetTransitGatewayRouteTablePropagationsOutput), !p.HasNextPage())
+	for p.Next() {
+		if !fn(p.Page().(*GetTransitGatewayRouteTablePropagationsOutput), !p.HasNextPage()) {
+			break
+		}
 	}
+
 	return p.Err()
 }
 
@@ -26180,10 +26317,10 @@ func (c *EC2) ModifyFleetRequest(input *ModifyFleetInput) (req *request.Request,
 //
 // To scale up your EC2 Fleet, increase its target capacity. The EC2 Fleet launches
 // the additional Spot Instances according to the allocation strategy for the
-// EC2 Fleet request. If the allocation strategy is lowestPrice, the EC2 Fleet
+// EC2 Fleet request. If the allocation strategy is lowest-price, the EC2 Fleet
 // launches instances using the Spot Instance pool with the lowest price. If
 // the allocation strategy is diversified, the EC2 Fleet distributes the instances
-// across the Spot Instance pools. If the allocation strategy is capacityOptimized,
+// across the Spot Instance pools. If the allocation strategy is capacity-optimized,
 // EC2 Fleet launches instances from Spot Instance pools with optimal capacity
 // for the number of instances that are launching.
 //
@@ -26191,11 +26328,11 @@ func (c *EC2) ModifyFleetRequest(input *ModifyFleetInput) (req *request.Request,
 // Fleet cancels any open requests that exceed the new target capacity. You
 // can request that the EC2 Fleet terminate Spot Instances until the size of
 // the fleet no longer exceeds the new target capacity. If the allocation strategy
-// is lowestPrice, the EC2 Fleet terminates the instances with the highest price
-// per unit. If the allocation strategy is capacityOptimized, the EC2 Fleet
-// terminates the instances in the Spot Instance pools that have the least available
-// Spot Instance capacity. If the allocation strategy is diversified, the EC2
-// Fleet terminates instances across the Spot Instance pools. Alternatively,
+// is lowest-price, the EC2 Fleet terminates the instances with the highest
+// price per unit. If the allocation strategy is capacity-optimized, the EC2
+// Fleet terminates the instances in the Spot Instance pools that have the least
+// available Spot Instance capacity. If the allocation strategy is diversified,
+// the EC2 Fleet terminates instances across the Spot Instance pools. Alternatively,
 // you can request that the EC2 Fleet keep the fleet at its current size, but
 // not replace any Spot Instances that are interrupted or that you terminate
 // manually.
@@ -27624,7 +27761,7 @@ func (c *EC2) ModifyTrafficMirrorFilterNetworkServicesRequest(input *ModifyTraff
 // to mirror network services, use RemoveNetworkServices to remove the network
 // services from the Traffic Mirror filter.
 //
-// FFor information about filter rule properties, see Network Services (https://docs.aws.amazon.com/vpc/latest/mirroring/traffic-mirroring-considerations.html#traffic-mirroring-network-services)
+// For information about filter rule properties, see Network Services (https://docs.aws.amazon.com/vpc/latest/mirroring/traffic-mirroring-considerations.html)
 // in the Traffic Mirroring User Guide .
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
@@ -41196,7 +41333,7 @@ type CreateKeyPairOutput struct {
 	KeyFingerprint *string `locationName:"keyFingerprint" type:"string"`
 
 	// An unencrypted PEM encoded RSA private key.
-	KeyMaterial *string `locationName:"keyMaterial" type:"string"`
+	KeyMaterial *string `locationName:"keyMaterial" type:"string" sensitive:"true"`
 
 	// The name of the key pair.
 	KeyName *string `locationName:"keyName" type:"string"`
@@ -43392,9 +43529,8 @@ type CreateTrafficMirrorSessionInput struct {
 	// The number of bytes in each packet to mirror. These are bytes after the VXLAN
 	// header. Do not specify this parameter when you want to mirror the entire
 	// packet. To mirror a subset of the packet, set this to the length (in bytes)
-	// that you want to mirror. For example, if you set this value to 1network0,
-	// then the first 100 bytes that meet the filter criteria are copied to the
-	// target.
+	// that you want to mirror. For example, if you set this value to 100, then
+	// the first 100 bytes that meet the filter criteria are copied to the target.
 	//
 	// If you do not want to mirror the entire packet, use the PacketLength parameter
 	// to specify the number of bytes in each packet to mirror.
@@ -66863,8 +66999,7 @@ func (s *GroupIdentifier) SetGroupName(v string) *GroupIdentifier {
 
 // Indicates whether your instance is configured for hibernation. This parameter
 // is valid only if the instance meets the hibernation prerequisites (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Hibernate.html#hibernating-prerequisites).
-// Hibernation is currently supported only for Amazon Linux. For more information,
-// see Hibernate Your Instance (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Hibernate.html)
+// For more information, see Hibernate Your Instance (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Hibernate.html)
 // in the Amazon Elastic Compute Cloud User Guide.
 type HibernationOptions struct {
 	_ struct{} `type:"structure"`
@@ -66892,8 +67027,7 @@ func (s *HibernationOptions) SetConfigured(v bool) *HibernationOptions {
 
 // Indicates whether your instance is configured for hibernation. This parameter
 // is valid only if the instance meets the hibernation prerequisites (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Hibernate.html#hibernating-prerequisites).
-// Hibernation is currently supported only for Amazon Linux. For more information,
-// see Hibernate Your Instance (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Hibernate.html)
+// For more information, see Hibernate Your Instance (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Hibernate.html)
 // in the Amazon Elastic Compute Cloud User Guide.
 type HibernationOptionsRequest struct {
 	_ struct{} `type:"structure"`
@@ -68673,7 +68807,7 @@ type ImportInstanceLaunchSpecification struct {
 	SubnetId *string `locationName:"subnetId" type:"string"`
 
 	// The Base64-encoded user data to make available to the instance.
-	UserData *UserData `locationName:"userData" type:"structure"`
+	UserData *UserData `locationName:"userData" type:"structure" sensitive:"true"`
 }
 
 // String returns the string representation
@@ -72302,7 +72436,6 @@ func (s *LaunchTemplateHibernationOptions) SetConfigured(v bool) *LaunchTemplate
 
 // Indicates whether the instance is configured for hibernation. This parameter
 // is valid only if the instance meets the hibernation prerequisites (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Hibernate.html#hibernating-prerequisites).
-// Hibernation is currently supported only for Amazon Linux.
 type LaunchTemplateHibernationOptionsRequest struct {
 	_ struct{} `type:"structure"`
 
@@ -80630,7 +80763,8 @@ type PurchaseReservedInstancesOfferingInput struct {
 	// prices.
 	LimitPrice *ReservedInstanceLimitPrice `locationName:"limitPrice" type:"structure"`
 
-	// The time at which to purchase the Reserved Instance.
+	// The time at which to purchase the Reserved Instance, in UTC format (for example,
+	// YYYY-MM-DDTHH:MM:SSZ).
 	PurchaseTime *time.Time `type:"timestamp"`
 
 	// The ID of the Reserved Instance offering to purchase.
@@ -82377,8 +82511,7 @@ type RequestLaunchTemplateData struct {
 
 	// Indicates whether an instance is enabled for hibernation. This parameter
 	// is valid only if the instance meets the hibernation prerequisites (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Hibernate.html#hibernating-prerequisites).
-	// Hibernation is currently supported only for Amazon Linux. For more information,
-	// see Hibernate Your Instance (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Hibernate.html)
+	// For more information, see Hibernate Your Instance (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Hibernate.html)
 	// in the Amazon Elastic Compute Cloud User Guide.
 	HibernationOptions *LaunchTemplateHibernationOptionsRequest `type:"structure"`
 
@@ -89470,14 +89603,14 @@ type SpotOptions struct {
 	// Indicates how to allocate the target Spot Instance capacity across the Spot
 	// Instance pools specified by the EC2 Fleet.
 	//
-	// If the allocation strategy is lowestPrice, EC2 Fleet launches instances from
-	// the Spot Instance pools with the lowest price. This is the default allocation
+	// If the allocation strategy is lowest-price, EC2 Fleet launches instances
+	// from the Spot Instance pools with the lowest price. This is the default allocation
 	// strategy.
 	//
 	// If the allocation strategy is diversified, EC2 Fleet launches instances from
 	// all the Spot Instance pools that you specify.
 	//
-	// If the allocation strategy is capacityOptimized, EC2 Fleet launches instances
+	// If the allocation strategy is capacity-optimized, EC2 Fleet launches instances
 	// from Spot Instance pools with optimal capacity for the number of instances
 	// that are launching.
 	AllocationStrategy *string `locationName:"allocationStrategy" type:"string" enum:"SpotAllocationStrategy"`
@@ -89486,7 +89619,7 @@ type SpotOptions struct {
 	InstanceInterruptionBehavior *string `locationName:"instanceInterruptionBehavior" type:"string" enum:"SpotInstanceInterruptionBehavior"`
 
 	// The number of Spot pools across which to allocate your target Spot capacity.
-	// Valid only when AllocationStrategy is set to lowestPrice. EC2 Fleet selects
+	// Valid only when AllocationStrategy is set to lowest-price. EC2 Fleet selects
 	// the cheapest Spot pools and evenly allocates your target Spot capacity across
 	// the number of Spot pools that you specify.
 	InstancePoolsToUseCount *int64 `locationName:"instancePoolsToUseCount" type:"integer"`
@@ -89566,14 +89699,14 @@ type SpotOptionsRequest struct {
 	// Indicates how to allocate the target Spot Instance capacity across the Spot
 	// Instance pools specified by the EC2 Fleet.
 	//
-	// If the allocation strategy is lowestPrice, EC2 Fleet launches instances from
-	// the Spot Instance pools with the lowest price. This is the default allocation
+	// If the allocation strategy is lowest-price, EC2 Fleet launches instances
+	// from the Spot Instance pools with the lowest price. This is the default allocation
 	// strategy.
 	//
 	// If the allocation strategy is diversified, EC2 Fleet launches instances from
 	// all the Spot Instance pools that you specify.
 	//
-	// If the allocation strategy is capacityOptimized, EC2 Fleet launches instances
+	// If the allocation strategy is capacity-optimized, EC2 Fleet launches instances
 	// from Spot Instance pools with optimal capacity for the number of instances
 	// that are launching.
 	AllocationStrategy *string `type:"string" enum:"SpotAllocationStrategy"`
@@ -93413,7 +93546,7 @@ func (s *UserBucketDetails) SetS3Key(v string) *UserBucketDetails {
 
 // Describes the user data for an instance.
 type UserData struct {
-	_ struct{} `type:"structure"`
+	_ struct{} `type:"structure" sensitive:"true"`
 
 	// The user data. If you are using an AWS SDK or command line tool, Base64-encoding
 	// is performed for you, and you can load the text from a file. Otherwise, you
@@ -97182,6 +97315,12 @@ const (
 
 	// InstanceTypeU12tb1Metal is a InstanceType enum value
 	InstanceTypeU12tb1Metal = "u-12tb1.metal"
+
+	// InstanceTypeU18tb1Metal is a InstanceType enum value
+	InstanceTypeU18tb1Metal = "u-18tb1.metal"
+
+	// InstanceTypeU24tb1Metal is a InstanceType enum value
+	InstanceTypeU24tb1Metal = "u-24tb1.metal"
 
 	// InstanceTypeA1Medium is a InstanceType enum value
 	InstanceTypeA1Medium = "a1.medium"
