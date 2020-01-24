@@ -165,7 +165,10 @@ func (r *Reader) run() {
 				close(r.done)
 				return
 			}
-			fmt.Fprintf(r.w, "error reading websocket: %s\n", err)
+			fmt.Fprintf(r.w, "error reading websocket, will retry in 10 seconds: %s\n", err)
+			// Even though we sleep between connection retries, we found it's possible to DOS Loki if the connection
+			// succeeds but some other error is returned, so also sleep here before retrying.
+			<-time.After(10 * time.Second)
 			r.closeAndReconnect()
 			continue
 		}
@@ -207,7 +210,7 @@ func (r *Reader) closeAndReconnect() {
 		c, _, err := websocket.DefaultDialer.Dial(u.String(), r.header)
 		if err != nil {
 			fmt.Fprintf(r.w, "failed to connect to %s with err %s\n", u.String(), err)
-			<-time.After(5 * time.Second)
+			<-time.After(10 * time.Second)
 			continue
 		}
 		r.conn = c
