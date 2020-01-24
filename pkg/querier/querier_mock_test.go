@@ -103,8 +103,7 @@ func (c *queryClientMock) Recv() (*logproto.QueryResponse, error) {
 	if res == nil {
 		return (*logproto.QueryResponse)(nil), args.Error(1)
 	}
-	return args.Get(0).(*logproto.QueryResponse), args.Error(1)
-
+	return res.(*logproto.QueryResponse), args.Error(1)
 }
 
 func (c *queryClientMock) Header() (grpc_metadata.MD, error) {
