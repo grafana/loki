@@ -275,6 +275,11 @@ func mergePair(s1, s2 []string) []string {
 
 // Tail keeps getting matching logs from all ingesters for given query
 func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
+	err := q.checkTailRequestLimit(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	histReq := logql.SelectParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  req.Query,
@@ -285,7 +290,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		},
 	}
 
-	err := q.validateQueryRequest(ctx, histReq.QueryRequest)
+	err = q.validateQueryRequest(ctx, histReq.QueryRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -533,6 +538,59 @@ func (q *Querier) validateQueryTimeRange(userID string, from *time.Time, through
 	maxQueryLength := q.limits.MaxQueryLength(userID)
 	if maxQueryLength > 0 && (*through).Sub(*from) > maxQueryLength {
 		return httpgrpc.Errorf(http.StatusBadRequest, cortex_validation.ErrQueryTooLong, (*through).Sub(*from), maxQueryLength)
+	}
+
+	return nil
+}
+
+func (q *Querier) checkTailRequestLimit(ctx context.Context) error {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return err
+	}
+
+	replicationSet, err := q.ring.GetAll()
+	if err != nil {
+		return err
+	}
+
+	// we want to check count of active tailers with only active ingesters
+	ingesters := make([]ring.IngesterDesc, 0, 1)
+	for i := range replicationSet.Ingesters {
+		if replicationSet.Ingesters[i].State == ring.ACTIVE {
+			ingesters = append(ingesters, replicationSet.Ingesters[i])
+		}
+	}
+
+	if len(ingesters) == 0 {
+		return httpgrpc.Errorf(http.StatusInternalServerError, "no active ingester found")
+	}
+
+	responses, err := q.forGivenIngesters(ctx, replicationSet, func(querierClient logproto.QuerierClient) (interface{}, error) {
+		resp, err := querierClient.TailersCount(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+		return resp.Count, nil
+	})
+	// We are only checking active ingesters, and any error returned stops checking other ingesters
+	// so return that error here as well.
+	if err != nil {
+		return err
+	}
+
+	var maxCnt uint32
+	maxCnt = 0
+	for _, resp := range responses {
+		r := resp.response.(uint32)
+		if r > maxCnt {
+			maxCnt = r
+		}
+	}
+
+	if maxCnt >= uint32(q.limits.MaxConcurrentTailRequests(userID)) {
+		return httpgrpc.Errorf(http.StatusBadRequest,
+			"max concurrent tail requests limit exceeded, count > limit (%d > %d)", maxCnt+1, 1)
 	}
 
 	return nil

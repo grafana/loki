@@ -324,6 +324,23 @@ func (i *instance) addNewTailer(t *tailer) {
 }
 
 func (i *instance) addTailersToNewStream(stream *stream) {
+	i.tailerMtx.RLock()
+	defer i.tailerMtx.RUnlock()
+
+	for _, t := range i.tailers {
+		// we don't want to watch streams for closed tailers.
+		// When a new tail request comes in we will clean references to closed tailers
+		if t.isClosed() {
+			continue
+		}
+
+		if stream.matchesTailer(t) {
+			stream.addTailer(t)
+		}
+	}
+}
+
+func (i *instance) checkClosedTailers() {
 	closedTailers := []uint32{}
 
 	i.tailerMtx.RLock()
@@ -331,10 +348,6 @@ func (i *instance) addTailersToNewStream(stream *stream) {
 		if t.isClosed() {
 			closedTailers = append(closedTailers, t.getID())
 			continue
-		}
-
-		if stream.matchesTailer(t) {
-			stream.addTailer(t)
 		}
 	}
 	i.tailerMtx.RUnlock()
@@ -354,6 +367,15 @@ func (i *instance) closeTailers() {
 	for _, t := range i.tailers {
 		t.close()
 	}
+}
+
+func (i *instance) openTailersCount() uint32 {
+	i.checkClosedTailers()
+
+	i.tailerMtx.RLock()
+	defer i.tailerMtx.RUnlock()
+
+	return uint32(len(i.tailers))
 }
 
 func isDone(ctx context.Context) bool {

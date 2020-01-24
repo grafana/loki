@@ -96,6 +96,7 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	ingesterClient := newQuerierClientMock()
 	ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
 	ingesterClient.On("Tail", mock.Anything, &request, mock.Anything).Return(tailClient, nil)
+	ingesterClient.On("TailersCount", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.TailersCountResponse{}, nil)
 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
@@ -519,6 +520,89 @@ func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 			ingesterClient.AssertExpectations(t)
 			store.AssertExpectations(t)
 
+		})
+	}
+}
+
+func TestQuerier_concurrentTailLimits(t *testing.T) {
+	request := logproto.TailRequest{
+		Query:    "{type=\"test\"}",
+		DelayFor: 0,
+		Limit:    10,
+		Start:    time.Now(),
+	}
+
+	t.Parallel()
+
+	tests := map[string]struct {
+		ringIngesters []ring.IngesterDesc
+		expectedError error
+		tailersCount  uint32
+	}{
+		"empty ring": {
+			ringIngesters: []ring.IngesterDesc{},
+			expectedError: httpgrpc.Errorf(http.StatusInternalServerError, "no active ingester found"),
+		},
+		"ring containing one pending ingester": {
+			ringIngesters: []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.PENDING)},
+			expectedError: httpgrpc.Errorf(http.StatusInternalServerError, "no active ingester found"),
+		},
+		"ring containing one active ingester and 0 active tailers": {
+			ringIngesters: []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE)},
+		},
+		"ring containing one active ingester and 1 active tailer": {
+			ringIngesters: []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE)},
+			tailersCount:  1,
+		},
+		"ring containing one pending and active ingester with 1 active tailer": {
+			ringIngesters: []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.PENDING), mockIngesterDesc("2.2.2.2", ring.ACTIVE)},
+			tailersCount:  1,
+		},
+		"ring containing one active ingester and max active tailers": {
+			ringIngesters: []ring.IngesterDesc{mockIngesterDesc("1.1.1.1", ring.ACTIVE)},
+			expectedError: httpgrpc.Errorf(http.StatusBadRequest,
+				"max concurrent tail requests limit exceeded, count > limit (%d > %d)", 6, 1),
+			tailersCount: 5,
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+
+		t.Run(testName, func(t *testing.T) {
+			// For this test's purpose, whenever a new ingester client needs to
+			// be created, the factory will always return the same mock instance
+			store := newStoreMock()
+			store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(1, 2), nil)
+
+			queryClient := newQueryClientMock()
+			queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream(1, 2)}), nil)
+
+			tailClient := newTailClientMock()
+			tailClient.On("Recv").Return(mockTailResponse(mockStream(1, 2)), nil)
+
+			ingesterClient := newQuerierClientMock()
+			ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
+			ingesterClient.On("Tail", mock.Anything, &request, mock.Anything).Return(tailClient, nil)
+			ingesterClient.On("TailersCount", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.TailersCountResponse{testData.tailersCount}, nil)
+
+			defaultLimits := defaultLimitsTestConfig()
+			defaultLimits.MaxConcurrentTailRequests = 5
+
+			limits, err := validation.NewOverrides(defaultLimits, nil)
+			require.NoError(t, err)
+
+			q, err := newQuerier(
+				mockQuerierConfig(),
+				mockIngesterClientConfig(),
+				newIngesterClientMockFactory(ingesterClient),
+				newReadRingMock(testData.ringIngesters),
+				store, limits)
+			require.NoError(t, err)
+
+			ctx := user.InjectOrgID(context.Background(), "test")
+			_, err = q.Tail(ctx, &request)
+			assert.Equal(t, testData.expectedError, err)
 		})
 	}
 }

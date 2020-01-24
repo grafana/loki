@@ -40,6 +40,7 @@ type Limits struct {
 	MaxQueryParallelism        int           `yaml:"max_query_parallelism"`
 	CardinalityLimit           int           `yaml:"cardinality_limit"`
 	MaxStreamsMatchersPerQuery int           `yaml:"max_streams_matchers_per_query"`
+	MaxConcurrentTailRequests  int           `yaml:"max_concurrent_tail_requests"`
 
 	// Config for overrides, convenient if it goes here.
 	PerTenantOverrideConfig string        `yaml:"per_tenant_override_config"`
@@ -67,6 +68,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of queries will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Limit the number of streams matchers per query")
+	f.IntVar(&l.MaxConcurrentTailRequests, "querier.max-concurrent-tail-requests", 10, "Limit the number of concurrent tail requests")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides.")
 	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with this to reload the overrides.")
@@ -210,6 +212,11 @@ func (o *Overrides) CardinalityLimit(userID string) int {
 // MaxStreamsMatchersPerQuery returns the limit to number of streams matchers per query.
 func (o *Overrides) MaxStreamsMatchersPerQuery(userID string) int {
 	return o.getOverridesForUser(userID).MaxStreamsMatchersPerQuery
+}
+
+// MaxConcurrentTailRequests returns the limit to number of concurrent tail requests.
+func (o *Overrides) MaxConcurrentTailRequests(userID string) int {
+	return o.getOverridesForUser(userID).MaxConcurrentTailRequests
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
