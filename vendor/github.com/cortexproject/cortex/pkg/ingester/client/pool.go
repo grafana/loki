@@ -32,7 +32,7 @@ type Factory func(addr string) (grpc_health_v1.HealthClient, error)
 type PoolConfig struct {
 	ClientCleanupPeriod  time.Duration `yaml:"client_cleanup_period,omitempty"`
 	HealthCheckIngesters bool          `yaml:"health_check_ingesters,omitempty"`
-	RemoteTimeout        time.Duration
+	RemoteTimeout        time.Duration `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.

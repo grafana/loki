@@ -146,7 +146,7 @@ func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate boo
 	}
 
 	lastChunk := stream.chunks[len(stream.chunks)-1]
-	if len(stream.chunks) == 1 && time.Since(lastChunk.lastUpdated) < i.cfg.MaxChunkIdle && !immediate {
+	if len(stream.chunks) == 1 && !immediate && !i.shouldFlushChunk(&lastChunk) {
 		return
 	}
 
@@ -246,7 +246,10 @@ func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) bool {
 	}
 
 	if time.Since(chunk.lastUpdated) > i.cfg.MaxChunkIdle {
-		chunk.closed = true
+		return true
+	}
+
+	if from, to := chunk.chunk.Bounds(); to.Sub(from) > i.cfg.MaxChunkAge {
 		return true
 	}
 

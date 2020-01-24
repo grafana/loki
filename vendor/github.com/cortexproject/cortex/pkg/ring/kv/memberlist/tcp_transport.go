@@ -49,14 +49,14 @@ type TCPTransportConfig struct {
 
 	// WriteTo is used to send "UDP" packets. Since we use TCP, we can detect more errors,
 	// but memberlist doesn't seem to cope with that very well.
-	ReportWriteToErrors bool
+	ReportWriteToErrors bool `yaml:"-"`
 
 	// Transport logs lot of messages at debug level, so it deserves an extra flag for turning it on
-	TransportDebug bool
+	TransportDebug bool `yaml:"-"`
 
 	// Where to put custom metrics. nil = don't register.
-	MetricsRegisterer prometheus.Registerer
-	MetricsNamespace  string
+	MetricsRegisterer prometheus.Registerer `yaml:"-"`
+	MetricsNamespace  string                `yaml:"-"`
 }
 
 // RegisterFlags registers flags.

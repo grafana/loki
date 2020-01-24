@@ -424,8 +424,8 @@ func (cfg *PeriodicTableConfig) periodicTables(from, through model.Time, pCfg Pr
 		nowWeek        = now / periodSecs
 		result         = []TableDesc{}
 	)
-	// If through ends on 00:00 of the day, don't include the upcoming day
-	if through.Unix()%secondsInDay == 0 {
+	// If interval ends exactly on a period boundary, don’t include the upcoming period
+	if through.Unix()%periodSecs == 0 {
 		lastTable--
 	}
 	// Don't make tables further back than the configured retention

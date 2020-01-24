@@ -1,16 +1,6 @@
-// Copyright 2015 Google LLC
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Copyright 2015 Google LLC.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 
 // Package grpc supports network connections to GRPC servers.
 // This package is not intended for use by end developers. Use the
@@ -118,7 +108,7 @@ func dial(ctx context.Context, insecure bool, opts []option.ClientOption) (*grpc
 	// Add tracing, but before the other options, so that clients can override the
 	// gRPC stats handler.
 	// This assumes that gRPC options are processed in order, left to right.
-	grpcOpts = addOCStatsHandler(grpcOpts)
+	grpcOpts = addOCStatsHandler(grpcOpts, o)
 	grpcOpts = append(grpcOpts, o.GRPCDialOpts...)
 	if o.UserAgent != "" {
 		grpcOpts = append(grpcOpts, grpc.WithUserAgent(o.UserAgent))
@@ -135,7 +125,10 @@ func dial(ctx context.Context, insecure bool, opts []option.ClientOption) (*grpc
 	return grpc.DialContext(ctx, o.Endpoint, grpcOpts...)
 }
 
-func addOCStatsHandler(opts []grpc.DialOption) []grpc.DialOption {
+func addOCStatsHandler(opts []grpc.DialOption, settings internal.DialSettings) []grpc.DialOption {
+	if settings.TelemetryDisabled {
+		return opts
+	}
 	return append(opts, grpc.WithStatsHandler(&ocgrpc.ClientHandler{}))
 }
 

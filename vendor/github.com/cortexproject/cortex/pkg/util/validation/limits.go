@@ -3,10 +3,7 @@ package validation
 import (
 	"errors"
 	"flag"
-	"os"
 	"time"
-
-	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -55,7 +52,7 @@ type Limits struct {
 	MaxQueryParallelism int           `yaml:"max_query_parallelism"`
 	CardinalityLimit    int           `yaml:"cardinality_limit"`
 
-	// Config for overrides, convenient if it goes here.
+	// Config for overrides, convenient if it goes here. [Deprecated in favor of RuntimeConfig flag in cortex.Config]
 	PerTenantOverrideConfig string        `yaml:"per_tenant_override_config"`
 	PerTenantOverridePeriod time.Duration `yaml:"per_tenant_override_period"`
 }
@@ -90,8 +87,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of queries will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 
-	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides.")
-	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with which to reload the overrides.")
+	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides. [deprecated, use -runtime-config.file instead]")
+	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with which to reload the overrides. [deprecated, use -runtime-config.reload-period instead]")
 }
 
 // Validate the limits config and returns an error if the validation
@@ -126,197 +123,169 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // find a nicer way I'm afraid.
 var defaultLimits *Limits
 
+// SetDefaultLimitsForYAMLUnmarshalling sets global default limits, used when loading
+// Limits from YAML files. This is used to ensure per-tenant limits are defaulted to
+// those values.
+func SetDefaultLimitsForYAMLUnmarshalling(defaults Limits) {
+	defaultLimits = &defaults
+}
+
+// TenantLimits is a function that returns limits for given tenant, or
+// nil, if there are no tenant-specific limits.
+type TenantLimits func(userID string) *Limits
+
 // Overrides periodically fetch a set of per-user overrides, and provides convenience
 // functions for fetching the correct value.
 type Overrides struct {
-	overridesManager *OverridesManager
+	defaultLimits *Limits
+	tenantLimits  TenantLimits
 }
 
 // NewOverrides makes a new Overrides.
-// We store the supplied limits in a global variable to ensure per-tenant limits
-// are defaulted to those values.  As such, the last call to NewOverrides will
-// become the new global defaults.
-func NewOverrides(defaults Limits) (*Overrides, error) {
-	defaultLimits = &defaults
-	overridesManagerConfig := OverridesManagerConfig{
-		OverridesReloadPeriod: defaults.PerTenantOverridePeriod,
-		OverridesLoadPath:     defaults.PerTenantOverrideConfig,
-		OverridesLoader:       loadOverrides,
-		Defaults:              &defaults,
-	}
-
-	overridesManager, err := NewOverridesManager(overridesManagerConfig)
-	if err != nil {
-		return nil, err
-	}
-
+func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error) {
 	return &Overrides{
-		overridesManager: overridesManager,
+		tenantLimits:  tenantLimits,
+		defaultLimits: &defaults,
 	}, nil
-}
-
-// Stop background reloading of overrides.
-func (o *Overrides) Stop() {
-	o.overridesManager.Stop()
 }
 
 // IngestionRate returns the limit on ingester rate (samples per second).
 func (o *Overrides) IngestionRate(userID string) float64 {
-	return o.overridesManager.GetLimits(userID).(*Limits).IngestionRate
+	return o.getOverridesForUser(userID).IngestionRate
 }
 
 // IngestionRateStrategy returns whether the ingestion rate limit should be individually applied
 // to each distributor instance (local) or evenly shared across the cluster (global).
 func (o *Overrides) IngestionRateStrategy() string {
 	// The ingestion rate strategy can't be overridden on a per-tenant basis
-	defaultLimits := o.overridesManager.cfg.Defaults
-	return defaultLimits.(*Limits).IngestionRateStrategy
+	return o.defaultLimits.IngestionRateStrategy
 }
 
 // IngestionBurstSize returns the burst size for ingestion rate.
 func (o *Overrides) IngestionBurstSize(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).IngestionBurstSize
+	return o.getOverridesForUser(userID).IngestionBurstSize
 }
 
 // AcceptHASamples returns whether the distributor should track and accept samples from HA replicas for this user.
 func (o *Overrides) AcceptHASamples(userID string) bool {
-	return o.overridesManager.GetLimits(userID).(*Limits).AcceptHASamples
+	return o.getOverridesForUser(userID).AcceptHASamples
 }
 
 // HAClusterLabel returns the cluster label to look for when deciding whether to accept a sample from a Prometheus HA replica.
 func (o *Overrides) HAClusterLabel(userID string) string {
-	return o.overridesManager.GetLimits(userID).(*Limits).HAClusterLabel
+	return o.getOverridesForUser(userID).HAClusterLabel
 }
 
 // HAReplicaLabel returns the replica label to look for when deciding whether to accept a sample from a Prometheus HA replica.
 func (o *Overrides) HAReplicaLabel(userID string) string {
-	return o.overridesManager.GetLimits(userID).(*Limits).HAReplicaLabel
+	return o.getOverridesForUser(userID).HAReplicaLabel
 }
 
 // DropLabels returns the list of labels to be dropped when ingesting HA samples for the user.
 func (o *Overrides) DropLabels(userID string) flagext.StringSlice {
-	return o.overridesManager.GetLimits(userID).(*Limits).DropLabels
+	return o.getOverridesForUser(userID).DropLabels
 }
 
 // MaxLabelNameLength returns maximum length a label name can be.
 func (o *Overrides) MaxLabelNameLength(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxLabelNameLength
+	return o.getOverridesForUser(userID).MaxLabelNameLength
 }
 
 // MaxLabelValueLength returns maximum length a label value can be. This also is
 // the maximum length of a metric name.
 func (o *Overrides) MaxLabelValueLength(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxLabelValueLength
+	return o.getOverridesForUser(userID).MaxLabelValueLength
 }
 
 // MaxLabelNamesPerSeries returns maximum number of label/value pairs timeseries.
 func (o *Overrides) MaxLabelNamesPerSeries(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxLabelNamesPerSeries
+	return o.getOverridesForUser(userID).MaxLabelNamesPerSeries
 }
 
 // RejectOldSamples returns true when we should reject samples older than certain
 // age.
 func (o *Overrides) RejectOldSamples(userID string) bool {
-	return o.overridesManager.GetLimits(userID).(*Limits).RejectOldSamples
+	return o.getOverridesForUser(userID).RejectOldSamples
 }
 
 // RejectOldSamplesMaxAge returns the age at which samples should be rejected.
 func (o *Overrides) RejectOldSamplesMaxAge(userID string) time.Duration {
-	return o.overridesManager.GetLimits(userID).(*Limits).RejectOldSamplesMaxAge
+	return o.getOverridesForUser(userID).RejectOldSamplesMaxAge
 }
 
 // CreationGracePeriod is misnamed, and actually returns how far into the future
 // we should accept samples.
 func (o *Overrides) CreationGracePeriod(userID string) time.Duration {
-	return o.overridesManager.GetLimits(userID).(*Limits).CreationGracePeriod
+	return o.getOverridesForUser(userID).CreationGracePeriod
 }
 
 // MaxSeriesPerQuery returns the maximum number of series a query is allowed to hit.
 func (o *Overrides) MaxSeriesPerQuery(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxSeriesPerQuery
+	return o.getOverridesForUser(userID).MaxSeriesPerQuery
 }
 
 // MaxSamplesPerQuery returns the maximum number of samples in a query (from the ingester).
 func (o *Overrides) MaxSamplesPerQuery(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxSamplesPerQuery
+	return o.getOverridesForUser(userID).MaxSamplesPerQuery
 }
 
 // MaxLocalSeriesPerUser returns the maximum number of series a user is allowed to store in a single ingester.
 func (o *Overrides) MaxLocalSeriesPerUser(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxLocalSeriesPerUser
+	return o.getOverridesForUser(userID).MaxLocalSeriesPerUser
 }
 
 // MaxLocalSeriesPerMetric returns the maximum number of series allowed per metric in a single ingester.
 func (o *Overrides) MaxLocalSeriesPerMetric(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxLocalSeriesPerMetric
+	return o.getOverridesForUser(userID).MaxLocalSeriesPerMetric
 }
 
 // MaxGlobalSeriesPerUser returns the maximum number of series a user is allowed to store across the cluster.
 func (o *Overrides) MaxGlobalSeriesPerUser(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxGlobalSeriesPerUser
+	return o.getOverridesForUser(userID).MaxGlobalSeriesPerUser
 }
 
 // MaxGlobalSeriesPerMetric returns the maximum number of series allowed per metric across the cluster.
 func (o *Overrides) MaxGlobalSeriesPerMetric(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxGlobalSeriesPerMetric
+	return o.getOverridesForUser(userID).MaxGlobalSeriesPerMetric
 }
 
 // MaxChunksPerQuery returns the maximum number of chunks allowed per query.
 func (o *Overrides) MaxChunksPerQuery(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxChunksPerQuery
+	return o.getOverridesForUser(userID).MaxChunksPerQuery
 }
 
 // MaxQueryLength returns the limit of the length (in time) of a query.
 func (o *Overrides) MaxQueryLength(userID string) time.Duration {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxQueryLength
+	return o.getOverridesForUser(userID).MaxQueryLength
 }
 
 // MaxQueryParallelism returns the limit to the number of sub-queries the
 // frontend will process in parallel.
 func (o *Overrides) MaxQueryParallelism(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MaxQueryParallelism
+	return o.getOverridesForUser(userID).MaxQueryParallelism
 }
 
 // EnforceMetricName whether to enforce the presence of a metric name.
 func (o *Overrides) EnforceMetricName(userID string) bool {
-	return o.overridesManager.GetLimits(userID).(*Limits).EnforceMetricName
+	return o.getOverridesForUser(userID).EnforceMetricName
 }
 
 // CardinalityLimit returns the maximum number of timeseries allowed in a query.
 func (o *Overrides) CardinalityLimit(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).CardinalityLimit
+	return o.getOverridesForUser(userID).CardinalityLimit
 }
 
 // MinChunkLength returns the minimum size of chunk that will be saved by ingesters
 func (o *Overrides) MinChunkLength(userID string) int {
-	return o.overridesManager.GetLimits(userID).(*Limits).MinChunkLength
+	return o.getOverridesForUser(userID).MinChunkLength
 }
 
-// Loads overrides and returns the limits as an interface to store them in OverridesManager.
-// We need to implement it here since OverridesManager must store type Limits in an interface but
-// it doesn't know its definition to initialize it.
-// We could have used yamlv3.Node for this but there is no way to enforce strict decoding due to a bug in it
-// TODO: Use yamlv3.Node to move this to OverridesManager after https://github.com/go-yaml/yaml/issues/460 is fixed
-func loadOverrides(filename string) (map[string]interface{}, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, err
+func (o *Overrides) getOverridesForUser(userID string) *Limits {
+	if o.tenantLimits != nil {
+		l := o.tenantLimits(userID)
+		if l != nil {
+			return l
+		}
 	}
-
-	var overrides struct {
-		Overrides map[string]*Limits `yaml:"overrides"`
-	}
-
-	decoder := yaml.NewDecoder(f)
-	decoder.SetStrict(true)
-	if err := decoder.Decode(&overrides); err != nil {
-		return nil, err
-	}
-
-	overridesAsInterface := map[string]interface{}{}
-	for userID := range overrides.Overrides {
-		overridesAsInterface[userID] = overrides.Overrides[userID]
-	}
-
-	return overridesAsInterface, nil
+	return o.defaultLimits
 }

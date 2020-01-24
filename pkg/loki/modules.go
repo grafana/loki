@@ -12,6 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -36,6 +37,7 @@ type moduleName int
 // The various modules that make up Loki.
 const (
 	Ring moduleName = iota
+	RuntimeConfig
 	Overrides
 	Server
 	Distributor
@@ -60,6 +62,8 @@ func (m moduleName) String() string {
 	switch m {
 	case Ring:
 		return "ring"
+	case RuntimeConfig:
+		return "runtime-config"
 	case Overrides:
 		return "overrides"
 	case Server:
@@ -87,6 +91,9 @@ func (m *moduleName) Set(s string) error {
 	switch strings.ToLower(s) {
 	case "ring":
 		*m = Ring
+		return nil
+	case "runtime-config":
+		*m = RuntimeConfig
 		return nil
 	case "overrides":
 		*m = Overrides
@@ -126,6 +133,7 @@ func (t *Loki) initServer() (err error) {
 }
 
 func (t *Loki) initRing() (err error) {
+	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.ring, err = ring.New(t.cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
 	if err != nil {
 		return
@@ -135,8 +143,27 @@ func (t *Loki) initRing() (err error) {
 	return
 }
 
+func (t *Loki) initRuntimeConfig() (err error) {
+	if t.cfg.RuntimeConfig.LoadPath == "" {
+		t.cfg.RuntimeConfig.LoadPath = t.cfg.LimitsConfig.PerTenantOverrideConfig
+		t.cfg.RuntimeConfig.ReloadPeriod = t.cfg.LimitsConfig.PerTenantOverridePeriod
+	}
+	t.cfg.RuntimeConfig.Loader = loadRuntimeConfig
+
+	// make sure to set default limits before we start loading configuration into memory
+	validation.SetDefaultLimitsForYAMLUnmarshalling(t.cfg.LimitsConfig)
+
+	t.runtimeConfig, err = runtimeconfig.NewRuntimeConfigManager(t.cfg.RuntimeConfig)
+	return err
+}
+
+func (t *Loki) stopRuntimeConfig() (err error) {
+	t.runtimeConfig.Stop()
+	return nil
+}
+
 func (t *Loki) initOverrides() (err error) {
-	t.overrides, err = validation.NewOverrides(t.cfg.LimitsConfig)
+	t.overrides, err = validation.NewOverrides(t.cfg.LimitsConfig, tenantLimitsFromRuntimeConfig(t.runtimeConfig))
 	return err
 }
 
@@ -198,6 +225,7 @@ func (t *Loki) initQuerier() (err error) {
 }
 
 func (t *Loki) initIngester() (err error) {
+	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = &t.cfg.Server.GRPCListenPort
 	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides)
 	if err != nil {
@@ -392,12 +420,18 @@ var modules = map[moduleName]module{
 		init: (*Loki).initServer,
 	},
 
+	RuntimeConfig: {
+		init: (*Loki).initRuntimeConfig,
+		stop: (*Loki).stopRuntimeConfig,
+	},
+
 	Ring: {
-		deps: []moduleName{Server},
+		deps: []moduleName{RuntimeConfig, Server},
 		init: (*Loki).initRing,
 	},
 
 	Overrides: {
+		deps: []moduleName{RuntimeConfig},
 		init: (*Loki).initOverrides,
 	},
 

@@ -54,7 +54,7 @@ func TestIngestionRateStrategy(t *testing.T) {
 			var strategy limiter.RateLimiterStrategy
 
 			// Init limits overrides
-			overrides, err := validation.NewOverrides(testData.limits)
+			overrides, err := validation.NewOverrides(testData.limits, nil)
 			require.NoError(t, err)
 
 			// Instance the strategy

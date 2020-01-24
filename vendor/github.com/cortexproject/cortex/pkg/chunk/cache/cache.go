@@ -33,10 +33,10 @@ type Config struct {
 	Fifocache      FifoCacheConfig       `yaml:"fifocache,omitempty"`
 
 	// This is to name the cache metrics properly.
-	Prefix string `yaml:"prefix,omitempty"`
+	Prefix string `yaml:"prefix,omitempty" doc:"hidden"`
 
 	// For tests to inject specific implementations.
-	Cache Cache
+	Cache Cache `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet

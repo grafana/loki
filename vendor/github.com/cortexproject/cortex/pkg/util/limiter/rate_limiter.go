@@ -99,7 +99,7 @@ func (l *RateLimiter) recheckTenantLimiter(now time.Time, tenantID string) *rate
 	l.tenantsLock.Lock()
 	defer l.tenantsLock.Unlock()
 
-	entry, _ := l.tenants[tenantID]
+	entry := l.tenants[tenantID]
 
 	// We check again if the recheck period elapsed, cause it may
 	// have already been rechecked in the meanwhile.
