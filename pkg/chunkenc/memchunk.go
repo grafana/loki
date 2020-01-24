@@ -511,13 +511,11 @@ func (hb *headBlock) iterator(ctx context.Context, mint, maxt int64, filter logq
 	// the alternate would be that we allocate a new b.entries everytime we cut a block,
 	// but the tradeoff is that queries to near-realtime data would be much lower than
 	// cutting of blocks.
-
+	chunkStats.LinesUncompressed += int64(len(hb.entries))
 	entries := make([]entry, 0, len(hb.entries))
 	for _, e := range hb.entries {
-		line := []byte(e.s)
-		chunkStats.BytesUncompressed += int64(len(line))
-		chunkStats.LinesUncompressed++
-		if filter == nil || filter(line) {
+		chunkStats.BytesUncompressed += int64(len(e.s))
+		if filter == nil || filter([]byte(e.s)) {
 			entries = append(entries, e)
 		}
 	}
