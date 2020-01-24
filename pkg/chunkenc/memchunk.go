@@ -511,10 +511,10 @@ func (hb *headBlock) iterator(ctx context.Context, mint, maxt int64, filter logq
 	// the alternate would be that we allocate a new b.entries everytime we cut a block,
 	// but the tradeoff is that queries to near-realtime data would be much lower than
 	// cutting of blocks.
-	chunkStats.LinesUncompressed += int64(len(hb.entries))
+	chunkStats.HeadChunkLines += int64(len(hb.entries))
 	entries := make([]entry, 0, len(hb.entries))
 	for _, e := range hb.entries {
-		chunkStats.BytesUncompressed += int64(len(e.s))
+		chunkStats.HeadChunkBytes += int64(len(e.s))
 		if filter == nil || filter([]byte(e.s)) {
 			entries = append(entries, e)
 		}
@@ -582,7 +582,7 @@ type bufferedIterator struct {
 
 func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte, filter logql.Filter) *bufferedIterator {
 	chunkStats := stats.GetChunkData(ctx)
-	chunkStats.BytesCompressed += int64(len(b))
+	chunkStats.CompressedBytes += int64(len(b))
 	return &bufferedIterator{
 		stats:     chunkStats,
 		origBytes: b,
@@ -608,8 +608,8 @@ func (si *bufferedIterator) Next() bool {
 			return false
 		}
 		// we decode always the line length and ts as varint
-		si.stats.BytesDecompressed += int64(len(line)) + 2*binary.MaxVarintLen64
-		si.stats.LinesDecompressed++
+		si.stats.DecompressedBytes += int64(len(line)) + 2*binary.MaxVarintLen64
+		si.stats.DecompressedLines++
 		if si.filter != nil && !si.filter(line) {
 			continue
 		}

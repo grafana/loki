@@ -12,11 +12,11 @@ import (
 func TestSnapshot(t *testing.T) {
 	ctx := NewContext(context.Background())
 
-	GetChunkData(ctx).BytesUncompressed += 10
-	GetChunkData(ctx).LinesUncompressed += 20
-	GetChunkData(ctx).BytesDecompressed += 40
-	GetChunkData(ctx).LinesDecompressed += 20
-	GetChunkData(ctx).BytesCompressed += 30
+	GetChunkData(ctx).HeadChunkBytes += 10
+	GetChunkData(ctx).HeadChunkLines += 20
+	GetChunkData(ctx).DecompressedBytes += 40
+	GetChunkData(ctx).DecompressedLines += 20
+	GetChunkData(ctx).CompressedBytes += 30
 	GetChunkData(ctx).TotalDuplicates += 10
 
 	GetStoreData(ctx).TotalChunksRef += 50
@@ -35,11 +35,11 @@ func TestSnapshot(t *testing.T) {
 				TotalLinesSent:     60,
 			},
 			ChunkData: ChunkData{
-				BytesUncompressed: 10,
-				LinesUncompressed: 20,
-				BytesDecompressed: 24,
-				LinesDecompressed: 40,
-				BytesCompressed:   60,
+				HeadChunkBytes:    10,
+				HeadChunkLines:    20,
+				DecompressedBytes: 24,
+				DecompressedLines: 40,
+				CompressedBytes:   60,
 				TotalDuplicates:   2,
 			},
 			TotalReached: 2,
@@ -51,11 +51,11 @@ func TestSnapshot(t *testing.T) {
 				TimeDownloadingChunks: time.Second,
 			},
 			ChunkData: ChunkData{
-				BytesUncompressed: 10,
-				LinesUncompressed: 20,
-				BytesDecompressed: 40,
-				LinesDecompressed: 20,
-				BytesCompressed:   30,
+				HeadChunkBytes:    10,
+				HeadChunkLines:    20,
+				DecompressedBytes: 40,
+				DecompressedLines: 20,
+				CompressedBytes:   30,
 				TotalDuplicates:   10,
 			},
 		},
@@ -75,11 +75,11 @@ func fakeIngesterQuery(ctx context.Context) {
 	meta := d.addTrailer()
 
 	c, _ := jsoniter.MarshalToString(ChunkData{
-		BytesUncompressed: 5,
-		LinesUncompressed: 10,
-		BytesDecompressed: 12,
-		LinesDecompressed: 20,
-		BytesCompressed:   30,
+		HeadChunkBytes:    5,
+		HeadChunkLines:    10,
+		DecompressedBytes: 12,
+		DecompressedLines: 20,
+		CompressedBytes:   30,
 		TotalDuplicates:   1,
 	})
 	meta.Set(chunkDataKey, c)

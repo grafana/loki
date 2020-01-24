@@ -40,11 +40,11 @@ func TestCollectTrailer(t *testing.T) {
 		GetIngesterData(ingCtx).TotalChunksMatched++
 		GetIngesterData(ingCtx).TotalBatches = +2
 		GetIngesterData(ingCtx).TotalLinesSent = +3
-		GetChunkData(ingCtx).BytesUncompressed++
-		GetChunkData(ingCtx).LinesUncompressed++
-		GetChunkData(ingCtx).BytesDecompressed++
-		GetChunkData(ingCtx).LinesDecompressed++
-		GetChunkData(ingCtx).BytesCompressed++
+		GetChunkData(ingCtx).HeadChunkBytes++
+		GetChunkData(ingCtx).HeadChunkLines++
+		GetChunkData(ingCtx).DecompressedBytes++
+		GetChunkData(ingCtx).DecompressedLines++
+		GetChunkData(ingCtx).CompressedBytes++
 		GetChunkData(ingCtx).TotalDuplicates++
 		return nil
 	})
@@ -85,11 +85,11 @@ func TestCollectTrailer(t *testing.T) {
 	require.Equal(t, int64(2), res.TotalChunksMatched)
 	require.Equal(t, int64(4), res.TotalBatches)
 	require.Equal(t, int64(6), res.TotalLinesSent)
-	require.Equal(t, int64(2), res.BytesUncompressed)
-	require.Equal(t, int64(2), res.LinesUncompressed)
-	require.Equal(t, int64(2), res.BytesDecompressed)
-	require.Equal(t, int64(2), res.LinesDecompressed)
-	require.Equal(t, int64(2), res.BytesCompressed)
+	require.Equal(t, int64(2), res.HeadChunkBytes)
+	require.Equal(t, int64(2), res.HeadChunkLines)
+	require.Equal(t, int64(2), res.DecompressedBytes)
+	require.Equal(t, int64(2), res.DecompressedLines)
+	require.Equal(t, int64(2), res.CompressedBytes)
 	require.Equal(t, int64(2), res.TotalDuplicates)
 }
 

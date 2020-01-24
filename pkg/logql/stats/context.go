@@ -53,22 +53,22 @@ func Log(log log.Logger, r Result) {
 		"Ingester.TotalBatches", r.Ingester.TotalBatches,
 		"Ingester.TotalLinesSent", r.Ingester.TotalLinesSent,
 
-		"Ingester.BytesUncompressed", humanize.Bytes(uint64(r.Ingester.BytesUncompressed)),
-		"Ingester.LinesUncompressed", r.Ingester.LinesUncompressed,
-		"Ingester.BytesDecompressed", humanize.Bytes(uint64(r.Ingester.BytesDecompressed)),
-		"Ingester.LinesDecompressed", r.Ingester.LinesDecompressed,
-		"Ingester.BytesCompressed", humanize.Bytes(uint64(r.Ingester.BytesCompressed)),
+		"Ingester.HeadChunkBytes", humanize.Bytes(uint64(r.Ingester.HeadChunkBytes)),
+		"Ingester.HeadChunkLines", r.Ingester.HeadChunkLines,
+		"Ingester.DecompressedBytes", humanize.Bytes(uint64(r.Ingester.DecompressedBytes)),
+		"Ingester.DecompressedLines", r.Ingester.DecompressedLines,
+		"Ingester.CompressedBytes", humanize.Bytes(uint64(r.Ingester.CompressedBytes)),
 		"Ingester.TotalDuplicates", r.Ingester.TotalDuplicates,
 
 		"Store.TotalChunksRef", r.Store.TotalChunksRef,
 		"Store.TotalDownloadedChunks", r.Store.TotalDownloadedChunks,
 		"Store.TimeDownloadingChunks", r.Store.TimeDownloadingChunks,
 
-		"Store.BytesUncompressed", humanize.Bytes(uint64(r.Store.BytesUncompressed)),
-		"Store.LinesUncompressed", r.Store.LinesUncompressed,
-		"Store.BytesDecompressed", humanize.Bytes(uint64(r.Store.BytesDecompressed)),
-		"Store.LinesDecompressed", r.Store.LinesDecompressed,
-		"Store.BytesCompressed", humanize.Bytes(uint64(r.Store.BytesCompressed)),
+		"Store.HeadChunkBytes", humanize.Bytes(uint64(r.Store.HeadChunkBytes)),
+		"Store.HeadChunkLines", r.Store.HeadChunkLines,
+		"Store.DecompressedBytes", humanize.Bytes(uint64(r.Store.DecompressedBytes)),
+		"Store.DecompressedLines", r.Store.DecompressedLines,
+		"Store.CompressedBytes", humanize.Bytes(uint64(r.Store.CompressedBytes)),
 		"Store.TotalDuplicates", r.Store.TotalDuplicates,
 
 		"Summary.BytesProcessedPerSeconds", humanize.Bytes(uint64(r.Summary.BytesProcessedPerSeconds)),
@@ -112,11 +112,11 @@ func NewContext(ctx context.Context) context.Context {
 
 // ChunkData contains chunks specific statistics.
 type ChunkData struct {
-	BytesUncompressed int64 // Total bytes processed but was already in memory. (found in the headchunk)
-	LinesUncompressed int64 // Total lines processed but was already in memory. (found in the headchunk)
-	BytesDecompressed int64 // Total bytes decompressed and processed from chunks.
-	LinesDecompressed int64 // Total lines decompressed and processed from chunks.
-	BytesCompressed   int64 // Total bytes of compressed chunks (blocks) processed.
+	HeadChunkBytes    int64 // Total bytes processed but was already in memory. (found in the headchunk)
+	HeadChunkLines    int64 // Total lines processed but was already in memory. (found in the headchunk)
+	DecompressedBytes int64 // Total bytes decompressed and processed from chunks.
+	DecompressedLines int64 // Total lines decompressed and processed from chunks.
+	CompressedBytes   int64 // Total bytes of compressed chunks (blocks) processed.
 	TotalDuplicates   int64 // Total duplicates found while processing.
 }
 
@@ -178,13 +178,13 @@ func Snapshot(ctx context.Context, execTime time.Duration) Result {
 	}
 
 	// calculate the summary
-	res.Summary.TotalBytesProcessed = res.Store.BytesDecompressed + res.Store.BytesUncompressed +
-		res.Ingester.BytesDecompressed + res.Ingester.BytesUncompressed
+	res.Summary.TotalBytesProcessed = res.Store.DecompressedBytes + res.Store.HeadChunkBytes +
+		res.Ingester.DecompressedBytes + res.Ingester.HeadChunkBytes
 	res.Summary.BytesProcessedPerSeconds =
 		int64(float64(res.Summary.TotalBytesProcessed) /
 			execTime.Seconds())
-	res.Summary.TotalLinesProcessed = res.Store.LinesDecompressed + res.Store.LinesUncompressed +
-		res.Ingester.LinesDecompressed + res.Ingester.LinesUncompressed
+	res.Summary.TotalLinesProcessed = res.Store.DecompressedLines + res.Store.HeadChunkLines +
+		res.Ingester.DecompressedLines + res.Ingester.HeadChunkLines
 	res.Summary.LinesProcessedPerSeconds =
 		int64(float64(res.Summary.TotalLinesProcessed) /
 			execTime.Seconds())
