@@ -81,11 +81,11 @@ func Log(log log.Logger, r Result) {
 
 // Summary is the summary of a query statistics.
 type Summary struct {
-	BytesProcessedPerSeconds int64
-	LinesProcessedPerSeconds int64
-	TotalBytesProcessed      int64
-	TotalLinesProcessed      int64
-	ExecTime                 time.Duration
+	BytesProcessedPerSeconds int64         // Total bytes processed per seconds.
+	LinesProcessedPerSeconds int64         // Total lines processed per seconds.
+	TotalBytesProcessed      int64         // Total bytes processed.
+	TotalLinesProcessed      int64         // Total lines processed.
+	ExecTime                 time.Duration // Execution time.
 }
 
 // Ingester is the statistics result for ingesters queries.
@@ -112,12 +112,12 @@ func NewContext(ctx context.Context) context.Context {
 
 // ChunkData contains chunks specific statistics.
 type ChunkData struct {
-	BytesUncompressed int64
-	LinesUncompressed int64
-	BytesDecompressed int64
-	LinesDecompressed int64
-	BytesCompressed   int64
-	TotalDuplicates   int64
+	BytesUncompressed int64 // Total bytes processed but was already in memory. (found in the headchunk)
+	LinesUncompressed int64 // Total lines processed but was already in memory. (found in the headchunk)
+	BytesDecompressed int64 // Total bytes decompressed and processed from chunks.
+	LinesDecompressed int64 // Total lines decompressed and processed from chunks.
+	BytesCompressed   int64 // Total bytes of compressed chunks (blocks) processed.
+	TotalDuplicates   int64 // Total duplicates found while processing.
 }
 
 // GetChunkData returns the chunks statistics data from the current context.
@@ -131,9 +131,9 @@ func GetChunkData(ctx context.Context) *ChunkData {
 
 // IngesterData contains ingester specific statistics.
 type IngesterData struct {
-	TotalChunksMatched int64
-	TotalBatches       int64
-	TotalLinesSent     int64
+	TotalChunksMatched int64 // Total of chunks matched by the query from ingesters
+	TotalBatches       int64 // Total of batches sent from ingesters.
+	TotalLinesSent     int64 // Total lines sent by ingesters.
 }
 
 // GetIngesterData returns the ingester statistics data from the current context.
