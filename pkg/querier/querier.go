@@ -553,34 +553,32 @@ func (q *Querier) checkTailRequestLimit(ctx context.Context) error {
 		return err
 	}
 
-	// we want to check count of active tailers with only one of the active ingesters since
-	// all of them would be having same number of active tail connections
-	// Note: In worst-case scenario the ingester that we picked would have joined recently which might not have all the tail requests
-	ingesters := make([]ring.IngesterDesc, 0, 1)
-	for i := range replicationSet.Ingesters {
-		if replicationSet.Ingesters[i].State == ring.ACTIVE {
-			ingesters = append(ingesters, replicationSet.Ingesters[i])
-			break
-		}
-	}
-
-	if len(ingesters) == 0 {
-		return httpgrpc.Errorf(http.StatusInternalServerError, "no active ingester found")
-	}
-
-	_, err = q.forGivenIngesters(ctx, ring.ReplicationSet{Ingesters: ingesters}, func(querierClient logproto.QuerierClient) (interface{}, error) {
+	responses, err := q.forGivenIngesters(ctx, replicationSet, func(querierClient logproto.QuerierClient) (interface{}, error) {
 		resp, err := querierClient.TailersCount(ctx, nil)
 		if err != nil {
 			return nil, err
 		}
-
-		if resp.Count >= uint32(q.limits.MaxConcurrentTailRequests(userID)) {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest,
-				"max concurrent tail requests limit exceeded, count > limit (%d > %d)", resp.Count+1, 1)
-		}
-
-		return nil, nil
+		return resp.Count, nil
 	})
 
-	return err
+	// Ignore the error if we got at least one response
+	if len(responses) == 0 && err != nil {
+		return err
+	}
+
+	var maxCnt uint32
+	maxCnt = 0
+	for _, resp := range responses {
+		r := resp.response.(uint32)
+		if r > maxCnt {
+			maxCnt = r
+		}
+	}
+
+	if maxCnt >= uint32(q.limits.MaxConcurrentTailRequests(userID)) {
+		return httpgrpc.Errorf(http.StatusBadRequest,
+			"max concurrent tail requests limit exceeded, count > limit (%d > %d)", maxCnt+1, 1)
+	}
+
+	return nil
 }
