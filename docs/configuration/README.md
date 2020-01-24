@@ -166,6 +166,10 @@ The `querier_config` block configures the Loki Querier.
 # requests.
 [extra_query_delay: <duration> | default = 0s]
 
+# Maximum lookback beyond which queries are not sent to ingester.
+# 0 means all queries are sent to ingester.
+[query_ingesters_within: <duration> | default = 0s]
+
 # Configuration options for the LogQL engine.
 engine:
   # Timeout for query execution

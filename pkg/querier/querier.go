@@ -38,10 +38,11 @@ var readinessProbeSuccess = []byte("Ready")
 
 // Config for a querier.
 type Config struct {
-	QueryTimeout    time.Duration    `yaml:"query_timeout"`
-	TailMaxDuration time.Duration    `yaml:"tail_max_duration"`
-	ExtraQueryDelay time.Duration    `yaml:"extra_query_delay,omitempty"`
-	Engine          logql.EngineOpts `yaml:"engine,omitempty"`
+	QueryTimeout             time.Duration    `yaml:"query_timeout"`
+	TailMaxDuration          time.Duration    `yaml:"tail_max_duration"`
+	ExtraQueryDelay          time.Duration    `yaml:"extra_query_delay,omitempty"`
+	IngesterMaxQueryLookback time.Duration    `yaml:"query_ingesters_within,omitempty"`
+	Engine                   logql.EngineOpts `yaml:"engine,omitempty"`
 }
 
 // RegisterFlags register flags.
@@ -49,6 +50,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.TailMaxDuration, "querier.tail-max-duration", 1*time.Hour, "Limit the duration for which live tailing request would be served")
 	f.DurationVar(&cfg.QueryTimeout, "querier.query_timeout", 1*time.Minute, "Timeout when querying backends (ingesters or storage) during the execution of a query request")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
+	f.DurationVar(&cfg.IngesterMaxQueryLookback, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 }
 
 // Querier handlers queries.
@@ -149,16 +151,23 @@ func (q *Querier) Select(ctx context.Context, params logql.SelectParams) (iter.E
 		return nil, err
 	}
 
-	ingesterIterators, err := q.queryIngesters(ctx, params)
+	chunkStoreIter, err := q.store.LazyQuery(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-	chunkStoreIterators, err := q.store.LazyQuery(ctx, params)
+
+	// skip ingester queries only when IngesterMaxQueryLookback is enabled (not the zero value) and
+	// the end of the query is earlier than the lookback
+	if lookback := time.Now().Add(-q.cfg.IngesterMaxQueryLookback); q.cfg.IngesterMaxQueryLookback != 0 && params.GetEnd().Before(lookback) {
+		return chunkStoreIter, nil
+	}
+
+	iters, err := q.queryIngesters(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-	iterators := append(ingesterIterators, chunkStoreIterators)
-	return iter.NewHeapIterator(ctx, iterators, params.Direction), nil
+
+	return iter.NewHeapIterator(ctx, append(iters, chunkStoreIter), params.Direction), nil
 }
 
 func (q *Querier) queryIngesters(ctx context.Context, params logql.SelectParams) ([]iter.EntryIterator, error) {
