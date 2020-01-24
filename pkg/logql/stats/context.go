@@ -1,13 +1,23 @@
-// Package stats provides primitives for recording metrics across the query path.
-// Statistics are passed through the query context.
-// To start a new query statistics context use:
-// `ctx := stats.NewContext(ctx)`
-// Then you can update statistics by using:
-// - `stats.GetChunkData` for chunks iteration
-// - `stats.GetIngesterData` for ingester data
-// - `stats.GetStoreData` for storage data
-// Ingester statistics are sent across the GRPC stream using Trailers
-// see https://github.com/grpc/grpc-go/blob/master/Documentation/grpc-metadata.md
+/*
+Package stats provides primitives for recording metrics across the query path.
+Statistics are passed through the query context.
+To start a new query statistics context use:
+
+	ctx := stats.NewContext(ctx)
+
+Then you can update statistics by mutating data by using:
+
+	stats.GetChunkData(ctx)
+	stats.GetIngesterData(ctx)
+	stats.GetStoreData
+
+Finally to get a snapshot of the current query statistic use
+
+	stats.Snapshot(ctx,time.Since(start))
+
+Ingester statistics are sent across the GRPC stream using Trailers
+see https://github.com/grpc/grpc-go/blob/master/Documentation/grpc-metadata.md
+*/
 package stats
 
 import (
