@@ -105,3 +105,6 @@ func (ingesterFn) Tail(*logproto.TailRequest, logproto.Querier_TailServer) error
 func (ingesterFn) Series(context.Context, *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
 	return nil, nil
 }
+func (ingesterFn) TailersCount(context.Context, *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
+	return nil, nil
+}
