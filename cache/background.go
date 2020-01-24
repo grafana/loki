@@ -73,11 +73,11 @@ func NewBackground(name string, cfg BackgroundConfig, cache Cache) Cache {
 }
 
 // Stop the background flushing goroutines.
-func (c *backgroundCache) Stop() error {
+func (c *backgroundCache) Stop() {
 	close(c.quit)
 	c.wg.Wait()
 
-	return c.Cache.Stop()
+	c.Cache.Stop()
 }
 
 // Store writes keys for the cache in the background.

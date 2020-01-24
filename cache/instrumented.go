@@ -109,6 +109,6 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 	return found, bufs, missing
 }
 
-func (i *instrumentedCache) Stop() error {
-	return i.Cache.Stop()
+func (i *instrumentedCache) Stop() {
+	i.Cache.Stop()
 }

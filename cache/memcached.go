@@ -235,14 +235,13 @@ func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) {
 }
 
 // Stop does nothing.
-func (c *Memcached) Stop() error {
+func (c *Memcached) Stop() {
 	if c.inputCh == nil {
-		return nil
+		return
 	}
 
 	close(c.inputCh)
 	c.wg.Wait()
-	return nil
 }
 
 // HashKey hashes key into something you can store in memcached.

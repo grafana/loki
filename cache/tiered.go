@@ -56,11 +56,8 @@ func (t tiered) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, [
 	return resultKeys, resultBufs, missing
 }
 
-func (t tiered) Stop() error {
+func (t tiered) Stop() {
 	for _, c := range []Cache(t) {
-		if err := c.Stop(); err != nil {
-			return err
-		}
+		c.Stop()
 	}
-	return nil
 }

@@ -14,10 +14,8 @@ func StopOnce(cache Cache) Cache {
 	}
 }
 
-func (s *stopOnce) Stop() error {
-	var err error
+func (s *stopOnce) Stop() {
 	s.once.Do(func() {
-		err = s.Cache.Stop()
+		s.Cache.Stop()
 	})
-	return err
 }
