@@ -59,7 +59,7 @@ jobs:
           name: Unit Tests
           command: make BUILD_IN_CONTAINER=false test
       - run:
-          name: Uplode Codecov
+          name: Upload Codecov
           command: |
             bash <(curl -s https://codecov.io/bash)
 
