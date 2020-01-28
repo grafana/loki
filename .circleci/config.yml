@@ -15,7 +15,7 @@ version: 2
   branches: { ignore: master }
 
 workflows:
-  version: 2.1
+  version: 2
   default:
     jobs:
       # publish jobs depend on this as well,
@@ -43,8 +43,6 @@ workflows:
           requires: [ test-helm ]
           filters: {<<: *tag-or-master}
 
-orbs:
-  codecov: codecov/codecov@1.0.2
 
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 .defaults: &defaults
@@ -58,16 +56,12 @@ jobs:
     steps:
       - checkout
       - run:
-          name: "Create a temp directory for artifacts"
-          command: |
-            mkdir -p /tmp/artifacts
-      - run:
           name: Unit Tests
           command: make BUILD_IN_CONTAINER=false test
-      - store_artifacts:
-          path: /tmp/artifacts
-      - codecov/upload
-          file: /tmp/artifacts/coverage.html
+      - run:
+          name: Uplode Codecov
+          command: |
+            bash <(curl -s https://codecov.io/bash)
 
   # Promtail
   build/promtail-windows:
