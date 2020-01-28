@@ -15,19 +15,20 @@ call `tk init` inside of it. Then create an environment for Loki and provide the
 URL for the Kubernetes API server to deploy to (e.g., `https://localhost:6443`):
 
 ```
-$ mkdir <application name>
-$ cd <application name>
-$ tk init
-$ tk env add environments/loki --namespace=loki --server=<Kubernetes API server>
+mkdir <application name>
+cd <application name>
+tk init
+tk env add environments/loki --namespace=loki --server=<Kubernetes API server>
 ```
 
 ## Deploying
 
-Grab the Loki module using `jb`:
+Grab the Loki & promtail module using `jb`:
 
 ```bash
-$ go get -u github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
-$ jb install github.com/grafana/loki/production/ksonnet/loki
+go get -u github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
+jb install github.com/grafana/loki/production/ksonnet/loki
+jb install github.com/grafana/loki/production/ksonnet/promtail
 ```
 
 Be sure to replace the username, password and the relevant `htpasswd` contents.
@@ -43,13 +44,29 @@ loki + promtail + gateway {
   _config+:: {
     namespace: 'loki',
     htpasswd_contents: 'loki:$apr1$H4yGiGNg$ssl5/NymaGFRUvxIV1Nyr.',
-
-    promtail_config: {
-      scheme: 'http',
-      hostname: 'gateway.%(namespace)s.svc' % $._config,
-      username: 'loki',
-      password: 'password',
-      container_root_path: '/var/lib/docker',
+    
+    // S3 variables comment if not using aws
+    storage_backend: 's3,dynamodb',
+    s3_access_key: 'key',
+    s3_secret_access_key: 'secret access key',
+    s3_address: 'url',
+    s3_bucket_name: 'loki-test',
+    dynamodb_region: 'region',
+    
+    // GCS variables comment if not using gcs
+    storage_backend: 'bigtable,gcs',
+    bigtable_instance: 'instance',
+    bigtable_project: 'project',
+    gcs_bucket_name: 'bucket',
+    
+    promtail_config+: {
+      clients: [{
+        scheme: 'http',
+        hostname: 'gateway.%(namespace)s.svc' % $._config,
+        username: 'loki',
+        password: 'password',
+        container_root_path: '/var/lib/docker',
+      }],
     },
 
     replication_factor: 3,
