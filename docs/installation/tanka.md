@@ -23,7 +23,7 @@ tk env add environments/loki --namespace=loki --server=<Kubernetes API server>
 
 ## Deploying
 
-Grab the Loki & promtail module using `jb`:
+Grab the Loki & Promtail module using `jb`:
 
 ```bash
 go get -u github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
