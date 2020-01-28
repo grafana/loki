@@ -242,7 +242,8 @@ lint:
 ########
 
 test: all
-	GOGC=10 go test $(MOD_FLAG) -p=4 ./...
+	GOGC=10 go test -coverprofile=coverage.out $(MOD_FLAG) -p=4 ./...
+	GOGC=10 go tool cover -html=coverage.out -o coverage.html
 
 #########
 # Clean #
