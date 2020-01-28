@@ -7,6 +7,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
+
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
@@ -40,6 +42,11 @@ func (Streams) Type() promql.ValueType { return ValueTypeStreams }
 // String implements `promql.Value`
 func (Streams) String() string {
 	return ""
+}
+
+type Result struct {
+	Data       promql.Value
+	Statistics stats.Result
 }
 
 // EngineOpts is the list of options to use with the LogQL query engine.
@@ -78,7 +85,7 @@ func NewEngine(opts EngineOpts) *Engine {
 // Query is a LogQL query to be executed.
 type Query interface {
 	// Exec processes the query.
-	Exec(ctx context.Context) (promql.Value, error)
+	Exec(ctx context.Context) (Result, error)
 }
 
 type query struct {
@@ -97,7 +104,7 @@ func (q *query) isInstant() bool {
 }
 
 // Exec Implements `Query`
-func (q *query) Exec(ctx context.Context) (promql.Value, error) {
+func (q *query) Exec(ctx context.Context) (Result, error) {
 	var queryType string
 	if q.isInstant() {
 		queryType = "instant"
@@ -106,7 +113,11 @@ func (q *query) Exec(ctx context.Context) (promql.Value, error) {
 	}
 	timer := prometheus.NewTimer(queryTime.WithLabelValues(queryType))
 	defer timer.ObserveDuration()
-	return q.ng.exec(ctx, q)
+	data, statistics, err := q.ng.exec(ctx, q)
+	return Result{
+		Data:       data,
+		Statistics: statistics,
+	}, err
 }
 
 // NewRangeQuery creates a new LogQL range query.
@@ -145,37 +156,40 @@ func (ng *Engine) NewInstantQuery(
 	}
 }
 
-func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, error) {
+func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, stats.Result, error) {
 	log, ctx := spanlogger.New(ctx, "Engine.exec")
 	defer log.Finish()
+
 	ctx, cancel := context.WithTimeout(ctx, ng.timeout)
 	defer cancel()
 
-	if q.qs == "1+1" {
-		if q.isInstant() {
-			return promql.Vector{}, nil
-		}
-		return promql.Matrix{}, nil
-	}
-
-	expr, err := ParseExpr(q.qs)
-	if err != nil {
-		return nil, err
-	}
-
+	// records query statistics
+	var statResult stats.Result
 	ctx = stats.NewContext(ctx)
 	start := time.Now()
 	defer func() {
 		resultStats := stats.Snapshot(ctx, time.Since(start))
-		stats.Log(log, resultStats)
+		stats.Log(level.Debug(log), resultStats)
 	}()
+
+	if q.qs == "1+1" {
+		if q.isInstant() {
+			return promql.Vector{}, statResult, nil
+		}
+		return promql.Matrix{}, statResult, nil
+	}
+
+	expr, err := ParseExpr(q.qs)
+	if err != nil {
+		return nil, statResult, err
+	}
 
 	switch e := expr.(type) {
 	case SampleExpr:
 		if err := ng.setupIterators(ctx, e, q); err != nil {
-			return nil, err
+			return nil, statResult, err
 		}
-		return ng.evalSample(e, q), nil
+		return ng.evalSample(e, q), statResult, nil
 
 	case LogSelectorExpr:
 		params := SelectParams{
@@ -193,13 +207,14 @@ func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 		}
 		iter, err := q.querier.Select(ctx, params)
 		if err != nil {
-			return nil, err
+			return nil, statResult, err
 		}
 		defer helpers.LogError("closing iterator", iter.Close)
-		return readStreams(iter, q.limit)
+		streams, err := readStreams(iter, q.limit)
+		return streams, statResult, err
 	}
 
-	return nil, nil
+	return nil, statResult, nil
 }
 
 // setupIterators walk through the AST tree and build iterators required to eval samples.

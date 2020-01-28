@@ -26,7 +26,6 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 )
 
 type ctxKeyType string
@@ -38,16 +37,9 @@ const (
 	storeKey    ctxKeyType = "store"
 )
 
-// Result contains LogQL query statistics.
-type Result struct {
-	Ingester Ingester
-	Store    Store
-	Summary  Summary
-}
-
 // Log logs a query statistics result.
 func Log(log log.Logger, r Result) {
-	level.Debug(log).Log(
+	log.Log(
 		"Ingester.TotalReached", r.Ingester.TotalReached,
 		"Ingester.TotalChunksMatched", r.Ingester.TotalChunksMatched,
 		"Ingester.TotalBatches", r.Ingester.TotalBatches,
@@ -62,7 +54,7 @@ func Log(log log.Logger, r Result) {
 
 		"Store.TotalChunksRef", r.Store.TotalChunksRef,
 		"Store.TotalDownloadedChunks", r.Store.TotalDownloadedChunks,
-		"Store.TimeDownloadingChunks", r.Store.TimeDownloadingChunks,
+		"Store.TimeDownloadingChunks", time.Duration(r.Store.TimeDownloadingChunksNano),
 
 		"Store.HeadChunkBytes", humanize.Bytes(uint64(r.Store.HeadChunkBytes)),
 		"Store.HeadChunkLines", r.Store.HeadChunkLines,
@@ -75,30 +67,8 @@ func Log(log log.Logger, r Result) {
 		"Summary.LinesProcessedPerSeconds", r.Summary.LinesProcessedPerSeconds,
 		"Summary.TotalBytesProcessed", humanize.Bytes(uint64(r.Summary.TotalBytesProcessed)),
 		"Summary.TotalLinesProcessed", r.Summary.TotalLinesProcessed,
-		"Summary.ExecTime", r.Summary.ExecTime,
+		"Summary.ExecTime", time.Duration(r.Summary.ExecTimeNano),
 	)
-}
-
-// Summary is the summary of a query statistics.
-type Summary struct {
-	BytesProcessedPerSeconds int64         // Total bytes processed per seconds.
-	LinesProcessedPerSeconds int64         // Total lines processed per seconds.
-	TotalBytesProcessed      int64         // Total bytes processed.
-	TotalLinesProcessed      int64         // Total lines processed.
-	ExecTime                 time.Duration // Execution time.
-}
-
-// Ingester is the statistics result for ingesters queries.
-type Ingester struct {
-	IngesterData
-	ChunkData
-	TotalReached int
-}
-
-// Store is the statistics result of the store.
-type Store struct {
-	StoreData
-	ChunkData
 }
 
 // NewContext creates a new statistics context
@@ -112,12 +82,12 @@ func NewContext(ctx context.Context) context.Context {
 
 // ChunkData contains chunks specific statistics.
 type ChunkData struct {
-	HeadChunkBytes    int64 // Total bytes processed but was already in memory. (found in the headchunk)
-	HeadChunkLines    int64 // Total lines processed but was already in memory. (found in the headchunk)
-	DecompressedBytes int64 // Total bytes decompressed and processed from chunks.
-	DecompressedLines int64 // Total lines decompressed and processed from chunks.
-	CompressedBytes   int64 // Total bytes of compressed chunks (blocks) processed.
-	TotalDuplicates   int64 // Total duplicates found while processing.
+	HeadChunkBytes    int64 `json:"headChunkBytes"`    // Total bytes processed but was already in memory. (found in the headchunk)
+	HeadChunkLines    int64 `json:"headChunkLines"`    // Total lines processed but was already in memory. (found in the headchunk)
+	DecompressedBytes int64 `json:"decompressedBytes"` // Total bytes decompressed and processed from chunks.
+	DecompressedLines int64 `json:"decompressedLines"` // Total lines decompressed and processed from chunks.
+	CompressedBytes   int64 `json:"compressedBytes"`   // Total bytes of compressed chunks (blocks) processed.
+	TotalDuplicates   int64 `json:"totalDuplicates"`   // Total duplicates found while processing.
 }
 
 // GetChunkData returns the chunks statistics data from the current context.
@@ -131,9 +101,9 @@ func GetChunkData(ctx context.Context) *ChunkData {
 
 // IngesterData contains ingester specific statistics.
 type IngesterData struct {
-	TotalChunksMatched int64 // Total of chunks matched by the query from ingesters
-	TotalBatches       int64 // Total of batches sent from ingesters.
-	TotalLinesSent     int64 // Total lines sent by ingesters.
+	TotalChunksMatched int64 `json:"totalChunksMatched"` // Total of chunks matched by the query from ingesters
+	TotalBatches       int64 `json:"totalBatches"`       // Total of batches sent from ingesters.
+	TotalLinesSent     int64 `json:"totalLinesSent"`     // Total lines sent by ingesters.
 }
 
 // GetIngesterData returns the ingester statistics data from the current context.
@@ -147,9 +117,9 @@ func GetIngesterData(ctx context.Context) *IngesterData {
 
 // StoreData contains store specific statistics.
 type StoreData struct {
-	TotalChunksRef        int64         // The total of chunk reference fetched from index.
-	TotalDownloadedChunks int64         // Total number of chunks fetched.
-	TimeDownloadingChunks time.Duration // Time spent fetching chunks.
+	TotalChunksRef        int64         `json:"totalChunksRef"`        // The total of chunk reference fetched from index.
+	TotalDownloadedChunks int64         `json:"totalDownloadedChunks"` // Total number of chunks fetched.
+	TimeDownloadingChunks time.Duration `json:"timeDownloadingChunks"` // Time spent fetching chunks.
 }
 
 // GetStoreData returns the store statistics data from the current context.
@@ -169,12 +139,19 @@ func Snapshot(ctx context.Context, execTime time.Duration) Result {
 	// collect data from store.
 	s, ok := ctx.Value(storeKey).(*StoreData)
 	if ok {
-		res.Store.StoreData = *s
+		res.Store.TotalChunksRef = s.TotalChunksRef
+		res.Store.TotalDownloadedChunks = s.TotalDownloadedChunks
+		res.Store.TimeDownloadingChunksNano = int64(s.TimeDownloadingChunks)
 	}
 	// collect data from chunks iteration.
 	c, ok := ctx.Value(chunksKey).(*ChunkData)
 	if ok {
-		res.Store.ChunkData = *c
+		res.Store.HeadChunkBytes = c.HeadChunkBytes
+		res.Store.HeadChunkLines = c.HeadChunkLines
+		res.Store.DecompressedBytes = c.DecompressedBytes
+		res.Store.DecompressedLines = c.DecompressedLines
+		res.Store.CompressedBytes = c.CompressedBytes
+		res.Store.TotalDuplicates = c.TotalDuplicates
 	}
 
 	// calculate the summary
@@ -188,6 +165,6 @@ func Snapshot(ctx context.Context, execTime time.Duration) Result {
 	res.Summary.LinesProcessedPerSeconds =
 		int64(float64(res.Summary.TotalLinesProcessed) /
 			execTime.Seconds())
-	res.Summary.ExecTime = execTime
+	res.Summary.ExecTimeNano = int64(execTime)
 	return res
 }
