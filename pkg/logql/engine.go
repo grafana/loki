@@ -168,8 +168,8 @@ func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, stats.Resul
 	ctx = stats.NewContext(ctx)
 	start := time.Now()
 	defer func() {
-		resultStats := stats.Snapshot(ctx, time.Since(start))
-		stats.Log(level.Debug(log), resultStats)
+		statResult = stats.Snapshot(ctx, time.Since(start))
+		statResult.Log(level.Debug(log))
 	}()
 
 	if q.qs == "1+1" {

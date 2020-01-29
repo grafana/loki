@@ -38,7 +38,7 @@ const (
 )
 
 // Log logs a query statistics result.
-func Log(log log.Logger, r Result) {
+func (r Result) Log(log log.Logger) {
 	log.Log(
 		"Ingester.TotalReached", r.Ingester.TotalReached,
 		"Ingester.TotalChunksMatched", r.Ingester.TotalChunksMatched,
