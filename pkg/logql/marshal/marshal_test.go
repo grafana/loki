@@ -54,14 +54,14 @@ var queryTests = []struct {
 					"decompressedLines": 0,
 					"headChunkBytes": 0,
 					"headChunkLines": 0,
-					"timeDownloadingChunks": 0,
+					"timeDownloadingChunksNano": 0,
 					"totalChunksRef": 0,
 					"totalDownloadedChunks": 0,
 					"totalDuplicates": 0
 				},
 				"summary": {
 					"bytesProcessedPerSeconds": 0,
-					"execTime": 0,
+					"execTimeNano": 0,
 					"linesProcessedPerSeconds": 0,
 					"totalBytesProcessed":0,
 					"totalLinesProcessed":0
@@ -164,14 +164,14 @@ var queryTests = []struct {
 					"decompressedLines": 0,
 					"headChunkBytes": 0,
 					"headChunkLines": 0,
-					"timeDownloadingChunks": 0,
+					"timeDownloadingChunksNano": 0,
 					"totalChunksRef": 0,
 					"totalDownloadedChunks": 0,
 					"totalDuplicates": 0
 				},
 				"summary": {
 					"bytesProcessedPerSeconds": 0,
-					"execTime": 0,
+					"execTimeNano": 0,
 					"linesProcessedPerSeconds": 0,
 					"totalBytesProcessed":0,
 					"totalLinesProcessed":0
@@ -277,14 +277,14 @@ var queryTests = []struct {
 					"decompressedLines": 0,
 					"headChunkBytes": 0,
 					"headChunkLines": 0,
-					"timeDownloadingChunks": 0,
+					"timeDownloadingChunksNano": 0,
 					"totalChunksRef": 0,
 					"totalDownloadedChunks": 0,
 					"totalDuplicates": 0
 				},
 				"summary": {
 					"bytesProcessedPerSeconds": 0,
-					"execTime": 0,
+					"execTimeNano": 0,
 					"linesProcessedPerSeconds": 0,
 					"totalBytesProcessed":0,
 					"totalLinesProcessed":0

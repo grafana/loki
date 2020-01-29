@@ -29,7 +29,7 @@ type Stopper interface {
 
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
 func NewTripperware(cfg Config, log log.Logger, limits queryrange.Limits) (frontend.Tripperware, Stopper, error) {
-	metricsTripperware, cache, err := queryrange.NewTripperware(cfg.Config, log, limits, lokiCodec, queryrange.PrometheusResponseExtractor)
+	metricsTripperware, cache, err := queryrange.NewTripperware(cfg.Config, log, limits, lokiCodec, prometheusResponseExtractor)
 	if err != nil {
 		return nil, nil, err
 	}

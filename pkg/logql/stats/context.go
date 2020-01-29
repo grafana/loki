@@ -168,3 +168,35 @@ func Snapshot(ctx context.Context, execTime time.Duration) Result {
 	res.Summary.ExecTimeNano = int64(execTime)
 	return res
 }
+
+func (r *Result) Merge(m Result) {
+	if r == nil {
+		return
+	}
+	r.Summary.BytesProcessedPerSeconds += m.Summary.BytesProcessedPerSeconds
+	r.Summary.LinesProcessedPerSeconds += m.Summary.LinesProcessedPerSeconds
+	r.Summary.TotalBytesProcessed += m.Summary.TotalBytesProcessed
+	r.Summary.TotalLinesProcessed += m.Summary.TotalLinesProcessed
+	r.Summary.ExecTimeNano += m.Summary.ExecTimeNano
+
+	r.Store.TotalChunksRef += m.Store.TotalChunksRef
+	r.Store.TotalDownloadedChunks += m.Store.TotalDownloadedChunks
+	r.Store.TimeDownloadingChunksNano += m.Store.TimeDownloadingChunksNano
+	r.Store.HeadChunkBytes += m.Store.HeadChunkBytes
+	r.Store.HeadChunkLines += m.Store.HeadChunkLines
+	r.Store.DecompressedBytes += m.Store.DecompressedBytes
+	r.Store.DecompressedLines += m.Store.DecompressedLines
+	r.Store.CompressedBytes += m.Store.CompressedBytes
+	r.Store.TotalDuplicates += m.Store.TotalDuplicates
+
+	r.Ingester.TotalReached += m.Ingester.TotalReached
+	r.Ingester.TotalChunksMatched += m.Ingester.TotalChunksMatched
+	r.Ingester.TotalBatches += m.Ingester.TotalBatches
+	r.Ingester.TotalLinesSent += m.Ingester.TotalLinesSent
+	r.Ingester.HeadChunkBytes += m.Ingester.HeadChunkBytes
+	r.Ingester.HeadChunkLines += m.Ingester.HeadChunkLines
+	r.Ingester.DecompressedBytes += m.Ingester.DecompressedBytes
+	r.Ingester.DecompressedLines += m.Ingester.DecompressedLines
+	r.Ingester.CompressedBytes += m.Ingester.CompressedBytes
+	r.Ingester.TotalDuplicates += m.Ingester.TotalDuplicates
+}

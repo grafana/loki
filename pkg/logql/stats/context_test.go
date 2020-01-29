@@ -82,3 +82,43 @@ func fakeIngesterQuery(ctx context.Context) {
 	})
 	meta.Set(ingesterDataKey, i)
 }
+
+func TestResult_Merge(t *testing.T) {
+	var res Result
+
+	toMerge := Result{
+		Ingester: Ingester{
+			TotalChunksMatched: 200,
+			TotalBatches:       50,
+			TotalLinesSent:     60,
+			HeadChunkBytes:     10,
+			HeadChunkLines:     20,
+			DecompressedBytes:  24,
+			DecompressedLines:  40,
+			CompressedBytes:    60,
+			TotalDuplicates:    2,
+			TotalReached:       2,
+		},
+		Store: Store{
+			TotalChunksRef:            50,
+			TotalDownloadedChunks:     60,
+			TimeDownloadingChunksNano: int64(time.Second),
+			HeadChunkBytes:            10,
+			HeadChunkLines:            20,
+			DecompressedBytes:         40,
+			DecompressedLines:         20,
+			CompressedBytes:           30,
+			TotalDuplicates:           10,
+		},
+		Summary: Summary{
+			ExecTimeNano:             int64(2 * time.Second),
+			BytesProcessedPerSeconds: int64(42),
+			LinesProcessedPerSeconds: int64(50),
+			TotalBytesProcessed:      int64(84),
+			TotalLinesProcessed:      int64(100),
+		},
+	}
+
+	res.Merge(toMerge)
+	require.Equal(t, toMerge, res)
+}

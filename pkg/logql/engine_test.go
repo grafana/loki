@@ -296,7 +296,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			assert.Equal(t, test.expected, res)
+			assert.Equal(t, test.expected, res.Data)
 		})
 	}
 }
@@ -685,7 +685,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			assert.Equal(t, test.expected, res)
+			assert.Equal(t, test.expected, res.Data)
 		})
 	}
 }
@@ -746,8 +746,8 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			result = res
-			if res == nil {
+			result = res.Data
+			if result == nil {
 				b.Fatal("unexpected nil result")
 			}
 		}
