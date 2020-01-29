@@ -277,7 +277,7 @@ kubernetes_sd_configs:
 ### pipeline_stages
 
 The [pipeline](./pipelines.md) stages (`pipeline_stages`) is used to transform
-log entries and their labels after discovery and consists of a list of any of the items listed below
+log entries and their labels after discovery and consists of a list of any of the items listed below.
 
 Stages serve several purposes, more detail can be found [here](./pipelines.md), however generally you extract data with `regex` or `json` stages into a temporary map which can then be use as `labels` or `output` or any of the other stages aside from `docker` and `cri` which are explained in more detail below.
 
