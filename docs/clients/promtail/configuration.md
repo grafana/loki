@@ -1017,7 +1017,7 @@ sync_period: "10s"
 
 ## Example Docker Config
 
-It's fairly difficult to tail docker files on a standalone machine because they are in different locations for every OS.  We recommend the [docker logging driver](../../../cmd/docker-driver/README.md) for local docker installs or docker-compose.
+It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver](../../../cmd/docker-driver/README.md) for local Docker installs or Docker Compose.
 
 If running in a kubernetes environment, you should look at the defined configs which are in [helm](../../../production/helm/promtail/templates/configmap.yaml) and [jsonnet](../../../production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give promtail it's name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
 
