@@ -270,9 +270,9 @@ which can be queried by prefix or range.
 The interface works somewhat differently across the supported databases:
 
 * DynamoDB supports range and hash keys natively. Index entries are thus
-  modelled directly as DynamoDB entries, with the hash key as the distribution
+  modeled directly as DynamoDB entries, with the hash key as the distribution
   key and the range as the DynamoDB range key.
-* For Bigtable and Cassandra, index entries are modelled as individual column
+* For Bigtable and Cassandra, index entries are modeled as individual column
   values. The hash key becomes the row key and the range key becomes the column
   key.
 
