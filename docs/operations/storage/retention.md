@@ -49,7 +49,7 @@ schema_config:
   - from: 2018-04-15
     store: bigtable
     object_store: gcs
-    schema: v9
+    schema: v11
     index:
       prefix: loki_index_
       period: 168h
