@@ -57,14 +57,7 @@ func (opts *EngineOpts) applyDefault() {
 	}
 }
 
-/*
-Engine interface
-function/agg Nodes should have Associative method to allow ad-hoc parallelization?
-limit + filter (regexp) queries can be parallelized well
-non filtered queries can be executed in roughly 1/shard_factor time, but require 2x decode cost: sending all (unfiltered) data back to frontend
-
-custom downstream impl may require it's own endpoint (in order to pass shard info not encoded in labels)
-*/
+// Engine interface used to construct queries
 type Engine interface {
 	NewRangeQuery(qs string, start, end time.Time, step time.Duration, direction logproto.Direction, limit uint32) Query
 	NewInstantQuery(qs string, ts time.Time, direction logproto.Direction, limit uint32) Query
@@ -162,6 +155,7 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 	defer cancel()
 
 	qs := q.String()
+	// This is a legacy query used for health checking. Not the best practice, but it works.
 	if qs == "1+1" {
 		if IsInstant(q) {
 			return promql.Vector{}, nil
