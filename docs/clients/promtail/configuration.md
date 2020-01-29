@@ -1048,10 +1048,10 @@ scrape_configs:
       host: yourhost ③  
       __path__: /var/log/*.log  ④
 ```
-① This location needs to be writeable by promtail.
-② A `job` label is fairly standard in prometheus and useful for linking metrics and logs. 
-③ A `host` label will help identify logs from this machine vs others.
-④ The path matching uses [@bmatcuk's glob library](https://github.com/bmatcuk/doublestar)
+① This location needs to be writeable by promtail.  
+② A `job` label is fairly standard in prometheus and useful for linking metrics and logs.   
+③ A `host` label will help identify logs from this machine vs others.  
+④ The path matching uses [@bmatcuk's glob library](https://github.com/bmatcuk/doublestar)  
 
 
 ## Example Journal Config
