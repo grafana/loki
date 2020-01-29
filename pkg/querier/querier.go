@@ -60,7 +60,7 @@ type Querier struct {
 	ring   ring.ReadRing
 	pool   *cortex_client.Pool
 	store  storage.Store
-	engine *logql.Engine
+	engine logql.Engine
 	limits *validation.Overrides
 }
 
@@ -76,14 +76,16 @@ func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, store storage.
 // newQuerier creates a new Querier and allows to pass a custom ingester client factory
 // used for testing purposes
 func newQuerier(cfg Config, clientCfg client.Config, clientFactory cortex_client.Factory, ring ring.ReadRing, store storage.Store, limits *validation.Overrides) (*Querier, error) {
-	return &Querier{
+	querier := Querier{
 		cfg:    cfg,
 		ring:   ring,
 		pool:   cortex_client.NewPool(clientCfg.PoolConfig, ring, clientFactory, util.Logger),
 		store:  store,
-		engine: logql.NewEngine(cfg.Engine),
 		limits: limits,
-	}, nil
+	}
+	querier.engine = logql.NewEngine(cfg.Engine, &querier)
+
+	return &querier, nil
 }
 
 type responseFromIngesters struct {
