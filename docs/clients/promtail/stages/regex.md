@@ -21,6 +21,20 @@ will be set into the `extracted` map, every capture group **must be named:**
 `(?P<name>re)`. The name of the capture group will be used as the key in the
 extracted map.
 
+Because of how YAML treats backslashes in double-quoted strings, note that all
+backslashes in a regex expression must be escaped when using double quotes. For
+example, all of these are valid:
+
+- `expression: \w*`
+- `expression: '\w*'`
+- `expression: "\\w*"`
+
+But these are not:
+
+- `expression: \\w*` (only escape backslashes when using double quotes)
+- `expression: '\\w*'` (only escape backslashes when using double quotes)
+- `expression: "\w*"` (backslash must be escaped)
+
 ## Example
 
 ### Without `source`
