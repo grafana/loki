@@ -46,16 +46,9 @@ query_range:
       #     consistent_hash: true
 
 frontend:
-  # 256 length tenant queues per frontend
-  max_outstanding_per_tenant: 256
   log_queries_longer_than: 5s
+  downstream: querier.<namespace>.svc.cluster.local:9091
   compress_responses: true
-  
-frontend_worker:
-  address: query-frontend.<namespace>.svc.cluster.local:9095
-  grpc_client_config:
-    max_send_msg_size: 1.048576e+08
-  parallelism: 8
 ```
 
 
@@ -75,10 +68,10 @@ metadata:
   namespace: <namespace>
 spec:
   ports:
-  - name: query-frontend-http-metrics
-    port: 80
+  - name: query-frontend-http
+    port: 9091
     protocol: TCP
-    targetPort: 80
+    targetPort: 9091
   - name: query-frontend-grpc
     port: 9095
     protocol: TCP
@@ -119,8 +112,8 @@ spec:
         imagePullPolicy: IfNotPresent
         name: query-frontend
         ports:
-        - containerPort: 80
-          name: http-metrics
+        - containerPort: 9091
+          name: http
           protocol: TCP
         - containerPort: 9095
           name: grpc
