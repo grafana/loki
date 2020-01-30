@@ -20,6 +20,6 @@ $ docker run -v $(pwd):/mnt/config -v /var/log:/var/log grafana/promtail:latest 
 ## Install with Docker Compose
 
 ```bash
-$ wget https://raw.githubusercontent.com/grafana/loki/v1.3.0/production/docker-compose.yaml -o docker-compose.yaml
+$ wget https://raw.githubusercontent.com/grafana/loki/v1.3.0/production/docker-compose.yaml -O docker-compose.yaml
 $ docker-compose -f docker-compose.yaml up
 ```
