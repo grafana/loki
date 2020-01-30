@@ -36,7 +36,7 @@ query_range:
         validity: 24h
 
       # If you want to use a memcached cluster, configure a headless service
-      # in Kubernetes and Cortex will discover the individual instances using
+      # in Kubernetes and Loki will discover the individual instances using
       # a SRV DNS query.  Cortex will then do client-side hashing to spread
       # the load evenly.
       # memcached:
