@@ -19,6 +19,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -31,14 +32,15 @@ var (
 type ResultsCacheConfig struct {
 	CacheConfig       cache.Config  `yaml:"cache"`
 	MaxCacheFreshness time.Duration `yaml:"max_freshness"`
-	SplitInterval     time.Duration `yaml:"cache_split_interval"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlagsWithPrefix("frontend.", "", f)
+
+	flagext.DeprecatedFlag(f, "frontend.cache-split-interval", "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This behavior is now determined by querier.split-queries-by-interval.")
+
 	f.DurationVar(&cfg.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result, to prevent caching very recent results that might still be in flux.")
-	f.DurationVar(&cfg.SplitInterval, "frontend.cache-split-interval", 24*time.Hour, "The maximum interval expected for each request, results will be cached per single interval.")
 }
 
 // Extractor is used by the cache to extract a subset of a response from a cache entry.
@@ -55,6 +57,21 @@ func (e ExtractorFunc) Extract(start, end int64, from Response) Response {
 	return e(start, end, from)
 }
 
+// CacheSplitter generates cache keys. This is a useful interface for downstream
+// consumers who wish to implement their own strategies.
+type CacheSplitter interface {
+	GenerateCacheKey(userID string, r Request) string
+}
+
+// constSplitter is a utility for using a constant split interval when determining cache keys
+type constSplitter time.Duration
+
+// GenerateCacheKey generates a cache key based on the userID, Request and interval.
+func (t constSplitter) GenerateCacheKey(userID string, r Request) string {
+	currentInterval := r.GetStart() / int64(time.Duration(t)/time.Millisecond)
+	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
+}
+
 // PrometheusResponseExtractor is an `Extractor` for a Prometheus query range response.
 var PrometheusResponseExtractor = ExtractorFunc(func(start, end int64, from Response) Response {
 	promRes := from.(*PrometheusResponse)
@@ -69,11 +86,12 @@ var PrometheusResponseExtractor = ExtractorFunc(func(start, end int64, from Resp
 })
 
 type resultsCache struct {
-	logger log.Logger
-	cfg    ResultsCacheConfig
-	next   Handler
-	cache  cache.Cache
-	limits Limits
+	logger   log.Logger
+	cfg      ResultsCacheConfig
+	next     Handler
+	cache    cache.Cache
+	limits   Limits
+	splitter CacheSplitter
 
 	extractor Extractor
 	merger    Merger
@@ -85,7 +103,14 @@ type resultsCache struct {
 // Each request starting from within the same interval will hit the same cache entry.
 // If the cache doesn't have the entire duration of the request cached, it will query the uncached parts and append them to the cache entries.
 // see `generateKey`.
-func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits Limits, merger Merger, extractor Extractor) (Middleware, cache.Cache, error) {
+func NewResultsCacheMiddleware(
+	logger log.Logger,
+	cfg ResultsCacheConfig,
+	splitter CacheSplitter,
+	limits Limits,
+	merger Merger,
+	extractor Extractor,
+) (Middleware, cache.Cache, error) {
 	c, err := cache.New(cfg.CacheConfig)
 	if err != nil {
 		return nil, nil, err
@@ -100,6 +125,7 @@ func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits
 			limits:    limits,
 			merger:    merger,
 			extractor: extractor,
+			splitter:  splitter,
 		}
 	}), c, nil
 }
@@ -111,7 +137,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	var (
-		key      = generateKey(userID, r, s.cfg.SplitInterval)
+		key      = s.splitter.GenerateCacheKey(userID, r)
 		extents  []Extent
 		response Response
 	)
@@ -357,12 +383,6 @@ func (s resultsCache) filterRecentExtents(req Request, extents []Extent) ([]Exte
 		}
 	}
 	return extents, nil
-}
-
-// generateKey generates a cache key based on the userID, Request and interval.
-func generateKey(userID string, r Request, interval time.Duration) string {
-	currentInterval := r.GetStart() / int64(interval/time.Millisecond)
-	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }
 
 func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {

@@ -49,68 +49,30 @@ func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState
 		Tokens:    tokens,
 	}
 
-	// Since this ingester is only using normalised tokens, let's delete any denormalised
-	// tokens for this ingester. There may be such tokens eg. if previous instance
-	// of the same ingester was running with denormalized tokens.
-	for ix := 0; ix < len(d.Tokens); {
-		if d.Tokens[ix].Ingester == id {
-			d.Tokens = append(d.Tokens[:ix], d.Tokens[ix+1:]...)
-		} else {
-			ix++
-		}
-	}
-
 	d.Ingesters[id] = ingester
 }
 
 // RemoveIngester removes the given ingester and all its tokens.
 func (d *Desc) RemoveIngester(id string) {
 	delete(d.Ingesters, id)
-	output := []TokenDesc{}
-	for i := 0; i < len(d.Tokens); i++ {
-		if d.Tokens[i].Ingester != id {
-			output = append(output, d.Tokens[i])
-		}
-	}
-	d.Tokens = output
 }
 
 // ClaimTokens transfers all the tokens from one ingester to another,
 // returning the claimed token.
-// This method assumes that Ring is in the correct state, 'from' ingester has no tokens anywhere,
-// and 'to' ingester uses either normalised or non-normalised tokens, but not both. Tokens list must
-// be sorted properly. If all of this is true, everything will be fine.
+// This method assumes that Ring is in the correct state, 'to' ingester has no tokens anywhere.
+// Tokens list must be sorted properly. If all of this is true, everything will be fine.
 func (d *Desc) ClaimTokens(from, to string) Tokens {
 	var result Tokens
 
-	// If the ingester we are claiming from is normalising, get its tokens then erase them from the ring.
 	if fromDesc, found := d.Ingesters[from]; found {
 		result = fromDesc.Tokens
 		fromDesc.Tokens = nil
 		d.Ingesters[from] = fromDesc
 	}
 
-	// If we are storing the tokens in a normalise form, we need to deal with
-	// the migration from denormalised by removing the tokens from the tokens
-	// list.
-	// When all ingesters are in normalised mode, d.Tokens is empty here
-	for i := 0; i < len(d.Tokens); {
-		if d.Tokens[i].Ingester == from {
-			result = append(result, d.Tokens[i].Token)
-			d.Tokens = append(d.Tokens[:i], d.Tokens[i+1:]...)
-			continue
-		}
-		i++
-	}
-
 	ing := d.Ingesters[to]
 	ing.Tokens = result
 	d.Ingesters[to] = ing
-
-	// not necessary, but makes testing simpler
-	if len(d.Tokens) == 0 {
-		d.Tokens = nil
-	}
 
 	return result
 }
@@ -128,7 +90,7 @@ func (d *Desc) FindIngestersByState(state IngesterState) []IngesterDesc {
 
 // Ready returns no error when all ingesters are active and healthy.
 func (d *Desc) Ready(now time.Time, heartbeatTimeout time.Duration) error {
-	numTokens := len(d.Tokens)
+	numTokens := 0
 	for id, ingester := range d.Ingesters {
 		if now.Sub(time.Unix(ingester.Timestamp, 0)) > heartbeatTimeout {
 			return fmt.Errorf("ingester %s past heartbeat timeout", id)
@@ -147,7 +109,7 @@ func (d *Desc) Ready(now time.Time, heartbeatTimeout time.Duration) error {
 // TokensFor partitions the tokens into those for the given ID, and those for others.
 func (d *Desc) TokensFor(id string) (tokens, other Tokens) {
 	takenTokens, myTokens := Tokens{}, Tokens{}
-	for _, token := range migrateRing(d) {
+	for _, token := range d.getTokens() {
 		takenTokens = append(takenTokens, token.Token)
 		if token.Ingester == id {
 			myTokens = append(myTokens, token.Token)
@@ -254,9 +216,7 @@ func (d *Desc) Merge(mergeable memberlist.Mergeable, localCAS bool) (memberlist.
 		out.Ingesters[u] = ing
 	}
 
-	// Keep ring normalized.
 	d.Ingesters = thisIngesterMap
-	d.Tokens = nil
 
 	return out, nil
 }
@@ -272,7 +232,6 @@ func (d *Desc) MergeContent() []string {
 }
 
 // buildNormalizedIngestersMap will do the following:
-// - moves all tokens from r.Tokens into individual ingesters
 // - sorts tokens and removes duplicates (only within single ingester)
 // - it doesn't modify input ring
 func buildNormalizedIngestersMap(inputRing *Desc) map[string]IngesterDesc {
@@ -286,20 +245,9 @@ func buildNormalizedIngestersMap(inputRing *Desc) map[string]IngesterDesc {
 		out[n] = ing
 	}
 
-	for _, t := range inputRing.Tokens {
-		// if ingester doesn't exist, we will add empty one (with tokens only)
-		ing := out[t.Ingester]
-
-		// don't add tokens to the LEFT ingesters. We skip such tokens.
-		if ing.State != LEFT {
-			ing.Tokens = append(ing.Tokens, t.Token)
-			out[t.Ingester] = ing
-		}
-	}
-
 	// Sort tokens, and remove duplicates
 	for name, ing := range out {
-		if ing.Tokens == nil {
+		if len(ing.Tokens) == 0 {
 			continue
 		}
 
@@ -307,17 +255,16 @@ func buildNormalizedIngestersMap(inputRing *Desc) map[string]IngesterDesc {
 			sort.Sort(Tokens(ing.Tokens))
 		}
 
-		seen := make(map[uint32]bool)
-
-		n := 0
-		for _, v := range ing.Tokens {
-			if !seen[v] {
-				seen[v] = true
-				ing.Tokens[n] = v
-				n++
+		// tokens are sorted now, we can easily remove duplicates.
+		prev := ing.Tokens[0]
+		for ix := 1; ix < len(ing.Tokens); {
+			if ing.Tokens[ix] == prev {
+				ing.Tokens = append(ing.Tokens[:ix], ing.Tokens[ix+1:]...)
+			} else {
+				prev = ing.Tokens[ix]
+				ix++
 			}
 		}
-		ing.Tokens = ing.Tokens[:n]
 
 		// write updated value back to map
 		out[name] = ing
@@ -425,4 +372,26 @@ func (d *Desc) RemoveTombstones(limit time.Time) {
 			removed++
 		}
 	}
+}
+
+type TokenDesc struct {
+	Token    uint32
+	Ingester string
+}
+
+// Returns sorted list of tokens with ingester names.
+func (d *Desc) getTokens() []TokenDesc {
+	numTokens := 0
+	for _, ing := range d.Ingesters {
+		numTokens += len(ing.Tokens)
+	}
+	tokens := make([]TokenDesc, 0, numTokens)
+	for key, ing := range d.Ingesters {
+		for _, token := range ing.Tokens {
+			tokens = append(tokens, TokenDesc{Token: token, Ingester: key})
+		}
+	}
+
+	sort.Sort(ByToken(tokens))
+	return tokens
 }

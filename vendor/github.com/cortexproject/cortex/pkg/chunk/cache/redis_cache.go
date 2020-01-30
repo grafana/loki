@@ -109,8 +109,8 @@ func (c *RedisCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
 }
 
 // Stop stops the redis client.
-func (c *RedisCache) Stop() error {
-	return c.pool.Close()
+func (c *RedisCache) Stop() {
+	_ = c.pool.Close()
 }
 
 // mset adds key-value pairs to the cache.

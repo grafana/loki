@@ -42,6 +42,6 @@ func (s *snappyCache) Fetch(ctx context.Context, keys []string) ([]string, [][]b
 	return found, ds, missing
 }
 
-func (s *snappyCache) Stop() error {
-	return s.next.Stop()
+func (s *snappyCache) Stop() {
+	s.next.Stop()
 }
