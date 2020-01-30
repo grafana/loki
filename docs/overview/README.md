@@ -125,6 +125,10 @@ logs stored in long-term storage.
 It first tries to query all ingesters for in-memory data before falling back to
 loading data from the backend store.
 
+### Query frontend
+
+The **query-frotend** service is an optional component in front of a pool of queriers. It's responsible for fairly scheduling requests between them, paralleling them when possible, and caching.
+
 ## Chunk Store
 
 The **chunk store** is Loki's long-term data store, designed to support

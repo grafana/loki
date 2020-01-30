@@ -29,7 +29,7 @@ mode. Monolithic mode is the default deployment of Loki when Loki is installed
 using Helm.
 
 When `target` is _not_ set to `all` (i.e., it is set to `querier`, `ingester`,
-or `distributor`), then Loki is said to be running in "horizontally scalable",
+`query-frontend`, or `distributor`), then Loki is said to be running in "horizontally scalable",
 or microservices, mode.
 
 Each component of Loki, such as the ingesters and distributors, communicate with
@@ -169,6 +169,36 @@ set of tokens.
 
 This process is used to avoid flushing all chunks when shutting down, which is a
 slow process.
+
+### Query frontend
+
+The **query frontend** is an **optional service** providing the querier's API endpoints and can be used to accelerate the read path. When the query frontend is in place, incoming query requests should be directed to the query frontend instead of the queriers. The querier service will be still required within the cluster, in order to execute the actual queries.
+
+The query frontend internally performs some query adjustments and holds queries in an internal queue. In this setup, queriers act as workers which pull jobs from the queue, execute them, and return them to the query-frontend for aggregation. Queriers need to be configured with the query frontend address (via the `-querier.frontend-address` CLI flag) in order to allow them to connect to the query frontends.
+
+Query frontends are **stateless**. However, due to how the internal queue works, it's recommended to run a few query frontend replicas to reap the benefit of fair scheduling. Two replicas should suffice in most cases.
+
+#### Queueing
+
+The query frontend queuing mechanism is used to:
+
+* Ensure that large queries, that could cause an out-of-memory (OOM) error in the querier, will be retried on failure. This allows administrators to under-provision memory for queries, or optimistically run more small queries in parallel, which helps to reduce the TCO.
+* Prevent multiple large requests from being convoyed on a single querier by distributing them across all queriers using a first-in/first-out queue (FIFO).
+* Prevent a single tenant from denial-of-service-ing (DOSing) other tenants by fairly scheduling queries between tenants.
+
+#### Splitting
+
+The query frontend splits larger queries into multiple smaller queries, executing these queries in parallel on downstream queriers and stitching the results back together again. This prevents large (multi-day, etc) queries from causing out of memory issues in a single querier and helps to execute them faster.
+
+#### Caching
+
+##### Metric Queries
+
+The query frontend supports caching metric query results and reuses them on subsequent queries. If the cached results are incomplete, the query frontend calculates the required subqueries and executes them in parallel on downstream queriers. The query frontend can optionally align queries with their step parameter to improve the cacheability of the query results. The result cache is compatible with any loki caching backend (currently memcached, redis, and an in-memory cache).
+
+##### Log Queries - Coming soon!
+
+Caching log (filter, regexp) queries are under active development.
 
 ### Querier
 
