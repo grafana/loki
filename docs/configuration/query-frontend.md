@@ -101,29 +101,15 @@ metadata:
   namespace: <namespace>
 spec:
   minReadySeconds: 10
-  progressDeadlineSeconds: 600
   replicas: 2
   selector:
     matchLabels:
       name: query-frontend
-  strategy:
-    rollingUpdate:
-      maxSurge: 25%
-      maxUnavailable: 25%
-    type: RollingUpdate
   template:
     metadata:
       labels:
         name: query-frontend
     spec:
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchLabels:
-                name: query-frontend
-            # see https://kubernetes.io/docs/reference/kubernetes-api/labels-annotations-taints/#kubernetes-io-hostname
-            topologyKey: kubernetes.io/hostname
       containers:
       - args:
         - -config.file=/etc/loki/config.yaml
@@ -145,88 +131,6 @@ spec:
           requests:
             cpu: "2"
             memory: 600Mi
-        terminationMessagePath: /dev/termination-log
-        terminationMessagePolicy: File
-        volumeMounts:
-        - mountPath: /etc/loki
-          name: loki
-      restartPolicy: Always
-      terminationGracePeriodSeconds: 30
-      volumes:
-      - configMap:
-          defaultMode: 420
-          name: loki
-        name: loki
-```
-
-### Querier Deployment
-
-```yaml
-apiVersion: extensions/v1beta1
-kind: Deployment
-metadata:
-  annotations:
-  labels:
-    name: querier
-  name: querier
-  namespace: <namespace>
-spec:
-  minReadySeconds: 10
-  progressDeadlineSeconds: 600
-  replicas: 3
-  selector:
-    matchLabels:
-      name: querier
-  strategy:
-    rollingUpdate:
-      maxSurge: 25%
-      maxUnavailable: 25%
-    type: RollingUpdate
-  template:
-    metadata:
-      labels:
-        name: querier
-    spec:
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchLabels:
-                name: querier
-            topologyKey: kubernetes.io/hostname
-      containers:
-      - args:
-        - -config.file=/etc/loki/config.yaml
-        - -log.level=debug
-        - -target=querier
-        image: grafana/loki:<version>
-        imagePullPolicy: IfNotPresent
-        name: querier
-        ports:
-        - containerPort: 80
-          name: http-metrics
-          protocol: TCP
-        - containerPort: 9095
-          name: grpc
-          protocol: TCP
-        readinessProbe:
-          failureThreshold: 3
-          httpGet:
-            path: /ready
-            port: 80
-            scheme: HTTP
-          initialDelaySeconds: 15
-          periodSeconds: 10
-          successThreshold: 1
-          timeoutSeconds: 1
-        resources:
-          limits:
-            memory: 8Gi
-          requests:
-            cpu: "2"
-            memory: 2Gi
-        terminationMessagePath: /dev/termination-log
-        terminationMessagePolicy: File
         volumeMounts:
         - mountPath: /etc/loki
           name: loki
