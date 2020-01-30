@@ -24,7 +24,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Stopper gracefully shutdown resources created
 type Stopper interface {
-	Stop() error
+	Stop()
 }
 
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.

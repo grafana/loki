@@ -94,8 +94,9 @@ type Ring struct {
 	done     chan struct{}
 	quit     context.CancelFunc
 
-	mtx      sync.RWMutex
-	ringDesc *Desc
+	mtx        sync.RWMutex
+	ringDesc   *Desc
+	ringTokens []TokenDesc
 
 	memberOwnershipDesc *prometheus.Desc
 	numMembersDesc      *prometheus.Desc
@@ -169,41 +170,23 @@ func (r *Ring) loop(ctx context.Context) {
 		}
 
 		ringDesc := value.(*Desc)
-		ringDesc.Tokens = migrateRing(ringDesc)
+		ringTokens := ringDesc.getTokens()
+
 		r.mtx.Lock()
 		defer r.mtx.Unlock()
 		r.ringDesc = ringDesc
+		r.ringTokens = ringTokens
 		return true
 	})
 
 	r.KVClient.Stop()
 }
 
-// migrateRing will denormalise the ring's tokens if stored in normal form.
-func migrateRing(desc *Desc) []TokenDesc {
-	numTokens := len(desc.Tokens)
-	for _, ing := range desc.Ingesters {
-		numTokens += len(ing.Tokens)
-	}
-	tokens := make([]TokenDesc, len(desc.Tokens), numTokens)
-	copy(tokens, desc.Tokens)
-	for key, ing := range desc.Ingesters {
-		for _, token := range ing.Tokens {
-			tokens = append(tokens, TokenDesc{
-				Token:    token,
-				Ingester: key,
-			})
-		}
-	}
-	sort.Sort(ByToken(tokens))
-	return tokens
-}
-
 // Get returns n (or more) ingesters which form the replicas for the given key.
 func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
-	if r.ringDesc == nil || len(r.ringDesc.Tokens) == 0 {
+	if r.ringDesc == nil || len(r.ringTokens) == 0 {
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
@@ -214,13 +197,13 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		start         = r.search(key)
 		iterations    = 0
 	)
-	for i := start; len(distinctHosts) < n && iterations < len(r.ringDesc.Tokens); i++ {
+	for i := start; len(distinctHosts) < n && iterations < len(r.ringTokens); i++ {
 		iterations++
 		// Wrap i around in the ring.
-		i %= len(r.ringDesc.Tokens)
+		i %= len(r.ringTokens)
 
 		// We want n *distinct* ingesters.
-		token := r.ringDesc.Tokens[i]
+		token := r.ringTokens[i]
 		if _, ok := distinctHosts[token.Ingester]; ok {
 			continue
 		}
@@ -258,7 +241,7 @@ func (r *Ring) GetAll() (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	if r.ringDesc == nil || len(r.ringDesc.Tokens) == 0 {
+	if r.ringDesc == nil || len(r.ringTokens) == 0 {
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
@@ -284,10 +267,10 @@ func (r *Ring) GetAll() (ReplicationSet, error) {
 }
 
 func (r *Ring) search(key uint32) int {
-	i := sort.Search(len(r.ringDesc.Tokens), func(x int) bool {
-		return r.ringDesc.Tokens[x].Token > key
+	i := sort.Search(len(r.ringTokens), func(x int) bool {
+		return r.ringTokens[x].Token > key
 	})
-	if i >= len(r.ringDesc.Tokens) {
+	if i >= len(r.ringTokens) {
 		i = 0
 	}
 	return i
@@ -301,9 +284,7 @@ func (r *Ring) Describe(ch chan<- *prometheus.Desc) {
 	ch <- r.numTokensDesc
 }
 
-func countTokens(ringDesc *Desc) (map[string]uint32, map[string]uint32) {
-	tokens := ringDesc.Tokens
-
+func countTokens(ringDesc *Desc, tokens []TokenDesc) (map[string]uint32, map[string]uint32) {
 	owned := map[string]uint32{}
 	numTokens := map[string]uint32{}
 	for i, token := range tokens {
@@ -332,7 +313,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	numTokens, ownedRange := countTokens(r.ringDesc)
+	numTokens, ownedRange := countTokens(r.ringDesc, r.ringTokens)
 	for id, totalOwned := range ownedRange {
 		ch <- prometheus.MustNewConstMetric(
 			r.memberOwnershipDesc,
@@ -392,7 +373,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(
 		r.totalTokensDesc,
 		prometheus.GaugeValue,
-		float64(len(r.ringDesc.Tokens)),
+		float64(len(r.ringTokens)),
 		r.name,
 	)
 }

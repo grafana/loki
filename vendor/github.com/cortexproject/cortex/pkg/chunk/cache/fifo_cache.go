@@ -139,8 +139,7 @@ func (c *FifoCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
 }
 
 // Stop implements Cache.
-func (c *FifoCache) Stop() error {
-	return nil
+func (c *FifoCache) Stop() {
 }
 
 // Put stores the value against the key.
