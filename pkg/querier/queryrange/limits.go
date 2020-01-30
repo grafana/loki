@@ -37,5 +37,6 @@ func WithDefaultLimits(l Limits, conf queryrange.Config) Limits {
 	if conf.SplitQueriesByInterval != 0 {
 		res.splitDuration = conf.SplitQueriesByInterval
 	}
+
 	return res
 }

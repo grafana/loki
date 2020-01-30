@@ -100,9 +100,9 @@ func Test_splitByInterval_Do(t *testing.T) {
 		}, nil
 	})
 
+	l := WithDefaultLimits(fakeLimits{}, queryrange.Config{SplitQueriesByInterval: time.Hour})
 	split := SplitByIntervalMiddleware(
-		Config{queryrange.Config{SplitQueriesByInterval: time.Hour}},
-		fakeLimits{},
+		l,
 		lokiCodec,
 	).Wrap(next)
 
@@ -283,9 +283,9 @@ func Test_ExitEarly(t *testing.T) {
 		}, nil
 	})
 
+	l := WithDefaultLimits(fakeLimits{}, queryrange.Config{SplitQueriesByInterval: time.Hour})
 	split := SplitByIntervalMiddleware(
-		Config{queryrange.Config{SplitQueriesByInterval: time.Hour}},
-		fakeLimits{},
+		l,
 		lokiCodec,
 	).Wrap(next)
 
@@ -359,11 +359,11 @@ func Test_DoesntDeadlock(t *testing.T) {
 		}, nil
 	})
 
+	l := WithDefaultLimits(fakeLimits{
+		maxQueryParallelism: n,
+	}, queryrange.Config{SplitQueriesByInterval: time.Hour})
 	split := SplitByIntervalMiddleware(
-		Config{queryrange.Config{SplitQueriesByInterval: time.Hour}},
-		fakeLimits{
-			maxQueryParallelism: n,
-		},
+		l,
 		lokiCodec,
 	).Wrap(next)
 

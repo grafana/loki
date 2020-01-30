@@ -31,6 +31,8 @@ type Stopper interface {
 
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
 func NewTripperware(cfg Config, log log.Logger, limits Limits) (frontend.Tripperware, Stopper, error) {
+	limits = WithDefaultLimits(limits, cfg.Config) // ensure that QuerySplitDuration uses configuration defaults
+
 	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, lokiCodec, queryrange.PrometheusResponseExtractor)
 
 	if err != nil {
@@ -86,7 +88,7 @@ func NewLogFilterTripperware(
 ) (frontend.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{queryrange.LimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg, limits, codec))
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(limits, codec))
 	}
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry"), queryrange.NewRetryMiddleware(log, cfg.MaxRetries))
@@ -125,7 +127,7 @@ func NewMetricTripperware(
 	queryRangeMiddleware = append(
 		queryRangeMiddleware,
 		queryrange.InstrumentMiddleware("split_by_interval"),
-		SplitByIntervalMiddleware(cfg, limits, codec),
+		SplitByIntervalMiddleware(limits, codec),
 	)
 
 	var c cache.Cache
@@ -133,6 +135,7 @@ func NewMetricTripperware(
 		queryCacheMiddleware, cache, err := queryrange.NewResultsCacheMiddleware(
 			log,
 			cfg.ResultsCacheConfig,
+			NewCacheKeyLimits(limits),
 			limits,
 			codec,
 			extractor,

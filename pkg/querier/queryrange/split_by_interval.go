@@ -12,11 +12,11 @@ import (
 )
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
-func SplitByIntervalMiddleware(cfg Config, limits Limits, merger queryrange.Merger) queryrange.Middleware {
+func SplitByIntervalMiddleware(limits Limits, merger queryrange.Merger) queryrange.Middleware {
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
 		return &splitByInterval{
 			next:   next,
-			limits: WithDefaultLimits(limits, cfg.Config),
+			limits: limits,
 			merger: merger,
 		}
 	})
