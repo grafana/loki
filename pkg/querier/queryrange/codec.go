@@ -122,8 +122,8 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 	}
 	switch string(resp.Data.ResultType) {
 	case loghttp.ResultTypeMatrix:
-		return &PrometheusResponse{
-			PrometheusResponse: &queryrange.PrometheusResponse{
+		return &LokiPromResponse{
+			Response: &queryrange.PrometheusResponse{
 				Status: loghttp.QueryStatusSuccess,
 				Data: queryrange.PrometheusData{
 					ResultType: loghttp.ResultTypeMatrix,
@@ -153,7 +153,7 @@ func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http
 	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
 	defer sp.Finish()
 
-	if promRes, ok := res.(*PrometheusResponse); ok {
+	if promRes, ok := res.(*LokiPromResponse); ok {
 		return promRes.encode(ctx)
 	}
 
@@ -202,17 +202,19 @@ func (codec) MergeResponse(responses ...queryrange.Response) (queryrange.Respons
 		return nil, errors.New("merging responses requires at least one response")
 	}
 	var mergedStats stats.Result
-	if _, ok := responses[0].(*PrometheusResponse); ok {
+	if _, ok := responses[0].(*LokiPromResponse); ok {
+		promResponses := make([]queryrange.Response, 0, len(responses))
 		for _, res := range responses {
-			mergedStats.Merge(res.(*PrometheusResponse).Statistics)
+			mergedStats.Merge(res.(*LokiPromResponse).Statistics)
+			promResponses = append(promResponses, res.(*LokiPromResponse).Response)
 		}
-		promRes, err := queryrange.PrometheusCodec.MergeResponse(responses...)
+		promRes, err := queryrange.PrometheusCodec.MergeResponse(promResponses...)
 		if err != nil {
 			return nil, err
 		}
-		return &PrometheusResponse{
-			PrometheusResponse: promRes.(*queryrange.PrometheusResponse),
-			Statistics:         mergedStats,
+		return &LokiPromResponse{
+			Response:   promRes.(*queryrange.PrometheusResponse),
+			Statistics: mergedStats,
 		}, nil
 	}
 	lokiRes, ok := responses[0].(*LokiResponse)

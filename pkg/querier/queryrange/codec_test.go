@@ -14,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/stretchr/testify/require"
 )
 
@@ -77,12 +78,15 @@ func Test_codec_DecodeResponse(t *testing.T) {
 		{"not success", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(`{"status":"fail"}`))}, nil, nil, true},
 		{"unknown", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(`{"status":"success"}`))}, nil, nil, true},
 		{"matrix", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(matrixString))}, nil,
-			&queryrange.PrometheusResponse{
-				Status: loghttp.QueryStatusSuccess,
-				Data: queryrange.PrometheusData{
-					ResultType: loghttp.ResultTypeMatrix,
-					Result:     sampleStreams,
+			&LokiPromResponse{
+				Response: &queryrange.PrometheusResponse{
+					Status: loghttp.QueryStatusSuccess,
+					Data: queryrange.PrometheusData{
+						ResultType: loghttp.ResultTypeMatrix,
+						Result:     sampleStreams,
+					},
 				},
+				Statistics: statsResult,
 			}, false},
 		{"streams v1", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(streamsString))},
 			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/loki/api/v1/query_range"},
@@ -95,6 +99,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 					ResultType: loghttp.ResultTypeStream,
 					Result:     logStreams,
 				},
+				Statistics: statsResult,
 			}, false},
 		{"streams legacy", &http.Response{StatusCode: 200, Body: ioutil.NopCloser(strings.NewReader(streamsString))},
 			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/api/prom/query_range"},
@@ -107,6 +112,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 					ResultType: loghttp.ResultTypeStream,
 					Result:     logStreams,
 				},
+				Statistics: statsResult,
 			}, false},
 	}
 	for _, tt := range tests {
@@ -170,12 +176,15 @@ func Test_codec_EncodeResponse(t *testing.T) {
 		wantErr bool
 	}{
 		{"error", &badResponse{}, "", true},
-		{"prom", &queryrange.PrometheusResponse{
-			Status: loghttp.QueryStatusSuccess,
-			Data: queryrange.PrometheusData{
-				ResultType: loghttp.ResultTypeMatrix,
-				Result:     sampleStreams,
+		{"prom", &LokiPromResponse{
+			Response: &queryrange.PrometheusResponse{
+				Status: loghttp.QueryStatusSuccess,
+				Data: queryrange.PrometheusData{
+					ResultType: loghttp.ResultTypeMatrix,
+					Result:     sampleStreams,
+				},
 			},
+			Statistics: statsResult,
 		}, matrixString, false},
 		{"loki v1",
 			&LokiResponse{
@@ -187,6 +196,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					ResultType: loghttp.ResultTypeStream,
 					Result:     logStreams,
 				},
+				Statistics: statsResult,
 			}, streamsString, false},
 		{"loki legacy",
 			&LokiResponse{
@@ -198,6 +208,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					ResultType: loghttp.ResultTypeStream,
 					Result:     logStreams,
 				},
+				Statistics: statsResult,
 			}, streamsStringLegacy, false},
 	}
 	for _, tt := range tests {
@@ -228,18 +239,23 @@ func Test_codec_MergeResponse(t *testing.T) {
 		{"empty", []queryrange.Response{}, nil, true},
 		{"unknown response", []queryrange.Response{&badResponse{}}, nil, true},
 		{"prom", []queryrange.Response{
-			&queryrange.PrometheusResponse{
-				Status: loghttp.QueryStatusSuccess,
-				Data: queryrange.PrometheusData{
-					ResultType: loghttp.ResultTypeMatrix,
-					Result:     sampleStreams,
+			&LokiPromResponse{
+				Response: &queryrange.PrometheusResponse{
+					Status: loghttp.QueryStatusSuccess,
+					Data: queryrange.PrometheusData{
+						ResultType: loghttp.ResultTypeMatrix,
+						Result:     sampleStreams,
+					},
 				},
-			}},
-			&queryrange.PrometheusResponse{
-				Status: loghttp.QueryStatusSuccess,
-				Data: queryrange.PrometheusData{
-					ResultType: loghttp.ResultTypeMatrix,
-					Result:     sampleStreams,
+			},
+		},
+			&LokiPromResponse{
+				Response: &queryrange.PrometheusResponse{
+					Status: loghttp.QueryStatusSuccess,
+					Data: queryrange.PrometheusData{
+						ResultType: loghttp.ResultTypeMatrix,
+						Result:     sampleStreams,
+					},
 				},
 			},
 			false,
@@ -613,8 +629,40 @@ func (badReader) Read(p []byte) (n int, err error) {
 }
 
 var (
+	statsResultString = `"statistics" : {
+		"ingester" : {
+			"compressedBytes": 1,
+			"decompressedBytes": 2,
+			"decompressedLines": 3,
+			"headChunkBytes": 4,
+			"headChunkLines": 5,
+			"totalBatches": 6,
+			"totalChunksMatched": 7,
+			"totalDuplicates": 8,
+			"totalLinesSent": 9,
+			"totalReached": 10
+		},
+		"store": {
+			"compressedBytes": 11,
+			"decompressedBytes": 12,
+			"decompressedLines": 13,
+			"headChunkBytes": 14,
+			"headChunkLines": 15,
+			"timeDownloadingChunksNano": 16,
+			"totalChunksRef": 17,
+			"totalDownloadedChunks": 18,
+			"totalDuplicates": 19
+		},
+		"summary": {
+			"bytesProcessedPerSeconds": 20,
+			"execTimeNano": 21,
+			"linesProcessedPerSeconds": 22,
+			"totalBytesProcessed": 23,
+			"totalLinesProcessed": 24
+		}
+	},`
 	matrixString = `{
-	"data": {
+	` + statsResultString + `"data": {
 	  "resultType": "matrix",
 	  "result": [
 		{
@@ -660,6 +708,7 @@ var (
 		},
 	}
 	streamsString = `{
+		` + statsResultString + `
 		"status": "success",
 		"data": {
 			"resultType": "streams",
@@ -683,8 +732,9 @@ var (
 			]
 		}
 	}`
-	streamsStringLegacy = `{"streams":[{"labels":"{test=\"test\"}","entries":[{"ts":"1970-01-02T10:17:36.789012345Z","line":"super line"}]},{"labels":"{test=\"test2\"}","entries":[{"ts":"1970-01-02T10:17:36.789012346Z","line":"super line2"}]}]}`
-	logStreams          = []logproto.Stream{
+	streamsStringLegacy = `{
+		` + statsResultString + `"streams":[{"labels":"{test=\"test\"}","entries":[{"ts":"1970-01-02T10:17:36.789012345Z","line":"super line"}]},{"labels":"{test=\"test2\"}","entries":[{"ts":"1970-01-02T10:17:36.789012346Z","line":"super line2"}]}]}`
+	logStreams = []logproto.Stream{
 		{
 			Labels: `{test="test"}`,
 			Entries: []logproto.Entry{
@@ -702,6 +752,38 @@ var (
 					Timestamp: time.Unix(0, 123456789012346).UTC(),
 				},
 			},
+		},
+	}
+	statsResult = stats.Result{
+		Summary: stats.Summary{
+			BytesProcessedPerSeconds: 20,
+			ExecTimeNano:             21,
+			LinesProcessedPerSeconds: 22,
+			TotalBytesProcessed:      23,
+			TotalLinesProcessed:      24,
+		},
+		Store: stats.Store{
+			CompressedBytes:           11,
+			DecompressedBytes:         12,
+			DecompressedLines:         13,
+			HeadChunkBytes:            14,
+			HeadChunkLines:            15,
+			TimeDownloadingChunksNano: 16,
+			TotalChunksRef:            17,
+			TotalDownloadedChunks:     18,
+			TotalDuplicates:           19,
+		},
+		Ingester: stats.Ingester{
+			CompressedBytes:    1,
+			DecompressedBytes:  2,
+			DecompressedLines:  3,
+			HeadChunkBytes:     4,
+			HeadChunkLines:     5,
+			TotalBatches:       6,
+			TotalChunksMatched: 7,
+			TotalDuplicates:    8,
+			TotalLinesSent:     9,
+			TotalReached:       10,
 		},
 	}
 )

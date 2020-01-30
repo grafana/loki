@@ -9,7 +9,6 @@ import (
 	proto "github.com/gogo/protobuf/proto"
 	io "io"
 	math "math"
-	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
 )
@@ -23,7 +22,7 @@ var _ = math.Inf
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 
 // Result contains LogQL query statistics.
 type Result struct {
@@ -45,7 +44,7 @@ func (m *Result) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_Result.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
+		n, err := m.MarshalTo(b)
 		if err != nil {
 			return nil, err
 		}
@@ -112,7 +111,7 @@ func (m *Summary) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_Summary.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
+		n, err := m.MarshalTo(b)
 		if err != nil {
 			return nil, err
 		}
@@ -200,7 +199,7 @@ func (m *Store) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_Store.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
+		n, err := m.MarshalTo(b)
 		if err != nil {
 			return nil, err
 		}
@@ -318,7 +317,7 @@ func (m *Ingester) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_Ingester.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
+		n, err := m.MarshalTo(b)
 		if err != nil {
 			return nil, err
 		}
@@ -702,7 +701,7 @@ func valueToGoStringStats(v interface{}, typ string) string {
 func (m *Result) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
@@ -710,52 +709,41 @@ func (m *Result) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Result) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Result) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
+	var i int
 	_ = i
 	var l int
 	_ = l
-	{
-		size, err := m.Ingester.MarshalToSizedBuffer(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = encodeVarintStats(dAtA, i, uint64(size))
-	}
-	i--
-	dAtA[i] = 0x1a
-	{
-		size, err := m.Store.MarshalToSizedBuffer(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = encodeVarintStats(dAtA, i, uint64(size))
-	}
-	i--
-	dAtA[i] = 0x12
-	{
-		size, err := m.Summary.MarshalToSizedBuffer(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = encodeVarintStats(dAtA, i, uint64(size))
-	}
-	i--
 	dAtA[i] = 0xa
-	return len(dAtA) - i, nil
+	i++
+	i = encodeVarintStats(dAtA, i, uint64(m.Summary.Size()))
+	n1, err := m.Summary.MarshalTo(dAtA[i:])
+	if err != nil {
+		return 0, err
+	}
+	i += n1
+	dAtA[i] = 0x12
+	i++
+	i = encodeVarintStats(dAtA, i, uint64(m.Store.Size()))
+	n2, err := m.Store.MarshalTo(dAtA[i:])
+	if err != nil {
+		return 0, err
+	}
+	i += n2
+	dAtA[i] = 0x1a
+	i++
+	i = encodeVarintStats(dAtA, i, uint64(m.Ingester.Size()))
+	n3, err := m.Ingester.MarshalTo(dAtA[i:])
+	if err != nil {
+		return 0, err
+	}
+	i += n3
+	return i, nil
 }
 
 func (m *Summary) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
@@ -763,47 +751,42 @@ func (m *Summary) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Summary) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Summary) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
+	var i int
 	_ = i
 	var l int
 	_ = l
-	if m.ExecTimeNano != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.ExecTimeNano))
-		i--
-		dAtA[i] = 0x28
-	}
-	if m.TotalLinesProcessed != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.TotalLinesProcessed))
-		i--
-		dAtA[i] = 0x20
-	}
-	if m.TotalBytesProcessed != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.TotalBytesProcessed))
-		i--
-		dAtA[i] = 0x18
+	if m.BytesProcessedPerSeconds != 0 {
+		dAtA[i] = 0x8
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.BytesProcessedPerSeconds))
 	}
 	if m.LinesProcessedPerSeconds != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.LinesProcessedPerSeconds))
-		i--
 		dAtA[i] = 0x10
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.LinesProcessedPerSeconds))
 	}
-	if m.BytesProcessedPerSeconds != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.BytesProcessedPerSeconds))
-		i--
-		dAtA[i] = 0x8
+	if m.TotalBytesProcessed != 0 {
+		dAtA[i] = 0x18
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.TotalBytesProcessed))
 	}
-	return len(dAtA) - i, nil
+	if m.TotalLinesProcessed != 0 {
+		dAtA[i] = 0x20
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.TotalLinesProcessed))
+	}
+	if m.ExecTimeNano != 0 {
+		dAtA[i] = 0x28
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.ExecTimeNano))
+	}
+	return i, nil
 }
 
 func (m *Store) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
@@ -811,67 +794,62 @@ func (m *Store) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Store) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Store) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
+	var i int
 	_ = i
 	var l int
 	_ = l
-	if m.TotalDuplicates != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.TotalDuplicates))
-		i--
-		dAtA[i] = 0x48
-	}
-	if m.CompressedBytes != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.CompressedBytes))
-		i--
-		dAtA[i] = 0x40
-	}
-	if m.DecompressedLines != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.DecompressedLines))
-		i--
-		dAtA[i] = 0x38
-	}
-	if m.DecompressedBytes != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.DecompressedBytes))
-		i--
-		dAtA[i] = 0x30
-	}
-	if m.HeadChunkLines != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.HeadChunkLines))
-		i--
-		dAtA[i] = 0x28
-	}
-	if m.HeadChunkBytes != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.HeadChunkBytes))
-		i--
-		dAtA[i] = 0x20
-	}
-	if m.TimeDownloadingChunksNano != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.TimeDownloadingChunksNano))
-		i--
-		dAtA[i] = 0x18
+	if m.TotalChunksRef != 0 {
+		dAtA[i] = 0x8
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.TotalChunksRef))
 	}
 	if m.TotalDownloadedChunks != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.TotalDownloadedChunks))
-		i--
 		dAtA[i] = 0x10
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.TotalDownloadedChunks))
 	}
-	if m.TotalChunksRef != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.TotalChunksRef))
-		i--
-		dAtA[i] = 0x8
+	if m.TimeDownloadingChunksNano != 0 {
+		dAtA[i] = 0x18
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.TimeDownloadingChunksNano))
 	}
-	return len(dAtA) - i, nil
+	if m.HeadChunkBytes != 0 {
+		dAtA[i] = 0x20
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.HeadChunkBytes))
+	}
+	if m.HeadChunkLines != 0 {
+		dAtA[i] = 0x28
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.HeadChunkLines))
+	}
+	if m.DecompressedBytes != 0 {
+		dAtA[i] = 0x30
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.DecompressedBytes))
+	}
+	if m.DecompressedLines != 0 {
+		dAtA[i] = 0x38
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.DecompressedLines))
+	}
+	if m.CompressedBytes != 0 {
+		dAtA[i] = 0x40
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.CompressedBytes))
+	}
+	if m.TotalDuplicates != 0 {
+		dAtA[i] = 0x48
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.TotalDuplicates))
+	}
+	return i, nil
 }
 
 func (m *Ingester) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
@@ -879,78 +857,71 @@ func (m *Ingester) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Ingester) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Ingester) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
+	var i int
 	_ = i
 	var l int
 	_ = l
-	if m.TotalDuplicates != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.TotalDuplicates))
-		i--
-		dAtA[i] = 0x50
-	}
-	if m.CompressedBytes != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.CompressedBytes))
-		i--
-		dAtA[i] = 0x48
-	}
-	if m.DecompressedLines != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.DecompressedLines))
-		i--
-		dAtA[i] = 0x40
-	}
-	if m.DecompressedBytes != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.DecompressedBytes))
-		i--
-		dAtA[i] = 0x38
-	}
-	if m.HeadChunkLines != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.HeadChunkLines))
-		i--
-		dAtA[i] = 0x30
-	}
-	if m.HeadChunkBytes != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.HeadChunkBytes))
-		i--
-		dAtA[i] = 0x28
-	}
-	if m.TotalLinesSent != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.TotalLinesSent))
-		i--
-		dAtA[i] = 0x20
-	}
-	if m.TotalBatches != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.TotalBatches))
-		i--
-		dAtA[i] = 0x18
+	if m.TotalReached != 0 {
+		dAtA[i] = 0x8
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.TotalReached))
 	}
 	if m.TotalChunksMatched != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.TotalChunksMatched))
-		i--
 		dAtA[i] = 0x10
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.TotalChunksMatched))
 	}
-	if m.TotalReached != 0 {
-		i = encodeVarintStats(dAtA, i, uint64(m.TotalReached))
-		i--
-		dAtA[i] = 0x8
+	if m.TotalBatches != 0 {
+		dAtA[i] = 0x18
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.TotalBatches))
 	}
-	return len(dAtA) - i, nil
+	if m.TotalLinesSent != 0 {
+		dAtA[i] = 0x20
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.TotalLinesSent))
+	}
+	if m.HeadChunkBytes != 0 {
+		dAtA[i] = 0x28
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.HeadChunkBytes))
+	}
+	if m.HeadChunkLines != 0 {
+		dAtA[i] = 0x30
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.HeadChunkLines))
+	}
+	if m.DecompressedBytes != 0 {
+		dAtA[i] = 0x38
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.DecompressedBytes))
+	}
+	if m.DecompressedLines != 0 {
+		dAtA[i] = 0x40
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.DecompressedLines))
+	}
+	if m.CompressedBytes != 0 {
+		dAtA[i] = 0x48
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.CompressedBytes))
+	}
+	if m.TotalDuplicates != 0 {
+		dAtA[i] = 0x50
+		i++
+		i = encodeVarintStats(dAtA, i, uint64(m.TotalDuplicates))
+	}
+	return i, nil
 }
 
 func encodeVarintStats(dAtA []byte, offset int, v uint64) int {
-	offset -= sovStats(v)
-	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
 	dAtA[offset] = uint8(v)
-	return base
+	return offset + 1
 }
 func (m *Result) Size() (n int) {
 	if m == nil {
@@ -1067,7 +1038,14 @@ func (m *Ingester) Size() (n int) {
 }
 
 func sovStats(x uint64) (n int) {
-	return (math_bits.Len64(x|1) + 6) / 7
+	for {
+		n++
+		x >>= 7
+		if x == 0 {
+			break
+		}
+	}
+	return n
 }
 func sozStats(x uint64) (n int) {
 	return sovStats(uint64((x << 1) ^ uint64((int64(x) >> 63))))

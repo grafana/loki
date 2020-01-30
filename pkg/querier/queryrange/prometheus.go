@@ -15,27 +15,26 @@ import (
 
 var jsonStd = jsoniter.ConfigCompatibleWithStandardLibrary
 
-// PrometheusResponse is the same as queryrange.PrometheusResponse but with statistics.
-// While this struct still implements proto.Message via embedded struct the statistics property won't be serialize.
-// We currently don't use the proto serialization on queryrange.Response, the frontend actually proto serialize
-// the http response.
-type PrometheusResponse struct {
-	*queryrange.PrometheusResponse
-	Statistics stats.Result `json:"statistics"`
-}
-
 // prometheusResponseExtractor wraps the original prometheus cache extractor.
 // Statistics are discarded when using cache entries.
 var prometheusResponseExtractor = queryrange.ExtractorFunc(func(start, end int64, from queryrange.Response) queryrange.Response {
-	return &PrometheusResponse{
-		PrometheusResponse: queryrange.PrometheusResponseExtractor.
-			Extract(start, end, from.(*PrometheusResponse)).(*queryrange.PrometheusResponse),
+	return &LokiPromResponse{
+		Response: queryrange.PrometheusResponseExtractor.
+			Extract(start, end, from.(*LokiPromResponse).Response).(*queryrange.PrometheusResponse),
 	}
 })
 
-func (p *PrometheusResponse) encode(ctx context.Context) (*http.Response, error) {
+func (p *LokiPromResponse) encode(ctx context.Context) (*http.Response, error) {
 	sp := opentracing.SpanFromContext(ctx)
-	b, err := jsonStd.Marshal(p)
+
+	// embed response and add statistics.
+	b, err := jsonStd.Marshal(struct {
+		*queryrange.PrometheusResponse
+		Statistics stats.Result `json:"statistics"`
+	}{
+		PrometheusResponse: p.Response,
+		Statistics:         p.Statistics,
+	})
 	if err != nil {
 		return nil, err
 	}
