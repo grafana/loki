@@ -4,6 +4,7 @@
 2. [Google Cloud Storage](#google-cloud-storage)
 3. [Cassandra Index](#cassandra-index)
 4. [AWS](#aws)
+5. [Using the query-frontend](#query-frontend)
 
 ## Complete Local config
 
@@ -161,3 +162,7 @@ storage_config:
     s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
     s3forcepathstyle: true
 ```
+
+## Query Frontend
+
+[example configuration](./query-frontend.md)
