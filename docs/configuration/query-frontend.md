@@ -72,10 +72,6 @@ spec:
     port: 9091
     protocol: TCP
     targetPort: 9091
-  - name: query-frontend-grpc
-    port: 9095
-    protocol: TCP
-    targetPort: 9095
   selector:
     name: query-frontend
   sessionAffinity: None
@@ -114,9 +110,6 @@ spec:
         ports:
         - containerPort: 9091
           name: http
-          protocol: TCP
-        - containerPort: 9095
-          name: grpc
           protocol: TCP
         resources:
           limits:
