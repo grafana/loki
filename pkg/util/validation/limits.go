@@ -217,7 +217,7 @@ func (o *Overrides) MaxStreamsMatchersPerQuery(userID string) int {
 	return o.getOverridesForUser(userID).MaxStreamsMatchersPerQuery
 }
 
-// QuerySplitDuration returns the limit to number of streams matchers per query.
+// QuerySplitDuration returns the tenant specific splitby interval applied in the query frontend.
 func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 	return o.getOverridesForUser(userID).QuerySplitDuration
 }
