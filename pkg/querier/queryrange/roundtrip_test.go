@@ -287,6 +287,14 @@ func TestRegexpParamsSupport(t *testing.T) {
 
 type fakeLimits struct {
 	maxQueryParallelism int
+	splits              map[string]time.Duration
+}
+
+func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
+	if f.splits == nil {
+		return 0
+	}
+	return f.splits[key]
 }
 
 func (fakeLimits) MaxQueryLength(string) time.Duration {
