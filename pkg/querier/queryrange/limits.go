@@ -1,11 +1,13 @@
 package queryrange
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 )
 
+// Limits extends the cortex limits interface with support for per tenant splitby parameters
 type Limits interface {
 	queryrange.Limits
 	QuerySplitDuration(string) time.Duration
@@ -39,4 +41,16 @@ func WithDefaultLimits(l Limits, conf queryrange.Config) Limits {
 	}
 
 	return res
+}
+
+// cacheKeyLimits intersects Limits and CacheSplitter
+type cacheKeyLimits struct {
+	Limits
+}
+
+// GenerateCacheKey will panic if it encounters a 0 split duration. We ensure against this by requiring
+// a nonzero split interval when caching is enabled
+func (l cacheKeyLimits) GenerateCacheKey(userID string, r queryrange.Request) string {
+	currentInterval := r.GetStart() / int64(l.QuerySplitDuration(userID)/time.Millisecond)
+	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }

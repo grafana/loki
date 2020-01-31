@@ -31,7 +31,9 @@ type Stopper interface {
 
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
 func NewTripperware(cfg Config, log log.Logger, limits Limits) (frontend.Tripperware, Stopper, error) {
-	limits = WithDefaultLimits(limits, cfg.Config) // ensure that QuerySplitDuration uses configuration defaults
+	// Ensure that QuerySplitDuration uses configuration defaults.
+	// This avoids divide by zero errors when determining cache keys where user specific overrides don't exist.
+	limits = WithDefaultLimits(limits, cfg.Config)
 
 	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, lokiCodec, queryrange.PrometheusResponseExtractor)
 
@@ -135,7 +137,7 @@ func NewMetricTripperware(
 		queryCacheMiddleware, cache, err := queryrange.NewResultsCacheMiddleware(
 			log,
 			cfg.ResultsCacheConfig,
-			NewCacheKeyLimits(limits),
+			cacheKeyLimits{limits},
 			limits,
 			codec,
 			extractor,
