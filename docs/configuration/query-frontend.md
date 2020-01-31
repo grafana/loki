@@ -1,8 +1,18 @@
-## Disclaimer
+## Kubernetes Query Frontend Example
 
-This aims to be a general purpose example. There are a number of substitutions to make for these to work correctly. These variables take the form of <variable_name>. Override them with specifics to your environment.
+### Disclaimer
 
-## Configuration
+This aims to be a general purpose example; there are a number of substitutions to make for it to work correctly. These variables take the form of <variable_name>. You should override them with specifics to your environment.
+
+### Use case
+
+It's a common occurrence to start running Loki as a single binary while trying it out in order to simplify deployments and defer learning the (initially unnecessary) nitty gritty details. As we become more comfortable with its paradigms and begin migrating towards a more production ready deployment there are a number of things to be aware of. A common bottleneck is on the read path: queries that executed effortlessly on small data sets may churn to a halt on larger ones. Sometimes we can solve this with more queriers. However, that doesn't help when our queries are too large for a single querier to execute. Then we need the query frontend.
+
+#### Parallelization
+
+One of the most important functions of the query frontend is the ability to split larger queries into smaller ones, execute them in parallel, and stitch the results back together. How often it splits them is determined by the `querier.split-queries-by-interval` flag or the yaml config `queryrange.split_queriers_by_interval`. With this set to `1h`, the frontend will dissect a day long query into 24 one hour queries, distribute them to the queriers, and collect the results. This is immensely helpful in production environments as it not only allows us to perform larger queries via aggregation, but also evens the work distribution across queriers so that one or two are not stuck with impossibly large queries while others are left idle.
+
+### Configuration
 
 Use this shared config file to get the benefits of query parallelisation and caching with the query-frontend component. In addition to this configuration, start the querier and query-frontend components with `-target=querier` and `-target=query-frontend`, respectively.
 
