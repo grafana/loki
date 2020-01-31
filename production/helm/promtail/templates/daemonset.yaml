@@ -86,6 +86,9 @@ spec:
           ports:
             - containerPort: {{ .Values.config.server.http_listen_port }}
               name: http-metrics
+{{- if .Values.config.server.extraContainerPorts }}
+{{ toYaml .Values.config.server.extraContainerPorts | indent 12 }}
+{{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           {{- if .Values.livenessProbe }}

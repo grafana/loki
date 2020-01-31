@@ -127,6 +127,12 @@ config:
 
   server:
     http_listen_port: 3101
+    ## Extra ports to expose
+    # extraPorts:
+    
+    ## Extra ports to be included in container spec, primarily informational
+    # extraContainerPorts:
+
   positions:
     filename: /run/promtail/positions.yaml
   target_config:
