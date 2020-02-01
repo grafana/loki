@@ -16,9 +16,6 @@ spec:
       protocol: TCP
       name: http-metrics
       targetPort: http-metrics
-{{- if .Values.config.server.extraPorts }}
-{{ toYaml .Values.config.server.extraPorts | indent 2 }}
-{{- end }}
   selector:
     app: {{ template "promtail.name" . }}
     release: {{ .Release.Name }}
