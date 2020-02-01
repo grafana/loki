@@ -86,8 +86,8 @@ spec:
           ports:
             - containerPort: {{ .Values.config.server.http_listen_port }}
               name: http-metrics
-            {{- if .Values.config.server.syslogService.enabled }}
-            - containerPort: {{ .Values.config.server.syslogService.port }}
+            {{- if .Values.syslogService.enabled }}
+            - containerPort: {{ .Values.syslogService.port }}
               name: syslog
             {{- end }}
           securityContext:
