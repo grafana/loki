@@ -25,8 +25,8 @@ func WriteQueryResponseJSON(v logql.Result, w io.Writer) error {
 	}
 
 	j := map[string]interface{}{
-		"streams":    v.Data,
-		"statistics": v.Statistics,
+		"streams": v.Data,
+		"stats":   v.Statistics,
 	}
 
 	return json.NewEncoder(w).Encode(j)

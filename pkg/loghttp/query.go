@@ -8,9 +8,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/grafana/loki/pkg/logql/stats"
-
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/stats"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 )
@@ -31,9 +30,8 @@ const (
 
 //QueryResponse represents the http json response to a label query
 type QueryResponse struct {
-	Status     string            `json:"status"`
-	Statistics stats.Result      `json:"statistics"`
-	Data       QueryResponseData `json:"data"`
+	Status string            `json:"status"`
+	Data   QueryResponseData `json:"data"`
 }
 
 // PushRequest models a log stream push
@@ -58,8 +56,9 @@ type ResultValue interface {
 
 //QueryResponseData represents the http json response to a label query
 type QueryResponseData struct {
-	ResultType ResultType  `json:"resultType"`
-	Result     ResultValue `json:"result"`
+	ResultType ResultType   `json:"resultType"`
+	Result     ResultValue  `json:"result"`
+	Statistics stats.Result `json:"stats"`
 }
 
 // Type implements the promql.Value interface

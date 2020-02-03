@@ -35,38 +35,6 @@ var queryTests = []struct {
 		},
 		`{
 			"status": "success",
-			"statistics" : {
-				"ingester" : {
-					"compressedBytes": 0,
-					"decompressedBytes": 0,
-					"decompressedLines": 0,
-					"headChunkBytes": 0,
-					"headChunkLines": 0,
-					"totalBatches": 0,
-					"totalChunksMatched": 0,
-					"totalDuplicates": 0,
-					"totalLinesSent": 0,
-					"totalReached": 0
-				},
-				"store": {
-					"compressedBytes": 0,
-					"decompressedBytes": 0,
-					"decompressedLines": 0,
-					"headChunkBytes": 0,
-					"headChunkLines": 0,
-					"chunksDownloadTime": 0,
-					"totalChunksRef": 0,
-					"totalChunksDownloaded": 0,
-					"totalDuplicates": 0
-				},
-				"summary": {
-					"bytesProcessedPerSeconds": 0,
-					"execTime": 0,
-					"linesProcessedPerSeconds": 0,
-					"totalBytesProcessed":0,
-					"totalLinesProcessed":0
-				}
-			},
 			"data": {
 				"resultType": "streams",
 				"result": [
@@ -78,7 +46,39 @@ var queryTests = []struct {
 							[ "123456789012345", "super line" ]
 						]
 					}
-				]
+				],
+				"stats" : {
+					"ingester" : {
+						"compressedBytes": 0,
+						"decompressedBytes": 0,
+						"decompressedLines": 0,
+						"headChunkBytes": 0,
+						"headChunkLines": 0,
+						"totalBatches": 0,
+						"totalChunksMatched": 0,
+						"totalDuplicates": 0,
+						"totalLinesSent": 0,
+						"totalReached": 0
+					},
+					"store": {
+						"compressedBytes": 0,
+						"decompressedBytes": 0,
+						"decompressedLines": 0,
+						"headChunkBytes": 0,
+						"headChunkLines": 0,
+						"chunksDownloadTime": 0,
+						"totalChunksRef": 0,
+						"totalChunksDownloaded": 0,
+						"totalDuplicates": 0
+					},
+					"summary": {
+						"bytesProcessedPerSeconds": 0,
+						"execTime": 0,
+						"linesProcessedPerSeconds": 0,
+						"totalBytesProcessed":0,
+						"totalLinesProcessed":0
+					}
+				}
 			}
 		}`,
 	},
@@ -142,10 +142,8 @@ var queryTests = []struct {
 					"3.45"
 				  ]
 				}
-			  ]
-			},
-			"status": "success",
-			"statistics" : {
+			  ],
+			  "stats" : {
 				"ingester" : {
 					"compressedBytes": 0,
 					"decompressedBytes": 0,
@@ -177,6 +175,8 @@ var queryTests = []struct {
 					"totalLinesProcessed":0
 				}
 			  }
+			},
+			"status": "success"
 		  }`,
 	},
 	// matrix test
@@ -255,10 +255,8 @@ var queryTests = []struct {
 						]
 					]
 				}
-			  ]
-			},
-			"status": "success",
-			"statistics" : {
+			  ],
+			  "stats" : {
 				"ingester" : {
 					"compressedBytes": 0,
 					"decompressedBytes": 0,
@@ -290,6 +288,8 @@ var queryTests = []struct {
 					"totalLinesProcessed":0
 				}
 			  }
+			},
+			"status": "success"
 		  }`,
 	},
 }

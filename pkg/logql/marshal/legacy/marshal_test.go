@@ -42,7 +42,7 @@ var queryTests = []struct {
 					]
 				}
 			],
-			"statistics" : {
+			"stats" : {
 				"ingester" : {
 					"compressedBytes": 0,
 					"decompressedBytes": 0,

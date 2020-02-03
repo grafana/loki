@@ -25,11 +25,11 @@ func WriteQueryResponseJSON(v logql.Result, w io.Writer) error {
 	}
 
 	q := loghttp.QueryResponse{
-		Status:     "success",
-		Statistics: v.Statistics,
+		Status: "success",
 		Data: loghttp.QueryResponseData{
 			ResultType: value.Type(),
 			Result:     value,
+			Statistics: v.Statistics,
 		},
 	}
 
