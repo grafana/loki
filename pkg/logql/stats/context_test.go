@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/stretchr/testify/require"
 )
@@ -20,13 +21,14 @@ func TestSnapshot(t *testing.T) {
 	GetChunkData(ctx).TotalDuplicates += 10
 
 	GetStoreData(ctx).TotalChunksRef += 50
-	GetStoreData(ctx).TotalDownloadedChunks += 60
-	GetStoreData(ctx).TimeDownloadingChunks += time.Second
+	GetStoreData(ctx).TotalChunksDownloaded += 60
+	GetStoreData(ctx).ChunksDownloadTime += time.Second
 
 	fakeIngesterQuery(ctx)
 	fakeIngesterQuery(ctx)
 
 	res := Snapshot(ctx, 2*time.Second)
+	res.Log(util.Logger)
 	expected := Result{
 		Ingester: Ingester{
 			TotalChunksMatched: 200,
@@ -42,8 +44,8 @@ func TestSnapshot(t *testing.T) {
 		},
 		Store: Store{
 			TotalChunksRef:        50,
-			TotalDownloadedChunks: 60,
-			DownloadingChunksTime: time.Second.Seconds(),
+			TotalChunksDownloaded: 60,
+			ChunksDownloadTime:    time.Second.Seconds(),
 			HeadChunkBytes:        10,
 			HeadChunkLines:        20,
 			DecompressedBytes:     40,
@@ -101,8 +103,8 @@ func TestResult_Merge(t *testing.T) {
 		},
 		Store: Store{
 			TotalChunksRef:        50,
-			TotalDownloadedChunks: 60,
-			DownloadingChunksTime: time.Second.Seconds(),
+			TotalChunksDownloaded: 60,
+			ChunksDownloadTime:    time.Second.Seconds(),
 			HeadChunkBytes:        10,
 			HeadChunkLines:        20,
 			DecompressedBytes:     40,

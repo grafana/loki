@@ -34,9 +34,9 @@ message Store {
   // The total of chunk reference fetched from index.
   int64 totalChunksRef = 1 [(gogoproto.jsontag) = "totalChunksRef"];
   // Total number of chunks fetched.
-  int64 totalDownloadedChunks  = 2 [(gogoproto.jsontag) = "totalDownloadedChunks"];
+  int64 totalChunksDownloaded  = 2 [(gogoproto.jsontag) = "totalChunksDownloaded"];
   // Time spent fetching chunks in nanoseconds.
-  double downloadingChunksTime = 3 [(gogoproto.jsontag) = "downloadingChunksTime"];
+  double chunksDownloadTime = 3 [(gogoproto.jsontag) = "chunksDownloadTime"];
 
   // Total bytes processed but was already in memory. (found in the headchunk)
   int64 headChunkBytes = 4 [(gogoproto.jsontag) = "headChunkBytes"];

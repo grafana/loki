@@ -53,8 +53,8 @@ func (r Result) Log(log log.Logger) {
 		"Ingester.TotalDuplicates", r.Ingester.TotalDuplicates,
 
 		"Store.TotalChunksRef", r.Store.TotalChunksRef,
-		"Store.TotalDownloadedChunks", r.Store.TotalDownloadedChunks,
-		"Store.DownloadingChunksTime", time.Duration(int64(r.Store.DownloadingChunksTime*float64(time.Second))),
+		"Store.TotalChunksDownloaded", r.Store.TotalChunksDownloaded,
+		"Store.ChunksDownloadTime", time.Duration(int64(r.Store.ChunksDownloadTime*float64(time.Second))),
 
 		"Store.HeadChunkBytes", humanize.Bytes(uint64(r.Store.HeadChunkBytes)),
 		"Store.HeadChunkLines", r.Store.HeadChunkLines,
@@ -117,9 +117,9 @@ func GetIngesterData(ctx context.Context) *IngesterData {
 
 // StoreData contains store specific statistics.
 type StoreData struct {
-	TotalChunksRef        int64         `json:"totalChunksRef"`        // The total of chunk reference fetched from index.
-	TotalDownloadedChunks int64         `json:"totalDownloadedChunks"` // Total number of chunks fetched.
-	TimeDownloadingChunks time.Duration `json:"timeDownloadingChunks"` // Time spent fetching chunks.
+	TotalChunksRef        int64         // The total of chunk reference fetched from index.
+	TotalChunksDownloaded int64         // Total number of chunks fetched.
+	ChunksDownloadTime    time.Duration // Time spent fetching chunks.
 }
 
 // GetStoreData returns the store statistics data from the current context.
@@ -140,8 +140,8 @@ func Snapshot(ctx context.Context, execTime time.Duration) Result {
 	s, ok := ctx.Value(storeKey).(*StoreData)
 	if ok {
 		res.Store.TotalChunksRef = s.TotalChunksRef
-		res.Store.TotalDownloadedChunks = s.TotalDownloadedChunks
-		res.Store.DownloadingChunksTime = s.TimeDownloadingChunks.Seconds()
+		res.Store.TotalChunksDownloaded = s.TotalChunksDownloaded
+		res.Store.ChunksDownloadTime = s.ChunksDownloadTime.Seconds()
 	}
 	// collect data from chunks iteration.
 	c, ok := ctx.Value(chunksKey).(*ChunkData)
@@ -180,8 +180,8 @@ func (r *Result) Merge(m Result) {
 	r.Summary.ExecTime += m.Summary.ExecTime
 
 	r.Store.TotalChunksRef += m.Store.TotalChunksRef
-	r.Store.TotalDownloadedChunks += m.Store.TotalDownloadedChunks
-	r.Store.DownloadingChunksTime += m.Store.DownloadingChunksTime
+	r.Store.TotalChunksDownloaded += m.Store.TotalChunksDownloaded
+	r.Store.ChunksDownloadTime += m.Store.ChunksDownloadTime
 	r.Store.HeadChunkBytes += m.Store.HeadChunkBytes
 	r.Store.HeadChunkLines += m.Store.HeadChunkLines
 	r.Store.DecompressedBytes += m.Store.DecompressedBytes
