@@ -42,6 +42,9 @@ type Limits struct {
 	MaxStreamsMatchersPerQuery int           `yaml:"max_streams_matchers_per_query"`
 	MaxConcurrentTailRequests  int           `yaml:"max_concurrent_tail_requests"`
 
+	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
+	QuerySplitDuration time.Duration `yaml:"split_queries_by_interval"`
+
 	// Config for overrides, convenient if it goes here.
 	PerTenantOverrideConfig string        `yaml:"per_tenant_override_config"`
 	PerTenantOverridePeriod time.Duration `yaml:"per_tenant_override_period"`
@@ -212,6 +215,11 @@ func (o *Overrides) CardinalityLimit(userID string) int {
 // MaxStreamsMatchersPerQuery returns the limit to number of streams matchers per query.
 func (o *Overrides) MaxStreamsMatchersPerQuery(userID string) int {
 	return o.getOverridesForUser(userID).MaxStreamsMatchersPerQuery
+}
+
+// QuerySplitDuration returns the tenant specific splitby interval applied in the query frontend.
+func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
+	return o.getOverridesForUser(userID).QuerySplitDuration
 }
 
 // MaxConcurrentTailRequests returns the limit to number of concurrent tail requests.

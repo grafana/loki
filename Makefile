@@ -242,7 +242,7 @@ lint:
 ########
 
 test: all
-	GOGC=10 go test $(MOD_FLAG) -p=4 ./...
+	GOGC=10 go test -covermode=atomic -coverprofile=coverage.txt $(MOD_FLAG) -p=4 ./...
 
 #########
 # Clean #

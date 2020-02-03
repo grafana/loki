@@ -1,3 +1,21 @@
+image:
+  repository: grafana/loki
+  tag: v1.3.0
+  pullPolicy: IfNotPresent
+
+ingress:
+  enabled: false
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: chart-example.local
+      paths: []
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
 ## Affinity for pod assignment
 ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
 affinity: {}
@@ -65,11 +83,6 @@ config:
   table_manager:
     retention_deletes_enabled: false
     retention_period: 0
-
-image:
-  repository: grafana/loki
-  tag: v1.3.0
-  pullPolicy: IfNotPresent
 
 ## Additional Loki container arguments, e.g. log level (debug, info, warn, error)
 extraArgs: {}

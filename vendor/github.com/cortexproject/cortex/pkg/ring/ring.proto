@@ -9,7 +9,7 @@ option (gogoproto.unmarshaler_all) = true;
 
 message Desc {
 	map<string,IngesterDesc> ingesters = 1 [(gogoproto.nullable) = false];
-	repeated TokenDesc tokens = 2 [(gogoproto.nullable) = false];
+	reserved 2;
 }
 
 message IngesterDesc {
@@ -19,11 +19,6 @@ message IngesterDesc {
 	int64 timestamp = 2; // unix timestamp
 	IngesterState state = 3;
 	repeated uint32 tokens = 6;
-}
-
-message TokenDesc {
-	uint32 token = 1;
-	string ingester = 2;
 }
 
 enum IngesterState {

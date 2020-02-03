@@ -4,7 +4,7 @@ source 'https://rubygems.org'
 
 gemspec
 
-gem 'fluentd', '1.4.0'
+gem 'fluentd', '1.9.0'
 gem 'rubocop-rspec'
 gem 'simplecov', require: false, group: :test
 gem 'test-unit'

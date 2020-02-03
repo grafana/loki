@@ -45,7 +45,6 @@ type StoreConfig struct {
 	ChunkCacheConfig       cache.Config `yaml:"chunk_cache_config,omitempty"`
 	WriteDedupeCacheConfig cache.Config `yaml:"write_dedupe_cache_config,omitempty"`
 
-	MinChunkAge           time.Duration `yaml:"min_chunk_age,omitempty"`
 	CacheLookupsOlderThan time.Duration `yaml:"cache_lookups_older_than,omitempty"`
 
 	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
@@ -61,7 +60,6 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.chunkCacheStubs, "store.chunk-cache-stubs", false, "If true, don't write the full chunk to cache, just a stub entry.")
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
 
-	f.DurationVar(&cfg.MinChunkAge, "store.min-chunk-age", 0, "Minimum time between chunk update and being saved to the store.")
 	f.DurationVar(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", 0, "Cache index entries older than this period. 0 to disable.")
 	f.DurationVar(&cfg.MaxLookBackPeriod, "store.max-look-back-period", 0, "Limit how long back data can be queried")
 
@@ -266,11 +264,6 @@ func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from 
 	if from.After(now) {
 		// time-span start is in future ... regard as legal
 		level.Info(log).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
-		return true, nil
-	}
-
-	if from.After(now.Add(-c.cfg.MinChunkAge)) {
-		// no data relevant to this query will have arrived at the store yet
 		return true, nil
 	}
 

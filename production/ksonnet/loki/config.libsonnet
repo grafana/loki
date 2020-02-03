@@ -117,7 +117,6 @@
         cache_results: true,
         max_retries: 5,
         results_cache: {
-          cache_split_interval: '30m',
           max_freshness: '10m',
           cache: {
             memcached_client: {
@@ -238,7 +237,7 @@
           from: '2018-04-15',
           store: 'bigtable',
           object_store: 'gcs',
-          schema: 'v9',
+          schema: 'v11',
           index: {
             prefix: '%s_index_' % $._config.table_prefix,
             period: '%dh' % $._config.index_period_hours,

@@ -17,7 +17,6 @@
 
 require 'fluent/plugin/output'
 require 'net/http'
-require 'uri'
 require 'yajl'
 require 'time'
 
@@ -73,6 +72,10 @@ module Fluent
       def configure(conf)
         compat_parameters_convert(conf, :buffer)
         super
+        @uri = URI.parse(@url + '/loki/api/v1/push')
+        unless @uri.kind_of?(URI::HTTP) or @uri.kind_of?(URI::HTTPS)
+          raise Fluent::ConfigError, "url parameter must be valid HTTP"
+        end
         @record_accessors = {}
         conf.elements.select { |element| element.name == 'label' }.each do |element|
           element.each_pair do |k, v|
@@ -127,27 +130,26 @@ module Fluent
         body = { 'streams' => payload }
 
         # add ingest path to loki url
-        uri = URI.parse(url + '/loki/api/v1/push')
 
         req = Net::HTTP::Post.new(
-          uri.request_uri
+          @uri.request_uri
         )
         req.add_field('Content-Type', 'application/json')
         req.add_field('X-Scope-OrgID', @tenant) if @tenant
         req.body = Yajl.dump(body)
         req.basic_auth(@username, @password) if @username
 
-        opts = ssl_opts(uri)
+        opts = ssl_opts(@uri)
 
         log.debug "sending #{req.body.length} bytes to loki"
-        res = Net::HTTP.start(uri.hostname, uri.port, **opts) { |http| http.request(req) }
+        res = Net::HTTP.start(@uri.host, @uri.port, **opts) { |http| http.request(req) }
         unless res&.is_a?(Net::HTTPSuccess)
           res_summary = if res
                           "#{res.code} #{res.message} #{res.body}"
                         else
                           'res=nil'
                         end
-          log.warn "failed to #{req.method} #{uri} (#{res_summary})"
+          log.warn "failed to #{req.method} #{@uri} (#{res_summary})"
           log.warn Yajl.dump(body)
 
         end

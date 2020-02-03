@@ -4,6 +4,7 @@
 2. [Google Cloud Storage](#google-cloud-storage)
 3. [Cassandra Index](#cassandra-index)
 4. [AWS](#aws)
+5. [Using the query-frontend](#query-frontend)
 
 ## Complete Local config
 
@@ -29,7 +30,7 @@ schema_config:
   - from: 2018-04-15
     store: boltdb
     object_store: filesystem
-    schema: v9
+    schema: v11
     index:
       prefix: index_
       period: 168h
@@ -75,7 +76,7 @@ schema_config:
   - from: 2018-04-15
     store: bigtable
     object_store: gcs
-    schema: v9
+    schema: v11
     index:
       prefix: loki_index_
       period: 168h
@@ -99,7 +100,7 @@ schema_config:
   - from: 2018-04-15
     store: cassandra
     object_store: filesystem
-    schema: v9
+    schema: v11
     index:
       prefix: cassandra_table
       period: 168h
@@ -127,7 +128,7 @@ schema_config:
     - from: 2018-04-15
       store: aws
       object_store: s3
-      schema: v9
+      schema: v11
       index:
         prefix: dynamodb_table_name
         period: 0
@@ -161,3 +162,7 @@ storage_config:
     s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
     s3forcepathstyle: true
 ```
+
+## Query Frontend
+
+[example configuration](./query-frontend.md)

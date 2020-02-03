@@ -342,10 +342,7 @@ func (t *Loki) initQueryFrontend() (err error) {
 func (t *Loki) stopQueryFrontend() error {
 	t.frontend.Close()
 	if t.stopper != nil {
-		if err := t.stopper.Stop(); err != nil {
-			level.Error(util.Logger).Log("msg", "error while stopping middleware", "err", err)
-			return err
-		}
+		t.stopper.Stop()
 	}
 	return nil
 }

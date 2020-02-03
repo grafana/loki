@@ -5,9 +5,11 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
@@ -24,12 +26,17 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Stopper gracefully shutdown resources created
 type Stopper interface {
-	Stop() error
+	Stop()
 }
 
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
-func NewTripperware(cfg Config, log log.Logger, limits queryrange.Limits) (frontend.Tripperware, Stopper, error) {
-	metricsTripperware, cache, err := queryrange.NewTripperware(cfg.Config, log, limits, lokiCodec, prometheusResponseExtractor)
+func NewTripperware(cfg Config, log log.Logger, limits Limits) (frontend.Tripperware, Stopper, error) {
+	// Ensure that QuerySplitDuration uses configuration defaults.
+	// This avoids divide by zero errors when determining cache keys where user specific overrides don't exist.
+	limits = WithDefaultLimits(limits, cfg.Config)
+
+	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, lokiCodec, prometheusResponseExtractor)
+
 	if err != nil {
 		return nil, nil, err
 	}
@@ -78,12 +85,12 @@ func NewTripperware(cfg Config, log log.Logger, limits queryrange.Limits) (front
 func NewLogFilterTripperware(
 	cfg Config,
 	log log.Logger,
-	limits queryrange.Limits,
+	limits Limits,
 	codec queryrange.Codec,
 ) (frontend.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{queryrange.LimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(limits, codec))
 	}
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry"), queryrange.NewRetryMiddleware(log, cfg.MaxRetries))
@@ -94,4 +101,77 @@ func NewLogFilterTripperware(
 		}
 		return next
 	}), nil
+}
+
+// NewMetricTripperware creates a new frontend tripperware responsible for handling metric queries
+func NewMetricTripperware(
+	cfg Config,
+	log log.Logger,
+	limits Limits,
+	codec queryrange.Codec,
+	extractor queryrange.Extractor,
+) (frontend.Tripperware, Stopper, error) {
+
+	queryRangeMiddleware := []queryrange.Middleware{queryrange.LimitsMiddleware(limits)}
+	if cfg.AlignQueriesWithStep {
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			queryrange.InstrumentMiddleware("step_align"),
+			queryrange.StepAlignMiddleware,
+		)
+	}
+
+	// SplitQueriesByDay is deprecated use SplitQueriesByInterval.
+	if cfg.SplitQueriesByDay {
+		level.Warn(log).Log("msg", "flag querier.split-queries-by-day (or config split_queries_by_day) is deprecated, use querier.split-queries-by-interval instead.")
+	}
+
+	queryRangeMiddleware = append(
+		queryRangeMiddleware,
+		queryrange.InstrumentMiddleware("split_by_interval"),
+		SplitByIntervalMiddleware(limits, codec),
+	)
+
+	var c cache.Cache
+	if cfg.CacheResults {
+		queryCacheMiddleware, cache, err := queryrange.NewResultsCacheMiddleware(
+			log,
+			cfg.ResultsCacheConfig,
+			cacheKeyLimits{limits},
+			limits,
+			codec,
+			extractor,
+		)
+		if err != nil {
+			return nil, nil, err
+		}
+		c = cache
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			queryrange.InstrumentMiddleware("results_cache"),
+			queryCacheMiddleware,
+		)
+	}
+
+	if cfg.MaxRetries > 0 {
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			queryrange.InstrumentMiddleware("retry"),
+			queryrange.NewRetryMiddleware(log, cfg.MaxRetries),
+		)
+	}
+
+	return frontend.Tripperware(func(next http.RoundTripper) http.RoundTripper {
+		// Finally, if the user selected any query range middleware, stitch it in.
+		if len(queryRangeMiddleware) > 0 {
+			rt := queryrange.NewRoundTripper(next, codec, queryRangeMiddleware...)
+			return frontend.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if !strings.HasSuffix(r.URL.Path, "/query_range") {
+					return next.RoundTrip(r)
+				}
+				return rt.RoundTrip(r)
+			})
+		}
+		return next
+	}), c, nil
 }

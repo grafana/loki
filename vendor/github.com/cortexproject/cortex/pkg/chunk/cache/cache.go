@@ -17,7 +17,7 @@ import (
 type Cache interface {
 	Store(ctx context.Context, key []string, buf [][]byte)
 	Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string)
-	Stop() error
+	Stop()
 }
 
 // Config for building Caches.

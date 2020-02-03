@@ -31,7 +31,6 @@ var (
 		CacheResults:           true,
 		ResultsCacheConfig: queryrange.ResultsCacheConfig{
 			MaxCacheFreshness: 1 * time.Minute,
-			SplitInterval:     4 * time.Hour,
 			CacheConfig: cache.Config{
 				EnableFifoCache: true,
 				Fifocache: cache.FifoCacheConfig{
@@ -77,7 +76,7 @@ func TestMetricsTripperware(t *testing.T) {
 
 	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
 	if stopper != nil {
-		defer func() { _ = stopper.Stop() }()
+		defer stopper.Stop()
 	}
 	require.NoError(t, err)
 
@@ -141,7 +140,7 @@ func TestLogFilterTripperware(t *testing.T) {
 
 	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
 	if stopper != nil {
-		defer func() { _ = stopper.Stop() }()
+		defer stopper.Stop()
 	}
 	require.NoError(t, err)
 	rt, err := newfakeRoundTripper()
@@ -188,7 +187,7 @@ func TestLogFilterTripperware(t *testing.T) {
 func TestLogNoRegex(t *testing.T) {
 	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
 	if stopper != nil {
-		defer func() { _ = stopper.Stop() }()
+		defer stopper.Stop()
 	}
 	require.NoError(t, err)
 	rt, err := newfakeRoundTripper()
@@ -222,7 +221,7 @@ func TestLogNoRegex(t *testing.T) {
 func TestUnhandledPath(t *testing.T) {
 	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
 	if stopper != nil {
-		defer func() { _ = stopper.Stop() }()
+		defer stopper.Stop()
 	}
 	require.NoError(t, err)
 	rt, err := newfakeRoundTripper()
@@ -246,7 +245,7 @@ func TestUnhandledPath(t *testing.T) {
 func TestRegexpParamsSupport(t *testing.T) {
 	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
 	if stopper != nil {
-		defer func() { _ = stopper.Stop() }()
+		defer stopper.Stop()
 	}
 	require.NoError(t, err)
 	rt, err := newfakeRoundTripper()
@@ -288,6 +287,14 @@ func TestRegexpParamsSupport(t *testing.T) {
 
 type fakeLimits struct {
 	maxQueryParallelism int
+	splits              map[string]time.Duration
+}
+
+func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
+	if f.splits == nil {
+		return 0
+	}
+	return f.splits[key]
 }
 
 func (fakeLimits) MaxQueryLength(string) time.Duration {

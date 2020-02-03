@@ -6,6 +6,10 @@ annotations: {}
 
 deploymentStrategy: RollingUpdate
 
+initContainer:
+  enabled: false
+  fsInotifyMaxUserInstances: 128
+
 image:
   repository: grafana/promtail
   tag: v1.3.0

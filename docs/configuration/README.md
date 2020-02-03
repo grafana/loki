@@ -690,7 +690,7 @@ for from specific time periods.
 # store and object_store below affect which <storage_config> key is
 # used.
 
-# Which store to use for the index. Either cassandra, bigtable, dynamodb, or
+# Which store to use for the index. Either cassandra, bigtable, aws-dynamo, or
 # boltdb
 store: <string>
 
