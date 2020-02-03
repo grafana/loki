@@ -24,16 +24,40 @@ var prometheusResponseExtractor = queryrange.ExtractorFunc(func(start, end int64
 	}
 })
 
+type PromResponse struct {
+	Status    string         `json:"status"`
+	Data      PrometheusData `json:"data,omitempty"`
+	ErrorType string         `json:"errorType,omitempty"`
+	Error     string         `json:"error,omitempty"`
+}
+
+type PrometheusData struct {
+	queryrange.PrometheusData
+	Statistics stats.Result `json:"stats"`
+}
+
 func (p *LokiPromResponse) encode(ctx context.Context) (*http.Response, error) {
 	sp := opentracing.SpanFromContext(ctx)
-
 	// embed response and add statistics.
 	b, err := jsonStd.Marshal(struct {
-		*queryrange.PrometheusResponse
-		Statistics stats.Result `json:"statistics"`
+		Status string `json:"status"`
+		Data   struct {
+			queryrange.PrometheusData
+			Statistics stats.Result `json:"stats"`
+		} `json:"data,omitempty"`
+		ErrorType string `json:"errorType,omitempty"`
+		Error     string `json:"error,omitempty"`
 	}{
-		PrometheusResponse: p.Response,
-		Statistics:         p.Statistics,
+		Error: p.Response.Error,
+		Data: struct {
+			queryrange.PrometheusData
+			Statistics stats.Result `json:"stats"`
+		}{
+			PrometheusData: p.Response.Data,
+			Statistics:     p.Statistics,
+		},
+		ErrorType: p.Response.ErrorType,
+		Status:    p.Response.Status,
 	})
 	if err != nil {
 		return nil, err

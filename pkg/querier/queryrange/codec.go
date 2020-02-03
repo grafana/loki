@@ -130,7 +130,7 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 					Result:     toProto(resp.Data.Result.(loghttp.Matrix)),
 				},
 			},
-			Statistics: resp.Statistics,
+			Statistics: resp.Data.Statistics,
 		}, nil
 	case loghttp.ResultTypeStream:
 		return &LokiResponse{
@@ -138,7 +138,7 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 			Direction:  req.(*LokiRequest).Direction,
 			Limit:      req.(*LokiRequest).Limit,
 			Version:    uint32(loghttp.GetVersion(req.(*LokiRequest).Path)),
-			Statistics: resp.Statistics,
+			Statistics: resp.Data.Statistics,
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result:     resp.Data.Result.(loghttp.Streams).ToProto(),

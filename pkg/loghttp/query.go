@@ -100,8 +100,9 @@ type Entry struct {
 // UnmarshalJSON implements the json.Unmarshaler interface.
 func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 	unmarshal := struct {
-		Type   ResultType      `json:"resultType"`
-		Result json.RawMessage `json:"result"`
+		Type       ResultType      `json:"resultType"`
+		Result     json.RawMessage `json:"result"`
+		Statistics stats.Result    `json:"stats"`
 	}{}
 
 	err := json.Unmarshal(data, &unmarshal)
@@ -135,6 +136,7 @@ func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 
 	q.ResultType = unmarshal.Type
 	q.Result = value
+	q.Statistics = unmarshal.Statistics
 
 	return nil
 }

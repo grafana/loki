@@ -629,7 +629,7 @@ func (badReader) Read(p []byte) (n int, err error) {
 }
 
 var (
-	statsResultString = `"statistics" : {
+	statsResultString = `"stats" : {
 		"ingester" : {
 			"compressedBytes": 1,
 			"decompressedBytes": 2,
@@ -662,7 +662,8 @@ var (
 		}
 	},`
 	matrixString = `{
-	` + statsResultString + `"data": {
+	"data": {
+	  ` + statsResultString + `
 	  "resultType": "matrix",
 	  "result": [
 		{
@@ -708,9 +709,9 @@ var (
 		},
 	}
 	streamsString = `{
-		` + statsResultString + `
 		"status": "success",
 		"data": {
+			` + statsResultString + `
 			"resultType": "streams",
 			"result": [
 				{
