@@ -24,18 +24,7 @@ var prometheusResponseExtractor = queryrange.ExtractorFunc(func(start, end int64
 	}
 })
 
-type PromResponse struct {
-	Status    string         `json:"status"`
-	Data      PrometheusData `json:"data,omitempty"`
-	ErrorType string         `json:"errorType,omitempty"`
-	Error     string         `json:"error,omitempty"`
-}
-
-type PrometheusData struct {
-	queryrange.PrometheusData
-	Statistics stats.Result `json:"stats"`
-}
-
+// encode encodes a Prometheus response and injects Loki stats.
 func (p *LokiPromResponse) encode(ctx context.Context) (*http.Response, error) {
 	sp := opentracing.SpanFromContext(ctx)
 	// embed response and add statistics.
