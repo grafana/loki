@@ -38,6 +38,17 @@ spec:
     {{- if .Values.priorityClassName }}
       priorityClassName: {{ .Values.priorityClassName }}
     {{- end }}
+    {{- if .Values.initContainer.enabled }}
+      initContainers:
+      - name: init
+        image: busybox
+        command:
+        - sh
+        - -c
+        - sysctl -w fs.inotify.max_user_instances={{ .Values.initContainer.fsInotifyMaxUserInstances }}
+        securityContext:
+          privileged: true
+    {{- end }}
       containers:
         - name: promtail
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
