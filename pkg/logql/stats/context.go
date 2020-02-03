@@ -54,7 +54,7 @@ func (r Result) Log(log log.Logger) {
 
 		"Store.TotalChunksRef", r.Store.TotalChunksRef,
 		"Store.TotalDownloadedChunks", r.Store.TotalDownloadedChunks,
-		"Store.TimeDownloadingChunks", time.Duration(r.Store.TimeDownloadingChunksNano),
+		"Store.DownloadingChunksTime", time.Duration(int64(r.Store.DownloadingChunksTime*float64(time.Second))),
 
 		"Store.HeadChunkBytes", humanize.Bytes(uint64(r.Store.HeadChunkBytes)),
 		"Store.HeadChunkLines", r.Store.HeadChunkLines,
@@ -67,7 +67,7 @@ func (r Result) Log(log log.Logger) {
 		"Summary.LinesProcessedPerSeconds", r.Summary.LinesProcessedPerSeconds,
 		"Summary.TotalBytesProcessed", humanize.Bytes(uint64(r.Summary.TotalBytesProcessed)),
 		"Summary.TotalLinesProcessed", r.Summary.TotalLinesProcessed,
-		"Summary.ExecTime", time.Duration(r.Summary.ExecTimeNano),
+		"Summary.ExecTime", time.Duration(int64(r.Summary.ExecTime*float64(time.Second))),
 	)
 }
 
@@ -141,7 +141,7 @@ func Snapshot(ctx context.Context, execTime time.Duration) Result {
 	if ok {
 		res.Store.TotalChunksRef = s.TotalChunksRef
 		res.Store.TotalDownloadedChunks = s.TotalDownloadedChunks
-		res.Store.TimeDownloadingChunksNano = int64(s.TimeDownloadingChunks)
+		res.Store.DownloadingChunksTime = s.TimeDownloadingChunks.Seconds()
 	}
 	// collect data from chunks iteration.
 	c, ok := ctx.Value(chunksKey).(*ChunkData)
@@ -165,7 +165,7 @@ func Snapshot(ctx context.Context, execTime time.Duration) Result {
 	res.Summary.LinesProcessedPerSeconds =
 		int64(float64(res.Summary.TotalLinesProcessed) /
 			execTime.Seconds())
-	res.Summary.ExecTimeNano = int64(execTime)
+	res.Summary.ExecTime = execTime.Seconds()
 	return res
 }
 
@@ -177,11 +177,11 @@ func (r *Result) Merge(m Result) {
 	r.Summary.LinesProcessedPerSeconds += m.Summary.LinesProcessedPerSeconds
 	r.Summary.TotalBytesProcessed += m.Summary.TotalBytesProcessed
 	r.Summary.TotalLinesProcessed += m.Summary.TotalLinesProcessed
-	r.Summary.ExecTimeNano += m.Summary.ExecTimeNano
+	r.Summary.ExecTime += m.Summary.ExecTime
 
 	r.Store.TotalChunksRef += m.Store.TotalChunksRef
 	r.Store.TotalDownloadedChunks += m.Store.TotalDownloadedChunks
-	r.Store.TimeDownloadingChunksNano += m.Store.TimeDownloadingChunksNano
+	r.Store.DownloadingChunksTime += m.Store.DownloadingChunksTime
 	r.Store.HeadChunkBytes += m.Store.HeadChunkBytes
 	r.Store.HeadChunkLines += m.Store.HeadChunkLines
 	r.Store.DecompressedBytes += m.Store.DecompressedBytes

@@ -27,7 +27,7 @@ message Summary {
   // Total lines processed.
   int64 totalLinesProcessed = 4 [(gogoproto.jsontag) = "totalLinesProcessed"];
   // Execution time in nanoseconds.
-	int64 execTimeNano = 5 [(gogoproto.jsontag) = "execTimeNano"];
+	double execTime = 5 [(gogoproto.jsontag) = "execTime"];
 }
 
 message Store {
@@ -36,7 +36,7 @@ message Store {
   // Total number of chunks fetched.
   int64 totalDownloadedChunks  = 2 [(gogoproto.jsontag) = "totalDownloadedChunks"];
   // Time spent fetching chunks in nanoseconds.
-  int64 timeDownloadingChunksNano = 3 [(gogoproto.jsontag) = "timeDownloadingChunksNano"];
+  double downloadingChunksTime = 3 [(gogoproto.jsontag) = "downloadingChunksTime"];
 
   // Total bytes processed but was already in memory. (found in the headchunk)
   int64 headChunkBytes = 4 [(gogoproto.jsontag) = "headChunkBytes"];
