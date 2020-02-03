@@ -107,6 +107,9 @@ type query struct {
 
 // Exec Implements `Query`
 func (q *query) Exec(ctx context.Context) (Result, error) {
+	log, ctx := spanlogger.New(ctx, "Engine.Exec")
+	defer log.Finish()
+
 	var queryType string
 
 	if IsInstant(q) {
@@ -114,12 +117,23 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	} else {
 		queryType = "range"
 	}
+
 	timer := prometheus.NewTimer(queryTime.WithLabelValues(queryType))
 	defer timer.ObserveDuration()
-	data, statistics, err := q.ng.exec(ctx, q)
+
+	// records query statistics
+	var statResult stats.Result
+	start := time.Now()
+	ctx = stats.NewContext(ctx)
+
+	data, err := q.ng.exec(ctx, q)
+
+	statResult = stats.Snapshot(ctx, time.Since(start))
+	statResult.Log(level.Debug(log))
+
 	return Result{
 		Data:       data,
-		Statistics: statistics,
+		Statistics: statResult,
 	}, err
 }
 
@@ -159,52 +173,40 @@ func (ng *engine) NewInstantQuery(
 	}
 }
 
-func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, stats.Result, error) {
-	log, ctx := spanlogger.New(ctx, "Engine.exec")
-	defer log.Finish()
-
+func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 	ctx, cancel := context.WithTimeout(ctx, ng.timeout)
 	defer cancel()
-
-	// records query statistics
-	var statResult stats.Result
-	ctx = stats.NewContext(ctx)
-	start := time.Now()
-	defer func() {
-		statResult = stats.Snapshot(ctx, time.Since(start))
-		statResult.Log(level.Debug(log))
-	}()
 
 	qs := q.String()
 	// This is a legacy query used for health checking. Not the best practice, but it works.
 	if qs == "1+1" {
 		if IsInstant(q) {
-			return promql.Vector{}, statResult, nil
+			return promql.Vector{}, nil
 		}
-		return promql.Matrix{}, statResult, nil
+		return promql.Matrix{}, nil
 	}
 
 	expr, err := ParseExpr(qs)
 	if err != nil {
-		return nil, statResult, err
+		return nil, err
 	}
 
 	switch e := expr.(type) {
 	case SampleExpr:
 		value, err := ng.evalSample(ctx, e, q)
-		return value, statResult, err
+		return value, err
 
 	case LogSelectorExpr:
 		iter, err := ng.evaluator.Iterator(ctx, e, q)
 		if err != nil {
-			return nil, statResult, err
+			return nil, err
 		}
 		defer helpers.LogError("closing iterator", iter.Close)
 		streams, err := readStreams(iter, q.limit)
-		return streams, statResult, err
+		return streams, err
 	}
 
-	return nil, statResult, nil
+	return nil, nil
 }
 
 // evalSample evaluate a sampleExpr

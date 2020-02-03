@@ -21,6 +21,16 @@ type EntryIterator interface {
 	Close() error
 }
 
+type noOpIterator struct{}
+
+var NoopIterator = noOpIterator{}
+
+func (noOpIterator) Next() bool            { return false }
+func (noOpIterator) Error() error          { return nil }
+func (noOpIterator) Labels() string        { return "" }
+func (noOpIterator) Entry() logproto.Entry { return logproto.Entry{} }
+func (noOpIterator) Close() error          { return nil }
+
 // streamIterator iterates over entries in a stream.
 type streamIterator struct {
 	i       int
