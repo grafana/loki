@@ -25,7 +25,7 @@ Promtail will have a new target called HTTPTarget, configurable in the
 `scrape_config` array with the following schema:
 
 ```yaml
-# Defines an HTTP target, which exposes an endpoint agains the Promtail
+# Defines an HTTP target, which exposes an endpoint against the Promtail
 # HTTP server to accept log traffic.
 http:
   # Defines the base URL for the push path, adding a prefix to the
