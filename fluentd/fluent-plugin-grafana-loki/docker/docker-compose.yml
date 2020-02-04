@@ -17,5 +17,5 @@ services:
     environment:
       LOKI_USERNAME: "${LOKI_USERNAME}"
       LOKI_PASSWORD: ${LOKI_PASSWORD}
-      FLUENT_CONF: /fluentd/etc/fluentd.conf
+      FLUENTD_CONF: /fluentd/etc/fluentd.conf
       FLUENT_UID: '0'
