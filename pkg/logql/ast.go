@@ -370,7 +370,7 @@ func (e *vectorAggregationExpr) String() string {
 	return formatOperation(e.operation, e.grouping, params...)
 }
 
-// helepr used to impl Stringer for vector and range aggregations
+// helper used to impl Stringer for vector and range aggregations
 func formatOperation(op string, grouping *grouping, params ...string) string {
 	nonEmptyParams := make([]string, 0, len(params))
 	for _, p := range params {
