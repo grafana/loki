@@ -147,32 +147,33 @@ func parseRangeValueType(rangeValue []byte) (int, error) {
 		return ChunkTimeRangeValue, nil
 
 	// chunk time range values
-	case bytes.Equal(components[3], chunkTimeRangeKeyV1):
-		return ChunkTimeRangeValue, nil
+	case len(components[3]) == 1:
+		switch components[3][0] {
+		case chunkTimeRangeKeyV1:
+			return ChunkTimeRangeValue, nil
 
-	case bytes.Equal(components[3], chunkTimeRangeKeyV2):
-		return ChunkTimeRangeValue, nil
+		case chunkTimeRangeKeyV2:
+			return ChunkTimeRangeValue, nil
 
-	case bytes.Equal(components[3], chunkTimeRangeKeyV3):
-		return ChunkTimeRangeValue, nil
+		case chunkTimeRangeKeyV3:
+			return ChunkTimeRangeValue, nil
 
-	case bytes.Equal(components[3], chunkTimeRangeKeyV4):
-		return ChunkTimeRangeValue, nil
+		case chunkTimeRangeKeyV4:
+			return ChunkTimeRangeValue, nil
 
-	case bytes.Equal(components[3], chunkTimeRangeKeyV5):
-		return ChunkTimeRangeValue, nil
+		case chunkTimeRangeKeyV5:
+			return ChunkTimeRangeValue, nil
 
-	// metric name range values
-	case bytes.Equal(components[3], metricNameRangeKeyV1):
-		return MetricNameRangeValue, nil
+		// metric name range values
+		case metricNameRangeKeyV1:
+			return MetricNameRangeValue, nil
 
-	// series range values
-	case bytes.Equal(components[3], seriesRangeKeyV1):
-		return SeriesRangeValue, nil
-
-	default:
-		return 0, fmt.Errorf("unrecognised range value type. version: %q", string(components[3]))
+		// series range values
+		case seriesRangeKeyV1:
+			return SeriesRangeValue, nil
+		}
 	}
+	return 0, fmt.Errorf("unrecognised range value type. version: %q", string(components[3]))
 }
 
 func TestSchemaRangeKey(t *testing.T) {

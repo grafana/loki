@@ -108,7 +108,7 @@ func TestParseMetricNameRangeValue(t *testing.T) {
 		// version 1 (id 6) metric name range keys (used in v7 Schema) have
 		// metric name hash in first 'dimension', however just returns the value
 		{[]byte("a1b2c3d4\x00\x00\x006\x00"), "foo", "foo"},
-		{encodeRangeKey([]byte("bar"), nil, nil, metricNameRangeKeyV1), "bar", "bar"},
+		{encodeRangeKey(metricNameRangeKeyV1, []byte("bar"), nil, nil), "bar", "bar"},
 	} {
 		metricName, err := parseMetricNameRangeValue(c.encoded, []byte(c.value))
 		require.NoError(t, err)
@@ -133,7 +133,7 @@ func TestParseSeriesRangeValue(t *testing.T) {
 		value     []byte
 		expMetric model.Metric
 	}{
-		{encodeRangeKey(fingerprintBytes, nil, nil, seriesRangeKeyV1), metricBytes, metric},
+		{encodeRangeKey(seriesRangeKeyV1, fingerprintBytes, nil, nil), metricBytes, metric},
 	} {
 		metric, err := parseSeriesRangeValue(c.encoded, c.value)
 		require.NoError(t, err)
