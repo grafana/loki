@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 )
@@ -19,6 +20,7 @@ import (
 // Expr is the root expression which can be a SampleExpr or LogSelectorExpr
 type Expr interface {
 	logQLExpr() // ensure it's not implemented accidentally
+	fmt.Stringer
 }
 
 // SelectParams specifies parameters passed to data selections.
@@ -53,7 +55,6 @@ type Filter func(line []byte) bool
 type LogSelectorExpr interface {
 	Filter() (Filter, error)
 	Matchers() []*labels.Matcher
-	fmt.Stringer
 	Expr
 }
 
@@ -188,6 +189,16 @@ type logRange struct {
 	interval time.Duration
 }
 
+// impls Stringer
+func (r logRange) String() string {
+	var sb strings.Builder
+	sb.WriteString("(")
+	sb.WriteString(r.left.String())
+	sb.WriteString(")")
+	sb.WriteString(fmt.Sprintf("[%v]", model.Duration(r.interval)))
+	return sb.String()
+}
+
 func newLogRange(left LogSelectorExpr, interval time.Duration) *logRange {
 	return &logRange{
 		left:     left,
@@ -279,9 +290,32 @@ func (e *rangeAggregationExpr) Selector() LogSelectorExpr {
 // impl Expr
 func (e *rangeAggregationExpr) logQLExpr() {}
 
+// impls Stringer
+func (e *rangeAggregationExpr) String() string {
+	return formatOperation(e.operation, nil, e.left.String())
+}
+
 type grouping struct {
 	groups  []string
 	without bool
+}
+
+// impls Stringer
+func (g grouping) String() string {
+	var sb strings.Builder
+	if g.without {
+		sb.WriteString(" without")
+	} else if len(g.groups) > 0 {
+		sb.WriteString(" by")
+	}
+
+	if len(g.groups) > 0 {
+		sb.WriteString("(")
+		sb.WriteString(strings.Join(g.groups, ","))
+		sb.WriteString(")")
+	}
+
+	return sb.String()
 }
 
 type vectorAggregationExpr struct {
@@ -325,3 +359,33 @@ func (e *vectorAggregationExpr) Selector() LogSelectorExpr {
 
 // impl Expr
 func (e *vectorAggregationExpr) logQLExpr() {}
+
+func (e *vectorAggregationExpr) String() string {
+	var params []string
+	if e.params != 0 {
+		params = []string{fmt.Sprintf("%d", e.params), e.left.String()}
+	} else {
+		params = []string{e.left.String()}
+	}
+	return formatOperation(e.operation, e.grouping, params...)
+}
+
+// helepr used to impl Stringer for vector and range aggregations
+func formatOperation(op string, grouping *grouping, params ...string) string {
+	nonEmptyParams := make([]string, 0, len(params))
+	for _, p := range params {
+		if p != "" {
+			nonEmptyParams = append(nonEmptyParams, p)
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(op)
+	if grouping != nil {
+		sb.WriteString(grouping.String())
+	}
+	sb.WriteString("(")
+	sb.WriteString(strings.Join(nonEmptyParams, ","))
+	sb.WriteString(")")
+	return sb.String()
+}

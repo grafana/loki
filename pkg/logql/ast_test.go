@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 )
@@ -29,6 +30,27 @@ func Test_logSelectorExpr_String(t *testing.T) {
 			if expr.String() != strings.Replace(tt, " ", "", -1) {
 				t.Fatalf("error expected: %s got: %s", tt, expr.String())
 			}
+		})
+	}
+}
+
+func Test_SampleExpr_String(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []string{
+		`rate( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
+		`sum without(a) ( rate ( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
+		`sum by(a) (rate( ( {job="mysql"} |="error" !="timeout" ) [10s] ) )`,
+		`sum(count_over_time({job="mysql"}[5m]))`,
+		`topk(10,sum(rate({region="us-east1"}[5m])) by (name))`,
+		`avg( rate( ( {job="nginx"} |= "GET" ) [10s] ) ) by (region)`,
+	} {
+		t.Run(tc, func(t *testing.T) {
+			expr, err := ParseExpr(tc)
+			require.Nil(t, err)
+
+			expr2, err := ParseExpr(expr.String())
+			require.Nil(t, err)
+			require.Equal(t, expr, expr2)
 		})
 	}
 }
