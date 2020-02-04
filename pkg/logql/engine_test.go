@@ -8,10 +8,12 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/stats"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var testSize = int64(300)
@@ -296,7 +298,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			assert.Equal(t, test.expected, res)
+			assert.Equal(t, test.expected, res.Data)
 		})
 	}
 }
@@ -686,9 +688,21 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			assert.Equal(t, test.expected, res)
+			assert.Equal(t, test.expected, res.Data)
 		})
 	}
+}
+
+func TestEngine_Stats(t *testing.T) {
+	eng := NewEngine(EngineOpts{}, QuerierFunc(func(ctx context.Context, sp SelectParams) (iter.EntryIterator, error) {
+		st := stats.GetChunkData(ctx)
+		st.DecompressedBytes++
+		return iter.NoopIterator, nil
+	}))
+	q := eng.NewInstantQuery(`{foo="bar"}`, time.Now(), logproto.BACKWARD, 1000)
+	r, err := q.Exec(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, int64(1), r.Statistics.Store.DecompressedBytes)
 }
 
 // go test -mod=vendor ./pkg/logql/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out
@@ -746,8 +760,8 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			result = res
-			if res == nil {
+			result = res.Data
+			if result == nil {
 				b.Fatal("unexpected nil result")
 			}
 		}

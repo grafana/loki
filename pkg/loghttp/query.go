@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/stats"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 )
@@ -55,8 +56,9 @@ type ResultValue interface {
 
 //QueryResponseData represents the http json response to a label query
 type QueryResponseData struct {
-	ResultType ResultType  `json:"resultType"`
-	Result     ResultValue `json:"result"`
+	ResultType ResultType   `json:"resultType"`
+	Result     ResultValue  `json:"result"`
+	Statistics stats.Result `json:"stats"`
 }
 
 // Type implements the promql.Value interface
@@ -98,8 +100,9 @@ type Entry struct {
 // UnmarshalJSON implements the json.Unmarshaler interface.
 func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 	unmarshal := struct {
-		Type   ResultType      `json:"resultType"`
-		Result json.RawMessage `json:"result"`
+		Type       ResultType      `json:"resultType"`
+		Result     json.RawMessage `json:"result"`
+		Statistics stats.Result    `json:"stats"`
 	}{}
 
 	err := json.Unmarshal(data, &unmarshal)
@@ -133,6 +136,7 @@ func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 
 	q.ResultType = unmarshal.Type
 	q.Result = value
+	q.Statistics = unmarshal.Statistics
 
 	return nil
 }

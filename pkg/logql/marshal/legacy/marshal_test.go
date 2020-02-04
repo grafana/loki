@@ -41,7 +41,39 @@ var queryTests = []struct {
 						}
 					]
 				}
-			]
+			],
+			"stats" : {
+				"ingester" : {
+					"compressedBytes": 0,
+					"decompressedBytes": 0,
+					"decompressedLines": 0,
+					"headChunkBytes": 0,
+					"headChunkLines": 0,
+					"totalBatches": 0,
+					"totalChunksMatched": 0,
+					"totalDuplicates": 0,
+					"totalLinesSent": 0,
+					"totalReached": 0
+				},
+				"store": {
+					"compressedBytes": 0,
+					"decompressedBytes": 0,
+					"decompressedLines": 0,
+					"headChunkBytes": 0,
+					"headChunkLines": 0,
+					"chunksDownloadTime": 0,
+					"totalChunksRef": 0,
+					"totalChunksDownloaded": 0,
+					"totalDuplicates": 0
+				},
+				"summary": {
+					"bytesProcessedPerSeconds": 0,
+					"execTime": 0,
+					"linesProcessedPerSeconds": 0,
+					"totalBytesProcessed":0,
+					"totalLinesProcessed":0
+				}
+			}
 		}`,
 	},
 }
@@ -114,7 +146,7 @@ func Test_WriteQueryResponseJSON(t *testing.T) {
 
 	for i, queryTest := range queryTests {
 		var b bytes.Buffer
-		err := WriteQueryResponseJSON(queryTest.actual, &b)
+		err := WriteQueryResponseJSON(logql.Result{Data: queryTest.actual}, &b)
 		require.NoError(t, err)
 
 		testJSONBytesEqual(t, []byte(queryTest.expected), b.Bytes(), "Query Test %d failed", i)
@@ -145,7 +177,7 @@ func Test_MarshalTailResponse(t *testing.T) {
 
 func Test_QueryResponseMarshalLoop(t *testing.T) {
 	for i, queryTest := range queryTests {
-		var r loghttp.QueryResponse
+		var r map[string]interface{}
 
 		err := json.Unmarshal([]byte(queryTest.expected), &r)
 		require.NoError(t, err)

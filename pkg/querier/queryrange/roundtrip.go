@@ -35,7 +35,7 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits) (frontend.Tripper
 	// This avoids divide by zero errors when determining cache keys where user specific overrides don't exist.
 	limits = WithDefaultLimits(limits, cfg.Config)
 
-	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, lokiCodec, queryrange.PrometheusResponseExtractor)
+	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, lokiCodec, prometheusResponseExtractor)
 
 	if err != nil {
 		return nil, nil, err

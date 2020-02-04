@@ -368,9 +368,9 @@ func fetchLazyChunks(ctx context.Context, chunks []*chunkenc.LazyChunk) error {
 	start := time.Now()
 	storeStats := stats.GetStoreData(ctx)
 	var totalChunks int64
-	defer func(){
-		storeStats.TimeDownloadingChunks += time.Since(start)
-		storeStats.TotalDownloadedChunks += totalChunks
+	defer func() {
+		storeStats.ChunksDownloadTime += time.Since(start)
+		storeStats.TotalChunksDownloaded += totalChunks
 	}()
 
 	chksByFetcher := map[*chunk.Fetcher][]*chunkenc.LazyChunk{}

@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/logql/marshal/legacy"
+	"github.com/grafana/loki/pkg/logql/stats"
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -101,7 +102,7 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
 	}
 
-	sp, _ := opentracing.StartSpanFromContext(ctx, "DecodeResponse")
+	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.DecodeResponse")
 	defer sp.Finish()
 
 	buf, err := ioutil.ReadAll(r.Body)
@@ -121,19 +122,23 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 	}
 	switch string(resp.Data.ResultType) {
 	case loghttp.ResultTypeMatrix:
-		return &queryrange.PrometheusResponse{
-			Status: loghttp.QueryStatusSuccess,
-			Data: queryrange.PrometheusData{
-				ResultType: loghttp.ResultTypeMatrix,
-				Result:     toProto(resp.Data.Result.(loghttp.Matrix)),
+		return &LokiPromResponse{
+			Response: &queryrange.PrometheusResponse{
+				Status: loghttp.QueryStatusSuccess,
+				Data: queryrange.PrometheusData{
+					ResultType: loghttp.ResultTypeMatrix,
+					Result:     toProto(resp.Data.Result.(loghttp.Matrix)),
+				},
 			},
+			Statistics: resp.Data.Statistics,
 		}, nil
 	case loghttp.ResultTypeStream:
 		return &LokiResponse{
-			Status:    loghttp.QueryStatusSuccess,
-			Direction: req.(*LokiRequest).Direction,
-			Limit:     req.(*LokiRequest).Limit,
-			Version:   uint32(loghttp.GetVersion(req.(*LokiRequest).Path)),
+			Status:     loghttp.QueryStatusSuccess,
+			Direction:  req.(*LokiRequest).Direction,
+			Limit:      req.(*LokiRequest).Limit,
+			Version:    uint32(loghttp.GetVersion(req.(*LokiRequest).Path)),
+			Statistics: resp.Data.Statistics,
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result:     resp.Data.Result.(loghttp.Streams).ToProto(),
@@ -145,11 +150,11 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 }
 
 func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http.Response, error) {
-	sp, _ := opentracing.StartSpanFromContext(ctx, "APIResponse.ToHTTPResponse")
+	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
 	defer sp.Finish()
 
-	if _, ok := res.(*queryrange.PrometheusResponse); ok {
-		return queryrange.PrometheusCodec.EncodeResponse(ctx, res)
+	if promRes, ok := res.(*LokiPromResponse); ok {
+		return promRes.encode(ctx)
 	}
 
 	proto, ok := res.(*LokiResponse)
@@ -165,13 +170,17 @@ func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http
 			Entries: stream.Entries,
 		}
 	}
+	result := logql.Result{
+		Data:       logql.Streams(streams),
+		Statistics: proto.Statistics,
+	}
 	var buf bytes.Buffer
 	if loghttp.Version(proto.Version) == loghttp.VersionLegacy {
-		if err := marshal_legacy.WriteQueryResponseJSON(logql.Streams(streams), &buf); err != nil {
+		if err := marshal_legacy.WriteQueryResponseJSON(result, &buf); err != nil {
 			return nil, err
 		}
 	} else {
-		if err := marshal.WriteQueryResponseJSON(logql.Streams(streams), &buf); err != nil {
+		if err := marshal.WriteQueryResponseJSON(result, &buf); err != nil {
 			return nil, err
 		}
 	}
@@ -192,8 +201,21 @@ func (codec) MergeResponse(responses ...queryrange.Response) (queryrange.Respons
 	if len(responses) == 0 {
 		return nil, errors.New("merging responses requires at least one response")
 	}
-	if _, ok := responses[0].(*queryrange.PrometheusResponse); ok {
-		return queryrange.PrometheusCodec.MergeResponse(responses...)
+	var mergedStats stats.Result
+	if _, ok := responses[0].(*LokiPromResponse); ok {
+		promResponses := make([]queryrange.Response, 0, len(responses))
+		for _, res := range responses {
+			mergedStats.Merge(res.(*LokiPromResponse).Statistics)
+			promResponses = append(promResponses, res.(*LokiPromResponse).Response)
+		}
+		promRes, err := queryrange.PrometheusCodec.MergeResponse(promResponses...)
+		if err != nil {
+			return nil, err
+		}
+		return &LokiPromResponse{
+			Response:   promRes.(*queryrange.PrometheusResponse),
+			Statistics: mergedStats,
+		}, nil
 	}
 	lokiRes, ok := responses[0].(*LokiResponse)
 	if !ok {
@@ -202,16 +224,19 @@ func (codec) MergeResponse(responses ...queryrange.Response) (queryrange.Respons
 
 	lokiResponses := make([]*LokiResponse, 0, len(responses))
 	for _, res := range responses {
-		lokiResponses = append(lokiResponses, res.(*LokiResponse))
+		lokiResult := res.(*LokiResponse)
+		mergedStats.Merge(lokiResult.Statistics)
+		lokiResponses = append(lokiResponses, lokiResult)
 	}
 
 	return &LokiResponse{
-		Status:    loghttp.QueryStatusSuccess,
-		Direction: lokiRes.Direction,
-		Limit:     lokiRes.Limit,
-		Version:   lokiRes.Version,
-		ErrorType: lokiRes.ErrorType,
-		Error:     lokiRes.Error,
+		Status:     loghttp.QueryStatusSuccess,
+		Direction:  lokiRes.Direction,
+		Limit:      lokiRes.Limit,
+		Version:    lokiRes.Version,
+		ErrorType:  lokiRes.ErrorType,
+		Error:      lokiRes.Error,
+		Statistics: mergedStats,
 		Data: LokiData{
 			ResultType: loghttp.ResultTypeStream,
 			Result:     mergeOrderedNonOverlappingStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),

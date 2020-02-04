@@ -4,6 +4,8 @@ package queryrange;
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "pkg/logproto/logproto.proto";
+import "pkg/logql/stats/stats.proto";
+import "github.com/cortexproject/cortex/pkg/querier/queryrange/queryrange.proto";
 import "google/protobuf/timestamp.proto";
 
 option (gogoproto.marshaler_all) = true;
@@ -27,9 +29,17 @@ message LokiResponse {
   logproto.Direction direction = 5;
   uint32 limit = 6;
   uint32 version = 7;
+  stats.Result statistics = 8 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "statistics"];
 }
 
 message LokiData {
   string ResultType = 1 [(gogoproto.jsontag) = "resultType"];
   repeated logproto.Stream Result = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "result"];
+}
+
+
+// LokiPromResponse wraps a Prometheus response with statistics.
+message LokiPromResponse {
+  queryrange.PrometheusResponse response = 1 [(gogoproto.nullable) = true];
+  stats.Result statistics = 2 [(gogoproto.nullable) = false];
 }

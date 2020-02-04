@@ -5,6 +5,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
+
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
@@ -37,6 +39,12 @@ func (Streams) Type() promql.ValueType { return ValueTypeStreams }
 // String implements `promql.Value`
 func (Streams) String() string {
 	return ""
+}
+
+// Result is the result of a query execution.
+type Result struct {
+	Data       promql.Value
+	Statistics stats.Result
 }
 
 // EngineOpts is the list of options to use with the LogQL query engine.
@@ -89,7 +97,7 @@ func NewEngine(opts EngineOpts, q Querier) Engine {
 // Query is a LogQL query to be executed.
 type Query interface {
 	// Exec processes the query.
-	Exec(ctx context.Context) (promql.Value, error)
+	Exec(ctx context.Context) (Result, error)
 }
 
 type query struct {
@@ -99,7 +107,10 @@ type query struct {
 }
 
 // Exec Implements `Query`
-func (q *query) Exec(ctx context.Context) (promql.Value, error) {
+func (q *query) Exec(ctx context.Context) (Result, error) {
+	log, ctx := spanlogger.New(ctx, "Engine.Exec")
+	defer log.Finish()
+
 	var queryType string
 
 	if IsInstant(q) {
@@ -107,9 +118,24 @@ func (q *query) Exec(ctx context.Context) (promql.Value, error) {
 	} else {
 		queryType = "range"
 	}
+
 	timer := prometheus.NewTimer(queryTime.WithLabelValues(queryType))
 	defer timer.ObserveDuration()
-	return q.ng.exec(ctx, q)
+
+	// records query statistics
+	var statResult stats.Result
+	start := time.Now()
+	ctx = stats.NewContext(ctx)
+
+	data, err := q.ng.exec(ctx, q)
+
+	statResult = stats.Snapshot(ctx, time.Since(start))
+	statResult.Log(level.Debug(log))
+
+	return Result{
+		Data:       data,
+		Statistics: statResult,
+	}, err
 }
 
 // NewRangeQuery creates a new LogQL range query.
@@ -149,8 +175,6 @@ func (ng *engine) NewInstantQuery(
 }
 
 func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
-	log, ctx := spanlogger.New(ctx, "Engine.exec")
-	defer log.Finish()
 	ctx, cancel := context.WithTimeout(ctx, ng.timeout)
 	defer cancel()
 
@@ -168,16 +192,10 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 		return nil, err
 	}
 
-	ctx = stats.NewContext(ctx)
-	start := time.Now()
-	defer func() {
-		resultStats := stats.Snapshot(ctx, time.Since(start))
-		stats.Log(log, resultStats)
-	}()
-
 	switch e := expr.(type) {
 	case SampleExpr:
-		return ng.evalSample(ctx, e, q)
+		value, err := ng.evalSample(ctx, e, q)
+		return value, err
 
 	case LogSelectorExpr:
 		iter, err := ng.evaluator.Iterator(ctx, e, q)
@@ -185,7 +203,8 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 			return nil, err
 		}
 		defer helpers.LogError("closing iterator", iter.Close)
-		return readStreams(iter, q.limit)
+		streams, err := readStreams(iter, q.limit)
+		return streams, err
 	}
 
 	return nil, nil
