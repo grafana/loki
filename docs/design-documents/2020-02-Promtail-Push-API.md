@@ -1,8 +1,8 @@
 # Promtail Push API
 
-Author: Robert Fratto
-Date: Feb 4 2020
-Status: DRAFT
+- Author: Robert Fratto (@rfratto)
+- Date: Feb 4 2020
+- Status: DRAFT
 
 Despite being an optional piece of software, Promtail provides half the power
 of Loki's story: log transformations, service discovery, metrics from logs,
