@@ -91,7 +91,7 @@ local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
       when: condition('exclude').tagMaster,
       settings+: {
         dry_run: true,
-        build_args: [ 'TOUCH_PROTOS=1' ]
+        build_args: ['TOUCH_PROTOS=1'],
       },
     }
     for app in apps
@@ -101,7 +101,7 @@ local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
       depends_on: ['image-tag'],
       when: condition('include').tagMaster,
       settings+: {
-        build_args: [ 'TOUCH_PROTOS=1' ]
+        build_args: ['TOUCH_PROTOS=1'],
       },
     }
     for app in apps
@@ -110,8 +110,8 @@ local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
 };
 
 local manifest(apps) = pipeline('manifest') {
-  steps: [
-    {
+  steps: std.foldl(
+    function(acc, app) acc + [{
       name: 'manifest-' + app,
       image: 'plugins/manifest',
       settings: {
@@ -119,14 +119,20 @@ local manifest(apps) = pipeline('manifest') {
         // as it is unused in spec mode. See docker-manifest.tmpl
         target: app,
         spec: '.drone/docker-manifest.tmpl',
-        ignore_missing: true,
+        ignore_missing: false,
         username: { from_secret: 'docker_username' },
         password: { from_secret: 'docker_password' },
       },
-      depends_on: ['clone'],
-    }
-    for app in apps
-  ],
+      depends_on: ['clone'] + (
+        // Depend on the previous app, if any.
+        if std.length(acc) > 0
+        then [acc[std.length(acc) - 1].name]
+        else []
+      ),
+    }],
+    apps,
+    [],
+  ),
   depends_on: [
     'docker-%s' % arch
     for arch in archs
