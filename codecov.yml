@@ -27,3 +27,4 @@ comment:
 ignore:
   - "**/*.pb.go"
   - "**/*.y.go"
+  - "**/*.md"
