@@ -506,7 +506,6 @@ steps:
 - name: manifest-promtail
   image: plugins/manifest
   settings:
-    ignore_missing: true
     password:
       from_secret: docker_password
     spec: .drone/docker-manifest.tmpl
@@ -519,7 +518,6 @@ steps:
 - name: manifest-loki
   image: plugins/manifest
   settings:
-    ignore_missing: true
     password:
       from_secret: docker_password
     spec: .drone/docker-manifest.tmpl
@@ -528,11 +526,11 @@ steps:
       from_secret: docker_username
   depends_on:
   - clone
+  - manifest-promtail
 
 - name: manifest-loki-canary
   image: plugins/manifest
   settings:
-    ignore_missing: true
     password:
       from_secret: docker_password
     spec: .drone/docker-manifest.tmpl
@@ -541,6 +539,7 @@ steps:
       from_secret: docker_username
   depends_on:
   - clone
+  - manifest-loki
 
 trigger:
   ref:
