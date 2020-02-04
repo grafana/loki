@@ -41,6 +41,7 @@ func (Streams) String() string {
 	return ""
 }
 
+// Result is the result of a query execution.
 type Result struct {
 	Data       promql.Value
 	Statistics stats.Result
