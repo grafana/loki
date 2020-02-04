@@ -17,7 +17,9 @@ import (
 )
 
 // Expr is the root expression which can be a SampleExpr or LogSelectorExpr
-type Expr interface{}
+type Expr interface {
+	logQLExpr() // ensure it's not implemented accidentally
+}
 
 // SelectParams specifies parameters passed to data selections.
 type SelectParams struct {
@@ -52,6 +54,7 @@ type LogSelectorExpr interface {
 	Filter() (Filter, error)
 	Matchers() []*labels.Matcher
 	fmt.Stringer
+	Expr
 }
 
 type matchersExpr struct {
@@ -82,6 +85,9 @@ func (e *matchersExpr) String() string {
 func (e *matchersExpr) Filter() (Filter, error) {
 	return nil, nil
 }
+
+// impl Expr
+func (e *matchersExpr) logQLExpr() {}
 
 type filterExpr struct {
 	left  LogSelectorExpr
@@ -166,6 +172,9 @@ func (e *filterExpr) Filter() (Filter, error) {
 	return f, nil
 }
 
+// impl Expr
+func (e *filterExpr) logQLExpr() {}
+
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
@@ -213,6 +222,7 @@ const (
 type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
 	Selector() LogSelectorExpr
+	Expr
 }
 
 // StepEvaluator evaluate a single step of a query.
@@ -266,6 +276,9 @@ func (e *rangeAggregationExpr) Selector() LogSelectorExpr {
 	return e.left.left
 }
 
+// impl Expr
+func (e *rangeAggregationExpr) logQLExpr() {}
+
 type grouping struct {
 	groups  []string
 	without bool
@@ -306,6 +319,9 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *groupin
 	}
 }
 
-func (v *vectorAggregationExpr) Selector() LogSelectorExpr {
-	return v.left.Selector()
+func (e *vectorAggregationExpr) Selector() LogSelectorExpr {
+	return e.left.Selector()
 }
+
+// impl Expr
+func (e *vectorAggregationExpr) logQLExpr() {}
