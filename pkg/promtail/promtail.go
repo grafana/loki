@@ -35,22 +35,22 @@ func New(cfg config.Config) (*Promtail, error) {
 		return nil, err
 	}
 
-	tms, err := targets.NewTargetManagers(util.Logger, positions, client, cfg.ScrapeConfig, &cfg.TargetConfig)
+	promtail := &Promtail{
+		client:    client,
+		positions: positions,
+	}
+
+	tms, err := targets.NewTargetManagers(promtail, util.Logger, positions, client, cfg.ScrapeConfig, &cfg.TargetConfig)
 	if err != nil {
 		return nil, err
 	}
-
+	promtail.targetManagers = tms
 	server, err := server.New(cfg.ServerConfig, tms)
 	if err != nil {
 		return nil, err
 	}
-
-	return &Promtail{
-		client:         client,
-		positions:      positions,
-		targetManagers: tms,
-		server:         server,
-	}, nil
+	promtail.server = server
+	return promtail, nil
 }
 
 // Run the promtail; will block until a signal is received.
@@ -60,8 +60,12 @@ func (p *Promtail) Run() error {
 
 // Shutdown the promtail.
 func (p *Promtail) Shutdown() {
-	p.server.Shutdown()
-	p.targetManagers.Stop()
+	if p.server != nil {
+		p.server.Shutdown()
+	}
+	if p.targetManagers != nil {
+		p.targetManagers.Stop()
+	}
 	p.positions.Stop()
 	p.client.Stop()
 }

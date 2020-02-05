@@ -21,7 +21,7 @@ import (
 // bufferSize is the size of the buffered reader
 const bufferSize = 8096
 
-func IsPipe() bool {
+func isPipe() bool {
 	info, err := os.Stdin.Stat()
 	if err != nil {
 		level.Warn(util.Logger).Log("err", err)
@@ -33,6 +33,49 @@ func IsPipe() bool {
 	}
 	return true
 }
+
+type Shutdownable interface {
+	Shutdown()
+}
+
+type stdinTargetManager struct {
+	*readerTarget
+	app Shutdownable
+}
+
+func newStdinTargetManager(app Shutdownable, client api.EntryHandler, configs []scrape.Config) (*stdinTargetManager, error) {
+	cfg := scrape.Config{
+		JobName: "stdin",
+	}
+	// if we receive configs we use the first one.
+	if len(configs) > 0 {
+		if len(configs) > 1 {
+			level.Warn(util.Logger).Log("msg", "too many scrape configs", "skipped", len(configs)-1)
+		}
+		cfg = configs[0]
+	}
+	reader, err := newReaderTarget(os.Stdin, client, cfg)
+	if err != nil {
+		return nil, err
+	}
+	stdinManager := &stdinTargetManager{
+		readerTarget: reader,
+		app:          app,
+	}
+	return stdinManager, nil
+}
+
+func (t *stdinTargetManager) Ready() bool {
+	select {
+	case <-t.ctx.Done():
+		return false
+	default:
+		return true
+	}
+}
+func (t *stdinTargetManager) Stop()                              { t.cancel() }
+func (t *stdinTargetManager) ActiveTargets() map[string][]Target { return nil }
+func (t *stdinTargetManager) AllTargets() map[string][]Target    { return nil }
 
 type readerTarget struct {
 	in  *bufio.Reader
@@ -94,15 +137,3 @@ func (t *readerTarget) read() {
 		}
 	}
 }
-
-func (t *readerTarget) Ready() bool {
-	select {
-	case <-t.ctx.Done():
-		return false
-	default:
-		return true
-	}
-}
-func (t *readerTarget) Stop()                              { t.cancel() }
-func (t *readerTarget) ActiveTargets() map[string][]Target { return nil }
-func (t *readerTarget) AllTargets() map[string][]Target    { return nil }

@@ -23,6 +23,7 @@ type TargetManagers struct {
 
 // NewTargetManagers makes a new TargetManagers
 func NewTargetManagers(
+	app Shutdownable,
 	logger log.Logger,
 	positions *positions.Positions,
 	client api.EntryHandler,
@@ -34,8 +35,12 @@ func NewTargetManagers(
 	var journalScrapeConfigs []scrape.Config
 	var syslogScrapeConfigs []scrape.Config
 
-	if IsPipe() {
-		//todo add the pipe target
+	if isPipe() {
+		stdin, err := newStdinTargetManager(app, client, scrapeConfigs)
+		if err != nil {
+			return nil, err
+		}
+		targetManagers = append(targetManagers, stdin)
 		return &TargetManagers{targetManagers: targetManagers}, nil
 	}
 
