@@ -18,8 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// bufferSize is the size of the buffer
-// if a line is bigger than that it will be ignore
+// bufferSize is the size of the buffered reader
 const bufferSize = 8096
 
 func IsPipe() bool {
@@ -61,12 +60,12 @@ func newReaderTarget(in io.Reader, client api.EntryHandler, cfg scrape.Config) (
 		ctx:    ctx,
 		logger: log.With(util.Logger, "component", "reader"),
 	}
-	go t.process()
+	go t.read()
 
 	return t, nil
 }
 
-func (t *readerTarget) process() {
+func (t *readerTarget) read() {
 	defer t.cancel()
 
 	for {
