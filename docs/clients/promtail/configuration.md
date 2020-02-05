@@ -299,7 +299,21 @@ Stages serve several purposes, more detail can be found [here](./pipelines.md), 
 
 #### docker
 
-The Docker stage is a programmatic wrapper for 
+The Docker stage parses the contents of logs from Docker containers, and is defined by name with an empty object: 
+
+```yaml
+docker: {}
+``` 
+
+The docker stage will match and parse log lines of this format:
+
+```nohighlight
+`{"log":"level=info ts=2019-04-30T02:12:41.844179Z caller=filetargetmanager.go:180 msg=\"Adding target\"\n","stream":"stderr","time":"2019-04-30T02:12:41.8443515Z"}`
+```
+
+Automatically extracting the `time` into the logs timestamp, `stream` into a label, and `log` field into the output, this can be very helpful as docker is wrapping your application log in this way and this will unwrap it for further pipeline processing of just the log content.
+
+The Docker stage is just a convenience wrapper for this definition:
 
 ```yaml
 - json:
@@ -315,17 +329,24 @@ The Docker stage is a programmatic wrapper for
     source: output
 ```
 
-Which is built to match this type of log line:
 
-```nohighlight
-`{"log":"level=info ts=2019-04-30T02:12:41.844179Z caller=filetargetmanager.go:180 msg=\"Adding target\"\n","stream":"stderr","time":"2019-04-30T02:12:41.8443515Z"}`
-```
-
-Automatically extracting the `time` into the logs timestamp, `stream` into a label, and `log` field into the output, this can be very helpful as docker is wrapping your application log in this way and this will unwrap it for further pipeline processing of just the log content.
 
 #### cri
 
-Identical in function to the docker stage however using a regex to match CRI container logs using this equivalent config:
+The CRI stage parses the contents of logs from CRI containers, and is defined by name with an empty object: 
+
+```yaml
+cri: {}
+``` 
+
+The CRI  stage will match and parse log lines of this format:
+
+```nohighlight
+2019-01-01T01:00:00.000000001Z stderr P some log message
+```
+Automatically extracting the `time` into the logs timestamp, `stream` into a label, and the remaining message into the output, this can be very helpful as CRI is wrapping your application log in this way and this will unwrap it for further pipeline processing of just the log content.
+
+The CRI stage is just a convenience wrapper for this definition:
 
 ```yaml
 - regex:
@@ -338,13 +359,6 @@ Identical in function to the docker stage however using a regex to match CRI con
 - output:
     source: content
 ```
-
-built to match this style container log line:
-
-```nohighlight
-2019-01-01T01:00:00.000000001Z stderr P some log message
-```
-
 
 #### regex
 
@@ -1019,7 +1033,7 @@ sync_period: "10s"
 
 It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver](../../../cmd/docker-driver/README.md) for local Docker installs or Docker Compose.
 
-If running in a kubernetes environment, you should look at the defined configs which are in [helm](../../../production/helm/promtail/templates/configmap.yaml) and [jsonnet](../../../production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give promtail it's name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
+If running in a Kubernetes environment, you should look at the defined configs which are in [helm](../../../production/helm/promtail/templates/configmap.yaml) and [jsonnet](../../../production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give promtail it's name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
 
 
 ## Example Static Config
@@ -1032,7 +1046,7 @@ server:
   grpc_listen_port: 0
 
 positions:
-  filename: /var/log/positions.yaml ①
+  filename: /var/log/positions.yaml # This location needs to be writeable by promtail.
 
 client:
   url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
@@ -1044,19 +1058,14 @@ scrape_configs:
    - targets:
       - localhost
      labels:
-      job: varlogs  ②
-      host: yourhost ③  
-      __path__: /var/log/*.log  ④
+      job: varlogs  # A `job` label is fairly standard in prometheus and useful for linking metrics and logs.
+      host: yourhost # A `host` label will help identify logs from this machine vs others  
+      __path__: /var/log/*.log  # The path matching uses a third party library: https://github.com/bmatcuk/doublestar
 ```
-① This location needs to be writeable by promtail.  
-② A `job` label is fairly standard in prometheus and useful for linking metrics and logs.   
-③ A `host` label will help identify logs from this machine vs others.  
-④ The path matching uses [@bmatcuk's glob library](https://github.com/bmatcuk/doublestar)  
-
 
 ## Example Journal Config
 
-For reading a systemd journal.
+This example reads entries from a systemd journal:
 
 ```yaml
 server:
@@ -1082,7 +1091,7 @@ scrape_configs:
 
 ## Example Syslog Config
 
-For receiving syslogs in promtail over tcp.
+This example starts Promtail as a syslog receiver and can accept syslog entries in Promtail over TCP:
 
 ```yaml
 server:
