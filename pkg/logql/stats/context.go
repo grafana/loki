@@ -62,12 +62,17 @@ func (r Result) Log(log log.Logger) {
 		"Store.DecompressedLines", r.Store.DecompressedLines,
 		"Store.CompressedBytes", humanize.Bytes(uint64(r.Store.CompressedBytes)),
 		"Store.TotalDuplicates", r.Store.TotalDuplicates,
+	)
+	r.Summary.Log(log)
+}
 
-		"Summary.BytesProcessedPerSeconds", humanize.Bytes(uint64(r.Summary.BytesProcessedPerSeconds)),
-		"Summary.LinesProcessedPerSeconds", r.Summary.LinesProcessedPerSeconds,
-		"Summary.TotalBytesProcessed", humanize.Bytes(uint64(r.Summary.TotalBytesProcessed)),
-		"Summary.TotalLinesProcessed", r.Summary.TotalLinesProcessed,
-		"Summary.ExecTime", time.Duration(int64(r.Summary.ExecTime*float64(time.Second))),
+func (s Summary) Log(log log.Logger) {
+	log.Log(
+		"Summary.BytesProcessedPerSeconds", humanize.Bytes(uint64(s.BytesProcessedPerSeconds)),
+		"Summary.LinesProcessedPerSeconds", s.LinesProcessedPerSeconds,
+		"Summary.TotalBytesProcessed", humanize.Bytes(uint64(s.TotalBytesProcessed)),
+		"Summary.TotalLinesProcessed", s.TotalLinesProcessed,
+		"Summary.ExecTime", time.Duration(int64(s.ExecTime*float64(time.Second))),
 	)
 }
 
