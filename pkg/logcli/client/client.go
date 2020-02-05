@@ -32,6 +32,7 @@ type Client struct {
 	Username  string
 	Password  string
 	Address   string
+	OrgID     string
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -110,6 +111,10 @@ func (c *Client) doRequest(path string, quiet bool, out interface{}) error {
 	}
 
 	req.SetBasicAuth(c.Username, c.Password)
+
+	if c.OrgID != "" {
+		req.Header.Set("X-Scope-OrgID", c.OrgID)
+	}
 
 	// Parse the URL to extract the host
 	clientConfig := config.HTTPClientConfig{

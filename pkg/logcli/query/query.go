@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/stats"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/promql"
 )
@@ -38,7 +39,7 @@ type Query struct {
 }
 
 // DoQuery executes the query and prints out the results
-func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
+func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool) {
 	d := q.resultsDirection()
 
 	var resp *loghttp.QueryResponse
@@ -52,6 +53,10 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput) {
 
 	if err != nil {
 		log.Fatalf("Query failed: %+v", err)
+	}
+
+	if statistics {
+		q.printStats(resp.Data.Statistics)
 	}
 
 	switch resp.Data.ResultType {
@@ -158,6 +163,16 @@ func (q *Query) printVector(vector loghttp.Vector) {
 
 	if err != nil {
 		log.Fatalf("Error marshalling vector: %v", err)
+	}
+
+	fmt.Print(string(bytes))
+}
+
+func (q *Query) printStats(stats stats.Result) {
+	bytes, err := json.MarshalIndent(stats, "", "  ")
+
+	if err != nil {
+		log.Fatalf("Error marshalling stats: %v", err)
 	}
 
 	fmt.Print(string(bytes))

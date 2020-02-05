@@ -20,6 +20,7 @@ import (
 var (
 	app        = kingpin.New("logcli", "A command-line for loki.").Version(version.Print("logcli"))
 	quiet      = app.Flag("quiet", "suppress everything but log lines").Default("false").Short('q').Bool()
+	statistics = app.Flag("stats", "show query statistics").Default("false").Bool()
 	outputMode = app.Flag("output", "specify output mode [default, raw, jsonl]").Default("default").Short('o').Enum("default", "raw", "jsonl")
 	timezone   = app.Flag("timezone", "Specify the timezone to use when formatting output timestamps [Local, UTC]").Default("Local").Short('z').Enum("Local", "UTC")
 
@@ -62,7 +63,7 @@ func main() {
 		if *tail {
 			rangeQuery.TailQuery(*delayFor, queryClient, out)
 		} else {
-			rangeQuery.DoQuery(queryClient, out)
+			rangeQuery.DoQuery(queryClient, out, *statistics)
 		}
 	case instantQueryCmd.FullCommand():
 		location, err := time.LoadLocation(*timezone)
@@ -80,7 +81,7 @@ func main() {
 			log.Fatalf("Unable to create log output: %s", err)
 		}
 
-		instantQuery.DoQuery(queryClient, out)
+		instantQuery.DoQuery(queryClient, out, *statistics)
 	case labelsCmd.FullCommand():
 		q := newLabelQuery(*labelName, *quiet)
 
@@ -116,6 +117,7 @@ func newQueryClient(app *kingpin.Application) *client.Client {
 	app.Flag("tls-skip-verify", "Server certificate TLS skip verify.").Default("false").BoolVar(&client.TLSConfig.InsecureSkipVerify)
 	app.Flag("cert", "Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.").Default("").Envar("LOKI_CLIENT_CERT_PATH").StringVar(&client.TLSConfig.CertFile)
 	app.Flag("key", "Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.").Default("").Envar("LOKI_CLIENT_KEY_PATH").StringVar(&client.TLSConfig.KeyFile)
+	app.Flag("org-id", "org ID header to be substituted for auth").StringVar(&client.OrgID)
 
 	return client
 }
