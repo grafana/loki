@@ -126,7 +126,30 @@ docker run \
 When Promtail reads from the journal, it brings in all fields prefixed with
 `__journal_` as internal labels. Like in the example above, the `_SYSTEMD_UNIT`
 field from the journal was transformed into a label called `unit` through
-`relabel_configs`. See [Relabeling](#relabeling) for more information.
+`relabel_configs`. See [Relabeling](#relabeling) for more information, also look at [the systemd man pages](https://www.freedesktop.org/software/systemd/man/systemd.journal-fields.html) for a list of fields exposed by the journal.
+
+Here's an example where the `SYSTEMD_UNIT`, `HOSTNAME`, and `SYSLOG_IDENTIFIER` are relabeled for use in Loki.
+
+Keep in mind that labels prefixed with `__` will be dropped, so relabeling is required to keep these labels.
+ 
+```yaml
+- job_name: systemd-journal
+  journal:
+    labels:
+      cluster: ops-tools1
+      job: default/systemd-journal
+    path: /var/log/journal
+  relabel_configs:
+  - source_labels:
+    - __journal__systemd_unit
+    target_label: systemd_unit
+  - source_labels:
+    - __journal__hostname
+    target_label: nodename
+  - source_labels:
+    - __journal_syslog_identifier
+    target_label: syslog_identifier
+```
 
 ## Syslog Receiver
 
