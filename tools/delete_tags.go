@@ -19,6 +19,11 @@ type auth struct {
 	Password string `json:"password"`
 }
 
+func logAndQuit(fmt string, args ...interface{}) {
+	log.Printf(fmt, args...)
+	os.Exit(0)
+}
+
 func main() {
 	var (
 		auth auth
@@ -51,12 +56,12 @@ func main() {
 	// Get an auth token
 	jwt, err := getJWT(auth)
 	if err != nil {
-		log.Fatalln(err)
+		logAndQuit(err.Error())
 	}
 
 	tags, err := getTags(jwt, repo)
 	if err != nil {
-		log.Fatalln(err)
+		logAndQuit(err.Error())
 	}
 
 	log.Printf("Discovered %d tags pre-filtering\n", len(tags))
@@ -108,7 +113,7 @@ func getJWT(a auth) (string, error) {
 			return "", err
 		}
 		resp.Body.Close()
-		log.Fatalf("failed to log in: %v", string(body))
+		return "", fmt.Errorf("failed to log in: %v", string(body))
 	}
 	defer resp.Body.Close()
 
@@ -165,10 +170,15 @@ func getTagsFromURL(jwt string, url string) (getTagResponse, error) {
 	if err != nil {
 		return res, err
 	}
-	if resp.StatusCode != 200 {
-		return res, errors.New("failed to get tags")
-	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode/100 != 2 {
+		bb, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return res, err
+		}
+		return res, errors.New(string(bb))
+	}
 
 	err = json.NewDecoder(resp.Body).Decode(&res)
 	return res, err
@@ -188,10 +198,13 @@ func deleteTag(jwt string, repo string, tag string) error {
 	}
 	defer resp.Body.Close()
 
-	bb, err := ioutil.ReadAll(resp.Body)
 	if resp.StatusCode/100 != 2 {
-		return fmt.Errorf("resp code %d: %s", resp.StatusCode, string(bb))
+		bb, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		return errors.New(string(bb))
 	}
 
-	return err
+	return nil
 }
