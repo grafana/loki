@@ -504,7 +504,7 @@ platform:
 
 steps:
 - name: manifest-promtail
-  image: plugins/manifest
+  image: plugins/manifest:1.2.3
   settings:
     password:
       from_secret: docker_password
@@ -516,7 +516,7 @@ steps:
   - clone
 
 - name: manifest-loki
-  image: plugins/manifest
+  image: plugins/manifest:1.2.3
   settings:
     password:
       from_secret: docker_password
@@ -529,7 +529,7 @@ steps:
   - manifest-promtail
 
 - name: manifest-loki-canary
-  image: plugins/manifest
+  image: plugins/manifest:1.2.3
   settings:
     password:
       from_secret: docker_password
