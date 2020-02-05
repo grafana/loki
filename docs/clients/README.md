@@ -4,8 +4,8 @@ Loki supports the following official clients for sending logs:
 
 1. [Promtail](./promtail/README.md)
 2. [Docker Driver](./docker-driver/README.md)
-4. [Fluent Bit](../../cmd/fluent-bit/README.md)
 3. [Fluentd](./fluentd/README.md)
+4. [Fluent Bit](../../cmd/fluent-bit/README.md)
 
 ## Picking a Client
 
