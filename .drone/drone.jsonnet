@@ -178,4 +178,24 @@ local manifest(apps) = pipeline('manifest') {
       },
     ],
   },
+] + [
+  pipeline('prune-ci-tags') {
+    trigger: condition('include').tagMaster,
+    depends_on: ['manifest'],
+    steps: [
+      {
+        name: 'trigger',
+        image: 'grafana/loki-build-image:%s' % build_image_version,
+        environment: {
+          DOCKER_USERNAME: { from_secret: 'docker_username' },
+          DOCKER_PASSWORD: { from_secret: 'docker_password' },
+        },
+        commands: [
+          'go run ./tools/delete_tags.go -max-age=2160h -repo grafana/loki -delete',
+          'go run ./tools/delete_tags.go -max-age=2160h -repo grafana/promtail -delete',
+          'go run ./tools/delete_tags.go -max-age=2160h -repo grafana/loki-canary -delete',
+        ],
+      },
+    ],
+  },
 ]
