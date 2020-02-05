@@ -35,7 +35,7 @@ func NewTargetManagers(
 	var journalScrapeConfigs []scrape.Config
 	var syslogScrapeConfigs []scrape.Config
 
-	if isPipe() {
+	if isStdinPipe() {
 		stdin, err := newStdinTargetManager(app, client, scrapeConfigs)
 		if err != nil {
 			return nil, err

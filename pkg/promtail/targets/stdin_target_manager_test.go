@@ -3,13 +3,13 @@ package targets
 import (
 	"bytes"
 	"io"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/grafana/loki/pkg/promtail/scrape"
 	"github.com/prometheus/common/model"
-	sd_config "github.com/prometheus/prometheus/discovery/config"
-	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,15 +35,6 @@ func Test_newReaderTarget(t *testing.T) {
 		want    []line
 		wantErr bool
 	}{
-		{
-			"bad config",
-			bytes.NewReader([]byte("")),
-			scrape.Config{ServiceDiscoveryConfig: sd_config.ServiceDiscoveryConfig{
-				StaticConfigs: []*targetgroup.Group{},
-			}},
-			nil,
-			true,
-		},
 		{
 			"no newlines",
 			bytes.NewReader([]byte("bar")),
@@ -86,4 +77,66 @@ func Test_newReaderTarget(t *testing.T) {
 			require.Equal(t, tt.want, recorder.recorded)
 		})
 	}
+}
+
+type mockShutdownable struct {
+	called chan bool
+}
+
+func (m *mockShutdownable) Shutdown() {
+	m.called <- true
+}
+
+type fakeStdin struct {
+	io.Reader
+	os.FileInfo
+}
+
+func newFakeStin(data string) *fakeStdin {
+	return &fakeStdin{
+		Reader: strings.NewReader(data),
+	}
+}
+
+func (f fakeStdin) Stat() (os.FileInfo, error) { return f.FileInfo, nil }
+
+func Test_Shutdown(t *testing.T) {
+	stdIn = newFakeStin("line")
+	appMock := &mockShutdownable{called: make(chan bool, 1)}
+	recorder := &clientRecorder{}
+	manager, err := newStdinTargetManager(appMock, recorder, []scrape.Config{})
+	require.NoError(t, err)
+	require.NotNil(t, manager)
+	called := <-appMock.called
+	require.Equal(t, true, called)
+	require.Equal(t, []line{{labels: nil, entry: "line"}}, recorder.recorded)
+}
+
+func Test_StdinConfigs(t *testing.T) {
+
+	// should take the first config
+	require.Equal(t, scrape.DefaultScrapeConfig, getStdinConfig([]scrape.Config{
+		scrape.DefaultScrapeConfig,
+		scrape.Config{},
+	}))
+	// or use the default if none if provided
+	require.Equal(t, defaultStdInCfg, getStdinConfig([]scrape.Config{}))
+}
+
+type mockFileInfo struct{}
+
+func (mockFileInfo) Name() string       { return "" }
+func (mockFileInfo) Size() int64        { return 1 }
+func (mockFileInfo) Mode() os.FileMode  { return 1 }
+func (mockFileInfo) ModTime() time.Time { return time.Now() }
+func (mockFileInfo) Sys() interface{}   { return nil }
+func (mockFileInfo) IsDir() bool        { return false }
+
+func Test_isPipe(t *testing.T) {
+	fake := newFakeStin("line")
+	fake.FileInfo = &mockFileInfo{}
+	stdIn = fake
+	require.Equal(t, true, isStdinPipe())
+	stdIn = os.Stdout
+	require.Equal(t, false, isStdinPipe())
 }

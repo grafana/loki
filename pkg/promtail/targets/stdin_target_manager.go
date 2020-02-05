@@ -3,7 +3,7 @@ package targets
 import (
 	"bufio"
 	"context"
-	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -21,8 +21,23 @@ import (
 // bufferSize is the size of the buffered reader
 const bufferSize = 8096
 
-func isPipe() bool {
-	info, err := os.Stdin.Stat()
+// file is an interface allowing us to abstract a file.
+type file interface {
+	Stat() (os.FileInfo, error)
+	io.Reader
+}
+
+var (
+	// stdIn is os.Stdin but can be replaced for testing purpose.
+	stdIn file = os.Stdin
+	// defaultStdInCfg is the default config for stdin target if none provided.
+	defaultStdInCfg = scrape.Config{
+		JobName: "stdin",
+	}
+)
+
+func isStdinPipe() bool {
+	info, err := stdIn.Stat()
 	if err != nil {
 		level.Warn(util.Logger).Log("err", err)
 		return false
@@ -44,17 +59,7 @@ type stdinTargetManager struct {
 }
 
 func newStdinTargetManager(app Shutdownable, client api.EntryHandler, configs []scrape.Config) (*stdinTargetManager, error) {
-	cfg := scrape.Config{
-		JobName: "stdin",
-	}
-	// if we receive configs we use the first one.
-	if len(configs) > 0 {
-		if len(configs) > 1 {
-			level.Warn(util.Logger).Log("msg", "too many scrape configs", "skipped", len(configs)-1)
-		}
-		cfg = configs[0]
-	}
-	reader, err := newReaderTarget(os.Stdin, client, cfg)
+	reader, err := newReaderTarget(stdIn, client, getStdinConfig(configs))
 	if err != nil {
 		return nil, err
 	}
@@ -62,16 +67,28 @@ func newStdinTargetManager(app Shutdownable, client api.EntryHandler, configs []
 		readerTarget: reader,
 		app:          app,
 	}
+	// when we're done flushing our stdin we can shutdown the app.
+	go func() {
+		<-reader.ctx.Done()
+		app.Shutdown()
+	}()
 	return stdinManager, nil
 }
 
-func (t *stdinTargetManager) Ready() bool {
-	select {
-	case <-t.ctx.Done():
-		return false
-	default:
-		return true
+func getStdinConfig(configs []scrape.Config) scrape.Config {
+	cfg := defaultStdInCfg
+	// if we receive configs we use the first one.
+	if len(configs) > 0 {
+		if len(configs) > 1 {
+			level.Warn(util.Logger).Log("msg", fmt.Sprintf("too many scrape configs, skipping %d configs.", len(configs)-1))
+		}
+		cfg = configs[0]
 	}
+	return cfg
+}
+
+func (t *stdinTargetManager) Ready() bool {
+	return t.ctx.Err() == nil
 }
 func (t *stdinTargetManager) Stop()                              { t.cancel() }
 func (t *stdinTargetManager) ActiveTargets() map[string][]Target { return nil }
@@ -88,9 +105,6 @@ type readerTarget struct {
 }
 
 func newReaderTarget(in io.Reader, client api.EntryHandler, cfg scrape.Config) (*readerTarget, error) {
-	if cfg.HasServiceDiscoveryConfig() {
-		return nil, errors.New("reader target does not support service discovery")
-	}
 	pipeline, err := stages.NewPipeline(log.With(util.Logger, "component", "pipeline"), cfg.PipelineStages, &cfg.JobName, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
@@ -112,28 +126,26 @@ func (t *readerTarget) read() {
 	defer t.cancel()
 
 	for {
-		select {
-		case <-t.ctx.Done():
+		if t.ctx.Err() != nil {
 			return
-		default:
-			line, err := t.in.ReadString('\n')
-			if err != nil && err != io.EOF {
-				level.Warn(t.logger).Log("msg", "error reading buffer", "err", err)
-				return
-			}
-			line = strings.TrimRight(line, "\r\n")
-			if line == "" {
-				if err == io.EOF {
-					return
-				}
-				continue
-			}
-			if err := t.out.Handle(nil, time.Now(), line); err != nil {
-				level.Error(t.logger).Log("msg", "error sending line", "err", err)
-			}
+		}
+		line, err := t.in.ReadString('\n')
+		if err != nil && err != io.EOF {
+			level.Warn(t.logger).Log("msg", "error reading buffer", "err", err)
+			return
+		}
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
 			if err == io.EOF {
 				return
 			}
+			continue
+		}
+		if err := t.out.Handle(nil, time.Now(), line); err != nil {
+			level.Error(t.logger).Log("msg", "error sending line", "err", err)
+		}
+		if err == io.EOF {
+			return
 		}
 	}
 }
