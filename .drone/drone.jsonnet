@@ -113,7 +113,7 @@ local manifest(apps) = pipeline('manifest') {
   steps: std.foldl(
     function(acc, app) acc + [{
       name: 'manifest-' + app,
-      image: 'plugins/manifest',
+      image: 'plugins/manifest:1.2.3',
       settings: {
         // the target parameter is abused for the app's name,
         // as it is unused in spec mode. See docker-manifest.tmpl
