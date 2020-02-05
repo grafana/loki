@@ -76,10 +76,13 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
           env:
-          - name: HOSTNAME
-            valueFrom:
-              fieldRef:
-                fieldPath: spec.nodeName
+            {{- with .Values.env }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           ports:
             - containerPort: {{ .Values.config.server.http_listen_port }}
               name: http-metrics
