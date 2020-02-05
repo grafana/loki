@@ -34,6 +34,11 @@ func NewTargetManagers(
 	var journalScrapeConfigs []scrape.Config
 	var syslogScrapeConfigs []scrape.Config
 
+	if IsPipe() {
+		//todo add the pipe target
+		return &TargetManagers{targetManagers: targetManagers}, nil
+	}
+
 	for _, cfg := range scrapeConfigs {
 		if cfg.HasServiceDiscoveryConfig() {
 			fileScrapeConfigs = append(fileScrapeConfigs, cfg)
