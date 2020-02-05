@@ -576,4 +576,33 @@ trigger:
 depends_on:
 - manifest
 
+---
+kind: pipeline
+name: prune-ci-tags
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
+- name: trigger
+  image: grafana/loki-build-image:0.9.1
+  commands:
+  - go run ./tools/delete_tags.go -max-age=2160h -repo grafana/loki -delete
+  - go run ./tools/delete_tags.go -max-age=2160h -repo grafana/promtail -delete
+  - go run ./tools/delete_tags.go -max-age=2160h -repo grafana/loki-canary -delete
+  environment:
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+    DOCKER_USERNAME:
+      from_secret: docker_username
+
+trigger:
+  ref:
+  - refs/heads/master
+  - refs/tags/v*
+
+depends_on:
+- manifest
+
 ...
