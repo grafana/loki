@@ -88,6 +88,9 @@ func fakeIngesterQuery(ctx context.Context) {
 func TestResult_Merge(t *testing.T) {
 	var res Result
 
+	res.Merge(res) // testing zero.
+	require.Equal(t, res, res)
+
 	toMerge := Result{
 		Ingester: Ingester{
 			TotalChunksMatched: 200,
@@ -158,4 +161,5 @@ func TestResult_Merge(t *testing.T) {
 			TotalLinesProcessed:      2 * int64(100),
 		},
 	}, res)
+
 }

@@ -162,15 +162,17 @@ func (r *Result) ComputeSummary(execTime time.Duration) {
 	// calculate the summary
 	r.Summary.TotalBytesProcessed = r.Store.DecompressedBytes + r.Store.HeadChunkBytes +
 		r.Ingester.DecompressedBytes + r.Ingester.HeadChunkBytes
-	r.Summary.BytesProcessedPerSeconds =
-		int64(float64(r.Summary.TotalBytesProcessed) /
-			execTime.Seconds())
 	r.Summary.TotalLinesProcessed = r.Store.DecompressedLines + r.Store.HeadChunkLines +
 		r.Ingester.DecompressedLines + r.Ingester.HeadChunkLines
-	r.Summary.LinesProcessedPerSeconds =
-		int64(float64(r.Summary.TotalLinesProcessed) /
-			execTime.Seconds())
 	r.Summary.ExecTime = execTime.Seconds()
+	if execTime != 0 {
+		r.Summary.BytesProcessedPerSeconds =
+			int64(float64(r.Summary.TotalBytesProcessed) /
+				execTime.Seconds())
+		r.Summary.LinesProcessedPerSeconds =
+			int64(float64(r.Summary.TotalLinesProcessed) /
+				execTime.Seconds())
+	}
 }
 
 func (r *Result) Merge(m Result) {
