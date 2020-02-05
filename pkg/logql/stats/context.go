@@ -153,31 +153,29 @@ func Snapshot(ctx context.Context, execTime time.Duration) Result {
 		res.Store.CompressedBytes = c.CompressedBytes
 		res.Store.TotalDuplicates = c.TotalDuplicates
 	}
-
-	// calculate the summary
-	res.Summary.TotalBytesProcessed = res.Store.DecompressedBytes + res.Store.HeadChunkBytes +
-		res.Ingester.DecompressedBytes + res.Ingester.HeadChunkBytes
-	res.Summary.BytesProcessedPerSeconds =
-		int64(float64(res.Summary.TotalBytesProcessed) /
-			execTime.Seconds())
-	res.Summary.TotalLinesProcessed = res.Store.DecompressedLines + res.Store.HeadChunkLines +
-		res.Ingester.DecompressedLines + res.Ingester.HeadChunkLines
-	res.Summary.LinesProcessedPerSeconds =
-		int64(float64(res.Summary.TotalLinesProcessed) /
-			execTime.Seconds())
-	res.Summary.ExecTime = execTime.Seconds()
+	res.ComputeSummary(execTime)
 	return res
 }
 
-func (r *Result) Merge(m Result) {
-	if r == nil {
-		return
+// ComputeSummary calculates the summary based on store and ingester data.
+func (r *Result) ComputeSummary(execTime time.Duration) {
+	// calculate the summary
+	r.Summary.TotalBytesProcessed = r.Store.DecompressedBytes + r.Store.HeadChunkBytes +
+		r.Ingester.DecompressedBytes + r.Ingester.HeadChunkBytes
+	r.Summary.TotalLinesProcessed = r.Store.DecompressedLines + r.Store.HeadChunkLines +
+		r.Ingester.DecompressedLines + r.Ingester.HeadChunkLines
+	r.Summary.ExecTime = execTime.Seconds()
+	if execTime != 0 {
+		r.Summary.BytesProcessedPerSeconds =
+			int64(float64(r.Summary.TotalBytesProcessed) /
+				execTime.Seconds())
+		r.Summary.LinesProcessedPerSeconds =
+			int64(float64(r.Summary.TotalLinesProcessed) /
+				execTime.Seconds())
 	}
-	r.Summary.BytesProcessedPerSeconds += m.Summary.BytesProcessedPerSeconds
-	r.Summary.LinesProcessedPerSeconds += m.Summary.LinesProcessedPerSeconds
-	r.Summary.TotalBytesProcessed += m.Summary.TotalBytesProcessed
-	r.Summary.TotalLinesProcessed += m.Summary.TotalLinesProcessed
-	r.Summary.ExecTime += m.Summary.ExecTime
+}
+
+func (r *Result) Merge(m Result) {
 
 	r.Store.TotalChunksRef += m.Store.TotalChunksRef
 	r.Store.TotalChunksDownloaded += m.Store.TotalChunksDownloaded
@@ -199,4 +197,6 @@ func (r *Result) Merge(m Result) {
 	r.Ingester.DecompressedLines += m.Ingester.DecompressedLines
 	r.Ingester.CompressedBytes += m.Ingester.CompressedBytes
 	r.Ingester.TotalDuplicates += m.Ingester.TotalDuplicates
+
+	r.ComputeSummary(time.Duration(int64((r.Summary.ExecTime + m.Summary.ExecTime) * float64(time.Second))))
 }

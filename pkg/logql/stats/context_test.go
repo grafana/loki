@@ -88,6 +88,9 @@ func fakeIngesterQuery(ctx context.Context) {
 func TestResult_Merge(t *testing.T) {
 	var res Result
 
+	res.Merge(res) // testing zero.
+	require.Equal(t, res, res)
+
 	toMerge := Result{
 		Ingester: Ingester{
 			TotalChunksMatched: 200,
@@ -123,4 +126,40 @@ func TestResult_Merge(t *testing.T) {
 
 	res.Merge(toMerge)
 	require.Equal(t, toMerge, res)
+
+	// merge again
+	res.Merge(toMerge)
+	require.Equal(t, Result{
+		Ingester: Ingester{
+			TotalChunksMatched: 2 * 200,
+			TotalBatches:       2 * 50,
+			TotalLinesSent:     2 * 60,
+			HeadChunkBytes:     2 * 10,
+			HeadChunkLines:     2 * 20,
+			DecompressedBytes:  2 * 24,
+			DecompressedLines:  2 * 40,
+			CompressedBytes:    2 * 60,
+			TotalDuplicates:    2 * 2,
+			TotalReached:       2 * 2,
+		},
+		Store: Store{
+			TotalChunksRef:        2 * 50,
+			TotalChunksDownloaded: 2 * 60,
+			ChunksDownloadTime:    2 * time.Second.Seconds(),
+			HeadChunkBytes:        2 * 10,
+			HeadChunkLines:        2 * 20,
+			DecompressedBytes:     2 * 40,
+			DecompressedLines:     2 * 20,
+			CompressedBytes:       2 * 30,
+			TotalDuplicates:       2 * 10,
+		},
+		Summary: Summary{
+			ExecTime:                 2 * 2 * time.Second.Seconds(),
+			BytesProcessedPerSeconds: int64(42), // 2 requests at the same pace should give the same bytes/lines per sec
+			LinesProcessedPerSeconds: int64(50),
+			TotalBytesProcessed:      2 * int64(84),
+			TotalLinesProcessed:      2 * int64(100),
+		},
+	}, res)
+
 }
