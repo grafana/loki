@@ -54,11 +54,11 @@ func New(cfg config.Config) (*Promtail, error) {
 // Run the promtail; will block until a signal is received.
 func (p *Promtail) Run() error {
 	p.mtx.Lock()
-	defer p.mtx.Unlock()
 	// if we stopped promtail before the server even started we can return without starting.
 	if p.stopped {
 		return nil
 	}
+	p.mtx.Unlock() // unlock before blocking
 	return p.server.Run()
 }
 
