@@ -69,13 +69,14 @@ module Fluent
         config_set_default :chunk_keys, []
       end
 
-      def configure(conf)
+      def configure(conf) # rubocop:disable Metrics/CyclomaticComplexity
         compat_parameters_convert(conf, :buffer)
         super
         @uri = URI.parse(@url + '/loki/api/v1/push')
-        unless @uri.kind_of?(URI::HTTP) or @uri.kind_of?(URI::HTTPS)
-          raise Fluent::ConfigError, "url parameter must be valid HTTP"
+        unless @uri.is_a?(URI::HTTP) || @uri.is_a?(URI::HTTPS)
+          raise Fluent::ConfigError, 'url parameter must be valid HTTP'
         end
+
         @record_accessors = {}
         conf.elements.select { |element| element.name == 'label' }.each do |element|
           element.each_pair do |k, v|
