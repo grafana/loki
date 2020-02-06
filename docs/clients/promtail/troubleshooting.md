@@ -3,6 +3,53 @@
 This document describes known failure modes of `promtail` on edge cases and the
 adopted trade-offs.
 
+## Pipe data to Promtail
+
+Promtail supports piping data for sending logs to Loki. This is a very useful way to troubleshooting your configuration.
+Once you have promtail installed you can for instance use the following command to send logs to a local Loki instance:
+
+```bash
+cat my.log | promtail --client.url http://127.0.0.1:3100/loki/api/v1/push
+```
+
+You can also add additional labels from command line using:
+
+```bash
+cat my.log | promtail --client.url http://127.0.0.1:3100/loki/api/v1/push --client.external-labels=k1=v1,k2=v2
+```
+
+This will add labels `k1` and `k2` with respective values `v1` and `v2`.
+
+In pipe mode Promtail also support file configuration using `--config.file`, however do note that positions config is not used and
+only **the first scrape config is used**.
+
+[`static_configs:`](./configuration) can be used to provide static labels, although the targets property is ignored.
+
+If you don't provide any [`scrape_config:`](./configuration#scrape_config) a default one is used which will automatically adds the following default labels: `{job="stdin",hostname="Cyrils-iMac"}`.
+
+For example you could use this config below to parse and add the label `level` on all your piped logs:
+
+```yaml
+clients:
+  - url: http://localhost:3100/loki/api/v1/push
+
+scrape_configs:
+- job_name: system
+  pipeline_stages:
+  - regex:
+      expression: '(level|lvl|severity)=(?P<level>\\w+)'
+  - labels:
+      level:
+  static_configs:
+  - labels:
+      job: my-stdin-logs
+```
+
+```
+cat my.log | promtail --config.file promtail.yaml
+```
+
+
 ## A tailed file is truncated while `promtail` is not running
 
 Given the following order of events:

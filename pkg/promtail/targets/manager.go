@@ -1,6 +1,7 @@
 package targets
 
 import (
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 
@@ -19,13 +20,14 @@ type targetManager interface {
 // TargetManagers manages a list of target managers.
 type TargetManagers struct {
 	targetManagers []targetManager
+	positions      *positions.Positions
 }
 
 // NewTargetManagers makes a new TargetManagers
 func NewTargetManagers(
 	app Shutdownable,
 	logger log.Logger,
-	positions *positions.Positions,
+	positionsConfig positions.Config,
 	client api.EntryHandler,
 	scrapeConfigs []scrape.Config,
 	targetConfig *Config,
@@ -42,6 +44,11 @@ func NewTargetManagers(
 		}
 		targetManagers = append(targetManagers, stdin)
 		return &TargetManagers{targetManagers: targetManagers}, nil
+	}
+
+	positions, err := positions.New(util.Logger, positionsConfig)
+	if err != nil {
+		return nil, err
 	}
 
 	for _, cfg := range scrapeConfigs {
@@ -94,7 +101,10 @@ func NewTargetManagers(
 		targetManagers = append(targetManagers, syslogTargetManager)
 	}
 
-	return &TargetManagers{targetManagers: targetManagers}, nil
+	return &TargetManagers{
+		targetManagers: targetManagers,
+		positions:      positions,
+	}, nil
 
 }
 
@@ -134,5 +144,8 @@ func (tm *TargetManagers) Ready() bool {
 func (tm *TargetManagers) Stop() {
 	for _, t := range tm.targetManagers {
 		t.Stop()
+	}
+	if tm.positions != nil {
+		tm.positions.Stop()
 	}
 }
