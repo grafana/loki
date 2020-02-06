@@ -76,6 +76,7 @@ module Fluent
         unless @uri.is_a?(URI::HTTP) or @uri.is_a?(URI::HTTPS)
           raise Fluent::ConfigError, "url parameter must be valid HTTP"
         end
+
         @record_accessors = {}
         conf.elements.select { |element| element.name == 'label' }.each do |element|
           element.each_pair do |k, v|
