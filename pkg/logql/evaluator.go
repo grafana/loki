@@ -592,3 +592,29 @@ func (ev *defaultEvaluator) literalEvaluator(
 		eval.Close,
 	)
 }
+
+// ConcatEvaluator joins multiple StepEvaluators.
+// Contract: They must be of identical start, end, and step values.
+func ConcatEvaluator(evaluators []StepEvaluator) StepEvaluator {
+	return newStepEvaluator(
+		func() (done bool, ts int64, vec promql.Vector) {
+			var cur promql.Vector
+			for {
+				for _, eval := range evaluators {
+					done, ts, cur = eval.Next()
+					vec = append(vec, cur...)
+				}
+			}
+			return done, ts, vec
+
+		},
+		func() (lastErr error) {
+			for _, eval := range evaluators {
+				if err := eval.Close(); err != nil {
+					lastErr = err
+				}
+			}
+			return lastErr
+		},
+	)
+}

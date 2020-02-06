@@ -8,49 +8,39 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-// type shardedLogSelectorExpr struct {
-// 	LogSelectorExpr
-// 	shard int
-// }
+type ShardMapper struct {
+	shards int
+}
 
-// type shardedSampleExpr struct {
-// 	SampleExpr
-// 	shard int
-// }
+func (m ShardMapper) Map(expr Expr) (Expr, error) {
+	cloned, err := CloneExpr(expr)
+	if err != nil {
+		return nil, err
+	}
 
-// type ShardMapper struct {
-// 	shards int
-// }
+	if CanParallel(cloned) {
+		return m.parallelize(cloned)
+	}
 
-// func (m ShardMapper) Map(expr Expr) (Expr, error) {
-// 	cloned, err := CloneExpr(expr)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	if (propertyExpr{cloned}).CanParallel() {
-// 		return m.parallelize(cloned)
-// 	}
-
-// 	switch e := cloned.(type) {
-// 	case *rangeAggregationExpr:
-// 		mapped, err := m.Map(e.left.left)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 		e.left.left = mapped.(LogSelectorExpr)
-// 		return e, nil
-// 	case *vectorAggregationExpr:
-// 		mapped, err := m.Map(e.left)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 		e.left = mapped.(SampleExpr)
-// 		return e, nil
-// 	default:
-// 		return nil, errors.Errorf("unexpected expr marked as not parallelizable: %+v", expr)
-// 	}
-// }
+	switch e := cloned.(type) {
+	case *rangeAggregationExpr:
+		mapped, err := m.Map(e.left.left)
+		if err != nil {
+			return nil, err
+		}
+		e.left.left = mapped.(LogSelectorExpr)
+		return e, nil
+	case *vectorAggregationExpr:
+		mapped, err := m.Map(e.left)
+		if err != nil {
+			return nil, err
+		}
+		e.left = mapped.(SampleExpr)
+		return e, nil
+	default:
+		return nil, errors.Errorf("unexpected expr marked as not parallelizable: %+v", expr)
+	}
+}
 
 // func (m ShardMapper) parallelize(expr Expr) (Expr, error) {
 // 	switch e := expr.(type) {

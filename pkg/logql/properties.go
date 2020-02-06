@@ -14,26 +14,14 @@ var parallelOperations = map[string]bool{
 	OpTypeRate:          true,
 }
 
-// PropertyExpr is an expression which can determine certain properties of an expression
-// and also impls ASTMapper
-type PropertyExpr interface {
-	Expr
-	CanParallel() bool // Whether this expression can be parallelized
-
-}
-
-type propertyExpr struct {
-	Expr
-}
-
-func (e propertyExpr) CanParallel() bool {
-	switch expr := e.Expr.(type) {
+func CanParallel(e Expr) bool {
+	switch expr := e.(type) {
 	case *matchersExpr, *filterExpr:
 		return true
 	case *rangeAggregationExpr:
 		return parallelOperations[expr.operation]
 	case *vectorAggregationExpr:
-		return parallelOperations[expr.operation] && propertyExpr{expr.left}.CanParallel()
+		return parallelOperations[expr.operation] && CanParallel(expr.Left)
 	default:
 		return false
 	}
