@@ -73,7 +73,7 @@ module Fluent
         compat_parameters_convert(conf, :buffer)
         super
         @uri = URI.parse(@url + '/loki/api/v1/push')
-        unless @uri.is_a?(URI::HTTP) or @uri.is_a?(URI::HTTPS)
+        unless @uri.is_a?(URI::HTTP) || @uri.is_a?(URI::HTTPS)
           raise Fluent::ConfigError, "url parameter must be valid HTTP"
         end
 
