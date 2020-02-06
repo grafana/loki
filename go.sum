@@ -395,8 +395,6 @@ github.com/gorilla/websocket v1.4.0 h1:WDFjx/TMzVgy9VdMMQi2K2Emtwi2QcUQsztZ/zLaH
 github.com/gorilla/websocket v1.4.0/go.mod h1:E7qHFY5m1UJ88s3WnNqhKjPHQ0heANvMoAMk2YaljkQ=
 github.com/grafana/tail v0.0.0-20191024143944-0b54ddf21fe7 h1:eeBhshivxpgHEX78QxJkoL251Pjr0B2GL59ZsivnplU=
 github.com/grafana/tail v0.0.0-20191024143944-0b54ddf21fe7/go.mod h1:aS6CMYGLEIABOzX3OL8SqZ3zAZCGN7nmBnqgnyJGxyA=
-github.com/grafana/tail v0.0.0-20200127140945-4647d4b312f2 h1:rleaNROLYWaF/fN7hgk/j+YzD7hPKfJjtwVf3JtgKrA=
-github.com/grafana/tail v0.0.0-20200127140945-4647d4b312f2/go.mod h1:aS6CMYGLEIABOzX3OL8SqZ3zAZCGN7nmBnqgnyJGxyA=
 github.com/gregjones/httpcache v0.0.0-20170728041850-787624de3eb7/go.mod h1:FecbI9+v66THATjSRHfNgh1IVFe/9kFxbXtjV0ctIMA=
 github.com/grpc-ecosystem/go-grpc-middleware v1.0.1-0.20190118093823-f849b5445de4 h1:z53tR0945TRRQO/fLEVPI6SMv7ZflF0TEaTAoU7tOzg=
 github.com/grpc-ecosystem/go-grpc-middleware v1.0.1-0.20190118093823-f849b5445de4/go.mod h1:FiyG127CGDf3tlThmgyCl78X/SZQqEOJBCDaAfeWzPs=
