@@ -67,7 +67,7 @@ func (r Result) Log(log log.Logger) {
 }
 
 func (s Summary) Log(log log.Logger) {
-	log.Log(
+	_ = log.Log(
 		"Summary.BytesProcessedPerSeconds", humanize.Bytes(uint64(s.BytesProcessedPerSeconds)),
 		"Summary.LinesProcessedPerSeconds", s.LinesProcessedPerSeconds,
 		"Summary.TotalBytesProcessed", humanize.Bytes(uint64(s.TotalBytesProcessed)),
