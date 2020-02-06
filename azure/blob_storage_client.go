@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/url"
 	"strings"
 	"time"
@@ -77,9 +78,17 @@ func (b *BlobStorage) getChunk(ctx context.Context, decodeContext *chunk.DecodeC
 		return chunk.Chunk{}, err
 	}
 
-	buf := make([]byte, 0, b.cfg.DownloadBufferSize)
+	// Request access to the blob
+	downloadResponse, err := blockBlobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false)
+	if err != nil {
+		return chunk.Chunk{}, err
+	}
 
-	err = azblob.DownloadBlobToBuffer(ctx, blockBlobURL.BlobURL, 0, 0, buf, azblob.DownloadFromBlobOptions{})
+	// download the contents & read into a buffer
+	bodyStream := downloadResponse.Body(azblob.RetryReaderOptions{MaxRetryRequests: b.cfg.MaxRetries})
+	defer bodyStream.Close()
+
+	buf, err := ioutil.ReadAll(bodyStream)
 	if err != nil {
 		return chunk.Chunk{}, err
 	}
