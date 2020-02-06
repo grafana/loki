@@ -119,7 +119,7 @@ func newReaderTarget(in io.Reader, client api.EntryHandler, cfg scrape.Config) (
 	if err != nil {
 		return nil, err
 	}
-	var lbs model.LabelSet
+	lbs := model.LabelSet{}
 	for _, static := range cfg.ServiceDiscoveryConfig.StaticConfigs {
 		if static != nil && static.Labels != nil {
 			lbs = lbs.Merge(static.Labels)

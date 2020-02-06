@@ -8,9 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/scrape"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v2"
 )
 
 type line struct {
@@ -40,7 +42,7 @@ func Test_newReaderTarget(t *testing.T) {
 			bytes.NewReader([]byte("bar")),
 			scrape.Config{},
 			[]line{
-				{nil, "bar"},
+				{model.LabelSet{}, "bar"},
 			},
 			false,
 		},
@@ -56,8 +58,20 @@ func Test_newReaderTarget(t *testing.T) {
 			bytes.NewReader([]byte("\nfoo\r\nbar")),
 			scrape.Config{},
 			[]line{
-				{nil, "foo"},
-				{nil, "bar"},
+				{model.LabelSet{}, "foo"},
+				{model.LabelSet{}, "bar"},
+			},
+			false,
+		},
+		{
+			"pipeline",
+			bytes.NewReader([]byte("\nfoo\r\nbar")),
+			scrape.Config{
+				PipelineStages: loadConfig(stagesConfig),
+			},
+			[]line{
+				{model.LabelSet{"new_key": "hello world!"}, "foo"},
+				{model.LabelSet{"new_key": "hello world!"}, "bar"},
 			},
 			false,
 		},
@@ -119,7 +133,7 @@ func Test_Shutdown(t *testing.T) {
 	require.NotNil(t, manager)
 	called := <-appMock.called
 	require.Equal(t, true, called)
-	require.Equal(t, []line{{labels: nil, entry: "line"}}, recorder.recorded)
+	require.Equal(t, []line{{labels: model.LabelSet{}, entry: "line"}}, recorder.recorded)
 }
 
 func Test_StdinConfigs(t *testing.T) {
@@ -149,4 +163,22 @@ func Test_isPipe(t *testing.T) {
 	require.Equal(t, true, isStdinPipe())
 	stdIn = os.Stdin
 	require.Equal(t, false, isStdinPipe())
+}
+
+var stagesConfig = `
+pipeline_stages:
+- template:
+    source: new_key
+    template: 'hello world!'
+- labels:
+    new_key:
+`
+
+func loadConfig(yml string) stages.PipelineStages {
+	var config map[string]interface{}
+	err := yaml.Unmarshal([]byte(yml), &config)
+	if err != nil {
+		panic(err)
+	}
+	return config["pipeline_stages"].([]interface{})
 }
