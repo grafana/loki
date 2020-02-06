@@ -19,7 +19,7 @@ type Promtail struct {
 }
 
 // New makes a new Promtail.
-func New(cfg config.Config) (*Promtail, error) {
+func New(cfg config.Config, dryRun bool) (*Promtail, error) {
 	positions, err := positions.New(util.Logger, cfg.PositionsConfig)
 	if err != nil {
 		return nil, err
@@ -30,12 +30,20 @@ func New(cfg config.Config) (*Promtail, error) {
 		cfg.ClientConfigs = append(cfg.ClientConfigs, cfg.ClientConfig)
 	}
 
-	client, err := client.NewMulti(util.Logger, cfg.ClientConfigs...)
-	if err != nil {
-		return nil, err
+	var cl client.Client
+	if dryRun {
+		cl, err = client.NewLogger(cfg.ClientConfigs...)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		cl, err = client.NewMulti(util.Logger, cfg.ClientConfigs...)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	tms, err := targets.NewTargetManagers(util.Logger, positions, client, cfg.ScrapeConfig, &cfg.TargetConfig)
+	tms, err := targets.NewTargetManagers(util.Logger, positions, cl, cfg.ScrapeConfig, &cfg.TargetConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +54,7 @@ func New(cfg config.Config) (*Promtail, error) {
 	}
 
 	return &Promtail{
-		client:         client,
+		client:         cl,
 		positions:      positions,
 		targetManagers: tms,
 		server:         server,
