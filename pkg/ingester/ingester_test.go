@@ -11,8 +11,8 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -253,7 +253,7 @@ type mockQuerierServer struct {
 	grpc.ServerStream
 }
 
-func (*mockQuerierServer) SetTrailer(metadata.MD){}
+func (*mockQuerierServer) SetTrailer(metadata.MD) {}
 
 func (m *mockQuerierServer) Send(resp *logproto.QueryResponse) error {
 	m.resps = append(m.resps, resp)

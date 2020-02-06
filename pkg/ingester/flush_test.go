@@ -148,7 +148,7 @@ func TestFlushMaxAge(t *testing.T) {
 
 	// assert stream is now both batches
 	store.checkData(t, map[string][]*logproto.Stream{
-		userID: []*logproto.Stream{
+		userID: {
 			{Labels: model.LabelSet{"app": "l"}.String(), Entries: append(firstEntries, secondEntries...)},
 		},
 	})

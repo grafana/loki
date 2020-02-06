@@ -371,6 +371,7 @@ func (e *vectorAggregationExpr) String() string {
 }
 
 // helper used to impl Stringer for vector and range aggregations
+// nolint:interfacer
 func formatOperation(op string, grouping *grouping, params ...string) string {
 	nonEmptyParams := make([]string, 0, len(params))
 	for _, p := range params {
