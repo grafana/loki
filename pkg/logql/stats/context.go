@@ -39,7 +39,7 @@ const (
 
 // Log logs a query statistics result.
 func (r Result) Log(log log.Logger) {
-	log.Log(
+	_ = log.Log(
 		"Ingester.TotalReached", r.Ingester.TotalReached,
 		"Ingester.TotalChunksMatched", r.Ingester.TotalChunksMatched,
 		"Ingester.TotalBatches", r.Ingester.TotalBatches,
