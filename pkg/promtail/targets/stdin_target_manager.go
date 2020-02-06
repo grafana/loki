@@ -16,6 +16,9 @@ import (
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/scrape"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/discovery/config"
+	"github.com/prometheus/prometheus/discovery/targetgroup"
 )
 
 // bufferSize is the size of the buffered reader
@@ -29,10 +32,17 @@ type file interface {
 
 var (
 	// stdIn is os.Stdin but can be replaced for testing purpose.
-	stdIn file = os.Stdin
+	stdIn       file = os.Stdin
+	hostName, _      = os.Hostname()
 	// defaultStdInCfg is the default config for stdin target if none provided.
 	defaultStdInCfg = scrape.Config{
 		JobName: "stdin",
+		ServiceDiscoveryConfig: config.ServiceDiscoveryConfig{
+			StaticConfigs: []*targetgroup.Group{
+				&targetgroup.Group{Labels: model.LabelSet{"job": "stdin"}},
+				&targetgroup.Group{Labels: model.LabelSet{"hostname": model.LabelValue(hostName)}},
+			},
+		},
 	}
 )
 
@@ -95,9 +105,9 @@ func (t *stdinTargetManager) ActiveTargets() map[string][]Target { return nil }
 func (t *stdinTargetManager) AllTargets() map[string][]Target    { return nil }
 
 type readerTarget struct {
-	in  *bufio.Reader
-	out api.EntryHandler
-
+	in     *bufio.Reader
+	out    api.EntryHandler
+	lbs    model.LabelSet
 	logger log.Logger
 
 	cancel context.CancelFunc
@@ -109,12 +119,19 @@ func newReaderTarget(in io.Reader, client api.EntryHandler, cfg scrape.Config) (
 	if err != nil {
 		return nil, err
 	}
+	var lbs model.LabelSet
+	for _, static := range cfg.ServiceDiscoveryConfig.StaticConfigs {
+		if static != nil && static.Labels != nil {
+			lbs = lbs.Merge(static.Labels)
+		}
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &readerTarget{
 		in:     bufio.NewReaderSize(in, bufferSize),
 		out:    pipeline.Wrap(client),
 		cancel: cancel,
 		ctx:    ctx,
+		lbs:    lbs,
 		logger: log.With(util.Logger, "component", "reader"),
 	}
 	go t.read()
@@ -141,7 +158,7 @@ func (t *readerTarget) read() {
 			}
 			continue
 		}
-		if err := t.out.Handle(nil, time.Now(), line); err != nil {
+		if err := t.out.Handle(t.lbs, time.Now(), line); err != nil {
 			level.Error(t.logger).Log("msg", "error sending line", "err", err)
 		}
 		if err == io.EOF {

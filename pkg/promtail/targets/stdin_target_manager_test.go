@@ -61,6 +61,16 @@ func Test_newReaderTarget(t *testing.T) {
 			},
 			false,
 		},
+		{
+			"default config",
+			bytes.NewReader([]byte("\nfoo\r\nbar")),
+			defaultStdInCfg,
+			[]line{
+				{model.LabelSet{"job": "stdin", "hostname": model.LabelValue(hostName)}, "foo"},
+				{model.LabelSet{"job": "stdin", "hostname": model.LabelValue(hostName)}, "bar"},
+			},
+			false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -104,7 +114,7 @@ func Test_Shutdown(t *testing.T) {
 	stdIn = newFakeStin("line")
 	appMock := &mockShutdownable{called: make(chan bool, 1)}
 	recorder := &clientRecorder{}
-	manager, err := newStdinTargetManager(appMock, recorder, []scrape.Config{})
+	manager, err := newStdinTargetManager(appMock, recorder, []scrape.Config{{}})
 	require.NoError(t, err)
 	require.NotNil(t, manager)
 	called := <-appMock.called
@@ -137,6 +147,6 @@ func Test_isPipe(t *testing.T) {
 	fake.FileInfo = &mockFileInfo{}
 	stdIn = fake
 	require.Equal(t, true, isStdinPipe())
-	stdIn = os.Stdout
+	stdIn = os.Stdin
 	require.Equal(t, false, isStdinPipe())
 }
