@@ -69,7 +69,7 @@ module Fluent
         config_set_default :chunk_keys, []
       end
 
-      def configure(conf)
+      def configure(conf) # rubocop:disable Metrics/CyclomaticComplexity
         compat_parameters_convert(conf, :buffer)
         super
         @uri = URI.parse(@url + '/loki/api/v1/push')
