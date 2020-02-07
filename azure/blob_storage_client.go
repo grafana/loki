@@ -5,17 +5,21 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
 )
 
 const blobURLFmt = "https://%s.blob.core.windows.net/%s/%s"
+const containerURLFmt = "https://%s.blob.core.windows.net/%s"
 
 // BlobStorageConfig defines the configurable flags that can be defined when using azure blob storage.
 type BlobStorageConfig struct {
@@ -49,12 +53,21 @@ func (c *BlobStorageConfig) RegisterFlags(f *flag.FlagSet) {
 // Implements ObjectStorage
 type BlobStorage struct {
 	//blobService storage.Serv
-	cfg *BlobStorageConfig
+	cfg          *BlobStorageConfig
+	containerURL azblob.ContainerURL
 }
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
-func NewBlobStorage(cfg *BlobStorageConfig) *BlobStorage {
-	return &BlobStorage{cfg: cfg}
+func NewBlobStorage(cfg *BlobStorageConfig) (*BlobStorage, error) {
+	blobStorage := &BlobStorage{cfg: cfg}
+
+	var err error
+	blobStorage.containerURL, err = blobStorage.buildContainerURL()
+	if err != nil {
+		return nil, err
+	}
+
+	return blobStorage, nil
 }
 
 // Stop is a no op, as there are no background workers with this driver currently
@@ -73,22 +86,14 @@ func (b *BlobStorage) getChunk(ctx context.Context, decodeContext *chunk.DecodeC
 		defer cancel()
 	}
 
-	blockBlobURL, err := b.getBlobURL(input.ExternalKey())
+	readCloser, err := b.GetObject(ctx, input.ExternalKey())
 	if err != nil {
 		return chunk.Chunk{}, err
 	}
 
-	// Request access to the blob
-	downloadResponse, err := blockBlobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false)
-	if err != nil {
-		return chunk.Chunk{}, err
-	}
+	defer readCloser.Close()
 
-	// download the contents & read into a buffer
-	bodyStream := downloadResponse.Body(azblob.RetryReaderOptions{MaxRetryRequests: b.cfg.MaxRetries})
-	defer bodyStream.Close()
-
-	buf, err := ioutil.ReadAll(bodyStream)
+	buf, err := ioutil.ReadAll(readCloser)
 	if err != nil {
 		return chunk.Chunk{}, err
 	}
@@ -109,21 +114,41 @@ func (b *BlobStorage) PutChunks(ctx context.Context, chunks []chunk.Chunk) error
 			return err
 		}
 
-		blockBlobURL, err := b.getBlobURL(chunk.ExternalKey())
-		if err != nil {
-			return err
-		}
-
-		bufferSize := b.cfg.UploadBufferSize
-		maxBuffers := b.cfg.UploadBufferCount
-		_, err = azblob.UploadStreamToBlockBlob(ctx, bytes.NewReader(buf), blockBlobURL,
-			azblob.UploadStreamToBlockBlobOptions{BufferSize: bufferSize, MaxBuffers: maxBuffers})
-
+		err = b.PutObject(ctx, chunk.ExternalKey(), bytes.NewReader(buf))
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+	blockBlobURL, err := b.getBlobURL(objectKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// Request access to the blob
+	downloadResponse, err := blockBlobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false)
+	if err != nil {
+		return nil, err
+	}
+
+	return downloadResponse.Body(azblob.RetryReaderOptions{MaxRetryRequests: b.cfg.MaxRetries}), nil
+}
+
+func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+	blockBlobURL, err := b.getBlobURL(objectKey)
+	if err != nil {
+		return err
+	}
+
+	bufferSize := b.cfg.UploadBufferSize
+	maxBuffers := b.cfg.UploadBufferCount
+	_, err = azblob.UploadStreamToBlockBlob(ctx, object, blockBlobURL,
+		azblob.UploadStreamToBlockBlobOptions{BufferSize: bufferSize, MaxBuffers: maxBuffers})
+
+	return err
 }
 
 func (b *BlobStorage) getBlobURL(blobID string) (azblob.BlockBlobURL, error) {
@@ -135,12 +160,36 @@ func (b *BlobStorage) getBlobURL(blobID string) (azblob.BlockBlobURL, error) {
 	if err != nil {
 		return azblob.BlockBlobURL{}, err
 	}
-	credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey)
+
+	azPipeline, err := b.newPipeline()
 	if err != nil {
 		return azblob.BlockBlobURL{}, err
 	}
 
-	return azblob.NewBlockBlobURL(*u, azblob.NewPipeline(credential, azblob.PipelineOptions{
+	return azblob.NewBlockBlobURL(*u, azPipeline), nil
+}
+
+func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
+	u, err := url.Parse(fmt.Sprintf(containerURLFmt, b.cfg.AccountName, b.cfg.ContainerName))
+	if err != nil {
+		return azblob.ContainerURL{}, err
+	}
+
+	azPipeline, err := b.newPipeline()
+	if err != nil {
+		return azblob.ContainerURL{}, err
+	}
+
+	return azblob.NewContainerURL(*u, azPipeline), nil
+}
+
+func (b *BlobStorage) newPipeline() (pipeline.Pipeline, error) {
+	credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return azblob.NewPipeline(credential, azblob.PipelineOptions{
 		Retry: azblob.RetryOptions{
 			Policy:        azblob.RetryPolicyExponential,
 			MaxTries:      (int32)(b.cfg.MaxRetries),
@@ -148,5 +197,33 @@ func (b *BlobStorage) getBlobURL(blobID string) (azblob.BlockBlobURL, error) {
 			RetryDelay:    b.cfg.MinRetryDelay,
 			MaxRetryDelay: b.cfg.MaxRetryDelay,
 		},
-	})), nil
+	}), nil
+}
+
+// List only objects from the store non-recursively
+func (b *BlobStorage) List(ctx context.Context, prefix string) ([]chunk.StorageObject, error) {
+	var storageObjects []chunk.StorageObject
+
+	for marker := (azblob.Marker{}); marker.NotDone(); {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		listBlob, err := b.containerURL.ListBlobsHierarchySegment(ctx, marker, chunk.DirDelim, azblob.ListBlobsSegmentOptions{Prefix: prefix})
+		if err != nil {
+			return nil, err
+		}
+
+		marker = listBlob.NextMarker
+
+		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
+		for _, blobInfo := range listBlob.Segment.BlobItems {
+			storageObjects = append(storageObjects, chunk.StorageObject{
+				Key:        blobInfo.Name,
+				ModifiedAt: blobInfo.Properties.LastModified,
+			})
+		}
+	}
+
+	return storageObjects, nil
 }
