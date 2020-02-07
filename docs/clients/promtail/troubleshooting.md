@@ -25,7 +25,7 @@ only **the first scrape config is used**.
 
 [`static_configs:`](./configuration) can be used to provide static labels, although the targets property is ignored.
 
-If you don't provide any [`scrape_config:`](./configuration#scrape_config) a default one is used which will automatically adds the following default labels: `{job="stdin",hostname="Cyrils-iMac"}`.
+If you don't provide any [`scrape_config:`](./configuration#scrape_config) a default one is used which will automatically adds the following default labels: `{job="stdin",hostname="<detected_hostname>"}`.
 
 For example you could use this config below to parse and add the label `level` on all your piped logs:
 
