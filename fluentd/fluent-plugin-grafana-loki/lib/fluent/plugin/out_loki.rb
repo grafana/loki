@@ -218,7 +218,13 @@ module Fluent
       end
 
       def to_nano(time)
-        time.to_i * (10**9) + time.nsec
+        # time is a Fluent::EventTime object, or an Integer which represents unix timestamp (seconds from Epoch)
+        # https://docs.fluentd.org/plugin-development/api-plugin-output#chunk-each-and-block
+        if time.is_a?(Fluent::EventTime)
+          time.to_i * (10**9) + time.nsec
+        else
+          time.to_i * (10**9)
+        end
       end
 
       def record_to_line(record)
