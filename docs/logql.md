@@ -159,11 +159,11 @@ Get the rate of HTTP GET requests from NGINX logs:
 Arithmetic binary operators
 The following binary arithmetic operators exist in Loki:
 
-- + (addition)
-- - (subtraction)
-- * (multiplication)
-- / (division)
-- % (modulo)
+- `+` (addition)
+- `-` (subtraction)
+- `*` (multiplication)
+- `/` (division)
+- `%` (modulo)
 
 Binary arithmetic operators are defined only between two vectors.
 
@@ -182,9 +182,9 @@ Operators on the same precedence level are left-associative (queries substituted
 
 These logical/set binary operators are only defined between two vectors:
 
-- and (intersection)
-- or (union)
-- unless (complement)
+- `and` (intersection)
+- `or` (union)
+- `unless` (complement)
 
 `vector1 and vector2` results in a vector consisting of the elements of vector1 for which there are elements in vector2 with exactly matching label sets. Other elements are dropped.
 
