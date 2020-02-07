@@ -129,7 +129,7 @@ func (m *mockKV) Get(key string, q *consul.QueryOptions) (*consul.KVPair, *consu
 	}
 
 	if q.WaitIndex >= valueModifyIndex && q.WaitTime > 0 {
-		deadline := time.Now().Add(q.WaitTime)
+		deadline := time.Now().Add(mockedMaxWaitTime(q.WaitTime))
 		if ctxDeadline, ok := q.Context().Deadline(); ok && ctxDeadline.Before(deadline) {
 			// respect deadline from context, if set.
 			deadline = ctxDeadline
@@ -164,7 +164,7 @@ func (m *mockKV) List(prefix string, q *consul.QueryOptions) (consul.KVPairs, *c
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	deadline := time.Now().Add(q.WaitTime)
+	deadline := time.Now().Add(mockedMaxWaitTime(q.WaitTime))
 	if ctxDeadline, ok := q.Context().Deadline(); ok && ctxDeadline.Before(deadline) {
 		// respect deadline from context, if set.
 		deadline = ctxDeadline
@@ -207,4 +207,15 @@ func (m *mockKV) ResetIndexForKey(key string) {
 
 	m.cond.Broadcast()
 	level.Debug(util.Logger).Log("msg", "ResetIndexForKey", "key", key)
+}
+
+// mockedMaxWaitTime returns the minimum duration between the input duration
+// and the max wait time allowed in this mock, in order to have faster tests.
+func mockedMaxWaitTime(queryWaitTime time.Duration) time.Duration {
+	const maxWaitTime = time.Second
+	if queryWaitTime > maxWaitTime {
+		return maxWaitTime
+	}
+
+	return queryWaitTime
 }

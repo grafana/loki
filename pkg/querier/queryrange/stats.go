@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 // StatsMiddleware creates a new Middleware that recompute the stats summary based on the actual duration of the request.
@@ -23,6 +24,7 @@ func StatsMiddleware() queryrange.Middleware {
 					r.Statistics.ComputeSummary(time.Since(start))
 				}
 			}
+			logql.RecordMetrics(status, req.GetQuery(), rangeType, statResult)
 			return resp, err
 		})
 	})

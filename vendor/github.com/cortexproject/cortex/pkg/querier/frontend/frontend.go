@@ -277,7 +277,7 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 		}()
 
 		select {
-		// If the upstream reqeust is cancelled, we need to cancel the
+		// If the upstream request is cancelled, we need to cancel the
 		// downstream req.  Only way we can do that is to close the stream.
 		// The worker client is expecting this semantics.
 		case <-req.originalCtx.Done():
