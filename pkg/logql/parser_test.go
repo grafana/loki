@@ -534,7 +534,7 @@ func TestParse(t *testing.T) {
 		{
 			in: `{foo="bar"} "foo"`,
 			err: ParseError{
-				msg:  "syntax error: unexpected STRING, expecting != or !~ or |~ or |=",
+				msg:  "syntax error: unexpected STRING",
 				line: 1,
 				col:  13,
 			},
@@ -542,7 +542,7 @@ func TestParse(t *testing.T) {
 		{
 			in: `{foo="bar"} foo`,
 			err: ParseError{
-				msg:  "syntax error: unexpected IDENTIFIER, expecting != or !~ or |~ or |=",
+				msg:  "syntax error: unexpected IDENTIFIER",
 				line: 1,
 				col:  13,
 			},

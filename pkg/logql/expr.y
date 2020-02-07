@@ -21,6 +21,8 @@ import (
   Selector                []*labels.Matcher
   VectorAggregationExpr   SampleExpr
   VectorOp                string
+  BinOpExpr               SampleExpr
+  BinOp                   string
   str                     string
   duration                time.Duration
   int                     int64
@@ -41,26 +43,38 @@ import (
 %type <Selector>              selector
 %type <VectorAggregationExpr> vectorAggregationExpr
 %type <VectorOp>              vectorOp
+%type <BinOpExpr>             binOpExpr
+%type <BinOp>                 binOp
 
 %token <str>      IDENTIFIER STRING
 %token <duration> DURATION
 %token <val>      MATCHERS LABELS EQ NEQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
 
+// Operators are listed with increasing precedence.
+%token <binOp>
+ADD
+DIV
+
+%left ADD
+%left DIV
+
 %%
 
 root: expr { exprlex.(*lexer).expr = $1 };
 
 expr:
-      logExpr                    { $$ = $1 }
-    | rangeAggregationExpr       { $$ = $1 }
-    | vectorAggregationExpr      { $$ = $1 }
+      logExpr                                      { $$ = $1 }
+    | rangeAggregationExpr                         { $$ = $1 }
+    | vectorAggregationExpr                        { $$ = $1 }
+    | binOpExpr                                    { $$ = $1 }
+    | OPEN_PARENTHESIS expr CLOSE_PARENTHESIS      { $$ = $2 }
     ;
 
 logExpr:
       selector                                    { $$ = newMatcherExpr($1)}
     | logExpr filter STRING                       { $$ = NewFilterExpr( $1, $2, $3 ) }
-    | OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS  { $$ = $2}
+    | OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS  { $$ = $2 }
     | logExpr filter error
     | logExpr error
     ;
@@ -114,6 +128,16 @@ matcher:
     | IDENTIFIER RE STRING             { $$ = mustNewMatcher(labels.MatchRegexp, $1, $3) }
     | IDENTIFIER NRE STRING            { $$ = mustNewMatcher(labels.MatchNotRegexp, $1, $3) }
     ;
+
+// TODO(owen-d): add (on,ignoring) clauses to binOpExpr
+// https://prometheus.io/docs/prometheus/latest/querying/operators/
+binOpExpr:
+         expr binOp expr { $$ = mustNewBinOpExpr($2, $1, $3) }
+
+binOp:
+     ADD  { $$ = OpTypeAdd }
+   | DIV  { $$ = OpTypeDiv }
+
 
 vectorOp:
         SUM     { $$ = OpTypeSum }

@@ -36,6 +36,8 @@ var tokens = map[string]int{
 	OpTypeStdvar:        STDVAR,
 	OpTypeBottomK:       BOTTOMK,
 	OpTypeTopK:          TOPK,
+	"/":                 DIV,
+	"+":                 ADD,
 }
 
 type lexer struct {

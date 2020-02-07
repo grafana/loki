@@ -227,6 +227,10 @@ const (
 	OpTypeTopK          = "topk"
 	OpTypeCountOverTime = "count_over_time"
 	OpTypeRate          = "rate"
+
+	// binops
+	OpTypeAdd = "+"
+	OpTypeDiv = "/"
 )
 
 // SampleExpr is a LogQL expression filtering logs and returning metric samples.
@@ -368,6 +372,33 @@ func (e *vectorAggregationExpr) String() string {
 		params = []string{e.left.String()}
 	}
 	return formatOperation(e.operation, e.grouping, params...)
+}
+
+type binOpExpr struct {
+	SampleExpr
+	RHS SampleExpr
+	op  string
+}
+
+func (e *binOpExpr) String() string {
+	return fmt.Sprintf("%s %s %s", e.SampleExpr.String(), e.op, e.RHS.String())
+}
+
+func mustNewBinOpExpr(op string, lhs, rhs Expr) SampleExpr {
+	left, ok := lhs.(SampleExpr)
+	if !ok {
+		panic(fmt.Errorf("unexpected type for binOpExpr (%T): %+v", lhs, lhs))
+	}
+
+	right, ok := rhs.(SampleExpr)
+	if !ok {
+		panic(fmt.Errorf("unexpected type for binOpExpr (%T): %+v", rhs, rhs))
+	}
+	return &binOpExpr{
+		SampleExpr: left,
+		RHS:        right,
+		op:         op,
+	}
 }
 
 // helper used to impl Stringer for vector and range aggregations
