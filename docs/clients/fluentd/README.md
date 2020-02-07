@@ -116,11 +116,13 @@ This plugin automatically adds a `fluentd_thread` label with the name of the buf
 
 ## Docker Image
 
-There is a Docker image `grafana/fluent-plugin-grafana-loki:master` which contains default configuration files to git log information
-a host's `/var/log` dir, and from the host's Journald. To use it, you can set the `LOKI_URL`, `LOKI_USERNAME`, and `LOKI_PASSWORD` environment variables (you can leave the USERNAME and PASSWORD blank if they're not used.)
+There is a Docker image `grafana/fluent-plugin-grafana-loki:master` which contains [default configuration files](https://github.com/grafana/loki/tree/master/fluentd/fluent-plugin-grafana-loki/docker/conf). By default, fluentd containers use the configurations but you can also specify your `fluentd.conf` with `FLUENTD_CONF` environment variable.
 
+This image also uses `LOKI_URL`, `LOKI_USERNAME`, and `LOKI_PASSWORD` environment variables to specify the Loki's endpoint, user, and password (you can leave the USERNAME and PASSWORD blank if they're not used).
 
-A Docker Swarm Compose configuration that will work looks like:
+### Example
+
+A Docker Compose configuration that will work looks like:
 
 ```
 services:
