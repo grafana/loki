@@ -13,6 +13,7 @@ func StatsMiddleware() queryrange.Middleware {
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
 		return queryrange.HandlerFunc(func(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
 			//todo span logging.
+			// opentracing.SpanFromContext(ctx)
 			start := time.Now()
 			resp, err := next.Do(ctx, req)
 			if resp != nil {
