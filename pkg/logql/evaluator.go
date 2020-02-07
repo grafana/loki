@@ -94,6 +94,8 @@ func (ev *defaultEvaluator) Evaluator(ctx context.Context, expr SampleExpr, q Pa
 		return ev.vectorAggEvaluator(ctx, e, q)
 	case *rangeAggregationExpr:
 		return ev.rangeAggEvaluator(ctx, e, q)
+	case *binOpExpr:
+		return ev.binOpEvaluator(ctx, e, q)
 
 	default:
 		return nil, errors.Errorf("unexpected type (%T): %v", e, e)
@@ -324,4 +326,102 @@ func (ev *defaultEvaluator) rangeAggEvaluator(ctx context.Context, expr *rangeAg
 		return true, ts, vec
 
 	}, vecIter.Close)
+}
+
+func (ev *defaultEvaluator) binOpEvaluator(
+	ctx context.Context,
+	expr *binOpExpr,
+	q Params,
+) (StepEvaluator, error) {
+	lhs, err := ev.Evaluator(ctx, expr.SampleExpr, q)
+	if err != nil {
+		return nil, err
+	}
+	rhs, err := ev.Evaluator(ctx, expr.RHS, q)
+	if err != nil {
+		return nil, err
+	}
+
+	return newStepEvaluator(func() (bool, int64, promql.Vector) {
+		pairs := map[uint64]promql.Vector{}
+		var ts int64
+
+		// populate pairs
+		for _, eval := range []StepEvaluator{lhs, rhs} {
+			next, timestamp, vec := eval.Next()
+			ts = timestamp
+
+			// These should _always_ happen at the same step on each evaluator.
+			if !next {
+				return next, ts, nil
+			}
+
+			for _, sample := range vec {
+				// TODO(owen-d): this seems wildly inefficient: we're calculating
+				// the hash on each sample & step per evaluator.
+				// We seem limited to this approach due to using the StepEvaluator ifc.
+				hash := sample.Metric.Hash()
+				pair, ok := pairs[hash]
+				if !ok {
+					pair = make(promql.Vector, 0, 2)
+				}
+				pairs[hash] = append(pair, sample)
+
+			}
+		}
+
+		results := make(promql.Vector, 0, len(pairs))
+		for _, pair := range pairs {
+			// merge
+			results = append(results, ev.mergeBinOp(expr.op, pair[0], pair[1:]...))
+		}
+
+		return true, ts, results
+	}, func() (lastError error) {
+		for _, ev := range []StepEvaluator{lhs, rhs} {
+			if err := ev.Close(); err != nil {
+				lastError = err
+			}
+		}
+		return lastError
+	})
+}
+
+func (ev *defaultEvaluator) mergeBinOp(op string, first promql.Sample, rest ...promql.Sample) promql.Sample {
+	// mergers should be able to handle nil rests (think of merging vectors where a series is only present in one),
+	// but will only ever be passed two samples for merging. We use the (...promql.Sample) type
+	// in the function signature as it handles both empty and 1-length vectors.
+	var merger func(first promql.Sample, rest ...promql.Sample) promql.Sample
+
+	switch op {
+	case OpTypeAdd:
+		merger = func(first promql.Sample, rest ...promql.Sample) promql.Sample {
+			res := promql.Sample{
+				Metric: first.Metric.Copy(),
+				Point:  first.Point,
+			}
+			for _, sample := range rest {
+				res.Point.V += sample.Point.V
+			}
+			return res
+		}
+	case OpTypeDiv:
+		merger = func(first promql.Sample, rest ...promql.Sample) promql.Sample {
+			res := promql.Sample{
+				Metric: first.Metric.Copy(),
+				Point:  first.Point,
+			}
+
+			for _, sample := range rest {
+				res.Point.V /= sample.Point.V
+			}
+			return res
+		}
+
+	default:
+		panic(errors.Errorf("should never happen: unexpected operation: (%s)", op))
+	}
+
+	return merger(first, rest...)
+
 }
