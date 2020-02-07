@@ -26,7 +26,7 @@ type exprSymType struct {
 	VectorAggregationExpr SampleExpr
 	VectorOp              string
 	BinOpExpr             SampleExpr
-	BinOp                 string
+	binOp                 string
 	str                   string
 	duration              time.Duration
 	int                   int64
@@ -123,7 +123,7 @@ var exprExca = [...]int{
 	36, 2,
 	37, 2,
 	-2, 0,
-	-1, 33,
+	-1, 32,
 	36, 2,
 	37, 2,
 	-2, 0,
@@ -131,45 +131,45 @@ var exprExca = [...]int{
 
 const exprPrivate = 57344
 
-const exprLast = 156
+const exprLast = 157
 
 var exprAct = [...]int{
 
-	36, 5, 4, 26, 41, 76, 11, 3, 48, 24,
-	25, 37, 38, 97, 7, 33, 46, 96, 12, 13,
-	14, 15, 17, 18, 16, 19, 20, 21, 22, 92,
-	24, 25, 35, 66, 37, 38, 91, 52, 51, 2,
-	93, 31, 49, 30, 93, 95, 72, 32, 71, 94,
-	28, 29, 65, 86, 56, 55, 75, 74, 69, 70,
-	53, 27, 78, 43, 79, 68, 54, 34, 73, 31,
-	83, 30, 87, 88, 65, 89, 90, 60, 28, 29,
+	35, 5, 4, 25, 40, 76, 11, 3, 48, 23,
+	24, 24, 36, 37, 7, 32, 46, 97, 12, 13,
+	14, 15, 17, 18, 16, 19, 20, 21, 22, 96,
+	23, 24, 34, 93, 36, 37, 52, 51, 95, 93,
+	92, 49, 2, 91, 94, 72, 71, 11, 56, 55,
+	31, 54, 65, 33, 73, 50, 75, 74, 69, 70,
+	53, 26, 78, 60, 79, 68, 42, 43, 83, 30,
+	82, 29, 87, 88, 65, 89, 90, 81, 27, 28,
 	58, 12, 13, 14, 15, 17, 18, 16, 19, 20,
-	21, 22, 57, 85, 82, 59, 84, 99, 100, 12,
+	21, 22, 57, 85, 80, 59, 84, 99, 100, 12,
 	13, 14, 15, 17, 18, 16, 19, 20, 21, 22,
-	27, 11, 81, 45, 68, 66, 44, 80, 31, 50,
-	30, 27, 40, 31, 42, 30, 27, 28, 29, 31,
-	47, 30, 28, 29, 31, 67, 30, 98, 28, 29,
-	23, 47, 42, 28, 29, 61, 62, 63, 64, 77,
-	6, 10, 8, 9, 39, 1,
+	26, 98, 6, 45, 68, 66, 44, 39, 30, 41,
+	29, 66, 41, 30, 77, 29, 26, 27, 28, 30,
+	47, 29, 27, 28, 30, 86, 29, 26, 27, 28,
+	10, 67, 8, 27, 28, 30, 47, 29, 61, 62,
+	63, 64, 9, 38, 27, 28, 1,
 }
 var exprPact = [...]int{
 
-	-7, -1000, -27, 124, -1000, -1000, -1000, -7, -1000, 46,
-	11, 120, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
-	-1000, -1000, -1000, -7, -1000, -1000, 111, -1000, -1000, -1000,
-	-1000, -1000, -6, 119, 98, 56, 45, 34, 33, 78,
-	63, -1000, 136, -27, -1000, -1000, -1000, -1000, 113, 59,
-	98, 26, 24, 51, 74, 145, 145, -1000, -1000, 138,
-	-1000, 112, 107, 89, 65, 91, -1000, -1000, -1000, 108,
-	31, -12, -12, 74, 14, 7, 27, -1000, 23, -1000,
-	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -5,
-	-9, -1000, -1000, 133, -1000, -1000, -12, -12, -1000, -1000,
+	-7, -1000, -27, 135, -1000, -1000, -1000, -7, -1000, 32,
+	11, 115, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
+	-1000, -1000, -1000, -7, -7, 111, -1000, -1000, -1000, -1000,
+	-1000, -6, 124, 34, 56, 30, 28, 27, 78, 49,
+	-1000, 139, -26, -1000, -1000, -1000, -1000, -1000, 119, 59,
+	34, 24, 23, 37, 74, 120, 120, -1000, -1000, 118,
+	-1000, 89, 72, 65, 63, 91, -1000, -1000, -1000, 108,
+	113, -11, -11, 74, 21, 18, 22, -1000, 16, -1000,
+	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, 7,
+	-5, -1000, -1000, 107, -1000, -1000, -11, -11, -1000, -1000,
 	-1000,
 }
 var exprPgo = [...]int{
 
-	0, 155, 39, 3, 0, 5, 7, 8, 4, 154,
-	2, 153, 152, 1, 151, 150, 140,
+	0, 156, 42, 3, 0, 5, 7, 8, 4, 153,
+	2, 152, 142, 1, 140, 112,
 }
 var exprR1 = [...]int{
 
@@ -177,8 +177,8 @@ var exprR1 = [...]int{
 	6, 6, 7, 7, 7, 7, 7, 10, 13, 13,
 	13, 13, 13, 13, 13, 13, 13, 13, 3, 3,
 	3, 3, 12, 12, 12, 9, 9, 8, 8, 8,
-	8, 15, 16, 16, 14, 14, 14, 14, 14, 14,
-	14, 14, 14, 11, 11, 5, 5, 4, 4,
+	8, 15, 15, 14, 14, 14, 14, 14, 14, 14,
+	14, 14, 11, 11, 5, 5, 4, 4,
 }
 var exprR2 = [...]int{
 
@@ -186,16 +186,16 @@ var exprR2 = [...]int{
 	3, 2, 2, 3, 3, 3, 2, 4, 4, 4,
 	5, 5, 5, 5, 6, 7, 6, 7, 1, 1,
 	1, 1, 3, 3, 3, 1, 3, 3, 3, 3,
-	3, 3, 1, 1, 1, 1, 1, 1, 1, 1,
-	1, 1, 1, 1, 1, 1, 3, 4, 4,
+	3, 3, 3, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 3, 4, 4,
 }
 var exprChk = [...]int{
 
 	-1000, -1, -2, -6, -10, -13, -15, 21, -12, -11,
 	-14, 13, 25, 26, 27, 28, 31, 29, 30, 32,
-	33, 34, 35, -16, 36, 37, -3, 2, 19, 20,
-	12, 10, -2, -6, 21, 21, -4, 23, 24, -9,
-	2, -8, 4, -2, 5, 2, 22, 22, -7, -6,
+	33, 34, 35, 36, 37, -3, 2, 19, 20, 12,
+	10, -2, -6, 21, 21, -4, 23, 24, -9, 2,
+	-8, 4, -2, -2, 5, 2, 22, 22, -7, -6,
 	21, -10, -13, 4, 21, 21, 21, 14, 2, 17,
 	14, 9, 10, 11, 12, -3, 2, 22, 6, -6,
 	-7, 22, 22, 17, -10, -13, -5, 4, -5, -8,
@@ -206,15 +206,15 @@ var exprChk = [...]int{
 var exprDef = [...]int{
 
 	0, -2, 1, -2, 3, 4, 5, 0, 7, 0,
-	0, 0, 53, 54, 44, 45, 46, 47, 48, 49,
-	50, 51, 52, 0, 42, 43, 0, 11, 28, 29,
-	30, 31, 0, -2, 0, 0, 0, 0, 0, 0,
-	0, 35, 0, 41, 8, 10, 6, 9, 0, 0,
+	0, 0, 52, 53, 43, 44, 45, 46, 47, 48,
+	49, 50, 51, 0, 0, 0, 11, 28, 29, 30,
+	31, 0, -2, 0, 0, 0, 0, 0, 0, 0,
+	35, 0, 41, 42, 8, 10, 6, 9, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 32, 33, 0,
 	34, 0, 0, 0, 0, 0, 16, 17, 12, 0,
-	0, 18, 19, 0, 0, 0, 0, 55, 0, 36,
+	0, 18, 19, 0, 0, 0, 0, 54, 0, 36,
 	37, 38, 39, 40, 13, 15, 14, 22, 23, 0,
-	0, 20, 21, 0, 57, 58, 24, 26, 56, 25,
+	0, 20, 21, 0, 56, 57, 24, 26, 55, 25,
 	27,
 }
 var exprTok1 = [...]int{
@@ -750,89 +750,84 @@ exprdefault:
 	case 41:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.BinOpExpr = mustNewBinOpExpr(exprDollar[2].BinOp, exprDollar[1].Expr, exprDollar[3].Expr)
+			exprVAL.BinOpExpr = mustNewBinOpExpr("+", exprDollar[1].Expr, exprDollar[3].Expr)
 		}
 	case 42:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
+		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
-			exprVAL.BinOp = OpTypeAdd
+			exprVAL.BinOpExpr = mustNewBinOpExpr("/", exprDollar[1].Expr, exprDollar[3].Expr)
 		}
 	case 43:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.BinOp = OpTypeDiv
+			exprVAL.VectorOp = OpTypeSum
 		}
 	case 44:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.VectorOp = OpTypeSum
+			exprVAL.VectorOp = OpTypeAvg
 		}
 	case 45:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.VectorOp = OpTypeAvg
+			exprVAL.VectorOp = OpTypeCount
 		}
 	case 46:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.VectorOp = OpTypeCount
+			exprVAL.VectorOp = OpTypeMax
 		}
 	case 47:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.VectorOp = OpTypeMax
+			exprVAL.VectorOp = OpTypeMin
 		}
 	case 48:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.VectorOp = OpTypeMin
+			exprVAL.VectorOp = OpTypeStddev
 		}
 	case 49:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.VectorOp = OpTypeStddev
+			exprVAL.VectorOp = OpTypeStdvar
 		}
 	case 50:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.VectorOp = OpTypeStdvar
+			exprVAL.VectorOp = OpTypeBottomK
 		}
 	case 51:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.VectorOp = OpTypeBottomK
+			exprVAL.VectorOp = OpTypeTopK
 		}
 	case 52:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.VectorOp = OpTypeTopK
+			exprVAL.RangeOp = OpTypeCountOverTime
 		}
 	case 53:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.RangeOp = OpTypeCountOverTime
+			exprVAL.RangeOp = OpTypeRate
 		}
 	case 54:
 		exprDollar = exprS[exprpt-1 : exprpt+1]
 		{
-			exprVAL.RangeOp = OpTypeRate
-		}
-	case 55:
-		exprDollar = exprS[exprpt-1 : exprpt+1]
-		{
 			exprVAL.Labels = []string{exprDollar[1].str}
 		}
-	case 56:
+	case 55:
 		exprDollar = exprS[exprpt-3 : exprpt+1]
 		{
 			exprVAL.Labels = append(exprDollar[1].Labels, exprDollar[3].str)
 		}
-	case 57:
+	case 56:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
 			exprVAL.Grouping = &grouping{without: false, groups: exprDollar[3].Labels}
 		}
-	case 58:
+	case 57:
 		exprDollar = exprS[exprpt-4 : exprpt+1]
 		{
 			exprVAL.Grouping = &grouping{without: true, groups: exprDollar[3].Labels}

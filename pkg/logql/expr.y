@@ -22,7 +22,7 @@ import (
   VectorAggregationExpr   SampleExpr
   VectorOp                string
   BinOpExpr               SampleExpr
-  BinOp                   string
+  binOp                   string
   str                     string
   duration                time.Duration
   int                     int64
@@ -44,7 +44,6 @@ import (
 %type <VectorAggregationExpr> vectorAggregationExpr
 %type <VectorOp>              vectorOp
 %type <BinOpExpr>             binOpExpr
-%type <BinOp>                 binOp
 
 %token <str>      IDENTIFIER STRING
 %token <duration> DURATION
@@ -52,12 +51,8 @@ import (
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
 
 // Operators are listed with increasing precedence.
-%token <binOp>
-ADD
-DIV
-
-%left ADD
-%left DIV
+%left <binOp> ADD
+%left <binOp> DIV
 
 %%
 
@@ -132,12 +127,8 @@ matcher:
 // TODO(owen-d): add (on,ignoring) clauses to binOpExpr
 // https://prometheus.io/docs/prometheus/latest/querying/operators/
 binOpExpr:
-         expr binOp expr { $$ = mustNewBinOpExpr($2, $1, $3) }
-
-binOp:
-     ADD  { $$ = OpTypeAdd }
-   | DIV  { $$ = OpTypeDiv }
-
+         expr ADD expr { $$ = mustNewBinOpExpr("+", $1, $3) }
+       | expr DIV expr { $$ = mustNewBinOpExpr("/", $1, $3) }
 
 vectorOp:
         SUM     { $$ = OpTypeSum }

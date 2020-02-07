@@ -547,6 +547,130 @@ func TestParse(t *testing.T) {
 				col:  13,
 			},
 		},
+		{
+			// require left associativity
+			in: `
+sum(count_over_time({foo="bar"}[5m])) by (foo) /
+sum(count_over_time({foo="bar"}[5m])) by (foo) /
+sum(count_over_time({foo="bar"}[5m])) by (foo)
+`,
+			exp: mustNewBinOpExpr(
+				OpTypeDiv,
+				mustNewBinOpExpr(
+					OpTypeDiv,
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+				),
+				mustNewVectorAggregationExpr(newRangeAggregationExpr(
+					&logRange{
+						left: &matchersExpr{
+							matchers: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+						interval: 5 * time.Minute,
+					}, OpTypeCountOverTime),
+					"sum",
+					&grouping{
+						without: false,
+						groups:  []string{"foo"},
+					},
+					nil,
+				),
+			),
+		},
+		{
+			// operator precedence before left associativity
+			in: `
+sum(count_over_time({foo="bar"}[5m])) by (foo) +
+sum(count_over_time({foo="bar"}[5m])) by (foo) /
+sum(count_over_time({foo="bar"}[5m])) by (foo)
+`,
+			exp: mustNewBinOpExpr(
+				OpTypeAdd,
+				mustNewVectorAggregationExpr(newRangeAggregationExpr(
+					&logRange{
+						left: &matchersExpr{
+							matchers: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+						interval: 5 * time.Minute,
+					}, OpTypeCountOverTime),
+					"sum",
+					&grouping{
+						without: false,
+						groups:  []string{"foo"},
+					},
+					nil,
+				),
+				mustNewBinOpExpr(
+					OpTypeDiv,
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+				),
+			),
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
