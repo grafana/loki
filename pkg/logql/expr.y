@@ -51,8 +51,10 @@ import (
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
 
 // Operators are listed with increasing precedence.
-%left <binOp> ADD
-%left <binOp> DIV
+%left <binOp> OR
+%left <binOp> AND UNLESS
+%left <binOp> ADD SUB
+%left <binOp> MUL DIV MOD
 
 %%
 
@@ -125,10 +127,19 @@ matcher:
     ;
 
 // TODO(owen-d): add (on,ignoring) clauses to binOpExpr
-// https://prometheus.io/docs/prometheus/latest/querying/operators/
+// Comparison operators are currently avoided due to symbol collisions in our grammar: "!=" means not equal in prometheus,
+// but is part of our filter grammar.
+// reference: https://prometheus.io/docs/prometheus/latest/querying/operators/
+// Operator precedence only works if each of these is listed separately.
 binOpExpr:
-         expr ADD expr { $$ = mustNewBinOpExpr("+", $1, $3) }
-       | expr DIV expr { $$ = mustNewBinOpExpr("/", $1, $3) }
+         expr OR expr          { $$ = mustNewBinOpExpr("or", $1, $3) }
+         | expr AND expr       { $$ = mustNewBinOpExpr("and", $1, $3) }
+         | expr UNLESS expr    { $$ = mustNewBinOpExpr("unless", $1, $3) }
+         | expr ADD expr       { $$ = mustNewBinOpExpr("+", $1, $3) }
+         | expr SUB expr       { $$ = mustNewBinOpExpr("-", $1, $3) }
+         | expr MUL expr       { $$ = mustNewBinOpExpr("*", $1, $3) }
+         | expr DIV expr       { $$ = mustNewBinOpExpr("/", $1, $3) }
+         | expr MOD expr       { $$ = mustNewBinOpExpr("%", $1, $3) }
 
 vectorOp:
         SUM     { $$ = OpTypeSum }

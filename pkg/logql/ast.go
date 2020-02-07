@@ -229,8 +229,14 @@ const (
 	OpTypeRate          = "rate"
 
 	// binops
-	OpTypeAdd = "+"
-	OpTypeDiv = "/"
+	OpTypeOr     = "or"
+	OpTypeAnd    = "and"
+	OpTypeUnless = "unless"
+	OpTypeAdd    = "+"
+	OpTypeSub    = "-"
+	OpTypeMul    = "*"
+	OpTypeDiv    = "/"
+	OpTypeMod    = "%"
 )
 
 // SampleExpr is a LogQL expression filtering logs and returning metric samples.
