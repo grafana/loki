@@ -1,5 +1,7 @@
 # Loki Canary
 
+![canary](canary.png)
+
 Loki Canary is a standalone app that audits the log capturing performance of
 Loki.
 
