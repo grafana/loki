@@ -53,6 +53,26 @@ func TestReadPositionsOK(t *testing.T) {
 	require.Equal(t, "17623", pos["/tmp/random.log"])
 }
 
+func TestReadPositionsEmptyFile(t *testing.T) {
+	temp := tempFilename(t)
+	defer func() {
+		_ = os.Remove(temp)
+	}()
+
+	yaml := []byte(``)
+	err := ioutil.WriteFile(temp, yaml, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pos, err := readPositionsFile(Config{
+		PositionsFile: temp,
+	}, log.NewNopLogger())
+
+	require.NoError(t, err)
+	require.NotNil(t, pos)
+}
+
 func TestReadPositionsFromDir(t *testing.T) {
 	temp := tempFilename(t)
 	err := os.Mkdir(temp, 0644)
