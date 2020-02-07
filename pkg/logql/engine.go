@@ -112,7 +112,7 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	defer log.Finish()
 
 	rangeType := GetRangeType(q)
-	timer := prometheus.NewTimer(queryTime.WithLabelValues())
+	timer := prometheus.NewTimer(queryTime.WithLabelValues(string(rangeType)))
 	defer timer.ObserveDuration()
 
 	// records query statistics

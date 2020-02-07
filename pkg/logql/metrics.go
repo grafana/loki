@@ -19,19 +19,22 @@ var (
 		Namespace: "loki",
 		Name:      "logql_querystats_bytes_processed_per_seconds",
 		Help:      "Distribution of bytes processed per seconds for LogQL queries.",
-		Buckets:   prometheus.ExponentialBuckets(20*1e6, 2, 10),
+		// 0 MB 40 MB 80 MB 160 MB 320 MB 640 MB 1.3 GB 2.6 GB 5.1 GB 10 GB
+		Buckets: prometheus.ExponentialBuckets(20*1e6, 2, 10),
 	}, []string{"status", "type", "range"})
 	execLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "logql_querystats_latency_seconds",
 		Help:      "Distribution of latency for LogQL queries.",
-		Buckets:   prometheus.ExponentialBuckets(0.250, 2, 10),
+		// 0.25 0.5 1 2 4 8 16 32 64 128
+		Buckets: prometheus.ExponentialBuckets(0.250, 2, 10),
 	}, []string{"status", "type", "range"})
 	chunkDownloadLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "logql_querystats_chunk_download_latency_seconds",
 		Help:      "Distribution of chunk downloads latency for LogQL queries.",
-		Buckets:   prometheus.ExponentialBuckets(0.125, 2, 10),
+		// 0.125 0.25 0.5 1 2 4 8 16 32 64
+		Buckets: prometheus.ExponentialBuckets(0.125, 2, 10),
 	}, []string{"status", "type", "range"})
 	duplicatesTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki",
