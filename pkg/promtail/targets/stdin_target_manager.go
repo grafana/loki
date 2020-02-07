@@ -39,8 +39,8 @@ var (
 		JobName: "stdin",
 		ServiceDiscoveryConfig: config.ServiceDiscoveryConfig{
 			StaticConfigs: []*targetgroup.Group{
-				&targetgroup.Group{Labels: model.LabelSet{"job": "stdin"}},
-				&targetgroup.Group{Labels: model.LabelSet{"hostname": model.LabelValue(hostName)}},
+				{Labels: model.LabelSet{"job": "stdin"}},
+				{Labels: model.LabelSet{"hostname": model.LabelValue(hostName)}},
 			},
 		},
 	}
