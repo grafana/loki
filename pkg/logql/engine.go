@@ -214,10 +214,11 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (promql.Value, error) {
 
 	stepEvaluator, err := ng.evaluator.Evaluator(ctx, expr, q)
-	defer helpers.LogError("closing SampleExpr", stepEvaluator.Close)
 	if err != nil {
 		return nil, err
 	}
+	defer helpers.LogError("closing SampleExpr", stepEvaluator.Close)
+
 	seriesIndex := map[uint64]*promql.Series{}
 
 	next, ts, vec := stepEvaluator.Next()
