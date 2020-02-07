@@ -85,7 +85,7 @@ Use with the `remove_keys kubernetes` option to eliminate metadata from the log.
 
 ### Multi-worker usage
 
-Loki doesn't currently support out-of-order inserts - if you try to insert a log entry an earlier timestamp after a log entry with with identical labels but a later timestamp, the insert will fail with `HTTP status code: 500, message: rpc error: code = Unknown desc = Entry out of order`. Therefore, in order to use this plugin in a multi worker Fluentd setup, you'll need to include the worker ID in the labels.
+Loki doesn't currently support out-of-order inserts - if you try to insert a log entry an earlier timestamp after a log entry with identical labels but a later timestamp, the insert will fail with `HTTP status code: 500, message: rpc error: code = Unknown desc = Entry out of order`. Therefore, in order to use this plugin in a multi worker Fluentd setup, you'll need to include the worker ID in the labels.
 
 For example, using [fluent-plugin-record-modifier](https://github.com/repeatedly/fluent-plugin-record-modifier):
 ```
