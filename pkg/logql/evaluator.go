@@ -333,6 +333,36 @@ func (ev *defaultEvaluator) binOpEvaluator(
 	expr *binOpExpr,
 	q Params,
 ) (StepEvaluator, error) {
+	// first check if either side is a literal
+	leftLit, lOk := expr.SampleExpr.(*literalExpr)
+	rightLit, rOk := expr.RHS.(*literalExpr)
+
+	// turn expressions like 1+2 -> 3
+	if lOk && rOk {
+		return ev.Evaluator(
+			ctx,
+			ev.reduceBinOp(expr.op, leftLit, rightLit),
+			q,
+		)
+	}
+
+	// match a literal expr with all labels in the other leg
+	if lOk {
+		rhs, err := ev.Evaluator(ctx, expr.RHS, q)
+		if err != nil {
+			return nil, err
+		}
+		return ev.literalEvaluator(expr.op, leftLit, rhs)
+	}
+	if rOk {
+		lhs, err := ev.Evaluator(ctx, expr.SampleExpr, q)
+		if err != nil {
+			return nil, err
+		}
+		return ev.literalEvaluator(expr.op, rightLit, lhs)
+	}
+
+	// we have two non literal legs
 	lhs, err := ev.Evaluator(ctx, expr.SampleExpr, q)
 	if err != nil {
 		return nil, err
@@ -503,4 +533,42 @@ func (ev *defaultEvaluator) mergeBinOp(op string, left, right *promql.Sample) *p
 
 	return merger(left, right)
 
+}
+
+// Reduces a binary operation expression. A binop is reducable if both of its legs are literal expressions.
+// This is because literals need match all labels, which is currently difficult to encode into StepEvaluators.
+// Therefore, we ensure a binop can be reduced/simplified, maintaining the invariant that it does not have two literal legs.
+func (ev *defaultEvaluator) reduceBinOp(op string, left, right *literalExpr) SampleExpr {
+	merged := ev.mergeBinOp(
+		op,
+		&promql.Sample{Point: promql.Point{V: left.value}},
+		&promql.Sample{Point: promql.Point{V: right.value}},
+	)
+	return &literalExpr{value: merged.V}
+}
+
+// literalEvaluator merges a literal with a StepEvaluator
+func (ev *defaultEvaluator) literalEvaluator(op string, lit *literalExpr, eval StepEvaluator) (StepEvaluator, error) {
+	return newStepEvaluator(
+		func() (bool, int64, promql.Vector) {
+			done, ts, vec := eval.Next()
+
+			results := make(promql.Vector, 0, len(vec))
+			for _, sample := range vec {
+				if merged := ev.mergeBinOp(
+					op,
+					&sample,
+					&promql.Sample{
+						Metric: sample.Metric,
+						Point:  promql.Point{T: ts, V: lit.value},
+					},
+				); merged != nil {
+					results = append(results, *merged)
+				}
+			}
+
+			return done, ts, results
+		},
+		nil,
+	)
 }

@@ -671,6 +671,33 @@ sum(count_over_time({foo="bar"}[5m])) by (foo)
 				),
 			),
 		},
+		{
+			// ensure literal binops are reduced: the 1+2/expr should reduce to 3/expr
+			in: `
+sum(count_over_time({foo="bar"}[5m])) by (foo) + 2 / 1
+`,
+			exp: mustNewBinOpExpr(
+				OpTypeAdd,
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime),
+					"sum",
+					&grouping{
+						without: false,
+						groups:  []string{"foo"},
+					},
+					nil,
+				),
+				mustNewBinOpExpr(OpTypeDiv, &literalExpr{value: 2}, &literalExpr{value: 1}),
+			),
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)

@@ -407,6 +407,23 @@ func mustNewBinOpExpr(op string, lhs, rhs Expr) SampleExpr {
 	}
 }
 
+type literalExpr struct {
+	value float64
+}
+
+func (e *literalExpr) logQLExpr() {}
+
+func (e *literalExpr) String() string {
+	return fmt.Sprintf("%f", e.value)
+}
+
+// literlExpr impls SampleExpr & LogSelectorExpr mainly to reduce the need for more complicated typings
+// to facilitate sum types. We'll be type switching when evaluating them anyways
+// and they will only be present in binary operation legs.
+func (e *literalExpr) Selector() LogSelectorExpr   { return e }
+func (e *literalExpr) Filter() (Filter, error)     { return nil, nil }
+func (e *literalExpr) Matchers() []*labels.Matcher { return nil }
+
 // helper used to impl Stringer for vector and range aggregations
 // nolint:interfacer
 func formatOperation(op string, grouping *grouping, params ...string) string {
