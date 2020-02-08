@@ -141,7 +141,7 @@ func Test_StdinConfigs(t *testing.T) {
 	// should take the first config
 	require.Equal(t, scrape.DefaultScrapeConfig, getStdinConfig([]scrape.Config{
 		scrape.DefaultScrapeConfig,
-		scrape.Config{},
+		{},
 	}))
 	// or use the default if none if provided
 	require.Equal(t, defaultStdInCfg, getStdinConfig([]scrape.Config{}))
