@@ -18,8 +18,6 @@ import (
 	"github.com/grafana/loki/pkg/logentry/metric"
 )
 
-const customPrefix = "promtail_custom_"
-
 const (
 	MetricTypeCounter   = "counter"
 	MetricTypeGauge     = "gauge"
@@ -34,6 +32,7 @@ type MetricConfig struct {
 	MetricType  string      `mapstructure:"type"`
 	Description string      `mapstructure:"description"`
 	Source      *string     `mapstructure:"source"`
+	Prefix      string      `mapstructure:"prefix"`
 	Config      interface{} `mapstructure:"config"`
 }
 
@@ -77,6 +76,13 @@ func newMetricStage(logger log.Logger, config interface{}, registry prometheus.R
 	metrics := map[string]prometheus.Collector{}
 	for name, cfg := range *cfgs {
 		var collector prometheus.Collector
+
+		customPrefix := ""
+		if cfg.Prefix != "" {
+			customPrefix = cfg.Prefix
+		} else {
+			customPrefix = "promtail_custom_"
+		}
 
 		switch strings.ToLower(cfg.MetricType) {
 		case MetricTypeCounter:

@@ -26,6 +26,9 @@ type: Counter
 # Describes the metric.
 [description: <string>]
 
+# Defines custom prefix name for the metric. If undefined, default name "promtail_custom_" will be prefixed.
+[prefix: <string>]
+
 # Key from the extracted data map to use for the mtric,
 # defaulting to the metric's name if not present.
 [source: <string>]
@@ -55,6 +58,9 @@ type: Gauge
 # Describes the metric.
 [description: <string>]
 
+# Defines custom prefix name for the metric. If undefined, default name "promtail_custom_" will be prefixed.
+[prefix: <string>]
+
 # Key from the extracted data map to use for the mtric,
 # defaulting to the metric's name if not present.
 [source: <string>]
@@ -82,6 +88,9 @@ type: Histogram
 
 # Describes the metric.
 [description: <string>]
+
+# Defines custom prefix name for the metric. If undefined, default name "promtail_custom_" will be prefixed.
+[prefix: <string>]
 
 # Key from the extracted data map to use for the mtric,
 # defaulting to the metric's name if not present.
@@ -114,6 +123,7 @@ config:
     log_lines_total:
       type: Counter
       description: "total number of log lines"
+      prefix: my_promtail_custom_
       source: time
       config:
         action: inc
