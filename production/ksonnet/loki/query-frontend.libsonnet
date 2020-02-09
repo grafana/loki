@@ -26,6 +26,11 @@
   local service = $.core.v1.service,
 
   query_frontend_service:
-    $.util.serviceFor($.query_frontend_deployment),
+    $.util.serviceFor($.query_frontend_deployment) +
+    // Make sure that query frontend worker, running in the querier, do resolve
+    // each query-frontend pod IP and NOT the service IP. To make it, we do NOT
+    // use the service cluster IP so that when the service DNS is resolved it
+    // returns the set of query-frontend IPs.
+    service.mixin.spec.withClusterIp('None'),
 
 }
