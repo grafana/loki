@@ -584,7 +584,7 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 			ingesterClient := newQuerierClientMock()
 			ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
 			ingesterClient.On("Tail", mock.Anything, &request, mock.Anything).Return(tailClient, nil)
-			ingesterClient.On("TailersCount", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.TailersCountResponse{testData.tailersCount}, nil)
+			ingesterClient.On("TailersCount", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.TailersCountResponse{Count: testData.tailersCount}, nil)
 
 			defaultLimits := defaultLimitsTestConfig()
 			defaultLimits.MaxConcurrentTailRequests = 5

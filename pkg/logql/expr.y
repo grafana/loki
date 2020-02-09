@@ -14,7 +14,6 @@ import (
   Labels                  []string
   LogExpr                 LogSelectorExpr
   LogRangeExpr            *logRange
-  LogRangeExprExt         *logRange
   Matcher                 *labels.Matcher
   Matchers                []*labels.Matcher
   RangeAggregationExpr    SampleExpr
@@ -34,7 +33,6 @@ import (
 %type <Grouping>              grouping
 %type <Labels>                labels
 %type <LogExpr>               logExpr
-%type <LogRangeExprExt>       logRangeExprExt
 %type <LogRangeExpr>          logRangeExpr
 %type <Matcher>               matcher
 %type <Matchers>              matchers
@@ -69,15 +67,10 @@ logExpr:
 
 logRangeExpr:
       logExpr DURATION { $$ = newLogRange($1, $2) } // <selector> <filters> <range>
-    | logRangeExprExt  { $$ = $1 }                  // <selector> <range> <filters>
-    ;
-
-logRangeExprExt:
-      selector DURATION                                   { $$ = newLogRange(newMatcherExpr($1), $2)}
-    | logRangeExprExt filter STRING                       { $$ = addFilterToLogRangeExpr( $1, $2, $3 ) }
-    | OPEN_PARENTHESIS logRangeExprExt CLOSE_PARENTHESIS  { $$ = $2 }
-    | logRangeExprExt filter error
-    | logRangeExprExt error
+    | logRangeExpr filter STRING                       { $$ = addFilterToLogRangeExpr( $1, $2, $3 ) }
+    | OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS  { $$ = $2 }
+    | logRangeExpr filter error
+    | logRangeExpr error
     ;
 
 rangeAggregationExpr: rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS { $$ = newRangeAggregationExpr($3,$1) };

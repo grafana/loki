@@ -206,6 +206,11 @@ func readPositionsFile(cfg Config, logger log.Logger) (map[string]string, error)
 		return nil, fmt.Errorf("invalid yaml positions file [%s]: %v", cleanfn, err)
 	}
 
+	// p.Positions will be nil if the file exists but is empty
+	if p.Positions == nil {
+		p.Positions = map[string]string{}
+	}
+
 	return p.Positions, nil
 }
 
