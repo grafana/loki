@@ -219,7 +219,15 @@ func TestParse(t *testing.T) {
 		{
 			in: `bottomk(he,count_over_time({ foo !~ "bar" }[5h]))`,
 			err: ParseError{
-				msg:  "invalid parameter bottomk(he,",
+				msg:  "syntax error: unexpected IDENTIFIER",
+				line: 1,
+				col:  9,
+			},
+		},
+		{
+			in: `bottomk(1.2,count_over_time({ foo !~ "bar" }[5h]))`,
+			err: ParseError{
+				msg:  "invalid parameter bottomk(1.2,",
 				line: 0,
 				col:  0,
 			},
