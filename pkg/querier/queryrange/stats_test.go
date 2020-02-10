@@ -109,3 +109,15 @@ func TestStatsMiddleware(t *testing.T) {
 		})
 	}
 }
+
+func Test_StatsUpdateResult(t *testing.T) {
+	resp, err := StatsMiddleware().Wrap(queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+		time.Sleep(20 * time.Millisecond)
+		return &LokiResponse{}, nil
+	})).Do(context.Background(), &LokiRequest{
+		Query: "foo",
+		EndTs: time.Now(),
+	})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, resp.(*LokiResponse).Statistics.Summary.ExecTime, (20 * time.Millisecond).Seconds())
+}
