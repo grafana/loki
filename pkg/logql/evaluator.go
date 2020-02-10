@@ -354,14 +354,14 @@ func (ev *defaultEvaluator) binOpEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return ev.literalEvaluator(expr.op, leftLit, rhs)
+		return ev.literalEvaluator(expr.op, leftLit, rhs, false)
 	}
 	if rOk {
 		lhs, err := ev.Evaluator(ctx, expr.SampleExpr, q)
 		if err != nil {
 			return nil, err
 		}
-		return ev.literalEvaluator(expr.op, rightLit, lhs)
+		return ev.literalEvaluator(expr.op, rightLit, lhs, true)
 	}
 
 	// we have two non literal legs
@@ -549,27 +549,40 @@ func (ev *defaultEvaluator) reduceBinOp(op string, left, right *literalExpr) Sam
 	return &literalExpr{value: merged.V}
 }
 
-// literalEvaluator merges a literal with a StepEvaluator
-func (ev *defaultEvaluator) literalEvaluator(op string, lit *literalExpr, eval StepEvaluator) (StepEvaluator, error) {
+// literalEvaluator merges a literal with a StepEvaluator. Since order matters in
+// non commutative operations, inverted should be true when the literalExpr is not the left argument.
+func (ev *defaultEvaluator) literalEvaluator(
+	op string,
+	lit *literalExpr,
+	eval StepEvaluator,
+	inverted bool,
+) (StepEvaluator, error) {
 	return newStepEvaluator(
 		func() (bool, int64, promql.Vector) {
-			done, ts, vec := eval.Next()
+			ok, ts, vec := eval.Next()
 
 			results := make(promql.Vector, 0, len(vec))
 			for _, sample := range vec {
+				literalPoint := promql.Sample{
+					Metric: sample.Metric,
+					Point:  promql.Point{T: ts, V: lit.value},
+				}
+
+				left, right := &literalPoint, &sample
+				if inverted {
+					left, right = right, left
+				}
+
 				if merged := ev.mergeBinOp(
 					op,
-					&sample,
-					&promql.Sample{
-						Metric: sample.Metric,
-						Point:  promql.Point{T: ts, V: lit.value},
-					},
+					left,
+					right,
 				); merged != nil {
 					results = append(results, *merged)
 				}
 			}
 
-			return done, ts, results
+			return ok, ts, results
 		},
 		eval.Close,
 	)
