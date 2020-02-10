@@ -96,6 +96,8 @@ func (ev *defaultEvaluator) Evaluator(ctx context.Context, expr SampleExpr, q Pa
 		return ev.rangeAggEvaluator(ctx, e, q)
 	case *binOpExpr:
 		return ev.binOpEvaluator(ctx, e, q)
+	case *literalExpr: // this is only called when a singleton is the root node
+		return singletonEvaluator(e, q)
 
 	default:
 		return nil, errors.Errorf("unexpected type (%T): %v", e, e)
@@ -571,4 +573,26 @@ func (ev *defaultEvaluator) literalEvaluator(op string, lit *literalExpr, eval S
 		},
 		nil,
 	)
+}
+
+// singletonEvaluator is an evaluator adapter for a literal expressions that is a root node
+func singletonEvaluator(expr *literalExpr, params Params) (StepEvaluator, error) {
+	var done bool
+	return newStepEvaluator(
+		func() (bool, int64, promql.Vector) {
+			if done {
+				return done, 0, nil
+			}
+			tmp := done
+			done = true
+			ts := params.Start().UnixNano() / int64(time.Millisecond)
+
+			return tmp, ts, promql.Vector{promql.Sample{Point: promql.Point{
+				T: ts,
+				V: expr.value,
+			}}}
+		},
+		nil,
+	)
+
 }

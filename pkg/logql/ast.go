@@ -347,6 +347,7 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *groupin
 		if p, err = strconv.Atoi(*params); err != nil {
 			panic(newParseError(fmt.Sprintf("invalid parameter %s(%s,", operation, *params), 0, 0))
 		}
+
 	default:
 		if params != nil {
 			panic(newParseError(fmt.Sprintf("unsupported parameter for operation %s(%s,", operation, *params), 0, 0))
@@ -411,12 +412,16 @@ type literalExpr struct {
 	value float64
 }
 
-func mustNewLiteralExpr(s string) *literalExpr {
-	fmt.Println("parsing", s)
+func mustNewLiteralExpr(s string, invert bool) *literalExpr {
 	n, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		panic(err)
 	}
+
+	if invert {
+		n = -n
+	}
+
 	return &literalExpr{
 		value: n,
 	}

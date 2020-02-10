@@ -144,7 +144,9 @@ binOpExpr:
          | expr MOD expr       { $$ = mustNewBinOpExpr("%", $1, $3) }
 
 literalExpr:
-      NUMBER   { $$ = mustNewLiteralExpr( $1 ) }
+           NUMBER         { $$ = mustNewLiteralExpr( $1, false ) }
+           | ADD NUMBER   { $$ = mustNewLiteralExpr( $2, false ) }
+           | SUB NUMBER   { $$ = mustNewLiteralExpr( $2, true ) }
 
 vectorOp:
         SUM     { $$ = OpTypeSum }
