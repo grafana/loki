@@ -411,6 +411,17 @@ type literalExpr struct {
 	value float64
 }
 
+func mustNewLiteralExpr(s string) *literalExpr {
+	fmt.Println("parsing", s)
+	n, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		panic(err)
+	}
+	return &literalExpr{
+		value: n,
+	}
+}
+
 func (e *literalExpr) logQLExpr() {}
 
 func (e *literalExpr) String() string {

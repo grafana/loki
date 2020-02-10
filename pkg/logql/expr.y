@@ -25,7 +25,7 @@ import (
   binOp                   string
   str                     string
   duration                time.Duration
-  int                     int64
+  LiteralExpr             *literalExpr
 }
 
 %start root
@@ -44,8 +44,9 @@ import (
 %type <VectorAggregationExpr> vectorAggregationExpr
 %type <VectorOp>              vectorOp
 %type <BinOpExpr>             binOpExpr
+%type <LiteralExpr>           literalExpr
 
-%token <str>      IDENTIFIER STRING
+%token <str>      IDENTIFIER STRING NUMBER
 %token <duration> DURATION
 %token <val>      MATCHERS LABELS EQ NEQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
@@ -65,6 +66,7 @@ expr:
     | rangeAggregationExpr                         { $$ = $1 }
     | vectorAggregationExpr                        { $$ = $1 }
     | binOpExpr                                    { $$ = $1 }
+    | literalExpr                                  { $$ = $1 }
     | OPEN_PARENTHESIS expr CLOSE_PARENTHESIS      { $$ = $2 }
     ;
 
@@ -140,6 +142,9 @@ binOpExpr:
          | expr MUL expr       { $$ = mustNewBinOpExpr("*", $1, $3) }
          | expr DIV expr       { $$ = mustNewBinOpExpr("/", $1, $3) }
          | expr MOD expr       { $$ = mustNewBinOpExpr("%", $1, $3) }
+
+literalExpr:
+      NUMBER   { $$ = mustNewLiteralExpr( $1 ) }
 
 vectorOp:
         SUM     { $$ = OpTypeSum }

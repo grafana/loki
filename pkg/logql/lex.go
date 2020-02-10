@@ -61,6 +61,10 @@ func (l *lexer) Lex(lval *exprSymType) int {
 	case scanner.EOF:
 		return 0
 
+	case scanner.Int, scanner.Float:
+		lval.str = l.TokenText()
+		return NUMBER
+
 	case scanner.String:
 		var err error
 		lval.str, err = strconv.Unquote(l.TokenText())
