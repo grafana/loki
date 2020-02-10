@@ -571,20 +571,20 @@ func (ev *defaultEvaluator) literalEvaluator(op string, lit *literalExpr, eval S
 
 			return done, ts, results
 		},
-		nil,
+		eval.Close,
 	)
 }
 
 // singletonEvaluator is an evaluator adapter for a literal expressions that is a root node
 func singletonEvaluator(expr *literalExpr, params Params) (StepEvaluator, error) {
-	var done bool
+	ok := true
 	return newStepEvaluator(
 		func() (bool, int64, promql.Vector) {
-			if done {
-				return done, 0, nil
+			if !ok {
+				return ok, 0, nil
 			}
-			tmp := done
-			done = true
+			tmp := ok
+			ok = false
 			ts := params.Start().UnixNano() / int64(time.Millisecond)
 
 			return tmp, ts, promql.Vector{promql.Sample{Point: promql.Point{

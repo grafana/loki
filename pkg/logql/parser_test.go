@@ -715,6 +715,15 @@ sum(count_over_time({foo="bar"}[5m])) by (foo) + 2 / 1
 				mustNewBinOpExpr(OpTypeDiv, &literalExpr{value: -2}, &literalExpr{value: 1}),
 			),
 		},
+		{
+			// test signs/ops with equal associativity
+			in: `1 + 1 - -1`,
+			exp: mustNewBinOpExpr(
+				OpTypeSub,
+				mustNewBinOpExpr(OpTypeAdd, &literalExpr{value: 1}, &literalExpr{value: 1}),
+				&literalExpr{value: -1},
+			),
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)

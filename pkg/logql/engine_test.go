@@ -287,6 +287,15 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "fuzz"}}},
 			},
 		},
+		{
+			// healthcheck
+			`1+1`, time.Unix(60, 0), logproto.FORWARD, 100,
+			[][]*logproto.Stream{},
+			[]SelectParams{},
+			promql.Vector{
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 2}},
+			},
+		},
 	} {
 		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
@@ -943,6 +952,17 @@ rate({app="bar"}[1m])
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "foo"}},
 					Points: []promql.Point{{T: 60 * 1000, V: 1.2}, {T: 90 * 1000, V: 1.2}, {T: 120 * 1000, V: 1.2}, {T: 150 * 1000, V: 1.2}, {T: 180 * 1000, V: 1.2}},
+				},
+			},
+		},
+		{
+			`1+1--1`,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, logproto.FORWARD, 100,
+			[][]*logproto.Stream{},
+			[]SelectParams{},
+			promql.Matrix{
+				promql.Series{
+					Points: []promql.Point{{T: 60 * 1000, V: 3}},
 				},
 			},
 		},

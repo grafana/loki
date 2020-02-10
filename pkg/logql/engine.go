@@ -180,13 +180,6 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 
 	qs := q.String()
 	// This is a legacy query used for health checking. Not the best practice, but it works.
-	if qs == "1+1" {
-		if IsInstant(q) {
-			return promql.Vector{}, nil
-		}
-		return promql.Matrix{}, nil
-	}
-
 	expr, err := ParseExpr(qs)
 	if err != nil {
 		return nil, err
@@ -212,7 +205,6 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 
 // evalSample evaluate a sampleExpr
 func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (promql.Value, error) {
-
 	stepEvaluator, err := ng.evaluator.Evaluator(ctx, expr, q)
 	if err != nil {
 		return nil, err
@@ -222,10 +214,12 @@ func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (pr
 	seriesIndex := map[uint64]*promql.Series{}
 
 	next, ts, vec := stepEvaluator.Next()
+
 	if IsInstant(q) {
 		sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
 		return vec, nil
 	}
+
 	for next {
 		for _, p := range vec {
 			var (
