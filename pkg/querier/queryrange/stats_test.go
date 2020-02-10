@@ -14,7 +14,6 @@ import (
 )
 
 func TestStatsMiddleware(t *testing.T) {
-	md := StatsMiddleware()
 	for name, test := range map[string]struct {
 		queryrange.Handler
 		queryrange.Request
@@ -90,14 +89,23 @@ func TestStatsMiddleware(t *testing.T) {
 				require.NotEmpty(t, stats.Summary.ExecTime)
 			},
 		},
+		"invalid response type": {
+			Handler: queryrange.HandlerFunc(func(c context.Context, r queryrange.Request) (queryrange.Response, error) {
+				return &queryrange.PrometheusResponse{}, nil
+			}),
+			Request: &queryrange.PrometheusRequest{
+				Query: "foo",
+			},
+			expect: func(t *testing.T, status, query string, rangeType logql.QueryRangeType, stats stats.Result) {
+				t.Error("should not have been recorded")
+			},
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			RecordMetrics = func(status, query string, rangeType logql.QueryRangeType, stats stats.Result) {
+			md := statsMiddleware(metricRecorderFn(func(status, query string, rangeType logql.QueryRangeType, stats stats.Result) {
 				test.expect(t, status, query, rangeType, stats)
-			}
+			}))
 			_, _ = md.Wrap(test.Handler).Do(context.Background(), test.Request)
 		})
-
 	}
-
 }
