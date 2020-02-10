@@ -3,13 +3,14 @@ package storage
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/chunk/cassandra"
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
-	"github.com/stretchr/testify/require"
 )
 
 const (

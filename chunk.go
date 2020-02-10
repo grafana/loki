@@ -9,13 +9,14 @@ import (
 	"strings"
 	"sync"
 
-	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/golang/snappy"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 
 	errs "github.com/weaveworks/common/errors"
 )

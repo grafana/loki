@@ -10,9 +10,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
-	"github.com/prometheus/common/model"
 )
 
 func TestChunksBasic(t *testing.T) {

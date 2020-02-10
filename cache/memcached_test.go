@@ -7,8 +7,9 @@ import (
 	"testing"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 )
 
 func TestMemcached(t *testing.T) {

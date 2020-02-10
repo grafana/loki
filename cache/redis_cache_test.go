@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/gomodule/redigo/redis"
 	"github.com/rafaeljusto/redigomock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 )
 
 func TestRedisCache(t *testing.T) {

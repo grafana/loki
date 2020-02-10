@@ -21,13 +21,14 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/prometheus/client_golang/prometheus"
 
+	awscommon "github.com/weaveworks/common/aws"
+	"github.com/weaveworks/common/instrument"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	awscommon "github.com/weaveworks/common/aws"
-	"github.com/weaveworks/common/instrument"
 )
 
 const (

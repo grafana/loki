@@ -7,6 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/chunk/azure"
@@ -15,8 +18,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log/level"
-	"github.com/pkg/errors"
 )
 
 // Supported storage engines

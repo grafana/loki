@@ -8,12 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 
 const userID = "1"

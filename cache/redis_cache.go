@@ -5,9 +5,10 @@ import (
 	"flag"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gomodule/redigo/redis"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // RedisCache type caches chunks in redis

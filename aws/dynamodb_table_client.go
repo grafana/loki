@@ -12,9 +12,10 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/time/rate"
 
+	"github.com/weaveworks/common/instrument"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/weaveworks/common/instrument"
 )
 
 // Pluggable auto-scaler implementation

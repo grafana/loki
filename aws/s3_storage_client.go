@@ -16,11 +16,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/prometheus/client_golang/prometheus"
 
+	awscommon "github.com/weaveworks/common/aws"
+	"github.com/weaveworks/common/instrument"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	awscommon "github.com/weaveworks/common/aws"
-	"github.com/weaveworks/common/instrument"
 )
 
 var (

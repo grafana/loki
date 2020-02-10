@@ -5,9 +5,10 @@ import (
 	"testing"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/facette/natsort"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 )
 
 func TestNatSort(t *testing.T) {
