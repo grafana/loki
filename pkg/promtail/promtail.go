@@ -56,6 +56,7 @@ func (p *Promtail) Run() error {
 	p.mtx.Lock()
 	// if we stopped promtail before the server even started we can return without starting.
 	if p.stopped {
+		p.mtx.Unlock()
 		return nil
 	}
 	p.mtx.Unlock() // unlock before blocking
