@@ -370,3 +370,32 @@ func (res LokiResponse) Count() int64 {
 	return result
 
 }
+
+type paramsWrapper struct {
+	*LokiRequest
+}
+
+func paramsFromRequest(req queryrange.Request) *paramsWrapper {
+	return &paramsWrapper{
+		LokiRequest: req.(*LokiRequest),
+	}
+}
+
+func (p paramsWrapper) String() string {
+	return p.Query
+}
+func (p paramsWrapper) Start() time.Time {
+	return p.StartTs
+}
+func (p paramsWrapper) End() time.Time {
+	return p.EndTs
+}
+func (p paramsWrapper) Step() time.Duration {
+	return time.Duration(p.LokiRequest.Step * 1e6)
+}
+func (p paramsWrapper) Limit() uint32 {
+	return p.LokiRequest.Limit
+}
+func (p paramsWrapper) Direction() logproto.Direction {
+	return p.LokiRequest.Direction
+}

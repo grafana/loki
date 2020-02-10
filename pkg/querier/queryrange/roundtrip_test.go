@@ -133,7 +133,7 @@ func TestMetricsTripperware(t *testing.T) {
 	lokiCacheResponse, err := lokiCodec.DecodeResponse(ctx, cacheResp, lreq)
 	require.NoError(t, err)
 
-	require.Equal(t, lokiResponse, lokiCacheResponse)
+	require.Equal(t, lokiResponse.(*LokiPromResponse).Response, lokiCacheResponse.(*LokiPromResponse).Response)
 }
 
 func TestLogFilterTripperware(t *testing.T) {

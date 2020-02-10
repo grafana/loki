@@ -26,6 +26,7 @@ type QueryStatus string
 // QueryStatus values
 const (
 	QueryStatusSuccess = "success"
+	QueryStatusFail    = "fail"
 )
 
 //QueryResponse represents the http json response to a label query

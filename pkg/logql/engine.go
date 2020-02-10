@@ -111,15 +111,8 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	log, ctx := spanlogger.New(ctx, "Engine.Exec")
 	defer log.Finish()
 
-	var queryType string
-
-	if IsInstant(q) {
-		queryType = "instant"
-	} else {
-		queryType = "range"
-	}
-
-	timer := prometheus.NewTimer(queryTime.WithLabelValues(queryType))
+	rangeType := GetRangeType(q)
+	timer := prometheus.NewTimer(queryTime.WithLabelValues(string(rangeType)))
 	defer timer.ObserveDuration()
 
 	// records query statistics
@@ -131,6 +124,12 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 
 	statResult = stats.Snapshot(ctx, time.Since(start))
 	statResult.Log(level.Debug(log))
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+	RecordMetrics(status, q.String(), rangeType, statResult)
 
 	return Result{
 		Data:       data,
@@ -181,7 +180,7 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 	qs := q.String()
 	// This is a legacy query used for health checking. Not the best practice, but it works.
 	if qs == "1+1" {
-		if IsInstant(q) {
+		if GetRangeType(q) == InstantType {
 			return promql.Vector{}, nil
 		}
 		return promql.Matrix{}, nil
@@ -221,7 +220,7 @@ func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (pr
 	seriesIndex := map[uint64]*promql.Series{}
 
 	next, ts, vec := stepEvaluator.Next()
-	if IsInstant(q) {
+	if GetRangeType(q) == InstantType {
 		sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
 		return vec, nil
 	}
