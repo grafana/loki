@@ -21,7 +21,7 @@ type JournalTargetManager struct {
 // NewJournalTargetManager creates a new JournalTargetManager.
 func NewJournalTargetManager(
 	logger log.Logger,
-	positions *positions.Positions,
+	positions positions.Positions,
 	client api.EntryHandler,
 	scrapeConfigs []scrape.Config,
 ) (*JournalTargetManager, error) {
