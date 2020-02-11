@@ -16,10 +16,11 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/promql"
+	lokimodel "github.com/grafana/loki/model"
 )
 
 type streamEntryPair struct {
-	entry  loghttp.Entry
+	entry  lokimodel.Entry
 	labels loghttp.LabelSet
 }
 
@@ -135,13 +136,13 @@ func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput) {
 	}
 
 	if q.Forward {
-		sort.Slice(allEntries, func(i, j int) bool { return allEntries[i].entry.Timestamp.Before(allEntries[j].entry.Timestamp) })
+		sort.Slice(allEntries, func(i, j int) bool { return allEntries[i].entry.Ts.Before(allEntries[j].entry.Ts) })
 	} else {
-		sort.Slice(allEntries, func(i, j int) bool { return allEntries[i].entry.Timestamp.After(allEntries[j].entry.Timestamp) })
+		sort.Slice(allEntries, func(i, j int) bool { return allEntries[i].entry.Ts.After(allEntries[j].entry.Ts) })
 	}
 
 	for _, e := range allEntries {
-		fmt.Println(out.Format(e.entry.Timestamp, e.labels, maxLabelsLen, e.entry.Line))
+		fmt.Println(out.Format(e.entry.Ts, e.labels, maxLabelsLen, e.entry.Line))
 	}
 }
 

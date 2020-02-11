@@ -44,6 +44,11 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type IntEntry struct {
+    Ts int64
+    Line string
+}
+
 type Entries []Entry
 
 type LabeledEntry struct {

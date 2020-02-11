@@ -3,9 +3,8 @@ package loghttp
 import (
 	"errors"
 	"fmt"
-	"net/http"
-	"strconv"
 	"time"
+	"net/http"
 	"unsafe"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -93,6 +92,7 @@ type Stream struct {
 	Labels  LabelSet `json:"stream"`
 	Entries []lokimodel.Entry  `json:"values"`
 }
+
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
 func (q *QueryResponseData) UnmarshalJSON(data []byte) error {

@@ -6,6 +6,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	json "github.com/json-iterator/go"
+	lokimodel "github.com/grafana/loki/model"
 )
 
 // DecodePushRequest directly decodes json to a logproto.PushRequest
@@ -51,9 +52,9 @@ func NewStream(s *loghttp.Stream) *logproto.Stream {
 }
 
 // NewEntry constructs a logproto.Entry from a Entry
-func NewEntry(e loghttp.Entry) logproto.Entry {
+func NewEntry(e lokimodel.Entry) logproto.Entry {
 	return logproto.Entry{
-		Timestamp: e.Timestamp,
+		Timestamp: e.Ts,
 		Line:      e.Line,
 	}
 }

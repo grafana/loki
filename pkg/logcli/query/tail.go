@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
+
 )
 
 // TailQuery connects to the Loki websocket endpoint and tails logs
@@ -74,7 +75,7 @@ func (q *Query) TailQuery(delayFor int, c *client.Client, out output.LogOutput) 
 			}
 
 			for _, entry := range stream.Entries {
-				fmt.Println(out.Format(entry.Timestamp, labels, 0, entry.Line))
+				fmt.Println(out.Format(entry.Ts, labels, 0, entry.Line))
 			}
 
 		}
