@@ -3,16 +3,15 @@ package loghttp
 import (
 	"errors"
 	"fmt"
-	"time"
 	"net/http"
+	"time"
 	"unsafe"
 
+	lokimodel "github.com/grafana/loki/model"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/stats"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
-	lokimodel "github.com/grafana/loki/model"
-
 )
 
 var (
@@ -89,10 +88,9 @@ func (s Streams) ToProto() []logproto.Stream {
 
 //Stream represents a log stream.  It includes a set of log entries and their labels.
 type Stream struct {
-	Labels  LabelSet `json:"stream"`
-	Entries []lokimodel.Entry  `json:"values"`
+	Labels  LabelSet          `json:"stream"`
+	Entries []lokimodel.Entry `json:"values"`
 }
-
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
 func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
@@ -137,7 +135,6 @@ func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 
 	return nil
 }
-
 
 // Vector is a slice of Samples
 type Vector []model.Sample

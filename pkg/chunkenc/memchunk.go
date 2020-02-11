@@ -13,11 +13,11 @@ import (
 
 	"github.com/pkg/errors"
 
+	lokimodel "github.com/grafana/loki/model"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
-	lokimodel "github.com/grafana/loki/model"
 )
 
 const (
@@ -100,7 +100,7 @@ func (hb *headBlock) append(ts int64, line string) error {
 		return ErrOutOfOrder
 	}
 
-	hb.entries = append(hb.entries, lokimodel.IntEntry{Ts : ts, Line : line})
+	hb.entries = append(hb.entries, lokimodel.IntEntry{Ts: ts, Line: line})
 	if hb.mint == 0 || hb.mint > ts {
 		hb.mint = ts
 	}

@@ -3,13 +3,13 @@ package marshal
 import (
 	"fmt"
 
+	lokimodel "github.com/grafana/loki/model"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
-	 lokimodel "github.com/grafana/loki/model"
 )
 
 // NewResultValue constructs a ResultValue from a promql.Value
@@ -91,8 +91,8 @@ func NewStream(s *logproto.Stream) (loghttp.Stream, error) {
 // NewEntry constructs an Entry from a logproto.Entry
 func NewEntry(e logproto.Entry) lokimodel.Entry {
 	return lokimodel.Entry{
-		Ts: e.Timestamp,
-		Line:      e.Line,
+		Ts:   e.Timestamp,
+		Line: e.Line,
 	}
 }
 

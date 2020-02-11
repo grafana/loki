@@ -4,10 +4,10 @@ import (
 	"testing"
 	"time"
 
+	lokimodel "github.com/grafana/loki/model"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	lokimodel "github.com/grafana/loki/model"
 )
 
 var (
@@ -15,10 +15,8 @@ var (
 	TestTime, _ = time.Parse(time.RFC3339Nano, TestTimeStr)
 )
 
-
-
 func NewEntry(time time.Time, message string, stream string) lokimodel.LogEntry {
-	return lokimodel.LogEntry{Ts : time, Log : message, Labels : model.LabelSet{"stream": model.LabelValue(stream)}}
+	return lokimodel.LogEntry{Ts: time, Log: message, Labels: model.LabelSet{"stream": model.LabelValue(stream)}}
 }
 
 type TestCase struct {
@@ -98,6 +96,6 @@ type TestClient struct {
 }
 
 func (c *TestClient) Handle(ls model.LabelSet, t time.Time, s string) error {
-	c.Entries = append(c.Entries, lokimodel.LogEntry{Ts :t,Log : s,Labels : ls})
+	c.Entries = append(c.Entries, lokimodel.LogEntry{Ts: t, Log: s, Labels: ls})
 	return nil
 }

@@ -11,6 +11,6 @@ type QueryResponse struct {
 
 // Stream represents a log stream.  It includes a set of log entries and their labels.
 type Stream struct {
-	Labels  string  `json:"labels"`
+	Labels  string        `json:"labels"`
 	Entries []model.Entry `json:"entries"`
 }

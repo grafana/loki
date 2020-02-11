@@ -14,8 +14,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/grafana/loki/pkg/logproto"
 	lokimodel "github.com/grafana/loki/model"
+	"github.com/grafana/loki/pkg/logproto"
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	lokimodel "github.com/grafana/loki/model"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
-	lokimodel "github.com/grafana/loki/model"
 )
 
 func TestParseRangeQuery(t *testing.T) {

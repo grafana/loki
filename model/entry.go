@@ -1,18 +1,18 @@
 package model
 
 import (
-  "time"
-  "fmt"
-  "encoding/json"
-  "strconv"
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"time"
 
-  "github.com/prometheus/common/model"
-  "github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/prometheus/common/model"
 )
 
 type Entry struct {
-    Ts time.Time
-    Line string
+	Ts   time.Time
+	Line string
 }
 
 // MarshalJSON implements the json.Marshaler interface.
@@ -45,31 +45,31 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 }
 
 type IntEntry struct {
-    Ts int64
-    Line string
+	Ts   int64
+	Line string
 }
 
 type Entries []Entry
 
 type LabeledEntry struct {
-    Ts time.Time
-    Line string
-    Labels model.LabelSet
+	Ts     time.Time
+	Line   string
+	Labels model.LabelSet
 }
 
 type LabeledEntries struct {
-    Entries Entries
-    Labels  model.LabelSet
+	Entries Entries
+	Labels  model.LabelSet
 }
 
 type LogEntry struct {
-  Ts time.Time
-  Labels model.LabelSet
+	Ts     time.Time
+	Labels model.LabelSet
 	Log    string
 }
 
 type TenantEntry struct {
-    TenantID string
-    Labels model.LabelSet
-    logproto.Entry
+	TenantID string
+	Labels   model.LabelSet
+	logproto.Entry
 }

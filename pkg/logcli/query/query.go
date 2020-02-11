@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	lokimodel "github.com/grafana/loki/model"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -16,7 +17,6 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/promql"
-	lokimodel "github.com/grafana/loki/model"
 )
 
 type streamEntryPair struct {

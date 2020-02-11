@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
+	lokimodel "github.com/grafana/loki/model"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	lokimodel "github.com/grafana/loki/model"
 )
 
 func TestBatch_add(t *testing.T) {
@@ -25,22 +25,22 @@ func TestBatch_add(t *testing.T) {
 		},
 		"single stream with single log entry": {
 			inputEntries: []lokimodel.TenantEntry{
-				{"tenant", model.LabelSet{}, logEntries[0].Entry},
+				{TenantID: "tenant", Labels: model.LabelSet{}, Entry: logEntries[0].Entry},
 			},
 			expectedSizeBytes: len(logEntries[0].Entry.Line),
 		},
 		"single stream with multiple log entries": {
 			inputEntries: []lokimodel.TenantEntry{
-				{"tenant", model.LabelSet{}, logEntries[0].Entry},
-				{"tenant", model.LabelSet{}, logEntries[1].Entry},
+				{TenantID: "tenant", Labels: model.LabelSet{}, Entry: logEntries[0].Entry},
+				{TenantID: "tenant", Labels: model.LabelSet{}, Entry: logEntries[1].Entry},
 			},
 			expectedSizeBytes: len(logEntries[0].Entry.Line) + len(logEntries[1].Entry.Line),
 		},
 		"multiple streams with multiple log entries": {
 			inputEntries: []lokimodel.TenantEntry{
-				{"tenant", model.LabelSet{"type": "a"}, logEntries[0].Entry},
-				{"tenant", model.LabelSet{"type": "a"}, logEntries[1].Entry},
-				{"tenant", model.LabelSet{"type": "b"}, logEntries[2].Entry},
+				{TenantID: "tenant", Labels: model.LabelSet{"type": "a"}, Entry: logEntries[0].Entry},
+				{TenantID: "tenant", Labels: model.LabelSet{"type": "a"}, Entry: logEntries[1].Entry},
+				{TenantID: "tenant", Labels: model.LabelSet{"type": "b"}, Entry: logEntries[2].Entry},
 			},
 			expectedSizeBytes: len(logEntries[0].Entry.Line) + len(logEntries[1].Entry.Line) + len(logEntries[2].Entry.Line),
 		},
@@ -74,22 +74,22 @@ func TestBatch_encode(t *testing.T) {
 		},
 		"single stream with single log entry": {
 			inputBatch: newBatch(
-				lokimodel.TenantEntry{"tenant", model.LabelSet{}, logEntries[0].Entry},
+				lokimodel.TenantEntry{TenantID: "tenant", Labels: model.LabelSet{}, Entry: logEntries[0].Entry},
 			),
 			expectedEntriesCount: 1,
 		},
 		"single stream with multiple log entries": {
 			inputBatch: newBatch(
-				lokimodel.TenantEntry{"tenant", model.LabelSet{}, logEntries[0].Entry},
-				lokimodel.TenantEntry{"tenant", model.LabelSet{}, logEntries[1].Entry},
+				lokimodel.TenantEntry{TenantID: "tenant", Labels: model.LabelSet{}, Entry: logEntries[0].Entry},
+				lokimodel.TenantEntry{TenantID: "tenant", Labels: model.LabelSet{}, Entry: logEntries[1].Entry},
 			),
 			expectedEntriesCount: 2,
 		},
 		"multiple streams with multiple log entries": {
 			inputBatch: newBatch(
-				lokimodel.TenantEntry{"tenant", model.LabelSet{"type": "a"}, logEntries[0].Entry},
-				lokimodel.TenantEntry{"tenant", model.LabelSet{"type": "a"}, logEntries[1].Entry},
-				lokimodel.TenantEntry{"tenant", model.LabelSet{"type": "b"}, logEntries[2].Entry},
+				lokimodel.TenantEntry{TenantID: "tenant", Labels: model.LabelSet{"type": "a"}, Entry: logEntries[0].Entry},
+				lokimodel.TenantEntry{TenantID: "tenant", Labels: model.LabelSet{"type": "a"}, Entry: logEntries[1].Entry},
+				lokimodel.TenantEntry{TenantID: "tenant", Labels: model.LabelSet{"type": "b"}, Entry: logEntries[2].Entry},
 			),
 			expectedEntriesCount: 3,
 		},

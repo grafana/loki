@@ -18,12 +18,12 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 
+	lokimodel "github.com/grafana/loki/model"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
-	lokimodel "github.com/grafana/loki/model"
 )
 
 const (
@@ -100,7 +100,6 @@ type client struct {
 
 	externalLabels model.LabelSet
 }
-
 
 // New makes a new Client.
 func New(cfg Config, logger log.Logger) (Client, error) {
@@ -315,7 +314,7 @@ func (c *client) Handle(ls model.LabelSet, t time.Time, s string) error {
 		delete(ls, ReservedLabelTenantID)
 	}
 
-	c.entries <- lokimodel.TenantEntry{TenantID, ls, logproto.Entry{
+	c.entries <- lokimodel.TenantEntry{TenantID: TenantID, Labels: ls, Entry: logproto.Entry{
 		Timestamp: t,
 		Line:      s,
 	}}

@@ -3,10 +3,10 @@ package unmarshal
 import (
 	"io"
 
+	lokimodel "github.com/grafana/loki/model"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	json "github.com/json-iterator/go"
-	lokimodel "github.com/grafana/loki/model"
 )
 
 // DecodePushRequest directly decodes json to a logproto.PushRequest
