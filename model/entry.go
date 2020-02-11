@@ -52,7 +52,8 @@ type IntEntry struct {
 type Entries []Entry
 
 type LabeledEntry struct {
-    Entry
+    Ts time.Time
+    Line string
     Labels model.LabelSet
 }
 
@@ -62,7 +63,8 @@ type LabeledEntries struct {
 }
 
 type LogEntry struct {
-	LabeledEntry
+  Ts time.Time
+  Labels model.LabelSet
 	Log    string
 }
 

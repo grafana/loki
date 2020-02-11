@@ -15,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/logproto"
+	lokimodel "github.com/grafana/loki/model"
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -23,13 +24,13 @@ import (
 )
 
 var (
-	logEntries = []entry{
-		{labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(1, 0).UTC(), Line: "line1"}},
-		{labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(2, 0).UTC(), Line: "line2"}},
-		{labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(3, 0).UTC(), Line: "line3"}},
-		{labels: model.LabelSet{"__tenant_id__": "tenant-1"}, Entry: logproto.Entry{Timestamp: time.Unix(4, 0).UTC(), Line: "line4"}},
-		{labels: model.LabelSet{"__tenant_id__": "tenant-1"}, Entry: logproto.Entry{Timestamp: time.Unix(5, 0).UTC(), Line: "line5"}},
-		{labels: model.LabelSet{"__tenant_id__": "tenant-2"}, Entry: logproto.Entry{Timestamp: time.Unix(6, 0).UTC(), Line: "line6"}},
+	logEntries = []lokimodel.Entry{
+		{Labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(1, 0).UTC(), Line: "line1"}},
+		{Labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(2, 0).UTC(), Line: "line2"}},
+		{Labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(3, 0).UTC(), Line: "line3"}},
+		{Labels: model.LabelSet{"__tenant_id__": "tenant-1"}, Entry: logproto.Entry{Timestamp: time.Unix(4, 0).UTC(), Line: "line4"}},
+		{Labels: model.LabelSet{"__tenant_id__": "tenant-1"}, Entry: logproto.Entry{Timestamp: time.Unix(5, 0).UTC(), Line: "line5"}},
+		{Labels: model.LabelSet{"__tenant_id__": "tenant-2"}, Entry: logproto.Entry{Timestamp: time.Unix(6, 0).UTC(), Line: "line6"}},
 	}
 )
 
@@ -45,7 +46,7 @@ func TestClient_Handle(t *testing.T) {
 		clientMaxRetries     int
 		clientTenantID       string
 		serverResponseStatus int
-		inputEntries         []entry
+		inputEntries         []lokimodel.Entry
 		inputDelay           time.Duration
 		expectedReqs         []receivedReq
 		expectedMetrics      string
@@ -55,15 +56,15 @@ func TestClient_Handle(t *testing.T) {
 			clientBatchWait:      100 * time.Millisecond,
 			clientMaxRetries:     3,
 			serverResponseStatus: 200,
-			inputEntries:         []entry{logEntries[0], logEntries[1], logEntries[2]},
+			inputEntries:         []entry{LogEntries[0], logEntries[1], logEntries[2]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[0].Entry, logEntries[1].Entry}}}},
 				},
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[2].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[2].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -80,16 +81,16 @@ func TestClient_Handle(t *testing.T) {
 			clientBatchWait:      100 * time.Millisecond,
 			clientMaxRetries:     3,
 			serverResponseStatus: 200,
-			inputEntries:         []entry{logEntries[0], logEntries[1]},
+			inputEntries:         []entry{LogEntries[0], logEntries[1]},
 			inputDelay:           110 * time.Millisecond,
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[0].Entry}}}},
 				},
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[1].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[1].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -106,19 +107,19 @@ func TestClient_Handle(t *testing.T) {
 			clientBatchWait:      10 * time.Millisecond,
 			clientMaxRetries:     3,
 			serverResponseStatus: 500,
-			inputEntries:         []entry{logEntries[0]},
+			inputEntries:         []entry{LogEntries[0]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[0].Entry}}}},
 				},
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[0].Entry}}}},
 				},
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[0].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -135,11 +136,11 @@ func TestClient_Handle(t *testing.T) {
 			clientBatchWait:      10 * time.Millisecond,
 			clientMaxRetries:     3,
 			serverResponseStatus: 400,
-			inputEntries:         []entry{logEntries[0]},
+			inputEntries:         []entry{LogEntries[0]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[0].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -157,11 +158,11 @@ func TestClient_Handle(t *testing.T) {
 			clientMaxRetries:     3,
 			clientTenantID:       "tenant-default",
 			serverResponseStatus: 200,
-			inputEntries:         []entry{logEntries[0], logEntries[1]},
+			inputEntries:         []entry{LogEntries[0], logEntries[1]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "tenant-default",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[0].Entry, logEntries[1].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -179,19 +180,19 @@ func TestClient_Handle(t *testing.T) {
 			clientMaxRetries:     3,
 			clientTenantID:       "tenant-default",
 			serverResponseStatus: 200,
-			inputEntries:         []entry{logEntries[0], logEntries[3], logEntries[4], logEntries[5]},
+			inputEntries:         []entry{LogEntries[0], logEntries[3], logEntries[4], logEntries[5]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "tenant-default",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[0].Entry}}}},
 				},
 				{
 					tenantID: "tenant-1",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[3].Entry, logEntries[4].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[3].Entry, logEntries[4].Entry}}}},
 				},
 				{
 					tenantID: "tenant-2",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[5].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[5].Entry}}}},
 				},
 			},
 			expectedMetrics: `

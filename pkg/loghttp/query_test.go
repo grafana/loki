@@ -129,15 +129,15 @@ func TestStreams_ToProto(t *testing.T) {
 			{
 				Labels: map[string]string{"foo": "bar"},
 				Entries: []lokimodel.Entry{
-					{Timestamp: time.Unix(0, 1), Line: "1"},
-					{Timestamp: time.Unix(0, 2), Line: "2"},
+					{Ts: time.Unix(0, 1), Line: "1"},
+					{Ts: time.Unix(0, 2), Line: "2"},
 				},
 			},
 			{
 				Labels: map[string]string{"foo": "bar", "lvl": "error"},
 				Entries: []lokimodel.Entry{
-					{Timestamp: time.Unix(0, 3), Line: "3"},
-					{Timestamp: time.Unix(0, 4), Line: "4"},
+					{Ts: time.Unix(0, 3), Line: "3"},
+					{Ts: time.Unix(0, 4), Line: "4"},
 				},
 			},
 		},
@@ -145,15 +145,15 @@ func TestStreams_ToProto(t *testing.T) {
 				{
 					Labels: `{foo="bar"}`,
 					Entries: []logproto.Entry{
-						{Timestamp: time.Unix(0, 1), Line: "1"},
-						{Timestamp: time.Unix(0, 2), Line: "2"},
+						{Ts: time.Unix(0, 1), Line: "1"},
+						{Ts: time.Unix(0, 2), Line: "2"},
 					},
 				},
 				{
 					Labels: `{foo="bar", lvl="error"}`,
 					Entries: []logproto.Entry{
-						{Timestamp: time.Unix(0, 3), Line: "3"},
-						{Timestamp: time.Unix(0, 4), Line: "4"},
+						{Ts: time.Unix(0, 3), Line: "3"},
+						{Ts: time.Unix(0, 4), Line: "4"},
 					},
 				},
 			},
