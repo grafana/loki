@@ -807,6 +807,30 @@ func TestParse(t *testing.T) {
 				col:  0,
 			},
 		},
+		{
+			in: `sum(count_over_time({foo="bar"}[5m])) by (foo) or 1`,
+			err: ParseError{
+				msg:  `unexpected literal for right leg of logical/set binary operation (or): 1.000000`,
+				line: 0,
+				col:  0,
+			},
+		},
+		{
+			in: `1 unless sum(count_over_time({foo="bar"}[5m])) by (foo)`,
+			err: ParseError{
+				msg:  `unexpected literal for left leg of logical/set binary operation (unless): 1.000000`,
+				line: 0,
+				col:  0,
+			},
+		},
+		{
+			in: `sum(count_over_time({foo="bar"}[5m])) by (foo) + 1 or 1`,
+			err: ParseError{
+				msg:  `unexpected literal for right leg of logical/set binary operation (or): 1.000000`,
+				line: 0,
+				col:  0,
+			},
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)

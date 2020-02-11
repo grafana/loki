@@ -228,17 +228,24 @@ const (
 	OpTypeCountOverTime = "count_over_time"
 	OpTypeRate          = "rate"
 
-	// binops
+	// binops - logical/set
 	OpTypeOr     = "or"
 	OpTypeAnd    = "and"
 	OpTypeUnless = "unless"
-	OpTypeAdd    = "+"
-	OpTypeSub    = "-"
-	OpTypeMul    = "*"
-	OpTypeDiv    = "/"
-	OpTypeMod    = "%"
-	OpTypePow    = "^"
+
+	// binops - operations
+	OpTypeAdd = "+"
+	OpTypeSub = "-"
+	OpTypeMul = "*"
+	OpTypeDiv = "/"
+	OpTypeMod = "%"
+	OpTypePow = "^"
 )
+
+// IsLogicalBinOp tests whether an operation is a logical/set binary operation
+func IsLogicalBinOp(op string) bool {
+	return op == OpTypeOr || op == OpTypeAnd || op == OpTypeUnless
+}
 
 // SampleExpr is a LogQL expression filtering logs and returning metric samples.
 type SampleExpr interface {
@@ -410,6 +417,25 @@ func mustNewBinOpExpr(op string, lhs, rhs Expr) SampleExpr {
 			rhs,
 		), 0, 0))
 	}
+
+	if IsLogicalBinOp(op) {
+		if l, ok := left.(*literalExpr); ok {
+			panic(newParseError(fmt.Sprintf(
+				"unexpected literal for left leg of logical/set binary operation (%s): %f",
+				op,
+				l.value,
+			), 0, 0))
+		}
+
+		if r, ok := right.(*literalExpr); ok {
+			panic(newParseError(fmt.Sprintf(
+				"unexpected literal for right leg of logical/set binary operation (%s): %f",
+				op,
+				r.value,
+			), 0, 0))
+		}
+	}
+
 	return &binOpExpr{
 		SampleExpr: left,
 		RHS:        right,
