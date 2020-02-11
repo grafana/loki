@@ -24,7 +24,7 @@ import (
 )
 
 var (
-	logEntries = []lokimodel.Entry{
+	logEntries = []lokimodel.LogProtoEntry{
 		{Labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(1, 0).UTC(), Line: "line1"}},
 		{Labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(2, 0).UTC(), Line: "line2"}},
 		{Labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(3, 0).UTC(), Line: "line3"}},
@@ -46,7 +46,7 @@ func TestClient_Handle(t *testing.T) {
 		clientMaxRetries     int
 		clientTenantID       string
 		serverResponseStatus int
-		inputEntries         []lokimodel.Entry
+		inputEntries         []lokimodel.LogProtoEntry
 		inputDelay           time.Duration
 		expectedReqs         []receivedReq
 		expectedMetrics      string
@@ -56,7 +56,7 @@ func TestClient_Handle(t *testing.T) {
 			clientBatchWait:      100 * time.Millisecond,
 			clientMaxRetries:     3,
 			serverResponseStatus: 200,
-			inputEntries:         []entry{LogEntries[0], logEntries[1], logEntries[2]},
+			inputEntries:         []lokimodel.LogProtoEntry{LogEntries[0], logEntries[1], logEntries[2]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
