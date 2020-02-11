@@ -19,7 +19,7 @@ type batch struct {
 	createdAt time.Time
 }
 
-func newBatch(entries ...lokimodel.LogProtoEntry) *batch {
+func newBatch(entries ...lokimodel.TenantEntry) *batch {
 	b := &batch{
 		streams:   map[string]*logproto.Stream{},
 		bytes:     0,
@@ -35,7 +35,7 @@ func newBatch(entries ...lokimodel.LogProtoEntry) *batch {
 }
 
 // add an entry to the batch
-func (b *batch) add(entry lokimodel.LogProtoEntry) {
+func (b *batch) add(entry lokimodel.TenantEntry) {
 	b.bytes += len(entry.Line)
 
 	// Append the entry to an already existing stream (if any)
@@ -59,7 +59,7 @@ func (b *batch) sizeBytes() int {
 
 // sizeBytesAfter returns the size of the batch after the input entry
 // will be added to the batch itself
-func (b *batch) sizeBytesAfter(entry lokimodel.LogProtoEntry) int {
+func (b *batch) sizeBytesAfter(entry lokimodel.TenantEntry) int {
 	return b.bytes + len(entry.Line)
 }
 
