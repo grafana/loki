@@ -56,15 +56,15 @@ func TestClient_Handle(t *testing.T) {
 			clientBatchWait:      100 * time.Millisecond,
 			clientMaxRetries:     3,
 			serverResponseStatus: 200,
-			inputEntries:         []lokimodel.TenantEntry{LogEntries[0], logEntries[1], logEntries[2]},
+			inputEntries:         []lokimodel.TenantEntry{logEntries[0], logEntries[1], logEntries[2]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[0].Entry, logEntries[1].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
 				},
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[2].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[2].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -81,16 +81,16 @@ func TestClient_Handle(t *testing.T) {
 			clientBatchWait:      100 * time.Millisecond,
 			clientMaxRetries:     3,
 			serverResponseStatus: 200,
-			inputEntries:         []entry{LogEntries[0], logEntries[1]},
+			inputEntries:         []lokimodel.TenantEntry{logEntries[0], logEntries[1]},
 			inputDelay:           110 * time.Millisecond,
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[1].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[1].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -107,19 +107,19 @@ func TestClient_Handle(t *testing.T) {
 			clientBatchWait:      10 * time.Millisecond,
 			clientMaxRetries:     3,
 			serverResponseStatus: 500,
-			inputEntries:         []entry{LogEntries[0]},
+			inputEntries:         []lokimodel.TenantEntry{logEntries[0]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -136,11 +136,11 @@ func TestClient_Handle(t *testing.T) {
 			clientBatchWait:      10 * time.Millisecond,
 			clientMaxRetries:     3,
 			serverResponseStatus: 400,
-			inputEntries:         []entry{LogEntries[0]},
+			inputEntries:         []lokimodel.TenantEntry{logEntries[0]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -158,11 +158,11 @@ func TestClient_Handle(t *testing.T) {
 			clientMaxRetries:     3,
 			clientTenantID:       "tenant-default",
 			serverResponseStatus: 200,
-			inputEntries:         []entry{LogEntries[0], logEntries[1]},
+			inputEntries:         []lokimodel.TenantEntry{logEntries[0], logEntries[1]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "tenant-default",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[0].Entry, logEntries[1].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -180,19 +180,19 @@ func TestClient_Handle(t *testing.T) {
 			clientMaxRetries:     3,
 			clientTenantID:       "tenant-default",
 			serverResponseStatus: 200,
-			inputEntries:         []entry{LogEntries[0], logEntries[3], logEntries[4], logEntries[5]},
+			inputEntries:         []lokimodel.TenantEntry{logEntries[0], logEntries[3], logEntries[4], logEntries[5]},
 			expectedReqs: []receivedReq{
 				{
 					tenantID: "tenant-default",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[0].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
 					tenantID: "tenant-1",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[3].Entry, logEntries[4].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[3].Entry, logEntries[4].Entry}}}},
 				},
 				{
 					tenantID: "tenant-2",
-					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{LogEntries[5].Entry}}}},
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[5].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -242,7 +242,7 @@ func TestClient_Handle(t *testing.T) {
 
 			// Send all the input log entries
 			for i, logEntry := range testData.inputEntries {
-				err = c.Handle(logEntry.labels, logEntry.Timestamp, logEntry.Line)
+				err = c.Handle(logEntry.Labels, logEntry.Timestamp, logEntry.Line)
 				require.NoError(t, err)
 
 				if testData.inputDelay > 0 && i < len(testData.inputEntries)-1 {

@@ -87,7 +87,7 @@ func runTestCases(parser EntryParser, testCases []TestCase, t *testing.T) {
 
 		require.Equal(t, 1, len(client.Entries), "Handler did not receive the correct number of Entries for test case %d", i)
 		entry := client.Entries[0]
-		assert.Equal(t, tc.Expected.Time, entry.Time, "Time error for test case %d, with entry %s", i, tc.Line)
+		assert.Equal(t, tc.Expected.Ts, entry.Ts, "Time error for test case %d, with entry %s", i, tc.Line)
 		assert.Equal(t, tc.Expected.Log, entry.Log, "Log entry error for test case %d, with entry %s", i, tc.Line)
 		assert.True(t, tc.Expected.Labels.Equal(entry.Labels), "Label error for test case %d, labels did not match; expected: %s, found %s", i, tc.Expected.Labels, entry.Labels)
 	}
