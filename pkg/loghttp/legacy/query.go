@@ -1,7 +1,6 @@
 package loghttp
 
 import (
-	"time"
 	model "github.com/grafana/loki/model"
 )
 

@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	 lokimodel "github.com/grafana/loki/model"
 )
 
 // NewResultValue constructs a ResultValue from a promql.Value
@@ -77,7 +78,7 @@ func NewStream(s *logproto.Stream) (loghttp.Stream, error) {
 
 	ret := loghttp.Stream{
 		Labels:  labels,
-		Entries: make([]loghttp.Entry, len(s.Entries)),
+		Entries: make([]lokimodel.Entry, len(s.Entries)),
 	}
 
 	for i, e := range s.Entries {
@@ -88,9 +89,9 @@ func NewStream(s *logproto.Stream) (loghttp.Stream, error) {
 }
 
 // NewEntry constructs an Entry from a logproto.Entry
-func NewEntry(e logproto.Entry) loghttp.Entry {
-	return loghttp.Entry{
-		Timestamp: e.Timestamp,
+func NewEntry(e logproto.Entry) lokimodel.Entry {
+	return lokimodel.Entry{
+		Ts: e.Timestamp,
 		Line:      e.Line,
 	}
 }
