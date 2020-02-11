@@ -55,6 +55,7 @@ import (
 %left <binOp> AND UNLESS
 %left <binOp> ADD SUB
 %left <binOp> MUL DIV MOD
+%right <binOp> POW
 
 %%
 
@@ -140,6 +141,7 @@ binOpExpr:
          | expr MUL expr       { $$ = mustNewBinOpExpr("*", $1, $3) }
          | expr DIV expr       { $$ = mustNewBinOpExpr("/", $1, $3) }
          | expr MOD expr       { $$ = mustNewBinOpExpr("%", $1, $3) }
+         | expr POW expr       { $$ = mustNewBinOpExpr("^", $1, $3) }
 
 vectorOp:
         SUM     { $$ = OpTypeSum }

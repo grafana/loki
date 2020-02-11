@@ -164,6 +164,7 @@ The following binary arithmetic operators exist in Loki:
 - `*` (multiplication)
 - `/` (division)
 - `%` (modulo)
+- `^` (power/exponentiation)
 
 Binary arithmetic operators are defined only between two vectors.
 

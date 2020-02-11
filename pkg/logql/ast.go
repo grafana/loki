@@ -237,6 +237,7 @@ const (
 	OpTypeMul    = "*"
 	OpTypeDiv    = "/"
 	OpTypeMod    = "%"
+	OpTypePow    = "^"
 )
 
 // SampleExpr is a LogQL expression filtering logs and returning metric samples.

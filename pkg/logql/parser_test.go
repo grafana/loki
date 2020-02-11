@@ -548,16 +548,15 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			// require left associativity
 			in: `
-			sum(count_over_time({foo="bar"}[5m])) by (foo) /
+			sum(count_over_time({foo="bar"}[5m])) by (foo) ^
 			sum(count_over_time({foo="bar"}[5m])) by (foo) /
 			sum(count_over_time({foo="bar"}[5m])) by (foo)
 			`,
 			exp: mustNewBinOpExpr(
 				OpTypeDiv,
 				mustNewBinOpExpr(
-					OpTypeDiv,
+					OpTypePow,
 					mustNewVectorAggregationExpr(newRangeAggregationExpr(
 						&logRange{
 							left: &matchersExpr{

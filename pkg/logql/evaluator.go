@@ -497,6 +497,20 @@ func (ev *defaultEvaluator) mergeBinOp(op string, left, right *promql.Sample) *p
 			return &res
 		}
 
+	case OpTypePow:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+			res.Point.V = math.Pow(left.Point.V, right.Point.V)
+			return &res
+		}
+
 	default:
 		panic(errors.Errorf("should never happen: unexpected operation: (%s)", op))
 	}
