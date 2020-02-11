@@ -53,9 +53,9 @@ var (
 		Name:      "dynamo_request_duration_seconds",
 		Help:      "Time spent doing DynamoDB requests.",
 
-		// DynamoDB latency seems to range from a few ms to a few sec and is
-		// important.  So use 8 buckets from 128us to 2s.
-		Buckets: prometheus.ExponentialBuckets(0.000128, 4, 8),
+		// DynamoDB latency seems to range from a few ms to a several seconds and is
+		// important.  So use 9 buckets from 1ms to just over 1 minute (65s).
+		Buckets: prometheus.ExponentialBuckets(0.001, 4, 9),
 	}, []string{"operation", "status_code"}))
 	dynamoConsumedCapacity = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
