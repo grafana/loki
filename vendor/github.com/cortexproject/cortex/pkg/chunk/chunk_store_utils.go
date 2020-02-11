@@ -183,7 +183,7 @@ func (c *Fetcher) writeBackCache(ctx context.Context, chunks []Chunk) error {
 		var err error
 		if !c.cacheStubs {
 			encoded, err = chunks[i].Encoded()
-			// TODO don't fail, just log and conitnue?
+			// TODO don't fail, just log and continue?
 			if err != nil {
 				return err
 			}

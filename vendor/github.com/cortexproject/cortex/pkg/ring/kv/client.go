@@ -67,7 +67,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(flagsPrefix, defaultPrefix string, f 
 // It also deals with serialisation by using a Codec and having a instance of
 // the the desired type passed in to methods ala json.Unmarshal.
 type Client interface {
-	// Get a spefic key.  Will use a codec to deserialise key to appropriate type.
+	// Get a specific key.  Will use a codec to deserialise key to appropriate type.
 	Get(ctx context.Context, key string) (interface{}, error)
 
 	// CAS stands for Compare-And-Swap.  Will call provided callback f with the

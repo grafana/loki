@@ -3,6 +3,8 @@ package util
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"os"
 
 	ot "github.com/opentracing/opentracing-go"
 
@@ -112,4 +114,15 @@ func QueryFilter(callback Callback) Callback {
 	return func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		return callback(query, &filteringBatch{query, batch})
 	}
+}
+
+// EnsureDirectory makes sure directory is there, if not creates it if not
+func EnsureDirectory(dir string) error {
+	info, err := os.Stat(dir)
+	if os.IsNotExist(err) {
+		return os.MkdirAll(dir, 0777)
+	} else if err == nil && !info.IsDir() {
+		return fmt.Errorf("not a directory: %s", dir)
+	}
+	return err
 }

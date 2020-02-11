@@ -61,11 +61,11 @@ loki + promtail + gateway {
     
     promtail_config+: {
       clients: [{
-        scheme: 'http',
-        hostname: 'gateway.%(namespace)s.svc' % $._config,
-        username: 'loki',
-        password: 'password',
-        container_root_path: '/var/lib/docker',
+        scheme:: 'http',
+        hostname:: 'gateway.%(namespace)s.svc' % $._config,
+        username:: 'loki',
+        password:: 'password',
+        container_root_path:: '/var/lib/docker',
       }],
     },
 

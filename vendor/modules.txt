@@ -54,8 +54,9 @@ github.com/alecthomas/units
 # github.com/armon/go-metrics v0.3.0
 github.com/armon/go-metrics
 github.com/armon/go-metrics/prometheus
-# github.com/aws/aws-sdk-go v1.25.35
+# github.com/aws/aws-sdk-go v1.25.48
 github.com/aws/aws-sdk-go/aws
+github.com/aws/aws-sdk-go/aws/arn
 github.com/aws/aws-sdk-go/aws/awserr
 github.com/aws/aws-sdk-go/aws/awsutil
 github.com/aws/aws-sdk-go/aws/client
@@ -98,6 +99,7 @@ github.com/aws/aws-sdk-go/service/dynamodb
 github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface
 github.com/aws/aws-sdk-go/service/ec2
 github.com/aws/aws-sdk-go/service/s3
+github.com/aws/aws-sdk-go/service/s3/internal/arn
 github.com/aws/aws-sdk-go/service/s3/s3iface
 github.com/aws/aws-sdk-go/service/sts
 github.com/aws/aws-sdk-go/service/sts/stsiface
@@ -107,7 +109,7 @@ github.com/beorn7/perks/quantile
 github.com/blang/semver
 # github.com/bmatcuk/doublestar v1.2.2
 github.com/bmatcuk/doublestar
-# github.com/bradfitz/gomemcache v0.0.0-20190329173943-551aad21a668
+# github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 github.com/bradfitz/gomemcache/memcache
 # github.com/cespare/xxhash v1.1.0
 github.com/cespare/xxhash
@@ -126,7 +128,7 @@ github.com/coreos/go-systemd/sdjournal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
 github.com/coreos/pkg/dlopen
-# github.com/cortexproject/cortex v0.6.1-0.20200130164737-b413930cf1f8
+# github.com/cortexproject/cortex v0.6.1-0.20200207192307-f1f513ec1de8
 github.com/cortexproject/cortex/pkg/chunk
 github.com/cortexproject/cortex/pkg/chunk/aws
 github.com/cortexproject/cortex/pkg/chunk/azure
@@ -411,7 +413,7 @@ github.com/opencontainers/image-spec/specs-go/v1
 github.com/opentracing-contrib/go-grpc
 # github.com/opentracing-contrib/go-stdlib v0.0.0-20190519235532-cf7a6c988dc9
 github.com/opentracing-contrib/go-stdlib/nethttp
-# github.com/opentracing/opentracing-go v1.1.0
+# github.com/opentracing/opentracing-go v1.1.1-0.20200124165624-2876d2018785
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
@@ -445,7 +447,7 @@ github.com/prometheus/common/version
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v1.8.2-0.20191126064551-80ba03c67da1
+# github.com/prometheus/prometheus v1.8.2-0.20200107122003-4708915ac6ef
 github.com/prometheus/prometheus/discovery
 github.com/prometheus/prometheus/discovery/azure
 github.com/prometheus/prometheus/discovery/config
@@ -547,7 +549,7 @@ github.com/uber/jaeger-lib/metrics/prometheus
 github.com/ugorji/go/codec
 # github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
 github.com/weaveworks/billing-client
-# github.com/weaveworks/common v0.0.0-20191103151037-0e7cefadc44f
+# github.com/weaveworks/common v0.0.0-20200201141823-27e183090ab1
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/errors
 github.com/weaveworks/common/httpgrpc
@@ -699,6 +701,7 @@ golang.org/x/net/internal/socks
 golang.org/x/net/internal/timeseries
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
+golang.org/x/net/netutil
 golang.org/x/net/proxy
 golang.org/x/net/trace
 # golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45

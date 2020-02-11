@@ -36,6 +36,17 @@ var tokens = map[string]int{
 	OpTypeStdvar:        STDVAR,
 	OpTypeBottomK:       BOTTOMK,
 	OpTypeTopK:          TOPK,
+
+	// binops
+	OpTypeOr:     OR,
+	OpTypeAnd:    AND,
+	OpTypeUnless: UNLESS,
+	OpTypeAdd:    ADD,
+	OpTypeSub:    SUB,
+	OpTypeMul:    MUL,
+	OpTypeDiv:    DIV,
+	OpTypeMod:    MOD,
+	OpTypePow:    POW,
 }
 
 type lexer struct {

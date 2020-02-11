@@ -35,11 +35,8 @@ type Querier interface {
 	Select(...*labels.Matcher) (SeriesSet, error)
 
 	// LabelValues returns all potential values for a label name.
+	// It is not safe to use the strings beyond the lifefime of the querier.
 	LabelValues(string) ([]string, error)
-
-	// LabelValuesFor returns all potential values for a label name.
-	// under the constraint of another label.
-	LabelValuesFor(string, labels.Label) ([]string, error)
 
 	// LabelNames returns all the unique label names present in the block in sorted order.
 	LabelNames() ([]string, error)
@@ -106,10 +103,6 @@ func (q *querier) lvals(qs []Querier, n string) ([]string, error) {
 		return nil, err
 	}
 	return mergeStrings(s1, s2), nil
-}
-
-func (q *querier) LabelValuesFor(string, labels.Label) ([]string, error) {
-	return nil, fmt.Errorf("not implemented")
 }
 
 func (q *querier) Select(ms ...*labels.Matcher) (SeriesSet, error) {
@@ -225,20 +218,7 @@ func (q *blockQuerier) Select(ms ...*labels.Matcher) (SeriesSet, error) {
 }
 
 func (q *blockQuerier) LabelValues(name string) ([]string, error) {
-	tpls, err := q.index.LabelValues(name)
-	if err != nil {
-		return nil, err
-	}
-	res := make([]string, 0, tpls.Len())
-
-	for i := 0; i < tpls.Len(); i++ {
-		vals, err := tpls.At(i)
-		if err != nil {
-			return nil, err
-		}
-		res = append(res, vals[0])
-	}
-	return res, nil
+	return q.index.LabelValues(name)
 }
 
 func (q *blockQuerier) LabelNames() ([]string, error) {
@@ -385,7 +365,8 @@ func PostingsForMatchers(ix IndexReader, ms ...*labels.Matcher) (index.Postings,
 
 	// If there's nothing to subtract from, add in everything and remove the notIts later.
 	if len(its) == 0 && len(notIts) != 0 {
-		allPostings, err := ix.Postings(index.AllPostingsKey())
+		k, v := index.AllPostingsKey()
+		allPostings, err := ix.Postings(k, v)
 		if err != nil {
 			return nil, err
 		}
@@ -413,23 +394,20 @@ func postingsForMatcher(ix IndexReader, m *labels.Matcher) (index.Postings, erro
 	if m.Type == labels.MatchRegexp {
 		setMatches := findSetMatches(m.Value)
 		if len(setMatches) > 0 {
-			return postingsForSetMatcher(ix, m.Name, setMatches)
+			sort.Strings(setMatches)
+			return ix.Postings(m.Name, setMatches...)
 		}
 	}
 
-	tpls, err := ix.LabelValues(m.Name)
+	vals, err := ix.LabelValues(m.Name)
 	if err != nil {
 		return nil, err
 	}
 
 	var res []string
-	for i := 0; i < tpls.Len(); i++ {
-		vals, err := tpls.At(i)
-		if err != nil {
-			return nil, err
-		}
-		if m.Matches(vals[0]) {
-			res = append(res, vals[0])
+	for _, val := range vals {
+		if m.Matches(val) {
+			res = append(res, val)
 		}
 	}
 
@@ -437,61 +415,24 @@ func postingsForMatcher(ix IndexReader, m *labels.Matcher) (index.Postings, erro
 		return index.EmptyPostings(), nil
 	}
 
-	var rit []index.Postings
-
-	for _, v := range res {
-		it, err := ix.Postings(m.Name, v)
-		if err != nil {
-			return nil, err
-		}
-		rit = append(rit, it)
-	}
-
-	return index.Merge(rit...), nil
+	return ix.Postings(m.Name, res...)
 }
 
 // inversePostingsForMatcher returns the postings for the series with the label name set but not matching the matcher.
 func inversePostingsForMatcher(ix IndexReader, m *labels.Matcher) (index.Postings, error) {
-	tpls, err := ix.LabelValues(m.Name)
+	vals, err := ix.LabelValues(m.Name)
 	if err != nil {
 		return nil, err
 	}
 
 	var res []string
-	for i := 0; i < tpls.Len(); i++ {
-		vals, err := tpls.At(i)
-		if err != nil {
-			return nil, err
-		}
-
-		if !m.Matches(vals[0]) {
-			res = append(res, vals[0])
+	for _, val := range vals {
+		if !m.Matches(val) {
+			res = append(res, val)
 		}
 	}
 
-	var rit []index.Postings
-	for _, v := range res {
-		it, err := ix.Postings(m.Name, v)
-		if err != nil {
-			return nil, err
-		}
-
-		rit = append(rit, it)
-	}
-
-	return index.Merge(rit...), nil
-}
-
-func postingsForSetMatcher(ix IndexReader, name string, matches []string) (index.Postings, error) {
-	var its []index.Postings
-	for _, match := range matches {
-		if it, err := ix.Postings(name, match); err == nil {
-			its = append(its, it)
-		} else {
-			return nil, err
-		}
-	}
-	return index.Merge(its...), nil
+	return ix.Postings(m.Name, res...)
 }
 
 func mergeStrings(a, b []string) []string {
