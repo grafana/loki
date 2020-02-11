@@ -558,10 +558,10 @@ func TestParse(t *testing.T) {
 		{
 			// require left associativity
 			in: `
-sum(count_over_time({foo="bar"}[5m])) by (foo) /
-sum(count_over_time({foo="bar"}[5m])) by (foo) /
-sum(count_over_time({foo="bar"}[5m])) by (foo)
-`,
+			sum(count_over_time({foo="bar"}[5m])) by (foo) /
+			sum(count_over_time({foo="bar"}[5m])) by (foo) /
+			sum(count_over_time({foo="bar"}[5m])) by (foo)
+			`,
 			exp: mustNewBinOpExpr(
 				OpTypeDiv,
 				mustNewBinOpExpr(
@@ -618,12 +618,73 @@ sum(count_over_time({foo="bar"}[5m])) by (foo)
 			),
 		},
 		{
+			in: `
+			sum(count_over_time({foo="bar"}[5m])) by (foo) ^
+			sum(count_over_time({foo="bar"}[5m])) by (foo) /
+			sum(count_over_time({foo="bar"}[5m])) by (foo)
+			`,
+			exp: mustNewBinOpExpr(
+				OpTypeDiv,
+				mustNewBinOpExpr(
+					OpTypePow,
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+				),
+				mustNewVectorAggregationExpr(newRangeAggregationExpr(
+					&logRange{
+						left: &matchersExpr{
+							matchers: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+						interval: 5 * time.Minute,
+					}, OpTypeCountOverTime),
+					"sum",
+					&grouping{
+						without: false,
+						groups:  []string{"foo"},
+					},
+					nil,
+				),
+			),
+		},
+		{
 			// operator precedence before left associativity
 			in: `
-sum(count_over_time({foo="bar"}[5m])) by (foo) +
-sum(count_over_time({foo="bar"}[5m])) by (foo) /
-sum(count_over_time({foo="bar"}[5m])) by (foo)
-`,
+			sum(count_over_time({foo="bar"}[5m])) by (foo) +
+			sum(count_over_time({foo="bar"}[5m])) by (foo) /
+			sum(count_over_time({foo="bar"}[5m])) by (foo)
+			`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
 				mustNewVectorAggregationExpr(newRangeAggregationExpr(
@@ -681,9 +742,7 @@ sum(count_over_time({foo="bar"}[5m])) by (foo)
 		},
 		{
 			// ensure literal binops are reduced: the 1+2/expr should reduce to 3/expr
-			in: `
-sum(count_over_time({foo="bar"}[5m])) by (foo) + 2 / 1
-`,
+			in: `sum(count_over_time({foo="bar"}[5m])) by (foo) + 2 / 1`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
 				mustNewVectorAggregationExpr(
@@ -723,6 +782,30 @@ sum(count_over_time({foo="bar"}[5m])) by (foo) + 2 / 1
 				mustNewBinOpExpr(OpTypeAdd, &literalExpr{value: 1}, &literalExpr{value: 1}),
 				&literalExpr{value: -1},
 			),
+		},
+		{
+			in: `{foo="bar"} + {foo="bar"}`,
+			err: ParseError{
+				msg:  `unexpected type for left leg of binary operation (+): *logql.matchersExpr`,
+				line: 0,
+				col:  0,
+			},
+		},
+		{
+			in: `sum(count_over_time({foo="bar"}[5m])) by (foo) - {foo="bar"}`,
+			err: ParseError{
+				msg:  `unexpected type for right leg of binary operation (-): *logql.matchersExpr`,
+				line: 0,
+				col:  0,
+			},
+		},
+		{
+			in: `{foo="bar"} / sum(count_over_time({foo="bar"}[5m])) by (foo)`,
+			err: ParseError{
+				msg:  `unexpected type for left leg of binary operation (/): *logql.matchersExpr`,
+				line: 0,
+				col:  0,
+			},
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {

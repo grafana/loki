@@ -24,6 +24,7 @@ pipeline_stages:
     loki_count:
       type: Counter
       description: uhhhhhhh
+      prefix: my_promtail_custom_
       source: app
       config:
         value: loki
@@ -65,9 +66,9 @@ var testMetricLogLine2 = `
 const expectedMetrics = `# HELP promtail_custom_bloki_count blerrrgh
 # TYPE promtail_custom_bloki_count gauge
 promtail_custom_bloki_count -1.0
-# HELP promtail_custom_loki_count uhhhhhhh
-# TYPE promtail_custom_loki_count counter
-promtail_custom_loki_count 1.0
+# HELP my_promtail_custom_loki_count uhhhhhhh
+# TYPE my_promtail_custom_loki_count counter
+my_promtail_custom_loki_count 1.0
 # HELP promtail_custom_payload_size_bytes grrrragh
 # TYPE promtail_custom_payload_size_bytes histogram
 promtail_custom_payload_size_bytes_bucket{le="10.0"} 1.0
@@ -262,7 +263,13 @@ func TestMetricStage_Process(t *testing.T) {
 
 func metricNames(cfg MetricsConfig) []string {
 	result := make([]string, 0, len(cfg))
-	for name := range cfg {
+	for name, config := range cfg {
+		customPrefix := ""
+		if config.Prefix != "" {
+			customPrefix = config.Prefix
+		} else {
+			customPrefix = "promtail_custom_"
+		}
 		result = append(result, customPrefix+name)
 	}
 	return result

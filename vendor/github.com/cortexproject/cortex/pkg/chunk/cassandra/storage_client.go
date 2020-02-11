@@ -30,6 +30,9 @@ type Config struct {
 	Password                 string        `yaml:"password,omitempty"`
 	Timeout                  time.Duration `yaml:"timeout,omitempty"`
 	ConnectTimeout           time.Duration `yaml:"connect_timeout,omitempty"`
+	Retries                  int           `yaml:"max_retries"`
+	MaxBackoff               time.Duration `yaml:"retry_max_backoff"`
+	MinBackoff               time.Duration `yaml:"retry_min_backoff"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -46,8 +49,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Auth, "cassandra.auth", false, "Enable password authentication when connecting to cassandra.")
 	f.StringVar(&cfg.Username, "cassandra.username", "", "Username to use when connecting to cassandra.")
 	f.StringVar(&cfg.Password, "cassandra.password", "", "Password to use when connecting to cassandra.")
-	f.DurationVar(&cfg.Timeout, "cassandra.timeout", 600*time.Millisecond, "Timeout when connecting to cassandra.")
-	f.DurationVar(&cfg.ConnectTimeout, "cassandra.connect-timeout", 600*time.Millisecond, "Initial connection timeout, used during initial dial to server.")
+	f.DurationVar(&cfg.Timeout, "cassandra.timeout", 2*time.Second, "Timeout when connecting to cassandra.")
+	f.DurationVar(&cfg.ConnectTimeout, "cassandra.connect-timeout", 5*time.Second, "Initial connection timeout, used during initial dial to server.")
+	f.IntVar(&cfg.Retries, "cassandra.max-retries", 0, "Number of retries to perform on a request. (Default is 0: no retries)")
+	f.DurationVar(&cfg.MinBackoff, "cassandra.retry-min-backoff", 100*time.Millisecond, "Minimum time to wait before retrying a failed request. (Default = 100ms)")
+	f.DurationVar(&cfg.MaxBackoff, "cassandra.retry-max-backoff", 10*time.Second, "Maximum time to wait before retrying a failed request. (Default = 10s)")
 }
 
 func (cfg *Config) session() (*gocql.Session, error) {
@@ -68,6 +74,13 @@ func (cfg *Config) session() (*gocql.Session, error) {
 	cluster.QueryObserver = observer{}
 	cluster.Timeout = cfg.Timeout
 	cluster.ConnectTimeout = cfg.ConnectTimeout
+	if cfg.Retries > 0 {
+		cluster.RetryPolicy = &gocql.ExponentialBackoffRetryPolicy{
+			NumRetries: cfg.Retries,
+			Min:        cfg.MinBackoff,
+			Max:        cfg.MaxBackoff,
+		}
+	}
 	cfg.setClusterConfig(cluster)
 
 	return cluster.CreateSession()

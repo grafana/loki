@@ -25,6 +25,19 @@ const (
 	StorageEngineTSDB   = "tsdb"
 )
 
+type IndexClientFactoryFunc func() (chunk.IndexClient, error)
+
+var customIndexClients = map[string]IndexClientFactoryFunc{}
+
+func RegisterIndexClient(name string, factory IndexClientFactoryFunc) {
+	customIndexClients[name] = factory
+}
+
+// useful for cleaning up state after tests
+func unregisterAllCustomIndexClients() {
+	customIndexClients = map[string]IndexClientFactoryFunc{}
+}
+
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
 	CardinalityLimit(userID string) int
@@ -116,6 +129,10 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 
 // NewIndexClient makes a new index client of the desired type.
 func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
+	if factory, ok := customIndexClients[name]; ok {
+		return factory()
+	}
+
 	switch name {
 	case "inmemory":
 		store := chunk.NewMockStorage()
@@ -152,7 +169,7 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 		store := chunk.NewMockStorage()
 		return store, nil
 	case "aws", "s3":
-		return aws.NewS3ObjectClient(cfg.AWSStorageConfig, schemaCfg)
+		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config)
 	case "aws-dynamo":
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -163,13 +180,13 @@ func NewObjectClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chu
 		}
 		return aws.NewDynamoDBObjectClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
 	case "azure":
-		return azure.NewBlobStorage(&cfg.AzureStorageConfig), nil
+		return azure.NewBlobStorage(&cfg.AzureStorageConfig)
 	case "gcp":
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcp-columnkey", "bigtable", "bigtable-hashed":
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcs":
-		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, schemaCfg)
+		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig)
 	case "cassandra":
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	case "filesystem":

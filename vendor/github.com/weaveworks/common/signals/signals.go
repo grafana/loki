@@ -42,6 +42,7 @@ func (h *Handler) Stop() {
 func (h *Handler) Loop() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
+	defer signal.Stop(sigs)
 	buf := make([]byte, 1<<20)
 	for {
 		select {

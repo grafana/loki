@@ -46,6 +46,7 @@ var tokens = map[string]int{
 	OpTypeMul:    MUL,
 	OpTypeDiv:    DIV,
 	OpTypeMod:    MOD,
+	OpTypePow:    POW,
 }
 
 type lexer struct {

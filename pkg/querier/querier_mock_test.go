@@ -279,6 +279,10 @@ func (r *readRingMock) IngesterCount() int {
 	return len(r.replicationSet.Ingesters)
 }
 
+func (r *readRingMock) Subring(key uint32, n int) (ring.ReadRing, error) {
+	return r, nil
+}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.IngesterDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},

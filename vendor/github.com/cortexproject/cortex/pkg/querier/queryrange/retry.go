@@ -41,6 +41,9 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 
 	var lastErr error
 	for ; tries < r.maxRetries; tries++ {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		resp, err := r.next.Do(ctx, req)
 		if err == nil {
 			return resp, nil

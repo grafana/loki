@@ -64,11 +64,10 @@ func main() {
 	}
 
 	level.Info(util.Logger).Log("msg", "Starting Promtail", "version", version.Info())
+	defer p.Shutdown()
 
 	if err := p.Run(); err != nil {
 		level.Error(util.Logger).Log("msg", "error starting promtail", "error", err)
 		os.Exit(1)
 	}
-
-	p.Shutdown()
 }

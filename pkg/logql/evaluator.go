@@ -14,6 +14,13 @@ import (
 	"github.com/prometheus/prometheus/promql"
 )
 
+type QueryRangeType string
+
+var (
+	InstantType QueryRangeType = "instant"
+	RangeType   QueryRangeType = "range"
+)
+
 // Params details the parameters associated with a loki request
 type Params interface {
 	String() string
@@ -51,9 +58,12 @@ func (p LiteralParams) Limit() uint32 { return p.limit }
 // Direction impls Params
 func (p LiteralParams) Direction() logproto.Direction { return p.direction }
 
-// IsInstant returns whether a query is an instant query
-func IsInstant(q Params) bool {
-	return q.Start() == q.End() && q.Step() == 0
+// GetRangeType returns whether a query is an instant query or range query
+func GetRangeType(q Params) QueryRangeType {
+	if q.Start() == q.End() && q.Step() == 0 {
+		return InstantType
+	}
+	return RangeType
 }
 
 // Evaluator is an interface for iterating over data at different nodes in the AST
@@ -80,7 +90,7 @@ func (ev *defaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, 
 		},
 	}
 
-	if IsInstant(q) {
+	if GetRangeType(q) == InstantType {
 		params.Start = params.Start.Add(-ev.maxLookBackPeriod)
 	}
 
@@ -526,6 +536,20 @@ func (ev *defaultEvaluator) mergeBinOp(op string, left, right *promql.Sample) *p
 			} else {
 				res.Point.V = math.Mod(res.Point.V, right.Point.V)
 			}
+			return &res
+		}
+
+	case OpTypePow:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+			res.Point.V = math.Pow(left.Point.V, right.Point.V)
 			return &res
 		}
 

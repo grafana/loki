@@ -3,6 +3,7 @@ package logql
 import (
 	"context"
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -691,10 +692,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		// binops
 		{
-			`
-rate({app="foo"}[1m]) or
-rate({app="bar"}[1m])
-`,
+			`rate({app="foo"}[1m]) or rate({app="bar"}[1m])`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, logproto.FORWARD, 100,
 			[][]*logproto.Stream{
 				{
@@ -721,9 +719,9 @@ rate({app="bar"}[1m])
 		},
 		{
 			`
-rate({app=~"foo|bar"}[1m]) and
-rate({app="bar"}[1m])
-`,
+			rate({app=~"foo|bar"}[1m]) and
+			rate({app="bar"}[1m])
+			`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, logproto.FORWARD, 100,
 			[][]*logproto.Stream{
 				{
@@ -999,6 +997,24 @@ rate({app="bar"}[1m])
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "bar"}},
 					Points: []promql.Point{{T: 60 * 1000, V: 0.8}, {T: 90 * 1000, V: 0.8}, {T: 120 * 1000, V: 0.8}, {T: 150 * 1000, V: 0.8}, {T: 180 * 1000, V: 0.8}},
+				},
+			},
+		},
+		{
+			`count_over_time({app="bar"}[1m]) ^ count_over_time({app="bar"}[1m])`,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, logproto.FORWARD, 100,
+			[][]*logproto.Stream{
+				{
+					newStream(testSize, factor(5, identity), `{app="bar"}`),
+				},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(180, 0), Limit: 0, Selector: `{app="bar"}`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.Labels{{Name: "app", Value: "bar"}},
+					Points: []promql.Point{{T: 60 * 1000, V: math.Pow(12, 12)}, {T: 90 * 1000, V: math.Pow(12, 12)}, {T: 120 * 1000, V: math.Pow(12, 12)}, {T: 150 * 1000, V: math.Pow(12, 12)}, {T: 180 * 1000, V: math.Pow(12, 12)}},
 				},
 			},
 		},

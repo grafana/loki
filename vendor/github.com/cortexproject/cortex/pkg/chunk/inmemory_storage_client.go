@@ -163,10 +163,11 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 		} else {
 			// Return error if duplicate write and not metric name entry or series entry
 			itemComponents := decodeRangeKey(items[i].rangeValue)
-			if !bytes.Equal(itemComponents[3], metricNameRangeKeyV1) &&
-				!bytes.Equal(itemComponents[3], seriesRangeKeyV1) &&
-				!bytes.Equal(itemComponents[3], labelNamesRangeKeyV1) &&
-				!bytes.Equal(itemComponents[3], labelSeriesRangeKeyV1) {
+			keyType := itemComponents[3][0]
+			if keyType != metricNameRangeKeyV1 &&
+				keyType != seriesRangeKeyV1 &&
+				keyType != labelNamesRangeKeyV1 &&
+				keyType != labelSeriesRangeKeyV1 {
 				return fmt.Errorf("Dupe write")
 			}
 		}

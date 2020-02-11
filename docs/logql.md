@@ -97,7 +97,7 @@ The currently supported functions for operating over are:
 This example counts all the log lines within the last five minutes for the
 MySQL job.
 
-> `rate( ( {job="mysql"} |= "error" != "timeout)[10s] ) )`
+> `rate({job="mysql"} |= "error" != "timeout" [10s] )`
 
 This example demonstrates that a fully LogQL query can be wrapped in the
 aggregation syntax, including filter expressions. This example gets the
@@ -164,6 +164,7 @@ The following binary arithmetic operators exist in Loki:
 - `*` (multiplication)
 - `/` (division)
 - `%` (modulo)
+- `^` (power/exponentiation)
 
 Binary arithmetic operators are defined only between two vectors.
 
