@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
+	lokimodel "github.com/grafana/loki/model"
 )
 
 func TestParseRangeQuery(t *testing.T) {
@@ -127,14 +128,14 @@ func TestStreams_ToProto(t *testing.T) {
 		{"some", []Stream{
 			{
 				Labels: map[string]string{"foo": "bar"},
-				Entries: []Entry{
+				Entries: []lokimodel.Entry{
 					{Timestamp: time.Unix(0, 1), Line: "1"},
 					{Timestamp: time.Unix(0, 2), Line: "2"},
 				},
 			},
 			{
 				Labels: map[string]string{"foo": "bar", "lvl": "error"},
-				Entries: []Entry{
+				Entries: []lokimodel.Entry{
 					{Timestamp: time.Unix(0, 3), Line: "3"},
 					{Timestamp: time.Unix(0, 4), Line: "4"},
 				},

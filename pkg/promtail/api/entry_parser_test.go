@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	lokimodel "github.com/grafana/loki/model"
 )
 
 var (
@@ -14,29 +15,25 @@ var (
 	TestTime, _ = time.Parse(time.RFC3339Nano, TestTimeStr)
 )
 
-type Entry struct {
-	Time   time.Time
-	Log    string
-	Labels model.LabelSet
-}
 
-func NewEntry(time time.Time, message string, stream string) Entry {
-	return Entry{time, message, model.LabelSet{"stream": model.LabelValue(stream)}}
+
+func NewEntry(time time.Time, message string, stream string) lokimodel.LogEntry {
+	return lokimodel.LogEntry{Ts : time, Log : message, Labels : model.LabelSet{"stream": model.LabelValue(stream)}}
 }
 
 type TestCase struct {
 	Line          string // input
 	ExpectedError bool
-	Expected      Entry
+	Expected      lokimodel.LogEntry
 }
 
 var criTestCases = []TestCase{
-	{"", true, Entry{}},
-	{TestTimeStr, true, Entry{}},
-	{TestTimeStr + " stdout", true, Entry{}},
-	{TestTimeStr + " invalid F message", true, Entry{}},
-	{"2019-01-01 01:00:00.000000001 stdout F message", true, Entry{}},
-	{" " + TestTimeStr + " stdout F message", true, Entry{}},
+	{"", true, lokimodel.LogEntry{}},
+	{TestTimeStr, true, lokimodel.LogEntry{}},
+	{TestTimeStr + " stdout", true, lokimodel.LogEntry{}},
+	{TestTimeStr + " invalid F message", true, lokimodel.LogEntry{}},
+	{"2019-01-01 01:00:00.000000001 stdout F message", true, lokimodel.LogEntry{}},
+	{" " + TestTimeStr + " stdout F message", true, lokimodel.LogEntry{}},
 	{TestTimeStr + " stdout F ", false, NewEntry(TestTime, "", "stdout")},
 	{TestTimeStr + " stdout F message", false, NewEntry(TestTime, "message", "stdout")},
 	{TestTimeStr + " stderr P message", false, NewEntry(TestTime, "message", "stderr")},
@@ -51,7 +48,7 @@ var dockerTestCases = []TestCase{
 	{
 		Line:          "{{\"log\":\"bad json, should fail to parse\\n\",\"stream\":\"stderr\",\"time\":\"2019-03-04T21:37:44.789508817Z\"}",
 		ExpectedError: true,
-		Expected:      Entry{},
+		Expected:      lokimodel.LogEntry{},
 	},
 	{
 		Line:          "{\"log\":\"some silly log message\\n\",\"stream\":\"stderr\",\"time\":\"2019-03-04T21:37:44.789508817Z\"}",
@@ -76,7 +73,7 @@ func TestDocker(t *testing.T) {
 func runTestCases(parser EntryParser, testCases []TestCase, t *testing.T) {
 	for i, tc := range testCases {
 		client := &TestClient{
-			Entries: make([]Entry, 0),
+			Entries: make([]lokimodel.LogEntry, 0),
 		}
 
 		handler := parser.Wrap(client)
@@ -97,10 +94,10 @@ func runTestCases(parser EntryParser, testCases []TestCase, t *testing.T) {
 }
 
 type TestClient struct {
-	Entries []Entry
+	Entries []lokimodel.LogEntry
 }
 
 func (c *TestClient) Handle(ls model.LabelSet, t time.Time, s string) error {
-	c.Entries = append(c.Entries, Entry{t, s, ls})
+	c.Entries = append(c.Entries, lokimodel.LogEntry{Ts :t,Log : s,Labels : ls})
 	return nil
 }

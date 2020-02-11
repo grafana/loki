@@ -6,6 +6,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/grafana/loki/pkg/logproto"
+	lokimodel "github.com/grafana/loki/model"
 )
 
 // batch holds pending log streams waiting to be sent to Loki, and it's used
@@ -18,7 +19,7 @@ type batch struct {
 	createdAt time.Time
 }
 
-func newBatch(entries ...entry) *batch {
+func newBatch(entries ...lokimodel.LogProtoEntry) *batch {
 	b := &batch{
 		streams:   map[string]*logproto.Stream{},
 		bytes:     0,
@@ -34,11 +35,11 @@ func newBatch(entries ...entry) *batch {
 }
 
 // add an entry to the batch
-func (b *batch) add(entry entry) {
+func (b *batch) add(entry lokimodel.LogProtoEntry) {
 	b.bytes += len(entry.Line)
 
 	// Append the entry to an already existing stream (if any)
-	labels := entry.labels.String()
+	labels := entry.Labels.String()
 	if stream, ok := b.streams[labels]; ok {
 		stream.Entries = append(stream.Entries, entry.Entry)
 		return
@@ -58,7 +59,7 @@ func (b *batch) sizeBytes() int {
 
 // sizeBytesAfter returns the size of the batch after the input entry
 // will be added to the batch itself
-func (b *batch) sizeBytesAfter(entry entry) int {
+func (b *batch) sizeBytesAfter(entry lokimodel.LogProtoEntry) int {
 	return b.bytes + len(entry.Line)
 }
 

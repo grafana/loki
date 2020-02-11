@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
+	lokimodel "github.com/grafana/loki/model"
 )
 
 const (
@@ -84,7 +85,7 @@ type block struct {
 // emptied into a block with only compressed entries.
 type headBlock struct {
 	// This is the list of raw entries.
-	entries []entry
+	entries []lokimodel.Entry
 	size    int // size of uncompressed bytes.
 
 	mint, maxt int64
@@ -99,7 +100,7 @@ func (hb *headBlock) append(ts int64, line string) error {
 		return ErrOutOfOrder
 	}
 
-	hb.entries = append(hb.entries, entry{ts, line})
+	hb.entries = append(hb.entries, lokimodel.Entry{Ts : ts, Line : line})
 	if hb.mint == 0 || hb.mint > ts {
 		hb.mint = ts
 	}
@@ -116,13 +117,13 @@ func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
 	encBuf := make([]byte, binary.MaxVarintLen64)
 	compressedWriter := pool.GetWriter(outBuf)
 	for _, logEntry := range hb.entries {
-		n := binary.PutVarint(encBuf, logEntry.t)
+		n := binary.PutVarint(encBuf, logEntry.Ts)
 		inBuf.Write(encBuf[:n])
 
-		n = binary.PutUvarint(encBuf, uint64(len(logEntry.s)))
+		n = binary.PutUvarint(encBuf, uint64(len(logEntry.Line)))
 		inBuf.Write(encBuf[:n])
 
-		inBuf.WriteString(logEntry.s)
+		inBuf.WriteString(logEntry.Line)
 	}
 
 	if _, err := compressedWriter.Write(inBuf.Bytes()); err != nil {
@@ -137,11 +138,6 @@ func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
 
 	pool.PutWriter(compressedWriter)
 	return outBuf.Bytes(), nil
-}
-
-type entry struct {
-	t int64
-	s string
 }
 
 // NewMemChunk returns a new in-mem chunk for query.
@@ -512,10 +508,10 @@ func (hb *headBlock) iterator(ctx context.Context, mint, maxt int64, filter logq
 	// but the tradeoff is that queries to near-realtime data would be much lower than
 	// cutting of blocks.
 	chunkStats.HeadChunkLines += int64(len(hb.entries))
-	entries := make([]entry, 0, len(hb.entries))
+	entries := make([]lokimodel.Entry, 0, len(hb.entries))
 	for _, e := range hb.entries {
-		chunkStats.HeadChunkBytes += int64(len(e.s))
-		if filter == nil || filter([]byte(e.s)) {
+		chunkStats.HeadChunkBytes += int64(len(e.Line))
+		if filter == nil || filter([]byte(e.Line)) {
 			entries = append(entries, e)
 		}
 	}
@@ -533,7 +529,7 @@ func (hb *headBlock) iterator(ctx context.Context, mint, maxt int64, filter logq
 var emptyIterator = &listIterator{}
 
 type listIterator struct {
-	entries []entry
+	entries []lokimodel.Entry
 	cur     int
 }
 
@@ -551,8 +547,8 @@ func (li *listIterator) Entry() logproto.Entry {
 	cur := li.entries[li.cur]
 
 	return logproto.Entry{
-		Timestamp: time.Unix(0, cur.t),
-		Line:      cur.s,
+		Timestamp: time.Unix(0, cur.Ts),
+		Line:      cur.Line,
 	}
 }
 

@@ -23,6 +23,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+	lokimodel "github.com/grafana/loki/model"
 )
 
 const (
@@ -94,17 +95,12 @@ type client struct {
 	client  *http.Client
 	quit    chan struct{}
 	once    sync.Once
-	entries chan entry
+	entries chan lokimodel.LogProtoEntry
 	wg      sync.WaitGroup
 
 	externalLabels model.LabelSet
 }
 
-type entry struct {
-	tenantID string
-	labels   model.LabelSet
-	logproto.Entry
-}
 
 // New makes a new Client.
 func New(cfg Config, logger log.Logger) (Client, error) {
@@ -116,7 +112,7 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 		logger:  log.With(logger, "component", "client", "host", cfg.URL.Host),
 		cfg:     cfg,
 		quit:    make(chan struct{}),
-		entries: make(chan entry),
+		entries: make(chan lokimodel.LogProtoEntry),
 
 		externalLabels: cfg.ExternalLabels.LabelSet,
 	}
@@ -163,8 +159,8 @@ func (c *client) run() {
 
 	defer func() {
 		// Send all pending batches
-		for tenantID, batch := range batches {
-			c.sendBatch(tenantID, batch)
+		for TenantID, batch := range batches {
+			c.sendBatch(TenantID, batch)
 		}
 
 		c.wg.Done()
@@ -176,20 +172,20 @@ func (c *client) run() {
 			return
 
 		case e := <-c.entries:
-			batch, ok := batches[e.tenantID]
+			batch, ok := batches[e.TenantID]
 
 			// If the batch doesn't exist yet, we create a new one with the entry
 			if !ok {
-				batches[e.tenantID] = newBatch(e)
+				batches[e.TenantID] = newBatch(e)
 				break
 			}
 
 			// If adding the entry to the batch will increase the size over the max
 			// size allowed, we do send the current batch and then create a new one
 			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
-				c.sendBatch(e.tenantID, batch)
+				c.sendBatch(e.TenantID, batch)
 
-				batches[e.tenantID] = newBatch(e)
+				batches[e.TenantID] = newBatch(e)
 				break
 			}
 
@@ -198,19 +194,19 @@ func (c *client) run() {
 
 		case <-maxWaitCheck.C:
 			// Send all batches whose max wait time has been reached
-			for tenantID, batch := range batches {
+			for TenantID, batch := range batches {
 				if batch.age() < c.cfg.BatchWait {
 					continue
 				}
 
-				c.sendBatch(tenantID, batch)
-				delete(batches, tenantID)
+				c.sendBatch(TenantID, batch)
+				delete(batches, TenantID)
 			}
 		}
 	}
 }
 
-func (c *client) sendBatch(tenantID string, batch *batch) {
+func (c *client) sendBatch(TenantID string, batch *batch) {
 	buf, entriesCount, err := batch.encode()
 	if err != nil {
 		level.Error(c.logger).Log("msg", "error encoding batch", "error", err)
@@ -224,7 +220,7 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 	var status int
 	for backoff.Ongoing() {
 		start := time.Now()
-		status, err = c.send(ctx, tenantID, buf)
+		status, err = c.send(ctx, TenantID, buf)
 		requestDuration.WithLabelValues(strconv.Itoa(status), c.cfg.URL.Host).Observe(time.Since(start).Seconds())
 
 		if err == nil {
@@ -249,7 +245,7 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 	}
 }
 
-func (c *client) send(ctx context.Context, tenantID string, buf []byte) (int, error) {
+func (c *client) send(ctx context.Context, TenantID string, buf []byte) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
 	req, err := http.NewRequest("POST", c.cfg.URL.String(), bytes.NewReader(buf))
@@ -261,8 +257,8 @@ func (c *client) send(ctx context.Context, tenantID string, buf []byte) (int, er
 
 	// If the tenant ID is not empty promtail is running in multi-tenant mode, so
 	// we should send it to Loki
-	if tenantID != "" {
-		req.Header.Set("X-Scope-OrgID", tenantID)
+	if TenantID != "" {
+		req.Header.Set("X-Scope-OrgID", TenantID)
 	}
 
 	resp, err := c.client.Do(req)
@@ -312,14 +308,14 @@ func (c *client) Handle(ls model.LabelSet, t time.Time, s string) error {
 
 	// Get the tenant  ID in case it has been overridden while processing
 	// the pipeline stages, then remove the special label
-	tenantID := c.getTenantID(ls)
+	TenantID := c.getTenantID(ls)
 	if _, ok := ls[ReservedLabelTenantID]; ok {
 		// Clone the label set to not manipulate the input one
 		ls = ls.Clone()
 		delete(ls, ReservedLabelTenantID)
 	}
 
-	c.entries <- entry{tenantID, ls, logproto.Entry{
+	c.entries <- lokimodel.LogProtoEntry{TenantID, ls, logproto.Entry{
 		Timestamp: t,
 		Line:      s,
 	}}

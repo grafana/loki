@@ -7,28 +7,24 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
+	lokimodel "github.com/grafana/loki/model"
 )
 
-type entry struct {
-	lbs  model.LabelSet
-	line string
-	ts   time.Time
-}
 
 type recorder struct {
-	*entry
+	*lokimodel.LabeledEntry
 }
 
 func (r *recorder) Handle(labels model.LabelSet, time time.Time, e string) error {
-	r.entry = &entry{
-		labels,
-		e,
-		time,
+	r.LabeledEntry = &lokimodel.LabeledEntry{
+		Labels : labels,
+		Line : e,
+		Ts : time,
 	}
 	return nil
 }
 
-func (r *recorder) toEntry() *entry { return r.entry }
+func (r *recorder) toEntry() *lokimodel.LabeledEntry { return r.LabeledEntry }
 
 func (r *recorder) Stop() {}
 
@@ -75,20 +71,20 @@ func Test_loki_sendRecord(t *testing.T) {
 		name    string
 		cfg     *config
 		record  map[interface{}]interface{}
-		want    *entry
+		want    *lokimodel.LabeledEntry
 		wantErr bool
 	}{
-		{"map to JSON", &config{labelKeys: []string{"A"}, lineFormat: jsonFormat}, mapRecordFixture, &entry{model.LabelSet{"A": "A"}, `{"B":"B","C":"C","D":"D","E":"E","F":"F","G":"G","H":"H"}`, now}, false},
-		{"map to kvPairFormat", &config{labelKeys: []string{"A"}, lineFormat: kvPairFormat}, mapRecordFixture, &entry{model.LabelSet{"A": "A"}, `B=B C=C D=D E=E F=F G=G H=H`, now}, false},
+		{"map to JSON", &config{labelKeys: []string{"A"}, lineFormat: jsonFormat}, mapRecordFixture, &lokimodel.LabeledEntry{ Labels : model.LabelSet{"A": "A"}, Line : `{"B":"B","C":"C","D":"D","E":"E","F":"F","G":"G","H":"H"}`,Ts : now}, false},
+		{"map to kvPairFormat", &config{labelKeys: []string{"A"}, lineFormat: kvPairFormat}, mapRecordFixture, &lokimodel.LabeledEntry{Labels :model.LabelSet{"A": "A"}, Line :`B=B C=C D=D E=E F=F G=G H=H`, now}, false},
 		{"not enough records", &config{labelKeys: []string{"foo"}, lineFormat: jsonFormat, removeKeys: []string{"bar", "error"}}, simpleRecordFixture, nil, false},
-		{"labels", &config{labelKeys: []string{"bar", "fake"}, lineFormat: jsonFormat, removeKeys: []string{"fuzz", "error"}}, simpleRecordFixture, &entry{model.LabelSet{"bar": "500"}, `{"foo":"bar"}`, now}, false},
-		{"remove key", &config{labelKeys: []string{"fake"}, lineFormat: jsonFormat, removeKeys: []string{"foo", "error", "fake"}}, simpleRecordFixture, &entry{model.LabelSet{}, `{"bar":500}`, now}, false},
+		{"labels", &config{labelKeys: []string{"bar", "fake"}, lineFormat: jsonFormat, removeKeys: []string{"fuzz", "error"}}, simpleRecordFixture, &lokimodel.LabeledEntry{Labels :model.LabelSet{"bar": "500"}, Line: `{"foo":"bar"}`,Ts : now}, false},
+		{"remove key", &config{labelKeys: []string{"fake"}, lineFormat: jsonFormat, removeKeys: []string{"foo", "error", "fake"}}, simpleRecordFixture, &lokimodel.LabeledEntry{Labels : model.LabelSet{},Line: `{"bar":500}`, Ts :now}, false},
 		{"error", &config{labelKeys: []string{"fake"}, lineFormat: jsonFormat, removeKeys: []string{"foo"}}, simpleRecordFixture, nil, true},
-		{"key value", &config{labelKeys: []string{"fake"}, lineFormat: kvPairFormat, removeKeys: []string{"foo", "error", "fake"}}, simpleRecordFixture, &entry{model.LabelSet{}, `bar=500`, now}, false},
-		{"single", &config{labelKeys: []string{"fake"}, dropSingleKey: true, lineFormat: kvPairFormat, removeKeys: []string{"foo", "error", "fake"}}, simpleRecordFixture, &entry{model.LabelSet{}, `500`, now}, false},
-		{"labelmap", &config{labelMap: map[string]interface{}{"bar": "other"}, lineFormat: jsonFormat, removeKeys: []string{"bar", "error"}}, simpleRecordFixture, &entry{model.LabelSet{"other": "500"}, `{"foo":"bar"}`, now}, false},
-		{"byte array", &config{labelKeys: []string{"label"}, lineFormat: jsonFormat}, byteArrayRecordFixture, &entry{model.LabelSet{"label": "label"}, `{"map":{"inner":"bar"},"outer":"foo"}`, now}, false},
-		{"mixed types", &config{labelKeys: []string{"label"}, lineFormat: jsonFormat}, mixedTypesRecordFixture, &entry{model.LabelSet{"label": "label"}, `{"array":[42,42.42,"foo"],"float":42.42,"int":42,"map":{"nested":{"foo":"bar","invalid":"a\ufffdz"}}}`, now}, false},
+		{"key value", &config{labelKeys: []string{"fake"}, lineFormat: kvPairFormat, removeKeys: []string{"foo", "error", "fake"}}, simpleRecordFixture, &lokimodel.LabeledEntry{Labels : model.LabelSet{},Line: `bar=500`,Ts : now}, false},
+		{"single", &config{labelKeys: []string{"fake"}, dropSingleKey: true, lineFormat: kvPairFormat, removeKeys: []string{"foo", "error", "fake"}}, simpleRecordFixture, &lokimodel.LabeledEntry{Labels : model.LabelSet{},Line: `500`,Ts : now}, false},
+		{"labelmap", &config{labelMap: map[string]interface{}{"bar": "other"}, lineFormat: jsonFormat, removeKeys: []string{"bar", "error"}}, simpleRecordFixture, &lokimodel.LabeledEntry{Labels : model.LabelSet{"other": "500"}, Line :`{"foo":"bar"}`, Ts :now}, false},
+		{"byte array", &config{labelKeys: []string{"label"}, lineFormat: jsonFormat}, byteArrayRecordFixture, &lokimodel.LabeledEntry{Labels :model.LabelSet{"label": "label"},Line: `{"map":{"inner":"bar"},"outer":"foo"}`, Ts : now}, false},
+		{"mixed types", &config{labelKeys: []string{"label"}, lineFormat: jsonFormat}, mixedTypesRecordFixture, &lokimodel.LabeledEntry{Labels :model.LabelSet{"label": "label"}, Line: `{"array":[42,42.42,"foo"],"float":42.42,"int":42,"map":{"nested":{"foo":"bar","invalid":"a\ufffdz"}}}`,Ts : now}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

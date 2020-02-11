@@ -12,6 +12,8 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
+	lokimodel "github.com/grafana/loki/model"
+
 )
 
 var (
@@ -89,13 +91,7 @@ func (s Streams) ToProto() []logproto.Stream {
 //Stream represents a log stream.  It includes a set of log entries and their labels.
 type Stream struct {
 	Labels  LabelSet `json:"stream"`
-	Entries []Entry  `json:"values"`
-}
-
-//Entry represents a log entry.  It includes a log message and the time it occurred at.
-type Entry struct {
-	Timestamp time.Time
-	Line      string
+	Entries []lokimodel.Entry  `json:"values"`
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
@@ -142,34 +138,6 @@ func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// MarshalJSON implements the json.Marshaler interface.
-func (e *Entry) MarshalJSON() ([]byte, error) {
-	l, err := json.Marshal(e.Line)
-	if err != nil {
-		return nil, err
-	}
-	return []byte(fmt.Sprintf("[\"%d\",%s]", e.Timestamp.UnixNano(), l)), nil
-}
-
-// UnmarshalJSON implements the json.Unmarshaler interface.
-func (e *Entry) UnmarshalJSON(data []byte) error {
-	var unmarshal []string
-
-	err := json.Unmarshal(data, &unmarshal)
-	if err != nil {
-		return err
-	}
-
-	t, err := strconv.ParseInt(unmarshal[0], 10, 64)
-	if err != nil {
-		return err
-	}
-
-	e.Timestamp = time.Unix(0, t)
-	e.Line = unmarshal[1]
-
-	return nil
-}
 
 // Vector is a slice of Samples
 type Vector []model.Sample
