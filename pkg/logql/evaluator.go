@@ -104,6 +104,8 @@ func (ev *defaultEvaluator) Evaluator(ctx context.Context, expr SampleExpr, q Pa
 		return ev.vectorAggEvaluator(ctx, e, q)
 	case *rangeAggregationExpr:
 		return ev.rangeAggEvaluator(ctx, e, q)
+	case *binOpExpr:
+		return ev.binOpEvaluator(ctx, e, q)
 
 	default:
 		return nil, errors.Errorf("unexpected type (%T): %v", e, e)
@@ -334,4 +336,195 @@ func (ev *defaultEvaluator) rangeAggEvaluator(ctx context.Context, expr *rangeAg
 		return true, ts, vec
 
 	}, vecIter.Close)
+}
+
+func (ev *defaultEvaluator) binOpEvaluator(
+	ctx context.Context,
+	expr *binOpExpr,
+	q Params,
+) (StepEvaluator, error) {
+	lhs, err := ev.Evaluator(ctx, expr.SampleExpr, q)
+	if err != nil {
+		return nil, err
+	}
+	rhs, err := ev.Evaluator(ctx, expr.RHS, q)
+	if err != nil {
+		return nil, err
+	}
+
+	return newStepEvaluator(func() (bool, int64, promql.Vector) {
+		pairs := map[uint64][2]*promql.Sample{}
+		var ts int64
+
+		// populate pairs
+		for i, eval := range []StepEvaluator{lhs, rhs} {
+			next, timestamp, vec := eval.Next()
+			ts = timestamp
+
+			// These should _always_ happen at the same step on each evaluator.
+			if !next {
+				return next, ts, nil
+			}
+
+			for _, sample := range vec {
+				// TODO(owen-d): this seems wildly inefficient: we're calculating
+				// the hash on each sample & step per evaluator.
+				// We seem limited to this approach due to using the StepEvaluator ifc.
+				hash := sample.Metric.Hash()
+				pair := pairs[hash]
+				pair[i] = &promql.Sample{
+					Metric: sample.Metric,
+					Point:  sample.Point,
+				}
+				pairs[hash] = pair
+			}
+		}
+
+		results := make(promql.Vector, 0, len(pairs))
+		for _, pair := range pairs {
+
+			// merge
+			if merged := ev.mergeBinOp(expr.op, pair[0], pair[1]); merged != nil {
+				results = append(results, *merged)
+			}
+		}
+
+		return true, ts, results
+	}, func() (lastError error) {
+		for _, ev := range []StepEvaluator{lhs, rhs} {
+			if err := ev.Close(); err != nil {
+				lastError = err
+			}
+		}
+		return lastError
+	})
+}
+
+func (ev *defaultEvaluator) mergeBinOp(op string, left, right *promql.Sample) *promql.Sample {
+	var merger func(left, right *promql.Sample) *promql.Sample
+
+	switch op {
+	case OpTypeOr:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			// return the left entry found (prefers left hand side)
+			if left != nil {
+				return left
+			}
+			return right
+		}
+
+	case OpTypeAnd:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			// return left sample if there's a second sample for that label set
+			if left != nil && right != nil {
+				return left
+			}
+			return nil
+		}
+
+	case OpTypeUnless:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			// return left sample if there's not a second sample for that label set
+			if right == nil {
+				return left
+			}
+			return nil
+		}
+
+	case OpTypeAdd:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+			res := promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+			res.Point.V += right.Point.V
+			return &res
+		}
+
+	case OpTypeSub:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+			res := promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+			res.Point.V -= right.Point.V
+			return &res
+		}
+
+	case OpTypeMul:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+			res := promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+			res.Point.V *= right.Point.V
+			return &res
+		}
+
+	case OpTypeDiv:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+			res := promql.Sample{
+				Metric: left.Metric.Copy(),
+				Point:  left.Point,
+			}
+
+			// guard against divide by zero
+			if right.Point.V == 0 {
+				res.Point.V = math.NaN()
+			} else {
+				res.Point.V /= right.Point.V
+			}
+			return &res
+		}
+
+	case OpTypeMod:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+			res := promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+			// guard against divide by zero
+			if right.Point.V == 0 {
+				res.Point.V = math.NaN()
+			} else {
+				res.Point.V = math.Mod(res.Point.V, right.Point.V)
+			}
+			return &res
+		}
+
+	case OpTypePow:
+		merger = func(left, right *promql.Sample) *promql.Sample {
+			if left == nil || right == nil {
+				return nil
+			}
+
+			res := promql.Sample{
+				Metric: left.Metric,
+				Point:  left.Point,
+			}
+			res.Point.V = math.Pow(left.Point.V, right.Point.V)
+			return &res
+		}
+
+	default:
+		panic(errors.Errorf("should never happen: unexpected operation: (%s)", op))
+	}
+
+	return merger(left, right)
+
 }
