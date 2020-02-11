@@ -61,8 +61,9 @@ message LabelResponse {
 }
 
 message Stream {
-  repeated cortex.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];
+  string labels = 1 [(gogoproto.jsontag) = "labels"];
   repeated Entry entries = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "entries"];
+  repeated cortex.LabelPair label = 3 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];
 }
 
 message Entry {
