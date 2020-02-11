@@ -6,6 +6,7 @@ option go_package = "github.com/grafana/loki/pkg/logproto";
 
 import "google/protobuf/timestamp.proto";
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
 
 service Pusher {
   rpc Push(PushRequest) returns (PushResponse) {};
@@ -60,7 +61,7 @@ message LabelResponse {
 }
 
 message Stream {
-  string labels = 1 [(gogoproto.jsontag) = "labels"];
+  repeated cortex.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/ingester/client.LabelAdapter"];
   repeated Entry entries = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "entries"];
 }
 
