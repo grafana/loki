@@ -108,7 +108,6 @@ func (ev *defaultEvaluator) Evaluator(ctx context.Context, expr SampleExpr, q Pa
 		return ev.binOpEvaluator(ctx, e, q)
 	case *literalExpr: // this is only called when a singleton is the root node
 		return singletonEvaluator(e, q)
-
 	default:
 		return nil, errors.Errorf("unexpected type (%T): %v", e, e)
 	}
@@ -349,15 +348,6 @@ func (ev *defaultEvaluator) binOpEvaluator(
 	leftLit, lOk := expr.SampleExpr.(*literalExpr)
 	rightLit, rOk := expr.RHS.(*literalExpr)
 
-	// turn expressions like 1+2 -> 3
-	if lOk && rOk {
-		return ev.Evaluator(
-			ctx,
-			ev.reduceBinOp(expr.op, leftLit, rightLit),
-			q,
-		)
-	}
-
 	// match a literal expr with all labels in the other leg
 	if lOk {
 		rhs, err := ev.Evaluator(ctx, expr.RHS, q)
@@ -559,18 +549,6 @@ func (ev *defaultEvaluator) mergeBinOp(op string, left, right *promql.Sample) *p
 
 	return merger(left, right)
 
-}
-
-// Reduces a binary operation expression. A binop is reducable if both of its legs are literal expressions.
-// This is because literals need match all labels, which is currently difficult to encode into StepEvaluators.
-// Therefore, we ensure a binop can be reduced/simplified, maintaining the invariant that it does not have two literal legs.
-func (ev *defaultEvaluator) reduceBinOp(op string, left, right *literalExpr) SampleExpr {
-	merged := ev.mergeBinOp(
-		op,
-		&promql.Sample{Point: promql.Point{V: left.value}},
-		&promql.Sample{Point: promql.Point{V: right.value}},
-	)
-	return &literalExpr{value: merged.V}
 }
 
 // literalEvaluator merges a literal with a StepEvaluator. Since order matters in

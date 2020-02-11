@@ -741,8 +741,8 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
-			// ensure literal binops are reduced: the 1+2/expr should reduce to 3/expr
-			in: `sum(count_over_time({foo="bar"}[5m])) by (foo) + 2 / 1`,
+			// reduces binop with two literalExprs
+			in: `sum(count_over_time({foo="bar"}[5m])) by (foo) + 1 / 2`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
 				mustNewVectorAggregationExpr(
@@ -762,7 +762,7 @@ func TestParse(t *testing.T) {
 					},
 					nil,
 				),
-				mustNewBinOpExpr(OpTypeDiv, &literalExpr{value: 2}, &literalExpr{value: 1}),
+				&literalExpr{value: 0.5},
 			),
 		},
 		{
