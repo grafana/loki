@@ -20,7 +20,7 @@ type targetManager interface {
 // TargetManagers manages a list of target managers.
 type TargetManagers struct {
 	targetManagers []targetManager
-	positions      *positions.Positions
+	positions      positions.Positions
 }
 
 // NewTargetManagers makes a new TargetManagers

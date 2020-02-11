@@ -23,6 +23,7 @@ type Config struct {
 	SyncPeriod        time.Duration `yaml:"sync_period"`
 	PositionsFile     string        `yaml:"filename"`
 	IgnoreInvalidYaml bool          `yaml:"ignore_invalid_yaml"`
+	ReadOnly          bool          `yaml:"-"`
 }
 
 // RegisterFlags register flags.
@@ -33,7 +34,7 @@ func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
 }
 
 // Positions tracks how far through each file we've read.
-type Positions struct {
+type positions struct {
 	logger    log.Logger
 	cfg       Config
 	mtx       sync.Mutex
@@ -47,17 +48,40 @@ type File struct {
 	Positions map[string]string `yaml:"positions"`
 }
 
+type Positions interface {
+	// GetString returns how far we've through a file as a string.
+	// JournalTarget writes a journal cursor to the positions file, while
+	// FileTarget writes an integer offset. Use Get to read the integer
+	// offset.
+	GetString(path string) string
+	// Get returns how far we've read through a file. Returns an error
+	// if the value stored for the file is not an integer.
+	Get(path string) (int64, error)
+	// PutString records (asynchronsouly) how far we've read through a file.
+	// Unlike Put, it records a string offset and is only useful for
+	// JournalTargets which doesn't have integer offsets.
+	PutString(path string, pos string)
+	// Put records (asynchronously) how far we've read through a file.
+	Put(path string, pos int64)
+	// Remove removes the position tracking for a filepath
+	Remove(path string)
+	// SyncPeriod returns how often the positions file gets resynced
+	SyncPeriod() time.Duration
+	// Stop the Position tracker.
+	Stop()
+}
+
 // New makes a new Positions.
-func New(logger log.Logger, cfg Config) (*Positions, error) {
-	positions, err := readPositionsFile(cfg, logger)
+func New(logger log.Logger, cfg Config) (*positions, error) {
+	positionData, err := readPositionsFile(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	p := &Positions{
+	p := &positions{
 		logger:    logger,
 		cfg:       cfg,
-		positions: positions,
+		positions: positionData,
 		quit:      make(chan struct{}),
 		done:      make(chan struct{}),
 	}
@@ -66,39 +90,28 @@ func New(logger log.Logger, cfg Config) (*Positions, error) {
 	return p, nil
 }
 
-// Stop the Position tracker.
-func (p *Positions) Stop() {
+func (p *positions) Stop() {
 	close(p.quit)
 	<-p.done
 }
 
-// PutString records (asynchronsouly) how far we've read through a file.
-// Unlike Put, it records a string offset and is only useful for
-// JournalTargets which doesn't have integer offsets.
-func (p *Positions) PutString(path string, pos string) {
+func (p *positions) PutString(path string, pos string) {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	p.positions[path] = pos
 }
 
-// Put records (asynchronously) how far we've read through a file.
-func (p *Positions) Put(path string, pos int64) {
+func (p *positions) Put(path string, pos int64) {
 	p.PutString(path, strconv.FormatInt(pos, 10))
 }
 
-// GetString returns how far we've through a file as a string.
-// JournalTarget writes a journal cursor to the positions file, while
-// FileTarget writes an integer offset. Use Get to read the integer
-// offset.
-func (p *Positions) GetString(path string) string {
+func (p *positions) GetString(path string) string {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	return p.positions[path]
 }
 
-// Get returns how far we've read through a file. Returns an error
-// if the value stored for the file is not an integer.
-func (p *Positions) Get(path string) (int64, error) {
+func (p *positions) Get(path string) (int64, error) {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	pos, ok := p.positions[path]
@@ -108,23 +121,21 @@ func (p *Positions) Get(path string) (int64, error) {
 	return strconv.ParseInt(pos, 10, 64)
 }
 
-// Remove removes the position tracking for a filepath
-func (p *Positions) Remove(path string) {
+func (p *positions) Remove(path string) {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	p.remove(path)
 }
 
-func (p *Positions) remove(path string) {
+func (p *positions) remove(path string) {
 	delete(p.positions, path)
 }
 
-// SyncPeriod returns how often the positions file gets resynced
-func (p *Positions) SyncPeriod() time.Duration {
+func (p *positions) SyncPeriod() time.Duration {
 	return p.cfg.SyncPeriod
 }
 
-func (p *Positions) run() {
+func (p *positions) run() {
 	defer func() {
 		p.save()
 		level.Debug(p.logger).Log("msg", "positions saved")
@@ -143,7 +154,10 @@ func (p *Positions) run() {
 	}
 }
 
-func (p *Positions) save() {
+func (p *positions) save() {
+	if p.cfg.ReadOnly {
+		return
+	}
 	p.mtx.Lock()
 	positions := make(map[string]string, len(p.positions))
 	for k, v := range p.positions {
@@ -156,7 +170,7 @@ func (p *Positions) save() {
 	}
 }
 
-func (p *Positions) cleanup() {
+func (p *positions) cleanup() {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	toRemove := []string{}

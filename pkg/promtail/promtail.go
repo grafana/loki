@@ -36,6 +36,7 @@ func New(cfg config.Config, dryRun bool) (*Promtail, error) {
 		if err != nil {
 			return nil, err
 		}
+		cfg.PositionsConfig.ReadOnly = true
 	} else {
 		cl, err = client.NewMulti(util.Logger, cfg.ClientConfigs...)
 		if err != nil {

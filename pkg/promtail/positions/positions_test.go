@@ -5,7 +5,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 )
@@ -135,4 +137,46 @@ func TestReadPositionsFromBadYamlIgnoreCorruption(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{}, out)
+}
+
+func Test_ReadOnly(t *testing.T) {
+	temp := tempFilename(t)
+	defer func() {
+		_ = os.Remove(temp)
+	}()
+	yaml := []byte(`positions:
+  /tmp/random.log: "17623"
+`)
+	err := ioutil.WriteFile(temp, yaml, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := New(util.Logger, Config{
+		SyncPeriod:    20 * time.Nanosecond,
+		PositionsFile: temp,
+		ReadOnly:      true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+	p.Put("/foo/bar/f", 12132132)
+	p.PutString("/foo/f", "100")
+	pos, err := p.Get("/tmp/random.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	require.Equal(t, int64(17623), pos)
+	p.save()
+	out, err := readPositionsFile(Config{
+		PositionsFile:     temp,
+		IgnoreInvalidYaml: true,
+		ReadOnly:          true,
+	}, log.NewNopLogger())
+
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{
+		"/tmp/random.log": "17623",
+	}, out)
+
 }

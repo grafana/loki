@@ -644,6 +644,16 @@ func Test_DryRun(t *testing.T) {
 	require.Error(t, err)
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry() // reset registry, otherwise you can't create 2 weavework server.
+	_, err = New(config.Config{
+		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
+		PositionsConfig: positions.Config{
+			PositionsFile: f.Name(),
+			SyncPeriod:    time.Second,
+		},
+	}, true)
+	require.NoError(t, err)
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 
 	p, err := New(config.Config{
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
