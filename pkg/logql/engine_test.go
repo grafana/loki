@@ -682,10 +682,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		// binops
 		{
-			`
-rate({app="foo"}[1m]) or
-rate({app="bar"}[1m])
-`,
+			`rate({app="foo"}[1m]) or rate({app="bar"}[1m])`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, logproto.FORWARD, 100,
 			[][]*logproto.Stream{
 				{
@@ -712,9 +709,9 @@ rate({app="bar"}[1m])
 		},
 		{
 			`
-rate({app=~"foo|bar"}[1m]) and
-rate({app="bar"}[1m])
-`,
+			rate({app=~"foo|bar"}[1m]) and
+			rate({app="bar"}[1m])
+			`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, logproto.FORWARD, 100,
 			[][]*logproto.Stream{
 				{

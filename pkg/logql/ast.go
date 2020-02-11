@@ -393,12 +393,20 @@ func (e *binOpExpr) String() string {
 func mustNewBinOpExpr(op string, lhs, rhs Expr) SampleExpr {
 	left, ok := lhs.(SampleExpr)
 	if !ok {
-		panic(fmt.Errorf("unexpected type for binOpExpr (%T): %+v", lhs, lhs))
+		panic(newParseError(fmt.Sprintf(
+			"unexpected type for left leg of binary operation (%s): %T",
+			op,
+			lhs,
+		), 0, 0))
 	}
 
 	right, ok := rhs.(SampleExpr)
 	if !ok {
-		panic(fmt.Errorf("unexpected type for binOpExpr (%T): %+v", rhs, rhs))
+		panic(newParseError(fmt.Sprintf(
+			"unexpected type for right leg of binary operation (%s): %T",
+			op,
+			rhs,
+		), 0, 0))
 	}
 	return &binOpExpr{
 		SampleExpr: left,

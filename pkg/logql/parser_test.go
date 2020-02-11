@@ -550,10 +550,10 @@ func TestParse(t *testing.T) {
 		{
 			// require left associativity
 			in: `
-sum(count_over_time({foo="bar"}[5m])) by (foo) /
-sum(count_over_time({foo="bar"}[5m])) by (foo) /
-sum(count_over_time({foo="bar"}[5m])) by (foo)
-`,
+			sum(count_over_time({foo="bar"}[5m])) by (foo) /
+			sum(count_over_time({foo="bar"}[5m])) by (foo) /
+			sum(count_over_time({foo="bar"}[5m])) by (foo)
+			`,
 			exp: mustNewBinOpExpr(
 				OpTypeDiv,
 				mustNewBinOpExpr(
@@ -612,10 +612,10 @@ sum(count_over_time({foo="bar"}[5m])) by (foo)
 		{
 			// operator precedence before left associativity
 			in: `
-sum(count_over_time({foo="bar"}[5m])) by (foo) +
-sum(count_over_time({foo="bar"}[5m])) by (foo) /
-sum(count_over_time({foo="bar"}[5m])) by (foo)
-`,
+			sum(count_over_time({foo="bar"}[5m])) by (foo) +
+			sum(count_over_time({foo="bar"}[5m])) by (foo) /
+			sum(count_over_time({foo="bar"}[5m])) by (foo)
+			`,
 			exp: mustNewBinOpExpr(
 				OpTypeAdd,
 				mustNewVectorAggregationExpr(newRangeAggregationExpr(
@@ -670,6 +670,30 @@ sum(count_over_time({foo="bar"}[5m])) by (foo)
 					),
 				),
 			),
+		},
+		{
+			in: `{foo="bar"} + {foo="bar"}`,
+			err: ParseError{
+				msg:  `unexpected type for left leg of binary operation (+): *logql.matchersExpr`,
+				line: 0,
+				col:  0,
+			},
+		},
+		{
+			in: `sum(count_over_time({foo="bar"}[5m])) by (foo) - {foo="bar"}`,
+			err: ParseError{
+				msg:  `unexpected type for right leg of binary operation (-): *logql.matchersExpr`,
+				line: 0,
+				col:  0,
+			},
+		},
+		{
+			in: `{foo="bar"} / sum(count_over_time({foo="bar"}[5m])) by (foo)`,
+			err: ParseError{
+				msg:  `unexpected type for left leg of binary operation (/): *logql.matchersExpr`,
+				line: 0,
+				col:  0,
+			},
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
