@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/mtime"
 )
