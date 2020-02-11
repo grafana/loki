@@ -36,7 +36,7 @@ func NewLogger(cfgs ...Config) (Client, error) {
 		fmt.Println(string(yaml))
 	}
 	return &logger{
-		Writer: tabwriter.NewWriter(os.Stdout, 0, 4, 0, '\t', 0),
+		Writer: tabwriter.NewWriter(os.Stdout, 0, 8, 0, '\t', 0),
 	}, nil
 }
 
