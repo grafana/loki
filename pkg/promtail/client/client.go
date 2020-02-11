@@ -95,7 +95,7 @@ type client struct {
 	client  *http.Client
 	quit    chan struct{}
 	once    sync.Once
-	entries chan lokimodel.LogProtoEntry
+	entries chan lokimodel.TenantEntry
 	wg      sync.WaitGroup
 
 	externalLabels model.LabelSet
@@ -112,7 +112,7 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 		logger:  log.With(logger, "component", "client", "host", cfg.URL.Host),
 		cfg:     cfg,
 		quit:    make(chan struct{}),
-		entries: make(chan lokimodel.LogProtoEntry),
+		entries: make(chan lokimodel.TenantEntry),
 
 		externalLabels: cfg.ExternalLabels.LabelSet,
 	}
@@ -315,7 +315,7 @@ func (c *client) Handle(ls model.LabelSet, t time.Time, s string) error {
 		delete(ls, ReservedLabelTenantID)
 	}
 
-	c.entries <- lokimodel.LogProtoEntry{TenantID, ls, logproto.Entry{
+	c.entries <- lokimodel.TenantEntry{TenantID, ls, logproto.Entry{
 		Timestamp: t,
 		Line:      s,
 	}}

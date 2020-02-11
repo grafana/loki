@@ -68,7 +68,7 @@ type LogEntry struct {
 	Log    string
 }
 
-type LogProtoEntry struct {
+type TenantEntry struct {
     TenantID string
     Labels model.LabelSet
     logproto.Entry
