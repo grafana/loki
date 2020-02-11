@@ -72,7 +72,7 @@ type Positions interface {
 }
 
 // New makes a new Positions.
-func New(logger log.Logger, cfg Config) (*positions, error) {
+func New(logger log.Logger, cfg Config) (Positions, error) {
 	positionData, err := readPositionsFile(cfg, logger)
 	if err != nil {
 		return nil, err

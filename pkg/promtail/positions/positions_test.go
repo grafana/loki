@@ -167,7 +167,7 @@ func Test_ReadOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	require.Equal(t, int64(17623), pos)
-	p.save()
+	p.(*positions).save()
 	out, err := readPositionsFile(Config{
 		PositionsFile:     temp,
 		IgnoreInvalidYaml: true,
