@@ -25,6 +25,7 @@ The current team members are:
 - Edward Welch
 - Goutham Veeramachaneni
 - Joe Elliott
+- Owen Diehl
 - Robert Fratto
 - Sandeep Sukhani
 - Tom Braack
