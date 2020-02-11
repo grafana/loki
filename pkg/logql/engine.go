@@ -178,7 +178,6 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 	defer cancel()
 
 	qs := q.String()
-	// This is a legacy query used for health checking. Not the best practice, but it works.
 
 	expr, err := ParseExpr(qs)
 	if err != nil {
