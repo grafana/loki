@@ -3,6 +3,8 @@ package validation
 import (
 	"flag"
 	"time"
+
+	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 const (
@@ -19,17 +21,17 @@ const (
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
 	// Distributor enforced limits.
-	IngestionRateStrategy  string        `yaml:"ingestion_rate_strategy"`
-	IngestionRateMB        float64       `yaml:"ingestion_rate_mb"`
-	IngestionBurstSizeMB   float64       `yaml:"ingestion_burst_size_mb"`
-	MaxLabelNameLength     int           `yaml:"max_label_name_length"`
-	MaxLabelValueLength    int           `yaml:"max_label_value_length"`
-	MaxLabelNamesPerSeries int           `yaml:"max_label_names_per_series"`
-	RejectOldSamples       bool          `yaml:"reject_old_samples"`
-	RejectOldSamplesMaxAge time.Duration `yaml:"reject_old_samples_max_age"`
-	CreationGracePeriod    time.Duration `yaml:"creation_grace_period"`
-	EnforceMetricName      bool          `yaml:"enforce_metric_name"`
-	MaxLineSize            ByteSize      `yaml:"max_line_size"`
+	IngestionRateStrategy  string           `yaml:"ingestion_rate_strategy"`
+	IngestionRateMB        float64          `yaml:"ingestion_rate_mb"`
+	IngestionBurstSizeMB   float64          `yaml:"ingestion_burst_size_mb"`
+	MaxLabelNameLength     int              `yaml:"max_label_name_length"`
+	MaxLabelValueLength    int              `yaml:"max_label_value_length"`
+	MaxLabelNamesPerSeries int              `yaml:"max_label_names_per_series"`
+	RejectOldSamples       bool             `yaml:"reject_old_samples"`
+	RejectOldSamplesMaxAge time.Duration    `yaml:"reject_old_samples_max_age"`
+	CreationGracePeriod    time.Duration    `yaml:"creation_grace_period"`
+	EnforceMetricName      bool             `yaml:"enforce_metric_name"`
+	MaxLineSize            flagext.ByteSize `yaml:"max_line_size"`
 
 	// Ingester enforced limits.
 	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user"`
@@ -231,7 +233,7 @@ func (o *Overrides) MaxConcurrentTailRequests(userID string) int {
 
 // MaxLineSize returns the maximum size in bytes the distributor should allow.
 func (o *Overrides) MaxLineSize(userID string) int {
-	return o.getOverridesForUser(userID).MaxLineSize
+	return o.getOverridesForUser(userID).MaxLineSize.Val()
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
