@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/pkg/logentry/metric"
 )
@@ -108,6 +109,8 @@ func TestMetricsPipeline(t *testing.T) {
 	}
 }
 
+var metricTestInvalidIdle = "10f"
+
 func Test(t *testing.T) {
 	tests := map[string]struct {
 		config MetricsConfig
@@ -124,6 +127,15 @@ func Test(t *testing.T) {
 				},
 			},
 			errors.Errorf(ErrMetricsStageInvalidType, "piplne"),
+		},
+		"invalid idle duration": {
+			MetricsConfig{
+				"metric1": MetricConfig{
+					MetricType:   "Counter",
+					IdleDuration: &metricTestInvalidIdle,
+				},
+			},
+			errors.Errorf(ErrInvalidIdleDur, "time: unknown unit f in duration 10f"),
 		},
 		"valid": {
 			MetricsConfig{
@@ -150,6 +162,24 @@ func Test(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDefaultIdleDuration(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	metricsConfig := MetricsConfig{
+		"total_keys": MetricConfig{
+			MetricType:  "Counter",
+			Description: "the total keys per doc",
+			Config: metric.CounterConfig{
+				Action: metric.CounterAdd,
+			},
+		},
+	}
+	ms, err := New(util.Logger, nil, StageTypeMetric, metricsConfig, registry)
+	if err != nil {
+		t.Fatalf("failed to create stage with metrics: %v", err)
+	}
+	assert.Equal(t, int64(5*time.Minute.Seconds()), ms.(*metricStage).cfg["total_keys"].maxIdleSec)
 }
 
 var labelFoo = model.LabelSet(map[model.LabelName]model.LabelValue{"foo": "bar", "bar": "foo"})
