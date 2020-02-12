@@ -13,13 +13,15 @@ const (
 	CounterInc = "inc"
 	CounterAdd = "add"
 
-	ErrCounterActionRequired = "counter action must be defined as either `inc` or `add`"
-	ErrCounterInvalidAction  = "action %s is not valid, action must be either `inc` or `add`"
+	ErrCounterActionRequired  = "counter action must be defined as either `inc` or `add`"
+	ErrCounterInvalidAction   = "action %s is not valid, action must be either `inc` or `add`"
+	ErrCounterInvalidMatchAll = "`match_all: true` cannot be combined with `value`, please remove `match_all` or `value`"
 )
 
 type CounterConfig struct {
-	Value  *string `mapstructure:"value"`
-	Action string  `mapstructure:"action"`
+	MatchAll *bool   `mapstructure:"match_all"`
+	Value    *string `mapstructure:"value"`
+	Action   string  `mapstructure:"action"`
 }
 
 func validateCounterConfig(config *CounterConfig) error {
@@ -29,6 +31,9 @@ func validateCounterConfig(config *CounterConfig) error {
 	config.Action = strings.ToLower(config.Action)
 	if config.Action != CounterInc && config.Action != CounterAdd {
 		return errors.Errorf(ErrCounterInvalidAction, config.Action)
+	}
+	if config.MatchAll != nil && *config.MatchAll && config.Value != nil {
+		return errors.Errorf(ErrCounterInvalidMatchAll)
 	}
 	return nil
 }
