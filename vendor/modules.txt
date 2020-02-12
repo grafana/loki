@@ -111,6 +111,8 @@ github.com/blang/semver
 github.com/bmatcuk/doublestar
 # github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 github.com/bradfitz/gomemcache/memcache
+# github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
+github.com/c2h5oh/datasize
 # github.com/cespare/xxhash v1.1.0
 github.com/cespare/xxhash
 # github.com/cespare/xxhash/v2 v2.1.1
