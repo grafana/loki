@@ -70,6 +70,13 @@ type: Gauge
 # defaulting to the metric's name if not present.
 [source: <string>]
 
+# Label values on metrics are dynamic which can cause exported metrics
+# to go stale (for example when a stream stops receiving logs).
+# To prevent unbounded growth of the /metrics endpoint any metrics which
+# have not been updated within this time will be removed.
+# Must be greater than or equal to '1s', if undefined default is '5m'
+[max_idle_duration: <string>]
+
 config:
   # Filters down source data and only changes the metric
   # if the targeted value exactly matches the provided string.
