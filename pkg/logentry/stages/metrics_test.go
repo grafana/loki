@@ -36,6 +36,12 @@ pipeline_stages:
       config:
         value: bloki
         action: dec
+    total_lines_count:
+      type: Counter
+      description: nothing to see here...
+      config:
+        match_all: true
+        action: inc
     payload_size_bytes:
       type: Histogram
       description: grrrragh
@@ -63,19 +69,22 @@ var testMetricLogLine2 = `
 }
 `
 
-const expectedMetrics = `# HELP promtail_custom_bloki_count blerrrgh
-# TYPE promtail_custom_bloki_count gauge
-promtail_custom_bloki_count -1.0
-# HELP my_promtail_custom_loki_count uhhhhhhh
+const expectedMetrics = `# HELP my_promtail_custom_loki_count uhhhhhhh
 # TYPE my_promtail_custom_loki_count counter
-my_promtail_custom_loki_count 1.0
+my_promtail_custom_loki_count{test="app"} 1
+# HELP promtail_custom_bloki_count blerrrgh
+# TYPE promtail_custom_bloki_count gauge
+promtail_custom_bloki_count{test="app"} -1
 # HELP promtail_custom_payload_size_bytes grrrragh
 # TYPE promtail_custom_payload_size_bytes histogram
-promtail_custom_payload_size_bytes_bucket{le="10.0"} 1.0
-promtail_custom_payload_size_bytes_bucket{le="20.0"} 2.0
-promtail_custom_payload_size_bytes_bucket{le="+Inf"} 2.0
-promtail_custom_payload_size_bytes_sum 30.0
-promtail_custom_payload_size_bytes_count 2.0
+promtail_custom_payload_size_bytes_bucket{test="app",le="10"} 1
+promtail_custom_payload_size_bytes_bucket{test="app",le="20"} 2
+promtail_custom_payload_size_bytes_bucket{test="app",le="+Inf"} 2
+promtail_custom_payload_size_bytes_sum{test="app"} 30
+promtail_custom_payload_size_bytes_count{test="app"} 2
+# HELP promtail_custom_total_lines_count nothing to see here...
+# TYPE promtail_custom_total_lines_count counter
+promtail_custom_total_lines_count{test="app"} 2
 `
 
 func TestMetricsPipeline(t *testing.T) {
@@ -85,6 +94,7 @@ func TestMetricsPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	lbls := model.LabelSet{}
+	lbls["test"] = "app"
 	ts := time.Now()
 	extracted := map[string]interface{}{}
 	entry := testMetricLogLine1
@@ -134,7 +144,7 @@ func Test(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			err := validateMetricsConfig(test.config)
-			if (err != nil) && (err.Error() != test.err.Error()) {
+			if ((err != nil) && (err.Error() != test.err.Error())) || (err == nil && test.err != nil) {
 				t.Errorf("Metrics stage validation error, expected error = %v, actual error = %v", test.err, err)
 				return
 			}

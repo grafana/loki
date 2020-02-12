@@ -123,6 +123,13 @@ type metricStage struct {
 // Process implements Stage
 func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
 	for name, collector := range m.metrics {
+		// There is a special case for counters where we count even if there is no match in the extracted map.
+		if c, ok := collector.(*metric.Counters); ok {
+			if c != nil && c.Cfg.MatchAll != nil && *c.Cfg.MatchAll {
+				m.recordCounter(name, c, labels, nil)
+				continue
+			}
+		}
 		if v, ok := extracted[*m.cfg[name].Source]; ok {
 			switch vec := collector.(type) {
 			case *metric.Counters:
