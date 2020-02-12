@@ -27,5 +27,5 @@ func (bs *ByteSize) Set(s string) error {
 }
 
 func (bs ByteSize) Get() interface{} {
-	return uint64(bs)
+	return int(bs)
 }

@@ -10,7 +10,7 @@ func Test_ByteSize(t *testing.T) {
 	for _, tc := range []struct {
 		in  string
 		err bool
-		out uint64
+		out int
 	}{
 		{
 			in:  "abc",
@@ -62,7 +62,7 @@ func Test_ByteSize(t *testing.T) {
 				require.NotNil(t, err)
 			} else {
 				require.Nil(t, err)
-				require.Equal(t, tc.out, bs.Get().(uint64))
+				require.Equal(t, tc.out, bs.Get().(int))
 			}
 
 		})
