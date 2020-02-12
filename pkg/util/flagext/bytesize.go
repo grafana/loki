@@ -27,5 +27,20 @@ func (bs *ByteSize) Set(s string) error {
 }
 
 func (bs ByteSize) Get() interface{} {
+	return bs.Val()
+}
+
+func (bs ByteSize) Val() int {
 	return int(bs)
+}
+
+/// UnmarshalYAML the Unmarshaler interface of the yaml pkg.
+func (bs *ByteSize) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var str string
+	err := unmarshal(&str)
+	if err != nil {
+		return err
+	}
+
+	return bs.Set(str)
 }

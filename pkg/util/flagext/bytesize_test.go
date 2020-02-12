@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v2"
 )
 
 func Test_ByteSize(t *testing.T) {
@@ -70,6 +71,34 @@ func Test_ByteSize(t *testing.T) {
 				require.Equal(t, tc.out, bs.Get().(int))
 			}
 
+		})
+	}
+}
+
+func Test_ByteSizeYAML(t *testing.T) {
+	for _, tc := range []struct {
+		in  string
+		err bool
+		out ByteSize
+	}{
+		{
+			in:  "256GB",
+			out: ByteSize(256 << 30),
+		},
+		{
+			in:  "abc",
+			err: true,
+		},
+	} {
+		t.Run(tc.in, func(t *testing.T) {
+			var out ByteSize
+			err := yaml.Unmarshal([]byte(tc.in), &out)
+			if tc.err {
+				require.NotNil(t, err)
+			} else {
+				require.Nil(t, err)
+				require.Equal(t, tc.out, out)
+			}
 		})
 	}
 }
