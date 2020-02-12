@@ -27,6 +27,11 @@ func Test_ByteSize(t *testing.T) {
 			out: 0,
 		},
 		{
+			in:  "1b",
+			err: false,
+			out: 1,
+		},
+		{
 			in:  "100kb",
 			err: false,
 			out: 100 << 10,

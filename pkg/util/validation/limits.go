@@ -29,6 +29,7 @@ type Limits struct {
 	RejectOldSamplesMaxAge time.Duration `yaml:"reject_old_samples_max_age"`
 	CreationGracePeriod    time.Duration `yaml:"creation_grace_period"`
 	EnforceMetricName      bool          `yaml:"enforce_metric_name"`
+	MaxLineSize            ByteSize      `yaml:"max_line_size"`
 
 	// Ingester enforced limits.
 	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user"`
@@ -55,6 +56,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "local", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global).")
 	f.Float64Var(&l.IngestionRateMB, "distributor.ingestion-rate-limit-mb", 4, "Per-user ingestion rate limit in sample size per second. Units in MB.")
 	f.Float64Var(&l.IngestionBurstSizeMB, "distributor.ingestion-burst-size-mb", 6, "Per-user allowed ingestion burst size (in sample size). Units in MB.")
+	f.Var(&l.MaxLineSize, "distributor.max-line-size", "maximum line length allowed, i.e. 100mb. Default (0) means unlimited.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
@@ -225,6 +227,11 @@ func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 // MaxConcurrentTailRequests returns the limit to number of concurrent tail requests.
 func (o *Overrides) MaxConcurrentTailRequests(userID string) int {
 	return o.getOverridesForUser(userID).MaxConcurrentTailRequests
+}
+
+// MaxLineSize returns the maximum size in bytes the distributor should allow.
+func (o *Overrides) MaxLineSize(userID string) int {
+	return o.getOverridesForUser(userID).MaxLineSize
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
