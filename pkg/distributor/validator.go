@@ -9,6 +9,7 @@ import (
 	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/weaveworks/common/httpgrpc"
 )
 
@@ -36,7 +37,12 @@ func (v Validator) ValidateEntry(userID string, entry logproto.Entry) error {
 		// an orthogonal concept (we need not use ValidateLabels in this context)
 		// but the upstream cortex_validation pkg uses it, so we keep this
 		// for parity.
-		return httpgrpc.Errorf(http.StatusBadRequest, "max line length exceeded")
+		return httpgrpc.Errorf(
+			http.StatusBadRequest,
+			"max line size (%s) exceeded while adding (%s) size line",
+			flagext.ByteSize(uint64(maxSize)).String(),
+			flagext.ByteSize(uint64(len(entry.Line))).String(),
+		)
 	}
 
 	return nil

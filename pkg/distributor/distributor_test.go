@@ -26,6 +26,7 @@ import (
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	fe "github.com/grafana/loki/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -43,6 +44,7 @@ func TestDistributor(t *testing.T) {
 
 	for i, tc := range []struct {
 		lines            int
+		maxLineSize      uint64
 		expectedResponse *logproto.PushResponse
 		expectedError    error
 	}{
@@ -54,6 +56,12 @@ func TestDistributor(t *testing.T) {
 			lines:         100,
 			expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (100 bytes) exceeded while adding 100 lines for a total size of 1000 bytes"),
 		},
+		{
+			lines:            100,
+			maxLineSize:      1,
+			expectedResponse: success,
+			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, "max line size (1B) exceeded while adding (10B) size line"),
+		},
 	} {
 		t.Run(fmt.Sprintf("[%d](samples=%v)", i, tc.lines), func(t *testing.T) {
 			limits := &validation.Limits{}
@@ -61,6 +69,7 @@ func TestDistributor(t *testing.T) {
 			limits.EnforceMetricName = false
 			limits.IngestionRateMB = ingestionRateLimit
 			limits.IngestionBurstSizeMB = ingestionRateLimit
+			limits.MaxLineSize = fe.ByteSize(tc.maxLineSize)
 
 			d := prepare(t, limits, nil)
 
