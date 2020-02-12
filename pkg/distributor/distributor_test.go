@@ -45,6 +45,7 @@ func TestDistributor(t *testing.T) {
 	for i, tc := range []struct {
 		lines            int
 		maxLineSize      uint64
+		mangleLabels     bool
 		expectedResponse *logproto.PushResponse
 		expectedError    error
 	}{
@@ -62,6 +63,12 @@ func TestDistributor(t *testing.T) {
 			expectedResponse: success,
 			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, "max line size (1B) exceeded while adding (10B) size line"),
 		},
+		{
+			lines:            100,
+			mangleLabels:     true,
+			expectedResponse: success,
+			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, "parse error at line 1, col 4: literal not terminated"),
+		},
 	} {
 		t.Run(fmt.Sprintf("[%d](samples=%v)", i, tc.lines), func(t *testing.T) {
 			limits := &validation.Limits{}
@@ -74,6 +81,11 @@ func TestDistributor(t *testing.T) {
 			d := prepare(t, limits, nil)
 
 			request := makeWriteRequest(tc.lines, 10)
+
+			if tc.mangleLabels {
+				request.Streams[0].Labels = `{ab"`
+			}
+
 			response, err := d.Push(ctx, request)
 			assert.Equal(t, tc.expectedResponse, response)
 			assert.Equal(t, tc.expectedError, err)
