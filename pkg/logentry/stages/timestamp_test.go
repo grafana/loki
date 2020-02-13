@@ -1,12 +1,14 @@
 package stages
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
 	lokiutil "github.com/grafana/loki/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -34,6 +36,14 @@ var testTimestampLogLine = `
 }
 `
 
+var testTimestampLogLineWithMissingKey = `
+{
+	"app":"loki",
+	"component": ["parser","type"],
+	"level" : "WARN"
+}
+`
+
 func TestTimestampPipeline(t *testing.T) {
 	pl, err := NewPipeline(util.Logger, loadConfig(testTimestampYaml), nil, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -52,6 +62,26 @@ var (
 	validLocationString   = "America/New_York"
 	validLocation, _      = time.LoadLocation(validLocationString)
 )
+
+func TestPipelineWithMissingKey_Timestamp(t *testing.T) {
+	var buf bytes.Buffer
+	w := log.NewSyncWriter(&buf)
+	logger := log.NewLogfmtLogger(w)
+	pl, err := NewPipeline(logger, loadConfig(testTimestampYaml), nil, prometheus.DefaultRegisterer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	Debug = true
+	ts := time.Now()
+	entry := testTimestampLogLineWithMissingKey
+	extracted := map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	expectedLog := fmt.Sprintf("level=debug msg=\"%s\" err=\"Can't convert <nil> to string\" type=null", ErrTimestampConversionFailed)
+	if !(strings.Contains(buf.String(), expectedLog)) {
+		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
+	}
+}
 
 func TestTimestampValidation(t *testing.T) {
 	tests := map[string]struct {

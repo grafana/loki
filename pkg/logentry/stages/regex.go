@@ -99,7 +99,7 @@ func (r *regexStage) Process(labels model.LabelSet, extracted map[string]interfa
 		value, err := getString(extracted[*r.cfg.Source])
 		if err != nil {
 			if Debug {
-				level.Debug(r.logger).Log("msg", "failed to convert source value to string", "source", *r.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*r.cfg.Source]).String())
+				level.Debug(r.logger).Log("msg", "failed to convert source value to string", "source", *r.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*r.cfg.Source]))
 			}
 			return
 		}

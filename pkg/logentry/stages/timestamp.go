@@ -165,7 +165,7 @@ func (ts *timestampStage) parseTimestampFromSource(extracted map[string]interfac
 	s, err := getString(v)
 	if err != nil {
 		if Debug {
-			level.Debug(ts.logger).Log("msg", ErrTimestampConversionFailed, "err", err, "type", reflect.TypeOf(v).String())
+			level.Debug(ts.logger).Log("msg", ErrTimestampConversionFailed, "err", err, "type", reflect.TypeOf(v))
 		}
 
 		return nil, errors.New(ErrTimestampConversionFailed)

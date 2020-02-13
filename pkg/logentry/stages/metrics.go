@@ -179,7 +179,7 @@ func (m *metricStage) recordCounter(name string, counter *metric.Counters, label
 			if Debug {
 				level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
 					"can't perform value comparison", "metric", name, "err",
-					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v).String()))
+					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v)))
 			}
 			return
 		}
@@ -212,7 +212,7 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 			if Debug {
 				level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
 					"can't perform value comparison", "metric", name, "err",
-					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v).String()))
+					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v)))
 			}
 			return
 		}
@@ -265,7 +265,7 @@ func (m *metricStage) recordHistogram(name string, histogram *metric.Histograms,
 			if Debug {
 				level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
 					"can't perform value comparison", "metric", name, "err",
-					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v).String()))
+					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v)))
 			}
 			return
 		}
