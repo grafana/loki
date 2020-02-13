@@ -14,7 +14,6 @@ import (
   Labels                  []string
   LogExpr                 LogSelectorExpr
   LogRangeExpr            *logRange
-  LogRangeExprExt         *logRange
   Matcher                 *labels.Matcher
   Matchers                []*labels.Matcher
   RangeAggregationExpr    SampleExpr
@@ -22,6 +21,8 @@ import (
   Selector                []*labels.Matcher
   VectorAggregationExpr   SampleExpr
   VectorOp                string
+  BinOpExpr               SampleExpr
+  binOp                   string
   str                     string
   duration                time.Duration
   int                     int64
@@ -34,7 +35,6 @@ import (
 %type <Grouping>              grouping
 %type <Labels>                labels
 %type <LogExpr>               logExpr
-%type <LogRangeExprExt>       logRangeExprExt
 %type <LogRangeExpr>          logRangeExpr
 %type <Matcher>               matcher
 %type <Matchers>              matchers
@@ -43,41 +43,46 @@ import (
 %type <Selector>              selector
 %type <VectorAggregationExpr> vectorAggregationExpr
 %type <VectorOp>              vectorOp
+%type <BinOpExpr>             binOpExpr
 
 %token <str>      IDENTIFIER STRING
 %token <duration> DURATION
 %token <val>      MATCHERS LABELS EQ NEQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
 
+// Operators are listed with increasing precedence.
+%left <binOp> OR
+%left <binOp> AND UNLESS
+%left <binOp> ADD SUB
+%left <binOp> MUL DIV MOD
+%right <binOp> POW
+
 %%
 
 root: expr { exprlex.(*lexer).expr = $1 };
 
 expr:
-      logExpr                    { $$ = $1 }
-    | rangeAggregationExpr       { $$ = $1 }
-    | vectorAggregationExpr      { $$ = $1 }
+      logExpr                                      { $$ = $1 }
+    | rangeAggregationExpr                         { $$ = $1 }
+    | vectorAggregationExpr                        { $$ = $1 }
+    | binOpExpr                                    { $$ = $1 }
+    | OPEN_PARENTHESIS expr CLOSE_PARENTHESIS      { $$ = $2 }
     ;
 
 logExpr:
       selector                                    { $$ = newMatcherExpr($1)}
     | logExpr filter STRING                       { $$ = NewFilterExpr( $1, $2, $3 ) }
-    | OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS  { $$ = $2}
+    | OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS  { $$ = $2 }
     | logExpr filter error
     | logExpr error
     ;
 
 logRangeExpr:
       logExpr DURATION { $$ = newLogRange($1, $2) } // <selector> <filters> <range>
-    | logRangeExprExt  { $$ = $1 }                  // <selector> <range> <filters>
-    ;
-
-logRangeExprExt:
-      selector DURATION                                   { $$ = newLogRange(newMatcherExpr($1), $2)}
-    | logRangeExprExt filter STRING                       { $$ = addFilterToLogRangeExpr( $1, $2, $3 ) }
-    | OPEN_PARENTHESIS logRangeExprExt CLOSE_PARENTHESIS  { $$ = $2 }
-    | logRangeExprExt filter error
-    | logRangeExprExt error
+    | logRangeExpr filter STRING                       { $$ = addFilterToLogRangeExpr( $1, $2, $3 ) }
+    | OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS  { $$ = $2 }
+    | logRangeExpr filter error
+    | logRangeExpr error
     ;
 
 rangeAggregationExpr: rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS { $$ = newRangeAggregationExpr($3,$1) };
@@ -121,6 +126,22 @@ matcher:
     | IDENTIFIER RE STRING             { $$ = mustNewMatcher(labels.MatchRegexp, $1, $3) }
     | IDENTIFIER NRE STRING            { $$ = mustNewMatcher(labels.MatchNotRegexp, $1, $3) }
     ;
+
+// TODO(owen-d): add (on,ignoring) clauses to binOpExpr
+// Comparison operators are currently avoided due to symbol collisions in our grammar: "!=" means not equal in prometheus,
+// but is part of our filter grammar.
+// reference: https://prometheus.io/docs/prometheus/latest/querying/operators/
+// Operator precedence only works if each of these is listed separately.
+binOpExpr:
+         expr OR expr          { $$ = mustNewBinOpExpr("or", $1, $3) }
+         | expr AND expr       { $$ = mustNewBinOpExpr("and", $1, $3) }
+         | expr UNLESS expr    { $$ = mustNewBinOpExpr("unless", $1, $3) }
+         | expr ADD expr       { $$ = mustNewBinOpExpr("+", $1, $3) }
+         | expr SUB expr       { $$ = mustNewBinOpExpr("-", $1, $3) }
+         | expr MUL expr       { $$ = mustNewBinOpExpr("*", $1, $3) }
+         | expr DIV expr       { $$ = mustNewBinOpExpr("/", $1, $3) }
+         | expr MOD expr       { $$ = mustNewBinOpExpr("%", $1, $3) }
+         | expr POW expr       { $$ = mustNewBinOpExpr("^", $1, $3) }
 
 vectorOp:
         SUM     { $$ = OpTypeSum }

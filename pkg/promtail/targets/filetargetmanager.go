@@ -54,7 +54,7 @@ type FileTargetManager struct {
 // NewFileTargetManager creates a new TargetManager.
 func NewFileTargetManager(
 	logger log.Logger,
-	positions *positions.Positions,
+	positions positions.Positions,
 	client api.EntryHandler,
 	scrapeConfigs []scrape.Config,
 	targetConfig *Config,
@@ -178,7 +178,7 @@ func (tm *FileTargetManager) AllTargets() map[string][]Target {
 // targetSyncer sync targets based on service discovery changes.
 type targetSyncer struct {
 	log          log.Logger
-	positions    *positions.Positions
+	positions    positions.Positions
 	entryHandler api.EntryHandler
 	hostname     string
 

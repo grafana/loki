@@ -36,6 +36,7 @@ type Limits struct {
 	RejectOldSamplesMaxAge time.Duration       `yaml:"reject_old_samples_max_age"`
 	CreationGracePeriod    time.Duration       `yaml:"creation_grace_period"`
 	EnforceMetricName      bool                `yaml:"enforce_metric_name"`
+	SubringSize            int                 `yaml:"user_subring_size"`
 
 	// Ingester enforced limits.
 	MaxSeriesPerQuery        int `yaml:"max_series_per_query"`
@@ -59,6 +60,7 @@ type Limits struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
+	f.IntVar(&l.SubringSize, "experimental.distributor.user-subring-size", 0, "Per-user subring to shard metrics to ingesters. 0 is disabled.")
 	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "local", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global).")
 	f.IntVar(&l.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
@@ -278,6 +280,11 @@ func (o *Overrides) CardinalityLimit(userID string) int {
 // MinChunkLength returns the minimum size of chunk that will be saved by ingesters
 func (o *Overrides) MinChunkLength(userID string) int {
 	return o.getOverridesForUser(userID).MinChunkLength
+}
+
+// SubringSize returns the size of the subring for a given user.
+func (o *Overrides) SubringSize(userID string) int {
+	return o.getOverridesForUser(userID).SubringSize
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

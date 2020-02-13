@@ -68,7 +68,7 @@ type FileTarget struct {
 	logger log.Logger
 
 	handler          api.EntryHandler
-	positions        *positions.Positions
+	positions        positions.Positions
 	labels           model.LabelSet
 	discoveredLabels model.LabelSet
 
@@ -84,7 +84,7 @@ type FileTarget struct {
 }
 
 // NewFileTarget create a new FileTarget.
-func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions *positions.Positions, path string, labels model.LabelSet, discoveredLabels model.LabelSet, targetConfig *Config) (*FileTarget, error) {
+func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, labels model.LabelSet, discoveredLabels model.LabelSet, targetConfig *Config) (*FileTarget, error) {
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {

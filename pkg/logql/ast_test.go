@@ -43,6 +43,14 @@ func Test_SampleExpr_String(t *testing.T) {
 		`sum(count_over_time({job="mysql"}[5m]))`,
 		`topk(10,sum(rate({region="us-east1"}[5m])) by (name))`,
 		`avg( rate( ( {job="nginx"} |= "GET" ) [10s] ) ) by (region)`,
+		`sum by (cluster) (count_over_time({job="mysql"}[5m]))`,
+		`sum by (cluster) (count_over_time({job="mysql"}[5m])) / sum by (cluster) (count_over_time({job="postgres"}[5m])) `,
+		`
+		sum by (cluster) (count_over_time({job="postgres"}[5m])) /
+		sum by (cluster) (count_over_time({job="postgres"}[5m])) /
+		sum by (cluster) (count_over_time({job="postgres"}[5m]))
+		`,
+		`sum by (cluster) (count_over_time({job="mysql"}[5m])) / min(count_over_time({job="mysql"}[5m])) `,
 	} {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseExpr(tc)

@@ -2,12 +2,14 @@ package queryrange
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 )
 
@@ -135,7 +137,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 
 	userid, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return nil, err
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
 	interval := h.limits.QuerySplitDuration(userid)
@@ -169,7 +171,6 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 	if err != nil {
 		return nil, err
 	}
-
 	return h.merger.MergeResponse(resps...)
 }
 

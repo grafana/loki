@@ -97,7 +97,7 @@ The currently supported functions for operating over are:
 This example counts all the log lines within the last five minutes for the
 MySQL job.
 
-> `rate( ( {job="mysql"} |= "error" != "timeout)[10s] ) )`
+> `rate({job="mysql"} |= "error" != "timeout" [10s] )`
 
 This example demonstrates that a fully LogQL query can be wrapped in the
 aggregation syntax, including filter expressions. This example gets the
@@ -151,3 +151,50 @@ by level:
 Get the rate of HTTP GET requests from NGINX logs:
 
 > `avg(rate(({job="nginx"} |= "GET")[10s])) by (region)`
+
+### Binary Operators
+
+#### Arithmetic Binary Operators
+
+Arithmetic binary operators
+The following binary arithmetic operators exist in Loki:
+
+- `+` (addition)
+- `-` (subtraction)
+- `*` (multiplication)
+- `/` (division)
+- `%` (modulo)
+- `^` (power/exponentiation)
+
+Binary arithmetic operators are defined only between two vectors.
+
+Between two instant vectors, a binary arithmetic operator is applied to each entry in the left-hand side vector and its matching element in the right-hand vector. The result is propagated into the result vector with the grouping labels becoming the output label set. Entries for which no matching entry in the right-hand vector can be found are not part of the result.
+
+##### Examples
+
+Get proportion of warning logs to error logs for the `foo` app
+
+> `sum(rate({app="foo", level="warn"}[1m])) / sum(rate({app="foo", level="error"}[1m]))`
+
+Operators on the same precedence level are left-associative (queries substituted with numbers here for simplicity). For example, 2 * 3 % 2 is equivalent to (2 * 3) % 2. However, some operators have different priorities: 1 + 2 / 3 will still be 1 + ( 2 / 3 ). These function identically to mathematical conventions.
+
+
+#### Logical/set binary operators
+
+These logical/set binary operators are only defined between two vectors:
+
+- `and` (intersection)
+- `or` (union)
+- `unless` (complement)
+
+`vector1 and vector2` results in a vector consisting of the elements of vector1 for which there are elements in vector2 with exactly matching label sets. Other elements are dropped.
+
+`vector1 or vector2` results in a vector that contains all original elements (label sets + values) of vector1 and additionally all elements of vector2 which do not have matching label sets in vector1.
+
+`vector1 unless vector2` results in a vector consisting of the elements of vector1 for which there are no elements in vector2 with exactly matching label sets. All matching elements in both vectors are dropped.
+
+##### Examples
+
+This contrived query will return the intersection of these queries, effectively `rate({app="bar"})`
+
+> `rate({app=~"foo|bar"}[1m]) and rate({app="bar"}[1m])`

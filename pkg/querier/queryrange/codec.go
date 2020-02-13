@@ -47,11 +47,11 @@ func (r *LokiRequest) WithStartEnd(s int64, e int64) queryrange.Request {
 
 func (codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Request, error) {
 	if err := r.ParseForm(); err != nil {
-		return nil, err
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 	req, err := loghttp.ParseRangeQuery(r)
 	if err != nil {
-		return nil, err
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 	return &LokiRequest{
 		Query:     req.Query,
@@ -117,14 +117,11 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 	if err := json.Unmarshal(buf, &resp); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 	}
-	if resp.Status != loghttp.QueryStatusSuccess {
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error executing request: %v", resp.Status)
-	}
 	switch string(resp.Data.ResultType) {
 	case loghttp.ResultTypeMatrix:
 		return &LokiPromResponse{
 			Response: &queryrange.PrometheusResponse{
-				Status: loghttp.QueryStatusSuccess,
+				Status: resp.Status,
 				Data: queryrange.PrometheusData{
 					ResultType: loghttp.ResultTypeMatrix,
 					Result:     toProto(resp.Data.Result.(loghttp.Matrix)),
@@ -134,7 +131,7 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 		}, nil
 	case loghttp.ResultTypeStream:
 		return &LokiResponse{
-			Status:     loghttp.QueryStatusSuccess,
+			Status:     resp.Status,
 			Direction:  req.(*LokiRequest).Direction,
 			Limit:      req.(*LokiRequest).Limit,
 			Version:    uint32(loghttp.GetVersion(req.(*LokiRequest).Path)),
@@ -369,4 +366,33 @@ func (res LokiResponse) Count() int64 {
 	}
 	return result
 
+}
+
+type paramsWrapper struct {
+	*LokiRequest
+}
+
+func paramsFromRequest(req queryrange.Request) *paramsWrapper {
+	return &paramsWrapper{
+		LokiRequest: req.(*LokiRequest),
+	}
+}
+
+func (p paramsWrapper) String() string {
+	return p.Query
+}
+func (p paramsWrapper) Start() time.Time {
+	return p.StartTs
+}
+func (p paramsWrapper) End() time.Time {
+	return p.EndTs
+}
+func (p paramsWrapper) Step() time.Duration {
+	return time.Duration(p.LokiRequest.Step * 1e6)
+}
+func (p paramsWrapper) Limit() uint32 {
+	return p.LokiRequest.Limit
+}
+func (p paramsWrapper) Direction() logproto.Direction {
+	return p.LokiRequest.Direction
 }

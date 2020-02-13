@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -19,6 +20,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
@@ -26,11 +28,14 @@ import (
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/promtail/api"
+	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/grafana/loki/pkg/promtail/config"
+	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/scrape"
 	"github.com/grafana/loki/pkg/promtail/targets"
 )
@@ -84,7 +89,7 @@ func TestPromtail(t *testing.T) {
 
 	// Run.
 
-	p, err := New(buildTestConfig(t, positionsFileName, testDir))
+	p, err := New(buildTestConfig(t, positionsFileName, testDir), false)
 	if err != nil {
 		t.Error("error creating promtail", err)
 		return
@@ -627,4 +632,36 @@ func randName() string {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
 	return string(b)
+}
+
+func Test_DryRun(t *testing.T) {
+
+	f, err := ioutil.TempFile("/tmp", "Test_DryRun")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+
+	_, err = New(config.Config{}, true)
+	require.Error(t, err)
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry() // reset registry, otherwise you can't create 2 weavework server.
+	_, err = New(config.Config{
+		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
+		PositionsConfig: positions.Config{
+			PositionsFile: f.Name(),
+			SyncPeriod:    time.Second,
+		},
+	}, true)
+	require.NoError(t, err)
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+
+	p, err := New(config.Config{
+		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
+		PositionsConfig: positions.Config{
+			PositionsFile: f.Name(),
+			SyncPeriod:    time.Second,
+		},
+	}, false)
+	require.NoError(t, err)
+	require.IsType(t, client.MultiClient{}, p.client)
 }

@@ -2,6 +2,7 @@ package metric
 
 import (
 	"sync"
+	"time"
 
 	"github.com/grafana/loki/pkg/util"
 
@@ -9,16 +10,23 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-type metricVec struct {
-	factory func(labels map[string]string) prometheus.Metric
-	mtx     sync.Mutex
-	metrics map[model.Fingerprint]prometheus.Metric
+// Expireable allows checking if something has exceeded the provided maxAge based on the provided currentTime
+type Expireable interface {
+	HasExpired(currentTimeSec int64, maxAgeSec int64) bool
 }
 
-func newMetricVec(factory func(labels map[string]string) prometheus.Metric) *metricVec {
+type metricVec struct {
+	factory   func(labels map[string]string) prometheus.Metric
+	mtx       sync.Mutex
+	metrics   map[model.Fingerprint]prometheus.Metric
+	maxAgeSec int64
+}
+
+func newMetricVec(factory func(labels map[string]string) prometheus.Metric, maxAgeSec int64) *metricVec {
 	return &metricVec{
-		metrics: map[model.Fingerprint]prometheus.Metric{},
-		factory: factory,
+		metrics:   map[model.Fingerprint]prometheus.Metric{},
+		factory:   factory,
+		maxAgeSec: maxAgeSec,
 	}
 }
 
@@ -33,6 +41,7 @@ func (c *metricVec) Collect(ch chan<- prometheus.Metric) {
 	for _, m := range c.metrics {
 		ch <- m
 	}
+	c.prune()
 }
 
 // With returns the metric associated with the labelset.
@@ -47,4 +56,17 @@ func (c *metricVec) With(labels model.LabelSet) prometheus.Metric {
 		c.metrics[fp] = metric
 	}
 	return metric
+}
+
+// prune will remove all metrics which implement the Expireable interface and have expired
+// it does not take out a lock on the metrics map so whoever calls this function should do so.
+func (c *metricVec) prune() {
+	currentTimeSec := time.Now().Unix()
+	for fp, m := range c.metrics {
+		if em, ok := m.(Expireable); ok {
+			if em.HasExpired(currentTimeSec, c.maxAgeSec) {
+				delete(c.metrics, fp)
+			}
+		}
+	}
 }

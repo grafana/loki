@@ -45,7 +45,7 @@ var Fixtures = []testutils.Fixture{
 				batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
 				schemaCfg:               schemaConfig,
 			}
-			object := &s3ObjectClient{
+			object := &S3ObjectClient{
 				S3: newMockS3(),
 			}
 			return index, object, table, schemaConfig, nil

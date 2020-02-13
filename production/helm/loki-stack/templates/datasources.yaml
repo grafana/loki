@@ -1,4 +1,4 @@
-{{- if and .Values.grafana.enabled .Values.grafana.sidecar.datasources.enabled }}
+{{- if .Values.grafana.sidecar.datasources.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

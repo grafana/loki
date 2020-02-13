@@ -1,5 +1,7 @@
 # Loki Canary
 
+![canary](canary.png)
+
 Loki Canary is a standalone app that audits the log capturing performance of
 Loki.
 
@@ -153,14 +155,14 @@ spec:
       name: loki-canary
       labels:
         app: loki-canary
-  spec:
-    containers:
-    - args:
-      - -addr=loki:3100
-      image: grafana/loki-canary:latest
-      imagePullPolicy: IfNotPresent
-      name: loki-canary
-      resources: {}
+    spec:
+      containers:
+      - args:
+        - -addr=loki:3100
+        image: grafana/loki-canary:latest
+        imagePullPolicy: IfNotPresent
+        name: loki-canary
+        resources: {}
 ---
 apiVersion: v1
 kind: Service
