@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/common/httpgrpc"
 )
 
 // Config is the configuration for the queryrange tripperware
@@ -55,7 +56,8 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits) (frontend.Tripper
 			query := params.Get("query")
 			expr, err := logql.ParseExpr(query)
 			if err != nil {
-				return nil, err
+				// weavework server uses httpgrpc errors for status code.
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
 			if _, ok := expr.(logql.SampleExpr); ok {
 				return metricRT.RoundTrip(req)
@@ -70,7 +72,7 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits) (frontend.Tripper
 				}
 				filter, err := logSelector.Filter()
 				if err != nil {
-					return nil, err
+					return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 				}
 				if filter != nil {
 					return logFilterRT.RoundTrip(req)
@@ -88,7 +90,7 @@ func NewLogFilterTripperware(
 	limits Limits,
 	codec queryrange.Codec,
 ) (frontend.Tripperware, error) {
-	queryRangeMiddleware := []queryrange.Middleware{queryrange.LimitsMiddleware(limits)}
+	queryRangeMiddleware := []queryrange.Middleware{StatsMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(limits, codec))
 	}
@@ -112,7 +114,7 @@ func NewMetricTripperware(
 	extractor queryrange.Extractor,
 ) (frontend.Tripperware, Stopper, error) {
 
-	queryRangeMiddleware := []queryrange.Middleware{queryrange.LimitsMiddleware(limits)}
+	queryRangeMiddleware := []queryrange.Middleware{StatsMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,

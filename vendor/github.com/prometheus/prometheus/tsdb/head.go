@@ -31,7 +31,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
-	"github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
@@ -90,7 +89,7 @@ type Head struct {
 
 	cardinalityMutex      sync.Mutex
 	cardinalityCache      *index.PostingsStats // posting stats cache which will expire after 30sec
-	lastPostingsStatsCall time.Duration        // last posting stats call (PostgingsCardinalityStats()) time for caching
+	lastPostingsStatsCall time.Duration        // last posting stats call (PostingsCardinalityStats()) time for caching
 }
 
 type headMetrics struct {
@@ -848,7 +847,7 @@ func (h *Head) Appender() Appender {
 func (h *Head) appender() *headAppender {
 	return &headAppender{
 		head: h,
-		// Set the minimum valid time to whichever is greater the head min valid time or the compaciton window.
+		// Set the minimum valid time to whichever is greater the head min valid time or the compaction window.
 		// This ensures that no samples will be added within the compaction window to avoid races.
 		minValidTime: max(atomic.LoadInt64(&h.minValidTime), h.MaxTime()-h.chunkRange/2),
 		mint:         math.MaxInt64,
@@ -1339,33 +1338,29 @@ func (h *headIndexReader) Close() error {
 	return nil
 }
 
-func (h *headIndexReader) Symbols() (map[string]struct{}, error) {
+func (h *headIndexReader) Symbols() index.StringIter {
 	h.head.symMtx.RLock()
-	defer h.head.symMtx.RUnlock()
-
-	res := make(map[string]struct{}, len(h.head.symbols))
+	res := make([]string, 0, len(h.head.symbols))
 
 	for s := range h.head.symbols {
-		res[s] = struct{}{}
+		res = append(res, s)
 	}
-	return res, nil
+	h.head.symMtx.RUnlock()
+
+	sort.Strings(res)
+	return index.NewStringListIter(res)
 }
 
 // LabelValues returns the possible label values
-func (h *headIndexReader) LabelValues(names ...string) (index.StringTuples, error) {
-	if len(names) != 1 {
-		return nil, encoding.ErrInvalidSize
-	}
-
+func (h *headIndexReader) LabelValues(name string) ([]string, error) {
 	h.head.symMtx.RLock()
-	sl := make([]string, 0, len(h.head.values[names[0]]))
-	for s := range h.head.values[names[0]] {
+	sl := make([]string, 0, len(h.head.values[name]))
+	for s := range h.head.values[name] {
 		sl = append(sl, s)
 	}
 	h.head.symMtx.RUnlock()
 	sort.Strings(sl)
-
-	return index.NewStringTuples(sl, len(names))
+	return sl, nil
 }
 
 // LabelNames returns all the unique label names present in the head.
@@ -1383,9 +1378,13 @@ func (h *headIndexReader) LabelNames() ([]string, error) {
 	return labelNames, nil
 }
 
-// Postings returns the postings list iterator for the label pair.
-func (h *headIndexReader) Postings(name, value string) (index.Postings, error) {
-	return h.head.postings.Get(name, value), nil
+// Postings returns the postings list iterator for the label pairs.
+func (h *headIndexReader) Postings(name string, values ...string) (index.Postings, error) {
+	res := make([]index.Postings, 0, len(values))
+	for _, value := range values {
+		res = append(res, h.head.postings.Get(name, value))
+	}
+	return index.Merge(res...), nil
 }
 
 func (h *headIndexReader) SortedPostings(p index.Postings) index.Postings {
@@ -1450,16 +1449,6 @@ func (h *headIndexReader) Series(ref uint64, lbls *labels.Labels, chks *[]chunks
 	}
 
 	return nil
-}
-
-func (h *headIndexReader) LabelIndices() ([][]string, error) {
-	h.head.symMtx.RLock()
-	defer h.head.symMtx.RUnlock()
-	res := [][]string{}
-	for s := range h.head.values {
-		res = append(res, []string{s})
-	}
-	return res, nil
 }
 
 func (h *Head) getOrCreate(hash uint64, lset labels.Labels) (*memSeries, bool) {

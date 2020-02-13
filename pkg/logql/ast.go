@@ -227,6 +227,17 @@ const (
 	OpTypeTopK          = "topk"
 	OpTypeCountOverTime = "count_over_time"
 	OpTypeRate          = "rate"
+
+	// binops
+	OpTypeOr     = "or"
+	OpTypeAnd    = "and"
+	OpTypeUnless = "unless"
+	OpTypeAdd    = "+"
+	OpTypeSub    = "-"
+	OpTypeMul    = "*"
+	OpTypeDiv    = "/"
+	OpTypeMod    = "%"
+	OpTypePow    = "^"
 )
 
 // SampleExpr is a LogQL expression filtering logs and returning metric samples.
@@ -368,6 +379,41 @@ func (e *vectorAggregationExpr) String() string {
 		params = []string{e.left.String()}
 	}
 	return formatOperation(e.operation, e.grouping, params...)
+}
+
+type binOpExpr struct {
+	SampleExpr
+	RHS SampleExpr
+	op  string
+}
+
+func (e *binOpExpr) String() string {
+	return fmt.Sprintf("%s %s %s", e.SampleExpr.String(), e.op, e.RHS.String())
+}
+
+func mustNewBinOpExpr(op string, lhs, rhs Expr) SampleExpr {
+	left, ok := lhs.(SampleExpr)
+	if !ok {
+		panic(newParseError(fmt.Sprintf(
+			"unexpected type for left leg of binary operation (%s): %T",
+			op,
+			lhs,
+		), 0, 0))
+	}
+
+	right, ok := rhs.(SampleExpr)
+	if !ok {
+		panic(newParseError(fmt.Sprintf(
+			"unexpected type for right leg of binary operation (%s): %T",
+			op,
+			rhs,
+		), 0, 0))
+	}
+	return &binOpExpr{
+		SampleExpr: left,
+		RHS:        right,
+		op:         op,
+	}
 }
 
 // helper used to impl Stringer for vector and range aggregations

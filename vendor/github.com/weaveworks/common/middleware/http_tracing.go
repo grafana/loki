@@ -10,6 +10,10 @@ import (
 	"golang.org/x/net/context"
 )
 
+// Dummy dependency to enforce that we have a nethttp version newer
+// than the one which implements Websockets. (No semver on nethttp)
+var _ = nethttp.MWURLTagFunc
+
 // Tracer is a middleware which traces incoming requests.
 type Tracer struct {
 	RouteMatcher RouteMatcher
@@ -26,18 +30,7 @@ func (t Tracer) Wrap(next http.Handler) http.Handler {
 		return fmt.Sprintf("HTTP %s - %s", r.Method, op)
 	})
 
-	traceHandler := nethttp.Middleware(opentracing.GlobalTracer(), next, opMatcher)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var maybeTracer http.Handler
-		// Don't try and trace websocket requests because nethttp.Middleware
-		// doesn't support http.Hijack yet
-		if IsWSHandshakeRequest(r) {
-			maybeTracer = next
-		} else {
-			maybeTracer = traceHandler
-		}
-		maybeTracer.ServeHTTP(w, r)
-	})
+	return nethttp.Middleware(opentracing.GlobalTracer(), next, opMatcher)
 }
 
 // ExtractTraceID extracts the trace id, if any from the context.

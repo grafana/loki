@@ -534,7 +534,7 @@ func TestParse(t *testing.T) {
 		{
 			in: `{foo="bar"} "foo"`,
 			err: ParseError{
-				msg:  "syntax error: unexpected STRING, expecting != or !~ or |~ or |=",
+				msg:  "syntax error: unexpected STRING",
 				line: 1,
 				col:  13,
 			},
@@ -542,9 +542,156 @@ func TestParse(t *testing.T) {
 		{
 			in: `{foo="bar"} foo`,
 			err: ParseError{
-				msg:  "syntax error: unexpected IDENTIFIER, expecting != or !~ or |~ or |=",
+				msg:  "syntax error: unexpected IDENTIFIER",
 				line: 1,
 				col:  13,
+			},
+		},
+		{
+			in: `
+			sum(count_over_time({foo="bar"}[5m])) by (foo) ^
+			sum(count_over_time({foo="bar"}[5m])) by (foo) /
+			sum(count_over_time({foo="bar"}[5m])) by (foo)
+			`,
+			exp: mustNewBinOpExpr(
+				OpTypeDiv,
+				mustNewBinOpExpr(
+					OpTypePow,
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+				),
+				mustNewVectorAggregationExpr(newRangeAggregationExpr(
+					&logRange{
+						left: &matchersExpr{
+							matchers: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+						interval: 5 * time.Minute,
+					}, OpTypeCountOverTime),
+					"sum",
+					&grouping{
+						without: false,
+						groups:  []string{"foo"},
+					},
+					nil,
+				),
+			),
+		},
+		{
+			// operator precedence before left associativity
+			in: `
+			sum(count_over_time({foo="bar"}[5m])) by (foo) +
+			sum(count_over_time({foo="bar"}[5m])) by (foo) /
+			sum(count_over_time({foo="bar"}[5m])) by (foo)
+			`,
+			exp: mustNewBinOpExpr(
+				OpTypeAdd,
+				mustNewVectorAggregationExpr(newRangeAggregationExpr(
+					&logRange{
+						left: &matchersExpr{
+							matchers: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+						interval: 5 * time.Minute,
+					}, OpTypeCountOverTime),
+					"sum",
+					&grouping{
+						without: false,
+						groups:  []string{"foo"},
+					},
+					nil,
+				),
+				mustNewBinOpExpr(
+					OpTypeDiv,
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+				),
+			),
+		},
+		{
+			in: `{foo="bar"} + {foo="bar"}`,
+			err: ParseError{
+				msg:  `unexpected type for left leg of binary operation (+): *logql.matchersExpr`,
+				line: 0,
+				col:  0,
+			},
+		},
+		{
+			in: `sum(count_over_time({foo="bar"}[5m])) by (foo) - {foo="bar"}`,
+			err: ParseError{
+				msg:  `unexpected type for right leg of binary operation (-): *logql.matchersExpr`,
+				line: 0,
+				col:  0,
+			},
+		},
+		{
+			in: `{foo="bar"} / sum(count_over_time({foo="bar"}[5m])) by (foo)`,
+			err: ParseError{
+				msg:  `unexpected type for left leg of binary operation (/): *logql.matchersExpr`,
+				line: 0,
+				col:  0,
 			},
 		},
 	} {

@@ -20,15 +20,16 @@ Established members are expected to demonstrate their adherence to the principle
 
 The current team members are:
 
-- Cyril Tovena
-- David Kaltschmidt
-- Edward Welch
-- Goutham Veeramachaneni
-- Joe Elliott
-- Robert Fratto
-- Sandeep Sukhani
-- Tom Braack
-- Tom Wilkie
+- Cyril Tovena                  [cyriltovena](https://github.com/cyriltovena)
+- David Kaltschmidt             [davkal](https://github.com/davkal)
+- Edward Welch                  [slim-bean](https://github.com/slim-bean)
+- Goutham Veeramachaneni        [gouthamve](https://github.com/gouthamve)
+- Joe Elliott                   [joe-elliot](https://github.com/joe-elliot)
+- Owen Diehl                    [owen-d](https://github.com/owen-d)
+- Robert Fratto                 [rfratto](https://github.com/rfratto)
+- Sandeep Sukhani               [sandeepsukhani](https://github.com/sandeepsukhani)
+- Tom Braack                    [sh0rez](https://github.com/sh0rez)
+- Tom Wilkie                    [tomwilkie](https://github.com/tomwilkie)
 
 ### Responsibilities and privileges
 

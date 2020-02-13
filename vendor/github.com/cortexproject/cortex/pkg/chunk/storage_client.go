@@ -1,6 +1,12 @@
 package chunk
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+// DirDelim is the delimiter used to model a directory structure in an object store.
+const DirDelim = "/"
 
 // IndexClient is a client for the storage of the index (e.g. DynamoDB or Bigtable).
 type IndexClient interface {
@@ -42,4 +48,9 @@ type ReadBatchIterator interface {
 	Next() bool
 	RangeValue() []byte
 	Value() []byte
+}
+
+type StorageObject struct {
+	Key        string
+	ModifiedAt time.Time
 }

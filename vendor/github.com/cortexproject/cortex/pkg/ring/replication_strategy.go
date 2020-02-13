@@ -36,7 +36,7 @@ func (r *Ring) replicationStrategy(ingesters []IngesterDesc, op Operation) ([]In
 	// This is just a shortcut - if there are not minSuccess available ingesters,
 	// after filtering out dead ones, don't even bother trying.
 	if maxFailure < 0 || len(ingesters) < minSuccess {
-		err := fmt.Errorf("at least %d live ingesters required, could only find %d",
+		err := fmt.Errorf("at least %d live replicas required, could only find %d",
 			minSuccess, len(ingesters))
 		return nil, 0, err
 	}

@@ -44,6 +44,7 @@ type ReadRing interface {
 	GetAll() (ReplicationSet, error)
 	ReplicationFactor() int
 	IngesterCount() int
+	Subring(key uint32, n int) (ReadRing, error)
 }
 
 // Operation can be Read or Write
@@ -376,4 +377,69 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		float64(len(r.ringTokens)),
 		r.name,
 	)
+}
+
+// Subring returns a ring of n ingesters from the given ring
+// Subrings are meant only for ingestor lookup and should have their data externalized.
+func (r *Ring) Subring(key uint32, n int) (ReadRing, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	if r.ringDesc == nil || len(r.ringTokens) == 0 || n <= 0 {
+		return nil, ErrEmptyRing
+	}
+
+	var (
+		ingesters     = make(map[string]IngesterDesc, n)
+		distinctHosts = map[string]struct{}{}
+		start         = r.search(key)
+		iterations    = 0
+	)
+
+	// Subring exceeds number of ingesters, set to total ring size
+	if n > len(r.ringDesc.Ingesters) {
+		n = len(r.ringDesc.Ingesters)
+	}
+
+	for i := start; len(distinctHosts) < n && iterations < len(r.ringTokens); i++ {
+		iterations++
+		// Wrap i around in the ring.
+		i %= len(r.ringTokens)
+
+		// We want n *distinct* ingesters.
+		token := r.ringTokens[i]
+		if _, ok := distinctHosts[token.Ingester]; ok {
+			continue
+		}
+		distinctHosts[token.Ingester] = struct{}{}
+		ingester := r.ringDesc.Ingesters[token.Ingester]
+
+		ingesters[token.Ingester] = ingester
+	}
+
+	if n > len(ingesters) {
+		return nil, fmt.Errorf("too few ingesters found")
+	}
+
+	numTokens := 0
+	for _, ing := range ingesters {
+		numTokens += len(ing.Tokens)
+	}
+
+	sub := &Ring{
+		name: "subring",
+		cfg:  r.cfg,
+		ringDesc: &Desc{
+			Ingesters: ingesters,
+		},
+		ringTokens: make([]TokenDesc, 0, numTokens),
+	}
+
+	// add tokens for the ingesters in the subring, they should already be sorted, so no need to re-sort
+	for _, t := range r.ringTokens {
+		if _, ok := ingesters[t.Ingester]; ok {
+			sub.ringTokens = append(sub.ringTokens, t)
+		}
+	}
+
+	return sub, nil
 }

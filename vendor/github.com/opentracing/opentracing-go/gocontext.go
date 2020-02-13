@@ -9,6 +9,9 @@ var activeSpanKey = contextKey{}
 // ContextWithSpan returns a new `context.Context` that holds a reference to
 // `span`'s SpanContext.
 func ContextWithSpan(ctx context.Context, span Span) context.Context {
+	if tracerWithHook, ok := span.Tracer().(TracerContextWithSpanExtension); ok {
+		ctx = tracerWithHook.ContextWithSpanHook(ctx, span)
+	}
 	return context.WithValue(ctx, activeSpanKey, span)
 }
 
