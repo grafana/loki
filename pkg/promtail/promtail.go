@@ -22,23 +22,33 @@ type Promtail struct {
 }
 
 // New makes a new Promtail.
-func New(cfg config.Config) (*Promtail, error) {
+func New(cfg config.Config, dryRun bool) (*Promtail, error) {
 
 	if cfg.ClientConfig.URL.URL != nil {
 		// if a single client config is used we add it to the multiple client config for backward compatibility
 		cfg.ClientConfigs = append(cfg.ClientConfigs, cfg.ClientConfig)
 	}
 
-	client, err := client.NewMulti(util.Logger, cfg.ClientConfigs...)
-	if err != nil {
-		return nil, err
+	var err error
+	var cl client.Client
+	if dryRun {
+		cl, err = client.NewLogger(cfg.ClientConfigs...)
+		if err != nil {
+			return nil, err
+		}
+		cfg.PositionsConfig.ReadOnly = true
+	} else {
+		cl, err = client.NewMulti(util.Logger, cfg.ClientConfigs...)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	promtail := &Promtail{
-		client: client,
+		client: cl,
 	}
 
-	tms, err := targets.NewTargetManagers(promtail, util.Logger, cfg.PositionsConfig, client, cfg.ScrapeConfig, &cfg.TargetConfig)
+	tms, err := targets.NewTargetManagers(promtail, util.Logger, cfg.PositionsConfig, cl, cfg.ScrapeConfig, &cfg.TargetConfig)
 	if err != nil {
 		return nil, err
 	}

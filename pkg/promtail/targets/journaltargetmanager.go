@@ -17,7 +17,7 @@ type JournalTargetManager struct{}
 // on this platform.
 func NewJournalTargetManager(
 	logger log.Logger,
-	positions *positions.Positions,
+	positions positions.Positions,
 	client api.EntryHandler,
 	scrapeConfigs []scrape.Config,
 ) (*JournalTargetManager, error) {
