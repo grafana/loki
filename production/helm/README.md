@@ -125,6 +125,30 @@ tls:
     - {{ .Values.ingress.host }}
 ```
 
+## Run promtail with syslog support
+
+In order to receive and process syslog message into promtail, the following changes will be necessary:
+
+* Review the [promtail syslog-receiver configuration documentation](/docs/clients/promtail/scraping.md#syslog-receiver)
+
+* Configure the promtail helm chart with the syslog configuration added to the `extraScrapeConfigs` section and associated service definition to listen for syslog messages. For example:
+
+```yaml
+extraScrapeConfigs:
+  - job_name: syslog
+    syslog:
+      listen_address: 0.0.0.0:1514
+      labels:
+        job: "syslog"
+  relabel_configs:
+    - source_labels: ['__syslog_message_hostname']
+      target_label: 'host'
+syslogService:
+  enabled: true
+  type: LoadBalancer
+  port: 1514
+```
+
 ## How to contribute
 
 After adding your new feature to the appropriate chart, you can build and deploy it locally to test:
