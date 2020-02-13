@@ -46,6 +46,7 @@ type ResultType string
 // ResultType values
 const (
 	ResultTypeStream = "streams"
+	ResultTypeScalar = "scalar"
 	ResultTypeVector = "vector"
 	ResultTypeMatrix = "matrix"
 )
@@ -64,6 +65,9 @@ type QueryResponseData struct {
 
 // Type implements the promql.Value interface
 func (Streams) Type() ResultType { return ResultTypeStream }
+
+// Type implements the promql.Value interface
+func (Scalar) Type() ResultType { return ResultTypeScalar }
 
 // Type implements the promql.Value interface
 func (Vector) Type() ResultType { return ResultTypeVector }
@@ -127,6 +131,10 @@ func (q *QueryResponseData) UnmarshalJSON(data []byte) error {
 		var v Vector
 		err = json.Unmarshal(unmarshal.Result, &v)
 		value = v
+	case ResultTypeScalar:
+		var v Scalar
+		err = json.Unmarshal(unmarshal.Result, &v)
+		value = v
 	default:
 		return fmt.Errorf("unknown type: %s", unmarshal.Type)
 	}
@@ -170,6 +178,9 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 
 	return nil
 }
+
+// Scalar is a single timestamp/float with no labels
+type Scalar model.Scalar
 
 // Vector is a slice of Samples
 type Vector []model.Sample
