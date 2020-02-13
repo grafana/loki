@@ -781,6 +781,10 @@ logs in Loki.
 # Maximum number of active streams per user, per ingester. 0 to disable.
 [max_streams_per_user: <int> | default = 10000]
 
+# Maximum line size on ingestion path. Example: 256kb.
+# There is no limit when unset.
+[max_line_size: <string> | default = none ]
+
 # Maximum number of active streams per user, across the cluster. 0 to disable.
 # When the global limit is enabled, each ingester is configured with a dynamic
 # local limit based on the replication factor and the current number of healthy

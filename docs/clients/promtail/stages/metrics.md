@@ -29,11 +29,16 @@ type: Counter
 # Defines custom prefix name for the metric. If undefined, default name "promtail_custom_" will be prefixed.
 [prefix: <string>]
 
-# Key from the extracted data map to use for the mtric,
+# Key from the extracted data map to use for the metric,
 # defaulting to the metric's name if not present.
 [source: <string>]
 
 config:
+  # If present and true all log lines will be counted without
+  # attempting to match the source to the extract map.
+  # It is an error to specify `match_all: true` and also specify a `value`
+  [match_all: <bool>]
+  
   # Filters down source data and only changes the metric
   # if the targeted value exactly matches the provided string.
   # If not present, all data will match.
@@ -64,6 +69,13 @@ type: Gauge
 # Key from the extracted data map to use for the mtric,
 # defaulting to the metric's name if not present.
 [source: <string>]
+
+# Label values on metrics are dynamic which can cause exported metrics
+# to go stale (for example when a stream stops receiving logs).
+# To prevent unbounded growth of the /metrics endpoint any metrics which
+# have not been updated within this time will be removed.
+# Must be greater than or equal to '1s', if undefined default is '5m'
+[max_idle_duration: <string>]
 
 config:
   # Filters down source data and only changes the metric

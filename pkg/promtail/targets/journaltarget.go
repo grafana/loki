@@ -78,7 +78,7 @@ var defaultJournalEntryFunc = func(c sdjournal.JournalReaderConfig, cursor strin
 type JournalTarget struct {
 	logger        log.Logger
 	handler       api.EntryHandler
-	positions     *positions.Positions
+	positions     positions.Positions
 	positionPath  string
 	relabelConfig []*relabel.Config
 	config        *scrape.JournalTargetConfig
@@ -92,7 +92,7 @@ type JournalTarget struct {
 func NewJournalTarget(
 	logger log.Logger,
 	handler api.EntryHandler,
-	positions *positions.Positions,
+	positions positions.Positions,
 	jobName string,
 	relabelConfig []*relabel.Config,
 	targetConfig *scrape.JournalTargetConfig,
@@ -113,7 +113,7 @@ func NewJournalTarget(
 func journalTargetWithReader(
 	logger log.Logger,
 	handler api.EntryHandler,
-	positions *positions.Positions,
+	positions positions.Positions,
 	jobName string,
 	relabelConfig []*relabel.Config,
 	targetConfig *scrape.JournalTargetConfig,

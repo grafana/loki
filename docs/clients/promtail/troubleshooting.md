@@ -3,6 +3,19 @@
 This document describes known failure modes of `promtail` on edge cases and the
 adopted trade-offs.
 
+## Dry running
+
+Promtail can be configured to print log stream entries instead of sending them to Loki.
+This can be used in combination with [piping data](#pipe-data-to-promtail) to debug or troubleshoot promtail log parsing.
+
+In dry run mode, Promtail still support reading from a [positions](configuration.md#position_config) file however no update will be made to the targeted file, this is to ensure you can easily retry the same set of lines.
+
+To start Promtail in dry run mode use the flag `--dry-run` as shown in the example below:
+
+```bash
+cat my.log | promtail --dry-run --client.url http://127.0.0.1:3100/loki/api/v1/push
+```
+
 ## Pipe data to Promtail
 
 Promtail supports piping data for sending logs to Loki. This is a very useful way to troubleshooting your configuration.

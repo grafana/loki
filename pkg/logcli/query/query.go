@@ -3,8 +3,10 @@ package query
 import (
 	"fmt"
 	"log"
+	"os"
 	"sort"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/fatih/color"
@@ -168,14 +170,21 @@ func (q *Query) printVector(vector loghttp.Vector) {
 	fmt.Print(string(bytes))
 }
 
-func (q *Query) printStats(stats stats.Result) {
-	bytes, err := json.MarshalIndent(stats, "", "  ")
+type kvLogger struct {
+	*tabwriter.Writer
+}
 
-	if err != nil {
-		log.Fatalf("Error marshalling stats: %v", err)
+func (k kvLogger) Log(keyvals ...interface{}) error {
+	for i := 0; i < len(keyvals); i += 2 {
+		fmt.Fprintln(k.Writer, color.BlueString("%s", keyvals[i]), "\t", fmt.Sprintf("%v", keyvals[i+1]))
 	}
+	k.Flush()
+	return nil
+}
 
-	fmt.Print(string(bytes))
+func (q *Query) printStats(stats stats.Result) {
+	writer := tabwriter.NewWriter(os.Stdout, 0, 8, 0, '\t', 0)
+	stats.Summary.Log(kvLogger{Writer: writer})
 }
 
 func (q *Query) resultsDirection() logproto.Direction {
