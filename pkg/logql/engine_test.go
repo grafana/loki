@@ -293,9 +293,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 			`1+1`, time.Unix(60, 0), logproto.FORWARD, 100,
 			[][]*logproto.Stream{},
 			[]SelectParams{},
-			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 2}},
-			},
+			promql.Scalar{T: 60 * 1000, V: 2},
 		},
 		{
 			// single literal
@@ -303,9 +301,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 			time.Unix(60, 0), logproto.FORWARD, 100,
 			[][]*logproto.Stream{},
 			[]SelectParams{},
-			promql.Vector{
-				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 2}},
-			},
+			promql.Scalar{T: 60 * 1000, V: 2},
 		},
 	} {
 		test := test
@@ -970,7 +966,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			[]SelectParams{},
 			promql.Matrix{
 				promql.Series{
-					Points: []promql.Point{{T: 60 * 1000, V: 3}},
+					Points: []promql.Point{{T: 60000, V: 3}, {T: 90000, V: 3}, {T: 120000, V: 3}, {T: 150000, V: 3}, {T: 180000, V: 3}},
 				},
 			},
 		},
@@ -1053,7 +1049,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			[]SelectParams{},
 			promql.Matrix{
 				promql.Series{
-					Points: []promql.Point{{T: 60 * 1000, V: 2}},
+					Points: []promql.Point{{T: 60 * 1000, V: 2}, {T: 90 * 1000, V: 2}, {T: 120 * 1000, V: 2}, {T: 150 * 1000, V: 2}, {T: 180 * 1000, V: 2}},
 				},
 			},
 		},

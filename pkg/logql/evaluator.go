@@ -119,8 +119,15 @@ func (ev *defaultEvaluator) vectorAggEvaluator(ctx context.Context, expr *vector
 		return nil, err
 	}
 
-	return newStepEvaluator(func() (bool, int64, promql.Vector) {
-		next, ts, vec := nextEvaluator.Next()
+	return newStepEvaluator(func() (bool, int64, promql.Value) {
+		next, ts, data := nextEvaluator.Next()
+
+		// vector aggregations can only consume vectors and this should never not be a vector.
+		vec, err := assertVec(data)
+		if err != nil {
+			panic(err)
+		}
+
 		if !next {
 			return false, 0, promql.Vector{}
 		}
@@ -328,7 +335,7 @@ func (ev *defaultEvaluator) rangeAggEvaluator(ctx context.Context, expr *rangeAg
 		fn = count
 	}
 
-	return newStepEvaluator(func() (bool, int64, promql.Vector) {
+	return newStepEvaluator(func() (bool, int64, promql.Value) {
 		next := vecIter.Next()
 		if !next {
 			return false, 0, promql.Vector{}
@@ -374,13 +381,20 @@ func (ev *defaultEvaluator) binOpEvaluator(
 		return nil, err
 	}
 
-	return newStepEvaluator(func() (bool, int64, promql.Vector) {
+	return newStepEvaluator(func() (bool, int64, promql.Value) {
 		pairs := map[uint64][2]*promql.Sample{}
 		var ts int64
 
 		// populate pairs
 		for i, eval := range []StepEvaluator{lhs, rhs} {
-			next, timestamp, vec := eval.Next()
+			next, timestamp, data := eval.Next()
+			// since we've already handled literalExprs,
+			// the step evaluators are guaranteed to produce vectors
+			vec, err := assertVec(data)
+			if err != nil {
+				panic(err)
+			}
+
 			ts = timestamp
 
 			// These should _always_ happen at the same step on each evaluator.
@@ -560,8 +574,16 @@ func (ev *defaultEvaluator) literalEvaluator(
 	inverted bool,
 ) (StepEvaluator, error) {
 	return newStepEvaluator(
-		func() (bool, int64, promql.Vector) {
-			ok, ts, vec := eval.Next()
+		func() (bool, int64, promql.Value) {
+			ok, ts, data := eval.Next()
+			// literalEvaluator must never be called with a non vector
+			// producing StepEvaluator. This would only happen in the case of
+			// two literal legs in a binaryExpr, but these are automatically reduced
+			// to a single Scalar during ast construction in mustNewBinOpExpr.
+			vec, err := assertVec(data)
+			if err != nil {
+				panic(err)
+			}
 
 			results := make(promql.Vector, 0, len(vec))
 			for _, sample := range vec {
@@ -594,7 +616,7 @@ func (ev *defaultEvaluator) literalEvaluator(
 func singletonEvaluator(expr *literalExpr, params Params) (StepEvaluator, error) {
 	ok := true
 	return newStepEvaluator(
-		func() (bool, int64, promql.Vector) {
+		func() (bool, int64, promql.Value) {
 			if !ok {
 				return ok, 0, nil
 			}
@@ -602,10 +624,10 @@ func singletonEvaluator(expr *literalExpr, params Params) (StepEvaluator, error)
 			ok = false
 			ts := params.Start().UnixNano() / int64(time.Millisecond)
 
-			return tmp, ts, promql.Vector{promql.Sample{Point: promql.Point{
+			return tmp, ts, promql.Scalar{
 				T: ts,
 				V: expr.value,
-			}}}
+			}
 		},
 		nil,
 	)

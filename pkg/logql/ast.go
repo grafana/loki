@@ -256,17 +256,18 @@ type SampleExpr interface {
 
 // StepEvaluator evaluate a single step of a query.
 type StepEvaluator interface {
-	Next() (bool, int64, promql.Vector)
+	// while Next returns a promql.Value, the only acceptable types are Scalar and Vector.
+	Next() (bool, int64, promql.Value)
 	// Close all resources used.
 	Close() error
 }
 
 type stepEvaluator struct {
-	fn    func() (bool, int64, promql.Vector)
+	fn    func() (bool, int64, promql.Value)
 	close func() error
 }
 
-func newStepEvaluator(fn func() (bool, int64, promql.Vector), close func() error) (StepEvaluator, error) {
+func newStepEvaluator(fn func() (bool, int64, promql.Value), close func() error) (StepEvaluator, error) {
 	if fn == nil {
 		return nil, errors.New("nil step evaluator fn")
 	}
@@ -281,7 +282,7 @@ func newStepEvaluator(fn func() (bool, int64, promql.Vector), close func() error
 	}, nil
 }
 
-func (e *stepEvaluator) Next() (bool, int64, promql.Vector) {
+func (e *stepEvaluator) Next() (bool, int64, promql.Value) {
 	return e.fn()
 }
 

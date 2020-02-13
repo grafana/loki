@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
@@ -212,13 +213,32 @@ func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (pr
 
 	seriesIndex := map[uint64]*promql.Series{}
 
-	next, ts, vec := stepEvaluator.Next()
+	next, ts, data := stepEvaluator.Next()
 	if GetRangeType(q) == InstantType {
+		if data.Type() == promql.ValueTypeScalar {
+			return data, nil
+		}
+
+		vec, err := assertVec(data)
+		if err != nil {
+			return nil, err
+		}
+
 		sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
 		return vec, nil
 	}
 
+	// handle Scalar responses to range queries
+	if data.Type() == promql.ValueTypeScalar {
+		return PopulateMatrixFromScalar(data.(promql.Scalar), q.LiteralParams), nil
+	}
+
 	for next {
+		vec, err := assertVec(data)
+		if err != nil {
+			return nil, err
+		}
+
 		for _, p := range vec {
 			var (
 				series *promql.Series
@@ -238,7 +258,7 @@ func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (pr
 				V: p.V,
 			})
 		}
-		next, ts, vec = stepEvaluator.Next()
+		next, ts, data = stepEvaluator.Next()
 	}
 
 	series := make([]promql.Series, 0, len(seriesIndex))
@@ -248,6 +268,39 @@ func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (pr
 	result := promql.Matrix(series)
 	sort.Sort(result)
 	return result, nil
+}
+
+func assertVec(res promql.Value) (promql.Vector, error) {
+	vec, ok := res.(promql.Vector)
+	if !ok {
+		return nil, fmt.Errorf("unexepected promql.Value implementor (%T)", res.Type())
+	}
+	return vec, nil
+
+}
+
+func PopulateMatrixFromScalar(data promql.Scalar, params LiteralParams) promql.Matrix {
+	var (
+		start  = params.Start()
+		end    = params.End()
+		step   = params.Step()
+		series = promql.Series{
+			Points: make(
+				[]promql.Point,
+				0,
+				// allocate enough space for all needed entries
+				int(params.End().Sub(params.Start())/params.Step())+1,
+			),
+		}
+	)
+
+	for ts := start; !ts.After(end); ts = ts.Add(step) {
+		series.Points = append(series.Points, promql.Point{
+			T: ts.UnixNano() / int64(time.Millisecond),
+			V: data.V,
+		})
+	}
+	return promql.Matrix{series}
 }
 
 func readStreams(i iter.EntryIterator, size uint32) (Streams, error) {
