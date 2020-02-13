@@ -148,7 +148,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 			query.Start = mustParse(from, defaultStart)
 			query.End = mustParse(to, defaultEnd)
 		}
-
+		query.Quiet = *quiet
 		return nil
 	})
 
