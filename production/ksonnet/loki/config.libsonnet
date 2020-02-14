@@ -88,6 +88,7 @@
 
     commonArgs: {
       'config.file': '/etc/loki/config.yaml',
+      'limits.per-user-override-config': '/etc/loki/overrides.yaml',
     },
 
     loki: {

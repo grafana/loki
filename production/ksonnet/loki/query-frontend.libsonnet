@@ -21,6 +21,7 @@
     deployment.new('query-frontend', 2, [$.query_frontend_container]) +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki') +
+    $.util.configVolumeMount('overrides', '/etc/loki') +
     $.util.antiAffinity,
 
   local service = $.core.v1.service,
