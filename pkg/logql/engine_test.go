@@ -288,6 +288,36 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 0.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "fuzz"}}},
 			},
 		},
+		{
+			`bottomk(3,rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app) + 1`, time.Unix(60, 0), logproto.FORWARD, 100,
+			[][]*logproto.Stream{
+				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, offset(46, identity), `{app="bar"}`),
+					newStream(testSize, factor(5, identity), `{app="fuzz"}`), newStream(testSize, identity, `{app="buzz"}`)},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(60, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
+			},
+			promql.Vector{
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.25}, Metric: labels.Labels{labels.Label{Name: "app", Value: "bar"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.1}, Metric: labels.Labels{labels.Label{Name: "app", Value: "foo"}}},
+				promql.Sample{Point: promql.Point{T: 60 * 1000, V: 1.2}, Metric: labels.Labels{labels.Label{Name: "app", Value: "fuzz"}}},
+			},
+		},
+		{
+			// healthcheck
+			`1+1`, time.Unix(60, 0), logproto.FORWARD, 100,
+			[][]*logproto.Stream{},
+			[]SelectParams{},
+			promql.Scalar{T: 60 * 1000, V: 2},
+		},
+		{
+			// single literal
+			`2`,
+			time.Unix(60, 0), logproto.FORWARD, 100,
+			[][]*logproto.Stream{},
+			[]SelectParams{},
+			promql.Scalar{T: 60 * 1000, V: 2},
+		},
 	} {
 		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
@@ -945,9 +975,72 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`
-		count_over_time({app="bar"}[1m]) ^ count_over_time({app="bar"}[1m])
-		`,
+			`1+1--1`,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, logproto.FORWARD, 100,
+			[][]*logproto.Stream{},
+			[]SelectParams{},
+			promql.Matrix{
+				promql.Series{
+					Points: []promql.Point{{T: 60000, V: 3}, {T: 90000, V: 3}, {T: 120000, V: 3}, {T: 150000, V: 3}, {T: 180000, V: 3}},
+				},
+			},
+		},
+		{
+			`rate({app="bar"}[1m]) - 1`,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, logproto.FORWARD, 100,
+			[][]*logproto.Stream{
+				{
+					newStream(testSize, factor(5, identity), `{app="bar"}`),
+				},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(180, 0), Limit: 0, Selector: `{app="bar"}`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.Labels{{Name: "app", Value: "bar"}},
+					Points: []promql.Point{{T: 60 * 1000, V: -0.8}, {T: 90 * 1000, V: -0.8}, {T: 120 * 1000, V: -0.8}, {T: 150 * 1000, V: -0.8}, {T: 180 * 1000, V: -0.8}},
+				},
+			},
+		},
+		{
+			`1 - rate({app="bar"}[1m])`,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, logproto.FORWARD, 100,
+			[][]*logproto.Stream{
+				{
+					newStream(testSize, factor(5, identity), `{app="bar"}`),
+				},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(180, 0), Limit: 0, Selector: `{app="bar"}`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.Labels{{Name: "app", Value: "bar"}},
+					Points: []promql.Point{{T: 60 * 1000, V: 0.8}, {T: 90 * 1000, V: 0.8}, {T: 120 * 1000, V: 0.8}, {T: 150 * 1000, V: 0.8}, {T: 180 * 1000, V: 0.8}},
+				},
+			},
+		},
+		{
+			`rate({app="bar"}[1m]) - 1 / 2`,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, logproto.FORWARD, 100,
+			[][]*logproto.Stream{
+				{
+					newStream(testSize, factor(5, identity), `{app="bar"}`),
+				},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(180, 0), Limit: 0, Selector: `{app="bar"}`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.Labels{{Name: "app", Value: "bar"}},
+					Points: []promql.Point{{T: 60 * 1000, V: -0.3}, {T: 90 * 1000, V: -0.3}, {T: 120 * 1000, V: -0.3}, {T: 150 * 1000, V: -0.3}, {T: 180 * 1000, V: -0.3}},
+				},
+			},
+		},
+		{
+			`count_over_time({app="bar"}[1m]) ^ count_over_time({app="bar"}[1m])`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, logproto.FORWARD, 100,
 			[][]*logproto.Stream{
 				{
@@ -961,6 +1054,17 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 				promql.Series{
 					Metric: labels.Labels{{Name: "app", Value: "bar"}},
 					Points: []promql.Point{{T: 60 * 1000, V: math.Pow(12, 12)}, {T: 90 * 1000, V: math.Pow(12, 12)}, {T: 120 * 1000, V: math.Pow(12, 12)}, {T: 150 * 1000, V: math.Pow(12, 12)}, {T: 180 * 1000, V: math.Pow(12, 12)}},
+				},
+			},
+		},
+		{
+			`2`,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, logproto.FORWARD, 100,
+			[][]*logproto.Stream{},
+			[]SelectParams{},
+			promql.Matrix{
+				promql.Series{
+					Points: []promql.Point{{T: 60 * 1000, V: 2}, {T: 90 * 1000, V: 2}, {T: 120 * 1000, V: 2}, {T: 150 * 1000, V: 2}, {T: 180 * 1000, V: 2}},
 				},
 			},
 		},

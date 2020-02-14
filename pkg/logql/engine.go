@@ -178,13 +178,6 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 	defer cancel()
 
 	qs := q.String()
-	// This is a legacy query used for health checking. Not the best practice, but it works.
-	if qs == "1+1" {
-		if GetRangeType(q) == InstantType {
-			return promql.Vector{}, nil
-		}
-		return promql.Matrix{}, nil
-	}
 
 	expr, err := ParseExpr(qs)
 	if err != nil {
@@ -211,6 +204,9 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 
 // evalSample evaluate a sampleExpr
 func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (promql.Value, error) {
+	if lit, ok := expr.(*literalExpr); ok {
+		return ng.evalLiteral(ctx, lit, q)
+	}
 
 	stepEvaluator, err := ng.evaluator.Evaluator(ctx, expr, q)
 	if err != nil {
@@ -225,7 +221,9 @@ func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (pr
 		sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
 		return vec, nil
 	}
+
 	for next {
+
 		for _, p := range vec {
 			var (
 				series *promql.Series
@@ -255,6 +253,44 @@ func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (pr
 	result := promql.Matrix(series)
 	sort.Sort(result)
 	return result, nil
+}
+
+func (ng *engine) evalLiteral(_ context.Context, expr *literalExpr, q *query) (promql.Value, error) {
+	s := promql.Scalar{
+		T: q.Start().UnixNano() / int64(time.Millisecond),
+		V: expr.value,
+	}
+
+	if GetRangeType(q) == InstantType {
+		return s, nil
+	}
+
+	return PopulateMatrixFromScalar(s, q.LiteralParams), nil
+
+}
+
+func PopulateMatrixFromScalar(data promql.Scalar, params LiteralParams) promql.Matrix {
+	var (
+		start  = params.Start()
+		end    = params.End()
+		step   = params.Step()
+		series = promql.Series{
+			Points: make(
+				[]promql.Point,
+				0,
+				// allocate enough space for all needed entries
+				int(params.End().Sub(params.Start())/params.Step())+1,
+			),
+		}
+	)
+
+	for ts := start; !ts.After(end); ts = ts.Add(step) {
+		series.Points = append(series.Points, promql.Point{
+			T: ts.UnixNano() / int64(time.Millisecond),
+			V: data.V,
+		})
+	}
+	return promql.Matrix{series}
 }
 
 func readStreams(i iter.EntryIterator, size uint32) (Streams, error) {

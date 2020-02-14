@@ -25,7 +25,7 @@ import (
   binOp                   string
   str                     string
   duration                time.Duration
-  int                     int64
+  LiteralExpr             *literalExpr
 }
 
 %start root
@@ -44,8 +44,9 @@ import (
 %type <VectorAggregationExpr> vectorAggregationExpr
 %type <VectorOp>              vectorOp
 %type <BinOpExpr>             binOpExpr
+%type <LiteralExpr>           literalExpr
 
-%token <str>      IDENTIFIER STRING
+%token <str>      IDENTIFIER STRING NUMBER
 %token <duration> DURATION
 %token <val>      MATCHERS LABELS EQ NEQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
@@ -66,6 +67,7 @@ expr:
     | rangeAggregationExpr                         { $$ = $1 }
     | vectorAggregationExpr                        { $$ = $1 }
     | binOpExpr                                    { $$ = $1 }
+    | literalExpr                                  { $$ = $1 }
     | OPEN_PARENTHESIS expr CLOSE_PARENTHESIS      { $$ = $2 }
     ;
 
@@ -96,10 +98,10 @@ vectorAggregationExpr:
     | vectorOp OPEN_PARENTHESIS rangeAggregationExpr CLOSE_PARENTHESIS grouping                      { $$ = mustNewVectorAggregationExpr($3, $1, $5, nil) }
     | vectorOp OPEN_PARENTHESIS vectorAggregationExpr CLOSE_PARENTHESIS grouping                     { $$ = mustNewVectorAggregationExpr($3, $1, $5, nil) }
     // Aggregations with 2 arguments.
-    | vectorOp OPEN_PARENTHESIS IDENTIFIER COMMA vectorAggregationExpr CLOSE_PARENTHESIS             { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
-    | vectorOp OPEN_PARENTHESIS IDENTIFIER COMMA vectorAggregationExpr CLOSE_PARENTHESIS grouping    { $$ = mustNewVectorAggregationExpr($5, $1, $7, &$3) }
-    | vectorOp OPEN_PARENTHESIS IDENTIFIER COMMA rangeAggregationExpr CLOSE_PARENTHESIS              { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
-    | vectorOp OPEN_PARENTHESIS IDENTIFIER COMMA rangeAggregationExpr CLOSE_PARENTHESIS grouping     { $$ = mustNewVectorAggregationExpr($5, $1, $7, &$3) }
+    | vectorOp OPEN_PARENTHESIS NUMBER COMMA vectorAggregationExpr CLOSE_PARENTHESIS                 { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
+    | vectorOp OPEN_PARENTHESIS NUMBER COMMA vectorAggregationExpr CLOSE_PARENTHESIS grouping        { $$ = mustNewVectorAggregationExpr($5, $1, $7, &$3) }
+    | vectorOp OPEN_PARENTHESIS NUMBER COMMA rangeAggregationExpr CLOSE_PARENTHESIS                  { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
+    | vectorOp OPEN_PARENTHESIS NUMBER COMMA rangeAggregationExpr CLOSE_PARENTHESIS grouping         { $$ = mustNewVectorAggregationExpr($5, $1, $7, &$3) }
     ;
 
 filter:
@@ -142,6 +144,11 @@ binOpExpr:
          | expr DIV expr       { $$ = mustNewBinOpExpr("/", $1, $3) }
          | expr MOD expr       { $$ = mustNewBinOpExpr("%", $1, $3) }
          | expr POW expr       { $$ = mustNewBinOpExpr("^", $1, $3) }
+
+literalExpr:
+           NUMBER         { $$ = mustNewLiteralExpr( $1, false ) }
+           | ADD NUMBER   { $$ = mustNewLiteralExpr( $2, false ) }
+           | SUB NUMBER   { $$ = mustNewLiteralExpr( $2, true ) }
 
 vectorOp:
         SUM     { $$ = OpTypeSum }

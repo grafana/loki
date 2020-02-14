@@ -2,6 +2,7 @@
 
 ### Features
 
+* [1677](https://github.com/grafana/loki/pull/1677) **owen-d**: Introduces numeric literals in LogQL
 * [1686](https://github.com/grafana/loki/pull/1686) **owen-d**: Introduces the `distributor.max-line-size` flag and associated yaml config. When enabled, lines longer than this config will not be accepted.
 * [1662](https://github.com/grafana/loki/pull/1662) **owen-d**: Introduces binary operators in LogQL
 * [1572](https://github.com/grafana/loki/pull/1572) **owen-d**: Introduces the `querier.query-ingesters-within` flag and associated yaml config. When enabled, queries for a time range that do not overlap this lookback interval will not be sent to the ingesters.

@@ -219,7 +219,15 @@ func TestParse(t *testing.T) {
 		{
 			in: `bottomk(he,count_over_time({ foo !~ "bar" }[5h]))`,
 			err: ParseError{
-				msg:  "invalid parameter bottomk(he,",
+				msg:  "syntax error: unexpected IDENTIFIER",
+				line: 1,
+				col:  9,
+			},
+		},
+		{
+			in: `bottomk(1.2,count_over_time({ foo !~ "bar" }[5h]))`,
+			err: ParseError{
+				msg:  "invalid parameter bottomk(1.2,",
 				line: 0,
 				col:  0,
 			},
@@ -548,6 +556,68 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			// require left associativity
+			in: `
+			sum(count_over_time({foo="bar"}[5m])) by (foo) /
+			sum(count_over_time({foo="bar"}[5m])) by (foo) /
+			sum(count_over_time({foo="bar"}[5m])) by (foo)
+			`,
+			exp: mustNewBinOpExpr(
+				OpTypeDiv,
+				mustNewBinOpExpr(
+					OpTypeDiv,
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+					mustNewVectorAggregationExpr(newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime),
+						"sum",
+						&grouping{
+							without: false,
+							groups:  []string{"foo"},
+						},
+						nil,
+					),
+				),
+				mustNewVectorAggregationExpr(newRangeAggregationExpr(
+					&logRange{
+						left: &matchersExpr{
+							matchers: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+						interval: 5 * time.Minute,
+					}, OpTypeCountOverTime),
+					"sum",
+					&grouping{
+						without: false,
+						groups:  []string{"foo"},
+					},
+					nil,
+				),
+			),
+		},
+		{
 			in: `
 			sum(count_over_time({foo="bar"}[5m])) by (foo) ^
 			sum(count_over_time({foo="bar"}[5m])) by (foo) /
@@ -671,6 +741,54 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
+			// reduces binop with two literalExprs
+			in: `sum(count_over_time({foo="bar"}[5m])) by (foo) + 1 / 2`,
+			exp: mustNewBinOpExpr(
+				OpTypeAdd,
+				mustNewVectorAggregationExpr(
+					newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime),
+					"sum",
+					&grouping{
+						without: false,
+						groups:  []string{"foo"},
+					},
+					nil,
+				),
+				&literalExpr{value: 0.5},
+			),
+		},
+		{
+			// test signs
+			in: `1 + -2 / 1`,
+			exp: mustNewBinOpExpr(
+				OpTypeAdd,
+				&literalExpr{value: 1},
+				mustNewBinOpExpr(OpTypeDiv, &literalExpr{value: -2}, &literalExpr{value: 1}),
+			),
+		},
+		{
+			// test signs/ops with equal associativity
+			in: `1 + 1 - -1`,
+			exp: mustNewBinOpExpr(
+				OpTypeSub,
+				mustNewBinOpExpr(OpTypeAdd, &literalExpr{value: 1}, &literalExpr{value: 1}),
+				&literalExpr{value: -1},
+			),
+		},
+		{
+			// ensure binary ops with two literals are reduced recursively
+			in:  `1 + 1 + 1`,
+			exp: &literalExpr{value: 3},
+		},
+		{
 			in: `{foo="bar"} + {foo="bar"}`,
 			err: ParseError{
 				msg:  `unexpected type for left leg of binary operation (+): *logql.matchersExpr`,
@@ -690,6 +808,30 @@ func TestParse(t *testing.T) {
 			in: `{foo="bar"} / sum(count_over_time({foo="bar"}[5m])) by (foo)`,
 			err: ParseError{
 				msg:  `unexpected type for left leg of binary operation (/): *logql.matchersExpr`,
+				line: 0,
+				col:  0,
+			},
+		},
+		{
+			in: `sum(count_over_time({foo="bar"}[5m])) by (foo) or 1`,
+			err: ParseError{
+				msg:  `unexpected literal for right leg of logical/set binary operation (or): 1.000000`,
+				line: 0,
+				col:  0,
+			},
+		},
+		{
+			in: `1 unless sum(count_over_time({foo="bar"}[5m])) by (foo)`,
+			err: ParseError{
+				msg:  `unexpected literal for left leg of logical/set binary operation (unless): 1.000000`,
+				line: 0,
+				col:  0,
+			},
+		},
+		{
+			in: `sum(count_over_time({foo="bar"}[5m])) by (foo) + 1 or 1`,
+			err: ParseError{
+				msg:  `unexpected literal for right leg of logical/set binary operation (or): 1.000000`,
 				line: 0,
 				col:  0,
 			},

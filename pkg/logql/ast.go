@@ -3,7 +3,6 @@ package logql
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -228,58 +227,30 @@ const (
 	OpTypeCountOverTime = "count_over_time"
 	OpTypeRate          = "rate"
 
-	// binops
+	// binops - logical/set
 	OpTypeOr     = "or"
 	OpTypeAnd    = "and"
 	OpTypeUnless = "unless"
-	OpTypeAdd    = "+"
-	OpTypeSub    = "-"
-	OpTypeMul    = "*"
-	OpTypeDiv    = "/"
-	OpTypeMod    = "%"
-	OpTypePow    = "^"
+
+	// binops - operations
+	OpTypeAdd = "+"
+	OpTypeSub = "-"
+	OpTypeMul = "*"
+	OpTypeDiv = "/"
+	OpTypeMod = "%"
+	OpTypePow = "^"
 )
+
+// IsLogicalBinOp tests whether an operation is a logical/set binary operation
+func IsLogicalBinOp(op string) bool {
+	return op == OpTypeOr || op == OpTypeAnd || op == OpTypeUnless
+}
 
 // SampleExpr is a LogQL expression filtering logs and returning metric samples.
 type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
 	Selector() LogSelectorExpr
 	Expr
-}
-
-// StepEvaluator evaluate a single step of a query.
-type StepEvaluator interface {
-	Next() (bool, int64, promql.Vector)
-	// Close all resources used.
-	Close() error
-}
-
-type stepEvaluator struct {
-	fn    func() (bool, int64, promql.Vector)
-	close func() error
-}
-
-func newStepEvaluator(fn func() (bool, int64, promql.Vector), close func() error) (StepEvaluator, error) {
-	if fn == nil {
-		return nil, errors.New("nil step evaluator fn")
-	}
-
-	if close == nil {
-		close = func() error { return nil }
-	}
-
-	return &stepEvaluator{
-		fn:    fn,
-		close: close,
-	}, nil
-}
-
-func (e *stepEvaluator) Next() (bool, int64, promql.Vector) {
-	return e.fn()
-}
-
-func (e *stepEvaluator) Close() error {
-	return e.close()
 }
 
 type rangeAggregationExpr struct {
@@ -348,6 +319,7 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *groupin
 		if p, err = strconv.Atoi(*params); err != nil {
 			panic(newParseError(fmt.Sprintf("invalid parameter %s(%s,", operation, *params), 0, 0))
 		}
+
 	default:
 		if params != nil {
 			panic(newParseError(fmt.Sprintf("unsupported parameter for operation %s(%s,", operation, *params), 0, 0))
@@ -409,12 +381,83 @@ func mustNewBinOpExpr(op string, lhs, rhs Expr) SampleExpr {
 			rhs,
 		), 0, 0))
 	}
+
+	leftLit, lOk := left.(*literalExpr)
+	rightLit, rOk := right.(*literalExpr)
+
+	if IsLogicalBinOp(op) {
+		if lOk {
+			panic(newParseError(fmt.Sprintf(
+				"unexpected literal for left leg of logical/set binary operation (%s): %f",
+				op,
+				leftLit.value,
+			), 0, 0))
+		}
+
+		if rOk {
+			panic(newParseError(fmt.Sprintf(
+				"unexpected literal for right leg of logical/set binary operation (%s): %f",
+				op,
+				rightLit.value,
+			), 0, 0))
+		}
+	}
+
+	// map expr like (1+1) -> 2
+	if lOk && rOk {
+		return reduceBinOp(op, leftLit, rightLit)
+	}
+
 	return &binOpExpr{
 		SampleExpr: left,
 		RHS:        right,
 		op:         op,
 	}
 }
+
+// Reduces a binary operation expression. A binop is reducable if both of its legs are literal expressions.
+// This is because literals need match all labels, which is currently difficult to encode into StepEvaluators.
+// Therefore, we ensure a binop can be reduced/simplified, maintaining the invariant that it does not have two literal legs.
+func reduceBinOp(op string, left, right *literalExpr) *literalExpr {
+	merged := (&defaultEvaluator{}).mergeBinOp(
+		op,
+		&promql.Sample{Point: promql.Point{V: left.value}},
+		&promql.Sample{Point: promql.Point{V: right.value}},
+	)
+	return &literalExpr{value: merged.V}
+}
+
+type literalExpr struct {
+	value float64
+}
+
+func mustNewLiteralExpr(s string, invert bool) *literalExpr {
+	n, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		panic(newParseError(fmt.Sprintf("unable to parse literal as a float: %s", err.Error()), 0, 0))
+	}
+
+	if invert {
+		n = -n
+	}
+
+	return &literalExpr{
+		value: n,
+	}
+}
+
+func (e *literalExpr) logQLExpr() {}
+
+func (e *literalExpr) String() string {
+	return fmt.Sprintf("%f", e.value)
+}
+
+// literlExpr impls SampleExpr & LogSelectorExpr mainly to reduce the need for more complicated typings
+// to facilitate sum types. We'll be type switching when evaluating them anyways
+// and they will only be present in binary operation legs.
+func (e *literalExpr) Selector() LogSelectorExpr   { return e }
+func (e *literalExpr) Filter() (Filter, error)     { return nil, nil }
+func (e *literalExpr) Matchers() []*labels.Matcher { return nil }
 
 // helper used to impl Stringer for vector and range aggregations
 // nolint:interfacer

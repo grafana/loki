@@ -106,7 +106,6 @@ func (ev *defaultEvaluator) Evaluator(ctx context.Context, expr SampleExpr, q Pa
 		return ev.rangeAggEvaluator(ctx, e, q)
 	case *binOpExpr:
 		return ev.binOpEvaluator(ctx, e, q)
-
 	default:
 		return nil, errors.Errorf("unexpected type (%T): %v", e, e)
 	}
@@ -120,6 +119,7 @@ func (ev *defaultEvaluator) vectorAggEvaluator(ctx context.Context, expr *vector
 
 	return newStepEvaluator(func() (bool, int64, promql.Vector) {
 		next, ts, vec := nextEvaluator.Next()
+
 		if !next {
 			return false, 0, promql.Vector{}
 		}
@@ -338,11 +338,34 @@ func (ev *defaultEvaluator) rangeAggEvaluator(ctx context.Context, expr *rangeAg
 	}, vecIter.Close)
 }
 
+// binOpExpr explicly does not handle when both legs are literals as
+// it makes the type system simpler and these are reduced in mustNewBinOpExpr
 func (ev *defaultEvaluator) binOpEvaluator(
 	ctx context.Context,
 	expr *binOpExpr,
 	q Params,
 ) (StepEvaluator, error) {
+	// first check if either side is a literal
+	leftLit, lOk := expr.SampleExpr.(*literalExpr)
+	rightLit, rOk := expr.RHS.(*literalExpr)
+
+	// match a literal expr with all labels in the other leg
+	if lOk {
+		rhs, err := ev.Evaluator(ctx, expr.RHS, q)
+		if err != nil {
+			return nil, err
+		}
+		return ev.literalEvaluator(expr.op, leftLit, rhs, false)
+	}
+	if rOk {
+		lhs, err := ev.Evaluator(ctx, expr.SampleExpr, q)
+		if err != nil {
+			return nil, err
+		}
+		return ev.literalEvaluator(expr.op, rightLit, lhs, true)
+	}
+
+	// we have two non literal legs
 	lhs, err := ev.Evaluator(ctx, expr.SampleExpr, q)
 	if err != nil {
 		return nil, err
@@ -359,6 +382,7 @@ func (ev *defaultEvaluator) binOpEvaluator(
 		// populate pairs
 		for i, eval := range []StepEvaluator{lhs, rhs} {
 			next, timestamp, vec := eval.Next()
+
 			ts = timestamp
 
 			// These should _always_ happen at the same step on each evaluator.
@@ -527,4 +551,43 @@ func (ev *defaultEvaluator) mergeBinOp(op string, left, right *promql.Sample) *p
 
 	return merger(left, right)
 
+}
+
+// literalEvaluator merges a literal with a StepEvaluator. Since order matters in
+// non commutative operations, inverted should be true when the literalExpr is not the left argument.
+func (ev *defaultEvaluator) literalEvaluator(
+	op string,
+	lit *literalExpr,
+	eval StepEvaluator,
+	inverted bool,
+) (StepEvaluator, error) {
+	return newStepEvaluator(
+		func() (bool, int64, promql.Vector) {
+			ok, ts, vec := eval.Next()
+
+			results := make(promql.Vector, 0, len(vec))
+			for _, sample := range vec {
+				literalPoint := promql.Sample{
+					Metric: sample.Metric,
+					Point:  promql.Point{T: ts, V: lit.value},
+				}
+
+				left, right := &literalPoint, &sample
+				if inverted {
+					left, right = right, left
+				}
+
+				if merged := ev.mergeBinOp(
+					op,
+					left,
+					right,
+				); merged != nil {
+					results = append(results, *merged)
+				}
+			}
+
+			return ok, ts, results
+		},
+		eval.Close,
+	)
 }

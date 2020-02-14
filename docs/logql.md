@@ -166,11 +166,23 @@ The following binary arithmetic operators exist in Loki:
 - `%` (modulo)
 - `^` (power/exponentiation)
 
-Binary arithmetic operators are defined only between two vectors.
+Binary arithmetic operators are defined between two literals (scalars), a literal and a vector, and two vectors.
 
-Between two instant vectors, a binary arithmetic operator is applied to each entry in the left-hand side vector and its matching element in the right-hand vector. The result is propagated into the result vector with the grouping labels becoming the output label set. Entries for which no matching entry in the right-hand vector can be found are not part of the result.
+Between two literals, the behavior is obvious: they evaluate to another literal that is the result of the operator applied to both scalar operands (1 + 1 = 2).
+
+Between a vector and a literal, the operator is applied to the value of every data sample in the vector. E.g. if a time series vector is multiplied by 2, the result is another vector in which every sample value of the original vector is multiplied by 2.
+
+Between two vectors, a binary arithmetic operator is applied to each entry in the left-hand side vector and its matching element in the right-hand vector. The result is propagated into the result vector with the grouping labels becoming the output label set. Entries for which no matching entry in the right-hand vector can be found are not part of the result.
 
 ##### Examples
+
+Implement a health check with a simple query:
+
+> `1 + 1`
+
+Double the rate of a a log stream's entries:
+
+> `sum(rate({app="foo"})) * 2`
 
 Get proportion of warning logs to error logs for the `foo` app
 
