@@ -3,7 +3,7 @@
     overrides: {
       // insert tenant overrides here. see https://github.com/grafana/loki/tree/master/docs/configuration#limits_config
       //
-      //   tenant_x: {
+      //   'tenant_x': {
       //     ingestion_rate_strategy: 'global',
       //     ingestion_rate_mb: 12,
       //     ingestion_burst_size_mb: 20,
