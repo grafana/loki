@@ -71,10 +71,6 @@ func newTemplateStage(logger log.Logger, config interface{}) (*templateStage, er
 	}, nil
 }
 
-type templateData struct {
-	Value string
-}
-
 // templateStage will mutate the incoming entry and set it from extracted data
 type templateStage struct {
 	cfgs     *TemplateConfig
@@ -87,7 +83,8 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 	if o.cfgs == nil {
 		return
 	}
-	if v, ok := extracted[o.cfgs.Source]; ok {
+	td := make(map[string]interface{})
+	for k, v := range extracted {
 		s, err := getString(v)
 		if err != nil {
 			if Debug {
@@ -95,39 +92,28 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 			}
 			return
 		}
-		td := templateData{s}
-		buf := &bytes.Buffer{}
-		err = o.template.Execute(buf, td)
-		if err != nil {
-			if Debug {
-				level.Debug(o.logger).Log("msg", "failed to execute template on extracted value", "err", err, "value", v)
-			}
-			return
-		}
-		st := buf.String()
-		// If the template evaluates to an empty string, remove the key from the map
-		if st == "" {
-			delete(extracted, o.cfgs.Source)
-		} else {
-			extracted[o.cfgs.Source] = st
-		}
-
-	} else {
-		td := templateData{}
-		buf := &bytes.Buffer{}
-		err := o.template.Execute(buf, td)
-		if err != nil {
-			if Debug {
-				level.Debug(o.logger).Log("msg", "failed to execute template on extracted value", "err", err, "value", v)
-			}
-			return
-		}
-		st := buf.String()
-		// Do not set extracted data with empty values
-		if st != "" {
-			extracted[o.cfgs.Source] = st
+		td[k] = s
+		if k == o.cfgs.Source {
+			td["Value"] = s
 		}
 	}
+
+	buf := &bytes.Buffer{}
+	err := o.template.Execute(buf, td)
+	if err != nil {
+		if Debug {
+			level.Debug(o.logger).Log("msg", "failed to execute template on extracted value", "err", err)
+		}
+		return
+	}
+	st := buf.String()
+	// If the template evaluates to an empty string, remove the key from the map
+	if st == "" {
+		delete(extracted, o.cfgs.Source)
+	} else {
+		extracted[o.cfgs.Source] = st
+	}
+
 }
 
 // Name implements Stage
