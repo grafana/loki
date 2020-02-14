@@ -6,9 +6,10 @@ syntax](https://golang.org/pkg/text/template/).
 
 The `template` stage is primarily useful for manipulating data from other stages
 before setting them as labels, such as to replace spaces with underscores or
-converting an uppercase string into a lowercase one.
+converting an uppercase string into a lowercase one. `template` can also be used 
+to construct messages with multiple keys.
 
-The template stage can also create new keys in the extracted map.
+The template stage can also create new keys in the extracted map. 
 
 ## Schema
 
@@ -57,6 +58,32 @@ This pipeline takes the current value of `app` from the extracted map and
 converts its value to be all lowercase. For example, if the extracted map
 contained `app` with a value of `LOKI`, this pipeline would change its value to
 `loki`.
+
+```yaml
+- template:
+    source: output_msg
+    template: '{{ .level }} for app {{ ToUpper .app }}'
+```
+
+This pipeline takes the current value of `level` and `app` from the extracted map and
+a new key `output_msg` will be added to extracted map with evaluated template. 
+
+For example, if the extracted map contained `app` with a value of `loki`, this pipeline would change its value to `LOKI`. Assuming value of `level` is `warn`. A new key `output_msg` will be added to extracted map with value `warn for app LOKI`. 
+
+Any previously extracted keys can be used in `template`. All extracted keys are available for `template` to expand. 
+
+```yaml
+- template:
+    source: app
+    template: '{{ .level }} for app {{ ToUpper .Value }} in module {{.module}}'
+```
+
+This pipeline takes the current value of `level`, `app` and `module` from the extracted map and
+converts value of `app` to the evaluated template. 
+
+For example, if the extracted map contained `app` with a value of `loki`, this pipeline would change its value to `LOKI`. Assuming value of `level` is `warn` and value of `module` is `test`. Pipeline will change the value of `app` to `warn for app LOKI in module test`. 
+
+Any previously extracted keys can be used in `template`. All extracted keys are available for `template` to expand. Also, if source is available it can be referred as `.Value` in `template`. Here, `app` is provided as `source`. So, it can be referred as `.Value` in `template`. 
 
 ```yaml
 - template:
