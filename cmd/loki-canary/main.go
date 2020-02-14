@@ -76,6 +76,7 @@ func main() {
 			w.Stop()
 			r.Stop()
 			c.Stop()
+			return
 		case <-terminate:
 			_, _ = fmt.Fprintf(os.Stderr, "shutting down\n")
 			w.Stop()
