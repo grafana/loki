@@ -182,6 +182,19 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 // Scalar is a single timestamp/float with no labels
 type Scalar model.Scalar
 
+func (s Scalar) MarshalJSON() ([]byte, error) {
+	return model.Scalar(s).MarshalJSON()
+}
+
+func (s *Scalar) UnmarshalJSON(b []byte) error {
+	var v model.Scalar
+	if err := v.UnmarshalJSON(b); err != nil {
+		return err
+	}
+	*s = Scalar(v)
+	return nil
+}
+
 // Vector is a slice of Samples
 type Vector []model.Sample
 
