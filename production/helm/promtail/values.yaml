@@ -127,6 +127,7 @@ config:
 
   server:
     http_listen_port: 3101
+
   positions:
     filename: /run/promtail/positions.yaml
   target_config:
@@ -141,3 +142,26 @@ serviceMonitor:
 
 # Extra env variables to pass to the promtail container
 env: []
+
+# enable and configure if using the syslog scrape config
+syslogService:
+  enabled: false
+  type: ClusterIP
+  port: 1514
+  ## Specify the nodePort value for the LoadBalancer and NodePort service types.
+  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
+  ##
+  # nodePort:
+  ## Provide any additional annotations which may be required. This can be used to
+  ## set the LoadBalancer service type to internal only.
+  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
+  ##
+  annotations: {}
+  labels: {}
+  ## Use loadBalancerIP to request a specific static IP,
+  ## otherwise leave blank
+  ##
+  loadBalancerIP:
+  # loadBalancerSourceRanges: []
+  ## Set the externalTrafficPolicy in the Service to either Cluster or Local
+  # externalTrafficPolicy: Cluster
