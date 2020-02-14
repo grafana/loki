@@ -12,27 +12,29 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // Config for a StorageClient
 type Config struct {
-	Addresses                string        `yaml:"addresses,omitempty"`
-	Port                     int           `yaml:"port,omitempty"`
-	Keyspace                 string        `yaml:"keyspace,omitempty"`
-	Consistency              string        `yaml:"consistency,omitempty"`
-	ReplicationFactor        int           `yaml:"replication_factor,omitempty"`
-	DisableInitialHostLookup bool          `yaml:"disable_initial_host_lookup,omitempty"`
-	SSL                      bool          `yaml:"SSL,omitempty"`
-	HostVerification         bool          `yaml:"host_verification,omitempty"`
-	CAPath                   string        `yaml:"CA_path,omitempty"`
-	Auth                     bool          `yaml:"auth,omitempty"`
-	Username                 string        `yaml:"username,omitempty"`
-	Password                 string        `yaml:"password,omitempty"`
-	Timeout                  time.Duration `yaml:"timeout,omitempty"`
-	ConnectTimeout           time.Duration `yaml:"connect_timeout,omitempty"`
-	Retries                  int           `yaml:"max_retries"`
-	MaxBackoff               time.Duration `yaml:"retry_max_backoff"`
-	MinBackoff               time.Duration `yaml:"retry_min_backoff"`
+	Addresses                string              `yaml:"addresses,omitempty"`
+	Port                     int                 `yaml:"port,omitempty"`
+	Keyspace                 string              `yaml:"keyspace,omitempty"`
+	Consistency              string              `yaml:"consistency,omitempty"`
+	ReplicationFactor        int                 `yaml:"replication_factor,omitempty"`
+	DisableInitialHostLookup bool                `yaml:"disable_initial_host_lookup,omitempty"`
+	SSL                      bool                `yaml:"SSL,omitempty"`
+	HostVerification         bool                `yaml:"host_verification,omitempty"`
+	CAPath                   string              `yaml:"CA_path,omitempty"`
+	Auth                     bool                `yaml:"auth,omitempty"`
+	Username                 string              `yaml:"username,omitempty"`
+	Password                 string              `yaml:"password,omitempty"`
+	CustomAuthenticators     flagext.StringSlice `yaml:"custom_authenticators"`
+	Timeout                  time.Duration       `yaml:"timeout,omitempty"`
+	ConnectTimeout           time.Duration       `yaml:"connect_timeout,omitempty"`
+	Retries                  int                 `yaml:"max_retries"`
+	MaxBackoff               time.Duration       `yaml:"retry_max_backoff"`
+	MinBackoff               time.Duration       `yaml:"retry_min_backoff"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -49,6 +51,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Auth, "cassandra.auth", false, "Enable password authentication when connecting to cassandra.")
 	f.StringVar(&cfg.Username, "cassandra.username", "", "Username to use when connecting to cassandra.")
 	f.StringVar(&cfg.Password, "cassandra.password", "", "Password to use when connecting to cassandra.")
+	f.Var(&cfg.CustomAuthenticators, "cassandra.custom-authenticator", "If set, when authenticating with cassandra a custom authenticator will be expected during the handshake. This flag can be set multiple times.")
 	f.DurationVar(&cfg.Timeout, "cassandra.timeout", 2*time.Second, "Timeout when connecting to cassandra.")
 	f.DurationVar(&cfg.ConnectTimeout, "cassandra.connect-timeout", 5*time.Second, "Initial connection timeout, used during initial dial to server.")
 	f.IntVar(&cfg.Retries, "cassandra.max-retries", 0, "Number of retries to perform on a request. (Default is 0: no retries)")
@@ -107,6 +110,14 @@ func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) {
 		}
 	}
 	if cfg.Auth {
+		if len(cfg.CustomAuthenticators) != 0 {
+			cluster.Authenticator = CustomPasswordAuthenticator{
+				ApprovedAuthenticators: cfg.CustomAuthenticators,
+				Username:               cfg.Username,
+				Password:               cfg.Password,
+			}
+			return
+		}
 		cluster.Authenticator = gocql.PasswordAuthenticator{
 			Username: cfg.Username,
 			Password: cfg.Password,
