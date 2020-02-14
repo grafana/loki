@@ -21,7 +21,7 @@ func CanParallel(e Expr) bool {
 	case *rangeAggregationExpr:
 		return parallelOperations[expr.operation]
 	case *vectorAggregationExpr:
-		return parallelOperations[expr.operation] && CanParallel(expr.Left)
+		return parallelOperations[expr.operation] && CanParallel(expr.left)
 	default:
 		return false
 	}
