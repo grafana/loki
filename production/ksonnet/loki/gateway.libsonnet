@@ -43,7 +43,6 @@
             listen               80;
             auth_basic           “Prometheus”;
             auth_basic_user_file /etc/nginx/secrets/.htpasswd;
-            proxy_set_header     X-Scope-OrgID 1;
 
             location = /api/prom/push {
               proxy_pass       http://distributor.%(namespace)s.svc.cluster.local$request_uri;
@@ -51,7 +50,6 @@
 
             location = /api/prom/tail {
               proxy_pass       http://querier.%(namespace)s.svc.cluster.local$request_uri;
-              proxy_set_header X-Scope-OrgID 1;
               proxy_set_header Upgrade $http_upgrade;
               proxy_set_header Connection "upgrade";
             }
@@ -66,7 +64,6 @@
 
             location = /loki/api/v1/tail {
               proxy_pass       http://querier.%(namespace)s.svc.cluster.local$request_uri;
-              proxy_set_header X-Scope-OrgID 1;
               proxy_set_header Upgrade $http_upgrade;
               proxy_set_header Connection "upgrade";
             }
