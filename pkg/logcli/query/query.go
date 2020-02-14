@@ -65,6 +65,8 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool)
 	case logql.ValueTypeStreams:
 		streams := resp.Data.Result.(loghttp.Streams)
 		q.printStream(streams, out)
+	case promql.ValueTypeScalar:
+		q.printScalar(resp.Data.Result.(loghttp.Scalar))
 	case promql.ValueTypeMatrix:
 		matrix := resp.Data.Result.(loghttp.Matrix)
 		q.printMatrix(matrix)
@@ -165,6 +167,16 @@ func (q *Query) printVector(vector loghttp.Vector) {
 
 	if err != nil {
 		log.Fatalf("Error marshalling vector: %v", err)
+	}
+
+	fmt.Print(string(bytes))
+}
+
+func (q *Query) printScalar(scalar loghttp.Scalar) {
+	bytes, err := json.MarshalIndent(scalar, "", "  ")
+
+	if err != nil {
+		log.Fatalf("Error marshalling scalar: %v", err)
 	}
 
 	fmt.Print(string(bytes))
