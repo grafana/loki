@@ -3,7 +3,6 @@ package logql
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -252,42 +251,6 @@ type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
 	Selector() LogSelectorExpr
 	Expr
-}
-
-// StepEvaluator evaluate a single step of a query.
-type StepEvaluator interface {
-	// while Next returns a promql.Value, the only acceptable types are Scalar and Vector.
-	Next() (bool, int64, promql.Value)
-	// Close all resources used.
-	Close() error
-}
-
-type stepEvaluator struct {
-	fn    func() (bool, int64, promql.Value)
-	close func() error
-}
-
-func newStepEvaluator(fn func() (bool, int64, promql.Value), close func() error) (StepEvaluator, error) {
-	if fn == nil {
-		return nil, errors.New("nil step evaluator fn")
-	}
-
-	if close == nil {
-		close = func() error { return nil }
-	}
-
-	return &stepEvaluator{
-		fn:    fn,
-		close: close,
-	}, nil
-}
-
-func (e *stepEvaluator) Next() (bool, int64, promql.Value) {
-	return e.fn()
-}
-
-func (e *stepEvaluator) Close() error {
-	return e.close()
 }
 
 type rangeAggregationExpr struct {

@@ -106,8 +106,6 @@ func (ev *defaultEvaluator) Evaluator(ctx context.Context, expr SampleExpr, q Pa
 		return ev.rangeAggEvaluator(ctx, e, q)
 	case *binOpExpr:
 		return ev.binOpEvaluator(ctx, e, q)
-	case *literalExpr: // this is only called when a singleton is the root node
-		return singletonEvaluator(e, q)
 	default:
 		return nil, errors.Errorf("unexpected type (%T): %v", e, e)
 	}
@@ -119,14 +117,8 @@ func (ev *defaultEvaluator) vectorAggEvaluator(ctx context.Context, expr *vector
 		return nil, err
 	}
 
-	return newStepEvaluator(func() (bool, int64, promql.Value) {
-		next, ts, data := nextEvaluator.Next()
-
-		// vector aggregations can only consume vectors and this should never not be a vector.
-		vec, err := assertVec(data)
-		if err != nil {
-			panic(err)
-		}
+	return newStepEvaluator(func() (bool, int64, promql.Vector) {
+		next, ts, vec := nextEvaluator.Next()
 
 		if !next {
 			return false, 0, promql.Vector{}
@@ -335,7 +327,7 @@ func (ev *defaultEvaluator) rangeAggEvaluator(ctx context.Context, expr *rangeAg
 		fn = count
 	}
 
-	return newStepEvaluator(func() (bool, int64, promql.Value) {
+	return newStepEvaluator(func() (bool, int64, promql.Vector) {
 		next := vecIter.Next()
 		if !next {
 			return false, 0, promql.Vector{}
@@ -346,6 +338,8 @@ func (ev *defaultEvaluator) rangeAggEvaluator(ctx context.Context, expr *rangeAg
 	}, vecIter.Close)
 }
 
+// binOpExpr explicly does not handle when both legs are literals as
+// it makes the type system simpler and these are reduced in mustNewBinOpExpr
 func (ev *defaultEvaluator) binOpEvaluator(
 	ctx context.Context,
 	expr *binOpExpr,
@@ -381,19 +375,13 @@ func (ev *defaultEvaluator) binOpEvaluator(
 		return nil, err
 	}
 
-	return newStepEvaluator(func() (bool, int64, promql.Value) {
+	return newStepEvaluator(func() (bool, int64, promql.Vector) {
 		pairs := map[uint64][2]*promql.Sample{}
 		var ts int64
 
 		// populate pairs
 		for i, eval := range []StepEvaluator{lhs, rhs} {
-			next, timestamp, data := eval.Next()
-			// since we've already handled literalExprs,
-			// the step evaluators are guaranteed to produce vectors
-			vec, err := assertVec(data)
-			if err != nil {
-				panic(err)
-			}
+			next, timestamp, vec := eval.Next()
 
 			ts = timestamp
 
@@ -574,16 +562,8 @@ func (ev *defaultEvaluator) literalEvaluator(
 	inverted bool,
 ) (StepEvaluator, error) {
 	return newStepEvaluator(
-		func() (bool, int64, promql.Value) {
-			ok, ts, data := eval.Next()
-			// literalEvaluator must never be called with a non vector
-			// producing StepEvaluator. This would only happen in the case of
-			// two literal legs in a binaryExpr, but these are automatically reduced
-			// to a single Scalar during ast construction in mustNewBinOpExpr.
-			vec, err := assertVec(data)
-			if err != nil {
-				panic(err)
-			}
+		func() (bool, int64, promql.Vector) {
+			ok, ts, vec := eval.Next()
 
 			results := make(promql.Vector, 0, len(vec))
 			for _, sample := range vec {
@@ -610,26 +590,4 @@ func (ev *defaultEvaluator) literalEvaluator(
 		},
 		eval.Close,
 	)
-}
-
-// singletonEvaluator is an evaluator adapter for a literal expressions that is a root node
-func singletonEvaluator(expr *literalExpr, params Params) (StepEvaluator, error) {
-	ok := true
-	return newStepEvaluator(
-		func() (bool, int64, promql.Value) {
-			if !ok {
-				return ok, 0, nil
-			}
-			tmp := ok
-			ok = false
-			ts := params.Start().UnixNano() / int64(time.Millisecond)
-
-			return tmp, ts, promql.Scalar{
-				T: ts,
-				V: expr.value,
-			}
-		},
-		nil,
-	)
-
 }

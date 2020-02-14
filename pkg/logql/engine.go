@@ -2,7 +2,6 @@ package logql
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"time"
 
@@ -205,6 +204,10 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 
 // evalSample evaluate a sampleExpr
 func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (promql.Value, error) {
+	if lit, ok := expr.(*literalExpr); ok {
+		return ng.evalLiteral(ctx, lit, q)
+	}
+
 	stepEvaluator, err := ng.evaluator.Evaluator(ctx, expr, q)
 	if err != nil {
 		return nil, err
@@ -213,31 +216,13 @@ func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (pr
 
 	seriesIndex := map[uint64]*promql.Series{}
 
-	next, ts, data := stepEvaluator.Next()
+	next, ts, vec := stepEvaluator.Next()
 	if GetRangeType(q) == InstantType {
-		if data.Type() == promql.ValueTypeScalar {
-			return data, nil
-		}
-
-		vec, err := assertVec(data)
-		if err != nil {
-			return nil, err
-		}
-
 		sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
 		return vec, nil
 	}
 
-	// handle Scalar responses to range queries
-	if data.Type() == promql.ValueTypeScalar {
-		return PopulateMatrixFromScalar(data.(promql.Scalar), q.LiteralParams), nil
-	}
-
 	for next {
-		vec, err := assertVec(data)
-		if err != nil {
-			return nil, err
-		}
 
 		for _, p := range vec {
 			var (
@@ -258,7 +243,7 @@ func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (pr
 				V: p.V,
 			})
 		}
-		next, ts, data = stepEvaluator.Next()
+		next, ts, vec = stepEvaluator.Next()
 	}
 
 	series := make([]promql.Series, 0, len(seriesIndex))
@@ -270,12 +255,17 @@ func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (pr
 	return result, nil
 }
 
-func assertVec(res promql.Value) (promql.Vector, error) {
-	vec, ok := res.(promql.Vector)
-	if !ok {
-		return nil, fmt.Errorf("unexepected promql.Value implementor (%T)", res.Type())
+func (ng *engine) evalLiteral(_ context.Context, expr *literalExpr, q *query) (promql.Value, error) {
+	s := promql.Scalar{
+		T: q.Start().UnixNano() / int64(time.Millisecond),
+		V: expr.value,
 	}
-	return vec, nil
+
+	if GetRangeType(q) == InstantType {
+		return s, nil
+	}
+
+	return PopulateMatrixFromScalar(s, q.LiteralParams), nil
 
 }
 
