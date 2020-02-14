@@ -434,7 +434,7 @@ type literalExpr struct {
 func mustNewLiteralExpr(s string, invert bool) *literalExpr {
 	n, err := strconv.ParseFloat(s, 64)
 	if err != nil {
-		panic(err)
+		panic(newParseError(fmt.Sprintf("unable to parse literal as a float: %s", err.Error()), 0, 0))
 	}
 
 	if invert {

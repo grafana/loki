@@ -784,6 +784,11 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
+			// ensure binary ops with two literals are reduced recursively
+			in:  `1 + 1 + 1`,
+			exp: &literalExpr{value: 3},
+		},
+		{
 			in: `{foo="bar"} + {foo="bar"}`,
 			err: ParseError{
 				msg:  `unexpected type for left leg of binary operation (+): *logql.matchersExpr`,
