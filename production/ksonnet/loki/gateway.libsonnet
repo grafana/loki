@@ -43,6 +43,7 @@
             listen               80;
             auth_basic           “Prometheus”;
             auth_basic_user_file /etc/nginx/secrets/.htpasswd;
+            proxy_set_header     X-Scope-OrgID 1;
 
             location = /api/prom/push {
               proxy_pass       http://distributor.%(namespace)s.svc.cluster.local$request_uri;
