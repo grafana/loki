@@ -8,6 +8,7 @@ const (
 	// RateLimited is one of the values for the reason to discard samples.
 	// Declared here to avoid duplication in ingester and distributor.
 	RateLimited = "rate_limited"
+	LineTooLong = "line_too_long"
 )
 
 // DiscardedBytes is a metric of the total discarded bytes, by reason.
