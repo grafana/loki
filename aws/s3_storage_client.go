@@ -1,13 +1,11 @@
 package aws
 
 import (
-	"bytes"
 	"context"
 	"flag"
 	"fmt"
 	"hash/fnv"
 	"io"
-	"io/ioutil"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -19,7 +17,6 @@ import (
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -90,65 +87,8 @@ func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 	return &client, nil
 }
 
-func (a *S3ObjectClient) Stop() {
-}
-
-func (a *S3ObjectClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	return util.GetParallelChunks(ctx, chunks, a.getChunk)
-}
-
-func (a *S3ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
-	readCloser, err := a.GetObject(ctx, c.ExternalKey())
-	if err != nil {
-		return chunk.Chunk{}, err
-	}
-
-	defer readCloser.Close()
-
-	buf, err := ioutil.ReadAll(readCloser)
-	if err != nil {
-		return chunk.Chunk{}, err
-	}
-
-	if err := c.Decode(decodeContext, buf); err != nil {
-		return chunk.Chunk{}, err
-	}
-	return c, nil
-}
-
-func (a *S3ObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
-	var (
-		s3ChunkKeys []string
-		s3ChunkBufs [][]byte
-	)
-
-	for i := range chunks {
-		buf, err := chunks[i].Encoded()
-		if err != nil {
-			return err
-		}
-		key := chunks[i].ExternalKey()
-
-		s3ChunkKeys = append(s3ChunkKeys, key)
-		s3ChunkBufs = append(s3ChunkBufs, buf)
-	}
-
-	incomingErrors := make(chan error)
-	for i := range s3ChunkBufs {
-		go func(i int) {
-			incomingErrors <- a.PutObject(ctx, s3ChunkKeys[i], bytes.NewReader(s3ChunkBufs[i]))
-		}(i)
-	}
-
-	var lastErr error
-	for range s3ChunkKeys {
-		err := <-incomingErrors
-		if err != nil {
-			lastErr = err
-		}
-	}
-	return lastErr
-}
+// Stop fulfills the chunk.ObjectClient interface
+func (a *S3ObjectClient) Stop() {}
 
 // bucketFromKey maps a key to a bucket name
 func (a *S3ObjectClient) bucketFromKey(key string) string {
@@ -157,7 +97,7 @@ func (a *S3ObjectClient) bucketFromKey(key string) string {
 	}
 
 	hasher := fnv.New32a()
-	hasher.Write([]byte(key))
+	hasher.Write([]byte(key)) //nolint: errcheck
 	hash := hasher.Sum32()
 
 	return a.bucketNames[hash%uint32(len(a.bucketNames))]

@@ -17,7 +17,7 @@ import (
 )
 
 func TestChunksBasic(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, _ chunk.IndexClient, client chunk.ObjectClient) {
+	forAllFixtures(t, func(t *testing.T, _ chunk.IndexClient, client chunk.Client) {
 		const batchSize = 5
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()

@@ -13,7 +13,7 @@ import (
 )
 
 func TestIndexBasic(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, client chunk.IndexClient, _ chunk.ObjectClient) {
+	forAllFixtures(t, func(t *testing.T, client chunk.IndexClient, _ chunk.Client) {
 		// Write out 30 entries, into different hash and range values.
 		batch := client.NewWriteBatch()
 		for i := 0; i < 30; i++ {
@@ -100,7 +100,7 @@ var entries = []chunk.IndexEntry{
 }
 
 func TestQueryPages(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, client chunk.IndexClient, _ chunk.ObjectClient) {
+	forAllFixtures(t, func(t *testing.T, client chunk.IndexClient, _ chunk.Client) {
 		batch := client.NewWriteBatch()
 		for _, entry := range entries {
 			batch.Add(entry.TableName, entry.HashValue, entry.RangeValue, entry.Value)
@@ -200,7 +200,7 @@ func TestQueryPages(t *testing.T) {
 }
 
 func TestCardinalityLimit(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, client chunk.IndexClient, _ chunk.ObjectClient) {
+	forAllFixtures(t, func(t *testing.T, client chunk.IndexClient, _ chunk.Client) {
 		limits, err := defaultLimits()
 		require.NoError(t, err)
 

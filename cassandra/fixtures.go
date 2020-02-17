@@ -16,7 +16,7 @@ import (
 type fixture struct {
 	name         string
 	indexClient  chunk.IndexClient
-	objectClient chunk.ObjectClient
+	objectClient chunk.Client
 	tableClient  chunk.TableClient
 	schemaConfig chunk.SchemaConfig
 }
@@ -25,7 +25,7 @@ func (f fixture) Name() string {
 	return f.name
 }
 
-func (f fixture) Clients() (chunk.IndexClient, chunk.ObjectClient, chunk.TableClient, chunk.SchemaConfig, error) {
+func (f fixture) Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient, chunk.SchemaConfig, error) {
 	return f.indexClient, f.objectClient, f.tableClient, f.schemaConfig, nil
 }
 

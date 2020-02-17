@@ -73,13 +73,13 @@ type store struct {
 	cfg StoreConfig
 
 	index  IndexClient
-	chunks ObjectClient
+	chunks Client
 	schema Schema
 	limits StoreLimits
 	*Fetcher
 }
 
-func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectClient, limits StoreLimits) (Store, error) {
+func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Client, limits StoreLimits) (Store, error) {
 	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, cfg.chunkCacheStubs, chunks)
 	if err != nil {
 		return nil, err

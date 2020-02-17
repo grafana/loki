@@ -50,7 +50,7 @@ func NewCompositeStore() CompositeStore {
 }
 
 // AddPeriod adds the configuration for a period of time to the CompositeStore
-func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index IndexClient, chunks ObjectClient, limits StoreLimits) error {
+func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index IndexClient, chunks Client, limits StoreLimits) error {
 	schema := cfg.CreateSchema()
 	var store Store
 	var err error
