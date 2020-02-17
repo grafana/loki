@@ -88,7 +88,7 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 		s, err := getString(v)
 		if err != nil {
 			if Debug {
-				level.Debug(o.logger).Log("msg", "extracted template could not be converted to a string", "err", err, "type", reflect.TypeOf(v).String())
+				level.Debug(o.logger).Log("msg", "extracted template could not be converted to a string", "err", err, "type", reflect.TypeOf(v))
 			}
 			return
 		}

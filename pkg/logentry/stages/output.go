@@ -65,7 +65,7 @@ func (o *outputStage) Process(labels model.LabelSet, extracted map[string]interf
 		s, err := getString(v)
 		if err != nil {
 			if Debug {
-				level.Debug(o.logger).Log("msg", "extracted output could not be converted to a string", "err", err, "type", reflect.TypeOf(v).String())
+				level.Debug(o.logger).Log("msg", "extracted output could not be converted to a string", "err", err, "type", reflect.TypeOf(v))
 			}
 			return
 		}

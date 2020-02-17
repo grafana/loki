@@ -1,11 +1,14 @@
 package stages
 
 import (
+	"bytes"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -42,6 +45,15 @@ var testTemplateLogLine = `
 	"message" : "this is a log line"
 }
 `
+var testTemplateLogLineWithMissingKey = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"component": ["parser","type"],
+	"level" : "WARN",
+	"nested" : {"child":"value"},
+	"message" : "this is a log line"
+}
+`
 
 func TestPipeline_Template(t *testing.T) {
 	pl, err := NewPipeline(util.Logger, loadConfig(testTemplateYaml), nil, prometheus.DefaultRegisterer)
@@ -59,6 +71,26 @@ func TestPipeline_Template(t *testing.T) {
 	extracted := map[string]interface{}{}
 	pl.Process(lbls, extracted, &ts, &entry)
 	assert.Equal(t, expectedLbls, lbls)
+}
+
+func TestPipelineWithMissingKey_Temaplate(t *testing.T) {
+	var buf bytes.Buffer
+	w := log.NewSyncWriter(&buf)
+	logger := log.NewLogfmtLogger(w)
+	pl, err := NewPipeline(logger, loadConfig(testTemplateYaml), nil, prometheus.DefaultRegisterer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	Debug = true
+	ts := time.Now()
+	entry := testTemplateLogLineWithMissingKey
+	extracted := map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	expectedLog := "level=debug msg=\"extracted template could not be converted to a string\" err=\"Can't convert <nil> to string\" type=null"
+	if !(strings.Contains(buf.String(), expectedLog)) {
+		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
+	}
 }
 
 func TestTemplateValidation(t *testing.T) {
