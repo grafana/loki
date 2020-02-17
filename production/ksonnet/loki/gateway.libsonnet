@@ -46,19 +46,31 @@
             proxy_set_header     X-Scope-OrgID 1;
 
             location = /api/prom/push {
-              proxy_pass      http://distributor.%(namespace)s.svc.cluster.local$request_uri;
+              proxy_pass       http://distributor.%(namespace)s.svc.cluster.local$request_uri;
+            }
+
+            location = /api/prom/tail {
+              proxy_pass       http://querier.%(namespace)s.svc.cluster.local$request_uri;
+              proxy_set_header Upgrade $http_upgrade;
+              proxy_set_header Connection "upgrade";
             }
 
             location ~ /api/prom/.* {
-              proxy_pass      http://query-frontend.%(namespace)s.svc.cluster.local$request_uri;
+              proxy_pass       http://query-frontend.%(namespace)s.svc.cluster.local$request_uri;
             }
 
             location = /loki/api/v1/push {
-              proxy_pass      http://distributor.%(namespace)s.svc.cluster.local$request_uri;
+              proxy_pass       http://distributor.%(namespace)s.svc.cluster.local$request_uri;
+            }
+
+            location = /loki/api/v1/tail {
+              proxy_pass       http://querier.%(namespace)s.svc.cluster.local$request_uri;
+              proxy_set_header Upgrade $http_upgrade;
+              proxy_set_header Connection "upgrade";
             }
 
             location ~ /loki/api/.* {
-              proxy_pass      http://query-frontend.%(namespace)s.svc.cluster.local$request_uri;
+              proxy_pass       http://query-frontend.%(namespace)s.svc.cluster.local$request_uri;
             }
           }
         }
