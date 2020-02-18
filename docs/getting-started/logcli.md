@@ -64,7 +64,7 @@ Configuration values are considered in the following order (lowest to highest):
 
 ### Details
 
-```bash
+```nohighlight
 $ logcli help
 usage: logcli [<flags>] <command> [<args> ...]
 
@@ -73,9 +73,9 @@ A command-line for loki.
 Flags:
       --help             Show context-sensitive help (also try --help-long and --help-man).
       --version          Show application version.
-  -q, --quiet            suppress everything but log entries
+  -q, --quiet            suppress query metadata
       --stats            show query statistics
-  -o, --output=default   specify output mode [default, raw, jsonl]
+  -o, --output=default   specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
   -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC]
       --addr="http://localhost:3100"
                          Server address. Can also be set using LOKI_ADDR env var.
@@ -95,10 +95,11 @@ Commands:
     Run a LogQL query.
 
     The default output of this command are log entries (combination of
-    timestamp, labels, and log line) along with metainformation about the query
-    made to Loki. The metainformation can be filtered out using the --quiet
-    flag. Raw log lines (i.e., no labels or timestamp) can be retrieved using
-    -oraw.
+    timestamp, labels, and log line) along with various extra information about
+    the query and its results. Raw log lines (i.e., no labels or timestamp) can
+    be retrieved by passing the flag "-o raw", while the extra information (URL
+    queried, set of common labels, excluded labels) can be suppressed with the
+    --quiet flag.
 
     When running a metrics query, this command outputs multiple data points
     between the start and the end query time.  This produces values that are
@@ -122,9 +123,10 @@ usage: logcli query [<flags>] <query>
 Run a LogQL query.
 
 The default output of this command are log entries (combination of timestamp,
-labels, and log line) along with metainformation about the query made to Loki.
-The metainformation can be filtered out using the --quiet flag. Raw log lines
-(i.e., no labels or timestamp) can be retrieved using -oraw.
+labels, and log line) along with various extra information about the query and
+its results. Raw log lines (i.e., no labels or timestamp) can be retrieved by
+passing the flag "-o raw", while the extra information (URL queried, set of
+common labels, excluded labels) can be suppressed with the --quiet flag.
 
 When running a metrics query, this command outputs multiple data points between
 the start and the end query time. This produces values that are used to build
@@ -134,9 +136,9 @@ graphs. If you just want a single data point (i.e., the Grafana explore
 Flags:
       --help             Show context-sensitive help (also try --help-long and --help-man).
       --version          Show application version.
-  -q, --quiet            suppress everything but log entries
+  -q, --quiet            suppress query metadata
       --stats            show query statistics
-  -o, --output=default   specify output mode [default, raw, jsonl]
+  -o, --output=default   specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
   -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC]
       --addr="http://localhost:3100"
                          Server address. Can also be set using LOKI_ADDR env var.
@@ -166,21 +168,23 @@ Flags:
 Args:
   <query>  eg '{foo="bar",baz=~".*blip"} |~ ".*error.*"'
 
+
 $ logcli help instant-query
 usage: logcli instant-query [<flags>] <query>
 
 Run an instant LogQL query.
 
-This query type can only be used for metrics queries, where the query is evaluated for a single point in time. This is
-equivalent to the Grafana explore "table" view; if you want data that is used to build the Grafana graph, you should
-use query instead.
+This query type can only be used for metrics queries, where the query is
+evaluated for a single point in time. This is equivalent to the Grafana explore
+"table" view; if you want data that is used to build the Grafana graph, you
+should use query instead.
 
 Flags:
       --help             Show context-sensitive help (also try --help-long and --help-man).
       --version          Show application version.
-  -q, --quiet            suppress everything but log entries
+  -q, --quiet            suppress query metadata
       --stats            show query statistics
-  -o, --output=default   specify output mode [default, raw, jsonl]
+  -o, --output=default   specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
   -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC]
       --addr="http://localhost:3100"
                          Server address. Can also be set using LOKI_ADDR env var.

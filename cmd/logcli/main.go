@@ -32,8 +32,8 @@ var (
 The default output of this command are log entries (combination of
 timestamp, labels, and log line) along with various extra information
 about the query and its results. Raw log lines (i.e., no labels or timestamp)
-can be retrieved using -oraw, while the extra information (URL queried,
-set of common labels, excluded labels) can be suppressed with the
+can be retrieved by passing the flag "-o raw", while the extra information (URL
+queried, set of common labels, excluded labels) can be suppressed with the
 --quiet flag.
 
 When running a metrics query, this command outputs multiple data points
