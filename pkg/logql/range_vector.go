@@ -3,9 +3,10 @@ package logql
 import (
 	"sync"
 
-	"github.com/grafana/loki/pkg/iter"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+
+	"github.com/grafana/loki/pkg/iter"
 )
 
 // RangeVectorAggregator aggregates samples for a given range of samples.

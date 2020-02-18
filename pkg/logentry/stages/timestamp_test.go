@@ -9,12 +9,13 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
-	lokiutil "github.com/grafana/loki/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	lokiutil "github.com/grafana/loki/pkg/util"
 )
 
 var testTimestampYaml = `

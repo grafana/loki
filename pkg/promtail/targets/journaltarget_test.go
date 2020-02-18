@@ -19,8 +19,9 @@ import (
 	"github.com/grafana/loki/pkg/promtail/scrape"
 
 	"github.com/go-kit/kit/log"
-	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/promtail/positions"
 )
 
 type mockJournalReader struct {

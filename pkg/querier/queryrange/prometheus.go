@@ -7,10 +7,11 @@ import (
 	"net/http"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/grafana/loki/pkg/logql/stats"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+
+	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 var jsonStd = jsoniter.ConfigCompatibleWithStandardLibrary

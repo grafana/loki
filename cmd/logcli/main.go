@@ -6,13 +6,14 @@ import (
 	"os"
 	"time"
 
+	"github.com/prometheus/common/config"
+	"github.com/prometheus/common/version"
+
 	_ "github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/labelquery"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logcli/query"
-	"github.com/prometheus/common/config"
-	"github.com/prometheus/common/version"
 
 	"gopkg.in/alecthomas/kingpin.v2"
 )

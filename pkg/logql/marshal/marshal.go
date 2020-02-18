@@ -8,10 +8,11 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 
 	"github.com/gorilla/websocket"
+	json "github.com/json-iterator/go"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
-	json "github.com/json-iterator/go"
 )
 
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then

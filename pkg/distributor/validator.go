@@ -7,10 +7,11 @@ import (
 
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/weaveworks/common/httpgrpc"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/flagext"
-	"github.com/weaveworks/common/httpgrpc"
 )
 
 type Validator struct {
