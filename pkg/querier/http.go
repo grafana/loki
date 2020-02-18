@@ -44,7 +44,11 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	query := q.engine.NewRangeQuery(request.Query, request.Start, request.End, request.Step, request.Direction, request.Limit)
 	result, err := query.Exec(ctx)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		if logql.IsParseError(err) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -68,7 +72,11 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 	query := q.engine.NewInstantQuery(request.Query, request.Ts, request.Direction, request.Limit)
 	result, err := query.Exec(ctx)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		if logql.IsParseError(err) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -114,7 +122,11 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 	query := q.engine.NewRangeQuery(request.Query, request.Start, request.End, request.Step, request.Direction, request.Limit)
 	result, err := query.Exec(ctx)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		if logql.IsParseError(err) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 

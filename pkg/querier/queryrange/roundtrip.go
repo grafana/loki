@@ -91,7 +91,7 @@ func NewLogFilterTripperware(
 	limits Limits,
 	codec queryrange.Codec,
 ) (frontend.Tripperware, error) {
-	queryRangeMiddleware := []queryrange.Middleware{StatsMiddleware(), queryrange.LimitsMiddleware(limits)}
+	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(limits, codec))
 	}
@@ -115,7 +115,7 @@ func NewMetricTripperware(
 	extractor queryrange.Extractor,
 ) (frontend.Tripperware, Stopper, error) {
 
-	queryRangeMiddleware := []queryrange.Middleware{StatsMiddleware(), queryrange.LimitsMiddleware(limits)}
+	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
