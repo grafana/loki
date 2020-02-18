@@ -71,20 +71,29 @@ usage: logcli [<flags>] <command> [<args> ...]
 A command-line for loki.
 
 Flags:
-      --help             Show context-sensitive help (also try --help-long and --help-man).
+      --help             Show context-sensitive help (also try --help-long and
+                         --help-man).
       --version          Show application version.
   -q, --quiet            suppress query metadata
       --stats            show query statistics
-  -o, --output=default   specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
-  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC]
+  -o, --output=default   specify output mode [default, raw, jsonl]. raw
+                         suppresses log labels and timestamp.
+  -z, --timezone=Local   Specify the timezone to use when formatting output
+                         timestamps [Local, UTC]
       --addr="http://localhost:3100"
-                         Server address. Can also be set using LOKI_ADDR env var.
-      --username=""      Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.
-      --password=""      Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.
-      --ca-cert=""       Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.
+                         Server address. Can also be set using LOKI_ADDR env
+                         var.
+      --username=""      Username for HTTP basic auth. Can also be set using
+                         LOKI_USERNAME env var.
+      --password=""      Password for HTTP basic auth. Can also be set using
+                         LOKI_PASSWORD env var.
+      --ca-cert=""       Path to the server Certificate Authority. Can also be
+                         set using LOKI_CA_CERT_PATH env var.
       --tls-skip-verify  Server certificate TLS skip verify.
-      --cert=""          Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
-      --key=""           Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
+      --cert=""          Path to the client certificate. Can also be set using
+                         LOKI_CLIENT_CERT_PATH env var.
+      --key=""           Path to the client certificate key. Can also be set
+                         using LOKI_CLIENT_KEY_PATH env var.
       --org-id=ORG-ID    org ID header to be substituted for auth
 
 Commands:
@@ -94,25 +103,31 @@ Commands:
   query [<flags>] <query>
     Run a LogQL query.
 
-    The default output of this command are log entries (combination of
-    timestamp, labels, and log line) along with various extra information about
-    the query and its results. Raw log lines (i.e., no labels or timestamp) can
-    be retrieved by passing the flag "-o raw", while the extra information (URL
-    queried, set of common labels, excluded labels) can be suppressed with the
-    --quiet flag.
+    The "query" command is useful for querying for log lines. The default output
+    of this command are log entries (a combination of timestamp, labels, and a
+    log line) along with various extra information about the performed query and
+    its results. Raw log lines (i.e., without a label and timestamp) can be
+    retrieved by passing the "-o raw" flag. The extra information about the
+    query (API URL, set of common labels, excluded labels) can be suppressed
+    with the --query flag.
 
-    When running a metrics query, this command outputs multiple data points
-    between the start and the end query time.  This produces values that are
-    used to build graphs. If you just want a single data point (i.e., the
-    Grafana explore "table"), then you should use instant-query instead.
+    While "query" does support metrics queries, its output contains multiple
+    data points between the start and end query time. This output is used to
+    build graphs, like what is seen in the Grafana Explore graph view. If you
+    are querying metrics and just want the most recent data point (like what is
+    seen in the Grafana Explore table view), then you should use the
+    "instant-query" command instead.
 
   instant-query [<flags>] <query>
     Run an instant LogQL query.
 
-    This query type can only be used for metrics queries, where the query is
-    evaluated for a single point in time. This is equivalent to the Grafana
-    explore "table" view; if you want data that is used to build the Grafana
-    graph, you should use query instead.
+    The "instant-query" command is useful for evaluating a metric query for a
+    single point in time. This is equivalent to the Grafana Explore table view;
+    if you want a metrics query that is used to build a Grafana graph, you
+    should use the "query" command instead.
+
+    This command does not produce useful output when querying for log lines; you
+    should always use the "query" command when you are running log queries.
 
   labels [<label>]
     Find values for a given label.
@@ -122,36 +137,49 @@ usage: logcli query [<flags>] <query>
 
 Run a LogQL query.
 
-The default output of this command are log entries (combination of timestamp,
-labels, and log line) along with various extra information about the query and
-its results. Raw log lines (i.e., no labels or timestamp) can be retrieved by
-passing the flag "-o raw", while the extra information (URL queried, set of
-common labels, excluded labels) can be suppressed with the --quiet flag.
+The "query" command is useful for querying for log lines. The default output of
+this command are log entries (a combination of timestamp, labels, and a log
+line) along with various extra information about the performed query and its
+results. Raw log lines (i.e., without a label and timestamp) can be retrieved by
+passing the "-o raw" flag. The extra information about the query (API URL, set
+of common labels, excluded labels) can be suppressed with the --query flag.
 
-When running a metrics query, this command outputs multiple data points between
-the start and the end query time. This produces values that are used to build
-graphs. If you just want a single data point (i.e., the Grafana explore
-"table"), then you should use instant-query instead.
+While "query" does support metrics queries, its output contains multiple data
+points between the start and end query time. This output is used to build
+graphs, like what is seen in the Grafana Explore graph view. If you are querying
+metrics and just want the most recent data point (like what is seen in the
+Grafana Explore table view), then you should use the "instant-query" command
+instead.
 
 Flags:
-      --help             Show context-sensitive help (also try --help-long and --help-man).
+      --help             Show context-sensitive help (also try --help-long and
+                         --help-man).
       --version          Show application version.
   -q, --quiet            suppress query metadata
       --stats            show query statistics
-  -o, --output=default   specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
-  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC]
+  -o, --output=default   specify output mode [default, raw, jsonl]. raw
+                         suppresses log labels and timestamp.
+  -z, --timezone=Local   Specify the timezone to use when formatting output
+                         timestamps [Local, UTC]
       --addr="http://localhost:3100"
-                         Server address. Can also be set using LOKI_ADDR env var.
-      --username=""      Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.
-      --password=""      Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.
-      --ca-cert=""       Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.
+                         Server address. Can also be set using LOKI_ADDR env
+                         var.
+      --username=""      Username for HTTP basic auth. Can also be set using
+                         LOKI_USERNAME env var.
+      --password=""      Password for HTTP basic auth. Can also be set using
+                         LOKI_PASSWORD env var.
+      --ca-cert=""       Path to the server Certificate Authority. Can also be
+                         set using LOKI_CA_CERT_PATH env var.
       --tls-skip-verify  Server certificate TLS skip verify.
-      --cert=""          Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
-      --key=""           Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
+      --cert=""          Path to the client certificate. Can also be set using
+                         LOKI_CLIENT_CERT_PATH env var.
+      --key=""           Path to the client certificate key. Can also be set
+                         using LOKI_CLIENT_KEY_PATH env var.
       --org-id=ORG-ID    org ID header to be substituted for auth
       --limit=30         Limit on number of entries to print.
       --since=1h         Lookback window.
-      --from=FROM        Start looking for logs at this absolute time (inclusive)
+      --from=FROM        Start looking for logs at this absolute time
+                         (inclusive)
       --to=TO            Stop looking for logs at this absolute time (exclusive)
       --step=STEP        Query resolution step width
       --forward          Scan forwards through logs.
@@ -163,37 +191,49 @@ Flags:
                          Include labels given the provided key during output.
       --labels-length=0  Set a fixed padding to labels
   -t, --tail             Tail the logs
-      --delay-for=0      Delay in tailing by number of seconds to accumulate logs for re-ordering
+      --delay-for=0      Delay in tailing by number of seconds to accumulate
+                         logs for re-ordering
 
 Args:
   <query>  eg '{foo="bar",baz=~".*blip"} |~ ".*error.*"'
-
 
 $ logcli help instant-query
 usage: logcli instant-query [<flags>] <query>
 
 Run an instant LogQL query.
 
-This query type can only be used for metrics queries, where the query is
-evaluated for a single point in time. This is equivalent to the Grafana explore
-"table" view; if you want data that is used to build the Grafana graph, you
-should use query instead.
+The "instant-query" command is useful for evaluating a metric query for a single
+point in time. This is equivalent to the Grafana Explore table view; if you want
+a metrics query that is used to build a Grafana graph, you should use the
+"query" command instead.
+
+This command does not produce useful output when querying for log lines; you
+should always use the "query" command when you are running log queries.
 
 Flags:
-      --help             Show context-sensitive help (also try --help-long and --help-man).
+      --help             Show context-sensitive help (also try --help-long and
+                         --help-man).
       --version          Show application version.
   -q, --quiet            suppress query metadata
       --stats            show query statistics
-  -o, --output=default   specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
-  -z, --timezone=Local   Specify the timezone to use when formatting output timestamps [Local, UTC]
+  -o, --output=default   specify output mode [default, raw, jsonl]. raw
+                         suppresses log labels and timestamp.
+  -z, --timezone=Local   Specify the timezone to use when formatting output
+                         timestamps [Local, UTC]
       --addr="http://localhost:3100"
-                         Server address. Can also be set using LOKI_ADDR env var.
-      --username=""      Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.
-      --password=""      Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.
-      --ca-cert=""       Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.
+                         Server address. Can also be set using LOKI_ADDR env
+                         var.
+      --username=""      Username for HTTP basic auth. Can also be set using
+                         LOKI_USERNAME env var.
+      --password=""      Password for HTTP basic auth. Can also be set using
+                         LOKI_PASSWORD env var.
+      --ca-cert=""       Path to the server Certificate Authority. Can also be
+                         set using LOKI_CA_CERT_PATH env var.
       --tls-skip-verify  Server certificate TLS skip verify.
-      --cert=""          Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
-      --key=""           Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
+      --cert=""          Path to the client certificate. Can also be set using
+                         LOKI_CLIENT_CERT_PATH env var.
+      --key=""           Path to the client certificate key. Can also be set
+                         using LOKI_CLIENT_KEY_PATH env var.
       --org-id=ORG-ID    org ID header to be substituted for auth
       --limit=30         Limit on number of entries to print.
       --now=NOW          Time at which to execute the instant query.
@@ -206,5 +246,5 @@ Flags:
       --labels-length=0  Set a fixed padding to labels
 
 Args:
-  <query>  eg '{foo="bar",baz=~".*blip"} |~ ".*error.*"'
+  <query>  eg 'rate({foo="bar"} |~ ".*error.*" [5m])'
 ```
