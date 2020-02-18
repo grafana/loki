@@ -20,9 +20,9 @@ import (
 
 var (
 	app        = kingpin.New("logcli", "A command-line for loki.").Version(version.Print("logcli"))
-	quiet      = app.Flag("quiet", "suppress everything but log entries").Default("false").Short('q').Bool()
+	quiet      = app.Flag("quiet", "suppress query metadata").Default("false").Short('q').Bool()
 	statistics = app.Flag("stats", "show query statistics").Default("false").Bool()
-	outputMode = app.Flag("output", "specify output mode [default, raw, jsonl]").Default("default").Short('o').Enum("default", "raw", "jsonl")
+	outputMode = app.Flag("output", "specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.").Default("default").Short('o').Enum("default", "raw", "jsonl")
 	timezone   = app.Flag("timezone", "Specify the timezone to use when formatting output timestamps [Local, UTC]").Default("Local").Short('z').Enum("Local", "UTC")
 
 	queryClient = newQueryClient(app)
@@ -30,10 +30,11 @@ var (
 	queryCmd = app.Command("query", `Run a LogQL query.
 
 The default output of this command are log entries (combination of
-timestamp, labels, and log line) along with metainformation about the query
-made to Loki.  The metainformation can be filtered out using the --quiet
-flag. Raw log lines (i.e., no labels or timestamp) can be retrieved using
--oraw.
+timestamp, labels, and log line) along with various extra information
+about the query and its results. Raw log lines (i.e., no labels or timestamp)
+can be retrieved using -oraw, while the extra information (URL queried,
+set of common labels, excluded labels) can be suppressed with the
+--quiet flag.
 
 When running a metrics query, this command outputs multiple data points
 between the start and the end query time. This produces values that are
