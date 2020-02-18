@@ -20,20 +20,36 @@ import (
 
 var (
 	app        = kingpin.New("logcli", "A command-line for loki.").Version(version.Print("logcli"))
-	quiet      = app.Flag("quiet", "suppress everything but log lines").Default("false").Short('q').Bool()
+	quiet      = app.Flag("quiet", "suppress everything but log entries").Default("false").Short('q').Bool()
 	statistics = app.Flag("stats", "show query statistics").Default("false").Bool()
 	outputMode = app.Flag("output", "specify output mode [default, raw, jsonl]").Default("default").Short('o').Enum("default", "raw", "jsonl")
 	timezone   = app.Flag("timezone", "Specify the timezone to use when formatting output timestamps [Local, UTC]").Default("Local").Short('z').Enum("Local", "UTC")
 
 	queryClient = newQueryClient(app)
 
-	queryCmd   = app.Command("query", "Run a LogQL query.")
+	queryCmd = app.Command("query", `Run a LogQL query.
+
+The default output of this command are log entries (combination of
+timestamp, labels, and log line) along with metainformation about the query
+made to Loki.  The metainformation can be filtered out using the --quiet
+flag. Raw log lines (i.e., no labels or timestamp) can be retrieved using
+-oraw.
+
+When running a metrics query, this command outputs multiple data points
+between the start and the end query time. This produces values that are
+used to build graphs. If you just want a single data point (i.e., the
+Grafana explore "table"), then you should use instant-query instead.`)
 	rangeQuery = newQuery(false, queryCmd)
 	tail       = queryCmd.Flag("tail", "Tail the logs").Short('t').Default("false").Bool()
 	delayFor   = queryCmd.Flag("delay-for", "Delay in tailing by number of seconds to accumulate logs for re-ordering").Default("0").Int()
 
-	instantQueryCmd = app.Command("instant-query", "Run an instant LogQL query")
-	instantQuery    = newQuery(true, instantQueryCmd)
+	instantQueryCmd = app.Command("instant-query", `Run an instant LogQL query.
+
+This query type can only be used for metrics queries, where the query is
+evaluated for a single point in time. This is equivalent to the Grafana
+explore "table" view; if you want data that is used to build the Grafana
+graph, you should use query instead.`)
+	instantQuery = newQuery(true, instantQueryCmd)
 
 	labelsCmd = app.Command("labels", "Find values for a given label.")
 	labelName = labelsCmd.Arg("label", "The name of the label.").HintAction(hintActionLabelNames).String()
