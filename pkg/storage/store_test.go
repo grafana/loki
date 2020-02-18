@@ -342,12 +342,14 @@ func Test_store_LazyQuery(t *testing.T) {
 					MaxChunkBatchSize: 10,
 				},
 			}
+
 			ctx = user.InjectOrgID(context.Background(), "test-user")
 			it, err := s.LazyQuery(ctx, logql.SelectParams{QueryRequest: tt.req})
 			if err != nil {
 				t.Errorf("store.LazyQuery() error = %v", err)
 				return
 			}
+
 			streams, _, err := iter.ReadBatch(it, tt.req.Limit)
 			_ = it.Close()
 			if err != nil {
