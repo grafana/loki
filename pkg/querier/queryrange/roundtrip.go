@@ -10,9 +10,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/httpgrpc"
+
+	"github.com/grafana/loki/pkg/logql"
 )
 
 // Config is the configuration for the queryrange tripperware

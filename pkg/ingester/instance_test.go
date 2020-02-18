@@ -8,8 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"

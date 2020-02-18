@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.

@@ -7,9 +7,10 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/grafana/loki/pkg/logql"
 )
 
 type byLabel []client.LabelAdapter

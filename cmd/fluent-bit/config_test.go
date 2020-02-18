@@ -11,9 +11,10 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/weaveworks/common/logging"
+
 	"github.com/grafana/loki/pkg/promtail/client"
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
-	"github.com/weaveworks/common/logging"
 )
 
 type fakeConfig map[string]string

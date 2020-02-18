@@ -3,8 +3,9 @@ package fake
 import (
 	"time"
 
-	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 // Client is a fake client used for testing.

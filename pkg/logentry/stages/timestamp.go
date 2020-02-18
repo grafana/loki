@@ -8,10 +8,11 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/util"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/util"
 )
 
 const (

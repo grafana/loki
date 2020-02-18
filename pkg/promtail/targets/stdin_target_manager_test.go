@@ -8,11 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/logentry/stages"
-	"github.com/grafana/loki/pkg/promtail/scrape"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
+
+	"github.com/grafana/loki/pkg/logentry/stages"
+	"github.com/grafana/loki/pkg/promtail/scrape"
 )
 
 type line struct {

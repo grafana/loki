@@ -18,9 +18,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"golang.org/x/net/context"
+
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
-	"golang.org/x/net/context"
 )
 
 func TestTransferOut(t *testing.T) {

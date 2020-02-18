@@ -25,7 +25,7 @@ Please follow the [Loki Helm Chart](./production/helm/README.md).
 
 ### Dependency management
 
-We uses [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) to manage dependencies on external packages.
+We use [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) to manage dependencies on external packages.
 This requires a working Go environment with version 1.13 or greater and git installed.
 
 To add or update a new dependency, use the `go get` command:
@@ -48,3 +48,23 @@ git commit
 ```
 
 You have to commit the changes to `go.mod` and `go.sum` before submitting the pull request.
+
+## Coding Standards
+
+### go imports
+imports should follow `std libs`, `externals libs` and `local packages` format
+
+Example
+```
+import (
+	"fmt"
+	"math"
+
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
+)
+```
+

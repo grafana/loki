@@ -6,10 +6,11 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/promtail/client"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/promtail/client"
 )
 
 const (

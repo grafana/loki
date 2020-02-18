@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func TestParseLabelQuery(t *testing.T) {

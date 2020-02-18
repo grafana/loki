@@ -9,8 +9,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const testSize = 10

@@ -5,6 +5,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+
 	"github.com/grafana/loki/pkg/logproto"
 )
 

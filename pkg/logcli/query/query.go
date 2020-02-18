@@ -10,14 +10,15 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	json "github.com/json-iterator/go"
+	"github.com/prometheus/prometheus/promql"
+
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
-	json "github.com/json-iterator/go"
-	"github.com/prometheus/prometheus/promql"
 )
 
 type streamEntryPair struct {
