@@ -18,7 +18,7 @@ Make sure you have Helm [installed](https://helm.sh/docs/using_helm/#installing-
 To install the chart with the release name `my-release`:
 
 ```console
-helm repo add loki https://grafana.github.io/loki/charts 
+helm repo add loki https://grafana.github.io/loki/charts
 helm install --name my-release loki/loki
 ```
 
