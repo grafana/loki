@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	typeMetric  = "metric"
-	typeFilter  = "filter"
-	typeLimited = "limited"
+	QueryTypeMetric  = "metric"
+	QueryTypeFilter  = "filter"
+	QueryTypeLimited = "limited"
 )
 
 var (
@@ -55,7 +55,10 @@ var (
 )
 
 func RecordMetrics(status, query string, rangeType QueryRangeType, stats stats.Result) {
-	queryType := queryType(query)
+	queryType, err := QueryType(query)
+	if err != nil {
+		level.Warn(util.Logger).Log("msg", "error parsing query type", "err", err)
+	}
 	rt := string(rangeType)
 	bytesPerSeconds.WithLabelValues(status, queryType, rt).
 		Observe(float64(stats.Summary.BytesProcessedPerSeconds))
@@ -69,20 +72,19 @@ func RecordMetrics(status, query string, rangeType QueryRangeType, stats stats.R
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 }
 
-func queryType(query string) string {
+func QueryType(query string) (string, error) {
 	expr, err := ParseExpr(query)
 	if err != nil {
-		level.Warn(util.Logger).Log("msg", "error parsing query type", "err", err)
-		return ""
+		return "", err
 	}
 	switch expr.(type) {
 	case SampleExpr:
-		return typeMetric
+		return QueryTypeMetric, nil
 	case *matchersExpr:
-		return typeLimited
+		return QueryTypeLimited, nil
 	case *filterExpr:
-		return typeFilter
+		return QueryTypeFilter, nil
 	default:
-		return ""
+		return "", nil
 	}
 }
