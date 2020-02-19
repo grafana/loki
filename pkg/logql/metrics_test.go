@@ -4,23 +4,30 @@ import (
 	"testing"
 )
 
-func Test_queryType(t *testing.T) {
+func TestQueryType(t *testing.T) {
 	tests := []struct {
-		name  string
-		query string
-		want  string
+		name    string
+		query   string
+		want    string
+		wantErr bool
 	}{
-		{"bad", "ddd", ""},
-		{"limited", `{app="foo"}`, typeLimited},
-		{"limited multi label", `{app="foo" ,fuzz=~"foo"}`, typeLimited},
-		{"filter", `{app="foo"} |= "foo"`, typeFilter},
-		{"metrics", `rate({app="foo"} |= "foo"[5m])`, typeMetric},
-		{"filters", `{app="foo"} |= "foo" |= "f" != "b"`, typeFilter},
+		{"bad", "ddd", "", true},
+		{"limited", `{app="foo"}`, typeLimited, false},
+		{"limited multi label", `{app="foo" ,fuzz=~"foo"}`, typeLimited, false},
+		{"filter", `{app="foo"} |= "foo"`, typeFilter, false},
+		{"metrics", `rate({app="foo"} |= "foo"[5m])`, typeMetric, false},
+		{"metrics binary", `rate({app="foo"} |= "foo"[5m]) + count_over_time({app="foo"} |= "foo"[5m]) / rate({app="foo"} |= "foo"[5m]) `, typeMetric, false},
+		{"filters", `{app="foo"} |= "foo" |= "f" != "b"`, typeFilter, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := queryType(tt.query); got != tt.want {
-				t.Errorf("queryType() = %v, want %v", got, tt.want)
+			got, err := QueryType(tt.query)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("QueryType() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("QueryType() = %v, want %v", got, tt.want)
 			}
 		})
 	}
