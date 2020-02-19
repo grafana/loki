@@ -12,12 +12,12 @@ func TestQueryType(t *testing.T) {
 		wantErr bool
 	}{
 		{"bad", "ddd", "", true},
-		{"limited", `{app="foo"}`, typeLimited, false},
-		{"limited multi label", `{app="foo" ,fuzz=~"foo"}`, typeLimited, false},
-		{"filter", `{app="foo"} |= "foo"`, typeFilter, false},
-		{"metrics", `rate({app="foo"} |= "foo"[5m])`, typeMetric, false},
-		{"metrics binary", `rate({app="foo"} |= "foo"[5m]) + count_over_time({app="foo"} |= "foo"[5m]) / rate({app="foo"} |= "foo"[5m]) `, typeMetric, false},
-		{"filters", `{app="foo"} |= "foo" |= "f" != "b"`, typeFilter, false},
+		{"limited", `{app="foo"}`, QueryTypeLimited, false},
+		{"limited multi label", `{app="foo" ,fuzz=~"foo"}`, QueryTypeLimited, false},
+		{"filter", `{app="foo"} |= "foo"`, QueryTypeFilter, false},
+		{"metrics", `rate({app="foo"} |= "foo"[5m])`, QueryTypeMetric, false},
+		{"metrics binary", `rate({app="foo"} |= "foo"[5m]) + count_over_time({app="foo"} |= "foo"[5m]) / rate({app="foo"} |= "foo"[5m]) `, QueryTypeMetric, false},
+		{"filters", `{app="foo"} |= "foo" |= "f" != "b"`, QueryTypeFilter, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

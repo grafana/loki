@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	typeMetric  = "metric"
-	typeFilter  = "filter"
-	typeLimited = "limited"
+	QueryTypeMetric  = "metric"
+	QueryTypeFilter  = "filter"
+	QueryTypeLimited = "limited"
 )
 
 var (
@@ -79,11 +79,11 @@ func QueryType(query string) (string, error) {
 	}
 	switch expr.(type) {
 	case SampleExpr:
-		return typeMetric, nil
+		return QueryTypeMetric, nil
 	case *matchersExpr:
-		return typeLimited, nil
+		return QueryTypeLimited, nil
 	case *filterExpr:
-		return typeFilter, nil
+		return QueryTypeFilter, nil
 	default:
 		return "", nil
 	}
