@@ -6,7 +6,7 @@ dependencies:
 - name: "promtail"
   condition: promtail.enabled
   repository: "file://../promtail"
-  version: "0.18.1"
+  version: "0.19.1"
 - name: "fluent-bit"
   condition: fluent-bit.enabled
   repository: "file://../fluent-bit"
