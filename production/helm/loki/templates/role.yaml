@@ -3,12 +3,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: {{ template "loki.fullname" . }}
-  namespace: {{ .Release.Namespace }}
   labels:
-    app: {{ template "loki.name" . }}
-    chart: {{ template "loki.chart" . }}
-    heritage: {{ .Release.Service }}
-    release: {{ .Release.Name }}
+    {{- include "loki.labels" . | nindent 4 }}
 {{- if .Values.rbac.pspEnabled }}
 rules:
 - apiGroups:      ['extensions']

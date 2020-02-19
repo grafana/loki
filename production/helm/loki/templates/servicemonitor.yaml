@@ -4,18 +4,14 @@ kind: ServiceMonitor
 metadata:
   name: {{ template "loki.fullname" . }}
   labels:
-    app: {{ template "loki.name" . }}
-    chart: {{ template "loki.chart" . }}
-    release: {{ .Release.Name }}
-    heritage: {{ .Release.Service }}
+    {{- include "loki.labels" . | nindent 4 }}
     {{- if .Values.serviceMonitor.additionalLabels }}
 {{ toYaml .Values.serviceMonitor.additionalLabels | indent 4 }}
     {{- end }}
 spec:
   selector:
     matchLabels:
-      app: {{ template "loki.name" . }}
-      release: {{ .Release.Name | quote }}
+      {{- include "loki.selectorLabels" . | nindent 6 }}
   namespaceSelector:
     matchNames:
       - {{ .Release.Namespace | quote }}

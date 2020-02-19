@@ -91,9 +91,11 @@ config:
     retention_deletes_enabled: false
     retention_period: 0
 
-## Additional Loki container arguments, e.g. log level (debug, info, warn, error)
-extraArgs: {}
-  # log.level: debug
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: http-metrics
+  initialDelaySeconds: 45
 
 livenessProbe:
   httpGet:
@@ -141,12 +143,6 @@ podManagementPolicy: OrderedReady
 rbac:
   create: true
   pspEnabled: true
-
-readinessProbe:
-  httpGet:
-    path: /ready
-    port: http-metrics
-  initialDelaySeconds: 45
 
 replicas: 1
 
@@ -202,6 +198,10 @@ initContainers: []
 # - name: my-init-container
 #   image: busybox:latest
 #   command: ['sh', '-c', 'echo hello']
+
+## Additional Loki container arguments, e.g. log level (debug, info, warn, error)
+extraArgs: {}
+  # log.level: debug
 
 extraContainers: []
 ## Additional containers to be added to the loki pod.

@@ -12,8 +12,6 @@ grafana:
   sidecar:
     datasources:
       enabled: true
-  image:
-    tag: 6.6.0
 
 prometheus:
   enabled: false

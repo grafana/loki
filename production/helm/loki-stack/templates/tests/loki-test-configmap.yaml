@@ -3,10 +3,7 @@ kind: ConfigMap
 metadata:
   name: {{ template "loki-stack.fullname" . }}-test
   labels:
-    app: {{ template "loki-stack.name" . }}
-    chart: {{ template "loki-stack.chart" . }}
-    release: {{ .Release.Name }}
-    heritage: {{ .Release.Service }}
+    {{- include "loki-stack.labels" . | nindent 4 }}
 data:
   test.sh: |
     #!/usr/bin/env bash

@@ -2,12 +2,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ template "loki.fullname" . }}-headless
-  namespace: {{ .Release.Namespace }}
   labels:
-    app: {{ template "loki.name" . }}
-    chart: {{ template "loki.chart" . }}
-    release: {{ .Release.Name }}
-    heritage: {{ .Release.Service }}
+    {{- include "loki.labels" . | nindent 4 }}
 spec:
   clusterIP: None
   ports:
@@ -19,5 +15,4 @@ spec:
 {{ toYaml .Values.extraPorts | indent 4}}
 {{- end }}
   selector:
-    app: {{ template "loki.name" . }}
-    release: {{ .Release.Name }}
+    {{- include "loki.selectorLabels" . | nindent 4 }}

@@ -5,10 +5,7 @@ metadata:
   name: {{ template "loki-stack.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    app: {{ template "loki-stack.name" . }}
-    chart: {{ template "loki-stack.chart" . }}
-    release: {{ .Release.Name }}
-    heritage: {{ .Release.Service }}
+    {{- include "loki-stack.labels" . | nindent 4 }}
     grafana_datasource: "1"
 data:
   loki-stack-datasource.yaml: |-
