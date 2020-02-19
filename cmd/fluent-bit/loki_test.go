@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -295,6 +296,67 @@ func Test_labelMapping(t *testing.T) {
 			got := model.LabelSet{}
 			if mapLabels(tt.records, tt.mapping, got); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("mapLabels() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_AutoKubernetesLabels(t *testing.T) {
+	tests := []struct {
+		name    string
+		records map[interface{}]interface{}
+		want    model.LabelSet
+		err     error
+	}{
+		{
+			"records without labels",
+			map[interface{}]interface{}{
+				"kubernetes": map[interface{}]interface{}{
+					"foo": []byte("buzz"),
+				},
+			},
+			model.LabelSet{
+				"foo": "buzz",
+			},
+			nil,
+		},
+		{
+			"records with labels",
+			map[interface{}]interface{}{
+				"kubernetes": map[string]interface{}{
+					"labels": map[string]interface{}{
+						"foo":  "bar",
+						"buzz": "value",
+					},
+				},
+			},
+			model.LabelSet{
+				"foo":  "bar",
+				"buzz": "value",
+			},
+			nil,
+		},
+		{
+			"records without kubernetes labels",
+			map[interface{}]interface{}{
+				"foo":   "bar",
+				"label": "value",
+			},
+			model.LabelSet{},
+			errors.New("kubernetes labels not found, no labels will be added"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := toStringMap(tt.records)
+			lbs := model.LabelSet{}
+			err := autoLabels(m, lbs)
+			if err != nil && err.Error() != tt.err.Error() {
+				t.Errorf("error in autolabels, error = %v", err)
+				return
+			}
+			if !reflect.DeepEqual(lbs, tt.want) {
+				t.Errorf("mapLabels() = %v, want %v", lbs, tt.want)
 			}
 		})
 	}
