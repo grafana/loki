@@ -77,6 +77,8 @@ func newTestChunkStoreConfig(t require.TestingT, schemaName string, storeCfg Sto
 		tbmConfig TableManagerConfig
 		schemaCfg = DefaultSchemaConfig("", schemaName, 0)
 	)
+	err := schemaCfg.Validate()
+	require.NoError(t, err)
 	flagext.DefaultValues(&tbmConfig)
 	storage := NewMockStorage()
 	tableManager, err := NewTableManager(tbmConfig, schemaCfg, maxChunkAge, storage, nil)

@@ -14,6 +14,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
@@ -129,6 +130,15 @@ func (c *seriesStore) Get(ctx context.Context, userID string, from, through mode
 	if err != nil {
 		level.Error(log).Log("msg", "FetchChunks", "err", err)
 		return nil, err
+	}
+
+	// inject artificial __cortex_shard__ labels if present in the query. GetChunkRefs guarantees any chunk refs match the shard.
+	shard, _, err := astmapper.ShardFromMatchers(allMatchers)
+	if err != nil {
+		return nil, err
+	}
+	if shard != nil {
+		injectShardLabels(allChunks, *shard)
 	}
 
 	// Filter out chunks based on the empty matchers in the query.
@@ -252,10 +262,21 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupSeriesByMetricNameMatchers", "metricName", metricName, "matchers", len(matchers))
 	defer log.Span.Finish()
 
+	// Check if one of the labels is a shard annotation, pass that information to lookupSeriesByMetricNameMatcher,
+	// and remove the label.
+	shard, shardLabelIndex, err := astmapper.ShardFromMatchers(matchers)
+	if err != nil {
+		return nil, err
+	}
+
+	if shard != nil {
+		matchers = append(matchers[:shardLabelIndex], matchers[shardLabelIndex+1:]...)
+	}
+
 	// Just get series for metric if there are no matchers
 	if len(matchers) == 0 {
 		indexLookupsPerQuery.Observe(1)
-		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil)
+		series, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, nil, shard)
 		if err != nil {
 			preIntersectionPerQuery.Observe(float64(len(series)))
 			postIntersectionPerQuery.Observe(float64(len(series)))
@@ -269,7 +290,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	indexLookupsPerQuery.Observe(float64(len(matchers)))
 	for _, matcher := range matchers {
 		go func(matcher *labels.Matcher) {
-			ids, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, matcher)
+			ids, err := c.lookupSeriesByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, shard)
 			if err != nil {
 				incomingErrors <- err
 				return
@@ -320,7 +341,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	return ids, nil
 }
 
-func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher) ([]string, error) {
+func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, shard *astmapper.ShardAnnotation) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupSeriesByMetricNameMatcher", "metricName", metricName, "matcher", matcher)
 	defer log.Span.Finish()
 
@@ -340,6 +361,10 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 		return nil, err
 	}
 	level.Debug(log).Log("queries", len(queries))
+
+	queries = c.schema.FilterReadQueries(queries, shard)
+
+	level.Debug(log).Log("filteredQueries", len(queries))
 
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
 	if e, ok := err.(CardinalityExceededError); ok {
@@ -508,4 +533,14 @@ func (c *seriesStore) calculateIndexEntries(ctx context.Context, from, through m
 	}
 
 	return result, missing, nil
+}
+
+func injectShardLabels(chunks []Chunk, shard astmapper.ShardAnnotation) {
+	for i, chunk := range chunks {
+		b := labels.NewBuilder(chunk.Metric)
+		l := shard.Label()
+		b.Set(l.Name, l.Value)
+		chunk.Metric = b.Labels()
+		chunks[i] = chunk
+	}
 }

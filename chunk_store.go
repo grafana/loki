@@ -429,6 +429,9 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 }
 
 func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
+	log, ctx := spanlogger.New(ctx, "store.lookupEntriesByQueries")
+	defer log.Span.Finish()
+
 	var lock sync.Mutex
 	var entries []IndexEntry
 	err := c.index.QueryPages(ctx, queries, func(query IndexQuery, resp ReadBatch) bool {
