@@ -70,7 +70,6 @@ func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
 					*data.statistics,
 				)
 			}
-			// todo(cyriltovena): add performance SLO for query_range filters here.
 		})
 	})
 }

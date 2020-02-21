@@ -13,6 +13,11 @@ const (
 	QueryTypeMetric  = "metric"
 	QueryTypeFilter  = "filter"
 	QueryTypeLimited = "limited"
+
+	latencyTypeSlow = "slow"
+	latencyTypeFast = "fast"
+
+	slowQueryThresholdSecond = float64(10)
 )
 
 var (
@@ -22,7 +27,7 @@ var (
 		Help:      "Distribution of bytes processed per seconds for LogQL queries.",
 		// 50MB 100MB 200MB 400MB 600MB 800MB 1GB 2GB 3GB 4GB 5GB 6GB 7GB 8GB 9GB 10GB 15GB 20GB
 		Buckets: []float64{50 * 1e6, 100 * 1e6, 400 * 1e6, 600 * 1e6, 800 * 1e6, 1 * 1e9, 2 * 1e9, 3 * 1e9, 4 * 1e9, 5 * 1e9, 6 * 1e9, 7 * 1e9, 8 * 1e9, 9 * 1e9, 10 * 1e9, 15 * 1e9, 20 * 1e9},
-	}, []string{"status_code", "type", "range"})
+	}, []string{"status_code", "type", "range", "latency_type"})
 	execLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "logql_querystats_latency_seconds",
@@ -60,7 +65,15 @@ func RecordMetrics(status, query string, rangeType QueryRangeType, stats stats.R
 		level.Warn(util.Logger).Log("msg", "error parsing query type", "err", err)
 	}
 	rt := string(rangeType)
-	bytesPerSeconds.WithLabelValues(status, queryType, rt).
+
+	// tag throughput metric by latency type base on a threshold.
+	// Below threshold is fast, above is slow.
+	latencyType := latencyTypeFast
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	bytesPerSeconds.WithLabelValues(status, queryType, rt, latencyType).
 		Observe(float64(stats.Summary.BytesProcessedPerSeconds))
 	execLatency.WithLabelValues(status, queryType, rt).
 		Observe(stats.Summary.ExecTime)
