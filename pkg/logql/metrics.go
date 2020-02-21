@@ -66,8 +66,8 @@ func RecordMetrics(status, query string, rangeType QueryRangeType, stats stats.R
 	}
 	rt := string(rangeType)
 
-	// tag throughput metric by latency type base on a threshold.
-	// Below threshold is fast, above is slow.
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
 	latencyType := latencyTypeFast
 	if stats.Summary.ExecTime > slowQueryThresholdSecond {
 		latencyType = latencyTypeSlow
