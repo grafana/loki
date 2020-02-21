@@ -24,7 +24,7 @@ func ParseExpr(input string) (expr Expr, err error) {
 		if r != nil {
 			var ok bool
 			if err, ok = r.(error); ok {
-				if _, ok := err.(ParseError); ok {
+				if IsParseError(err) {
 					return
 				}
 				err = newParseError(err.Error(), 0, 0)
