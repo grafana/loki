@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -18,27 +19,15 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 type configFactory func() StoreConfig
 
-var schemas = []struct {
-	name              string
-	requireMetricName bool
-}{
-	{"v1", true},
-	{"v2", true},
-	{"v3", true},
-	{"v4", true},
-	{"v5", true},
-	{"v6", true},
-	{"v9", true},
-	{"v10", true},
-	{"v11", true},
-}
+var seriesStoreSchemas = []string{"v9", "v10", "v11"}
+
+var schemas = append([]string{"v1", "v2", "v3", "v4", "v5", "v6"}, seriesStoreSchemas...)
 
 var stores = []struct {
 	name     string
@@ -136,80 +125,53 @@ func TestChunkStore_Get(t *testing.T) {
 	testCases := []struct {
 		query  string
 		expect []Chunk
+		err    string
 	}{
 		{
-			`foo`,
-			[]Chunk{fooChunk1, fooChunk2},
+			query:  `foo`,
+			expect: []Chunk{fooChunk1, fooChunk2},
 		},
 		{
-			`foo{flip=""}`,
-			[]Chunk{fooChunk2},
+			query:  `foo{flip=""}`,
+			expect: []Chunk{fooChunk2},
 		},
 		{
-			`foo{bar="baz"}`,
-			[]Chunk{fooChunk1},
+			query:  `foo{bar="baz"}`,
+			expect: []Chunk{fooChunk1},
 		},
 		{
-			`foo{bar="beep"}`,
-			[]Chunk{fooChunk2},
+			query:  `foo{bar="beep"}`,
+			expect: []Chunk{fooChunk2},
 		},
 		{
-			`foo{toms="code"}`,
-			[]Chunk{fooChunk1, fooChunk2},
+			query:  `foo{toms="code"}`,
+			expect: []Chunk{fooChunk1, fooChunk2},
 		},
 		{
-			`foo{bar!="baz"}`,
-			[]Chunk{fooChunk2},
+			query:  `foo{bar!="baz"}`,
+			expect: []Chunk{fooChunk2},
 		},
 		{
-			`foo{bar=~"beep|baz"}`,
-			[]Chunk{fooChunk1, fooChunk2},
+			query:  `foo{bar=~"beep|baz"}`,
+			expect: []Chunk{fooChunk1, fooChunk2},
 		},
 		{
-			`foo{toms="code", bar=~"beep|baz"}`,
-			[]Chunk{fooChunk1, fooChunk2},
+			query:  `foo{toms="code", bar=~"beep|baz"}`,
+			expect: []Chunk{fooChunk1, fooChunk2},
 		},
 		{
-			`foo{toms="code", bar="baz"}`,
-			[]Chunk{fooChunk1},
+			query:  `foo{toms="code", bar="baz"}`,
+			expect: []Chunk{fooChunk1},
 		},
 		{
-			`{__name__=~"foo"}`,
-			[]Chunk{fooChunk1, fooChunk2},
-		},
-		{
-			`{__name__=~"foobar"}`,
-			[]Chunk{},
-		},
-		{
-			`{__name__=~"fo.*"}`,
-			[]Chunk{fooChunk1, fooChunk2},
-		},
-		{
-			`{__name__=~"foo", toms="code"}`,
-			[]Chunk{fooChunk1, fooChunk2},
-		},
-		{
-			`{__name__!="foo", toms="code"}`,
-			[]Chunk{barChunk2},
-		},
-		{
-			`{__name__!="bar", toms="code"}`,
-			[]Chunk{fooChunk1, fooChunk2},
-		},
-		{
-			`{__name__=~"bar", bar="baz"}`,
-			[]Chunk{barChunk1, barChunk2},
-		},
-		{
-			`{__name__=~"bar", bar="baz",toms!="code"}`,
-			[]Chunk{barChunk1},
+			query: `{__name__=~"foo"}`,
+			err:   "rpc error: code = Code(400) desc = query must contain metric name",
 		},
 	}
 	for _, schema := range schemas {
 		for _, storeCase := range stores {
 			storeCfg := storeCase.configFn()
-			store := newTestChunkStoreConfig(t, schema.name, storeCfg)
+			store := newTestChunkStoreConfig(t, schema, storeCfg)
 			defer store.Stop()
 
 			if err := store.Put(ctx, []Chunk{
@@ -222,20 +184,20 @@ func TestChunkStore_Get(t *testing.T) {
 			}
 
 			for _, tc := range testCases {
-				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema.name, storeCase.name), func(t *testing.T) {
-					t.Log("========= Running query", tc.query, "with schema", schema.name)
+				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema, storeCase.name), func(t *testing.T) {
+					t.Log("========= Running query", tc.query, "with schema", schema)
 					matchers, err := promql.ParseMetricSelector(tc.query)
 					if err != nil {
 						t.Fatal(err)
 					}
 
-					metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
-					if schema.requireMetricName && (!ok || metricNameMatcher.Type != labels.MatchEqual) {
-						return
-					}
-
 					// Query with ordinary time-range
 					chunks1, err := store.Get(ctx, userID, now.Add(-time.Hour), now, matchers...)
+					if tc.err != "" {
+						require.Error(t, err)
+						require.Equal(t, tc.err, err.Error())
+						return
+					}
 					require.NoError(t, err)
 					if !reflect.DeepEqual(tc.expect, chunks1) {
 						t.Fatalf("%s: wrong chunks - %s", tc.query, test.Diff(tc.expect, chunks1))
@@ -327,10 +289,10 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 	} {
 		for _, schema := range schemas {
 			for _, storeCase := range stores {
-				t.Run(fmt.Sprintf("%s / %s / %s / %s", tc.metricName, tc.labelName, schema.name, storeCase.name), func(t *testing.T) {
-					t.Log("========= Running labelValues with metricName", tc.metricName, "with labelName", tc.labelName, "with schema", schema.name)
+				t.Run(fmt.Sprintf("%s / %s / %s / %s", tc.metricName, tc.labelName, schema, storeCase.name), func(t *testing.T) {
+					t.Log("========= Running labelValues with metricName", tc.metricName, "with labelName", tc.labelName, "with schema", schema)
 					storeCfg := storeCase.configFn()
-					store := newTestChunkStoreConfig(t, schema.name, storeCfg)
+					store := newTestChunkStoreConfig(t, schema, storeCfg)
 					defer store.Stop()
 
 					if err := store.Put(ctx, []Chunk{
@@ -428,10 +390,10 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 	} {
 		for _, schema := range schemas {
 			for _, storeCase := range stores {
-				t.Run(fmt.Sprintf("%s / %s / %s ", tc.metricName, schema.name, storeCase.name), func(t *testing.T) {
-					t.Log("========= Running labelNames with metricName", tc.metricName, "with schema", schema.name)
+				t.Run(fmt.Sprintf("%s / %s / %s ", tc.metricName, schema, storeCase.name), func(t *testing.T) {
+					t.Log("========= Running labelNames with metricName", tc.metricName, "with schema", schema)
 					storeCfg := storeCase.configFn()
-					store := newTestChunkStoreConfig(t, schema.name, storeCfg)
+					store := newTestChunkStoreConfig(t, schema, storeCfg)
 					defer store.Stop()
 
 					if err := store.Put(ctx, []Chunk{
@@ -535,7 +497,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 	for _, schema := range schemas {
 		for _, storeCase := range stores {
 			storeCfg := storeCase.configFn()
-			store := newTestChunkStoreConfig(t, schema.name, storeCfg)
+			store := newTestChunkStoreConfig(t, schema, storeCfg)
 			defer store.Stop()
 
 			if err := store.Put(ctx, []Chunk{chunk1, chunk2}); err != nil {
@@ -543,8 +505,8 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 			}
 
 			for _, tc := range testCases {
-				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema.name, storeCase.name), func(t *testing.T) {
-					t.Log("========= Running query", tc.query, "with schema", schema.name)
+				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema, storeCase.name), func(t *testing.T) {
+					t.Log("========= Running query", tc.query, "with schema", schema)
 					matchers, err := promql.ParseMetricSelector(tc.query)
 					if err != nil {
 						t.Fatal(err)
@@ -574,8 +536,8 @@ func TestChunkStoreRandom(t *testing.T) {
 	ctx := context.Background()
 
 	for _, schema := range schemas {
-		t.Run(schema.name, func(t *testing.T) {
-			store := newTestChunkStore(t, schema.name)
+		t.Run(schema, func(t *testing.T) {
+			store := newTestChunkStore(t, schema)
 			defer store.Stop()
 
 			// put 100 chunks from 0 to 99
@@ -786,8 +748,8 @@ func TestChunkStoreError(t *testing.T) {
 		},
 	} {
 		for _, schema := range schemas {
-			t.Run(fmt.Sprintf("%s / %s", tc.query, schema.name), func(t *testing.T) {
-				store := newTestChunkStore(t, schema.name)
+			t.Run(fmt.Sprintf("%s / %s", tc.query, schema), func(t *testing.T) {
+				store := newTestChunkStore(t, schema)
 				defer store.Stop()
 
 				matchers, err := promql.ParseMetricSelector(tc.query)
@@ -898,4 +860,262 @@ func generateIndexEntries(n int64) []IndexEntry {
 		})
 	}
 	return res
+}
+
+func getNonDeletedIntervals(originalInterval, deletedInterval model.Interval) []model.Interval {
+	if !intervalsOverlap(originalInterval, deletedInterval) {
+		return []model.Interval{originalInterval}
+	}
+
+	nonDeletedIntervals := []model.Interval{}
+	if deletedInterval.Start > originalInterval.Start {
+		nonDeletedIntervals = append(nonDeletedIntervals, model.Interval{Start: originalInterval.Start, End: deletedInterval.Start - 1})
+	}
+
+	if deletedInterval.End < originalInterval.End {
+		nonDeletedIntervals = append(nonDeletedIntervals, model.Interval{Start: deletedInterval.End + 1, End: originalInterval.End})
+	}
+
+	return nonDeletedIntervals
+}
+
+func TestStore_DeleteChunk(t *testing.T) {
+	ctx := context.Background()
+
+	metric1 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+	}
+
+	metric2 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz2"},
+	}
+
+	metric3 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz3"},
+	}
+
+	fooChunk1 := dummyChunkForEncoding(model.Now(), metric1, encoding.Varbit, 200)
+	err := fooChunk1.Encode()
+	require.NoError(t, err)
+
+	fooChunk2 := dummyChunkForEncoding(model.Now(), metric2, encoding.Varbit, 200)
+	err = fooChunk2.Encode()
+	require.NoError(t, err)
+
+	nonExistentChunk := dummyChunkForEncoding(model.Now(), metric3, encoding.Varbit, 200)
+
+	fooMetricNameMatcher, err := promql.ParseMetricSelector(`foo`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name                           string
+		chunks                         []Chunk
+		chunkToDelete                  Chunk
+		partialDeleteInterval          *model.Interval
+		err                            error
+		numChunksToExpectAfterDeletion int
+	}{
+		{
+			name:                           "delete whole chunk",
+			chunkToDelete:                  fooChunk1,
+			numChunksToExpectAfterDeletion: 1,
+		},
+		{
+			name:                           "delete chunk partially at start",
+			chunkToDelete:                  fooChunk1,
+			partialDeleteInterval:          &model.Interval{Start: fooChunk1.From, End: fooChunk1.From.Add(30 * time.Minute)},
+			numChunksToExpectAfterDeletion: 2,
+		},
+		{
+			name:                           "delete chunk partially at end",
+			chunkToDelete:                  fooChunk1,
+			partialDeleteInterval:          &model.Interval{Start: fooChunk1.Through.Add(-30 * time.Minute), End: fooChunk1.Through},
+			numChunksToExpectAfterDeletion: 2,
+		},
+		{
+			name:                           "delete chunk partially in the middle",
+			chunkToDelete:                  fooChunk1,
+			partialDeleteInterval:          &model.Interval{Start: fooChunk1.From.Add(15 * time.Minute), End: fooChunk1.Through.Add(-15 * time.Minute)},
+			numChunksToExpectAfterDeletion: 3,
+		},
+		{
+			name:                           "delete non-existent chunk",
+			chunkToDelete:                  nonExistentChunk,
+			numChunksToExpectAfterDeletion: 2,
+		},
+		{
+			name:                           "delete first second",
+			chunkToDelete:                  fooChunk1,
+			partialDeleteInterval:          &model.Interval{Start: fooChunk1.From, End: fooChunk1.From},
+			numChunksToExpectAfterDeletion: 2,
+		},
+		{
+			name:                           "delete chunk out of range",
+			chunkToDelete:                  fooChunk1,
+			partialDeleteInterval:          &model.Interval{Start: fooChunk1.Through.Add(time.Minute), End: fooChunk1.Through.Add(10 * time.Minute)},
+			numChunksToExpectAfterDeletion: 2,
+			err:                            errors.Wrapf(ErrParialDeleteChunkNoOverlap, "chunkID=%s", fooChunk1.ExternalKey()),
+		},
+	} {
+		for _, schema := range schemas {
+			t.Run(fmt.Sprintf("%s / %s", schema, tc.name), func(t *testing.T) {
+				store := newTestChunkStore(t, schema)
+				defer store.Stop()
+
+				// inserting 2 chunks with different labels but same metric name
+				err = store.Put(ctx, []Chunk{fooChunk1, fooChunk2})
+				require.NoError(t, err)
+
+				// we expect to get 2 chunks back using just metric name matcher
+				chunks, err := store.Get(ctx, userID, model.Now().Add(-time.Hour), model.Now(), fooMetricNameMatcher...)
+				require.NoError(t, err)
+				require.Equal(t, 2, len(chunks))
+
+				err = store.DeleteChunk(ctx, tc.chunkToDelete.From, tc.chunkToDelete.Through, userID,
+					tc.chunkToDelete.ExternalKey(), tc.chunkToDelete.Metric, tc.partialDeleteInterval)
+
+				if tc.err != nil {
+					require.Error(t, err)
+					require.Equal(t, tc.err.Error(), err.Error())
+
+					// we expect to get same results back if delete operation is expected to fail
+					chunks, err := store.Get(ctx, userID, model.Now().Add(-time.Hour), model.Now(), fooMetricNameMatcher...)
+					require.NoError(t, err)
+
+					require.Equal(t, 2, len(chunks))
+
+					return
+				}
+				require.NoError(t, err)
+
+				matchersForDeletedChunk, err := promql.ParseMetricSelector(tc.chunkToDelete.Metric.String())
+				require.NoError(t, err)
+
+				var nonDeletedIntervals []model.Interval
+
+				if tc.partialDeleteInterval != nil {
+					nonDeletedIntervals = getNonDeletedIntervals(model.Interval{
+						Start: tc.chunkToDelete.From,
+						End:   tc.chunkToDelete.Through,
+					}, *tc.partialDeleteInterval)
+				}
+
+				// we expect to get 1 non deleted chunk + new chunks that were created (if any) after partial deletion
+				chunks, err = store.Get(ctx, userID, model.Now().Add(-time.Hour), model.Now(), fooMetricNameMatcher...)
+				require.NoError(t, err)
+				require.Equal(t, tc.numChunksToExpectAfterDeletion, len(chunks))
+
+				chunks, err = store.Get(ctx, userID, model.Now().Add(-time.Hour), model.Now(), matchersForDeletedChunk...)
+				require.NoError(t, err)
+				require.Equal(t, len(nonDeletedIntervals), len(chunks))
+
+				// comparing intervals of new chunks that were created after partial deletion
+				for i, nonDeletedInterval := range nonDeletedIntervals {
+					require.Equal(t, chunks[i].From, nonDeletedInterval.Start)
+					require.Equal(t, chunks[i].Through, nonDeletedInterval.End)
+				}
+			})
+		}
+	}
+}
+
+func TestStore_DeleteSeriesIDs(t *testing.T) {
+	ctx := context.Background()
+	metric1 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+	}
+
+	metric2 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz2"},
+	}
+
+	matchers, err := promql.ParseMetricSelector(`foo`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, schema := range seriesStoreSchemas {
+		t.Run(schema, func(t *testing.T) {
+			store := newTestChunkStore(t, schema)
+			defer store.Stop()
+
+			seriesStore := store.(CompositeStore).stores[0].Store.(*seriesStore)
+
+			fooChunk1 := dummyChunkForEncoding(model.Now(), metric1, encoding.Varbit, 200)
+			err := fooChunk1.Encode()
+			require.NoError(t, err)
+
+			fooChunk2 := dummyChunkForEncoding(model.Now(), metric2, encoding.Varbit, 200)
+			err = fooChunk2.Encode()
+			require.NoError(t, err)
+
+			err = store.Put(ctx, []Chunk{fooChunk1, fooChunk2})
+			require.NoError(t, err)
+
+			// we expect to have 2 series IDs in index for the chunks that were added above
+			seriesIDs, err := seriesStore.lookupSeriesByMetricNameMatcher(ctx, model.Now().Add(-time.Hour), model.Now(),
+				userID, "foo", nil, nil)
+			require.NoError(t, err)
+			require.Equal(t, 2, len(seriesIDs))
+
+			// we expect to have 2 chunks in store that were added above
+			chunks, err := store.Get(ctx, userID, model.Now().Add(-time.Hour), model.Now(), matchers...)
+			require.NoError(t, err)
+			require.Equal(t, 2, len(chunks))
+
+			// lets try deleting series ID without deleting the chunk
+			err = store.DeleteSeriesIDs(ctx, fooChunk1.From, fooChunk1.Through, userID, fooChunk1.Metric)
+			require.NoError(t, err)
+
+			// series IDs should still be there since chunks for them still exist
+			seriesIDs, err = seriesStore.lookupSeriesByMetricNameMatcher(ctx, model.Now().Add(-time.Hour), model.Now(),
+				userID, "foo", nil, nil)
+			require.NoError(t, err)
+			require.Equal(t, 2, len(seriesIDs))
+
+			// lets delete a chunk and then delete its series ID
+			err = store.DeleteChunk(ctx, fooChunk1.From, fooChunk1.Through, userID, fooChunk1.ExternalKey(), metric1, nil)
+			require.NoError(t, err)
+
+			err = store.DeleteSeriesIDs(ctx, fooChunk1.From, fooChunk1.Through, userID, fooChunk1.Metric)
+			require.NoError(t, err)
+
+			// there should be only be 1 chunk and 1 series ID left for it
+			chunks, err = store.Get(ctx, userID, model.Now().Add(-time.Hour), model.Now(), matchers...)
+			require.NoError(t, err)
+			require.Equal(t, 1, len(chunks))
+
+			seriesIDs, err = seriesStore.lookupSeriesByMetricNameMatcher(ctx, model.Now().Add(-time.Hour), model.Now(),
+				userID, "foo", nil, nil)
+			require.NoError(t, err)
+			require.Equal(t, 1, len(seriesIDs))
+			require.Equal(t, string(labelsSeriesID(fooChunk2.Metric)), seriesIDs[0])
+
+			// lets delete the other chunk partially and try deleting the series ID
+			err = store.DeleteChunk(ctx, fooChunk2.From, fooChunk2.Through, userID, fooChunk2.ExternalKey(), metric2,
+				&model.Interval{Start: fooChunk2.From, End: fooChunk2.From.Add(30 * time.Minute)})
+			require.NoError(t, err)
+
+			err = store.DeleteSeriesIDs(ctx, fooChunk1.From, fooChunk1.Through, userID, fooChunk1.Metric)
+			require.NoError(t, err)
+
+			// partial deletion should have left another chunk and a series ID in store
+			chunks, err = store.Get(ctx, userID, model.Now().Add(-time.Hour), model.Now(), matchers...)
+			require.NoError(t, err)
+			require.Equal(t, 1, len(chunks))
+
+			seriesIDs, err = seriesStore.lookupSeriesByMetricNameMatcher(ctx, model.Now().Add(-time.Hour), model.Now(),
+				userID, "foo", nil, nil)
+			require.NoError(t, err)
+			require.Equal(t, 1, len(seriesIDs))
+			require.Equal(t, string(labelsSeriesID(fooChunk2.Metric)), seriesIDs[0])
+		})
+	}
 }

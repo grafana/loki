@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -543,4 +544,57 @@ func injectShardLabels(chunks []Chunk, shard astmapper.ShardAnnotation) {
 		chunk.Metric = b.Labels()
 		chunks[i] = chunk
 	}
+}
+
+func (c *seriesStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
+	metricName := metric.Get(model.MetricNameLabel)
+	if metricName == "" {
+		return ErrMetricNameLabelMissing
+	}
+
+	chunkWriteEntries, err := c.schema.GetChunkWriteEntries(from, through, userID, string(metricName), metric, chunkID)
+	if err != nil {
+		return errors.Wrapf(err, "when getting chunk index entries to delete for chunkID=%s", chunkID)
+	}
+
+	return c.deleteChunk(ctx, userID, chunkID, metric, chunkWriteEntries, partiallyDeletedInterval, func(chunk Chunk) error {
+		return c.PutOne(ctx, chunk.From, chunk.Through, chunk)
+	})
+}
+
+func (c *seriesStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+
+	entries, err := c.schema.GetSeriesDeleteEntries(from, through, userID, metric, func(userID, seriesID string, from, through model.Time) (b bool, e error) {
+		return c.hasChunksForInterval(ctx, userID, seriesID, from, through)
+	})
+	if err != nil {
+		return err
+	}
+
+	batch := c.index.NewWriteBatch()
+	for i := range entries {
+		batch.Delete(entries[i].TableName, entries[i].HashValue, entries[i].RangeValue)
+	}
+
+	return c.index.BatchWrite(ctx, batch)
+}
+
+func (c *seriesStore) hasChunksForInterval(ctx context.Context, userID, seriesID string, from, through model.Time) (bool, error) {
+	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, userID, []string{seriesID})
+	if err != nil {
+		return false, err
+	}
+
+	chunks, err := c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
+	if err != nil {
+		return false, err
+	}
+
+	for _, chunk := range chunks {
+		if intervalsOverlap(model.Interval{Start: from, End: through}, model.Interval{Start: chunk.From, End: chunk.Through}) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }

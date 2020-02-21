@@ -169,6 +169,11 @@ func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 	mutation.Set(columnFamily, columnKey, 0, value)
 }
 
+func (b bigtableWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	// ToDo: implement this to support deleting index entries from Bigtable
+	panic("Bigtable does not support Deleting index entries yet")
+}
+
 func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
 	bigtableBatch := batch.(bigtableWriteBatch)
 

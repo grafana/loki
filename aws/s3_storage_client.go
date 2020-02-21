@@ -90,6 +90,11 @@ func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 // Stop fulfills the chunk.ObjectClient interface
 func (a *S3ObjectClient) Stop() {}
 
+func (a *S3ObjectClient) DeleteObject(ctx context.Context, chunkID string) error {
+	// ToDo: implement this to support deleting chunks from S3
+	return chunk.ErrMethodNotImplemented
+}
+
 // bucketFromKey maps a key to a bucket name
 func (a *S3ObjectClient) bucketFromKey(key string) string {
 	if len(a.bucketNames) == 0 {

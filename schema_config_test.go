@@ -35,10 +35,11 @@ func TestHourlyBuckets(t *testing.T) {
 				through: model.TimeFromUnix(0),
 			},
 			[]Bucket{{
-				from:      0,
-				through:   0,
-				tableName: "table",
-				hashKey:   "0:0",
+				from:       0,
+				through:    0,
+				tableName:  "table",
+				hashKey:    "0:0",
+				bucketSize: uint32(millisecondsInHour),
 			}},
 		},
 		{
@@ -48,10 +49,11 @@ func TestHourlyBuckets(t *testing.T) {
 				through: model.TimeFromUnix(1800),
 			},
 			[]Bucket{{
-				from:      0,
-				through:   1800 * 1000, // ms
-				tableName: "table",
-				hashKey:   "0:0",
+				from:       0,
+				through:    1800 * 1000, // ms
+				tableName:  "table",
+				hashKey:    "0:0",
+				bucketSize: uint32(millisecondsInHour),
 			}},
 		},
 		{
@@ -61,15 +63,17 @@ func TestHourlyBuckets(t *testing.T) {
 				through: model.TimeFromUnix(3600),
 			},
 			[]Bucket{{
-				from:      0,
-				through:   3600 * 1000, // ms
-				tableName: "table",
-				hashKey:   "0:0",
+				from:       0,
+				through:    3600 * 1000, // ms
+				tableName:  "table",
+				hashKey:    "0:0",
+				bucketSize: uint32(millisecondsInHour),
 			}, {
-				from:      0,
-				through:   0, // ms
-				tableName: "table",
-				hashKey:   "0:1",
+				from:       0,
+				through:    0, // ms
+				tableName:  "table",
+				hashKey:    "0:1",
+				bucketSize: uint32(millisecondsInHour),
 			}},
 		},
 		{
@@ -79,20 +83,23 @@ func TestHourlyBuckets(t *testing.T) {
 				through: model.TimeFromUnix((2 * 3600) + 1800),
 			},
 			[]Bucket{{
-				from:      900 * 1000,  // ms
-				through:   3600 * 1000, // ms
-				tableName: "table",
-				hashKey:   "0:0",
+				from:       900 * 1000,  // ms
+				through:    3600 * 1000, // ms
+				tableName:  "table",
+				hashKey:    "0:0",
+				bucketSize: uint32(millisecondsInHour),
 			}, {
-				from:      0,
-				through:   3600 * 1000, // ms
-				tableName: "table",
-				hashKey:   "0:1",
+				from:       0,
+				through:    3600 * 1000, // ms
+				tableName:  "table",
+				hashKey:    "0:1",
+				bucketSize: uint32(millisecondsInHour),
 			}, {
-				from:      0,
-				through:   1800 * 1000, // ms
-				tableName: "table",
-				hashKey:   "0:2",
+				from:       0,
+				through:    1800 * 1000, // ms
+				tableName:  "table",
+				hashKey:    "0:2",
+				bucketSize: uint32(millisecondsInHour),
 			}},
 		},
 	}
@@ -130,10 +137,11 @@ func TestDailyBuckets(t *testing.T) {
 				through: model.TimeFromUnix(0),
 			},
 			[]Bucket{{
-				from:      0,
-				through:   0,
-				tableName: "table",
-				hashKey:   "0:d0",
+				from:       0,
+				through:    0,
+				tableName:  "table",
+				hashKey:    "0:d0",
+				bucketSize: uint32(millisecondsInDay),
 			}},
 		},
 		{
@@ -143,10 +151,11 @@ func TestDailyBuckets(t *testing.T) {
 				through: model.TimeFromUnix(6 * 3600),
 			},
 			[]Bucket{{
-				from:      0,
-				through:   (6 * 3600) * 1000, // ms
-				tableName: "table",
-				hashKey:   "0:d0",
+				from:       0,
+				through:    (6 * 3600) * 1000, // ms
+				tableName:  "table",
+				hashKey:    "0:d0",
+				bucketSize: uint32(millisecondsInDay),
 			}},
 		},
 		{
@@ -156,15 +165,17 @@ func TestDailyBuckets(t *testing.T) {
 				through: model.TimeFromUnix(24 * 3600),
 			},
 			[]Bucket{{
-				from:      0,
-				through:   (24 * 3600) * 1000, // ms
-				tableName: "table",
-				hashKey:   "0:d0",
+				from:       0,
+				through:    (24 * 3600) * 1000, // ms
+				tableName:  "table",
+				hashKey:    "0:d0",
+				bucketSize: uint32(millisecondsInDay),
 			}, {
-				from:      0,
-				through:   0,
-				tableName: "table",
-				hashKey:   "0:d1",
+				from:       0,
+				through:    0,
+				tableName:  "table",
+				hashKey:    "0:d1",
+				bucketSize: uint32(millisecondsInDay),
 			}},
 		},
 		{
@@ -174,20 +185,23 @@ func TestDailyBuckets(t *testing.T) {
 				through: model.TimeFromUnix((2 * 24 * 3600) + (12 * 3600)),
 			},
 			[]Bucket{{
-				from:      (6 * 3600) * 1000,  // ms
-				through:   (24 * 3600) * 1000, // ms
-				tableName: "table",
-				hashKey:   "0:d0",
+				from:       (6 * 3600) * 1000,  // ms
+				through:    (24 * 3600) * 1000, // ms
+				tableName:  "table",
+				hashKey:    "0:d0",
+				bucketSize: uint32(millisecondsInDay),
 			}, {
-				from:      0,
-				through:   (24 * 3600) * 1000, // ms
-				tableName: "table",
-				hashKey:   "0:d1",
+				from:       0,
+				through:    (24 * 3600) * 1000, // ms
+				tableName:  "table",
+				hashKey:    "0:d1",
+				bucketSize: uint32(millisecondsInDay),
 			}, {
-				from:      0,
-				through:   (12 * 3600) * 1000, // ms
-				tableName: "table",
-				hashKey:   "0:d2",
+				from:       0,
+				through:    (12 * 3600) * 1000, // ms
+				tableName:  "table",
+				hashKey:    "0:d2",
+				bucketSize: uint32(millisecondsInDay),
 			}},
 		},
 	}

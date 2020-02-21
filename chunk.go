@@ -374,3 +374,11 @@ func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
 	nc := NewChunk(c.UserID, c.Fingerprint, c.Metric, pc, from, through)
 	return &nc, nil
 }
+
+func intervalsOverlap(interval1, interval2 model.Interval) bool {
+	if interval1.Start > interval2.End || interval2.Start > interval1.End {
+		return false
+	}
+
+	return true
+}

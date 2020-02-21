@@ -53,7 +53,12 @@ func (FSObjectClient) Stop() {}
 
 // GetObject from the store
 func (f *FSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
-	return os.Open(path.Join(f.cfg.Directory, objectKey))
+	fl, err := os.Open(path.Join(f.cfg.Directory, objectKey))
+	if err != nil && os.IsNotExist(err) {
+		return nil, chunk.ErrStorageObjectNotFound
+	}
+
+	return fl, err
 }
 
 // PutObject into the store
@@ -104,6 +109,15 @@ func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 	}
 
 	return storageObjects, nil
+}
+
+func (f *FSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
+	err := os.Remove(path.Join(f.cfg.Directory, objectKey))
+	if err != nil && os.IsNotExist(err) {
+		return chunk.ErrStorageObjectNotFound
+	}
+
+	return err
 }
 
 // DeleteChunksBefore implements BucketClient
