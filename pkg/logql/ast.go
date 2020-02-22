@@ -1,10 +1,8 @@
 package logql
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -48,12 +46,9 @@ type Querier interface {
 	Select(context.Context, SelectParams) (iter.EntryIterator, error)
 }
 
-// Filter is a function to filter logs.
-type Filter func(line []byte) bool
-
 // LogSelectorExpr is a LogQL expression filtering and returning logs.
 type LogSelectorExpr interface {
-	Filter() (Filter, error)
+	Filter() (LineFilter, error)
 	Matchers() []*labels.Matcher
 	Expr
 }
@@ -83,7 +78,7 @@ func (e *matchersExpr) String() string {
 	return sb.String()
 }
 
-func (e *matchersExpr) Filter() (Filter, error) {
+func (e *matchersExpr) Filter() (LineFilter, error) {
 	return nil, nil
 }
 
@@ -126,48 +121,19 @@ func (e *filterExpr) String() string {
 	return sb.String()
 }
 
-func (e *filterExpr) Filter() (Filter, error) {
-	var f func([]byte) bool
-	switch e.ty {
-	case labels.MatchRegexp:
-		re, err := regexp.Compile(e.match)
-		if err != nil {
-			return nil, err
-		}
-		f = re.Match
-
-	case labels.MatchNotRegexp:
-		re, err := regexp.Compile(e.match)
-		if err != nil {
-			return nil, err
-		}
-		f = func(line []byte) bool {
-			return !re.Match(line)
-		}
-
-	case labels.MatchEqual:
-		mb := []byte(e.match)
-		f = func(line []byte) bool {
-			return bytes.Contains(line, mb)
-		}
-
-	case labels.MatchNotEqual:
-		mb := []byte(e.match)
-		f = func(line []byte) bool {
-			return !bytes.Contains(line, mb)
-		}
-
-	default:
-		return nil, fmt.Errorf("unknown matcher: %v", e.match)
+func (e *filterExpr) Filter() (LineFilter, error) {
+	f, err := newFilter(e.match, e.ty)
+	if err != nil {
+		return nil, err
 	}
-	next, ok := e.left.(*filterExpr)
-	if ok {
-		nextFilter, err := next.Filter()
+	if nextExpr, ok := e.left.(*filterExpr); ok {
+		nextFilter, err := nextExpr.Filter()
 		if err != nil {
 			return nil, err
 		}
-		return func(line []byte) bool {
-			return nextFilter(line) && f(line)
+		return andFilter{
+			left:  nextFilter,
+			right: f,
 		}, nil
 	}
 	return f, nil
@@ -457,7 +423,7 @@ func (e *literalExpr) String() string {
 // to facilitate sum types. We'll be type switching when evaluating them anyways
 // and they will only be present in binary operation legs.
 func (e *literalExpr) Selector() LogSelectorExpr   { return e }
-func (e *literalExpr) Filter() (Filter, error)     { return nil, nil }
+func (e *literalExpr) Filter() (LineFilter, error) { return nil, nil }
 func (e *literalExpr) Matchers() []*labels.Matcher { return nil }
 
 // helper used to impl Stringer for vector and range aggregations
