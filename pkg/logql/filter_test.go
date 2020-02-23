@@ -7,17 +7,43 @@ import (
 )
 
 func Test_ParseRegex(t *testing.T) {
-	f, err := ParseRegex("foo", true)
-	if err != nil {
-		t.Fatal(err)
+	for _, test := range []struct {
+		re   string
+		line string
+	}{
+		{"foo", "foo"},
+		{"(foo)", "foobar"},
+		{"(foo|ba)", "foobar"},
+		{"(foo.*|.*ba)", "foobar"},
+		{"(foo.*|.*ba)", "fo"},
+		{"(foo|ba|ar)", "bar"},
+		{"(foo|(ba|ar))", "bar"},
+		{"foo.*", "foobar"},
+		{".*foo", "foobar"},
+		{".*foo.*", "foobar"},
+		{"(.*)(foo).*", "foobar"},
+	} {
+		t.Run(test.re, func(t *testing.T) {
+			assertRegex(t, test.re, test.line, true)
+			assertRegex(t, test.re, test.line, false)
+		})
 	}
-	f2, err := defaultRegex("foo", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	line := []byte("foobar")
-	require.Equal(t, f2.Filter(line), f.Filter(line))
+}
 
+func assertRegex(t *testing.T, re, line string, match bool) {
+	t.Helper()
+	f, err := ParseRegex(re, match)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f2, err := defaultRegex(re, match)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := []byte(line)
+	// ensure we have different filter but same result
+	require.NotEqual(t, f, f2)
+	require.Equal(t, f2.Filter(l), f.Filter(l))
 }
 
 func Benchmark_Regex(b *testing.B) {

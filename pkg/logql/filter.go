@@ -14,8 +14,12 @@ type LineFilter interface {
 	Filter(line []byte) bool
 }
 
-type negativeFilter struct {
+type notFilter struct {
 	LineFilter
+}
+
+func (n notFilter) Filter(line []byte) bool {
+	return !n.LineFilter.Filter(line)
 }
 
 type andFilter struct {
@@ -27,8 +31,13 @@ func (a andFilter) Filter(line []byte) bool {
 	return a.left.Filter(line) && a.right.Filter(line)
 }
 
-func (n negativeFilter) Filter(line []byte) bool {
-	return !n.LineFilter.Filter(line)
+type orFilter struct {
+	left  LineFilter
+	right LineFilter
+}
+
+func (a orFilter) Filter(line []byte) bool {
+	return a.left.Filter(line) || a.right.Filter(line)
 }
 
 type regexpFilter struct {
@@ -54,7 +63,7 @@ func newFilter(match string, mt labels.MatchType) (LineFilter, error) {
 	case labels.MatchEqual:
 		return literalFilter(match), nil
 	case labels.MatchNotEqual:
-		return negativeFilter{literalFilter(match)}, nil
+		return notFilter{literalFilter(match)}, nil
 
 	default:
 		return nil, fmt.Errorf("unknown matcher: %v", match)
@@ -68,29 +77,83 @@ func ParseRegex(re string, match bool) (LineFilter, error) {
 	}
 	reg = reg.Simplify()
 
-	if f, ok := simplify(reg); ok {
+	// attempt to improve regex with tricks
+	f, ok := simplify(reg)
+	if !ok {
+		return defaultRegex(re, match)
+	}
+	if match {
 		return f, nil
 	}
-	// if reg.Op == syntax.OpAlternate || reg.Op == syntax.OpCapture {
-	// 	for _, sub := range reg.Sub {
-	// 		fmt.Println(sub)
-	// 	}
-	// }
-	// attempt to improve regex with tricks
-
-	return defaultRegex(re, match)
+	return notFilter{LineFilter: f}, nil
 }
 
 func simplify(reg *syntax.Regexp) (LineFilter, bool) {
 	switch reg.Op {
 	case syntax.OpAlternate:
-	case syntax.OpCapture:
+		return simplifyAlternate(reg)
 	case syntax.OpConcat:
-		return nil, false
+		return simplifyConcat(reg)
+	case syntax.OpCapture:
+		clearCapture(reg)
+		return simplify(reg)
 	case syntax.OpLiteral:
 		return literalFilter([]byte(string(reg.Rune))), true
 	}
 	return nil, false
+}
+
+func clearCapture(regs ...*syntax.Regexp) {
+	for _, r := range regs {
+		if r.Op == syntax.OpCapture {
+			*r = *r.Sub[0]
+		}
+	}
+}
+
+func simplifyAlternate(reg *syntax.Regexp) (LineFilter, bool) {
+	clearCapture(reg.Sub...)
+	// attempt to simplify the first leg
+	f, ok := simplify(reg.Sub[0])
+	if !ok {
+		return nil, false
+	}
+	// merge the rest of the legs
+	for i := 1; i < len(reg.Sub); i++ {
+		f2, ok := simplify(reg.Sub[i])
+		if !ok {
+			return nil, false
+		}
+		f = orFilter{
+			left:  f,
+			right: f2,
+		}
+	}
+	return f, true
+}
+
+func simplifyConcat(reg *syntax.Regexp) (LineFilter, bool) {
+	clearCapture(reg.Sub...)
+	// we can improve foo.* .*foo.* .*foo
+	if len(reg.Sub) > 3 {
+		return nil, false
+	}
+	var literal []byte
+	for _, sub := range reg.Sub {
+		if sub.Op == syntax.OpLiteral {
+			// only one literal
+			if literal != nil {
+				return nil, false
+			}
+			literal = []byte(string(sub.Rune))
+			continue
+		}
+		if sub.Op != syntax.OpStar {
+			return nil, false
+		}
+	}
+
+	return literalFilter(literal), true
 }
 
 func defaultRegex(re string, match bool) (LineFilter, error) {
@@ -102,5 +165,5 @@ func defaultRegex(re string, match bool) (LineFilter, error) {
 	if match {
 		return f, nil
 	}
-	return negativeFilter{LineFilter: f}, nil
+	return notFilter{LineFilter: f}, nil
 }
