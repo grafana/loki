@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -50,32 +51,42 @@ func Benchmark_Regex(b *testing.B) {
 	b.ReportAllocs()
 
 	for _, test := range []struct {
-		re      string
-		match   bool
-		logline []byte
+		re   string
+		line string
 	}{
-		{"foo|bar", true, []byte(`level=debug ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /metrics (200) 4.599635ms`)},
+		{"foo.*", `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`},
+		{".*foo.*", `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`},
+		{".*foo", `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`},
+		{"foo|bar", `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`},
+		{"foo|bar|buzz", `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`},
+		{"foo|(bar|buzz)", `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`},
+		{"foo|bar.*|buzz", `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`},
+		{".*foo.*|bar|buzz", `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`},
 	} {
-		f, err := defaultRegex("foo|bar", true)
-		if err != nil {
-			b.Fatal(err)
-		}
-		b.Run("default_"+test.re, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				_ = f.Filter(logLine)
-			}
-		})
-		f, err = ParseRegex("foo|bar", true)
-		if err != nil {
-			b.Fatal(err)
-		}
-		b.Run("simplified_"+test.re, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				_ = f.Filter(logLine)
-			}
-		})
+		benchmarkRegex(b, test.re, test.line, true)
+		benchmarkRegex(b, test.re, test.line, false)
 	}
-
 }
 
-var logLine = []byte(`level=debug ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /metrics (200) 4.599635ms`)
+func benchmarkRegex(b *testing.B, re, line string, match bool) {
+	l := []byte(line)
+	d, err := defaultRegex(re, match)
+	if err != nil {
+		b.Fatal(err)
+	}
+	s, err := ParseRegex(re, match)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	b.Run(fmt.Sprintf("default_%v_%s", match, re), func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = d.Filter(l)
+		}
+	})
+	b.Run(fmt.Sprintf("simplified_%v_%s", match, re), func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = s.Filter(l)
+		}
+	})
+}
