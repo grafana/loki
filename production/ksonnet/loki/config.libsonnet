@@ -87,7 +87,8 @@
     schema_start_date: '2018-07-11',
 
     commonArgs: {
-      'config.file': '/etc/loki/config.yaml',
+      'config.file': '/etc/loki/config/config.yaml',
+      'limits.per-user-override-config': '/etc/loki/overrides/overrides.yaml',
     },
 
     loki: {
