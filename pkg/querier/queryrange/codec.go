@@ -379,8 +379,8 @@ func paramsFromRequest(req queryrange.Request) *paramsWrapper {
 	}
 }
 
-func (p paramsWrapper) String() string {
-	return p.Query
+func (p paramsWrapper) Query() string {
+	return p.LokiRequest.Query
 }
 func (p paramsWrapper) Start() time.Time {
 	return p.StartTs

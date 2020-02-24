@@ -12,23 +12,27 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 func TestStatsCollectorMiddleware(t *testing.T) {
 	// no stats
-	data := &queryData{}
+	var (
+		data = &queryData{}
+		now  = time.Now()
+	)
 	ctx := context.WithValue(context.Background(), ctxKey, data)
 	_, _ = StatsCollectorMiddleware().Wrap(queryrange.HandlerFunc(func(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
 		return nil, nil
 	})).Do(ctx, &LokiRequest{
 		Query:   "foo",
-		StartTs: time.Now(),
+		StartTs: now,
 	})
-	require.Equal(t, "foo", data.query)
+	require.Equal(t, "foo", data.params.Query())
 	require.Equal(t, true, data.recorded)
-	require.Equal(t, logql.RangeType, data.rangeType)
+	require.Equal(t, now, data.params.Start())
 	require.Nil(t, data.statistics)
 
 	// no context.
@@ -37,7 +41,7 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 		return nil, nil
 	})).Do(context.Background(), &LokiRequest{
 		Query:   "foo",
-		StartTs: time.Now(),
+		StartTs: now,
 	})
 	require.Equal(t, false, data.recorded)
 
@@ -54,11 +58,11 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 		}, nil
 	})).Do(ctx, &LokiRequest{
 		Query:   "foo",
-		StartTs: time.Now(),
+		StartTs: now,
 	})
-	require.Equal(t, "foo", data.query)
+	require.Equal(t, "foo", data.params.Query())
 	require.Equal(t, true, data.recorded)
-	require.Equal(t, logql.RangeType, data.rangeType)
+	require.Equal(t, now, data.params.Start())
 	require.Equal(t, int32(10), data.statistics.Ingester.TotalReached)
 }
 
@@ -66,7 +70,7 @@ func Test_StatsHTTP(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		next   http.Handler
-		expect func(t *testing.T, status, query string, rangeType logql.QueryRangeType, s stats.Result)
+		expect func(t *testing.T, ctx context.Context, p logql.Params, status string, stats stats.Result)
 	}{
 		{
 			"should not record metric if nothing is recorded",
@@ -74,7 +78,7 @@ func Test_StatsHTTP(t *testing.T) {
 				data := r.Context().Value(ctxKey).(*queryData)
 				data.recorded = false
 			}),
-			func(t *testing.T, status, query string, rangeType logql.QueryRangeType, s stats.Result) {
+			func(t *testing.T, ctx context.Context, p logql.Params, status string, stats stats.Result) {
 				t.Fail()
 			},
 		},
@@ -83,14 +87,18 @@ func Test_StatsHTTP(t *testing.T) {
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				data := r.Context().Value(ctxKey).(*queryData)
 				data.recorded = true
-				data.rangeType = logql.RangeType
-				data.query = "foo"
+				data.params = paramsFromRequest(&LokiRequest{
+					Query:     "foo",
+					Direction: logproto.BACKWARD,
+					Limit:     100,
+				})
 				data.statistics = nil
 			}),
-			func(t *testing.T, status, query string, rangeType logql.QueryRangeType, s stats.Result) {
+			func(t *testing.T, ctx context.Context, p logql.Params, status string, s stats.Result) {
 				require.Equal(t, fmt.Sprintf("%d", http.StatusOK), status)
-				require.Equal(t, logql.RangeType, rangeType)
-				require.Equal(t, "foo", query)
+				require.Equal(t, "foo", p.Query())
+				require.Equal(t, logproto.BACKWARD, p.Direction())
+				require.Equal(t, uint32(100), p.Limit())
 				require.Equal(t, stats.Result{}, s)
 			},
 		},
@@ -99,22 +107,26 @@ func Test_StatsHTTP(t *testing.T) {
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				data := r.Context().Value(ctxKey).(*queryData)
 				data.recorded = true
-				data.rangeType = logql.RangeType
-				data.query = "foo"
+				data.params = paramsFromRequest(&LokiRequest{
+					Query:     "foo",
+					Direction: logproto.BACKWARD,
+					Limit:     100,
+				})
 				data.statistics = &statsResult
 				w.WriteHeader(http.StatusTeapot)
 			}),
-			func(t *testing.T, status, query string, rangeType logql.QueryRangeType, s stats.Result) {
+			func(t *testing.T, ctx context.Context, p logql.Params, status string, s stats.Result) {
 				require.Equal(t, fmt.Sprintf("%d", http.StatusTeapot), status)
-				require.Equal(t, logql.RangeType, rangeType)
-				require.Equal(t, "foo", query)
+				require.Equal(t, "foo", p.Query())
+				require.Equal(t, logproto.BACKWARD, p.Direction())
+				require.Equal(t, uint32(100), p.Limit())
 				require.Equal(t, statsResult, s)
 			},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			statsHTTPMiddleware(metricRecorderFn(func(status, query string, rangeType logql.QueryRangeType, stats stats.Result) {
-				test.expect(t, status, query, rangeType, stats)
+			statsHTTPMiddleware(metricRecorderFn(func(ctx context.Context, p logql.Params, status string, stats stats.Result) {
+				test.expect(t, ctx, p, status, stats)
 			})).Wrap(test.next).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/foo", strings.NewReader("")))
 		})
 	}

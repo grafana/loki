@@ -1,7 +1,21 @@
 package logql
 
 import (
+	"bytes"
+	"context"
+	"fmt"
 	"testing"
+	"time"
+
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
+	"github.com/opentracing/opentracing-go"
+	"github.com/stretchr/testify/require"
+	"github.com/uber/jaeger-client-go"
+	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 func TestQueryType(t *testing.T) {
@@ -31,4 +45,36 @@ func TestQueryType(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLogSlowQuery(t *testing.T) {
+	buf := bytes.NewBufferString("")
+	util.Logger = log.NewLogfmtLogger(buf)
+	tr, c := jaeger.NewTracer("foo", jaeger.NewConstSampler(true), jaeger.NewInMemoryReporter())
+	defer c.Close()
+	opentracing.SetGlobalTracer(tr)
+	sp := opentracing.StartSpan("")
+	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
+	now := time.Now()
+	RecordMetrics(ctx, LiteralParams{
+		qs:        `{foo="bar"} |= "buzz"`,
+		direction: logproto.BACKWARD,
+		end:       now,
+		start:     now.Add(-1 * time.Hour),
+		limit:     1000,
+		step:      time.Minute,
+	}, "200", stats.Result{
+		Summary: stats.Summary{
+			BytesProcessedPerSeconds: 100000,
+			ExecTime:                 25.25,
+			TotalBytesProcessed:      100000,
+		},
+	})
+	require.Equal(t,
+		fmt.Sprintf(
+			"level=info org_id=foo trace_id=%s latency=slow query=\"{foo=\\\"bar\\\"} |= \\\"buzz\\\"\" query_type=filter range_type=range length=1h0m0s step=1m0s duration=25.25s status=200 throughput_mb=0.01 total_bytes_mb=0.01\n",
+			sp.Context().(jaeger.SpanContext).SpanID().String(),
+		),
+		buf.String())
+	util.Logger = log.NewNopLogger()
 }
