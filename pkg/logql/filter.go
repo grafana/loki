@@ -22,6 +22,17 @@ func (n notFilter) Filter(line []byte) bool {
 	return !n.LineFilter.Filter(line)
 }
 
+func newNotFilter(f LineFilter) LineFilter {
+	// not(a|b) = not(a) and not(b)
+	if or, ok := f.(orFilter); ok {
+		return andFilter{
+			left:  notFilter{or.left},
+			right: notFilter{or.right},
+		}
+	}
+	return notFilter{LineFilter: f}
+}
+
 type andFilter struct {
 	left  LineFilter
 	right LineFilter
@@ -63,7 +74,7 @@ func newFilter(match string, mt labels.MatchType) (LineFilter, error) {
 	case labels.MatchEqual:
 		return literalFilter(match), nil
 	case labels.MatchNotEqual:
-		return notFilter{literalFilter(match)}, nil
+		return newNotFilter(literalFilter(match)), nil
 
 	default:
 		return nil, fmt.Errorf("unknown matcher: %v", match)
@@ -85,7 +96,7 @@ func ParseRegex(re string, match bool) (LineFilter, error) {
 	if match {
 		return f, nil
 	}
-	return notFilter{LineFilter: f}, nil
+	return newNotFilter(f), nil
 }
 
 func simplify(reg *syntax.Regexp) (LineFilter, bool) {
@@ -138,6 +149,9 @@ func simplifyConcat(reg *syntax.Regexp) (LineFilter, bool) {
 	if len(reg.Sub) > 3 {
 		return nil, false
 	}
+	// some concat operation are Literal+Alternate
+	// buzz|bar = Concat(Literal b + Alternate(uzz,ar))
+	// and not
 	var literal []byte
 	for _, sub := range reg.Sub {
 		if sub.Op == syntax.OpLiteral {
@@ -148,9 +162,18 @@ func simplifyConcat(reg *syntax.Regexp) (LineFilter, bool) {
 			literal = []byte(string(sub.Rune))
 			continue
 		}
+
+		// if f, ok := simplify(sub); ok {
+
+		// }
 		if sub.Op != syntax.OpStar {
 			return nil, false
 		}
+	}
+
+	// we can simplify only if we found a literal.
+	if literal == nil {
+		return nil, false
 	}
 
 	return literalFilter(literal), true
@@ -165,5 +188,5 @@ func defaultRegex(re string, match bool) (LineFilter, error) {
 	if match {
 		return f, nil
 	}
-	return notFilter{LineFilter: f}, nil
+	return newNotFilter(f), nil
 }

@@ -2,27 +2,33 @@ package logql
 
 import (
 	"fmt"
+	"regexp/syntax"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-func Test_ParseRegex(t *testing.T) {
+func Test_SimplifiedRegex(t *testing.T) {
 	for _, test := range []struct {
 		re   string
 		line string
 	}{
-		{"foo", "foo"},
-		{"(foo)", "foobar"},
-		{"(foo|ba)", "foobar"},
-		{"(foo.*|.*ba)", "foobar"},
-		{"(foo.*|.*ba)", "fo"},
-		{"(foo|ba|ar)", "bar"},
-		{"(foo|(ba|ar))", "bar"},
-		{"foo.*", "foobar"},
-		{".*foo", "foobar"},
-		{".*foo.*", "foobar"},
-		{"(.*)(foo).*", "foobar"},
+		// {"foo", "foo"}, // add expected filter.
+		// {"(foo)", "foobar"},
+		// {"(foo|ba)", "foobar"},
+		// {"(foo.*|.*ba)", "foobar"},
+		// {"(foo.*|.*ba)", "fo"},
+		// {"(foo|ba|ar)", "bar"},
+		// {"(foo|(ba|ar))", "bar"},
+		// {"foo.*", "foobar"},
+		// {".*foo", "foobar"},
+		// {".*foo.*", "foobar"},
+		// {"(.*)(foo).*", "foobar"},
+		// {".*foo.*|bar", "buzz"},
+		// {".*foo.*|bar", "foo,bar"},
+		{".*foo.*|bar|buzz", "buzz"},  // (?-s:.)*foo(?-s:.)*|b(?:ar|uzz)
+		{".*foo.*|bar|uzz", "buzz"},   // (?-s:.)*foo(?-s:.)*|bar|uzz
+		{"foo|bar|b|buzz|zz", "buzz"}, // foo|b(?:ar|(?:)|uzz)|zz
 	} {
 		t.Run(test.re, func(t *testing.T) {
 			assertRegex(t, test.re, test.line, true)
@@ -37,6 +43,11 @@ func assertRegex(t *testing.T, re, line string, match bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	r, err := syntax.Parse(re, syntax.Perl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log(r)
 	f2, err := defaultRegex(re, match)
 	if err != nil {
 		t.Fatal(err)
@@ -49,22 +60,21 @@ func assertRegex(t *testing.T, re, line string, match bool) {
 
 func Benchmark_Regex(b *testing.B) {
 	b.ReportAllocs()
-
+	logline := `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`
 	for _, test := range []struct {
-		re   string
-		line string
+		re string
 	}{
-		{"foo.*", `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`},
-		{".*foo.*", `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`},
-		{".*foo", `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`},
-		{"foo|bar", `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`},
-		{"foo|bar|buzz", `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`},
-		{"foo|(bar|buzz)", `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`},
-		{"foo|bar.*|buzz", `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`},
-		{".*foo.*|bar|buzz", `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`},
+		{"foo.*"},
+		{".*foo.*"},
+		{".*foo"},
+		{"foo|bar"},
+		{"foo|bar|buzz"},
+		{"foo|(bar|buzz)"},
+		{"foo|bar.*|buzz"},
+		{".*foo.*|bar|uzz"},
 	} {
-		benchmarkRegex(b, test.re, test.line, true)
-		benchmarkRegex(b, test.re, test.line, false)
+		benchmarkRegex(b, test.re, logline, true)
+		benchmarkRegex(b, test.re, logline, false)
 	}
 }
 
