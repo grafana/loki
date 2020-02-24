@@ -22,8 +22,8 @@
   ingester_deployment:
     deployment.new('ingester', 3, [$.ingester_container]) +
     $.config_hash_mixin +
-    $.util.configVolumeMount('loki', '/etc/loki') +
-    $.util.configVolumeMount('overrides', '/etc/loki') +
+    $.util.configVolumeMount('loki', '/etc/loki/config') +
+    $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
     $.util.antiAffinity +
     deployment.mixin.spec.withMinReadySeconds(60) +
     deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge(0) +
