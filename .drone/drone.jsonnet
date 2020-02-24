@@ -153,7 +153,29 @@ local manifest(apps) = pipeline('manifest') {
     ],
   },
 ] + [
-  multiarch_image(arch)
+  multiarch_image(arch) + (
+    // When we're building Promtail for ARM, we want to use Dockerfile.arm32 to fix
+    // a problem with the published Drone image. See Dockerfile.arm32 for more
+    // information.
+    //
+    // This is really really hacky and a better more permanent solution will be to use
+    // buildkit.
+    if arch != 'arm' then {}
+    else {
+      steps: [
+        step + (
+          if step.name == 'build-promtail-image' || step.name == 'publish-promtail-image'
+          then {
+            settings+: {
+              dockerfile: 'cmd/promtail/Dockerfile.arm32',
+            },
+          }
+          else {}
+        )
+        for step in super.steps
+      ],
+    }
+  )
   for arch in archs
 ] + [
   fluentbit(),
