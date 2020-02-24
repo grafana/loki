@@ -55,6 +55,7 @@ func New(cfg Config, addr string) (grpc_health_v1.HealthClient, error) {
 		PusherClient:   logproto.NewPusherClient(conn),
 		QuerierClient:  logproto.NewQuerierClient(conn),
 		IngesterClient: logproto.NewIngesterClient(conn),
+		HealthClient:   grpc_health_v1.NewHealthClient(conn),
 		Closer:         conn,
 	}, nil
 }
