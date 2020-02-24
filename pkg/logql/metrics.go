@@ -1,6 +1,9 @@
 package logql
 
 import (
+	"context"
+	"time"
+
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -59,12 +62,12 @@ var (
 	})
 )
 
-func RecordMetrics(status, query string, rangeType QueryRangeType, stats stats.Result) {
-	queryType, err := QueryType(query)
+func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Result) {
+	queryType, err := QueryType(p.Query())
 	if err != nil {
 		level.Warn(util.Logger).Log("msg", "error parsing query type", "err", err)
 	}
-	rt := string(rangeType)
+	rt := string(GetRangeType(p))
 
 	// Tag throughput metric by latency type based on a threshold.
 	// Latency below the threshold is fast, above is slow.
@@ -72,6 +75,23 @@ func RecordMetrics(status, query string, rangeType QueryRangeType, stats stats.R
 	if stats.Summary.ExecTime > slowQueryThresholdSecond {
 		latencyType = latencyTypeSlow
 	}
+
+	// we also log queries, useful for troubleshooting slow queries.
+	level.Info(
+		// ensure we have traceID & orgId
+		util.WithContext(ctx, util.Logger),
+	).Log(
+		"latency", latencyType, // this can be used to filter log lines.
+		"query", p.Query(),
+		"query_type", queryType,
+		"range_type", rt,
+		"length", p.End().Sub(p.Start()),
+		"step", p.Step(),
+		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+		"status", status,
+		"throughput_mb", float64(stats.Summary.BytesProcessedPerSeconds)/10e6,
+		"total_bytes_mb", float64(stats.Summary.TotalBytesProcessed)/10e6,
+	)
 
 	bytesPerSeconds.WithLabelValues(status, queryType, rt, latencyType).
 		Observe(float64(stats.Summary.BytesProcessedPerSeconds))

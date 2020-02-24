@@ -24,27 +24,26 @@ type ctxKeyType string
 const ctxKey ctxKeyType = "stats"
 
 var (
-	defaultMetricRecorder = metricRecorderFn(func(status, query string, rangeType logql.QueryRangeType, stats stats.Result) {
-		logql.RecordMetrics(status, query, rangeType, stats)
+	defaultMetricRecorder = metricRecorderFn(func(ctx context.Context, p logql.Params, status string, stats stats.Result) {
+		logql.RecordMetrics(ctx, p, status, stats)
 	})
 	// StatsHTTPMiddleware is an http middleware to record stats for query_range filter.
 	StatsHTTPMiddleware middleware.Interface = statsHTTPMiddleware(defaultMetricRecorder)
 )
 
 type metricRecorder interface {
-	Record(status, query string, rangeType logql.QueryRangeType, stats stats.Result)
+	Record(ctx context.Context, p logql.Params, status string, stats stats.Result)
 }
 
-type metricRecorderFn func(status, query string, rangeType logql.QueryRangeType, stats stats.Result)
+type metricRecorderFn func(ctx context.Context, p logql.Params, status string, stats stats.Result)
 
-func (m metricRecorderFn) Record(status, query string, rangeType logql.QueryRangeType, stats stats.Result) {
-	m(status, query, rangeType, stats)
+func (m metricRecorderFn) Record(ctx context.Context, p logql.Params, status string, stats stats.Result) {
+	m(ctx, p, status, stats)
 }
 
 type queryData struct {
-	query      string
+	params     logql.Params
 	statistics *stats.Result
-	rangeType  logql.QueryRangeType
 	recorded   bool
 }
 
@@ -53,9 +52,10 @@ func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			data := &queryData{}
 			interceptor := &interceptor{ResponseWriter: w, statusCode: http.StatusOK}
+			r = r.WithContext(context.WithValue(r.Context(), ctxKey, data))
 			next.ServeHTTP(
 				interceptor,
-				r.WithContext(context.WithValue(r.Context(), ctxKey, data)),
+				r,
 			)
 			// http middlewares runs for every http request.
 			// but we want only to record query_range filters.
@@ -64,9 +64,9 @@ func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
 					data.statistics = &stats.Result{}
 				}
 				recorder.Record(
+					r.Context(),
+					data.params,
 					strconv.Itoa(interceptor.statusCode),
-					data.query,
-					data.rangeType,
 					*data.statistics,
 				)
 			}
@@ -104,9 +104,8 @@ func StatsCollectorMiddleware() queryrange.Middleware {
 			ctxValue := ctx.Value(ctxKey)
 			if data, ok := ctxValue.(*queryData); ok {
 				data.recorded = true
-				data.query = req.GetQuery()
 				data.statistics = statistics
-				data.rangeType = logql.GetRangeType(paramsFromRequest(req))
+				data.params = paramsFromRequest(req)
 			}
 			return resp, err
 		})
