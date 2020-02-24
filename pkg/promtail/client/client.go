@@ -18,12 +18,11 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 
-	lokimodel "github.com/grafana/loki/model"
+	"github.com/grafana/loki/model"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
-	"github.com/prometheus/common/model"
 )
 
 const (
@@ -95,7 +94,7 @@ type client struct {
 	client  *http.Client
 	quit    chan struct{}
 	once    sync.Once
-	entries chan lokimodel.TenantEntry
+	entries chan model.TenantEntry
 	wg      sync.WaitGroup
 
 	externalLabels model.LabelSet
@@ -111,7 +110,7 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 		logger:  log.With(logger, "component", "client", "host", cfg.URL.Host),
 		cfg:     cfg,
 		quit:    make(chan struct{}),
-		entries: make(chan lokimodel.TenantEntry),
+		entries: make(chan model.TenantEntry),
 
 		externalLabels: cfg.ExternalLabels.LabelSet,
 	}
@@ -314,7 +313,7 @@ func (c *client) Handle(ls model.LabelSet, t time.Time, s string) error {
 		delete(ls, ReservedLabelTenantID)
 	}
 
-	c.entries <- lokimodel.TenantEntry{TenantID: TenantID, Labels: ls, Entry: logproto.Entry{
+	c.entries <- model.TenantEntry{TenantID: TenantID, Labels: ls, Entry: logproto.Entry{
 		Timestamp: t,
 		Line:      s,
 	}}

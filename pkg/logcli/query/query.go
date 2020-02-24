@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	lokimodel "github.com/grafana/loki/model"
+	model "github.com/grafana/loki/model"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -20,7 +20,7 @@ import (
 )
 
 type streamEntryPair struct {
-	entry  lokimodel.Entry
+	entry  model.Entry
 	labels loghttp.LabelSet
 }
 

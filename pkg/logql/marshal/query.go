@@ -88,14 +88,6 @@ func NewStream(s *logproto.Stream) (loghttp.Stream, error) {
 	return ret, nil
 }
 
-// NewEntry constructs an Entry from a logproto.Entry
-func NewEntry(e logproto.Entry) lokimodel.Entry {
-	return lokimodel.Entry{
-		Ts:   e.Timestamp,
-		Line: e.Line,
-	}
-}
-
 // NewVector constructs a Vector from a promql.Vector
 func NewVector(v promql.Vector) loghttp.Vector {
 	ret := make([]model.Sample, len(v))

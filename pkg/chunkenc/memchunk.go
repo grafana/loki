@@ -13,7 +13,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	lokimodel "github.com/grafana/loki/model"
+	model "github.com/grafana/loki/model"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -85,7 +85,7 @@ type block struct {
 // emptied into a block with only compressed entries.
 type headBlock struct {
 	// This is the list of raw entries.
-	entries []lokimodel.IntEntry
+	entries []model.IntEntry
 	size    int // size of uncompressed bytes.
 
 	mint, maxt int64
@@ -100,7 +100,7 @@ func (hb *headBlock) append(ts int64, line string) error {
 		return ErrOutOfOrder
 	}
 
-	hb.entries = append(hb.entries, lokimodel.IntEntry{Ts: ts, Line: line})
+	hb.entries = append(hb.entries, model.IntEntry{Ts: ts, Line: line})
 	if hb.mint == 0 || hb.mint > ts {
 		hb.mint = ts
 	}
@@ -508,7 +508,7 @@ func (hb *headBlock) iterator(ctx context.Context, mint, maxt int64, filter logq
 	// but the tradeoff is that queries to near-realtime data would be much lower than
 	// cutting of blocks.
 	chunkStats.HeadChunkLines += int64(len(hb.entries))
-	entries := make([]lokimodel.IntEntry, 0, len(hb.entries))
+	entries := make([]model.IntEntry, 0, len(hb.entries))
 	for _, e := range hb.entries {
 		chunkStats.HeadChunkBytes += int64(len(e.Line))
 		if filter == nil || filter([]byte(e.Line)) {
@@ -529,7 +529,7 @@ func (hb *headBlock) iterator(ctx context.Context, mint, maxt int64, filter logq
 var emptyIterator = &listIterator{}
 
 type listIterator struct {
-	entries []lokimodel.IntEntry
+	entries []model.IntEntry
 	cur     int
 }
 

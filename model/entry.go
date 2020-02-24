@@ -7,12 +7,23 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/prometheus/common/model"
+	prometheusModel "github.com/prometheus/common/model"
 )
+
+// prometheusModel.LabelSet is model of prometheus
+type LabelSet prometheusModel.LabelSet
 
 type Entry struct {
 	Ts   time.Time
 	Line string
+}
+
+// NewEntry constructs an Entry from a logproto.Entry
+func NewEntry(e logproto.Entry) Entry {
+	return Entry{
+		Ts:   e.Timestamp,
+		Line: e.Line,
+	}
 }
 
 // MarshalJSON implements the json.Marshaler interface.
@@ -52,24 +63,17 @@ type IntEntry struct {
 type Entries []Entry
 
 type LabeledEntry struct {
-	Ts     time.Time
-	Line   string
-	Labels model.LabelSet
+	Entry
+	Labels LabelSet
 }
 
 type LabeledEntries struct {
 	Entries Entries
-	Labels  model.LabelSet
-}
-
-type LogEntry struct {
-	Ts     time.Time
-	Labels model.LabelSet
-	Log    string
+	Labels  LabelSet
 }
 
 type TenantEntry struct {
 	TenantID string
-	Labels   model.LabelSet
+	Labels   LabelSet
 	logproto.Entry
 }

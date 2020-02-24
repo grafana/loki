@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	lokimodel "github.com/grafana/loki/model"
+	model "github.com/grafana/loki/model"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
 )
@@ -128,14 +128,14 @@ func TestStreams_ToProto(t *testing.T) {
 		{"some", []Stream{
 			{
 				Labels: map[string]string{"foo": "bar"},
-				Entries: []lokimodel.Entry{
+				Entries: []model.Entry{
 					{Ts: time.Unix(0, 1), Line: "1"},
 					{Ts: time.Unix(0, 2), Line: "2"},
 				},
 			},
 			{
 				Labels: map[string]string{"foo": "bar", "lvl": "error"},
-				Entries: []lokimodel.Entry{
+				Entries: []model.Entry{
 					{Ts: time.Unix(0, 3), Line: "3"},
 					{Ts: time.Unix(0, 4), Line: "4"},
 				},
