@@ -126,9 +126,12 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	statResult = stats.Snapshot(ctx, time.Since(start))
 	statResult.Log(level.Debug(log))
 
-	status := "success"
+	status := "200"
 	if err != nil {
-		status = "error"
+		status = "500"
+		if IsParseError(err) {
+			status = "400"
+		}
 	}
 	RecordMetrics(status, q.String(), rangeType, statResult)
 

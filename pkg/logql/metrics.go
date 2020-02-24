@@ -13,6 +13,11 @@ const (
 	QueryTypeMetric  = "metric"
 	QueryTypeFilter  = "filter"
 	QueryTypeLimited = "limited"
+
+	latencyTypeSlow = "slow"
+	latencyTypeFast = "fast"
+
+	slowQueryThresholdSecond = float64(10)
 )
 
 var (
@@ -20,23 +25,23 @@ var (
 		Namespace: "loki",
 		Name:      "logql_querystats_bytes_processed_per_seconds",
 		Help:      "Distribution of bytes processed per seconds for LogQL queries.",
-		// 0 MB 40 MB 80 MB 160 MB 320 MB 640 MB 1.3 GB 2.6 GB 5.1 GB 10 GB
-		Buckets: prometheus.ExponentialBuckets(20*1e6, 2, 10),
-	}, []string{"status", "type", "range"})
+		// 50MB 100MB 200MB 400MB 600MB 800MB 1GB 2GB 3GB 4GB 5GB 6GB 7GB 8GB 9GB 10GB 15GB 20GB
+		Buckets: []float64{50 * 1e6, 100 * 1e6, 400 * 1e6, 600 * 1e6, 800 * 1e6, 1 * 1e9, 2 * 1e9, 3 * 1e9, 4 * 1e9, 5 * 1e9, 6 * 1e9, 7 * 1e9, 8 * 1e9, 9 * 1e9, 10 * 1e9, 15 * 1e9, 20 * 1e9},
+	}, []string{"status_code", "type", "range", "latency_type"})
 	execLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "logql_querystats_latency_seconds",
 		Help:      "Distribution of latency for LogQL queries.",
 		// 0.25 0.5 1 2 4 8 16 32 64 128
 		Buckets: prometheus.ExponentialBuckets(0.250, 2, 10),
-	}, []string{"status", "type", "range"})
+	}, []string{"status_code", "type", "range"})
 	chunkDownloadLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "logql_querystats_chunk_download_latency_seconds",
 		Help:      "Distribution of chunk downloads latency for LogQL queries.",
-		// 0.125 0.25 0.5 1 2 4 8 16 32 64
-		Buckets: prometheus.ExponentialBuckets(0.125, 2, 10),
-	}, []string{"status", "type", "range"})
+		// 0.25 0.5 1 2 4 8 16 32 64 128
+		Buckets: prometheus.ExponentialBuckets(0.250, 2, 10),
+	}, []string{"status_code", "type", "range"})
 	duplicatesTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "logql_querystats_duplicates_total",
@@ -46,7 +51,7 @@ var (
 		Namespace: "loki",
 		Name:      "logql_querystats_downloaded_chunk_total",
 		Help:      "Total count of chunks downloaded found while executing LogQL queries.",
-	}, []string{"status", "type", "range"})
+	}, []string{"status_code", "type", "range"})
 	ingesterLineTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "logql_querystats_ingester_sent_lines_total",
@@ -60,7 +65,15 @@ func RecordMetrics(status, query string, rangeType QueryRangeType, stats stats.R
 		level.Warn(util.Logger).Log("msg", "error parsing query type", "err", err)
 	}
 	rt := string(rangeType)
-	bytesPerSeconds.WithLabelValues(status, queryType, rt).
+
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
+	latencyType := latencyTypeFast
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	bytesPerSeconds.WithLabelValues(status, queryType, rt, latencyType).
 		Observe(float64(stats.Summary.BytesProcessedPerSeconds))
 	execLatency.WithLabelValues(status, queryType, rt).
 		Observe(stats.Summary.ExecTime)
