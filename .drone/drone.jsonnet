@@ -43,10 +43,11 @@ local docker(arch, app) = {
   },
 };
 
-local arch_image(arch, tags='') = {
+local arch_image(arch, tags='', variant='') = {
   platform: {
     os: 'linux',
     arch: arch,
+    variant: variant,
   },
   steps: [{
     name: 'image-tag',
@@ -83,7 +84,7 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'latest,m
   depends_on: ['check'],
 };
 
-local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
+local multiarch_image(arch, variant='') = pipeline('docker-' + arch) + arch_image(arch, variant=variant) {
   steps+: [
     // dry run for everything that is not tag or master
     docker(arch, app) {
@@ -153,7 +154,7 @@ local manifest(apps) = pipeline('manifest') {
     ],
   },
 ] + [
-  multiarch_image(arch)
+  multiarch_image(arch, variant=(if arch == 'arm' then 'v7' else ''))
   for arch in archs
 ] + [
   fluentbit(),

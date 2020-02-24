@@ -314,6 +314,7 @@ name: docker-arm
 platform:
   os: linux
   arch: arm
+  variant: v7
 
 steps:
 - name: image-tag
