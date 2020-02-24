@@ -2,7 +2,6 @@ package cache
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -87,11 +86,4 @@ func TestFifoCacheExpiry(t *testing.T) {
 	time.Sleep(5 * time.Millisecond)
 	_, ok = c.Get(ctx, strconv.Itoa(0))
 	require.False(t, ok)
-}
-
-func (c *FifoCache) print() {
-	fmt.Println("first", c.first, "last", c.last)
-	for i, entry := range c.entries {
-		fmt.Printf("  %d -> key: %s, value: %v, next: %d, prev: %d\n", i, entry.key, entry.value, entry.next, entry.prev)
-	}
 }

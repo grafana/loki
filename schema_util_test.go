@@ -3,6 +3,7 @@ package chunk
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"math"
 	"math/rand"
@@ -139,4 +140,10 @@ func TestParseSeriesRangeValue(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, c.expMetric, metric)
 	}
+}
+
+func decodeTime(bs []byte) uint32 {
+	buf := make([]byte, 4)
+	_, _ = hex.Decode(buf, bs)
+	return binary.BigEndian.Uint32(buf)
 }

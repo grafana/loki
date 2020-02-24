@@ -117,6 +117,8 @@ func testChunkEncoding(t *testing.T, encoding Encoding, samples int) {
 
 	bs1 := buf.Bytes()
 	chunk, err = NewForEncoding(encoding)
+	require.NoError(t, err)
+
 	err = chunk.UnmarshalFromBuf(bs1)
 	require.NoError(t, err)
 

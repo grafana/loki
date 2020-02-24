@@ -711,7 +711,8 @@ func BenchmarkIndexCaching(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		store.Put(ctx, []Chunk{fooChunk1})
+		err := store.Put(ctx, []Chunk{fooChunk1})
+		require.NoError(b, err)
 	}
 }
 
@@ -813,7 +814,7 @@ func TestStoreMaxLookBack(t *testing.T) {
 	chunks, err = storeWithLookBackLimit.Get(ctx, userID, now.Add(-time.Hour), now, matchers...)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(chunks))
-	chunks[0].Through.Equal(now)
+	require.Equal(t, now, chunks[0].Through)
 }
 
 func benchmarkParseIndexEntries(i int64, b *testing.B) {

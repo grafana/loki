@@ -228,7 +228,7 @@ func (c *FifoCache) Get(ctx context.Context, key string) (interface{}, bool) {
 	index, ok := c.index[key]
 	if ok {
 		updated := c.entries[index].updated
-		if c.validity == 0 || time.Now().Sub(updated) < c.validity {
+		if c.validity == 0 || time.Since(updated) < c.validity {
 			return c.entries[index].value, true
 		}
 

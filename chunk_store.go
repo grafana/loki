@@ -118,6 +118,7 @@ func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 
 // PutOne implements ChunkStore
 func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
+	log, ctx := spanlogger.New(ctx, "ChunkStore.PutOne")
 	chunks := []Chunk{chunk}
 
 	err := c.storage.PutChunks(ctx, chunks)
@@ -125,7 +126,9 @@ func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chun
 		return err
 	}
 
-	c.writeBackCache(ctx, chunks)
+	if cacheErr := c.writeBackCache(ctx, chunks); cacheErr != nil {
+		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
+	}
 
 	writeReqs, err := c.calculateIndexEntries(chunk.UserID, from, through, chunk)
 	if err != nil {
@@ -252,6 +255,7 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, userID string, from
 }
 
 func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
+	//nolint:ineffassign,staticcheck //Leaving ctx even though we don't currently use it, we want to make it available for when we might need it and hopefully will ensure us using the correct context at that time
 	log, ctx := spanlogger.New(ctx, "store.validateQueryTimeRange")
 	defer log.Span.Finish()
 

@@ -84,7 +84,7 @@ func BenchmarkBiggerChunkMemory(b *testing.B) {
 // printSize calculates various sizes of the chunk when encoded, and in memory.
 func (b *bigchunk) printSize() {
 	var buf bytes.Buffer
-	b.Marshal(&buf)
+	_ = b.Marshal(&buf)
 
 	var size, allocd int
 	for _, c := range b.chunks {

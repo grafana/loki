@@ -60,8 +60,6 @@ type storageClientColumnKey struct {
 	schemaCfg chunk.SchemaConfig
 	client    *bigtable.Client
 	keysFn    keysFn
-
-	distributeKeys bool
 }
 
 // storageClientV1 implements chunk.storageClient for GCP.

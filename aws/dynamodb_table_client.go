@@ -80,7 +80,7 @@ func (d dynamoTableClient) backoffAndRetry(ctx context.Context, fn func(context.
 
 func (d callManager) backoffAndRetry(ctx context.Context, fn func(context.Context) error) error {
 	if d.limiter != nil { // Tests will have a nil limiter.
-		d.limiter.Wait(ctx)
+		_ = d.limiter.Wait(ctx)
 	}
 
 	backoff := util.NewBackoff(ctx, d.backoffConfig)

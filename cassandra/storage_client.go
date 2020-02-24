@@ -294,7 +294,6 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 
 // readBatch represents a batch of rows read from Cassandra.
 type readBatch struct {
-	consumed   bool
 	rangeValue []byte
 	value      []byte
 }

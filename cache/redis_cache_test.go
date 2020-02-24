@@ -19,9 +19,9 @@ func TestRedisCache(t *testing.T) {
 
 	conn := redigomock.NewConn()
 	conn.Clear()
-	pool := redis.NewPool(func() (redis.Conn, error) {
+	pool := &redis.Pool{Dial: func() (redis.Conn, error) {
 		return conn, nil
-	}, 10)
+	}, MaxIdle: 10}
 
 	keys := []string{"key1", "key2", "key3"}
 	bufs := [][]byte{[]byte("data1"), []byte("data2"), []byte("data3")}

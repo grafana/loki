@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/test"
@@ -180,7 +182,8 @@ func TestCompositeStore(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			have := []result{}
-			tc.cs.forStores(model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through), collect(&have))
+			err := tc.cs.forStores(model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through), collect(&have))
+			require.NoError(t, err)
 			if !reflect.DeepEqual(tc.want, have) {
 				t.Fatalf("wrong stores - %s", test.Diff(tc.want, have))
 			}
@@ -231,16 +234,12 @@ func TestCompositeStoreLabels(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			have, err := cs.LabelNamesForMetricName(context.Background(), "", model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through), "")
-			if err != nil {
-				t.Fatalf("err - %s", err)
-			}
+			require.NoError(t, err)
 			if !reflect.DeepEqual(tc.want, have) {
 				t.Fatalf("wrong label names - %s", test.Diff(tc.want, have))
 			}
 			have, err = cs.LabelValuesForMetricName(context.Background(), "", model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through), "", "")
-			if err != nil {
-				t.Fatalf("err - %s", err)
-			}
+			require.NoError(t, err)
 			if !reflect.DeepEqual(tc.want, have) {
 				t.Fatalf("wrong label values - %s", test.Diff(tc.want, have))
 			}

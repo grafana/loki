@@ -245,7 +245,7 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
 				logWriteRetry(ctx, requests)
 				unprocessed.TakeReqs(requests, -1)
-				a.writeThrottle.WaitN(ctx, len(requests))
+				_ = a.writeThrottle.WaitN(ctx, len(requests))
 				backoff.Wait()
 				continue
 			} else if ok && awsErr.Code() == validationException {
@@ -269,7 +269,7 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 		unprocessedItems := dynamoDBWriteBatch(resp.UnprocessedItems)
 		if len(unprocessedItems) > 0 {
 			logWriteRetry(ctx, unprocessedItems)
-			a.writeThrottle.WaitN(ctx, unprocessedItems.Len())
+			_ = a.writeThrottle.WaitN(ctx, unprocessedItems.Len())
 			unprocessed.TakeReqs(unprocessedItems, -1)
 		}
 

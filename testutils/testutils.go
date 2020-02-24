@@ -3,7 +3,10 @@ package testutils
 import (
 	"context"
 	"strconv"
+	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -75,7 +78,10 @@ func CreateChunks(startIndex, batchSize int, start model.Time) ([]string, []chun
 
 func dummyChunkFor(now model.Time, metric labels.Labels) chunk.Chunk {
 	cs := promchunk.New()
-	cs.Add(model.SamplePair{Timestamp: now, Value: 0})
+	_, err := cs.Add(model.SamplePair{Timestamp: now, Value: 0})
+	if err != nil {
+		panic(err)
+	}
 	chunk := chunk.NewChunk(
 		userID,
 		client.Fingerprint(metric),
@@ -85,9 +91,13 @@ func dummyChunkFor(now model.Time, metric labels.Labels) chunk.Chunk {
 		now,
 	)
 	// Force checksum calculation.
-	err := chunk.Encode()
+	err = chunk.Encode()
 	if err != nil {
 		panic(err)
 	}
 	return chunk
+}
+
+func TeardownFixture(t *testing.T, fixture Fixture) {
+	require.NoError(t, fixture.Teardown())
 }
