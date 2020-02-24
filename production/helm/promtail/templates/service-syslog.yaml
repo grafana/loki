@@ -15,16 +15,26 @@ metadata:
   annotations:
     {{- toYaml .Values.syslogService.annotations | nindent 4 }}
 spec:
-  type: {{ .Values.syslogService.type }}
-{{- if (and (eq .Values.syslogService.type "ClusterIP") (not (empty .Values.syslogService.clusterIP))) }}
+{{- if (or (eq .Values.syslogService.type "ClusterIP") (empty .Values.syslogService.type)) }}
+  type: ClusterIP
+  {{- if .Values.syslogService.clusterIP }}
   clusterIP: {{ .Values.syslogService.clusterIP }}
-{{- end }}
-{{- if .Values.syslogService.loadBalancerSourceRanges }}
-  loadBalancerSourceRanges:
-  {{- range $cidr := .Values.syslogService.loadBalancerSourceRanges }}
-    - {{ $cidr }}
+  {{end}}
+{{- else if eq .Values.syslogService.type "LoadBalancer" }}
+  type: {{ .Values.syslogService.type }}
+  {{- if .Values.syslogService.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.syslogService.loadBalancerIP }}
   {{- end }}
+  {{- if .Values.syslogService.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+{{ toYaml .Values.syslogService.loadBalancerSourceRanges | indent 4 }}
+  {{- end -}}
+{{- else }}
+  type: {{ .Values.syslogService.type }}
 {{- end }}
+  {{- if .Values.syslogService.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ .Values.syslogService.externalTrafficPolicy }}
+  {{- end }}
   ports:
     - port: {{ .Values.syslogService.port }}
       protocol: TCP
