@@ -368,7 +368,7 @@ steps:
   settings:
     build_args:
     - TOUCH_PROTOS=1
-    dockerfile: cmd/promtail/Dockerfile
+    dockerfile: cmd/promtail/Dockerfile.arm32
     dry_run: true
     password:
       from_secret: docker_password
@@ -424,7 +424,7 @@ steps:
   settings:
     build_args:
     - TOUCH_PROTOS=1
-    dockerfile: cmd/promtail/Dockerfile
+    dockerfile: cmd/promtail/Dockerfile.arm32
     password:
       from_secret: docker_password
     repo: grafana/promtail
