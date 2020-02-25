@@ -164,7 +164,7 @@ local manifest(apps) = pipeline('manifest') {
     else {
       steps: [
         step + (
-          if step.name == 'build-promtail-image' || step.name == 'publish-promtail-image'
+          if step.settings.dockerfile == "cmd/promtail/Dockerfile"
           then {
             settings+: {
               dockerfile: 'cmd/promtail/Dockerfile.arm32',
