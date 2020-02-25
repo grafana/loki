@@ -13,6 +13,7 @@ import (
 	"github.com/Azure/azure-storage-blob-go/azblob"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const blobURLFmt = "https://%s.blob.core.windows.net/%s/%s"
@@ -20,23 +21,23 @@ const containerURLFmt = "https://%s.blob.core.windows.net/%s"
 
 // BlobStorageConfig defines the configurable flags that can be defined when using azure blob storage.
 type BlobStorageConfig struct {
-	ContainerName      string        `yaml:"container_name"`
-	AccountName        string        `yaml:"account_name"`
-	AccountKey         string        `yaml:"account_key"`
-	DownloadBufferSize int           `yaml:"download_buffer_size"`
-	UploadBufferSize   int           `yaml:"upload_buffer_size"`
-	UploadBufferCount  int           `yaml:"upload_buffer_count"`
-	RequestTimeout     time.Duration `yaml:"request_timeout"`
-	MaxRetries         int           `yaml:"max_retries"`
-	MinRetryDelay      time.Duration `yaml:"min_retry_delay"`
-	MaxRetryDelay      time.Duration `yaml:"max_retry_delay"`
+	ContainerName      string         `yaml:"container_name"`
+	AccountName        string         `yaml:"account_name"`
+	AccountKey         flagext.Secret `yaml:"account_key"`
+	DownloadBufferSize int            `yaml:"download_buffer_size"`
+	UploadBufferSize   int            `yaml:"upload_buffer_size"`
+	UploadBufferCount  int            `yaml:"upload_buffer_count"`
+	RequestTimeout     time.Duration  `yaml:"request_timeout"`
+	MaxRetries         int            `yaml:"max_retries"`
+	MinRetryDelay      time.Duration  `yaml:"min_retry_delay"`
+	MaxRetryDelay      time.Duration  `yaml:"max_retry_delay"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (c *BlobStorageConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.ContainerName, "azure.container-name", "cortex", "Name of the blob container used to store chunks. Defaults to `cortex`. This container must be created before running cortex.")
 	f.StringVar(&c.AccountName, "azure.account-name", "", "The Microsoft Azure account name to be used")
-	f.StringVar(&c.AccountKey, "azure.account-key", "", "The Microsoft Azure account key to use.")
+	f.Var(&c.AccountKey, "azure.account-key", "The Microsoft Azure account key to use.")
 	f.DurationVar(&c.RequestTimeout, "azure.request-timeout", 30*time.Second, "Timeout for requests made against azure blob storage. Defaults to 30 seconds.")
 	f.IntVar(&c.DownloadBufferSize, "azure.download-buffer-size", 512000, "Preallocated buffer size for downloads (default is 512KB)")
 	f.IntVar(&c.UploadBufferSize, "azure.upload-buffer-size", 256000, "Preallocated buffer size for up;oads (default is 256KB)")
@@ -139,7 +140,7 @@ func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
 }
 
 func (b *BlobStorage) newPipeline() (pipeline.Pipeline, error) {
-	credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey)
+	credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey.Value)
 	if err != nil {
 		return nil, err
 	}

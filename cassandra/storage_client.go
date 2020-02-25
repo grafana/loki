@@ -30,7 +30,7 @@ type Config struct {
 	CAPath                   string              `yaml:"CA_path,omitempty"`
 	Auth                     bool                `yaml:"auth,omitempty"`
 	Username                 string              `yaml:"username,omitempty"`
-	Password                 string              `yaml:"password,omitempty"`
+	Password                 flagext.Secret      `yaml:"password,omitempty"`
 	PasswordFile             string              `yaml:"password_file,omitempty"`
 	CustomAuthenticators     flagext.StringSlice `yaml:"custom_authenticators"`
 	Timeout                  time.Duration       `yaml:"timeout,omitempty"`
@@ -53,7 +53,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.CAPath, "cassandra.ca-path", "", "Path to certificate file to verify the peer.")
 	f.BoolVar(&cfg.Auth, "cassandra.auth", false, "Enable password authentication when connecting to cassandra.")
 	f.StringVar(&cfg.Username, "cassandra.username", "", "Username to use when connecting to cassandra.")
-	f.StringVar(&cfg.Password, "cassandra.password", "", "Password to use when connecting to cassandra.")
+	f.Var(&cfg.Password, "cassandra.password", "Password to use when connecting to cassandra.")
 	f.StringVar(&cfg.PasswordFile, "cassandra.password-file", "", "File containing password to use when connecting to cassandra.")
 	f.Var(&cfg.CustomAuthenticators, "cassandra.custom-authenticator", "If set, when authenticating with cassandra a custom authenticator will be expected during the handshake. This flag can be set multiple times.")
 	f.DurationVar(&cfg.Timeout, "cassandra.timeout", 2*time.Second, "Timeout when connecting to cassandra.")
@@ -64,7 +64,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
-	if cfg.Password != "" && cfg.PasswordFile != "" {
+	if cfg.Password.Value != "" && cfg.PasswordFile != "" {
 		return errors.Errorf("The password and password_file config options are mutually exclusive.")
 	}
 	return nil
@@ -123,7 +123,7 @@ func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
 		}
 	}
 	if cfg.Auth {
-		password := cfg.Password
+		password := cfg.Password.Value
 		if cfg.PasswordFile != "" {
 			passwordBytes, err := ioutil.ReadFile(cfg.PasswordFile)
 			if err != nil {

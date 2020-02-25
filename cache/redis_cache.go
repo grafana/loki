@@ -9,6 +9,7 @@ import (
 	"github.com/gomodule/redigo/redis"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // RedisCache type caches chunks in redis
@@ -21,13 +22,13 @@ type RedisCache struct {
 
 // RedisConfig defines how a RedisCache should be constructed.
 type RedisConfig struct {
-	Endpoint       string        `yaml:"endpoint,omitempty"`
-	Timeout        time.Duration `yaml:"timeout,omitempty"`
-	Expiration     time.Duration `yaml:"expiration,omitempty"`
-	MaxIdleConns   int           `yaml:"max_idle_conns,omitempty"`
-	MaxActiveConns int           `yaml:"max_active_conns,omitempty"`
-	Password       string        `yaml:"password"`
-	EnableTLS      bool          `yaml:"enable_tls"`
+	Endpoint       string         `yaml:"endpoint,omitempty"`
+	Timeout        time.Duration  `yaml:"timeout,omitempty"`
+	Expiration     time.Duration  `yaml:"expiration,omitempty"`
+	MaxIdleConns   int            `yaml:"max_idle_conns,omitempty"`
+	MaxActiveConns int            `yaml:"max_active_conns,omitempty"`
+	Password       flagext.Secret `yaml:"password"`
+	EnableTLS      bool           `yaml:"enable_tls"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -37,7 +38,7 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 	f.DurationVar(&cfg.Expiration, prefix+"redis.expiration", 0, description+"How long keys stay in the redis.")
 	f.IntVar(&cfg.MaxIdleConns, prefix+"redis.max-idle-conns", 80, description+"Maximum number of idle connections in pool.")
 	f.IntVar(&cfg.MaxActiveConns, prefix+"redis.max-active-conns", 0, description+"Maximum number of active connections in pool.")
-	f.StringVar(&cfg.Password, prefix+"redis.password", "", description+"Password to use when connecting to redis.")
+	f.Var(&cfg.Password, prefix+"redis.password", description+"Password to use when connecting to redis.")
 	f.BoolVar(&cfg.EnableTLS, prefix+"redis.enable-tls", false, description+"Enables connecting to redis with TLS.")
 }
 
@@ -53,8 +54,8 @@ func NewRedisCache(cfg RedisConfig, name string, pool *redis.Pool) *RedisCache {
 				if cfg.EnableTLS {
 					options = append(options, redis.DialUseTLS(true))
 				}
-				if cfg.Password != "" {
-					options = append(options, redis.DialPassword(cfg.Password))
+				if cfg.Password.Value != "" {
+					options = append(options, redis.DialPassword(cfg.Password.Value))
 				}
 
 				c, err := redis.Dial("tcp", cfg.Endpoint, options...)
