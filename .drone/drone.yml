@@ -567,6 +567,8 @@ steps:
   environment:
     CIRCLE_TOKEN:
       from_secret: circle_token
+  depends_on:
+  - clone
 
 trigger:
   ref:
