@@ -160,11 +160,11 @@ local manifest(apps) = pipeline('manifest') {
     //
     // This is really really hacky and a better more permanent solution will be to use
     // buildkit.
-    if arch != 'arm' then {}
-    else {
+    if arch == 'arm'
+    then {
       steps: [
         step + (
-          if step.settings.dockerfile == "cmd/promtail/Dockerfile"
+          if std.objectHas(step, 'settings') && step.settings.dockerfile == 'cmd/promtail/Dockerfile'
           then {
             settings+: {
               dockerfile: 'cmd/promtail/Dockerfile.arm32',
@@ -175,6 +175,7 @@ local manifest(apps) = pipeline('manifest') {
         for step in super.steps
       ],
     }
+    else {}
   )
   for arch in archs
 ] + [
