@@ -91,6 +91,10 @@
       'limits.per-user-override-config': '/etc/loki/overrides/overrides.yaml',
     },
 
+    // Global limits are currently opt-in only.
+    max_streams_global_limit_enabled: false,
+    ingestion_rate_global_limit_enabled: false,
+
     loki: {
       server: {
         graceful_shutdown_timeout: '5s',
@@ -137,6 +141,13 @@
         reject_old_samples: true,
         reject_old_samples_max_age: '168h',
         max_query_length: '12000h',  // 500 days
+      } + if !$._config.max_streams_global_limit_enabled then {} else {
+        max_streams_per_user: 0,
+        max_global_streams_per_user: 10000,  // 10k
+      } + if !$._config.ingestion_rate_global_limit_enabled then {} else {
+        ingestion_rate_strategy: 'global',
+        ingestion_rate_mb: 10,
+        ingestion_burst_size_mb: 20,
       },
 
       ingester: {
@@ -260,6 +271,23 @@
           inactive_write_throughput: 0,
           provisioned_read_throughput: 0,
           provisioned_write_throughput: 0,
+        },
+      },
+
+    } + if !$._config.ingestion_rate_global_limit_enabled then {} else {
+      distributor: {
+        // Creates a ring between distributors, required by the ingestion rate global limit.
+        ring: {
+          kvstore: {
+            store: 'consul',
+            consul: {
+              host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
+              httpclienttimeout: '20s',
+              consistentreads: false,
+              watchkeyratelimit: 1,
+              watchkeyburstsize: 1,
+            },
+          },
         },
       },
     },
