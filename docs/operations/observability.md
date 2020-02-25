@@ -15,12 +15,12 @@ All components of Loki expose the following metrics:
 
 The Loki Distributors expose the following metrics:
 
-| Metric Name                                       | Metric Type | Description                                                 |
-| ------------------------------------------------- | ----------- | ----------------------------------------------------------- |
-| `loki_distributor_ingester_appends_total`         | Counter     | The total number of batch appends sent to ingesters.        |
-| `loki_distributor_ingester_append_failures_total` | Counter     | The total number of failed batch appends sent to ingesters. |
-| `loki_distributor_bytes_received_total`           | Counter     | The total number of uncompressed bytes received per tenant. |
-| `loki_distributor_lines_received_total`           | Counter     | The total number of lines received per tenant.              |
+| Metric Name                                       | Metric Type | Description                                                                                                                          |
+| ------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `loki_distributor_ingester_appends_total`         | Counter     | The total number of batch appends sent to ingesters.                                                                                 |
+| `loki_distributor_ingester_append_failures_total` | Counter     | The total number of failed batch appends sent to ingesters.                                                                          |
+| `loki_distributor_bytes_received_total`           | Counter     | The total number of uncompressed bytes received per tenant.                                                                          |
+| `loki_distributor_lines_received_total`           | Counter     | The total number of log _entries_ received per tenant (not necessarily of _lines_, as an entry can have more than one line of text). |
 
 The Loki Ingesters expose the following metrics:
 
