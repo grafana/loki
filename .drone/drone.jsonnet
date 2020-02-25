@@ -198,6 +198,7 @@ local manifest(apps) = pipeline('manifest') {
         commands: [
           './tools/deploy.sh',
         ],
+        depends_on: ['clone'],
       },
     ],
   },
