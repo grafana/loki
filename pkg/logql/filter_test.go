@@ -13,22 +13,25 @@ func Test_SimplifiedRegex(t *testing.T) {
 		re   string
 		line string
 	}{
-		// {"foo", "foo"}, // add expected filter.
-		// {"(foo)", "foobar"},
-		// {"(foo|ba)", "foobar"},
-		// {"(foo.*|.*ba)", "foobar"},
-		// {"(foo.*|.*ba)", "fo"},
-		// {"(foo|ba|ar)", "bar"},
-		// {"(foo|(ba|ar))", "bar"},
-		// {"foo.*", "foobar"},
-		// {".*foo", "foobar"},
-		// {".*foo.*", "foobar"},
-		// {"(.*)(foo).*", "foobar"},
-		// {".*foo.*|bar", "buzz"},
-		// {".*foo.*|bar", "foo,bar"},
-		{".*foo.*|bar|buzz", "buzz"},  // (?-s:.)*foo(?-s:.)*|b(?:ar|uzz)
-		{".*foo.*|bar|uzz", "buzz"},   // (?-s:.)*foo(?-s:.)*|bar|uzz
-		{"foo|bar|b|buzz|zz", "buzz"}, // foo|b(?:ar|(?:)|uzz)|zz
+		{"foo", "foo"}, // todo add expected filter.
+		{"(foo)", "foobar"},
+		{"(foo|ba)", "foobar"},
+		{"(foo.*|.*ba)", "foobar"},
+		{"(foo.*|.*ba)", "fo"},
+		{"(foo|ba|ar)", "bar"},
+		{"(foo|(ba|ar))", "bar"},
+		{"foo.*", "foobar"},
+		{".*foo", "foobar"},
+		{".*foo.*", "foobar"},
+		{"(.*)(foo).*", "foobar"},
+		{".*foo.*|bar", "buzz"},
+		{".*foo|bar", "foo,bar"},
+		{".*foo.*|bar|buzz", "buzz"},     // (?-s:.)*foo(?-s:.)*|b(?:ar|uzz)
+		{".*foo.*|bar|uzz", "buzz"},      // (?-s:.)*foo(?-s:.)*|bar|uzz
+		{"foo|bar|b|buzz|zz", "buzz"},    // foo|b(?:ar|(?:)|uzz)|zz
+		{"f|foo|foobar", "f"},            // f(?:(?:)|oo(?:(?:)|bar))
+		{"f.*|foobar.*|.*buzz", "bf"},    // f(?:(?-s:.)*|oobar(?-s:.)*)|(?-s:.)*buzz
+		{"((f.*)|foobar.*)|.*buzz", "f"}, // ((f(?-s:.)*)|foobar(?-s:.)*)|(?-s:.)*buzz
 	} {
 		t.Run(test.re, func(t *testing.T) {
 			assertRegex(t, test.re, test.line, true)

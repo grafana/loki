@@ -145,14 +145,16 @@ func simplifyAlternate(reg *syntax.Regexp) (LineFilter, bool) {
 
 func simplifyConcat(reg *syntax.Regexp) (LineFilter, bool) {
 	clearCapture(reg.Sub...)
-	// we can improve foo.* .*foo.* .*foo
 	if len(reg.Sub) > 3 {
 		return nil, false
 	}
-	// some concat operation are Literal+Alternate
-	// buzz|bar = Concat(Literal b + Alternate(uzz,ar))
-	// and not
+	// Concat operations are either literal and star such as foo.* .*foo.* .*foo
+	// which is a literalFilter.
+	// Or a literal and alternates operation, which represent a multiplication of alternate.
+	// For instance foo|bar|b|buzz|zz is expressed as foo|b(ar|(?:)|uzz)|zz, (?:) being an OpEmptyMatch.
+	// Anything else is rejected.
 	var literal []byte
+	var filters []LineFilter
 	for _, sub := range reg.Sub {
 		if sub.Op == syntax.OpLiteral {
 			// only one literal
@@ -162,11 +164,32 @@ func simplifyConcat(reg *syntax.Regexp) (LineFilter, bool) {
 			literal = []byte(string(sub.Rune))
 			continue
 		}
-
-		// if f, ok := simplify(sub); ok {
-
-		// }
-		if sub.Op != syntax.OpStar {
+		if sub.Op == syntax.OpAlternate && literal != nil {
+			for _, alt := range sub.Sub {
+				switch alt.Op {
+				case syntax.OpEmptyMatch:
+					filters = append(filters, literalFilter(literal))
+				case syntax.OpLiteral:
+					altsub := []byte(string(alt.Rune))
+					filters = append(filters, literalFilter(append(literal, altsub...)))
+				case syntax.OpConcat:
+					f, ok := simplifyConcat(alt)
+					if !ok {
+						return nil, false
+					}
+					filters = append(filters, f)
+				case syntax.OpStar:
+					if alt.Sub[0].Op != syntax.OpAnyCharNotNL {
+						return nil, false
+					}
+					filters = append(filters, literalFilter(literal))
+				default:
+					return nil, false
+				}
+			}
+			continue
+		}
+		if sub.Op != syntax.OpStar && sub.Sub[0].Op != syntax.OpAnyCharNotNL {
 			return nil, false
 		}
 	}
@@ -174,6 +197,25 @@ func simplifyConcat(reg *syntax.Regexp) (LineFilter, bool) {
 	// we can simplify only if we found a literal.
 	if literal == nil {
 		return nil, false
+	}
+
+	if len(filters) != 0 {
+		// unknown case
+		if len(filters) == 1 {
+			return nil, false
+		}
+		// build or filter chain
+		f := orFilter{
+			left:  filters[0],
+			right: filters[1],
+		}
+		for i := 2; i < len(filters); i++ {
+			f = orFilter{
+				left:  f,
+				right: filters[i],
+			}
+		}
+		return f, true
 	}
 
 	return literalFilter(literal), true
