@@ -10,6 +10,10 @@
     container.new('table-manager', $._images.tableManager) +
     container.withPorts($.util.defaultPorts) +
     container.withArgsMixin($.util.mapToFlags($.table_manager_args)) +
+    container.mixin.readinessProbe.httpGet.withPath('/ready') +
+    container.mixin.readinessProbe.httpGet.withPort(80) +
+    container.mixin.readinessProbe.withInitialDelaySeconds(15) +
+    container.mixin.readinessProbe.withTimeoutSeconds(1) +
     $.util.resourcesRequests('100m', '100Mi') +
     $.util.resourcesLimits('200m', '200Mi'),
 
