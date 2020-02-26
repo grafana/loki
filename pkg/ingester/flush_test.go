@@ -177,7 +177,7 @@ func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
 
 // nolint
 func defaultIngesterTestConfig(t *testing.T) Config {
-	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, codec.Proto{Factory: ring.ProtoDescFactory})
+	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, codec.NewProtoCodec("foo", ring.ProtoDescFactory))
 	require.NoError(t, err)
 
 	cfg := Config{}
