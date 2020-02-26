@@ -11,14 +11,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/weaveworks/common/httpgrpc"
-
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/golang/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/mtime"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -137,10 +136,14 @@ func (cfg *HATrackerConfig) Validate() error {
 	return nil
 }
 
+func GetReplicaDescCodec() codec.Proto {
+	return codec.NewProtoCodec("replicaDesc", ProtoReplicaDescFactory)
+}
+
 // NewClusterTracker returns a new HA cluster tracker using either Consul
 // or in-memory KV store.
 func newClusterTracker(cfg HATrackerConfig) (*haTracker, error) {
-	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
+	codec := GetReplicaDescCodec()
 
 	var jitter time.Duration
 	if cfg.UpdateTimeoutJitterMax > 0 {

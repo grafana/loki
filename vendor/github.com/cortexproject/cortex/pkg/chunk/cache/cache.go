@@ -24,7 +24,7 @@ type Cache interface {
 type Config struct {
 	EnableFifoCache bool `yaml:"enable_fifocache,omitempty"`
 
-	DefaultValidity time.Duration `yaml:"defaul_validity,omitempty"`
+	DefaultValidity time.Duration `yaml:"default_validity,omitempty"`
 
 	Background     BackgroundConfig      `yaml:"background,omitempty"`
 	Memcache       MemcachedConfig       `yaml:"memcached,omitempty"`

@@ -3,9 +3,10 @@ package cache
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/golang/snappy"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type snappyCache struct {

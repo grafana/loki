@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"context"
+	"io"
 	"time"
 )
 
@@ -20,8 +21,8 @@ type IndexClient interface {
 	QueryPages(ctx context.Context, queries []IndexQuery, callback func(IndexQuery, ReadBatch) (shouldContinue bool)) error
 }
 
-// ObjectClient is for storing and retrieving chunks.
-type ObjectClient interface {
+// Client is for storing and retrieving chunks.
+type Client interface {
 	Stop()
 
 	PutChunks(ctx context.Context, chunks []Chunk) error
@@ -50,6 +51,15 @@ type ReadBatchIterator interface {
 	Value() []byte
 }
 
+// ObjectClient is used to store arbitrary data in Object Store (S3/GCS/Azure/Etc)
+type ObjectClient interface {
+	PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error
+	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error)
+	List(ctx context.Context, prefix string) ([]StorageObject, error)
+	Stop()
+}
+
+// StorageObject represents an object being stored in an Object Store
 type StorageObject struct {
 	Key        string
 	ModifiedAt time.Time

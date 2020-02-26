@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
 )
 
@@ -34,7 +35,7 @@ func (f *fixture) Name() string {
 }
 
 func (f *fixture) Clients() (
-	iClient chunk.IndexClient, cClient chunk.ObjectClient, tClient chunk.TableClient,
+	iClient chunk.IndexClient, cClient chunk.Client, tClient chunk.TableClient,
 	schemaConfig chunk.SchemaConfig, err error,
 ) {
 	f.btsrv, err = bttest.NewServer("localhost:0")
@@ -76,9 +77,9 @@ func (f *fixture) Clients() (
 	}
 
 	if f.gcsObjectClient {
-		cClient = newGCSObjectClient(GCSConfig{
+		cClient = objectclient.NewClient(newGCSObjectClient(GCSConfig{
 			BucketName: "chunks",
-		}, f.gcssrv.Client())
+		}, f.gcssrv.Client()), nil)
 	} else {
 		cClient = newBigtableObjectClient(Config{}, schemaConfig, client)
 	}

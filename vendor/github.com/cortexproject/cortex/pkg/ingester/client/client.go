@@ -7,13 +7,13 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weaveworks/common/middleware"
 	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/encoding/gzip" // get gzip compressor registered
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	cortex_middleware "github.com/cortexproject/cortex/pkg/util/middleware"
-	"github.com/weaveworks/common/middleware"
 )
 
 var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{

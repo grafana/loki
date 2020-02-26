@@ -7,8 +7,9 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // MockStorage is a fake in-memory StorageClient.

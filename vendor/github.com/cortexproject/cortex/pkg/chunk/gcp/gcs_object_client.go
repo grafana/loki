@@ -1,19 +1,15 @@
 package gcp
 
 import (
-	"bytes"
 	"context"
 	"flag"
 	"io"
-	"io/ioutil"
 	"time"
 
 	"cloud.google.com/go/storage"
-	"github.com/pkg/errors"
 	"google.golang.org/api/iterator"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/util"
 )
 
 type GCSObjectClient struct {
@@ -41,7 +37,7 @@ func (cfg *GCSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.RequestTimeout, prefix+"gcs.request-timeout", 0, "The duration after which the requests to GCS should be timed out.")
 }
 
-// NewGCSObjectClient makes a new chunk.ObjectClient that writes chunks to GCS.
+// NewGCSObjectClient makes a new chunk.Client that writes chunks to GCS.
 func NewGCSObjectClient(ctx context.Context, cfg GCSConfig) (*GCSObjectClient, error) {
 	option, err := gcsInstrumentation(ctx, storage.ScopeReadWrite)
 	if err != nil {
@@ -66,44 +62,6 @@ func newGCSObjectClient(cfg GCSConfig, client *storage.Client) *GCSObjectClient 
 
 func (s *GCSObjectClient) Stop() {
 	s.client.Close()
-}
-
-func (s *GCSObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
-	for _, chunk := range chunks {
-		buf, err := chunk.Encoded()
-		if err != nil {
-			return err
-		}
-
-		if err := s.PutObject(ctx, chunk.ExternalKey(), bytes.NewReader(buf)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *GCSObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
-	return util.GetParallelChunks(ctx, input, s.getChunk)
-}
-
-func (s *GCSObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
-	readCloser, err := s.GetObject(ctx, input.ExternalKey())
-	if err != nil {
-		return chunk.Chunk{}, errors.WithStack(err)
-	}
-
-	defer readCloser.Close()
-
-	buf, err := ioutil.ReadAll(readCloser)
-	if err != nil {
-		return chunk.Chunk{}, errors.WithStack(err)
-	}
-
-	if err := input.Decode(decodeContext, buf); err != nil {
-		return chunk.Chunk{}, err
-	}
-
-	return input, nil
 }
 
 // Get object from the store

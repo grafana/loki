@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
 )
 
@@ -21,7 +22,7 @@ func (f *fixture) Name() string {
 }
 
 func (f *fixture) Clients() (
-	indexClient chunk.IndexClient, objectClient chunk.ObjectClient, tableClient chunk.TableClient,
+	indexClient chunk.IndexClient, chunkClient chunk.Client, tableClient chunk.TableClient,
 	schemaConfig chunk.SchemaConfig, err error,
 ) {
 	f.dirname, err = ioutil.TempDir(os.TempDir(), "boltdb")
@@ -36,12 +37,14 @@ func (f *fixture) Clients() (
 		return
 	}
 
-	objectClient, err = NewFSObjectClient(FSConfig{
+	oClient, err := NewFSObjectClient(FSConfig{
 		Directory: f.dirname,
 	})
 	if err != nil {
 		return
 	}
+
+	chunkClient = objectclient.NewClient(oClient, objectclient.Base64Encoder)
 
 	tableClient, err = NewTableClient(f.dirname)
 	if err != nil {

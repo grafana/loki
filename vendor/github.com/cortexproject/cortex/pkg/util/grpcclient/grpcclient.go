@@ -3,9 +3,10 @@ package grpcclient
 import (
 	"flag"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"google.golang.org/grpc"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // Config for a gRPC client.

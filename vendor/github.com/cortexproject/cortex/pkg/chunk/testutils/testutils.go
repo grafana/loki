@@ -5,10 +5,11 @@ import (
 	"strconv"
 	"time"
 
-	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -21,7 +22,7 @@ const (
 // Fixture type for per-backend testing.
 type Fixture interface {
 	Name() string
-	Clients() (chunk.IndexClient, chunk.ObjectClient, chunk.TableClient, chunk.SchemaConfig, error)
+	Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient, chunk.SchemaConfig, error)
 	Teardown() error
 }
 
@@ -32,10 +33,10 @@ func DefaultSchemaConfig(kind string) chunk.SchemaConfig {
 }
 
 // Setup a fixture with initial tables
-func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.ObjectClient, error) {
+func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.Client, error) {
 	var tbmConfig chunk.TableManagerConfig
 	flagext.DefaultValues(&tbmConfig)
-	indexClient, objectClient, tableClient, schemaConfig, err := fixture.Clients()
+	indexClient, chunkClient, tableClient, schemaConfig, err := fixture.Clients()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -53,7 +54,8 @@ func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.ObjectCl
 	err = tableClient.CreateTable(context.Background(), chunk.TableDesc{
 		Name: tableName,
 	})
-	return indexClient, objectClient, err
+
+	return indexClient, chunkClient, err
 }
 
 // CreateChunks creates some chunks for testing

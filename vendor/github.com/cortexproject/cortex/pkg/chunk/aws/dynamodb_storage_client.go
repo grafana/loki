@@ -20,14 +20,14 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/prometheus/client_golang/prometheus"
+	awscommon "github.com/weaveworks/common/aws"
+	"github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	awscommon "github.com/weaveworks/common/aws"
-	"github.com/weaveworks/common/instrument"
 )
 
 const (
@@ -52,9 +52,9 @@ var (
 		Name:      "dynamo_request_duration_seconds",
 		Help:      "Time spent doing DynamoDB requests.",
 
-		// DynamoDB latency seems to range from a few ms to a few sec and is
-		// important.  So use 8 buckets from 128us to 2s.
-		Buckets: prometheus.ExponentialBuckets(0.000128, 4, 8),
+		// DynamoDB latency seems to range from a few ms to a several seconds and is
+		// important.  So use 9 buckets from 1ms to just over 1 minute (65s).
+		Buckets: prometheus.ExponentialBuckets(0.001, 4, 9),
 	}, []string{"operation", "status_code"}))
 	dynamoConsumedCapacity = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
@@ -154,12 +154,12 @@ func NewDynamoDBIndexClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (c
 	return newDynamoDBStorageClient(cfg, schemaCfg)
 }
 
-// NewDynamoDBObjectClient makes a new DynamoDB-backed ObjectClient.
-func NewDynamoDBObjectClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
+// NewDynamoDBChunkClient makes a new DynamoDB-backed chunk.Client.
+func NewDynamoDBChunkClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (chunk.Client, error) {
 	return newDynamoDBStorageClient(cfg, schemaCfg)
 }
 
-// newDynamoDBStorageClient makes a new DynamoDB-backed IndexClient and ObjectClient.
+// newDynamoDBStorageClient makes a new DynamoDB-backed IndexClient and chunk.Client.
 func newDynamoDBStorageClient(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig) (*dynamoDBStorageClient, error) {
 	dynamoDB, err := dynamoClientFromURL(cfg.DynamoDB.URL)
 	if err != nil {
@@ -461,7 +461,7 @@ type chunksPlusError struct {
 	err    error
 }
 
-// GetChunks implements chunk.ObjectClient.
+// GetChunks implements chunk.Client.
 func (a dynamoDBStorageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "GetChunks.DynamoDB", ot.Tag{Key: "numChunks", Value: len(chunks)})
 	defer log.Span.Finish()
@@ -639,7 +639,7 @@ func (a dynamoDBStorageClient) PutChunkAndIndex(ctx context.Context, c chunk.Chu
 	return a.BatchWrite(ctx, dynamoDBWrites)
 }
 
-// PutChunks implements chunk.ObjectClient.
+// PutChunks implements chunk.Client.
 func (a dynamoDBStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
 	dynamoDBWrites, err := a.writesForChunks(chunks)
 	if err != nil {

@@ -25,6 +25,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
@@ -182,7 +183,7 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
-		return nil, err
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
 	response, err := q.next.RoundTrip(request)
