@@ -14,16 +14,17 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	json "github.com/json-iterator/go"
+	"github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/weaveworks/common/httpgrpc"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/logql/marshal/legacy"
 	"github.com/grafana/loki/pkg/logql/stats"
-	json "github.com/json-iterator/go"
-	"github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
-	"github.com/weaveworks/common/httpgrpc"
 )
 
 var lokiCodec = &codec{}
@@ -378,8 +379,8 @@ func paramsFromRequest(req queryrange.Request) *paramsWrapper {
 	}
 }
 
-func (p paramsWrapper) String() string {
-	return p.Query
+func (p paramsWrapper) Query() string {
+	return p.LokiRequest.Query
 }
 func (p paramsWrapper) Start() time.Time {
 	return p.StartTs

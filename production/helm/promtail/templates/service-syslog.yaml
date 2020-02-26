@@ -16,15 +16,19 @@ metadata:
     {{- toYaml .Values.syslogService.annotations | nindent 4 }}
 spec:
   type: {{ .Values.syslogService.type }}
-{{- if (and (eq .Values.syslogService.type "ClusterIP") (not (empty .Values.syslogService.clusterIP))) }}
+  {{- if .Values.syslogService.clusterIP }}
   clusterIP: {{ .Values.syslogService.clusterIP }}
-{{- end }}
-{{- if .Values.syslogService.loadBalancerSourceRanges }}
-  loadBalancerSourceRanges:
-  {{- range $cidr := .Values.syslogService.loadBalancerSourceRanges }}
-    - {{ $cidr }}
+  {{end}}
+  {{- if .Values.syslogService.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.syslogService.loadBalancerIP }}
   {{- end }}
-{{- end }}
+  {{- if .Values.syslogService.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+{{ toYaml .Values.syslogService.loadBalancerSourceRanges | indent 4 }}
+  {{- end -}}
+  {{- if .Values.syslogService.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ .Values.syslogService.externalTrafficPolicy }}
+  {{- end }}
   ports:
     - port: {{ .Values.syslogService.port }}
       protocol: TCP

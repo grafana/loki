@@ -6,8 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/grafana/loki/pkg/logproto"
 	json "github.com/json-iterator/go"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (

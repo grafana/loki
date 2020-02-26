@@ -1,11 +1,13 @@
 package stages
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -69,6 +71,14 @@ var testMetricLogLine2 = `
 	"level" : "WARN"
 }
 `
+var testMetricLogLineWithMissingKey = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"payload": 20,
+	"component": ["parser","type"],
+	"level" : "WARN"
+}
+`
 
 const expectedMetrics = `# HELP my_promtail_custom_loki_count uhhhhhhh
 # TYPE my_promtail_custom_loki_count counter
@@ -105,6 +115,73 @@ func TestMetricsPipeline(t *testing.T) {
 
 	if err := testutil.GatherAndCompare(registry,
 		strings.NewReader(expectedMetrics)); err != nil {
+		t.Fatalf("missmatch metrics: %v", err)
+	}
+}
+
+func TestPipelineWithMissingKey_Metrics(t *testing.T) {
+	var buf bytes.Buffer
+	w := log.NewSyncWriter(&buf)
+	logger := log.NewLogfmtLogger(w)
+	pl, err := NewPipeline(logger, loadConfig(testMetricYaml), nil, prometheus.DefaultRegisterer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	Debug = true
+	ts := time.Now()
+	entry := testMetricLogLineWithMissingKey
+	extracted := map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	expectedLog := "level=debug msg=\"failed to convert extracted value to string, can't perform value comparison\" metric=bloki_count err=\"can't convert <nil> to string\""
+	if !(strings.Contains(buf.String(), expectedLog)) {
+		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
+	}
+}
+
+var testMetricWithDropYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      app: app
+      drop: drop
+- match:
+    selector: '{drop="true"}'
+    action: drop
+- metrics:
+    loki_count:
+      type: Counter
+      source: app
+      description: "should only inc on non dropped labels"
+      config:
+        action: inc
+`
+
+const expectedDropMetrics = `# HELP promtail_custom_loki_count should only inc on non dropped labels
+# TYPE promtail_custom_loki_count counter
+promtail_custom_loki_count 1.0
+`
+
+func TestMetricsWithDropInPipeline(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	pl, err := NewPipeline(util.Logger, loadConfig(testMetricWithDropYaml), nil, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	droppingLabels := model.LabelSet{
+		"drop": "true",
+	}
+
+	ts := time.Now()
+	extracted := map[string]interface{}{}
+	entry := testMetricLogLine1
+	pl.Process(lbls, extracted, &ts, &entry)
+	entry = testMetricLogLine2
+	pl.Process(droppingLabels, extracted, &ts, &entry)
+
+	if err := testutil.GatherAndCompare(registry,
+		strings.NewReader(expectedDropMetrics)); err != nil {
 		t.Fatalf("missmatch metrics: %v", err)
 	}
 }

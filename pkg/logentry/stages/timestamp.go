@@ -8,10 +8,11 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/util"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/util"
 )
 
 const (
@@ -165,7 +166,7 @@ func (ts *timestampStage) parseTimestampFromSource(extracted map[string]interfac
 	s, err := getString(v)
 	if err != nil {
 		if Debug {
-			level.Debug(ts.logger).Log("msg", ErrTimestampConversionFailed, "err", err, "type", reflect.TypeOf(v).String())
+			level.Debug(ts.logger).Log("msg", ErrTimestampConversionFailed, "err", err, "type", reflect.TypeOf(v))
 		}
 
 		return nil, errors.New(ErrTimestampConversionFailed)

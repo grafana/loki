@@ -7,11 +7,12 @@ import (
 	"sort"
 	"time"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+
+	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 type QueryRangeType string
@@ -23,7 +24,7 @@ var (
 
 // Params details the parameters associated with a loki request
 type Params interface {
-	String() string
+	Query() string
 	Start() time.Time
 	End() time.Time
 	Step() time.Duration
@@ -41,7 +42,7 @@ type LiteralParams struct {
 }
 
 // String impls Params
-func (p LiteralParams) String() string { return p.qs }
+func (p LiteralParams) Query() string { return p.qs }
 
 // Start impls Params
 func (p LiteralParams) Start() time.Time { return p.start }

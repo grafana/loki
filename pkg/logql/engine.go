@@ -8,14 +8,15 @@ import (
 	"github.com/go-kit/kit/log/level"
 
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/grafana/loki/pkg/helpers"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+
+	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 var (
@@ -125,11 +126,14 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	statResult = stats.Snapshot(ctx, time.Since(start))
 	statResult.Log(level.Debug(log))
 
-	status := "success"
+	status := "200"
 	if err != nil {
-		status = "error"
+		status = "500"
+		if IsParseError(err) {
+			status = "400"
+		}
 	}
-	RecordMetrics(status, q.String(), rangeType, statResult)
+	RecordMetrics(ctx, q, status, statResult)
 
 	return Result{
 		Data:       data,
@@ -177,7 +181,7 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 	ctx, cancel := context.WithTimeout(ctx, ng.timeout)
 	defer cancel()
 
-	qs := q.String()
+	qs := q.Query()
 
 	expr, err := ParseExpr(qs)
 	if err != nil {

@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/stretchr/testify/require"
 )
 
 func Test_newBatchChunkIterator(t *testing.T) {

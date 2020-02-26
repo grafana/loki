@@ -10,9 +10,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/httpgrpc"
+
+	"github.com/grafana/loki/pkg/logql"
 )
 
 // Config is the configuration for the queryrange tripperware
@@ -90,7 +91,7 @@ func NewLogFilterTripperware(
 	limits Limits,
 	codec queryrange.Codec,
 ) (frontend.Tripperware, error) {
-	queryRangeMiddleware := []queryrange.Middleware{StatsMiddleware(), queryrange.LimitsMiddleware(limits)}
+	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(limits, codec))
 	}
@@ -114,7 +115,7 @@ func NewMetricTripperware(
 	extractor queryrange.Extractor,
 ) (frontend.Tripperware, Stopper, error) {
 
-	queryRangeMiddleware := []queryrange.Middleware{StatsMiddleware(), queryrange.LimitsMiddleware(limits)}
+	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,

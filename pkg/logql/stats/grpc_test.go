@@ -7,10 +7,11 @@ import (
 	"net"
 	"testing"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/test/bufconn"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const bufSize = 1024 * 1024

@@ -6,9 +6,10 @@ import (
 	"log"
 	"time"
 
-	"github.com/grafana/loki/pkg/promtail/server/ui"
 	"github.com/prometheus/prometheus/pkg/modtimevfs"
 	"github.com/shurcooL/vfsgen"
+
+	"github.com/grafana/loki/pkg/promtail/server/ui"
 )
 
 func main() {

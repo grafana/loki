@@ -7,15 +7,17 @@ import (
 	"reflect"
 
 	"github.com/go-kit/kit/log/level"
-	_ "github.com/grafana/loki/pkg/build"
-	"github.com/grafana/loki/pkg/cfg"
-	"github.com/grafana/loki/pkg/loki"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/tracing"
 
+	_ "github.com/grafana/loki/pkg/build"
+	"github.com/grafana/loki/pkg/cfg"
+	"github.com/grafana/loki/pkg/loki"
+
 	"github.com/cortexproject/cortex/pkg/util"
+
 	"github.com/grafana/loki/pkg/util/validation"
 )
 

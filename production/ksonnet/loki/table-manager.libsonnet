@@ -18,7 +18,7 @@
   table_manager_deployment:
     deployment.new('table-manager', 1, [$.table_manager_container]) +
     $.config_hash_mixin +
-    $.util.configVolumeMount('loki', '/etc/loki'),
+    $.util.configVolumeMount('loki', '/etc/loki/config'),
 
   table_manager_service:
     $.util.serviceFor($.table_manager_deployment),

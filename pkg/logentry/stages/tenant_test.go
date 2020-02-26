@@ -1,16 +1,59 @@
 package stages
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/grafana/loki/pkg/promtail/client"
-	lokiutil "github.com/grafana/loki/pkg/util"
+	"github.com/go-kit/kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/promtail/client"
+	lokiutil "github.com/grafana/loki/pkg/util"
 )
+
+var testTenantYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      customer_id:
+- tenant:
+    source: customer_id
+`
+
+var testTenantLogLineWithMissingKey = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"app":"loki",
+	"component": ["parser","type"],
+	"level" : "WARN"
+}
+`
+
+func TestPipelineWithMissingKey_Tenant(t *testing.T) {
+	var buf bytes.Buffer
+	w := log.NewSyncWriter(&buf)
+	logger := log.NewLogfmtLogger(w)
+	pl, err := NewPipeline(logger, loadConfig(testTenantYaml), nil, prometheus.DefaultRegisterer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	Debug = true
+	ts := time.Now()
+	entry := testTenantLogLineWithMissingKey
+	extracted := map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	expectedLog := "level=debug msg=\"failed to convert value to string\" err=\"Can't convert <nil> to string\" type=null"
+	if !(strings.Contains(buf.String(), expectedLog)) {
+		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
+	}
+}
 
 func TestTenantStage_Validation(t *testing.T) {
 	t.Parallel()

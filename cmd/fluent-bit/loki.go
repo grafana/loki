@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -10,10 +11,11 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/promtail/client"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/logging"
+
+	"github.com/grafana/loki/pkg/promtail/client"
 )
 
 type loki struct {
@@ -40,7 +42,10 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	level.Debug(l.logger).Log("msg", "processing records", "records", fmt.Sprintf("%+v", records))
 	lbs := model.LabelSet{}
 	if l.cfg.autoKubernetesLabels {
-		lbs = autoLabels(records)
+		err := autoLabels(records, lbs)
+		if err != nil {
+			level.Error(l.logger).Log("msg", err.Error(), "records", fmt.Sprintf("%+v", records))
+		}
 	} else if l.cfg.labelMap != nil {
 		mapLabels(records, l.cfg.labelMap, lbs)
 	} else {
@@ -64,7 +69,6 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 
 func toStringMap(record map[interface{}]interface{}) map[string]interface{} {
 	m := make(map[string]interface{})
-
 	for k, v := range record {
 		key, ok := k.(string)
 		if !ok {
@@ -80,36 +84,32 @@ func toStringMap(record map[interface{}]interface{}) map[string]interface{} {
 			m[key] = v
 		}
 	}
+
 	return m
 }
 
-func autoLabels(records map[string]interface{}) model.LabelSet {
-	kuberneteslbs := model.LabelSet{}
+func autoLabels(records map[string]interface{}, kuberneteslbs model.LabelSet) error {
+	kube, ok := records["kubernetes"]
+	if !ok {
+		return errors.New("kubernetes labels not found, no labels will be added")
+	}
+
 	replacer := strings.NewReplacer("/", "_", ".", "_", "-", "_")
-	for k, v := range records["kubernetes"].(map[interface{}]interface{}) {
-		switch key := k.(string); key {
+	for k, v := range kube.(map[string]interface{}) {
+		switch k {
 		case "labels":
-			for m, n := range v.(map[interface{}]interface{}) {
-				switch t := n.(type) {
-				case []byte:
-					kuberneteslbs[model.LabelName(replacer.Replace(m.(string)))] = model.LabelValue(string(t))
-				default:
-					kuberneteslbs[model.LabelName(replacer.Replace(m.(string)))] = model.LabelValue(fmt.Sprintf("%v", n))
-				}
+			for m, n := range v.(map[string]interface{}) {
+				kuberneteslbs[model.LabelName(replacer.Replace(m))] = model.LabelValue(fmt.Sprintf("%v", n))
 			}
 		case "docker_id", "pod_id", "annotations":
 			// do nothing
 			continue
 		default:
-			switch t := v.(type) {
-			case []byte:
-				kuberneteslbs[model.LabelName(k.(string))] = model.LabelValue(string(t))
-			default:
-				kuberneteslbs[model.LabelName(k.(string))] = model.LabelValue(fmt.Sprintf("%v", v))
-			}
+			kuberneteslbs[model.LabelName(k)] = model.LabelValue(fmt.Sprintf("%v", v))
 		}
 	}
-	return kuberneteslbs
+
+	return nil
 }
 
 func extractLabels(records map[string]interface{}, keys []string) model.LabelSet {

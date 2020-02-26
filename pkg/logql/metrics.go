@@ -1,17 +1,26 @@
 package logql
 
 import (
+	"context"
+	"time"
+
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 const (
-	typeMetric  = "metric"
-	typeFilter  = "filter"
-	typeLimited = "limited"
+	QueryTypeMetric  = "metric"
+	QueryTypeFilter  = "filter"
+	QueryTypeLimited = "limited"
+
+	latencyTypeSlow = "slow"
+	latencyTypeFast = "fast"
+
+	slowQueryThresholdSecond = float64(10)
 )
 
 var (
@@ -19,23 +28,23 @@ var (
 		Namespace: "loki",
 		Name:      "logql_querystats_bytes_processed_per_seconds",
 		Help:      "Distribution of bytes processed per seconds for LogQL queries.",
-		// 0 MB 40 MB 80 MB 160 MB 320 MB 640 MB 1.3 GB 2.6 GB 5.1 GB 10 GB
-		Buckets: prometheus.ExponentialBuckets(20*1e6, 2, 10),
-	}, []string{"status", "type", "range"})
+		// 50MB 100MB 200MB 400MB 600MB 800MB 1GB 2GB 3GB 4GB 5GB 6GB 7GB 8GB 9GB 10GB 15GB 20GB
+		Buckets: []float64{50 * 1e6, 100 * 1e6, 400 * 1e6, 600 * 1e6, 800 * 1e6, 1 * 1e9, 2 * 1e9, 3 * 1e9, 4 * 1e9, 5 * 1e9, 6 * 1e9, 7 * 1e9, 8 * 1e9, 9 * 1e9, 10 * 1e9, 15 * 1e9, 20 * 1e9},
+	}, []string{"status_code", "type", "range", "latency_type"})
 	execLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "logql_querystats_latency_seconds",
 		Help:      "Distribution of latency for LogQL queries.",
 		// 0.25 0.5 1 2 4 8 16 32 64 128
 		Buckets: prometheus.ExponentialBuckets(0.250, 2, 10),
-	}, []string{"status", "type", "range"})
+	}, []string{"status_code", "type", "range"})
 	chunkDownloadLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "logql_querystats_chunk_download_latency_seconds",
 		Help:      "Distribution of chunk downloads latency for LogQL queries.",
-		// 0.125 0.25 0.5 1 2 4 8 16 32 64
-		Buckets: prometheus.ExponentialBuckets(0.125, 2, 10),
-	}, []string{"status", "type", "range"})
+		// 0.25 0.5 1 2 4 8 16 32 64 128
+		Buckets: prometheus.ExponentialBuckets(0.250, 2, 10),
+	}, []string{"status_code", "type", "range"})
 	duplicatesTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "logql_querystats_duplicates_total",
@@ -45,7 +54,7 @@ var (
 		Namespace: "loki",
 		Name:      "logql_querystats_downloaded_chunk_total",
 		Help:      "Total count of chunks downloaded found while executing LogQL queries.",
-	}, []string{"status", "type", "range"})
+	}, []string{"status_code", "type", "range"})
 	ingesterLineTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "logql_querystats_ingester_sent_lines_total",
@@ -53,10 +62,38 @@ var (
 	})
 )
 
-func RecordMetrics(status, query string, rangeType QueryRangeType, stats stats.Result) {
-	queryType := queryType(query)
-	rt := string(rangeType)
-	bytesPerSeconds.WithLabelValues(status, queryType, rt).
+func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Result) {
+	queryType, err := QueryType(p.Query())
+	if err != nil {
+		level.Warn(util.Logger).Log("msg", "error parsing query type", "err", err)
+	}
+	rt := string(GetRangeType(p))
+
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
+	latencyType := latencyTypeFast
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	// we also log queries, useful for troubleshooting slow queries.
+	level.Info(
+		// ensure we have traceID & orgId
+		util.WithContext(ctx, util.Logger),
+	).Log(
+		"latency", latencyType, // this can be used to filter log lines.
+		"query", p.Query(),
+		"query_type", queryType,
+		"range_type", rt,
+		"length", p.End().Sub(p.Start()),
+		"step", p.Step(),
+		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+		"status", status,
+		"throughput_mb", float64(stats.Summary.BytesProcessedPerSeconds)/10e6,
+		"total_bytes_mb", float64(stats.Summary.TotalBytesProcessed)/10e6,
+	)
+
+	bytesPerSeconds.WithLabelValues(status, queryType, rt, latencyType).
 		Observe(float64(stats.Summary.BytesProcessedPerSeconds))
 	execLatency.WithLabelValues(status, queryType, rt).
 		Observe(stats.Summary.ExecTime)
@@ -68,20 +105,19 @@ func RecordMetrics(status, query string, rangeType QueryRangeType, stats stats.R
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 }
 
-func queryType(query string) string {
+func QueryType(query string) (string, error) {
 	expr, err := ParseExpr(query)
 	if err != nil {
-		level.Warn(util.Logger).Log("msg", "error parsing query type", "err", err)
-		return ""
+		return "", err
 	}
 	switch expr.(type) {
 	case SampleExpr:
-		return typeMetric
+		return QueryTypeMetric, nil
 	case *matchersExpr:
-		return typeLimited
+		return QueryTypeLimited, nil
 	case *filterExpr:
-		return typeFilter
+		return QueryTypeFilter, nil
 	default:
-		return ""
+		return "", nil
 	}
 }

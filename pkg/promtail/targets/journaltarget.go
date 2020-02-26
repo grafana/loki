@@ -18,12 +18,14 @@ import (
 	"github.com/grafana/loki/pkg/promtail/positions"
 
 	"github.com/go-kit/kit/log"
+
 	"github.com/grafana/loki/pkg/promtail/scrape"
 
 	"github.com/coreos/go-systemd/sdjournal"
-	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/promtail/api"
 )
 
 const (

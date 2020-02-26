@@ -368,7 +368,7 @@ steps:
   settings:
     build_args:
     - TOUCH_PROTOS=1
-    dockerfile: cmd/promtail/Dockerfile
+    dockerfile: cmd/promtail/Dockerfile.arm32
     dry_run: true
     password:
       from_secret: docker_password
@@ -424,7 +424,7 @@ steps:
   settings:
     build_args:
     - TOUCH_PROTOS=1
-    dockerfile: cmd/promtail/Dockerfile
+    dockerfile: cmd/promtail/Dockerfile.arm32
     password:
       from_secret: docker_password
     repo: grafana/promtail
@@ -504,7 +504,7 @@ platform:
 
 steps:
 - name: manifest-promtail
-  image: plugins/manifest:1.2.3
+  image: plugins/manifest
   settings:
     password:
       from_secret: docker_password
@@ -516,7 +516,7 @@ steps:
   - clone
 
 - name: manifest-loki
-  image: plugins/manifest:1.2.3
+  image: plugins/manifest
   settings:
     password:
       from_secret: docker_password
@@ -529,7 +529,7 @@ steps:
   - manifest-promtail
 
 - name: manifest-loki-canary
-  image: plugins/manifest:1.2.3
+  image: plugins/manifest
   settings:
     password:
       from_secret: docker_password
@@ -567,6 +567,8 @@ steps:
   environment:
     CIRCLE_TOKEN:
       from_secret: circle_token
+  depends_on:
+  - clone
 
 trigger:
   ref:

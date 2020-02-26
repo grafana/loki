@@ -68,7 +68,7 @@ func (l *labelStage) Process(labels model.LabelSet, extracted map[string]interfa
 			s, err := getString(lValue)
 			if err != nil {
 				if Debug {
-					level.Debug(l.logger).Log("msg", "failed to convert extracted label value to string", "err", err, "type", reflect.TypeOf(lValue).String())
+					level.Debug(l.logger).Log("msg", "failed to convert extracted label value to string", "err", err, "type", reflect.TypeOf(lValue))
 				}
 				continue
 			}

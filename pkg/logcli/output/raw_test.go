@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/grafana/loki/pkg/loghttp"
 )
 
 func TestRawOutput_Format(t *testing.T) {

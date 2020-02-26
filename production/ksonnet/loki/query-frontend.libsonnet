@@ -1,11 +1,11 @@
 {
   local container = $.core.v1.container,
 
-  query_frontend_args:: {
-    'config.file': '/etc/loki/config.yaml',
-    target: 'query-frontend',
-    'log.level': 'debug',
-  },
+  query_frontend_args::
+    $._config.commonArgs {
+      target: 'query-frontend',
+      'log.level': 'debug',
+    },
 
   query_frontend_container::
     container.new('query-frontend', $._images.query_frontend) +
@@ -20,7 +20,8 @@
   query_frontend_deployment:
     deployment.new('query-frontend', 2, [$.query_frontend_container]) +
     $.config_hash_mixin +
-    $.util.configVolumeMount('loki', '/etc/loki') +
+    $.util.configVolumeMount('loki', '/etc/loki/config') +
+    $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
     $.util.antiAffinity,
 
   local service = $.core.v1.service,

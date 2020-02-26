@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
+	json "github.com/json-iterator/go"
+	"github.com/stretchr/testify/require"
+
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	json "github.com/json-iterator/go"
-	"github.com/stretchr/testify/require"
 )
 
 // covers responses from /api/prom/query
