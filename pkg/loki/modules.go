@@ -153,7 +153,7 @@ func (t *Loki) initRuntimeConfig() (err error) {
 	// make sure to set default limits before we start loading configuration into memory
 	validation.SetDefaultLimitsForYAMLUnmarshalling(t.cfg.LimitsConfig)
 
-	t.runtimeConfig, err = runtimeconfig.NewRuntimeConfigManager(t.cfg.RuntimeConfig)
+	t.runtimeConfig, err = runtimeconfig.NewRuntimeConfigManager(t.cfg.RuntimeConfig, prometheus.DefaultRegisterer)
 	return err
 }
 
