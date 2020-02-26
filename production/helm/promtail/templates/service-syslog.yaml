@@ -15,13 +15,10 @@ metadata:
   annotations:
     {{- toYaml .Values.syslogService.annotations | nindent 4 }}
 spec:
-{{- if (or (eq .Values.syslogService.type "ClusterIP") (empty .Values.syslogService.type)) }}
-  type: ClusterIP
+  type: {{ .Values.syslogService.type }}
   {{- if .Values.syslogService.clusterIP }}
   clusterIP: {{ .Values.syslogService.clusterIP }}
   {{end}}
-{{- else if eq .Values.syslogService.type "LoadBalancer" }}
-  type: {{ .Values.syslogService.type }}
   {{- if .Values.syslogService.loadBalancerIP }}
   loadBalancerIP: {{ .Values.syslogService.loadBalancerIP }}
   {{- end }}
@@ -29,9 +26,6 @@ spec:
   loadBalancerSourceRanges:
 {{ toYaml .Values.syslogService.loadBalancerSourceRanges | indent 4 }}
   {{- end -}}
-{{- else }}
-  type: {{ .Values.syslogService.type }}
-{{- end }}
   {{- if .Values.syslogService.externalTrafficPolicy }}
   externalTrafficPolicy: {{ .Values.syslogService.externalTrafficPolicy }}
   {{- end }}
