@@ -82,7 +82,7 @@
 
   gateway_container::
     container.new('nginx', $._images.nginx) +
-    container.withPorts($.core.v1.containerPort.new('http', 80)) +
+    container.withPorts($.core.v1.containerPort.new(name='http', port=80)) +
     $.util.resourcesRequests('50m', '100Mi'),
 
   local deployment = $.apps.v1.deployment,
