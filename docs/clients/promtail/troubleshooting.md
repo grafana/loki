@@ -166,3 +166,9 @@ behavior of Promtail is to assign a timestamp to logs at the time it read the
 entry from the tailed file. This would result in duplicate log lines being sent
 to Loki; to avoid this issue, if your tailed file has a timestamp embedded in
 the log lines, a `timestamp` stage should be added to your pipeline.
+
+## Viewing the Service Discovery web UI (in Kubernetes)
+
+When trying to troubleshoot Kubernetes service discovery, it's really useful to look at the **Service Discovery** and **Targets** web UI. There's
+more info on that here:
+https://github.com/grafana/loki/blob/master/docs/getting-started/troubleshooting.md#troubleshooting-targets
