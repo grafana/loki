@@ -149,6 +149,11 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryra
 
 	intervals := splitByTime(lokiRequest, interval)
 
+	// no interval should not be processed by the frontend.
+	if len(intervals) == 0 {
+		return h.next.Do(ctx, r)
+	}
+
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		sp.LogFields(otlog.Int("n_intervals", len(intervals)))
 
