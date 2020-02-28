@@ -22,11 +22,11 @@ const userID = "1"
 func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
 	const chunkLen = 13 * 3600 // in seconds
 
-	// put 100 chunks from 0 to 99
+	// put a set of chunks, larger than background batch size, with varying timestamps and values
 	keys := []string{}
 	bufs := [][]byte{}
 	chunks := []chunk.Chunk{}
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 111; i++ {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
 		promChunk := prom_chunk.New()
 		nc, err := promChunk.Add(model.SamplePair{
@@ -119,7 +119,7 @@ func (a byExternalKey) Less(i, j int) bool { return a[i].ExternalKey() < a[j].Ex
 
 func testCacheMiss(t *testing.T, cache cache.Cache) {
 	for i := 0; i < 100; i++ {
-		key := strconv.Itoa(rand.Int())
+		key := strconv.Itoa(rand.Int()) // arbitrary key which should fail: no chunk key is a single integer
 		found, bufs, missing := cache.Fetch(context.Background(), []string{key})
 		require.Empty(t, found)
 		require.Empty(t, bufs)
