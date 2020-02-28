@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	errEndBeforeStart = errors.New("end timestamp must not be before start time")
+	errEndBeforeStart = errors.New("end timestamp must not be before or equal to start time")
 	errNegativeStep   = errors.New("zero or negative query resolution step widths are not accepted. Try a positive integer")
 	errStepTooSmall   = errors.New("exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
 )
@@ -255,7 +255,7 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 		return nil, err
 	}
 
-	if result.End.Before(result.Start) {
+	if result.End.Before(result.Start) || result.Start.Equal(result.End) {
 		return nil, errEndBeforeStart
 	}
 
