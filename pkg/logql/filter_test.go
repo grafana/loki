@@ -25,6 +25,8 @@ func Test_SimplifiedRegex(t *testing.T) {
 		{".*foo.*", "foobar"},
 		{"(.*)(foo).*", "foobar"},
 		{".*foo.*|bar", "buzz"},
+		{"(?:.*foo.*|bar)", "buzz"},      // This construct is similar to (...), but won't create a capture group.
+		{"(?P<foo>.*foo.*|bar)", "buzz"}, // named capture group
 		{".*foo|bar", "foo,bar"},
 		{".*foo.*|bar|buzz", "buzz"},     // (?-s:.)*foo(?-s:.)*|b(?:ar|uzz)
 		{".*foo.*|bar|uzz", "buzz"},      // (?-s:.)*foo(?-s:.)*|bar|uzz
