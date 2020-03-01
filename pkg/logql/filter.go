@@ -25,10 +25,7 @@ func (n notFilter) Filter(line []byte) bool {
 func newNotFilter(f LineFilter) LineFilter {
 	// not(a|b) = not(a) and not(b)
 	if or, ok := f.(orFilter); ok {
-		return andFilter{
-			left:  notFilter{or.left},
-			right: notFilter{or.right},
-		}
+		return newAndFilter(newNotFilter(or.left), newNotFilter(or.right))
 	}
 	return notFilter{LineFilter: f}
 }
@@ -36,6 +33,13 @@ func newNotFilter(f LineFilter) LineFilter {
 type andFilter struct {
 	left  LineFilter
 	right LineFilter
+}
+
+func newAndFilter(l LineFilter, r LineFilter) LineFilter {
+	return andFilter{
+		left:  l,
+		right: r,
+	}
 }
 
 func (a andFilter) Filter(line []byte) bool {
@@ -47,12 +51,31 @@ type orFilter struct {
 	right LineFilter
 }
 
+func newOrFilter(l LineFilter, r LineFilter) LineFilter {
+	return orFilter{
+		left:  l,
+		right: r,
+	}
+}
+
 func (a orFilter) Filter(line []byte) bool {
 	return a.left.Filter(line) || a.right.Filter(line)
 }
 
 type regexpFilter struct {
 	*regexp.Regexp
+}
+
+func newRegexpFilter(re string, match bool) (LineFilter, error) {
+	reg, err := regexp.Compile(re)
+	if err != nil {
+		return nil, err
+	}
+	f := regexpFilter{reg}
+	if match {
+		return f, nil
+	}
+	return newNotFilter(f), nil
 }
 
 func (r regexpFilter) Filter(line []byte) bool {
@@ -68,9 +91,9 @@ func (l literalFilter) Filter(line []byte) bool {
 func newFilter(match string, mt labels.MatchType) (LineFilter, error) {
 	switch mt {
 	case labels.MatchRegexp:
-		return ParseRegex(match, true)
+		return parseRegexpFilter(match, true)
 	case labels.MatchNotRegexp:
-		return ParseRegex(match, false)
+		return parseRegexpFilter(match, false)
 	case labels.MatchEqual:
 		return literalFilter(match), nil
 	case labels.MatchNotEqual:
@@ -81,7 +104,7 @@ func newFilter(match string, mt labels.MatchType) (LineFilter, error) {
 	}
 }
 
-func ParseRegex(re string, match bool) (LineFilter, error) {
+func parseRegexpFilter(re string, match bool) (LineFilter, error) {
 	reg, err := syntax.Parse(re, syntax.Perl)
 	if err != nil {
 		return nil, err
@@ -91,7 +114,7 @@ func ParseRegex(re string, match bool) (LineFilter, error) {
 	// attempt to improve regex with tricks
 	f, ok := simplify(reg)
 	if !ok {
-		return defaultRegex(re, match)
+		return newRegexpFilter(re, match)
 	}
 	if match {
 		return f, nil
@@ -135,10 +158,7 @@ func simplifyAlternate(reg *syntax.Regexp) (LineFilter, bool) {
 		if !ok {
 			return nil, false
 		}
-		f = orFilter{
-			left:  f,
-			right: f2,
-		}
+		f = newOrFilter(f, f2)
 	}
 	return f, true
 }
@@ -150,28 +170,32 @@ func simplifyConcat(reg *syntax.Regexp) (LineFilter, bool) {
 	}
 	// Concat operations are either literal and star such as foo.* .*foo.* .*foo
 	// which is a literalFilter.
-	// Or a literal and alternates operation, which represent a multiplication of alternate.
+	// Or a literal and alternates operation, which represent a multiplication of alternates.
 	// For instance foo|bar|b|buzz|zz is expressed as foo|b(ar|(?:)|uzz)|zz, (?:) being an OpEmptyMatch.
 	// Anything else is rejected.
-	var literal []byte
+	var rootLiteral []byte
 	var filters []LineFilter
 	for _, sub := range reg.Sub {
 		if sub.Op == syntax.OpLiteral {
 			// only one literal
-			if literal != nil {
+			if rootLiteral != nil {
 				return nil, false
 			}
-			literal = []byte(string(sub.Rune))
+			rootLiteral = []byte(string(sub.Rune))
 			continue
 		}
-		if sub.Op == syntax.OpAlternate && literal != nil {
+		if sub.Op == syntax.OpAlternate && rootLiteral != nil {
 			for _, alt := range sub.Sub {
 				switch alt.Op {
 				case syntax.OpEmptyMatch:
-					filters = append(filters, literalFilter(literal))
+					filters = append(filters, literalFilter(rootLiteral))
 				case syntax.OpLiteral:
-					altsub := []byte(string(alt.Rune))
-					filters = append(filters, literalFilter(append(literal, altsub...)))
+					// concat the root literal with the alternate one.
+					altBytes := []byte(string(alt.Rune))
+					altLiteral := make([]byte, 0, len(rootLiteral)+len(altBytes))
+					altLiteral = append(altLiteral, rootLiteral...)
+					altLiteral = append(altLiteral, altBytes...)
+					filters = append(filters, literalFilter(altLiteral))
 				case syntax.OpConcat:
 					f, ok := simplifyConcat(alt)
 					if !ok {
@@ -182,7 +206,7 @@ func simplifyConcat(reg *syntax.Regexp) (LineFilter, bool) {
 					if alt.Sub[0].Op != syntax.OpAnyCharNotNL {
 						return nil, false
 					}
-					filters = append(filters, literalFilter(literal))
+					filters = append(filters, literalFilter(rootLiteral))
 				default:
 					return nil, false
 				}
@@ -195,7 +219,7 @@ func simplifyConcat(reg *syntax.Regexp) (LineFilter, bool) {
 	}
 
 	// we can simplify only if we found a literal.
-	if literal == nil {
+	if rootLiteral == nil {
 		return nil, false
 	}
 
@@ -205,30 +229,12 @@ func simplifyConcat(reg *syntax.Regexp) (LineFilter, bool) {
 			return nil, false
 		}
 		// build or filter chain
-		f := orFilter{
-			left:  filters[0],
-			right: filters[1],
-		}
+		f := newOrFilter(filters[0], filters[1])
 		for i := 2; i < len(filters); i++ {
-			f = orFilter{
-				left:  f,
-				right: filters[i],
-			}
+			f = newOrFilter(f, filters[i])
 		}
 		return f, true
 	}
 
-	return literalFilter(literal), true
-}
-
-func defaultRegex(re string, match bool) (LineFilter, error) {
-	reg, err := regexp.Compile(re)
-	if err != nil {
-		return nil, err
-	}
-	f := regexpFilter{reg}
-	if match {
-		return f, nil
-	}
-	return newNotFilter(f), nil
+	return literalFilter(rootLiteral), true
 }

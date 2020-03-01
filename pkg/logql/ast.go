@@ -131,10 +131,7 @@ func (e *filterExpr) Filter() (LineFilter, error) {
 		if err != nil {
 			return nil, err
 		}
-		return andFilter{
-			left:  nextFilter,
-			right: f,
-		}, nil
+		return newAndFilter(nextFilter, f), nil
 	}
 	return f, nil
 }

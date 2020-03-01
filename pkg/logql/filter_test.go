@@ -2,65 +2,70 @@ package logql
 
 import (
 	"fmt"
-	"regexp/syntax"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 func Test_SimplifiedRegex(t *testing.T) {
+	fixtures := []string{
+		"foo", "foobar", "bar", "foobuzz", "buzz", "f", "  ", "fba", "foofoofoo", "b", "foob", "bfoo",
+	}
 	for _, test := range []struct {
-		re   string
-		line string
+		re         string
+		simplified bool
+		expected   LineFilter
+		match      bool
 	}{
-		{"foo", "foo"}, // todo add expected filter.
-		{"(foo)", "foobar"},
-		{"(foo|ba)", "foobar"},
-		{"(foo.*|.*ba)", "foobar"},
-		{"(foo.*|.*ba)", "fo"},
-		{"(foo|ba|ar)", "bar"},
-		{"(foo|(ba|ar))", "bar"},
-		{"foo.*", "foobar"},
-		{".*foo", "foobar"},
-		{".*foo.*", "foobar"},
-		{"(.*)(foo).*", "foobar"},
-		{".*foo.*|bar", "buzz"},
-		{"(?:.*foo.*|bar)", "buzz"},      // This construct is similar to (...), but won't create a capture group.
-		{"(?P<foo>.*foo.*|bar)", "buzz"}, // named capture group
-		{".*foo|bar", "foo,bar"},
-		{".*foo.*|bar|buzz", "buzz"},     // (?-s:.)*foo(?-s:.)*|b(?:ar|uzz)
-		{".*foo.*|bar|uzz", "buzz"},      // (?-s:.)*foo(?-s:.)*|bar|uzz
-		{"foo|bar|b|buzz|zz", "buzz"},    // foo|b(?:ar|(?:)|uzz)|zz
-		{"f|foo|foobar", "f"},            // f(?:(?:)|oo(?:(?:)|bar))
-		{"f.*|foobar.*|.*buzz", "bf"},    // f(?:(?-s:.)*|oobar(?-s:.)*)|(?-s:.)*buzz
-		{"((f.*)|foobar.*)|.*buzz", "f"}, // ((f(?-s:.)*)|foobar(?-s:.)*)|(?-s:.)*buzz
+		{"foo", true, literalFilter([]byte("foo")), true},
+		{"not", true, newNotFilter(literalFilter([]byte("not"))), false},
+		{"(foo)", true, literalFilter([]byte("foo")), true},
+		{"(foo|ba)", true, newOrFilter(literalFilter([]byte("foo")), literalFilter([]byte("ba"))), true},
+		{"(foo|ba|ar)", true, newOrFilter(literalFilter([]byte("foo")), newOrFilter(literalFilter([]byte("ba")), literalFilter([]byte("ar")))), true},
+		{"(foo|(ba|ar))", true, newOrFilter(literalFilter([]byte("foo")), newOrFilter(literalFilter([]byte("ba")), literalFilter([]byte("ar")))), true},
+		{"foo.*", true, literalFilter([]byte("foo")), true},
+		{".*foo", true, literalFilter([]byte("foo")), true},
+		{".*foo.*", true, literalFilter([]byte("foo")), true},
+		{"(.*)(foo).*", true, literalFilter([]byte("foo")), true},
+		{"(foo.*|.*ba)", true, newOrFilter(literalFilter([]byte("foo")), literalFilter([]byte("ba"))), true},
+		{"(foo.*|.*bar.*)", true, newNotFilter(newOrFilter(literalFilter([]byte("foo")), literalFilter([]byte("bar")))), false},
+		{".*foo.*|bar", true, newNotFilter(newOrFilter(literalFilter([]byte("foo")), literalFilter([]byte("bar")))), false},
+		{".*foo|bar", true, newNotFilter(newOrFilter(literalFilter([]byte("foo")), literalFilter([]byte("bar")))), false},
+		// This construct is similar to (...), but won't create a capture group.
+		{"(?:.*foo.*|bar)", true, newOrFilter(literalFilter([]byte("foo")), literalFilter([]byte("bar"))), true},
+		// named capture group
+		{"(?P<foo>.*foo.*|bar)", true, newOrFilter(literalFilter([]byte("foo")), literalFilter([]byte("bar"))), true},
+		// parsed as (?-s:.)*foo(?-s:.)*|b(?:ar|uzz)
+		{".*foo.*|bar|buzz", true, newOrFilter(literalFilter([]byte("foo")), newOrFilter(literalFilter([]byte("bar")), literalFilter([]byte("buzz")))), true},
+		// parsed as (?-s:.)*foo(?-s:.)*|bar|uzz
+		{".*foo.*|bar|uzz", true, newOrFilter(literalFilter([]byte("foo")), newOrFilter(literalFilter([]byte("bar")), literalFilter([]byte("uzz")))), true},
+		// {"foo|bar|b|buzz|zz", "buzz"},    // foo|b(?:ar|(?:)|uzz)|zz
+		// {"f|foo|foobar", "f"},            // f(?:(?:)|oo(?:(?:)|bar))
+		// {"f.*|foobar.*|.*buzz", "bf"},    // f(?:(?-s:.)*|oobar(?-s:.)*)|(?-s:.)*buzz
+		// {"((f.*)|foobar.*)|.*buzz", "f"}, // ((f(?-s:.)*)|foobar(?-s:.)*)|(?-s:.)*buzz
 	} {
 		t.Run(test.re, func(t *testing.T) {
-			assertRegex(t, test.re, test.line, true)
-			assertRegex(t, test.re, test.line, false)
+			d, err := newRegexpFilter(test.re, test.match)
+			require.NoError(t, err, "invalid regex")
+
+			f, err := parseRegexpFilter(test.re, test.match)
+			require.NoError(t, err)
+
+			// if we don't expect simplification then the filter should be the same as the default one.
+			if !test.simplified {
+				require.Equal(t, d, f)
+				return
+			}
+			// otherwise ensure we have different filter
+			require.NotEqual(t, f, d)
+			require.Equal(t, test.expected, f)
+			// tests all lines with both filter, they should have the same result.
+			for _, line := range fixtures {
+				l := []byte(line)
+				require.Equal(t, d.Filter(l), f.Filter(l), "regexp %s failed line: %s", test.re, line)
+			}
 		})
 	}
-}
-
-func assertRegex(t *testing.T, re, line string, match bool) {
-	t.Helper()
-	f, err := ParseRegex(re, match)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r, err := syntax.Parse(re, syntax.Perl)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Log(r)
-	f2, err := defaultRegex(re, match)
-	if err != nil {
-		t.Fatal(err)
-	}
-	l := []byte(line)
-	// ensure we have different filter but same result
-	require.NotEqual(t, f, f2)
-	require.Equal(t, f2.Filter(l), f.Filter(l))
 }
 
 func Benchmark_Regex(b *testing.B) {
@@ -85,11 +90,11 @@ func Benchmark_Regex(b *testing.B) {
 
 func benchmarkRegex(b *testing.B, re, line string, match bool) {
 	l := []byte(line)
-	d, err := defaultRegex(re, match)
+	d, err := newRegexpFilter(re, match)
 	if err != nil {
 		b.Fatal(err)
 	}
-	s, err := ParseRegex(re, match)
+	s, err := parseRegexpFilter(re, match)
 	if err != nil {
 		b.Fatal(err)
 	}
