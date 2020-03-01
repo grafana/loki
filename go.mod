@@ -45,7 +45,7 @@ require (
 	github.com/prometheus/prometheus v1.8.2-0.20200107122003-4708915ac6ef
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd
-	github.com/stretchr/testify v1.4.0
+	github.com/stretchr/testify v1.5.1
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 	github.com/uber/jaeger-client-go v2.20.1+incompatible
 	github.com/ugorji/go v1.1.7 // indirect
