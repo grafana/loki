@@ -59,7 +59,7 @@ func (v Validator) ValidateLabels(userID string, labels string) error {
 		// an orthogonal concept (we need not use ValidateLabels in this context)
 		// but the upstream cortex_validation pkg uses it, so we keep this
 		// for parity.
-		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: %v", err)
 	}
 	return cortex_validation.ValidateLabels(v, userID, ls)
 }
