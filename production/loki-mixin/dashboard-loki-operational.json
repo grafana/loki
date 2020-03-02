@@ -5502,10 +5502,6 @@
     "templating": {
       "list": [
         {
-          "current": {
-            "text": "prometheus",
-            "value": "prometheus"
-          },
           "hide": 0,
           "includeAll": false,
           "label": null,
@@ -5519,10 +5515,6 @@
           "type": "datasource"
         },
         {
-          "current": {
-            "text": "Loki-ops",
-            "value": "Loki-ops"
-          },
           "hide": 0,
           "includeAll": false,
           "label": null,
@@ -5536,10 +5528,6 @@
           "type": "datasource"
         },
         {
-          "current": {
-            "text": "Loki-Prometheus",
-            "value": "Loki-Prometheus"
-          },
           "hide": 0,
           "includeAll": false,
           "label": null,
@@ -5554,11 +5542,6 @@
         },
         {
           "allValue": null,
-          "current": {
-            "tags": [],
-            "text": "ops-tools1",
-            "value": "ops-tools1"
-          },
           "datasource": "$datasource",
           "definition": "label_values(kube_pod_container_info{image=~\".*loki.*\"}, cluster)",
           "hide": 0,
@@ -5567,61 +5550,6 @@
           "multi": false,
           "name": "cluster",
           "options": [
-            {
-              "selected": false,
-              "text": "eks-autodesk-us-east-1",
-              "value": "eks-autodesk-us-east-1"
-            },
-            {
-              "selected": false,
-              "text": "eu-west2",
-              "value": "eu-west2"
-            },
-            {
-              "selected": false,
-              "text": "hg-free-us-central1",
-              "value": "hg-free-us-central1"
-            },
-            {
-              "selected": false,
-              "text": "hm-us-east2",
-              "value": "hm-us-east2"
-            },
-            {
-              "selected": false,
-              "text": "hm-us-west2",
-              "value": "hm-us-west2"
-            },
-            {
-              "selected": true,
-              "text": "ops-tools1",
-              "value": "ops-tools1"
-            },
-            {
-              "selected": false,
-              "text": "qa-us-central1",
-              "value": "qa-us-central1"
-            },
-            {
-              "selected": false,
-              "text": "us-central1",
-              "value": "us-central1"
-            },
-            {
-              "selected": false,
-              "text": "us-east2",
-              "value": "us-east2"
-            },
-            {
-              "selected": false,
-              "text": "us-west1",
-              "value": "us-west1"
-            },
-            {
-              "selected": false,
-              "text": "worldping-us-central2",
-              "value": "worldping-us-central2"
-            }
           ],
           "query": "label_values(kube_pod_container_info{image=~\".*loki.*\"}, cluster)",
           "refresh": 0,
@@ -5636,10 +5564,6 @@
         },
         {
           "allValue": null,
-          "current": {
-            "text": "tempo-dev",
-            "value": "tempo-dev"
-          },
           "datasource": "$datasource",
           "definition": "label_values(kube_pod_container_info{image=~\".*loki.*\", cluster=\"$cluster\"}, namespace)",
           "hide": 0,
