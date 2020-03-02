@@ -16,7 +16,7 @@
   "gnetId": null,
   "graphTooltip": 1,
   "id": 8,
-  "iteration": 1583182706525,
+  "iteration": 1583185057230,
   "links": [],
   "panels": [
     {
@@ -850,10 +850,6 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "text": "Loki-ops",
-          "value": "Loki-ops"
-        },
         "hide": 0,
         "includeAll": false,
         "label": null,
@@ -867,10 +863,6 @@
         "type": "datasource"
       },
       {
-        "current": {
-          "text": "Loki-Prometheus",
-          "value": "Loki-Prometheus"
-        },
         "hide": 0,
         "includeAll": false,
         "label": null,
@@ -884,10 +876,6 @@
         "type": "datasource"
       },
       {
-        "current": {
-          "text": "prometheus",
-          "value": "prometheus"
-        },
         "hide": 0,
         "includeAll": false,
         "label": null,
@@ -902,11 +890,7 @@
       },
       {
         "allValue": null,
-        "current": {
-          "text": "ops-tools1",
-          "value": "ops-tools1"
-        },
-        "datasource": "ops-tools1",
+        "datasource": "$metrics",
         "definition": "label_values(kube_pod_container_info, cluster)",
         "hide": 0,
         "includeAll": false,
@@ -914,7 +898,7 @@
         "multi": false,
         "name": "cluster",
         "options": [],
-        "query": "label_values(kube_pod_container_info, cluster)",
+        "query": "",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -927,11 +911,7 @@
       },
       {
         "allValue": null,
-        "current": {
-          "text": "tempo-dev",
-          "value": "tempo-dev"
-        },
-        "datasource": "ops-tools1",
+        "datasource": "$metrics",
         "definition": "label_values(kube_pod_container_info{cluster=\"$cluster\"}, namespace)",
         "hide": 0,
         "includeAll": false,
@@ -939,7 +919,7 @@
         "multi": false,
         "name": "namespace",
         "options": [],
-        "query": "label_values(kube_pod_container_info{cluster=\"$cluster\"}, namespace)",
+        "query": "",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -952,11 +932,7 @@
       },
       {
         "allValue": ".*",
-        "current": {
-          "text": "distributor",
-          "value": "distributor"
-        },
-        "datasource": "ops-tools1",
+        "datasource": "$metrics",
         "definition": "label_values(kube_deployment_created{cluster=\"$cluster\", namespace=\"$namespace\"}, deployment)",
         "hide": 0,
         "includeAll": false,
@@ -964,7 +940,7 @@
         "multi": false,
         "name": "deployment",
         "options": [],
-        "query": "label_values(kube_deployment_created{cluster=\"$cluster\", namespace=\"$namespace\"}, deployment)",
+        "query": "",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -977,11 +953,7 @@
       },
       {
         "allValue": ".*",
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        },
-        "datasource": "ops-tools1",
+        "datasource": "$metrics",
         "definition": "label_values(kube_pod_container_info{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\"}, pod)",
         "hide": 0,
         "includeAll": true,
@@ -989,7 +961,7 @@
         "multi": false,
         "name": "pod",
         "options": [],
-        "query": "label_values(kube_pod_container_info{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\"}, pod)",
+        "query": "",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -1002,11 +974,7 @@
       },
       {
         "allValue": ".*",
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        },
-        "datasource": "ops-tools1",
+        "datasource": "$metrics",
         "definition": "label_values(kube_pod_container_info{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$pod\", pod=~\"$deployment.*\"}, container)",
         "hide": 0,
         "includeAll": true,
@@ -1014,7 +982,7 @@
         "multi": false,
         "name": "container",
         "options": [],
-        "query": "label_values(kube_pod_container_info{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$pod\", pod=~\"$deployment.*\"}, container)",
+        "query": "",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -1027,12 +995,6 @@
       },
       {
         "allValue": ".*",
-        "current": {
-          "text": "All",
-          "value": [
-            "$__all"
-          ]
-        },
         "hide": 0,
         "includeAll": true,
         "label": null,
@@ -1070,10 +1032,6 @@
         "type": "custom"
       },
       {
-        "current": {
-          "text": "",
-          "value": ""
-        },
         "hide": 0,
         "label": "LogQL Filter",
         "name": "filter",
