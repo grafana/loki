@@ -179,7 +179,7 @@ func (e *filterExpr) logQLExpr() {}
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
-		panic(err)
+		panic(newParseError(err.Error(), 0, 0))
 	}
 	return m
 }

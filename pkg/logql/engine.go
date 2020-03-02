@@ -126,11 +126,14 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	statResult = stats.Snapshot(ctx, time.Since(start))
 	statResult.Log(level.Debug(log))
 
-	status := "success"
+	status := "200"
 	if err != nil {
-		status = "error"
+		status = "500"
+		if IsParseError(err) {
+			status = "400"
+		}
 	}
-	RecordMetrics(status, q.String(), rangeType, statResult)
+	RecordMetrics(ctx, q, status, statResult)
 
 	return Result{
 		Data:       data,
@@ -178,7 +181,7 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 	ctx, cancel := context.WithTimeout(ctx, ng.timeout)
 	defer cancel()
 
-	qs := q.String()
+	qs := q.Query()
 
 	expr, err := ParseExpr(qs)
 	if err != nil {

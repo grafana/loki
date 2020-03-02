@@ -139,6 +139,53 @@ func TestPipelineWithMissingKey_Metrics(t *testing.T) {
 	}
 }
 
+var testMetricWithDropYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      app: app
+      drop: drop
+- match:
+    selector: '{drop="true"}'
+    action: drop
+- metrics:
+    loki_count:
+      type: Counter
+      source: app
+      description: "should only inc on non dropped labels"
+      config:
+        action: inc
+`
+
+const expectedDropMetrics = `# HELP promtail_custom_loki_count should only inc on non dropped labels
+# TYPE promtail_custom_loki_count counter
+promtail_custom_loki_count 1.0
+`
+
+func TestMetricsWithDropInPipeline(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	pl, err := NewPipeline(util.Logger, loadConfig(testMetricWithDropYaml), nil, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	droppingLabels := model.LabelSet{
+		"drop": "true",
+	}
+
+	ts := time.Now()
+	extracted := map[string]interface{}{}
+	entry := testMetricLogLine1
+	pl.Process(lbls, extracted, &ts, &entry)
+	entry = testMetricLogLine2
+	pl.Process(droppingLabels, extracted, &ts, &entry)
+
+	if err := testutil.GatherAndCompare(registry,
+		strings.NewReader(expectedDropMetrics)); err != nil {
+		t.Fatalf("missmatch metrics: %v", err)
+	}
+}
+
 var metricTestInvalidIdle = "10f"
 
 func Test(t *testing.T) {

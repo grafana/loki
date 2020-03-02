@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -889,6 +890,38 @@ func TestParseMatchers(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ParseMatchers() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsParseError(t *testing.T) {
+
+	tests := []struct {
+		name  string
+		errFn func() error
+		want  bool
+	}{
+		{
+			"bad query",
+			func() error {
+				_, err := ParseExpr(`{foo`)
+				return err
+			},
+			true,
+		},
+		{
+			"other error",
+			func() error {
+				return errors.New("")
+			},
+			false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsParseError(tt.errFn()); got != tt.want {
+				t.Errorf("IsParseError() = %v, want %v", got, tt.want)
 			}
 		})
 	}

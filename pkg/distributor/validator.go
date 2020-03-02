@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 type Validator struct {
@@ -38,6 +39,7 @@ func (v Validator) ValidateEntry(userID string, entry logproto.Entry) error {
 		// an orthogonal concept (we need not use ValidateLabels in this context)
 		// but the upstream cortex_validation pkg uses it, so we keep this
 		// for parity.
+		validation.DiscardedSamples.WithLabelValues(validation.LineTooLong, userID).Inc()
 		return httpgrpc.Errorf(
 			http.StatusBadRequest,
 			"max line size (%s) exceeded while adding (%s) size line",

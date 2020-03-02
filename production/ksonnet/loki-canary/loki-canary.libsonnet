@@ -13,7 +13,7 @@ k + config {
   loki_canary_container::
     container.new('loki-canary', $._images.loki_canary) +
     $.util.resourcesRequests('10m', '20Mi') +
-    container.withPorts($.core.v1.containerPort.new('http-metrics', 80)) +
+    container.withPorts($.core.v1.containerPort.new(name='http-metrics', port=80)) +
     container.withArgsMixin($.util.mapToFlags($.loki_canary_args)) +
     container.withEnv([
       container.envType.fromFieldPath('HOSTNAME', 'spec.nodeName'),
