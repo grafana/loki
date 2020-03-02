@@ -327,7 +327,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "memory",
+      "title": "working set",
       "tooltip": {
         "shared": true,
         "sort": 0,
