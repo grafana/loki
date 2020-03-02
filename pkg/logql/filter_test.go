@@ -21,10 +21,10 @@ func Test_SimplifiedRegex(t *testing.T) {
 		{"not", true, newNotFilter(literalFilter([]byte("not"))), false},
 		{"(foo)", true, literalFilter([]byte("foo")), true},
 		{"(foo|ba)", true, newOrFilter(literalFilter([]byte("foo")), literalFilter([]byte("ba"))), true},
-		{"(foo|ba|ar)", true, newOrFilter(literalFilter([]byte("foo")), newOrFilter(literalFilter([]byte("ba")), literalFilter([]byte("ar")))), true},
+		{"(foo|ba|ar)", true, newOrFilter(newOrFilter(literalFilter([]byte("foo")), literalFilter([]byte("ba"))), literalFilter([]byte("ar"))), true},
 		{"(foo|(ba|ar))", true, newOrFilter(literalFilter([]byte("foo")), newOrFilter(literalFilter([]byte("ba")), literalFilter([]byte("ar")))), true},
 		{"foo.*", true, literalFilter([]byte("foo")), true},
-		{".*foo", true, literalFilter([]byte("foo")), true},
+		{".*foo", true, newNotFilter(literalFilter([]byte("foo"))), false},
 		{".*foo.*", true, literalFilter([]byte("foo")), true},
 		{"(.*)(foo).*", true, literalFilter([]byte("foo")), true},
 		{"(foo.*|.*ba)", true, newOrFilter(literalFilter([]byte("foo")), literalFilter([]byte("ba"))), true},
@@ -38,11 +38,15 @@ func Test_SimplifiedRegex(t *testing.T) {
 		// parsed as (?-s:.)*foo(?-s:.)*|b(?:ar|uzz)
 		{".*foo.*|bar|buzz", true, newOrFilter(literalFilter([]byte("foo")), newOrFilter(literalFilter([]byte("bar")), literalFilter([]byte("buzz")))), true},
 		// parsed as (?-s:.)*foo(?-s:.)*|bar|uzz
-		{".*foo.*|bar|uzz", true, newOrFilter(literalFilter([]byte("foo")), newOrFilter(literalFilter([]byte("bar")), literalFilter([]byte("uzz")))), true},
-		// {"foo|bar|b|buzz|zz", "buzz"},    // foo|b(?:ar|(?:)|uzz)|zz
-		// {"f|foo|foobar", "f"},            // f(?:(?:)|oo(?:(?:)|bar))
-		// {"f.*|foobar.*|.*buzz", "bf"},    // f(?:(?-s:.)*|oobar(?-s:.)*)|(?-s:.)*buzz
-		// {"((f.*)|foobar.*)|.*buzz", "f"}, // ((f(?-s:.)*)|foobar(?-s:.)*)|(?-s:.)*buzz
+		{".*foo.*|bar|uzz", true, newOrFilter(newOrFilter(literalFilter([]byte("foo")), literalFilter([]byte("bar"))), literalFilter([]byte("uzz"))), true},
+		// parsed as foo|b(?:ar|(?:)|uzz)|zz
+		{"foo|bar|b|buzz|zz", true, newOrFilter(newOrFilter(literalFilter([]byte("foo")), newOrFilter(newOrFilter(literalFilter([]byte("bar")), literalFilter([]byte("b"))), literalFilter([]byte("buzz")))), literalFilter([]byte("zz"))), true},
+		// parsed as f(?:(?:)|oo(?:(?:)|bar))
+		{"f|foo|foobar", true, newOrFilter(literalFilter([]byte("f")), newOrFilter(literalFilter([]byte("foo")), literalFilter([]byte("foobar")))), true},
+		// parsed as f(?:(?-s:.)*|oobar(?-s:.)*)|(?-s:.)*buzz
+		{"f.*|foobar.*|.*buzz", true, newOrFilter(newOrFilter(literalFilter([]byte("f")), literalFilter([]byte("foobar"))), literalFilter([]byte("buzz"))), true},
+		// parsed as ((f(?-s:.)*)|foobar(?-s:.)*)|(?-s:.)*buzz
+		{"((f.*)|foobar.*)|.*buzz", true, newOrFilter(newOrFilter(literalFilter([]byte("f")), literalFilter([]byte("foobar"))), literalFilter([]byte("buzz"))), true},
 	} {
 		t.Run(test.re, func(t *testing.T) {
 			d, err := newRegexpFilter(test.re, test.match)
@@ -82,6 +86,7 @@ func Benchmark_Regex(b *testing.B) {
 		{"foo|(bar|buzz)"},
 		{"foo|bar.*|buzz"},
 		{".*foo.*|bar|uzz"},
+		{"((f.*)|foobar.*)|.*buzz"},
 	} {
 		benchmarkRegex(b, test.re, logline, true)
 		benchmarkRegex(b, test.re, logline, false)

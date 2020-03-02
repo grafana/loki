@@ -88,6 +88,10 @@ func (l literalFilter) Filter(line []byte) bool {
 	return bytes.Contains(line, l)
 }
 
+func (l literalFilter) String() string {
+	return string(l)
+}
+
 func newFilter(match string, mt labels.MatchType) (LineFilter, error) {
 	switch mt {
 	case labels.MatchRegexp:
@@ -127,7 +131,7 @@ func simplify(reg *syntax.Regexp) (LineFilter, bool) {
 	case syntax.OpAlternate:
 		return simplifyAlternate(reg)
 	case syntax.OpConcat:
-		return simplifyConcat(reg)
+		return simplifyConcat(reg, nil)
 	case syntax.OpCapture:
 		clearCapture(reg)
 		return simplify(reg)
@@ -163,7 +167,7 @@ func simplifyAlternate(reg *syntax.Regexp) (LineFilter, bool) {
 	return f, true
 }
 
-func simplifyConcat(reg *syntax.Regexp) (LineFilter, bool) {
+func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (LineFilter, bool) {
 	clearCapture(reg.Sub...)
 	if len(reg.Sub) > 3 {
 		return nil, false
@@ -173,31 +177,32 @@ func simplifyConcat(reg *syntax.Regexp) (LineFilter, bool) {
 	// Or a literal and alternates operation, which represent a multiplication of alternates.
 	// For instance foo|bar|b|buzz|zz is expressed as foo|b(ar|(?:)|uzz)|zz, (?:) being an OpEmptyMatch.
 	// Anything else is rejected.
-	var rootLiteral []byte
 	var filters []LineFilter
+	literals := 0
 	for _, sub := range reg.Sub {
 		if sub.Op == syntax.OpLiteral {
 			// only one literal
-			if rootLiteral != nil {
+			if literals != 0 {
 				return nil, false
 			}
-			rootLiteral = []byte(string(sub.Rune))
+			literals++
+			baseLiteral = append(baseLiteral, []byte(string(sub.Rune))...)
 			continue
 		}
-		if sub.Op == syntax.OpAlternate && rootLiteral != nil {
+		if sub.Op == syntax.OpAlternate && baseLiteral != nil {
 			for _, alt := range sub.Sub {
 				switch alt.Op {
 				case syntax.OpEmptyMatch:
-					filters = append(filters, literalFilter(rootLiteral))
+					filters = append(filters, literalFilter(baseLiteral))
 				case syntax.OpLiteral:
 					// concat the root literal with the alternate one.
 					altBytes := []byte(string(alt.Rune))
-					altLiteral := make([]byte, 0, len(rootLiteral)+len(altBytes))
-					altLiteral = append(altLiteral, rootLiteral...)
+					altLiteral := make([]byte, 0, len(baseLiteral)+len(altBytes))
+					altLiteral = append(altLiteral, baseLiteral...)
 					altLiteral = append(altLiteral, altBytes...)
 					filters = append(filters, literalFilter(altLiteral))
 				case syntax.OpConcat:
-					f, ok := simplifyConcat(alt)
+					f, ok := simplifyConcat(alt, baseLiteral)
 					if !ok {
 						return nil, false
 					}
@@ -206,7 +211,7 @@ func simplifyConcat(reg *syntax.Regexp) (LineFilter, bool) {
 					if alt.Sub[0].Op != syntax.OpAnyCharNotNL {
 						return nil, false
 					}
-					filters = append(filters, literalFilter(rootLiteral))
+					filters = append(filters, literalFilter(baseLiteral))
 				default:
 					return nil, false
 				}
@@ -219,7 +224,7 @@ func simplifyConcat(reg *syntax.Regexp) (LineFilter, bool) {
 	}
 
 	// we can simplify only if we found a literal.
-	if rootLiteral == nil {
+	if baseLiteral == nil {
 		return nil, false
 	}
 
@@ -236,5 +241,5 @@ func simplifyConcat(reg *syntax.Regexp) (LineFilter, bool) {
 		return f, true
 	}
 
-	return literalFilter(rootLiteral), true
+	return literalFilter(baseLiteral), true
 }
