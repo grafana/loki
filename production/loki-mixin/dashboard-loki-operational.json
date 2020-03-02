@@ -5552,7 +5552,7 @@
           "options": [
           ],
           "query": "label_values(kube_pod_container_info{image=~\".*loki.*\"}, cluster)",
-          "refresh": 0,
+          "refresh": 1,
           "regex": "",
           "skipUrlSync": false,
           "sort": 0,
@@ -5589,7 +5589,7 @@
             }
           ],
           "query": "label_values(kube_pod_container_info{image=~\".*loki.*\", cluster=\"$cluster\"}, namespace)",
-          "refresh": 0,
+          "refresh": 1,
           "regex": "",
           "skipUrlSync": false,
           "sort": 0,
