@@ -206,6 +206,20 @@ func TestTemplateStage_Process(t *testing.T) {
 				"message": "warn for app loki in module <no value>",
 			},
 		},
+		"template with multiple keys with nil value in extracted key": {
+			TemplateConfig{
+				Source:   "level",
+				Template: "{{ Replace .Value \"Warning\" \"warn\" 1 }}",
+			},
+			map[string]interface{}{
+				"level":   "Warning",
+				"testval": nil,
+			},
+			map[string]interface{}{
+				"level":   "warn",
+				"testval": nil,
+			},
+		},
 		"ToLower": {
 			TemplateConfig{
 				Source:   "testval",

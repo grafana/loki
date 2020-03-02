@@ -90,7 +90,7 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 			if Debug {
 				level.Debug(o.logger).Log("msg", "extracted template could not be converted to a string", "err", err, "type", reflect.TypeOf(v))
 			}
-			return
+			continue
 		}
 		td[k] = s
 		if k == o.cfgs.Source {
