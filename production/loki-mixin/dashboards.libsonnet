@@ -3,6 +3,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
 {
   dashboards+: {
+    'loki-logs.json': import './dashboard-loki-logs.json',
+    'loki-operational.json': import './dashboard-loki-operational.json',
     'loki-writes.json':
       g.dashboard('Loki / Writes')
       .addMultiTemplate('cluster', 'kube_pod_container_info{image=~".*loki.*"}', 'cluster')
