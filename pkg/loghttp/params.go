@@ -57,10 +57,10 @@ func bounds(r *http.Request) (time.Time, time.Time, error) {
 	return start, end, nil
 }
 
-func step(r *http.Request, start, end time.Time) (time.Duration, error) {
+func step(r *http.Request) (time.Duration, error) {
 	value := r.Form.Get("step")
 	if value == "" {
-		return time.Duration(defaultQueryRangeStep(start, end)) * time.Second, nil
+		return 0, nil
 	}
 
 	if d, err := strconv.ParseFloat(value, 64); err == nil {

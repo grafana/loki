@@ -199,7 +199,7 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 			return nil, err
 		}
 		defer helpers.LogError("closing iterator", iter.Close)
-		streams, err := readStreams(iter, q.limit)
+		streams, err := readStreams(iter, q.limit, q.step, q.direction)
 		return streams, err
 	}
 
@@ -297,19 +297,28 @@ func PopulateMatrixFromScalar(data promql.Scalar, params LiteralParams) promql.M
 	return promql.Matrix{series}
 }
 
-func readStreams(i iter.EntryIterator, size uint32) (Streams, error) {
+func readStreams(i iter.EntryIterator, size uint32, step time.Duration, dir logproto.Direction) (Streams, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
-	for ; respSize < size && i.Next(); respSize++ {
+	// lastEntry should be a really old time so that the first comparison is always true, we use a negative
+	// value here because many unit tests start at time.Unix(0,0)
+	lastEntry := time.Unix(-100, 0)
+	for respSize < size && i.Next() {
 		labels, entry := i.Labels(), i.Entry()
-		stream, ok := streams[labels]
-		if !ok {
-			stream = &logproto.Stream{
-				Labels: labels,
+		if step == 0 || lastEntry.Unix() < 0 ||
+			(dir == logproto.FORWARD && (i.Entry().Timestamp.Equal(lastEntry.Add(step)) || i.Entry().Timestamp.After(lastEntry.Add(step)))) ||
+			(dir == logproto.BACKWARD && (i.Entry().Timestamp.Equal(lastEntry.Add(-step)) || i.Entry().Timestamp.Before(lastEntry.Add(-step)))) {
+			stream, ok := streams[labels]
+			if !ok {
+				stream = &logproto.Stream{
+					Labels: labels,
+				}
+				streams[labels] = stream
 			}
-			streams[labels] = stream
+			stream.Entries = append(stream.Entries, entry)
+			lastEntry = i.Entry().Timestamp
+			respSize++
 		}
-		stream.Entries = append(stream.Entries, entry)
 	}
 
 	result := make([]*logproto.Stream, 0, len(streams))
