@@ -25,7 +25,7 @@ func TestChunksBasic(t *testing.T) {
 		// Write a few batches of chunks.
 		written := []string{}
 		for i := 0; i < 5; i++ {
-			keys, chunks, err := testutils.CreateChunks(i, batchSize, model.Now())
+			keys, chunks, err := testutils.CreateChunks(i, batchSize, model.Now().Add(-time.Hour), model.Now())
 			require.NoError(t, err)
 			written = append(written, keys...)
 			err = client.PutChunks(ctx, chunks)

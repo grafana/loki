@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/prometheus/common/model"
 
@@ -29,7 +30,7 @@ func TestChunksPartialError(t *testing.T) {
 	}
 	ctx := context.Background()
 	// Create more chunks than we can read in one batch
-	_, chunks, err := testutils.CreateChunks(0, dynamoDBMaxReadBatchSize+50, model.Now())
+	_, chunks, err := testutils.CreateChunks(0, dynamoDBMaxReadBatchSize+50, model.Now().Add(-time.Hour), model.Now())
 	require.NoError(t, err)
 	err = client.PutChunks(ctx, chunks)
 	require.NoError(t, err)
