@@ -108,6 +108,12 @@ func NewFileTargetManager(
 			}
 		}
 
+		// Add Source value to the static config target groups for unique identification
+		// within scrape pool.
+		for i, tg := range cfg.ServiceDiscoveryConfig.StaticConfigs {
+			tg.Source = fmt.Sprintf("%d", i)
+		}
+
 		s := &targetSyncer{
 			log:            logger,
 			positions:      positions,
