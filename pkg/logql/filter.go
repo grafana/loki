@@ -218,9 +218,10 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (LineFilter, bool) {
 			}
 			continue
 		}
-		if sub.Op != syntax.OpStar && sub.Sub[0].Op != syntax.OpAnyCharNotNL {
-			return nil, false
+		if sub.Op == syntax.OpStar && sub.Sub[0].Op == syntax.OpAnyCharNotNL {
+			continue
 		}
+		return nil, false
 	}
 
 	// we can simplify only if we found a literal.
