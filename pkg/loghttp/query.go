@@ -285,16 +285,21 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 		return nil, err
 	}
 	switch expr.(type) {
+	case logql.LogSelectorExpr:
+		// This is a no-op we allow the step to be 0 for Log queries
 	case logql.SampleExpr:
+		// For metric queries, if the step is 0 apply a default calculation to it to make it non zero
 		if result.Step == 0 {
 			result.Step = time.Duration(defaultQueryRangeStep(result.Start, result.End)) * time.Second
 		}
-
 		// For safety, limit the number of returned points per timeseries.
 		// This is sufficient for 60s resolution for a week or 1h resolution for a year.
 		if (result.End.Sub(result.Start) / result.Step) > 11000 {
 			return nil, errStepTooSmall
 		}
+	default:
+		panic("An unexpected query expression type was encountered when applying rules to the query step parameter, " +
+			"please update query.go with the appropriate rules for handling this new expression type.")
 	}
 
 	return &result, nil
