@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -18,6 +17,7 @@ import (
 	"github.com/weaveworks/common/mtime"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
@@ -116,13 +116,15 @@ func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
 type TableManager struct {
+	services.Service
+
 	client       TableClient
 	cfg          TableManagerConfig
 	schemaCfg    SchemaConfig
 	maxChunkAge  time.Duration
-	done         chan struct{}
-	wait         sync.WaitGroup
 	bucketClient BucketClient
+
+	bucketRetentionLoop services.Service
 }
 
 // NewTableManager makes a new TableManager
@@ -137,36 +139,36 @@ func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge
 		}
 	}
 
-	return &TableManager{
+	tm := &TableManager{
 		cfg:          cfg,
 		schemaCfg:    schemaCfg,
 		maxChunkAge:  maxChunkAge,
 		client:       tableClient,
-		done:         make(chan struct{}),
 		bucketClient: objectClient,
-	}, nil
+	}
+
+	tm.Service = services.NewBasicService(tm.starting, tm.loop, tm.stopping)
+	return tm, nil
 }
 
 // Start the TableManager
-func (m *TableManager) Start() {
-	m.wait.Add(1)
-	go m.loop()
-
+func (m *TableManager) starting(ctx context.Context) error {
 	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled {
-		m.wait.Add(1)
-		go m.bucketRetentionLoop()
+		m.bucketRetentionLoop = services.NewTimerService(bucketRetentionEnforcementInterval, nil, m.bucketRetentionIteration, nil)
+		return services.StartAndAwaitRunning(ctx, m.bucketRetentionLoop)
 	}
+	return nil
 }
 
 // Stop the TableManager
-func (m *TableManager) Stop() {
-	close(m.done)
-	m.wait.Wait()
+func (m *TableManager) stopping() error {
+	if m.bucketRetentionLoop != nil {
+		return services.StopAndAwaitTerminated(context.Background(), m.bucketRetentionLoop)
+	}
+	return nil
 }
 
-func (m *TableManager) loop() {
-	defer m.wait.Done()
-
+func (m *TableManager) loop(ctx context.Context) error {
 	ticker := time.NewTicker(m.cfg.DynamoDBPollInterval)
 	defer ticker.Stop()
 
@@ -179,8 +181,8 @@ func (m *TableManager) loop() {
 	// Sleep for a bit to spread the sync load across different times if the tablemanagers are all started at once.
 	select {
 	case <-time.After(time.Duration(rand.Int63n(int64(m.cfg.DynamoDBPollInterval)))):
-	case <-m.done:
-		return
+	case <-ctx.Done():
+		return nil
 	}
 
 	for {
@@ -191,30 +193,22 @@ func (m *TableManager) loop() {
 			}); err != nil {
 				level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
 			}
-		case <-m.done:
-			return
+		case <-ctx.Done():
+			return nil
 		}
 	}
 }
 
-func (m *TableManager) bucketRetentionLoop() {
-	defer m.wait.Done()
+// single iteration of bucket retention loop
+func (m *TableManager) bucketRetentionIteration(ctx context.Context) error {
+	err := m.bucketClient.DeleteChunksBefore(ctx, mtime.Now().Add(-m.cfg.RetentionPeriod))
 
-	ticker := time.NewTicker(bucketRetentionEnforcementInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			err := m.bucketClient.DeleteChunksBefore(context.Background(), mtime.Now().Add(-m.cfg.RetentionPeriod))
-
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
-			}
-		case <-m.done:
-			return
-		}
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
 	}
+
+	// don't return error, otherwise timer service would stop.
+	return nil
 }
 
 // SyncTables will calculate the tables expected to exist, create those that do

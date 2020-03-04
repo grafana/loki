@@ -19,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const millisecondPerDay = int64(24 * time.Hour / time.Millisecond)
@@ -51,6 +52,8 @@ type workerJob struct {
 
 // DataPurger does the purging of data which is requested to be deleted
 type DataPurger struct {
+	services.Service
+
 	cfg          Config
 	deleteStore  *chunk.DeleteStore
 	chunkStore   chunk.Store
@@ -67,8 +70,7 @@ type DataPurger struct {
 	pendingPlansCount    map[string]int // per request pending plan count
 	pendingPlansCountMtx sync.Mutex
 
-	quit chan struct{}
-	wg   sync.WaitGroup
+	wg sync.WaitGroup
 }
 
 // NewDataPurger creates a new DataPurger
@@ -82,45 +84,39 @@ func NewDataPurger(cfg Config, deleteStore *chunk.DeleteStore, chunkStore chunk.
 		workerJobChan:       make(chan workerJob, 50),
 		inProcessRequestIDs: map[string]string{},
 		pendingPlansCount:   map[string]int{},
-		quit:                make(chan struct{}),
 	}
 
+	dataPurger.Service = services.NewTimerService(time.Hour, dataPurger.init, dataPurger.runOneIteration, dataPurger.stop)
 	return &dataPurger, nil
 }
 
 // Run keeps pulling delete requests for planning after initializing necessary things
-func (dp *DataPurger) Run() {
-	dp.wg.Add(1)
-	defer dp.wg.Done()
-
-	pullDeleteRequestsToPlanDeletesTicker := time.NewTicker(time.Hour)
-	defer pullDeleteRequestsToPlanDeletesTicker.Stop()
-
-	for {
-		select {
-		case <-pullDeleteRequestsToPlanDeletesTicker.C:
-			err := dp.pullDeleteRequestsToPlanDeletes()
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "error pulling delete requests for building plans", "err", err)
-			}
-		case <-dp.quit:
-			return
-		}
+func (dp *DataPurger) runOneIteration(ctx context.Context) error {
+	err := dp.pullDeleteRequestsToPlanDeletes()
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error pulling delete requests for building plans", "err", err)
 	}
+	// Don't return error here, or Timer service will stop.
+	return nil
 }
 
-// Init starts workers, scheduler and then loads in process delete requests
-func (dp *DataPurger) Init() error {
-	dp.runWorkers()
-	go dp.jobScheduler()
+// init starts workers, scheduler and then loads in process delete requests
+func (dp *DataPurger) init(ctx context.Context) error {
+	for i := 0; i < dp.cfg.NumWorkers; i++ {
+		dp.wg.Add(1)
+		go dp.worker()
+	}
+
+	dp.wg.Add(1)
+	go dp.jobScheduler(ctx)
 
 	return dp.loadInprocessDeleteRequests()
 }
 
-// Stop stops all background workers/loops
-func (dp *DataPurger) Stop() {
-	close(dp.quit)
+// Stop waits until all background tasks stop.
+func (dp *DataPurger) stop() error {
 	dp.wg.Wait()
+	return nil
 }
 
 func (dp *DataPurger) workerJobCleanup(job workerJob) {
@@ -154,8 +150,7 @@ func (dp *DataPurger) workerJobCleanup(job workerJob) {
 }
 
 // we send all the delete plans to workerJobChan
-func (dp *DataPurger) jobScheduler() {
-	dp.wg.Add(1)
+func (dp *DataPurger) jobScheduler(ctx context.Context) {
 	defer dp.wg.Done()
 
 	for {
@@ -172,17 +167,10 @@ func (dp *DataPurger) jobScheduler() {
 				dp.workerJobChan <- workerJob{planNo: i, userID: req.UserID,
 					deleteRequestID: req.RequestID, logger: req.logger}
 			}
-		case <-dp.quit:
+		case <-ctx.Done():
 			close(dp.workerJobChan)
 			return
 		}
-	}
-}
-
-func (dp *DataPurger) runWorkers() {
-	for i := 0; i < dp.cfg.NumWorkers; i++ {
-		dp.wg.Add(1)
-		go dp.worker()
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
@@ -140,7 +141,7 @@ func TestDataPurger_BuildPlan(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/batch-size=%d", tc.name, batchSize), func(t *testing.T) {
 				deleteStore, chunkStore, storageClient, dataPurger := setupStoresAndPurger(t)
 				defer func() {
-					dataPurger.Stop()
+					dataPurger.StopAsync()
 					chunkStore.Stop()
 				}()
 
@@ -221,7 +222,7 @@ func TestDataPurger_ExecutePlan(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/batch-size=%d", tc.name, batchSize), func(t *testing.T) {
 				deleteStore, chunkStore, _, dataPurger := setupStoresAndPurger(t)
 				defer func() {
-					dataPurger.Stop()
+					dataPurger.StopAsync()
 					chunkStore.Stop()
 				}()
 
@@ -305,7 +306,7 @@ func TestDataPurger_Restarts(t *testing.T) {
 	require.NoError(t, err)
 
 	// stop the existing purger
-	dataPurger.Stop()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), dataPurger))
 
 	// create a new purger to check whether it picks up in process delete requests
 	var cfg Config
@@ -314,11 +315,9 @@ func TestDataPurger_Restarts(t *testing.T) {
 	require.NoError(t, err)
 
 	// load in process delete requests by calling Run
-	require.NoError(t, newPurger.Init())
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), newPurger))
 
-	defer func() {
-		newPurger.Stop()
-	}()
+	defer newPurger.StopAsync()
 
 	// lets wait till purger finishes execution of in process delete requests
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
