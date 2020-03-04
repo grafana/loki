@@ -56,11 +56,13 @@ const (
 // Config describes behavior for Target
 type Config struct {
 	SyncPeriod time.Duration `yaml:"sync_period"`
+	WaitPeriod time.Duration `yaml:"wait_period"`
 }
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
 	flags.DurationVar(&cfg.SyncPeriod, "target.sync-period", 10*time.Second, "Period to resync directories being watched and files being tailed.")
+	flags.DurationVar(&cfg.WaitPeriod, "target.wait-period", 10*time.Minute, "Period to wait for update on files. If no updates, files will be removed from tailing")
 }
 
 // FileTarget describes a particular set of logs.
@@ -304,7 +306,16 @@ func (t *FileTarget) stopTailing(ps []string) {
 func toStopTailing(nt []string, et map[string]*tailer) []string {
 	// Make a set of all existing tails
 	existingTails := make(map[string]struct{}, len(et))
-	for file := range et {
+	removeTails := make([]string, len(et))
+	for file, tailer := range et {
+		fileStat, err := os.Stat(file)
+		if err != nil {
+			//level.Error(t.logger).Log("msg", "failed to get file stats", "file", file.path, "error", err)
+		}
+		pos, _ := tailer.positions.Get(file)
+		if time.Now().Sub(fileStat.ModTime()) > 10*time.Minute && (pos == fileStat.Size()) {
+			removeTails = append(removeTails, file)
+		}
 		existingTails[file] = struct{}{}
 	}
 	// Make a set of what we are about to start tailing
@@ -320,6 +331,7 @@ func toStopTailing(nt []string, et map[string]*tailer) []string {
 		ta[i] = t
 		i++
 	}
+	ta = append(ta, removeTails...)
 	return ta
 }
 
