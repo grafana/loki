@@ -305,9 +305,14 @@ func readStreams(i iter.EntryIterator, size uint32, step time.Duration, dir logp
 	lastEntry := time.Unix(-100, 0)
 	for respSize < size && i.Next() {
 		labels, entry := i.Labels(), i.Entry()
-		if step == 0 || lastEntry.Unix() < 0 ||
-			(dir == logproto.FORWARD && (i.Entry().Timestamp.Equal(lastEntry.Add(step)) || i.Entry().Timestamp.After(lastEntry.Add(step)))) ||
-			(dir == logproto.BACKWARD && (i.Entry().Timestamp.Equal(lastEntry.Add(-step)) || i.Entry().Timestamp.Before(lastEntry.Add(-step)))) {
+		forwardShouldOutput := dir == logproto.FORWARD &&
+			(i.Entry().Timestamp.Equal(lastEntry.Add(step)) || i.Entry().Timestamp.After(lastEntry.Add(step)))
+		backwardShouldOutput := dir == logproto.BACKWARD &&
+			(i.Entry().Timestamp.Equal(lastEntry.Add(-step)) || i.Entry().Timestamp.Before(lastEntry.Add(-step)))
+		// If step == 0 output every line.
+		// If lastEntry.Unix < 0 this is the first pass through the loop and we should output the line.
+		// Then check to see if the entry is equal to, or past a forward or reverse step
+		if step == 0 || lastEntry.Unix() < 0 || forwardShouldOutput || backwardShouldOutput {
 			stream, ok := streams[labels]
 			if !ok {
 				stream = &logproto.Stream{
