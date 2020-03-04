@@ -147,6 +147,7 @@ func (t *tailer) stop() error {
 	<-t.done
 	filesActive.Add(-1.)
 	// When we stop tailing the file, also un-export metrics related to the file
+	readLines.DeleteLabelValues(t.path)
 	readBytes.DeleteLabelValues(t.path)
 	totalBytes.DeleteLabelValues(t.path)
 	logLengthHistogram.DeleteLabelValues(t.path)
