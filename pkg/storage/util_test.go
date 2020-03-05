@@ -104,14 +104,20 @@ func newQuery(query string, start, end time.Time, direction logproto.Direction) 
 
 type mockChunkStore struct {
 	chunks []chunk.Chunk
+	client *mockChunkStoreClient
 }
+
+// mockChunkStore cannot implement both chunk.Store and chunk.Client,
+// since there is a conflict in signature for DeleteChunk method.
+var _ chunk.Store = &mockChunkStore{}
+var _ chunk.Client = &mockChunkStoreClient{}
 
 func newMockChunkStore(streams []*logproto.Stream) *mockChunkStore {
 	chunks := make([]chunk.Chunk, 0, len(streams))
 	for _, s := range streams {
 		chunks = append(chunks, newChunk(*s))
 	}
-	return &mockChunkStore{chunks: chunks}
+	return &mockChunkStore{chunks: chunks, client: &mockChunkStoreClient{chunks: chunks}}
 }
 func (m *mockChunkStore) Put(ctx context.Context, chunks []chunk.Chunk) error { return nil }
 func (m *mockChunkStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
@@ -123,26 +129,17 @@ func (m *mockChunkStore) LabelValuesForMetricName(ctx context.Context, userID st
 func (m *mockChunkStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	return nil, nil
 }
+
+func (m *mockChunkStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
+	return nil
+}
+
+func (m *mockChunkStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+	return nil
+}
 func (m *mockChunkStore) Stop() {}
 func (m *mockChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
 	return nil, nil
-}
-
-// PutChunks implements ObjectClient from Fetcher
-func (m *mockChunkStore) PutChunks(ctx context.Context, chunks []chunk.Chunk) error { return nil }
-
-// GetChunks implements ObjectClient from Fetcher
-func (m *mockChunkStore) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	var res []chunk.Chunk
-	for _, c := range chunks {
-		for _, sc := range m.chunks {
-			// only returns chunks requested using the external key
-			if c.ExternalKey() == sc.ExternalKey() {
-				res = append(res, sc)
-			}
-		}
-	}
-	return res, nil
 }
 
 func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*chunk.Fetcher, error) {
@@ -155,11 +152,40 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 		}
 		refs = append(refs, r)
 	}
-	f, err := chunk.NewChunkFetcher(cache.Config{}, false, m)
+	f, err := chunk.NewChunkFetcher(cache.Config{}, false, m.client)
 	if err != nil {
 		panic(err)
 	}
 	return [][]chunk.Chunk{refs}, []*chunk.Fetcher{f}, nil
+}
+
+type mockChunkStoreClient struct {
+	chunks []chunk.Chunk
+}
+
+func (m mockChunkStoreClient) Stop() {
+	panic("implement me")
+}
+
+func (m mockChunkStoreClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+	return nil
+}
+
+func (m mockChunkStoreClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+	var res []chunk.Chunk
+	for _, c := range chunks {
+		for _, sc := range m.chunks {
+			// only returns chunks requested using the external key
+			if c.ExternalKey() == sc.ExternalKey() {
+				res = append(res, sc)
+			}
+		}
+	}
+	return res, nil
+}
+
+func (m mockChunkStoreClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	return nil
 }
 
 var streamsFixture = []*logproto.Stream{

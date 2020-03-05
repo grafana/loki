@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
+	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -135,12 +137,19 @@ func (t *Loki) initServer() (err error) {
 func (t *Loki) initRing() (err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.ring, err = ring.New(t.cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
+	if err == nil {
+		err = services.StartAndAwaitRunning(context.Background(), t.ring)
+	}
 	if err != nil {
 		return
 	}
 	prometheus.MustRegister(t.ring)
 	t.server.HTTP.Handle("/ring", t.ring)
 	return
+}
+
+func (t *Loki) stopRing() (err error) {
+	return services.StopAndAwaitTerminated(context.Background(), t.ring)
 }
 
 func (t *Loki) initRuntimeConfig() (err error) {
@@ -154,12 +163,14 @@ func (t *Loki) initRuntimeConfig() (err error) {
 	validation.SetDefaultLimitsForYAMLUnmarshalling(t.cfg.LimitsConfig)
 
 	t.runtimeConfig, err = runtimeconfig.NewRuntimeConfigManager(t.cfg.RuntimeConfig, prometheus.DefaultRegisterer)
+	if err == nil {
+		err = services.StartAndAwaitRunning(context.Background(), t.runtimeConfig)
+	}
 	return err
 }
 
 func (t *Loki) stopRuntimeConfig() (err error) {
-	t.runtimeConfig.Stop()
-	return nil
+	return services.StopAndAwaitTerminated(context.Background(), t.runtimeConfig)
 }
 
 func (t *Loki) initOverrides() (err error) {
@@ -282,17 +293,14 @@ func (t *Loki) initTableManager() error {
 	util.CheckFatal("initializing bucket client", err)
 
 	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient)
-	if err != nil {
-		return err
+	if err == nil {
+		err = services.StartAndAwaitRunning(context.Background(), t.tableManager)
 	}
-
-	t.tableManager.Start()
-	return nil
+	return err
 }
 
 func (t *Loki) stopTableManager() error {
-	t.tableManager.Stop()
-	return nil
+	return services.StopAndAwaitTerminated(context.Background(), t.tableManager)
 }
 
 func (t *Loki) initStore() (err error) {
@@ -425,6 +433,7 @@ var modules = map[moduleName]module{
 	Ring: {
 		deps: []moduleName{RuntimeConfig, Server},
 		init: (*Loki).initRing,
+		stop: (*Loki).stopRing,
 	},
 
 	Overrides: {

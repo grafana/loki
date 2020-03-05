@@ -3,6 +3,7 @@ module github.com/grafana/loki
 go 1.13
 
 require (
+	cloud.google.com/go/storage v1.3.0
 	github.com/Microsoft/go-winio v0.4.12 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/bmatcuk/doublestar v1.2.2
