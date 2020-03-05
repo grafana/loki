@@ -29,13 +29,20 @@ var (
 
 	queryCmd = app.Command("query", `Run a LogQL query.
 
-The "query" command is useful for querying for log lines. The default
-output of this command are log entries (a combination of timestamp,
-labels, and a log line) along with various extra information about
-the performed query and its results. Raw log lines (i.e., without a
-label and timestamp) can be retrieved by passing the "-o raw" flag.
-The extra information about the query (API URL, set of common labels,
-excluded labels) can be suppressed with the --query flag.
+The "query" command is useful for querying for logs. Logs can be
+returned in a few output modes:
+
+	raw: log line
+	default: log timestamp + log labels + log line
+	jsonl: JSON response from Loki API of log line
+
+The output of the log can be specified with the "-o" flag, for
+example, "-o raw" for the raw output format.
+
+The "query" command will output extra information about the query
+and its results, such as the API URL, set of common labels, and set
+of excluded labels. This extra information can be suppressed with the
+--quiet flag.
 
 While "query" does support metrics queries, its output contains multiple
 data points between the start and end query time. This output is used to
@@ -55,7 +62,12 @@ view; if you want a metrics query that is used to build a Grafana graph,
 you should use the "query" command instead.
 
 This command does not produce useful output when querying for log lines;
-you should always use the "query" command when you are running log queries.`)
+you should always use the "query" command when you are running log queries.
+
+For more information about log queries and metric queries, refer to the
+LogQL documentation:
+
+https://github.com/grafana/loki/blob/master/docs/logql.md`)
 	instantQuery = newQuery(true, instantQueryCmd)
 
 	labelsCmd = app.Command("labels", "Find values for a given label.")
@@ -141,7 +153,7 @@ func newQueryClient(app *kingpin.Application) *client.Client {
 	app.Flag("tls-skip-verify", "Server certificate TLS skip verify.").Default("false").BoolVar(&client.TLSConfig.InsecureSkipVerify)
 	app.Flag("cert", "Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.").Default("").Envar("LOKI_CLIENT_CERT_PATH").StringVar(&client.TLSConfig.CertFile)
 	app.Flag("key", "Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.").Default("").Envar("LOKI_CLIENT_KEY_PATH").StringVar(&client.TLSConfig.KeyFile)
-	app.Flag("org-id", "org ID header to be substituted for auth").StringVar(&client.OrgID)
+	app.Flag("org-id", "adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing an auth gateway.").StringVar(&client.OrgID)
 
 	return client
 }
