@@ -12,12 +12,13 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 var (
 	errEndBeforeStart = errors.New("end timestamp must not be before or equal to start time")
-	errNegativeStep   = errors.New("zero or negative query resolution step widths are not accepted. Try a positive integer")
+	errNegativeStep   = errors.New("negative query resolution step widths are not accepted. Try a positive integer")
 	errStepTooSmall   = errors.New("exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
 )
 
@@ -269,19 +270,36 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 		return nil, err
 	}
 
-	result.Step, err = step(r, result.Start, result.End)
+	result.Step, err = step(r)
 	if err != nil {
 		return nil, err
 	}
-
-	if result.Step <= 0 {
+	if result.Step < 0 {
 		return nil, errNegativeStep
 	}
 
-	// For safety, limit the number of returned points per timeseries.
-	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
-	if (result.End.Sub(result.Start) / result.Step) > 11000 {
-		return nil, errStepTooSmall
+	// Additional rules are required for the step on metric queries,
+	// so we need to parse the expression now to see what type it is.
+	expr, err := logql.ParseExpr(result.Query)
+	if err != nil {
+		return nil, err
+	}
+	switch expr.(type) {
+	case logql.LogSelectorExpr:
+		// This is a no-op we allow the step to be 0 for Log queries
+	case logql.SampleExpr:
+		// For metric queries, if the step is 0 apply a default calculation to it to make it non zero
+		if result.Step == 0 {
+			result.Step = time.Duration(defaultQueryRangeStep(result.Start, result.End)) * time.Second
+		}
+		// For safety, limit the number of returned points per timeseries.
+		// This is sufficient for 60s resolution for a week or 1h resolution for a year.
+		if (result.End.Sub(result.Start) / result.Step) > 11000 {
+			return nil, errStepTooSmall
+		}
+	default:
+		panic("An unexpected query expression type was encountered when applying rules to the query step parameter, " +
+			"please update query.go with the appropriate rules for handling this new expression type.")
 	}
 
 	return &result, nil

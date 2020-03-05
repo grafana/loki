@@ -363,14 +363,44 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			Streams([]*logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
 		},
 		{
-			`{app="bar"} |= "foo" |~ ".+bar"`, time.Unix(0, 0), time.Unix(30, 0), time.Second, logproto.BACKWARD, 30,
+			`{app="food"}`, time.Unix(0, 0), time.Unix(30, 0), 2 * time.Second, logproto.FORWARD, 10,
+			[][]*logproto.Stream{
+				{newStream(testSize, identity, `{app="food"}`)},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="food"}`}},
+			},
+			Streams([]*logproto.Stream{newStepStream(10, 2*time.Second, identity, `{app="food"}`)}),
+		},
+		{
+			`{app="fed"}`, time.Unix(0, 0), time.Unix(30, 0), 2 * time.Second, logproto.BACKWARD, 10,
+			[][]*logproto.Stream{
+				{newBackwardStream(testSize, identity, `{app="fed"}`)},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="fed"}`}},
+			},
+			Streams([]*logproto.Stream{newBackwardStepStream(testSize, 10, 2*time.Second, identity, `{app="fed"}`)}),
+		},
+		{
+			`{app="bar"} |= "foo" |~ ".+bar"`, time.Unix(0, 0), time.Unix(30, 0), time.Second, logproto.FORWARD, 30,
 			[][]*logproto.Stream{
 				{newStream(testSize, identity, `{app="bar"}`)},
 			},
 			[]SelectParams{
-				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="bar"}|="foo"|~".+bar"`}},
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="bar"}|="foo"|~".+bar"`}},
 			},
 			Streams([]*logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
+		},
+		{
+			`{app="barf"} |= "foo" |~ ".+bar"`, time.Unix(0, 0), time.Unix(30, 0), 3 * time.Second, logproto.BACKWARD, 30,
+			[][]*logproto.Stream{
+				{newBackwardStream(testSize, identity, `{app="barf"}`)},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="barf"}|="foo"|~".+bar"`}},
+			},
+			Streams([]*logproto.Stream{newBackwardStepStream(testSize, 30, 3*time.Second, identity, `{app="barf"}`)}),
 		},
 		{
 			`rate({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), time.Unix(120, 0), time.Minute, logproto.BACKWARD, 10,
@@ -1223,6 +1253,47 @@ func newStream(n int64, f generator, labels string) *logproto.Stream {
 	entries := []logproto.Entry{}
 	for i := int64(0); i < n; i++ {
 		entries = append(entries, f(i))
+	}
+	return &logproto.Stream{
+		Entries: entries,
+		Labels:  labels,
+	}
+}
+
+func newStepStream(n int64, step time.Duration, f generator, labels string) *logproto.Stream {
+	entries := []logproto.Entry{}
+	lastEntry := int64(-100) // Start with a really small value (negative) so we always output the first item
+	for i := int64(0); int64(len(entries)) < n; i++ {
+		if float64(lastEntry)+step.Seconds() <= float64(i) {
+			entries = append(entries, f(i))
+			lastEntry = i
+		}
+	}
+	return &logproto.Stream{
+		Entries: entries,
+		Labels:  labels,
+	}
+}
+
+func newBackwardStream(n int64, f generator, labels string) *logproto.Stream {
+	entries := []logproto.Entry{}
+	for i := n - 1; i > 0; i-- {
+		entries = append(entries, f(i))
+	}
+	return &logproto.Stream{
+		Entries: entries,
+		Labels:  labels,
+	}
+}
+
+func newBackwardStepStream(n, expectedResults int64, step time.Duration, f generator, labels string) *logproto.Stream {
+	entries := []logproto.Entry{}
+	lastEntry := int64(100000) //Start with some really big value so that we always output the first item
+	for i := n - 1; int64(len(entries)) < expectedResults; i-- {
+		if float64(lastEntry)-step.Seconds() >= float64(i) {
+			entries = append(entries, f(i))
+			lastEntry = i
+		}
 	}
 	return &logproto.Stream{
 		Entries: entries,
