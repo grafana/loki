@@ -159,8 +159,8 @@ func (i *Ingester) checkFromIngesterIsInLeavingState(ctx context.Context, fromIn
 	return nil
 }
 
-// StopIncomingRequests implements ring.Lifecycler.
-func (i *Ingester) StopIncomingRequests() {
+// stopIncomingRequests is called when ingester is stopping
+func (i *Ingester) stopIncomingRequests() {
 	i.shutdownMtx.Lock()
 	defer i.shutdownMtx.Unlock()
 

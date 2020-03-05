@@ -148,7 +148,10 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		return nil, err
 	}
 
-	i.lifecycler.Start()
+	err = services.StartAndAwaitRunning(context.Background(), i.lifecycler)
+	if err != nil {
+		return nil, err
+	}
 
 	// Now that the lifecycler has been created, we can create the limiter
 	// which depends on it.
@@ -182,7 +185,8 @@ func (i *Ingester) Shutdown() {
 	close(i.quit)
 	i.done.Wait()
 
-	i.lifecycler.Shutdown()
+	i.stopIncomingRequests()
+	services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
 }
 
 // Stopping helps cleaning up resources before actual shutdown

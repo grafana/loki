@@ -10,6 +10,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -193,7 +194,8 @@ func (c *testIngesterClient) TransferChunks(context.Context, ...grpc.CallOption)
 	// unhealthy state, permanently stuck in the handler for claiming tokens.
 	go func() {
 		time.Sleep(time.Millisecond * 50)
-		c.i.lifecycler.Shutdown()
+		c.i.stopIncomingRequests() // used to be called from lifecycler, now it must be called *before* stopping lifecyler. (ingester does this on shutdown)
+		services.StopAndAwaitTerminated(context.Background(), c.i.lifecycler)
 	}()
 
 	go func() {

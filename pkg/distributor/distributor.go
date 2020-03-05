@@ -112,7 +112,10 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 			return nil, err
 		}
 
-		distributorsRing.Start()
+		err = services.StartAndAwaitRunning(context.Background(), distributorsRing)
+		if err != nil {
+			return nil, err
+		}
 
 		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, distributorsRing)
 	} else {
@@ -134,7 +137,7 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 
 func (d *Distributor) Stop() {
 	if d.distributorsRing != nil {
-		d.distributorsRing.Shutdown()
+		_ = services.StopAndAwaitTerminated(context.Background(), d.distributorsRing)
 	}
 }
 
