@@ -40,7 +40,7 @@ func TestParseRangeQuery(t *testing.T) {
 			}, nil, true},
 		{"too small step",
 			&http.Request{
-				URL: mustParseURL(`?query=rate({foo="bar"}[5m])&start=2016-06-10T21:42:24.760738998Z&end=2017-06-10T21:42:24.760738998Z&limit=100&direction=BACKWARD&step=1`),
+				URL: mustParseURL(`?query={foo="bar"}&start=2016-06-10T21:42:24.760738998Z&end=2017-06-10T21:42:24.760738998Z&limit=100&direction=BACKWARD&step=1`),
 			}, nil, true},
 		{"good",
 			&http.Request{
