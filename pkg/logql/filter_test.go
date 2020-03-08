@@ -89,9 +89,9 @@ func Test_SimplifiedRegex(t *testing.T) {
 	}
 }
 
-func Benchmark_Regex(b *testing.B) {
+func Benchmark_RegexpSimplified(b *testing.B) {
 	b.ReportAllocs()
-	logline := `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /foo (200) 4.599635ms`
+	logline := `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /buzz (200) 4.599635ms`
 	for _, test := range []struct {
 		re string
 	}{
@@ -104,6 +104,7 @@ func Benchmark_Regex(b *testing.B) {
 		{"foo|bar.*|buzz"},
 		{".*foo.*|bar|uzz"},
 		{"((f.*)|foobar.*)|.*buzz"},
+		{"(?P<foo>.*foo.*|bar)"},
 	} {
 		benchmarkRegex(b, test.re, logline, true)
 		benchmarkRegex(b, test.re, logline, false)
