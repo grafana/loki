@@ -52,9 +52,24 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
 		buf, err := c.Encoded()
 		require.NoError(t, err)
 
+		// In order to be able to compare the expected chunk (this one) with the
+		// actual one (the one that will be fetched from the cache) we need to
+		// cleanup the chunk to avoid any internal references mismatch (ie. appender
+		// pointer).
+		cleanChunk := chunk.Chunk{
+			UserID:      c.UserID,
+			Fingerprint: c.Fingerprint,
+			From:        c.From,
+			Through:     c.Through,
+			Checksum:    c.Checksum,
+			ChecksumSet: c.ChecksumSet,
+		}
+		err = cleanChunk.Decode(chunk.NewDecodeContext(), buf)
+		require.NoError(t, err)
+
 		keys = append(keys, c.ExternalKey())
 		bufs = append(bufs, buf)
-		chunks = append(chunks, c)
+		chunks = append(chunks, cleanChunk)
 	}
 
 	cache.Store(context.Background(), keys, bufs)
@@ -75,7 +90,7 @@ func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []ch
 		require.NoError(t, err)
 		err = c.Decode(chunk.NewDecodeContext(), bufs[0])
 		require.NoError(t, err)
-		require.Equal(t, c, chunks[index])
+		require.Equal(t, chunks[index], c)
 	}
 }
 
