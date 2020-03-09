@@ -10,6 +10,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/httpgrpc"
 
@@ -32,21 +33,21 @@ type Stopper interface {
 }
 
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
-func NewTripperware(cfg Config, log log.Logger, limits Limits) (frontend.Tripperware, Stopper, error) {
+func NewTripperware(cfg Config, log log.Logger, limits Limits, registerer prometheus.Registerer) (frontend.Tripperware, Stopper, error) {
 	// Ensure that QuerySplitDuration uses configuration defaults.
 	// This avoids divide by zero errors when determining cache keys where user specific overrides don't exist.
 	limits = WithDefaultLimits(limits, cfg.Config)
 
-	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, lokiCodec, prometheusResponseExtractor)
-
+	metrics := queryrange.NewInstrumentMiddlewareMetrics(registerer)
+	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, lokiCodec, prometheusResponseExtractor, metrics, registerer)
 	if err != nil {
 		return nil, nil, err
 	}
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, lokiCodec)
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, lokiCodec, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
-	return frontend.Tripperware(func(next http.RoundTripper) http.RoundTripper {
+	return func(next http.RoundTripper) http.RoundTripper {
 		metricRT := metricsTripperware(next)
 		logFilterRT := logFilterTripperware(next)
 		return frontend.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -81,7 +82,7 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits) (frontend.Tripper
 			}
 			return next.RoundTrip(req)
 		})
-	}), cache, nil
+	}, cache, nil
 }
 
 // NewLogFilterTripperware creates a new frontend tripperware responsible for handling log requests with regex.
@@ -90,20 +91,22 @@ func NewLogFilterTripperware(
 	log log.Logger,
 	limits Limits,
 	codec queryrange.Codec,
+	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
 ) (frontend.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(limits, codec))
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec))
 	}
 	if cfg.MaxRetries > 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry"), queryrange.NewRetryMiddleware(log, cfg.MaxRetries))
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, nil))
 	}
-	return frontend.Tripperware(func(next http.RoundTripper) http.RoundTripper {
+
+	return func(next http.RoundTripper) http.RoundTripper {
 		if len(queryRangeMiddleware) > 0 {
 			return queryrange.NewRoundTripper(next, codec, queryRangeMiddleware...)
 		}
 		return next
-	}), nil
+	}, nil
 }
 
 // NewMetricTripperware creates a new frontend tripperware responsible for handling metric queries
@@ -113,13 +116,14 @@ func NewMetricTripperware(
 	limits Limits,
 	codec queryrange.Codec,
 	extractor queryrange.Extractor,
+	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
+	registerer prometheus.Registerer,
 ) (frontend.Tripperware, Stopper, error) {
-
 	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
-			queryrange.InstrumentMiddleware("step_align"),
+			queryrange.InstrumentMiddleware("step_align", instrumentMetrics),
 			queryrange.StepAlignMiddleware,
 		)
 	}
@@ -131,7 +135,7 @@ func NewMetricTripperware(
 
 	queryRangeMiddleware = append(
 		queryRangeMiddleware,
-		queryrange.InstrumentMiddleware("split_by_interval"),
+		queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics),
 		SplitByIntervalMiddleware(limits, codec),
 	)
 
@@ -151,7 +155,7 @@ func NewMetricTripperware(
 		c = cache
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
-			queryrange.InstrumentMiddleware("results_cache"),
+			queryrange.InstrumentMiddleware("results_cache", instrumentMetrics),
 			queryCacheMiddleware,
 		)
 	}
@@ -159,12 +163,12 @@ func NewMetricTripperware(
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
-			queryrange.InstrumentMiddleware("retry"),
-			queryrange.NewRetryMiddleware(log, cfg.MaxRetries),
+			queryrange.InstrumentMiddleware("retry", instrumentMetrics),
+			queryrange.NewRetryMiddleware(log, cfg.MaxRetries, registerer),
 		)
 	}
 
-	return frontend.Tripperware(func(next http.RoundTripper) http.RoundTripper {
+	return func(next http.RoundTripper) http.RoundTripper {
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
 			rt := queryrange.NewRoundTripper(next, codec, queryRangeMiddleware...)
@@ -176,5 +180,5 @@ func NewMetricTripperware(
 			})
 		}
 		return next
-	}), c, nil
+	}, c, nil
 }

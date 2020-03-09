@@ -75,7 +75,7 @@ var (
 // those tests are mostly for testing the glue between all component and make sure they activate correctly.
 func TestMetricsTripperware(t *testing.T) {
 
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -139,7 +139,7 @@ func TestMetricsTripperware(t *testing.T) {
 
 func TestLogFilterTripperware(t *testing.T) {
 
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -186,7 +186,7 @@ func TestLogFilterTripperware(t *testing.T) {
 }
 
 func TestLogNoRegex(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -220,7 +220,7 @@ func TestLogNoRegex(t *testing.T) {
 }
 
 func TestUnhandledPath(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -244,7 +244,7 @@ func TestUnhandledPath(t *testing.T) {
 }
 
 func TestRegexpParamsSupport(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
