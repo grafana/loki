@@ -190,7 +190,7 @@ func (m *TableManager) starting(ctx context.Context) error {
 }
 
 // Stop the TableManager
-func (m *TableManager) stopping() error {
+func (m *TableManager) stopping(_ error) error {
 	if m.bucketRetentionLoop != nil {
 		return services.StopAndAwaitTerminated(context.Background(), m.bucketRetentionLoop)
 	}

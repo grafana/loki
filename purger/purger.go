@@ -114,7 +114,7 @@ func (dp *DataPurger) init(ctx context.Context) error {
 }
 
 // Stop waits until all background tasks stop.
-func (dp *DataPurger) stop() error {
+func (dp *DataPurger) stop(_ error) error {
 	dp.wg.Wait()
 	return nil
 }
