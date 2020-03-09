@@ -25,7 +25,7 @@ func ProtoDescFactory() proto.Message {
 
 // GetCodec returns the codec used to encode and decode data being put by ring.
 func GetCodec() codec.Codec {
-	return codec.Proto{Factory: ProtoDescFactory}
+	return codec.NewProtoCodec("ringDesc", ProtoDescFactory)
 }
 
 // NewDesc returns an empty ring.Desc

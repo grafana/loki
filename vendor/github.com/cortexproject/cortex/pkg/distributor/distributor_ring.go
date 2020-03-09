@@ -5,11 +5,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
+
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/go-kit/kit/log/level"
 )
 
 // RingConfig masks the ring lifecycler config which contains

@@ -130,7 +130,7 @@ github.com/coreos/go-systemd/sdjournal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
 github.com/coreos/pkg/dlopen
-# github.com/cortexproject/cortex v0.6.1-0.20200207192307-f1f513ec1de8
+# github.com/cortexproject/cortex v0.6.1-0.20200219140319-baae166e3335
 github.com/cortexproject/cortex/pkg/chunk
 github.com/cortexproject/cortex/pkg/chunk/aws
 github.com/cortexproject/cortex/pkg/chunk/azure
@@ -139,6 +139,7 @@ github.com/cortexproject/cortex/pkg/chunk/cassandra
 github.com/cortexproject/cortex/pkg/chunk/encoding
 github.com/cortexproject/cortex/pkg/chunk/gcp
 github.com/cortexproject/cortex/pkg/chunk/local
+github.com/cortexproject/cortex/pkg/chunk/objectclient
 github.com/cortexproject/cortex/pkg/chunk/storage
 github.com/cortexproject/cortex/pkg/chunk/testutils
 github.com/cortexproject/cortex/pkg/chunk/util
@@ -237,7 +238,7 @@ github.com/go-kit/kit/log
 github.com/go-kit/kit/log/level
 # github.com/go-logfmt/logfmt v0.4.0
 github.com/go-logfmt/logfmt
-# github.com/gocql/gocql v0.0.0-20190301043612-f6df8288f9b4
+# github.com/gocql/gocql v0.0.0-20200121121104-95d072f1b5bb
 github.com/gocql/gocql
 github.com/gocql/gocql/internal/lru
 github.com/gocql/gocql/internal/murmur
@@ -524,8 +525,6 @@ github.com/tinylib/msgp/msgp
 github.com/tmc/grpc-websocket-proxy/wsproxy
 # github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 github.com/tonistiigi/fifo
-# github.com/uber-go/atomic v1.4.0
-github.com/uber-go/atomic
 # github.com/uber/jaeger-client-go v2.20.1+incompatible
 github.com/uber/jaeger-client-go
 github.com/uber/jaeger-client-go/config

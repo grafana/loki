@@ -131,10 +131,13 @@ func (ht hostToken) String() string {
 type tokenRing struct {
 	partitioner partitioner
 	tokens      []hostToken
+	hosts       []*HostInfo
 }
 
 func newTokenRing(partitioner string, hosts []*HostInfo) (*tokenRing, error) {
-	tokenRing := &tokenRing{}
+	tokenRing := &tokenRing{
+		hosts: hosts,
+	}
 
 	if strings.HasSuffix(partitioner, "Murmur3Partitioner") {
 		tokenRing.partitioner = murmur3Partitioner{}
@@ -206,15 +209,15 @@ func (t *tokenRing) GetHostForToken(token token) (host *HostInfo, endToken token
 	}
 
 	// find the primary replica
-	ringIndex := sort.Search(len(t.tokens), func(i int) bool {
+	p := sort.Search(len(t.tokens), func(i int) bool {
 		return !t.tokens[i].token.Less(token)
 	})
 
-	if ringIndex == len(t.tokens) {
+	if p == len(t.tokens) {
 		// wrap around to the first in the ring
-		ringIndex = 0
+		p = 0
 	}
 
-	v := t.tokens[ringIndex]
+	v := t.tokens[p]
 	return v.host, v.token
 }

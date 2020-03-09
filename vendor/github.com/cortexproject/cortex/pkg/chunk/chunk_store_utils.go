@@ -80,7 +80,7 @@ outer:
 // and writing back any misses to the cache.  Also responsible for decoding
 // chunks from the cache, in parallel.
 type Fetcher struct {
-	storage    ObjectClient
+	storage    Client
 	cache      cache.Cache
 	cacheStubs bool
 
@@ -99,7 +99,7 @@ type decodeResponse struct {
 }
 
 // NewChunkFetcher makes a new ChunkFetcher.
-func NewChunkFetcher(cfg cache.Config, cacheStubs bool, storage ObjectClient) (*Fetcher, error) {
+func NewChunkFetcher(cfg cache.Config, cacheStubs bool, storage Client) (*Fetcher, error) {
 	cfg.Prefix = "chunks"
 	cache, err := cache.New(cfg)
 	if err != nil {

@@ -15,6 +15,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	billing "github.com/weaveworks/billing-client"
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -25,10 +29,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	billing "github.com/weaveworks/billing-client"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/common/user"
 )
 
 var (

@@ -453,8 +453,6 @@ heartbeatLoop:
 		}
 		level.Info(util.Logger).Log("msg", "instance removed from the KV store", "ring", i.RingName)
 	}
-
-	i.KVStore.Stop()
 }
 
 // initRing is the first thing we do when we start. It:

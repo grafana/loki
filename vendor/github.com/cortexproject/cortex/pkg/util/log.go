@@ -1,6 +1,7 @@
 package util
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
-	"golang.org/x/net/context"
 )
 
 var (

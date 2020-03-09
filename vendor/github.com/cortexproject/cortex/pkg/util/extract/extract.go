@@ -3,9 +3,10 @@ package extract
 import (
 	"fmt"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 // MetricNameFromLabelAdapters extracts the metric name from a list of LabelPairs.

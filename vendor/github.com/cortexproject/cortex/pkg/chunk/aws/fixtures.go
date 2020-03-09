@@ -7,20 +7,21 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type fixture struct {
 	name    string
-	clients func() (chunk.IndexClient, chunk.ObjectClient, chunk.TableClient, chunk.SchemaConfig, error)
+	clients func() (chunk.IndexClient, chunk.Client, chunk.TableClient, chunk.SchemaConfig, error)
 }
 
 func (f fixture) Name() string {
 	return f.name
 }
 
-func (f fixture) Clients() (chunk.IndexClient, chunk.ObjectClient, chunk.TableClient, chunk.SchemaConfig, error) {
+func (f fixture) Clients() (chunk.IndexClient, chunk.Client, chunk.TableClient, chunk.SchemaConfig, error) {
 	return f.clients()
 }
 
@@ -32,7 +33,7 @@ func (f fixture) Teardown() error {
 var Fixtures = []testutils.Fixture{
 	fixture{
 		name: "S3 chunks",
-		clients: func() (chunk.IndexClient, chunk.ObjectClient, chunk.TableClient, chunk.SchemaConfig, error) {
+		clients: func() (chunk.IndexClient, chunk.Client, chunk.TableClient, chunk.SchemaConfig, error) {
 			schemaConfig := testutils.DefaultSchemaConfig("s3")
 			dynamoDB := newMockDynamoDB(0, 0)
 			table := &dynamoTableClient{
@@ -45,9 +46,9 @@ var Fixtures = []testutils.Fixture{
 				batchWriteItemRequestFn: dynamoDB.batchWriteItemRequest,
 				schemaCfg:               schemaConfig,
 			}
-			object := &S3ObjectClient{
+			object := objectclient.NewClient(&S3ObjectClient{
 				S3: newMockS3(),
-			}
+			}, nil)
 			return index, object, table, schemaConfig, nil
 		},
 	},
@@ -60,7 +61,7 @@ func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) testutils.Fix
 	return fixture{
 		name: fmt.Sprintf("DynamoDB chunks provisionedErr=%d, ChunkGangSize=%d, ChunkGetMaxParallelism=%d",
 			provisionedErr, gangsize, maxParallelism),
-		clients: func() (chunk.IndexClient, chunk.ObjectClient, chunk.TableClient, chunk.SchemaConfig, error) {
+		clients: func() (chunk.IndexClient, chunk.Client, chunk.TableClient, chunk.SchemaConfig, error) {
 			dynamoDB := newMockDynamoDB(0, provisionedErr)
 			schemaCfg := testutils.DefaultSchemaConfig("aws")
 			table := &dynamoTableClient{
