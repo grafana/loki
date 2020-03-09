@@ -89,7 +89,7 @@ func Test_SimplifiedRegex(t *testing.T) {
 	}
 }
 
-func Benchmark_RegexpSimplified(b *testing.B) {
+func Benchmark_LineFilter(b *testing.B) {
 	b.ReportAllocs()
 	logline := `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /buzz (200) 4.599635ms`
 	for _, test := range []struct {

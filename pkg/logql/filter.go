@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-// Filter is a function to filter logs.
+// LineFilter is a function to filter logs.
 type LineFilter interface {
 	Filter(line []byte) bool
 }
@@ -22,12 +22,14 @@ func (n notFilter) Filter(line []byte) bool {
 	return !n.LineFilter.Filter(line)
 }
 
-func newNotFilter(f LineFilter) LineFilter {
+// newNotFilter creates a new filter which matches only if the base filter doesn't match.
+// If the base filter is a `or` it will recursively simplify with `and` operations.
+func newNotFilter(base LineFilter) LineFilter {
 	// not(a|b) = not(a) and not(b)
-	if or, ok := f.(orFilter); ok {
+	if or, ok := base.(orFilter); ok {
 		return newAndFilter(newNotFilter(or.left), newNotFilter(or.right))
 	}
-	return notFilter{LineFilter: f}
+	return notFilter{LineFilter: base}
 }
 
 type andFilter struct {
@@ -35,10 +37,11 @@ type andFilter struct {
 	right LineFilter
 }
 
-func newAndFilter(l LineFilter, r LineFilter) LineFilter {
+// newAndFilter creates a new filter which matches only if left and right matches.
+func newAndFilter(left LineFilter, right LineFilter) LineFilter {
 	return andFilter{
-		left:  l,
-		right: r,
+		left:  left,
+		right: right,
 	}
 }
 
@@ -51,13 +54,15 @@ type orFilter struct {
 	right LineFilter
 }
 
-func newOrFilter(l LineFilter, r LineFilter) LineFilter {
+// newOrFilter creates a new filter which matches only if left and right matches.
+func newOrFilter(left LineFilter, right LineFilter) LineFilter {
 	return orFilter{
-		left:  l,
-		right: r,
+		left:  left,
+		right: right,
 	}
 }
 
+// chainOrFilter is a syntax sugar to chain multiple `or` filters. (1 or many)
 func chainOrFilter(curr, new LineFilter) LineFilter {
 	if curr == nil {
 		return new
@@ -73,6 +78,8 @@ type regexpFilter struct {
 	*regexp.Regexp
 }
 
+// newRegexpFilter creates a new line filter for a given regexp.
+// If match is false the filter is the negation of the regexp.
 func newRegexpFilter(re string, match bool) (LineFilter, error) {
 	reg, err := regexp.Compile(re)
 	if err != nil {
@@ -99,6 +106,7 @@ func (l literalFilter) String() string {
 	return string(l)
 }
 
+// newFilter creates a new line filter from a match string and type.
 func newFilter(match string, mt labels.MatchType) (LineFilter, error) {
 	switch mt {
 	case labels.MatchRegexp:
@@ -115,6 +123,8 @@ func newFilter(match string, mt labels.MatchType) (LineFilter, error) {
 	}
 }
 
+// parseRegexpFilter parses a regexp and attempt to simplify it with only literal filters.
+// If not possible it will returns the original regexp filter.
 func parseRegexpFilter(re string, match bool) (LineFilter, error) {
 	reg, err := syntax.Parse(re, syntax.Perl)
 	if err != nil {
@@ -133,6 +143,8 @@ func parseRegexpFilter(re string, match bool) (LineFilter, error) {
 	return newNotFilter(f), nil
 }
 
+// simplify a regexp expression by replacing it, when possible, with a succession of literal filters.
+// For example `(foo|bar)` will be replaced by  `literalFilter(foo) or literalFilter(bar)`
 func simplify(reg *syntax.Regexp) (LineFilter, bool) {
 	switch reg.Op {
 	case syntax.OpAlternate:
@@ -148,6 +160,7 @@ func simplify(reg *syntax.Regexp) (LineFilter, bool) {
 	return nil, false
 }
 
+// clearCapture removes capture operation as they are not used for filtering.
 func clearCapture(regs ...*syntax.Regexp) {
 	for _, r := range regs {
 		if r.Op == syntax.OpCapture {
@@ -156,6 +169,8 @@ func clearCapture(regs ...*syntax.Regexp) {
 	}
 }
 
+// simplifyAlternate simplifies, when possible, alternate regexp expressions such as:
+// (foo|bar) or (foo|(bar|buzz)).
 func simplifyAlternate(reg *syntax.Regexp) (LineFilter, bool) {
 	clearCapture(reg.Sub...)
 	// attempt to simplify the first leg
@@ -174,22 +189,25 @@ func simplifyAlternate(reg *syntax.Regexp) (LineFilter, bool) {
 	return f, true
 }
 
+// simplifyConcat attempt to simplify concat operations.
+// Concat operations are either literal and star such as foo.* .*foo.* .*foo
+// which is a literalFilter.
+// Or a literal and alternates operation (see simplifyConcatAlternate), which represent a multiplication of alternates.
+// Anything else is rejected.
 func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (LineFilter, bool) {
 	clearCapture(reg.Sub...)
+	// we support only simplication of concat operation with 3 sub expressions.
+	// for instance .*foo.*bar contains 4 subs (.*+foo+.*+bar) and can't be simplified.
 	if len(reg.Sub) > 3 {
 		return nil, false
 	}
-	// Concat operations are either literal and star such as foo.* .*foo.* .*foo
-	// which is a literalFilter.
-	// Or a literal and alternates operation, which represent a multiplication of alternates.
-	// For instance foo|bar|b|buzz|zz is expressed as foo|b(ar|(?:)|uzz)|zz, (?:) being an OpEmptyMatch.
-	// Anything else is rejected.
+
 	var curr LineFilter
 	var ok bool
 	literals := 0
 	for _, sub := range reg.Sub {
 		if sub.Op == syntax.OpLiteral {
-			// only one literal
+			// only one literal is allowed.
 			if literals != 0 {
 				return nil, false
 			}
@@ -197,12 +215,12 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (LineFilter, bool) {
 			baseLiteral = append(baseLiteral, []byte(string(sub.Rune))...)
 			continue
 		}
+		// if we have an alternate we must also have a base literal to apply the concatenation with.
 		if sub.Op == syntax.OpAlternate && baseLiteral != nil {
-			if curr, ok = simplifyConcatLiteralAlternate(sub, baseLiteral, curr); !ok {
+			if curr, ok = simplifyConcatAlternate(sub, baseLiteral, curr); !ok {
 				return nil, false
 			}
 			continue
-
 		}
 		if sub.Op == syntax.OpStar && sub.Sub[0].Op == syntax.OpAnyCharNotNL {
 			continue
@@ -210,10 +228,12 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (LineFilter, bool) {
 		return nil, false
 	}
 
+	// if we have a filter from concat alternates.
 	if curr != nil {
 		return curr, true
 	}
 
+	// if we have only a concat with literals.
 	if baseLiteral != nil {
 		return literalFilter(baseLiteral), true
 
@@ -222,7 +242,11 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (LineFilter, bool) {
 	return nil, false
 }
 
-func simplifyConcatLiteralAlternate(reg *syntax.Regexp, literal []byte, curr LineFilter) (LineFilter, bool) {
+// simplifyConcatAlternate simplifies concat alternate operations.
+// A concat alternate is found when a concat operation has a sub alternate and is preceded by a literal.
+// For instance bar|b|buzz is expressed as b(ar|(?:)|uzz) => b concat alternate(ar,(?:),uzz).
+// (?:) being an OpEmptyMatch and b being the literal to concat all alternates (ar,(?:),uzz) with.
+func simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr LineFilter) (LineFilter, bool) {
 	for _, alt := range reg.Sub {
 		switch alt.Op {
 		case syntax.OpEmptyMatch:
