@@ -12,6 +12,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -48,6 +50,7 @@ const (
 	QueryFrontend
 	Store
 	TableManager
+	MemberlistKV
 	All
 )
 
@@ -82,6 +85,8 @@ func (m moduleName) String() string {
 		return "query-frontend"
 	case TableManager:
 		return "table-manager"
+	case MemberlistKV:
+		return "memberlist-kv"
 	case All:
 		return "all"
 	default:
@@ -136,6 +141,7 @@ func (t *Loki) initServer() (err error) {
 
 func (t *Loki) initRing() (err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.ring, err = ring.New(t.cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
 	if err == nil {
 		err = services.StartAndAwaitRunning(context.Background(), t.ring)
@@ -179,6 +185,8 @@ func (t *Loki) initOverrides() (err error) {
 }
 
 func (t *Loki) initDistributor() (err error) {
+	t.cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.distributor, err = distributor.New(t.cfg.Distributor, t.cfg.IngesterClient, t.ring, t.overrides)
 	if err != nil {
 		return
@@ -237,6 +245,7 @@ func (t *Loki) initQuerier() (err error) {
 
 func (t *Loki) initIngester() (err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = &t.cfg.Server.GRPCListenPort
 	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides)
 	if err != nil {
@@ -355,6 +364,20 @@ func (t *Loki) stopQueryFrontend() error {
 	return nil
 }
 
+func (t *Loki) initMemberlistKV() error {
+	t.cfg.MemberlistKV.MetricsRegisterer = prometheus.DefaultRegisterer
+	t.cfg.MemberlistKV.Codecs = []codec.Codec{
+		ring.GetCodec(),
+	}
+	t.memberlistKV = memberlist.NewKVInit(&t.cfg.MemberlistKV)
+	return nil
+}
+
+func (t *Loki) stopMemberlistKV() error {
+	t.memberlistKV.Stop()
+	return nil
+}
+
 // listDeps recursively gets a list of dependencies for a passed moduleName
 func listDeps(m moduleName) []moduleName {
 	deps := modules[m].deps
@@ -430,8 +453,13 @@ var modules = map[moduleName]module{
 		stop: (*Loki).stopRuntimeConfig,
 	},
 
+	MemberlistKV: {
+		init: (*Loki).initMemberlistKV,
+		stop: (*Loki).stopMemberlistKV,
+	},
+
 	Ring: {
-		deps: []moduleName{RuntimeConfig, Server},
+		deps: []moduleName{RuntimeConfig, Server, MemberlistKV},
 		init: (*Loki).initRing,
 		stop: (*Loki).stopRing,
 	},
@@ -454,7 +482,7 @@ var modules = map[moduleName]module{
 	},
 
 	Ingester: {
-		deps:     []moduleName{Store, Server},
+		deps:     []moduleName{Store, Server, MemberlistKV},
 		init:     (*Loki).initIngester,
 		stop:     (*Loki).stopIngester,
 		stopping: (*Loki).stoppingIngester,

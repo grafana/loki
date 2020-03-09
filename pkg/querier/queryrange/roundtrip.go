@@ -38,12 +38,14 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, registerer promet
 	// This avoids divide by zero errors when determining cache keys where user specific overrides don't exist.
 	limits = WithDefaultLimits(limits, cfg.Config)
 
-	metrics := queryrange.NewInstrumentMiddlewareMetrics(registerer)
-	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, lokiCodec, prometheusResponseExtractor, metrics, registerer)
+	instrumentMetrics := queryrange.NewInstrumentMiddlewareMetrics(registerer)
+	retryMetrics := queryrange.NewRetryMiddlewareMetrics(registerer)
+
+	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, lokiCodec, prometheusResponseExtractor, instrumentMetrics, retryMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, lokiCodec, metrics)
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, lokiCodec, instrumentMetrics, retryMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -92,13 +94,14 @@ func NewLogFilterTripperware(
 	limits Limits,
 	codec queryrange.Codec,
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
+	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
 ) (frontend.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec))
 	}
 	if cfg.MaxRetries > 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, nil))
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
 	}
 
 	return func(next http.RoundTripper) http.RoundTripper {
@@ -117,7 +120,7 @@ func NewMetricTripperware(
 	codec queryrange.Codec,
 	extractor queryrange.Extractor,
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
-	registerer prometheus.Registerer,
+	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
 ) (frontend.Tripperware, Stopper, error) {
 	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
@@ -164,7 +167,7 @@ func NewMetricTripperware(
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
 			queryrange.InstrumentMiddleware("retry", instrumentMetrics),
-			queryrange.NewRetryMiddleware(log, cfg.MaxRetries, registerer),
+			queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics),
 		)
 	}
 
