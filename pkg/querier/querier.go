@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -84,6 +86,10 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory cortex_client
 		limits: limits,
 	}
 	querier.engine = logql.NewEngine(cfg.Engine, &querier)
+	err := services.StartAndAwaitRunning(context.Background(), querier.pool)
+	if err != nil {
+		return nil, errors.Wrap(err, "querier pool")
+	}
 
 	return &querier, nil
 }
