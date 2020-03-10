@@ -10,6 +10,12 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD | sed 's#/#-#g')
 # We are forcing to 7 here, as we are doing for grafana/grafana as well.
 SHA=$(git rev-parse --short=7 HEAD | head -c7)
 
-# If this is a tag, use it,                      otherwise branch-hash
-TAG=$(git describe --exact-match 2> /dev/null || echo "${BRANCH}-${SHA}")
-echo ${TAG}${WIP}
+# If not a tag, use branch-hash else use tag
+TAG=$((git describe --exact-match 2> /dev/null || echo "") | sed 's/v//g')
+
+if [ -z "$TAG" ]
+then
+      echo ${BRANCH}-${SHA}${WIP}
+else
+      echo ${TAG}
+fi

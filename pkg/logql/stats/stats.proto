@@ -26,7 +26,7 @@ message Summary {
   int64 totalBytesProcessed = 3 [(gogoproto.jsontag) = "totalBytesProcessed"];
   // Total lines processed.
   int64 totalLinesProcessed = 4 [(gogoproto.jsontag) = "totalLinesProcessed"];
-  // Execution time in nanoseconds.
+  // Execution time in seconds.
   double execTime = 5 [(gogoproto.jsontag) = "execTime"];
 }
 

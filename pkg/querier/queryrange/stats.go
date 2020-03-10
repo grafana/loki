@@ -1,41 +1,81 @@
 package queryrange
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"net"
+	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
+	"github.com/weaveworks/common/middleware"
 
-	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
-var defaultMetricRecorder = metricRecorderFn(func(status, query string, rangeType logql.QueryRangeType, stats stats.Result) {
-	logql.RecordMetrics(status, query, rangeType, stats)
-})
+type ctxKeyType string
+
+const ctxKey ctxKeyType = "stats"
+
+var (
+	defaultMetricRecorder = metricRecorderFn(func(ctx context.Context, p logql.Params, status string, stats stats.Result) {
+		logql.RecordMetrics(ctx, p, status, stats)
+	})
+	// StatsHTTPMiddleware is an http middleware to record stats for query_range filter.
+	StatsHTTPMiddleware middleware.Interface = statsHTTPMiddleware(defaultMetricRecorder)
+)
 
 type metricRecorder interface {
-	Record(status, query string, rangeType logql.QueryRangeType, stats stats.Result)
+	Record(ctx context.Context, p logql.Params, status string, stats stats.Result)
 }
 
-type metricRecorderFn func(status, query string, rangeType logql.QueryRangeType, stats stats.Result)
+type metricRecorderFn func(ctx context.Context, p logql.Params, status string, stats stats.Result)
 
-func (m metricRecorderFn) Record(status, query string, rangeType logql.QueryRangeType, stats stats.Result) {
-	m(status, query, rangeType, stats)
+func (m metricRecorderFn) Record(ctx context.Context, p logql.Params, status string, stats stats.Result) {
+	m(ctx, p, status, stats)
 }
 
-// StatsMiddleware creates a new Middleware that recompute the stats summary based on the actual duration of the request.
-// The middleware also register Prometheus metrics.
-func StatsMiddleware() queryrange.Middleware {
-	return statsMiddleware(defaultMetricRecorder)
+type queryData struct {
+	params     logql.Params
+	statistics *stats.Result
+	recorded   bool
 }
 
-func statsMiddleware(recorder metricRecorder) queryrange.Middleware {
+func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
+	return middleware.Func(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			data := &queryData{}
+			interceptor := &interceptor{ResponseWriter: w, statusCode: http.StatusOK}
+			r = r.WithContext(context.WithValue(r.Context(), ctxKey, data))
+			next.ServeHTTP(
+				interceptor,
+				r,
+			)
+			// http middlewares runs for every http request.
+			// but we want only to record query_range filters.
+			if data.recorded {
+				if data.statistics == nil {
+					data.statistics = &stats.Result{}
+				}
+				recorder.Record(
+					r.Context(),
+					data.params,
+					strconv.Itoa(interceptor.statusCode),
+					*data.statistics,
+				)
+			}
+		})
+	})
+}
+
+// StatsCollectorMiddleware compute the stats summary based on the actual duration of the request and inject it in the request context.
+func StatsCollectorMiddleware() queryrange.Middleware {
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
 		return queryrange.HandlerFunc(func(ctx context.Context, req queryrange.Request) (queryrange.Response, error) {
 			logger := spanlogger.FromContext(ctx)
@@ -46,31 +86,56 @@ func statsMiddleware(recorder metricRecorder) queryrange.Middleware {
 
 			// collect stats and status
 			var statistics *stats.Result
-			var status string
 			if resp != nil {
 				switch r := resp.(type) {
 				case *LokiResponse:
 					statistics = &r.Statistics
-					status = r.Status
 				case *LokiPromResponse:
 					statistics = &r.Statistics
-					if r.Response != nil {
-						status = r.Response.Status
-					}
 				default:
 					level.Warn(util.Logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))
 				}
-			}
-			if err != nil {
-				status = loghttp.QueryStatusFail
 			}
 			if statistics != nil {
 				// Re-calculate the summary then log and record metrics for the current query
 				statistics.ComputeSummary(time.Since(start))
 				statistics.Log(logger)
-				recorder.Record(status, req.GetQuery(), logql.GetRangeType(paramsFromRequest(req)), *statistics)
+			}
+			ctxValue := ctx.Value(ctxKey)
+			if data, ok := ctxValue.(*queryData); ok {
+				data.recorded = true
+				data.statistics = statistics
+				data.params = paramsFromRequest(req)
 			}
 			return resp, err
 		})
 	})
+}
+
+// interceptor implements WriteHeader to intercept status codes. WriteHeader
+// may not be called on success, so initialize statusCode with the status you
+// want to report on success, i.e. http.StatusOK.
+//
+// interceptor also implements net.Hijacker, to let the downstream Handler
+// hijack the connection. This is needed, for example, for working with websockets.
+type interceptor struct {
+	http.ResponseWriter
+	statusCode int
+	recorded   bool
+}
+
+func (i *interceptor) WriteHeader(code int) {
+	if !i.recorded {
+		i.statusCode = code
+		i.recorded = true
+	}
+	i.ResponseWriter.WriteHeader(code)
+}
+
+func (i *interceptor) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj, ok := i.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("interceptor: can't cast parent ResponseWriter to Hijacker")
+	}
+	return hj.Hijack()
 }

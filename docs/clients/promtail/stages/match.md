@@ -17,7 +17,8 @@ match:
   [pipeline_name: <string>]
 
   # Determines what action is taken when the selector matches the log 
-  # line. Defaults to keep. When set to drop, entries will be dropped. 
+  # line. Defaults to keep. When set to drop, entries will be dropped
+  # and no later metrics will be recorded.
   # Stages must be not defined when dropping entries. 
   [action: <string> | default = "keep"]
 

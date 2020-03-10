@@ -3,6 +3,7 @@
 (import 'images.libsonnet') +
 (import 'common.libsonnet') +
 (import 'config.libsonnet') +
+(import 'overrides.libsonnet') +
 (import 'consul/consul.libsonnet') +
 
 // Loki services

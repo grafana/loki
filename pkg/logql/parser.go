@@ -24,7 +24,10 @@ func ParseExpr(input string) (expr Expr, err error) {
 		if r != nil {
 			var ok bool
 			if err, ok = r.(error); ok {
-				return
+				if IsParseError(err) {
+					return
+				}
+				err = newParseError(err.Error(), 0, 0)
 			}
 		}
 	}()
@@ -88,4 +91,10 @@ func newParseError(msg string, line, col int) ParseError {
 		line: line,
 		col:  col,
 	}
+}
+
+// IsParseError returns true if the err is a ast parsing error.
+func IsParseError(err error) bool {
+	_, ok := err.(ParseError)
+	return ok
 }

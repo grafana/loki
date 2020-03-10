@@ -113,7 +113,7 @@ local manifest(apps) = pipeline('manifest') {
   steps: std.foldl(
     function(acc, app) acc + [{
       name: 'manifest-' + app,
-      image: 'plugins/manifest:1.2.3',
+      image: 'plugins/manifest',
       settings: {
         // the target parameter is abused for the app's name,
         // as it is unused in spec mode. See docker-manifest.tmpl
@@ -153,7 +153,30 @@ local manifest(apps) = pipeline('manifest') {
     ],
   },
 ] + [
-  multiarch_image(arch)
+  multiarch_image(arch) + (
+    // When we're building Promtail for ARM, we want to use Dockerfile.arm32 to fix
+    // a problem with the published Drone image. See Dockerfile.arm32 for more
+    // information.
+    //
+    // This is really really hacky and a better more permanent solution will be to use
+    // buildkit.
+    if arch == 'arm'
+    then {
+      steps: [
+        step + (
+          if std.objectHas(step, 'settings') && step.settings.dockerfile == 'cmd/promtail/Dockerfile'
+          then {
+            settings+: {
+              dockerfile: 'cmd/promtail/Dockerfile.arm32',
+            },
+          }
+          else {}
+        )
+        for step in super.steps
+      ],
+    }
+    else {}
+  )
   for arch in archs
 ] + [
   fluentbit(),
@@ -175,6 +198,7 @@ local manifest(apps) = pipeline('manifest') {
         commands: [
           './tools/deploy.sh',
         ],
+        depends_on: ['clone'],
       },
     ],
   },

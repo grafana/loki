@@ -95,7 +95,7 @@ type Summary struct {
 	TotalBytesProcessed int64 `protobuf:"varint,3,opt,name=totalBytesProcessed,proto3" json:"totalBytesProcessed"`
 	// Total lines processed.
 	TotalLinesProcessed int64 `protobuf:"varint,4,opt,name=totalLinesProcessed,proto3" json:"totalLinesProcessed"`
-	// Execution time in nanoseconds.
+	// Execution time in seconds.
 	ExecTime float64 `protobuf:"fixed64,5,opt,name=execTime,proto3" json:"execTime"`
 }
 

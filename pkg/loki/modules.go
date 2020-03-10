@@ -323,7 +323,7 @@ func (t *Loki) initQueryFrontend() (err error) {
 	t.frontend.Wrap(tripperware)
 	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
 
-	frontendHandler := t.httpAuthMiddleware.Wrap(t.frontend.Handler())
+	frontendHandler := queryrange.StatsHTTPMiddleware.Wrap(t.httpAuthMiddleware.Wrap(t.frontend.Handler()))
 	t.server.HTTP.Handle("/loki/api/v1/query_range", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/query", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/label", frontendHandler)
