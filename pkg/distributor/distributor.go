@@ -12,6 +12,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
+	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/pkg/errors"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing/opentracing-go"
@@ -111,7 +113,10 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 			return nil, err
 		}
 
-		distributorsRing.Start()
+		err = services.StartAndAwaitRunning(context.Background(), distributorsRing)
+		if err != nil {
+			return nil, err
+		}
 
 		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, distributorsRing)
 	} else {
@@ -128,13 +133,18 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 	}
 
+	if err := services.StartAndAwaitRunning(context.Background(), d.pool); err != nil {
+		return nil, errors.Wrap(err, "starting client pool")
+	}
+
 	return &d, nil
 }
 
 func (d *Distributor) Stop() {
 	if d.distributorsRing != nil {
-		d.distributorsRing.Shutdown()
+		_ = services.StopAndAwaitTerminated(context.Background(), d.distributorsRing)
 	}
+	_ = services.StopAndAwaitTerminated(context.Background(), d.pool)
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.

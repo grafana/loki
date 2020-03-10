@@ -108,3 +108,8 @@ func (o *Client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 	}
 	return c, nil
 }
+
+// GetChunks retrieves the specified chunks from the configured backend
+func (o *Client) DeleteChunk(ctx context.Context, chunkID string) error {
+	return o.store.DeleteObject(ctx, chunkID)
+}

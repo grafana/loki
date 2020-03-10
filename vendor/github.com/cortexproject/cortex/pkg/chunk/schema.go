@@ -5,11 +5,16 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/go-kit/kit/log/level"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -33,6 +38,8 @@ var (
 	ErrNotSupported = errors.New("not supported")
 )
 
+type hasChunksForIntervalFunc func(userID, seriesID string, from, through model.Time) (bool, error)
+
 // Schema interface defines methods to calculate the hash and range keys needed
 // to write or read chunks from the external index.
 type Schema interface {
@@ -48,11 +55,18 @@ type Schema interface {
 	GetReadQueriesForMetric(from, through model.Time, userID string, metricName string) ([]IndexQuery, error)
 	GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName string, labelName string) ([]IndexQuery, error)
 	GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName string, labelName string, labelValue string) ([]IndexQuery, error)
+	FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery
 
 	// If the query resulted in series IDs, use this method to find chunks.
 	GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error)
 	// Returns queries to retrieve all label names of multiple series by id.
 	GetLabelNamesForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error)
+
+	// GetSeriesDeleteEntries returns IndexEntry's for deleting SeriesIDs from SeriesStore.
+	// Since SeriesIDs are created per bucket, it makes sure that we don't include series entries which are in use by verifying using hasChunksForIntervalFunc i.e
+	// It checks first and last buckets covered by the time interval to see if a SeriesID still has chunks in the store,
+	// if yes then it doesn't include IndexEntry's for that bucket for deletion.
+	GetSeriesDeleteEntries(from, through model.Time, userID string, metric labels.Labels, hasChunksForIntervalFunc hasChunksForIntervalFunc) ([]IndexEntry, error)
 }
 
 // IndexQuery describes a query for entries
@@ -204,6 +218,78 @@ func (s schema) GetChunksForSeries(from, through model.Time, userID string, seri
 	return result, nil
 }
 
+// GetSeriesDeleteEntries returns IndexEntry's for deleting SeriesIDs from SeriesStore.
+// Since SeriesIDs are created per bucket, it makes sure that we don't include series entries which are in use by verifying using hasChunksForIntervalFunc i.e
+// It checks first and last buckets covered by the time interval to see if a SeriesID still has chunks in the store,
+// if yes then it doesn't include IndexEntry's for that bucket for deletion.
+func (s schema) GetSeriesDeleteEntries(from, through model.Time, userID string, metric labels.Labels, hasChunksForIntervalFunc hasChunksForIntervalFunc) ([]IndexEntry, error) {
+	metricName := metric.Get(model.MetricNameLabel)
+	if metricName == "" {
+		return nil, ErrMetricNameLabelMissing
+	}
+
+	buckets := s.buckets(from, through, userID)
+	if len(buckets) == 0 {
+		return nil, nil
+	}
+
+	seriesID := string(labelsSeriesID(metric))
+
+	// Only first and last buckets needs to be checked for in-use series ids.
+	// Only partially deleted first/last deleted bucket needs to be checked otherwise
+	// not since whole bucket is anyways considered for deletion.
+
+	// Bucket times are relative to the bucket i.e for a per-day bucket
+	// bucket.from would be the number of milliseconds elapsed since the start of that day.
+	// If bucket.from is not 0, it means the from param doesn't align with the start of the bucket.
+	if buckets[0].from != 0 {
+		bucketStartTime := from - model.Time(buckets[0].from)
+		hasChunks, err := hasChunksForIntervalFunc(userID, seriesID, bucketStartTime, bucketStartTime+model.Time(buckets[0].bucketSize)-1)
+		if err != nil {
+			return nil, err
+		}
+
+		if hasChunks {
+			buckets = buckets[1:]
+			if len(buckets) == 0 {
+				return nil, nil
+			}
+		}
+	}
+
+	lastBucket := buckets[len(buckets)-1]
+
+	// Similar to bucket.from, bucket.through here is also relative i.e for a per-day bucket
+	// through would be the number of milliseconds elapsed since the start of that day
+	// If bucket.through is not equal to max size of bucket, it means the through param doesn't align with the end of the bucket.
+	if lastBucket.through != lastBucket.bucketSize {
+		bucketStartTime := through - model.Time(lastBucket.through)
+		hasChunks, err := hasChunksForIntervalFunc(userID, seriesID, bucketStartTime, bucketStartTime+model.Time(lastBucket.bucketSize)-1)
+		if err != nil {
+			return nil, err
+		}
+
+		if hasChunks {
+			buckets = buckets[:len(buckets)-1]
+			if len(buckets) == 0 {
+				return nil, nil
+			}
+		}
+	}
+
+	var result []IndexEntry
+
+	for _, bucket := range buckets {
+		entries, err := s.entries.GetLabelWriteEntries(bucket, metricName, metric, "")
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, entries...)
+	}
+
+	return result, nil
+}
+
 func (s schema) GetLabelNamesForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
 	var result []IndexQuery
 
@@ -218,6 +304,10 @@ func (s schema) GetLabelNamesForSeries(from, through model.Time, userID string, 
 	return result, nil
 }
 
+func (s schema) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return s.entries.FilterReadQueries(queries, shard)
+}
+
 type entries interface {
 	GetWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
 	GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
@@ -228,6 +318,7 @@ type entries interface {
 	GetReadMetricLabelValueQueries(bucket Bucket, metricName string, labelName string, labelValue string) ([]IndexQuery, error)
 	GetChunksForSeries(bucket Bucket, seriesID []byte) ([]IndexQuery, error)
 	GetLabelNamesForSeries(bucket Bucket, seriesID []byte) ([]IndexQuery, error)
+	FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery
 }
 
 // original entries:
@@ -301,6 +392,10 @@ func (originalEntries) GetChunksForSeries(_ Bucket, _ []byte) ([]IndexQuery, err
 
 func (originalEntries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
 	return nil, ErrNotSupported
+}
+
+func (originalEntries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return queries
 }
 
 // v3Schema went to base64 encoded label values & a version ID
@@ -422,6 +517,10 @@ func (labelNameInHashKeyEntries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]I
 	return nil, ErrNotSupported
 }
 
+func (labelNameInHashKeyEntries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return queries
+}
+
 // v5 schema is an extension of v4, with the chunk end time in the
 // range key to improve query latency.  However, it did it wrong
 // so the chunk end times are ignored.
@@ -494,6 +593,10 @@ func (v5Entries) GetChunksForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
 
 func (v5Entries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
 	return nil, ErrNotSupported
+}
+
+func (v5Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return queries
 }
 
 // v6Entries fixes issues with v5 time encoding being wrong (see #337), and
@@ -576,9 +679,12 @@ func (v6Entries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, error
 	return nil, ErrNotSupported
 }
 
-// v9Entries adds a layer of indirection between labels -> series -> chunks.
-type v9Entries struct {
+func (v6Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return queries
 }
+
+// v9Entries adds a layer of indirection between labels -> series -> chunks.
+type v9Entries struct{}
 
 func (v9Entries) GetWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
 	return nil, ErrNotSupported
@@ -673,6 +779,10 @@ func (v9Entries) GetChunksForSeries(bucket Bucket, seriesID []byte) ([]IndexQuer
 
 func (v9Entries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
 	return nil, ErrNotSupported
+}
+
+func (v9Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return queries
 }
 
 // v10Entries builds on v9 by sharding index rows to reduce their size.
@@ -782,6 +892,33 @@ func (v10Entries) GetChunksForSeries(bucket Bucket, seriesID []byte) ([]IndexQue
 
 func (v10Entries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
 	return nil, ErrNotSupported
+}
+
+// FilterReadQueries will return only queries that match a certain shard
+func (v10Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) (matches []IndexQuery) {
+	if shard == nil {
+		return queries
+	}
+
+	for _, query := range queries {
+		s := strings.Split(query.HashValue, ":")[0]
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			level.Error(util.Logger).Log(
+				"msg",
+				"Unable to determine shard from IndexQuery",
+				"HashValue",
+				query.HashValue,
+				"schema",
+				"v10",
+			)
+		}
+
+		if err == nil && n == shard.Shard {
+			matches = append(matches, query)
+		}
+	}
+	return matches
 }
 
 // v11Entries builds on v10 but adds index entries for each series to store respective labels.

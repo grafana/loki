@@ -25,22 +25,12 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-var (
-	queueDuration = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "query_frontend_queue_duration_seconds",
-		Help:      "Time spend by requests queued.",
-		Buckets:   prometheus.DefBuckets,
-	})
-	queueLength = promauto.NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
-		Name:      "query_frontend_queue_length",
-		Help:      "Number of queries in the queue.",
-	})
-
+const (
 	// StatusClientClosedRequest is the status code for when a client request cancellation of an http request
 	StatusClientClosedRequest = 499
+)
 
+var (
 	errTooManyRequest   = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
 	errCanceled         = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
 	errDeadlineExceeded = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
@@ -72,6 +62,10 @@ type Frontend struct {
 	mtx    sync.Mutex
 	cond   *sync.Cond
 	queues map[string]chan *request
+
+	// Metrics.
+	queueDuration prometheus.Histogram
+	queueLength   prometheus.Gauge
 }
 
 type request struct {
@@ -85,11 +79,22 @@ type request struct {
 }
 
 // New creates a new frontend.
-func New(cfg Config, log log.Logger) (*Frontend, error) {
+func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
 	f := &Frontend{
 		cfg:    cfg,
 		log:    log,
 		queues: map[string]chan *request{},
+		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: "cortex",
+			Name:      "query_frontend_queue_duration_seconds",
+			Help:      "Time spend by requests queued.",
+			Buckets:   prometheus.DefBuckets,
+		}),
+		queueLength: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Namespace: "cortex",
+			Name:      "query_frontend_queue_length",
+			Help:      "Number of queries in the queue.",
+		}),
 	}
 	f.cond = sync.NewCond(&f.mtx)
 
@@ -331,7 +336,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 
 	select {
 	case queue <- req:
-		queueLength.Add(1)
+		f.queueLength.Add(1)
 		f.cond.Broadcast()
 		return nil
 	default:
@@ -385,8 +390,8 @@ FindQueue:
 			// Tell close() we've processed a request.
 			f.cond.Broadcast()
 
-			queueDuration.Observe(time.Since(request.enqueueTime).Seconds())
-			queueLength.Add(-1)
+			f.queueDuration.Observe(time.Since(request.enqueueTime).Seconds())
+			f.queueLength.Add(-1)
 			request.queueSpan.Finish()
 
 			// Ensure the request has not already expired.

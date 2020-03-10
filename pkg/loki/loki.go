@@ -7,6 +7,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 
@@ -45,6 +46,7 @@ type Config struct {
 	Frontend         frontend.Config             `yaml:"frontend,omitempty"`
 	QueryRange       queryrange.Config           `yaml:"query_range,omitempty"`
 	RuntimeConfig    runtimeconfig.ManagerConfig `yaml:"runtime_config,omitempty"`
+	MemberlistKV     memberlist.KVConfig         `yaml:"memberlist"`
 }
 
 // RegisterFlags registers flag.
@@ -87,6 +89,7 @@ type Loki struct {
 	frontend      *frontend.Frontend
 	stopper       queryrange.Stopper
 	runtimeConfig *runtimeconfig.Manager
+	memberlistKV  *memberlist.KVInit
 
 	httpAuthMiddleware middleware.Interface
 }

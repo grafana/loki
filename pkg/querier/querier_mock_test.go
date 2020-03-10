@@ -235,6 +235,14 @@ func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, 
 	return args.Get(0).([]string), args.Error(1)
 }
 
+func (s *storeMock) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
+	panic("don't call me please")
+}
+
+func (s *storeMock) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+	panic("don't call me please")
+}
+
 func (s *storeMock) Stop() {
 
 }

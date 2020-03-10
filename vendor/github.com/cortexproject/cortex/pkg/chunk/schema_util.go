@@ -63,7 +63,7 @@ func buildRangeValue(extra int, ss ...[]byte) []byte {
 	for _, s := range ss {
 		length += len(s) + 1
 	}
-	output, i := make([]byte, length, length), 0
+	output, i := make([]byte, length), 0
 	for _, s := range ss {
 		i += copy(output[i:], s) + 1
 	}
@@ -99,21 +99,21 @@ func decodeRangeKey(value []byte) [][]byte {
 
 func encodeBase64Bytes(bytes []byte) []byte {
 	encodedLen := base64.RawStdEncoding.EncodedLen(len(bytes))
-	encoded := make([]byte, encodedLen, encodedLen)
+	encoded := make([]byte, encodedLen)
 	base64.RawStdEncoding.Encode(encoded, bytes)
 	return encoded
 }
 
 func encodeBase64Value(value string) []byte {
 	encodedLen := base64.RawStdEncoding.EncodedLen(len(value))
-	encoded := make([]byte, encodedLen, encodedLen)
+	encoded := make([]byte, encodedLen)
 	base64.RawStdEncoding.Encode(encoded, []byte(value))
 	return encoded
 }
 
 func decodeBase64Value(bs []byte) (model.LabelValue, error) {
 	decodedLen := base64.RawStdEncoding.DecodedLen(len(bs))
-	decoded := make([]byte, decodedLen, decodedLen)
+	decoded := make([]byte, decodedLen)
 	if _, err := base64.RawStdEncoding.Decode(decoded, bs); err != nil {
 		return "", err
 	}
@@ -123,17 +123,11 @@ func decodeBase64Value(bs []byte) (model.LabelValue, error) {
 func encodeTime(t uint32) []byte {
 	// timestamps are hex encoded such that it doesn't contain null byte,
 	// but is still lexicographically sortable.
-	throughBytes := make([]byte, 4, 4)
+	throughBytes := make([]byte, 4)
 	binary.BigEndian.PutUint32(throughBytes, t)
-	encodedThroughBytes := make([]byte, 8, 8)
+	encodedThroughBytes := make([]byte, 8)
 	hex.Encode(encodedThroughBytes, throughBytes)
 	return encodedThroughBytes
-}
-
-func decodeTime(bs []byte) uint32 {
-	buf := make([]byte, 4, 4)
-	hex.Decode(buf, bs)
-	return binary.BigEndian.Uint32(buf)
 }
 
 // parseMetricNameRangeValue returns the metric name stored in metric name

@@ -18,6 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -147,7 +148,10 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		return nil, err
 	}
 
-	i.lifecycler.Start()
+	err = services.StartAndAwaitRunning(context.Background(), i.lifecycler)
+	if err != nil {
+		return nil, err
+	}
 
 	// Now that the lifecycler has been created, we can create the limiter
 	// which depends on it.
@@ -181,7 +185,12 @@ func (i *Ingester) Shutdown() {
 	close(i.quit)
 	i.done.Wait()
 
-	i.lifecycler.Shutdown()
+	i.stopIncomingRequests()
+
+	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "lifecycler failed", "err", err)
+	}
 }
 
 // Stopping helps cleaning up resources before actual shutdown

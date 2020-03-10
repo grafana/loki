@@ -8,16 +8,17 @@ import (
 	"math/rand"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	tsdberrors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/mtime"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
@@ -27,23 +28,49 @@ const (
 	bucketRetentionEnforcementInterval = 12 * time.Hour
 )
 
-var (
-	syncTableDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
+type tableManagerMetrics struct {
+	syncTableDuration *prometheus.HistogramVec
+	tableCapacity     *prometheus.GaugeVec
+	createFailures    prometheus.Gauge
+	deleteFailures    prometheus.Gauge
+}
+
+func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
+	m := tableManagerMetrics{}
+	m.syncTableDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "dynamo_sync_tables_seconds",
 		Help:      "Time spent doing SyncTables.",
 		Buckets:   prometheus.DefBuckets,
-	}, []string{"operation", "status_code"}))
-	tableCapacity = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	}, []string{"operation", "status_code"})
+
+	m.tableCapacity = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "dynamo_table_capacity_units",
 		Help:      "Per-table DynamoDB capacity, measured in DynamoDB capacity units.",
 	}, []string{"op", "table"})
-)
 
-func init() {
-	prometheus.MustRegister(tableCapacity)
-	syncTableDuration.Register()
+	m.createFailures = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "table_manager_create_failures",
+		Help:      "Number of table creation failures during the last table-manager reconciliation",
+	})
+	m.deleteFailures = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "table_manager_delete_failures",
+		Help:      "Number of table deletion failures during the last table-manager reconciliation",
+	})
+
+	if r != nil {
+		r.MustRegister(
+			m.syncTableDuration,
+			m.tableCapacity,
+			m.createFailures,
+			m.deleteFailures,
+		)
+	}
+
+	return &m
 }
 
 // TableManagerConfig holds config for a TableManager
@@ -116,18 +143,21 @@ func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
 
 // TableManager creates and manages the provisioned throughput on DynamoDB tables
 type TableManager struct {
+	services.Service
+
 	client       TableClient
 	cfg          TableManagerConfig
 	schemaCfg    SchemaConfig
 	maxChunkAge  time.Duration
-	done         chan struct{}
-	wait         sync.WaitGroup
 	bucketClient BucketClient
+	metrics      *tableManagerMetrics
+
+	bucketRetentionLoop services.Service
 }
 
 // NewTableManager makes a new TableManager
 func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge time.Duration, tableClient TableClient,
-	objectClient BucketClient) (*TableManager, error) {
+	objectClient BucketClient, registerer prometheus.Registerer) (*TableManager, error) {
 
 	if cfg.RetentionPeriod != 0 {
 		// Assume the newest config is the one to use for validation of retention
@@ -137,40 +167,41 @@ func NewTableManager(cfg TableManagerConfig, schemaCfg SchemaConfig, maxChunkAge
 		}
 	}
 
-	return &TableManager{
+	tm := &TableManager{
 		cfg:          cfg,
 		schemaCfg:    schemaCfg,
 		maxChunkAge:  maxChunkAge,
 		client:       tableClient,
-		done:         make(chan struct{}),
 		bucketClient: objectClient,
-	}, nil
+		metrics:      newTableManagerMetrics(registerer),
+	}
+
+	tm.Service = services.NewBasicService(tm.starting, tm.loop, tm.stopping)
+	return tm, nil
 }
 
 // Start the TableManager
-func (m *TableManager) Start() {
-	m.wait.Add(1)
-	go m.loop()
-
+func (m *TableManager) starting(ctx context.Context) error {
 	if m.bucketClient != nil && m.cfg.RetentionPeriod != 0 && m.cfg.RetentionDeletesEnabled {
-		m.wait.Add(1)
-		go m.bucketRetentionLoop()
+		m.bucketRetentionLoop = services.NewTimerService(bucketRetentionEnforcementInterval, nil, m.bucketRetentionIteration, nil)
+		return services.StartAndAwaitRunning(ctx, m.bucketRetentionLoop)
 	}
+	return nil
 }
 
 // Stop the TableManager
-func (m *TableManager) Stop() {
-	close(m.done)
-	m.wait.Wait()
+func (m *TableManager) stopping(_ error) error {
+	if m.bucketRetentionLoop != nil {
+		return services.StopAndAwaitTerminated(context.Background(), m.bucketRetentionLoop)
+	}
+	return nil
 }
 
-func (m *TableManager) loop() {
-	defer m.wait.Done()
-
+func (m *TableManager) loop(ctx context.Context) error {
 	ticker := time.NewTicker(m.cfg.DynamoDBPollInterval)
 	defer ticker.Stop()
 
-	if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", syncTableDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", instrument.NewHistogramCollector(m.metrics.syncTableDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		return m.SyncTables(ctx)
 	}); err != nil {
 		level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
@@ -179,42 +210,34 @@ func (m *TableManager) loop() {
 	// Sleep for a bit to spread the sync load across different times if the tablemanagers are all started at once.
 	select {
 	case <-time.After(time.Duration(rand.Int63n(int64(m.cfg.DynamoDBPollInterval)))):
-	case <-m.done:
-		return
+	case <-ctx.Done():
+		return nil
 	}
 
 	for {
 		select {
 		case <-ticker.C:
-			if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", syncTableDuration, instrument.ErrorCode, func(ctx context.Context) error {
+			if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", instrument.NewHistogramCollector(m.metrics.syncTableDuration), instrument.ErrorCode, func(ctx context.Context) error {
 				return m.SyncTables(ctx)
 			}); err != nil {
 				level.Error(util.Logger).Log("msg", "error syncing tables", "err", err)
 			}
-		case <-m.done:
-			return
+		case <-ctx.Done():
+			return nil
 		}
 	}
 }
 
-func (m *TableManager) bucketRetentionLoop() {
-	defer m.wait.Done()
+// single iteration of bucket retention loop
+func (m *TableManager) bucketRetentionIteration(ctx context.Context) error {
+	err := m.bucketClient.DeleteChunksBefore(ctx, mtime.Now().Add(-m.cfg.RetentionPeriod))
 
-	ticker := time.NewTicker(bucketRetentionEnforcementInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			err := m.bucketClient.DeleteChunksBefore(context.Background(), mtime.Now().Add(-m.cfg.RetentionPeriod))
-
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
-			}
-		case <-m.done:
-			return
-		}
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error enforcing filesystem retention", "err", err)
 	}
+
+	// don't return error, otherwise timer service would stop.
+	return nil
 }
 
 // SyncTables will calculate the tables expected to exist, create those that do
@@ -364,17 +387,26 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []Table
 }
 
 func (m *TableManager) createTables(ctx context.Context, descriptions []TableDesc) error {
+	numFailures := 0
+	merr := tsdberrors.MultiError{}
+
 	for _, desc := range descriptions {
 		level.Info(util.Logger).Log("msg", "creating table", "table", desc.Name)
 		err := m.client.CreateTable(ctx, desc)
 		if err != nil {
-			return err
+			numFailures++
+			merr.Add(err)
 		}
 	}
-	return nil
+
+	m.metrics.createFailures.Set(float64(numFailures))
+	return merr.Err()
 }
 
 func (m *TableManager) deleteTables(ctx context.Context, descriptions []TableDesc) error {
+	numFailures := 0
+	merr := tsdberrors.MultiError{}
+
 	for _, desc := range descriptions {
 		level.Info(util.Logger).Log("msg", "table has exceeded the retention period", "table", desc.Name)
 		if !m.cfg.RetentionDeletesEnabled {
@@ -384,10 +416,13 @@ func (m *TableManager) deleteTables(ctx context.Context, descriptions []TableDes
 		level.Info(util.Logger).Log("msg", "deleting table", "table", desc.Name)
 		err := m.client.DeleteTable(ctx, desc.Name)
 		if err != nil {
-			return err
+			numFailures++
+			merr.Add(err)
 		}
 	}
-	return nil
+
+	m.metrics.deleteFailures.Set(float64(numFailures))
+	return merr.Err()
 }
 
 func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDesc) error {
@@ -398,8 +433,8 @@ func (m *TableManager) updateTables(ctx context.Context, descriptions []TableDes
 			return err
 		}
 
-		tableCapacity.WithLabelValues(readLabel, expected.Name).Set(float64(current.ProvisionedRead))
-		tableCapacity.WithLabelValues(writeLabel, expected.Name).Set(float64(current.ProvisionedWrite))
+		m.metrics.tableCapacity.WithLabelValues(readLabel, expected.Name).Set(float64(current.ProvisionedRead))
+		m.metrics.tableCapacity.WithLabelValues(writeLabel, expected.Name).Set(float64(current.ProvisionedWrite))
 
 		if m.cfg.ThroughputUpdatesDisabled {
 			continue

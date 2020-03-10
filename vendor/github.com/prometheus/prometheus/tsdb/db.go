@@ -57,6 +57,7 @@ var DefaultOptions = &Options{
 	NoLockfile:             false,
 	AllowOverlappingBlocks: false,
 	WALCompression:         false,
+	StripeSize:             DefaultStripeSize,
 }
 
 // Options of the DB storage.
@@ -89,6 +90,9 @@ type Options struct {
 
 	// WALCompression will turn on Snappy compression for records on the WAL.
 	WALCompression bool
+
+	// StripeSize is the size in entries of the series hash map. Reducing the size will save memory but impact perfomance.
+	StripeSize int
 }
 
 // Appender allows appending a batch of data. It must be completed with a
@@ -155,15 +159,15 @@ type dbMetrics struct {
 	symbolTableSize      prometheus.GaugeFunc
 	reloads              prometheus.Counter
 	reloadsFailed        prometheus.Counter
-	compactionsTriggered prometheus.Counter
 	compactionsFailed    prometheus.Counter
-	timeRetentionCount   prometheus.Counter
+	compactionsTriggered prometheus.Counter
 	compactionsSkipped   prometheus.Counter
+	sizeRetentionCount   prometheus.Counter
+	timeRetentionCount   prometheus.Counter
 	startTime            prometheus.GaugeFunc
 	tombCleanTimer       prometheus.Histogram
 	blocksBytes          prometheus.Gauge
 	maxBytes             prometheus.Gauge
-	sizeRetentionCount   prometheus.Counter
 }
 
 func newDBMetrics(db *DB, r prometheus.Registerer) *dbMetrics {
@@ -248,14 +252,15 @@ func newDBMetrics(db *DB, r prometheus.Registerer) *dbMetrics {
 			m.symbolTableSize,
 			m.reloads,
 			m.reloadsFailed,
-			m.timeRetentionCount,
-			m.compactionsTriggered,
 			m.compactionsFailed,
+			m.compactionsTriggered,
+			m.compactionsSkipped,
+			m.sizeRetentionCount,
+			m.timeRetentionCount,
 			m.startTime,
 			m.tombCleanTimer,
 			m.blocksBytes,
 			m.maxBytes,
-			m.sizeRetentionCount,
 		)
 	}
 	return m
@@ -308,7 +313,7 @@ func (db *DBReadOnly) FlushWAL(dir string) error {
 	if err != nil {
 		return err
 	}
-	head, err := NewHead(nil, db.logger, w, 1)
+	head, err := NewHead(nil, db.logger, w, 1, DefaultStripeSize)
 	if err != nil {
 		return err
 	}
@@ -355,7 +360,7 @@ func (db *DBReadOnly) Querier(mint, maxt int64) (Querier, error) {
 		blocks[i] = b
 	}
 
-	head, err := NewHead(nil, db.logger, nil, 1)
+	head, err := NewHead(nil, db.logger, nil, 1, DefaultStripeSize)
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +375,7 @@ func (db *DBReadOnly) Querier(mint, maxt int64) (Querier, error) {
 		if err != nil {
 			return nil, err
 		}
-		head, err = NewHead(nil, db.logger, w, 1)
+		head, err = NewHead(nil, db.logger, w, 1, DefaultStripeSize)
 		if err != nil {
 			return nil, err
 		}
@@ -487,6 +492,9 @@ func Open(dir string, l log.Logger, r prometheus.Registerer, opts *Options) (db 
 	if opts == nil {
 		opts = DefaultOptions
 	}
+	if opts.StripeSize <= 0 {
+		opts.StripeSize = DefaultStripeSize
+	}
 	// Fixup bad format written by Prometheus 2.1.
 	if err := repairBadIndexVersion(l, dir); err != nil {
 		return nil, err
@@ -548,7 +556,7 @@ func Open(dir string, l log.Logger, r prometheus.Registerer, opts *Options) (db 
 		}
 	}
 
-	db.head, err = NewHead(r, l, wlog, opts.BlockRanges[0])
+	db.head, err = NewHead(r, l, wlog, opts.BlockRanges[0], opts.StripeSize)
 	if err != nil {
 		return nil, err
 	}
@@ -566,7 +574,7 @@ func Open(dir string, l log.Logger, r prometheus.Registerer, opts *Options) (db 
 
 	if initErr := db.head.Init(minValidTime); initErr != nil {
 		db.head.metrics.walCorruptionsTotal.Inc()
-		level.Warn(db.logger).Log("msg", "encountered WAL read error, attempting repair", "err", err)
+		level.Warn(db.logger).Log("msg", "encountered WAL read error, attempting repair", "err", initErr)
 		if err := wlog.Repair(initErr); err != nil {
 			return nil, errors.Wrap(err, "repair corrupted WAL")
 		}
@@ -605,7 +613,7 @@ func (db *DB) run() {
 
 			db.autoCompactMtx.Lock()
 			if db.autoCompact {
-				if err := db.compact(); err != nil {
+				if err := db.Compact(); err != nil {
 					level.Error(db.logger).Log("msg", "compaction failed", "err", err)
 					backoff = exponential(backoff, 1*time.Second, 1*time.Minute)
 				} else {
@@ -654,7 +662,7 @@ func (a dbAppender) Commit() error {
 // this is sufficient to reliably delete old data.
 // Old blocks are only deleted on reload based on the new block's parent information.
 // See DB.reload documentation for further information.
-func (db *DB) compact() (err error) {
+func (db *DB) Compact() (err error) {
 	db.cmtx.Lock()
 	defer db.cmtx.Unlock()
 	defer func() {

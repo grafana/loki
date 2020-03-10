@@ -33,7 +33,7 @@ type BackgroundConfig struct {
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *BackgroundConfig) RegisterFlagsWithPrefix(prefix string, description string, f *flag.FlagSet) {
 	f.IntVar(&cfg.WriteBackGoroutines, prefix+"memcache.write-back-goroutines", 10, description+"How many goroutines to use to write back to memcache.")
-	f.IntVar(&cfg.WriteBackBuffer, prefix+"memcache.write-back-buffer", 10000, description+"How many chunks to buffer for background write back.")
+	f.IntVar(&cfg.WriteBackBuffer, prefix+"memcache.write-back-buffer", 10000, description+"How many key batches to buffer for background write-back.")
 }
 
 type backgroundCache struct {
@@ -80,21 +80,33 @@ func (c *backgroundCache) Stop() {
 	c.Cache.Stop()
 }
 
+const keysPerBatch = 100
+
 // Store writes keys for the cache in the background.
 func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
-	bgWrite := backgroundWrite{
-		keys: keys,
-		bufs: bufs,
-	}
-	select {
-	case c.bgWrites <- bgWrite:
-		c.queueLength.Add(float64(len(keys)))
-	default:
-		c.droppedWriteBack.Add(float64(len(keys)))
-		sp := opentracing.SpanFromContext(ctx)
-		if sp != nil {
-			sp.LogFields(otlog.Int("dropped", len(keys)))
+	for len(keys) > 0 {
+		num := keysPerBatch
+		if num > len(keys) {
+			num = len(keys)
 		}
+
+		bgWrite := backgroundWrite{
+			keys: keys[:num],
+			bufs: bufs[:num],
+		}
+		select {
+		case c.bgWrites <- bgWrite:
+			c.queueLength.Add(float64(len(keys)))
+		default:
+			c.droppedWriteBack.Add(float64(len(keys)))
+			sp := opentracing.SpanFromContext(ctx)
+			if sp != nil {
+				sp.LogFields(otlog.Int("dropped", len(keys)))
+			}
+			return // queue is full; give up
+		}
+		keys = keys[num:]
+		bufs = bufs[num:]
 	}
 }
 

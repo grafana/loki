@@ -57,7 +57,7 @@ type worker struct {
 
 	ctx     context.Context
 	cancel  context.CancelFunc
-	watcher naming.Watcher
+	watcher naming.Watcher //nolint:staticcheck //Skipping for now. If you still see this more than likely issue https://github.com/cortexproject/cortex/issues/2015 has not yet been addressed.
 	wg      sync.WaitGroup
 }
 

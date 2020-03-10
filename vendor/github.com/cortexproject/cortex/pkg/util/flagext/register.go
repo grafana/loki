@@ -20,5 +20,5 @@ func DefaultValues(rs ...Registerer) {
 	for _, r := range rs {
 		r.RegisterFlags(fs)
 	}
-	fs.Parse([]string{})
+	_ = fs.Parse([]string{})
 }

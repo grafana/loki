@@ -103,7 +103,6 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 	var (
 		index   = uint64(0)
 		retries = 10
-		retry   = true
 	)
 	for i := 0; i < retries; i++ {
 		options := &consul.QueryOptions{
@@ -127,7 +126,7 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 			intermediate = out
 		}
 
-		intermediate, retry, err = f(intermediate)
+		intermediate, retry, err := f(intermediate)
 		if err != nil {
 			if !retry {
 				return err

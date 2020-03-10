@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,8 +12,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
+	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -46,6 +50,7 @@ const (
 	QueryFrontend
 	Store
 	TableManager
+	MemberlistKV
 	All
 )
 
@@ -80,6 +85,8 @@ func (m moduleName) String() string {
 		return "query-frontend"
 	case TableManager:
 		return "table-manager"
+	case MemberlistKV:
+		return "memberlist-kv"
 	case All:
 		return "all"
 	default:
@@ -134,13 +141,21 @@ func (t *Loki) initServer() (err error) {
 
 func (t *Loki) initRing() (err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.ring, err = ring.New(t.cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
+	if err == nil {
+		err = services.StartAndAwaitRunning(context.Background(), t.ring)
+	}
 	if err != nil {
 		return
 	}
 	prometheus.MustRegister(t.ring)
 	t.server.HTTP.Handle("/ring", t.ring)
 	return
+}
+
+func (t *Loki) stopRing() (err error) {
+	return services.StopAndAwaitTerminated(context.Background(), t.ring)
 }
 
 func (t *Loki) initRuntimeConfig() (err error) {
@@ -154,12 +169,14 @@ func (t *Loki) initRuntimeConfig() (err error) {
 	validation.SetDefaultLimitsForYAMLUnmarshalling(t.cfg.LimitsConfig)
 
 	t.runtimeConfig, err = runtimeconfig.NewRuntimeConfigManager(t.cfg.RuntimeConfig, prometheus.DefaultRegisterer)
+	if err == nil {
+		err = services.StartAndAwaitRunning(context.Background(), t.runtimeConfig)
+	}
 	return err
 }
 
 func (t *Loki) stopRuntimeConfig() (err error) {
-	t.runtimeConfig.Stop()
-	return nil
+	return services.StopAndAwaitTerminated(context.Background(), t.runtimeConfig)
 }
 
 func (t *Loki) initOverrides() (err error) {
@@ -168,6 +185,8 @@ func (t *Loki) initOverrides() (err error) {
 }
 
 func (t *Loki) initDistributor() (err error) {
+	t.cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.distributor, err = distributor.New(t.cfg.Distributor, t.cfg.IngesterClient, t.ring, t.overrides)
 	if err != nil {
 		return
@@ -226,6 +245,7 @@ func (t *Loki) initQuerier() (err error) {
 
 func (t *Loki) initIngester() (err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = &t.cfg.Server.GRPCListenPort
 	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides)
 	if err != nil {
@@ -281,18 +301,15 @@ func (t *Loki) initTableManager() error {
 	bucketClient, err := storage.NewBucketClient(t.cfg.StorageConfig.Config)
 	util.CheckFatal("initializing bucket client", err)
 
-	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient)
+	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, prometheus.DefaultRegisterer)
 	if err != nil {
 		return err
 	}
-
-	t.tableManager.Start()
-	return nil
+	return services.StartAndAwaitRunning(context.Background(), t.tableManager)
 }
 
 func (t *Loki) stopTableManager() error {
-	t.tableManager.Stop()
-	return nil
+	return services.StopAndAwaitTerminated(context.Background(), t.tableManager)
 }
 
 func (t *Loki) initStore() (err error) {
@@ -307,7 +324,7 @@ func (t *Loki) stopStore() error {
 
 func (t *Loki) initQueryFrontend() (err error) {
 	level.Debug(util.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.cfg.Frontend))
-	t.frontend, err = frontend.New(t.cfg.Frontend, util.Logger)
+	t.frontend, err = frontend.New(t.cfg.Frontend, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -315,7 +332,7 @@ func (t *Loki) initQueryFrontend() (err error) {
 		"config", fmt.Sprintf("%+v", t.cfg.QueryRange),
 		"limits", fmt.Sprintf("%+v", t.cfg.LimitsConfig),
 	)
-	tripperware, stopper, err := queryrange.NewTripperware(t.cfg.QueryRange, util.Logger, t.overrides)
+	tripperware, stopper, err := queryrange.NewTripperware(t.cfg.QueryRange, util.Logger, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return err
 	}
@@ -344,6 +361,20 @@ func (t *Loki) stopQueryFrontend() error {
 	if t.stopper != nil {
 		t.stopper.Stop()
 	}
+	return nil
+}
+
+func (t *Loki) initMemberlistKV() error {
+	t.cfg.MemberlistKV.MetricsRegisterer = prometheus.DefaultRegisterer
+	t.cfg.MemberlistKV.Codecs = []codec.Codec{
+		ring.GetCodec(),
+	}
+	t.memberlistKV = memberlist.NewKVInit(&t.cfg.MemberlistKV)
+	return nil
+}
+
+func (t *Loki) stopMemberlistKV() error {
+	t.memberlistKV.Stop()
 	return nil
 }
 
@@ -422,9 +453,15 @@ var modules = map[moduleName]module{
 		stop: (*Loki).stopRuntimeConfig,
 	},
 
+	MemberlistKV: {
+		init: (*Loki).initMemberlistKV,
+		stop: (*Loki).stopMemberlistKV,
+	},
+
 	Ring: {
-		deps: []moduleName{RuntimeConfig, Server},
+		deps: []moduleName{RuntimeConfig, Server, MemberlistKV},
 		init: (*Loki).initRing,
+		stop: (*Loki).stopRing,
 	},
 
 	Overrides: {
@@ -445,7 +482,7 @@ var modules = map[moduleName]module{
 	},
 
 	Ingester: {
-		deps:     []moduleName{Store, Server},
+		deps:     []moduleName{Store, Server, MemberlistKV},
 		init:     (*Loki).initIngester,
 		stop:     (*Loki).stopIngester,
 		stopping: (*Loki).stoppingIngester,
