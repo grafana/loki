@@ -17,5 +17,5 @@ dependencies:
   repository:  "https://kubernetes-charts.storage.googleapis.com/"
 - name: "prometheus"
   condition: prometheus.enabled
-  version: "~10.4.0"
+  version: "~9.3.0"
   repository:  "https://kubernetes-charts.storage.googleapis.com/"
