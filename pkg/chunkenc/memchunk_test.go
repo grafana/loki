@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc/testdata"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 var testEncoding = []Encoding{
@@ -504,9 +505,9 @@ func TestGenerateDataSize(t *testing.T) {
 			bytesRead := uint64(0)
 			for _, c := range chunks {
 				// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
-				iterator, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Now(), logproto.FORWARD, func(line []byte) bool {
+				iterator, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Now(), logproto.FORWARD, logql.LineFilterFunc(func(line []byte) bool {
 					return true // return all
-				})
+				}))
 				if err != nil {
 					panic(err)
 				}

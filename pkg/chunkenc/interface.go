@@ -96,7 +96,7 @@ type Chunk interface {
 	Bounds() (time.Time, time.Time)
 	SpaceFor(*logproto.Entry) bool
 	Append(*logproto.Entry) error
-	Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error)
+	Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, filter logql.LineFilter) (iter.EntryIterator, error)
 	Size() int
 	Bytes() ([]byte, error)
 	Blocks() int

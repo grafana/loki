@@ -466,7 +466,7 @@ func (c *MemChunk) Bounds() (fromT, toT time.Time) {
 }
 
 // Iterator implements Chunk.
-func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error) {
+func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, filter logql.LineFilter) (iter.EntryIterator, error) {
 	mint, maxt := mintT.UnixNano(), maxtT.UnixNano()
 	its := make([]iter.EntryIterator, 0, len(c.blocks)+1)
 
@@ -493,14 +493,14 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	return iter.NewReversedIter(iterForward, 0, false)
 }
 
-func (b block) iterator(ctx context.Context, pool ReaderPool, filter logql.Filter) iter.EntryIterator {
+func (b block) iterator(ctx context.Context, pool ReaderPool, filter logql.LineFilter) iter.EntryIterator {
 	if len(b.b) == 0 {
 		return emptyIterator
 	}
 	return newBufferedIterator(ctx, pool, b.b, filter)
 }
 
-func (hb *headBlock) iterator(ctx context.Context, mint, maxt int64, filter logql.Filter) iter.EntryIterator {
+func (hb *headBlock) iterator(ctx context.Context, mint, maxt int64, filter logql.LineFilter) iter.EntryIterator {
 	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return emptyIterator
 	}
@@ -515,7 +515,7 @@ func (hb *headBlock) iterator(ctx context.Context, mint, maxt int64, filter logq
 	entries := make([]entry, 0, len(hb.entries))
 	for _, e := range hb.entries {
 		chunkStats.HeadChunkBytes += int64(len(e.s))
-		if filter == nil || filter([]byte(e.s)) {
+		if filter == nil || filter.Filter([]byte(e.s)) {
 			entries = append(entries, e)
 		}
 	}
@@ -577,10 +577,10 @@ type bufferedIterator struct {
 
 	closed bool
 
-	filter logql.Filter
+	filter logql.LineFilter
 }
 
-func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte, filter logql.Filter) *bufferedIterator {
+func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte, filter logql.LineFilter) *bufferedIterator {
 	chunkStats := stats.GetChunkData(ctx)
 	chunkStats.CompressedBytes += int64(len(b))
 	return &bufferedIterator{
@@ -610,7 +610,7 @@ func (si *bufferedIterator) Next() bool {
 		// we decode always the line length and ts as varint
 		si.stats.DecompressedBytes += int64(len(line)) + 2*binary.MaxVarintLen64
 		si.stats.DecompressedLines++
-		if si.filter != nil && !si.filter(line) {
+		if si.filter != nil && !si.filter.Filter(line) {
 			continue
 		}
 		si.cur.Line = string(line)

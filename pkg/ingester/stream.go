@@ -251,7 +251,7 @@ func (s *stream) cutChunkForSynchronization(entryTimestamp, prevEntryTimestamp t
 }
 
 // Returns an iterator.
-func (s *stream) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error) {
+func (s *stream) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, filter logql.LineFilter) (iter.EntryIterator, error) {
 	iterators := make([]iter.EntryIterator, 0, len(s.chunks))
 	for _, c := range s.chunks {
 		itr, err := c.chunk.Iterator(ctx, from, through, direction, filter)

@@ -22,7 +22,7 @@ type tailer struct {
 	id       uint32
 	orgID    string
 	matchers []*labels.Matcher
-	filter   logql.Filter
+	filter   logql.LineFilter
 	expr     logql.Expr
 
 	sendChan chan *logproto.Stream
@@ -139,7 +139,7 @@ func (t *tailer) filterEntriesInStream(stream *logproto.Stream) {
 
 	var filteredEntries []logproto.Entry
 	for _, e := range stream.Entries {
-		if t.filter([]byte(e.Line)) {
+		if t.filter.Filter([]byte(e.Line)) {
 			filteredEntries = append(filteredEntries, e)
 		}
 	}
