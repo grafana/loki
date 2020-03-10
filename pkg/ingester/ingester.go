@@ -186,7 +186,11 @@ func (i *Ingester) Shutdown() {
 	i.done.Wait()
 
 	i.stopIncomingRequests()
-	services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+
+	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "lifecycler failed", "err", err)
+	}
 }
 
 // Stopping helps cleaning up resources before actual shutdown
