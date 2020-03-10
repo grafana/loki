@@ -25,6 +25,12 @@ type Store interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error)
 	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
+
+	// DeleteChunk deletes a chunks index entry and then deletes the actual chunk from chunk storage.
+	// It takes care of chunks which are deleting partially by creating and inserting a new chunk first and then deleting the original chunk
+	DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error
+	// DeleteSeriesIDs is only relevant for SeriesStore.
+	DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error
 	Stop()
 }
 
@@ -140,6 +146,21 @@ func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, t
 		return nil
 	})
 	return chunkIDs, fetchers, err
+}
+
+// DeleteSeriesIDs deletes series IDs from index in series store
+func (c CompositeStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+	return c.forStores(from, through, func(from, through model.Time, store Store) error {
+		return store.DeleteSeriesIDs(ctx, from, through, userID, metric)
+	})
+}
+
+// DeleteChunk deletes a chunks index entry and then deletes the actual chunk from chunk storage.
+// It takes care of chunks which are deleting partially by creating and inserting a new chunk first and then deleting the original chunk
+func (c CompositeStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
+	return c.forStores(from, through, func(from, through model.Time, store Store) error {
+		return store.DeleteChunk(ctx, from, through, userID, chunkID, metric, partiallyDeletedInterval)
+	})
 }
 
 func (c compositeStore) Stop() {

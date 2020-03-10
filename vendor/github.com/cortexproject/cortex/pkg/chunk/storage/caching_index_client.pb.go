@@ -9,6 +9,7 @@ import (
 	proto "github.com/gogo/protobuf/proto"
 	io "io"
 	math "math"
+	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
 )
@@ -22,7 +23,7 @@ var _ = math.Inf
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type Entry struct {
 	Column Bytes `protobuf:"bytes,1,opt,name=Column,json=column,proto3,customtype=Bytes" json:"Column"`
@@ -42,7 +43,7 @@ func (m *Entry) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_Entry.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -84,7 +85,7 @@ func (m *ReadBatch) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_ReadBatch.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -268,7 +269,7 @@ func valueToGoStringCachingIndexClient(v interface{}, typ string) string {
 func (m *Entry) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -276,33 +277,42 @@ func (m *Entry) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Entry) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Entry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	dAtA[i] = 0xa
-	i++
-	i = encodeVarintCachingIndexClient(dAtA, i, uint64(m.Column.Size()))
-	n1, err := m.Column.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
+	{
+		size := m.Value.Size()
+		i -= size
+		if _, err := m.Value.MarshalTo(dAtA[i:]); err != nil {
+			return 0, err
+		}
+		i = encodeVarintCachingIndexClient(dAtA, i, uint64(size))
 	}
-	i += n1
+	i--
 	dAtA[i] = 0x12
-	i++
-	i = encodeVarintCachingIndexClient(dAtA, i, uint64(m.Value.Size()))
-	n2, err := m.Value.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
+	{
+		size := m.Column.Size()
+		i -= size
+		if _, err := m.Column.MarshalTo(dAtA[i:]); err != nil {
+			return 0, err
+		}
+		i = encodeVarintCachingIndexClient(dAtA, i, uint64(size))
 	}
-	i += n2
-	return i, nil
+	i--
+	dAtA[i] = 0xa
+	return len(dAtA) - i, nil
 }
 
 func (m *ReadBatch) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -310,49 +320,59 @@ func (m *ReadBatch) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *ReadBatch) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ReadBatch) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Entries) > 0 {
-		for _, msg := range m.Entries {
-			dAtA[i] = 0xa
-			i++
-			i = encodeVarintCachingIndexClient(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
-			}
-			i += n
-		}
-	}
-	if len(m.Key) > 0 {
-		dAtA[i] = 0x12
-		i++
-		i = encodeVarintCachingIndexClient(dAtA, i, uint64(len(m.Key)))
-		i += copy(dAtA[i:], m.Key)
+	if m.Cardinality != 0 {
+		i = encodeVarintCachingIndexClient(dAtA, i, uint64(m.Cardinality))
+		i--
+		dAtA[i] = 0x20
 	}
 	if m.Expiry != 0 {
-		dAtA[i] = 0x18
-		i++
 		i = encodeVarintCachingIndexClient(dAtA, i, uint64(m.Expiry))
+		i--
+		dAtA[i] = 0x18
 	}
-	if m.Cardinality != 0 {
-		dAtA[i] = 0x20
-		i++
-		i = encodeVarintCachingIndexClient(dAtA, i, uint64(m.Cardinality))
+	if len(m.Key) > 0 {
+		i -= len(m.Key)
+		copy(dAtA[i:], m.Key)
+		i = encodeVarintCachingIndexClient(dAtA, i, uint64(len(m.Key)))
+		i--
+		dAtA[i] = 0x12
 	}
-	return i, nil
+	if len(m.Entries) > 0 {
+		for iNdEx := len(m.Entries) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Entries[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintCachingIndexClient(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
 }
 
 func encodeVarintCachingIndexClient(dAtA []byte, offset int, v uint64) int {
+	offset -= sovCachingIndexClient(v)
+	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
 	dAtA[offset] = uint8(v)
-	return offset + 1
+	return base
 }
 func (m *Entry) Size() (n int) {
 	if m == nil {
@@ -393,14 +413,7 @@ func (m *ReadBatch) Size() (n int) {
 }
 
 func sovCachingIndexClient(x uint64) (n int) {
-	for {
-		n++
-		x >>= 7
-		if x == 0 {
-			break
-		}
-	}
-	return n
+	return (math_bits.Len64(x|1) + 6) / 7
 }
 func sozCachingIndexClient(x uint64) (n int) {
 	return sovCachingIndexClient(uint64((x << 1) ^ uint64((int64(x) >> 63))))
@@ -420,8 +433,13 @@ func (this *ReadBatch) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForEntries := "[]Entry{"
+	for _, f := range this.Entries {
+		repeatedStringForEntries += strings.Replace(strings.Replace(f.String(), "Entry", "Entry", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForEntries += "}"
 	s := strings.Join([]string{`&ReadBatch{`,
-		`Entries:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Entries), "Entry", "Entry", 1), `&`, ``, 1) + `,`,
+		`Entries:` + repeatedStringForEntries + `,`,
 		`Key:` + fmt.Sprintf("%v", this.Key) + `,`,
 		`Expiry:` + fmt.Sprintf("%v", this.Expiry) + `,`,
 		`Cardinality:` + fmt.Sprintf("%v", this.Cardinality) + `,`,

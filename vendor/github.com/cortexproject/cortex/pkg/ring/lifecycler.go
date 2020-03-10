@@ -2,6 +2,7 @@ package ring
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var (
@@ -44,14 +46,14 @@ type LifecyclerConfig struct {
 
 	// Config for the ingester lifecycle control
 	ListenPort       *int          `yaml:"-"`
-	NumTokens        int           `yaml:"num_tokens,omitempty"`
-	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period,omitempty"`
-	ObservePeriod    time.Duration `yaml:"observe_period,omitempty"`
-	JoinAfter        time.Duration `yaml:"join_after,omitempty"`
-	MinReadyDuration time.Duration `yaml:"min_ready_duration,omitempty"`
+	NumTokens        int           `yaml:"num_tokens"`
+	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period"`
+	ObservePeriod    time.Duration `yaml:"observe_period"`
+	JoinAfter        time.Duration `yaml:"join_after"`
+	MinReadyDuration time.Duration `yaml:"min_ready_duration"`
 	InfNames         []string      `yaml:"interface_names"`
 	FinalSleep       time.Duration `yaml:"final_sleep"`
-	TokensFilePath   string        `yaml:"tokens_file_path,omitempty"`
+	TokensFilePath   string        `yaml:"tokens_file_path"`
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string `yaml:"address" doc:"hidden"`
@@ -104,13 +106,12 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 
 // Lifecycler is responsible for managing the lifecycle of entries in the ring.
 type Lifecycler struct {
+	*services.BasicService
+
 	cfg             LifecyclerConfig
 	flushTransferer FlushTransferer
 	KVStore         kv.Client
 
-	// Controls the lifecycle of the ingester
-	quit      chan struct{}
-	done      sync.WaitGroup
 	actorChan chan func()
 
 	// These values are initialised at startup, and never change
@@ -138,9 +139,8 @@ type Lifecycler struct {
 	healthyInstancesCount int
 }
 
-// NewLifecycler makes and starts a new Lifecycler.
+// NewLifecycler creates new Lifecycler. It must be started via StartAsync.
 func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringName, ringKey string, flushOnShutdown bool) (*Lifecycler, error) {
-
 	addr := cfg.Addr
 	if addr == "" {
 		var err error
@@ -176,7 +176,6 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		RingKey:         ringKey,
 		flushOnShutdown: flushOnShutdown,
 
-		quit:      make(chan struct{}),
 		actorChan: make(chan func()),
 
 		state:     PENDING,
@@ -185,13 +184,9 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 
 	tokensToOwn.WithLabelValues(l.RingName).Set(float64(cfg.NumTokens))
 
-	return l, nil
-}
+	l.BasicService = services.NewBasicService(nil, l.loop, l.stopping)
 
-// Start the lifecycler
-func (i *Lifecycler) Start() {
-	i.done.Add(1)
-	go i.loop()
+	return l, nil
 }
 
 // CheckReady is used to rate limit the number of ingesters that can be coming or
@@ -207,7 +202,7 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 
 	// Ingester always take at least minReadyDuration to become ready to work
 	// around race conditions with ingesters exiting and updating the ring
-	if time.Now().Sub(i.startTime) < i.cfg.MinReadyDuration {
+	if time.Since(i.startTime) < i.cfg.MinReadyDuration {
 		return fmt.Errorf("waiting for %v after startup", i.cfg.MinReadyDuration)
 	}
 
@@ -247,13 +242,31 @@ func (i *Lifecycler) setState(state IngesterState) {
 	i.state = state
 }
 
+func (i *Lifecycler) sendToLifecyclerLoop(fn func()) error {
+	sc := i.ServiceContext()
+	if sc == nil {
+		return errors.New("lifecycler not running")
+	}
+
+	select {
+	case <-sc.Done():
+		return errors.New("lifecycler not running")
+	case i.actorChan <- fn:
+		return nil
+	}
+}
+
 // ChangeState of the ingester, for use off of the loop() goroutine.
 func (i *Lifecycler) ChangeState(ctx context.Context, state IngesterState) error {
-	err := make(chan error)
-	i.actorChan <- func() {
-		err <- i.changeState(ctx, state)
+	errCh := make(chan error)
+	fn := func() {
+		errCh <- i.changeState(ctx, state)
 	}
-	return <-err
+
+	if err := i.sendToLifecyclerLoop(fn); err != nil {
+		return err
+	}
+	return <-errCh
 }
 
 func (i *Lifecycler) getTokens() Tokens {
@@ -283,9 +296,9 @@ func (i *Lifecycler) setTokens(tokens Tokens) {
 // assign token to the wrong ingester. While we could check for that state here, when this method is called,
 // transfers have already finished -- it's better to check for this *before* transfers start.
 func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) error {
-	err := make(chan error)
+	errCh := make(chan error)
 
-	i.actorChan <- func() {
+	fn := func() {
 		var tokens Tokens
 
 		claimTokens := func(in interface{}) (out interface{}, retry bool, err error) {
@@ -307,10 +320,13 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 		}
 
 		i.setTokens(tokens)
-		err <- nil
+		errCh <- nil
 	}
 
-	return <-err
+	if err := i.sendToLifecyclerLoop(fn); err != nil {
+		return err
+	}
+	return <-errCh
 }
 
 // HealthyInstancesCount returns the number of healthy instances in the ring, updated
@@ -322,25 +338,9 @@ func (i *Lifecycler) HealthyInstancesCount() int {
 	return i.healthyInstancesCount
 }
 
-// Shutdown the lifecycle.  It will:
-// - send chunks to another ingester, if it can.
-// - otherwise, flush chunks to the chunk store.
-// - remove config from Consul.
-// - block until we've successfully shutdown.
-func (i *Lifecycler) Shutdown() {
-	// This will prevent us accepting any more samples
-	i.flushTransferer.StopIncomingRequests()
-
-	// closing i.quit triggers loop() to exit, which in turn will trigger
-	// the removal of our tokens etc
-	close(i.quit)
-	i.done.Wait()
-}
-
-func (i *Lifecycler) loop() {
+func (i *Lifecycler) loop(ctx context.Context) error {
 	defer func() {
 		level.Info(util.Logger).Log("msg", "member.loop() exited gracefully", "ring", i.RingName)
-		i.done.Done()
 	}()
 
 	// First, see if we exist in the cluster, update our state to match if we do,
@@ -357,7 +357,6 @@ func (i *Lifecycler) loop() {
 	heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
 	defer heartbeatTicker.Stop()
 
-loop:
 	for {
 		select {
 		case <-autoJoinAfter:
@@ -416,13 +415,25 @@ loop:
 		case f := <-i.actorChan:
 			f()
 
-		case <-i.quit:
-			break loop
+		case <-ctx.Done():
+			return nil
 		}
 	}
+}
+
+// Shutdown the lifecycle.  It will:
+// - send chunks to another ingester, if it can.
+// - otherwise, flush chunks to the chunk store.
+// - remove config from Consul.
+func (i *Lifecycler) stopping(_ error) error {
+	heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
+	defer heartbeatTicker.Stop()
 
 	// Mark ourselved as Leaving so no more samples are send to us.
-	i.changeState(context.Background(), LEAVING)
+	err := i.changeState(context.Background(), LEAVING)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "failed to set state to LEAVING", "ring", i.RingName, "err", err)
+	}
 
 	// Do the transferring / flushing on a background goroutine so we can continue
 	// to heartbeat to consul.
@@ -453,6 +464,8 @@ heartbeatLoop:
 		}
 		level.Info(util.Logger).Log("msg", "instance removed from the KV store", "ring", i.RingName)
 	}
+
+	return nil
 }
 
 // initRing is the first thing we do when we start. It:

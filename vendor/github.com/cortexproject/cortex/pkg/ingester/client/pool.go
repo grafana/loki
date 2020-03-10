@@ -17,6 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var clients = promauto.NewGauge(prometheus.GaugeOpts{
@@ -43,13 +44,12 @@ func (cfg *PoolConfig) RegisterFlags(f *flag.FlagSet) {
 
 // Pool holds a cache of grpc_health_v1 clients.
 type Pool struct {
+	services.Service
+
 	cfg     PoolConfig
 	ring    ring.ReadRing
 	factory Factory
 	logger  log.Logger
-
-	quit chan struct{}
-	done sync.WaitGroup
 
 	sync.RWMutex
 	clients map[string]grpc_health_v1.HealthClient
@@ -62,39 +62,20 @@ func NewPool(cfg PoolConfig, ring ring.ReadRing, factory Factory, logger log.Log
 		ring:    ring,
 		factory: factory,
 		logger:  logger,
-		quit:    make(chan struct{}),
 
 		clients: map[string]grpc_health_v1.HealthClient{},
 	}
 
-	p.done.Add(1)
-	go p.loop()
+	p.Service = services.NewTimerService(cfg.ClientCleanupPeriod, nil, p.iteration, nil)
 	return p
 }
 
-func (p *Pool) loop() {
-	defer p.done.Done()
-
-	cleanupClients := time.NewTicker(p.cfg.ClientCleanupPeriod)
-	defer cleanupClients.Stop()
-
-	for {
-		select {
-		case <-cleanupClients.C:
-			p.removeStaleClients()
-			if p.cfg.HealthCheckIngesters {
-				p.cleanUnhealthy()
-			}
-		case <-p.quit:
-			return
-		}
+func (p *Pool) iteration(ctx context.Context) error {
+	p.removeStaleClients()
+	if p.cfg.HealthCheckIngesters {
+		p.cleanUnhealthy()
 	}
-}
-
-// Stop the pool's background cleanup goroutine.
-func (p *Pool) Stop() {
-	close(p.quit)
-	p.done.Wait()
+	return nil
 }
 
 func (p *Pool) fromCache(addr string) (grpc_health_v1.HealthClient, bool) {

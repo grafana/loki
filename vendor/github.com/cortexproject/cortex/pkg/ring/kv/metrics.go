@@ -52,14 +52,14 @@ func (m metrics) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 }
 
 func (m metrics) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
-	instrument.CollectedRequest(ctx, "WatchKey", requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	_ = instrument.CollectedRequest(ctx, "WatchKey", requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		m.c.WatchKey(ctx, key, f)
 		return nil
 	})
 }
 
 func (m metrics) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
-	instrument.CollectedRequest(ctx, "WatchPrefix", requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	_ = instrument.CollectedRequest(ctx, "WatchPrefix", requestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		m.c.WatchPrefix(ctx, prefix, f)
 		return nil
 	})

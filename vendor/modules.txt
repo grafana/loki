@@ -130,7 +130,7 @@ github.com/coreos/go-systemd/sdjournal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
 github.com/coreos/pkg/dlopen
-# github.com/cortexproject/cortex v0.6.1-0.20200219140319-baae166e3335
+# github.com/cortexproject/cortex v0.7.0-rc.0
 github.com/cortexproject/cortex/pkg/chunk
 github.com/cortexproject/cortex/pkg/chunk/aws
 github.com/cortexproject/cortex/pkg/chunk/azure
@@ -147,8 +147,12 @@ github.com/cortexproject/cortex/pkg/distributor
 github.com/cortexproject/cortex/pkg/ingester/client
 github.com/cortexproject/cortex/pkg/ingester/index
 github.com/cortexproject/cortex/pkg/prom1/storage/metric
+github.com/cortexproject/cortex/pkg/querier/astmapper
+github.com/cortexproject/cortex/pkg/querier/chunkstore
 github.com/cortexproject/cortex/pkg/querier/frontend
+github.com/cortexproject/cortex/pkg/querier/lazyquery
 github.com/cortexproject/cortex/pkg/querier/queryrange
+github.com/cortexproject/cortex/pkg/querier/series
 github.com/cortexproject/cortex/pkg/ring
 github.com/cortexproject/cortex/pkg/ring/kv
 github.com/cortexproject/cortex/pkg/ring/kv/codec
@@ -162,6 +166,7 @@ github.com/cortexproject/cortex/pkg/util/grpcclient
 github.com/cortexproject/cortex/pkg/util/limiter
 github.com/cortexproject/cortex/pkg/util/middleware
 github.com/cortexproject/cortex/pkg/util/runtimeconfig
+github.com/cortexproject/cortex/pkg/util/services
 github.com/cortexproject/cortex/pkg/util/spanlogger
 github.com/cortexproject/cortex/pkg/util/test
 github.com/cortexproject/cortex/pkg/util/validation
@@ -226,8 +231,6 @@ github.com/facette/natsort
 github.com/fatih/color
 # github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
 github.com/fluent/fluent-bit-go/output
-# github.com/fluent/fluent-logger-golang v1.2.1
-github.com/fluent/fluent-logger-golang/fluent
 # github.com/fsnotify/fsnotify v1.4.7
 github.com/fsnotify/fsnotify
 # github.com/fsouza/fake-gcs-server v1.7.0
@@ -280,7 +283,7 @@ github.com/gomodule/redigo/internal
 github.com/gomodule/redigo/redis
 # github.com/google/btree v1.0.0
 github.com/google/btree
-# github.com/google/go-cmp v0.3.1
+# github.com/google/go-cmp v0.4.0
 github.com/google/go-cmp/cmp
 github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
@@ -420,8 +423,6 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
-# github.com/philhofer/fwd v0.0.0-20160129035939-98c11a7a6ec8
-github.com/philhofer/fwd
 # github.com/pierrec/lz4 v2.3.1-0.20191115212037-9085dacd1e1e+incompatible
 github.com/pierrec/lz4
 github.com/pierrec/lz4/internal/xxh32
@@ -429,7 +430,7 @@ github.com/pierrec/lz4/internal/xxh32
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus/client_golang v1.2.1
+# github.com/prometheus/client_golang v1.5.0
 github.com/prometheus/client_golang/api
 github.com/prometheus/client_golang/api/prometheus/v1
 github.com/prometheus/client_golang/prometheus
@@ -438,19 +439,19 @@ github.com/prometheus/client_golang/prometheus/promauto
 github.com/prometheus/client_golang/prometheus/promhttp
 github.com/prometheus/client_golang/prometheus/push
 github.com/prometheus/client_golang/prometheus/testutil
-# github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4
+# github.com/prometheus/client_model v0.2.0
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.7.0
+# github.com/prometheus/common v0.9.1
 github.com/prometheus/common/config
 github.com/prometheus/common/expfmt
 github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg
 github.com/prometheus/common/model
 github.com/prometheus/common/version
-# github.com/prometheus/procfs v0.0.6
+# github.com/prometheus/procfs v0.0.8
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v1.8.2-0.20200107122003-4708915ac6ef
+# github.com/prometheus/prometheus v1.8.2-0.20200213233353-b90be6f32a33
 github.com/prometheus/prometheus/discovery
 github.com/prometheus/prometheus/discovery/azure
 github.com/prometheus/prometheus/discovery/config
@@ -467,7 +468,6 @@ github.com/prometheus/prometheus/discovery/targetgroup
 github.com/prometheus/prometheus/discovery/triton
 github.com/prometheus/prometheus/discovery/zookeeper
 github.com/prometheus/prometheus/pkg/exemplar
-github.com/prometheus/prometheus/pkg/gate
 github.com/prometheus/prometheus/pkg/labels
 github.com/prometheus/prometheus/pkg/modtimevfs
 github.com/prometheus/prometheus/pkg/pool
@@ -519,8 +519,6 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/tinylib/msgp v0.0.0-20161221055906-38a6f61a768d
-github.com/tinylib/msgp/msgp
 # github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5
 github.com/tmc/grpc-websocket-proxy/wsproxy
 # github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
@@ -548,9 +546,7 @@ github.com/uber/jaeger-lib/metrics
 github.com/uber/jaeger-lib/metrics/prometheus
 # github.com/ugorji/go/codec v1.1.7
 github.com/ugorji/go/codec
-# github.com/weaveworks/billing-client v0.0.0-20171006123215-be0d55e547b1
-github.com/weaveworks/billing-client
-# github.com/weaveworks/common v0.0.0-20200201141823-27e183090ab1
+# github.com/weaveworks/common v0.0.0-20200206153930-760e36ae819a
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/errors
 github.com/weaveworks/common/httpgrpc
@@ -713,7 +709,7 @@ golang.org/x/oauth2/jws
 golang.org/x/oauth2/jwt
 # golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
 golang.org/x/sync/errgroup
-# golang.org/x/sys v0.0.0-20191218084908-4a24b4065292
+# golang.org/x/sys v0.0.0-20200122134326-e047566fdf82
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
@@ -845,7 +841,7 @@ gopkg.in/fsnotify/fsnotify.v1
 gopkg.in/inf.v0
 # gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 gopkg.in/tomb.v1
-# gopkg.in/yaml.v2 v2.2.5
+# gopkg.in/yaml.v2 v2.2.7
 gopkg.in/yaml.v2
 # honnef.co/go/tools v0.0.1-2019.2.3
 honnef.co/go/tools/arg

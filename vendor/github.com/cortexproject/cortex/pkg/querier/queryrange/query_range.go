@@ -20,9 +20,11 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
-const statusSuccess = "success"
+// StatusSuccess Prometheus success result.
+const StatusSuccess = "success"
 
 var (
 	matrix            = model.ValMatrix.String()
@@ -71,6 +73,8 @@ type Request interface {
 	GetQuery() string
 	// WithStartEnd clone the current request with different start and end timestamp.
 	WithStartEnd(int64, int64) Request
+	// WithQuery clone the current request with a different query.
+	WithQuery(string) Request
 	proto.Message
 }
 
@@ -97,6 +101,13 @@ func (q *PrometheusRequest) WithStartEnd(start int64, end int64) Request {
 	new := *q
 	new.Start = start
 	new.End = end
+	return &new
+}
+
+// WithQuery clones the current `PrometheusRequest` with a new query.
+func (q *PrometheusRequest) WithQuery(query string) Request {
+	new := *q
+	new.Query = query
 	return &new
 }
 
@@ -127,12 +138,12 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 
 	if len(promResponses) == 0 {
 		return &PrometheusResponse{
-			Status: statusSuccess,
+			Status: StatusSuccess,
 		}, nil
 	}
 
 	return &PrometheusResponse{
-		Status: statusSuccess,
+		Status: StatusSuccess,
 		Data: PrometheusData{
 			ResultType: model.ValMatrix.String(),
 			Result:     matrixMerge(promResponses),
@@ -325,10 +336,10 @@ func ParseTime(s string) (int64, error) {
 	if t, err := strconv.ParseFloat(s, 64); err == nil {
 		s, ns := math.Modf(t)
 		tm := time.Unix(int64(s), int64(ns*float64(time.Second)))
-		return tm.UnixNano() / int64(time.Millisecond/time.Nanosecond), nil
+		return util.TimeMilliseconds(tm), nil
 	}
 	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
-		return t.UnixNano() / int64(time.Millisecond/time.Nanosecond), nil
+		return util.TimeMilliseconds(t), nil
 	}
 	return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid timestamp", s)
 }

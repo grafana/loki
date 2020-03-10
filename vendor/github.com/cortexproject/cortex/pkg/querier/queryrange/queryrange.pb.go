@@ -14,6 +14,7 @@ import (
 	_ "github.com/golang/protobuf/ptypes/duration"
 	io "io"
 	math "math"
+	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
 	time "time"
@@ -29,7 +30,7 @@ var _ = time.Kitchen
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type PrometheusRequest struct {
 	Path    string        `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
@@ -53,7 +54,7 @@ func (m *PrometheusRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, e
 		return xxx_messageInfo_PrometheusRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -132,7 +133,7 @@ func (m *PrometheusResponseHeader) XXX_Marshal(b []byte, deterministic bool) ([]
 		return xxx_messageInfo_PrometheusResponseHeader.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -186,7 +187,7 @@ func (m *PrometheusResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, 
 		return xxx_messageInfo_PrometheusResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -258,7 +259,7 @@ func (m *PrometheusData) XXX_Marshal(b []byte, deterministic bool) ([]byte, erro
 		return xxx_messageInfo_PrometheusData.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -309,7 +310,7 @@ func (m *SampleStream) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return xxx_messageInfo_SampleStream.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -354,7 +355,7 @@ func (m *CachedResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, erro
 		return xxx_messageInfo_CachedResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -407,7 +408,7 @@ func (m *Extent) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_Extent.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -885,7 +886,7 @@ func valueToGoStringQueryrange(v interface{}, typ string) string {
 func (m *PrometheusRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -893,52 +894,59 @@ func (m *PrometheusRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *PrometheusRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PrometheusRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Path) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Path)))
-		i += copy(dAtA[i:], m.Path)
+	if len(m.Query) > 0 {
+		i -= len(m.Query)
+		copy(dAtA[i:], m.Query)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Query)))
+		i--
+		dAtA[i] = 0x32
 	}
-	if m.Start != 0 {
-		dAtA[i] = 0x10
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(m.Start))
+	n1, err1 := github_com_gogo_protobuf_types.StdDurationMarshalTo(m.Timeout, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdDuration(m.Timeout):])
+	if err1 != nil {
+		return 0, err1
+	}
+	i -= n1
+	i = encodeVarintQueryrange(dAtA, i, uint64(n1))
+	i--
+	dAtA[i] = 0x2a
+	if m.Step != 0 {
+		i = encodeVarintQueryrange(dAtA, i, uint64(m.Step))
+		i--
+		dAtA[i] = 0x20
 	}
 	if m.End != 0 {
-		dAtA[i] = 0x18
-		i++
 		i = encodeVarintQueryrange(dAtA, i, uint64(m.End))
+		i--
+		dAtA[i] = 0x18
 	}
-	if m.Step != 0 {
-		dAtA[i] = 0x20
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(m.Step))
+	if m.Start != 0 {
+		i = encodeVarintQueryrange(dAtA, i, uint64(m.Start))
+		i--
+		dAtA[i] = 0x10
 	}
-	dAtA[i] = 0x2a
-	i++
-	i = encodeVarintQueryrange(dAtA, i, uint64(github_com_gogo_protobuf_types.SizeOfStdDuration(m.Timeout)))
-	n1, err := github_com_gogo_protobuf_types.StdDurationMarshalTo(m.Timeout, dAtA[i:])
-	if err != nil {
-		return 0, err
+	if len(m.Path) > 0 {
+		i -= len(m.Path)
+		copy(dAtA[i:], m.Path)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Path)))
+		i--
+		dAtA[i] = 0xa
 	}
-	i += n1
-	if len(m.Query) > 0 {
-		dAtA[i] = 0x32
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Query)))
-		i += copy(dAtA[i:], m.Query)
-	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *PrometheusResponseHeader) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -946,38 +954,38 @@ func (m *PrometheusResponseHeader) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *PrometheusResponseHeader) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PrometheusResponseHeader) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Name) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Name)))
-		i += copy(dAtA[i:], m.Name)
-	}
 	if len(m.Values) > 0 {
-		for _, s := range m.Values {
+		for iNdEx := len(m.Values) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Values[iNdEx])
+			copy(dAtA[i:], m.Values[iNdEx])
+			i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Values[iNdEx])))
+			i--
 			dAtA[i] = 0x12
-			i++
-			l = len(s)
-			for l >= 1<<7 {
-				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
-				l >>= 7
-				i++
-			}
-			dAtA[i] = uint8(l)
-			i++
-			i += copy(dAtA[i:], s)
 		}
 	}
-	return i, nil
+	if len(m.Name) > 0 {
+		i -= len(m.Name)
+		copy(dAtA[i:], m.Name)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Name)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *PrometheusResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -985,55 +993,67 @@ func (m *PrometheusResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *PrometheusResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PrometheusResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Status) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Status)))
-		i += copy(dAtA[i:], m.Status)
-	}
-	dAtA[i] = 0x12
-	i++
-	i = encodeVarintQueryrange(dAtA, i, uint64(m.Data.Size()))
-	n2, err := m.Data.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n2
-	if len(m.ErrorType) > 0 {
-		dAtA[i] = 0x1a
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.ErrorType)))
-		i += copy(dAtA[i:], m.ErrorType)
-	}
-	if len(m.Error) > 0 {
-		dAtA[i] = 0x22
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Error)))
-		i += copy(dAtA[i:], m.Error)
-	}
 	if len(m.Headers) > 0 {
-		for _, msg := range m.Headers {
-			dAtA[i] = 0x2a
-			i++
-			i = encodeVarintQueryrange(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+		for iNdEx := len(m.Headers) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Headers[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintQueryrange(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0x2a
 		}
 	}
-	return i, nil
+	if len(m.Error) > 0 {
+		i -= len(m.Error)
+		copy(dAtA[i:], m.Error)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Error)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if len(m.ErrorType) > 0 {
+		i -= len(m.ErrorType)
+		copy(dAtA[i:], m.ErrorType)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.ErrorType)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	{
+		size, err := m.Data.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintQueryrange(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x12
+	if len(m.Status) > 0 {
+		i -= len(m.Status)
+		copy(dAtA[i:], m.Status)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Status)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *PrometheusData) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1041,35 +1061,43 @@ func (m *PrometheusData) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *PrometheusData) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PrometheusData) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.ResultType) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.ResultType)))
-		i += copy(dAtA[i:], m.ResultType)
-	}
 	if len(m.Result) > 0 {
-		for _, msg := range m.Result {
-			dAtA[i] = 0x12
-			i++
-			i = encodeVarintQueryrange(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+		for iNdEx := len(m.Result) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Result[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintQueryrange(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0x12
 		}
 	}
-	return i, nil
+	if len(m.ResultType) > 0 {
+		i -= len(m.ResultType)
+		copy(dAtA[i:], m.ResultType)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.ResultType)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *SampleStream) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1077,41 +1105,50 @@ func (m *SampleStream) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *SampleStream) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SampleStream) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Labels) > 0 {
-		for _, msg := range m.Labels {
-			dAtA[i] = 0xa
-			i++
-			i = encodeVarintQueryrange(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
-			}
-			i += n
-		}
-	}
 	if len(m.Samples) > 0 {
-		for _, msg := range m.Samples {
-			dAtA[i] = 0x12
-			i++
-			i = encodeVarintQueryrange(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+		for iNdEx := len(m.Samples) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Samples[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintQueryrange(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0x12
 		}
 	}
-	return i, nil
+	if len(m.Labels) > 0 {
+		for iNdEx := len(m.Labels) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Labels[iNdEx].Size()
+				i -= size
+				if _, err := m.Labels[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintQueryrange(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *CachedResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1119,35 +1156,43 @@ func (m *CachedResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *CachedResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *CachedResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Key) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Key)))
-		i += copy(dAtA[i:], m.Key)
-	}
 	if len(m.Extents) > 0 {
-		for _, msg := range m.Extents {
-			dAtA[i] = 0x12
-			i++
-			i = encodeVarintQueryrange(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+		for iNdEx := len(m.Extents) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Extents[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintQueryrange(dAtA, i, uint64(size))
 			}
-			i += n
+			i--
+			dAtA[i] = 0x12
 		}
 	}
-	return i, nil
+	if len(m.Key) > 0 {
+		i -= len(m.Key)
+		copy(dAtA[i:], m.Key)
+		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.Key)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *Extent) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1155,47 +1200,57 @@ func (m *Extent) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Extent) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Extent) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if m.Start != 0 {
-		dAtA[i] = 0x8
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(m.Start))
-	}
-	if m.End != 0 {
-		dAtA[i] = 0x10
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(m.End))
+	if m.Response != nil {
+		{
+			size, err := m.Response.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintQueryrange(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x2a
 	}
 	if len(m.TraceId) > 0 {
-		dAtA[i] = 0x22
-		i++
+		i -= len(m.TraceId)
+		copy(dAtA[i:], m.TraceId)
 		i = encodeVarintQueryrange(dAtA, i, uint64(len(m.TraceId)))
-		i += copy(dAtA[i:], m.TraceId)
+		i--
+		dAtA[i] = 0x22
 	}
-	if m.Response != nil {
-		dAtA[i] = 0x2a
-		i++
-		i = encodeVarintQueryrange(dAtA, i, uint64(m.Response.Size()))
-		n3, err := m.Response.MarshalTo(dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n3
+	if m.End != 0 {
+		i = encodeVarintQueryrange(dAtA, i, uint64(m.End))
+		i--
+		dAtA[i] = 0x10
 	}
-	return i, nil
+	if m.Start != 0 {
+		i = encodeVarintQueryrange(dAtA, i, uint64(m.Start))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
 }
 
 func encodeVarintQueryrange(dAtA []byte, offset int, v uint64) int {
+	offset -= sovQueryrange(v)
+	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
 	dAtA[offset] = uint8(v)
-	return offset + 1
+	return base
 }
 func (m *PrometheusRequest) Size() (n int) {
 	if m == nil {
@@ -1356,14 +1411,7 @@ func (m *Extent) Size() (n int) {
 }
 
 func sovQueryrange(x uint64) (n int) {
-	for {
-		n++
-		x >>= 7
-		if x == 0 {
-			break
-		}
-	}
-	return n
+	return (math_bits.Len64(x|1) + 6) / 7
 }
 func sozQueryrange(x uint64) (n int) {
 	return sovQueryrange(uint64((x << 1) ^ uint64((int64(x) >> 63))))
@@ -1377,7 +1425,7 @@ func (this *PrometheusRequest) String() string {
 		`Start:` + fmt.Sprintf("%v", this.Start) + `,`,
 		`End:` + fmt.Sprintf("%v", this.End) + `,`,
 		`Step:` + fmt.Sprintf("%v", this.Step) + `,`,
-		`Timeout:` + strings.Replace(strings.Replace(this.Timeout.String(), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
+		`Timeout:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Timeout), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
 		`Query:` + fmt.Sprintf("%v", this.Query) + `,`,
 		`}`,
 	}, "")
@@ -1398,12 +1446,17 @@ func (this *PrometheusResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForHeaders := "[]*PrometheusResponseHeader{"
+	for _, f := range this.Headers {
+		repeatedStringForHeaders += strings.Replace(f.String(), "PrometheusResponseHeader", "PrometheusResponseHeader", 1) + ","
+	}
+	repeatedStringForHeaders += "}"
 	s := strings.Join([]string{`&PrometheusResponse{`,
 		`Status:` + fmt.Sprintf("%v", this.Status) + `,`,
 		`Data:` + strings.Replace(strings.Replace(this.Data.String(), "PrometheusData", "PrometheusData", 1), `&`, ``, 1) + `,`,
 		`ErrorType:` + fmt.Sprintf("%v", this.ErrorType) + `,`,
 		`Error:` + fmt.Sprintf("%v", this.Error) + `,`,
-		`Headers:` + strings.Replace(fmt.Sprintf("%v", this.Headers), "PrometheusResponseHeader", "PrometheusResponseHeader", 1) + `,`,
+		`Headers:` + repeatedStringForHeaders + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1412,9 +1465,14 @@ func (this *PrometheusData) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForResult := "[]SampleStream{"
+	for _, f := range this.Result {
+		repeatedStringForResult += strings.Replace(strings.Replace(f.String(), "SampleStream", "SampleStream", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForResult += "}"
 	s := strings.Join([]string{`&PrometheusData{`,
 		`ResultType:` + fmt.Sprintf("%v", this.ResultType) + `,`,
-		`Result:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Result), "SampleStream", "SampleStream", 1), `&`, ``, 1) + `,`,
+		`Result:` + repeatedStringForResult + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1423,9 +1481,14 @@ func (this *SampleStream) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForSamples := "[]Sample{"
+	for _, f := range this.Samples {
+		repeatedStringForSamples += fmt.Sprintf("%v", f) + ","
+	}
+	repeatedStringForSamples += "}"
 	s := strings.Join([]string{`&SampleStream{`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
-		`Samples:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Samples), "Sample", "client.Sample", 1), `&`, ``, 1) + `,`,
+		`Samples:` + repeatedStringForSamples + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1434,9 +1497,14 @@ func (this *CachedResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForExtents := "[]Extent{"
+	for _, f := range this.Extents {
+		repeatedStringForExtents += strings.Replace(strings.Replace(f.String(), "Extent", "Extent", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForExtents += "}"
 	s := strings.Join([]string{`&CachedResponse{`,
 		`Key:` + fmt.Sprintf("%v", this.Key) + `,`,
-		`Extents:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Extents), "Extent", "Extent", 1), `&`, ``, 1) + `,`,
+		`Extents:` + repeatedStringForExtents + `,`,
 		`}`,
 	}, "")
 	return s

@@ -129,13 +129,19 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,
 	})
+
+	// Ensure the context used by the Watch is always cancelled.
+	watchCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+outer:
 	for backoff.Ongoing() {
-		watchChan := c.cli.Watch(ctx, key)
-		for {
-			resp, ok := <-watchChan
-			if !ok {
-				break
+		for resp := range c.cli.Watch(watchCtx, key) {
+			if err := resp.Err(); err != nil {
+				level.Error(util.Logger).Log("msg", "watch error", "key", key, "err", err)
+				continue outer
 			}
+
 			backoff.Reset()
 
 			for _, event := range resp.Events {
@@ -159,13 +165,19 @@ func (c *Client) WatchPrefix(ctx context.Context, key string, f func(string, int
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,
 	})
+
+	// Ensure the context used by the Watch is always cancelled.
+	watchCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+outer:
 	for backoff.Ongoing() {
-		watchChan := c.cli.Watch(ctx, key, clientv3.WithPrefix())
-		for {
-			resp, ok := <-watchChan
-			if !ok {
-				break
+		for resp := range c.cli.Watch(watchCtx, key, clientv3.WithPrefix()) {
+			if err := resp.Err(); err != nil {
+				level.Error(util.Logger).Log("msg", "watch error", "key", key, "err", err)
+				continue outer
 			}
+
 			backoff.Reset()
 
 			for _, event := range resp.Events {

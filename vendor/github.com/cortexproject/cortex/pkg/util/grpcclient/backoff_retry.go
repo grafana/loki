@@ -5,6 +5,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -19,7 +20,7 @@ func NewBackoffRetry(cfg util.BackoffConfig) grpc.UnaryClientInterceptor {
 				return nil
 			}
 
-			if grpc.Code(err) != codes.ResourceExhausted {
+			if status.Code(err) != codes.ResourceExhausted {
 				return err
 			}
 

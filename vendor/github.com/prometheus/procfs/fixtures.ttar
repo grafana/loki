@@ -1801,6 +1801,25 @@ proc4 2 2 10853
 proc4ops 72 0 0 0 1098 2 0 0 0 0 8179 5896 0 0 0 0 5900 0 0 2 0 2 0 9609 0 2 150 1272 0 0 0 1236 0 0 0 0 3 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 Mode: 644
 # ttar - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Path: fixtures/proc/net/sockstat
+Lines: 6
+sockets: used 1602
+TCP: inuse 35 orphan 0 tw 4 alloc 59 mem 22
+UDP: inuse 12 mem 62
+UDPLITE: inuse 0
+RAW: inuse 0
+FRAG: inuse 0 memory 0
+Mode: 444
+# ttar - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Path: fixtures/proc/net/sockstat6
+Lines: 5
+TCP6: inuse 17
+UDP6: inuse 9
+UDPLITE6: inuse 0
+RAW6: inuse 1
+FRAG6: inuse 0 memory 0
+Mode: 444
+# ttar - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Path: fixtures/proc/net/softnet_stat
 Lines: 1
 00015c73 00020e76 F0000769 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000

@@ -160,3 +160,8 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 
 	return output, nil
 }
+
+func (s *bigtableObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	// ToDo: implement this to support deleting chunks from Bigtable
+	return chunk.ErrMethodNotImplemented
+}
