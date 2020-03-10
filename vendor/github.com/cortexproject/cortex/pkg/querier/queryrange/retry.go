@@ -10,12 +10,14 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 )
 
-var retries = promauto.NewHistogram(prometheus.HistogramOpts{
-	Namespace: "cortex",
-	Name:      "query_frontend_retries",
-	Help:      "Number of times a request is retried.",
-	Buckets:   []float64{0, 1, 2, 3, 4, 5},
-})
+var (
+	retries = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "cortex",
+		Name:      "query_frontend_retries",
+		Help:      "Number of times a request is retried.",
+		Buckets:   []float64{0, 1, 2, 3, 4, 5},
+	})
+)
 
 type retry struct {
 	log        log.Logger

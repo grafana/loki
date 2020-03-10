@@ -328,8 +328,3 @@ func (c *Client) createRateLimiter() *rate.Limiter {
 	}
 	return rate.NewLimiter(rate.Limit(c.cfg.WatchKeyRateLimit), burst)
 }
-
-// Stop does nothing in Consul client.
-func (c *Client) Stop() {
-	// nothing to do
-}

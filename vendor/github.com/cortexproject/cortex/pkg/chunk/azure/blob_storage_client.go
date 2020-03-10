@@ -1,12 +1,10 @@
 package azure
 
 import (
-	"bytes"
 	"context"
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/url"
 	"strings"
 	"time"
@@ -15,7 +13,6 @@ import (
 	"github.com/Azure/azure-storage-blob-go/azblob"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/util"
 )
 
 const blobURLFmt = "https://%s.blob.core.windows.net/%s/%s"
@@ -73,12 +70,7 @@ func NewBlobStorage(cfg *BlobStorageConfig) (*BlobStorage, error) {
 // Stop is a no op, as there are no background workers with this driver currently
 func (b *BlobStorage) Stop() {}
 
-// GetChunks retrieves the requested data chunks from blob storage.
-func (b *BlobStorage) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	return util.GetParallelChunks(ctx, chunks, b.getChunk)
-}
-
-func (b *BlobStorage) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, input chunk.Chunk) (chunk.Chunk, error) {
+func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	if b.cfg.RequestTimeout > 0 {
 		// The context will be cancelled with the timeout or when the parent context is cancelled, whichever occurs first.
 		var cancel context.CancelFunc
@@ -86,43 +78,6 @@ func (b *BlobStorage) getChunk(ctx context.Context, decodeContext *chunk.DecodeC
 		defer cancel()
 	}
 
-	readCloser, err := b.GetObject(ctx, input.ExternalKey())
-	if err != nil {
-		return chunk.Chunk{}, err
-	}
-
-	defer readCloser.Close()
-
-	buf, err := ioutil.ReadAll(readCloser)
-	if err != nil {
-		return chunk.Chunk{}, err
-	}
-
-	if err := input.Decode(decodeContext, buf); err != nil {
-		return chunk.Chunk{}, err
-	}
-
-	return input, nil
-}
-
-// PutChunks writes a set of chunks to azure blob storage using block blobs.
-func (b *BlobStorage) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
-
-	for _, chunk := range chunks {
-		buf, err := chunk.Encoded()
-		if err != nil {
-			return err
-		}
-
-		err = b.PutObject(ctx, chunk.ExternalKey(), bytes.NewReader(buf))
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	blockBlobURL, err := b.getBlobURL(objectKey)
 	if err != nil {
 		return nil, err

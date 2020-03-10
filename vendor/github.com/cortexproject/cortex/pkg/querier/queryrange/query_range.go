@@ -180,7 +180,7 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 func (prometheusCodec) EncodeRequest(ctx context.Context, r Request) (*http.Request, error) {
 	promReq, ok := r.(*PrometheusRequest)
 	if !ok {
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid request format")
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "invalid request format")
 	}
 	params := url.Values{
 		"start": []string{encodeTime(promReq.Start)},
@@ -242,7 +242,7 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.
 
 	b, err := json.Marshal(a)
 	if err != nil {
-		return nil, err
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error encoding response: %v", err)
 	}
 
 	sp.LogFields(otlog.Int("bytes", len(b)))

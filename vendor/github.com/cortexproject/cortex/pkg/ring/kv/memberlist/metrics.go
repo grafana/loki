@@ -5,12 +5,13 @@ import (
 
 	armonmetrics "github.com/armon/go-metrics"
 	armonprometheus "github.com/armon/go-metrics/prometheus"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
-func (m *Client) createAndRegisterMetrics() {
+func (m *KV) createAndRegisterMetrics() {
 	const subsystem = "memberlist_client"
 
 	m.numberOfReceivedMessages = prometheus.NewCounter(prometheus.CounterOpts{
@@ -182,13 +183,13 @@ func (m *Client) createAndRegisterMetrics() {
 }
 
 // Describe returns prometheus descriptions via supplied channel
-func (m *Client) Describe(ch chan<- *prometheus.Desc) {
+func (m *KV) Describe(ch chan<- *prometheus.Desc) {
 	ch <- m.storeValuesDesc
 	ch <- m.storeSizesDesc
 }
 
 // Collect returns extra metrics via supplied channel
-func (m *Client) Collect(ch chan<- prometheus.Metric) {
+func (m *KV) Collect(ch chan<- prometheus.Metric) {
 	m.storeMu.Lock()
 	defer m.storeMu.Unlock()
 

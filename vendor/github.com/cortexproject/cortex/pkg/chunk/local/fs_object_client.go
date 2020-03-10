@@ -1,9 +1,7 @@
 package local
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"flag"
 	"io"
 	"io/ioutil"
@@ -39,7 +37,7 @@ type FSObjectClient struct {
 	cfg FSConfig
 }
 
-// NewFSObjectClient makes a chunk.ObjectClient which stores chunks as files in the local filesystem.
+// NewFSObjectClient makes a chunk.Client which stores chunks as files in the local filesystem.
 func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 	if err := util.EnsureDirectory(cfg.Directory); err != nil {
 		return nil, err
@@ -53,55 +51,12 @@ func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 // Stop implements ObjectClient
 func (FSObjectClient) Stop() {}
 
-// PutChunks implements ObjectClient
-func (f *FSObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
-	for i := range chunks {
-		buf, err := chunks[i].Encoded()
-		if err != nil {
-			return err
-		}
-
-		filename := base64.StdEncoding.EncodeToString([]byte(chunks[i].ExternalKey()))
-		if err := f.PutObject(ctx, filename, bytes.NewReader(buf)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// GetChunks implements ObjectClient
-func (f *FSObjectClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	return util.GetParallelChunks(ctx, chunks, f.getChunk)
-}
-
-func (f *FSObjectClient) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
-	filename := base64.StdEncoding.EncodeToString([]byte(c.ExternalKey()))
-
-	readCloser, err := f.GetObject(ctx, filename)
-	if err != nil {
-		return chunk.Chunk{}, err
-	}
-
-	defer readCloser.Close()
-
-	buf, err := ioutil.ReadAll(readCloser)
-	if err != nil {
-		return chunk.Chunk{}, err
-	}
-
-	if err := c.Decode(decodeContext, buf); err != nil {
-		return c, err
-	}
-
-	return c, nil
-}
-
-// Get object from the store
+// GetObject from the store
 func (f *FSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	return os.Open(path.Join(f.cfg.Directory, objectKey))
 }
 
-// Put object into the store
+// PutObject into the store
 func (f *FSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
 	fullPath := path.Join(f.cfg.Directory, objectKey)
 	err := util.EnsureDirectory(path.Dir(fullPath))
