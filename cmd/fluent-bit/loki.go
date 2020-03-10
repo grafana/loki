@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/go-logfmt/logfmt"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/logging"
@@ -185,23 +186,27 @@ func createLine(records map[string]interface{}, f format) (string, error) {
 		}
 		return string(js), nil
 	case kvPairFormat:
-		buff := &bytes.Buffer{}
-		var keys []string
+		buf := &bytes.Buffer{}
+		enc := logfmt.NewEncoder(buf)
+		keys := make([]string, 0, len(records))
 		for k := range records {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			_, err := fmt.Fprintf(buff, "%s=%v ", k, records[k])
+			err := enc.EncodeKeyval(k, records[k])
+			if err == logfmt.ErrUnsupportedValueType {
+				err := enc.EncodeKeyval(k, fmt.Sprintf("%+v", records[k]))
+				if err != nil {
+					return "", nil
+				}
+				continue
+			}
 			if err != nil {
-				return "", err
+				return "", nil
 			}
 		}
-		res := buff.String()
-		if len(records) > 0 {
-			return res[:len(res)-1], nil
-		}
-		return res, nil
+		return buf.String(), nil
 	default:
 		return "", fmt.Errorf("invalid line format: %v", f)
 	}
