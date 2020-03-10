@@ -546,9 +546,10 @@ github.com/uber/jaeger-lib/metrics
 github.com/uber/jaeger-lib/metrics/prometheus
 # github.com/ugorji/go/codec v1.1.7
 github.com/ugorji/go/codec
-# github.com/weaveworks/common v0.0.0-20200206153930-760e36ae819a
+# github.com/weaveworks/common v0.0.0-20200310113808-2708ba4e60a4
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/errors
+github.com/weaveworks/common/grpc
 github.com/weaveworks/common/httpgrpc
 github.com/weaveworks/common/httpgrpc/server
 github.com/weaveworks/common/instrument
