@@ -302,10 +302,10 @@ func (t *Loki) initTableManager() error {
 	util.CheckFatal("initializing bucket client", err)
 
 	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, prometheus.DefaultRegisterer)
-	if err == nil {
-		err = services.StartAndAwaitRunning(context.Background(), t.tableManager)
+	if err != nil {
+		return err
 	}
-	return err
+	return services.StartAndAwaitRunning(context.Background(), t.tableManager)
 }
 
 func (t *Loki) stopTableManager() error {
