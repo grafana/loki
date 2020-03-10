@@ -12,23 +12,31 @@ import (
 
 func Test_logSelectorExpr_String(t *testing.T) {
 	t.Parallel()
-	tests := []string{
-		`{foo!~"bar"}`,
-		`{foo="bar", bar!="baz"}`,
-		`{foo="bar", bar!="baz"} != "bip" !~ ".+bop"`,
-		`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap"`,
+	tests := []struct {
+		selector     string
+		expectFilter bool
+	}{
+		{`{foo!~"bar"}`, false},
+		{`{foo="bar", bar!="baz"}`, false},
+		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop"`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap"`, true},
 	}
 
 	for _, tt := range tests {
 		tt := tt
-		t.Run(tt, func(t *testing.T) {
+		t.Run(tt.selector, func(t *testing.T) {
 			t.Parallel()
-			expr, err := ParseLogSelector(tt)
+			expr, err := ParseLogSelector(tt.selector)
 			if err != nil {
 				t.Fatalf("failed to parse log selector: %s", err)
 			}
-			if expr.String() != strings.Replace(tt, " ", "", -1) {
-				t.Fatalf("error expected: %s got: %s", tt, expr.String())
+			f, err := expr.Filter()
+			if err != nil {
+				t.Fatalf("failed to get filter: %s", err)
+			}
+			require.Equal(t, tt.expectFilter, f != nil)
+			if expr.String() != strings.Replace(tt.selector, " ", "", -1) {
+				t.Fatalf("error expected: %s got: %s", tt.selector, expr.String())
 			}
 		})
 	}
