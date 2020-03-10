@@ -110,7 +110,7 @@ func newMatcherStage(logger log.Logger, jobName *string, config interface{}, reg
 // matcherStage applies Label matchers to determine if the include stages should be run
 type matcherStage struct {
 	matchers []*labels.Matcher
-	filter   logql.Filter
+	filter   logql.LineFilter
 	pipeline Stage
 	action   string
 }
@@ -122,7 +122,7 @@ func (m *matcherStage) Process(labels model.LabelSet, extracted map[string]inter
 			return
 		}
 	}
-	if m.filter == nil || m.filter([]byte(*entry)) {
+	if m.filter == nil || m.filter.Filter([]byte(*entry)) {
 		switch m.action {
 		case MatchActionDrop:
 			// Adds the drop label to not be sent by the api.EntryHandler

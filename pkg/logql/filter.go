@@ -9,9 +9,16 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
-// LineFilter is a function to filter logs.
+// LineFilter is a interface to filter log lines.
 type LineFilter interface {
 	Filter(line []byte) bool
+}
+
+// LineFilterFunc is a syntax sugar for creating line filter from a function
+type LineFilterFunc func(line []byte) bool
+
+func (f LineFilterFunc) Filter(line []byte) bool {
+	return f(line)
 }
 
 type notFilter struct {
@@ -54,7 +61,7 @@ type orFilter struct {
 	right LineFilter
 }
 
-// newOrFilter creates a new filter which matches only if left and right matches.
+// newOrFilter creates a new filter which matches only if left or right matches.
 func newOrFilter(left LineFilter, right LineFilter) LineFilter {
 	return orFilter{
 		left:  left,
