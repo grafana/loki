@@ -84,26 +84,19 @@ func (t *Loki) initServer() (err error) {
 	return
 }
 
-func (t *Loki) initRing() (err error) {
+func (t *Loki) initRing() (_ services.Service, err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.ring, err = ring.New(t.cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
-	if err == nil {
-		err = services.StartAndAwaitRunning(context.Background(), t.ring)
-	}
 	if err != nil {
 		return
 	}
 	prometheus.MustRegister(t.ring)
 	t.server.HTTP.Handle("/ring", t.ring)
-	return
+	return t.ring, nil
 }
 
-func (t *Loki) stopRing() (err error) {
-	return services.StopAndAwaitTerminated(context.Background(), t.ring)
-}
-
-func (t *Loki) initRuntimeConfig() (err error) {
+func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	if t.cfg.RuntimeConfig.LoadPath == "" {
 		t.cfg.RuntimeConfig.LoadPath = t.cfg.LimitsConfig.PerTenantOverrideConfig
 		t.cfg.RuntimeConfig.ReloadPeriod = t.cfg.LimitsConfig.PerTenantOverridePeriod
@@ -113,20 +106,15 @@ func (t *Loki) initRuntimeConfig() (err error) {
 	// make sure to set default limits before we start loading configuration into memory
 	validation.SetDefaultLimitsForYAMLUnmarshalling(t.cfg.LimitsConfig)
 
+	var err error
 	t.runtimeConfig, err = runtimeconfig.NewRuntimeConfigManager(t.cfg.RuntimeConfig, prometheus.DefaultRegisterer)
-	if err == nil {
-		err = services.StartAndAwaitRunning(context.Background(), t.runtimeConfig)
-	}
-	return err
+	return t.runtimeConfig, err
 }
 
-func (t *Loki) stopRuntimeConfig() (err error) {
-	return services.StopAndAwaitTerminated(context.Background(), t.runtimeConfig)
-}
-
-func (t *Loki) initOverrides() (err error) {
+func (t *Loki) initOverrides() (_ services.Service, err error) {
 	t.overrides, err = validation.NewOverrides(t.cfg.LimitsConfig, tenantLimitsFromRuntimeConfig(t.runtimeConfig))
-	return err
+	// overrides are not a service, since they don't have any operational state.
+	return nil, err
 }
 
 func (t *Loki) initDistributor() (err error) {
@@ -287,7 +275,7 @@ func (t *Loki) stopTableManager() error {
 	return services.StopAndAwaitTerminated(context.Background(), t.tableManager)
 }
 
-func (t *Loki) initStore() (err error) {
+func (t *Loki) initStore() (_ services.Service, err error) {
 	if activeIndexType(t.cfg.SchemaConfig) == local.BoltDBShipperType {
 		t.cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.cfg.Ingester.LifecyclerConfig.ID
 		switch t.cfg.Target {
@@ -303,12 +291,14 @@ func (t *Loki) initStore() (err error) {
 	}
 
 	t.store, err = loki_storage.NewStore(t.cfg.StorageConfig, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig, t.overrides)
-	return
-}
+	if err != nil {
+		return
+	}
 
-func (t *Loki) stopStore() error {
-	t.store.Stop()
-	return nil
+	return services.NewIdleService(nil, func(_ error) error {
+		t.store.Stop()
+		return nil
+	}), nil
 }
 
 func (t *Loki) initQueryFrontend() (err error) {
@@ -353,18 +343,16 @@ func (t *Loki) stopQueryFrontend() error {
 	return nil
 }
 
-func (t *Loki) initMemberlistKV() error {
+func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.cfg.MemberlistKV.MetricsRegisterer = prometheus.DefaultRegisterer
 	t.cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 	}
 	t.memberlistKV = memberlist.NewKVInit(&t.cfg.MemberlistKV)
-	return nil
-}
-
-func (t *Loki) stopMemberlistKV() error {
-	t.memberlistKV.Stop()
-	return nil
+	return services.NewIdleService(nil, func(_ error) error {
+		t.memberlistKV.Stop()
+		return nil
+	}), nil
 }
 
 // listDeps recursively gets a list of dependencies for a passed moduleName
@@ -461,24 +449,21 @@ var modules = map[moduleName]module{
 	},
 
 	RuntimeConfig: {
-		init: (*Loki).initRuntimeConfig,
-		stop: (*Loki).stopRuntimeConfig,
+		wrappedService: (*Loki).initRuntimeConfig,
 	},
 
 	MemberlistKV: {
-		init: (*Loki).initMemberlistKV,
-		stop: (*Loki).stopMemberlistKV,
+		wrappedService: (*Loki).initMemberlistKV,
 	},
 
 	Ring: {
-		deps: []moduleName{RuntimeConfig, Server, MemberlistKV},
-		init: (*Loki).initRing,
-		stop: (*Loki).stopRing,
+		deps:           []moduleName{RuntimeConfig, Server, MemberlistKV},
+		wrappedService: (*Loki).initRing,
 	},
 
 	Overrides: {
-		deps: []moduleName{RuntimeConfig},
-		init: (*Loki).initOverrides,
+		deps:           []moduleName{RuntimeConfig},
+		wrappedService: (*Loki).initOverrides,
 	},
 
 	Distributor: {
@@ -488,9 +473,8 @@ var modules = map[moduleName]module{
 	},
 
 	Store: {
-		deps: []moduleName{Overrides},
-		init: (*Loki).initStore,
-		stop: (*Loki).stopStore,
+		deps:           []moduleName{Overrides},
+		wrappedService: (*Loki).initStore,
 	},
 
 	Ingester: {
