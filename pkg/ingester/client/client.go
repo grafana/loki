@@ -36,9 +36,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func New(cfg Config, addr string) (grpc_health_v1.HealthClient, error) {
 	opts := []grpc.DialOption{
 		grpc.WithInsecure(),
-		grpc.WithDefaultCallOptions(
-			grpc.UseCompressor("gzip"),
-		),
+		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
 	opts = append(opts, cfg.GRPCClientConfig.DialOption(instrumentation())...)
 	conn, err := grpc.Dial(addr, opts...)
