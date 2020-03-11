@@ -247,7 +247,21 @@ func (t *Loki) initTableManager() error {
 	if err != nil {
 		return err
 	}
-	return services.StartAndAwaitRunning(context.Background(), t.tableManager)
+
+	if err := services.StartAndAwaitRunning(context.Background(), t.tableManager); err != nil {
+		return err
+	}
+
+	// Once the execution reaches this point, synchronous table initialization has been
+	// done and the table-manager is ready to serve, so we're just returning a 200.
+	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("Ready")); err != nil {
+			level.Error(util.Logger).Log("msg", "error writing success message", "error", err)
+		}
+	}))
+
+	return nil
 }
 
 func (t *Loki) stopTableManager() error {
