@@ -36,22 +36,22 @@ import (
 
 const maxChunkAgeForTableManager = 12 * time.Hour
 
-type moduleName int
+type moduleName string
 
 // The various modules that make up Loki.
 const (
-	Ring moduleName = iota
-	RuntimeConfig
-	Overrides
-	Server
-	Distributor
-	Ingester
-	Querier
-	QueryFrontend
-	Store
-	TableManager
-	MemberlistKV
-	All
+	Ring          moduleName = "ring"
+	RuntimeConfig moduleName = "runtime-config"
+	Overrides     moduleName = "overrides"
+	Server        moduleName = "server"
+	Distributor   moduleName = "distributor"
+	Ingester      moduleName = "ingester"
+	Querier       moduleName = "querier"
+	QueryFrontend moduleName = "query-frontend"
+	Store         moduleName = "store"
+	TableManager  moduleName = "table-manager"
+	MemberlistKV  moduleName = "memberlist-kv"
+	All           moduleName = "all"
 )
 
 func (m *moduleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -64,74 +64,16 @@ func (m *moduleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 func (m moduleName) String() string {
-	switch m {
-	case Ring:
-		return "ring"
-	case RuntimeConfig:
-		return "runtime-config"
-	case Overrides:
-		return "overrides"
-	case Server:
-		return "server"
-	case Distributor:
-		return "distributor"
-	case Store:
-		return "store"
-	case Ingester:
-		return "ingester"
-	case Querier:
-		return "querier"
-	case QueryFrontend:
-		return "query-frontend"
-	case TableManager:
-		return "table-manager"
-	case MemberlistKV:
-		return "memberlist-kv"
-	case All:
-		return "all"
-	default:
-		panic(fmt.Sprintf("unknown module name: %d", m))
-	}
+	return string(m)
 }
 
 func (m *moduleName) Set(s string) error {
-	switch strings.ToLower(s) {
-	case "ring":
-		*m = Ring
-		return nil
-	case "runtime-config":
-		*m = RuntimeConfig
-		return nil
-	case "overrides":
-		*m = Overrides
-		return nil
-	case "server":
-		*m = Server
-		return nil
-	case "distributor":
-		*m = Distributor
-		return nil
-	case "store":
-		*m = Store
-		return nil
-	case "ingester":
-		*m = Ingester
-		return nil
-	case "querier":
-		*m = Querier
-		return nil
-	case "query-frontend":
-		*m = QueryFrontend
-		return nil
-	case "table-manager":
-		*m = TableManager
-		return nil
-	case "all":
-		*m = All
-		return nil
-	default:
+	l := moduleName(strings.ToLower(s))
+	if _, ok := modules[l]; !ok {
 		return fmt.Errorf("unrecognised module name: %s", s)
 	}
+	*m = l
+	return nil
 }
 
 func (t *Loki) initServer() (err error) {
