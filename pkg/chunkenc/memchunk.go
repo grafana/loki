@@ -111,10 +111,15 @@ func (hb *headBlock) append(ts int64, line string) error {
 
 func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
 	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
+	defer func() {
+		inBuf.Reset()
+		serializeBytesBufferPool.Put(inBuf)
+	}()
 	outBuf := &bytes.Buffer{}
 
 	encBuf := make([]byte, binary.MaxVarintLen64)
 	compressedWriter := pool.GetWriter(outBuf)
+	defer pool.PutWriter(compressedWriter)
 	for _, logEntry := range hb.entries {
 		n := binary.PutVarint(encBuf, logEntry.t)
 		inBuf.Write(encBuf[:n])
@@ -132,10 +137,6 @@ func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
 		return nil, errors.Wrap(err, "flushing pending compress buffer")
 	}
 
-	inBuf.Reset()
-	serializeBytesBufferPool.Put(inBuf)
-
-	pool.PutWriter(compressedWriter)
 	return outBuf.Bytes(), nil
 }
 
