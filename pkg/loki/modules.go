@@ -425,11 +425,34 @@ func uniqueDeps(deps []moduleName) []moduleName {
 	return result
 }
 
+// find modules in the supplied list, that depend on mod
+func findInverseDependencies(mod moduleName, mods []moduleName) []moduleName {
+	result := []moduleName(nil)
+
+	for _, n := range mods {
+		for _, d := range modules[n].deps {
+			if d == mod {
+				result = append(result, n)
+				break
+			}
+		}
+	}
+
+	return result
+}
+
 type module struct {
 	deps     []moduleName
 	init     func(t *Loki) error
 	stopping func(t *Loki) error
 	stop     func(t *Loki) error
+
+	// service for this module (can return nil)
+	service func(t *Loki) (services.Service, error)
+
+	// service that will be wrapped into moduleServiceWrapper, to wait for dependencies to start / end
+	// (can return nil)
+	wrappedService func(t *Loki) (services.Service, error)
 }
 
 var modules = map[moduleName]module{
