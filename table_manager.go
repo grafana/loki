@@ -90,7 +90,9 @@ type TableManagerConfig struct {
 	RetentionDeletesEnabled bool `yaml:"retention_deletes_enabled"`
 
 	// How far back tables will be kept before they are deleted
-	RetentionPeriod time.Duration `yaml:"retention_period"`
+	RetentionPeriod time.Duration `yaml:"-"`
+	// This is so that we can accept 1w, 1y in the YAML.
+	RetentionPeriodModel model.Duration `yaml:"retention_period"`
 
 	// Period with which the table manager will poll for tables.
 	DynamoDBPollInterval time.Duration `yaml:"dynamodb_poll_interval"`
@@ -100,6 +102,41 @@ type TableManagerConfig struct {
 
 	IndexTables ProvisionConfig `yaml:"index_tables_provisioning"`
 	ChunkTables ProvisionConfig `yaml:"chunk_tables_provisioning"`
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface. To support RetentionPeriod.
+func (cfg *TableManagerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+
+	// If we call unmarshal on TableManagerConfig, it will call UnmarshalYAML leading to infinite recursion.
+	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
+	// again, we have to hide it using a type indirection.
+	type plain TableManagerConfig
+	if err := unmarshal((*plain)(cfg)); err != nil {
+		return err
+	}
+
+	if cfg.RetentionPeriodModel > 0 {
+		cfg.RetentionPeriod = time.Duration(cfg.RetentionPeriodModel)
+	}
+
+	return nil
+}
+
+// MarshalYAML implements the yaml.Marshaler interface. To support RetentionPeriod.
+func (cfg *TableManagerConfig) MarshalYAML() (interface{}, error) {
+	cfg.RetentionPeriodModel = model.Duration(cfg.RetentionPeriod)
+	return cfg, nil
+}
+
+// Validate validates the config.
+func (cfg *TableManagerConfig) Validate() error {
+	// We're setting this field because when using flags, you set the RetentionPeriodModel but not RetentionPeriod.
+	// TODO(gouthamve): Its a hack, but I can't think of any other way :/
+	if cfg.RetentionPeriodModel > 0 {
+		cfg.RetentionPeriod = time.Duration(cfg.RetentionPeriodModel)
+	}
+
+	return nil
 }
 
 // ProvisionConfig holds config for provisioning capacity (on DynamoDB)
@@ -123,7 +160,7 @@ type ProvisionConfig struct {
 func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ThroughputUpdatesDisabled, "table-manager.throughput-updates-disabled", false, "If true, disable all changes to DB capacity")
 	f.BoolVar(&cfg.RetentionDeletesEnabled, "table-manager.retention-deletes-enabled", false, "If true, enables retention deletes of DB tables")
-	f.DurationVar(&cfg.RetentionPeriod, "table-manager.retention-period", 0, "Tables older than this retention period are deleted. Note: This setting is destructive to data!(default: 0, which disables deletion)")
+	f.Var(&cfg.RetentionPeriodModel, "table-manager.retention-period", "Tables older than this retention period are deleted. Note: This setting is destructive to data!(default: 0, which disables deletion)")
 	f.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
 	f.DurationVar(&cfg.CreationGracePeriod, "dynamodb.periodic-table.grace-period", 10*time.Minute, "DynamoDB periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
 

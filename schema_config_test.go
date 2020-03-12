@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	yaml "gopkg.in/yaml.v2"
 )
 
 func TestHourlyBuckets(t *testing.T) {
@@ -421,4 +422,31 @@ func MustParseDayTime(s string) DayTime {
 		panic(err)
 	}
 	return DayTime{model.TimeFromUnix(t.Unix())}
+}
+
+func TestPeriodicTableConfigCustomUnmarshalling(t *testing.T) {
+	yamlFile := `prefix: cortex_
+period: 1w
+tags:
+  foo: bar
+`
+
+	cfg := PeriodicTableConfig{}
+	err := yaml.Unmarshal([]byte(yamlFile), &cfg)
+	require.NoError(t, err)
+
+	expectedCfg := PeriodicTableConfig{
+		Prefix: "cortex_",
+		Period: 7 * 24 * time.Hour,
+		Tags: map[string]string{
+			"foo": "bar",
+		},
+	}
+
+	require.Equal(t, expectedCfg, cfg)
+
+	yamlGenerated, err := yaml.Marshal(&cfg)
+	require.NoError(t, err)
+
+	require.Equal(t, yamlFile, string(yamlGenerated))
 }
