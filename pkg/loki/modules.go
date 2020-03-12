@@ -223,11 +223,6 @@ func (t *Loki) stopIngester() error {
 	return nil
 }
 
-func (t *Loki) stoppingIngester() error {
-	t.ingester.Stopping()
-	return nil
-}
-
 func (t *Loki) initTableManager() (services.Service, error) {
 	err := t.cfg.SchemaConfig.Load()
 	if err != nil {
@@ -429,10 +424,9 @@ func findInverseDependencies(mod moduleName, mods []moduleName) []moduleName {
 }
 
 type module struct {
-	deps     []moduleName
-	init     func(t *Loki) error
-	stopping func(t *Loki) error
-	stop     func(t *Loki) error
+	deps []moduleName
+	init func(t *Loki) error
+	stop func(t *Loki) error
 
 	// service for this module (can return nil)
 	service func(t *Loki) (services.Service, error)
@@ -476,10 +470,9 @@ var modules = map[moduleName]module{
 	},
 
 	Ingester: {
-		deps:     []moduleName{Store, Server, MemberlistKV},
-		init:     (*Loki).initIngester,
-		stop:     (*Loki).stopIngester,
-		stopping: (*Loki).stoppingIngester,
+		deps: []moduleName{Store, Server, MemberlistKV},
+		init: (*Loki).initIngester,
+		stop: (*Loki).stopIngester,
 	},
 
 	Querier: {

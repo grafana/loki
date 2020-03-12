@@ -198,6 +198,11 @@ func (i *Ingester) loop() {
 
 // Shutdown stops the ingester.
 func (i *Ingester) Shutdown() {
+	close(i.quitting)
+	for _, instance := range i.getInstances() {
+		instance.closeTailers()
+	}
+
 	close(i.quit)
 	i.done.Wait()
 
@@ -206,14 +211,6 @@ func (i *Ingester) Shutdown() {
 	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "lifecycler failed", "err", err)
-	}
-}
-
-// Stopping helps cleaning up resources before actual shutdown
-func (i *Ingester) Stopping() {
-	close(i.quitting)
-	for _, instance := range i.getInstances() {
-		instance.closeTailers()
 	}
 }
 
