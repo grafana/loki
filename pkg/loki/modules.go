@@ -301,7 +301,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	}), nil
 }
 
-func (t *Loki) initQueryFrontend() (err error) {
+func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	level.Debug(util.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.cfg.Frontend))
 	t.frontend, err = frontend.New(t.cfg.Frontend, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -313,7 +313,7 @@ func (t *Loki) initQueryFrontend() (err error) {
 	)
 	tripperware, stopper, err := queryrange.NewTripperware(t.cfg.QueryRange, util.Logger, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
-		return err
+		return
 	}
 	t.stopper = stopper
 	t.frontend.Wrap(tripperware)
@@ -332,15 +332,14 @@ func (t *Loki) initQueryFrontend() (err error) {
 	t.server.HTTP.Handle("/api/prom/series", frontendHandler)
 	// fallback route
 	t.server.HTTP.PathPrefix("/").Handler(frontendHandler)
-	return
-}
 
-func (t *Loki) stopQueryFrontend() error {
-	t.frontend.Close()
-	if t.stopper != nil {
-		t.stopper.Stop()
-	}
-	return nil
+	return services.NewIdleService(nil, func(_ error) error {
+		t.frontend.Close()
+		if t.stopper != nil {
+			t.stopper.Stop()
+		}
+		return nil
+	}), nil
 }
 
 func (t *Loki) initMemberlistKV() (services.Service, error) {
@@ -489,9 +488,8 @@ var modules = map[moduleName]module{
 	},
 
 	QueryFrontend: {
-		deps: []moduleName{Server, Overrides},
-		init: (*Loki).initQueryFrontend,
-		stop: (*Loki).stopQueryFrontend,
+		deps:           []moduleName{Server, Overrides},
+		wrappedService: (*Loki).initQueryFrontend,
 	},
 
 	TableManager: {
