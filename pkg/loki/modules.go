@@ -1,7 +1,6 @@
 package loki
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -157,23 +156,16 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	return t.distributor, nil
 }
 
-func (t *Loki) initQuerier() error {
+func (t *Loki) initQuerier() (services.Service, error) {
 	level.Debug(util.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.cfg.Worker))
 	worker, err := frontend.NewWorker(t.cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
 	if err != nil {
-		return err
-	}
-	// worker is nil, if no address is defined.
-	if worker != nil {
-		err = services.StartAndAwaitRunning(context.Background(), worker)
-		if err != nil {
-			return err
-		}
+		return nil, err
 	}
 
 	t.querier, err = querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store, t.overrides)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	httpMiddleware := middleware.Merge(
@@ -197,7 +189,7 @@ func (t *Loki) initQuerier() error {
 	t.server.HTTP.Handle("/api/prom/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
 	t.server.HTTP.Handle("/api/prom/tail", httpMiddleware.Wrap(http.HandlerFunc(t.querier.TailHandler)))
 	t.server.HTTP.Handle("/api/prom/series", httpMiddleware.Wrap(http.HandlerFunc(t.querier.SeriesHandler)))
-	return nil
+	return worker, nil // ok if worker is nil here
 }
 
 func (t *Loki) initIngester() (err error) {
@@ -492,8 +484,8 @@ var modules = map[moduleName]module{
 	},
 
 	Querier: {
-		deps: []moduleName{Store, Ring, Server},
-		init: (*Loki).initQuerier,
+		deps:           []moduleName{Store, Ring, Server},
+		wrappedService: (*Loki).initQuerier,
 	},
 
 	QueryFrontend: {
