@@ -64,7 +64,8 @@ func (s *GCSObjectClient) Stop() {
 	s.client.Close()
 }
 
-// Get object from the store
+// GetObject returns a reader for the specified object key from the configured GCS bucket. If the
+// key does not exist a generic chunk.ErrStorageObjectNotFound error is returned.
 func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	if s.cfg.RequestTimeout > 0 {
 		// The context will be cancelled with the timeout or when the parent context is cancelled, whichever occurs first.
@@ -73,10 +74,19 @@ func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 		defer cancel()
 	}
 
-	return s.bucket.Object(objectKey).NewReader(ctx)
+	reader, err := s.bucket.Object(objectKey).NewReader(ctx)
+
+	if err != nil {
+		if err == storage.ErrObjectNotExist {
+			return nil, chunk.ErrStorageObjectNotFound
+		}
+		return nil, err
+	}
+
+	return reader, nil
 }
 
-// Put object into the store
+// PutObject puts the specified bytes into the configured GCS bucket at the provided key
 func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
 	writer := s.bucket.Object(objectKey).NewWriter(ctx)
 	// Default GCSChunkSize is 8M and for each call, 8M is allocated xD
@@ -128,7 +138,17 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stor
 	return storageObjects, nil
 }
 
-func (s *GCSObjectClient) DeleteObject(ctx context.Context, chunkID string) error {
-	// ToDo: implement this to support deleting chunks from GCS
-	return chunk.ErrMethodNotImplemented
+// DeleteObject deletes the specified object key from the configured GCS bucket. If the
+// key does not exist a generic chunk.ErrStorageObjectNotFound error is returned.
+func (s *GCSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
+	err := s.bucket.Object(objectKey).Delete(ctx)
+
+	if err != nil {
+		if err == storage.ErrObjectNotExist {
+			return chunk.ErrStorageObjectNotFound
+		}
+		return err
+	}
+
+	return nil
 }

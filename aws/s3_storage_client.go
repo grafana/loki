@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
@@ -90,9 +91,23 @@ func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 // Stop fulfills the chunk.ObjectClient interface
 func (a *S3ObjectClient) Stop() {}
 
-func (a *S3ObjectClient) DeleteObject(ctx context.Context, chunkID string) error {
-	// ToDo: implement this to support deleting chunks from S3
-	return chunk.ErrMethodNotImplemented
+// DeleteObject deletes the specified objectKey from the appropriate S3 bucket
+func (a *S3ObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
+	_, err := a.S3.DeleteObject(&s3.DeleteObjectInput{
+		Bucket: aws.String(a.bucketFromKey(objectKey)),
+		Key:    aws.String(objectKey),
+	})
+
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			if aerr.Code() == s3.ErrCodeNoSuchKey {
+				return chunk.ErrStorageObjectNotFound
+			}
+		}
+		return err
+	}
+
+	return nil
 }
 
 // bucketFromKey maps a key to a bucket name
@@ -108,7 +123,8 @@ func (a *S3ObjectClient) bucketFromKey(key string) string {
 	return a.bucketNames[hash%uint32(len(a.bucketNames))]
 }
 
-// Get object from the store
+// GetObject returns a reader for the specified object key from the configured S3 bucket. If the
+// key does not exist a generic chunk.ErrStorageObjectNotFound error is returned.
 func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	var resp *s3.GetObjectOutput
 
@@ -123,7 +139,13 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 		})
 		return err
 	})
+
 	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			if aerr.Code() == s3.ErrCodeNoSuchKey {
+				return nil, chunk.ErrStorageObjectNotFound
+			}
+		}
 		return nil, err
 	}
 
