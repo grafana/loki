@@ -11,6 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/cortex"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -79,9 +80,28 @@ func (m *moduleName) Set(s string) error {
 	return nil
 }
 
-func (t *Loki) initServer() (err error) {
-	t.server, err = server.New(t.cfg.Server)
-	return
+func (t *Loki) initServer() (services.Service, error) {
+	serv, err := server.New(t.cfg.Server)
+	if err != nil {
+		return nil, err
+	}
+
+	t.server = serv
+
+	servicesToWaitFor := func() []services.Service {
+		svs := []services.Service(nil)
+		for m, s := range t.serviceMap {
+			// Server should not wait for itself.
+			if m != Server {
+				svs = append(svs, s)
+			}
+		}
+		return svs
+	}
+
+	s := cortex.NewServerService(t.server, servicesToWaitFor)
+
+	return s, nil
 }
 
 func (t *Loki) initRing() (_ services.Service, err error) {
@@ -445,7 +465,7 @@ type module struct {
 
 var modules = map[moduleName]module{
 	Server: {
-		init: (*Loki).initServer,
+		service: (*Loki).initServer,
 	},
 
 	RuntimeConfig: {
