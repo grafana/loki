@@ -3,6 +3,8 @@ package queryrange
 import (
 	"flag"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
@@ -13,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logql"
 )
@@ -63,10 +66,15 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, registerer promet
 				// weavework server uses httpgrpc errors for status code.
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
+
 			if _, ok := expr.(logql.SampleExpr); ok {
 				return metricRT.RoundTrip(req)
 			}
 			if logSelector, ok := expr.(logql.LogSelectorExpr); ok {
+				if err := validateLimits(req, params, limits); err != nil {
+					return nil, err
+				}
+
 				// backport the old regexp params into the query params
 				regexp := params.Get("regexp")
 				if regexp != "" {
@@ -85,6 +93,26 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, registerer promet
 			return next.RoundTrip(req)
 		})
 	}, cache, nil
+}
+
+// validates log entries limits
+func validateLimits(req *http.Request, params url.Values, limits Limits) error {
+	userID, err := user.ExtractOrgID(req.Context())
+	if err != nil {
+		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	reqLimit, err := strconv.Atoi(params.Get("limit"))
+	if err != nil {
+		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	maxEntriesLimit := limits.MaxEntriesLimitPerQuery(userID)
+	if reqLimit > maxEntriesLimit && maxEntriesLimit != 0 {
+		return httpgrpc.Errorf(http.StatusBadRequest,
+			"max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", reqLimit, maxEntriesLimit)
+	}
+	return nil
 }
 
 // NewLogFilterTripperware creates a new frontend tripperware responsible for handling log requests with regex.

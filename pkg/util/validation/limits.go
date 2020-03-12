@@ -44,6 +44,7 @@ type Limits struct {
 	CardinalityLimit           int           `yaml:"cardinality_limit"`
 	MaxStreamsMatchersPerQuery int           `yaml:"max_streams_matchers_per_query"`
 	MaxConcurrentTailRequests  int           `yaml:"max_concurrent_tail_requests"`
+	MaxEntriesLimitPerQuery    int           `yaml:"max_entries_limit_per_query"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration time.Duration `yaml:"split_queries_by_interval"`
@@ -66,6 +67,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")
 	f.DurationVar(&l.CreationGracePeriod, "validation.create-grace-period", 10*time.Minute, "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
 	f.BoolVar(&l.EnforceMetricName, "validation.enforce-metric-name", true, "Enforce every sample has a metric name.")
+	f.IntVar(&l.MaxEntriesLimitPerQuery, "validation.max-entries-limit", 5000, "Per-user entries limit per query")
 
 	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 10e3, "Maximum number of active streams per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalStreamsPerUser, "ingester.max-global-streams-per-user", 0, "Maximum number of active streams per user, across the cluster. 0 to disable.")
@@ -234,6 +236,11 @@ func (o *Overrides) MaxConcurrentTailRequests(userID string) int {
 // MaxLineSize returns the maximum size in bytes the distributor should allow.
 func (o *Overrides) MaxLineSize(userID string) int {
 	return o.getOverridesForUser(userID).MaxLineSize.Val()
+}
+
+// MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.
+func (o *Overrides) MaxEntriesLimitPerQuery(userID string) int {
+	return o.getOverridesForUser(userID).MaxEntriesLimitPerQuery
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
