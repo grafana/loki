@@ -236,10 +236,10 @@ func (t *Loki) stoppingIngester() error {
 	return nil
 }
 
-func (t *Loki) initTableManager() error {
+func (t *Loki) initTableManager() (services.Service, error) {
 	err := t.cfg.SchemaConfig.Load()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Assume the newest config is the one to use
@@ -260,7 +260,7 @@ func (t *Loki) initTableManager() error {
 
 	tableClient, err := loki_storage.NewTableClient(lastConfig.IndexType, t.cfg.StorageConfig)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	bucketClient, err := storage.NewBucketClient(t.cfg.StorageConfig.Config)
@@ -268,11 +268,7 @@ func (t *Loki) initTableManager() error {
 
 	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, prometheus.DefaultRegisterer)
 	if err != nil {
-		return err
-	}
-
-	if err := services.StartAndAwaitRunning(context.Background(), t.tableManager); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Once the execution reaches this point, synchronous table initialization has been
@@ -284,11 +280,7 @@ func (t *Loki) initTableManager() error {
 		}
 	}))
 
-	return nil
-}
-
-func (t *Loki) stopTableManager() error {
-	return services.StopAndAwaitTerminated(context.Background(), t.tableManager)
+	return t.tableManager, nil
 }
 
 func (t *Loki) initStore() (_ services.Service, err error) {
@@ -511,9 +503,8 @@ var modules = map[moduleName]module{
 	},
 
 	TableManager: {
-		deps: []moduleName{Server},
-		init: (*Loki).initTableManager,
-		stop: (*Loki).stopTableManager,
+		deps:           []moduleName{Server},
+		wrappedService: (*Loki).initTableManager,
 	},
 
 	All: {
