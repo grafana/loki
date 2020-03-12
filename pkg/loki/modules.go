@@ -137,12 +137,13 @@ func (t *Loki) initOverrides() (_ services.Service, err error) {
 	return nil, err
 }
 
-func (t *Loki) initDistributor() (err error) {
+func (t *Loki) initDistributor() (services.Service, error) {
 	t.cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
+	var err error
 	t.distributor, err = distributor.New(t.cfg.Distributor, t.cfg.IngesterClient, t.ring, t.overrides)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	pushHandler := middleware.Merge(
@@ -153,12 +154,7 @@ func (t *Loki) initDistributor() (err error) {
 
 	t.server.HTTP.Handle("/api/prom/push", pushHandler)
 	t.server.HTTP.Handle("/loki/api/v1/push", pushHandler)
-	return
-}
-
-func (t *Loki) stopDistributor() (err error) {
-	t.distributor.Stop()
-	return nil
+	return t.distributor, nil
 }
 
 func (t *Loki) initQuerier() error {
@@ -487,9 +483,8 @@ var modules = map[moduleName]module{
 	},
 
 	Distributor: {
-		deps: []moduleName{Ring, Server, Overrides},
-		init: (*Loki).initDistributor,
-		stop: (*Loki).stopDistributor,
+		deps:           []moduleName{Ring, Server, Overrides},
+		wrappedService: (*Loki).initDistributor,
 	},
 
 	Store: {
