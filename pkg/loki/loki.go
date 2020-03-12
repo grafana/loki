@@ -85,7 +85,6 @@ type Loki struct {
 	querier       *querier.Querier
 	store         storage.Store
 	tableManager  *chunk.TableManager
-	worker        frontend.Worker
 	frontend      *frontend.Frontend
 	stopper       queryrange.Stopper
 	runtimeConfig *runtimeconfig.Manager
