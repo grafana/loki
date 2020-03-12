@@ -29,10 +29,11 @@ const (
 )
 
 type tableManagerMetrics struct {
-	syncTableDuration *prometheus.HistogramVec
-	tableCapacity     *prometheus.GaugeVec
-	createFailures    prometheus.Gauge
-	deleteFailures    prometheus.Gauge
+	syncTableDuration  *prometheus.HistogramVec
+	tableCapacity      *prometheus.GaugeVec
+	createFailures     prometheus.Gauge
+	deleteFailures     prometheus.Gauge
+	lastSuccessfulSync prometheus.Gauge
 }
 
 func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
@@ -61,12 +62,19 @@ func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
 		Help:      "Number of table deletion failures during the last table-manager reconciliation",
 	})
 
+	m.lastSuccessfulSync = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "table_manager_sync_success_timestamp_seconds",
+		Help:      "Timestamp of the last successful table manager sync.",
+	})
+
 	if r != nil {
 		r.MustRegister(
 			m.syncTableDuration,
 			m.tableCapacity,
 			m.createFailures,
 			m.deleteFailures,
+			m.lastSuccessfulSync,
 		)
 	}
 
@@ -259,7 +267,12 @@ func (m *TableManager) SyncTables(ctx context.Context) error {
 		return err
 	}
 
-	return m.updateTables(ctx, toCheckThroughput)
+	if err := m.updateTables(ctx, toCheckThroughput); err != nil {
+		return err
+	}
+
+	m.metrics.lastSuccessfulSync.SetToCurrentTime()
+	return nil
 }
 
 func (m *TableManager) calculateExpectedTables() []TableDesc {
