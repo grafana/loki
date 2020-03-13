@@ -5,11 +5,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/user"
@@ -340,18 +338,13 @@ func (*Ingester) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health
 }
 
 // ReadinessHandler is used to indicate to k8s when the ingesters are ready for
-// the addition removal of another ingester. Returns 200 when the ingester is
+// the addition removal of another ingester. Returns 204 when the ingester is
 // ready, 500 otherwise.
-func (i *Ingester) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	if err := i.lifecycler.CheckReady(r.Context()); err != nil {
-		http.Error(w, "Not ready: "+err.Error(), http.StatusInternalServerError)
-		return
+func (i *Ingester) CheckReady(ctx context.Context) error {
+	if s := i.State(); s != services.Running && s != services.Stopping {
+		return fmt.Errorf("ingester not ready: %v", s)
 	}
-
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(readinessProbeSuccess); err != nil {
-		level.Error(util.Logger).Log("msg", "error writing success message", "error", err)
-	}
+	return i.lifecycler.CheckReady(ctx)
 }
 
 func (i *Ingester) getInstanceByID(id string) (*instance, bool) {

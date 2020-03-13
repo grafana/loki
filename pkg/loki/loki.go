@@ -301,6 +301,14 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 			return
 		}
 
-		w.WriteHeader(http.StatusNoContent)
+		// Ingester has a special check that makes sure that it was able to register into the ring,
+		// and that all other ring entries are OK too.
+		if t.ingester != nil {
+			if err := t.ingester.CheckReady(r.Context()); err != nil {
+				http.Error(w, "Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
+			}
+		}
+
+		http.Error(w, "ready", http.StatusOK)
 	}
 }

@@ -149,8 +149,6 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.httpAuthMiddleware,
 	).Wrap(http.HandlerFunc(t.distributor.PushHandler))
 
-	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.distributor.ReadinessHandler))
-
 	t.server.HTTP.Handle("/api/prom/push", pushHandler)
 	t.server.HTTP.Handle("/loki/api/v1/push", pushHandler)
 	return t.distributor, nil
@@ -172,8 +170,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		t.httpAuthMiddleware,
 		querier.NewPrepopulateMiddleware(),
 	)
-	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.querier.ReadinessHandler))
-
 	t.server.HTTP.Handle("/loki/api/v1/query_range", httpMiddleware.Wrap(http.HandlerFunc(t.querier.RangeQueryHandler)))
 	t.server.HTTP.Handle("/loki/api/v1/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.InstantQueryHandler)))
 	// Prometheus compatibility requires `loki/api/v1/labels` however we already released `loki/api/v1/label`
@@ -213,7 +209,6 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	logproto.RegisterQuerierServer(t.server.GRPC, t.ingester)
 	logproto.RegisterIngesterServer(t.server.GRPC, t.ingester)
 	grpc_health_v1.RegisterHealthServer(t.server.GRPC, t.ingester)
-	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.ingester.ReadinessHandler))
 	t.server.HTTP.Path("/flush").Handler(http.HandlerFunc(t.ingester.FlushHandler))
 	return t.ingester, nil
 }
@@ -252,15 +247,6 @@ func (t *Loki) initTableManager() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// Once the execution reaches this point, synchronous table initialization has been
-	// done and the table-manager is ready to serve, so we're just returning a 200.
-	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("Ready")); err != nil {
-			level.Error(util.Logger).Log("msg", "error writing success message", "error", err)
-		}
-	}))
 
 	return t.tableManager, nil
 }

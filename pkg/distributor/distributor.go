@@ -15,7 +15,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/pkg/errors"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -33,7 +32,6 @@ const (
 	metricName = "logs"
 )
 
-var readinessProbeSuccess = []byte("Ready")
 var (
 	ingesterAppends = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
@@ -186,21 +184,6 @@ type pushTracker struct {
 	samplesFailed  int32
 	done           chan struct{}
 	err            chan error
-}
-
-// ReadinessHandler is used to indicate to k8s when the distributor is ready.
-// Returns 200 when the distributor is ready, 500 otherwise.
-func (d *Distributor) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	_, err := d.ingestersRing.GetAll()
-	if err != nil {
-		http.Error(w, "Not ready: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(readinessProbeSuccess); err != nil {
-		level.Error(cortex_util.Logger).Log("msg", "error writing success message", "error", err)
-	}
 }
 
 // Push a set of streams.
