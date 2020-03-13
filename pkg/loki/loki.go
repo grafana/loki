@@ -234,7 +234,11 @@ func (t *Loki) Run() error {
 		// let's find out which module failed
 		for m, s := range t.serviceMap {
 			if s == service {
-				level.Error(util.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
+				if service.FailureCase() == util.ErrStopProcess {
+					level.Info(util.Logger).Log("msg", "received stop signal via return error", "module", m, "error", service.FailureCase())
+				} else {
+					level.Error(util.Logger).Log("msg", "module failed", "module", m, "error", service.FailureCase())
+				}
 				return
 			}
 		}
@@ -270,8 +274,13 @@ func (t *Loki) Run() error {
 	// if any service failed, report that as an error to caller
 	if err == nil {
 		if failed := sm.ServicesByState()[services.Failed]; len(failed) > 0 {
-			// Details were reported via failure listener before
-			err = errors.New("failed services")
+			for _, f := range failed {
+				if f.FailureCase() != util.ErrStopProcess {
+					// Details were reported via failure listener before
+					err = errors.New("failed services")
+					break
+				}
+			}
 		}
 	}
 	return err
