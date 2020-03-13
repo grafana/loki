@@ -76,7 +76,8 @@ func TestTransferOut(t *testing.T) {
 
 	// Create a new ingester and transfer data to it
 	ing2 := f.getIngester(time.Second*60, t)
-	ing.Shutdown()
+	defer services.StopAndAwaitTerminated(context.Background(), ing2) //nolint:errcheck
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 
 	assert.Len(t, ing2.instances, 1)
 	if assert.Contains(t, ing2.instances, "test") {

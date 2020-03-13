@@ -93,6 +93,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Ingester builds chunks for incoming log streams.
 type Ingester struct {
+	services.Service
+
 	cfg          Config
 	clientConfig client.Config
 
@@ -104,9 +106,9 @@ type Ingester struct {
 	lifecycler *ring.Lifecycler
 	store      ChunkStore
 
-	done     sync.WaitGroup
-	quit     chan struct{}
-	quitting chan struct{}
+	loopDone     sync.WaitGroup
+	loopQuit     chan struct{}
+	trailersQuit chan struct{}
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
@@ -138,18 +140,12 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		clientConfig: clientConfig,
 		instances:    map[string]*instance{},
 		store:        store,
-		quit:         make(chan struct{}),
+		loopQuit:     make(chan struct{}),
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		quitting:     make(chan struct{}),
+		trailersQuit: make(chan struct{}),
 		factory: func() chunkenc.Chunk {
 			return chunkenc.NewMemChunk(enc, cfg.BlockSize, cfg.TargetChunkSize)
 		},
-	}
-
-	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
-	for j := 0; j < cfg.ConcurrentFlushes; j++ {
-		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
-		go i.flushLoop(j)
 	}
 
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, true)
@@ -164,23 +160,64 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		os.Exit(1)
 	}))
 
-	err = services.StartAndAwaitRunning(context.Background(), i.lifecycler)
-	if err != nil {
-		return nil, err
-	}
-
 	// Now that the lifecycler has been created, we can create the limiter
 	// which depends on it.
 	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
 
-	i.done.Add(1)
-	go i.loop()
-
+	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
 	return i, nil
 }
 
+func (i *Ingester) starting(ctx context.Context) error {
+	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
+	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
+		i.flushQueues[j] = util.NewPriorityQueue(flushQueueLength)
+		go i.flushLoop(j)
+	}
+
+	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
+	err := i.lifecycler.StartAsync(context.Background())
+	if err != nil {
+		return err
+	}
+
+	err = i.lifecycler.AwaitRunning(ctx)
+	if err != nil {
+		return err
+	}
+
+	// start our loop
+	i.loopDone.Add(1)
+	go i.loop()
+	return nil
+}
+
+func (i *Ingester) running(ctx context.Context) error {
+	// wait until service is asked to stop
+	<-ctx.Done()
+
+	// close trailers before stopping our loop
+	close(i.trailersQuit)
+	for _, instance := range i.getInstances() {
+		instance.closeTailers()
+	}
+
+	close(i.loopQuit)
+	i.loopDone.Wait()
+	return nil
+}
+
+// Called after running exits, when Ingester transitions to Stopping state.
+// At this point, loop no longer runs, but flushers are still running.
+// TODO: normally, flushers are stopped via lifecycler (and transferout), but if lifecycler fails, we better stop them.
+func (i *Ingester) stopping(_ error) error {
+	i.stopIncomingRequests()
+
+	return services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+}
+
 func (i *Ingester) loop() {
-	defer i.done.Done()
+	defer i.loopDone.Done()
 
 	flushTicker := time.NewTicker(i.cfg.FlushCheckPeriod)
 	defer flushTicker.Stop()
@@ -190,27 +227,9 @@ func (i *Ingester) loop() {
 		case <-flushTicker.C:
 			i.sweepUsers(false)
 
-		case <-i.quit:
+		case <-i.loopQuit:
 			return
 		}
-	}
-}
-
-// Shutdown stops the ingester.
-func (i *Ingester) Shutdown() {
-	close(i.quitting)
-	for _, instance := range i.getInstances() {
-		instance.closeTailers()
-	}
-
-	close(i.quit)
-	i.done.Wait()
-
-	i.stopIncomingRequests()
-
-	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "lifecycler failed", "err", err)
 	}
 }
 
@@ -346,7 +365,7 @@ func (i *Ingester) getInstances() []*instance {
 // Tail logs matching given query
 func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
 	select {
-	case <-i.quitting:
+	case <-i.trailersQuit:
 		return errors.New("Ingester is stopping")
 	default:
 	}

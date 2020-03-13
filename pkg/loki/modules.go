@@ -192,7 +192,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	return worker, nil // ok if worker is nil here
 }
 
-func (t *Loki) initIngester() (err error) {
+func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = &t.cfg.Server.GRPCListenPort
@@ -215,12 +215,7 @@ func (t *Loki) initIngester() (err error) {
 	grpc_health_v1.RegisterHealthServer(t.server.GRPC, t.ingester)
 	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.ingester.ReadinessHandler))
 	t.server.HTTP.Path("/flush").Handler(http.HandlerFunc(t.ingester.FlushHandler))
-	return
-}
-
-func (t *Loki) stopIngester() error {
-	t.ingester.Shutdown()
-	return nil
+	return t.ingester, nil
 }
 
 func (t *Loki) initTableManager() (services.Service, error) {
@@ -425,8 +420,6 @@ func findInverseDependencies(mod moduleName, mods []moduleName) []moduleName {
 
 type module struct {
 	deps []moduleName
-	init func(t *Loki) error
-	stop func(t *Loki) error
 
 	// service for this module (can return nil)
 	service func(t *Loki) (services.Service, error)
@@ -470,9 +463,8 @@ var modules = map[moduleName]module{
 	},
 
 	Ingester: {
-		deps: []moduleName{Store, Server, MemberlistKV},
-		init: (*Loki).initIngester,
-		stop: (*Loki).stopIngester,
+		deps:           []moduleName{Store, Server, MemberlistKV},
+		wrappedService: (*Loki).initIngester,
 	},
 
 	Querier: {
