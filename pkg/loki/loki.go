@@ -221,14 +221,14 @@ func (t *Loki) Run() error {
 		return err
 	}
 
-	// before starting servers, register /ready handler. It should reflect entire Cortex.
+	// before starting servers, register /ready handler. It should reflect entire Loki.
 	t.server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
 
 	// Let's listen for events from this manager, and log them.
-	healthy := func() { level.Info(util.Logger).Log("msg", "Cortex started") }
-	stopped := func() { level.Info(util.Logger).Log("msg", "Cortex stopped") }
+	healthy := func() { level.Info(util.Logger).Log("msg", "Loki started") }
+	stopped := func() { level.Info(util.Logger).Log("msg", "Loki stopped") }
 	serviceFailed := func(service services.Service) {
-		// if any service fails, stop entire Cortex
+		// if any service fails, stop entire Loki
 		sm.StopAsync()
 
 		// let's find out which module failed
