@@ -32,8 +32,6 @@ import (
 // attempted.
 var ErrReadOnly = errors.New("Ingester is shutting down")
 
-var readinessProbeSuccess = []byte("Ready")
-
 var flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
 	Name: "cortex_ingester_flush_queue_length",
 	Help: "The total number of series pending in the flush queue.",
