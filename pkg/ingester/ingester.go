@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -103,8 +102,10 @@ type Ingester struct {
 	instances    map[string]*instance
 	readonly     bool
 
-	lifecycler *ring.Lifecycler
-	store      ChunkStore
+	lifecycler        *ring.Lifecycler
+	lifecyclerWatcher *services.FailureWatcher
+
+	store ChunkStore
 
 	loopDone     sync.WaitGroup
 	loopQuit     chan struct{}
@@ -153,12 +154,8 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		return nil, err
 	}
 
-	i.lifecycler.AddListener(services.NewListener(nil, nil, nil, nil, func(_ services.State, failure error) {
-		// lifecycler used to do os.Exit(1) on its own failure, but now it just goes into Failed state.
-		// for now we just simulate old behaviour here. When Ingester itself becomes a service, it will enter Failed state as well.
-		level.Error(util.Logger).Log("msg", "lifecycler failed", "err", err)
-		os.Exit(1)
-	}))
+	i.lifecyclerWatcher = services.NewFailureWatcher()
+	i.lifecyclerWatcher.WatchService(i.lifecycler)
 
 	// Now that the lifecycler has been created, we can create the limiter
 	// which depends on it.
@@ -193,8 +190,14 @@ func (i *Ingester) starting(ctx context.Context) error {
 }
 
 func (i *Ingester) running(ctx context.Context) error {
+	var serviceError error
+	select {
 	// wait until service is asked to stop
-	<-ctx.Done()
+	case <-ctx.Done():
+	// stop
+	case err := <-i.lifecyclerWatcher.Chan():
+		serviceError = fmt.Errorf("lifecycler failed: %w", err)
+	}
 
 	// close trailers before stopping our loop
 	close(i.trailersQuit)
@@ -204,16 +207,24 @@ func (i *Ingester) running(ctx context.Context) error {
 
 	close(i.loopQuit)
 	i.loopDone.Wait()
-	return nil
+	return serviceError
 }
 
 // Called after running exits, when Ingester transitions to Stopping state.
 // At this point, loop no longer runs, but flushers are still running.
-// TODO: normally, flushers are stopped via lifecycler (and transferout), but if lifecycler fails, we better stop them.
 func (i *Ingester) stopping(_ error) error {
 	i.stopIncomingRequests()
 
-	return services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+
+	// Normally, flushers are stopped via lifecycler (in transferOut), but if lifecycler fails,
+	// we better stop them.
+	for _, flushQueue := range i.flushQueues {
+		flushQueue.Close()
+	}
+	i.flushQueuesDone.Wait()
+
+	return err
 }
 
 func (i *Ingester) loop() {
