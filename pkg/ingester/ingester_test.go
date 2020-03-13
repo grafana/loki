@@ -35,7 +35,7 @@ func TestIngester(t *testing.T) {
 
 	i, err := New(ingesterConfig, client.Config{}, store, limits)
 	require.NoError(t, err)
-	defer services.StopAndAwaitTerminated(context.Background(), i)
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	req := logproto.PushRequest{
 		Streams: []*logproto.Stream{
@@ -203,7 +203,7 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 
 	i, err := New(ingesterConfig, client.Config{}, store, overrides)
 	require.NoError(t, err)
-	defer services.StopAndAwaitTerminated(context.Background(), i)
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	req := logproto.PushRequest{
 		Streams: []*logproto.Stream{
