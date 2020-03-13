@@ -5,21 +5,20 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/cortexproject/cortex/pkg/util"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 )
 
 // DeleteRequestHandler provides handlers for delete requests
 type DeleteRequestHandler struct {
-	deleteStore *chunk.DeleteStore
+	deleteStore *DeleteStore
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore *chunk.DeleteStore) (*DeleteRequestHandler, error) {
+func NewDeleteRequestHandler(deleteStore *DeleteStore) (*DeleteRequestHandler, error) {
 	deleteMgr := DeleteRequestHandler{
 		deleteStore: deleteStore,
 	}
@@ -54,7 +53,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	startParam := params.Get("start")
 	startTime := int64(0)
 	if startParam != "" {
-		startTime, err = queryrange.ParseTime(startParam)
+		startTime, err = util.ParseTime(startParam)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -65,7 +64,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	endTime := int64(model.Now())
 
 	if endParam != "" {
-		endTime, err = queryrange.ParseTime(endParam)
+		endTime, err = util.ParseTime(endParam)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

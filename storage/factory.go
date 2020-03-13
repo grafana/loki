@@ -18,6 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -62,7 +63,7 @@ type Config struct {
 
 	IndexQueriesCacheConfig cache.Config `yaml:"index_queries_cache_config,omitempty"`
 
-	DeleteStoreConfig chunk.DeleteStoreConfig `yaml:"delete_store,omitempty"`
+	DeleteStoreConfig purger.DeleteStoreConfig `yaml:"delete_store,omitempty"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.

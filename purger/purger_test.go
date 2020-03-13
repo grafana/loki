@@ -24,8 +24,24 @@ const (
 	modelTimeHour = model.Time(time.Hour / time.Millisecond)
 )
 
-func setupStoresAndPurger(t *testing.T) (*chunk.DeleteStore, chunk.Store, chunk.ObjectClient, *DataPurger) {
-	deleteStore, err := testutils.SetupTestDeleteStore()
+func setupTestDeleteStore() (*DeleteStore, error) {
+	var deleteStoreConfig DeleteStoreConfig
+	flagext.DefaultValues(&deleteStoreConfig)
+
+	mockStorage := chunk.NewMockStorage()
+
+	err := mockStorage.CreateTable(context.Background(), chunk.TableDesc{
+		Name: deleteStoreConfig.RequestsTableName,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return NewDeleteStore(deleteStoreConfig, mockStorage)
+}
+
+func setupStoresAndPurger(t *testing.T) (*DeleteStore, chunk.Store, chunk.ObjectClient, *DataPurger) {
+	deleteStore, err := setupTestDeleteStore()
 	require.NoError(t, err)
 
 	chunkStore, err := testutils.SetupTestChunkStore()
@@ -345,7 +361,7 @@ func TestDataPurger_Restarts(t *testing.T) {
 
 	deleteRequests, err = deleteStore.GetAllDeleteRequestsForUser(context.Background(), userID)
 	require.NoError(t, err)
-	require.Equal(t, chunk.StatusProcessed, deleteRequests[0].Status)
+	require.Equal(t, StatusProcessed, deleteRequests[0].Status)
 }
 
 func getNonDeletedIntervals(originalInterval, deletedInterval model.Interval) []model.Interval {

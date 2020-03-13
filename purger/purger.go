@@ -25,7 +25,7 @@ import (
 const millisecondPerDay = int64(24 * time.Hour / time.Millisecond)
 
 type deleteRequestWithLogger struct {
-	chunk.DeleteRequest
+	DeleteRequest
 	logger log.Logger // logger is initialized with userID and requestID to add context to every log generated using this
 }
 
@@ -55,7 +55,7 @@ type DataPurger struct {
 	services.Service
 
 	cfg          Config
-	deleteStore  *chunk.DeleteStore
+	deleteStore  *DeleteStore
 	chunkStore   chunk.Store
 	objectClient chunk.ObjectClient
 
@@ -74,7 +74,7 @@ type DataPurger struct {
 }
 
 // NewDataPurger creates a new DataPurger
-func NewDataPurger(cfg Config, deleteStore *chunk.DeleteStore, chunkStore chunk.Store, storageClient chunk.ObjectClient) (*DataPurger, error) {
+func NewDataPurger(cfg Config, deleteStore *DeleteStore, chunkStore chunk.Store, storageClient chunk.ObjectClient) (*DataPurger, error) {
 	dataPurger := DataPurger{
 		cfg:                 cfg,
 		deleteStore:         deleteStore,
@@ -133,7 +133,7 @@ func (dp *DataPurger) workerJobCleanup(job workerJob) {
 	if dp.pendingPlansCount[job.deleteRequestID] == 0 {
 		level.Info(job.logger).Log("msg", "finished execution of all plans, cleaning up and updating status of request")
 
-		err := dp.deleteStore.UpdateStatus(context.Background(), job.userID, job.deleteRequestID, chunk.StatusProcessed)
+		err := dp.deleteStore.UpdateStatus(context.Background(), job.userID, job.deleteRequestID, StatusProcessed)
 		if err != nil {
 			level.Error(job.logger).Log("msg", "error updating delete request status to process", "err", err)
 		}
@@ -252,7 +252,7 @@ func (dp *DataPurger) executePlan(userID, requestID string, planNo int, logger l
 
 // we need to load all in process delete requests on startup to finish them first
 func (dp *DataPurger) loadInprocessDeleteRequests() error {
-	requestsWithBuildingPlanStatus, err := dp.deleteStore.GetDeleteRequestsByStatus(context.Background(), chunk.StatusBuildingPlan)
+	requestsWithBuildingPlanStatus, err := dp.deleteStore.GetDeleteRequestsByStatus(context.Background(), StatusBuildingPlan)
 	if err != nil {
 		return err
 	}
@@ -272,7 +272,7 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 		dp.executePlansChan <- req
 	}
 
-	requestsWithDeletingStatus, err := dp.deleteStore.GetDeleteRequestsByStatus(context.Background(), chunk.StatusDeleting)
+	requestsWithDeletingStatus, err := dp.deleteStore.GetDeleteRequestsByStatus(context.Background(), StatusDeleting)
 	if err != nil {
 		return err
 	}
@@ -291,7 +291,7 @@ func (dp *DataPurger) loadInprocessDeleteRequests() error {
 // pullDeleteRequestsToPlanDeletes pulls delete requests which do not have their delete plans built yet and sends them for building delete plans
 // after pulling delete requests for building plans, it updates its status to StatusBuildingPlan status to avoid picking this up again next time
 func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
-	deleteRequests, err := dp.deleteStore.GetDeleteRequestsByStatus(context.Background(), chunk.StatusReceived)
+	deleteRequests, err := dp.deleteStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
 	if err != nil {
 		return err
 	}
@@ -312,7 +312,7 @@ func (dp *DataPurger) pullDeleteRequestsToPlanDeletes() error {
 			continue
 		}
 
-		err = dp.deleteStore.UpdateStatus(context.Background(), deleteRequest.UserID, deleteRequest.RequestID, chunk.StatusBuildingPlan)
+		err = dp.deleteStore.UpdateStatus(context.Background(), deleteRequest.UserID, deleteRequest.RequestID, StatusBuildingPlan)
 		if err != nil {
 			return err
 		}
@@ -392,7 +392,7 @@ func (dp *DataPurger) buildDeletePlan(req deleteRequestWithLogger) error {
 		return err
 	}
 
-	err = dp.deleteStore.UpdateStatus(ctx, req.UserID, req.RequestID, chunk.StatusDeleting)
+	err = dp.deleteStore.UpdateStatus(ctx, req.UserID, req.RequestID, StatusDeleting)
 	if err != nil {
 		return err
 	}
@@ -535,7 +535,7 @@ func buildObjectKeyForPlan(userID, requestID string, planNo int) string {
 	return fmt.Sprintf("%s:%s/%d", userID, requestID, planNo)
 }
 
-func makeDeleteRequestWithLogger(deleteRequest chunk.DeleteRequest, l log.Logger) deleteRequestWithLogger {
+func makeDeleteRequestWithLogger(deleteRequest DeleteRequest, l log.Logger) deleteRequestWithLogger {
 	logger := log.With(l, "user_id", deleteRequest.UserID, "request_id", deleteRequest.RequestID)
 	return deleteRequestWithLogger{deleteRequest, logger}
 }
