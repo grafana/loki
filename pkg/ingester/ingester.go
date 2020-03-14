@@ -151,7 +151,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 
 	i.lifecycler.AddListener(services.NewListener(nil, nil, nil, nil, func(_ services.State, failure error) {
 		// lifecycler used to do os.Exit(1) on its own failure, but now it just goes into Failed state.
-		// for now we just simulate old behaviour here. When Ingester itself becames a service, it will enter Failed state as well.
+		// for now we just simulate old behaviour here. When Ingester itself becomes a service, it will enter Failed state as well.
 		level.Error(util.Logger).Log("msg", "lifecycler failed", "err", err)
 		os.Exit(1)
 	}))

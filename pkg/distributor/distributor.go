@@ -116,7 +116,7 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 
 		distributorsRing.AddListener(services.NewListener(nil, nil, nil, nil, func(_ services.State, failure error) {
 			// lifecycler used to do os.Exit(1) on its own failure, but now it just goes into Failed state.
-			// for now we just simulate old behaviour here. When Distributor itself becames a service, it will enter Failed state as well.
+			// for now we just simulate old behaviour here. When Distributor itself becomes a service, it will enter Failed state as well.
 			level.Error(cortex_util.Logger).Log("msg", "lifecycler failed", "err", err)
 			os.Exit(1)
 		}))
