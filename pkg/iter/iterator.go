@@ -259,7 +259,7 @@ func (i *heapIterator) Next() bool {
 			i.requeue(i.tuples[j].EntryIterator, true)
 			continue
 		}
-		// we count as duplicates only if the tuple if not the one (t) used to fill the current entry
+		// we count as duplicates only if the tuple is not the one (t) used to fill the current entry
 		if i.tuples[j] != t {
 			i.stats.TotalDuplicates++
 		}
