@@ -16,6 +16,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/cfg"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util"
@@ -26,9 +27,14 @@ func main() {
 
 	var defaultsConfig loki.Config
 
+	from := flag.String("from", "", "Start Time RFC339Nano 2006-01-02T15:04:05.999999999Z07:00")
+	to := flag.String("to", "", "End Time RFC339Nano 2006-01-02T15:04:05.999999999Z07:00")
 	sf := flag.String("source.config.file", "", "source datasource config")
 	df := flag.String("dest.config.file", "", "dest datasource config")
-	id := flag.String("tenant", "fake", "Tenant identifier, default is `fake` for single tenant Loki")
+	source := flag.String("source.tenant", "fake", "Source tenant identifier, default is `fake` for single tenant Loki")
+	dest := flag.String("dest.tenant", "fake", "Destination tenant identifier, default is `fake` for single tenant Loki")
+	match := flag.String("match", "", "Optional label match")
+
 	batch := flag.Int("batchLen", 1000, "Specify how many chunks to read/write in one batch")
 	flag.Parse()
 
@@ -66,16 +72,27 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	matchers := []*labels.Matcher{nameLabelMatcher}
+
+	if *match != "" {
+		m, err := logql.ParseMatchers(*match)
+		if err != nil {
+			panic(err)
+		}
+		matchers = append(matchers, m...)
+	}
+
 	ctx := context.Background()
-	ctx = user.InjectOrgID(ctx, *id)
+	ctx = user.InjectOrgID(ctx, *source)
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		panic(err)
 	}
 
-	from, through := util.RoundToMilliseconds(time.Now().Add(-60*time.Minute), time.Now())
+	f, t := util.RoundToMilliseconds(mustParse(*from), mustParse(*to))
 
-	schemaGroups, fetchers, err := s.GetChunkRefs(ctx, userID, from, through, nameLabelMatcher)
+	schemaGroups, fetchers, err := s.GetChunkRefs(ctx, userID, f, t, matchers...)
 
 	var totalChunks int
 	for i := range schemaGroups {
@@ -113,7 +130,7 @@ func main() {
 			// For retry purposes, find the earliest "Through" and keep it,
 			// if restarting you would want to set the "From" to this value
 			// This might send some duplicate chunks but should ensure nothing is missed.
-			earliestThrough := through
+			earliestThrough := t
 			for _, c := range chunks {
 				if c.Through < earliestThrough {
 					earliestThrough = c.Through
@@ -132,16 +149,30 @@ func main() {
 				log.Fatalf("Error fetching chunks: %v\n", err)
 			}
 
-			// Calculate some size stats
-			for _, chk := range chks {
+			output := make([]chunk.Chunk, 0, len(chks))
+
+			// Calculate some size stats and change the tenant ID if necessary
+			for i, chk := range chks {
 				if enc, err := chk.Encoded(); err == nil {
 					totalBytes += len(enc)
 				} else {
 					log.Fatalf("Error encoding a chunk: %v\n", err)
 				}
+				if *source != *dest {
+					// Because the incoming chunks are already encoded, to change the username we have to make a new chunk
+					nc := chunk.NewChunk(*dest, chk.Fingerprint, chk.Metric, chk.Data, chk.From, chk.Through)
+					err := nc.Encode()
+					if err != nil {
+						log.Fatalf("Failed to encode new chunk with new user: %v\n", err)
+					}
+					output = append(output, nc)
+				} else {
+					output = append(output, chks[i])
+				}
+
 			}
 
-			err = d.Put(ctx, chks)
+			err = d.Put(ctx, output)
 			if err != nil {
 				log.Fatalf("Error sending chunks to new store: %v\n", err)
 			}
@@ -151,4 +182,15 @@ func main() {
 
 	fmt.Printf("Finished transfering %v chunks totalling %v bytes in %v\n", totalChunks, totalBytes, time.Now().Sub(start))
 
+}
+
+func mustParse(t string) time.Time {
+
+	ret, err := time.Parse(time.RFC3339Nano, t)
+
+	if err != nil {
+		log.Fatalf("Unable to parse time %v", err)
+	}
+
+	return ret
 }
