@@ -48,12 +48,13 @@ func Test_SimplifiedRegex(t *testing.T) {
 		{"f.*|foobar.*|.*buzz", true, newOrFilter(newOrFilter(containsFilter("f"), containsFilter("foobar")), containsFilter("buzz")), true},
 		// parsed as ((f(?-s:.)*)|foobar(?-s:.)*)|(?-s:.)*buzz
 		{"((f.*)|foobar.*)|.*buzz", true, newOrFilter(newOrFilter(containsFilter("f"), containsFilter("foobar")), containsFilter("buzz")), true},
+		{".*", true, TrueFilter, true},
+		{"", true, TrueFilter, true},
 
 		// regex we are not supporting.
 		{"[a-z]+foo", false, nil, false},
 		{".+foo", false, nil, false},
 		{".*fo.*o", false, nil, false},
-		{".*", false, nil, false},
 		{`\d`, false, nil, false},
 		{`\sfoo`, false, nil, false},
 		{`foo?`, false, nil, false},
@@ -84,6 +85,38 @@ func Test_SimplifiedRegex(t *testing.T) {
 			for _, line := range fixtures {
 				l := []byte(line)
 				require.Equal(t, d.Filter(l), f.Filter(l), "regexp %s failed line: %s", test.re, line)
+			}
+		})
+	}
+}
+
+func Test_TrueFilter(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		f          LineFilter
+		expectTrue bool
+	}{
+		{"empty match", newContainsFilter(""), true},
+		{"not empty match", newNotFilter(newContainsFilter("")), false},
+		{"match", newContainsFilter("foo"), false},
+		{"empty match and", newAndFilter(newContainsFilter(""), newContainsFilter("")), true},
+		{"empty match or", newOrFilter(newContainsFilter(""), newContainsFilter("")), true},
+		{"nil right and", newAndFilter(newContainsFilter(""), nil), true},
+		{"nil left or", newOrFilter(nil, newContainsFilter("")), true},
+		{"nil right and not empty", newAndFilter(newContainsFilter("foo"), nil), false},
+		{"nil left or not empty", newOrFilter(nil, newContainsFilter("foo")), false},
+		{"nil both and", newAndFilter(nil, nil), true},
+		{"nil both or", newOrFilter(nil, nil), true},
+		{"empty match and chained", newAndFilter(newContainsFilter(""), newAndFilter(newContainsFilter(""), newAndFilter(newContainsFilter(""), newContainsFilter("")))), true},
+		{"empty match or chained", newOrFilter(newContainsFilter(""), newOrFilter(newContainsFilter(""), newOrFilter(newContainsFilter(""), newContainsFilter("")))), true},
+		{"empty match and", newNotFilter(newAndFilter(newContainsFilter(""), newContainsFilter(""))), false},
+		{"empty match or", newNotFilter(newOrFilter(newContainsFilter(""), newContainsFilter(""))), false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if test.expectTrue {
+				require.Equal(t, TrueFilter, test.f)
+			} else {
+				require.NotEqual(t, TrueFilter, test.f)
 			}
 		})
 	}

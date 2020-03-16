@@ -21,6 +21,13 @@ func (f LineFilterFunc) Filter(line []byte) bool {
 	return f(line)
 }
 
+type trueFilter struct{}
+
+func (trueFilter) Filter(_ []byte) bool { return true }
+
+// TrueFilter is a filter that returns and matches all log lines whatever their content.
+var TrueFilter = &trueFilter{}
+
 type notFilter struct {
 	LineFilter
 }
@@ -46,6 +53,9 @@ type andFilter struct {
 
 // newAndFilter creates a new filter which matches only if left and right matches.
 func newAndFilter(left LineFilter, right LineFilter) LineFilter {
+	if (right == TrueFilter || right == nil) && (left == TrueFilter || left == nil) {
+		return TrueFilter
+	}
 	return andFilter{
 		left:  left,
 		right: right,
@@ -63,6 +73,9 @@ type orFilter struct {
 
 // newOrFilter creates a new filter which matches only if left or right matches.
 func newOrFilter(left LineFilter, right LineFilter) LineFilter {
+	if (right == TrueFilter || right == nil) && (left == TrueFilter || left == nil) {
+		return TrueFilter
+	}
 	return orFilter{
 		left:  left,
 		right: right,
@@ -113,6 +126,13 @@ func (l containsFilter) String() string {
 	return string(l)
 }
 
+func newContainsFilter(match string) LineFilter {
+	if match == "" {
+		return TrueFilter
+	}
+	return containsFilter(match)
+}
+
 // newFilter creates a new line filter from a match string and type.
 func newFilter(match string, mt labels.MatchType) (LineFilter, error) {
 	switch mt {
@@ -121,10 +141,9 @@ func newFilter(match string, mt labels.MatchType) (LineFilter, error) {
 	case labels.MatchNotRegexp:
 		return parseRegexpFilter(match, false)
 	case labels.MatchEqual:
-		return containsFilter(match), nil
+		return newContainsFilter(match), nil
 	case labels.MatchNotEqual:
-		return newNotFilter(containsFilter(match)), nil
-
+		return newNotFilter(newContainsFilter(match)), nil
 	default:
 		return nil, fmt.Errorf("unknown matcher: %v", match)
 	}
@@ -163,6 +182,12 @@ func simplify(reg *syntax.Regexp) (LineFilter, bool) {
 		return simplify(reg)
 	case syntax.OpLiteral:
 		return containsFilter(string(reg.Rune)), true
+	case syntax.OpStar:
+		if reg.Sub[0].Op == syntax.OpAnyCharNotNL {
+			return TrueFilter, true
+		}
+	case syntax.OpEmptyMatch:
+		return TrueFilter, true
 	}
 	return nil, false
 }
