@@ -49,6 +49,8 @@ func Test_SimplifiedRegex(t *testing.T) {
 		// parsed as ((f(?-s:.)*)|foobar(?-s:.)*)|(?-s:.)*buzz
 		{"((f.*)|foobar.*)|.*buzz", true, newOrFilter(newOrFilter(containsFilter("f"), containsFilter("foobar")), containsFilter("buzz")), true},
 		{".*", true, TrueFilter, true},
+		{".*|.*", true, TrueFilter, true},
+		{".*||||", true, TrueFilter, true},
 		{"", true, TrueFilter, true},
 
 		// regex we are not supporting.
