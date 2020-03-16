@@ -238,6 +238,15 @@ func (i *heapIterator) Next() bool {
 		})
 	}
 
+	// shortcut if we have a single tuple.
+	if len(i.tuples) == 1 {
+		i.currEntry = i.tuples[0].Entry
+		i.currLabels = i.tuples[0].Labels()
+		i.requeue(i.tuples[0].EntryIterator, false)
+		i.tuples = i.tuples[:0]
+		return true
+	}
+
 	// Find in tuples which entry occurs most often which, due to quorum based
 	// replication, is guaranteed to be the correct next entry.
 	t := mostCommon(i.tuples)
@@ -250,7 +259,10 @@ func (i *heapIterator) Next() bool {
 			i.requeue(i.tuples[j].EntryIterator, true)
 			continue
 		}
-		i.stats.TotalDuplicates++
+		// we count as duplicates only if the tuple is not the one (t) used to fill the current entry
+		if i.tuples[j] != t {
+			i.stats.TotalDuplicates++
+		}
 		i.requeue(i.tuples[j].EntryIterator, false)
 	}
 	i.tuples = i.tuples[:0]

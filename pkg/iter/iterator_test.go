@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 const testSize = 10
@@ -376,5 +377,134 @@ func Test_PeekingIterator(t *testing.T) {
 	_, _, ok = iter.Peek()
 	if ok {
 		t.Fatal("should not be ok.")
+	}
+}
+
+func Test_DuplicateCount(t *testing.T) {
+	stream := &logproto.Stream{
+		Entries: []logproto.Entry{
+			{
+				Timestamp: time.Unix(0, 1),
+				Line:      "foo",
+			},
+			{
+				Timestamp: time.Unix(0, 2),
+				Line:      "foo",
+			},
+			{
+				Timestamp: time.Unix(0, 3),
+				Line:      "foo",
+			},
+		},
+	}
+
+	for _, test := range []struct {
+		name               string
+		iters              []EntryIterator
+		direction          logproto.Direction
+		expectedDuplicates int64
+	}{
+		{
+			"empty b",
+			[]EntryIterator{},
+			logproto.BACKWARD,
+			0,
+		},
+		{
+			"empty f",
+			[]EntryIterator{},
+			logproto.FORWARD,
+			0,
+		},
+		{
+			"replication 2 b",
+			[]EntryIterator{
+				NewStreamIterator(stream),
+				NewStreamIterator(stream),
+			},
+			logproto.BACKWARD,
+			3,
+		},
+		{
+			"replication 2 f",
+			[]EntryIterator{
+				NewStreamIterator(stream),
+				NewStreamIterator(stream),
+			},
+			logproto.FORWARD,
+			3,
+		},
+		{
+			"replication 3 f",
+			[]EntryIterator{
+				NewStreamIterator(stream),
+				NewStreamIterator(stream),
+				NewStreamIterator(stream),
+				NewStreamIterator(&logproto.Stream{
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(0, 4),
+							Line:      "bar",
+						},
+					}}),
+			},
+			logproto.FORWARD,
+			6,
+		},
+		{
+			"replication 3 b",
+			[]EntryIterator{
+				NewStreamIterator(stream),
+				NewStreamIterator(stream),
+				NewStreamIterator(stream),
+				NewStreamIterator(&logproto.Stream{
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(0, 4),
+							Line:      "bar",
+						},
+					}}),
+			},
+			logproto.BACKWARD,
+			6,
+		},
+		{
+			"single f",
+			[]EntryIterator{
+				NewStreamIterator(&logproto.Stream{
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(0, 4),
+							Line:      "bar",
+						},
+					}}),
+			},
+			logproto.FORWARD,
+			0,
+		},
+		{
+			"single b",
+			[]EntryIterator{
+				NewStreamIterator(&logproto.Stream{
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(0, 4),
+							Line:      "bar",
+						},
+					}}),
+			},
+			logproto.BACKWARD,
+			0,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			ctx = stats.NewContext(ctx)
+			it := NewHeapIterator(ctx, test.iters, test.direction)
+			defer it.Close()
+			for it.Next() {
+			}
+			require.Equal(t, test.expectedDuplicates, stats.GetChunkData(ctx).TotalDuplicates)
+		})
 	}
 }
