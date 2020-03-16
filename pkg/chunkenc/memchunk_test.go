@@ -431,6 +431,7 @@ func TestChunkStats(t *testing.T) {
 	if err := it.Close(); err != nil {
 		t.Fatal(err)
 	}
+	// test on a chunk filling up
 	s := stats.Snapshot(ctx, time.Since(first))
 	require.Equal(t, int64(expectedSize), s.Summary.TotalBytesProcessed)
 	require.Equal(t, int64(inserted), s.Summary.TotalLinesProcessed)
@@ -442,6 +443,8 @@ func TestChunkStats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// test on a new chunk.
 	cb, err := NewByteChunk(b)
 	if err != nil {
 		t.Fatal(err)
