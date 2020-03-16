@@ -3,6 +3,7 @@ package chunkenc
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"math/rand"
@@ -18,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 var testEncoding = []Encoding{
@@ -395,6 +397,72 @@ func TestChunkSize(t *testing.T) {
 		})
 
 	}
+}
+
+func TestChunkStats(t *testing.T) {
+	c := NewMemChunk(EncSnappy)
+	first := time.Now()
+	entry := &logproto.Entry{
+		Timestamp: first,
+		Line:      `ts=2020-03-16T13:58:33.459Z caller=dedupe.go:112 component=remote level=debug remote_name=3ea44a url=https:/blan.goo.net/api/prom/push msg=QueueManager.updateShardsLoop lowerBound=45.5 desiredShards=56.724401194003136 upperBound=84.5`,
+	}
+	inserted := 0
+	// fill the chunk with known data size.
+	for {
+		if !c.SpaceFor(entry) {
+			break
+		}
+		if err := c.Append(entry); err != nil {
+			t.Fatal(err)
+		}
+		inserted++
+		entry.Timestamp = entry.Timestamp.Add(time.Nanosecond)
+	}
+	expectedSize := (inserted * len(entry.Line)) + (inserted * 2 * binary.MaxVarintLen64)
+	ctx := stats.NewContext(context.Background())
+
+	it, err := c.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, logql.LineFilterFunc(func(line []byte) bool { return false }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for it.Next() {
+
+	}
+	if err := it.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s := stats.Snapshot(ctx, time.Since(first))
+	require.Equal(t, int64(expectedSize), s.Summary.TotalBytesProcessed)
+	require.Equal(t, int64(inserted), s.Summary.TotalLinesProcessed)
+
+	require.Equal(t, int64(expectedSize), s.Store.DecompressedBytes)
+	require.Equal(t, int64(inserted), s.Store.DecompressedLines)
+
+	b, err := c.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cb, err := NewByteChunk(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx = stats.NewContext(context.Background())
+	it, err = cb.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, logql.LineFilterFunc(func(line []byte) bool { return false }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for it.Next() {
+
+	}
+	if err := it.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s = stats.Snapshot(ctx, time.Since(first))
+	require.Equal(t, int64(expectedSize), s.Summary.TotalBytesProcessed)
+	require.Equal(t, int64(inserted), s.Summary.TotalLinesProcessed)
+
+	require.Equal(t, int64(expectedSize), s.Store.DecompressedBytes)
+	require.Equal(t, int64(inserted), s.Store.DecompressedLines)
 }
 
 func TestIteratorClose(t *testing.T) {
