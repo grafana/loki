@@ -196,8 +196,8 @@ func (k kvLogger) Log(keyvals ...interface{}) error {
 }
 
 func (q *Query) printStats(stats stats.Result) {
-	writer := tabwriter.NewWriter(os.Stdout, 0, 8, 0, '\t', 0)
-	stats.Summary.Log(kvLogger{Writer: writer})
+	writer := tabwriter.NewWriter(os.Stderr, 0, 8, 0, '\t', 0)
+	stats.Log(kvLogger{Writer: writer})
 }
 
 func (q *Query) resultsDirection() logproto.Direction {
