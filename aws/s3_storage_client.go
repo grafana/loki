@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"net/http"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -72,6 +73,7 @@ func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 	s3Config = s3Config.WithS3ForcePathStyle(cfg.S3ForcePathStyle) // support for Path Style S3 url if has the flag
 
 	s3Config = s3Config.WithMaxRetries(0) // We do our own retries, so we can monitor them
+	s3Config = s3Config.WithHTTPClient(&http.Client{Transport: defaultTransport})
 	sess, err := session.NewSession(s3Config)
 	if err != nil {
 		return nil, err
