@@ -19,6 +19,8 @@ package series
 import (
 	"sort"
 
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -187,3 +189,160 @@ type byLabels []storage.Series
 func (b byLabels) Len() int           { return len(b) }
 func (b byLabels) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
 func (b byLabels) Less(i, j int) bool { return labels.Compare(b[i].Labels(), b[j].Labels()) < 0 }
+
+type DeletedSeriesSet struct {
+	seriesSet     storage.SeriesSet
+	tombstones    *purger.TombstonesSet
+	queryInterval model.Interval
+}
+
+func NewDeletedSeriesSet(seriesSet storage.SeriesSet, tombstones *purger.TombstonesSet, queryInterval model.Interval) storage.SeriesSet {
+	return &DeletedSeriesSet{
+		seriesSet:     seriesSet,
+		tombstones:    tombstones,
+		queryInterval: queryInterval,
+	}
+}
+
+func (d DeletedSeriesSet) Next() bool {
+	return d.seriesSet.Next()
+}
+
+func (d DeletedSeriesSet) At() storage.Series {
+	series := d.seriesSet.At()
+	deletedIntervals := d.tombstones.GetDeletedIntervals(series.Labels(), d.queryInterval.Start, d.queryInterval.End)
+
+	// series is deleted for whole query range so return empty series
+	if len(deletedIntervals) == 1 && deletedIntervals[0] == d.queryInterval {
+		return NewEmptySeries(series.Labels())
+	}
+
+	return NewDeletedSeries(series, deletedIntervals)
+}
+
+func (d DeletedSeriesSet) Err() error {
+	return d.seriesSet.Err()
+}
+
+type DeletedSeries struct {
+	series           storage.Series
+	deletedIntervals []model.Interval
+}
+
+func NewDeletedSeries(series storage.Series, deletedIntervals []model.Interval) storage.Series {
+	return &DeletedSeries{
+		series:           series,
+		deletedIntervals: deletedIntervals,
+	}
+}
+
+func (d DeletedSeries) Labels() labels.Labels {
+	return d.series.Labels()
+}
+
+func (d DeletedSeries) Iterator() storage.SeriesIterator {
+	return NewDeletedSeriesIterator(d.series.Iterator(), d.deletedIntervals)
+}
+
+type DeletedSeriesIterator struct {
+	itr              storage.SeriesIterator
+	deletedIntervals []model.Interval
+}
+
+func NewDeletedSeriesIterator(itr storage.SeriesIterator, deletedIntervals []model.Interval) storage.SeriesIterator {
+	return &DeletedSeriesIterator{
+		itr:              itr,
+		deletedIntervals: deletedIntervals,
+	}
+}
+
+func (d DeletedSeriesIterator) Seek(t int64) bool {
+	if found := d.itr.Seek(t); !found {
+		return false
+	}
+
+	seekedTs, _ := d.itr.At()
+	if d.isDeleted(seekedTs) {
+		// point we have seeked into is deleted, Next() should find a new non-deleted sample which is after t and seekedTs
+		return d.Next()
+	}
+
+	return true
+}
+
+func (d DeletedSeriesIterator) At() (t int64, v float64) {
+	return d.itr.At()
+}
+
+func (d DeletedSeriesIterator) Next() bool {
+	for d.itr.Next() {
+		ts, _ := d.itr.At()
+
+		if d.isDeleted(ts) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func (d DeletedSeriesIterator) Err() error {
+	return d.itr.Err()
+}
+
+// isDeleted removes intervals which are past ts while checking for whether ts happens to be in one of the deleted intervals
+func (d *DeletedSeriesIterator) isDeleted(ts int64) bool {
+	mts := model.Time(ts)
+
+	for _, interval := range d.deletedIntervals {
+		if mts > interval.End {
+			d.deletedIntervals = d.deletedIntervals[1:]
+			continue
+		} else if mts < interval.Start {
+			return false
+		}
+
+		return true
+	}
+
+	return false
+}
+
+type emptySeries struct {
+	labels labels.Labels
+}
+
+func NewEmptySeries(labels labels.Labels) storage.Series {
+	return emptySeries{labels}
+}
+
+func (e emptySeries) Labels() labels.Labels {
+	return e.labels
+}
+
+func (emptySeries) Iterator() storage.SeriesIterator {
+	return NewEmptySeriesIterator()
+}
+
+type emptySeriesIterator struct {
+}
+
+func NewEmptySeriesIterator() storage.SeriesIterator {
+	return emptySeriesIterator{}
+}
+
+func (emptySeriesIterator) Seek(t int64) bool {
+	return false
+}
+
+func (emptySeriesIterator) At() (t int64, v float64) {
+	return 0, 0
+}
+
+func (emptySeriesIterator) Next() bool {
+	return false
+}
+
+func (emptySeriesIterator) Err() error {
+	return nil
+}

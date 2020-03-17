@@ -290,9 +290,42 @@ func (cfg *PeriodConfig) dailyBuckets(from, through model.Time, userID string) [
 
 // PeriodicTableConfig is configuration for a set of time-sharded tables.
 type PeriodicTableConfig struct {
-	Prefix string        `yaml:"prefix"`
-	Period time.Duration `yaml:"period,omitempty"`
-	Tags   Tags          `yaml:"tags,omitempty"`
+	Prefix string
+	Period time.Duration
+	Tags   Tags
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *PeriodicTableConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	g := struct {
+		Prefix string         `yaml:"prefix"`
+		Period model.Duration `yaml:"period"`
+		Tags   Tags           `yaml:"tags"`
+	}{}
+	if err := unmarshal(&g); err != nil {
+		return err
+	}
+
+	cfg.Prefix = g.Prefix
+	cfg.Period = time.Duration(g.Period)
+	cfg.Tags = g.Tags
+
+	return nil
+}
+
+// MarshalYAML implements the yaml.Marshaler interface.
+func (cfg PeriodicTableConfig) MarshalYAML() (interface{}, error) {
+	g := &struct {
+		Prefix string         `yaml:"prefix"`
+		Period model.Duration `yaml:"period"`
+		Tags   Tags           `yaml:"tags"`
+	}{
+		Prefix: cfg.Prefix,
+		Period: model.Duration(cfg.Period),
+		Tags:   cfg.Tags,
+	}
+
+	return g, nil
 }
 
 // AutoScalingConfig for DynamoDB tables.

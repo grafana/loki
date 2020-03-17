@@ -4,6 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -865,5 +867,23 @@ func awsSessionFromURL(awsURL *url.URL) (client.ConfigProvider, error) {
 		return nil, err
 	}
 	config = config.WithMaxRetries(0) // We do our own retries, so we can monitor them
+	config = config.WithHTTPClient(&http.Client{Transport: defaultTransport})
 	return session.NewSession(config)
+}
+
+// Copy-pasted http.DefaultTransport
+var defaultTransport http.RoundTripper = &http.Transport{
+	Proxy: http.ProxyFromEnvironment,
+	DialContext: (&net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext,
+	ForceAttemptHTTP2: true,
+	MaxIdleConns:      100,
+	// We will connect many times in parallel to the same DynamoDB server,
+	// see https://github.com/golang/go/issues/13801
+	MaxIdleConnsPerHost:   100,
+	IdleConnTimeout:       90 * time.Second,
+	TLSHandshakeTimeout:   10 * time.Second,
+	ExpectContinueTimeout: 1 * time.Second,
 }
