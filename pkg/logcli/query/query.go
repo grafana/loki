@@ -13,12 +13,16 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/promql"
 
+	"github.com/grafana/loki/pkg/cfg"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/loki"
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 type streamEntryPair struct {
@@ -39,6 +43,8 @@ type Query struct {
 	IgnoreLabelsKey []string
 	ShowLabelsKey   []string
 	FixedLabelsLen  int
+
+	LocalConfig string
 }
 
 // DoQuery executes the query and prints out the results
@@ -47,6 +53,11 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool)
 
 	var resp *loghttp.QueryResponse
 	var err error
+
+	if q.LocalConfig != "" {
+		q.DoLocalQuery(out, statistics)
+		return
+	}
 
 	if q.isInstant() {
 		resp, err = c.Query(q.QueryString, q.Limit, q.Start, d, q.Quiet)
@@ -77,6 +88,21 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool)
 	default:
 		log.Fatalf("Unable to print unsupported type: %v", resp.Data.ResultType)
 	}
+}
+
+func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool) {
+
+	var config loki.Config
+	if err := cfg.Parse(&config); err != nil {
+		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
+		os.Exit(1)
+	}
+	limits, err := validation.NewOverrides(config.LimitsConfig, nil)
+	s, err := storage.NewStore(config.StorageConfig, config.ChunkStoreConfig, config.SchemaConfig, limits)
+	if err != nil {
+		panic(err)
+	}
+
 }
 
 // SetInstant makes the Query an instant type

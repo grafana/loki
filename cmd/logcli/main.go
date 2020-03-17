@@ -169,6 +169,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	cmd.Flag("exclude-label", "Exclude labels given the provided key during output.").StringsVar(&query.IgnoreLabelsKey)
 	cmd.Flag("include-label", "Include labels given the provided key during output.").StringsVar(&query.ShowLabelsKey)
 	cmd.Flag("labels-length", "Set a fixed padding to labels").Default("0").IntVar(&query.FixedLabelsLen)
+	cmd.Flag("local-config", "Execute the current query using a local store with the given Loki's configuration file.").Default("").StringVar(&query.LocalConfig)
 
 	return query
 }
