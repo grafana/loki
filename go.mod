@@ -21,6 +21,7 @@ require (
 	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
 	github.com/frankban/quicktest v1.7.2 // indirect
 	github.com/go-kit/kit v0.9.0
+	github.com/go-logfmt/logfmt v0.4.0
 	github.com/gogo/protobuf v1.3.1 // remember to update loki-build-image/Dockerfile too
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/mux v1.7.1
