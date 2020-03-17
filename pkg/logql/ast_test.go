@@ -20,6 +20,11 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar", bar!="baz"}`, false},
 		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap"`, true},
+		{`{foo="bar", bar!="baz"} |= ""`, false},
+		{`{foo="bar", bar!="baz"} |~ ""`, false},
+		{`{foo="bar", bar!="baz"} |~ ".*"`, false},
+		{`{foo="bar", bar!="baz"} |= "" |= ""`, false},
+		{`{foo="bar", bar!="baz"} |~ "" |= "" |~ ".*"`, false},
 	}
 
 	for _, tt := range tests {
