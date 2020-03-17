@@ -26,7 +26,7 @@ type trueFilter struct{}
 func (trueFilter) Filter(_ []byte) bool { return true }
 
 // TrueFilter is a filter that returns and matches all log lines whatever their content.
-var TrueFilter = &trueFilter{}
+var TrueFilter = trueFilter{}
 
 type notFilter struct {
 	LineFilter
