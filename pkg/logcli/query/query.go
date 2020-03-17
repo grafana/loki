@@ -1,6 +1,7 @@
 package query
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/cfg"
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -49,15 +51,18 @@ type Query struct {
 
 // DoQuery executes the query and prints out the results
 func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool) {
+
+	if q.LocalConfig != "" {
+		if err := q.DoLocalQuery(out, statistics); err != nil {
+			log.Fatalf("Query failed: %+v", err)
+		}
+		return
+	}
+
 	d := q.resultsDirection()
 
 	var resp *loghttp.QueryResponse
 	var err error
-
-	if q.LocalConfig != "" {
-		q.DoLocalQuery(out, statistics)
-		return
-	}
 
 	if q.isInstant() {
 		resp, err = c.Query(q.QueryString, q.Limit, q.Start, d, q.Quiet)
@@ -90,19 +95,52 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool)
 	}
 }
 
-func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool) {
+// DoLocalQuery executes the query against the local store using a Loki configuration file.
+func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool) error {
 
-	var config loki.Config
-	if err := cfg.Parse(&config); err != nil {
-		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
-		os.Exit(1)
+	var conf loki.Config
+	if err := cfg.YAML(&q.LocalConfig)(&conf); err != nil {
+		return err
 	}
-	limits, err := validation.NewOverrides(config.LimitsConfig, nil)
-	s, err := storage.NewStore(config.StorageConfig, config.ChunkStoreConfig, config.SchemaConfig, limits)
+
+	querier, err := localStore(conf)
 	if err != nil {
-		panic(err)
+		return nil
 	}
 
+	eng := logql.NewEngine(conf.Querier.Engine, querier)
+	var query logql.Query
+	if q.isInstant() {
+		query = eng.NewInstantQuery(q.QueryString, q.Start, q.resultsDirection(), uint32(q.Limit))
+	} else {
+		query = eng.NewRangeQuery(q.QueryString, q.Start, q.End, q.Step, q.resultsDirection(), uint32(q.Limit))
+	}
+
+	// execute the query
+	ctx := context.Background()
+	result, err := query.Exec(ctx)
+	if err != nil {
+		return nil
+	}
+
+	if statistics {
+		q.printStats(result.Statistics)
+	}
+
+}
+
+func localStore(conf loki.Config) (logql.Querier, error) {
+	limits, err := validation.NewOverrides(conf.LimitsConfig, nil)
+	if err != nil {
+		return nil, err
+	}
+	return logql.QuerierFunc(func(ctx context.Context, params logql.SelectParams) (iter.EntryIterator, error) {
+		s, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits)
+		if err != nil {
+			return nil, err
+		}
+		return s.LazyQuery(ctx, params)
+	}), nil
 }
 
 // SetInstant makes the Query an instant type
