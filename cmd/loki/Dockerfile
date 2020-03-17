@@ -8,6 +8,9 @@ RUN make clean && (if [ "${TOUCH_PROTOS}" ]; then make touch-protos; fi) && make
 
 FROM alpine:3.9
 RUN apk add --update --no-cache ca-certificates
+RUN addgroup -g 1000 -S loki && \
+    adduser -u 1000 -S loki -G loki
+USER loki
 COPY --from=build /src/loki/cmd/loki/loki /usr/bin/loki
 COPY cmd/loki/loki-local-config.yaml /etc/loki/local-config.yaml
 EXPOSE 80
