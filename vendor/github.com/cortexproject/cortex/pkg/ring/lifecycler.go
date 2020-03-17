@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	perrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -339,15 +340,10 @@ func (i *Lifecycler) HealthyInstancesCount() int {
 }
 
 func (i *Lifecycler) loop(ctx context.Context) error {
-	defer func() {
-		level.Info(util.Logger).Log("msg", "member.loop() exited gracefully", "ring", i.RingName)
-	}()
-
 	// First, see if we exist in the cluster, update our state to match if we do,
 	// and add ourselves (without tokens) if we don't.
 	if err := i.initRing(context.Background()); err != nil {
-		level.Error(util.Logger).Log("msg", "failed to join the ring", "ring", i.RingName, "err", err)
-		os.Exit(1)
+		return perrors.Wrapf(err, "failed to join the ring %s", i.RingName)
 	}
 
 	// We do various period tasks
@@ -370,16 +366,14 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 					// let's observe the ring. By using JOINING state, this ingester will be ignored by LEAVING
 					// ingesters, but we also signal that it is not fully functional yet.
 					if err := i.autoJoin(context.Background(), JOINING); err != nil {
-						level.Error(util.Logger).Log("msg", "failed to pick tokens in the KV store", "ring", i.RingName, "err", err)
-						os.Exit(1)
+						return perrors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s", i.RingName)
 					}
 
 					level.Info(util.Logger).Log("msg", "observing tokens before going ACTIVE", "ring", i.RingName)
 					observeChan = time.After(i.cfg.ObservePeriod)
 				} else {
 					if err := i.autoJoin(context.Background(), ACTIVE); err != nil {
-						level.Error(util.Logger).Log("msg", "failed to pick tokens in the KV store", "ring", i.RingName, "err", err)
-						os.Exit(1)
+						return perrors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s", i.RingName)
 					}
 				}
 			}
@@ -416,6 +410,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 			f()
 
 		case <-ctx.Done():
+			level.Info(util.Logger).Log("msg", "lifecycler loop() exited gracefully", "ring", i.RingName)
 			return nil
 		}
 	}
@@ -425,7 +420,13 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 // - send chunks to another ingester, if it can.
 // - otherwise, flush chunks to the chunk store.
 // - remove config from Consul.
-func (i *Lifecycler) stopping(_ error) error {
+func (i *Lifecycler) stopping(runningError error) error {
+	if runningError != nil {
+		// previously lifecycler just called os.Exit (from loop method)...
+		// now it stops more gracefully, but also without doing any cleanup
+		return nil
+	}
+
 	heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
 	defer heartbeatTicker.Stop()
 
@@ -459,8 +460,7 @@ heartbeatLoop:
 
 	if !i.cfg.SkipUnregister {
 		if err := i.unregister(context.Background()); err != nil {
-			level.Error(util.Logger).Log("msg", "Failed to unregister from the KV store", "ring", i.RingName, "err", err)
-			os.Exit(1)
+			return perrors.Wrapf(err, "failed to unregister from the KV store, ring: %s", i.RingName)
 		}
 		level.Info(util.Logger).Log("msg", "instance removed from the KV store", "ring", i.RingName)
 	}

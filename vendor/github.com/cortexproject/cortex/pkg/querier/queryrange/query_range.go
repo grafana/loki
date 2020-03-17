@@ -154,12 +154,12 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Request, error) {
 	var result PrometheusRequest
 	var err error
-	result.Start, err = ParseTime(r.FormValue("start"))
+	result.Start, err = util.ParseTime(r.FormValue("start"))
 	if err != nil {
 		return nil, err
 	}
 
-	result.End, err = ParseTime(r.FormValue("end"))
+	result.End, err = util.ParseTime(r.FormValue("end"))
 	if err != nil {
 		return nil, err
 	}
@@ -329,19 +329,6 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 	}
 
 	return result
-}
-
-// ParseTime parses the string into an int64, milliseconds since epoch.
-func ParseTime(s string) (int64, error) {
-	if t, err := strconv.ParseFloat(s, 64); err == nil {
-		s, ns := math.Modf(t)
-		tm := time.Unix(int64(s), int64(ns*float64(time.Second)))
-		return util.TimeMilliseconds(tm), nil
-	}
-	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
-		return util.TimeMilliseconds(t), nil
-	}
-	return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid timestamp", s)
 }
 
 func parseDurationMs(s string) (int64, error) {

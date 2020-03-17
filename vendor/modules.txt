@@ -130,7 +130,7 @@ github.com/coreos/go-systemd/sdjournal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
 github.com/coreos/pkg/dlopen
-# github.com/cortexproject/cortex v0.7.0-rc.0
+# github.com/cortexproject/cortex v0.7.1-0.20200316184320-acc42abdf56c
 github.com/cortexproject/cortex/pkg/chunk
 github.com/cortexproject/cortex/pkg/chunk/aws
 github.com/cortexproject/cortex/pkg/chunk/azure
@@ -140,6 +140,7 @@ github.com/cortexproject/cortex/pkg/chunk/encoding
 github.com/cortexproject/cortex/pkg/chunk/gcp
 github.com/cortexproject/cortex/pkg/chunk/local
 github.com/cortexproject/cortex/pkg/chunk/objectclient
+github.com/cortexproject/cortex/pkg/chunk/purger
 github.com/cortexproject/cortex/pkg/chunk/storage
 github.com/cortexproject/cortex/pkg/chunk/testutils
 github.com/cortexproject/cortex/pkg/chunk/util
@@ -162,6 +163,7 @@ github.com/cortexproject/cortex/pkg/ring/kv/memberlist
 github.com/cortexproject/cortex/pkg/util
 github.com/cortexproject/cortex/pkg/util/extract
 github.com/cortexproject/cortex/pkg/util/flagext
+github.com/cortexproject/cortex/pkg/util/grpc
 github.com/cortexproject/cortex/pkg/util/grpcclient
 github.com/cortexproject/cortex/pkg/util/limiter
 github.com/cortexproject/cortex/pkg/util/middleware

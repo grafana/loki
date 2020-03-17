@@ -143,22 +143,6 @@ func SetupTestChunkStore() (chunk.Store, error) {
 	return store, nil
 }
 
-func SetupTestDeleteStore() (*chunk.DeleteStore, error) {
-	var deleteStoreConfig chunk.DeleteStoreConfig
-	flagext.DefaultValues(&deleteStoreConfig)
-
-	mockStorage := chunk.NewMockStorage()
-
-	err := mockStorage.CreateTable(context.Background(), chunk.TableDesc{
-		Name: deleteStoreConfig.RequestsTableName,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return chunk.NewDeleteStore(deleteStoreConfig, mockStorage)
-}
-
 func SetupTestObjectStore() (chunk.ObjectClient, error) {
 	return chunk.NewMockStorage(), nil
 }

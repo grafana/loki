@@ -9,6 +9,7 @@ import (
 	"time"
 
 	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -112,7 +113,8 @@ type Distributor struct {
 	ingestionRateLimiter *limiter.RateLimiter
 
 	// Manager for subservices (HA Tracker, distributor ring and client pool)
-	subservices *services.Manager
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
 }
 
 // Config contains the configuration require to
@@ -208,14 +210,25 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	if err != nil {
 		return nil, err
 	}
+	d.subservicesWatcher = services.NewFailureWatcher()
+	d.subservicesWatcher.WatchManager(d.subservices)
 
-	d.Service = services.NewIdleService(d.starting, d.stopping)
+	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
 	return d, nil
 }
 
 func (d *Distributor) starting(ctx context.Context) error {
 	// Only report success if all sub-services start properly
 	return services.StartManagerAndAwaitHealthy(ctx, d.subservices)
+}
+
+func (d *Distributor) running(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-d.subservicesWatcher.Chan():
+		return errors.Wrap(err, "distributor subservice failed")
+	}
 }
 
 // Called after distributor is asked to stop via StopAsync.
