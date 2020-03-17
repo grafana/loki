@@ -82,6 +82,7 @@ Flags:
       --tls-skip-verify  Server certificate TLS skip verify.
       --cert=""          Path to the client certificate.
       --key=""           Path to the client certificate key.
+      --org-id=ORG-ID    org ID header to be substituted for auth
 
 Commands:
   help [<command>...]
@@ -115,6 +116,7 @@ Flags:
       --from=FROM        Start looking for logs at this absolute time (inclusive)
       --to=TO            Stop looking for logs at this absolute time (exclusive)
       --forward          Scan forwards through logs.
+      --local-config=""  Execute the current query using a configured storage from a given Loki configuration file.
   -t, --tail             Tail the logs
       --delay-for=0      Delay in tailing by number of seconds to accumulate logs for re-ordering
       --no-labels        Do not print any labels
