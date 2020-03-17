@@ -151,7 +151,7 @@ module Fluent
                           'res=nil'
                         end
           log.warn "failed to #{req.method} #{@uri} (#{res_summary})"
-          log.warn Yajl.dump(body)
+          log.debug Yajl.dump(body)
 
         end
       end
