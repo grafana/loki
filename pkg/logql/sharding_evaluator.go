@@ -15,7 +15,7 @@ type downstreamEvaluator struct {
 }
 
 // Evaluator returns a StepEvaluator for a given SampleExpr
-func (ev *downstreamEvaluator) Evaluator(
+func (ev *downstreamEvaluator) StepEvaluator(
 	ctx context.Context,
 	nextEv Evaluator,
 	expr SampleExpr,
@@ -30,7 +30,7 @@ func (ev *downstreamEvaluator) Evaluator(
 		return nil, errors.New("unimplemented")
 	default:
 		// used for aggregating downstreamed exprs, literalExprs
-		return nextEv.Evaluator(ctx, nextEv, expr, params)
+		return nextEv.StepEvaluator(ctx, nextEv, expr, params)
 	}
 }
 

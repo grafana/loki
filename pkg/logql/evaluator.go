@@ -67,11 +67,11 @@ func GetRangeType(q Params) QueryRangeType {
 	return RangeType
 }
 
-// Evaluator is an interface for iterating over data at different nodes in the AST
+// StepEvaluator is an interface for iterating over data at different nodes in the AST
 type Evaluator interface {
-	// Evaluator returns a StepEvaluator for a given SampleExpr. It's explicitly passed another Evaluator// in order to enable arbitrary compuation of embedded expressions. This allows more modular & extensible
-	// Evaluator implementations which can be composed.
-	Evaluator(ctx context.Context, nextEvaluator Evaluator, expr SampleExpr, p Params) (StepEvaluator, error)
+	// StepEvaluator returns a StepEvaluator for a given SampleExpr. It's explicitly passed another StepEvaluator// in order to enable arbitrary compuation of embedded expressions. This allows more modular & extensible
+	// StepEvaluator implementations which can be composed.
+	StepEvaluator(ctx context.Context, nextEvaluator Evaluator, expr SampleExpr, p Params) (StepEvaluator, error)
 	// Iterator returns the iter.EntryIterator for a given LogSelectorExpr
 	Iterator(context.Context, LogSelectorExpr, Params) (iter.EntryIterator, error)
 }
@@ -100,7 +100,7 @@ func (ev *defaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, 
 
 }
 
-func (ev *defaultEvaluator) Evaluator(
+func (ev *defaultEvaluator) StepEvaluator(
 	ctx context.Context,
 	nextEv Evaluator,
 	expr SampleExpr,
@@ -136,7 +136,7 @@ func vectorAggEvaluator(
 	expr *vectorAggregationExpr,
 	q Params,
 ) (StepEvaluator, error) {
-	nextEvaluator, err := ev.Evaluator(ctx, ev, expr.left, q)
+	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.left, q)
 	if err != nil {
 		return nil, err
 	}
@@ -367,14 +367,14 @@ func binOpStepEvaluator(
 
 	// match a literal expr with all labels in the other leg
 	if lOk {
-		rhs, err := ev.Evaluator(ctx, ev, expr.RHS, q)
+		rhs, err := ev.StepEvaluator(ctx, ev, expr.RHS, q)
 		if err != nil {
 			return nil, err
 		}
 		return literalStepEvaluator(expr.op, leftLit, rhs, false)
 	}
 	if rOk {
-		lhs, err := ev.Evaluator(ctx, ev, expr.SampleExpr, q)
+		lhs, err := ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
 		if err != nil {
 			return nil, err
 		}
@@ -382,11 +382,11 @@ func binOpStepEvaluator(
 	}
 
 	// we have two non literal legs
-	lhs, err := ev.Evaluator(ctx, ev, expr.SampleExpr, q)
+	lhs, err := ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
 	if err != nil {
 		return nil, err
 	}
-	rhs, err := ev.Evaluator(ctx, ev, expr.RHS, q)
+	rhs, err := ev.StepEvaluator(ctx, ev, expr.RHS, q)
 	if err != nil {
 		return nil, err
 	}
