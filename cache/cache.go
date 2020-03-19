@@ -70,16 +70,16 @@ func New(cfg Config) (Cache, error) {
 		caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache))
 	}
 
-	if cfg.MemcacheClient.Host != "" && cfg.Redis.Endpoint != "" {
+	if (cfg.MemcacheClient.Host != "" || cfg.MemcacheClient.Addresses != "") && cfg.Redis.Endpoint != "" {
 		return nil, errors.New("use of multiple cache storage systems is not supported")
 	}
 
-	if cfg.MemcacheClient.Host != "" {
+	if cfg.MemcacheClient.Host != "" || cfg.MemcacheClient.Addresses != "" {
 		if cfg.Memcache.Expiration == 0 && cfg.DefaultValidity != 0 {
 			cfg.Memcache.Expiration = cfg.DefaultValidity
 		}
 
-		client := NewMemcachedClient(cfg.MemcacheClient)
+		client := NewMemcachedClient(cfg.MemcacheClient, cfg.Prefix)
 		cache := NewMemcached(cfg.Memcache, client, cfg.Prefix)
 
 		cacheName := cfg.Prefix + "memcache"
