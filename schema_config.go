@@ -36,7 +36,7 @@ type PeriodConfig struct {
 	ObjectType  string              `yaml:"object_store"` // type of object client to use; if omitted, defaults to store.
 	Schema      string              `yaml:"schema"`
 	IndexTables PeriodicTableConfig `yaml:"index"`
-	ChunkTables PeriodicTableConfig `yaml:"chunks,omitempty"`
+	ChunkTables PeriodicTableConfig `yaml:"chunks"`
 	RowShards   uint32              `yaml:"row_shards"`
 }
 
@@ -330,13 +330,13 @@ func (cfg PeriodicTableConfig) MarshalYAML() (interface{}, error) {
 
 // AutoScalingConfig for DynamoDB tables.
 type AutoScalingConfig struct {
-	Enabled     bool    `yaml:"enabled,omitempty"`
-	RoleARN     string  `yaml:"role_arn,omitempty"`
-	MinCapacity int64   `yaml:"min_capacity,omitempty"`
-	MaxCapacity int64   `yaml:"max_capacity,omitempty"`
-	OutCooldown int64   `yaml:"out_cooldown,omitempty"`
-	InCooldown  int64   `yaml:"in_cooldown,omitempty"`
-	TargetValue float64 `yaml:"target,omitempty"`
+	Enabled     bool    `yaml:"enabled"`
+	RoleARN     string  `yaml:"role_arn"`
+	MinCapacity int64   `yaml:"min_capacity"`
+	MaxCapacity int64   `yaml:"max_capacity"`
+	OutCooldown int64   `yaml:"out_cooldown"`
+	InCooldown  int64   `yaml:"in_cooldown"`
+	TargetValue float64 `yaml:"target"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.

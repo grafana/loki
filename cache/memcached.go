@@ -41,10 +41,10 @@ func (o observableVecCollector) After(method, statusCode string, start time.Time
 
 // MemcachedConfig is config to make a Memcached
 type MemcachedConfig struct {
-	Expiration time.Duration `yaml:"expiration,omitempty"`
+	Expiration time.Duration `yaml:"expiration"`
 
-	BatchSize   int `yaml:"batch_size,omitempty"`
-	Parallelism int `yaml:"parallelism,omitempty"`
+	BatchSize   int `yaml:"batch_size"`
+	Parallelism int `yaml:"parallelism"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet

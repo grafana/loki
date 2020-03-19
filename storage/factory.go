@@ -61,9 +61,9 @@ type Config struct {
 
 	IndexCacheValidity time.Duration
 
-	IndexQueriesCacheConfig cache.Config `yaml:"index_queries_cache_config,omitempty"`
+	IndexQueriesCacheConfig cache.Config `yaml:"index_queries_cache_config"`
 
-	DeleteStoreConfig purger.DeleteStoreConfig `yaml:"delete_store,omitempty"`
+	DeleteStoreConfig purger.DeleteStoreConfig `yaml:"delete_store"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.

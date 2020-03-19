@@ -47,10 +47,10 @@ var (
 
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
-	ChunkCacheConfig       cache.Config `yaml:"chunk_cache_config,omitempty"`
-	WriteDedupeCacheConfig cache.Config `yaml:"write_dedupe_cache_config,omitempty"`
+	ChunkCacheConfig       cache.Config `yaml:"chunk_cache_config"`
+	WriteDedupeCacheConfig cache.Config `yaml:"write_dedupe_cache_config"`
 
-	CacheLookupsOlderThan time.Duration `yaml:"cache_lookups_older_than,omitempty"`
+	CacheLookupsOlderThan time.Duration `yaml:"cache_lookups_older_than"`
 
 	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
