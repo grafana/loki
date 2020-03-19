@@ -13,6 +13,6 @@ RUN addgroup -g 1000 -S loki && \
 USER loki
 COPY --from=build /src/loki/cmd/loki/loki /usr/bin/loki
 COPY cmd/loki/loki-local-config.yaml /etc/loki/local-config.yaml
-EXPOSE 80
+EXPOSE 8080
 ENTRYPOINT [ "/usr/bin/loki" ]
 CMD ["-config.file=/etc/loki/local-config.yaml"]

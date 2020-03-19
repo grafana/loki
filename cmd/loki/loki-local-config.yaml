@@ -1,7 +1,7 @@
 auth_enabled: false
 
 server:
-  http_listen_port: 3100
+  http_listen_port: 8080
 
 ingester:
   lifecycler:
@@ -17,13 +17,13 @@ ingester:
 
 schema_config:
   configs:
-  - from: 2018-04-15
-    store: boltdb
-    object_store: filesystem
-    schema: v11
-    index:
-      prefix: index_
-      period: 168h
+    - from: 2018-04-15
+      store: boltdb
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_
+        period: 168h
 
 storage_config:
   boltdb:
@@ -53,4 +53,3 @@ table_manager:
     provisioned_write_throughput: 0
   retention_deletes_enabled: false
   retention_period: 0s
-

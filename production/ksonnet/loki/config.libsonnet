@@ -2,6 +2,7 @@
   _config+: {
     namespace: error 'must define namespace',
     cluster: error 'must define cluster',
+    http_listen_port: 8080,
 
     replication_factor: 3,
     memcached_replicas: 3,
@@ -99,6 +100,7 @@
         grpc_server_max_send_msg_size: $._config.grpc_server_max_msg_size,
         grpc_server_max_concurrent_streams: 1000,
         http_server_write_timeout: '1m',
+        http_listen_port: $._config.http_listen_port,
       },
       frontend: {
         compress_responses: true,
