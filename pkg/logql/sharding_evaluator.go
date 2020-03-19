@@ -6,23 +6,22 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/promql"
 )
 
 // downstreamEvaluator is an evaluator which handles shard aware AST nodes
 // and embeds a default evaluator otherwise
 type downstreamEvaluator struct {
-	shards    int
-	evaluator *defaultEvaluator
+	shards int
 }
 
 // Evaluator returns a StepEvaluator for a given SampleExpr
 func (ev *downstreamEvaluator) Evaluator(
 	ctx context.Context,
+	nextEv Evaluator,
 	expr SampleExpr,
 	params Params,
 ) (StepEvaluator, error) {
-	switch e := expr.(type) {
+	switch expr.(type) {
 	case DownstreamSampleExpr:
 		// determine type (SampleExpr, LogSelectorExpr) and downstream to a querier
 		return nil, errors.New("unimplemented")
@@ -31,7 +30,7 @@ func (ev *downstreamEvaluator) Evaluator(
 		return nil, errors.New("unimplemented")
 	default:
 		// used for aggregating downstreamed exprs, literalExprs
-		return ev.evaluator.Evaluator(ctx, expr, params)
+		return nextEv.Evaluator(ctx, nextEv, expr, params)
 	}
 }
 
@@ -42,30 +41,4 @@ func (ev *downstreamEvaluator) Iterator(
 	_ Params,
 ) (iter.EntryIterator, error) {
 	return nil, fmt.Errorf("downstreamEvaluator does not implement Iterator, called with expr: %+v", expr)
-}
-
-// ConcatEvaluator joins multiple StepEvaluators.
-// Contract: They must be of identical start, end, and step values.
-func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
-	return newStepEvaluator(
-		func() (done bool, ts int64, vec promql.Vector) {
-			var cur promql.Vector
-			for {
-				for _, eval := range evaluators {
-					done, ts, cur = eval.Next()
-					vec = append(vec, cur...)
-				}
-			}
-			return done, ts, vec
-
-		},
-		func() (lastErr error) {
-			for _, eval := range evaluators {
-				if err := eval.Close(); err != nil {
-					lastErr = err
-				}
-			}
-			return lastErr
-		},
-	)
 }
