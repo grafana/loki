@@ -212,7 +212,7 @@ func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (pr
 		return ng.evalLiteral(ctx, lit, q)
 	}
 
-	stepEvaluator, err := ng.evaluator.Evaluator(ctx, ng.evaluator, expr, q)
+	stepEvaluator, err := ng.evaluator.StepEvaluator(ctx, ng.evaluator, expr, q)
 	if err != nil {
 		return nil, err
 	}
