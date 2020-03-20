@@ -44,7 +44,7 @@ As quick overview let's consider stream below:
 }
 ```
 
-As you can see the log is using the popular logfmt so we could use the `|logfmt` parsers to transform those entries into the fields entries like below:
+As you can see the log is using the popular logfmt so we could use the `| logfmt` parsers to transform those entries into the fields entries like below:
 
 ```json
 {
@@ -80,11 +80,11 @@ Since field name can conflicts with labels during aggregation we will support fo
 
 > Implicit fields extraction could means trouble in term of performance. However in most cases we will be able to infer all used fields from the full query and so limit the extraction per line.
 
-To cover a wide range of structured and unstructured logs, we should start with those four parsers: `glob`, `logfmt`, `json` and `regexp`.
+To cover a wide range of structured and unstructured logs, we will start with those four parsers: `glob`, `logfmt`, `json` and `regexp`.
 
 ### Glob
 
-The glob parser (as described in previous design) `{job="prod/nginx"} |* "*<client_ip> - - [ * ] \"* *<path> "` could be used to extract fields from nginx logs.
+The glob parser (as described in previous design) `{job="prod/nginx"} | glob "*<client_ip> - - [ * ] \"* *<path> "` could be used to extract fields from nginx logs.
 
 The log entry below:
 
@@ -111,10 +111,10 @@ The json parser allows to parse a json log line and select fields to extract. If
 We could support those notations:
 
 ```logql
-{job="prod/app"} |json .route client_ip=.client.ip
-{job="prod/app"} |json .route .client.ip as route, client_ip
-{job="prod/app"} |json |select route client_ip
-{job="prod/app"} |json
+{job="prod/app"} | json .route client_ip=.client.ip
+{job="prod/app"} | json .route .client.ip as route, client_ip
+{job="prod/app"} | json |select route client_ip
+{job="prod/app"} | json
 ```
 
 > `{job="prod/app"} |json |select route client_ip` is an implicit extraction, the list of extracted field is inferred from the full query.
@@ -142,7 +142,7 @@ would be transformed into those fields:
 
 ### Logfmt
 
-The logfmt parser will allow to extract fields from the [log format](https://brandur.org/logfmt). For example the expression `{job="prod/app"} |logfmt client_ip path` will transform the log line `time=03-10-2020T20:00:01 path=/foo/bar client_ip="127.0.0.1"` into :
+The logfmt parser will allow to extract fields from the [log format](https://brandur.org/logfmt). For example the expression `{job="prod/app"} | logfmt client_ip path` will transform the log line `time=03-10-2020T20:00:01 path=/foo/bar client_ip="127.0.0.1"` into :
 
 ```json
 {
@@ -153,7 +153,7 @@ The logfmt parser will allow to extract fields from the [log format](https://bra
 
 Again it might be useful to allow renaming fields to avoid conflicts with labels.
 
-For instance `{job="prod/app"} |logfmt ip=client_ip path` will rename the field `client_ip` into `ip`.
+For instance `{job="prod/app"} | logfmt ip=client_ip path` will rename the field `client_ip` into `ip`.
 
 `logfmt` will also support implicit field extraction like `json`.
 
@@ -161,9 +161,9 @@ For instance `{job="prod/app"} |logfmt ip=client_ip path` will rename the field 
 
 At last, the regexp operator should cover all other use cases but is probably the less efficient and intuitive.
 
-> While we already support `|~` and `!~` filters, we don't want to mix parsers and filters since their purpose are different, filters should be used to narrow the log volume and reduce the number of lines to parse. This is why we will use the notation `|regexp` for the parser operator.
+> While we already support `|~` and `!~` filters, we don't want to mix parsers and filters since their purpose are different, filters should be used to narrow the log volume and reduce the number of lines to parse. This is why we will use the notation `| regexp` for the parser operator.
 
-For example the expression `{job="prod/app"} |regexp "(?<client_ip>.+) - - (?<path>.+)"` will transform the log line `127.0.0.1 - - /foo/bar` into :
+For example the expression `{job="prod/app"} | regexp "(?<client_ip>.+) - - (?<path>.+)"` will transform the log line `127.0.0.1 - - /foo/bar` into :
 
 ```json
 {
@@ -174,19 +174,19 @@ For example the expression `{job="prod/app"} |regexp "(?<client_ip>.+) - - (?<pa
 
 ### Questions
 
-- Should we allow to implicit field names such as `{job="prod/app"} |logfmt` and `{job="prod/app"} |json` would extract all fields by their name ?
-- In the previous document the `as field_name1, field_name2` field renaming notation was also interesting should we use is over `ip=client_ip` ?
+- Should we allow to implicit field extraction such as `{job="prod/app"} | logfmt` and `{job="prod/app"} | json` would extract all fields ? I really like the simplicity of it.
+- In the previous document the `as field_name1, field_name2` field renaming notation was also interesting should we use is over `ip=client_ip` for now I've opted for the later which can be omitted in case of no renaming ?
 - Do we prefer `|json` or `| json` notation ?
 
 ## LogQL Fields Operators
 
 Now that we have transformed our log streams into log fields we can pipe/chain a new set of operators.
-(Some operators are also compatible with log stream such as the `limit` and `uniq` operator.)
+(Some operators are also compatible with log stream such as the `limit` and `uniq` operators.)
 
 For example the query below:
 
 ```logql
-{job="prod/query-frontend"} |logfmt |filter level="info" and latency > 10 |sort duration desc |limit 25 |select query duration
+{job="prod/query-frontend"} | logfmt | filter level="info" and latency > 10 | sort duration desc | limit 25 | select query duration
 ```
 
 returns the first 25 query and duration slower than 10s ordered by the slowest in the requested time range.
@@ -195,7 +195,7 @@ Let's have a look in details how those new operators work.
 
 ### Filter
 
-A filter operation noted `|filter` can filter out fields by their value using test predicates such as `path = "/foo/bar"`.
+A filter operation noted `| filter` can filter out fields by their value using test predicates such as `path = "/foo/bar"`.
 
 Multiple test predicates can be chained/combined together using `and` and `or` logic operations.
 
@@ -203,53 +203,73 @@ At least one leg of the test predicate must be a literal, this is to ensure we c
 
 __String literal__ will support the same Prometheus match type. (`=`,`=!`,`!~`,`=~`).
 
-Example: `{job="prod/query-frontend"} |logfmt |filter level=~"info|debug" and query_type!="filter"`
+Example: `{job="prod/query-frontend"} | logfmt | filter level=~"info|debug" and query_type!="filter"`
 
 __Numeric literal__ will support `=`,`!=` but also `<`,`<=`,`>`,`>=`.
 
-Example: `{job="prod/query-frontend"} |logfmt |filter latency > 10 or status >= 400`
+Example: `{job="prod/query-frontend"} | json | filter latency > 10 or status >= 400`
 
-When field and literal types are different, conversion will be attempted prior testing and will be translated into zero type values in case of failure.
+When field value and literal types are different, conversion will be attempted prior testing and will be translated into zero type values in case of failure.
 
-In the future we will add more literals such as duration `2s` or date (`03-03-2020T20:30`).
+In the future we will add more literals such as durations `2s` and dates (`03-03-2020T20:30`).
 
 ### Sort
 
-The sort operation noted `|sort` allows to orders fields entries by a field value instead of the field entry time.
+The sort operation noted `| sort` allows to orders fields entries by a field value instead of the field entry time.
 
-> It should be noted that sorting is always executed after parsing fields entries in the timerange. Not on the whole timerange.
+> It should be noted that sorting is always executed after parsing fields entries in the time range. Not on the whole time range.
 
-For example: `{job="prod/query-frontend"} |json |sort latency desc`
+For example: `{job="prod/query-frontend"} | json | sort latency desc`
 
-Will sort  the first 1000 (default limit) fields entries by the highest latency first. Multiple fields can be used as fallback by the sort operation in case of equality.
+will sort  the first 1000 (default limit) fields entries by the highest latency first. Multiple fields can be used as fallback by the sort operation in case of equality.
 
-For example: `{job="prod/query-frontend"} |json |sort latency desc path asc` will sort by latency descending first then path ascending.
+For example: `{job="prod/query-frontend"} | json | sort latency desc path asc` will sort by latency descending first then path ascending.
 
-Using sort operator with metric queries will result into an error.(e.g `count_over_time({job="prod/query-frontend"} |logfmt  |sort latency desc [5m])`)
+Using sort operator with metric queries will result into an error.(e.g `count_over_time({job="prod/query-frontend"} | logfmt  | sort latency desc [5m])`)
+
+> __Warning:__ Sorting is dependent on how Grafana is currently ordering lines. Even if we re order our responses there is no guarantee that Grafana will be relying on it. And we might have to remove uncommon labels to keep only stream to ensure ordering across field streams. This means we will need a new API (`/v2`) to support ordering, although with compromise we might get something to work with the `v1` API.
 
 ### Select
 
-The Select operator (`|select`) allows you to select and reduce field that should be returned.
+The Select operator (`| select`) allows you to select and reduce field that should be returned.
 
-If you don't provide a select operator, all fields parsed will be returned. This means all fields from a log line if you're using implicit extraction. However if you used explicit extraction, only those fields will be returned.
+If you don't provide a select operator, all fields parsed will be returned by default. This means all fields from a log line if you're using implicit extraction. However if you used explicit extraction, only those fields will be returned.
 
-This is why select is important to use for large queries.
-
-So this means this query.
+For example this query:
 
 ```logql
-{job="prod/query-frontend"} |logfmt |sort duration desc |limit 25 |select query duration
+{job="prod/query-frontend"} | logfmt | sort duration desc | limit 25 | select query duration
 ```
 
 is the same as this one
 
 ```logql
-{job="prod/query-frontend"} |logfmt query duration |sort duration desc |limit 25
+{job="prod/query-frontend"} | logfmt query duration | sort duration desc | limit 25
 ```
+
+because the field extraction was explicit, only those fields (`query` and `duration`) are outputted.
+
+This is why select is important to use for large queries. Select will allows users to remove data (column) in their logs that are useless, repetitive and not interesting for the current investigation.
+
+The select operation will also support the [go templating language](https://golang.org/pkg/text/template/) when supplied with string argument and not fields.
+
+Fields extracted will be available under the `.FieldName` and `$FieldName` notation in the template.
+
+This way users can format each field to be more digestible. Returning a payload size  field with value of `12321421230123` is less meaningful than `12TB`.
+
+Example:
+
+```logql
+{job="prod/query-frontend"} | logfmt | select payload_size="{{ .size | humanize }}" level="{{ $level | ToUpper}}"
+```
+
+Renaming is allowed with or without templates, and is optional. An autogenerated field name will be used if it can't be inferred. (`field1`,`field2`, etc...)
+
+__In this current stance, select is not greedy meaning if you want to rename or template a single field, you'll have to declare all other fields to keep them.__
 
 ### Limit
 
-The limit operator (`|limit x`) is a new operator to overwrite the query string limit, this can be handy for building dashboard with different limits but also when writing and testing queries.
+The limit operator (`| limit x`) is a new operator to overwrite the query string limit, this can be handy for building dashboard with different limits but also when writing and testing queries, you could start to experiment with a low limit to increase the feedback loop.
 
 If the limit operator is missing in the expression, the limit from the query string is used.
 
@@ -258,7 +278,7 @@ The limit operator can be applied to a log field  as well as a log stream.
 For example all of the above are corrects.
 
 ```logql
-{job="prod/query-frontend"} |logfmt query duration |sort duration desc |limit 25
+{job="prod/query-frontend"} | logfmt query duration | sort duration desc | limit 25
 {job="prod/query-frontend"} | limit 10
 {job="prod/query-frontend"} |= "foo" | limit 20
 ```
@@ -267,13 +287,13 @@ Using limit operator with metric queries will result into an error.(e.g `rate({j
 
 ### Uniq
 
-The uniq operator allows to filter out duplicates. Without any parameter (`|uniq`) each fields entries combination must be unique. However
-the filtering can be forced on a specific field, for example `|uniq status_code`, this will returns one entry per status code.
+The uniq operator allows to filter out duplicates. Without any parameter (`| uniq`) each fields combination must be unique from one entry to another. However
+the filtering can be forced on a specific field, for example `| uniq status_code`, this will returns one entry per status code.
 
-Like the limit operator, the unique operator is allowed on log stream without parameter such as `{job="prod/query-frontend"} |= "err" |uniq` will returns the first 1000 unique lines containing the `err` word.
-This is really useful to reduce logging noise some applications might generate.
+Like the limit operator, the unique operator is allowed on log stream without parameters such as `{job="prod/query-frontend"} |= "err" | uniq` will returns the first 1000 unique lines containing the `err` word.
+This is really useful to reduce noise applications might generate by failing constantly.
 
-Using unique operator with metric queries will result into an error.(e.g `rate({job="prod/query-frontend"} |uniq [5m])`).
+Using unique operator with metric queries will result into an error.(e.g `rate({job="prod/query-frontend"} | uniq [5m])`).
 
 ### Metrics
 
@@ -286,6 +306,9 @@ We plan to support more metrics, specially by  using fields values.
 TBD
 
 ## API Changes
+
+- v2 for sorting and fields.
+- v1 retrofit how ?
 
 ### Faceting
 
