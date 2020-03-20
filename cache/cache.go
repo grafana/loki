@@ -5,6 +5,8 @@ import (
 	"errors"
 	"flag"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Cache byte arrays by key.
@@ -79,7 +81,7 @@ func New(cfg Config) (Cache, error) {
 			cfg.Memcache.Expiration = cfg.DefaultValidity
 		}
 
-		client := NewMemcachedClient(cfg.MemcacheClient, cfg.Prefix)
+		client := NewMemcachedClient(cfg.MemcacheClient, cfg.Prefix, prometheus.DefaultRegisterer)
 		cache := NewMemcached(cfg.Memcache, client, cfg.Prefix)
 
 		cacheName := cfg.Prefix + "memcache"

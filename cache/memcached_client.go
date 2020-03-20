@@ -80,7 +80,7 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 
 // NewMemcachedClient creates a new MemcacheClient that gets its server list
 // from SRV and updates the server list on a regular basis.
-func NewMemcachedClient(cfg MemcachedClientConfig, name string) MemcachedClient {
+func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Registerer) MemcachedClient {
 	var selector serverSelector
 	if cfg.ConsistentHash {
 		selector = &MemcachedJumpHashSelector{}
@@ -92,13 +92,17 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string) MemcachedClient 
 	client.Timeout = cfg.Timeout
 	client.MaxIdleConns = cfg.MaxIdleConns
 
+	dnsProviderRegisterer := prometheus.WrapRegistererWithPrefix("cortex_", prometheus.WrapRegistererWith(prometheus.Labels{
+		"name": name,
+	}, r))
+
 	newClient := &memcachedClient{
 		Client:     client,
 		serverList: selector,
 		hostname:   cfg.Host,
 		service:    cfg.Service,
 		addresses:  strings.Split(cfg.Addresses, ","),
-		provider:   dns.NewProvider(util.Logger, prometheus.DefaultRegisterer, dns.GolangResolverType),
+		provider:   dns.NewProvider(util.Logger, dnsProviderRegisterer, dns.GolangResolverType),
 		quit:       make(chan struct{}),
 
 		numServers: memcacheServersDiscovered.WithLabelValues(name),
