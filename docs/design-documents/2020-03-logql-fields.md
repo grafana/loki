@@ -8,9 +8,9 @@ This design document is an extension of [the primer design document](https://doc
 
 Based on the feedback and our own usage, it’s pretty clear that we want to support extracting fields out of the log line for detailed analysis. [Amazon Cloud Watch is a good example](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax-examples.html) of such language features.
 
-Some users are currently extracting labels using Promtail pipeline stages as a way to filter and aggregate logs but this causes issues with our storage system. (Causes the creation of a lot of small chunks, putting pressure on the filesystem when trying to aggregated over a long period of time).
+For instance some users are currently extracting labels using Promtail pipeline stages as a way to filter and aggregate logs but this causes issues with our storage system. (Causes the creation of a lot of small chunks, putting pressure on the filesystem when trying to aggregated over a long period of time).
 
-In this proposal I want to introduce multiple new stages into the LogQL language, that will allow to transform a log stream into a field stream which can be then aggregated, compared, sorted and outputted by our users.
+In this proposal I want to introduce multiple new operators into the LogQL language, that will allow to transform a log stream into a field stream which can be then aggregated, compared, sorted and outputted by our users.
 
 __Related Documents:__
 
