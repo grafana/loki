@@ -76,6 +76,11 @@ type Evaluator interface {
 	Iterator(context.Context, LogSelectorExpr, Params) (iter.EntryIterator, error)
 }
 
+// EvaluatorUnsupportedType is a helper for signaling that an evaluator does not support an Expr type
+func EvaluatorUnsupportedType(expr Expr, ev Evaluator) error {
+	return errors.Errorf("unexpected expr type (%T) for Evaluator type (%T) ", expr, ev)
+}
+
 type defaultEvaluator struct {
 	maxLookBackPeriod time.Duration
 	querier           Querier
@@ -126,7 +131,7 @@ func (ev *defaultEvaluator) StepEvaluator(
 	case *binOpExpr:
 		return binOpStepEvaluator(ctx, nextEv, e, q)
 	default:
-		return nil, errors.Errorf("unexpected type (%T): %v", e, e)
+		return nil, EvaluatorUnsupportedType(e, ev)
 	}
 }
 
@@ -605,31 +610,5 @@ func literalStepEvaluator(
 			return ok, ts, results
 		},
 		eval.Close,
-	)
-}
-
-// ConcatEvaluator joins multiple StepEvaluators.
-// Contract: They must be of identical start, end, and step values.
-func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
-	return newStepEvaluator(
-		func() (done bool, ts int64, vec promql.Vector) {
-			var cur promql.Vector
-			for {
-				for _, eval := range evaluators {
-					done, ts, cur = eval.Next()
-					vec = append(vec, cur...)
-				}
-			}
-			return done, ts, vec
-
-		},
-		func() (lastErr error) {
-			for _, eval := range evaluators {
-				if err := eval.Close(); err != nil {
-					lastErr = err
-				}
-			}
-			return lastErr
-		},
 	)
 }
