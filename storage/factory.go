@@ -176,7 +176,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
 	case "aws", "s3":
-		return newChunkClientFromStore(aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config))
+		return newChunkClientFromStore(aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, chunk.DirDelim))
 	case "aws-dynamo":
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -187,13 +187,13 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 		}
 		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
 	case "azure":
-		return newChunkClientFromStore(azure.NewBlobStorage(&cfg.AzureStorageConfig))
+		return newChunkClientFromStore(azure.NewBlobStorage(&cfg.AzureStorageConfig, chunk.DirDelim))
 	case "gcp":
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcp-columnkey", "bigtable", "bigtable-hashed":
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcs":
-		return newChunkClientFromStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig))
+		return newChunkClientFromStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, chunk.DirDelim))
 	case "cassandra":
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	case "filesystem":
