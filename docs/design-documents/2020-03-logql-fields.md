@@ -178,9 +178,10 @@ For example the expression `{job="prod/app"} |regexp "(?<client_ip>.+) - - (?<pa
 - In the previous document the `as field_name1, field_name2` field renaming notation was also interesting should we use is over `ip=client_ip` ?
 - Do we prefer `|json` or `| json` notation ?
 
-## LogQL Fields Operation
+## LogQL Fields Operators
 
 Now that we have transformed our log streams into log fields we can pipe/chain a new set of operators.
+(Some operators are also compatible with log stream such as the `limit` and `uniq` operator.)
 
 For example the query below:
 
@@ -263,6 +264,16 @@ For example all of the above are corrects.
 ```
 
 Using limit operator with metric queries will result into an error.(e.g `rate({job="prod/query-frontend"} | limit 10[5m])`)
+
+### Uniq
+
+The uniq operator allows to filter out duplicates. Without any parameter (`|uniq`) each fields entries combination must be unique. However
+the filtering can be forced on a specific field, for example `|uniq status_code`, this will returns one entry per status code.
+
+Like the limit operator, the unique operator is allowed on log stream without parameter such as `{job="prod/query-frontend"} |= "err" |uniq` will returns the first 1000 unique lines containing the `err` word.
+This is really useful to reduce logging noise some applications might generate.
+
+Using unique operator with metric queries will result into an error.(e.g `rate({job="prod/query-frontend"} |uniq [5m])`).
 
 ### Metrics
 
