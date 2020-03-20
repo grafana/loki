@@ -113,9 +113,7 @@ func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []
 }
 
 func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []chunk.Chunk) {
-	fetcher, err := chunk.NewChunkFetcher(cache.Config{
-		Cache: c,
-	}, false, nil)
+	fetcher, err := chunk.NewChunkFetcher(c, false, nil)
 	require.NoError(t, err)
 	defer fetcher.Stop()
 

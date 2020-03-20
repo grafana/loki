@@ -82,8 +82,13 @@ func newTestChunkStoreConfig(t require.TestingT, schemaName string, storeCfg Sto
 	overrides, err := validation.NewOverrides(limits, nil)
 	require.NoError(t, err)
 
+	chunksCache, err := cache.New(storeCfg.ChunkCacheConfig)
+	require.NoError(t, err)
+	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig)
+	require.NoError(t, err)
+
 	store := NewCompositeStore()
-	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], storage, storage, overrides)
+	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], storage, storage, overrides, chunksCache, writeDedupeCache)
 	require.NoError(t, err)
 	return store
 }

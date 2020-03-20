@@ -7,6 +7,8 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 )
 
 // StoreLimits helps get Limits specific to Queries for Stores
@@ -56,15 +58,15 @@ func NewCompositeStore() CompositeStore {
 }
 
 // AddPeriod adds the configuration for a period of time to the CompositeStore
-func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index IndexClient, chunks Client, limits StoreLimits) error {
+func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) error {
 	schema := cfg.CreateSchema()
 	var store Store
 	var err error
 	switch cfg.Schema {
 	case "v9", "v10", "v11":
-		store, err = newSeriesStore(storeCfg, schema, index, chunks, limits)
+		store, err = newSeriesStore(storeCfg, schema, index, chunks, limits, chunksCache, writeDedupeCache)
 	default:
-		store, err = newStore(storeCfg, schema, index, chunks, limits)
+		store, err = newStore(storeCfg, schema, index, chunks, limits, chunksCache)
 	}
 	if err != nil {
 		return err

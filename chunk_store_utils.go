@@ -99,16 +99,10 @@ type decodeResponse struct {
 }
 
 // NewChunkFetcher makes a new ChunkFetcher.
-func NewChunkFetcher(cfg cache.Config, cacheStubs bool, storage Client) (*Fetcher, error) {
-	cfg.Prefix = "chunks"
-	cache, err := cache.New(cfg)
-	if err != nil {
-		return nil, err
-	}
-
+func NewChunkFetcher(cacher cache.Cache, cacheStubs bool, storage Client) (*Fetcher, error) {
 	c := &Fetcher{
 		storage:        storage,
-		cache:          cache,
+		cache:          cacher,
 		cacheStubs:     cacheStubs,
 		decodeRequests: make(chan decodeRequest),
 	}

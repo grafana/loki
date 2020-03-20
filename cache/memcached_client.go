@@ -101,11 +101,14 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 		serverList: selector,
 		hostname:   cfg.Host,
 		service:    cfg.Service,
-		addresses:  strings.Split(cfg.Addresses, ","),
 		provider:   dns.NewProvider(util.Logger, dnsProviderRegisterer, dns.GolangResolverType),
 		quit:       make(chan struct{}),
 
 		numServers: memcacheServersDiscovered.WithLabelValues(name),
+	}
+
+	if len(cfg.Addresses) > 0 {
+		newClient.addresses = strings.Split(cfg.Addresses, ",")
 	}
 
 	err := newClient.updateMemcacheServers()

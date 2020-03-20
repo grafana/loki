@@ -95,14 +95,28 @@ func (cfg *Config) Validate() error {
 
 // NewStore makes the storage clients based on the configuration.
 func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits StoreLimits) (chunk.Store, error) {
-	tieredCache, err := cache.New(cfg.IndexQueriesCacheConfig)
+	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	chunkCacheCfg := storeCfg.ChunkCacheConfig
+	chunkCacheCfg.Prefix = "chunks"
+	chunksCache, err := cache.New(chunkCacheCfg)
 	if err != nil {
 		return nil, err
 	}
 
 	// Cache is shared by multiple stores, which means they will try and Stop
 	// it more than once.  Wrap in a StopOnce to prevent this.
-	tieredCache = cache.StopOnce(tieredCache)
+	indexReadCache = cache.StopOnce(indexReadCache)
+	chunksCache = cache.StopOnce(chunksCache)
+	writeDedupeCache = cache.StopOnce(writeDedupeCache)
 
 	err = schemaCfg.Load()
 	if err != nil {
@@ -115,7 +129,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating index client")
 		}
-		index = newCachingIndexClient(index, tieredCache, cfg.IndexCacheValidity, limits)
+		index = newCachingIndexClient(index, indexReadCache, cfg.IndexCacheValidity, limits)
 
 		objectStoreType := s.ObjectType
 		if objectStoreType == "" {
@@ -126,7 +140,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 			return nil, errors.Wrap(err, "error creating object client")
 		}
 
-		err = stores.AddPeriod(storeCfg, s, index, chunks, limits)
+		err = stores.AddPeriod(storeCfg, s, index, chunks, limits, chunksCache, writeDedupeCache)
 		if err != nil {
 			return nil, err
 		}
