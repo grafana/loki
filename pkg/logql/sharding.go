@@ -34,7 +34,7 @@ type ConcatLogSelectorExpr struct {
 }
 
 // downstreamEvaluator is an evaluator which handles shard aware AST nodes
-type downstreamEvaluator struct{}
+type downstreamEvaluator struct{ Downstreamer }
 
 // Evaluator returns a StepEvaluator for a given SampleExpr
 func (ev *downstreamEvaluator) StepEvaluator(
@@ -56,6 +56,10 @@ func (ev *downstreamEvaluator) StepEvaluator(
 		for cur != nil {
 			eval, err := ev.StepEvaluator(ctx, nextEv, cur.SampleExpr, params)
 			if err != nil {
+				// Close previously opened StepEvaluators
+				for _, x := range xs {
+					x.Close()
+				}
 				return nil, err
 			}
 			xs = append(xs, eval)
@@ -77,12 +81,18 @@ func (ev *downstreamEvaluator) Iterator(
 ) (iter.EntryIterator, error) {
 	switch e := expr.(type) {
 	case DownstreamLogSelectorExpr:
+		// downstream to a querier
+		return nil, errors.New("unimplemented")
 	case ConcatLogSelectorExpr:
 		var iters []iter.EntryIterator
 		cur := &e
 		for cur != nil {
 			iterator, err := ev.Iterator(ctx, e, params)
 			if err != nil {
+				// Close previously opened StepEvaluators
+				for _, x := range iters {
+					x.Close()
+				}
 				return nil, err
 			}
 			iters = append(iters, iterator)
