@@ -2,7 +2,6 @@ package logql
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/iter"
@@ -46,7 +45,7 @@ func (ev *downstreamEvaluator) StepEvaluator(
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
 	case DownstreamSampleExpr:
-		// determine type (SampleExpr, LogSelectorExpr) and downstream to a querier
+		// downstream to a querier
 		return nil, errors.New("unimplemented")
 
 	case ConcatSampleExpr:
@@ -72,11 +71,25 @@ func (ev *downstreamEvaluator) StepEvaluator(
 
 // Iterator returns the iter.EntryIterator for a given LogSelectorExpr
 func (ev *downstreamEvaluator) Iterator(
-	_ context.Context,
+	ctx context.Context,
 	expr LogSelectorExpr,
-	_ Params,
+	params Params,
 ) (iter.EntryIterator, error) {
-	return nil, fmt.Errorf("downstreamEvaluator does not implement Iterator, called with expr: %+v", expr)
+	switch e := expr.(type) {
+	case DownstreamLogSelectorExpr:
+	case ConcatLogSelectorExpr:
+		var iters []iter.EntryIterator
+		cur := &e
+		for cur != nil {
+			iterator, err := ev.Iterator(ctx, e, params)
+			if err != nil {
+				return nil, err
+			}
+			iters = append(iters, iterator)
+		}
+		return iter.NewHeapIterator(ctx, iters, params.Direction()), nil
+	}
+	return nil, errors.New("unimplemented")
 }
 
 // ConcatEvaluator joins multiple StepEvaluators.
