@@ -35,10 +35,7 @@ type ConcatLogSelectorExpr struct {
 }
 
 // downstreamEvaluator is an evaluator which handles shard aware AST nodes
-// and embeds a default evaluator otherwise
-type downstreamEvaluator struct {
-	shards int
-}
+type downstreamEvaluator struct{}
 
 // Evaluator returns a StepEvaluator for a given SampleExpr
 func (ev *downstreamEvaluator) StepEvaluator(
@@ -47,13 +44,27 @@ func (ev *downstreamEvaluator) StepEvaluator(
 	expr SampleExpr,
 	params Params,
 ) (StepEvaluator, error) {
-	switch expr.(type) {
+	switch e := expr.(type) {
 	case DownstreamSampleExpr:
 		// determine type (SampleExpr, LogSelectorExpr) and downstream to a querier
 		return nil, errors.New("unimplemented")
+
 	case ConcatSampleExpr:
 		// ensure they all impl the same (SampleExpr, LogSelectorExpr) & concat
-		return nil, errors.New("unimplemented")
+		var xs []StepEvaluator
+		cur := &e
+
+		for cur != nil {
+			eval, err := ev.StepEvaluator(ctx, nextEv, cur.SampleExpr, params)
+			if err != nil {
+				return nil, err
+			}
+			xs = append(xs, eval)
+			cur = cur.next
+		}
+
+		return ConcatEvaluator(xs)
+
 	default:
 		return nil, EvaluatorUnsupportedType(expr, ev)
 	}
