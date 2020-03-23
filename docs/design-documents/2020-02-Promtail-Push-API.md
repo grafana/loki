@@ -13,11 +13,11 @@ has to bypass Promtail and push directly to Loki. This can lead users to
 reimplement functionality Promtail already provides, including its error retries
 and batching code.
 
-This document proposed a Push API for Promtail. The preferred implementation is 
-by copying the existing Loki Push API and implementing it for Promtail. By 
-being compatible with the Loki Push API, the Promtail Push API can allow batches 
-of logs to be processed at once for optimizing performance. Matching the 
-Promtail API also allows users to transparently switch their push URLs from 
+This document proposed a Push API for Promtail. The preferred implementation is
+by copying the existing Loki Push API and implementing it for Promtail. By
+being compatible with the Loki Push API, the Promtail Push API can allow batches
+of logs to be processed at once for optimizing performance. Matching the
+Promtail API also allows users to transparently switch their push URLs from
 their existing tooling. Finally, a series of alternative solutions will be detailed.
 
 ## Configuration
@@ -56,21 +56,23 @@ rejected pushes. Users are recommended to do one of the following:
 2. Have a separated k8s service that always resolves to the same Promtail pod,
    bypassing the load balancing issue.
 
-## Implementation Options
+## Implementation
 
-All implementations options assume we will at least have HTTP1 support.
+As discussed in this document, this feature will be implemented by copying the
+existing [Loki Push API](https://github.com/grafana/loki/blob/master/docs/api.md#post-lokiapiv1push)
+and exposing it via Promtail.
 
-These options may be combined.
+## Considered Alternatives
 
-### Option 1: Copy the existing Loki Push API
+Using the existing API was chosen for its simplicity and capabilities of being
+used for interesting configurations (e.g., chaining Promtails together). These
+other options were considered but rejected as not the best solution for the
+problem being solved.
 
-This is the implementation option preferred by the document and the one 
-discussed in the introduction. 
+Note that Option 3 has value and may be implemented separately from this
+feature.
 
-This option, however, limits how the feature can be implemented as it is 
-tied to the existing API. 
-
-### Option 2: JSON / Protobuf Payload
+### Option 1: JSON / Protobuf Payload
 
 A new JSON and Protobuf payload format can be designed instead of the existing
 Loki push payload. Both formats would have to be exposed to support clients that
@@ -80,7 +82,7 @@ The primary benefit of this approach is to allow us to tweak the payload schema
 independently of Loki's existing schema, but otherwise may not be very useful
 and is essentially just code duplication.
 
-### Option 3: gRPC Service
+### Option 2: gRPC Service
 
 The
 [logproto.Pusher](https://github.com/grafana/loki/blob/f7ee1c753c76ef63338d53cfba782188a165144d/pkg/logproto/logproto.proto#L8-L10)
@@ -102,7 +104,7 @@ Loki uses. There are some concerns with this approach:
    some cognative overhead of having to deal with the gRPC gateway as an outlier
    in the code.
 
-### Option 4: Plaintext Payload
+### Option 3: Plaintext Payload
 
 Prometheus' [Push Gateway API](https://github.com/prometheus/pushgateway#command-line)
 is cleverly designed and we should consider implementing our API in the same
@@ -126,3 +128,4 @@ built on top of any of the other implementation options.
 An [example implementation](https://github.com/grafana/loki/pull/1270) was
 created and has received positive support for its simplicity and ease of
 integration.
+
