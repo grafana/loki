@@ -76,7 +76,7 @@ As you can see the log is using the popular logfmt so we could use the `| logfmt
 
 Field names are declared by each parsers, some parser will allow implicit fields extraction for __brevity__ like the `json` and `logfmt` parsers.
 
-Since field name can conflicts with labels during aggregation we will support for each parser the ability to rename a field. However in case of conflict field will take precedence over labels.
+Since field name can conflicts with labels during aggregation we will support for each parser the ability to rename a field. However in case of conflict fields will take precedence over labels.
 
 > Implicit fields extraction could means trouble in term of performance. However in most cases we will be able to infer all used fields from the full query and so limit the extraction per line.
 
@@ -299,7 +299,7 @@ Using unique operator with metric queries will result into an error.(e.g `rate({
 
 ### Metrics
 
-The first interesting change will be that now we can use fields like labels during metric aggregation.
+The first interesting change will be that `count_over_time` and `rate` is now able to count field or log entries. Fields can also be used like labels during metric aggregation.
 
 For example you can now aggregate by level without indexing it using the query below:
 
@@ -307,7 +307,7 @@ For example you can now aggregate by level without indexing it using the query b
 rate({job="prod/query-frontend"} | logfmt level [1m])
 ```
 
-This will automatically add the level fields as part of the stream labels for each stream. Again you should be mindful about which fields you select as this will increase the amount of stream returned.
+This will automatically add the level fields as part of the stream for each stream. Again you should be mindful about which fields you select as this will increase the amount of stream returned.
 
 Fields can also be used during dimension aggregation like stream labels:
 
@@ -320,19 +320,32 @@ sum (
 
 Aggregation dimension will be limited, if fields contains too many unique values we will return an error.
 
-While `count_over_time` and `rate` count entries occurrence per log & field stream, now that we can select fields we will allow some new aggregation functions.
+While `count_over_time` and `rate` count entries occurrence per log & field stream, now that we can select fields we will allow some new aggregation functions over those fields value.
 
-__All those functions will use the first field name as the value to aggregate over time with, all the following field name will create new stream dimension.__
+### Series Operators
+
+To transform fields into series we will introduce two new field stream operator `| series` and `| histogram `. In the future we could introduce other operators like `| counter field [inc|dec] by (field,label)` to sum values if needed.
+
+The series operator `| series <field> by (label,field)` creates a series from a field stream, the first parameter is the field to use as value, this means each field entry (field/ts pair) will create a point (value/ts pair). After the first parameter you can select how the series metric name will be created using the `by` or `without` functions.
+
+
+### Range Vector Operations
+
+Those new function are very similar to prometheus [over time aggregations](https://prometheus.io/docs/prometheus/latest/querying/functions/#aggregation_over_time). What's interesting with those functions is that they allow the user to pick the range of the aggregation for each steps using the `[1m]` notation.
+
+__All those functions will use the first field name as the value to aggregate over time with, all the following field name will create new stream dimension combined with labels.__
 
 We plan to support the following new operations:
 
-- `avg_over_time(fields)`: the average of all first field value in the specified interval.
-- `min_over_time(fields)`: the minimum of all first field value in the specified interval.
-- `max_over_time(fields)`: the maximum of all first field value in the specified interval.
-- `sum_over_time(fields)`: the sum of all first field value in the specified interval.
-- `quantile_over_time(scalar, range-vector)`: the φ-quantile (0 ≤ φ ≤ 1) of the first field values in the specified interval.
-- `stddev_over_time(field)`: the population standard deviation of all first field value in the specified interval.
-- `stdvar_over_time(fields)`: the population standard variance of the values in the specified interval.
+- `avg_over_time(range-vector)`: the average of all values in the specified interval.
+- `min_over_time(range-vector)`: the minimum of all values in the specified interval.
+- `max_over_time(range-vector)`: the maximum of all values in the specified interval.
+- `sum_over_time(range-vector)`: the sum of all values in the specified interval.
+- `quantile_over_time(scalar, range-vector)`: the φ-quantile (0 ≤ φ ≤ 1) of the values in the specified interval.
+- `stddev_over_time(range-vector)`: the population standard deviation of the values in the specified interval.
+- `stdvar_over_time(range-vector)`: the population standard variance of the values in the specified interval.
+
+> `quantile_over_time(scalar, range-vector)` only works if you have a series with the labels(`le`) this is why you need to use `| histogram` operator on the field stream.
 
 Now let's pretend we have received temperatures from censors around the house into Loki like this:
 
@@ -346,7 +359,7 @@ Now let's pretend we have received temperatures from censors around the house in
 To get the average temperatures by room in the last 30 minutes we could use the query below:
 
 ```logql
-avg_over_time({job="censors"} | glob "* *<room> *<temp>C" | select temp room [30m])
+avg_over_time({job="censors"} | glob "* *<room> *<temp>C" | select temp room [30m]) by (room)
 ```
 
 As another example if we have some nginx logs like below:
@@ -359,7 +372,7 @@ As another example if we have some nginx logs like below:
 We could get the 99th percentile latency by path and status over the last 15 minutes using the query below:
 
 ```logql
-quantile_over_time(.99, {job="censors"} | glob "* -- * \"* /*<path> *\" *<status> *<latency> *" | select latency path status [15m])
+quantile_over_time(.99, {job="censors"} | glob "* -- * \"* /*<path> *\" *<status> *<latency> *" | select latency path status [15m]) by (path, status)
 ```
 
 
