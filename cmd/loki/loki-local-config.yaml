@@ -1,7 +1,7 @@
 auth_enabled: false
 
 server:
-  http_listen_port: 8080
+  http_listen_port: 3100
 
 ingester:
   lifecycler:
