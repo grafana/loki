@@ -234,8 +234,8 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 			return
 		}
 
-		// Only retry 500s and connection-level errors.
-		if status > 0 && status/100 != 5 {
+		// Only retry 429s, 500s and connection-level errors.
+		if status > 0 && status != 429 && status/100 != 5 {
 			break
 		}
 
