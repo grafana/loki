@@ -182,15 +182,18 @@ func addFilterToLogRangeExpr(left *logRange, ty labels.MatchType, match string) 
 }
 
 const (
-	OpTypeSum           = "sum"
-	OpTypeAvg           = "avg"
-	OpTypeMax           = "max"
-	OpTypeMin           = "min"
-	OpTypeCount         = "count"
-	OpTypeStddev        = "stddev"
-	OpTypeStdvar        = "stdvar"
-	OpTypeBottomK       = "bottomk"
-	OpTypeTopK          = "topk"
+	// vector ops
+	OpTypeSum     = "sum"
+	OpTypeAvg     = "avg"
+	OpTypeMax     = "max"
+	OpTypeMin     = "min"
+	OpTypeCount   = "count"
+	OpTypeStddev  = "stddev"
+	OpTypeStdvar  = "stdvar"
+	OpTypeBottomK = "bottomk"
+	OpTypeTopK    = "topk"
+
+	// range vector ops
 	OpTypeCountOverTime = "count_over_time"
 	OpTypeRate          = "rate"
 
@@ -217,6 +220,8 @@ func IsLogicalBinOp(op string) bool {
 type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
 	Selector() LogSelectorExpr
+	// Operations returns the list of operations used in this SampleExpr
+	Operations() []string
 	Expr
 }
 
@@ -242,6 +247,11 @@ func (e *rangeAggregationExpr) logQLExpr() {}
 // impls Stringer
 func (e *rangeAggregationExpr) String() string {
 	return formatOperation(e.operation, nil, e.left.String())
+}
+
+// impl SampleExpr
+func (e *rangeAggregationExpr) Operations() []string {
+	return []string{e.operation}
 }
 
 type grouping struct {
@@ -320,6 +330,11 @@ func (e *vectorAggregationExpr) String() string {
 	return formatOperation(e.operation, e.grouping, params...)
 }
 
+// impl SampleExpr
+func (e *vectorAggregationExpr) Operations() []string {
+	return append(e.left.Operations(), e.operation)
+}
+
 type binOpExpr struct {
 	SampleExpr
 	RHS SampleExpr
@@ -328,6 +343,12 @@ type binOpExpr struct {
 
 func (e *binOpExpr) String() string {
 	return fmt.Sprintf("%s %s %s", e.SampleExpr.String(), e.op, e.RHS.String())
+}
+
+// impl SampleExpr
+func (e *binOpExpr) Operations() []string {
+	ops := append(e.SampleExpr.Operations(), e.RHS.Operations()...)
+	return append(ops, e.op)
 }
 
 func mustNewBinOpExpr(op string, lhs, rhs Expr) SampleExpr {
@@ -423,6 +444,7 @@ func (e *literalExpr) String() string {
 // to facilitate sum types. We'll be type switching when evaluating them anyways
 // and they will only be present in binary operation legs.
 func (e *literalExpr) Selector() LogSelectorExpr   { return e }
+func (e *literalExpr) Operations() []string        { return nil }
 func (e *literalExpr) Filter() (LineFilter, error) { return nil, nil }
 func (e *literalExpr) Matchers() []*labels.Matcher { return nil }
 

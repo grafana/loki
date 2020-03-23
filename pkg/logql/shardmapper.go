@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log/level"
 )
 
 func NewShardMapper(shards int) (ShardMapper, error) {
@@ -32,7 +34,7 @@ func (m ShardMapper) Map(expr Expr) (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		rhsMapped, err := m.Map(e.SampleExpr)
+		rhsMapped, err := m.Map(e.RHS)
 		if err != nil {
 			return nil, err
 		}
@@ -91,13 +93,31 @@ func (m ShardMapper) mapSampleExpr(expr SampleExpr) SampleExpr {
 // technically, std{dev,var} are also parallelizable if there is no cross-shard merging
 // in descendent nodes in the AST. This optimization is currently avoided for simplicity.
 func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr) (SampleExpr, error) {
+
+	// if this AST contains unshardable operations, don't shard this at this level,
+	// but attempt to shard a child node.
+	if shardable := isShardable(expr.Operations()); !shardable {
+		subMapped, err := m.Map(expr.left)
+		if err != nil {
+			return nil, err
+		}
+		sampleExpr, ok := subMapped.(SampleExpr)
+		if !ok {
+			return nil, badASTMapping("SampleExpr", subMapped)
+		}
+
+		return &vectorAggregationExpr{
+			left:      sampleExpr,
+			grouping:  expr.grouping,
+			params:    expr.params,
+			operation: expr.operation,
+		}, nil
+
+	}
+
 	switch expr.operation {
-	// sum(x) -> sum(sum(x, shard=1) ++ sum(x, shard=2)...)
-	// max(x) -> max(max(x, shard=1) ++ max(x, shard=2)...)
-	// min(x) -> min(min(x, shard=1) ++ min(x, shard=2)...)
-	// topk(x) -> topk(topk(x, shard=1) ++ topk(x, shard=2)...)
-	// botk(x) -> botk(botk(x, shard=1) ++ botk(x, shard=2)...)
-	case OpTypeSum, OpTypeMax, OpTypeMin, OpTypeTopK, OpTypeBottomK:
+	case OpTypeSum:
+		// sum(x) -> sum(sum(x, shard=1) ++ sum(x, shard=2)...)
 		return &vectorAggregationExpr{
 			left:      m.mapSampleExpr(expr),
 			grouping:  expr.grouping,
@@ -139,6 +159,12 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr) (Samp
 			operation: OpTypeSum,
 		}, nil
 	default:
+		// this should not be reachable. If an operation is shardable it should
+		// have an optimization listed.
+		level.Warn(util.Logger).Log(
+			"msg", "unexpected operation which appears shardable, ignoring",
+			"operation", expr.operation,
+		)
 		return expr, nil
 	}
 }
@@ -152,4 +178,47 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *rangeAggregationExpr) SampleE
 	default:
 		return expr
 	}
+}
+
+// isShardable returns false if any of the listed operation types are not shardable and true otherwise
+func isShardable(ops []string) bool {
+	for _, op := range ops {
+		if shardable := shardableOps[op]; !shardable {
+			return false
+		}
+	}
+	return true
+}
+
+// shardableOps lists the operations which may be sharded.
+// topk, botk, max, & min all must be concatenated and then evaluated in order to avoid
+// potential data loss due to series distribution across shards.
+// For example, grouping by `cluster` for a `max` operation may yield
+// 2 results on the first shard and 10 results on the second. If we prematurely
+// calculated `max`s on each shard, the shard/label combination with `2` may be
+// discarded and some other combination with `11` may be reported falsely as the max.
+//
+// Explanation: this is my (owen-d) best understanding.
+//
+// For an operation to be shardable, first the sample-operation itself must be associative like (+, *) but not (%, /, ^).
+// Secondly, if the operation is part of a vector aggregation expression or utilizes logical/set binary ops,
+// the vector operation must be distributive over the sample-operation.
+// This ensures that the vector merging operation can be applied repeatedly to data in different shards.
+// references:
+// https://en.wikipedia.org/wiki/Associative_property
+// https://en.wikipedia.org/wiki/Distributive_property
+var shardableOps = map[string]bool{
+	// vector ops
+	OpTypeSum: true,
+	// avg is only marked as shardable because we remap it into sum/count.
+	OpTypeAvg:   true,
+	OpTypeCount: true,
+
+	// range vector ops
+	OpTypeCountOverTime: true,
+	OpTypeRate:          true,
+
+	// binops - arith
+	OpTypeAdd: true,
+	OpTypeMul: true,
 }
