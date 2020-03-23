@@ -152,6 +152,35 @@ func TestClient_Handle(t *testing.T) {
 				promtail_sent_entries_total{host="__HOST__"} 0
 			`,
 		},
+		"do retry sending a batch in case the server responds with a 429": {
+			clientBatchSize:      10,
+			clientBatchWait:      10 * time.Millisecond,
+			clientMaxRetries:     3,
+			serverResponseStatus: 429,
+			inputEntries:         []entry{logEntries[0]},
+			expectedReqs: []receivedReq{
+				{
+					tenantID: "",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+				},
+				{
+					tenantID: "",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+				},
+				{
+					tenantID: "",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+				},
+			},
+			expectedMetrics: `
+				# HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
+				# TYPE promtail_dropped_entries_total counter
+				promtail_dropped_entries_total{host="__HOST__"} 1.0
+				# HELP promtail_sent_entries_total Number of log entries sent to the ingester.
+				# TYPE promtail_sent_entries_total counter
+				promtail_sent_entries_total{host="__HOST__"} 0
+			`,
+		},
 		"batch log entries together honoring the client tenant ID": {
 			clientBatchSize:      100,
 			clientBatchWait:      100 * time.Millisecond,
