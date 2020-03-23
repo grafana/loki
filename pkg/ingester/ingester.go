@@ -63,6 +63,9 @@ type Config struct {
 
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(cfg client.Config, addr string) (client.HealthAndIngesterClient, error)
+
+	QueryStore                  bool          `yaml:"-"`
+	QueryStoreMaxLookBackPeriod time.Duration `yaml:"-"`
 }
 
 // RegisterFlags registers the flags.
@@ -113,6 +116,7 @@ type Ingester struct {
 // ChunkStore is the interface we need to store chunks.
 type ChunkStore interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
+	LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error)
 }
 
 // New makes a new Ingester.
@@ -241,13 +245,47 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 
 // Query the ingests for log streams matching a set of matchers.
 func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
-	instanceID, err := user.ExtractOrgID(queryServer.Context())
+	// initialize stats collection for ingester queries and set grpc trailer with stats.
+	ctx := stats.NewContext(queryServer.Context())
+	defer stats.SendAsTrailer(ctx, queryServer)
+
+	instanceID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	return instance.Query(req, queryServer)
+	itr, err := instance.Query(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	defer helpers.LogError("closing iterator", itr.Close)
+
+	if i.cfg.QueryStore {
+		start := req.Start
+		end := req.End
+		if i.cfg.QueryStoreMaxLookBackPeriod != 0 {
+			oldestStartTime := time.Now().Add(-i.cfg.QueryStoreMaxLookBackPeriod)
+			if oldestStartTime.After(req.Start) {
+				start = oldestStartTime
+			}
+		}
+
+		if start.Before(end) {
+			req.Start = start
+			req.End = end
+
+			storeItr, err := i.store.LazyQuery(ctx, logql.SelectParams{QueryRequest: req})
+			if err != nil {
+				return err
+			}
+
+			itr.Push(storeItr)
+		}
+	}
+
+	return sendBatches(queryServer.Context(), itr, queryServer, req.Limit)
 }
 
 // Label returns the set of labels for the stream this ingester knows about.

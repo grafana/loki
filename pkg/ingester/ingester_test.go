@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logql"
+
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -245,6 +248,10 @@ func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 
 	s.chunks[userid] = append(s.chunks[userid], chunks...)
 	return nil
+}
+
+func (s *mockStore) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error) {
+	return nil, nil
 }
 
 type mockQuerierServer struct {

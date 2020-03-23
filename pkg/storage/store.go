@@ -5,25 +5,28 @@ import (
 	"flag"
 	"sort"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	cortex_local "github.com/cortexproject/cortex/pkg/chunk/local"
+	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/storage"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
+	"github.com/grafana/loki/pkg/storage/stores"
+	"github.com/grafana/loki/pkg/storage/stores/local"
 	"github.com/grafana/loki/pkg/util"
 )
 
 // Config is the loki storage configuration
 type Config struct {
-	storage.Config    `yaml:",inline"`
-	MaxChunkBatchSize int `yaml:"max_chunk_batch_size"`
+	storage.Config      `yaml:",inline"`
+	MaxChunkBatchSize   int                 `yaml:"max_chunk_batch_size"`
+	BoltDBShipperConfig local.ShipperConfig `yaml:"boltdb_shipper_config"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -46,6 +49,10 @@ type store struct {
 
 // NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits storage.StoreLimits) (Store, error) {
+	err := registerCustomIndexClients(cfg)
+	if err != nil {
+		return nil, err
+	}
 	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg, limits)
 	if err != nil {
 		return nil, err
@@ -200,4 +207,17 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 		filtered = append(filtered, chunk)
 	}
 	return filtered
+}
+
+func registerCustomIndexClients(cfg Config) error {
+	storage.RegisterIndexClient(local.BoltDBShipperType, func() (chunk.IndexClient, error) {
+		objectClient, err := stores.NewObjectClient(cfg.BoltDBShipperConfig.StoreConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		return local.NewBoltDBIndexClient(cortex_local.BoltDBConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}, objectClient, cfg.BoltDBShipperConfig)
+	})
+
+	return nil
 }
