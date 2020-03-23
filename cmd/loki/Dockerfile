@@ -17,6 +17,6 @@ RUN addgroup -g 1000 -S loki && \
 RUN mkdir -p /loki && \
     chown -R loki:loki /etc/loki /loki
 USER loki
-EXPOSE 8080
+EXPOSE 3100
 ENTRYPOINT [ "/usr/bin/loki" ]
 CMD ["-config.file=/etc/loki/local-config.yaml"]
