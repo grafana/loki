@@ -164,6 +164,8 @@ func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interf
 			case *metric.Histograms:
 				m.recordHistogram(name, vec, labels, v)
 			}
+		} else {
+			level.Debug(m.logger).Log("msg", "source does not exist", "err", fmt.Sprintf("source: %s, does not exist", *m.cfg[name].Source))
 		}
 	}
 }
