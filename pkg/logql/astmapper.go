@@ -30,7 +30,7 @@ func (m ShardMapper) Map(expr Expr) (Expr, error) {
 	case *vectorAggregationExpr:
 		return m.mapVectorAggregationExpr(e)
 	case *rangeAggregationExpr:
-		return m.mapRangeAggregationExpr(e)
+		return m.mapRangeAggregationExpr(e), nil
 	case *binOpExpr:
 		lhsMapped, err := m.Map(e.SampleExpr)
 		if err != nil {
@@ -62,7 +62,27 @@ func (m ShardMapper) mapLogSelectorExpr(expr LogSelectorExpr) LogSelectorExpr {
 		head = &ConcatLogSelectorExpr{
 			LogSelectorExpr: DownstreamLogSelectorExpr{
 				LogSelectorExpr: expr,
-				shard:           &astmapper.ShardAnnotation{Shard: i, Of: m.shards},
+				shard: &astmapper.ShardAnnotation{
+					Shard: i,
+					Of:    m.shards,
+				},
+			},
+			next: head,
+		}
+	}
+
+	return head
+}
+
+func (m ShardMapper) mapSampleExpr(expr SampleExpr) SampleExpr {
+	var head *ConcatSampleExpr
+	for i := m.shards - 1; i >= 0; i-- {
+		head = &ConcatSampleExpr{
+			SampleExpr: DownstreamSampleExpr{
+				shard: &astmapper.ShardAnnotation{
+					Shard: i,
+					Of:    m.shards,
+				},
 			},
 			next: head,
 		}
@@ -73,26 +93,67 @@ func (m ShardMapper) mapLogSelectorExpr(expr LogSelectorExpr) LogSelectorExpr {
 
 // technically, std{dev,var} are also parallelizable if there is no cross-shard merging
 // in descendent nodes in the AST. This optimization is currently avoided for simplicity.
-func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr) (Expr, error) {
+func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr) (SampleExpr, error) {
 	switch expr.operation {
-	case OpTypeSum:
+	// sum(x) -> sum(sum(x, shard=1) ++ sum(x, shard=2)...)
+	// max(x) -> max(max(x, shard=1) ++ max(x, shard=2)...)
+	// min(x) -> min(min(x, shard=1) ++ min(x, shard=2)...)
+	// topk(x) -> topk(topk(x, shard=1) ++ topk(x, shard=2)...)
+	// botk(x) -> botk(botk(x, shard=1) ++ botk(x, shard=2)...)
+	case OpTypeSum, OpTypeMax, OpTypeMin, OpTypeTopK, OpTypeBottomK:
+		return &vectorAggregationExpr{
+			left:      m.mapSampleExpr(expr),
+			grouping:  expr.grouping,
+			params:    expr.params,
+			operation: expr.operation,
+		}, nil
+
 	case OpTypeAvg:
-	case OpTypeMax:
-	case OpTypeMin:
+		// avg(x) -> sum(x)/count(x)
+		lhs, err := m.mapVectorAggregationExpr(&vectorAggregationExpr{
+			left:      expr.left,
+			grouping:  expr.grouping,
+			operation: OpTypeSum,
+		})
+		if err != nil {
+			return nil, err
+		}
+		rhs, err := m.mapVectorAggregationExpr(&vectorAggregationExpr{
+			left:      expr.left,
+			grouping:  expr.grouping,
+			operation: OpTypeCount,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		return &binOpExpr{
+			SampleExpr: lhs,
+			RHS:        rhs,
+			op:         OpTypeDiv,
+		}, nil
+
 	case OpTypeCount:
-	case OpTypeBottomK:
-	case OpTypeTopK:
+		// count(x) -> sum(count(x, shard=1) ++ count(x, shard=2)...)
+		sharded := m.mapSampleExpr(expr)
+		return &vectorAggregationExpr{
+			left:      sharded,
+			grouping:  expr.grouping,
+			operation: OpTypeSum,
+		}, nil
 	default:
 		return expr, nil
 	}
 }
 
-func (m ShardMapper) mapRangeAggregationExpr(expr *rangeAggregationExpr) (Expr, error) {
+func (m ShardMapper) mapRangeAggregationExpr(expr *rangeAggregationExpr) SampleExpr {
 	switch expr.operation {
-	case OpTypeCountOverTime:
-	case OpTypeRate:
+	case OpTypeCountOverTime, OpTypeRate:
+		// count_over_time(x) -> count_over_time(x, shard=1) ++ count_over_time(x, shard=2)...
+		// rate(x) -> rate(x, shard=1) ++ rate(x, shard=2)...
+		return m.mapSampleExpr(expr)
 	default:
-		return expr, nil
+		return expr
 	}
 }
 
