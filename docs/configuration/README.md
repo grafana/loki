@@ -631,6 +631,10 @@ redis:
   [max_idle_conns: <int> | default = 80]
   # Maximum number of active connections in pool.
   [max_active_conns: <int> | default = 0]
+  # Password to use when connecting to redis.
+  [password: <string>]
+  # Enables connecting to redis with TLS.
+  [enable_tls: <boolean> | default = false]
 
 fifocache:
   # Number of entries to cache in-memory.
