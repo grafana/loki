@@ -12,6 +12,8 @@ For instance some users are currently extracting labels using Promtail pipeline 
 
 In this proposal I want to introduce multiple new operators into the LogQL language, that will allow to transform a log stream into a field stream which can be then aggregated, compared, sorted and outputted by our users.
 
+You'll see that all those new operators (except aggregations over time) are chain together with the `|` pipe operator. This is because we believe it's the most intuitive way to process data in the Linux world. `cat my.log | grep -e 'foo' | jq .field | wc -l`
+
 __Related Documents:__
 
 - [LogQL Pseudo Label Extraction Design Doc](https://docs.google.com/document/d/1BrxnzqEfZnVVYUnjpZR-b9i5w9FNWRzzhyOq5ftCc-Q/edit#)
@@ -307,9 +309,9 @@ For example you can now aggregate by level without indexing it using the query b
 rate({job="prod/query-frontend"} | logfmt level [1m])
 ```
 
-This will automatically add the level fields as part of the stream for each stream. Again you should be mindful about which fields you select as this will increase the amount of series returned.
+This will automatically add the level fields as part of the series for each series. Again you should be mindful about which fields you select as this will increase the amount of series returned.
 
-Fields can also be used during dimension aggregation like stream labels:
+Fields can also be used during dimension aggregation like  labels:
 
 ```logql
 sum (
@@ -320,23 +322,41 @@ sum (
 
 Aggregation dimension will be limited, if fields contains too many unique values we will return an error.
 
-While `count_over_time` and `rate` count entries occurrence per log & field stream, now that we can select fields we will allow some new aggregation functions over those fields value.
+While `count_over_time` and `rate` count entries occurrence per log & field stream, now that we can select fields we will allow some new aggregation functions over those field values.
 
 ### Series & Histogram Operators
 
 To transform fields into series we will introduce two new field stream operators `| series` and `| histogram`. In the future we could introduce other operators like `| counter <field> [inc|dec] by (<label>,<field>)` to sum values if needed.
 
-The series operator `| series <field> by (<label>,<field>)` creates a series from a field stream, the first parameter is the field to use as value, this means each field entry (field/timestamp pair) will create a point (value/timestamp pair). You can then use `by` or `without` to group series metric (again you can include labels or field or both) prior aggregations. You can also not provided any grouping in which case all extracted fields and labels will define the set of series returned.
+The series operator `| series <field> by (<label>,<field>)` creates a series from a field stream, the first parameter is the field to use as value, this means each field entry (field/timestamp pair) will create a point (value/timestamp pair). You can then use `by` or `without` to group series metric (again you can include labels or field or both) prior aggregations. You can also omit the grouping clause in which case all extracted fields and labels will define the set of series returned.
 
-The histogram operator `| histogram <field> [<array_of_float>] by (<label>,<field>)` creates a [Prometheus histogram](https://prometheus.io/docs/concepts/metric_types/#histogram) with the given `<array_of_float>` buckets. It will compute cumulative counters for the observation buckets as well as a counter of all observed values and the total sum of all observations. Series count per query will also be limited.
+Example of a series transformation:
+
+```logql
+{job="app"} | json | series latency by (path, status)
+{job="app"} | json | series latency
+{job="app"} | json | series latency without (instance)
+```
+
+The histogram operator `| histogram <field> [<array_of_float>] by (<label>,<field>)` creates a [Prometheus histogram](https://prometheus.io/docs/concepts/metric_types/#histogram) with the given `<array_of_float>` buckets. It will compute cumulative counters for the observation buckets as well as a counter of all observed values and the total sum of all observations. Series count per query will also be limited, so trying to use too many buckets will result in an error.
 
 To simplify the creation of buckets we will provide two function syntax to create buckets: `exp(start, factor float, count int)` and `linear(start, width float64, count int)`.
 
+See below the 3 version for declaring buckets of histogram:
+
+```logql
+{job="app"} | json | histogram latency [.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10] by (path,status)
+
+{job="app"} | json | histogram size exp(20000, 2, 10) without (instance)
+
+{job="app"} | json | histogram latency linear(.75, 2, 10)
+```
+
+>While we could potentially support returning those vectors directly, we will only support range vector operations of those series and histograms for now like we do for `count_over_time` and `rate`. This is also because they make more sense as they allow you to select the aggregation range over time for each query. In the future we could may be select the last log line as the vector value for each step but I have some doubt it is a useful.
 
 ### Range Vector Operations
 
-Those new function are very similar to prometheus [over time aggregations](https://prometheus.io/docs/prometheus/latest/querying/functions/#aggregation_over_time). What's interesting with those functions is that they allow the user to pick the range of the aggregation for each steps using the `[1m]` notation.
-
+Those new functions are very similar to prometheus [over time aggregations](https://prometheus.io/docs/prometheus/latest/querying/functions/#aggregation_over_time). What's interesting with those functions is that they allow the user to pick the range of the aggregation for each steps using the `[1m]` notation.
 
 We plan to support the following new operations:
 
@@ -362,7 +382,7 @@ Now let's pretend we have received temperatures from censors around the house in
 To get the average temperatures by room in the last 30 minutes we could use the query below:
 
 ```logql
-avg_over_time({job="censors"} | glob "* *<room> *<temp>C" | select temp room [30m]) by (room)
+avg_over_time({job="censors"} | glob "* *<room> *<temp>C" | series temp by (room) [30m])
 ```
 
 As another example if we have some nginx logs like below:
@@ -375,9 +395,8 @@ As another example if we have some nginx logs like below:
 We could get the 99th percentile latency by path and status over the last 15 minutes using the query below:
 
 ```logql
-quantile_over_time(.99, {job="nginx"} | glob "* -- * \"* /*<path> *\" *<status> *<latency> *" | select latency path status [15m]) by (path, status)
+quantile_over_time(.99, {job="nginx"} | glob "* -- * \"* /*<path> *\" *<status> *<latency> *" | histogram latency linear(.25, 2, 5) by (path, status) [15m])
 ```
-
 
 ## API Changes
 
