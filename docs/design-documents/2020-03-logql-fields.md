@@ -322,18 +322,19 @@ Aggregation dimension will be limited, if fields contains too many unique values
 
 While `count_over_time` and `rate` count entries occurrence per log & field stream, now that we can select fields we will allow some new aggregation functions over those fields value.
 
-### Series Operators
+### Series & Histogram Operators
 
-To transform fields into series we will introduce two new field stream operator `| series` and `| histogram `. In the future we could introduce other operators like `| counter field [inc|dec] by (field,label)` to sum values if needed.
+To transform fields into series we will introduce two new field stream operators `| series` and `| histogram`. In the future we could introduce other operators like `| counter field [inc|dec] by (field,label)` to sum values if needed.
 
-The series operator `| series <field> by (label,field)` creates a series from a field stream, the first parameter is the field to use as value, this means each field entry (field/ts pair) will create a point (value/ts pair). After the first parameter you can select how the series metric name will be created using the `by` or `without` functions.
+The series operator `| series <field> by (<label>,<field>)` creates a series from a field stream, the first parameter is the field to use as value, this means each field entry (field/timestamp pair) will create a point (value/timestamp pair). You can then use `by` or `without` to group series metric (again you can include labels or field or both) prior aggregations. You can also not provided any grouping in which case all extracted fields and labels will define the set of series returned.
+
+The histogram operator `| histogram <field> [<array_of_float>] by (<label>,<field>)` creates a [Prometheus histogram](https://prometheus.io/docs/concepts/metric_types/#histogram) with the given `<array_of_float>` buckets. It will compute cumulative counters for the observation buckets as well as a counter of all observed values and the total sum of all observations.
 
 
 ### Range Vector Operations
 
 Those new function are very similar to prometheus [over time aggregations](https://prometheus.io/docs/prometheus/latest/querying/functions/#aggregation_over_time). What's interesting with those functions is that they allow the user to pick the range of the aggregation for each steps using the `[1m]` notation.
 
-__All those functions will use the first field name as the value to aggregate over time with, all the following field name will create new stream dimension combined with labels.__
 
 We plan to support the following new operations:
 
