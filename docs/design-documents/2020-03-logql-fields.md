@@ -324,11 +324,13 @@ While `count_over_time` and `rate` count entries occurrence per log & field stre
 
 ### Series & Histogram Operators
 
-To transform fields into series we will introduce two new field stream operators `| series` and `| histogram`. In the future we could introduce other operators like `| counter field [inc|dec] by (field,label)` to sum values if needed.
+To transform fields into series we will introduce two new field stream operators `| series` and `| histogram`. In the future we could introduce other operators like `| counter <field> [inc|dec] by (<label>,<field>)` to sum values if needed.
 
 The series operator `| series <field> by (<label>,<field>)` creates a series from a field stream, the first parameter is the field to use as value, this means each field entry (field/timestamp pair) will create a point (value/timestamp pair). You can then use `by` or `without` to group series metric (again you can include labels or field or both) prior aggregations. You can also not provided any grouping in which case all extracted fields and labels will define the set of series returned.
 
-The histogram operator `| histogram <field> [<array_of_float>] by (<label>,<field>)` creates a [Prometheus histogram](https://prometheus.io/docs/concepts/metric_types/#histogram) with the given `<array_of_float>` buckets. It will compute cumulative counters for the observation buckets as well as a counter of all observed values and the total sum of all observations.
+The histogram operator `| histogram <field> [<array_of_float>] by (<label>,<field>)` creates a [Prometheus histogram](https://prometheus.io/docs/concepts/metric_types/#histogram) with the given `<array_of_float>` buckets. It will compute cumulative counters for the observation buckets as well as a counter of all observed values and the total sum of all observations. Series count per query will also be limited.
+
+To simplify the creation of buckets we will provide two function syntax to create buckets: `exp(start, factor float, count int)` and `linear(start, width float64, count int)`.
 
 
 ### Range Vector Operations
