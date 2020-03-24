@@ -307,7 +307,7 @@ For example you can now aggregate by level without indexing it using the query b
 rate({job="prod/query-frontend"} | logfmt level [1m])
 ```
 
-This will automatically add the level fields as part of the stream for each stream. Again you should be mindful about which fields you select as this will increase the amount of stream returned.
+This will automatically add the level fields as part of the stream for each stream. Again you should be mindful about which fields you select as this will increase the amount of series returned.
 
 Fields can also be used during dimension aggregation like stream labels:
 
@@ -372,7 +372,7 @@ As another example if we have some nginx logs like below:
 We could get the 99th percentile latency by path and status over the last 15 minutes using the query below:
 
 ```logql
-quantile_over_time(.99, {job="censors"} | glob "* -- * \"* /*<path> *\" *<status> *<latency> *" | select latency path status [15m]) by (path, status)
+quantile_over_time(.99, {job="nginx"} | glob "* -- * \"* /*<path> *\" *<status> *<latency> *" | select latency path status [15m]) by (path, status)
 ```
 
 
