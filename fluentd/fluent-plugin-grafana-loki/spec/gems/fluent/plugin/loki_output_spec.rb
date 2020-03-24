@@ -266,15 +266,15 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     expect { driver.instance.write(lines) }.not_to raise_error
 
     # 429
-    success = Net::HTTPTooManyRequests.new(1.0, 429, 'OK')
-    allow(driver.instance).to receive(:loki_http_request) { success }
-    allow(success).to receive(:body).and_return('fake body')
+    too_many_requests = Net::HTTPTooManyRequests.new(1.0, 429, 'OK')
+    allow(driver.instance).to receive(:loki_http_request) { too_many_requests }
+    allow(too_many_requests).to receive(:body).and_return('fake body')
     expect { driver.instance.write(lines) }.to raise_error(described_class::LogPostError)
 
     # 505
-    success = Net::HTTPServerError.new(1.0, 505, 'OK')
-    allow(driver.instance).to receive(:loki_http_request) { success }
-    allow(success).to receive(:body).and_return('fake body')
+    server_error = Net::HTTPServerError.new(1.0, 505, 'OK')
+    allow(driver.instance).to receive(:loki_http_request) { server_error }
+    allow(server_error).to receive(:body).and_return('fake body')
     expect { driver.instance.write(lines) }.to raise_error(described_class::LogPostError)
   end
 end
