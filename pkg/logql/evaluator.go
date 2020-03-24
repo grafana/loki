@@ -127,7 +127,7 @@ func (ev *defaultEvaluator) StepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return rangeAggEvaluator(ctx, entryIter, e, q)
+		return rangeAggEvaluator(entryIter, e, q)
 	case *binOpExpr:
 		return binOpStepEvaluator(ctx, nextEv, e, q)
 	default:
@@ -331,7 +331,6 @@ func vectorAggEvaluator(
 }
 
 func rangeAggEvaluator(
-	ctx context.Context,
 	entryIter iter.EntryIterator,
 	expr *rangeAggregationExpr,
 	q Params,
