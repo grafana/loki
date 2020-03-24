@@ -55,14 +55,17 @@ type StoreConfig struct {
 	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
 
-	// Not visible in yaml because the setting shouldn't be common between ingesters and queriers
+	// Not visible in yaml because the setting shouldn't be common between ingesters and queriers.
+	// This exists in case we don't want to cache all the chunks but still want to take advantage of
+	// ingester chunk write deduplication. But for the queriers we need the full value. So when this option
+	// is set, use different caches for ingesters and queriers.
 	chunkCacheStubs bool // don't write the full chunk to cache, just a stub entry
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("", "Cache config for chunks. ", f)
-	f.BoolVar(&cfg.chunkCacheStubs, "store.chunk-cache-stubs", false, "If true, don't write the full chunk to cache, just a stub entry.")
+	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("store.chunks-cache.", "Cache config for chunks. ", f)
+	f.BoolVar(&cfg.chunkCacheStubs, "store.chunks-cache.cache-stubs", false, "If true, don't write the full chunk to cache, just a stub entry.")
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
 
 	f.DurationVar(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", 0, "Cache index entries older than this period. 0 to disable.")
