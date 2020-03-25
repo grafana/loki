@@ -12,7 +12,7 @@
     container.withPorts($.util.defaultPorts) +
     container.withArgsMixin($.util.mapToFlags($.distributor_args)) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
-    container.mixin.readinessProbe.httpGet.withPort(80) +
+    container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     $.util.resourcesRequests('500m', '500Mi') +

@@ -123,7 +123,7 @@ jobs:
       - run:
           name: Install Helm
           command: |
-            curl -L https://git.io/get_helm.sh | bash
+            curl -L https://git.io/get_helm.sh | bash -s -- -v v2.16.3
             kubectl apply -f tools/helm.yaml
             helm init --service-account helm --wait
       - run:

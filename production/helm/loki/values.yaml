@@ -89,7 +89,7 @@ config:
     max_look_back_period: 0
   table_manager:
     retention_deletes_enabled: false
-    retention_period: 0
+    retention_period: 0s
 
 ## Additional Loki container arguments, e.g. log level (debug, info, warn, error)
 extraArgs: {}
