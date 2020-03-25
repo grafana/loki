@@ -3,10 +3,10 @@ package logql
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/iter"
-	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql"
 )
 
@@ -60,6 +60,12 @@ func (c ConcatLogSelectorExpr) String() string {
 	return fmt.Sprintf("%s ++ %s", c.LogSelectorExpr.String(), c.next.String())
 }
 
+// Downstreamer is an interface for deferring responsibility for query execution.
+// It is decoupled from but consumed by a downStreamEvaluator to dispatch ASTs.
+type Downstreamer interface {
+	Downstream(Expr, Params, *astmapper.ShardAnnotation) Query
+}
+
 // downstreamEvaluator is an evaluator which handles shard aware AST nodes
 type downstreamEvaluator struct{ Downstreamer }
 
@@ -73,7 +79,12 @@ func (ev *downstreamEvaluator) StepEvaluator(
 	switch e := expr.(type) {
 	case DownstreamSampleExpr:
 		// downstream to a querier
-		return nil, errors.New("unimplemented")
+		qry := ev.Downstream(e.SampleExpr, params, e.shard)
+		res, err := qry.Exec(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return ResultStepEvaluator(res, params)
 
 	case ConcatSampleExpr:
 		// ensure they all impl the same (SampleExpr, LogSelectorExpr) & concat
@@ -109,7 +120,13 @@ func (ev *downstreamEvaluator) Iterator(
 	switch e := expr.(type) {
 	case DownstreamLogSelectorExpr:
 		// downstream to a querier
-		return nil, errors.New("unimplemented")
+		qry := ev.Downstream(e.LogSelectorExpr, params, e.shard)
+		res, err := qry.Exec(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return ResultIterator(res, params)
+
 	case ConcatLogSelectorExpr:
 		var iters []iter.EntryIterator
 		cur := &e
@@ -125,8 +142,10 @@ func (ev *downstreamEvaluator) Iterator(
 			iters = append(iters, iterator)
 		}
 		return iter.NewHeapIterator(ctx, iters, params.Direction()), nil
+
+	default:
+		return nil, EvaluatorUnsupportedType(expr, ev)
 	}
-	return nil, errors.New("unimplemented")
 }
 
 // ConcatEvaluator joins multiple StepEvaluators.
@@ -151,4 +170,77 @@ func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 			return lastErr
 		},
 	)
+}
+
+// ResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
+func ResultStepEvaluator(res Result, params Params) (StepEvaluator, error) {
+	var (
+		end       = params.End()
+		step      = params.Step()
+		ts        = params.Start()
+		increment = func() {
+			ts = ts.Add(step)
+		}
+	)
+
+	switch data := res.Data.(type) {
+	case promql.Vector:
+		var exhausted bool
+		return newStepEvaluator(func() (bool, int64, promql.Vector) {
+			if !exhausted {
+				exhausted = true
+				return true, ts.UnixNano() / int64(time.Millisecond), data
+			}
+			return false, 0, nil
+		}, nil)
+	case promql.Matrix:
+		var i int
+		var maxLn int
+		if len(data) > 0 {
+			maxLn = len(data[0].Points)
+		}
+		return newStepEvaluator(func() (bool, int64, promql.Vector) {
+			defer increment()
+			if ts.After(end) {
+				return false, 0, nil
+			}
+
+			tsInt := ts.UnixNano() / int64(time.Millisecond)
+
+			// Ensure that the resulting StepEvaluator maintains
+			// the same shape that the parameters expect. For example,
+			// it's possible that a downstream query returns matches no
+			// log streams and thus returns an empty matrix.
+			// However, we still need to ensure that it can be merged effectively
+			// with another leg that may match series.
+			// Therefore, we determine our steps from the parameters
+			// and not the underlying Matrix.
+			if i >= maxLn {
+				return true, tsInt, nil
+			}
+
+			vec := make(promql.Vector, 0, len(data))
+			for j := 0; j < len(data); j++ {
+				series := data[j]
+				vec = append(vec, promql.Sample{
+					Point:  series.Points[i],
+					Metric: series.Metric,
+				})
+			}
+			i++
+			return true, tsInt, vec
+		}, nil)
+	default:
+		return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
+	}
+}
+
+// ResultIterator coerces a downstream streams result into an iter.EntryIterator
+func ResultIterator(res Result, params Params) (iter.EntryIterator, error) {
+	streams, ok := res.Data.(Streams)
+	if !ok {
+		return nil, fmt.Errorf("Unexpected type (%s) for ResultIterator; expected %s", res.Data.Type(), ValueTypeStreams)
+	}
+	return iter.NewStreamsIterator(context.Background(), streams, params.Direction()), nil
+
 }
