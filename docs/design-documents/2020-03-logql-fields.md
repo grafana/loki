@@ -4,17 +4,46 @@
 - Date: Mar 18 2020
 - Status: DRAFT
 
-This design document is an extension of [the primer design document](https://docs.google.com/document/d/1BrxnzqEfZnVVYUnjpZR-b9i5w9FNWRzzhyOq5ftCc-Q/edit#heading=h.2obxic2dx0xn) for extracting and analyzing data from logs using Loki's LogQL.
+This design document is an extension of [the first design document](https://docs.google.com/document/d/1BrxnzqEfZnVVYUnjpZR-b9i5w9FNWRzzhyOq5ftCc-Q/edit#heading=h.2obxic2dx0xn) for extracting and analyzing data from logs using Loki's LogQL.
 
-Based on the feedback and our own usage, it’s pretty clear that we want to support extracting fields out of the log line for detailed analysis. [Amazon Cloud Watch is a good example](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax-examples.html) of such language features.
+Based on the feedback of the first design and our own usage, it’s pretty clear that we want to support extracting fields out of the log line for detailed analysis. [Amazon Cloud Watch is a good example](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax-examples.html) of such language features.
 
 For instance some users are currently extracting labels using Promtail pipeline stages as a way to filter and aggregate logs but this causes issues with our storage system. (Causes the creation of a lot of small chunks, putting pressure on the filesystem when trying to aggregated over a long period of time).
 
 In this proposal I want to introduce multiple new operators into the LogQL language, that will allow to transform a log stream into a field stream which can be then aggregated, compared, sorted and outputted by our users.
 
-You'll see that all those new operators (except aggregations over time) are chain together with the `|` pipe operator. This is because we believe it's the most intuitive way to process data in the Linux world. `cat my.log | grep -e 'foo' | jq .field | wc -l`
+You'll see that all those new operators (except aggregations over time) are chain together with the `|` pipe operator. This is because we believe it's the most intuitive way to write queries that process data in the Linux world as opposed to the function format. (e.g `cat my.log | grep -e 'foo' | jq .field | wc -l` is easier to read than `wc(jq(grep(cat my.log,'foo'),.field),-l)`)
 
-__Related Documents:__
+## Table of Content
+
+<!-- TOC -->
+
+- [LogQL Fields](#logql-fields)
+    - [Table of Content](#table-of-content)
+    - [Related Documents](#related-documents)
+    - [LogQL Parsers](#logql-parsers)
+        - [Glob](#glob)
+        - [Json](#json)
+        - [Logfmt](#logfmt)
+        - [Regexp](#regexp)
+        - [Questions](#questions)
+    - [LogQL Fields Operators](#logql-fields-operators)
+        - [Filter](#filter)
+        - [Sort](#sort)
+        - [Select](#select)
+        - [Limit](#limit)
+        - [Uniq](#uniq)
+        - [Metrics](#metrics)
+            - [Series & Histogram Operators](#series--histogram-operators)
+            - [Range Vector Operations](#range-vector-operations)
+    - [API Changes](#api-changes)
+        - [Faceting](#faceting)
+    - [Glossary](#glossary)
+    - [Syntax Types](#syntax-types)
+
+<!-- /TOC -->
+
+## Related Documents
 
 - [LogQL Pseudo Label Extraction Design Doc](https://docs.google.com/document/d/1BrxnzqEfZnVVYUnjpZR-b9i5w9FNWRzzhyOq5ftCc-Q/edit#)
 - [Original LogQL Design Doc](https://docs.google.com/document/d/1DAzwoZF0yD4oFSFcUlRcGG0Ent2myAlFr_lZc6es3fs/edit#heading=h.6u7w5ql6hn4p)
@@ -287,7 +316,7 @@ For example all of the above are corrects.
 {job="prod/query-frontend"} |= "foo" | limit 20
 ```
 
-Using limit operator with metric queries will result into an error.(e.g `rate({job="prod/query-frontend"} | limit 10[5m])`)
+Using limit operator with metric queries will result into an error. (e.g `rate({job="prod/query-frontend"} | limit 10[5m])`)
 
 ### Uniq
 
@@ -324,7 +353,7 @@ Aggregation dimension will be limited, if fields contains too many unique values
 
 While `count_over_time` and `rate` count entries occurrence per log & field stream, now that we can select fields we will allow some new aggregation functions over those field values.
 
-### Series & Histogram Operators
+#### Series & Histogram Operators
 
 To transform fields into series we will introduce two new field stream operators `| series` and `| histogram`. In the future we could introduce other operators like `| counter <field> [inc|dec] by (<label>,<field>)` to sum values if needed.
 
@@ -340,7 +369,7 @@ Example of a series transformation:
 
 The histogram operator `| histogram <field> [<array_of_float>] by (<label>,<field>)` creates a [Prometheus histogram](https://prometheus.io/docs/concepts/metric_types/#histogram) with the given `<array_of_float>` buckets. It will compute cumulative counters for the observation buckets as well as a counter of all observed values and the total sum of all observations. Series count per query will also be limited, so trying to use too many buckets will result in an error.
 
-To simplify the creation of buckets we will provide two function syntax to create buckets: `exp(start, factor float, count int)` and `linear(start, width float64, count int)`.
+To simplify the creation of buckets we will provide two function syntax to create buckets: `exp(start, factor float, count int)` and `linear(start, width float64, count int)` which will respectively create exponential and linear buckets.
 
 See below the 3 version for declaring buckets of histogram:
 
@@ -352,9 +381,11 @@ See below the 3 version for declaring buckets of histogram:
 {job="app"} | json | histogram latency linear(.75, 2, 10)
 ```
 
->While we could potentially support returning those vectors directly, we will only support range vector operations of those series and histograms for now like we do for `count_over_time` and `rate`. This is also because they make more sense as they allow you to select the aggregation range over time for each query. In the future we could may be select the last log line as the vector value for each step but I have some doubt it is a useful.
+Not providing the array of buckets will result in an error.
 
-### Range Vector Operations
+>We will only support range vector operations of those series and histograms for now like we do for `count_over_time` and `rate`. This is also because they make more sense as they allow you to select the aggregation range over time for each query. In the future we could may be select the last log line as the instant vector value for each step but I have some doubt it is a useful.
+
+#### Range Vector Operations
 
 Those new functions are very similar to prometheus [over time aggregations](https://prometheus.io/docs/prometheus/latest/querying/functions/#aggregation_over_time). What's interesting with those functions is that they allow the user to pick the range of the aggregation for each steps using the `[1m]` notation.
 
@@ -400,9 +431,31 @@ quantile_over_time(.99, {job="nginx"} | glob "* -- * \"* /*<path> *\" *<status> 
 
 ## API Changes
 
-- v2 for sorting and fields.
-- v1 retrofit how ?
+One aspect that is really important from a usage perspective with all those changes is that the users will be playing/fiddling around with those new parsers operators to find the right query. This is specially true for the `regexp` and `glob` parsers.
+
+This means we need to send feedback to ease the creation of those new queries. Unfortunately I don't expect Grafana to support a new response type (fields) from day one and this means we need to find a way to retrofit fields into logs.
+
+My suggestion is that for any (v1) query we will automatically reconvert fields into log using logfmt format. If there is only one field per entry we will use the field value as log value.
+
+Now this will make all proposed operators work as is in Grafana except for the `| sort` operator.
+
+Since we will need a `v2` anyway for the sort operator to work, I think it also make sense toonly include the new fields result type there too.
 
 ### Faceting
 
+As explained in the [parsers section](#logql-parsers), some parsers (`json` and `logfmt`) will support implicit extraction. However when the user will want to reduce fields by selecting them, I think it would be useful to provide an API that returns all field names for a given field stream selector and a time range. This way Grafana or any other integrations will be able to provide auto completion for those fields to select.
+
+## Glossary
+
+- sample pair: a float value for a given timestamp.
+- series: samples pair attached to a same set of labels.
+- instant vector: contains a single sample per series.
+- range vector: contains multiple samples per series.
+- log entry: a log and a timestamp.
+- field entry: a set of fields (an object) and a timestamp.
+- log stream: a set of log entries attached to same set of labels.
+- field stream: a set of field entries  attached to same set of labels.
+
 ## Syntax Types
+
+TDB
