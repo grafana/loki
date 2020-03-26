@@ -175,6 +175,10 @@ func (c *Client) wsConnect(path string, quiet bool) (*websocket.Conn, error) {
 
 	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(c.Username+":"+c.Password))}}
 
+	if c.OrgID != "" {
+		h.Set("X-Scope-OrgID", c.OrgID)
+	}
+
 	ws := websocket.Dialer{
 		TLSClientConfig: tlsConfig,
 	}
