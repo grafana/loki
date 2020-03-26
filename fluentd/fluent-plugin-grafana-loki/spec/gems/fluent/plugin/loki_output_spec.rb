@@ -245,7 +245,7 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     6.times { |i| expect(res[0]['values'][i][1]).to eq i.to_s }
   end
 
-  it 'raises an LogPostError when http request is not succesfull' do
+  it 'raises an LogPostError when http request is not successful' do
     config = <<-CONF
       url     https://logs-us-west1.grafana.net
     CONF
