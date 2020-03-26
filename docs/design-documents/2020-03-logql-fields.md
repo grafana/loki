@@ -321,7 +321,7 @@ If the limit operator is missing in the expression, the limit from the query str
 
 The limit operator can be applied to a log field  as well as a log stream.
 
-For example all of the above are corrects.
+For example all of the above are correct.
 
 ```logql
 {job="prod/query-frontend"} | logfmt query duration | sort duration desc | limit 25
