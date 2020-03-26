@@ -244,4 +244,37 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     expect(res[0]['stream']).to eq('stream' => 'stdout')
     6.times { |i| expect(res[0]['values'][i][1]).to eq i.to_s }
   end
+
+  it 'raises an LogPostError when http request is not successful' do
+    config = <<-CONF
+      url     https://logs-us-west1.grafana.net
+    CONF
+    driver = Fluent::Test::Driver::Output.new(described_class)
+    driver.configure(config)
+    lines = [[Time.at(1_546_270_458), { 'message' => 'foobar', 'stream' => 'stdout' }]]
+
+    # 200
+    success = Net::HTTPSuccess.new(1.0, 200, 'OK')
+    allow(driver.instance).to receive(:loki_http_request) { success }
+    allow(success).to receive(:body).and_return('fake body')
+    expect { driver.instance.write(lines) }.not_to raise_error
+
+    # 205
+    success = Net::HTTPSuccess.new(1.0, 205, 'OK')
+    allow(driver.instance).to receive(:loki_http_request) { success }
+    allow(success).to receive(:body).and_return('fake body')
+    expect { driver.instance.write(lines) }.not_to raise_error
+
+    # 429
+    too_many_requests = Net::HTTPTooManyRequests.new(1.0, 429, 'OK')
+    allow(driver.instance).to receive(:loki_http_request) { too_many_requests }
+    allow(too_many_requests).to receive(:body).and_return('fake body')
+    expect { driver.instance.write(lines) }.to raise_error(described_class::LogPostError)
+
+    # 505
+    server_error = Net::HTTPServerError.new(1.0, 505, 'OK')
+    allow(driver.instance).to receive(:loki_http_request) { server_error }
+    allow(server_error).to receive(:body).and_return('fake body')
+    expect { driver.instance.write(lines) }.to raise_error(described_class::LogPostError)
+  end
 end
