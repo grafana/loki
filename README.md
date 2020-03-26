@@ -47,9 +47,7 @@ querying logs.
 * [v1.1.0](https://github.com/grafana/loki/tree/v1.1.0/docs/README.md)
 * [v1.0.0](https://github.com/grafana/loki/tree/v1.0.0/docs/README.md)
 
-Or here are some shortcuts to commonly used sections from the documentation:
-
-**NOTE:** These all reference the most recent release v1.3.0
+Commonly used sections (from the latest release v1.3.0):
 
 - [API documentation](https://github.com/grafana/loki/tree/v1.3.0/docs/api.md) for alternative ways of getting logs into Loki.
 - [Operations](https://github.com/grafana/loki/tree/v1.3.0/docs/operations) for important aspects of running Loki.
