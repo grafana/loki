@@ -99,13 +99,13 @@ func init() {
 
 // DynamoDBConfig specifies config for a DynamoDB database.
 type DynamoDBConfig struct {
-	DynamoDB               flagext.URLValue
-	APILimit               float64
-	ThrottleLimit          float64
-	ApplicationAutoScaling flagext.URLValue
-	Metrics                MetricsAutoScalingConfig
-	ChunkGangSize          int
-	ChunkGetMaxParallelism int
+	DynamoDB               flagext.URLValue         `yaml:"dynamodb_url"`
+	APILimit               float64                  `yaml:"api_limit"`
+	ThrottleLimit          float64                  `yaml:"throttle_limit"`
+	ApplicationAutoScaling flagext.URLValue         `yaml:"application_autoscaling_url"`
+	Metrics                MetricsAutoScalingConfig `yaml:"metrics"`
+	ChunkGangSize          int                      `yaml:"chunk_gang_size"`
+	ChunkGetMaxParallelism int                      `yaml:"chunk_get_max_parallelism"`
 	backoffConfig          util.BackoffConfig
 }
 
@@ -116,8 +116,8 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.APILimit, "dynamodb.api-limit", 2.0, "DynamoDB table management requests per second limit.")
 	f.Float64Var(&cfg.ThrottleLimit, "dynamodb.throttle-limit", 10.0, "DynamoDB rate cap to back off when throttled.")
 	f.Var(&cfg.ApplicationAutoScaling, "applicationautoscaling.url", "ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.")
-	f.IntVar(&cfg.ChunkGangSize, "dynamodb.chunk.gang.size", 10, "Number of chunks to group together to parallelise fetches (zero to disable)")
-	f.IntVar(&cfg.ChunkGetMaxParallelism, "dynamodb.chunk.get.max.parallelism", 32, "Max number of chunk-get operations to start in parallel")
+	f.IntVar(&cfg.ChunkGangSize, "dynamodb.chunk-gang-size", 10, "Number of chunks to group together to parallelise fetches (zero to disable)")
+	f.IntVar(&cfg.ChunkGetMaxParallelism, "dynamodb.chunk.get-max-parallelism", 32, "Max number of chunk-get operations to start in parallel")
 	f.DurationVar(&cfg.backoffConfig.MinBackoff, "dynamodb.min-backoff", 100*time.Millisecond, "Minimum backoff time")
 	f.DurationVar(&cfg.backoffConfig.MaxBackoff, "dynamodb.max-backoff", 50*time.Second, "Maximum backoff time")
 	f.IntVar(&cfg.backoffConfig.MaxRetries, "dynamodb.max-retries", 20, "Maximum number of times to retry an operation")
@@ -126,8 +126,8 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 
 // StorageConfig specifies config for storing data on AWS.
 type StorageConfig struct {
-	DynamoDBConfig
-	S3Config `yaml:",inline"`
+	DynamoDBConfig `yaml:"dynamodb"`
+	S3Config       `yaml:",inline"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

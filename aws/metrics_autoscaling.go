@@ -41,15 +41,15 @@ const (
 
 // MetricsAutoScalingConfig holds parameters to configure how it works
 type MetricsAutoScalingConfig struct {
-	URL              string  // URL to contact Prometheus store on
-	TargetQueueLen   int64   // Queue length above which we will scale up capacity
-	ScaleUpFactor    float64 // Scale up capacity by this multiple
-	MinThrottling    float64 // Ignore throttling below this level
-	QueueLengthQuery string  // Promql query to fetch ingester queue length
-	ThrottleQuery    string  // Promql query to fetch throttle rate per table
-	UsageQuery       string  // Promql query to fetch write capacity usage per table
-	ReadUsageQuery   string  // Promql query to fetch read usage per table
-	ReadErrorQuery   string  // Promql query to fetch read errors per table
+	URL              string  `yaml:"url"`                   // URL to contact Prometheus store on
+	TargetQueueLen   int64   `yaml:"target_queue_length"`   // Queue length above which we will scale up capacity
+	ScaleUpFactor    float64 `yaml:"scale_up_factor"`       // Scale up capacity by this multiple
+	MinThrottling    float64 `yaml:"ignore_throttle_below"` // Ignore throttling below this level
+	QueueLengthQuery string  `yaml:"queue_length_query"`    // Promql query to fetch ingester queue length
+	ThrottleQuery    string  `yaml:"write_throttle_query"`  // Promql query to fetch throttle rate per table
+	UsageQuery       string  `yaml:"write_usage_query"`     // Promql query to fetch write capacity usage per table
+	ReadUsageQuery   string  `yaml:"read_usage_query"`      // Promql query to fetch read usage per table
+	ReadErrorQuery   string  `yaml:"read_error_query"`      // Promql query to fetch read errors per table
 
 	deprecatedErrorRateQuery string
 }

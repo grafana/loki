@@ -59,7 +59,7 @@ type Config struct {
 	BoltDBConfig           local.BoltDBConfig      `yaml:"boltdb"`
 	FSConfig               local.FSConfig          `yaml:"filesystem"`
 
-	IndexCacheValidity time.Duration
+	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
 
 	IndexQueriesCacheConfig cache.Config `yaml:"index_queries_cache_config"`
 
