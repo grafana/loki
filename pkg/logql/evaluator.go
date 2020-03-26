@@ -67,7 +67,7 @@ func GetRangeType(q Params) QueryRangeType {
 	return RangeType
 }
 
-// StepEvaluator is an interface for iterating over data at different nodes in the AST
+// Evaluator is an interface for iterating over data at different nodes in the AST
 type Evaluator interface {
 	// StepEvaluator returns a StepEvaluator for a given SampleExpr. It's explicitly passed another StepEvaluator// in order to enable arbitrary compuation of embedded expressions. This allows more modular & extensible
 	// StepEvaluator implementations which can be composed.
