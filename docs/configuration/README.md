@@ -789,6 +789,9 @@ logs in Loki.
 # There is no limit when unset.
 [max_line_size: <string> | default = none ]
 
+# Maximum number of log entries that will be returned for a query. 0 to disable.
+[max_entries_limit: <int> | default = 5000 ]
+
 # Maximum number of active streams per user, across the cluster. 0 to disable.
 # When the global limit is enabled, each ingester is configured with a dynamic
 # local limit based on the replication factor and the current number of healthy
