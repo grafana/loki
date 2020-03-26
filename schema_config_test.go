@@ -308,11 +308,12 @@ func TestSchemaConfig_Validate(t *testing.T) {
 
 	tests := map[string]struct {
 		config   *SchemaConfig
-		expected error
+		expected *SchemaConfig
+		err      error
 	}{
 		"should pass the default config (ie. used cortex runs with a target not requiring the schema config)": {
-			config:   &SchemaConfig{},
-			expected: nil,
+			config: &SchemaConfig{},
+			err:    nil,
 		},
 		"should fail on invalid schema version": {
 			config: &SchemaConfig{
@@ -320,7 +321,7 @@ func TestSchemaConfig_Validate(t *testing.T) {
 					{Schema: "v0"},
 				},
 			},
-			expected: errInvalidSchemaVersion,
+			err: errInvalidSchemaVersion,
 		},
 		"should fail on index table period not multiple of 1h for schema v1": {
 			config: &SchemaConfig{
@@ -331,7 +332,7 @@ func TestSchemaConfig_Validate(t *testing.T) {
 					},
 				},
 			},
-			expected: errInvalidTablePeriod,
+			err: errInvalidTablePeriod,
 		},
 		"should fail on chunk table period not multiple of 1h for schema v1": {
 			config: &SchemaConfig{
@@ -343,7 +344,7 @@ func TestSchemaConfig_Validate(t *testing.T) {
 					},
 				},
 			},
-			expected: errInvalidTablePeriod,
+			err: errInvalidTablePeriod,
 		},
 		"should pass on index and chunk table period multiple of 1h for schema v1": {
 			config: &SchemaConfig{
@@ -355,7 +356,7 @@ func TestSchemaConfig_Validate(t *testing.T) {
 					},
 				},
 			},
-			expected: nil,
+			err: nil,
 		},
 		"should fail on index table period not multiple of 24h for schema v10": {
 			config: &SchemaConfig{
@@ -366,7 +367,7 @@ func TestSchemaConfig_Validate(t *testing.T) {
 					},
 				},
 			},
-			expected: errInvalidTablePeriod,
+			err: errInvalidTablePeriod,
 		},
 		"should fail on chunk table period not multiple of 24h for schema v10": {
 			config: &SchemaConfig{
@@ -378,7 +379,7 @@ func TestSchemaConfig_Validate(t *testing.T) {
 					},
 				},
 			},
-			expected: errInvalidTablePeriod,
+			err: errInvalidTablePeriod,
 		},
 		"should pass on index and chunk table period multiple of 24h for schema v10": {
 			config: &SchemaConfig{
@@ -390,7 +391,17 @@ func TestSchemaConfig_Validate(t *testing.T) {
 					},
 				},
 			},
-			expected: nil,
+			expected: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						Schema:      "v10",
+						RowShards:   16,
+						IndexTables: PeriodicTableConfig{Period: 24 * time.Hour},
+						ChunkTables: PeriodicTableConfig{Period: 24 * time.Hour},
+					},
+				},
+			},
+			err: nil,
 		},
 		"should pass on index and chunk table period set to zero (no period tables)": {
 			config: &SchemaConfig{
@@ -402,7 +413,54 @@ func TestSchemaConfig_Validate(t *testing.T) {
 					},
 				},
 			},
-			expected: nil,
+			expected: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						Schema:      "v10",
+						RowShards:   16,
+						IndexTables: PeriodicTableConfig{Period: 0},
+						ChunkTables: PeriodicTableConfig{Period: 0},
+					},
+				},
+			},
+			err: nil,
+		},
+		"should set shard factor defaults": {
+			config: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						Schema: "v10",
+					},
+				},
+			},
+			expected: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						Schema:    "v10",
+						RowShards: 16,
+					},
+				},
+			},
+			err: nil,
+		},
+		"should not override explicit shard factor": {
+			config: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						Schema:    "v11",
+						RowShards: 6,
+					},
+				},
+			},
+			expected: &SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						Schema:    "v11",
+						RowShards: 6,
+					},
+				},
+			},
+			err: nil,
 		},
 	}
 
@@ -411,7 +469,76 @@ func TestSchemaConfig_Validate(t *testing.T) {
 
 		t.Run(testName, func(t *testing.T) {
 			actual := testData.config.Validate()
-			assert.Equal(t, testData.expected, actual)
+			assert.Equal(t, testData.err, actual)
+			if testData.expected != nil {
+				require.Equal(t, testData.expected, testData.config)
+			}
+		})
+	}
+}
+
+func TestPeriodConfig_Validate(t *testing.T) {
+	for _, tc := range []struct {
+		desc string
+		in   PeriodConfig
+		err  string
+	}{
+		{
+			desc: "ignore pre v10 sharding",
+			in: PeriodConfig{
+
+				Schema:      "v9",
+				IndexTables: PeriodicTableConfig{Period: 0},
+				ChunkTables: PeriodicTableConfig{Period: 0},
+			},
+		},
+		{
+			desc: "error on invalid schema",
+			in: PeriodConfig{
+
+				Schema:      "v99",
+				IndexTables: PeriodicTableConfig{Period: 0},
+				ChunkTables: PeriodicTableConfig{Period: 0},
+			},
+			err: "invalid schema version",
+		},
+		{
+			desc: "v10 with shard factor",
+			in: PeriodConfig{
+
+				Schema:      "v10",
+				RowShards:   16,
+				IndexTables: PeriodicTableConfig{Period: 0},
+				ChunkTables: PeriodicTableConfig{Period: 0},
+			},
+		},
+		{
+			desc: "v11 with shard factor",
+			in: PeriodConfig{
+
+				Schema:      "v11",
+				RowShards:   16,
+				IndexTables: PeriodicTableConfig{Period: 0},
+				ChunkTables: PeriodicTableConfig{Period: 0},
+			},
+		},
+		{
+			desc: "error v10 no specified shard factor",
+			in: PeriodConfig{
+
+				Schema:      "v10",
+				IndexTables: PeriodicTableConfig{Period: 0},
+				ChunkTables: PeriodicTableConfig{Period: 0},
+			},
+			err: "Must have row_shards > 0 (current: 0) for schema (v10)",
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			if tc.err == "" {
+				require.Nil(t, tc.in.validate())
+			} else {
+				require.Error(t, tc.in.validate(), tc.err)
+			}
 		})
 	}
 }
