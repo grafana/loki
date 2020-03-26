@@ -10,7 +10,7 @@ Based on the feedback of the first design and our own usage, it’s pretty clear
 
 For instance some users are currently extracting labels using Promtail pipeline stages as a way to filter and aggregate logs but this causes issues with our storage system. (Causes the creation of a lot of small chunks, putting pressure on the filesystem when trying to aggregated over a long period of time).
 
-In this proposal I want to introduce multiple new operators into the LogQL language, that will allow to transform a log stream into a field stream which can be then aggregated, compared, sorted and outputted by our users.
+In this proposal I introduce multiple new operators in the LogQL language that will allow transforming a log stream into a field stream which can be then aggregated, compared, and sorted.
 
 You'll see that all those new operators (except aggregations over time) are chain together with the `|` pipe operator. This is because we believe it's the most intuitive way to write queries that process data in the Linux world as opposed to the function format. (e.g `cat my.log | grep -e 'foo' | jq .field | wc -l` is easier to read than `wc(jq(grep(cat my.log,'foo'),.field),-l)`)
 
@@ -39,6 +39,7 @@ You'll see that all those new operators (except aggregations over time) are chai
     - [API Changes](#api-changes)
         - [Faceting](#faceting)
     - [Glossary](#glossary)
+    - [Work plan](#work-plan)
     - [Syntax Types](#syntax-types)
 
 <!-- /TOC -->
@@ -173,7 +174,19 @@ would be transformed into those fields:
 
 ### Logfmt
 
-The logfmt parser will allow to extract fields from the [log format](https://brandur.org/logfmt). For example the expression `{job="prod/app"} | logfmt client_ip path` will transform the log line `time=03-10-2020T20:00:01 path=/foo/bar client_ip="127.0.0.1"` into :
+The logfmt parser will allow to extract fields from the [log format](https://brandur.org/logfmt). For example the expression:
+
+```logql
+{job="prod/app"} | logfmt client_ip path
+```
+
+will transform the log line
+
+```log
+time=03-10-2020T20:00:01 path=/foo/bar client_ip="127.0.0.1"
+```
+
+into those fields:
 
 ```json
 {
@@ -455,6 +468,17 @@ As explained in the [parsers section](#logql-parsers), some parsers (`json` and 
 - field entry: a set of fields (an object) and a timestamp.
 - log stream: a set of log entries attached to same set of labels.
 - field stream: a set of field entries  attached to same set of labels.
+
+## Work plan
+
+Obviously there is a lot in there but nothing seems to be tied together. So the plan is definitively to iterate.
+
+1. We will introduce one parser operator (TDB).
+2. Introduce the filter operator.
+3. Introduce the series operator with a first set of range aggregation.
+4. Introduce more parsers.
+5. Introduce histogram operator and quantile range aggregation.
+6. Introduce limit, uniq, sort.
 
 ## Syntax Types
 
