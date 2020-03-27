@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+  <!-- Den här länken länkar till ett css dokument, i det har vi skrivit all styling för sidan.
+      Du hittar den filen i samma mapp som index.html om du vill öppna och kika. I morgon går vi
+      igenom mer om det. Du kan också testa att ta bort den här länken och se hur sidan ser ut med bara html. -->
+
+  <link rel="stylesheet" href="style (kopia).css" type="text/css">
+  <title>Sally Awdah</title>
+  <link rel="shortcut icon" href="">
+
+</head>
+
+      <body>
+
+            <!-- Vi har valt att dela in sidan i sektioner – så kallade <section> taggar,
+            de funkar ungefär på samma sätt som div-taggen.
+            Det är för att man enkelt ska knna se vilken kod som hör till vilken del av
+            sidan när man redigerar det och det blir lite grupperat. -->
+
+            <!--Uppdatera koden så att sidan handlar om dig -->
+
+            <section class="about-me">
+
+                  <!--Här kan du byta ut mot en bild på dig själv, kom ihåg att lägga den i samma mapp som projektet-->
+                  <img src="header.jpg" alt="picture of sally"/>
+
+                  <h1></h1>
+                  <h2>Jag är en IT intresserad tjej som älskar djur och mat.🌻</h2>
+                  <a class="button" href="https://www.linkedin.com/in/sally-awdah-77372a1a0/" target="blank">Kika in min Linkedin</a>
+
+            </section>
+
+        <!-- Här finns all html kod som har med dina top tre saker som du är bäst på. -->
+
+            <section class="greatness">
+
+                  <h2>3 saker jag är grym på:</h2>
+
+                  <h3>1. Projektledning inom IT branchen</h3>
+                  <p> jag lutar mig åt servat leadership i min roll, därför älskar jag att coacha organisationer och teams att implementera/driva ett agilt arbetssätt genom att förhålla mig till scrums ramverk. Genom ett iterativt arbete kan man välkomna ändringar och anpassa inkrementet till kundens förväntningar utan att töja på tid, kvalitet eller resurser. Att leverera användbar funktionalitet till användare  kontinuerligt fram tills dess att produkten är "klar" ger möjligheten för transparens, granskning och anpassning.💁🏻‍🔄</p>
+
+                  <h3>2. Att vara en djurvän</h3>
+                  <p>Jag har ett djurvänligt hjärta, därför tar jag mitt ansvar och försöker leva på ett sätt som inte hotar djurens liv och framtid så gott jag kan! Min största dröm är att volontärarbeta i Afrika under en längre period i framtiden.🐘🌏</p>
+
+                  <h3>3. Träna‍</h3>
+                  <p> Träning för mig är en av mina favorit hobbys på fritiden, jag gillar allt från att klättra, åka skridskor, gymnastik, gym, dans, YOU name it! 💃🏋️</p>
+
+            </section>
+
+            <footer>
+            
+                  <!--Det här är en ny tag som används för att göra en footer. I extrauppgifterna finns det lite grejer som involverar footern.-->
+                  <h class="topp-footer">Kontaka mig📩</h><br>
+                  <a href="mailto:sally.awdah1@gmail.com" target="_top">Mail</a> 
+                  <p class="right"><img src="hjärtan.gif" alt="dancing taco"class="right"/><p/>
+                 <p class="left"><img scr="hjärtan"/><p/>
+
+                    
+ 
+                  
+                   
+                  
+            </footer>
+
+      </body>
+
+</html>
