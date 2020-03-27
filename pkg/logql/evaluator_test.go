@@ -9,9 +9,8 @@ import (
 )
 
 func TestDefaultEvaluator_DivideByZero(t *testing.T) {
-	ev := &defaultEvaluator{}
 
-	require.Equal(t, true, math.IsNaN(ev.mergeBinOp(OpTypeDiv,
+	require.Equal(t, true, math.IsNaN(mergeBinOp(OpTypeDiv,
 		&promql.Sample{
 			Point: promql.Point{T: 1, V: 1},
 		},
@@ -20,7 +19,7 @@ func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 		},
 	).Point.V))
 
-	require.Equal(t, true, math.IsNaN(ev.mergeBinOp(OpTypeMod,
+	require.Equal(t, true, math.IsNaN(mergeBinOp(OpTypeMod,
 		&promql.Sample{
 			Point: promql.Point{T: 1, V: 1},
 		},

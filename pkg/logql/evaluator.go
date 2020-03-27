@@ -69,10 +69,16 @@ func GetRangeType(q Params) QueryRangeType {
 
 // Evaluator is an interface for iterating over data at different nodes in the AST
 type Evaluator interface {
-	// Evaluator returns a StepEvaluator for a given SampleExpr
-	Evaluator(context.Context, SampleExpr, Params) (StepEvaluator, error)
+	// StepEvaluator returns a StepEvaluator for a given SampleExpr. It's explicitly passed another StepEvaluator// in order to enable arbitrary compuation of embedded expressions. This allows more modular & extensible
+	// StepEvaluator implementations which can be composed.
+	StepEvaluator(ctx context.Context, nextEvaluator Evaluator, expr SampleExpr, p Params) (StepEvaluator, error)
 	// Iterator returns the iter.EntryIterator for a given LogSelectorExpr
 	Iterator(context.Context, LogSelectorExpr, Params) (iter.EntryIterator, error)
+}
+
+// EvaluatorUnsupportedType is a helper for signaling that an evaluator does not support an Expr type
+func EvaluatorUnsupportedType(expr Expr, ev Evaluator) error {
+	return errors.Errorf("unexpected expr type (%T) for Evaluator type (%T) ", expr, ev)
 }
 
 type defaultEvaluator struct {
@@ -99,21 +105,43 @@ func (ev *defaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, 
 
 }
 
-func (ev *defaultEvaluator) Evaluator(ctx context.Context, expr SampleExpr, q Params) (StepEvaluator, error) {
+func (ev *defaultEvaluator) StepEvaluator(
+	ctx context.Context,
+	nextEv Evaluator,
+	expr SampleExpr,
+	q Params,
+) (StepEvaluator, error) {
 	switch e := expr.(type) {
 	case *vectorAggregationExpr:
-		return ev.vectorAggEvaluator(ctx, e, q)
+		return vectorAggEvaluator(ctx, nextEv, e, q)
 	case *rangeAggregationExpr:
-		return ev.rangeAggEvaluator(ctx, e, q)
+		entryIter, err := ev.querier.Select(ctx, SelectParams{
+			&logproto.QueryRequest{
+				Start:     q.Start().Add(-e.left.interval),
+				End:       q.End(),
+				Limit:     0,
+				Direction: logproto.FORWARD,
+				Selector:  expr.Selector().String(),
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		return rangeAggEvaluator(entryIter, e, q)
 	case *binOpExpr:
-		return ev.binOpEvaluator(ctx, e, q)
+		return binOpStepEvaluator(ctx, nextEv, e, q)
 	default:
-		return nil, errors.Errorf("unexpected type (%T): %v", e, e)
+		return nil, EvaluatorUnsupportedType(e, ev)
 	}
 }
 
-func (ev *defaultEvaluator) vectorAggEvaluator(ctx context.Context, expr *vectorAggregationExpr, q Params) (StepEvaluator, error) {
-	nextEvaluator, err := ev.Evaluator(ctx, expr.left, q)
+func vectorAggEvaluator(
+	ctx context.Context,
+	ev Evaluator,
+	expr *vectorAggregationExpr,
+	q Params,
+) (StepEvaluator, error) {
+	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.left, q)
 	if err != nil {
 		return nil, err
 	}
@@ -302,21 +330,11 @@ func (ev *defaultEvaluator) vectorAggEvaluator(ctx context.Context, expr *vector
 	}, nextEvaluator.Close)
 }
 
-func (ev *defaultEvaluator) rangeAggEvaluator(ctx context.Context, expr *rangeAggregationExpr, q Params) (StepEvaluator, error) {
-	entryIter, err := ev.querier.Select(ctx, SelectParams{
-		&logproto.QueryRequest{
-			Start:     q.Start().Add(-expr.left.interval),
-			End:       q.End(),
-			Limit:     0,
-			Direction: logproto.FORWARD,
-			Selector:  expr.Selector().String(),
-		},
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
+func rangeAggEvaluator(
+	entryIter iter.EntryIterator,
+	expr *rangeAggregationExpr,
+	q Params,
+) (StepEvaluator, error) {
 	vecIter := newRangeVectorIterator(entryIter, expr.left.interval.Nanoseconds(), q.Step().Nanoseconds(),
 		q.Start().UnixNano(), q.End().UnixNano())
 
@@ -341,8 +359,9 @@ func (ev *defaultEvaluator) rangeAggEvaluator(ctx context.Context, expr *rangeAg
 
 // binOpExpr explicly does not handle when both legs are literals as
 // it makes the type system simpler and these are reduced in mustNewBinOpExpr
-func (ev *defaultEvaluator) binOpEvaluator(
+func binOpStepEvaluator(
 	ctx context.Context,
+	ev Evaluator,
 	expr *binOpExpr,
 	q Params,
 ) (StepEvaluator, error) {
@@ -352,26 +371,26 @@ func (ev *defaultEvaluator) binOpEvaluator(
 
 	// match a literal expr with all labels in the other leg
 	if lOk {
-		rhs, err := ev.Evaluator(ctx, expr.RHS, q)
+		rhs, err := ev.StepEvaluator(ctx, ev, expr.RHS, q)
 		if err != nil {
 			return nil, err
 		}
-		return ev.literalEvaluator(expr.op, leftLit, rhs, false)
+		return literalStepEvaluator(expr.op, leftLit, rhs, false)
 	}
 	if rOk {
-		lhs, err := ev.Evaluator(ctx, expr.SampleExpr, q)
+		lhs, err := ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
 		if err != nil {
 			return nil, err
 		}
-		return ev.literalEvaluator(expr.op, rightLit, lhs, true)
+		return literalStepEvaluator(expr.op, rightLit, lhs, true)
 	}
 
 	// we have two non literal legs
-	lhs, err := ev.Evaluator(ctx, expr.SampleExpr, q)
+	lhs, err := ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
 	if err != nil {
 		return nil, err
 	}
-	rhs, err := ev.Evaluator(ctx, expr.RHS, q)
+	rhs, err := ev.StepEvaluator(ctx, ev, expr.RHS, q)
 	if err != nil {
 		return nil, err
 	}
@@ -409,7 +428,7 @@ func (ev *defaultEvaluator) binOpEvaluator(
 		for _, pair := range pairs {
 
 			// merge
-			if merged := ev.mergeBinOp(expr.op, pair[0], pair[1]); merged != nil {
+			if merged := mergeBinOp(expr.op, pair[0], pair[1]); merged != nil {
 				results = append(results, *merged)
 			}
 		}
@@ -425,7 +444,7 @@ func (ev *defaultEvaluator) binOpEvaluator(
 	})
 }
 
-func (ev *defaultEvaluator) mergeBinOp(op string, left, right *promql.Sample) *promql.Sample {
+func mergeBinOp(op string, left, right *promql.Sample) *promql.Sample {
 	var merger func(left, right *promql.Sample) *promql.Sample
 
 	switch op {
@@ -554,9 +573,9 @@ func (ev *defaultEvaluator) mergeBinOp(op string, left, right *promql.Sample) *p
 
 }
 
-// literalEvaluator merges a literal with a StepEvaluator. Since order matters in
+// literalStepEvaluator merges a literal with a StepEvaluator. Since order matters in
 // non commutative operations, inverted should be true when the literalExpr is not the left argument.
-func (ev *defaultEvaluator) literalEvaluator(
+func literalStepEvaluator(
 	op string,
 	lit *literalExpr,
 	eval StepEvaluator,
@@ -578,7 +597,7 @@ func (ev *defaultEvaluator) literalEvaluator(
 					left, right = right, left
 				}
 
-				if merged := ev.mergeBinOp(
+				if merged := mergeBinOp(
 					op,
 					left,
 					right,
