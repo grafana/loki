@@ -11,6 +11,7 @@ import (
 type Limits interface {
 	queryrange.Limits
 	QuerySplitDuration(string) time.Duration
+	MaxEntriesLimitPerQuery(string) int
 }
 
 type limits struct {

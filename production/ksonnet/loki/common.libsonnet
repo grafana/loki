@@ -7,7 +7,7 @@
 
     defaultPorts::
       [
-        containerPort.new(name='http-metrics', port=80),
+        containerPort.new(name='http-metrics', port=$._config.http_listen_port),
         containerPort.new(name='grpc', port=9095),
       ],
   },

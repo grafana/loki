@@ -41,13 +41,13 @@ querying logs.
 
 ### Documentation
 
-Documentation for the latest release can be found
-[here](https://github.com/grafana/loki/tree/v1.3.0/docs/README.md). Documentation for
-the unreleased master branch can be found inside the
-[`docs/` folder](./docs/README.md).
+* [master](./docs/README.md)
+* [v1.3.0](https://github.com/grafana/loki/tree/v1.3.0/docs/README.md)
+* [v1.2.0](https://github.com/grafana/loki/tree/v1.2.0/docs/README.md)
+* [v1.1.0](https://github.com/grafana/loki/tree/v1.1.0/docs/README.md)
+* [v1.0.0](https://github.com/grafana/loki/tree/v1.0.0/docs/README.md)
 
-
-Some key documents to read:
+Commonly used sections (from the latest release v1.3.0):
 
 - [API documentation](https://github.com/grafana/loki/tree/v1.3.0/docs/api.md) for alternative ways of getting logs into Loki.
 - [Operations](https://github.com/grafana/loki/tree/v1.3.0/docs/operations) for important aspects of running Loki.

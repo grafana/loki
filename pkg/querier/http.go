@@ -5,12 +5,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
-	marshal_legacy "github.com/grafana/loki/pkg/logql/marshal/legacy"
-
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/websocket"
@@ -18,6 +12,13 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
+	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/loghttp"
+	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/marshal"
+	marshal_legacy "github.com/grafana/loki/pkg/logql/marshal/legacy"
 )
 
 const (
@@ -43,6 +44,12 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
+
+	if err := q.validateEntriesLimits(ctx, request.Limit); err != nil {
+		writeError(err, w)
+		return
+	}
+
 	query := q.engine.NewRangeQuery(request.Query, request.Start, request.End, request.Step, request.Direction, request.Limit)
 	result, err := query.Exec(ctx)
 	if err != nil {
@@ -67,6 +74,12 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
+
+	if err := q.validateEntriesLimits(ctx, request.Limit); err != nil {
+		writeError(err, w)
+		return
+	}
+
 	query := q.engine.NewInstantQuery(request.Query, request.Ts, request.Direction, request.Limit)
 	result, err := query.Exec(ctx)
 	if err != nil {
@@ -106,6 +119,11 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 	// short circuit metric queries
 	if _, ok := expr.(logql.SampleExpr); ok {
 		writeError(httpgrpc.Errorf(http.StatusBadRequest, "legacy endpoints only support %s result type", logql.ValueTypeStreams), w)
+		return
+	}
+
+	if err := q.validateEntriesLimits(ctx, request.Limit); err != nil {
+		writeError(err, w)
 		return
 	}
 
@@ -325,4 +343,18 @@ func writeError(err error, w http.ResponseWriter) {
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func (q *Querier) validateEntriesLimits(ctx context.Context, limit uint32) error {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	maxEntriesLimit := q.limits.MaxEntriesLimitPerQuery(userID)
+	if int(limit) > maxEntriesLimit && maxEntriesLimit != 0 {
+		return httpgrpc.Errorf(http.StatusBadRequest,
+			"max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", limit, maxEntriesLimit)
+	}
+	return nil
 }

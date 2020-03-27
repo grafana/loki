@@ -68,6 +68,11 @@ Supported contents and default values of `config.yaml`:
 
 # Describes how Promtail connects to multiple instances
 # of Loki, sending logs to each.
+# WARNING: If one of the remote Loki servers fails to respond or responds 
+# with any error which is retriable, this will impact sending logs to any 
+# other configured remote Loki servers.  Sending is done on a single thread!
+# It is generally recommended to run multiple promtail clients in parallel
+# if you want to send to multiple remote Loki instances.
 clients:
   - [<client_config>]
 
