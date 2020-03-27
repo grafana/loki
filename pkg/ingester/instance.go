@@ -186,7 +186,7 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 	return s.labels
 }
 
-func (i *instance) Query(ctx context.Context, req *logproto.QueryRequest) (iter.HeapIterator, error) {
+func (i *instance) Query(ctx context.Context, req *logproto.QueryRequest) ([]iter.EntryIterator, error) {
 	expr, err := (logql.SelectParams{QueryRequest: req}).LogSelector()
 	if err != nil {
 		return nil, err
@@ -214,7 +214,7 @@ func (i *instance) Query(ctx context.Context, req *logproto.QueryRequest) (iter.
 		return nil, err
 	}
 
-	return iter.NewHeapIterator(ctx, iters, req.Direction), nil
+	return iters, nil
 }
 
 func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {

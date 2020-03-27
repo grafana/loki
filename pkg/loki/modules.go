@@ -256,7 +256,7 @@ func (t *Loki) initTableManager() error {
 		os.Exit(1)
 	}
 
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.cfg.StorageConfig.Config)
+	tableClient, err := loki_storage.NewTableClient(lastConfig.IndexType, t.cfg.StorageConfig)
 	if err != nil {
 		return err
 	}

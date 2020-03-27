@@ -255,12 +255,10 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	itr, err := instance.Query(ctx, req)
+	itrs, err := instance.Query(ctx, req)
 	if err != nil {
 		return err
 	}
-
-	defer helpers.LogError("closing iterator", itr.Close)
 
 	if i.cfg.QueryStore {
 		start := req.Start
@@ -273,19 +271,22 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		}
 
 		if start.Before(end) {
-			req.Start = start
-			req.End = end
+			storeRequest := recreateRequestWithTime(req, start, end)
 
-			storeItr, err := i.store.LazyQuery(ctx, logql.SelectParams{QueryRequest: req})
+			storeItr, err := i.store.LazyQuery(ctx, logql.SelectParams{QueryRequest: storeRequest})
 			if err != nil {
 				return err
 			}
 
-			itr.Push(storeItr)
+			itrs = append(itrs, storeItr)
 		}
 	}
 
-	return sendBatches(queryServer.Context(), itr, queryServer, req.Limit)
+	heapItr := iter.NewHeapIterator(ctx, itrs, req.Direction)
+
+	defer helpers.LogError("closing iterator", heapItr.Close)
+
+	return sendBatches(queryServer.Context(), heapItr, queryServer, req.Limit)
 }
 
 // Label returns the set of labels for the stream this ingester knows about.
@@ -393,4 +394,13 @@ func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRe
 	}
 
 	return &resp, nil
+}
+
+// creates a new QueryRequest with a query range
+func recreateRequestWithTime(req *logproto.QueryRequest, start, end time.Time) *logproto.QueryRequest {
+	newRequest := *req
+	newRequest.Start = start
+	newRequest.End = end
+
+	return &newRequest
 }

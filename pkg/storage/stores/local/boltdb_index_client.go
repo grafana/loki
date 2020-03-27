@@ -26,16 +26,14 @@ func NewBoltDBIndexClient(cfg local.BoltDBConfig, archiveStoreClient chunk.Objec
 		return nil, err
 	}
 
-	archiver, err := NewShipper(archiverCfg, archiveStoreClient, func(name string, operation int) (db *bbolt.DB, e error) {
-		return boltDBIndexClient.GetDB(name, operation)
-	})
+	shipper, err := NewShipper(archiverCfg, archiveStoreClient, boltDBIndexClient)
 	if err != nil {
 		return nil, err
 	}
 
 	indexClient := BoltdbIndexClientWithArchiver{
 		BoltIndexClient: boltDBIndexClient,
-		shipper:         archiver,
+		shipper:         shipper,
 		done:            make(chan struct{}),
 	}
 

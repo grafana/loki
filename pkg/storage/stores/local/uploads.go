@@ -22,7 +22,7 @@ func (a *Shipper) uploadFiles(ctx context.Context) error {
 		return nil
 	}
 
-	filesInfo, err := ioutil.ReadDir(a.cfg.BoltdbDirectory)
+	filesInfo, err := ioutil.ReadDir(a.cfg.ActiveIndexDirectory)
 	if err != nil {
 		return err
 	}
@@ -56,7 +56,7 @@ func (a *Shipper) uploadFiles(ctx context.Context) error {
 
 // uploadFile uploads one of the files locally written by ingesters to storage.
 func (a *Shipper) uploadFile(ctx context.Context, period string) error {
-	if a.cfg.Mode == ShipperModeReadWrite {
+	if a.cfg.Mode == ShipperModeReadOnly {
 		return nil
 	}
 
@@ -67,12 +67,18 @@ func (a *Shipper) uploadFile(ctx context.Context, period string) error {
 	}
 
 	filePath := path.Join(snapshotPath, fmt.Sprintf("%s.%d", a.uploader, time.Now().Unix()))
-	f, err := os.Open(filePath)
+	f, err := os.Create(filePath)
 	if err != nil {
 		return err
 	}
 
-	db, err := a.localBoltdbGetter(period, local.DBOperationRead)
+	defer func() {
+		if err := os.Remove(filePath); err != nil {
+			level.Error(util.Logger)
+		}
+	}()
+
+	db, err := a.boltDBGetter.GetDB(period, local.DBOperationRead)
 	if err != nil {
 		return err
 	}
@@ -85,12 +91,16 @@ func (a *Shipper) uploadFile(ctx context.Context, period string) error {
 		return err
 	}
 
+	if err := f.Sync(); err != nil {
+		return err
+	}
+
+	if _, err := f.Seek(0, 0); err != nil {
+		return err
+	}
+
 	defer func() {
 		if err := f.Close(); err != nil {
-			level.Error(util.Logger)
-		}
-
-		if err := os.Remove(filePath); err != nil {
 			level.Error(util.Logger)
 		}
 	}()

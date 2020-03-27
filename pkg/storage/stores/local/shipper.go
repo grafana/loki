@@ -29,13 +29,17 @@ const (
 	ShipperModeWriteOnly
 
 	// ShipperFileUploadInterval defines interval for uploading active boltdb files from local which are being written to by ingesters.
-	ShipperFileUploadInterval = 15 * time.Minute
+	ShipperFileUploadInterval = 15 * time.Second
 
 	cacheCleanupInterval = 24 * time.Hour
 
 	// BoltDBShipperType holds the index type for using boltdb with shipper which keeps flushing them to a shared storage
 	BoltDBShipperType = "boltdb-shipper"
 )
+
+type BoltDBGetter interface {
+	GetDB(name string, operation int) (*bbolt.DB, error)
+}
 
 type StoreConfig struct {
 	Store            string                  `yaml:"store"`
@@ -53,7 +57,6 @@ type ShipperConfig struct {
 	ResyncInterval       time.Duration `yaml:"resync_interval"`
 	IngesterName         string        `yaml:"-"`
 	Mode                 int           `yaml:"-"`
-	BoltdbDirectory      string        `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
@@ -63,7 +66,7 @@ func (cfg *ShipperConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.StoreConfig.GCSConfig.RegisterFlagsWithPrefix(storeFlagsPrefix, f)
 	cfg.StoreConfig.FSConfig.RegisterFlagsWithPrefix(storeFlagsPrefix, f)
 
-	f.StringVar(&cfg.ActiveIndexDirectory, "boltdb.active-index-directory", "filesystem", "Directory where ingesters would write boltdb files which would then be uploaded by shipper to configured storage")
+	f.StringVar(&cfg.ActiveIndexDirectory, "boltdb.active-index-directory", "", "Directory where ingesters would write boltdb files which would then be uploaded by shipper to configured storage")
 	f.StringVar(&cfg.StoreConfig.Store, "boltdb.shipper.store", "filesystem", "Store for keeping boltdb files")
 	f.StringVar(&cfg.CacheLocation, "boltdb.shipper.cache-location", "", "Cache location for restoring boltDB files for queries")
 	f.DurationVar(&cfg.CacheTTL, "boltdb.shipper.cache-ttl", 24*time.Hour, "TTL for boltDB files restored in cache for queries")
@@ -91,8 +94,8 @@ type filesCollection struct {
 }
 
 type Shipper struct {
-	cfg               ShipperConfig
-	localBoltdbGetter func(name string, operation int) (*bbolt.DB, error)
+	cfg          ShipperConfig
+	boltDBGetter BoltDBGetter
 
 	// downloadedPeriods holds mapping for period -> filesCollection.
 	// Here period is name of the file created by ingesters for a specific period.
@@ -107,20 +110,21 @@ type Shipper struct {
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
-func NewShipper(cfg ShipperConfig, storageClient chunk.ObjectClient, localBoltdbGetter func(name string, operation int) (*bbolt.DB, error)) (*Shipper, error) {
+func NewShipper(cfg ShipperConfig, storageClient chunk.ObjectClient, boltDBGetter BoltDBGetter) (*Shipper, error) {
 	if err := chunk_util.EnsureDirectory(cfg.CacheLocation); err != nil {
 		return nil, err
 	}
 
 	shipper := Shipper{
 		cfg:               cfg,
-		localBoltdbGetter: localBoltdbGetter,
+		boltDBGetter:      boltDBGetter,
 		downloadedPeriods: map[string]*filesCollection{},
 		storageClient:     storageClient,
 		done:              make(chan struct{}),
 		// We would use ingester name and startup timestamp for naming files while uploading so that
 		// ingester does not override old files when using same id
-		uploader: fmt.Sprintf("%s-%d", cfg.IngesterName, time.Now().Unix()),
+		uploader:           fmt.Sprintf("%s-%d", cfg.IngesterName, time.Now().Unix()),
+		uploadedFilesMtime: map[string]time.Time{},
 	}
 
 	go shipper.loop()

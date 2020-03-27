@@ -32,6 +32,7 @@ type Config struct {
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Config.RegisterFlags(f)
+	cfg.BoltDBShipperConfig.RegisterFlags(f)
 	f.IntVar(&cfg.MaxChunkBatchSize, "max-chunk-batch-size", 50, "The maximum number of chunks to fetch per batch.")
 }
 
@@ -49,10 +50,8 @@ type store struct {
 
 // NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits storage.StoreLimits) (Store, error) {
-	err := registerCustomIndexClients(cfg)
-	if err != nil {
-		return nil, err
-	}
+	registerCustomIndexClients(cfg)
+
 	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg, limits)
 	if err != nil {
 		return nil, err
@@ -61,6 +60,15 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 		Store: s,
 		cfg:   cfg,
 	}, nil
+}
+
+// NewTableClient creates a new TableClient using configuration supplied.
+func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
+	if name == local.BoltDBShipperType {
+		name = "boltdb"
+		cfg.FSConfig = cortex_local.FSConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}
+	}
+	return storage.NewTableClient(name, cfg.Config)
 }
 
 // decodeReq sanitizes an incoming request, rounds bounds, and appends the __name__ matcher
@@ -209,7 +217,7 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 	return filtered
 }
 
-func registerCustomIndexClients(cfg Config) error {
+func registerCustomIndexClients(cfg Config) {
 	storage.RegisterIndexClient(local.BoltDBShipperType, func() (chunk.IndexClient, error) {
 		objectClient, err := stores.NewObjectClient(cfg.BoltDBShipperConfig.StoreConfig)
 		if err != nil {
@@ -218,6 +226,4 @@ func registerCustomIndexClients(cfg Config) error {
 
 		return local.NewBoltDBIndexClient(cortex_local.BoltDBConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}, objectClient, cfg.BoltDBShipperConfig)
 	})
-
-	return nil
 }

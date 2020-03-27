@@ -60,6 +60,10 @@ func (a *Shipper) checkStorageForUpdates(ctx context.Context, period string, fc 
 
 	for _, object := range objects {
 		uploader := strings.Split(object.Key, "/")[1]
+		// don't include the file which was uploaded by same ingester
+		if uploader == a.uploader {
+			continue
+		}
 		listedUploaders[uploader] = struct{}{}
 
 		// Checking whether file was updated in the store after we downloaded it, if not, no need to include it in updates
