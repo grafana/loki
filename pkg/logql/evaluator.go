@@ -86,6 +86,15 @@ type defaultEvaluator struct {
 	querier           Querier
 }
 
+// NewDefaultEvaluator constructs a defaultEvaluator
+func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration) Evaluator {
+	return &defaultEvaluator{
+		querier:           querier,
+		maxLookBackPeriod: maxLookBackPeriod,
+	}
+
+}
+
 func (ev *defaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, q Params) (iter.EntryIterator, error) {
 	params := SelectParams{
 		QueryRequest: &logproto.QueryRequest{

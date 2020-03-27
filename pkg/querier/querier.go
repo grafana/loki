@@ -85,7 +85,10 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory cortex_client
 		store:  store,
 		limits: limits,
 	}
-	querier.engine = logql.NewEngine(cfg.Engine, &querier)
+
+	querier.engine = logql.NewEngine(cfg.Engine, func(opts logql.EngineOpts) logql.Evaluator {
+		return logql.NewDefaultEvaluator(&querier, opts.MaxLookBackPeriod)
+	})
 	err := services.StartAndAwaitRunning(context.Background(), querier.pool)
 	if err != nil {
 		return nil, errors.Wrap(err, "querier pool")

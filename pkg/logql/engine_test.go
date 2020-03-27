@@ -324,7 +324,9 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
-			eng := NewEngine(EngineOpts{}, newQuerierRecorder(test.streams, test.params))
+			eng := NewEngine(EngineOpts{}, func(opts EngineOpts) Evaluator {
+				return NewDefaultEvaluator(newQuerierRecorder(test.streams, test.params), opts.MaxLookBackPeriod)
+			})
 			q := eng.NewInstantQuery(test.qs, test.ts, test.direction, test.limit)
 			res, err := q.Exec(context.Background())
 			if err != nil {
@@ -1074,7 +1076,9 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
-			eng := NewEngine(EngineOpts{}, newQuerierRecorder(test.streams, test.params))
+			eng := NewEngine(EngineOpts{}, func(opts EngineOpts) Evaluator {
+				return NewDefaultEvaluator(newQuerierRecorder(test.streams, test.params), opts.MaxLookBackPeriod)
+			})
 
 			q := eng.NewRangeQuery(test.qs, test.start, test.end, test.step, test.direction, test.limit)
 			res, err := q.Exec(context.Background())
@@ -1087,11 +1091,14 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 }
 
 func TestEngine_Stats(t *testing.T) {
-	eng := NewEngine(EngineOpts{}, QuerierFunc(func(ctx context.Context, sp SelectParams) (iter.EntryIterator, error) {
-		st := stats.GetChunkData(ctx)
-		st.DecompressedBytes++
-		return iter.NoopIterator, nil
-	}))
+	eng := NewEngine(EngineOpts{}, func(opts EngineOpts) Evaluator {
+		return NewDefaultEvaluator(QuerierFunc(func(ctx context.Context, sp SelectParams) (iter.EntryIterator, error) {
+			st := stats.GetChunkData(ctx)
+			st.DecompressedBytes++
+			return iter.NoopIterator, nil
+		}), opts.MaxLookBackPeriod)
+	})
+
 	q := eng.NewInstantQuery(`{foo="bar"}`, time.Now(), logproto.BACKWARD, 1000)
 	r, err := q.Exec(context.Background())
 	require.NoError(t, err)
@@ -1117,7 +1124,9 @@ var result promql.Value
 
 func benchmarkRangeQuery(testsize int64, b *testing.B) {
 	b.ReportAllocs()
-	eng := NewEngine(EngineOpts{}, getLocalQuerier(testsize))
+	eng := NewEngine(EngineOpts{}, func(opts EngineOpts) Evaluator {
+		return NewDefaultEvaluator(getLocalQuerier(testsize), opts.MaxLookBackPeriod)
+	})
 	start := time.Unix(0, 0)
 	end := time.Unix(testsize, 0)
 	b.ResetTimer()

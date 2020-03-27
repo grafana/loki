@@ -66,11 +66,11 @@ type Downstreamer interface {
 	Downstream(Expr, Params, *astmapper.ShardAnnotation) Query
 }
 
-// downstreamEvaluator is an evaluator which handles shard aware AST nodes
-type downstreamEvaluator struct{ Downstreamer }
+// DownstreamEvaluator is an evaluator which handles shard aware AST nodes
+type DownstreamEvaluator struct{ Downstreamer }
 
 // Evaluator returns a StepEvaluator for a given SampleExpr
-func (ev *downstreamEvaluator) StepEvaluator(
+func (ev *DownstreamEvaluator) StepEvaluator(
 	ctx context.Context,
 	nextEv Evaluator,
 	expr SampleExpr,
@@ -112,7 +112,7 @@ func (ev *downstreamEvaluator) StepEvaluator(
 }
 
 // Iterator returns the iter.EntryIterator for a given LogSelectorExpr
-func (ev *downstreamEvaluator) Iterator(
+func (ev *DownstreamEvaluator) Iterator(
 	ctx context.Context,
 	expr LogSelectorExpr,
 	params Params,

@@ -19,6 +19,7 @@ message LokiRequest {
   google.protobuf.Timestamp endTs = 5 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
   logproto.Direction direction = 6;
   string path = 7;
+  repeated string shards = 8 [(gogoproto.jsontag) = "shards"];
 }
 
 message LokiResponse {

@@ -79,19 +79,11 @@ type engine struct {
 }
 
 // NewEngine creates a new LogQL engine.
-func NewEngine(opts EngineOpts, q Querier) Engine {
-	if q == nil {
-		panic("nil Querier")
-	}
-
+func NewEngine(opts EngineOpts, mkEvaluator func(EngineOpts) Evaluator) Engine {
 	opts.applyDefault()
-
 	return &engine{
-		timeout: opts.Timeout,
-		evaluator: &defaultEvaluator{
-			querier:           q,
-			maxLookBackPeriod: opts.MaxLookBackPeriod,
-		},
+		timeout:   opts.Timeout,
+		evaluator: mkEvaluator(opts),
 	}
 }
 

@@ -127,6 +127,10 @@ func TestMappingStrings(t *testing.T) {
 		out string
 	}{
 		{
+			in:  `{foo="bar"}`,
+			out: `downstream<{foo="bar"}, shard=0_of_2> ++ downstream<{foo="bar"}, shard=1_of_2>`,
+		},
+		{
 			in:  `sum(rate({foo="bar"}[1m]))`,
 			out: `sum(downstream<sum(rate(({foo="bar"})[1m])), shard=0_of_2> ++ downstream<sum(rate(({foo="bar"})[1m])), shard=1_of_2>)`,
 		},
