@@ -275,7 +275,7 @@ func PopulateMatrixFromScalar(data promql.Scalar, params LiteralParams) promql.M
 				[]promql.Point,
 				0,
 				// allocate enough space for all needed entries
-				int(params.End().Sub(params.Start())/params.Step())+1,
+				int(end.Sub(start)/step)+1,
 			),
 		}
 	)

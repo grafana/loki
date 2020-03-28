@@ -63,7 +63,7 @@ func (c ConcatLogSelectorExpr) String() string {
 // Downstreamer is an interface for deferring responsibility for query execution.
 // It is decoupled from but consumed by a downStreamEvaluator to dispatch ASTs.
 type Downstreamer interface {
-	Downstream(Expr, Params, *astmapper.ShardAnnotation) Query
+	Downstream(Expr, Params, []astmapper.ShardAnnotation) (Query, error)
 }
 
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
@@ -79,7 +79,15 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 	switch e := expr.(type) {
 	case DownstreamSampleExpr:
 		// downstream to a querier
-		qry := ev.Downstream(e.SampleExpr, params, e.shard)
+		var shards []astmapper.ShardAnnotation
+		if e.shard != nil {
+			shards = append(shards, *e.shard)
+		}
+		qry, err := ev.Downstream(e.SampleExpr, params, shards)
+		if err != nil {
+			return nil, err
+		}
+
 		res, err := qry.Exec(ctx)
 		if err != nil {
 			return nil, err
@@ -120,7 +128,15 @@ func (ev *DownstreamEvaluator) Iterator(
 	switch e := expr.(type) {
 	case DownstreamLogSelectorExpr:
 		// downstream to a querier
-		qry := ev.Downstream(e.LogSelectorExpr, params, e.shard)
+		var shards []astmapper.ShardAnnotation
+		if e.shard != nil {
+			shards = append(shards, *e.shard)
+		}
+		qry, err := ev.Downstream(e.LogSelectorExpr, params, shards)
+		if err != nil {
+			return nil, err
+		}
+
 		res, err := qry.Exec(ctx)
 		if err != nil {
 			return nil, err

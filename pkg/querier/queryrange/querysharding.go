@@ -61,7 +61,7 @@ func newASTMapperware(confs queryrange.ShardingConfigs, next queryrange.Handler,
 		logger: log.With(logger, "middleware", "QueryShard.astMapperware"),
 		next:   next,
 		engine: logql.NewEngine(logql.EngineOpts{}, func(_ logql.EngineOpts) logql.Evaluator {
-			return &logql.DownstreamEvaluator{nil}
+			return &logql.DownstreamEvaluator{DownstreamHandler{next}}
 		}),
 	}
 }
