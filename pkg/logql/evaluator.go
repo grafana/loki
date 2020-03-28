@@ -30,6 +30,26 @@ type Params interface {
 	Step() time.Duration
 	Limit() uint32
 	Direction() logproto.Direction
+	Shards() []string
+}
+
+func NewLiteralParams(
+	qs string,
+	start, end time.Time,
+	step time.Duration,
+	direction logproto.Direction,
+	limit uint32,
+	shards []string,
+) LiteralParams {
+	return LiteralParams{
+		qs:        qs,
+		start:     start,
+		end:       end,
+		step:      step,
+		direction: direction,
+		limit:     limit,
+		shards:    shards,
+	}
 }
 
 // LiteralParams impls Params
@@ -39,6 +59,7 @@ type LiteralParams struct {
 	step       time.Duration
 	direction  logproto.Direction
 	limit      uint32
+	shards     []string
 }
 
 // String impls Params
@@ -58,6 +79,9 @@ func (p LiteralParams) Limit() uint32 { return p.limit }
 
 // Direction impls Params
 func (p LiteralParams) Direction() logproto.Direction { return p.direction }
+
+// Shards impls Params
+func (p LiteralParams) Shards() []string { return p.shards }
 
 // GetRangeType returns whether a query is an instant query or range query
 func GetRangeType(q Params) QueryRangeType {
@@ -103,6 +127,7 @@ func (ev *defaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, 
 			Limit:     q.Limit(),
 			Direction: q.Direction(),
 			Selector:  expr.String(),
+			Shards:    q.Shards(),
 		},
 	}
 
@@ -131,6 +156,7 @@ func (ev *defaultEvaluator) StepEvaluator(
 				Limit:     0,
 				Direction: logproto.FORWARD,
 				Selector:  expr.Selector().String(),
+				Shards:    q.Shards(),
 			},
 		})
 		if err != nil {

@@ -7,9 +7,10 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+
+	"github.com/grafana/loki/pkg/logql"
 )
 
 type DownstreamHandler struct {

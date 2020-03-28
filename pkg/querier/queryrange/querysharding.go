@@ -8,10 +8,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/prometheus/promql"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/marshal"
-	"github.com/prometheus/prometheus/promql"
 )
 
 var nanosecondsInMillisecond = int64(time.Millisecond / time.Nanosecond)
@@ -105,14 +106,8 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 	strMappedQuery := mappedQuery.String()
 	level.Debug(ast.logger).Log("msg", "mapped query", "original", strQuery, "mapped", strMappedQuery)
 
-	query := ast.engine.NewRangeQuery(
-		mappedQuery.String(),
-		req.GetStartTs(),
-		req.GetEndTs(),
-		time.Duration(r.GetStep())*time.Millisecond,
-		req.GetDirection(),
-		req.GetLimit(),
-	)
+	params := paramsFromRequest(req.WithQuery(strMappedQuery))
+	query := ast.engine.NewRangeQuery(params)
 
 	res, err := query.Exec(ctx)
 	if err != nil {

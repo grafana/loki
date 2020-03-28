@@ -3,8 +3,9 @@ package logql
 import (
 	"context"
 
-	"github.com/grafana/loki/pkg/iter"
 	"github.com/pkg/errors"
+
+	"github.com/grafana/loki/pkg/iter"
 )
 
 // ChainedEvaluator is an evaluator which chains multiple other evaluators,

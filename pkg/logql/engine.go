@@ -68,8 +68,8 @@ func (opts *EngineOpts) applyDefault() {
 
 // Engine interface used to construct queries
 type Engine interface {
-	NewRangeQuery(qs string, start, end time.Time, step time.Duration, direction logproto.Direction, limit uint32) Query
-	NewInstantQuery(qs string, ts time.Time, direction logproto.Direction, limit uint32) Query
+	NewRangeQuery(Params) Query
+	NewInstantQuery(Params) Query
 }
 
 // engine is the LogQL engine.
@@ -94,7 +94,7 @@ type Query interface {
 }
 
 type query struct {
-	LiteralParams
+	Params
 
 	ng *engine
 }
@@ -134,38 +134,18 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 }
 
 // NewRangeQuery creates a new LogQL range query.
-func (ng *engine) NewRangeQuery(
-	qs string,
-	start, end time.Time, step time.Duration,
-	direction logproto.Direction, limit uint32) Query {
+func (ng *engine) NewRangeQuery(params Params) Query {
 	return &query{
-		LiteralParams: LiteralParams{
-			qs:        qs,
-			start:     start,
-			end:       end,
-			step:      step,
-			direction: direction,
-			limit:     limit,
-		},
-		ng: ng,
+		Params: params,
+		ng:     ng,
 	}
 }
 
 // NewInstantQuery creates a new LogQL instant query.
-func (ng *engine) NewInstantQuery(
-	qs string,
-	ts time.Time,
-	direction logproto.Direction, limit uint32) Query {
+func (ng *engine) NewInstantQuery(params Params) Query {
 	return &query{
-		LiteralParams: LiteralParams{
-			qs:        qs,
-			start:     ts,
-			end:       ts,
-			step:      0,
-			direction: direction,
-			limit:     limit,
-		},
-		ng: ng,
+		Params: params,
+		ng:     ng,
 	}
 }
 
@@ -191,7 +171,7 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 			return nil, err
 		}
 		defer helpers.LogError("closing iterator", iter.Close)
-		streams, err := readStreams(iter, q.limit)
+		streams, err := readStreams(iter, q.Limit())
 		return streams, err
 	}
 
@@ -261,11 +241,11 @@ func (ng *engine) evalLiteral(_ context.Context, expr *literalExpr, q *query) (p
 		return s, nil
 	}
 
-	return PopulateMatrixFromScalar(s, q.LiteralParams), nil
+	return PopulateMatrixFromScalar(s, q.Params), nil
 
 }
 
-func PopulateMatrixFromScalar(data promql.Scalar, params LiteralParams) promql.Matrix {
+func PopulateMatrixFromScalar(data promql.Scalar, params Params) promql.Matrix {
 	var (
 		start  = params.Start()
 		end    = params.End()

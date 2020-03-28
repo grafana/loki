@@ -10,6 +10,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
@@ -80,6 +81,28 @@ func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.Ent
 	}
 
 	matchers = append(matchers, nameLabelMatcher)
+	if shards := req.GetShards(); shards != nil {
+		parsed, err := logql.ParseShards(shards)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range parsed {
+			shardMatcher, err := labels.NewMatcher(
+				labels.MatchEqual,
+				astmapper.ShardLabel,
+				s.String(),
+			)
+			if err != nil {
+				return nil, err
+			}
+			matchers = append(matchers, shardMatcher)
+
+			// TODO(owen-d): passing more than one shard will require
+			// a refactor to cortex to support it. We're leaving this codepath in
+			// preparation of that but will not pass more than one until it's supported.
+			break // nolint:staticcheck
+		}
+	}
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
 	chks, fetchers, err := s.GetChunkRefs(ctx, userID, from, through, matchers...)
 	if err != nil {

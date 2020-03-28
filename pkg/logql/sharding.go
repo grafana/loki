@@ -6,8 +6,9 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/iter"
 	"github.com/prometheus/prometheus/promql"
+
+	"github.com/grafana/loki/pkg/iter"
 )
 
 // DownstreamSampleExpr is a SampleExpr which signals downstream computation
@@ -259,4 +260,21 @@ func ResultIterator(res Result, params Params) (iter.EntryIterator, error) {
 	}
 	return iter.NewStreamsIterator(context.Background(), streams, params.Direction()), nil
 
+}
+
+// ParseShards parses a list of string encoded shards
+func ParseShards(strs []string) ([]astmapper.ShardAnnotation, error) {
+	if len(strs) == 0 {
+		return nil, nil
+	}
+	shards := make([]astmapper.ShardAnnotation, 0, len(strs))
+
+	for _, str := range strs {
+		shard, err := astmapper.ParseShard(str)
+		if err != nil {
+			return nil, err
+		}
+		shards = append(shards, shard)
+	}
+	return shards, nil
 }
