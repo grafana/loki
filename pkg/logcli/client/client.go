@@ -24,6 +24,7 @@ const (
 	queryRangePath  = "/loki/api/v1/query_range"
 	labelsPath      = "/loki/api/v1/labels"
 	labelValuesPath = "/loki/api/v1/label/%s/values"
+	seriesPath      = "/loki/api/v1/series"
 	tailPath        = "/loki/api/v1/tail?query=%s&delay_for=%d&limit=%d&start=%d"
 )
 
@@ -87,6 +88,19 @@ func (c *Client) ListLabelValues(name string, quiet bool) (*loghttp.LabelRespons
 		return nil, err
 	}
 	return &labelResponse, nil
+}
+
+func (c *Client) Series(matchers []string, from, through time.Time, quiet bool) (*loghttp.SeriesResponse, error) {
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", from.UnixNano())
+	params.SetInt("end", through.UnixNano())
+	params.SetStringArray("match", matchers)
+
+	var seriesResponse loghttp.SeriesResponse
+	if err := c.doRequest(params.EncodeWithPath(seriesPath), quiet, &seriesResponse); err != nil {
+		return nil, err
+	}
+	return &seriesResponse, nil
 }
 
 func (c *Client) doQuery(path string, quiet bool) (*loghttp.QueryResponse, error) {

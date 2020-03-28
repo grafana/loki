@@ -8,14 +8,14 @@ import (
 
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
+	"gopkg.in/alecthomas/kingpin.v2"
 
 	_ "github.com/grafana/loki/pkg/build"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/labelquery"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logcli/query"
-
-	"gopkg.in/alecthomas/kingpin.v2"
+	"github.com/grafana/loki/pkg/logcli/seriesquery"
 )
 
 var (
@@ -72,6 +72,9 @@ https://github.com/grafana/loki/blob/master/docs/logql.md`)
 
 	labelsCmd = app.Command("labels", "Find values for a given label.")
 	labelName = labelsCmd.Arg("label", "The name of the label.").HintAction(hintActionLabelNames).String()
+
+	seriesCmd   = app.Command("series", "Run series query.")
+	seriesQuery = newSeriesQuery(seriesCmd)
 )
 
 func main() {
@@ -122,6 +125,8 @@ func main() {
 		q := newLabelQuery(*labelName, *quiet)
 
 		q.DoLabels(queryClient)
+	case seriesCmd.FullCommand():
+		seriesQuery.DoSeries(queryClient)
 	}
 }
 
@@ -165,49 +170,76 @@ func newLabelQuery(labelName string, quiet bool) *labelquery.LabelQuery {
 	}
 }
 
+func newSeriesQuery(cmd *kingpin.CmdClause) *seriesquery.SeriesQuery {
+	// calculate series range from cli params
+	var from, to string
+	var since time.Duration
+
+	q := &seriesquery.SeriesQuery{}
+
+	// executed after all command flags are parsed
+	cmd.Action(func(c *kingpin.ParseContext) error {
+
+		defaultEnd := time.Now()
+		defaultStart := defaultEnd.Add(-since)
+
+		q.Start = mustParse(from, defaultStart)
+		q.End = mustParse(to, defaultEnd)
+		q.Quiet = *quiet
+		return nil
+	})
+
+	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
+	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
+	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
+	cmd.Flag("match", "eg '{foo=\"bar\",baz=~\".*blip\"}'").Required().StringsVar(&q.Matchers)
+
+	return q
+}
+
 func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
-	// calculcate query range from cli params
+	// calculate query range from cli params
 	var now, from, to string
 	var since time.Duration
 
-	query := &query.Query{}
+	q := &query.Query{}
 
 	// executed after all command flags are parsed
 	cmd.Action(func(c *kingpin.ParseContext) error {
 
 		if instant {
-			query.SetInstant(mustParse(now, time.Now()))
+			q.SetInstant(mustParse(now, time.Now()))
 		} else {
 			defaultEnd := time.Now()
 			defaultStart := defaultEnd.Add(-since)
 
-			query.Start = mustParse(from, defaultStart)
-			query.End = mustParse(to, defaultEnd)
+			q.Start = mustParse(from, defaultStart)
+			q.End = mustParse(to, defaultEnd)
 		}
-		query.Quiet = *quiet
+		q.Quiet = *quiet
 		return nil
 	})
 
-	cmd.Flag("limit", "Limit on number of entries to print.").Default("30").IntVar(&query.Limit)
+	cmd.Flag("limit", "Limit on number of entries to print.").Default("30").IntVar(&q.Limit)
 	if instant {
-		cmd.Arg("query", "eg 'rate({foo=\"bar\"} |~ \".*error.*\" [5m])'").Required().StringVar(&query.QueryString)
+		cmd.Arg("query", "eg 'rate({foo=\"bar\"} |~ \".*error.*\" [5m])'").Required().StringVar(&q.QueryString)
 		cmd.Flag("now", "Time at which to execute the instant query.").StringVar(&now)
 	} else {
-		cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"} |~ \".*error.*\"'").Required().StringVar(&query.QueryString)
+		cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"} |~ \".*error.*\"'").Required().StringVar(&q.QueryString)
 		cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
 		cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 		cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
-		cmd.Flag("step", "Query resolution step width").DurationVar(&query.Step)
+		cmd.Flag("step", "Query resolution step width").DurationVar(&q.Step)
 	}
 
-	cmd.Flag("forward", "Scan forwards through logs.").Default("false").BoolVar(&query.Forward)
-	cmd.Flag("no-labels", "Do not print any labels").Default("false").BoolVar(&query.NoLabels)
-	cmd.Flag("exclude-label", "Exclude labels given the provided key during output.").StringsVar(&query.IgnoreLabelsKey)
-	cmd.Flag("include-label", "Include labels given the provided key during output.").StringsVar(&query.ShowLabelsKey)
-	cmd.Flag("labels-length", "Set a fixed padding to labels").Default("0").IntVar(&query.FixedLabelsLen)
-	cmd.Flag("store-config", "Execute the current query using a configured storage from a given Loki configuration file.").Default("").StringVar(&query.LocalConfig)
+	cmd.Flag("forward", "Scan forwards through logs.").Default("false").BoolVar(&q.Forward)
+	cmd.Flag("no-labels", "Do not print any labels").Default("false").BoolVar(&q.NoLabels)
+	cmd.Flag("exclude-label", "Exclude labels given the provided key during output.").StringsVar(&q.IgnoreLabelsKey)
+	cmd.Flag("include-label", "Include labels given the provided key during output.").StringsVar(&q.ShowLabelsKey)
+	cmd.Flag("labels-length", "Set a fixed padding to labels").Default("0").IntVar(&q.FixedLabelsLen)
+	cmd.Flag("store-config", "Execute the current query using a configured storage from a given Loki configuration file.").Default("").StringVar(&q.LocalConfig)
 
-	return query
+	return q
 }
 
 func mustParse(t string, defaultTime time.Time) time.Time {

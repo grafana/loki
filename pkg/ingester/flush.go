@@ -331,7 +331,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		return err
 	}
 
-	// Record statistsics only when actual put request did not return error.
+	// Record statistics only when actual put request did not return error.
 	sizePerTenant := chunkSizePerTenant.WithLabelValues(userID)
 	countPerTenant := chunksPerTenant.WithLabelValues(userID)
 	for i, wc := range wireChunks {
