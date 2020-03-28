@@ -27,7 +27,7 @@ import (
 
 const (
 	pathLabel = "__path__"
-	hostLabel = "__host__"
+	hostLabel = "__address__"
 )
 
 var (
@@ -230,7 +230,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group) {
 			}
 
 			host, ok := labels[hostLabel]
-			if ok && string(host) != s.hostname {
+			if ok && string(host) != s.hostname && string(host) != "localhost" {
 				dropped = append(dropped, newDroppedTarget(fmt.Sprintf("ignoring target, wrong host (labels:%s hostname:%s)", labels.String(), s.hostname), discoveredLabels))
 				level.Debug(s.log).Log("msg", "ignoring target, wrong host", "labels", labels.String(), "hostname", s.hostname)
 				failedTargets.WithLabelValues("wrong_host").Inc()
