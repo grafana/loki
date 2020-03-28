@@ -50,8 +50,6 @@ type MetricsAutoScalingConfig struct {
 	UsageQuery       string  `yaml:"write_usage_query"`     // Promql query to fetch write capacity usage per table
 	ReadUsageQuery   string  `yaml:"read_usage_query"`      // Promql query to fetch read usage per table
 	ReadErrorQuery   string  `yaml:"read_error_query"`      // Promql query to fetch read errors per table
-
-	deprecatedErrorRateQuery string
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -65,8 +63,6 @@ func (cfg *MetricsAutoScalingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.UsageQuery, "metrics.usage-query", defaultUsageQuery, "query to fetch write capacity usage per table")
 	f.StringVar(&cfg.ReadUsageQuery, "metrics.read-usage-query", defaultReadUsageQuery, "query to fetch read capacity usage per table")
 	f.StringVar(&cfg.ReadErrorQuery, "metrics.read-error-query", defaultReadErrorQuery, "query to fetch read errors per table")
-
-	f.StringVar(&cfg.deprecatedErrorRateQuery, "metrics.error-rate-query", "", "DEPRECATED: use -metrics.write-throttle-query instead")
 }
 
 type metricsData struct {
@@ -83,10 +79,6 @@ type metricsData struct {
 }
 
 func newMetrics(cfg DynamoDBConfig) (*metricsData, error) {
-	if cfg.Metrics.deprecatedErrorRateQuery != "" {
-		level.Warn(util.Logger).Log("msg", "use of deprecated flag -metrics.error-rate-query")
-		cfg.Metrics.ThrottleQuery = cfg.Metrics.deprecatedErrorRateQuery
-	}
 	client, err := promApi.NewClient(promApi.Config{Address: cfg.Metrics.URL})
 	if err != nil {
 		return nil, err
