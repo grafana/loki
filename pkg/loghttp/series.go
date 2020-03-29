@@ -18,6 +18,7 @@ func ParseSeriesQuery(r *http.Request) (*logproto.SeriesRequest, error) {
 	}
 
 	xs := r.Form["match"]
+	xs = append(xs, r.Form["match[]"]...)
 
 	// ensure matchers are valid before fanning out to ingesters/store as well as returning valuable parsing errors
 	// instead of 500s
