@@ -19,30 +19,30 @@ workflows:
   version: 2
   default:
     jobs:
-      # # publish jobs depend on this as well,
-      # # thus tags need to be allowed for these
-      # - test: { filters: { <<: *tags } }
+      # publish jobs depend on this as well,
+      # thus tags need to be allowed for these
+      - test: { filters: { <<: *tags } }
 
-      # - build/promtail-windows:
-      #     requires: [test]
+      - build/promtail-windows:
+          requires: [test]
 
-      # - build/docker-driver:
-      #     requires: [test]
-      #     filters: { <<: *no-master }
-      # - publish/docker-driver:
-      #     requires: [test]
-      #     filters: { <<: *tag-or-master }
+      - build/docker-driver:
+          requires: [test]
+          filters: { <<: *no-master }
+      - publish/docker-driver:
+          requires: [test]
+          filters: { <<: *tag-or-master }
 
-      # - publish/binaries:
-      #     requires: [test]
-      #     filters: { <<: *only-tags }
+      - publish/binaries:
+          requires: [test]
+          filters: { <<: *only-tags }
 
-      # - test-helm:
-      #     requires: [test]
-      #     filters: { <<: *tags }
+      - test-helm:
+          requires: [test]
+          filters: { <<: *tags }
       - publish-helm:
-          requires: [] #[test-helm]
-          # filters: { <<: *tag-or-master }
+          requires: [test-helm]
+          filters: { <<: *tag-or-master }
 
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 .defaults: &defaults
