@@ -148,7 +148,7 @@ jobs:
       - checkout
       - run:
           name: import GPG key
-          command: echo -e "$GPG_KEY" | gpg --import && gpg --export-secret-key loki-team@googlegroups.com  > ~/.gnupg/secring.gpg
+          command: echo -e "$GPG_KEY" | gpg --import
       - run:
           name: export  GPG key
           command: gpg --export-secret-key loki-team@googlegroups.com  > ~/.gnupg/secring.gpg
