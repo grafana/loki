@@ -350,7 +350,7 @@ helm-publish: helm
 	git config user.name "${CIRCLE_USERNAME}"
 	git checkout gh-pages || (git checkout --orphan gh-pages && git rm -rf . > /dev/null)
 	mkdir -p charts
-	mv *.tgz index.md charts/
+	mv *.tgz *.tgz.prov index.md charts/
 	helm repo index charts/
 	git add charts/
 	git commit -m "[skip ci] Publishing helm charts: ${CIRCLE_SHA1}"
