@@ -73,15 +73,9 @@ func (cfg *ShipperConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ResyncInterval, "boltdb.shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
 }
 
-type shippedFileDetails struct {
-	uploader string
-	mtime    time.Time
-}
-
-type shippedFile struct {
-	downloadLocation string
-	mtime            time.Time
-	boltdb           *bbolt.DB
+type downloadedFiles struct {
+	mtime  time.Time
+	boltdb *bbolt.DB
 }
 
 // filesCollection holds info about shipped boltdb index files by other uploaders(ingesters).
@@ -90,7 +84,7 @@ type shippedFile struct {
 type filesCollection struct {
 	sync.RWMutex
 	lastUsedAt time.Time
-	files      map[string]shippedFile
+	files      map[string]downloadedFiles
 }
 
 type Shipper struct {
@@ -214,7 +208,7 @@ func (a *Shipper) syncLocalWithStorage(ctx context.Context) error {
 	defer a.downloadedPeriodsMtx.RUnlock()
 
 	for period := range a.downloadedPeriods {
-		if err := a.downloadFilesForPeriod(ctx, period, a.downloadedPeriods[period]); err != nil {
+		if err := a.syncFilesForPeriod(ctx, period, a.downloadedPeriods[period]); err != nil {
 			return err
 		}
 	}
@@ -237,41 +231,45 @@ func (a *Shipper) deleteFileFromCache(period, uploader string, fc *filesCollecti
 	return os.Remove(path.Join(a.cfg.CacheLocation, period, uploader))
 }
 
-func (a *Shipper) getFilesCollection(period string, createIfNotExists bool) *filesCollection {
+func (a *Shipper) getFilesCollection(ctx context.Context, period string, createIfNotExists bool) (*filesCollection, error) {
 	a.downloadedPeriodsMtx.RLock()
 	fc, ok := a.downloadedPeriods[period]
 	a.downloadedPeriodsMtx.RUnlock()
 
 	if !ok && createIfNotExists {
 		a.downloadedPeriodsMtx.Lock()
-		defer a.downloadedPeriodsMtx.Unlock()
-
 		fc, ok = a.downloadedPeriods[period]
 		if ok {
-			return fc
+			a.downloadedPeriodsMtx.Unlock()
 		}
 
-		fc = &filesCollection{files: map[string]shippedFile{}}
+		fc = &filesCollection{files: map[string]downloadedFiles{}}
 		a.downloadedPeriods[period] = fc
-
 	}
 
-	return fc
+	return fc, nil
 }
 
 func (a *Shipper) forEach(ctx context.Context, period string, callback func(db *bbolt.DB) error) error {
-	fc := a.getFilesCollection(period, false)
+	a.downloadedPeriodsMtx.RLock()
+	fc, ok := a.downloadedPeriods[period]
+	a.downloadedPeriodsMtx.RUnlock()
 
-	if fc == nil {
-		fc = a.getFilesCollection(period, true)
+	if !ok {
+		a.downloadedPeriodsMtx.Lock()
+		fc, ok = a.downloadedPeriods[period]
+		if ok {
+			a.downloadedPeriodsMtx.Unlock()
+		} else {
+			fc = &filesCollection{files: map[string]downloadedFiles{}}
+			a.downloadedPeriods[period] = fc
+			a.downloadedPeriodsMtx.Unlock()
 
-		if err := a.downloadFilesForPeriod(ctx, period, fc); err != nil {
-			return err
+			if err := a.downloadFilesForPeriod(ctx, period, fc); err != nil {
+				return err
+			}
 		}
 
-		a.downloadedPeriodsMtx.RLock()
-		fc = a.downloadedPeriods[period]
-		a.downloadedPeriodsMtx.RUnlock()
 	}
 
 	fc.RLock()
