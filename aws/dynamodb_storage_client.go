@@ -102,7 +102,6 @@ type DynamoDBConfig struct {
 	DynamoDB               flagext.URLValue         `yaml:"dynamodb_url"`
 	APILimit               float64                  `yaml:"api_limit"`
 	ThrottleLimit          float64                  `yaml:"throttle_limit"`
-	ApplicationAutoScaling flagext.URLValue         `yaml:"application_autoscaling_url"`
 	Metrics                MetricsAutoScalingConfig `yaml:"metrics"`
 	ChunkGangSize          int                      `yaml:"chunk_gang_size"`
 	ChunkGetMaxParallelism int                      `yaml:"chunk_get_max_parallelism"`
@@ -115,7 +114,6 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<table-name> to use a mock in-memory implementation.")
 	f.Float64Var(&cfg.APILimit, "dynamodb.api-limit", 2.0, "DynamoDB table management requests per second limit.")
 	f.Float64Var(&cfg.ThrottleLimit, "dynamodb.throttle-limit", 10.0, "DynamoDB rate cap to back off when throttled.")
-	f.Var(&cfg.ApplicationAutoScaling, "applicationautoscaling.url", "ApplicationAutoscaling endpoint URL with escaped Key and Secret encoded.")
 	f.IntVar(&cfg.ChunkGangSize, "dynamodb.chunk-gang-size", 10, "Number of chunks to group together to parallelise fetches (zero to disable)")
 	f.IntVar(&cfg.ChunkGetMaxParallelism, "dynamodb.chunk.get-max-parallelism", 32, "Max number of chunk-get operations to start in parallel")
 	f.DurationVar(&cfg.backoffConfig.MinBackoff, "dynamodb.min-backoff", 100*time.Millisecond, "Minimum backoff time")

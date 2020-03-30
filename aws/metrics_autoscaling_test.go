@@ -9,9 +9,113 @@ import (
 	"github.com/pkg/errors"
 	promV1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/mtime"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
+
+const (
+	tablePrefix      = "cortex_"
+	chunkTablePrefix = "chunks_"
+	tablePeriod      = 7 * 24 * time.Hour
+	gracePeriod      = 15 * time.Minute
+	maxChunkAge      = 12 * time.Hour
+	inactiveWrite    = 1
+	inactiveRead     = 2
+	write            = 200
+	read             = 100
+)
+
+func fixtureWriteScale() chunk.AutoScalingConfig {
+	return chunk.AutoScalingConfig{
+		Enabled:     true,
+		MinCapacity: 100,
+		MaxCapacity: 250,
+		OutCooldown: 100,
+		InCooldown:  100,
+		TargetValue: 80.0,
+	}
+}
+
+func fixtureReadScale() chunk.AutoScalingConfig {
+	return chunk.AutoScalingConfig{
+		Enabled:     true,
+		MinCapacity: 1,
+		MaxCapacity: 2000,
+		OutCooldown: 100,
+		InCooldown:  100,
+		TargetValue: 80.0,
+	}
+}
+
+func fixturePeriodicTableConfig(prefix string) chunk.PeriodicTableConfig {
+	return chunk.PeriodicTableConfig{
+		Prefix: prefix,
+		Period: tablePeriod,
+	}
+}
+
+func fixtureProvisionConfig(inactLastN int64, writeScale, inactWriteScale chunk.AutoScalingConfig) chunk.ProvisionConfig {
+	return chunk.ProvisionConfig{
+		ProvisionedWriteThroughput: write,
+		ProvisionedReadThroughput:  read,
+		InactiveWriteThroughput:    inactiveWrite,
+		InactiveReadThroughput:     inactiveRead,
+		WriteScale:                 writeScale,
+		InactiveWriteScale:         inactWriteScale,
+		InactiveWriteScaleLastN:    inactLastN,
+	}
+}
+
+func fixtureReadProvisionConfig(readScale, inactReadScale chunk.AutoScalingConfig) chunk.ProvisionConfig {
+	return chunk.ProvisionConfig{
+		ProvisionedWriteThroughput: write,
+		ProvisionedReadThroughput:  read,
+		InactiveWriteThroughput:    inactiveWrite,
+		InactiveReadThroughput:     inactiveRead,
+		ReadScale:                  readScale,
+		InactiveReadScale:          inactReadScale,
+	}
+}
+
+func baseTable(name string, provisionedRead, provisionedWrite int64) []chunk.TableDesc {
+	return []chunk.TableDesc{
+		{
+			Name:             name,
+			ProvisionedRead:  provisionedRead,
+			ProvisionedWrite: provisionedWrite,
+		},
+	}
+}
+
+func staticTable(i int, indexRead, indexWrite, chunkRead, chunkWrite int64) []chunk.TableDesc {
+	return []chunk.TableDesc{
+		{
+			Name:             tablePrefix + fmt.Sprint(i),
+			ProvisionedRead:  indexRead,
+			ProvisionedWrite: indexWrite,
+		},
+		{
+			Name:             chunkTablePrefix + fmt.Sprint(i),
+			ProvisionedRead:  chunkRead,
+			ProvisionedWrite: chunkWrite,
+		},
+	}
+}
+
+func test(t *testing.T, client dynamoTableClient, tableManager *chunk.TableManager, name string, tm time.Time, expected []chunk.TableDesc) {
+	t.Run(name, func(t *testing.T) {
+		ctx := context.Background()
+		mtime.NowForce(tm)
+		defer mtime.NowReset()
+		if err := tableManager.SyncTables(ctx); err != nil {
+			t.Fatal(err)
+		}
+		err := chunk.ExpectTables(ctx, client, expected)
+		require.NoError(t, err)
+	})
+}
 
 func TestTableManagerMetricsAutoScaling(t *testing.T) {
 	dynamoDB := newMockDynamoDB(0, 0)
