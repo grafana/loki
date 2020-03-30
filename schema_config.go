@@ -14,6 +14,7 @@ import (
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
@@ -86,6 +87,7 @@ func (cfg *SchemaConfig) loadFromFile() error {
 		cfg.fileName = cfg.legacyFileName
 
 		if cfg.legacyFileName != "" {
+			flagext.DeprecatedFlagsUsed.Inc()
 			level.Warn(util.Logger).Log("msg", "running with DEPRECATED flag -config-yaml, use -schema-config-file instead")
 		}
 	}
