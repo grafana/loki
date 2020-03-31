@@ -18,7 +18,7 @@ ingester:
 schema_config:
   configs:
     - from: 2018-04-15
-      store: boltdb-shipper
+      store: boltdb
       object_store: filesystem
       schema: v11
       index:
@@ -31,14 +31,6 @@ storage_config:
 
   filesystem:
     directory: /loki/chunks
-
-  boltdb_shipper_config:
-    active_index_directory: /tmp/loki/index
-    cache_location: /tmp/loki/boltdb-cache
-    store_config:
-      store: filesystem
-      filesystem:
-        directory: /tmp/loki/boltdb-store
 
 limits_config:
   enforce_metric_name: false
