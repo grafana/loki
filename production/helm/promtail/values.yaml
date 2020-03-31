@@ -96,6 +96,9 @@ volumes:
   hostPath:
     path: /var/log/pods
 
+# Custom volumes together with the default ones
+extraVolumes: []
+
 volumeMounts:
 - name: docker
   mountPath: /var/lib/docker/containers
@@ -103,6 +106,9 @@ volumeMounts:
 - name: pods
   mountPath: /var/log/pods
   readOnly: true
+
+# Custom volumeMounts together with the default ones
+extraVolumeMounts: []
 
 config:
   client:
