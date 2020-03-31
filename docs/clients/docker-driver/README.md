@@ -18,8 +18,7 @@ containers you want to collect logs from.
 Run the following command to install the plugin:
 
 ```bash
-docker plugin install grafana/loki-docker-driver:latest --alias loki
---grant-all-permissions
+docker plugin install grafana/loki-docker-driver:latest --alias loki --grant-all-permissions
 ```
 
 To check installed plugins, use the `docker plugin ls` command. Plugins that
