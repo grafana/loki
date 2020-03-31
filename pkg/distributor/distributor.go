@@ -118,13 +118,7 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 			return nil, err
 		}
 
-		err = services.StartAndAwaitRunning(context.Background(), distributorsRing)
-		if err != nil {
-			return nil, err
-		}
-
 		servs = append(servs, distributorsRing)
-
 		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, distributorsRing)
 	} else {
 		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
