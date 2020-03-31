@@ -47,8 +47,8 @@ func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
 
 	m.tableCapacity = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "cortex",
-		Name:      "dynamo_table_capacity_units",
-		Help:      "Per-table DynamoDB capacity, measured in DynamoDB capacity units.",
+		Name:      "table_capacity_units",
+		Help:      "Per-table capacity, measured in DynamoDB capacity units.",
 	}, []string{"op", "table"})
 
 	m.createFailures = prometheus.NewGauge(prometheus.GaugeOpts{
@@ -95,7 +95,7 @@ type TableManagerConfig struct {
 	RetentionPeriodModel model.Duration `yaml:"retention_period"`
 
 	// Period with which the table manager will poll for tables.
-	DynamoDBPollInterval time.Duration `yaml:"dynamodb_poll_interval"`
+	PollInterval time.Duration `yaml:"poll_interval"`
 
 	// duration a table will be created before it is needed.
 	CreationGracePeriod time.Duration `yaml:"creation_grace_period"`
@@ -139,12 +139,12 @@ func (cfg *TableManagerConfig) Validate() error {
 	return nil
 }
 
-// ProvisionConfig holds config for provisioning capacity (on DynamoDB)
+// ProvisionConfig holds config for provisioning capacity (on DynamoDB for now)
 type ProvisionConfig struct {
-	ProvisionedThroughputOnDemandMode bool  `yaml:"provisioned_throughput_on_demand_mode"`
+	ProvisionedThroughputOnDemandMode bool  `yaml:"enable_ondemand_throughput_mode"`
 	ProvisionedWriteThroughput        int64 `yaml:"provisioned_write_throughput"`
 	ProvisionedReadThroughput         int64 `yaml:"provisioned_read_throughput"`
-	InactiveThroughputOnDemandMode    bool  `yaml:"inactive_throughput_on_demand_mode"`
+	InactiveThroughputOnDemandMode    bool  `yaml:"enable_inactive_throughput_on_demand_mode"`
 	InactiveWriteThroughput           int64 `yaml:"inactive_write_throughput"`
 	InactiveReadThroughput            int64 `yaml:"inactive_read_throughput"`
 
@@ -161,21 +161,21 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ThroughputUpdatesDisabled, "table-manager.throughput-updates-disabled", false, "If true, disable all changes to DB capacity")
 	f.BoolVar(&cfg.RetentionDeletesEnabled, "table-manager.retention-deletes-enabled", false, "If true, enables retention deletes of DB tables")
 	f.Var(&cfg.RetentionPeriodModel, "table-manager.retention-period", "Tables older than this retention period are deleted. Note: This setting is destructive to data!(default: 0, which disables deletion)")
-	f.DurationVar(&cfg.DynamoDBPollInterval, "dynamodb.poll-interval", 2*time.Minute, "How frequently to poll DynamoDB to learn our capacity.")
-	f.DurationVar(&cfg.CreationGracePeriod, "dynamodb.periodic-table.grace-period", 10*time.Minute, "DynamoDB periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
+	f.DurationVar(&cfg.PollInterval, "table-manager.poll-interval", 2*time.Minute, "How frequently to poll backend to learn our capacity.")
+	f.DurationVar(&cfg.CreationGracePeriod, "table-manager.periodic-table.grace-period", 10*time.Minute, "Periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
 
-	cfg.IndexTables.RegisterFlags("dynamodb.periodic-table", f)
-	cfg.ChunkTables.RegisterFlags("dynamodb.chunk-table", f)
+	cfg.IndexTables.RegisterFlags("table-manager.index-table", f)
+	cfg.ChunkTables.RegisterFlags("table-manager.chunk-table", f)
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *ProvisionConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
-	f.Int64Var(&cfg.ProvisionedWriteThroughput, argPrefix+".write-throughput", 1000, "DynamoDB table default write throughput.")
-	f.Int64Var(&cfg.ProvisionedReadThroughput, argPrefix+".read-throughput", 300, "DynamoDB table default read throughput.")
-	f.BoolVar(&cfg.ProvisionedThroughputOnDemandMode, argPrefix+".enable-ondemand-throughput-mode", false, "Enables on demand throughput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled")
-	f.Int64Var(&cfg.InactiveWriteThroughput, argPrefix+".inactive-write-throughput", 1, "DynamoDB table write throughput for inactive tables.")
-	f.Int64Var(&cfg.InactiveReadThroughput, argPrefix+".inactive-read-throughput", 300, "DynamoDB table read throughput for inactive tables.")
-	f.BoolVar(&cfg.InactiveThroughputOnDemandMode, argPrefix+".inactive-enable-ondemand-throughput-mode", false, "Enables on demand throughput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled")
+	f.Int64Var(&cfg.ProvisionedWriteThroughput, argPrefix+".write-throughput", 1000, "Table default write throughput. Supported by DynamoDB")
+	f.Int64Var(&cfg.ProvisionedReadThroughput, argPrefix+".read-throughput", 300, "Table default read throughput. Supported by DynamoDB")
+	f.BoolVar(&cfg.ProvisionedThroughputOnDemandMode, argPrefix+".enable-ondemand-throughput-mode", false, "Enables on demand throughput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled. Supported by DynamoDB")
+	f.Int64Var(&cfg.InactiveWriteThroughput, argPrefix+".inactive-write-throughput", 1, "Table write throughput for inactive tables. Supported by DynamoDB")
+	f.Int64Var(&cfg.InactiveReadThroughput, argPrefix+".inactive-read-throughput", 300, "Table read throughput for inactive tables. Supported by DynamoDB")
+	f.BoolVar(&cfg.InactiveThroughputOnDemandMode, argPrefix+".inactive-enable-ondemand-throughput-mode", false, "Enables on demand throughput provisioning for the storage provider (if supported). Applies only to tables which are not autoscaled. Supported by DynamoDB")
 
 	cfg.WriteScale.RegisterFlags(argPrefix+".write-throughput.scale", f)
 	cfg.InactiveWriteScale.RegisterFlags(argPrefix+".inactive-write-throughput.scale", f)
@@ -243,7 +243,7 @@ func (m *TableManager) stopping(_ error) error {
 }
 
 func (m *TableManager) loop(ctx context.Context) error {
-	ticker := time.NewTicker(m.cfg.DynamoDBPollInterval)
+	ticker := time.NewTicker(m.cfg.PollInterval)
 	defer ticker.Stop()
 
 	if err := instrument.CollectedRequest(context.Background(), "TableManager.SyncTables", instrument.NewHistogramCollector(m.metrics.syncTableDuration), instrument.ErrorCode, func(ctx context.Context) error {
@@ -254,7 +254,7 @@ func (m *TableManager) loop(ctx context.Context) error {
 
 	// Sleep for a bit to spread the sync load across different times if the tablemanagers are all started at once.
 	select {
-	case <-time.After(time.Duration(rand.Int63n(int64(m.cfg.DynamoDBPollInterval)))):
+	case <-time.After(time.Duration(rand.Int63n(int64(m.cfg.PollInterval)))):
 	case <-ctx.Done():
 		return nil
 	}
