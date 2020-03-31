@@ -9,6 +9,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (
@@ -113,6 +115,8 @@ type cacheEntry struct {
 // NewFifoCache returns a new initialised FifoCache of size.
 // TODO(bwplotka): Fix metrics, get them out of globals, separate or allow prefixing.
 func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
+	util.WarnExperimentalUse("In-memory (FIFO) cache")
+
 	cache := &FifoCache{
 		size:     cfg.Size,
 		validity: cfg.Validity,

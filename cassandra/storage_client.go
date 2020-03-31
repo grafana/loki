@@ -14,6 +14,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
+	pkgutil "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -185,6 +186,8 @@ type StorageClient struct {
 
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient, error) {
+	pkgutil.WarnExperimentalUse("Cassandra Backend")
+
 	session, err := cfg.session()
 	if err != nil {
 		return nil, errors.WithStack(err)
