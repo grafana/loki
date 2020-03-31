@@ -59,11 +59,11 @@ type Config struct {
 	BoltDBConfig           local.BoltDBConfig      `yaml:"boltdb"`
 	FSConfig               local.FSConfig          `yaml:"filesystem"`
 
-	IndexCacheValidity time.Duration
+	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
 
-	IndexQueriesCacheConfig cache.Config `yaml:"index_queries_cache_config,omitempty"`
+	IndexQueriesCacheConfig cache.Config `yaml:"index_queries_cache_config"`
 
-	DeleteStoreConfig purger.DeleteStoreConfig `yaml:"delete_store,omitempty"`
+	DeleteStoreConfig purger.DeleteStoreConfig `yaml:"delete_store"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -95,14 +95,28 @@ func (cfg *Config) Validate() error {
 
 // NewStore makes the storage clients based on the configuration.
 func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits StoreLimits) (chunk.Store, error) {
-	tieredCache, err := cache.New(cfg.IndexQueriesCacheConfig)
+	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	chunkCacheCfg := storeCfg.ChunkCacheConfig
+	chunkCacheCfg.Prefix = "chunks"
+	chunksCache, err := cache.New(chunkCacheCfg)
 	if err != nil {
 		return nil, err
 	}
 
 	// Cache is shared by multiple stores, which means they will try and Stop
 	// it more than once.  Wrap in a StopOnce to prevent this.
-	tieredCache = cache.StopOnce(tieredCache)
+	indexReadCache = cache.StopOnce(indexReadCache)
+	chunksCache = cache.StopOnce(chunksCache)
+	writeDedupeCache = cache.StopOnce(writeDedupeCache)
 
 	err = schemaCfg.Load()
 	if err != nil {
@@ -115,7 +129,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating index client")
 		}
-		index = newCachingIndexClient(index, tieredCache, cfg.IndexCacheValidity, limits)
+		index = newCachingIndexClient(index, indexReadCache, cfg.IndexCacheValidity, limits)
 
 		objectStoreType := s.ObjectType
 		if objectStoreType == "" {
@@ -126,7 +140,7 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 			return nil, errors.Wrap(err, "error creating object client")
 		}
 
-		err = stores.AddPeriod(storeCfg, s, index, chunks, limits)
+		err = stores.AddPeriod(storeCfg, s, index, chunks, limits, chunksCache, writeDedupeCache)
 		if err != nil {
 			return nil, err
 		}
@@ -176,7 +190,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
 	case "aws", "s3":
-		return newChunkClientFromStore(aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config))
+		return newChunkClientFromStore(aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, chunk.DirDelim))
 	case "aws-dynamo":
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -187,13 +201,13 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 		}
 		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg)
 	case "azure":
-		return newChunkClientFromStore(azure.NewBlobStorage(&cfg.AzureStorageConfig))
+		return newChunkClientFromStore(azure.NewBlobStorage(&cfg.AzureStorageConfig, chunk.DirDelim))
 	case "gcp":
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcp-columnkey", "bigtable", "bigtable-hashed":
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcs":
-		return newChunkClientFromStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig))
+		return newChunkClientFromStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, chunk.DirDelim))
 	case "cassandra":
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	case "filesystem":

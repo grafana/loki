@@ -50,13 +50,6 @@ func NewDynamoDBTableClient(cfg DynamoDBConfig) (chunk.TableClient, error) {
 	}
 
 	var autoscale autoscale
-	if cfg.ApplicationAutoScaling.URL != nil {
-		autoscale, err = newAWSAutoscale(cfg, callManager)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	if cfg.Metrics.URL != "" {
 		autoscale, err = newMetrics(cfg)
 		if err != nil {

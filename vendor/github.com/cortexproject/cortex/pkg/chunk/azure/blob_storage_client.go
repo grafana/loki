@@ -35,16 +35,21 @@ type BlobStorageConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (c *BlobStorageConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&c.ContainerName, "azure.container-name", "cortex", "Name of the blob container used to store chunks. Defaults to `cortex`. This container must be created before running cortex.")
-	f.StringVar(&c.AccountName, "azure.account-name", "", "The Microsoft Azure account name to be used")
-	f.Var(&c.AccountKey, "azure.account-key", "The Microsoft Azure account key to use.")
-	f.DurationVar(&c.RequestTimeout, "azure.request-timeout", 30*time.Second, "Timeout for requests made against azure blob storage. Defaults to 30 seconds.")
-	f.IntVar(&c.DownloadBufferSize, "azure.download-buffer-size", 512000, "Preallocated buffer size for downloads (default is 512KB)")
-	f.IntVar(&c.UploadBufferSize, "azure.upload-buffer-size", 256000, "Preallocated buffer size for up;oads (default is 256KB)")
-	f.IntVar(&c.UploadBufferCount, "azure.download-buffer-count", 1, "Number of buffers used to used to upload a chunk. (defaults to 1)")
-	f.IntVar(&c.MaxRetries, "azure.max-retries", 5, "Number of retries for a request which times out.")
-	f.DurationVar(&c.MinRetryDelay, "azure.min-retry-delay", 10*time.Millisecond, "Minimum time to wait before retrying a request.")
-	f.DurationVar(&c.MaxRetryDelay, "azure.max-retry-delay", 500*time.Millisecond, "Maximum time to wait before retrying a request.")
+	c.RegisterFlagsWithPrefix("", f)
+}
+
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
+func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&c.ContainerName, prefix+"azure.container-name", "cortex", "Name of the blob container used to store chunks. Defaults to `cortex`. This container must be created before running cortex.")
+	f.StringVar(&c.AccountName, prefix+"azure.account-name", "", "The Microsoft Azure account name to be used")
+	f.Var(&c.AccountKey, prefix+"azure.account-key", "The Microsoft Azure account key to use.")
+	f.DurationVar(&c.RequestTimeout, prefix+"azure.request-timeout", 30*time.Second, "Timeout for requests made against azure blob storage. Defaults to 30 seconds.")
+	f.IntVar(&c.DownloadBufferSize, prefix+"azure.download-buffer-size", 512000, "Preallocated buffer size for downloads (default is 512KB)")
+	f.IntVar(&c.UploadBufferSize, prefix+"azure.upload-buffer-size", 256000, "Preallocated buffer size for up;oads (default is 256KB)")
+	f.IntVar(&c.UploadBufferCount, prefix+"azure.download-buffer-count", 1, "Number of buffers used to used to upload a chunk. (defaults to 1)")
+	f.IntVar(&c.MaxRetries, prefix+"azure.max-retries", 5, "Number of retries for a request which times out.")
+	f.DurationVar(&c.MinRetryDelay, prefix+"azure.min-retry-delay", 10*time.Millisecond, "Minimum time to wait before retrying a request.")
+	f.DurationVar(&c.MaxRetryDelay, prefix+"azure.max-retry-delay", 500*time.Millisecond, "Maximum time to wait before retrying a request.")
 }
 
 // BlobStorage is used to interact with azure blob storage for setting or getting time series chunks.
@@ -53,11 +58,15 @@ type BlobStorage struct {
 	//blobService storage.Serv
 	cfg          *BlobStorageConfig
 	containerURL azblob.ContainerURL
+	delimiter    string
 }
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
-func NewBlobStorage(cfg *BlobStorageConfig) (*BlobStorage, error) {
-	blobStorage := &BlobStorage{cfg: cfg}
+func NewBlobStorage(cfg *BlobStorageConfig, delimiter string) (*BlobStorage, error) {
+	blobStorage := &BlobStorage{
+		cfg:       cfg,
+		delimiter: delimiter,
+	}
 
 	var err error
 	blobStorage.containerURL, err = blobStorage.buildContainerURL()
@@ -165,7 +174,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix string) ([]chunk.StorageO
 			return nil, ctx.Err()
 		}
 
-		listBlob, err := b.containerURL.ListBlobsHierarchySegment(ctx, marker, chunk.DirDelim, azblob.ListBlobsSegmentOptions{Prefix: prefix})
+		listBlob, err := b.containerURL.ListBlobsHierarchySegment(ctx, marker, b.delimiter, azblob.ListBlobsSegmentOptions{Prefix: prefix})
 		if err != nil {
 			return nil, err
 		}
