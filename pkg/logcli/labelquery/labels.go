@@ -8,7 +8,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 )
 
-// LabelQuery contains all necessary fields to execute label queries and print out the resutls
+// LabelQuery contains all necessary fields to execute label queries and print out the results
 type LabelQuery struct {
 	LabelName string
 	Quiet     bool

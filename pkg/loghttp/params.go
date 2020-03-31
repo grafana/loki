@@ -98,7 +98,7 @@ func Match(xs []string) ([][]*labels.Matcher, error) {
 }
 
 // defaultQueryRangeStep returns the default step used in the query range API,
-// which is dinamically calculated based on the time range
+// which is dynamically calculated based on the time range
 func defaultQueryRangeStep(start time.Time, end time.Time) int {
 	return int(math.Max(math.Floor(end.Sub(start).Seconds()/250), 1))
 }
