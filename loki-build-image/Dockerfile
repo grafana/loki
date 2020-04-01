@@ -23,10 +23,10 @@ RUN GO111MODULE=on go get github.com/drone/drone-cli/drone@1fad337d74ca0ecf42099
 FROM golang:1.13.4-stretch
 RUN apt-get update && \
     apt-get install -qy \
-      musl \
-      file zip unzip jq gettext\
-      protobuf-compiler libprotobuf-dev \
-      libsystemd-dev && \
+    musl gnupg \
+    file zip unzip jq gettext\
+    protobuf-compiler libprotobuf-dev \
+    libsystemd-dev && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 COPY --from=docker /usr/bin/docker /usr/bin/docker
@@ -43,7 +43,7 @@ RUN GO111MODULE=on go get \
     github.com/golang/protobuf/protoc-gen-go@v1.3.0 \
     github.com/gogo/protobuf/protoc-gen-gogoslick@v1.2.1 \
     github.com/gogo/protobuf/gogoproto@v1.2.1 \
-    github.com/go-delve/delve/cmd/dlv \
+    github.com/go-delve/delve/cmd/dlv@v1.3.2 \
     # Due to the lack of a proper release tag, we use the commit hash of
     # https://github.com/golang/tools/releases v0.1.7
     golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69 \
