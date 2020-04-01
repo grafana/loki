@@ -10,6 +10,8 @@ Before we get into new features, version 1.4.0 brings with it the first (that we
 
 We have created a dedicated page for upgrading Loki in the [operations section of the docs](https://github.com/grafana/loki/tree/v1.4.0/docs/operations/upgrade.md)
 
+The docker image tag naming was changed, the starting in 1.4.0 docker images no longer have the `v` prefix: `grafana/loki:1.4.0`
+
 Also you should be aware we are now pruning old `master-xxxxx` docker images from docker hub, currently anything older than 90 days is removed.  **We will never remove released versions of Loki**
 
 ### Notable Features
