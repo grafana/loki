@@ -1,4 +1,4 @@
-## 1.4.0 (2020-03-12)
+## 1.4.0 (2020-04-01)
 
 Over 130 PR's merged for this release, from 40 different contributors!!  We continue to be humbled and thankful for the growing community of contributors and users of Loki.  Thank you all so much.
 
