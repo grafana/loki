@@ -118,6 +118,14 @@ aggregation syntax, including filter expressions. This example gets the
 per-second rate of all non-timeout errors within the last ten seconds for the
 MySQL job.
 
+It should be noted that the range notation `[5m]` can be placed at end of the log stream filter or right after the log stream matcher. For example those two syntaxes below are equivalent.
+
+```logql
+rate({job="mysql"} |= "error" != "timeout" [5m])
+
+rate({job="mysql"}[5m] |= "error" != "timeout")
+```
+
 ### Aggregation operators
 
 Like [PromQL](https://prometheus.io/docs/prometheus/latest/querying/operators/#aggregation-operators),
