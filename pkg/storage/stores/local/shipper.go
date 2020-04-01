@@ -4,20 +4,19 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path"
 	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/aws"
-	"github.com/cortexproject/cortex/pkg/chunk/azure"
-	"github.com/cortexproject/cortex/pkg/chunk/gcp"
-	"github.com/cortexproject/cortex/pkg/chunk/local"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
-	"github.com/cortexproject/cortex/pkg/util"
+	pkg_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"go.etcd.io/bbolt"
+
+	"github.com/grafana/loki/pkg/storage/stores/util"
 )
 
 const (
@@ -29,31 +28,24 @@ const (
 	ShipperModeWriteOnly
 
 	// ShipperFileUploadInterval defines interval for uploading active boltdb files from local which are being written to by ingesters.
-	ShipperFileUploadInterval = 15 * time.Second
-
-	cacheCleanupInterval = 24 * time.Hour
+	ShipperFileUploadInterval = 15 * time.Minute
 
 	// BoltDBShipperType holds the index type for using boltdb with shipper which keeps flushing them to a shared storage
 	BoltDBShipperType = "boltdb-shipper"
+
+	cacheCleanupInterval = 24 * time.Hour
+	storageKeyPrefix     = "index/"
 )
 
 type BoltDBGetter interface {
 	GetDB(name string, operation int) (*bbolt.DB, error)
 }
 
-type StoreConfig struct {
-	Store            string                  `yaml:"store"`
-	AWSStorageConfig aws.StorageConfig       `yaml:"aws"`
-	GCSConfig        gcp.GCSConfig           `yaml:"gcs"`
-	FSConfig         local.FSConfig          `yaml:"filesystem"`
-	Azure            azure.BlobStorageConfig `yaml:"azure"`
-}
-
 type ShipperConfig struct {
 	ActiveIndexDirectory string        `yaml:"active_index_directory"`
+	SharedStoreType      string        `yaml:"shared_store_type"`
 	CacheLocation        string        `yaml:"cache_location"`
 	CacheTTL             time.Duration `yaml:"cache_ttl"`
-	StoreConfig          StoreConfig   `yaml:"store_config"`
 	ResyncInterval       time.Duration `yaml:"resync_interval"`
 	IngesterName         string        `yaml:"-"`
 	Mode                 int           `yaml:"-"`
@@ -61,13 +53,8 @@ type ShipperConfig struct {
 
 // RegisterFlags registers flags.
 func (cfg *ShipperConfig) RegisterFlags(f *flag.FlagSet) {
-	storeFlagsPrefix := "boltdb.shipper."
-	cfg.StoreConfig.AWSStorageConfig.RegisterFlagsWithPrefix(storeFlagsPrefix, f)
-	cfg.StoreConfig.GCSConfig.RegisterFlagsWithPrefix(storeFlagsPrefix, f)
-	cfg.StoreConfig.FSConfig.RegisterFlagsWithPrefix(storeFlagsPrefix, f)
-
 	f.StringVar(&cfg.ActiveIndexDirectory, "boltdb.active-index-directory", "", "Directory where ingesters would write boltdb files which would then be uploaded by shipper to configured storage")
-	f.StringVar(&cfg.StoreConfig.Store, "boltdb.shipper.store", "filesystem", "Store for keeping boltdb files")
+	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.shared-store", "", "Shared store for keeping boltdb files. Supported types: gcs, s3, azure, filesystem")
 	f.StringVar(&cfg.CacheLocation, "boltdb.shipper.cache-location", "", "Cache location for restoring boltDB files for queries")
 	f.DurationVar(&cfg.CacheTTL, "boltdb.shipper.cache-ttl", 24*time.Hour, "TTL for boltDB files restored in cache for queries")
 	f.DurationVar(&cfg.ResyncInterval, "boltdb.shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
@@ -96,38 +83,76 @@ type Shipper struct {
 	downloadedPeriods    map[string]*filesCollection
 	downloadedPeriodsMtx sync.RWMutex
 	storageClient        chunk.ObjectClient
-	done                 chan struct{}
 
 	uploader              string
 	uploadedFilesMtime    map[string]time.Time
 	uploadedFilesMtimeMtx sync.RWMutex
+
+	done chan struct{}
+	wait sync.WaitGroup
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
 func NewShipper(cfg ShipperConfig, storageClient chunk.ObjectClient, boltDBGetter BoltDBGetter) (*Shipper, error) {
-	if err := chunk_util.EnsureDirectory(cfg.CacheLocation); err != nil {
+	err := chunk_util.EnsureDirectory(cfg.CacheLocation)
+	if err != nil {
 		return nil, err
 	}
 
 	shipper := Shipper{
-		cfg:               cfg,
-		boltDBGetter:      boltDBGetter,
-		downloadedPeriods: map[string]*filesCollection{},
-		storageClient:     storageClient,
-		done:              make(chan struct{}),
-		// We would use ingester name and startup timestamp for naming files while uploading so that
-		// ingester does not override old files when using same id
-		uploader:           fmt.Sprintf("%s-%d", cfg.IngesterName, time.Now().Unix()),
+		cfg:                cfg,
+		boltDBGetter:       boltDBGetter,
+		downloadedPeriods:  map[string]*filesCollection{},
+		storageClient:      util.NewPrefixedObjectClient(storageClient, storageKeyPrefix),
+		done:               make(chan struct{}),
 		uploadedFilesMtime: map[string]time.Time{},
 	}
 
+	shipper.uploader, err = shipper.getUploaderName()
+	if err != nil {
+		return nil, err
+	}
+
+	shipper.wait.Add(1)
 	go shipper.loop()
 
 	return &shipper, nil
 }
 
-func (a *Shipper) loop() {
-	resyncTicker := time.NewTicker(a.cfg.ResyncInterval)
+// we would persist uploader name in <active-index-directory>/uploader/name file so that we use same name on subsequent restarts to
+// avoid uploading same files again with different name. If the filed does not exist we would create one with uploader name set to
+// ingester name and startup timestamp so that we randomise the name and do not override files from other ingesters.
+func (s *Shipper) getUploaderName() (string, error) {
+	uploader := fmt.Sprintf("%s-%d", s.cfg.IngesterName, time.Now().Unix())
+
+	uploaderFilePath := path.Join(s.cfg.ActiveIndexDirectory, "uploader", "name")
+	if err := chunk_util.EnsureDirectory(path.Dir(uploaderFilePath)); err != nil {
+		return "", err
+	}
+
+	_, err := os.Stat(uploaderFilePath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		if err := ioutil.WriteFile(uploaderFilePath, []byte(uploader), 0666); err != nil {
+			return "", err
+		}
+	} else {
+		ub, err := ioutil.ReadFile(uploaderFilePath)
+		if err != nil {
+			return "", err
+		}
+		uploader = string(ub)
+	}
+
+	return uploader, nil
+}
+
+func (s *Shipper) loop() {
+	defer s.wait.Done()
+
+	resyncTicker := time.NewTicker(s.cfg.ResyncInterval)
 	defer resyncTicker.Stop()
 
 	uploadFilesTicker := time.NewTicker(ShipperFileUploadInterval)
@@ -139,40 +164,41 @@ func (a *Shipper) loop() {
 	for {
 		select {
 		case <-resyncTicker.C:
-			err := a.syncLocalWithStorage(context.Background())
+			err := s.syncLocalWithStorage(context.Background())
 			if err != nil {
-				level.Error(util.Logger).Log("msg", "error syncing local boltdb files with storage", "err", err)
+				level.Error(pkg_util.Logger).Log("msg", "error syncing local boltdb files with storage", "err", err)
 			}
 		case <-uploadFilesTicker.C:
-			err := a.uploadFiles(context.Background())
+			err := s.uploadFiles(context.Background())
 			if err != nil {
-				level.Error(util.Logger).Log("msg", "error pushing archivable files to store", "err", err)
+				level.Error(pkg_util.Logger).Log("msg", "error pushing archivable files to store", "err", err)
 			}
 		case <-cacheCleanupTicker.C:
-			err := a.cleanupCache()
+			err := s.cleanupCache()
 			if err != nil {
-				level.Error(util.Logger).Log("msg", "error cleaning up expired tables", "err", err)
+				level.Error(pkg_util.Logger).Log("msg", "error cleaning up expired tables", "err", err)
 			}
-		case <-a.done:
+		case <-s.done:
 			return
 		}
 	}
 }
 
 // Stop the shipper and push all the local files to the store
-func (a *Shipper) Stop() {
-	close(a.done)
+func (s *Shipper) Stop() {
+	close(s.done)
+	s.wait.Wait()
 
 	// Push all boltdb files to storage before returning
-	err := a.syncLocalWithStorage(context.Background())
+	err := s.uploadFiles(context.Background())
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error pushing archivable files to store", "err", err)
+		level.Error(pkg_util.Logger).Log("msg", "error pushing archivable files to store", "err", err)
 	}
 
-	a.downloadedPeriodsMtx.Lock()
-	defer a.downloadedPeriodsMtx.Unlock()
+	s.downloadedPeriodsMtx.Lock()
+	defer s.downloadedPeriodsMtx.Unlock()
 
-	for _, fc := range a.downloadedPeriods {
+	for _, fc := range s.downloadedPeriods {
 		fc.Lock()
 		for _, fl := range fc.files {
 			_ = fl.boltdb.Close()
@@ -182,19 +208,19 @@ func (a *Shipper) Stop() {
 }
 
 // cleanupCache removes all the files for a period which has not be queried for using the configured TTL
-func (a *Shipper) cleanupCache() error {
-	a.downloadedPeriodsMtx.Lock()
-	defer a.downloadedPeriodsMtx.Unlock()
+func (s *Shipper) cleanupCache() error {
+	s.downloadedPeriodsMtx.Lock()
+	defer s.downloadedPeriodsMtx.Unlock()
 
-	for period, fc := range a.downloadedPeriods {
-		if fc.lastUsedAt.Add(a.cfg.CacheTTL).Before(time.Now()) {
+	for period, fc := range s.downloadedPeriods {
+		if fc.lastUsedAt.Add(s.cfg.CacheTTL).Before(time.Now()) {
 			for uploader := range fc.files {
-				if err := a.deleteFileFromCache(period, uploader, fc); err != nil {
+				if err := s.deleteFileFromCache(period, uploader, fc); err != nil {
 					return err
 				}
 			}
 
-			delete(a.downloadedPeriods, period)
+			delete(s.downloadedPeriods, period)
 		}
 	}
 
@@ -203,12 +229,12 @@ func (a *Shipper) cleanupCache() error {
 
 // syncLocalWithStorage syncs all the periods that we have in the cache with the storage
 // i.e download new and updated files and remove files which were delete from the storage.
-func (a *Shipper) syncLocalWithStorage(ctx context.Context) error {
-	a.downloadedPeriodsMtx.RLock()
-	defer a.downloadedPeriodsMtx.RUnlock()
+func (s *Shipper) syncLocalWithStorage(ctx context.Context) error {
+	s.downloadedPeriodsMtx.RLock()
+	defer s.downloadedPeriodsMtx.RUnlock()
 
-	for period := range a.downloadedPeriods {
-		if err := a.syncFilesForPeriod(ctx, period, a.downloadedPeriods[period]); err != nil {
+	for period := range s.downloadedPeriods {
+		if err := s.syncFilesForPeriod(ctx, period, s.downloadedPeriods[period]); err != nil {
 			return err
 		}
 	}
@@ -218,7 +244,7 @@ func (a *Shipper) syncLocalWithStorage(ctx context.Context) error {
 
 // deleteFileFromCache removes a file from cache.
 // It takes care of locking the filesCollection, closing the boltdb file and removing the file from cache
-func (a *Shipper) deleteFileFromCache(period, uploader string, fc *filesCollection) error {
+func (s *Shipper) deleteFileFromCache(period, uploader string, fc *filesCollection) error {
 	fc.Lock()
 	defer fc.Unlock()
 
@@ -228,44 +254,44 @@ func (a *Shipper) deleteFileFromCache(period, uploader string, fc *filesCollecti
 
 	delete(fc.files, uploader)
 
-	return os.Remove(path.Join(a.cfg.CacheLocation, period, uploader))
+	return os.Remove(path.Join(s.cfg.CacheLocation, period, uploader))
 }
 
-func (a *Shipper) getFilesCollection(ctx context.Context, period string, createIfNotExists bool) (*filesCollection, error) {
-	a.downloadedPeriodsMtx.RLock()
-	fc, ok := a.downloadedPeriods[period]
-	a.downloadedPeriodsMtx.RUnlock()
+func (s *Shipper) getFilesCollection(ctx context.Context, period string, createIfNotExists bool) (*filesCollection, error) {
+	s.downloadedPeriodsMtx.RLock()
+	fc, ok := s.downloadedPeriods[period]
+	s.downloadedPeriodsMtx.RUnlock()
 
 	if !ok && createIfNotExists {
-		a.downloadedPeriodsMtx.Lock()
-		fc, ok = a.downloadedPeriods[period]
+		s.downloadedPeriodsMtx.Lock()
+		fc, ok = s.downloadedPeriods[period]
 		if ok {
-			a.downloadedPeriodsMtx.Unlock()
+			s.downloadedPeriodsMtx.Unlock()
 		}
 
 		fc = &filesCollection{files: map[string]downloadedFiles{}}
-		a.downloadedPeriods[period] = fc
+		s.downloadedPeriods[period] = fc
 	}
 
 	return fc, nil
 }
 
-func (a *Shipper) forEach(ctx context.Context, period string, callback func(db *bbolt.DB) error) error {
-	a.downloadedPeriodsMtx.RLock()
-	fc, ok := a.downloadedPeriods[period]
-	a.downloadedPeriodsMtx.RUnlock()
+func (s *Shipper) forEach(ctx context.Context, period string, callback func(db *bbolt.DB) error) error {
+	s.downloadedPeriodsMtx.RLock()
+	fc, ok := s.downloadedPeriods[period]
+	s.downloadedPeriodsMtx.RUnlock()
 
 	if !ok {
-		a.downloadedPeriodsMtx.Lock()
-		fc, ok = a.downloadedPeriods[period]
+		s.downloadedPeriodsMtx.Lock()
+		fc, ok = s.downloadedPeriods[period]
 		if ok {
-			a.downloadedPeriodsMtx.Unlock()
+			s.downloadedPeriodsMtx.Unlock()
 		} else {
 			fc = &filesCollection{files: map[string]downloadedFiles{}}
-			a.downloadedPeriods[period] = fc
-			a.downloadedPeriodsMtx.Unlock()
+			s.downloadedPeriods[period] = fc
+			s.downloadedPeriodsMtx.Unlock()
 
-			if err := a.downloadFilesForPeriod(ctx, period, fc); err != nil {
+			if err := s.downloadFilesForPeriod(ctx, period, fc); err != nil {
 				return err
 			}
 		}

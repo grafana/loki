@@ -17,14 +17,14 @@ import (
 )
 
 // checkStorageForUpdates compares files from cache with storage and builds the list of files to be downloaded from storage and to be deleted from cache
-func (a *Shipper) checkStorageForUpdates(ctx context.Context, period string, fc *filesCollection) (toDownload []chunk.StorageObject, toDelete []string, err error) {
-	if a.cfg.Mode == ShipperModeWriteOnly {
+func (s *Shipper) checkStorageForUpdates(ctx context.Context, period string, fc *filesCollection) (toDownload []chunk.StorageObject, toDelete []string, err error) {
+	if s.cfg.Mode == ShipperModeWriteOnly {
 		return
 	}
 
 	// listing tables from store
 	var objects []chunk.StorageObject
-	objects, err = a.storageClient.List(ctx, period)
+	objects, err = s.storageClient.List(ctx, period)
 	if err != nil {
 		return
 	}
@@ -34,7 +34,7 @@ func (a *Shipper) checkStorageForUpdates(ctx context.Context, period string, fc 
 	for _, object := range objects {
 		uploader := strings.Split(object.Key, "/")[1]
 		// don't include the file which was uploaded by same ingester
-		if uploader == a.uploader {
+		if uploader == s.uploader {
 			continue
 		}
 		listedUploaders[uploader] = struct{}{}
@@ -56,9 +56,9 @@ func (a *Shipper) checkStorageForUpdates(ctx context.Context, period string, fc 
 }
 
 // syncFilesForPeriod downloads updated and new files from for given period from all the uploaders and removes deleted ones
-func (a *Shipper) syncFilesForPeriod(ctx context.Context, period string, fc *filesCollection) error {
+func (s *Shipper) syncFilesForPeriod(ctx context.Context, period string, fc *filesCollection) error {
 	fc.RLock()
-	toDownload, toDelete, err := a.checkStorageForUpdates(ctx, period, fc)
+	toDownload, toDelete, err := s.checkStorageForUpdates(ctx, period, fc)
 	fc.RUnlock()
 
 	if err != nil {
@@ -66,14 +66,14 @@ func (a *Shipper) syncFilesForPeriod(ctx context.Context, period string, fc *fil
 	}
 
 	for _, storageObject := range toDownload {
-		err = a.downloadFile(ctx, period, storageObject, fc)
+		err = s.downloadFile(ctx, period, storageObject, fc)
 		if err != nil {
 			return err
 		}
 	}
 
 	for _, uploader := range toDelete {
-		err := a.deleteFileFromCache(period, uploader, fc)
+		err := s.deleteFileFromCache(period, uploader, fc)
 		if err != nil {
 			return err
 		}
@@ -83,15 +83,15 @@ func (a *Shipper) syncFilesForPeriod(ctx context.Context, period string, fc *fil
 }
 
 // It first downloads file to a temp location so that we close the existing file(if already exists), replace it with new one and then reopen it.
-func (a *Shipper) downloadFile(ctx context.Context, period string, storageObject chunk.StorageObject, fc *filesCollection) error {
+func (s *Shipper) downloadFile(ctx context.Context, period string, storageObject chunk.StorageObject, fc *filesCollection) error {
 	uploader := strings.Split(storageObject.Key, "/")[1]
-	folderPath, _ := a.getFolderPathForPeriod(period, false)
+	folderPath, _ := s.getFolderPathForPeriod(period, false)
 	filePath := path.Join(folderPath, uploader)
 
 	// download the file temporarily with some other name to allow boltdb client to close the existing file first if it exists
 	tempFilePath := path.Join(folderPath, fmt.Sprintf("%s.%d", uploader, time.Now().Unix()))
 
-	err := a.getFileFromStorage(ctx, storageObject.Key, tempFilePath)
+	err := s.getFileFromStorage(ctx, storageObject.Key, tempFilePath)
 	if err != nil {
 		return err
 	}
@@ -126,8 +126,8 @@ func (a *Shipper) downloadFile(ctx context.Context, period string, storageObject
 }
 
 // getFileFromStorage downloads a file from storage to given location.
-func (a *Shipper) getFileFromStorage(ctx context.Context, objectKey, destination string) error {
-	readCloser, err := a.storageClient.GetObject(ctx, objectKey)
+func (s *Shipper) getFileFromStorage(ctx context.Context, objectKey, destination string) error {
+	readCloser, err := s.storageClient.GetObject(ctx, objectKey)
 	if err != nil {
 		return err
 	}
@@ -149,16 +149,16 @@ func (a *Shipper) getFileFromStorage(ctx context.Context, objectKey, destination
 
 // downloadFilesForPeriod should be called when files for a period does not exist i.e they were never downloaded or got cleaned up later on by TTL
 // While files are being downloaded it will block all reads/writes on filesCollection by taking an exclusive lock
-func (a *Shipper) downloadFilesForPeriod(ctx context.Context, period string, fc *filesCollection) error {
+func (s *Shipper) downloadFilesForPeriod(ctx context.Context, period string, fc *filesCollection) error {
 	fc.Lock()
 	defer fc.Unlock()
 
-	objects, err := a.storageClient.List(ctx, period)
+	objects, err := s.storageClient.List(ctx, period)
 	if err != nil {
 		return err
 	}
 
-	folderPath, err := a.getFolderPathForPeriod(period, true)
+	folderPath, err := s.getFolderPathForPeriod(period, true)
 	if err != nil {
 		return err
 	}
@@ -168,7 +168,7 @@ func (a *Shipper) downloadFilesForPeriod(ctx context.Context, period string, fc 
 		filePath := path.Join(folderPath, uploader)
 		df := downloadedFiles{}
 
-		err := a.getFileFromStorage(ctx, object.Key, filePath)
+		err := s.getFileFromStorage(ctx, object.Key, filePath)
 		if err != nil {
 			return err
 		}
@@ -185,8 +185,8 @@ func (a *Shipper) downloadFilesForPeriod(ctx context.Context, period string, fc 
 	return nil
 }
 
-func (a *Shipper) getFolderPathForPeriod(period string, ensureExists bool) (string, error) {
-	folderPath := path.Join(a.cfg.CacheLocation, period)
+func (s *Shipper) getFolderPathForPeriod(period string, ensureExists bool) (string, error) {
+	folderPath := path.Join(s.cfg.CacheLocation, period)
 
 	if ensureExists {
 		err := chunk_util.EnsureDirectory(folderPath)

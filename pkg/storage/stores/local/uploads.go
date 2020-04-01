@@ -17,12 +17,12 @@ import (
 
 // uploadFiles uploads all new and updated files to storage.
 // It uploads the files from configured boltdb dir where ingester writes the index.
-func (a *Shipper) uploadFiles(ctx context.Context) error {
-	if a.cfg.Mode == ShipperModeReadOnly {
+func (s *Shipper) uploadFiles(ctx context.Context) error {
+	if s.cfg.Mode == ShipperModeReadOnly {
 		return nil
 	}
 
-	filesInfo, err := ioutil.ReadDir(a.cfg.ActiveIndexDirectory)
+	filesInfo, err := ioutil.ReadDir(s.cfg.ActiveIndexDirectory)
 	if err != nil {
 		return err
 	}
@@ -32,41 +32,41 @@ func (a *Shipper) uploadFiles(ctx context.Context) error {
 			continue
 		}
 
-		a.uploadedFilesMtimeMtx.RLock()
+		s.uploadedFilesMtimeMtx.RLock()
 		// Checking whether file is updated after last push, if not skipping it
-		uploadedFileMtime, ok := a.uploadedFilesMtime[fileInfo.Name()]
-		a.uploadedFilesMtimeMtx.RUnlock()
+		uploadedFileMtime, ok := s.uploadedFilesMtime[fileInfo.Name()]
+		s.uploadedFilesMtimeMtx.RUnlock()
 
 		if ok && uploadedFileMtime.Equal(fileInfo.ModTime()) {
 			continue
 		}
 
-		err := a.uploadFile(ctx, fileInfo.Name())
+		err := s.uploadFile(ctx, fileInfo.Name())
 		if err != nil {
 			return err
 		}
 
-		a.uploadedFilesMtimeMtx.Lock()
-		a.uploadedFilesMtime[fileInfo.Name()] = fileInfo.ModTime()
-		a.uploadedFilesMtimeMtx.Unlock()
+		s.uploadedFilesMtimeMtx.Lock()
+		s.uploadedFilesMtime[fileInfo.Name()] = fileInfo.ModTime()
+		s.uploadedFilesMtimeMtx.Unlock()
 	}
 
 	return nil
 }
 
 // uploadFile uploads one of the files locally written by ingesters to storage.
-func (a *Shipper) uploadFile(ctx context.Context, period string) error {
-	if a.cfg.Mode == ShipperModeReadOnly {
+func (s *Shipper) uploadFile(ctx context.Context, period string) error {
+	if s.cfg.Mode == ShipperModeReadOnly {
 		return nil
 	}
 
-	snapshotPath := path.Join(a.cfg.CacheLocation, period)
+	snapshotPath := path.Join(s.cfg.CacheLocation, period)
 	err := chunk_util.EnsureDirectory(snapshotPath)
 	if err != nil {
 		return err
 	}
 
-	filePath := path.Join(snapshotPath, fmt.Sprintf("%s.%d", a.uploader, time.Now().Unix()))
+	filePath := path.Join(snapshotPath, fmt.Sprintf("%s.%d", s.uploader, time.Now().Unix()))
 	f, err := os.Create(filePath)
 	if err != nil {
 		return err
@@ -78,7 +78,7 @@ func (a *Shipper) uploadFile(ctx context.Context, period string) error {
 		}
 	}()
 
-	db, err := a.boltDBGetter.GetDB(period, local.DBOperationRead)
+	db, err := s.boltDBGetter.GetDB(period, local.DBOperationRead)
 	if err != nil {
 		return err
 	}
@@ -106,6 +106,6 @@ func (a *Shipper) uploadFile(ctx context.Context, period string) error {
 	}()
 
 	// Files are stored with <filename>/<uploader>
-	objectKey := fmt.Sprintf("%s/%s", period, a.uploader)
-	return a.storageClient.PutObject(ctx, objectKey, f)
+	objectKey := fmt.Sprintf("%s/%s", period, s.uploader)
+	return s.storageClient.PutObject(ctx, objectKey, f)
 }

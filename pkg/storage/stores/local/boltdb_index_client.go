@@ -2,7 +2,6 @@ package local
 
 import (
 	"context"
-	"sync"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
@@ -10,13 +9,9 @@ import (
 	"go.etcd.io/bbolt"
 )
 
-type BoltdbIndexClientWithArchiver struct {
+type BoltdbIndexClientWithShipper struct {
 	*local.BoltIndexClient
-
 	shipper *Shipper
-
-	done chan struct{}
-	wait sync.WaitGroup
 }
 
 // NewBoltDBIndexClient creates a new IndexClient that used BoltDB.
@@ -31,29 +26,24 @@ func NewBoltDBIndexClient(cfg local.BoltDBConfig, archiveStoreClient chunk.Objec
 		return nil, err
 	}
 
-	indexClient := BoltdbIndexClientWithArchiver{
+	indexClient := BoltdbIndexClientWithShipper{
 		BoltIndexClient: boltDBIndexClient,
 		shipper:         shipper,
-		done:            make(chan struct{}),
 	}
 
 	return &indexClient, nil
 }
 
-func (b *BoltdbIndexClientWithArchiver) Stop() {
-	close(b.done)
-
+func (b *BoltdbIndexClientWithShipper) Stop() {
 	b.BoltIndexClient.Stop()
 	b.shipper.Stop()
-
-	b.wait.Wait()
 }
 
-func (b *BoltdbIndexClientWithArchiver) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
+func (b *BoltdbIndexClientWithShipper) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	return chunk_util.DoParallelQueries(ctx, b.query, queries, callback)
 }
 
-func (b *BoltdbIndexClientWithArchiver) query(ctx context.Context, query chunk.IndexQuery, callback func(chunk.ReadBatch) (shouldContinue bool)) error {
+func (b *BoltdbIndexClientWithShipper) query(ctx context.Context, query chunk.IndexQuery, callback func(chunk.ReadBatch) (shouldContinue bool)) error {
 	db, err := b.GetDB(query.TableName, local.DBOperationRead)
 	if err != nil && err != local.ErrUnexistentBoltDB {
 		return err

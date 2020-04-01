@@ -50,7 +50,7 @@ type store struct {
 
 // NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits storage.StoreLimits) (Store, error) {
-	registerCustomIndexClients(cfg)
+	registerCustomIndexClients(cfg, schemaCfg)
 
 	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg, limits)
 	if err != nil {
@@ -62,7 +62,8 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 	}, nil
 }
 
-// NewTableClient creates a new TableClient using configuration supplied.
+// NewTableClient creates a TableClient for managing tables for index/chunk store.
+// ToDo: Add support in Cortex for registering custom table client like index client.
 func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 	if name == local.BoltDBShipperType {
 		name = "boltdb"
@@ -217,9 +218,31 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 	return filtered
 }
 
-func registerCustomIndexClients(cfg Config) {
+func registerCustomIndexClients(cfg Config, schemaCfg chunk.SchemaConfig) {
+	boltdbShipperInstances := 0
 	storage.RegisterIndexClient(local.BoltDBShipperType, func() (chunk.IndexClient, error) {
-		objectClient, err := stores.NewObjectClient(cfg.BoltDBShipperConfig.StoreConfig)
+		// since we do not know which object client is being used for the period for which we are creating this index client,
+		// we need to iterate through all the periodic configs to find the right one.
+		// We maintain number of instances that we have already created in boltdbShipperInstances and then count the number of
+		// encounters of BoltDBShipperType until we find the right periodic config for getting the ObjectType.
+		// This is done assuming we are creating index client in the order of periodic configs.
+		// Note: We are assuming that user would never store chunks in table based store otherwise NewObjectClient would return an error.
+
+		// ToDo: Try passing on ObjectType from Cortex to the callback for creating custom index client.
+		boltdbShipperEncounter := 0
+		objectStoreType := ""
+		for _, config := range schemaCfg.Configs {
+			if config.IndexType == local.BoltDBShipperType {
+				boltdbShipperEncounter += 1
+				if boltdbShipperEncounter > boltdbShipperInstances {
+					objectStoreType = config.ObjectType
+					break
+				}
+			}
+		}
+
+		boltdbShipperInstances += 1
+		objectClient, err := stores.NewObjectClient(objectStoreType, cfg.Config)
 		if err != nil {
 			return nil, err
 		}
