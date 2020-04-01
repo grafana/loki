@@ -151,6 +151,18 @@ type bigtableWriteBatch struct {
 }
 
 func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
+	b.addMutation(tableName, hashValue, rangeValue, func(mutation *bigtable.Mutation, columnKey string) {
+		mutation.Set(columnFamily, columnKey, 0, value)
+	})
+}
+
+func (b bigtableWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	b.addMutation(tableName, hashValue, rangeValue, func(mutation *bigtable.Mutation, columnKey string) {
+		mutation.DeleteCellsInColumn(columnFamily, columnKey)
+	})
+}
+
+func (b bigtableWriteBatch) addMutation(tableName, hashValue string, rangeValue []byte, callback func(mutation *bigtable.Mutation, columnKey string)) {
 	rows, ok := b.tables[tableName]
 	if !ok {
 		rows = map[string]*bigtable.Mutation{}
@@ -164,12 +176,7 @@ func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 		rows[rowKey] = mutation
 	}
 
-	mutation.Set(columnFamily, columnKey, 0, value)
-}
-
-func (b bigtableWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
-	// ToDo: implement this to support deleting index entries from Bigtable
-	panic("Bigtable does not support Deleting index entries yet")
+	callback(mutation, columnKey)
 }
 
 func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {
