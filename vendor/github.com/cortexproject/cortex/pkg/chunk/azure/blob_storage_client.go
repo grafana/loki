@@ -13,6 +13,7 @@ import (
 	"github.com/Azure/azure-storage-blob-go/azblob"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -63,6 +64,7 @@ type BlobStorage struct {
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
 func NewBlobStorage(cfg *BlobStorageConfig, delimiter string) (*BlobStorage, error) {
+	util.WarnExperimentalUse("Azure Blob Storage")
 	blobStorage := &BlobStorage{
 		cfg:       cfg,
 		delimiter: delimiter,

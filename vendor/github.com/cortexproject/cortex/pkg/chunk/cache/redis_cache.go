@@ -44,6 +44,7 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 
 // NewRedisCache creates a new RedisCache
 func NewRedisCache(cfg RedisConfig, name string, pool *redis.Pool) *RedisCache {
+	util.WarnExperimentalUse("Redis cache")
 	// pool != nil only in unit tests
 	if pool == nil {
 		pool = &redis.Pool{

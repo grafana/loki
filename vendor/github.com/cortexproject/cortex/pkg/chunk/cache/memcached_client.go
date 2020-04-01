@@ -108,6 +108,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 	}
 
 	if len(cfg.Addresses) > 0 {
+		util.WarnExperimentalUse("DNS-based memcached service discovery")
 		newClient.addresses = strings.Split(cfg.Addresses, ",")
 	}
 

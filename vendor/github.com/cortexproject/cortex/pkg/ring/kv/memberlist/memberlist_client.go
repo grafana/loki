@@ -189,11 +189,11 @@ var (
 	errTooManyRetries   = errors.New("too many retries")
 )
 
-// NewMemberlistClient creates new Client instance. If cfg.JoinMembers is set, it will also try to connect
+// NewKV creates new Client instance. If cfg.JoinMembers is set, it will also try to connect
 // to these members and join the cluster. If that fails and AbortIfJoinFails is true, error is returned and no
 // client is created.
 func NewKV(cfg KVConfig) (*KV, error) {
-	level.Warn(util.Logger).Log("msg", "Using memberlist-based KV store is EXPERIMENTAL and not tested in production")
+	util.WarnExperimentalUse("Gossip memberlist ring")
 
 	cfg.TCPTransport.MetricsRegisterer = cfg.MetricsRegisterer
 	cfg.TCPTransport.MetricsNamespace = cfg.MetricsNamespace
