@@ -39,6 +39,7 @@ You'll see that all those new operators (except aggregations over time) are chai
             - [Range Vector Operations](#range-vector-operations)
     - [API Changes](#api-changes)
         - [Faceting](#faceting)
+    - [Alternatives](#alternatives)
     - [Glossary](#glossary)
     - [Work plan](#work-plan)
     - [Syntax Types](#syntax-types)
@@ -413,14 +414,14 @@ Example of a series transformation:
 {job="app"} | json | series latency without (instance)
 ```
 
-The histogram operator `| histogram <field> [<array_of_float>] by (<label>,<field>)` creates a [Prometheus histogram](https://prometheus.io/docs/concepts/metric_types/#histogram) with the given `<array_of_float>` buckets. It will compute cumulative counters for the observation buckets as well as a counter of all observed values and the total sum of all observations. Series count per query will also be limited, so trying to use too many buckets will result in an error.
+The histogram operator `| histogram <field> buckets(<list_of_float>) by (<label>,<field>)` creates a [Prometheus histogram](https://prometheus.io/docs/concepts/metric_types/#histogram) with the given `<list_of_float>` buckets. It will compute cumulative counters for the observation buckets as well as a counter of all observed values and the total sum of all observations. Series count per query will also be limited, so trying to use too many buckets will result in an error.
 
 To simplify the creation of buckets we will provide two function syntax to create buckets: `exp(start, factor float, count int)` and `linear(start, width float64, count int)` which will respectively create exponential and linear buckets.
 
 See below the 3 version for declaring buckets of histogram:
 
 ```logql
-{job="app"} | json | histogram latency [.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10] by (path,status)
+{job="app"} | json | histogram latency buckets(.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10) by (path,status)
 
 {job="app"} | json | histogram size exp(20000, 2, 10) without (instance)
 
@@ -490,6 +491,91 @@ Since we will need a `v2` anyway for the sort operator to work, I think it also 
 ### Faceting
 
 As explained in the [parsers section](#logql-parsers), some parsers (`json` and `logfmt`) will support implicit extraction. However when the user will want to reduce fields by selecting them, I think it would be useful to provide an API that returns all field names for a given field stream selector and a time range. This way Grafana or any other integrations will be able to provide auto completion for those fields to select.
+
+## Alternatives
+
+Since this feature is in big part for ad-hoc analysis, the language should be intuitive and easy to write.
+Therefore let's explore more alternatives, to do so we will use our most complex and MVP feature.
+
+As seen before with those logs :
+
+```log
+127.0.0.1 - - [19/Jun/2012:09:16:22 +0100] "GET /GO.jpg HTTP/1.1" 499 100 "-" "-"
+127.0.0.1 - - [19/Jun/2012:09:16:22 +0100] "GET /test.jpg HTTP/1.1" 200 99 "-" "-"
+```
+
+We could get the 99th percentile latency by path and status over the last 15 minutes using the query below:
+
+```logql
+quantile_over_time(.99,
+  {job="nginx"}[15m] |
+  glob "* -- * \"* /*<path> *\" *<status> *<latency> *" |
+  histogram latency linear(.25, 2, 5) by (path, status)
+)
+```
+
+We could use a more functional approach to be more in line with Prometheus (let's also pretend we don't have glob):
+
+```logql
+quantile_over_time(.99,
+  histogram by (path, status)
+  (
+    'latency',
+    linear(0.25, 2, 5),
+    regexp(
+      ".* -- .* \\" \/(?P<path>.*) .*\\" (?P<status>.*) (?P<latency>.*) .*",
+      {job="nginx"}[15m]
+    )
+  )
+)
+```
+
+or
+
+```logql
+quantile_over_time(.99,
+  merge by (regexp<.* -- .* \\" \/(?P<path>.*) .*\\" .* .* .*>,regexp<.* -- .* \\" \/.* .*\\" (?P<status>.*) .* .*>)
+  (
+    histogram(
+      regexp_value({job="nginx"},"\" \d (\d)\""),
+      linear(.25, 2, 5)
+    )
+  )
+)
+```
+
+> The merge operator allows to merge stream together by labels or extracted values.
+> Here extraction are done for each extracted values and we allow multiple extraction type per value.
+> This has some good advantage but a big disadvantage of writing multiple regex.
+
+Other potential candidates (although not functional):
+
+```logql
+{job="nginx"}[15m] |
+  regexp ".* -- .* \\" \/(?P<path>.*) .*\\" (?P<status>.*) (?P<latency>.*) .*" |
+  histogram by (path, status) latency linear(0.25, 2, 5) |
+  quantile_over_time(.99)
+```
+
+> Pushing the pipe syntax further, the good news is you never need to move your caret back.
+
+On a different query type this time
+
+Extracting labels:
+
+```logql
+sum by (json<level>) (rate({job=”foo”}[1m]))
+
+{job=”foo”, json<level>=”info”}
+```
+
+Extracting values:
+
+```logql
+sum by (regex<[\s]+>) (avg_over_time (regexp_value({job=”foo”}, “[\d]+”)[1m]))
+
+avg_over_time (merge by (foo) (regexp_value({job=”foo”}, “[\d]+”))[1m])
+```
 
 ## Glossary
 
