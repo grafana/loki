@@ -202,12 +202,15 @@ tls_config:
 
 # Configures how to retry requests to Loki when a request
 # fails.
+# Default backoff schedule: 
+# 0.5s, 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s(4.267m) 
+# For a total time of 511.5s(8.5m) before logs are lost
 backoff_config:
   # Initial backoff time between retries
-  [minbackoff: <duration> | default = 100ms]
+  [minbackoff: <duration> | default = 500ms]
 
   # Maximum backoff time between retries
-  [maxbackoff: <duration> | default = 10s]
+  [maxbackoff: <duration> | default = 5m]
 
   # Maximum number of retries to do
   [maxretries: <int> | default = 10]
