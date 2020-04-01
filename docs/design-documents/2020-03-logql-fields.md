@@ -21,6 +21,7 @@ You'll see that all those new operators (except aggregations over time) are chai
 - [LogQL Fields](#logql-fields)
     - [Table of Content](#table-of-content)
     - [Related Documents](#related-documents)
+    - [Use cases](#use-cases)
     - [LogQL Parsers](#logql-parsers)
         - [Glob](#glob)
         - [Json](#json)
@@ -49,6 +50,38 @@ You'll see that all those new operators (except aggregations over time) are chai
 - [LogQL Pseudo Label Extraction Design Doc](https://docs.google.com/document/d/1BrxnzqEfZnVVYUnjpZR-b9i5w9FNWRzzhyOq5ftCc-Q/edit#)
 - [Original LogQL Design Doc](https://docs.google.com/document/d/1DAzwoZF0yD4oFSFcUlRcGG0Ent2myAlFr_lZc6es3fs/edit#heading=h.6u7w5ql6hn4p)
 - [Current LogQL Documentation](https://github.com/grafana/loki/blob/master/docs/logql.md)
+
+## Use cases
+
+The first use case is to allow users to extract data from the log content itself and use them as labels or sample values.
+One of the biggest benefits will be that user won't need to index log content anymore for the only purpose of filtering or creating metrics.
+
+For example giving the nginx log below:
+
+```log
+- 34.253.246.66 - [34.253.246.66] - something.grafana.net - - [01/Apr/2020:15:44:36 +0000] "POST /metrics HTTP/1.1" 200 49 "-" "Go-http-client/1.1" 561 0.050 [something] 10.40.60.217:80 49 0.050 200 be9c1555b014bcf80e8f2550fcaf7d51
+```
+
+We would like to answer those questions :
+
+- What's the p99 latency over time for the path `/metrics` ?
+- What's the request rate per path and status ?
+- What's the average latency over time for a given IP address ?
+
+Now since we need to parse log content another set of ad-hoc analysis use cases could also be covered:
+
+- Show me the logs of requests slower than 5s for a given domain.
+- Show me the log with only IP address, latency and path. (Remove redundant noise within logs)
+- I have many redundant logs, show me only unique subset of them.
+- Sort log result by latency.
+- Show me all first x unique IP within a time range.
+- Reformat a log line to be more readable.
+
+However those use cases are out of scope:
+
+- What's the latency xth quantile over a year, we don't expect time range to be higher than couple of day max.
+- Replace metrics instrumentation with logs. We want to ease new analysis but we don't want to push users to use this instead of instrumenting their application with Prometheus or any other metric client.
+- Big data analysis, this whole new feature is mainly for ad-hoc use cases.
 
 ## LogQL Parsers
 
