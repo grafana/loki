@@ -29,19 +29,15 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 
 ## Getting started
 
-The [Installation docs](https://github.com/grafana/loki/tree/v1.3.0/docs/installation/README.md) have instructions on how
-to install Loki via Docker images, Helm charts, Jsonnet, or from source.
-
-You may also be interested in [installing
-Promtail](https://github.com/grafana/loki/tree/v1.3.0/docs/clients/promtail/installation.md) to send logs to Loki.
-
-Once you have Promtail, Loki, and Grafana running, continue with our [Getting
-Started Guide](https://github.com/grafana/loki/tree/v1.3.0/docs/getting-started/README.md) to get up and running with
-querying logs.
+* [Installing Loki](https://github.com/grafana/loki/tree/v1.4.0/docs/installation/README.md)
+* [Installing
+Promtail](https://github.com/grafana/loki/tree/v1.4.0/docs/clients/promtail/installation.md)
+* [Getting
+Started Guide](https://github.com/grafana/loki/tree/v1.4.0/docs/getting-started/README.md)
 
 ## Upgrading
 
-[Upgrading Loki](https://github.com/grafana/loki/blob/master/docs/operations/upgrade.md)
+* [Upgrading Loki](https://github.com/grafana/loki/blob/master/docs/operations/upgrade.md)
 
 ### Documentation
 
