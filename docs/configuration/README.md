@@ -580,7 +580,7 @@ the index to a backing cache store.
 [enable_fifocache: <boolean>]
 
 # The default validity of entries for caches unless overridden.
-# "defaul" is correct.
+# NOTE In Loki versions older than 1.4.0 this was "defaul_validity".
 [default_validity: <duration>]
 
 # Configures the background cache when memcached is used.
