@@ -581,7 +581,7 @@ the index to a backing cache store.
 
 # The default validity of entries for caches unless overridden.
 # "defaul" is correct.
-[defaul_validity: <duration>]
+[default_validity: <duration>]
 
 # Configures the background cache when memcached is used.
 background:

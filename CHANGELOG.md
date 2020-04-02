@@ -9,7 +9,7 @@ Over 130 PR's merged for this release, from 40 different contributors!!  We cont
 
 Before we get into new features, version 1.4.0 brings with it the first (that we are aware of) upgrade dependency.
 
-We have created a dedicated page for upgrading Loki in the [operations section of the docs](https://github.com/grafana/loki/tree/v1.4.0/docs/operations/upgrade.md)
+We have created a dedicated page for upgrading Loki in the [operations section of the docs](https://github.com/grafana/loki/blob/master/docs/operations/upgrade.md#140)
 
 The docker image tag naming was changed, the starting in 1.4.0 docker images no longer have the `v` prefix: `grafana/loki:1.4.0`
 

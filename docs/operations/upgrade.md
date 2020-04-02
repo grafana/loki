@@ -8,7 +8,17 @@ On this page we will document any upgrade issues/gotchas/considerations we are a
 
 ## 1.4.0
 
-Loki 1.4.0 vendors Cortex v0.7.0-rc.0 which contains [several breaking config changes](https://github.com/cortexproject/cortex/blob/v0.7.0-rc.0/CHANGELOG.md), however, you would only be affected if you were configuring your schema via arguments and not a config file.  This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.  None of the other config changes are relevant to Loki.
+Loki 1.4.0 vendors Cortex v0.7.0-rc.0 which contains [several breaking config changes](https://github.com/cortexproject/cortex/blob/v0.7.0-rc.0/CHANGELOG.md).
+
+One such config change which will affect Loki users:
+
+In the [cache_config](../configuration/README.md#cache_config):
+
+`defaul_validity` has changed to `default_validity` 
+ 
+Also in the unlikely case you were configuring your schema via arguments and not a config file, this is no longer supported.  This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.  
+
+The other config changes should not be relevant to Loki.
 
 ### Required Upgrade Path
 
