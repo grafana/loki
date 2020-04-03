@@ -53,11 +53,7 @@ func isStdinPipe() bool {
 		level.Warn(util.Logger).Log("err", err)
 		return false
 	}
-	m := info.Mode()
-	if m&os.ModeCharDevice != 0 || info.Size() <= 0 {
-		return false
-	}
-	return true
+	return info.Mode()&os.ModeCharDevice == 0
 }
 
 type Shutdownable interface {
