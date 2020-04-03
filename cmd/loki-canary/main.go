@@ -56,6 +56,9 @@ func main() {
 	r := reader.NewReader(os.Stderr, receivedChan, *tls, *addr, *user, *pass, *lName, *lVal)
 	c := comparator.NewComparator(os.Stderr, *wait, *pruneInterval, *buckets, sentChan, receivedChan, r, true)
 
+	http.HandleFunc("/suspend", func(_ http.ResponseWriter, _ *http.Request) {
+		stopCanary(w, r, c)
+	})
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
 		err := http.ListenAndServe(":"+strconv.Itoa(*port), nil)
@@ -72,17 +75,16 @@ func main() {
 	for {
 		select {
 		case <-interrupt:
-			_, _ = fmt.Fprintf(os.Stderr, "suspending indefinitely\n")
-			w.Stop()
-			r.Stop()
-			c.Stop()
 		case <-terminate:
 			_, _ = fmt.Fprintf(os.Stderr, "shutting down\n")
-			w.Stop()
-			r.Stop()
-			c.Stop()
+			stopCanary(w, r, c)
 			return
 		}
 	}
+}
 
+func stopCanary(w *writer.Writer, r *reader.Reader, c *comparator.Comparator) {
+	w.Stop()
+	r.Stop()
+	c.Stop()
 }
