@@ -3,6 +3,7 @@ package cassandra
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -68,6 +69,9 @@ func (cfg *Config) Validate() error {
 	if cfg.Password.Value != "" && cfg.PasswordFile != "" {
 		return errors.Errorf("The password and password_file config options are mutually exclusive.")
 	}
+	if cfg.SSL && cfg.HostVerification && len(strings.Split(cfg.Addresses, ",")) != 1 {
+		return errors.Errorf("Host verification is only possible for a single host.")
+	}
 	return nil
 }
 
@@ -118,9 +122,18 @@ func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
 	cluster.DisableInitialHostLookup = cfg.DisableInitialHostLookup
 
 	if cfg.SSL {
-		cluster.SslOpts = &gocql.SslOptions{
-			CaPath:                 cfg.CAPath,
-			EnableHostVerification: cfg.HostVerification,
+		if cfg.HostVerification {
+			cluster.SslOpts = &gocql.SslOptions{
+				CaPath:                 cfg.CAPath,
+				EnableHostVerification: true,
+				Config: &tls.Config{
+					ServerName: strings.Split(cfg.Addresses, ",")[0],
+				},
+			}
+		} else {
+			cluster.SslOpts = &gocql.SslOptions{
+				EnableHostVerification: false,
+			}
 		}
 	}
 	if cfg.Auth {
