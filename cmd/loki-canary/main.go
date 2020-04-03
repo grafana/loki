@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -18,6 +19,14 @@ import (
 	"github.com/grafana/loki/pkg/canary/reader"
 	"github.com/grafana/loki/pkg/canary/writer"
 )
+
+type canary struct {
+	lock sync.Mutex
+
+	writer     *writer.Writer
+	reader     *reader.Reader
+	comparator *comparator.Comparator
+}
 
 func main() {
 
@@ -52,13 +61,29 @@ func main() {
 	sentChan := make(chan time.Time)
 	receivedChan := make(chan time.Time)
 
-	w := writer.NewWriter(os.Stdout, sentChan, *interval, *size)
-	r := reader.NewReader(os.Stderr, receivedChan, *tls, *addr, *user, *pass, *lName, *lVal)
-	c := comparator.NewComparator(os.Stderr, *wait, *pruneInterval, *buckets, sentChan, receivedChan, r, true)
+	c := &canary{}
+	startCanary := func() *canary {
+		c.stop()
 
+		c.lock.Lock()
+		defer c.lock.Unlock()
+
+		c.writer = writer.NewWriter(os.Stdout, sentChan, *interval, *size)
+		c.reader = reader.NewReader(os.Stderr, receivedChan, *tls, *addr, *user, *pass, *lName, *lVal)
+		c.comparator = comparator.NewComparator(os.Stderr, *wait, *pruneInterval, *buckets, sentChan, receivedChan, c.reader, true)
+
+		return c
+	}
+
+	startCanary()
+
+	http.HandleFunc("/resume", func(_ http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(os.Stderr, "restarting\n")
+		startCanary()
+	})
 	http.HandleFunc("/suspend", func(_ http.ResponseWriter, _ *http.Request) {
-		_, _ = fmt.Fprintf(os.Stderr, "suspending indefinitely\n")
-		stopCanary(w, r, c)
+		_, _ = fmt.Fprintf(os.Stderr, "suspending\n")
+		c.stop()
 	})
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
@@ -78,14 +103,25 @@ func main() {
 		case <-interrupt:
 		case <-terminate:
 			_, _ = fmt.Fprintf(os.Stderr, "shutting down\n")
-			stopCanary(w, r, c)
+			c.stop()
 			return
 		}
 	}
 }
 
-func stopCanary(w *writer.Writer, r *reader.Reader, c *comparator.Comparator) {
-	w.Stop()
-	r.Stop()
-	c.Stop()
+func (c *canary) stop() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	if c.writer == nil || c.reader == nil || c.comparator == nil {
+		return
+	}
+
+	c.writer.Stop()
+	c.reader.Stop()
+	c.comparator.Stop()
+
+	c.writer = nil
+	c.reader = nil
+	c.comparator = nil
 }
