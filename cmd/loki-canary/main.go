@@ -93,14 +93,11 @@ func main() {
 		}
 	}()
 
-	interrupt := make(chan os.Signal, 1)
 	terminate := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
-	signal.Notify(terminate, syscall.SIGTERM)
+	signal.Notify(terminate, syscall.SIGTERM, os.Interrupt)
 
 	for {
 		select {
-		case <-interrupt:
 		case <-terminate:
 			_, _ = fmt.Fprintf(os.Stderr, "shutting down\n")
 			c.stop()
