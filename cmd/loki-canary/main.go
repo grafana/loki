@@ -57,6 +57,7 @@ func main() {
 	c := comparator.NewComparator(os.Stderr, *wait, *pruneInterval, *buckets, sentChan, receivedChan, r, true)
 
 	http.HandleFunc("/suspend", func(_ http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(os.Stderr, "suspending indefinitely\n")
 		stopCanary(w, r, c)
 	})
 	http.Handle("/metrics", promhttp.Handler())
