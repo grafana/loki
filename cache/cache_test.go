@@ -172,7 +172,7 @@ func TestMemcache(t *testing.T) {
 }
 
 func TestFifoCache(t *testing.T) {
-	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{Size: 1e3, Validity: 1 * time.Hour})
+	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 1e3, Validity: 1 * time.Hour})
 	testCache(t, cache)
 }
 

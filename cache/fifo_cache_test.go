@@ -2,128 +2,237 @@ package cache
 
 import (
 	"context"
-	"strconv"
+	"fmt"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-const size = 10
-const overwrite = 5
-
-func TestFifoCache(t *testing.T) {
-	c := NewFifoCache("test1", FifoCacheConfig{Size: size, Validity: 1 * time.Minute})
-	ctx := context.Background()
-
-	// Check put / get works
-	keys := []string{}
-	values := []interface{}{}
-	for i := 0; i < size; i++ {
-		keys = append(keys, strconv.Itoa(i))
-		values = append(values, i)
-	}
-	c.Put(ctx, keys, values)
-	require.Len(t, c.index, size)
-	require.Len(t, c.entries, size)
-
-	for i := 0; i < size; i++ {
-		value, ok := c.Get(ctx, strconv.Itoa(i))
-		require.True(t, ok)
-		require.Equal(t, i, value.(int))
+func TestFifoCacheEviction(t *testing.T) {
+	const (
+		cnt     = 10
+		evicted = 5
+	)
+	itemTemplate := &cacheEntry{
+		key:   "00",
+		value: []byte("00"),
 	}
 
-	// Check evictions
-	keys = []string{}
-	values = []interface{}{}
-	for i := size; i < size+overwrite; i++ {
-		keys = append(keys, strconv.Itoa(i))
-		values = append(values, i)
-	}
-	c.Put(ctx, keys, values)
-	require.Len(t, c.index, size)
-	require.Len(t, c.entries, size)
-
-	for i := 0; i < size-overwrite; i++ {
-		_, ok := c.Get(ctx, strconv.Itoa(i))
-		require.False(t, ok)
-	}
-	for i := size; i < size+overwrite; i++ {
-		value, ok := c.Get(ctx, strconv.Itoa(i))
-		require.True(t, ok)
-		require.Equal(t, i, value.(int))
+	tests := []struct {
+		name string
+		cfg  FifoCacheConfig
+	}{
+		{
+			name: "test-memory-eviction",
+			cfg:  FifoCacheConfig{MaxSizeBytes: cnt * sizeOf(itemTemplate), Validity: 1 * time.Minute},
+		},
+		{
+			name: "test-items-eviction",
+			cfg:  FifoCacheConfig{MaxSizeItems: cnt, Validity: 1 * time.Minute},
+		},
 	}
 
-	// Check updates work
-	keys = []string{}
-	values = []interface{}{}
-	for i := size; i < size+overwrite; i++ {
-		keys = append(keys, strconv.Itoa(i))
-		values = append(values, i*2)
-	}
-	c.Put(ctx, keys, values)
-	require.Len(t, c.index, size)
-	require.Len(t, c.entries, size)
+	for _, test := range tests {
+		c := NewFifoCache(test.name, test.cfg)
+		ctx := context.Background()
 
-	for i := size; i < size+overwrite; i++ {
-		value, ok := c.Get(ctx, strconv.Itoa(i))
-		require.True(t, ok)
-		require.Equal(t, i*2, value.(int))
+		// Check put / get works
+		keys := []string{}
+		values := [][]byte{}
+		for i := 0; i < cnt; i++ {
+			key := fmt.Sprintf("%02d", i)
+			value := make([]byte, len(key))
+			copy(value, key)
+			keys = append(keys, key)
+			values = append(values, value)
+		}
+		c.Store(ctx, keys, values)
+		require.Len(t, c.entries, cnt)
+
+		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(1))
+		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt))
+		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(0))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
+		assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(0))
+		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(0))
+		assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
+		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
+
+		for i := 0; i < cnt; i++ {
+			key := fmt.Sprintf("%02d", i)
+			value, ok := c.Get(ctx, key)
+			require.True(t, ok)
+			require.Equal(t, []byte(key), value)
+		}
+
+		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(1))
+		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt))
+		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(0))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
+		assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt))
+		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(0))
+		assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
+		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
+
+		// Check evictions
+		keys = []string{}
+		values = [][]byte{}
+		for i := cnt - evicted; i < cnt+evicted; i++ {
+			key := fmt.Sprintf("%02d", i)
+			value := make([]byte, len(key))
+			copy(value, key)
+			keys = append(keys, key)
+			values = append(values, value)
+		}
+		c.Store(ctx, keys, values)
+		require.Len(t, c.entries, cnt)
+
+		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(2))
+		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt+evicted))
+		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(evicted))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
+		assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt))
+		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(0))
+		assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
+		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
+
+		for i := 0; i < cnt-evicted; i++ {
+			_, ok := c.Get(ctx, fmt.Sprintf("%02d", i))
+			require.False(t, ok)
+		}
+		for i := cnt - evicted; i < cnt+evicted; i++ {
+			key := fmt.Sprintf("%02d", i)
+			value, ok := c.Get(ctx, key)
+			require.True(t, ok)
+			require.Equal(t, []byte(key), value)
+		}
+
+		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(2))
+		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt+evicted))
+		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(evicted))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
+		assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt*2+evicted))
+		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(cnt-evicted))
+		assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
+		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
+
+		// Check updates work
+		keys = []string{}
+		values = [][]byte{}
+		for i := cnt; i < cnt+evicted; i++ {
+			keys = append(keys, fmt.Sprintf("%02d", i))
+			vstr := fmt.Sprintf("%02d", i*2)
+			value := make([]byte, len(vstr))
+			copy(value, vstr)
+			values = append(values, value)
+		}
+		c.Store(ctx, keys, values)
+		require.Len(t, c.entries, cnt)
+
+		for i := cnt; i < cnt+evicted; i++ {
+			value, ok := c.Get(ctx, fmt.Sprintf("%02d", i))
+			require.True(t, ok)
+			require.Equal(t, []byte(fmt.Sprintf("%02d", i*2)), value)
+		}
+
+		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(3))
+		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt+evicted))
+		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(evicted))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
+		assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt*2+evicted*2))
+		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(cnt-evicted))
+		assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
+		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
+
+		c.Stop()
 	}
 }
 
-func TestFifoCacheEvictionExpiry(t *testing.T) {
-	c := NewFifoCache("test2", FifoCacheConfig{Size: 3, Validity: 5 * time.Millisecond})
-	ctx := context.Background()
-	memorySz := int(unsafe.Sizeof(cacheEntry{})) * 3
+func TestFifoCacheExpiry(t *testing.T) {
+	key1, key2, key3, key4 := "01", "02", "03", "04"
+	data1, data2, data3 := genBytes(24), []byte("testdata"), genBytes(8)
 
-	assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(memorySz))
+	memorySz := sizeOf(&cacheEntry{key: key1, value: data1}) +
+		sizeOf(&cacheEntry{key: key2, value: data2}) +
+		sizeOf(&cacheEntry{key: key3, value: data3})
 
-	key1, key2, key3, key4 := "key1", "key23", "key345", "key45676789"
-	data1, data2, data3 := []float64{1.0, 2.0, 3.0}, "testdata", []byte{1, 2, 3, 4, 5, 6, 7, 8}
-	memorySz += len(key1) + len(key2) + len(key3) + len(data1)*8 + len(data2) + len(data3)
+	tests := []struct {
+		name string
+		cfg  FifoCacheConfig
+	}{
+		{
+			name: "test-memory-expiry",
+			cfg:  FifoCacheConfig{MaxSizeBytes: memorySz, Validity: 5 * time.Millisecond},
+		},
+		{
+			name: "test-items-expiry",
+			cfg:  FifoCacheConfig{MaxSizeItems: 3, Validity: 5 * time.Millisecond},
+		},
+	}
 
-	c.Put(ctx,
-		[]string{key1, key2, key4, key3, key2, key1},
-		[]interface{}{[]int32{1, 2, 3, 4}, "dummy", []int{5, 4, 3, 2, 1}, data3, data2, data1})
+	for _, test := range tests {
+		c := NewFifoCache(test.name, test.cfg)
+		ctx := context.Background()
 
-	value, ok := c.Get(ctx, key1)
-	require.True(t, ok)
-	require.Equal(t, data1, value.([]float64))
+		c.Store(ctx,
+			[]string{key1, key2, key4, key3, key2, key1},
+			[][]byte{genBytes(16), []byte("dummy"), genBytes(20), data3, data2, data1})
 
-	_, ok = c.Get(ctx, key4)
-	require.False(t, ok)
+		value, ok := c.Get(ctx, key1)
+		require.True(t, ok)
+		require.Equal(t, data1, value)
 
-	assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(1))
-	assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(5))
-	assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(2))
-	assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(3))
-	assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(2))
-	assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(1))
-	assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(memorySz))
+		_, ok = c.Get(ctx, key4)
+		require.False(t, ok)
 
-	// Expire the entry.
-	time.Sleep(5 * time.Millisecond)
-	_, ok = c.Get(ctx, key1)
-	require.False(t, ok)
+		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(1))
+		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(5))
+		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(2))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(3))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
+		assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(2))
+		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(1))
+		assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(0))
+		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(memorySz))
 
-	assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(1))
-	assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(5))
-	assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(2))
-	assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(3))
-	assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(3))
-	assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(2))
-	assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(1))
-	assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(memorySz))
+		// Expire the item.
+		time.Sleep(5 * time.Millisecond)
+		_, ok = c.Get(ctx, key1)
+		require.False(t, ok)
+
+		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(1))
+		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(5))
+		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(2))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(3))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
+		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
+		assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(3))
+		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(2))
+		assert.Equal(t, testutil.ToFloat64(c.staleGets), float64(1))
+		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(memorySz))
+
+		c.Stop()
+	}
+}
+
+func genBytes(n uint8) []byte {
+	arr := make([]byte, n)
+	for i := range arr {
+		arr[i] = byte(i)
+	}
+	return arr
 }

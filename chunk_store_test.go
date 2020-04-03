@@ -47,7 +47,7 @@ var stores = []struct {
 			var storeCfg StoreConfig
 			flagext.DefaultValues(&storeCfg)
 			storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
-				Size: 500,
+				MaxSizeItems: 500,
 			})
 			return storeCfg
 		},
