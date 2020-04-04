@@ -62,7 +62,7 @@ func main() {
 	receivedChan := make(chan time.Time)
 
 	c := &canary{}
-	startCanary := func() *canary {
+	startCanary := func() {
 		c.stop()
 
 		c.lock.Lock()
@@ -71,8 +71,6 @@ func main() {
 		c.writer = writer.NewWriter(os.Stdout, sentChan, *interval, *size)
 		c.reader = reader.NewReader(os.Stderr, receivedChan, *tls, *addr, *user, *pass, *lName, *lVal)
 		c.comparator = comparator.NewComparator(os.Stderr, *wait, *pruneInterval, *buckets, sentChan, receivedChan, c.reader, true)
-
-		return c
 	}
 
 	startCanary()
