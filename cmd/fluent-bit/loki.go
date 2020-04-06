@@ -67,6 +67,26 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	return l.client.Handle(lbs, ts, line)
 }
 
+// prevent base64-encoding []byte values (default json.Encoder rule) by
+// converting them to strings
+
+func toStringSlice(slice []interface{}) []interface{} {
+	var s []interface{}
+	for _, v := range slice {
+		switch t := v.(type) {
+		case []byte:
+			s = append(s, string(t))
+		case map[interface{}]interface{}:
+			s = append(s, toStringMap(t))
+		case []interface{}:
+			s = append(s, toStringSlice(t))
+		default:
+			s = append(s, t)
+		}
+	}
+	return s
+}
+
 func toStringMap(record map[interface{}]interface{}) map[string]interface{} {
 	m := make(map[string]interface{})
 	for k, v := range record {
@@ -76,10 +96,11 @@ func toStringMap(record map[interface{}]interface{}) map[string]interface{} {
 		}
 		switch t := v.(type) {
 		case []byte:
-			// prevent encoding to base64
 			m[key] = string(t)
 		case map[interface{}]interface{}:
 			m[key] = toStringMap(t)
+		case []interface{}:
+			m[key] = toStringSlice(t)
 		default:
 			m[key] = v
 		}
