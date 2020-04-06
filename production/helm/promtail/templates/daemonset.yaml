@@ -16,10 +16,7 @@ spec:
       app: {{ template "promtail.name" . }}
       release: {{ .Release.Name }}
   updateStrategy:
-    type: {{ .Values.deploymentStrategy }}
-  {{- if ne .Values.deploymentStrategy "RollingUpdate" }}
-    rollingUpdate: null
-  {{- end }}
+    {{- toYaml .Values.deploymentStrategy | nindent 4 }}
   template:
     metadata:
       labels:
