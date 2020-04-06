@@ -36,11 +36,6 @@ func RegisterIndexClient(name string, factory IndexClientFactoryFunc) {
 	customIndexClients[name] = factory
 }
 
-// useful for cleaning up state after tests
-func unregisterAllCustomIndexClients() {
-	customIndexClients = map[string]IndexClientFactoryFunc{}
-}
-
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
 	CardinalityLimit(userID string) int

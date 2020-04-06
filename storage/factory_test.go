@@ -117,3 +117,8 @@ func TestCustomIndexClient(t *testing.T) {
 	_, ok = indexClient.(*local.BoltIndexClient)
 	require.Equal(t, true, ok)
 }
+
+// useful for cleaning up state after tests
+func unregisterAllCustomIndexClients() {
+	customIndexClients = map[string]IndexClientFactoryFunc{}
+}
