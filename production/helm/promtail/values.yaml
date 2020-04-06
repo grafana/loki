@@ -4,7 +4,12 @@ affinity: {}
 
 annotations: {}
 
-deploymentStrategy: RollingUpdate
+# The update strategy to apply to the DaemonSet
+##
+deploymentStrategy: {}
+#  rollingUpdate:
+#    maxUnavailable: 1
+#  type: RollingUpdate
 
 initContainer:
   enabled: false
