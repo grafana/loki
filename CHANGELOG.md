@@ -1,3 +1,12 @@
+## 1.4.1 (2020-04-06)
+
+We realized after the release last week that piping data into promtail was not working on Linux or Windows, this should fix this issue for both platforms:
+
+* [1893](https://github.com/grafana/loki/pull/1893) **cyriltovena**: Removes file size check for pipe, not provided by linux.
+
+Also thanks to @dottedmag for providing this fix for Fluent Bit!
+
+* [1890](https://github.com/grafana/loki/pull/1890) **dottedmag**: fluentbit: JSON encoding: avoid base64 encoding of []byte inside other slices
 
 ## 1.4.0 (2020-04-01)
 
