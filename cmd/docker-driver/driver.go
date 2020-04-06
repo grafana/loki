@@ -69,6 +69,7 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 	if logCtx.LogPath == "" {
 		logCtx.LogPath = filepath.Join("/var/log/docker", logCtx.ContainerID)
 	}
+	level.Info(d.logger).Log("msg", "starting logging driver for container", "id", logCtx.ContainerID, "config", fmt.Sprintf("%+v", logCtx.Config), "file", file, "logpath", logCtx.LogPath)
 	if err := os.MkdirAll(filepath.Dir(logCtx.LogPath), 0755); err != nil {
 		return errors.Wrap(err, "error setting up logger dir")
 	}
@@ -81,7 +82,6 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 	if err != nil {
 		return errors.Wrap(err, "error creating loki logger")
 	}
-	level.Debug(d.logger).Log("msg", "Start logging", "id", logCtx.ContainerID, "file", file, "logpath", logCtx.LogPath)
 	f, err := fifo.OpenFifo(context.Background(), file, syscall.O_RDONLY, 0700)
 	if err != nil {
 		return errors.Wrapf(err, "error opening logger fifo: %q", file)
