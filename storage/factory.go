@@ -260,11 +260,17 @@ func NewBucketClient(storageConfig Config) (chunk.BucketClient, error) {
 // NewObjectClient makes a new StorageClient of the desired types.
 func NewObjectClient(name string, cfg Config) (chunk.ObjectClient, error) {
 	switch name {
+	case "aws", "s3":
+		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, chunk.DirDelim)
+	case "gcs":
+		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, chunk.DirDelim)
+	case "azure":
+		return azure.NewBlobStorage(&cfg.AzureStorageConfig, chunk.DirDelim)
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
 	case "filesystem":
 		return local.NewFSObjectClient(cfg.FSConfig)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: filesystem", name)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, s3, gcs, azure, filesystem", name)
 	}
 }
