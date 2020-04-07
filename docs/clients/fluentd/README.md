@@ -27,6 +27,8 @@ In your Fluentd configuration, use `@type loki`. Additional configuration is opt
 
 ### Using labels
 
+**Note**: use either `<label>...</label>` or `extra_labels` to set at least one label. Otherwise the Loki API will reject incoming requests (the error message returned by Loki 1.4.0 in this case can be slightly misleading: `parse error at line 1, col 2: syntax error: unexpected }, expecting IDENTIFIER`).
+
 Simple label from top level attribute
 ```
 <match mytag>
