@@ -2,7 +2,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 {
-  dashboards+: {
+  grafanaDashboards+: {
     'loki-logs.json': import './dashboard-loki-logs.json',
     'loki-operational.json': import './dashboard-loki-operational.json',
     'loki-writes.json':
