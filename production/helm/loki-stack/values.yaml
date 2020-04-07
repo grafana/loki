@@ -9,6 +9,10 @@ fluent-bit:
 
 grafana:
   enabled: false
+  service:
+    type: LoadBalancer
+    port: 3000
+  adminPassword: admin
   sidecar:
     datasources:
       enabled: true
