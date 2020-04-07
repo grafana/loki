@@ -73,6 +73,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -93,6 +94,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -113,6 +115,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -131,6 +134,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -149,6 +153,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -167,6 +172,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -206,6 +212,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -226,6 +233,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -246,6 +254,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -264,6 +273,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -282,6 +292,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -300,6 +311,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -339,6 +351,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -359,6 +372,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -379,6 +393,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -397,6 +412,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -415,6 +431,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -433,6 +450,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -471,6 +489,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -487,6 +506,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -544,6 +564,7 @@ steps:
 trigger:
   ref:
   - refs/heads/master
+  - refs/heads/k??
   - refs/tags/v*
 
 depends_on:
@@ -573,6 +594,7 @@ steps:
 trigger:
   ref:
   - refs/heads/master
+  - refs/heads/k??
   - refs/tags/v*
 
 depends_on:
@@ -602,6 +624,7 @@ steps:
 trigger:
   ref:
   - refs/heads/master
+  - refs/heads/k??
   - refs/tags/v*
 
 depends_on:
