@@ -6,14 +6,18 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && (if [ "${TOUCH_PROTOS}" ]; then make touch-protos; fi) && make BUILD_IN_CONTAINER=false loki
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcap2-bin \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN setcap cap_net_bind_service=+ep /src/loki/cmd/loki/loki
+
 FROM alpine:3.9
-RUN apk add --update --no-cache ca-certificates libcap \
+RUN apk add --update --no-cache ca-certificates \
     && rm -rf /var/cache/apk/*
 
 COPY --from=build /src/loki/cmd/loki/loki /usr/bin/loki
 COPY cmd/loki/loki-local-config.yaml /etc/loki/local-config.yaml
-
-RUN setcap cap_net_bind_service=+ep /usr/bin/loki
 
 RUN addgroup -g 1000 -S loki && \
     adduser -u 1000 -S loki -G loki
