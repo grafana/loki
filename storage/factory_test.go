@@ -3,6 +3,7 @@ package storage
 import (
 	"io/ioutil"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/prometheus/common/model"
@@ -55,17 +56,17 @@ func newBoltDBCustomIndexClient(cfg local.BoltDBConfig) (chunk.IndexClient, erro
 	return &customBoltDBIndexClient{boltdbClient}, nil
 }
 
-type anotherIndexClient struct {
-	*local.BoltIndexClient
+type customBoltDBTableClient struct {
+	chunk.TableClient
 }
 
-func newAnotherIndexClient(cfg local.BoltDBConfig) (chunk.IndexClient, error) {
-	boltdbClient, err := local.NewBoltDBIndexClient(cfg)
+func newBoltDBCustomTableClient(directory string) (chunk.TableClient, error) {
+	tableClient, err := local.NewTableClient(directory)
 	if err != nil {
 		return nil, err
 	}
 
-	return &anotherIndexClient{boltdbClient}, nil
+	return &customBoltDBTableClient{tableClient}, nil
 }
 
 func TestCustomIndexClient(t *testing.T) {
@@ -78,47 +79,80 @@ func TestCustomIndexClient(t *testing.T) {
 	}
 	cfg.BoltDBConfig.Directory = dirname
 
-	// register custom index clients, overwriting boltdb client and a new one with different name
-	RegisterIndexClient("boltdb", func() (client chunk.IndexClient, e error) {
-		return newBoltDBCustomIndexClient(cfg.BoltDBConfig)
-	})
+	for _, tc := range []struct {
+		indexClientName         string
+		indexClientFactories    indexStoreFactories
+		errorExpected           bool
+		expectedIndexClientType reflect.Type
+		expectedTableClientType reflect.Type
+	}{
+		{
+			indexClientName:         "boltdb",
+			expectedIndexClientType: reflect.TypeOf(&local.BoltIndexClient{}),
+			expectedTableClientType: reflect.TypeOf(&local.TableClient{}),
+		},
+		{
+			indexClientName: "boltdb",
+			indexClientFactories: indexStoreFactories{
+				indexClientFactoryFunc: func() (client chunk.IndexClient, e error) {
+					return newBoltDBCustomIndexClient(cfg.BoltDBConfig)
+				},
+			},
+			expectedIndexClientType: reflect.TypeOf(&customBoltDBIndexClient{}),
+			expectedTableClientType: reflect.TypeOf(&local.TableClient{}),
+		},
+		{
+			indexClientName: "boltdb",
+			indexClientFactories: indexStoreFactories{
+				tableClientFactoryFunc: func() (client chunk.TableClient, e error) {
+					return newBoltDBCustomTableClient(cfg.BoltDBConfig.Directory)
+				},
+			},
+			expectedIndexClientType: reflect.TypeOf(&local.BoltIndexClient{}),
+			expectedTableClientType: reflect.TypeOf(&customBoltDBTableClient{}),
+		},
+		{
+			indexClientName: "boltdb",
+			indexClientFactories: indexStoreFactories{
+				indexClientFactoryFunc: func() (client chunk.IndexClient, e error) {
+					return newBoltDBCustomIndexClient(cfg.BoltDBConfig)
+				},
+				tableClientFactoryFunc: func() (client chunk.TableClient, e error) {
+					return newBoltDBCustomTableClient(cfg.BoltDBConfig.Directory)
+				},
+			},
+			expectedIndexClientType: reflect.TypeOf(&customBoltDBIndexClient{}),
+			expectedTableClientType: reflect.TypeOf(&customBoltDBTableClient{}),
+		},
+		{
+			indexClientName: "boltdb1",
+			errorExpected:   true,
+		},
+	} {
+		if tc.indexClientFactories.indexClientFactoryFunc != nil || tc.indexClientFactories.tableClientFactoryFunc != nil {
+			RegisterIndexStore(tc.indexClientName, tc.indexClientFactories.indexClientFactoryFunc, tc.indexClientFactories.tableClientFactoryFunc)
+		}
 
-	RegisterIndexClient("another-index-client", func() (client chunk.IndexClient, e error) {
-		return newAnotherIndexClient(cfg.BoltDBConfig)
-	})
+		indexClient, err := NewIndexClient(tc.indexClientName, cfg, schemaCfg)
+		if tc.errorExpected {
+			require.Error(t, err)
+		} else {
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedIndexClientType, reflect.TypeOf(indexClient))
+		}
 
-	// try creating a new index client for boltdb
-	indexClient, err := NewIndexClient("boltdb", cfg, schemaCfg)
-	require.NoError(t, err)
-
-	// check whether we got custom boltdb index client type registered above
-	_, ok := indexClient.(*customBoltDBIndexClient)
-	require.Equal(t, true, ok)
-
-	// check whether non-existent index client returns an error
-	_, err = NewIndexClient("boltdb1", cfg, schemaCfg)
-	require.Error(t, err)
-
-	// try creating a new index client for another index client
-	indexClient, err = NewIndexClient("another-index-client", cfg, schemaCfg)
-	require.NoError(t, err)
-
-	// check whether we got another index client type registered above
-	_, ok = indexClient.(*anotherIndexClient)
-	require.Equal(t, true, ok)
-
-	unregisterAllCustomIndexClients()
-
-	// try creating a new index client for boltdb
-	indexClient, err = NewIndexClient("boltdb", cfg, schemaCfg)
-	require.NoError(t, err)
-
-	// check whether we got original boltdb index client
-	_, ok = indexClient.(*local.BoltIndexClient)
-	require.Equal(t, true, ok)
+		tableClient, err := NewTableClient(tc.indexClientName, cfg)
+		if tc.errorExpected {
+			require.Error(t, err)
+		} else {
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedTableClientType, reflect.TypeOf(tableClient))
+		}
+		unregisterAllCustomIndexStores()
+	}
 }
 
 // useful for cleaning up state after tests
-func unregisterAllCustomIndexClients() {
-	customIndexClients = map[string]IndexClientFactoryFunc{}
+func unregisterAllCustomIndexStores() {
+	customIndexStores = map[string]indexStoreFactories{}
 }

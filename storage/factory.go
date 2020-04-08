@@ -28,12 +28,23 @@ const (
 	StorageEngineTSDB   = "tsdb"
 )
 
+type indexStoreFactories struct {
+	indexClientFactoryFunc IndexClientFactoryFunc
+	tableClientFactoryFunc TableClientFactoryFunc
+}
+
+// IndexClientFactoryFunc defines signature of function which creates chunk.IndexClient for managing index in index store
 type IndexClientFactoryFunc func() (chunk.IndexClient, error)
 
-var customIndexClients = map[string]IndexClientFactoryFunc{}
+// TableClientFactoryFunc defines signature of function which creates chunk.TableClient for managing tables in index store
+type TableClientFactoryFunc func() (chunk.TableClient, error)
 
-func RegisterIndexClient(name string, factory IndexClientFactoryFunc) {
-	customIndexClients[name] = factory
+var customIndexStores = map[string]indexStoreFactories{}
+
+// RegisterIndexStore is used for registering a custom index type.
+// When an index type is registered here with same name as existing types, the registered one takes the precedence.
+func RegisterIndexStore(name string, indexClientFactory IndexClientFactoryFunc, tableClientFactory TableClientFactoryFunc) {
+	customIndexStores[name] = indexStoreFactories{indexClientFactory, tableClientFactory}
 }
 
 // StoreLimits helps get Limits specific to Queries for Stores
@@ -146,8 +157,10 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 
 // NewIndexClient makes a new index client of the desired type.
 func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
-	if factory, ok := customIndexClients[name]; ok {
-		return factory()
+	if indexClientFactory, ok := customIndexStores[name]; ok {
+		if indexClientFactory.indexClientFactoryFunc != nil {
+			return indexClientFactory.indexClientFactoryFunc()
+		}
 	}
 
 	switch name {
@@ -225,6 +238,12 @@ func newChunkClientFromStore(store chunk.ObjectClient, err error) (chunk.Client,
 
 // NewTableClient makes a new table client based on the configuration.
 func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
+	if indexClientFactory, ok := customIndexStores[name]; ok {
+		if indexClientFactory.tableClientFactoryFunc != nil {
+			return indexClientFactory.tableClientFactoryFunc()
+		}
+	}
+
 	switch name {
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
