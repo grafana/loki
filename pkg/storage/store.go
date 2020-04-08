@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"flag"
+	"sort"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -129,7 +130,7 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectParams) ([]logpro
 		firstChunksPerSeries = append(firstChunksPerSeries, chks[0][0])
 	}
 
-	results := make([]logproto.SeriesIdentifier, 0, len(firstChunksPerSeries))
+	results := make(logproto.SeriesIdentifiers, 0, len(firstChunksPerSeries))
 
 	// bound concurrency
 	groups := make([][]*chunkenc.LazyChunk, 0, len(firstChunksPerSeries)/s.cfg.MaxChunkBatchSize+1)
@@ -168,6 +169,7 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectParams) ([]logpro
 			})
 		}
 	}
+	sort.Sort(results)
 	return results, nil
 
 }

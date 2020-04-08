@@ -361,9 +361,10 @@ func Test_store_LazyQuery(t *testing.T) {
 func Test_store_GetSeries(t *testing.T) {
 
 	tests := []struct {
-		name     string
-		req      *logproto.QueryRequest
-		expected []logproto.SeriesIdentifier
+		name      string
+		req       *logproto.QueryRequest
+		expected  []logproto.SeriesIdentifier
+		batchSize int
 	}{
 		{
 			"all",
@@ -372,6 +373,16 @@ func Test_store_GetSeries(t *testing.T) {
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
 				{Labels: mustParseLabels("{foo=\"bazz\"}")},
 			},
+			1,
+		},
+		{
+			"all-single-batch",
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+				{Labels: mustParseLabels("{foo=\"bazz\"}")},
+			},
+			5,
 		},
 		{
 			"regexp filter (post chunk fetching)",
@@ -379,6 +390,7 @@ func Test_store_GetSeries(t *testing.T) {
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
 			},
+			1,
 		},
 		{
 			"filter matcher",
@@ -386,6 +398,7 @@ func Test_store_GetSeries(t *testing.T) {
 			[]logproto.SeriesIdentifier{
 				{Labels: mustParseLabels("{foo=\"bar\"}")},
 			},
+			1,
 		},
 	}
 	for _, tt := range tests {
@@ -393,7 +406,7 @@ func Test_store_GetSeries(t *testing.T) {
 			s := &store{
 				Store: storeFixture,
 				cfg: Config{
-					MaxChunkBatchSize: 1,
+					MaxChunkBatchSize: tt.batchSize,
 				},
 			}
 			ctx = user.InjectOrgID(context.Background(), "test-user")
