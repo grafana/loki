@@ -120,12 +120,12 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectParams) ([]logpro
 	}
 
 	// group chunks by series
-	m := partitionBySeriesChunks(lazyChunks)
+	chunksBySeries := partitionBySeriesChunks(lazyChunks)
 
-	firstChunksPerSeries := make([]*chunkenc.LazyChunk, 0, len(m))
+	firstChunksPerSeries := make([]*chunkenc.LazyChunk, 0, len(chunksBySeries))
 
 	// discard all but one chunk per series
-	for _, chks := range m {
+	for _, chks := range chunksBySeries {
 		firstChunksPerSeries = append(firstChunksPerSeries, chks[0][0])
 	}
 
