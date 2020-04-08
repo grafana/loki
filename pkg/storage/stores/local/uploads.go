@@ -60,6 +60,8 @@ func (s *Shipper) uploadFile(ctx context.Context, period string) error {
 		return nil
 	}
 
+	level.Debug(util.Logger).Log("msg", fmt.Sprintf("uploading file for period %s", period))
+
 	snapshotPath := path.Join(s.cfg.CacheLocation, period)
 	err := chunk_util.EnsureDirectory(snapshotPath)
 	if err != nil {

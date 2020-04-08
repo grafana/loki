@@ -287,6 +287,8 @@ func (s *Shipper) forEach(ctx context.Context, period string, callback func(db *
 		if ok {
 			s.downloadedPeriodsMtx.Unlock()
 		} else {
+			level.Info(pkg_util.Logger).Log("msg", fmt.Sprintf("downloading all files for period %s", period))
+
 			fc = &filesCollection{files: map[string]downloadedFiles{}}
 			s.downloadedPeriods[period] = fc
 			s.downloadedPeriodsMtx.Unlock()

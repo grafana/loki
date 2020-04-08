@@ -24,7 +24,7 @@ func (s *Shipper) checkStorageForUpdates(ctx context.Context, period string, fc 
 
 	// listing tables from store
 	var objects []chunk.StorageObject
-	objects, err = s.storageClient.List(ctx, period)
+	objects, err = s.storageClient.List(ctx, period+"/")
 	if err != nil {
 		return
 	}
@@ -57,6 +57,8 @@ func (s *Shipper) checkStorageForUpdates(ctx context.Context, period string, fc 
 
 // syncFilesForPeriod downloads updated and new files from for given period from all the uploaders and removes deleted ones
 func (s *Shipper) syncFilesForPeriod(ctx context.Context, period string, fc *filesCollection) error {
+	level.Debug(util.Logger).Log("msg", fmt.Sprintf("syncing files for period %s", period))
+
 	fc.RLock()
 	toDownload, toDelete, err := s.checkStorageForUpdates(ctx, period, fc)
 	fc.RUnlock()
@@ -144,7 +146,13 @@ func (s *Shipper) getFileFromStorage(ctx context.Context, objectKey, destination
 	}
 
 	_, err = io.Copy(f, readCloser)
-	return err
+	if err != nil {
+		return err
+	}
+
+	level.Info(util.Logger).Log("msg", fmt.Sprintf("downloaded file %s", objectKey))
+
+	return f.Sync()
 }
 
 // downloadFilesForPeriod should be called when files for a period does not exist i.e they were never downloaded or got cleaned up later on by TTL
@@ -153,10 +161,12 @@ func (s *Shipper) downloadFilesForPeriod(ctx context.Context, period string, fc 
 	fc.Lock()
 	defer fc.Unlock()
 
-	objects, err := s.storageClient.List(ctx, period)
+	objects, err := s.storageClient.List(ctx, period+"/")
 	if err != nil {
 		return err
 	}
+
+	level.Debug(util.Logger).Log("msg", fmt.Sprintf("list of files to download for period %s: %s", period, objects))
 
 	folderPath, err := s.getFolderPathForPeriod(period, true)
 	if err != nil {
@@ -165,6 +175,10 @@ func (s *Shipper) downloadFilesForPeriod(ctx context.Context, period string, fc 
 
 	for _, object := range objects {
 		uploader := getUploaderFromObjectKey(object.Key)
+		if uploader == s.uploader {
+			continue
+		}
+
 		filePath := path.Join(folderPath, uploader)
 		df := downloadedFiles{}
 

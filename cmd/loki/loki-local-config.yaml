@@ -18,11 +18,11 @@ ingester:
 schema_config:
   configs:
     - from: 2018-04-15
-      store: boltdb
-      object_store: filesystem
+      store: boltdb-shipper
+      object_store: gcs
       schema: v11
       index:
-        prefix: index_
+        prefix: loki_boltdb_shipper_index_
         period: 168h
 
 storage_config:
@@ -31,6 +31,13 @@ storage_config:
 
   filesystem:
     directory: /loki/chunks
+
+  gcs:
+    bucket_name: 'dev-us-central1-loki-boltdb-shipper'
+
+  boltdb_shipper_config:
+    active_index_directory: /tmp/loki/index
+    cache_location: /tmp/loki/boltdb-cache
 
 limits_config:
   enforce_metric_name: false

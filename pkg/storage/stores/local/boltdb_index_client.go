@@ -35,8 +35,8 @@ func NewBoltDBIndexClient(cfg local.BoltDBConfig, archiveStoreClient chunk.Objec
 }
 
 func (b *BoltdbIndexClientWithShipper) Stop() {
-	b.BoltIndexClient.Stop()
 	b.shipper.Stop()
+	b.BoltIndexClient.Stop()
 }
 
 func (b *BoltdbIndexClientWithShipper) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {

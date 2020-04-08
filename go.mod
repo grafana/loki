@@ -70,4 +70,4 @@ replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v
 
 replace github.com/Azure/go-autorest => github.com/Azure/go-autorest v13.3.0+incompatible
 
-replace github.com/cortexproject/cortex => github.com/sandeepsukhani/cortex v0.0.0-20200401102156-8377099831f7
+replace github.com/cortexproject/cortex => github.com/grafana/cortex v0.0.0-20200408151555-2e824a9e4de8
