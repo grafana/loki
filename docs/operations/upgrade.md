@@ -6,6 +6,14 @@ Unfortunately Loki is software and software is hard and sometimes things are not
 
 On this page we will document any upgrade issues/gotchas/considerations we are aware of.
 
+## 1.5.0
+
+Loki 1.5.0 vendors Cortex v1.0.0 (congratulations!), which has a [massive list of changes](https://cortexmetrics.io/docs/changelog/#1-0-0-2020-04-02).
+
+While changes in the command line flags affect Loki as well, we usually recommend people to use configuration file instead.
+
+Cortex has done lot of cleanup in the configuration files, and you are strongly urged to take a look at the [annotated diff for config file](https://cortexmetrics.io/docs/changelog/#config-file-breaking-changes) before upgrading to Loki 1.5.0.
+
 ## 1.4.0
 
 Loki 1.4.0 vendors Cortex v0.7.0-rc.0 which contains [several breaking config changes](https://github.com/cortexproject/cortex/blob/v0.7.0-rc.0/CHANGELOG.md).
