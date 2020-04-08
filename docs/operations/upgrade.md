@@ -14,6 +14,8 @@ While changes in the command line flags affect Loki as well, we usually recommen
 
 Cortex has done lot of cleanup in the configuration files, and you are strongly urged to take a look at the [annotated diff for config file](https://cortexmetrics.io/docs/changelog/#config-file-breaking-changes) before upgrading to Loki 1.5.0.
 
+Following fields were removed from YAML configuration completely: `claim_on_rollout` (always true), `normalise_tokens` (always true).
+
 ## 1.4.0
 
 Loki 1.4.0 vendors Cortex v0.7.0-rc.0 which contains [several breaking config changes](https://github.com/cortexproject/cortex/blob/v0.7.0-rc.0/CHANGELOG.md).

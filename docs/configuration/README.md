@@ -344,9 +344,6 @@ ring.
 # conditions with ingesters exiting and updating the ring.
 [min_ready_duration: <duration> | default = 1m]
 
-# Store tokens in a normalised fashion to reduce the number of allocations.
-[normalise_tokens: <boolean> | default = false]
-
 # Name of network interfaces to read addresses from.
 interface_names:
   - [<string> ... | default = ["eth0", "en0"]]

@@ -139,7 +139,7 @@
         reject_old_samples: true,
         reject_old_samples_max_age: '168h',
         max_query_length: '12000h',  // 500 days
-        max_streams_per_user: 0, // Disabled in favor of the global limit
+        max_streams_per_user: 0,  // Disabled in favor of the global limit
         max_global_streams_per_user: 10000,  // 10k
         ingestion_rate_strategy: 'global',
         ingestion_rate_mb: 10,
@@ -160,7 +160,7 @@
               consul: {
                 host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
                 http_client_timeout: '20s',
-                consistentreads: true,
+                consistent_reads: true,
               },
             },
           },
@@ -168,7 +168,6 @@
           num_tokens: 512,
           heartbeat_period: '5s',
           join_after: '30s',
-          claim_on_rollout: true,
           interface_names: ['eth0'],
         },
       },
