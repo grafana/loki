@@ -75,10 +75,6 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 	folder := fmt.Sprintf("/var/log/docker/%s/", logCtx.ContainerID)
 	logCtx.LogPath = filepath.Join(folder, "json.log")
 
-	if err := os.MkdirAll(folder, 0755); err != nil {
-		return errors.Wrap(err, "error setting up logger dir")
-	}
-
 	noFile, err := parseBoolean(cfgNofile, logCtx, false)
 	if err != nil {
 		return err
@@ -91,6 +87,10 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 
 	var jsonl logger.Logger
 	if !noFile {
+		if err := os.MkdirAll(folder, 0755); err != nil {
+			return errors.Wrap(err, "error setting up logger dir")
+		}
+
 		jsonl, err = jsonfilelog.New(logCtx)
 		if err != nil {
 			return errors.Wrap(err, "error creating jsonfile logger")
@@ -120,19 +120,19 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 func (d *driver) StopLogging(file string) {
 	level.Debug(d.logger).Log("msg", "Stop logging", "file", file)
 	d.mu.Lock()
+	defer d.mu.Unlock()
 	lf, ok := d.logs[file]
 	if !ok {
 		return
 	}
 	lf.Close()
 	delete(d.logs, file)
-	if !lf.keepFile {
+	if !lf.keepFile && lf.jsonl != nil {
 		// delete the folder where all log files were created.
 		if err := os.RemoveAll(lf.folder); err != nil {
 			level.Debug(d.logger).Log("msg", "error deleting folder", "folder", lf.folder)
 		}
 	}
-	d.mu.Unlock()
 }
 
 func consumeLog(lf *logPair) {
