@@ -24,7 +24,6 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
 	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -484,12 +483,9 @@ func (q *Querier) seriesForMatchers(
 	groups []string,
 ) ([]logproto.SeriesIdentifier, error) {
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	var results []logproto.SeriesIdentifier
 	for _, group := range groups {
-		iter, err := q.store.LazyQuery(ctx, logql.SelectParams{
+		ids, err := q.store.GetSeries(ctx, logql.SelectParams{
 			QueryRequest: &logproto.QueryRequest{
 				Selector:  group,
 				Limit:     1,
@@ -502,19 +498,10 @@ func (q *Querier) seriesForMatchers(
 			return nil, err
 		}
 
-		for iter.Next() {
-			ls, err := marshal.NewLabelSet(iter.Labels())
-			if err != nil {
-				return nil, err
-			}
+		results = append(results, ids...)
 
-			results = append(results, logproto.SeriesIdentifier{
-				Labels: ls.Map(),
-			})
-		}
 	}
 	return results, nil
-
 }
 
 func (q *Querier) validateQueryRequest(ctx context.Context, req *logproto.QueryRequest) error {
