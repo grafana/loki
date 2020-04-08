@@ -133,6 +133,9 @@ The `server_config` block configures Promtail's behavior as an HTTP server:
 
 # Base path to server all API routes from (e.g., /v1/).
 [http_path_prefix: <string>]
+
+# Target managers check flag for promtail readiness, if set to false the check is ignored
+[health_check_target: <bool> | default = true]
 ```
 
 ## client_config
