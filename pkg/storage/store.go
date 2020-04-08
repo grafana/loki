@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"flag"
+	"sort"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/util"
@@ -35,6 +37,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type Store interface {
 	chunk.Store
 	LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error)
+	GetSeries(ctx context.Context, req logql.SelectParams) ([]logproto.SeriesIdentifier, error)
 }
 
 type store struct {
@@ -54,37 +57,30 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 	}, nil
 }
 
-// LazyQuery returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
-// for that request.
-func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error) {
-	storeStats := stats.GetStoreData(ctx)
-
+// decodeReq sanitizes an incoming request, rounds bounds, appends the __name__ matcher,
+// and adds the "__cortex_shard__" label if this is a sharded query.
+func decodeReq(req logql.SelectParams) ([]*labels.Matcher, logql.LineFilter, model.Time, model.Time, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
-		return nil, err
+		return nil, nil, 0, 0, err
 	}
 
 	filter, err := expr.Filter()
 	if err != nil {
-		return nil, err
+		return nil, nil, 0, 0, err
 	}
 
 	matchers := expr.Matchers()
 	nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, "logs")
 	if err != nil {
-		return nil, err
+		return nil, nil, 0, 0, err
 	}
-
-	userID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	matchers = append(matchers, nameLabelMatcher)
+
 	if shards := req.GetShards(); shards != nil {
 		parsed, err := logql.ParseShards(shards)
 		if err != nil {
-			return nil, err
+			return nil, nil, 0, 0, err
 		}
 		for _, s := range parsed {
 			shardMatcher, err := labels.NewMatcher(
@@ -93,7 +89,7 @@ func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.Ent
 				s.String(),
 			)
 			if err != nil {
-				return nil, err
+				return nil, nil, 0, 0, err
 			}
 			matchers = append(matchers, shardMatcher)
 
@@ -103,7 +99,20 @@ func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.Ent
 			break // nolint:staticcheck
 		}
 	}
+
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
+	return matchers, filter, from, through, nil
+}
+
+// lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
+func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from, through model.Time) ([]*chunkenc.LazyChunk, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	storeStats := stats.GetStoreData(ctx)
+
 	chks, fetchers, err := s.GetChunkRefs(ctx, userID, from, through, matchers...)
 	if err != nil {
 		return nil, err
@@ -122,6 +131,87 @@ func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.Ent
 			lazyChunks = append(lazyChunks, &chunkenc.LazyChunk{Chunk: c, Fetcher: fetchers[i]})
 		}
 	}
+	return lazyChunks, nil
+}
+
+func (s *store) GetSeries(ctx context.Context, req logql.SelectParams) ([]logproto.SeriesIdentifier, error) {
+	matchers, _, from, through, err := decodeReq(req)
+	if err != nil {
+		return nil, err
+	}
+
+	lazyChunks, err := s.lazyChunks(ctx, matchers, from, through)
+	if err != nil {
+		return nil, err
+	}
+
+	// group chunks by series
+	chunksBySeries := partitionBySeriesChunks(lazyChunks)
+
+	firstChunksPerSeries := make([]*chunkenc.LazyChunk, 0, len(chunksBySeries))
+
+	// discard all but one chunk per series
+	for _, chks := range chunksBySeries {
+		firstChunksPerSeries = append(firstChunksPerSeries, chks[0][0])
+	}
+
+	results := make(logproto.SeriesIdentifiers, 0, len(firstChunksPerSeries))
+
+	// bound concurrency
+	groups := make([][]*chunkenc.LazyChunk, 0, len(firstChunksPerSeries)/s.cfg.MaxChunkBatchSize+1)
+
+	split := s.cfg.MaxChunkBatchSize
+	if len(firstChunksPerSeries) < split {
+		split = len(firstChunksPerSeries)
+	}
+
+	for split > 0 {
+		groups = append(groups, firstChunksPerSeries[:split])
+		firstChunksPerSeries = firstChunksPerSeries[split:]
+		if len(firstChunksPerSeries) < split {
+			split = len(firstChunksPerSeries)
+		}
+	}
+
+	for _, group := range groups {
+		err = fetchLazyChunks(ctx, group)
+		if err != nil {
+			return nil, err
+		}
+
+	outer:
+		for _, chk := range group {
+			for _, matcher := range matchers {
+				if !matcher.Matches(chk.Chunk.Metric.Get(matcher.Name)) {
+					continue outer
+				}
+			}
+
+			m := chk.Chunk.Metric.Map()
+			delete(m, labels.MetricName)
+			results = append(results, logproto.SeriesIdentifier{
+				Labels: m,
+			})
+		}
+	}
+	sort.Sort(results)
+	return results, nil
+
+}
+
+// LazyQuery returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
+// for that request.
+func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error) {
+	matchers, filter, from, through, err := decodeReq(req)
+	if err != nil {
+		return nil, err
+	}
+
+	lazyChunks, err := s.lazyChunks(ctx, matchers, from, through)
+	if err != nil {
+		return nil, err
+	}
+
 	return newBatchChunkIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req.QueryRequest), nil
 
 }

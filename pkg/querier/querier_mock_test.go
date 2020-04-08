@@ -243,6 +243,15 @@ func (s *storeMock) DeleteSeriesIDs(ctx context.Context, from, through model.Tim
 	panic("don't call me please")
 }
 
+func (s *storeMock) GetSeries(ctx context.Context, req logql.SelectParams) ([]logproto.SeriesIdentifier, error) {
+	args := s.Called(ctx, req)
+	res := args.Get(0)
+	if res == nil {
+		return []logproto.SeriesIdentifier(nil), args.Error(1)
+	}
+	return res.([]logproto.SeriesIdentifier), args.Error(1)
+}
+
 func (s *storeMock) Stop() {
 
 }
@@ -312,15 +321,6 @@ func mockIngesterDesc(addr string, state ring.IngesterState) ring.IngesterDesc {
 // starting at from
 func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 	return iter.NewStreamIterator(mockStream(from, quantity))
-}
-
-func mockStreamIterFromLabelSets(from, quantity int, sets []string) iter.EntryIterator {
-	var streams []*logproto.Stream
-	for _, s := range sets {
-		streams = append(streams, mockStreamWithLabels(from, quantity, s))
-	}
-
-	return iter.NewStreamsIterator(context.Background(), streams, logproto.FORWARD)
 }
 
 // mockStream return a stream with quantity entries, where entries timestamp and

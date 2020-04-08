@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -19,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/marshal"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -354,4 +356,76 @@ func Test_store_LazyQuery(t *testing.T) {
 			assertStream(t, tt.expected, streams.Streams)
 		})
 	}
+}
+
+func Test_store_GetSeries(t *testing.T) {
+
+	tests := []struct {
+		name      string
+		req       *logproto.QueryRequest
+		expected  []logproto.SeriesIdentifier
+		batchSize int
+	}{
+		{
+			"all",
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+				{Labels: mustParseLabels("{foo=\"bazz\"}")},
+			},
+			1,
+		},
+		{
+			"all-single-batch",
+			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+				{Labels: mustParseLabels("{foo=\"bazz\"}")},
+			},
+			5,
+		},
+		{
+			"regexp filter (post chunk fetching)",
+			newQuery("{foo=~\"bar.*\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+			},
+			1,
+		},
+		{
+			"filter matcher",
+			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), logproto.FORWARD),
+			[]logproto.SeriesIdentifier{
+				{Labels: mustParseLabels("{foo=\"bar\"}")},
+			},
+			1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &store{
+				Store: storeFixture,
+				cfg: Config{
+					MaxChunkBatchSize: tt.batchSize,
+				},
+			}
+			ctx = user.InjectOrgID(context.Background(), "test-user")
+			out, err := s.GetSeries(ctx, logql.SelectParams{QueryRequest: tt.req})
+			if err != nil {
+				t.Errorf("store.GetSeries() error = %v", err)
+				return
+			}
+			require.Equal(t, tt.expected, out)
+		})
+	}
+}
+
+func mustParseLabels(s string) map[string]string {
+	l, err := marshal.NewLabelSet(s)
+
+	if err != nil {
+		log.Fatalf("Failed to parse %s", s)
+	}
+
+	return l
 }

@@ -21,6 +21,7 @@ Configuration examples can be found in the [Configuration Examples](examples.md)
 * [schema_config](#schema_config)
   * [period_config](#period_config)
 * [limits_config](#limits_config)
+* [frontend_worker_config](#frontend_worker_config)
 * [table_manager_config](#table_manager_config)
   * [provision_config](#provision_config)
     * [auto_scaling_config](#auto_scaling_config)
@@ -86,6 +87,10 @@ Supported contents and default values of `loki.yaml`:
 
 # Configures limits per-tenant or globally
 [limits_config: <limits_config>]
+
+# The frontend_worker_config configures the worker - running within the Loki
+# querier - picking up and executing queries enqueued by the query-frontend.
+[frontend_worker: <frontend_worker_config>]
 
 # Configures the table manager for retention
 [table_manager: <table_manager_config>]
@@ -575,8 +580,8 @@ the index to a backing cache store.
 [enable_fifocache: <boolean>]
 
 # The default validity of entries for caches unless overridden.
-# "defaul" is correct.
-[defaul_validity: <duration>]
+# NOTE In Loki versions older than 1.4.0 this was "defaul_validity".
+[default_validity: <duration>]
 
 # Configures the background cache when memcached is used.
 background:
@@ -819,6 +824,62 @@ logs in Loki.
 
 # Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.reload-period (runtime_config.period in YAML)
 [per_tenant_override_period: <duration> | default = 10s]
+```
+
+### `frontend_worker_config`
+
+The `frontend_worker_config` configures the worker - running within the Loki querier - picking up and executing queries enqueued by the query-frontend.
+
+```yaml
+# Address of query frontend service, in host:port format.
+# CLI flag: -querier.frontend-address
+[frontend_address: <string> | default = ""]
+
+# Number of simultaneous queries to process.
+# CLI flag: -querier.worker-parallelism
+[parallelism: <int> | default = 10]
+
+# How often to query DNS.
+# CLI flag: -querier.dns-lookup-period
+[dns_lookup_duration: <duration> | default = 10s]
+
+grpc_client_config:
+  # gRPC client max receive message size (bytes).
+  # CLI flag: -querier.frontend-client.grpc-max-recv-msg-size
+  [max_recv_msg_size: <int> | default = 104857600]
+
+  # gRPC client max send message size (bytes).
+  # CLI flag: -querier.frontend-client.grpc-max-send-msg-size
+  [max_send_msg_size: <int> | default = 16777216]
+
+  # Use compression when sending messages.
+  # CLI flag: -querier.frontend-client.grpc-use-gzip-compression
+  [use_gzip_compression: <boolean> | default = false]
+
+  # Rate limit for gRPC client; 0 means disabled.
+  # CLI flag: -querier.frontend-client.grpc-client-rate-limit
+  [rate_limit: <float> | default = 0]
+
+  # Rate limit burst for gRPC client.
+  # CLI flag: -querier.frontend-client.grpc-client-rate-limit-burst
+  [rate_limit_burst: <int> | default = 0]
+
+  # Enable backoff and retry when we hit ratelimits.
+  # CLI flag: -querier.frontend-client.backoff-on-ratelimits
+  [backoff_on_ratelimits: <boolean> | default = false]
+
+  backoff_config:
+    # Minimum delay when backing off.
+    # CLI flag: -querier.frontend-client.backoff-min-period
+    [min_period: <duration> | default = 100ms]
+
+    # Maximum delay when backing off.
+    # CLI flag: -querier.frontend-client.backoff-max-period
+    [max_period: <duration> | default = 10s]
+
+    # Number of times to backoff and retry before failing.
+    # CLI flag: -querier.frontend-client.backoff-retries
+    [max_retries: <int> | default = 10]
 ```
 
 ## table_manager_config

@@ -41,6 +41,28 @@ func TestParseSeriesQuery(t *testing.T) {
 			false,
 			mkSeriesRequest(t, "1000", "2000", []string{`{a="1"}`, `{b="2", c=~"3", d!="4"}`}),
 		},
+		{
+			"mixes match encodings",
+			withForm(url.Values{
+				"start":   []string{"1000"},
+				"end":     []string{"2000"},
+				"match":   []string{`{a="1"}`},
+				"match[]": []string{`{b="2"}`},
+			}),
+			false,
+			mkSeriesRequest(t, "1000", "2000", []string{`{a="1"}`, `{b="2"}`}),
+		},
+		{
+			"dedupes match encodings",
+			withForm(url.Values{
+				"start":   []string{"1000"},
+				"end":     []string{"2000"},
+				"match":   []string{`{a="1"}`, `{b="2"}`},
+				"match[]": []string{`{b="2"}`, `{c="3"}`},
+			}),
+			false,
+			mkSeriesRequest(t, "1000", "2000", []string{`{a="1"}`, `{b="2"}`, `{c="3"}`}),
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			out, err := ParseSeriesQuery(tc.input)

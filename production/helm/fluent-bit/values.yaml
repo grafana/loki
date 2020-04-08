@@ -40,7 +40,7 @@ deploymentStrategy: RollingUpdate
 
 image:
   repository: grafana/fluent-bit-plugin-loki
-  tag: 0.1
+  tag: 1.4.1-amd64
   pullPolicy: IfNotPresent
 
 nameOverride: fluent-bit-loki

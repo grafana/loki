@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"sync"
 	"text/tabwriter"
 	"time"
@@ -12,6 +13,18 @@ import (
 	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 )
+
+var (
+	yellow = color.New(color.FgYellow)
+	blue   = color.New(color.FgBlue)
+)
+
+func init() {
+	if runtime.GOOS == "windows" {
+		yellow.DisableColor()
+		blue.DisableColor()
+	}
+}
 
 type logger struct {
 	*tabwriter.Writer
@@ -26,7 +39,8 @@ func NewLogger(cfgs ...Config) (Client, error) {
 		return nil, err
 	}
 	c.Stop()
-	fmt.Println(color.YellowString("Clients configured:"))
+
+	fmt.Println(yellow.Sprint("Clients configured:"))
 	for _, cfg := range cfgs {
 		yaml, err := yaml.Marshal(cfg)
 		if err != nil {
@@ -45,9 +59,9 @@ func (*logger) Stop() {}
 func (l *logger) Handle(labels model.LabelSet, time time.Time, entry string) error {
 	l.Lock()
 	defer l.Unlock()
-	fmt.Fprint(l.Writer, color.BlueString(time.Format("2006-01-02T15:04:05")))
+	fmt.Fprint(l.Writer, blue.Sprint(time.Format("2006-01-02T15:04:05")))
 	fmt.Fprint(l.Writer, "\t")
-	fmt.Fprint(l.Writer, color.YellowString(labels.String()))
+	fmt.Fprint(l.Writer, yellow.Sprint(labels.String()))
 	fmt.Fprint(l.Writer, "\t")
 	fmt.Fprint(l.Writer, entry)
 	fmt.Fprint(l.Writer, "\n")

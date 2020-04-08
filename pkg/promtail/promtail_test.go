@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -136,13 +135,16 @@ func TestPromtail(t *testing.T) {
 		`{"log":"11.11.11.12 - - [19/May/2015:04:05:16 -0500] \"POST /blog HTTP/1.1\" 200 10975 \"http://grafana.com/test/\" \"Mozilla/5.0 (Windows NT 6.1; WOW64) Gecko/20091221 Firefox/3.5.7 GTB6\"","stream":"stdout","time":"2019-04-30T02:12:42.8443515Z"}`,
 	}
 	expectedCounts[logFile5] = pipelineFile(t, logFile5, entries)
-	expectedEntries := []string{
+	expectedEntries := make(map[string]int)
+	entriesArray := []string{
 		`11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`,
 		`11.11.11.12 - - [19/May/2015:04:05:16 -0500] "POST /blog HTTP/1.1" 200 10975 "http://grafana.com/test/" "Mozilla/5.0 (Windows NT 6.1; WOW64) Gecko/20091221 Firefox/3.5.7 GTB6"`,
 	}
-
-	expectedLabels := []labels.Labels{}
-	expectedLabels = append(expectedLabels, labels.Labels{
+	for i, entry := range entriesArray {
+		expectedEntries[entry] = i
+	}
+	lbls := []labels.Labels{}
+	lbls = append(lbls, labels.Labels{
 		labels.Label{Name: "action", Value: "GET"},
 		labels.Label{Name: "filename", Value: dirName + "/logs/testPipeline.log"},
 		labels.Label{Name: "job", Value: "varlogs"},
@@ -151,7 +153,7 @@ func TestPromtail(t *testing.T) {
 		labels.Label{Name: "stream", Value: "stderr"},
 	})
 
-	expectedLabels = append(expectedLabels, labels.Labels{
+	lbls = append(lbls, labels.Labels{
 		labels.Label{Name: "action", Value: "POST"},
 		labels.Label{Name: "filename", Value: dirName + "/logs/testPipeline.log"},
 		labels.Label{Name: "job", Value: "varlogs"},
@@ -159,6 +161,10 @@ func TestPromtail(t *testing.T) {
 		labels.Label{Name: "match", Value: "true"},
 		labels.Label{Name: "stream", Value: "stdout"},
 	})
+	expectedLabels := make(map[string]int)
+	for i, label := range lbls {
+		expectedLabels[label.String()] = i
+	}
 
 	// Wait for all lines to be received.
 	if err := waitForEntries(20, handler, expectedCounts); err != nil {
@@ -227,16 +233,16 @@ func verifyFile(t *testing.T, expected int, prefix string, entries []logproto.En
 	}
 }
 
-func verifyPipeline(t *testing.T, expected int, expectedEntries []string, entries []logproto.Entry, labels []labels.Labels, expectedLabels []labels.Labels) {
+func verifyPipeline(t *testing.T, expected int, expectedEntries map[string]int, entries []logproto.Entry, labels []labels.Labels, expectedLabels map[string]int) {
 	for i := 0; i < expected; i++ {
-		if !reflect.DeepEqual(labels[i], expectedLabels[i]) {
-			t.Errorf("Did not receive expected labels, expected %s, received %s", labels[i], expectedLabels[i])
+		if _, ok := expectedLabels[labels[i].String()]; !ok {
+			t.Errorf("Did not receive expected labels, expected %v, received %s", expectedLabels, labels[i])
 		}
 	}
 
 	for i := 0; i < expected; i++ {
-		if entries[i].Line != expectedEntries[i] {
-			t.Errorf("Did not receive expected log entry, expected %s, received %s", expectedEntries[i], entries[i].Line)
+		if _, ok := expectedEntries[entries[i].Line]; !ok {
+			t.Errorf("Did not receive expected log entry, expected %v, received %s", expectedEntries, entries[i].Line)
 		}
 	}
 

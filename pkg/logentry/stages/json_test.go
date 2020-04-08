@@ -233,7 +233,7 @@ var logFixture = `
 
 func TestJSONParser_Parse(t *testing.T) {
 	t.Parallel()
-
+	Debug = true
 	tests := map[string]struct {
 		config          interface{}
 		extracted       map[string]interface{}
@@ -338,6 +338,21 @@ func TestJSONParser_Parse(t *testing.T) {
 			logFixture,
 			map[string]interface{}{
 				"log": "not a json",
+			},
+		},
+		"nil source": {
+			map[string]interface{}{
+				"expressions": map[string]string{
+					"app": "",
+				},
+				"source": "log",
+			},
+			map[string]interface{}{
+				"log": nil,
+			},
+			logFixture,
+			map[string]interface{}{
+				"log": nil,
 			},
 		},
 	}

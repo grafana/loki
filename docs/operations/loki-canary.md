@@ -47,6 +47,13 @@ determine if they are truly missing or only missing from the WebSocket. If
 missing entries are not found in the direct query, the `missing_entries` counter
 is incremented.
 
+### Control
+
+Loki Canary responds to two endpoints to allow dynamic suspending/resuming of the 
+canary process.  This can be useful if you'd like to quickly disable or reenable the 
+canary.  To stop or start the canary issue an HTTP GET request against the `/suspend` or
+`/resume` endpoints.
+
 ## Installation
 
 ### Binary
@@ -60,7 +67,7 @@ Loki Canary is also provided as a Docker container image:
 
 ```bash
 # change tag to the most recent release
-$ docker pull grafana/loki-canary:v1.3.0
+$ docker pull grafana/loki-canary:1.4.1
 ```
 
 ### Kubernetes

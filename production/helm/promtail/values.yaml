@@ -4,7 +4,12 @@ affinity: {}
 
 annotations: {}
 
-deploymentStrategy: RollingUpdate
+# The update strategy to apply to the DaemonSet
+##
+deploymentStrategy: {}
+#  rollingUpdate:
+#    maxUnavailable: 1
+#  type: RollingUpdate
 
 initContainer:
   enabled: false
@@ -12,7 +17,7 @@ initContainer:
 
 image:
   repository: grafana/promtail
-  tag: v1.3.0
+  tag: 1.4.1
   pullPolicy: IfNotPresent
 
 livenessProbe: {}
@@ -96,6 +101,9 @@ volumes:
   hostPath:
     path: /var/log/pods
 
+# Custom volumes together with the default ones
+extraVolumes: []
+
 volumeMounts:
 - name: docker
   mountPath: /var/lib/docker/containers
@@ -103,6 +111,9 @@ volumeMounts:
 - name: pods
   mountPath: /var/log/pods
   readOnly: true
+
+# Custom volumeMounts together with the default ones
+extraVolumeMounts: []
 
 config:
   client:
