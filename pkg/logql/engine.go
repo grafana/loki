@@ -35,6 +35,12 @@ const ValueTypeStreams = "streams"
 // Streams is promql.Value
 type Streams []*logproto.Stream
 
+func (streams Streams) Len() int      { return len(streams) }
+func (streams Streams) Swap(i, j int) { streams[i], streams[j] = streams[j], streams[i] }
+func (streams Streams) Less(i, j int) bool {
+	return streams[i].Labels <= streams[j].Labels
+}
+
 // Type implements `promql.Value`
 func (Streams) Type() promql.ValueType { return ValueTypeStreams }
 
@@ -288,10 +294,11 @@ func readStreams(i iter.EntryIterator, size uint32) (Streams, error) {
 		stream.Entries = append(stream.Entries, entry)
 	}
 
-	result := make([]*logproto.Stream, 0, len(streams))
+	result := make(Streams, 0, len(streams))
 	for _, stream := range streams {
 		result = append(result, stream)
 	}
+	sort.Sort(result)
 	return result, i.Error()
 }
 

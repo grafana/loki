@@ -122,10 +122,10 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		}
 		return ResultStepEvaluator(res, params)
 
-	case ConcatSampleExpr:
+	case *ConcatSampleExpr:
 		// ensure they all impl the same (SampleExpr, LogSelectorExpr) & concat
 		var xs []StepEvaluator
-		cur := &e
+		cur := e
 
 		for cur != nil {
 			eval, err := ev.StepEvaluator(ctx, nextEv, cur.SampleExpr, params)
@@ -171,11 +171,11 @@ func (ev *DownstreamEvaluator) Iterator(
 		}
 		return ResultIterator(res, params)
 
-	case ConcatLogSelectorExpr:
+	case *ConcatLogSelectorExpr:
 		var iters []iter.EntryIterator
-		cur := &e
+		cur := e
 		for cur != nil {
-			iterator, err := ev.Iterator(ctx, e, params)
+			iterator, err := ev.Iterator(ctx, cur.LogSelectorExpr, params)
 			if err != nil {
 				// Close previously opened StepEvaluators
 				for _, x := range iters {
@@ -184,6 +184,7 @@ func (ev *DownstreamEvaluator) Iterator(
 				return nil, err
 			}
 			iters = append(iters, iterator)
+			cur = cur.next
 		}
 		return iter.NewHeapIterator(ctx, iters, params.Direction()), nil
 
@@ -296,12 +297,14 @@ type shardedEngine struct {
 }
 
 func NewShardedEngine(opts EngineOpts, shards int, downstreamer Downstreamer) (Engine, error) {
+	opts.applyDefault()
 	mapper, err := NewShardMapper(shards)
 	if err != nil {
 		return nil, err
 	}
 
 	return &shardedEngine{
+		timeout:   opts.Timeout,
 		mapper:    mapper,
 		evaluator: &DownstreamEvaluator{downstreamer},
 	}, nil

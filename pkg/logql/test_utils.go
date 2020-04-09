@@ -62,7 +62,7 @@ outer:
 
 	// apply the LineFilter
 	filtered := make([]*logproto.Stream, 0, len(matched))
-	if filter == TrueFilter {
+	if filter == nil || filter == TrueFilter {
 		filtered = matched
 	} else {
 		for _, s := range matched {
