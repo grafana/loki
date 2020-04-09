@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func TestMappingEquivalence(t *testing.T) {

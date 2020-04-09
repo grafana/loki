@@ -85,7 +85,7 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory cortex_client
 		limits: limits,
 	}
 
-	querier.engine = logql.NewEngine(cfg.Engine, querier)
+	querier.engine = logql.NewEngine(cfg.Engine, &querier)
 	err := services.StartAndAwaitRunning(context.Background(), querier.pool)
 	if err != nil {
 		return nil, errors.Wrap(err, "querier pool")

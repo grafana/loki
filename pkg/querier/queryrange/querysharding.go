@@ -61,16 +61,12 @@ func newASTMapperware(confs queryrange.ShardingConfigs, next queryrange.Handler,
 		confs:  confs,
 		logger: log.With(logger, "middleware", "QueryShard.astMapperware"),
 		next:   next,
-		engine: logql.NewEngine(logql.EngineOpts{}, func(_ logql.EngineOpts) logql.Evaluator {
-			return &logql.DownstreamEvaluator{DownstreamHandler{next}}
-		}),
 	}
 }
 
 type astMapperware struct {
 	confs  queryrange.ShardingConfigs
 	logger log.Logger
-	engine logql.Engine
 	next   queryrange.Handler
 }
 
@@ -82,32 +78,19 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 		return ast.next.Do(ctx, r)
 	}
 
-	shardMapper, err := logql.NewShardMapper(int(conf.RowShards))
-	if err != nil {
-		return nil, err
-	}
+	ng, err := logql.NewShardedEngine(logql.EngineOpts{}, int(conf.RowShards), DownstreamHandler{ast.next})
 
-	strQuery := r.GetQuery()
-	parsed, err := logql.ParseExpr(strQuery)
 	if err != nil {
-		return nil, err
-	}
-
-	mappedQuery, err := shardMapper.Map(parsed)
-	if err != nil {
-		return nil, err
+		level.Warn(ast.logger).Log("err", err.Error(), "msg", "failed to create sharded engine")
+		return ast.next.Do(ctx, r)
 	}
 
 	req, ok := r.(*LokiRequest)
 	if !ok {
 		return nil, fmt.Errorf("expected *LokiRequest, got (%T)", r)
 	}
-
-	strMappedQuery := mappedQuery.String()
-	level.Debug(ast.logger).Log("msg", "mapped query", "original", strQuery, "mapped", strMappedQuery)
-
-	params := paramsFromRequest(req.WithQuery(strMappedQuery))
-	query := ast.engine.NewRangeQuery(params)
+	params := paramsFromRequest(req)
+	query := ng.NewRangeQuery(params)
 
 	res, err := query.Exec(ctx)
 	if err != nil {

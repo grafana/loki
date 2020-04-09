@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -35,7 +34,7 @@ func ParamsToLokiRequest(params logql.Params) *LokiRequest {
 	}
 }
 
-func (h DownstreamHandler) Downstream(expr logql.Expr, params logql.Params, shards []astmapper.ShardAnnotation) (logql.Query, error) {
+func (h DownstreamHandler) Downstream(expr logql.Expr, params logql.Params, shards logql.Shards) (logql.Query, error) {
 	req := ParamsToLokiRequest(params).WithShards(shards).WithQuery(expr.String())
 
 	return QuerierFunc(func(ctx context.Context) (logql.Result, error) {
