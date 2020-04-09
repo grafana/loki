@@ -143,7 +143,8 @@ Loki:
 ```yaml
 # The URL where Loki is listening, denoted in Loki as http_listen_address and
 # http_listen_port. If Loki is running in microservices mode, this is the HTTP
-# URL for the Distributor.
+# URL for the Distributor. Path to the push API needs to be included. 
+# Example: http://example.com:3100/loki/api/v1/push
 url: <string>
 
 # The tenant ID used by default to push logs to Loki. If omitted or empty
