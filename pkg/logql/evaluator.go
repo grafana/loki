@@ -107,21 +107,21 @@ func EvaluatorUnsupportedType(expr Expr, ev Evaluator) error {
 	return errors.Errorf("unexpected expr type (%T) for Evaluator type (%T) ", expr, ev)
 }
 
-type defaultEvaluator struct {
+type DefaultEvaluator struct {
 	maxLookBackPeriod time.Duration
 	querier           Querier
 }
 
-// NewDefaultEvaluator constructs a defaultEvaluator
-func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration) Evaluator {
-	return &defaultEvaluator{
+// NewDefaultEvaluator constructs a DefaultEvaluator
+func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration) *DefaultEvaluator {
+	return &DefaultEvaluator{
 		querier:           querier,
 		maxLookBackPeriod: maxLookBackPeriod,
 	}
 
 }
 
-func (ev *defaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, q Params) (iter.EntryIterator, error) {
+func (ev *DefaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, q Params) (iter.EntryIterator, error) {
 	params := SelectParams{
 		QueryRequest: &logproto.QueryRequest{
 			Start:     q.Start(),
@@ -141,7 +141,7 @@ func (ev *defaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, 
 
 }
 
-func (ev *defaultEvaluator) StepEvaluator(
+func (ev *DefaultEvaluator) StepEvaluator(
 	ctx context.Context,
 	nextEv Evaluator,
 	expr SampleExpr,

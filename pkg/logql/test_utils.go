@@ -38,22 +38,28 @@ func (q MockQuerier) Select(_ context.Context, req SelectParams) (iter.EntryIter
 
 	matchers := expr.Matchers()
 
+	var shard *astmapper.ShardAnnotation
+	if len(req.Shards) > 0 {
+		shards, err := ParseShards(req.Shards)
+		if err != nil {
+			return nil, err
+		}
+		shard = &shards[0]
+	}
+
 	var matched []*logproto.Stream
 
 outer:
 	for _, stream := range q.streams {
 		ls := mustParseLabels(stream.Labels)
-		for _, matcher := range matchers {
-			if matcher.Name == astmapper.ShardLabel {
-				shard, err := astmapper.ParseShard(matcher.Value)
-				if err != nil {
-					return nil, err
-				}
 
-				if !(ls.Hash()%uint64(q.shards) == uint64(shard.Shard)) {
-					continue outer
-				}
-			} else if !matcher.Matches(ls.Get(matcher.Name)) {
+		// filter by shard if requested
+		if shard != nil && ls.Hash()%uint64(shard.Of) != uint64(shard.Shard) {
+			continue
+		}
+
+		for _, matcher := range matchers {
+			if !matcher.Matches(ls.Get(matcher.Name)) {
 				continue outer
 			}
 		}
@@ -130,7 +136,7 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string) (stream
 		}
 		for j := 0; j < nEntries; j++ {
 			stream.Entries = append(stream.Entries, logproto.Entry{
-				Timestamp: time.Unix(0, int64(j*int(time.Millisecond))),
+				Timestamp: time.Unix(0, int64(j*int(time.Second))),
 				Line:      fmt.Sprintf("line number: %d", j),
 			})
 		}

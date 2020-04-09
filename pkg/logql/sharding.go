@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -95,7 +96,23 @@ type Downstreamer interface {
 }
 
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
-type DownstreamEvaluator struct{ Downstreamer }
+type DownstreamEvaluator struct {
+	Downstreamer
+	defaultEvaluator *DefaultEvaluator
+}
+
+func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
+	return &DownstreamEvaluator{
+		Downstreamer: downstreamer,
+		defaultEvaluator: NewDefaultEvaluator(
+			QuerierFunc(func(_ context.Context, p SelectParams) (iter.EntryIterator, error) {
+				// TODO(owen-d): add metric here, this should never happen.
+				return nil, errors.New("Unimplemented")
+			}),
+			0,
+		),
+	}
+}
 
 // Evaluator returns a StepEvaluator for a given SampleExpr
 func (ev *DownstreamEvaluator) StepEvaluator(
@@ -141,6 +158,9 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		}
 
 		return ConcatEvaluator(xs)
+
+	case *vectorAggregationExpr, *binOpExpr:
+		return ev.defaultEvaluator.StepEvaluator(ctx, nextEv, e, params)
 
 	default:
 		return nil, EvaluatorUnsupportedType(expr, ev)
@@ -306,7 +326,7 @@ func NewShardedEngine(opts EngineOpts, shards int, downstreamer Downstreamer) (E
 	return &shardedEngine{
 		timeout:   opts.Timeout,
 		mapper:    mapper,
-		evaluator: &DownstreamEvaluator{downstreamer},
+		evaluator: NewDownstreamEvaluator(downstreamer),
 	}, nil
 
 }
