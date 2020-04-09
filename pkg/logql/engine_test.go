@@ -324,9 +324,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
-			eng := NewEngine(EngineOpts{}, func(opts EngineOpts) Evaluator {
-				return NewDefaultEvaluator(newQuerierRecorder(test.streams, test.params), opts.MaxLookBackPeriod)
-			})
+			eng := NewEngine(EngineOpts{}, newQuerierRecorder(test.streams, test.params))
 			q := eng.NewInstantQuery(LiteralParams{
 				qs:        test.qs,
 				start:     test.ts,
@@ -1082,9 +1080,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
-			eng := NewEngine(EngineOpts{}, func(opts EngineOpts) Evaluator {
-				return NewDefaultEvaluator(newQuerierRecorder(test.streams, test.params), opts.MaxLookBackPeriod)
-			})
+			eng := NewEngine(EngineOpts{}, newQuerierRecorder(test.streams, test.params))
 
 			q := eng.NewRangeQuery(LiteralParams{
 				qs:        test.qs,
@@ -1104,13 +1100,11 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 }
 
 func TestEngine_Stats(t *testing.T) {
-	eng := NewEngine(EngineOpts{}, func(opts EngineOpts) Evaluator {
-		return NewDefaultEvaluator(QuerierFunc(func(ctx context.Context, sp SelectParams) (iter.EntryIterator, error) {
-			st := stats.GetChunkData(ctx)
-			st.DecompressedBytes++
-			return iter.NoopIterator, nil
-		}), opts.MaxLookBackPeriod)
-	})
+	eng := NewEngine(EngineOpts{}, QuerierFunc(func(ctx context.Context, sp SelectParams) (iter.EntryIterator, error) {
+		st := stats.GetChunkData(ctx)
+		st.DecompressedBytes++
+		return iter.NoopIterator, nil
+	}))
 
 	q := eng.NewInstantQuery(LiteralParams{
 		qs:        `{foo="bar"}`,
@@ -1143,9 +1137,7 @@ var result promql.Value
 
 func benchmarkRangeQuery(testsize int64, b *testing.B) {
 	b.ReportAllocs()
-	eng := NewEngine(EngineOpts{}, func(opts EngineOpts) Evaluator {
-		return NewDefaultEvaluator(getLocalQuerier(testsize), opts.MaxLookBackPeriod)
-	})
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(testsize))
 	start := time.Unix(0, 0)
 	end := time.Unix(testsize, 0)
 	b.ResetTimer()

@@ -62,6 +62,8 @@ type LiteralParams struct {
 	shards     []string
 }
 
+func (p LiteralParams) Copy() LiteralParams { return p }
+
 // String impls Params
 func (p LiteralParams) Query() string { return p.qs }
 

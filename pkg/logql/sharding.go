@@ -61,10 +61,37 @@ func (c ConcatLogSelectorExpr) String() string {
 	return fmt.Sprintf("%s ++ %s", c.LogSelectorExpr.String(), c.next.String())
 }
 
+type Shards []astmapper.ShardAnnotation
+
+func (xs Shards) Encode() (encoded []string) {
+	for _, shard := range xs {
+		encoded = append(encoded, shard.String())
+	}
+
+	return encoded
+}
+
+// ParseShards parses a list of string encoded shards
+func ParseShards(strs []string) (Shards, error) {
+	if len(strs) == 0 {
+		return nil, nil
+	}
+	shards := make([]astmapper.ShardAnnotation, 0, len(strs))
+
+	for _, str := range strs {
+		shard, err := astmapper.ParseShard(str)
+		if err != nil {
+			return nil, err
+		}
+		shards = append(shards, shard)
+	}
+	return shards, nil
+}
+
 // Downstreamer is an interface for deferring responsibility for query execution.
 // It is decoupled from but consumed by a downStreamEvaluator to dispatch ASTs.
 type Downstreamer interface {
-	Downstream(Expr, Params, []astmapper.ShardAnnotation) (Query, error)
+	Downstream(Expr, Params, Shards) (Query, error)
 }
 
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
@@ -129,7 +156,7 @@ func (ev *DownstreamEvaluator) Iterator(
 	switch e := expr.(type) {
 	case DownstreamLogSelectorExpr:
 		// downstream to a querier
-		var shards []astmapper.ShardAnnotation
+		var shards Shards
 		if e.shard != nil {
 			shards = append(shards, *e.shard)
 		}
@@ -262,19 +289,45 @@ func ResultIterator(res Result, params Params) (iter.EntryIterator, error) {
 
 }
 
-// ParseShards parses a list of string encoded shards
-func ParseShards(strs []string) ([]astmapper.ShardAnnotation, error) {
-	if len(strs) == 0 {
-		return nil, nil
-	}
-	shards := make([]astmapper.ShardAnnotation, 0, len(strs))
+type shardedEngine struct {
+	timeout   time.Duration
+	mapper    ASTMapper
+	evaluator Evaluator
+}
 
-	for _, str := range strs {
-		shard, err := astmapper.ParseShard(str)
-		if err != nil {
-			return nil, err
-		}
-		shards = append(shards, shard)
+func NewShardedEngine(opts EngineOpts, shards int, downstreamer Downstreamer) (Engine, error) {
+	mapper, err := NewShardMapper(shards)
+	if err != nil {
+		return nil, err
 	}
-	return shards, nil
+
+	return &shardedEngine{
+		mapper:    mapper,
+		evaluator: &DownstreamEvaluator{downstreamer},
+	}, nil
+
+}
+
+func (ng *shardedEngine) query(p Params) Query {
+	return &query{
+		timeout:   ng.timeout,
+		params:    p,
+		evaluator: ng.evaluator,
+		parse: func(query string) (Expr, error) {
+			parsed, err := ParseExpr(query)
+			if err != nil {
+				return nil, err
+			}
+
+			return ng.mapper.Map(parsed)
+		},
+	}
+}
+
+func (ng *shardedEngine) NewRangeQuery(p Params) Query {
+	return ng.query(p)
+}
+
+func (ng *shardedEngine) NewInstantQuery(p Params) Query {
+	return ng.query(p)
 }

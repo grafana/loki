@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
@@ -53,12 +52,9 @@ func (r *LokiRequest) WithQuery(query string) queryrange.Request {
 	return &new
 }
 
-func (r *LokiRequest) WithShards(shards []astmapper.ShardAnnotation) *LokiRequest {
+func (r *LokiRequest) WithShards(shards logql.Shards) *LokiRequest {
 	new := *r
-	new.Shards = make([]string, 0, len(shards))
-	for _, shard := range shards {
-		new.Shards = append(new.Shards, shard.String())
-	}
+	new.Shards = shards.Encode()
 	return &new
 }
 

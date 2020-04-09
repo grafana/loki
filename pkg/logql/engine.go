@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"time"
 
@@ -79,11 +80,11 @@ type engine struct {
 }
 
 // NewEngine creates a new LogQL engine.
-func NewEngine(opts EngineOpts, mkEvaluator func(EngineOpts) Evaluator) Engine {
+func NewEngine(opts EngineOpts, q Querier) Engine {
 	opts.applyDefault()
 	return &engine{
 		timeout:   opts.Timeout,
-		evaluator: mkEvaluator(opts),
+		evaluator: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
 	}
 }
 
@@ -94,17 +95,18 @@ type Query interface {
 }
 
 type query struct {
-	Params
-
-	ng *engine
+	timeout   time.Duration
+	params    Params
+	parse     func(string) (Expr, error)
+	evaluator Evaluator
 }
 
-// Exec Implements `Query`
+// Exec Implements `Query`. It handles instrumentation & defers to Eval.
 func (q *query) Exec(ctx context.Context) (Result, error) {
 	log, ctx := spanlogger.New(ctx, "Engine.Exec")
 	defer log.Finish()
 
-	rangeType := GetRangeType(q)
+	rangeType := GetRangeType(q.params)
 	timer := prometheus.NewTimer(queryTime.WithLabelValues(string(rangeType)))
 	defer timer.ObserveDuration()
 
@@ -113,7 +115,7 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	start := time.Now()
 	ctx = stats.NewContext(ctx)
 
-	data, err := q.ng.exec(ctx, q)
+	data, err := q.Eval(ctx)
 
 	statResult = stats.Snapshot(ctx, time.Since(start))
 	statResult.Log(level.Debug(log))
@@ -125,7 +127,7 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 			status = "400"
 		}
 	}
-	RecordMetrics(ctx, q, status, statResult)
+	RecordMetrics(ctx, q.params, status, statResult)
 
 	return Result{
 		Data:       data,
@@ -133,58 +135,60 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 	}, err
 }
 
-// NewRangeQuery creates a new LogQL range query.
-func (ng *engine) NewRangeQuery(params Params) Query {
-	return &query{
-		Params: params,
-		ng:     ng,
-	}
-}
-
-// NewInstantQuery creates a new LogQL instant query.
-func (ng *engine) NewInstantQuery(params Params) Query {
-	return &query{
-		Params: params,
-		ng:     ng,
-	}
-}
-
-func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
-	ctx, cancel := context.WithTimeout(ctx, ng.timeout)
+func (q *query) Eval(ctx context.Context) (promql.Value, error) {
+	ctx, cancel := context.WithTimeout(ctx, q.timeout)
 	defer cancel()
 
-	qs := q.Query()
-
-	expr, err := ParseExpr(qs)
+	expr, err := q.parse(q.params.Query())
 	if err != nil {
 		return nil, err
 	}
 
 	switch e := expr.(type) {
 	case SampleExpr:
-		value, err := ng.evalSample(ctx, e, q)
+		value, err := q.evalSample(ctx, e)
 		return value, err
 
 	case LogSelectorExpr:
-		iter, err := ng.evaluator.Iterator(ctx, e, q)
+		iter, err := q.evaluator.Iterator(ctx, e, q.params)
 		if err != nil {
 			return nil, err
 		}
 		defer helpers.LogError("closing iterator", iter.Close)
-		streams, err := readStreams(iter, q.Limit())
+		streams, err := readStreams(iter, q.params.Limit())
 		return streams, err
+	default:
+		return nil, errors.New("Unexpected type (%T): cannot evaluate")
 	}
+}
 
-	return nil, nil
+// NewRangeQuery creates a new LogQL range query.
+func (ng *engine) NewRangeQuery(params Params) Query {
+	return &query{
+		timeout:   ng.timeout,
+		params:    params,
+		evaluator: ng.evaluator,
+		parse:     ParseExpr,
+	}
+}
+
+// NewInstantQuery creates a new LogQL instant query.
+func (ng *engine) NewInstantQuery(params Params) Query {
+	return &query{
+		timeout:   ng.timeout,
+		params:    params,
+		evaluator: ng.evaluator,
+		parse:     ParseExpr,
+	}
 }
 
 // evalSample evaluate a sampleExpr
-func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (promql.Value, error) {
+func (q *query) evalSample(ctx context.Context, expr SampleExpr) (promql.Value, error) {
 	if lit, ok := expr.(*literalExpr); ok {
-		return ng.evalLiteral(ctx, lit, q)
+		return q.evalLiteral(ctx, lit)
 	}
 
-	stepEvaluator, err := ng.evaluator.StepEvaluator(ctx, ng.evaluator, expr, q)
+	stepEvaluator, err := q.evaluator.StepEvaluator(ctx, q.evaluator, expr, q.params)
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +197,7 @@ func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (pr
 	seriesIndex := map[uint64]*promql.Series{}
 
 	next, ts, vec := stepEvaluator.Next()
-	if GetRangeType(q) == InstantType {
+	if GetRangeType(q.params) == InstantType {
 		sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
 		return vec, nil
 	}
@@ -231,17 +235,17 @@ func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (pr
 	return result, nil
 }
 
-func (ng *engine) evalLiteral(_ context.Context, expr *literalExpr, q *query) (promql.Value, error) {
+func (q *query) evalLiteral(_ context.Context, expr *literalExpr) (promql.Value, error) {
 	s := promql.Scalar{
-		T: q.Start().UnixNano() / int64(time.Millisecond),
+		T: q.params.Start().UnixNano() / int64(time.Millisecond),
 		V: expr.value,
 	}
 
-	if GetRangeType(q) == InstantType {
+	if GetRangeType(q.params) == InstantType {
 		return s, nil
 	}
 
-	return PopulateMatrixFromScalar(s, q.Params), nil
+	return PopulateMatrixFromScalar(s, q.params), nil
 
 }
 

@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 )
 
-func NewMockQuerier(shards int, streams []logproto.Stream) MockQuerier {
+func NewMockQuerier(shards int, streams []*logproto.Stream) MockQuerier {
 	return MockQuerier{
 		shards:  shards,
 		streams: streams,
@@ -23,7 +23,7 @@ func NewMockQuerier(shards int, streams []logproto.Stream) MockQuerier {
 // Shard aware mock querier
 type MockQuerier struct {
 	shards  int
-	streams []logproto.Stream
+	streams []*logproto.Stream
 }
 
 func (q MockQuerier) Select(_ context.Context, req SelectParams) (iter.EntryIterator, error) {
@@ -57,7 +57,7 @@ outer:
 				continue outer
 			}
 		}
-		matched = append(matched, &stream)
+		matched = append(matched, stream)
 	}
 
 	// apply the LineFilter
@@ -88,6 +88,23 @@ outer:
 		req.Start,
 		req.End,
 	), nil
+}
+
+type MockDownstreamer struct {
+	Engine
+}
+
+func (d MockDownstreamer) Downstream(expr Expr, p Params, shards Shards) (Query, error) {
+	params := NewLiteralParams(
+		expr.String(),
+		p.Start(),
+		p.End(),
+		p.Step(),
+		p.Direction(),
+		p.Limit(),
+		shards.Encode(),
+	)
+	return d.NewRangeQuery(params), nil
 }
 
 // create nStreams of nEntries with labelNames each where each label value
