@@ -145,41 +145,35 @@ func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)
 }
 
 // CreateSchema returns the schema defined by the PeriodConfig
-func (cfg PeriodConfig) CreateSchema() Schema {
+func (cfg PeriodConfig) CreateSchema() BaseSchema {
+	buckets, _ := cfg.createBucketsFunc()
 
-	var e entries
 	switch cfg.Schema {
 	case "v1":
-		e = originalEntries{}
+		return newStoreSchema(buckets, originalEntries{})
 	case "v2":
-		e = originalEntries{}
+		return newStoreSchema(buckets, originalEntries{})
 	case "v3":
-		e = base64Entries{originalEntries{}}
+		return newStoreSchema(buckets, base64Entries{originalEntries{}})
 	case "v4":
-		e = labelNameInHashKeyEntries{}
+		return newStoreSchema(buckets, labelNameInHashKeyEntries{})
 	case "v5":
-		e = v5Entries{}
+		return newStoreSchema(buckets, v5Entries{})
 	case "v6":
-		e = v6Entries{}
+		return newStoreSchema(buckets, v6Entries{})
 	case "v9":
-		e = v9Entries{}
+		return newSeriesStoreSchema(buckets, v9Entries{})
 	case "v10":
-		e = v10Entries{
-			rowShards: cfg.RowShards,
-		}
+		return newSeriesStoreSchema(buckets, v10Entries{rowShards: cfg.RowShards})
 	case "v11":
-		e = v11Entries{
+		return newSeriesStoreSchema(buckets, v11Entries{
 			v10Entries: v10Entries{
 				rowShards: cfg.RowShards,
 			},
-		}
+		})
 	default:
 		return nil
 	}
-
-	buckets, _ := cfg.createBucketsFunc()
-
-	return schema{buckets, e}
 }
 
 func (cfg PeriodConfig) createBucketsFunc() (schemaBucketsFunc, time.Duration) {

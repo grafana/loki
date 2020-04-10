@@ -71,30 +71,47 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxLookBackPeriod, "store.max-look-back-period", 0, "Limit how long back data can be queried")
 }
 
-// store implements Store
-type store struct {
+type baseStore struct {
 	cfg StoreConfig
 
 	index  IndexClient
 	chunks Client
-	schema Schema
+	schema BaseSchema
 	limits StoreLimits
 	*Fetcher
 }
 
-func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (Store, error) {
+func newBaseStore(cfg StoreConfig, schema BaseSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (baseStore, error) {
 	fetcher, err := NewChunkFetcher(chunksCache, cfg.chunkCacheStubs, chunks)
 	if err != nil {
-		return nil, err
+		return baseStore{}, err
 	}
 
-	return &store{
+	return baseStore{
 		cfg:     cfg,
 		index:   index,
 		chunks:  chunks,
 		schema:  schema,
 		limits:  limits,
 		Fetcher: fetcher,
+	}, nil
+}
+
+// store implements Store
+type store struct {
+	baseStore
+	schema StoreSchema
+}
+
+func newStore(cfg StoreConfig, schema StoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (Store, error) {
+	rs, err := newBaseStore(cfg, schema, index, chunks, limits, chunksCache)
+	if err != nil {
+		return nil, err
+	}
+
+	return &store{
+		baseStore: rs,
+		schema:    schema,
 	}, nil
 }
 
@@ -187,7 +204,7 @@ func (c *store) GetChunkRefs(ctx context.Context, userID string, from, through m
 }
 
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
-func (c *store) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName, labelName string) ([]string, error) {
+func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName, labelName string) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.LabelValues")
 	defer log.Span.Finish()
 	level.Debug(log).Log("from", from, "through", through, "metricName", metricName, "labelName", labelName)
@@ -253,7 +270,7 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, userID string, from
 	return labelNamesFromChunks(allChunks), nil
 }
 
-func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
+func (c *baseStore) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
 	//nolint:ineffassign,staticcheck //Leaving ctx even though we don't currently use it, we want to make it available for when we might need it and hopefully will ensure us using the correct context at that time
 	log, ctx := spanlogger.New(ctx, "store.validateQueryTimeRange")
 	defer log.Span.Finish()
@@ -291,7 +308,7 @@ func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from 
 	return false, nil
 }
 
-func (c *store) validateQuery(ctx context.Context, userID string, from *model.Time, through *model.Time, matchers []*labels.Matcher) (string, []*labels.Matcher, bool, error) {
+func (c *baseStore) validateQuery(ctx context.Context, userID string, from *model.Time, through *model.Time, matchers []*labels.Matcher) (string, []*labels.Matcher, bool, error) {
 	log, ctx := spanlogger.New(ctx, "store.validateQuery")
 	defer log.Span.Finish()
 
@@ -436,7 +453,7 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 	return c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
 }
 
-func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
+func (c *baseStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
 	log, ctx := spanlogger.New(ctx, "store.lookupEntriesByQueries")
 	defer log.Span.Finish()
 
@@ -462,7 +479,7 @@ func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery
 	return entries, err
 }
 
-func (c *store) parseIndexEntries(ctx context.Context, entries []IndexEntry, matcher *labels.Matcher) ([]string, error) {
+func (c *baseStore) parseIndexEntries(ctx context.Context, entries []IndexEntry, matcher *labels.Matcher) ([]string, error) {
 	result := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		chunkKey, labelValue, _, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
@@ -481,7 +498,7 @@ func (c *store) parseIndexEntries(ctx context.Context, entries []IndexEntry, mat
 	return result, nil
 }
 
-func (c *store) convertChunkIDsToChunks(ctx context.Context, userID string, chunkIDs []string) ([]Chunk, error) {
+func (c *baseStore) convertChunkIDsToChunks(ctx context.Context, userID string, chunkIDs []string) ([]Chunk, error) {
 	chunkSet := make([]Chunk, 0, len(chunkIDs))
 	for _, chunkID := range chunkIDs {
 		chunk, err := ParseExternalKey(userID, chunkID)
@@ -510,7 +527,7 @@ func (c *store) DeleteChunk(ctx context.Context, from, through model.Time, userI
 	})
 }
 
-func (c *store) deleteChunk(ctx context.Context,
+func (c *baseStore) deleteChunk(ctx context.Context,
 	userID string,
 	chunkID string,
 	metric labels.Labels,
@@ -552,7 +569,7 @@ func (c *store) deleteChunk(ctx context.Context,
 	return nil
 }
 
-func (c *store) reboundChunk(ctx context.Context, userID, chunkID string, partiallyDeletedInterval model.Interval, putChunkFunc func(chunk Chunk) error) error {
+func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, partiallyDeletedInterval model.Interval, putChunkFunc func(chunk Chunk) error) error {
 	chunk, err := ParseExternalKey(userID, chunkID)
 	if err != nil {
 		return errors.Wrap(err, "when parsing external key")

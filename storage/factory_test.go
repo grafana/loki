@@ -27,10 +27,12 @@ func TestFactoryStop(t *testing.T) {
 		{
 			From:      chunk.DayTime{Time: model.Time(0)},
 			IndexType: "inmemory",
+			Schema:    "v3",
 		},
 		{
 			From:      chunk.DayTime{Time: model.Time(1)},
 			IndexType: "inmemory",
+			Schema:    "v9",
 		},
 	}
 

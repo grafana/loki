@@ -39,11 +39,18 @@ func mergeResults(rss ...[]IndexEntry) []IndexEntry {
 
 const table = "table"
 
-func makeSchema(schemaName string) Schema {
+func makeSeriesStoreSchema(schemaName string) SeriesStoreSchema {
 	return PeriodConfig{
 		Schema:      schemaName,
 		IndexTables: PeriodicTableConfig{Prefix: table},
-	}.CreateSchema()
+	}.CreateSchema().(SeriesStoreSchema)
+}
+
+func makeStoreSchema(schemaName string) StoreSchema {
+	return PeriodConfig{
+		Schema:      schemaName,
+		IndexTables: PeriodicTableConfig{Prefix: table},
+	}.CreateSchema().(StoreSchema)
 }
 
 func TestSchemaHashKeys(t *testing.T) {
@@ -63,9 +70,9 @@ func TestSchemaHashKeys(t *testing.T) {
 		periodicPrefix = "periodicPrefix"
 	)
 
-	hourlyBuckets := makeSchema("v1")
-	dailyBuckets := makeSchema("v3")
-	labelBuckets := makeSchema("v4")
+	hourlyBuckets := makeStoreSchema("v1")
+	dailyBuckets := makeStoreSchema("v3")
+	labelBuckets := makeStoreSchema("v4")
 	metric := labels.Labels{
 		{Name: model.MetricNameLabel, Value: "foo"},
 		{Name: "bar", Value: "baz"},
@@ -73,7 +80,7 @@ func TestSchemaHashKeys(t *testing.T) {
 	chunkID := "chunkID"
 
 	for i, tc := range []struct {
-		Schema
+		StoreSchema
 		from, through int64
 		metricName    string
 		want          []IndexEntry
@@ -109,7 +116,7 @@ func TestSchemaHashKeys(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("TestSchemaHashKeys[%d]", i), func(t *testing.T) {
-			have, err := tc.Schema.GetWriteEntries(
+			have, err := tc.StoreSchema.GetWriteEntries(
 				model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through),
 				userID, tc.metricName,
 				metric, chunkID,
@@ -186,12 +193,12 @@ func TestSchemaRangeKey(t *testing.T) {
 	)
 
 	var (
-		hourlyBuckets = makeSchema("v1")
-		dailyBuckets  = makeSchema("v2")
-		base64Keys    = makeSchema("v3")
-		labelBuckets  = makeSchema("v4")
-		tsRangeKeys   = makeSchema("v5")
-		v6RangeKeys   = makeSchema("v6")
+		hourlyBuckets = makeStoreSchema("v1")
+		dailyBuckets  = makeStoreSchema("v2")
+		base64Keys    = makeStoreSchema("v3")
+		labelBuckets  = makeStoreSchema("v4")
+		tsRangeKeys   = makeStoreSchema("v5")
+		v6RangeKeys   = makeStoreSchema("v6")
 		metric        = labels.Labels{
 			{Name: model.MetricNameLabel, Value: metricName},
 			{Name: "bar", Value: "bary"},
@@ -217,7 +224,7 @@ func TestSchemaRangeKey(t *testing.T) {
 	}
 
 	for i, tc := range []struct {
-		Schema
+		StoreSchema
 		want []IndexEntry
 	}{
 		// Basic test case for the various bucketing schemes
@@ -304,7 +311,7 @@ func TestSchemaRangeKey(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("TestSchameRangeKey[%d]", i), func(t *testing.T) {
-			have, err := tc.Schema.GetWriteEntries(
+			have, err := tc.StoreSchema.GetWriteEntries(
 				model.TimeFromUnix(0), model.TimeFromUnix(60*60)-1,
 				userID, metricName,
 				metric, chunkID,
@@ -389,20 +396,6 @@ func BenchmarkEncodeLabelsString(b *testing.B) {
 	}
 	b.Log("data size", len(data))
 	b.Log("decode", decoded)
-}
-
-// Ensure all currently defined entries can inhabit the entries interface
-func TestEnsureEntriesInhabitInterface(t *testing.T) {
-	var _ = []entries{
-		originalEntries{},
-		base64Entries{},
-		labelNameInHashKeyEntries{},
-		v5Entries{},
-		v6Entries{},
-		v9Entries{},
-		v10Entries{},
-		v11Entries{},
-	}
 }
 
 func TestV10IndexQueries(t *testing.T) {

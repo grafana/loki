@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"time"
 
@@ -62,11 +63,13 @@ func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index
 	schema := cfg.CreateSchema()
 	var store Store
 	var err error
-	switch cfg.Schema {
-	case "v9", "v10", "v11":
-		store, err = newSeriesStore(storeCfg, schema, index, chunks, limits, chunksCache, writeDedupeCache)
+	switch s := schema.(type) {
+	case SeriesStoreSchema:
+		store, err = newSeriesStore(storeCfg, s, index, chunks, limits, chunksCache, writeDedupeCache)
+	case StoreSchema:
+		store, err = newStore(storeCfg, s, index, chunks, limits, chunksCache)
 	default:
-		store, err = newStore(storeCfg, schema, index, chunks, limits, chunksCache)
+		err = errors.New("invalid schema type")
 	}
 	if err != nil {
 		return err

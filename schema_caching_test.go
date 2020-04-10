@@ -12,15 +12,12 @@ import (
 )
 
 func TestCachingSchema(t *testing.T) {
-	const (
-		userID         = "userid"
-		periodicPrefix = "periodicPrefix"
-	)
+	const userID = "userid"
 
-	dailyBuckets := makeSchema("v3")
+	dailyBuckets := makeSeriesStoreSchema("v9")
 	schema := &schemaCaching{
-		Schema:         dailyBuckets,
-		cacheOlderThan: 24 * time.Hour,
+		SeriesStoreSchema: dailyBuckets,
+		cacheOlderThan:    24 * time.Hour,
 	}
 
 	baseTime := time.Unix(0, 0)

@@ -64,32 +64,27 @@ var (
 
 // seriesStore implements Store
 type seriesStore struct {
-	store
+	baseStore
+	schema           SeriesStoreSchema
 	writeDedupeCache cache.Cache
 }
 
-func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) (Store, error) {
-	fetcher, err := NewChunkFetcher(chunksCache, cfg.chunkCacheStubs, chunks)
+func newSeriesStore(cfg StoreConfig, schema SeriesStoreSchema, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) (Store, error) {
+	rs, err := newBaseStore(cfg, schema, index, chunks, limits, chunksCache)
 	if err != nil {
 		return nil, err
 	}
 
 	if cfg.CacheLookupsOlderThan != 0 {
 		schema = &schemaCaching{
-			Schema:         schema,
-			cacheOlderThan: cfg.CacheLookupsOlderThan,
+			SeriesStoreSchema: schema,
+			cacheOlderThan:    cfg.CacheLookupsOlderThan,
 		}
 	}
 
 	return &seriesStore{
-		store: store{
-			cfg:     cfg,
-			index:   index,
-			chunks:  chunks,
-			schema:  schema,
-			limits:  limits,
-			Fetcher: fetcher,
-		},
+		baseStore:        rs,
+		schema:           schema,
 		writeDedupeCache: writeDedupeCache,
 	}, nil
 }
@@ -183,7 +178,7 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, thr
 	level.Debug(log).Log("chunks-post-filtering", len(chunks))
 	chunksPerQuery.Observe(float64(len(chunks)))
 
-	return [][]Chunk{chunks}, []*Fetcher{c.store.Fetcher}, nil
+	return [][]Chunk{chunks}, []*Fetcher{c.baseStore.Fetcher}, nil
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
