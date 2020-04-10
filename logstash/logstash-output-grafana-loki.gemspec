@@ -1,7 +1,7 @@
 Gem::Specification.new do |s|
-  s.name = 'logstash-output-loki'
+  s.name = 'logstash-output-grafana-loki'
   s.version         = '1.0.0'
-  s.authors = %w[Aditya C S]
+  s.authors = ['Aditya C S']
   s.email   = ['aditya.gnu@gmail.com']
 
   s.summary       = 'Output plugin to ship logs to a Grafana Loki server'

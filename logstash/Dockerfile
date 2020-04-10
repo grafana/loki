@@ -18,10 +18,9 @@ RUN bundle install --path=/usr/share/logstash/vendor/bundle && \
     bundle exec rake vendor && \
     bundle exec rspec
 
-RUN gem build logstash-output-loki.gemspec && \
-    /usr/share/logstash/bin/logstash-plugin install logstash-output-loki-${PLUGIN_VERSION}.gem
+RUN gem build logstash-output-grafana-loki.gemspec && \
+    /usr/share/logstash/bin/logstash-plugin install logstash-output-grafana-loki-${PLUGIN_VERSION}.gem
 
-## If required, expose the port. Depends on which input plugin you are using. 
-##EXPOSE 5044
+EXPOSE 5044
 
 CMD ["/usr/share/logstash/bin/logstash", "-f", "loki.conf"]

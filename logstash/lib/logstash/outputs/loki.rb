@@ -18,7 +18,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
   concurrency :single
 
   ## 'Loki URL'
-  config :url, :validate => :string,  :required => true
+  config :url, :validate => :string, :required => true
 
   ## 'BasicAuth credentials'
   config :username, :validate => :string, :required => false
@@ -32,7 +32,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
   config :ca_cert, :validate => :path, :required => false
 
   ## 'Loki Tenant ID'
-  config :tenant_id, :validate => :string, :default => "fake", :required => false
+  config :tenant_id, :validate => :string, :required => false
 
   ## 'Maximum batch size to accrue before pushing to loki. Defaults to 102400 bytes'
   config :batch_size, :validate => :number, :default => 102400, :required => false
@@ -43,14 +43,20 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
   ## 'Array of label names to include in all logstreams'
   config :include_labels, :validate => :array, :default => [], :required => true 
 
-  ## 'Array of label names to exclude from sending to loki'
-  config :exclude_labels, :validate => :array, :default => [], :required => false 
-
   ## 'Extra labels to add to all log streams'
-  config :external_labels, :valide => :hash,  :default => {}, :required => false
+  config :external_labels, :validate => :hash,  :default => {}, :required => false
 
   ## 'Log line field to pick from logstash. Defaults to "message"'
   config :message_field, :validate => :string, :default => "message", :required => false
+
+  ## 'Backoff configuration. Initial backoff time between retries. Default 1s'
+  config :min_delay, :validate => :number, :default => 1, :required => false
+
+   ## 'Backoff configuration. Maximum backoff time between retries. Default 300s'
+   config :max_delay, :validate => :number, :default => 300, :required => false
+
+  ## 'Backoff configuration. Maximum number of retries to do'
+  config :retries, :validate => :number, :default => 10, :required => false
 
   public
   def register
@@ -59,17 +65,27 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
       raise LogStash::ConfigurationError, "url parameter must be valid HTTP, currently '#{@url}'"
     end
 
+    if @include_labels.empty?
+      raise LogStash::ConfigurationError, "include_labels should contain atleast one label, currently '#{@include_labels}'"
+    end
+
+    if @min_delay > @max_delay
+      raise LogStash::ConfigurationError, "Min delay should be less than Max delay, currently 'Min delay is #{@min_delay} and Max delay is #{@max_delay}'"
+    end
+    
     @logger.info("Loki output plugin", :class => self.class.name)
 
+    # intialize channels
     @Channel = Concurrent::Channel
     @entries = @Channel.new
-    @quit = @Channel.new(capacity: 1)
-    @exclude_labels += ["message", "@timestamp"] 
-    @max_wait_check
-    @retry_http = 3
-    @delay = 1
+
+    # excluded message and timestamp from labels
+    @exclude_labels = ["message", "@timestamp"] 
+
+    # create nil batch object.
     @batch = nil
 
+    # validate certs
     if ssl_cert?
       load_ssl
       validate_ssl_key
@@ -89,7 +105,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
 
   def validate_ssl_key
     if !@key.is_a?(OpenSSL::PKey::RSA) && !@key.is_a?(OpenSSL::PKey::DSA)
-      raise "Unsupported private key type #{key.class}"
+      raise LogStash::ConfigurationError, "Unsupported private key type '#{@key.class}''"
     end
   end
 
@@ -124,9 +140,6 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
     @max_wait_check = Concurrent::Channel.tick(max_wait_checkfrequency)
     loop do
       Concurrent::Channel.select do |s|
-        s.take(@quit) {
-          return
-        }
         s.take(@entries) { |e|
           if @batch.nil?
             @batch = Batch.new(e)
@@ -144,12 +157,15 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
         }
         s.take(@max_wait_check) {
           # Send batch if max wait time has been reached
-          if !@batch.nil? && @batch.age() < @batch_wait
-            next
+          if !@batch.nil?
+            if @batch.age() < @batch_wait
+              next
+            end
+
+            @logger.debug("Max batch_wait time is reached. Sending batch to loki")
+            send(@tenant_id, @batch)
+            @batch = nil
           end
-          @logger.debug("Max batch_wait time is reached. Sending batch to loki")
-          send(@tenant_id, @batch) if !@batch.nil?
-          @batch = nil
         }
       end
     end 
@@ -159,12 +175,19 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
   public
   def receive(event)
     labels = {}
-
     event_hash = event.to_hash
-    lbls = extract_labels(event_hash, labels, "")
-    data_labels, entry_hash = build_entry(lbls, event)
+    lbls = handle_labels(event_hash, labels, "")
 
+    data_labels, entry_hash = build_entry(lbls, event)
     @entries << Entry.new(data_labels, entry_hash)
+
+  end
+  
+  def close
+    @logger.info("Closing loki output plugin. Flushing all pending batches")
+    send(@tenant_id, @batch) if !@batch.nil?
+    @entries.close
+    @max_wait_check.close if !@max_wait_check.nil?
   end
 
   def build_entry(lbls, event)
@@ -176,22 +199,14 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
     return labels, entry_hash
   end 
 
-  def format_key(key)
-    if key[0] == "@"
-      key = key[1..-1]
-    end
-    return key
-  end 
-
-  def extract_labels(event_hash, labels, parent_key)
+  def handle_labels(event_hash, labels, parent_key)
     event_hash.each{ |key,value|
       if !@exclude_labels.include?(key)
-        key = format_key(key)
         if value.is_a?(Hash)
           if parent_key != ""
-            extract_labels(value, labels, parent_key + "_" + key)
+            handle_labels(value, labels, parent_key + "_" + key)
           else  
-            extract_labels(value, labels, key)
+            handle_labels(value, labels, key)
           end
         else
           if parent_key != ""
@@ -202,54 +217,70 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
         end
       end
     }
-    return labels
+    return extract_labels(labels)
   end
 
-  def close
-    @logger.info("Closing loki output plugin. Flushing all pending batches")
-    send(@tenant_id, @batch) if !@batch.nil?
-    @quit << "quit" 
-    @entries.close
-    @max_wait_check.close if !@max_wait_check.nil?
-  end
+  def extract_labels(extracted_labels)
+    labels = {}
+    extracted_labels.each { |key, value|
+      if @include_labels.include?(key)
+        key = key.gsub("@", '')
+        labels[key] = value
+      end
+    }
+    return labels
+  end 
 
   def send(tenant_id, batch)
     payload = build_payload(batch)
-    res = loki_http_request(tenant_id, payload)
-
-    if res.is_a?(Net::HTTPSuccess) || res.nil?
+    res = loki_http_request(tenant_id, payload, @min_delay, @max_delay, @retries)
+  
+    if res.is_a?(Net::HTTPSuccess)
       @logger.debug("Successfully pushed data to loki")
       return
     else  
-      @logger.warn("failed to write post to ", :uri => @uri, :code => res.code, :body => res.body, :message => res.message)
+      @logger.error("failed to write post to ", :uri => @uri, :code => res.code, :body => res.body, :message => res.message) if !res.nil?
       @logger.debug("Payload object ", :payload => payload)
     end 
   end
 
-  def loki_http_request(tenant_id, payload)
+  def loki_http_request(tenant_id, payload, min_delay, max_delay, retries)
     req = Net::HTTP::Post.new(
       @uri.request_uri
     )
     req.add_field('Content-Type', 'application/json')
-    req.add_field('X-Scope-OrgID', tenant_id)
+    req.add_field('X-Scope-OrgID', tenant_id) if tenant_id
     req.basic_auth(@username, @password) if @username
     req.body = payload
 
     opts = ssl_opts(@uri)
+
     @logger.debug("sending #{req.body.length} bytes to loki")
+    retry_count = 0
+    delay = min_delay
+    
     begin 
       res = Net::HTTP.start(@uri.host, @uri.port, **opts) { |http| http.request(req) }
-    rescue Net::HTTPTooManyRequests, Net::HTTPServerError, Errno::ECONNREFUSED => e  
-      retry_count += 1
-      unless @retry_http == -1 || retry_count <= @retry_http
-        raise StandardError, "Error while sending data to loki. Tried #{@retry_http - 1} times\n. :error => #{e}"
+    rescue Net::HTTPTooManyRequests, Net::HTTPServerError, Errno::ECONNREFUSED => e
+      unless retry_count < retries
+        @logger.error("Error while sending data to loki. Tried #{retry_count} times\n. :error => #{e}")
+        return res
       end
-      @logger.warn("Trying to send again. Retrying in #{@delay}s")
-      @delay = @delay * 2
-      sleep @delay
-      retry 
+
+      retry_count += 1
+      @logger.warn("Trying to send again. Attempt number: #{retry_count}. Retrying in #{delay}s")
+      sleep delay
+
+      if (delay * 2 - delay) > max_delay
+        delay = delay 
+      else
+        delay = delay * 2
+      end
+
+      retry
     rescue StandardError => e
       @logger.error("Error while connecting to loki server ", :error_inspect => e.inspect, :error => e)
+      return res
     end
     return res
   end 

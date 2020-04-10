@@ -30,13 +30,13 @@ bundle exec rake vendor
 ```
 
 ### Build the plugin
-`gem build logstash-output-loki.gemspec`
+`gem build logstash-output-grafana-loki.gemspec`
 
 ### Test
 `bundle exec rspec`
 
 ## Install plugin to local logstash
-`bin/logstash-plugin install --no-verify --local logstash-output-loki-1.0.0.gem`
+`bin/logstash-plugin install --no-verify --local logstash-output-grafana-loki-1.0.0.gem`
 
 ## Send sample event and check plugin is working
 `bin/logstash -f loki.conf`
