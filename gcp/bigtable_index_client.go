@@ -51,7 +51,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.TableCacheEnabled, "bigtable.table-cache.enabled", true, "If enabled, once a tables info is fetched, it is cached.")
 	f.DurationVar(&cfg.TableCacheExpiration, "bigtable.table-cache.expiration", 30*time.Minute, "Duration to cache tables before checking again.")
 
-	cfg.GRPCClientConfig.RegisterFlags("bigtable", f)
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("bigtable", f)
 }
 
 // storageClientColumnKey implements chunk.storageClient for GCP.
