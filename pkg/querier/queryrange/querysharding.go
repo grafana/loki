@@ -20,7 +20,6 @@ var nanosecondsInMillisecond = int64(time.Millisecond / time.Nanosecond)
 // NewQueryShardMiddleware creates a middleware which downstreams queries after AST mapping and query encoding.
 func NewQueryShardMiddleware(
 	logger log.Logger,
-	engine logql.Engine,
 	confs queryrange.ShardingConfigs,
 	minShardingLookback time.Duration,
 	metrics *queryrange.InstrumentMiddlewareMetrics,
