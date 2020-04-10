@@ -1,12 +1,15 @@
 package queryrange
 
 import (
+	"errors"
 	"flag"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
@@ -36,7 +39,14 @@ type Stopper interface {
 }
 
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
-func NewTripperware(cfg Config, log log.Logger, limits Limits, registerer prometheus.Registerer) (frontend.Tripperware, Stopper, error) {
+func NewTripperware(
+	cfg Config,
+	log log.Logger,
+	limits Limits,
+	schema chunk.SchemaConfig,
+	minShardingLookback time.Duration,
+	registerer prometheus.Registerer,
+) (frontend.Tripperware, Stopper, error) {
 	// Ensure that QuerySplitDuration uses configuration defaults.
 	// This avoids divide by zero errors when determining cache keys where user specific overrides don't exist.
 	limits = WithDefaultLimits(limits, cfg.Config)
@@ -99,6 +109,22 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, registerer promet
 	}
 
 	// ----Sharding----
+
+	if cfg.ShardedQueries {
+		if minShardingLookback == 0 {
+			return nil, nil, errors.New("a non-zero value is required for querier.query-ingesters-within when -querier.parallelise-shardable-queries is enabled")
+		}
+
+		shardingware := NewQueryShardMiddleware(
+			log,
+			schema.Configs,
+			minShardingLookback,
+			instrumentMetrics, // instrumentation is included in the sharding middleware
+		)
+
+		metricsWare = append(metricsWare, shardingware)
+		logFilterWare = append(metricsWare, shardingware)
+	}
 
 	// ----Retries----
 
