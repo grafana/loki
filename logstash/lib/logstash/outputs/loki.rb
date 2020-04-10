@@ -41,7 +41,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
   config :batch_wait, :validate => :number, :default => 1, :required => false
 
   ## 'Array of label names to include in all logstreams'
-  config :include_labels, :validate => :array, :default => [], :required => true 
+  config :include_labels, :validate => :array, :default => [], :required => true
 
   ## 'Extra labels to add to all log streams'
   config :external_labels, :validate => :hash,  :default => {}, :required => false
@@ -72,7 +72,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
     if @min_delay > @max_delay
       raise LogStash::ConfigurationError, "Min delay should be less than Max delay, currently 'Min delay is #{@min_delay} and Max delay is #{@max_delay}'"
     end
-    
+
     @logger.info("Loki output plugin", :class => self.class.name)
 
     # intialize channels
@@ -80,7 +80,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
     @entries = @Channel.new
 
     # excluded message and timestamp from labels
-    @exclude_labels = ["message", "@timestamp"] 
+    @exclude_labels = ["message", "@timestamp"]
 
     # create nil batch object.
     @batch = nil
@@ -128,7 +128,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
       )
     end
     opts
-  end 
+  end
 
   def run()
 	  min_wait_checkfrequency = 1/1000 #1 millisecond
@@ -145,7 +145,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
             @batch = Batch.new(e)
             next
           end
-          
+
           line = e.entry['line']
           if @batch.size_bytes_after(line) > @batch_size
             @logger.debug("Max batch_size is reached. Sending batch to loki")
@@ -168,7 +168,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
           end
         }
       end
-    end 
+    end
   end
 
   ## Receives logstash events
@@ -182,7 +182,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
     @entries << Entry.new(data_labels, entry_hash)
 
   end
-  
+
   def close
     @logger.info("Closing loki output plugin. Flushing all pending batches")
     send(@tenant_id, @batch) if !@batch.nil?
@@ -197,7 +197,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
       "line" => event.get(@message_field).to_s
     }
     return labels, entry_hash
-  end 
+  end
 
   def handle_labels(event_hash, labels, parent_key)
     event_hash.each{ |key,value|
@@ -205,13 +205,13 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
         if value.is_a?(Hash)
           if parent_key != ""
             handle_labels(value, labels, parent_key + "_" + key)
-          else  
+          else
             handle_labels(value, labels, key)
           end
         else
           if parent_key != ""
             labels[parent_key + "_" + key] = value.to_s
-          else 
+          else
             labels[key] = value.to_s
           end
         end
@@ -229,19 +229,19 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
       end
     }
     return labels
-  end 
+  end
 
   def send(tenant_id, batch)
     payload = build_payload(batch)
     res = loki_http_request(tenant_id, payload, @min_delay, @max_delay, @retries)
-  
+
     if res.is_a?(Net::HTTPSuccess)
       @logger.debug("Successfully pushed data to loki")
       return
-    else  
+    else
       @logger.error("failed to write post to ", :uri => @uri, :code => res.code, :body => res.body, :message => res.message) if !res.nil?
       @logger.debug("Payload object ", :payload => payload)
-    end 
+    end
   end
 
   def loki_http_request(tenant_id, payload, min_delay, max_delay, retries)
@@ -258,8 +258,8 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
     @logger.debug("sending #{req.body.length} bytes to loki")
     retry_count = 0
     delay = min_delay
-    
-    begin 
+
+    begin
       res = Net::HTTP.start(@uri.host, @uri.port, **opts) { |http| http.request(req) }
     rescue Net::HTTPTooManyRequests, Net::HTTPServerError, Errno::ECONNREFUSED => e
       unless retry_count < retries
@@ -272,7 +272,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
       sleep delay
 
       if (delay * 2 - delay) > max_delay
-        delay = delay 
+        delay = delay
       else
         delay = delay * 2
       end
@@ -283,7 +283,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
       return res
     end
     return res
-  end 
+  end
 
   def build_payload(batch)
     payload = {}
@@ -296,9 +296,9 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
   end
 
   def get_stream_obj(stream)
-    stream_obj = {} 
+    stream_obj = {}
     stream_obj['stream'] = stream['labels']
-    stream_obj['values'] = [] 
+    stream_obj['values'] = []
     values = []
     stream['entries'].each { |entry|
         values.push(entry['ts'].to_s)
@@ -306,5 +306,5 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
     }
     stream_obj['values'].push(values)
     return stream_obj
-  end 
+  end
 end
