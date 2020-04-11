@@ -45,6 +45,8 @@ func createTestBoltDBWithShipper(t *testing.T, parentTempDir, ingesterName, loca
 }
 
 func addTestRecordsToBoltDBFile(t *testing.T, boltdb *bbolt.DB, numRecords int, start int) {
+	time.Sleep(time.Second / 2)
+
 	err := boltdb.Update(func(tx *bbolt.Tx) error {
 		b, err := tx.CreateBucketIfNotExists([]byte(testBucketName))
 		if err != nil {

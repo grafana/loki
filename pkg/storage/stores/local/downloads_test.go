@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 
@@ -29,6 +30,8 @@ func queryTestBoltdb(t *testing.T, boltdbIndexClient *BoltdbIndexClientWithShipp
 }
 
 func writeTestData(t *testing.T, indexClient *BoltdbIndexClientWithShipper, tableName string, numRecords, startValue int) {
+	time.Sleep(time.Second / 2)
+
 	batch := indexClient.NewWriteBatch()
 	for i := 0; i < numRecords; i++ {
 		value := []byte(strconv.Itoa(startValue + i))
