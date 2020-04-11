@@ -55,6 +55,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// The long nature of queries requires stretching out the cardinality limit some and removing the query length limit
+	sourceConfig.LimitsConfig.CardinalityLimit = 1e9
+	sourceConfig.LimitsConfig.MaxQueryLength = 0
 	limits, err := validation.NewOverrides(sourceConfig.LimitsConfig, nil)
 	s, err := storage.NewStore(sourceConfig.StorageConfig, sourceConfig.ChunkStoreConfig, sourceConfig.SchemaConfig, limits)
 	if err != nil {
@@ -91,6 +94,10 @@ func main() {
 	f, t := util.RoundToMilliseconds(mustParse(*from), mustParse(*to))
 
 	schemaGroups, fetchers, err := s.GetChunkRefs(ctx, userID, f, t, matchers...)
+	if err != nil {
+		fmt.Println("Error querying index for chunk refs:", err)
+		os.Exit(1)
+	}
 
 	var totalChunks int
 	for i := range schemaGroups {
