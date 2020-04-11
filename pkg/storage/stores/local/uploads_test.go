@@ -59,10 +59,12 @@ func addTestRecordsToBoltDBFile(t *testing.T, boltdb *bbolt.DB, numRecords int, 
 				return err
 			}
 		}
+
 		return nil
 	})
 
 	require.NoError(t, err)
+	require.NoError(t, boltdb.Sync())
 }
 
 func readAllKVsFromBoltdbFile(t *testing.T, boltdb *bbolt.DB) map[string]string {

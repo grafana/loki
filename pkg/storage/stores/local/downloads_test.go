@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/chunk/local"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +28,7 @@ func queryTestBoltdb(t *testing.T, boltdbIndexClient *BoltdbIndexClientWithShipp
 	return resp
 }
 
-func writeTestData(t *testing.T, indexClient chunk.IndexClient, tableName string, numRecords, startValue int) {
+func writeTestData(t *testing.T, indexClient *BoltdbIndexClientWithShipper, tableName string, numRecords, startValue int) {
 	batch := indexClient.NewWriteBatch()
 	for i := 0; i < numRecords; i++ {
 		value := []byte(strconv.Itoa(startValue + i))
@@ -35,6 +37,10 @@ func writeTestData(t *testing.T, indexClient chunk.IndexClient, tableName string
 
 	require.NoError(t, indexClient.BatchWrite(context.Background(), batch))
 
+	boltdb, err := indexClient.GetDB(tableName, local.DBOperationWrite)
+	require.NoError(t, err)
+
+	require.NoError(t, boltdb.Sync())
 }
 
 func TestShipper_Downloads(t *testing.T) {
