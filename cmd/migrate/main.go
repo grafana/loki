@@ -5,10 +5,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/prometheus/common/model"
 	"log"
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -23,6 +25,11 @@ import (
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
+type syncRange struct {
+	from int64
+	to   int64
+}
+
 func main() {
 
 	var defaultsConfig loki.Config
@@ -36,10 +43,12 @@ func main() {
 	match := flag.String("match", "", "Optional label match")
 
 	batch := flag.Int("batchLen", 1000, "Specify how many chunks to read/write in one batch")
+	shardBy := flag.Duration("shardBy", 6*time.Hour, "Break down the total interval into shards of this size, making this too small can lead to syncing a lot of duplicate chunks")
+	parallel := flag.Int("parallel", 4, "How many parallel threads to process each shard")
 	flag.Parse()
 
 	if err := cfg.Unmarshal(&defaultsConfig, cfg.Defaults()); err != nil {
-		fmt.Fprintf(os.Stderr, "failed parsing defaults config: %v\n", err)
+		log.Println("Failed parsing defaults config:", err)
 		os.Exit(1)
 	}
 
@@ -47,11 +56,11 @@ func main() {
 	destConfig := defaultsConfig
 
 	if err := cfg.YAML(sf)(&sourceConfig); err != nil {
-		fmt.Fprintf(os.Stderr, "failed parsing source config file %v: %v\n", *sf, err)
+		log.Printf("Failed parsing source config file %v: %v\n", *sf, err)
 		os.Exit(1)
 	}
 	if err := cfg.YAML(df)(&destConfig); err != nil {
-		fmt.Fprintf(os.Stderr, "failed parsing dest config file %v: %v\n", *df, err)
+		log.Printf("Failed parsing dest config file %v: %v\n", *df, err)
 		os.Exit(1)
 	}
 
@@ -61,17 +70,20 @@ func main() {
 	limits, err := validation.NewOverrides(sourceConfig.LimitsConfig, nil)
 	s, err := storage.NewStore(sourceConfig.StorageConfig, sourceConfig.ChunkStoreConfig, sourceConfig.SchemaConfig, limits)
 	if err != nil {
-		panic(err)
+		log.Println("Failed to create source store:", err)
+		os.Exit(1)
 	}
 
 	d, err := storage.NewStore(destConfig.StorageConfig, destConfig.ChunkStoreConfig, destConfig.SchemaConfig, limits)
 	if err != nil {
-		panic(err)
+		log.Println("Failed to create destination store:", err)
+		os.Exit(1)
 	}
 
 	nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, "logs")
 	if err != nil {
-		panic(err)
+		log.Println("Failed to create label matcher:", err)
+		os.Exit(1)
 	}
 
 	matchers := []*labels.Matcher{nameLabelMatcher}
@@ -79,7 +91,8 @@ func main() {
 	if *match != "" {
 		m, err := logql.ParseMatchers(*match)
 		if err != nil {
-			panic(err)
+			log.Println("Failed to parse log matcher:", err)
+			os.Exit(1)
 		}
 		matchers = append(matchers, m...)
 	}
@@ -90,12 +103,13 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
-	f, t := util.RoundToMilliseconds(mustParse(*from), mustParse(*to))
+	parsedFrom := mustParse(*from)
+	parsedTo := mustParse(*to)
+	f, t := util.RoundToMilliseconds(parsedFrom, parsedTo)
 
 	schemaGroups, fetchers, err := s.GetChunkRefs(ctx, userID, f, t, matchers...)
 	if err != nil {
-		fmt.Println("Error querying index for chunk refs:", err)
+		log.Println("Error querying index for chunk refs:", err)
 		os.Exit(1)
 	}
 
@@ -111,82 +125,194 @@ func main() {
 		log.Fatalf("Error reading input: %v", err)
 	}
 	if strings.ToLower(strings.TrimSpace(in)) == "n" {
-		fmt.Println("Exiting")
+		log.Println("Exiting")
 		os.Exit(0)
 	}
 	totalBytes := 0
 	start := time.Now()
-	for i, f := range fetchers {
-		fmt.Printf("Processing Schema %v which contains %v chunks\n", i, len(schemaGroups[i]))
 
-		//Slice up into batches
-		for j := 0; j < len(schemaGroups[i]); j += *batch {
-			k := j + *batch
-			if k > len(schemaGroups[i]) {
-				k = len(schemaGroups[i])
-			}
+	shardByNs := *shardBy
+	syncRanges := calcSyncRanges(parsedFrom.UnixNano(), parsedTo.UnixNano(), shardByNs.Nanoseconds())
+	log.Printf("With a shard duration of %v, %v ranges have been calculated.\n", shardByNs, len(syncRanges))
 
-			chunks := schemaGroups[i][j:k]
-			fmt.Printf("Processing chunks %v-%v of %v\n", j, k, len(schemaGroups[i]))
+	cm := newChunkMover(ctx, s, d, *source, *dest, matchers, *batch)
+	syncChan := make(chan *syncRange)
+	errorChan := make(chan error)
 
-			keys := make([]string, 0, len(chunks))
-			chks := make([]chunk.Chunk, 0, len(chunks))
-
-			// For retry purposes, find the earliest "Through" and keep it,
-			// if restarting you would want to set the "From" to this value
-			// This might send some duplicate chunks but should ensure nothing is missed.
-			earliestThrough := t
-			for _, c := range chunks {
-				if c.Through < earliestThrough {
-					earliestThrough = c.Through
-				}
-			}
-
-			// FetchChunks requires chunks to be ordered by external key.
-			sort.Slice(chunks, func(l, m int) bool { return chunks[l].ExternalKey() < chunks[m].ExternalKey() })
-			for _, chk := range chunks {
-				key := chk.ExternalKey()
-				keys = append(keys, key)
-				chks = append(chks, chk)
-			}
-			chks, err := f.FetchChunks(ctx, chks, keys)
-			if err != nil {
-				log.Fatalf("Error fetching chunks: %v\n", err)
-			}
-
-			output := make([]chunk.Chunk, 0, len(chks))
-
-			// Calculate some size stats and change the tenant ID if necessary
-			for i, chk := range chks {
-				if enc, err := chk.Encoded(); err == nil {
-					totalBytes += len(enc)
-				} else {
-					log.Fatalf("Error encoding a chunk: %v\n", err)
-				}
-				if *source != *dest {
-					// Because the incoming chunks are already encoded, to change the username we have to make a new chunk
-					nc := chunk.NewChunk(*dest, chk.Fingerprint, chk.Metric, chk.Data, chk.From, chk.Through)
-					err := nc.Encode()
-					if err != nil {
-						log.Fatalf("Failed to encode new chunk with new user: %v\n", err)
-					}
-					output = append(output, nc)
-				} else {
-					output = append(output, chks[i])
-				}
-
-			}
-
-			err = d.Put(ctx, output)
-			if err != nil {
-				log.Fatalf("Error sending chunks to new store: %v\n", err)
-			}
-			fmt.Printf("Batch sent successfully, if restarting after this batch you can safely start at time: %v\n", earliestThrough.Time())
-		}
+	//Start the parallel processors
+	var wg sync.WaitGroup
+	cancelContext, cancelFunc := context.WithCancel(ctx)
+	for i := 0; i < *parallel; i++ {
+		wg.Add(1)
+		go func(threadId int) {
+			defer wg.Done()
+			cm.moveChunks(threadId, cancelContext, syncChan, errorChan)
+		}(i)
 	}
 
-	fmt.Printf("Finished transfering %v chunks totalling %v bytes in %v\n", totalChunks, totalBytes, time.Now().Sub(start))
+	// Launch a thread to dispatch requests:
+	go func() {
+		i := 0
+		length := len(syncRanges)
+		for i < length {
+			log.Printf("Dispatching sync range %v of %v\n", i+1, length)
+			syncChan <- syncRanges[i]
+			i++
+		}
+		//Everything processed, exit
+		cancelFunc()
+	}()
 
+	// Wait for an error or the context to be canceled
+	select {
+	case <-cancelContext.Done():
+		log.Println("Received done call, waiting on threads")
+		log.Printf("Finished transfering %v chunks totalling %v bytes in %v\n", totalChunks, totalBytes, time.Now().Sub(start))
+	case err := <-errorChan:
+		log.Println("Received an error from processing thread, shutting down: ", err)
+		cancelFunc()
+	}
+	log.Println("Waiting for threads to exit")
+	wg.Wait()
+	log.Println("All threads finished")
+	log.Println("Going to sleep....")
+	for {
+		time.Sleep(100 * time.Second)
+	}
+
+}
+
+func calcSyncRanges(from, to int64, shardBy int64) []*syncRange {
+	//Calculate the sync ranges
+	syncRanges := []*syncRange{}
+	//diff := to - from
+	//shards := diff / shardBy
+	currentFrom := from
+	//currentTo := from
+	currentTo := from + shardBy
+	for currentFrom < to && currentTo <= to {
+		s := &syncRange{
+			from: currentFrom,
+			to:   currentTo,
+		}
+		syncRanges = append(syncRanges, s)
+
+		currentFrom = currentTo + 1
+		currentTo = currentTo + shardBy
+
+		if currentTo > to {
+			currentTo = to
+		}
+	}
+	return syncRanges
+}
+
+type chunkMover struct {
+	ctx        context.Context
+	source     storage.Store
+	dest       storage.Store
+	sourceUser string
+	destUser   string
+	matchers   []*labels.Matcher
+	batch      int
+}
+
+func newChunkMover(ctx context.Context, source, dest storage.Store, sourceUser, destUser string, matchers []*labels.Matcher, batch int) *chunkMover {
+	cm := &chunkMover{
+		ctx:        ctx,
+		source:     source,
+		dest:       dest,
+		sourceUser: sourceUser,
+		destUser:   destUser,
+		matchers:   matchers,
+		batch:      batch,
+	}
+	return cm
+}
+
+func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <-chan *syncRange, errCh chan<- error) {
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println(threadId, "Requested to be done, context cancelled, quitting.")
+			return
+		case sr := <-syncRangeCh:
+			log.Println(threadId, "Processing", time.Unix(0, sr.from).UTC(), time.Unix(0, sr.to).UTC())
+			schemaGroups, fetchers, err := m.source.GetChunkRefs(m.ctx, m.sourceUser, model.TimeFromUnixNano(sr.from), model.TimeFromUnixNano(sr.to), m.matchers...)
+			if err != nil {
+				log.Println(threadId, "Error querying index for chunk refs:", err)
+				errCh <- err
+				return
+			}
+			for i, f := range fetchers {
+				log.Printf("%v Processing Schema %v which contains %v chunks\n", threadId, i, len(schemaGroups[i]))
+
+				//Slice up into batches
+				for j := 0; j < len(schemaGroups[i]); j += m.batch {
+					k := j + m.batch
+					if k > len(schemaGroups[i]) {
+						k = len(schemaGroups[i])
+					}
+
+					chunks := schemaGroups[i][j:k]
+					log.Printf("%v Processing chunks %v-%v of %v\n", threadId, j, k, len(schemaGroups[i]))
+
+					keys := make([]string, 0, len(chunks))
+					chks := make([]chunk.Chunk, 0, len(chunks))
+
+					// FetchChunks requires chunks to be ordered by external key.
+					sort.Slice(chunks, func(l, m int) bool { return chunks[l].ExternalKey() < chunks[m].ExternalKey() })
+					for _, chk := range chunks {
+						key := chk.ExternalKey()
+						keys = append(keys, key)
+						chks = append(chks, chk)
+					}
+					chks, err := f.FetchChunks(m.ctx, chks, keys)
+					if err != nil {
+						log.Println(threadId, "Error fetching chunks:", err)
+						errCh <- err
+						return
+					}
+
+					output := make([]chunk.Chunk, 0, len(chks))
+
+					// Calculate some size stats and change the tenant ID if necessary
+					for i, chk := range chks {
+						if _, err := chk.Encoded(); err == nil {
+							//totalBytes += len(enc)
+						} else {
+							log.Println(threadId, "Error encoding a chunk:", err)
+							errCh <- err
+							return
+						}
+						if m.sourceUser != m.destUser {
+							// Because the incoming chunks are already encoded, to change the username we have to make a new chunk
+							nc := chunk.NewChunk(m.destUser, chk.Fingerprint, chk.Metric, chk.Data, chk.From, chk.Through)
+							err := nc.Encode()
+							if err != nil {
+								log.Println(threadId, "Failed to encode new chunk with new user:", err)
+								errCh <- err
+								return
+							}
+							output = append(output, nc)
+						} else {
+							output = append(output, chks[i])
+						}
+
+					}
+
+					err = m.dest.Put(m.ctx, output)
+					if err != nil {
+						log.Println(threadId, "Error sending chunks to new store:", err)
+						errCh <- err
+						return
+					}
+					log.Println(threadId, "Batch sent successfully")
+				}
+			}
+		}
+	}
 }
 
 func mustParse(t string) time.Time {
