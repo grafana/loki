@@ -290,8 +290,7 @@ func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <
 						keys = append(keys, key)
 						chks = append(chks, chk)
 					}
-					retry := 4
-					for retry > 0 {
+					for retry := 4; retry >= 0; retry-- {
 						chks, err = f.FetchChunks(m.ctx, chks, keys)
 						if err != nil {
 							if retry == 0 {
@@ -302,6 +301,8 @@ func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <
 								log.Println(threadId, "Error fetching chunks, will retry:", err)
 								retry--
 							}
+						} else {
+							break
 						}
 					}
 
@@ -333,9 +334,7 @@ func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <
 						}
 
 					}
-
-					retry = 4
-					for retry > 0 {
+					for retry := 4; retry >= 0; retry-- {
 						err = m.dest.Put(m.ctx, output)
 						if err != nil {
 							if retry == 0 {
@@ -346,6 +345,8 @@ func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <
 								log.Println(threadId, "Error sending chunks to new store, will retry:", err)
 								retry--
 							}
+						} else {
+							break
 						}
 					}
 					log.Println(threadId, "Batch sent successfully")
