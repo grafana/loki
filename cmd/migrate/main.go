@@ -290,12 +290,21 @@ func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <
 						keys = append(keys, key)
 						chks = append(chks, chk)
 					}
-					chks, err := f.FetchChunks(m.ctx, chks, keys)
-					if err != nil {
-						log.Println(threadId, "Error fetching chunks:", err)
-						errCh <- err
-						return
+					retry := 4
+					for retry > 0 {
+						chks, err = f.FetchChunks(m.ctx, chks, keys)
+						if err != nil {
+							if retry == 0 {
+								log.Println(threadId, "Final error retrieving chunks, giving up:", err)
+								errCh <- err
+								return
+							} else {
+								log.Println(threadId, "Error fetching chunks, will retry:", err)
+								retry--
+							}
+						}
 					}
+
 					totalChunks += len(chks)
 
 					output := make([]chunk.Chunk, 0, len(chks))
@@ -325,11 +334,19 @@ func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <
 
 					}
 
-					err = m.dest.Put(m.ctx, output)
-					if err != nil {
-						log.Println(threadId, "Error sending chunks to new store:", err)
-						errCh <- err
-						return
+					retry = 4
+					for retry > 0 {
+						err = m.dest.Put(m.ctx, output)
+						if err != nil {
+							if retry == 0 {
+								log.Println(threadId, "Final error sending chunks to new store, giving up:", err)
+								errCh <- err
+								return
+							} else {
+								log.Println(threadId, "Error sending chunks to new store, will retry:", err)
+								retry--
+							}
+						}
 					}
 					log.Println(threadId, "Batch sent successfully")
 				}
