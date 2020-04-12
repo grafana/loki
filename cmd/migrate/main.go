@@ -299,7 +299,6 @@ func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <
 								return
 							} else {
 								log.Println(threadId, "Error fetching chunks, will retry:", err)
-								retry--
 							}
 						} else {
 							break
@@ -343,7 +342,6 @@ func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <
 								return
 							} else {
 								log.Println(threadId, "Error sending chunks to new store, will retry:", err)
-								retry--
 							}
 						} else {
 							break
