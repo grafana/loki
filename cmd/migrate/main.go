@@ -128,7 +128,6 @@ func main() {
 		log.Println("Exiting")
 		os.Exit(0)
 	}
-	totalBytes := 0
 	start := time.Now()
 
 	shardByNs := *shardBy
@@ -138,6 +137,7 @@ func main() {
 	cm := newChunkMover(ctx, s, d, *source, *dest, matchers, *batch)
 	syncChan := make(chan *syncRange)
 	errorChan := make(chan error)
+	statsChan := make(chan stats)
 
 	//Start the parallel processors
 	var wg sync.WaitGroup
@@ -146,7 +146,7 @@ func main() {
 		wg.Add(1)
 		go func(threadId int) {
 			defer wg.Done()
-			cm.moveChunks(threadId, cancelContext, syncChan, errorChan)
+			cm.moveChunks(threadId, cancelContext, syncChan, errorChan, statsChan)
 		}(i)
 	}
 
@@ -163,18 +163,32 @@ func main() {
 		cancelFunc()
 	}()
 
+	processedChunks := 0
+	processedBytes := 0
+
+	// Launch a thread to track stats
+	go func() {
+		for stat := range statsChan {
+			processedChunks += stat.totalChunks
+			processedBytes += stat.totalBytes
+		}
+		log.Printf("Transfering %v chunks totalling %v bytes in %v\n", processedChunks, processedBytes, time.Now().Sub(start))
+		log.Println("Exiting stats thread")
+	}()
+
 	// Wait for an error or the context to be canceled
 	select {
 	case <-cancelContext.Done():
-		log.Println("Received done call, waiting on threads")
-		log.Printf("Finished transfering %v chunks totalling %v bytes in %v\n", totalChunks, totalBytes, time.Now().Sub(start))
+		log.Println("Received done call")
 	case err := <-errorChan:
 		log.Println("Received an error from processing thread, shutting down: ", err)
 		cancelFunc()
 	}
 	log.Println("Waiting for threads to exit")
 	wg.Wait()
+	close(statsChan)
 	log.Println("All threads finished")
+
 	log.Println("Going to sleep....")
 	for {
 		time.Sleep(100 * time.Second)
@@ -207,6 +221,11 @@ func calcSyncRanges(from, to int64, shardBy int64) []*syncRange {
 	return syncRanges
 }
 
+type stats struct {
+	totalChunks int
+	totalBytes  int
+}
+
 type chunkMover struct {
 	ctx        context.Context
 	source     storage.Store
@@ -230,7 +249,7 @@ func newChunkMover(ctx context.Context, source, dest storage.Store, sourceUser, 
 	return cm
 }
 
-func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <-chan *syncRange, errCh chan<- error) {
+func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <-chan *syncRange, errCh chan<- error, statsCh chan<- stats) {
 
 	for {
 		select {
@@ -238,6 +257,9 @@ func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <
 			log.Println(threadId, "Requested to be done, context cancelled, quitting.")
 			return
 		case sr := <-syncRangeCh:
+			start := time.Now()
+			totalBytes := 0
+			totalChunks := 0
 			log.Println(threadId, "Processing", time.Unix(0, sr.from).UTC(), time.Unix(0, sr.to).UTC())
 			schemaGroups, fetchers, err := m.source.GetChunkRefs(m.ctx, m.sourceUser, model.TimeFromUnixNano(sr.from), model.TimeFromUnixNano(sr.to), m.matchers...)
 			if err != nil {
@@ -274,13 +296,14 @@ func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <
 						errCh <- err
 						return
 					}
+					totalChunks += len(chks)
 
 					output := make([]chunk.Chunk, 0, len(chks))
 
 					// Calculate some size stats and change the tenant ID if necessary
 					for i, chk := range chks {
-						if _, err := chk.Encoded(); err == nil {
-							//totalBytes += len(enc)
+						if enc, err := chk.Encoded(); err == nil {
+							totalBytes += len(enc)
 						} else {
 							log.Println(threadId, "Error encoding a chunk:", err)
 							errCh <- err
@@ -310,6 +333,11 @@ func (m *chunkMover) moveChunks(threadId int, ctx context.Context, syncRangeCh <
 					}
 					log.Println(threadId, "Batch sent successfully")
 				}
+			}
+			log.Printf("%v Finished processing sync range, %v chunks, %v bytes in %v seconds\n", threadId, totalChunks, totalBytes, time.Now().Sub(start).Seconds())
+			statsCh <- stats{
+				totalChunks: totalChunks,
+				totalBytes:  totalBytes,
 			}
 		}
 	}
