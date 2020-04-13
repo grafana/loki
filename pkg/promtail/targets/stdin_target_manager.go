@@ -47,15 +47,6 @@ var (
 	}
 )
 
-func isStdinPipe() bool {
-	info, err := stdIn.Stat()
-	if err != nil {
-		level.Warn(util.Logger).Log("err", err)
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice == 0
-}
-
 type Shutdownable interface {
 	Shutdown()
 }
