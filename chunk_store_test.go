@@ -782,7 +782,7 @@ func TestStoreMaxLookBack(t *testing.T) {
 	storeWithoutLookBackLimit := newTestChunkStoreConfig(t, "v9", storeCfg)
 	defer storeWithoutLookBackLimit.Stop()
 
-	storeCfg.MaxLookBackPeriod = 30 * time.Minute
+	storeCfg.MaxLookBackPeriod = model.Duration(30 * time.Minute)
 	storeWithLookBackLimit := newTestChunkStoreConfig(t, "v9", storeCfg)
 	defer storeWithLookBackLimit.Stop()
 

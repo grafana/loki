@@ -49,10 +49,10 @@ type StoreConfig struct {
 	ChunkCacheConfig       cache.Config `yaml:"chunk_cache_config"`
 	WriteDedupeCacheConfig cache.Config `yaml:"write_dedupe_cache_config"`
 
-	CacheLookupsOlderThan time.Duration `yaml:"cache_lookups_older_than"`
+	CacheLookupsOlderThan model.Duration `yaml:"cache_lookups_older_than"`
 
 	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
-	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
+	MaxLookBackPeriod model.Duration `yaml:"max_look_back_period"`
 
 	// Not visible in yaml because the setting shouldn't be common between ingesters and queriers.
 	// This exists in case we don't want to cache all the chunks but still want to take advantage of
@@ -67,8 +67,8 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.chunkCacheStubs, "store.chunks-cache.cache-stubs", false, "If true, don't write the full chunk to cache, just a stub entry.")
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
 
-	f.DurationVar(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", 0, "Cache index entries older than this period. 0 to disable.")
-	f.DurationVar(&cfg.MaxLookBackPeriod, "store.max-look-back-period", 0, "Limit how long back data can be queried")
+	f.Var(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", "Cache index entries older than this period. 0 to disable.")
+	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "Limit how long back data can be queried")
 }
 
 type baseStore struct {
@@ -293,7 +293,7 @@ func (c *baseStore) validateQueryTimeRange(ctx context.Context, userID string, f
 	}
 
 	if c.cfg.MaxLookBackPeriod != 0 {
-		oldestStartTime := model.Now().Add(-c.cfg.MaxLookBackPeriod)
+		oldestStartTime := model.Now().Add(-time.Duration(c.cfg.MaxLookBackPeriod))
 		if oldestStartTime.After(*from) {
 			*from = oldestStartTime
 		}

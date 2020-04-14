@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
 	jsoniter "github.com/json-iterator/go"
@@ -78,7 +79,7 @@ func newSeriesStore(cfg StoreConfig, schema SeriesStoreSchema, index IndexClient
 	if cfg.CacheLookupsOlderThan != 0 {
 		schema = &schemaCaching{
 			SeriesStoreSchema: schema,
-			cacheOlderThan:    cfg.CacheLookupsOlderThan,
+			cacheOlderThan:    time.Duration(cfg.CacheLookupsOlderThan),
 		}
 	}
 
