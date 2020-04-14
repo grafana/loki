@@ -1,6 +1,6 @@
 image:
   repository: grafana/loki
-  tag: 1.4.1
+  tag: keepalive-master-6d5408c
   pullPolicy: IfNotPresent
 
   ## Optionally specify an array of imagePullSecrets.
