@@ -75,6 +75,8 @@ type DataPurger struct {
 
 // NewDataPurger creates a new DataPurger
 func NewDataPurger(cfg Config, deleteStore *DeleteStore, chunkStore chunk.Store, storageClient chunk.ObjectClient) (*DataPurger, error) {
+	util.WarnExperimentalUse("Delete series API")
+
 	dataPurger := DataPurger{
 		cfg:                 cfg,
 		deleteStore:         deleteStore,

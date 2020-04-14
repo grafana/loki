@@ -18,9 +18,9 @@ import (
 // is used to strip down the config to the minimum, and avoid confusion
 // to the user.
 type RingConfig struct {
-	KVStore          kv.Config     `yaml:"kvstore,omitempty"`
-	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period,omitempty"`
-	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout,omitempty"`
+	KVStore          kv.Config     `yaml:"kvstore"`
+	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period"`
+	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout"`
 
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`

@@ -40,8 +40,8 @@ type Config struct {
 	ColumnKey      bool `yaml:"-"`
 	DistributeKeys bool `yaml:"-"`
 
-	TableCacheEnabled    bool
-	TableCacheExpiration time.Duration
+	TableCacheEnabled    bool          `yaml:"table_cache_enabled"`
+	TableCacheExpiration time.Duration `yaml:"table_cache_expiration"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

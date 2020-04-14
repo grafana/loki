@@ -211,13 +211,13 @@ tls_config:
 # For a total time of 511.5s(8.5m) before logs are lost
 backoff_config:
   # Initial backoff time between retries
-  [minbackoff: <duration> | default = 500ms]
+  [min_period: <duration> | default = 500ms]
 
   # Maximum backoff time between retries
-  [maxbackoff: <duration> | default = 5m]
+  [max_period: <duration> | default = 5m]
 
   # Maximum number of retries to do
-  [maxretries: <int> | default = 10]
+  [max_retries: <int> | default = 10]
 
 # Static labels to add to all logs being sent to Loki.
 # Use map like {"foo": "bar"} to add a label foo with

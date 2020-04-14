@@ -5,6 +5,8 @@ import (
 	"errors"
 	"flag"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Cache byte arrays by key.
@@ -22,18 +24,18 @@ type Cache interface {
 
 // Config for building Caches.
 type Config struct {
-	EnableFifoCache bool `yaml:"enable_fifocache,omitempty"`
+	EnableFifoCache bool `yaml:"enable_fifocache"`
 
-	DefaultValidity time.Duration `yaml:"default_validity,omitempty"`
+	DefaultValidity time.Duration `yaml:"default_validity"`
 
-	Background     BackgroundConfig      `yaml:"background,omitempty"`
-	Memcache       MemcachedConfig       `yaml:"memcached,omitempty"`
-	MemcacheClient MemcachedClientConfig `yaml:"memcached_client,omitempty"`
-	Redis          RedisConfig           `yaml:"redis,omitempty"`
-	Fifocache      FifoCacheConfig       `yaml:"fifocache,omitempty"`
+	Background     BackgroundConfig      `yaml:"background"`
+	Memcache       MemcachedConfig       `yaml:"memcached"`
+	MemcacheClient MemcachedClientConfig `yaml:"memcached_client"`
+	Redis          RedisConfig           `yaml:"redis"`
+	Fifocache      FifoCacheConfig       `yaml:"fifocache"`
 
 	// This is to name the cache metrics properly.
-	Prefix string `yaml:"prefix,omitempty" doc:"hidden"`
+	Prefix string `yaml:"prefix" doc:"hidden"`
 
 	// For tests to inject specific implementations.
 	Cache Cache `yaml:"-"`
@@ -70,16 +72,16 @@ func New(cfg Config) (Cache, error) {
 		caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache))
 	}
 
-	if cfg.MemcacheClient.Host != "" && cfg.Redis.Endpoint != "" {
+	if (cfg.MemcacheClient.Host != "" || cfg.MemcacheClient.Addresses != "") && cfg.Redis.Endpoint != "" {
 		return nil, errors.New("use of multiple cache storage systems is not supported")
 	}
 
-	if cfg.MemcacheClient.Host != "" {
+	if cfg.MemcacheClient.Host != "" || cfg.MemcacheClient.Addresses != "" {
 		if cfg.Memcache.Expiration == 0 && cfg.DefaultValidity != 0 {
 			cfg.Memcache.Expiration = cfg.DefaultValidity
 		}
 
-		client := NewMemcachedClient(cfg.MemcacheClient)
+		client := NewMemcachedClient(cfg.MemcacheClient, cfg.Prefix, prometheus.DefaultRegisterer)
 		cache := NewMemcached(cfg.Memcache, client, cfg.Prefix)
 
 		cacheName := cfg.Prefix + "memcache"

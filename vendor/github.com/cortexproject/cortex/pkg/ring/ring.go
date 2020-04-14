@@ -34,6 +34,9 @@ const (
 
 	// CompactorRingKey is the key under which we store the compactors ring in the KVStore.
 	CompactorRingKey = "compactor"
+
+	// StoreGatewayRingKey is the key under which we store the store gateways ring in the KVStore.
+	StoreGatewayRingKey = "store-gateway"
 )
 
 // ReadRing represents the read interface to the ring.
@@ -65,9 +68,9 @@ var ErrEmptyRing = errors.New("empty ring")
 
 // Config for a Ring
 type Config struct {
-	KVStore           kv.Config     `yaml:"kvstore,omitempty"`
-	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout,omitempty"`
-	ReplicationFactor int           `yaml:"replication_factor,omitempty"`
+	KVStore           kv.Config     `yaml:"kvstore"`
+	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout"`
+	ReplicationFactor int           `yaml:"replication_factor"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet with a specified prefix
@@ -182,6 +185,7 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		n             = r.cfg.ReplicationFactor
 		ingesters     = buf[:0]
 		distinctHosts = map[string]struct{}{}
+		distinctZones = map[string]struct{}{}
 		start         = r.search(key)
 		iterations    = 0
 	)
@@ -190,10 +194,16 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		// Wrap i around in the ring.
 		i %= len(r.ringTokens)
 
-		// We want n *distinct* ingesters.
+		// We want n *distinct* ingesters && distinct zones.
 		token := r.ringTokens[i]
 		if _, ok := distinctHosts[token.Ingester]; ok {
 			continue
+		}
+		if token.Zone != "" { // Ignore if the ingesters don't have a zone set.
+			if _, ok := distinctZones[token.Zone]; ok {
+				continue
+			}
+			distinctZones[token.Zone] = struct{}{}
 		}
 		distinctHosts[token.Ingester] = struct{}{}
 		ingester := r.ringDesc.Ingesters[token.Ingester]
