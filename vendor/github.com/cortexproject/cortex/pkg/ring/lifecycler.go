@@ -43,7 +43,7 @@ var (
 
 // LifecyclerConfig is the config to build a Lifecycler.
 type LifecyclerConfig struct {
-	RingConfig Config `yaml:"ring,omitempty"`
+	RingConfig Config `yaml:"ring"`
 
 	// Config for the ingester lifecycle control
 	ListenPort       *int          `yaml:"-"`
@@ -55,16 +55,13 @@ type LifecyclerConfig struct {
 	InfNames         []string      `yaml:"interface_names"`
 	FinalSleep       time.Duration `yaml:"final_sleep"`
 	TokensFilePath   string        `yaml:"tokens_file_path"`
+	Zone             string        `yaml:"availability_zone"`
 
 	// For testing, you can override the address and ID of this ingester
 	Addr           string `yaml:"address" doc:"hidden"`
 	Port           int    `doc:"hidden"`
 	ID             string `doc:"hidden"`
 	SkipUnregister bool   `yaml:"-"`
-
-	// graveyard for unused flags.
-	UnusedFlag  bool `yaml:"claim_on_rollout,omitempty"` // DEPRECATED - left for backwards-compatibility
-	UnusedFlag2 bool `yaml:"normalise_tokens,omitempty"` // DEPRECATED - left for backwards-compatibility
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -87,8 +84,6 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.DurationVar(&cfg.JoinAfter, prefix+"join-after", 0*time.Second, "Period to wait for a claim from another member; will join automatically after this.")
 	f.DurationVar(&cfg.ObservePeriod, prefix+"observe-period", 0*time.Second, "Observe tokens after generating to resolve collisions. Useful when using gossiping ring.")
 	f.DurationVar(&cfg.MinReadyDuration, prefix+"min-ready-duration", 1*time.Minute, "Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring.")
-	flagext.DeprecatedFlag(f, prefix+"claim-on-rollout", "DEPRECATED. This feature is no longer optional.")
-	flagext.DeprecatedFlag(f, prefix+"normalise-tokens", "DEPRECATED. This feature is no longer optional.")
 	f.DurationVar(&cfg.FinalSleep, prefix+"final-sleep", 30*time.Second, "Duration to sleep for before exiting, to ensure metrics are scraped.")
 	f.StringVar(&cfg.TokensFilePath, prefix+"tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
 
@@ -103,6 +98,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.StringVar(&cfg.Addr, prefix+"lifecycler.addr", "", "IP address to advertise in consul.")
 	f.IntVar(&cfg.Port, prefix+"lifecycler.port", 0, "port to advertise in consul (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.ID, prefix+"lifecycler.ID", hostname, "ID to register into consul.")
+	f.StringVar(&cfg.Zone, prefix+"availability-zone", "", "The availability zone of the host, this instance is running on. Default is the lifecycler ID.")
 }
 
 // Lifecycler is responsible for managing the lifecycle of entries in the ring.
@@ -120,6 +116,7 @@ type Lifecycler struct {
 	Addr     string
 	RingName string
 	RingKey  string
+	Zone     string
 
 	// Whether to flush if transfer fails on shutdown.
 	flushOnShutdown bool
@@ -160,6 +157,15 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		return nil, err
 	}
 
+	zone := cfg.Zone
+	if zone != "" {
+		util.WarnExperimentalUse("Zone aware replication")
+	}
+
+	if zone == "" {
+		zone = cfg.ID
+	}
+
 	// We do allow a nil FlushTransferer, but to keep the ring logic easier we assume
 	// it's always set, so we use a noop FlushTransferer
 	if flushTransferer == nil {
@@ -176,6 +182,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		RingName:        ringName,
 		RingKey:         ringKey,
 		flushOnShutdown: flushOnShutdown,
+		Zone:            zone,
 
 		actorChan: make(chan func()),
 
@@ -502,14 +509,14 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 				if len(tokensFromFile) >= i.cfg.NumTokens {
 					i.setState(ACTIVE)
 				}
-				ringDesc.AddIngester(i.ID, i.Addr, tokensFromFile, i.GetState())
+				ringDesc.AddIngester(i.ID, i.Addr, i.Zone, tokensFromFile, i.GetState())
 				i.setTokens(tokensFromFile)
 				return ringDesc, true, nil
 			}
 
 			// Either we are a new ingester, or consul must have restarted
 			level.Info(util.Logger).Log("msg", "instance not found in ring, adding with no tokens", "ring", i.RingName)
-			ringDesc.AddIngester(i.ID, i.Addr, []uint32{}, i.GetState())
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, []uint32{}, i.GetState())
 			return ringDesc, true, nil
 		}
 
@@ -564,7 +571,7 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 			ringTokens = append(ringTokens, newTokens...)
 			sort.Sort(ringTokens)
 
-			ringDesc.AddIngester(i.ID, i.Addr, ringTokens, i.GetState())
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, ringTokens, i.GetState())
 
 			i.setTokens(ringTokens)
 
@@ -626,7 +633,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState IngesterState) er
 		sort.Sort(myTokens)
 		i.setTokens(myTokens)
 
-		ringDesc.AddIngester(i.ID, i.Addr, i.getTokens(), i.GetState())
+		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState())
 
 		return ringDesc, true, nil
 	})
@@ -655,7 +662,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 		if !ok {
 			// consul must have restarted
 			level.Info(util.Logger).Log("msg", "found empty ring, inserting tokens", "ring", i.RingName)
-			ringDesc.AddIngester(i.ID, i.Addr, i.getTokens(), i.GetState())
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState())
 		} else {
 			ingesterDesc.Timestamp = time.Now().Unix()
 			ingesterDesc.State = i.GetState()

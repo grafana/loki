@@ -31,6 +31,8 @@ const (
 	// ErrQueryTooLong is used in chunk store and query frontend.
 	ErrQueryTooLong = "invalid query, length > limit (%s > %s)"
 
+	missingMetricName       = "missing_metric_name"
+	invalidMetricName       = "metric_name_invalid"
 	greaterThanMaxSampleAge = "greater_than_max_sample_age"
 	maxLabelNamesPerSeries  = "max_label_names_per_series"
 	tooFarInFuture          = "too_far_in_future"
@@ -93,10 +95,12 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []client.LabelA
 	metricName, err := extract.MetricNameFromLabelAdapters(ls)
 	if cfg.EnforceMetricName(userID) {
 		if err != nil {
+			DiscardedSamples.WithLabelValues(missingMetricName, userID).Inc()
 			return httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName)
 		}
 
 		if !model.IsValidMetricName(model.LabelValue(metricName)) {
+			DiscardedSamples.WithLabelValues(invalidMetricName, userID).Inc()
 			return httpgrpc.Errorf(http.StatusBadRequest, errInvalidMetricName, metricName)
 		}
 	}

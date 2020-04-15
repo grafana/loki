@@ -238,8 +238,8 @@ func (t *Loki) initTableManager() error {
 		t.cfg.TableManager.IndexTables.ReadScale.Enabled ||
 		t.cfg.TableManager.ChunkTables.InactiveReadScale.Enabled ||
 		t.cfg.TableManager.IndexTables.InactiveReadScale.Enabled) &&
-		(t.cfg.StorageConfig.AWSStorageConfig.ApplicationAutoScaling.URL == nil && t.cfg.StorageConfig.AWSStorageConfig.Metrics.URL == "") {
-		level.Error(util.Logger).Log("msg", "WriteScale is enabled but no ApplicationAutoScaling or Metrics URL has been provided")
+		t.cfg.StorageConfig.AWSStorageConfig.Metrics.URL == "" {
+		level.Error(util.Logger).Log("msg", "WriteScale is enabled but no Metrics URL has been provided")
 		os.Exit(1)
 	}
 

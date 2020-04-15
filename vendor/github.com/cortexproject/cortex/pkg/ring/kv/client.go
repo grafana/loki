@@ -22,9 +22,9 @@ var inmemoryStore Client
 // Consul, Etcd, Memberlist or MultiClient. It was extracted from Config to keep
 // single-client config separate from final client-config (with all the wrappers)
 type StoreConfig struct {
-	Consul consul.Config `yaml:"consul,omitempty"`
-	Etcd   etcd.Config   `yaml:"etcd,omitempty"`
-	Multi  MultiConfig   `yaml:"multi,omitempty"`
+	Consul consul.Config `yaml:"consul"`
+	Etcd   etcd.Config   `yaml:"etcd"`
+	Multi  MultiConfig   `yaml:"multi"`
 
 	// Function that returns memberlist.KV store to use. By using a function, we can delay
 	// initialization of memberlist.KV until it is actually required.
@@ -34,8 +34,8 @@ type StoreConfig struct {
 // Config is config for a KVStore currently used by ring and HA tracker,
 // where store can be consul or inmemory.
 type Config struct {
-	Store       string `yaml:"store,omitempty"`
-	Prefix      string `yaml:"prefix,omitempty"`
+	Store       string `yaml:"store"`
+	Prefix      string `yaml:"prefix"`
 	StoreConfig `yaml:",inline"`
 
 	Mock Client `yaml:"-"`

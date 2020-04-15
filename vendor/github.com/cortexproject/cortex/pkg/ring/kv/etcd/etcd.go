@@ -41,6 +41,23 @@ func New(cfg Config, codec codec.Codec) (*Client, error) {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   cfg.Endpoints,
 		DialTimeout: cfg.DialTimeout,
+		// Configure the keepalive to make sure that the client reconnects
+		// to the etcd service endpoint(s) in case the current connection is
+		// dead (ie. the node where etcd is running is dead or a network
+		// partition occurs).
+		//
+		// The settings:
+		// - DialKeepAliveTime: time before the client pings the server to
+		//   see if transport is alive (10s hardcoded)
+		// - DialKeepAliveTimeout: time the client waits for a response for
+		//   the keep-alive probe (set to 2x dial timeout, in order to avoid
+		//   exposing another config option which is likely to be a factor of
+		//   the dial timeout anyway)
+		// - PermitWithoutStream: whether the client should send keepalive pings
+		//   to server without any active streams (enabled)
+		DialKeepAliveTime:    10 * time.Second,
+		DialKeepAliveTimeout: 2 * cfg.DialTimeout,
+		PermitWithoutStream:  true,
 	})
 	if err != nil {
 		return nil, err

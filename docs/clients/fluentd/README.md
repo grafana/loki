@@ -11,6 +11,9 @@ $ gem install fluent-plugin-grafana-loki
 ```
 
 ## Usage
+
+**Note**: use either `<label>...</label>` or `extra_labels` to set at least one label!
+
 In your Fluentd configuration, use `@type loki`. Additional configuration is optional, default values would look like this:
 ```
 <match **>

@@ -40,7 +40,7 @@ var (
 type Config struct {
 	MaxOutstandingPerTenant int           `yaml:"max_outstanding_per_tenant"`
 	CompressResponses       bool          `yaml:"compress_responses"`
-	DownstreamURL           string        `yaml:"downstream"`
+	DownstreamURL           string        `yaml:"downstream_url"`
 	LogQueriesLongerThan    time.Duration `yaml:"log_queries_longer_than"`
 }
 

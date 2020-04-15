@@ -135,8 +135,8 @@ schema_config:
 storage_config:
   aws:
     s3: s3://access_key:secret_access_key@region/bucket_name
-    dynamodbconfig:
-      dynamodb: dynamodb://access_key:secret_access_key@region
+    dynamodb:
+      dynamodb_url: dynamodb://access_key:secret_access_key@region
 ```
 
 If you don't wish to hard-code S3 credentials, you can also configure an EC2
@@ -146,8 +146,8 @@ instance role by changing the `storage_config` section:
 storage_config:
   aws:
     s3: s3://region/bucket_name
-    dynamodbconfig:
-      dynamodb: dynamodb://region
+    dynamodb:
+      dynamodb_url: dynamodb://region
 ```
 
 ### S3-compatible APIs

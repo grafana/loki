@@ -68,13 +68,8 @@ type seriesStore struct {
 	writeDedupeCache cache.Cache
 }
 
-func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Client, limits StoreLimits) (Store, error) {
-	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, cfg.chunkCacheStubs, chunks)
-	if err != nil {
-		return nil, err
-	}
-
-	writeDedupeCache, err := cache.New(cfg.WriteDedupeCacheConfig)
+func newSeriesStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) (Store, error) {
+	fetcher, err := NewChunkFetcher(chunksCache, cfg.chunkCacheStubs, chunks)
 	if err != nil {
 		return nil, err
 	}

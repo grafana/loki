@@ -14,27 +14,28 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
+	pkgutil "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // Config for a StorageClient
 type Config struct {
-	Addresses                string              `yaml:"addresses,omitempty"`
-	Port                     int                 `yaml:"port,omitempty"`
-	Keyspace                 string              `yaml:"keyspace,omitempty"`
-	Consistency              string              `yaml:"consistency,omitempty"`
-	ReplicationFactor        int                 `yaml:"replication_factor,omitempty"`
-	DisableInitialHostLookup bool                `yaml:"disable_initial_host_lookup,omitempty"`
-	SSL                      bool                `yaml:"SSL,omitempty"`
-	HostVerification         bool                `yaml:"host_verification,omitempty"`
-	CAPath                   string              `yaml:"CA_path,omitempty"`
-	Auth                     bool                `yaml:"auth,omitempty"`
-	Username                 string              `yaml:"username,omitempty"`
-	Password                 flagext.Secret      `yaml:"password,omitempty"`
-	PasswordFile             string              `yaml:"password_file,omitempty"`
+	Addresses                string              `yaml:"addresses"`
+	Port                     int                 `yaml:"port"`
+	Keyspace                 string              `yaml:"keyspace"`
+	Consistency              string              `yaml:"consistency"`
+	ReplicationFactor        int                 `yaml:"replication_factor"`
+	DisableInitialHostLookup bool                `yaml:"disable_initial_host_lookup"`
+	SSL                      bool                `yaml:"SSL"`
+	HostVerification         bool                `yaml:"host_verification"`
+	CAPath                   string              `yaml:"CA_path"`
+	Auth                     bool                `yaml:"auth"`
+	Username                 string              `yaml:"username"`
+	Password                 flagext.Secret      `yaml:"password"`
+	PasswordFile             string              `yaml:"password_file"`
 	CustomAuthenticators     flagext.StringSlice `yaml:"custom_authenticators"`
-	Timeout                  time.Duration       `yaml:"timeout,omitempty"`
-	ConnectTimeout           time.Duration       `yaml:"connect_timeout,omitempty"`
+	Timeout                  time.Duration       `yaml:"timeout"`
+	ConnectTimeout           time.Duration       `yaml:"connect_timeout"`
 	Retries                  int                 `yaml:"max_retries"`
 	MaxBackoff               time.Duration       `yaml:"retry_max_backoff"`
 	MinBackoff               time.Duration       `yaml:"retry_min_backoff"`
@@ -185,6 +186,8 @@ type StorageClient struct {
 
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient, error) {
+	pkgutil.WarnExperimentalUse("Cassandra Backend")
+
 	session, err := cfg.session()
 	if err != nil {
 		return nil, errors.WithStack(err)

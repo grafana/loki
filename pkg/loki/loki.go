@@ -11,6 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/weaveworks/common/middleware"
@@ -71,6 +72,24 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Worker.RegisterFlags(f)
 	c.QueryRange.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
+}
+
+// Validate the config and returns an error if the validation
+// doesn't pass
+func (c *Config) Validate(log log.Logger) error {
+	if err := c.SchemaConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid schema config")
+	}
+	if err := c.StorageConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid storage config")
+	}
+	if err := c.QueryRange.Validate(log); err != nil {
+		return errors.Wrap(err, "invalid queryrange config")
+	}
+	if err := c.TableManager.Validate(); err != nil {
+		return errors.Wrap(err, "invalid tablemanager config")
+	}
+	return nil
 }
 
 // Loki is the root datastructure for Loki.

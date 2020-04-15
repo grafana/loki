@@ -86,10 +86,10 @@ Flags:
       --username=""      Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.
       --password=""      Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.
       --ca-cert=""       Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.
-      --tls-skip-verify  Server certificate TLS skip verify.
+      --tls-skip-verify  Server certificate TLS skip verify. Can also be set using LOKI_TLS_SKIP_VERIFY env var.
       --cert=""          Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
       --key=""           Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
-      --org-id=ORG-ID    adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing an auth gateway.
+      --org-id=ORG-ID    adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing an auth gateway. Can also be set using LOKI_ORG_ID env var.
 
 Commands:
   help [<command>...]

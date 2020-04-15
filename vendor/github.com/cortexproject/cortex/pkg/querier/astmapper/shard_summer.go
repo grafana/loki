@@ -8,7 +8,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 )
@@ -37,20 +36,16 @@ type shardSummer struct {
 }
 
 // NewShardSummer instantiates an ASTMapper which will fan out sum queries by shard
-func NewShardSummer(shards int, squasher squasher, registerer prometheus.Registerer) (ASTMapper, error) {
+func NewShardSummer(shards int, squasher squasher, shardedQueries prometheus.Counter) (ASTMapper, error) {
 	if squasher == nil {
 		return nil, errors.Errorf("squasher required and not passed")
 	}
 
 	return NewASTNodeMapper(&shardSummer{
-		shards:       shards,
-		squash:       squasher,
-		currentShard: nil,
-		shardedQueries: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "frontend_sharded_queries_total",
-			Help:      "Total number of sharded queries",
-		}),
+		shards:         shards,
+		squash:         squasher,
+		currentShard:   nil,
+		shardedQueries: shardedQueries,
 	}), nil
 }
 
@@ -205,9 +200,18 @@ func (summer *shardSummer) splitSum(
 		)
 	}
 
-	summer.shardedQueries.Add(float64(summer.shards))
+	summer.recordShards(float64(summer.shards))
 
 	return parent, children, nil
+}
+
+// ShardSummer is explicitly passed a prometheus.Counter during construction
+// in order to prevent duplicate metric registerings (ShardSummers are created per request).
+//recordShards prevents calling nil interfaces (commonly used in tests).
+func (summer *shardSummer) recordShards(n float64) {
+	if summer.shardedQueries != nil {
+		summer.shardedQueries.Add(float64(summer.shards))
+	}
 }
 
 func shardVectorSelector(curshard, shards int, selector *promql.VectorSelector) (promql.Node, error) {

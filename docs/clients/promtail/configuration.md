@@ -133,6 +133,9 @@ The `server_config` block configures Promtail's behavior as an HTTP server:
 
 # Base path to server all API routes from (e.g., /v1/).
 [http_path_prefix: <string>]
+
+# Target managers check flag for promtail readiness, if set to false the check is ignored
+[health_check_target: <bool> | default = true]
 ```
 
 ## client_config
@@ -143,7 +146,8 @@ Loki:
 ```yaml
 # The URL where Loki is listening, denoted in Loki as http_listen_address and
 # http_listen_port. If Loki is running in microservices mode, this is the HTTP
-# URL for the Distributor.
+# URL for the Distributor. Path to the push API needs to be included. 
+# Example: http://example.com:3100/loki/api/v1/push
 url: <string>
 
 # The tenant ID used by default to push logs to Loki. If omitted or empty
@@ -207,13 +211,13 @@ tls_config:
 # For a total time of 511.5s(8.5m) before logs are lost
 backoff_config:
   # Initial backoff time between retries
-  [minbackoff: <duration> | default = 500ms]
+  [min_period: <duration> | default = 500ms]
 
   # Maximum backoff time between retries
-  [maxbackoff: <duration> | default = 5m]
+  [max_period: <duration> | default = 5m]
 
   # Maximum number of retries to do
-  [maxretries: <int> | default = 10]
+  [max_retries: <int> | default = 10]
 
 # Static labels to add to all logs being sent to Loki.
 # Use map like {"foo": "bar"} to add a label foo with

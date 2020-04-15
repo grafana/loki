@@ -82,7 +82,7 @@ type haTracker struct {
 // HATrackerConfig contains the configuration require to
 // create a HA Tracker.
 type HATrackerConfig struct {
-	EnableHATracker bool `yaml:"enable_ha_tracker,omitempty"`
+	EnableHATracker bool `yaml:"enable_ha_tracker"`
 	// We should only update the timestamp if the difference
 	// between the stored timestamp and the time we received a sample at
 	// is more than this duration.

@@ -47,7 +47,8 @@ var Fixtures = []testutils.Fixture{
 				schemaCfg:               schemaConfig,
 			}
 			object := objectclient.NewClient(&S3ObjectClient{
-				S3: newMockS3(),
+				S3:        newMockS3(),
+				delimiter: chunk.DirDelim,
 			}, nil)
 			return index, object, table, schemaConfig, nil
 		},

@@ -37,7 +37,7 @@ func NewDesc() *Desc {
 
 // AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
 // any other tokens are removed.
-func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState) {
+func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state IngesterState) {
 	if d.Ingesters == nil {
 		d.Ingesters = map[string]IngesterDesc{}
 	}
@@ -47,6 +47,7 @@ func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState
 		Timestamp: time.Now().Unix(),
 		State:     state,
 		Tokens:    tokens,
+		Zone:      zone,
 	}
 
 	d.Ingesters[id] = ingester
@@ -377,6 +378,7 @@ func (d *Desc) RemoveTombstones(limit time.Time) {
 type TokenDesc struct {
 	Token    uint32
 	Ingester string
+	Zone     string
 }
 
 // Returns sorted list of tokens with ingester names.
@@ -388,7 +390,7 @@ func (d *Desc) getTokens() []TokenDesc {
 	tokens := make([]TokenDesc, 0, numTokens)
 	for key, ing := range d.Ingesters {
 		for _, token := range ing.Tokens {
-			tokens = append(tokens, TokenDesc{Token: token, Ingester: key})
+			tokens = append(tokens, TokenDesc{Token: token, Ingester: key, Zone: ing.GetZone()})
 		}
 	}
 

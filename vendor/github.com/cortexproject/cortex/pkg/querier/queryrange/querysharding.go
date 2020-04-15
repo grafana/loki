@@ -136,8 +136,9 @@ type astMapperware struct {
 	next   Handler
 
 	// Metrics.
-	registerer       prometheus.Registerer
-	mappedASTCounter prometheus.Counter
+	registerer            prometheus.Registerer
+	mappedASTCounter      prometheus.Counter
+	shardedQueriesCounter prometheus.Counter
 }
 
 func newASTMapperware(confs ShardingConfigs, next Handler, logger log.Logger, registerer prometheus.Registerer) *astMapperware {
@@ -151,6 +152,11 @@ func newASTMapperware(confs ShardingConfigs, next Handler, logger log.Logger, re
 			Name:      "frontend_mapped_asts_total",
 			Help:      "Total number of queries that have undergone AST mapping",
 		}),
+		shardedQueriesCounter: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "frontend_sharded_queries_total",
+			Help:      "Total number of sharded queries",
+		}),
 	}
 }
 
@@ -162,7 +168,7 @@ func (ast *astMapperware) Do(ctx context.Context, r Request) (Response, error) {
 		return ast.next.Do(ctx, r)
 	}
 
-	shardSummer, err := astmapper.NewShardSummer(int(conf.RowShards), astmapper.VectorSquasher, ast.registerer)
+	shardSummer, err := astmapper.NewShardSummer(int(conf.RowShards), astmapper.VectorSquasher, ast.shardedQueriesCounter)
 	if err != nil {
 		return nil, err
 	}
