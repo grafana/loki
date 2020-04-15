@@ -235,6 +235,9 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 
 		bc.blocks = append(bc.blocks, blk)
 
+		// Update the counter used to track the size of cut blocks.
+		bc.cutBlockSize += len(blk.b)
+
 		if db.err() != nil {
 			return nil, errors.Wrap(db.err(), "decoding block meta")
 		}
