@@ -39,18 +39,23 @@ func mergeResults(rss ...[]IndexEntry) []IndexEntry {
 
 const table = "table"
 
-func makeSeriesStoreSchema(schemaName string) SeriesStoreSchema {
-	return PeriodConfig{
+func mustMakeSchema(schemaName string) BaseSchema {
+	s, err := PeriodConfig{
 		Schema:      schemaName,
 		IndexTables: PeriodicTableConfig{Prefix: table},
-	}.CreateSchema().(SeriesStoreSchema)
+	}.CreateSchema()
+	if err != nil {
+		panic(err)
+	}
+	return s
+}
+
+func makeSeriesStoreSchema(schemaName string) SeriesStoreSchema {
+	return mustMakeSchema(schemaName).(SeriesStoreSchema)
 }
 
 func makeStoreSchema(schemaName string) StoreSchema {
-	return PeriodConfig{
-		Schema:      schemaName,
-		IndexTables: PeriodicTableConfig{Prefix: table},
-	}.CreateSchema().(StoreSchema)
+	return mustMakeSchema(schemaName).(StoreSchema)
 }
 
 func TestSchemaHashKeys(t *testing.T) {

@@ -60,9 +60,12 @@ func NewCompositeStore() CompositeStore {
 
 // AddPeriod adds the configuration for a period of time to the CompositeStore
 func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) error {
-	schema := cfg.CreateSchema()
+	schema, err := cfg.CreateSchema()
+	if err != nil {
+		return err
+	}
+
 	var store Store
-	var err error
 	switch s := schema.(type) {
 	case SeriesStoreSchema:
 		store, err = newSeriesStore(storeCfg, s, index, chunks, limits, chunksCache, writeDedupeCache)
