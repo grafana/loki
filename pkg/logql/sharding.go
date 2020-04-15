@@ -240,12 +240,9 @@ func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 // ResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
 func ResultStepEvaluator(res Result, params Params) (StepEvaluator, error) {
 	var (
-		end       = params.End()
-		step      = params.Step()
-		ts        = params.Start()
-		increment = func() {
-			ts = ts.Add(step)
-		}
+		start = params.Start()
+		end   = params.End()
+		step  = params.Step()
 	)
 
 	switch data := res.Data.(type) {
@@ -254,47 +251,12 @@ func ResultStepEvaluator(res Result, params Params) (StepEvaluator, error) {
 		return newStepEvaluator(func() (bool, int64, promql.Vector) {
 			if !exhausted {
 				exhausted = true
-				return true, ts.UnixNano() / int64(time.Millisecond), data
+				return true, start.UnixNano() / int64(time.Millisecond), data
 			}
 			return false, 0, nil
 		}, nil)
 	case promql.Matrix:
-		var i int
-		var maxLn int
-		if len(data) > 0 {
-			maxLn = len(data[0].Points)
-		}
-		return newStepEvaluator(func() (bool, int64, promql.Vector) {
-			defer increment()
-			if ts.After(end) {
-				return false, 0, nil
-			}
-
-			tsInt := ts.UnixNano() / int64(time.Millisecond)
-
-			// Ensure that the resulting StepEvaluator maintains
-			// the same shape that the parameters expect. For example,
-			// it's possible that a downstream query returns matches no
-			// log streams and thus returns an empty matrix.
-			// However, we still need to ensure that it can be merged effectively
-			// with another leg that may match series.
-			// Therefore, we determine our steps from the parameters
-			// and not the underlying Matrix.
-			if i >= maxLn {
-				return true, tsInt, nil
-			}
-
-			vec := make(promql.Vector, 0, len(data))
-			for j := 0; j < len(data); j++ {
-				series := data[j]
-				vec = append(vec, promql.Sample{
-					Point:  series.Points[i],
-					Metric: series.Metric,
-				})
-			}
-			i++
-			return true, tsInt, vec
-		}, nil)
+		return NewMatrixStepper(start, end, step, data), nil
 	default:
 		return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
 	}
