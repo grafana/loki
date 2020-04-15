@@ -17,7 +17,7 @@ initContainer:
 
 image:
   repository: grafana/promtail
-  tag: keepalive-master-6d5408c
+  tag: 1.4.1
   pullPolicy: IfNotPresent
 
 livenessProbe: {}
@@ -127,11 +127,11 @@ config:
 
     backoff_config:
       # Initial backoff time between retries
-      min_period: 100ms
+      minbackoff: 100ms
       # Maximum backoff time between retries
-      max_period: 5s
+      maxbackoff: 5s
       # Maximum number of retries when sending batches, 0 means infinite retries
-      max_retries: 20
+      maxretries: 20
 
     # The labels to add to any time series or alerts when communicating with loki
     external_labels: {}
