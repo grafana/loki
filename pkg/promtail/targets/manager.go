@@ -38,8 +38,8 @@ func NewTargetManagers(
 	var journalScrapeConfigs []scrape.Config
 	var syslogScrapeConfigs []scrape.Config
 
-	if isStdinPipe() {
-		level.Debug(util.Logger).Log("msg", "detected pipe from stdin")
+	if targetConfig.Stdin {
+		level.Debug(util.Logger).Log("msg", "configured to read from stdin")
 		stdin, err := newStdinTargetManager(app, client, scrapeConfigs)
 		if err != nil {
 			return nil, err
