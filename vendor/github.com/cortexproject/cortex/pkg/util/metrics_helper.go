@@ -254,6 +254,35 @@ func (d MetricFamiliesPerUser) SendSumOfHistograms(out chan<- prometheus.Metric,
 	out <- hd.Metric(desc)
 }
 
+func (d MetricFamiliesPerUser) SendSumOfHistogramsWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, histogramName string, labelNames ...string) {
+	type histogramResult struct {
+		data        HistogramData
+		labelValues []string
+	}
+
+	result := map[string]histogramResult{}
+
+	for _, userMetrics := range d {
+		metricsPerLabelValue := getMetricsWithLabelNames(userMetrics[histogramName], labelNames)
+
+		for key, mwl := range metricsPerLabelValue {
+			for _, m := range mwl.metrics {
+				r := result[key]
+				if r.labelValues == nil {
+					r.labelValues = mwl.labelValues
+				}
+
+				r.data.AddHistogram(m.GetHistogram())
+				result[key] = r
+			}
+		}
+	}
+
+	for _, hg := range result {
+		out <- hg.data.Metric(desc, hg.labelValues...)
+	}
+}
+
 // struct for holding metrics with same label values
 type metricsWithLabels struct {
 	labelValues []string
@@ -405,8 +434,8 @@ func (d *HistogramData) AddHistogramData(histo HistogramData) {
 }
 
 // Return prometheus metric from this histogram data.
-func (d *HistogramData) Metric(desc *prometheus.Desc) prometheus.Metric {
-	return prometheus.MustNewConstHistogram(desc, d.sampleCount, d.sampleSum, d.buckets)
+func (d *HistogramData) Metric(desc *prometheus.Desc, labelValues ...string) prometheus.Metric {
+	return prometheus.MustNewConstHistogram(desc, d.sampleCount, d.sampleSum, d.buckets, labelValues...)
 }
 
 // Creates new histogram data collector.

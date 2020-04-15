@@ -243,13 +243,13 @@ The `grpc_client_config` block configures a client connection to a gRPC service.
 # Configures backoff when enbaled.
 backoff_config:
   # Minimum delay when backing off.
-  [minbackoff: <duration> | default = 100ms]
+  [min_period: <duration> | default = 100ms]
 
   # The maximum delay when backing off.
-  [maxbackoff: <duration> | default = 10s]
+  [max_period: <duration> | default = 10s]
 
   # Number of times to backoff and retry before failing.
-  [maxretries: <int> | default = 10]
+  [max_retries: <int> | default = 10]
 ```
 
 ## ingester_config
@@ -344,9 +344,6 @@ ring.
 # conditions with ingesters exiting and updating the ring.
 [min_ready_duration: <duration> | default = 1m]
 
-# Store tokens in a normalised fashion to reduce the number of allocations.
-[normalise_tokens: <boolean> | default = false]
-
 # Name of network interfaces to read addresses from.
 interface_names:
   - [<string> ... | default = ["eth0", "en0"]]
@@ -375,13 +372,13 @@ kvstore:
     [host: <string> | duration = "localhost:8500"]
 
     # The ACL Token used to interact with Consul.
-    [acltoken: <string>]
+    [acl_token: <string>]
 
     # The HTTP timeout when communicating with Consul
-    [httpclienttimeout: <duration> | default = 20s]
+    [http_client_timeout: <duration> | default = 20s]
 
     # Whether or not consistent reads to Consul are enabled.
-    [consistentreads: <boolean> | default = true]
+    [consistent_reads: <boolean> | default = true]
 
   # Configuration for an ETCD v3 client. Only applies if
   # store is "etcd"
@@ -424,21 +421,17 @@ aws:
   [s3forcepathstyle: <boolean> | default = false]
 
   # Configure the DynamoDB connection
-  dynamodbconfig:
+  dynamodb:
     # URL for DynamoDB with escaped Key and Secret encoded. If only region is specified as a
     # host, the proper endpoint will be deduced. Use inmemory:///<bucket-name> to
     # use a mock in-memory implementation.
-    dynamodb: <string>
+    dynamodb_url: <string>
 
     # DynamoDB table management requests per-second limit.
-    [apilimit: <float> | default = 2.0]
+    [api_limit: <float> | default = 2.0]
 
     # DynamoDB rate cap to back off when throttled.
-    [throttlelimit: <float> | default = 10.0]
-
-    # Application Autoscaling endpoint URL with escaped Key and Secret
-    # encoded.
-    [applicationautoscaling: <string>]
+    [throttle_limit: <float> | default = 10.0]
 
     # Metics-based autoscaling configuration.
     metrics:
@@ -446,34 +439,34 @@ aws:
       [url: <string>]
 
       # Queue length above which we will scale up capacity.
-      [targetqueuelen: <int> | default = 100000]
+      [target_queue_length: <int> | default = 100000]
 
       # Scale up capacity by this multiple
-      [scaleupfactor: <float64> | default = 1.3]
+      [scale_up_factor: <float64> | default = 1.3]
 
       # Ignore throttling below this level (rate per second)
-      [minthrottling: <float64> | default = 1]
+      [ignore_throttle_below: <float64> | default = 1]
 
       # Query to fetch ingester queue length
-      [queuelengthquery: <string> | default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))"]
+      [queue_length_query: <string> | default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))"]
 
       # Query to fetch throttle rates per table
-      [throttlequery: <string> | default = "sum(rate(cortex_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m])) by (table) > 0"]
+      [write_throttle_query: <string> | default = "sum(rate(cortex_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m])) by (table) > 0"]
 
       # Quer to fetch write capacity usage per table
-      [usagequery: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m])) by (table) > 0"]
+      [write_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m])) by (table) > 0"]
 
       # Query to fetch read capacity usage per table
-      [readusagequery: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.QueryPages"}[1h])) by (table) > 0"]
+      [read_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.QueryPages"}[1h])) by (table) > 0"]
 
       # Query to fetch read errors per table
-      [readerrorquery: <string> | default = "sum(increase(cortex_dynamo_failures_total{operation="DynamoDB.QueryPages",error="ProvisionedThroughputExceededException"}[1m])) by (table) > 0"]
+      [read_error_query: <string> | default = "sum(increase(cortex_dynamo_failures_total{operation="DynamoDB.QueryPages",error="ProvisionedThroughputExceededException"}[1m])) by (table) > 0"]
 
     # Number of chunks to group together to parallelise fetches (0 to disable)
-    [chunkgangsize: <int> | default = 10]
+    [chunk_gang_size: <int> | default = 10]
 
     # Max number of chunk get operations to start in parallel.
-    [chunkgetmaxparallelism: <int> | default = 32]
+    [chunk_get_max_parallelism: <int> | default = 32]
 
 # Configures storing chunks in Bigtable. Required fields only required
 # when bigtable is defined in config.
@@ -560,7 +553,7 @@ filesystem:
 
 # Cache validity for active index entries. Should be no higher than
 # the chunk_idle_period in the ingester settings.
-[indexcachevalidity: <duration> | default = 5m]
+[index_cache_validity: <duration> | default = 5m]
 
 # The maximum number of chunks to fetch per batch.
 [max_chunk_batch_size: <int> | default = 50]
@@ -900,7 +893,7 @@ and how to provision tables when DynamoDB is used as the backing store.
 [retention_period: <duration> | default = 0s]
 
 # Period with which the table manager will poll for tables.
-[dynamodb_poll_interval: <duration> | default = 2m]
+[poll_interval: <duration> | default = 2m]
 
 # duration a table will be created before it is needed.
 [creation_grace_period: <duration> | default = 10m]
@@ -919,7 +912,7 @@ The `provision_config` block configures provisioning capacity for DynamoDB.
 ```yaml
 # Enables on-demand throughput provisioning for the storage
 # provider, if supported. Applies only to tables which are not autoscaled.
-[provisioned_throughput_on_demand_mode: <boolean> | default = false]
+[enable_ondemand_throughput_mode: <boolean> | default = false]
 
 # DynamoDB table default write throughput.
 [provisioned_write_throughput: <int> | default = 3000]
@@ -929,7 +922,7 @@ The `provision_config` block configures provisioning capacity for DynamoDB.
 
 # Enables on-demand throughput provisioning for the storage provide,
 # if supported. Applies only to tables which are not autoscaled.
-[inactive_throughput_on_demand_mode: <boolean> | default = false]
+[enable_inactive_throughput_on_demand_mode: <boolean> | default = false]
 
 # DynamoDB table write throughput for inactive tables.
 [inactive_write_throughput: <int> | default = 1]

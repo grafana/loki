@@ -28,14 +28,16 @@ var (
 // Server embed weaveworks server with static file and templating capability
 type Server struct {
 	*serverww.Server
-	tms         *targets.TargetManagers
-	externalURL *url.URL
+	tms               *targets.TargetManagers
+	externalURL       *url.URL
+	healthCheckTarget bool
 }
 
 // Config extends weaveworks server config
 type Config struct {
-	serverww.Config `yaml:",inline"`
-	ExternalURL     string `yaml:"external_url"`
+	serverww.Config   `yaml:",inline"`
+	ExternalURL       string `yaml:"external_url"`
+	HealthCheckTarget *bool  `yaml:"health_check_target"`
 }
 
 // New makes a new Server
@@ -51,10 +53,16 @@ func New(cfg Config, tms *targets.TargetManagers) (*Server, error) {
 	}
 	cfg.PathPrefix = externalURL.Path
 
+	healthCheckTargetFlag := true
+	if cfg.HealthCheckTarget != nil {
+		healthCheckTargetFlag = *cfg.HealthCheckTarget
+	}
+
 	serv := &Server{
-		Server:      wws,
-		tms:         tms,
-		externalURL: externalURL,
+		Server:            wws,
+		tms:               tms,
+		externalURL:       externalURL,
+		healthCheckTarget: healthCheckTargetFlag,
 	}
 
 	serv.HTTP.Path("/").Handler(http.RedirectHandler(path.Join(serv.externalURL.Path, "/targets"), 303))
@@ -169,7 +177,7 @@ func (s *Server) targets(rw http.ResponseWriter, req *http.Request) {
 
 // ready serves the ready endpoint
 func (s *Server) ready(rw http.ResponseWriter, _ *http.Request) {
-	if !s.tms.Ready() {
+	if s.healthCheckTarget && !s.tms.Ready() {
 		http.Error(rw, readinessProbeFailure, http.StatusInternalServerError)
 		return
 	}

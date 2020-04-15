@@ -40,6 +40,8 @@ const (
 	cfgMaxRetriesKey     = "loki-retries"
 	cfgPipelineStagesKey = "loki-pipeline-stage-file"
 	cfgTenantIDKey       = "loki-tenant-id"
+	cfgNofile            = "no-file"
+	cfgKeepFile          = "keep-file"
 
 	swarmServiceLabelKey = "com.docker.swarm.service.name"
 	swarmStackLabelKey   = "com.docker.stack.namespace"
@@ -101,6 +103,8 @@ func validateDriverOpt(loggerInfo logger.Info) error {
 		case cfgMaxRetriesKey:
 		case cfgPipelineStagesKey:
 		case cfgTenantIDKey:
+		case cfgNofile:
+		case cfgKeepFile:
 		case "labels":
 		case "env":
 		case "env-regex":
@@ -320,4 +324,16 @@ func parseInt(key string, logCtx logger.Info, set func(i int)) error {
 		set(val)
 	}
 	return nil
+}
+
+func parseBoolean(key string, logCtx logger.Info, defaultValue bool) (bool, error) {
+	value, ok := logCtx.Config[key]
+	if !ok || value == "" {
+		return defaultValue, nil
+	}
+	b, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, err
+	}
+	return b, nil
 }

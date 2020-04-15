@@ -50,6 +50,14 @@ func main() {
 	}
 	util.InitLogger(&config.Server)
 
+	// Validate the config once both the config file has been loaded
+	// and CLI flags parsed.
+	err := config.Validate(util.Logger)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "validating config", "err", err.Error())
+		os.Exit(1)
+	}
+
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	trace, err := tracing.NewFromEnv(fmt.Sprintf("loki-%s", config.Target))
 	if err != nil {

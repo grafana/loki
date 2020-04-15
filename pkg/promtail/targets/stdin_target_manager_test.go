@@ -148,24 +148,6 @@ func Test_StdinConfigs(t *testing.T) {
 	require.Equal(t, defaultStdInCfg, getStdinConfig([]scrape.Config{}))
 }
 
-type mockFileInfo struct{}
-
-func (mockFileInfo) Name() string       { return "" }
-func (mockFileInfo) Size() int64        { return 1 }
-func (mockFileInfo) Mode() os.FileMode  { return 1 }
-func (mockFileInfo) ModTime() time.Time { return time.Now() }
-func (mockFileInfo) Sys() interface{}   { return nil }
-func (mockFileInfo) IsDir() bool        { return false }
-
-func Test_isPipe(t *testing.T) {
-	fake := newFakeStin("line")
-	fake.FileInfo = &mockFileInfo{}
-	stdIn = fake
-	require.Equal(t, true, isStdinPipe())
-	stdIn = os.Stdin
-	require.Equal(t, false, isStdinPipe())
-}
-
 var stagesConfig = `
 pipeline_stages:
 - template:

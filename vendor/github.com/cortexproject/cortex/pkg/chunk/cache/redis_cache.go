@@ -22,11 +22,11 @@ type RedisCache struct {
 
 // RedisConfig defines how a RedisCache should be constructed.
 type RedisConfig struct {
-	Endpoint       string         `yaml:"endpoint,omitempty"`
-	Timeout        time.Duration  `yaml:"timeout,omitempty"`
-	Expiration     time.Duration  `yaml:"expiration,omitempty"`
-	MaxIdleConns   int            `yaml:"max_idle_conns,omitempty"`
-	MaxActiveConns int            `yaml:"max_active_conns,omitempty"`
+	Endpoint       string         `yaml:"endpoint"`
+	Timeout        time.Duration  `yaml:"timeout"`
+	Expiration     time.Duration  `yaml:"expiration"`
+	MaxIdleConns   int            `yaml:"max_idle_conns"`
+	MaxActiveConns int            `yaml:"max_active_conns"`
 	Password       flagext.Secret `yaml:"password"`
 	EnableTLS      bool           `yaml:"enable_tls"`
 }
@@ -44,6 +44,7 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 
 // NewRedisCache creates a new RedisCache
 func NewRedisCache(cfg RedisConfig, name string, pool *redis.Pool) *RedisCache {
+	util.WarnExperimentalUse("Redis cache")
 	// pool != nil only in unit tests
 	if pool == nil {
 		pool = &redis.Pool{

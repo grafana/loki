@@ -157,7 +157,13 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 		}
 		refs = append(refs, r)
 	}
-	f, err := chunk.NewChunkFetcher(cache.Config{}, false, m.client)
+
+	cache, err := cache.New(cache.Config{Prefix: "chunks"})
+	if err != nil {
+		panic(err)
+	}
+
+	f, err := chunk.NewChunkFetcher(cache, false, m.client)
 	if err != nil {
 		panic(err)
 	}
