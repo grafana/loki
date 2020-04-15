@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
+	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -62,10 +65,16 @@ func newTestChunkStore(t require.TestingT, schemaName string) Store {
 }
 
 func newTestChunkStoreConfig(t require.TestingT, schemaName string, storeCfg StoreConfig) Store {
-	var (
-		tbmConfig TableManagerConfig
-		schemaCfg = DefaultSchemaConfig("", schemaName, 0)
-	)
+	schemaCfg := DefaultSchemaConfig("", schemaName, 0)
+
+	schema, err := schemaCfg.Configs[0].CreateSchema()
+	require.NoError(t, err)
+
+	return newTestChunkStoreConfigWithMockStorage(t, schemaCfg, schema, storeCfg)
+}
+
+func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg SchemaConfig, schema BaseSchema, storeCfg StoreConfig) Store {
+	var tbmConfig TableManagerConfig
 	err := schemaCfg.Validate()
 	require.NoError(t, err)
 	flagext.DefaultValues(&tbmConfig)
@@ -88,7 +97,7 @@ func newTestChunkStoreConfig(t require.TestingT, schemaName string, storeCfg Sto
 	require.NoError(t, err)
 
 	store := NewCompositeStore()
-	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], storage, storage, overrides, chunksCache, writeDedupeCache)
+	err = store.addSchema(storeCfg, schema, schemaCfg.Configs[0].From.Time, storage, storage, overrides, chunksCache, writeDedupeCache)
 	require.NoError(t, err)
 	return store
 }
@@ -529,12 +538,179 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 	}
 }
 
-func mustNewLabelMatcher(matchType labels.MatchType, name string, value string) *labels.Matcher {
-	matcher, err := labels.NewMatcher(matchType, name, value)
-	if err != nil {
-		panic(err)
+// TestChunkStore_verifyRegexSetOptimizations tests if chunks are fetched correctly when we have the metric name
+func TestChunkStore_verifyRegexSetOptimizations(t *testing.T) {
+	ctx := context.Background()
+	now := model.Now()
+
+	testCases := []struct {
+		query  string
+		expect []string
+	}{
+		{
+			`foo`,
+			[]string{"foo"},
+		},
+		{
+			`foo{bar="baz"}`,
+			[]string{"foo{bar=\"baz\"}"},
+		},
+		{
+			`foo{bar!="baz"}`,
+			[]string{"foo"},
+		},
+		{
+			`foo{toms="code", bar="beep"}`,
+			[]string{"foo{bar=\"beep\"}", "foo{toms=\"code\"}"},
+		},
+		{
+			`foo{bar=~"beep"}`,
+			[]string{"foo{bar=\"beep\"}"},
+		},
+		{
+			`foo{bar=~"beep|baz"}`,
+			[]string{"foo{bar=\"baz\"}", "foo{bar=\"beep\"}"},
+		},
+		{
+			`foo{toms="code", bar=~"beep|baz"}`,
+			[]string{"foo{bar=\"baz\"}", "foo{bar=\"beep\"}", "foo{toms=\"code\"}"},
+		},
+		{
+			`foo{bar=~".+"}`,
+			[]string{"foo{bar}"},
+		},
 	}
-	return matcher
+
+	for _, schema := range schemas {
+		var storeCfg StoreConfig
+		flagext.DefaultValues(&storeCfg)
+
+		schemaCfg := DefaultSchemaConfig("", schema, 0)
+		schemaObj, err := schemaCfg.Configs[0].CreateSchema()
+		require.NoError(t, err)
+
+		var mockSchema = &mockBaseSchema{schema: schemaObj}
+
+		switch s := schemaObj.(type) {
+		case StoreSchema:
+			schemaObj = mockStoreSchema{mockBaseSchema: mockSchema, schema: s}
+		case SeriesStoreSchema:
+			schemaObj = mockSeriesStoreSchema{mockBaseSchema: mockSchema, schema: s}
+		}
+
+		store := newTestChunkStoreConfigWithMockStorage(t, schemaCfg, schemaObj, storeCfg)
+		defer store.Stop()
+
+		from := now.Add(-time.Hour)
+		through := now
+
+		for _, tc := range testCases {
+			t.Run(fmt.Sprintf("%s / %s", tc.query, schema), func(t *testing.T) {
+				// reset queries for test
+				mockSchema.resetQueries()
+
+				t.Log("========= Running query", tc.query, "with schema", schema)
+				matchers, err := promql.ParseMetricSelector(tc.query)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				_, err = store.Get(ctx, userID, from, through, matchers...)
+				require.NoError(t, err)
+
+				qs := mockSchema.getQueries()
+				sort.Strings(qs)
+
+				if !reflect.DeepEqual(tc.expect, qs) {
+					t.Fatalf("%s: wrong queries - %s", tc.query, test.Diff(tc.expect, qs))
+				}
+			})
+		}
+	}
+}
+
+type mockBaseSchema struct {
+	schema BaseSchema
+
+	mu      sync.Mutex
+	queries []string
+}
+
+func (m *mockBaseSchema) getQueries() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.queries
+}
+
+func (m *mockBaseSchema) resetQueries() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.queries = nil
+}
+
+func (m *mockBaseSchema) GetReadQueriesForMetric(from, through model.Time, userID string, metricName string) ([]IndexQuery, error) {
+	m.mu.Lock()
+	m.queries = append(m.queries, metricName)
+	m.mu.Unlock()
+
+	return m.schema.GetReadQueriesForMetric(from, through, userID, metricName)
+}
+
+func (m *mockBaseSchema) GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName string, labelName string) ([]IndexQuery, error) {
+	m.mu.Lock()
+	m.queries = append(m.queries, fmt.Sprintf("%s{%s}", metricName, labelName))
+	m.mu.Unlock()
+
+	return m.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
+}
+
+func (m *mockBaseSchema) GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName string, labelName string, labelValue string) ([]IndexQuery, error) {
+	m.mu.Lock()
+	m.queries = append(m.queries, fmt.Sprintf("%s{%s=%q}", metricName, labelName, labelValue))
+	m.mu.Unlock()
+	return m.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, labelName, labelValue)
+}
+
+func (m *mockBaseSchema) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return m.schema.FilterReadQueries(queries, shard)
+}
+
+type mockStoreSchema struct {
+	*mockBaseSchema
+	schema StoreSchema
+}
+
+func (m mockStoreSchema) GetWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
+	return m.schema.GetWriteEntries(from, through, userID, metricName, labels, chunkID)
+}
+
+type mockSeriesStoreSchema struct {
+	*mockBaseSchema
+	schema SeriesStoreSchema
+}
+
+func (m mockSeriesStoreSchema) GetCacheKeysAndLabelWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]string, [][]IndexEntry, error) {
+	return m.schema.GetCacheKeysAndLabelWriteEntries(from, through, userID, metricName, labels, chunkID)
+}
+
+func (m mockSeriesStoreSchema) GetChunkWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
+	return m.schema.GetChunkWriteEntries(from, through, userID, metricName, labels, chunkID)
+}
+
+func (m mockSeriesStoreSchema) GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
+	return m.schema.GetChunksForSeries(from, through, userID, seriesID)
+}
+
+func (m mockSeriesStoreSchema) GetLabelNamesForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
+	return m.schema.GetLabelNamesForSeries(from, through, userID, seriesID)
+}
+
+func (m mockSeriesStoreSchema) GetSeriesDeleteEntries(from, through model.Time, userID string, metric labels.Labels, hasChunksForIntervalFunc hasChunksForIntervalFunc) ([]IndexEntry, error) {
+	return m.schema.GetSeriesDeleteEntries(from, through, userID, metric, hasChunksForIntervalFunc)
+}
+
+func mustNewLabelMatcher(matchType labels.MatchType, name string, value string) *labels.Matcher {
+	return labels.MustNewMatcher(matchType, name, value)
 }
 
 func TestChunkStoreRandom(t *testing.T) {

@@ -396,36 +396,12 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 	incomingErrors := make(chan error)
 	for _, matcher := range matchers {
 		go func(matcher *labels.Matcher) {
-			// Lookup IndexQuery's
-			var queries []IndexQuery
-			var err error
-			if matcher.Type != labels.MatchEqual {
-				queries, err = c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, matcher.Name)
+			chunkIDs, err := c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, nil)
+			if err != nil {
+				incomingErrors <- err
 			} else {
-				queries, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, matcher.Value)
+				incomingChunkIDs <- chunkIDs
 			}
-			if err != nil {
-				incomingErrors <- err
-				return
-			}
-			level.Debug(log).Log("matcher", matcher, "queries", len(queries))
-
-			// Lookup IndexEntry's
-			entries, err := c.lookupEntriesByQueries(ctx, queries)
-			if err != nil {
-				incomingErrors <- err
-				return
-			}
-			level.Debug(log).Log("matcher", matcher, "entries", len(entries))
-
-			// Convert IndexEntry's to chunk IDs, filter out non-matchers at the same time.
-			chunkIDs, err := c.parseIndexEntries(ctx, entries, matcher)
-			if err != nil {
-				incomingErrors <- err
-				return
-			}
-			level.Debug(log).Log("matcher", matcher, "chunkIDs", len(chunkIDs))
-			incomingChunkIDs <- chunkIDs
 		}(matcher)
 	}
 
@@ -451,6 +427,61 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 
 	// Convert IndexEntry's into chunks
 	return c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
+}
+
+func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]IndexQuery) []IndexQuery) ([]string, error) {
+	log, ctx := spanlogger.New(ctx, "Store.lookupIdsByMetricNameMatcher", "metricName", metricName, "matcher", matcher)
+	defer log.Span.Finish()
+
+	var err error
+	var queries []IndexQuery
+	var labelName string
+	if matcher == nil {
+		queries, err = c.schema.GetReadQueriesForMetric(from, through, userID, metricName)
+	} else if matcher.Type == labels.MatchEqual {
+		labelName = matcher.Name
+		queries, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, matcher.Value)
+	} else if matcher.Type == labels.MatchRegexp && len(findSetMatches(matcher.Value)) > 0 {
+		set := findSetMatches(matcher.Value)
+		for _, v := range set {
+			var qs []IndexQuery
+			qs, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, v)
+			if err != nil {
+				break
+			}
+			queries = append(queries, qs...)
+		}
+	} else {
+		labelName = matcher.Name
+		queries, err = c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, matcher.Name)
+	}
+	if err != nil {
+		return nil, err
+	}
+	level.Debug(log).Log("matcher", matcher, "queries", len(queries))
+
+	if filter != nil {
+		queries = filter(queries)
+		level.Debug(log).Log("matcher", matcher, "filteredQueries", len(queries))
+	}
+
+	entries, err := c.lookupEntriesByQueries(ctx, queries)
+	if e, ok := err.(CardinalityExceededError); ok {
+		e.MetricName = metricName
+		e.LabelName = labelName
+		return nil, e
+	} else if err != nil {
+		return nil, err
+	}
+	level.Debug(log).Log("matcher", matcher, "entries", len(entries))
+
+	ids, err := c.parseIndexEntries(ctx, entries, matcher)
+	if err != nil {
+		return nil, err
+	}
+	level.Debug(log).Log("matcher", matcher, "ids", len(ids))
+
+	return ids, nil
 }
 
 func (c *baseStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {

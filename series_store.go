@@ -334,47 +334,9 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 }
 
 func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, shard *astmapper.ShardAnnotation) ([]string, error) {
-	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupSeriesByMetricNameMatcher", "metricName", metricName, "matcher", matcher)
-	defer log.Span.Finish()
-
-	var err error
-	var queries []IndexQuery
-	var labelName string
-	if matcher == nil {
-		queries, err = c.schema.GetReadQueriesForMetric(from, through, userID, metricName)
-	} else if matcher.Type != labels.MatchEqual {
-		labelName = matcher.Name
-		queries, err = c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, matcher.Name)
-	} else {
-		labelName = matcher.Name
-		queries, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, matcher.Value)
-	}
-	if err != nil {
-		return nil, err
-	}
-	level.Debug(log).Log("queries", len(queries))
-
-	queries = c.schema.FilterReadQueries(queries, shard)
-
-	level.Debug(log).Log("filteredQueries", len(queries))
-
-	entries, err := c.lookupEntriesByQueries(ctx, queries)
-	if e, ok := err.(CardinalityExceededError); ok {
-		e.MetricName = metricName
-		e.LabelName = labelName
-		return nil, e
-	} else if err != nil {
-		return nil, err
-	}
-	level.Debug(log).Log("entries", len(entries))
-
-	ids, err := c.parseIndexEntries(ctx, entries, matcher)
-	if err != nil {
-		return nil, err
-	}
-	level.Debug(log).Log("ids", len(ids))
-
-	return ids, nil
+	return c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, func(queries []IndexQuery) []IndexQuery {
+		return c.schema.FilterReadQueries(queries, shard)
+	})
 }
 
 func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
