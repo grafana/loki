@@ -11,7 +11,7 @@
     container.withPorts($.util.defaultPorts) +
     container.withArgsMixin($.util.mapToFlags($.ingester_args)) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
-    container.mixin.readinessProbe.httpGet.withPort(80) +
+    container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     $.util.resourcesRequests('1', '5Gi') +
@@ -22,7 +22,8 @@
   ingester_deployment:
     deployment.new('ingester', 3, [$.ingester_container]) +
     $.config_hash_mixin +
-    $.util.configVolumeMount('loki', '/etc/loki') +
+    $.util.configVolumeMount('loki', '/etc/loki/config') +
+    $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
     $.util.antiAffinity +
     deployment.mixin.spec.withMinReadySeconds(60) +
     deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge(0) +

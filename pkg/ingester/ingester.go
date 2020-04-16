@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -132,7 +134,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		quitting:     make(chan struct{}),
 		factory: func() chunkenc.Chunk {
-			return chunkenc.NewMemChunkSize(enc, cfg.BlockSize, cfg.TargetChunkSize)
+			return chunkenc.NewMemChunk(enc, cfg.BlockSize, cfg.TargetChunkSize)
 		},
 	}
 
@@ -147,7 +149,17 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		return nil, err
 	}
 
-	i.lifecycler.Start()
+	i.lifecycler.AddListener(services.NewListener(nil, nil, nil, nil, func(_ services.State, failure error) {
+		// lifecycler used to do os.Exit(1) on its own failure, but now it just goes into Failed state.
+		// for now we just simulate old behaviour here. When Ingester itself becomes a service, it will enter Failed state as well.
+		level.Error(util.Logger).Log("msg", "lifecycler failed", "err", err)
+		os.Exit(1)
+	}))
+
+	err = services.StartAndAwaitRunning(context.Background(), i.lifecycler)
+	if err != nil {
+		return nil, err
+	}
 
 	// Now that the lifecycler has been created, we can create the limiter
 	// which depends on it.
@@ -181,7 +193,12 @@ func (i *Ingester) Shutdown() {
 	close(i.quit)
 	i.done.Wait()
 
-	i.lifecycler.Shutdown()
+	i.stopIncomingRequests()
+
+	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "lifecycler failed", "err", err)
+	}
 }
 
 // Stopping helps cleaning up resources before actual shutdown

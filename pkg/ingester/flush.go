@@ -16,6 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	loki_util "github.com/grafana/loki/pkg/util"
 )
@@ -75,6 +76,11 @@ var (
 		// 10ms to 10s.
 		Buckets: prometheus.ExponentialBuckets(0.01, 4, 6),
 	})
+	chunksFlushedPerReason = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "ingester_chunks_flushed_total",
+		Help:      "Total flushed chunks per reason.",
+	}, []string{"reason"})
 )
 
 const (
@@ -84,6 +90,12 @@ const (
 
 	nameLabel = "__name__"
 	logsValue = "logs"
+
+	flushReasonIdle   = "idle"
+	flushReasonMaxAge = "max_age"
+	flushReasonForced = "forced"
+	flushReasonFull   = "full"
+	flushReasonSynced = "synced"
 )
 
 // Flush triggers a flush of all the chunks and closes the flush queues.
@@ -146,7 +158,8 @@ func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate boo
 	}
 
 	lastChunk := stream.chunks[len(stream.chunks)-1]
-	if len(stream.chunks) == 1 && !immediate && !i.shouldFlushChunk(&lastChunk) {
+	shouldFlush, _ := i.shouldFlushChunk(&lastChunk)
+	if len(stream.chunks) == 1 && !immediate && !shouldFlush {
 		return
 	}
 
@@ -225,7 +238,8 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 
 	var result []*chunkDesc
 	for j := range stream.chunks {
-		if immediate || i.shouldFlushChunk(&stream.chunks[j]) {
+		shouldFlush, reason := i.shouldFlushChunk(&stream.chunks[j])
+		if immediate || shouldFlush {
 			// Ensure no more writes happen to this chunk.
 			if !stream.chunks[j].closed {
 				stream.chunks[j].closed = true
@@ -233,27 +247,34 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 			// Flush this chunk if it hasn't already been successfully flushed.
 			if stream.chunks[j].flushed.IsZero() {
 				result = append(result, &stream.chunks[j])
+				if immediate {
+					reason = flushReasonForced
+				}
+				chunksFlushedPerReason.WithLabelValues(reason).Add(1)
 			}
 		}
 	}
 	return result, stream.labels
 }
 
-func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) bool {
+func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
 	// Append should close the chunk when the a new one is added.
 	if chunk.closed {
-		return true
+		if chunk.synced {
+			return true, flushReasonSynced
+		}
+		return true, flushReasonFull
 	}
 
 	if time.Since(chunk.lastUpdated) > i.cfg.MaxChunkIdle {
-		return true
+		return true, flushReasonIdle
 	}
 
 	if from, to := chunk.chunk.Bounds(); to.Sub(from) > i.cfg.MaxChunkAge {
-		return true
+		return true, flushReasonMaxAge
 	}
 
-	return false
+	return false, ""
 }
 
 func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
@@ -293,7 +314,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		firstTime, lastTime := loki_util.RoundToMilliseconds(c.chunk.Bounds())
 		c := chunk.NewChunk(
 			userID, fp, metric,
-			chunkenc.NewFacade(c.chunk),
+			chunkenc.NewFacade(c.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),
 			firstTime,
 			lastTime,
 		)
@@ -310,7 +331,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		return err
 	}
 
-	// Record statistsics only when actual put request did not return error.
+	// Record statistics only when actual put request did not return error.
 	sizePerTenant := chunkSizePerTenant.WithLabelValues(userID)
 	countPerTenant := chunksPerTenant.WithLabelValues(userID)
 	for i, wc := range wireChunks {

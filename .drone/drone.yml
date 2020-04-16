@@ -12,28 +12,28 @@ workspace:
 
 steps:
 - name: test
-  image: grafana/loki-build-image:0.9.0
+  image: grafana/loki-build-image:0.9.2
   commands:
   - make BUILD_IN_CONTAINER=false test
   depends_on:
   - clone
 
 - name: lint
-  image: grafana/loki-build-image:0.9.0
+  image: grafana/loki-build-image:0.9.2
   commands:
   - make BUILD_IN_CONTAINER=false lint
   depends_on:
   - clone
 
 - name: check-generated-files
-  image: grafana/loki-build-image:0.9.0
+  image: grafana/loki-build-image:0.9.2
   commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
 
 - name: check-mod
-  image: grafana/loki-build-image:0.9.0
+  image: grafana/loki-build-image:0.9.2
   commands:
   - make BUILD_IN_CONTAINER=false check-mod
   depends_on:
@@ -73,6 +73,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -93,6 +94,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -113,6 +115,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -131,6 +134,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -149,6 +153,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -167,6 +172,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -206,6 +212,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -226,6 +233,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -246,6 +254,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -264,6 +273,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -282,6 +292,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -300,6 +311,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -339,6 +351,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -359,6 +372,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -368,7 +382,7 @@ steps:
   settings:
     build_args:
     - TOUCH_PROTOS=1
-    dockerfile: cmd/promtail/Dockerfile
+    dockerfile: cmd/promtail/Dockerfile.arm32
     dry_run: true
     password:
       from_secret: docker_password
@@ -379,6 +393,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -397,6 +412,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -415,6 +431,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -424,7 +441,7 @@ steps:
   settings:
     build_args:
     - TOUCH_PROTOS=1
-    dockerfile: cmd/promtail/Dockerfile
+    dockerfile: cmd/promtail/Dockerfile.arm32
     password:
       from_secret: docker_password
     repo: grafana/promtail
@@ -433,6 +450,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -471,6 +489,7 @@ steps:
     ref:
       exclude:
       - refs/heads/master
+      - refs/heads/k??
       - refs/tags/v*
   depends_on:
   - image-tag
@@ -487,6 +506,7 @@ steps:
   when:
     ref:
     - refs/heads/master
+    - refs/heads/k??
     - refs/tags/v*
   depends_on:
   - image-tag
@@ -506,7 +526,6 @@ steps:
 - name: manifest-promtail
   image: plugins/manifest
   settings:
-    ignore_missing: true
     password:
       from_secret: docker_password
     spec: .drone/docker-manifest.tmpl
@@ -519,7 +538,6 @@ steps:
 - name: manifest-loki
   image: plugins/manifest
   settings:
-    ignore_missing: true
     password:
       from_secret: docker_password
     spec: .drone/docker-manifest.tmpl
@@ -528,11 +546,11 @@ steps:
       from_secret: docker_username
   depends_on:
   - clone
+  - manifest-promtail
 
 - name: manifest-loki-canary
   image: plugins/manifest
   settings:
-    ignore_missing: true
     password:
       from_secret: docker_password
     spec: .drone/docker-manifest.tmpl
@@ -541,10 +559,12 @@ steps:
       from_secret: docker_username
   depends_on:
   - clone
+  - manifest-loki
 
 trigger:
   ref:
   - refs/heads/master
+  - refs/heads/k??
   - refs/tags/v*
 
 depends_on:
@@ -562,16 +582,49 @@ platform:
 
 steps:
 - name: trigger
-  image: grafana/loki-build-image:0.9.0
+  image: grafana/loki-build-image:0.9.2
   commands:
   - ./tools/deploy.sh
   environment:
     CIRCLE_TOKEN:
       from_secret: circle_token
+  depends_on:
+  - clone
 
 trigger:
   ref:
   - refs/heads/master
+  - refs/heads/k??
+  - refs/tags/v*
+
+depends_on:
+- manifest
+
+---
+kind: pipeline
+name: prune-ci-tags
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
+- name: trigger
+  image: grafana/loki-build-image:0.9.2
+  commands:
+  - go run ./tools/delete_tags.go -max-age=2160h -repo grafana/loki -delete
+  - go run ./tools/delete_tags.go -max-age=2160h -repo grafana/promtail -delete
+  - go run ./tools/delete_tags.go -max-age=2160h -repo grafana/loki-canary -delete
+  environment:
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+    DOCKER_USERNAME:
+      from_secret: docker_username
+
+trigger:
+  ref:
+  - refs/heads/master
+  - refs/heads/k??
   - refs/tags/v*
 
 depends_on:

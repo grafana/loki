@@ -66,11 +66,11 @@ for the query time range.
 ### Schema config example
 
 For example, the following `schema_config` defines two configurations: the first
-one using the schema `v8` and the current one using the `v9`.
+one using the schema `v10` and the current one using the `v11`.
 
 The first config stores data between `2019-01-01` and `2019-04-14` (included),
-then a new config has been added - to upgrade the schema version to `v9` -
-storing data using the `v9` schema from `2019-04-15` on.
+then a new config has been added - to upgrade the schema version to `v11` -
+storing data using the `v11` schema from `2019-04-15` on.
 
 For each config, multiple tables are created, each one storing data for
 `period` time (168 hours = 7 days).
@@ -80,13 +80,13 @@ schema_config:
   configs:
     - from:   2019-01-01
       store:  dynamo
-      schema: v8
+      schema: v10
       index:
         prefix: loki_
         period: 168h
     - from:   2019-04-15
       store:  dynamo
-      schema: v9
+      schema: v11
       index:
         prefix: loki_
         period: 168h
@@ -155,7 +155,7 @@ read/write capacity units and autoscaling.
 
 | DynamoDB            | Active table                            | Inactive table                       |
 | ------------------- | --------------------------------------- | ------------------------------------ |
-| Capacity mode       | `provisioned_throughput_on_demand_mode` | `inactive_throughput_on_demand_mode` |
+| Capacity mode       | `enable_ondemand_throughput_mode` | `enable_inactive_throughput_on_demand_mode` |
 | Read capacity unit  | `provisioned_read_throughput`           | `inactive_read_throughput`           |
 | Write capacity unit | `provisioned_write_throughput`          | `inactive_write_throughput`          |
 | Autoscaling         | Enabled (if configured)                 | Always disabled                      |

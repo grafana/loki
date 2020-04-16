@@ -14,12 +14,13 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/grafana/loki/pkg/logproto"
-	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
+	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
 
 var (
@@ -137,6 +138,35 @@ func TestClient_Handle(t *testing.T) {
 			serverResponseStatus: 400,
 			inputEntries:         []entry{logEntries[0]},
 			expectedReqs: []receivedReq{
+				{
+					tenantID: "",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+				},
+			},
+			expectedMetrics: `
+				# HELP promtail_dropped_entries_total Number of log entries dropped because failed to be sent to the ingester after all retries.
+				# TYPE promtail_dropped_entries_total counter
+				promtail_dropped_entries_total{host="__HOST__"} 1.0
+				# HELP promtail_sent_entries_total Number of log entries sent to the ingester.
+				# TYPE promtail_sent_entries_total counter
+				promtail_sent_entries_total{host="__HOST__"} 0
+			`,
+		},
+		"do retry sending a batch in case the server responds with a 429": {
+			clientBatchSize:      10,
+			clientBatchWait:      10 * time.Millisecond,
+			clientMaxRetries:     3,
+			serverResponseStatus: 429,
+			inputEntries:         []entry{logEntries[0]},
+			expectedReqs: []receivedReq{
+				{
+					tenantID: "",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+				},
+				{
+					tenantID: "",
+					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+				},
 				{
 					tenantID: "",
 					pushReq:  logproto.PushRequest{Streams: []*logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},

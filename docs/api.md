@@ -35,7 +35,7 @@ These endpoints are exposed by all components:
 - [`GET /ready`](#get-ready)
 - [`GET /metrics`](#get-metrics)
 
-These endpoints are exposed by just the querier:
+These endpoints are exposed by the querier and the frontend:
 
 - [`GET /loki/api/v1/query`](#get-lokiapiv1query)
 - [`GET /loki/api/v1/query_range`](#get-lokiapiv1query_range)
@@ -86,7 +86,7 @@ query parameters support the following values:
 - `time`: The evaluation time for the query as a nanosecond Unix epoch. Defaults to now.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 
-In microservices mode, `/loki/api/v1/query` is exposed by the querier.
+In microservices mode, `/loki/api/v1/query` is exposed by the querier and the frontend.
 
 Response:
 
@@ -95,7 +95,8 @@ Response:
   "status": "success",
   "data": {
     "resultType": "vector" | "streams",
-    "result": [<vector value>] | [<stream value>]
+    "result": [<vector value>] | [<stream value>].
+    "stats" : [<statistics>]
   }
 }
 ```
@@ -131,6 +132,8 @@ And `<stream value>` is:
 }
 ```
 
+See [statistics](#Statistics) for information about the statistics returned by Loki.
+
 ### Examples
 
 ```bash
@@ -165,7 +168,10 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query=
           "37.69"
         ]
       }
-    ]
+    ],
+    "stats": {
+      ...
+    }
   }
 }
 ```
@@ -192,9 +198,12 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query=
             "1568234269716526880",
             "bar"
           ]
-        ]
+        ],
       }
-    ]
+    ],
+    "stats": {
+      ...
+    }
   }
 }
 ```
@@ -207,7 +216,7 @@ accepts the following query parameters in the URL:
 - `query`: The [LogQL](./logql.md) query to perform
 - `limit`: The max number of entries to return
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
-- `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
+- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 
@@ -216,7 +225,7 @@ find log streams for particular labels. Because the index store is spread out by
 time, the time span covered by `start` and `end`, if large, may cause additional
 load against the index server and result in a slow query.
 
-In microservices mode, `/loki/api/v1/query_range` is exposed by the querier.
+In microservices mode, `/loki/api/v1/query_range` is exposed by the querier and the frontend.
 
 Response:
 
@@ -226,6 +235,7 @@ Response:
   "data": {
     "resultType": "matrix" | "streams",
     "result": [<matrix value>] | [<stream value>]
+    "stats" : [<statistics>]
   }
 }
 ```
@@ -260,6 +270,8 @@ And `<stream value>` is:
   ]
 }
 ```
+
+See [statistics](#Statistics) for information about the statistics returned by Loki.
 
 ### Examples
 
@@ -308,7 +320,10 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
           ]
         ]
       }
-    ]
+    ],
+    "stats": {
+      ...
+    }
   }
 }
 ```
@@ -337,7 +352,10 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
           ]
         ]
       }
-    ]
+    ],
+    "stats": {
+      ...
+    }
   }
 }
 ```
@@ -348,7 +366,7 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
 accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
-- `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
+- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 
 In microservices mode, `/loki/api/v1/labels` is exposed by the querier.
 
@@ -385,7 +403,7 @@ label within a given time span. It accepts the following query parameters in
 the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
-- `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
+- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 
 In microservices mode, `/loki/api/v1/label/<name>/values` is exposed by the querier.
 
@@ -560,11 +578,11 @@ support the following values:
 - `query`: The [LogQL](./logql.md) query to perform
 - `limit`: The max number of entries to return
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
-- `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
+- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 - `regexp`: a regex to filter the returned results
 
-In microservices mode, `/api/prom/query` is exposed by the querier.
+In microservices mode, `/api/prom/query` is exposed by the querier and the frontend.
 
 Note that the larger the time span between `start` and `end` will cause
 additional load on Loki and the index store, resulting in slower queries.
@@ -585,9 +603,12 @@ Response:
       ],
     },
     ...
-  ]
+  ],
+  "stats": [<statistics>]
 }
 ```
+
+See [statistics](#Statistics) for information about the statistics returned by Loki.
 
 ### Examples
 
@@ -608,7 +629,10 @@ $ curl -G -s  "http://localhost:3100/api/prom/query" --data-urlencode '{foo="bar
         }
       ]
     }
-  ]
+  ],
+  "stats": {
+    ...
+  }
 }
 ```
 
@@ -620,7 +644,7 @@ $ curl -G -s  "http://localhost:3100/api/prom/query" --data-urlencode '{foo="bar
 accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
-- `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
+- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 
 In microservices mode, `/api/prom/label` is exposed by the querier.
 
@@ -657,7 +681,7 @@ label within a given time span. It accepts the following query parameters in
 the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
-- `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
+- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 
 In microservices mode, `/api/prom/label/<name>/values` is exposed by the querier.
 
@@ -820,5 +844,51 @@ $ curl -s "http://localhost:3100/loki/api/v1/series" --data-urlencode 'match={co
       "job": "default/prometheus"
     }
   ]
+}
+```
+
+## Statistics
+
+Query endpoints such as `/api/prom/query`, `/loki/api/v1/query` and `/loki/api/v1/query_range` return a set of statistics about the query execution. Those statistics allow users to understand the amount of data processed and at which speed.
+
+The example belows show all possible statistics returned with their respective description.
+
+```json
+{
+  "status": "success",
+  "data": {
+    "resultType": "streams",
+    "result": [],
+    "stats": {
+     "ingester" : {
+        "compressedBytes": 0, // Total bytes of compressed chunks (blocks) processed by ingesters
+        "decompressedBytes": 0, // Total bytes decompressed and processed by ingesters
+        "decompressedLines": 0, // Total lines decompressed and processed by ingesters
+        "headChunkBytes": 0, // Total bytes read from ingesters head chunks
+        "headChunkLines": 0, // Total lines read from ingesters head chunks
+        "totalBatches": 0, // Total batches sent by ingesters
+        "totalChunksMatched": 0, // Total chunks matched by ingesters
+        "totalDuplicates": 0, // Total of duplicates found by ingesters
+        "totalLinesSent": 0, // Total lines sent by ingesters
+        "totalReached": 0 // Amount of ingesters reached.
+      },
+      "store": {
+        "compressedBytes": 0, // Total bytes of compressed chunks (blocks) processed by the store
+        "decompressedBytes": 0,  // Total bytes decompressed and processed by the store
+        "decompressedLines": 0, // Total lines decompressed and processed by the store
+        "chunksDownloadTime": 0, // Total time spent downloading chunks in seconds (float)
+        "totalChunksRef": 0, // Total chunks found in the index for the current query
+        "totalChunksDownloaded": 0, // Total of chunks downloaded
+        "totalDuplicates": 0 // Total of duplicates removed from replication
+      },
+      "summary": {
+        "bytesProcessedPerSeconds": 0, // Total of bytes processed per seconds
+        "execTime": 0, // Total execution time in seconds (float)
+        "linesProcessedPerSeconds": 0, // Total lines processed per second
+        "totalBytesProcessed":0, // Total amount of bytes processed overall for this request
+        "totalLinesProcessed":0 // Total amount of lines processed overall for this request
+      }
+    }
+  }
 }
 ```

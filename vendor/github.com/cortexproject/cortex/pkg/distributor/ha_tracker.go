@@ -11,20 +11,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/weaveworks/common/httpgrpc"
-
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/golang/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/mtime"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var (
@@ -67,6 +67,8 @@ func NewReplicaDesc() *ReplicaDesc {
 // Track the replica we're accepting samples from
 // for each HA cluster we know about.
 type haTracker struct {
+	services.Service
+
 	logger              log.Logger
 	cfg                 HATrackerConfig
 	client              kv.Client
@@ -75,14 +77,12 @@ type haTracker struct {
 	// Replicas we are accepting samples from.
 	electedLock sync.RWMutex
 	elected     map[string]ReplicaDesc
-	done        chan struct{}
-	cancel      context.CancelFunc
 }
 
 // HATrackerConfig contains the configuration require to
 // create a HA Tracker.
 type HATrackerConfig struct {
-	EnableHATracker bool `yaml:"enable_ha_tracker,omitempty"`
+	EnableHATracker bool `yaml:"enable_ha_tracker"`
 	// We should only update the timestamp if the difference
 	// between the stored timestamp and the time we received a sample at
 	// is more than this duration.
@@ -137,40 +137,45 @@ func (cfg *HATrackerConfig) Validate() error {
 	return nil
 }
 
-// NewClusterTracker returns a new HA cluster tracker using either Consul
-// or in-memory KV store.
-func newClusterTracker(cfg HATrackerConfig) (*haTracker, error) {
-	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
+func GetReplicaDescCodec() codec.Proto {
+	return codec.NewProtoCodec("replicaDesc", ProtoReplicaDescFactory)
+}
 
+// NewClusterTracker returns a new HA cluster tracker using either Consul
+// or in-memory KV store. Tracker must be started via StartAsync().
+func newClusterTracker(cfg HATrackerConfig) (*haTracker, error) {
 	var jitter time.Duration
 	if cfg.UpdateTimeoutJitterMax > 0 {
 		jitter = time.Duration(rand.Int63n(int64(2*cfg.UpdateTimeoutJitterMax))) - cfg.UpdateTimeoutJitterMax
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t := haTracker{
+	t := &haTracker{
 		logger:              util.Logger,
 		cfg:                 cfg,
 		updateTimeoutJitter: jitter,
-		done:                make(chan struct{}),
 		elected:             map[string]ReplicaDesc{},
-		cancel:              cancel,
 	}
 
 	if cfg.EnableHATracker {
-		client, err := kv.NewClient(cfg.KVStore, codec)
+		client, err := kv.NewClient(cfg.KVStore, GetReplicaDescCodec())
 		if err != nil {
 			return nil, err
 		}
 		t.client = client
-		go t.loop(ctx)
 	}
-	return &t, nil
+
+	t.Service = services.NewBasicService(nil, t.loop, nil)
+	return t, nil
 }
 
 // Follows pattern used by ring for WatchKey.
-func (c *haTracker) loop(ctx context.Context) {
-	defer close(c.done)
+func (c *haTracker) loop(ctx context.Context) error {
+	if !c.cfg.EnableHATracker {
+		// don't do anything, but wait until asked to stop.
+		<-ctx.Done()
+		return nil
+	}
+
 	// The KVStore config we gave when creating c should have contained a prefix,
 	// which would have given us a prefixed KVStore client. So, we can pass empty string here.
 	c.client.WatchPrefix(ctx, "", func(key string, value interface{}) bool {
@@ -193,14 +198,8 @@ func (c *haTracker) loop(ctx context.Context) {
 		electedReplicaPropagationTime.Observe(time.Since(timestamp.Time(replica.ReceivedAt)).Seconds())
 		return true
 	})
-}
 
-// Stop ends calls the trackers cancel function, which will end the loop for WatchPrefix.
-func (c *haTracker) stop() {
-	if c.cfg.EnableHATracker {
-		c.cancel()
-		<-c.done
-	}
+	return nil
 }
 
 // CheckReplica checks the cluster and replica against the backing KVStore and local cache in the

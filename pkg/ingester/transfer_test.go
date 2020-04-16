@@ -8,19 +8,21 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health/grpc_health_v1"
-
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/go-kit/kit/log/level"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
-	"golang.org/x/net/context"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 func TestTransferOut(t *testing.T) {
@@ -89,7 +91,7 @@ func TestTransferOut(t *testing.T) {
 				time.Unix(0, 0),
 				time.Unix(10, 0),
 				logproto.FORWARD,
-				func([]byte) bool { return true },
+				logql.LineFilterFunc(func([]byte) bool { return true }),
 			)
 			if !assert.NoError(t, err) {
 				continue
@@ -119,7 +121,7 @@ type testIngesterFactory struct {
 }
 
 func newTestIngesterFactory(t *testing.T) *testIngesterFactory {
-	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, codec.Proto{Factory: ring.ProtoDescFactory})
+	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, ring.GetCodec())
 	require.NoError(t, err)
 
 	return &testIngesterFactory{
@@ -195,7 +197,11 @@ func (c *testIngesterClient) TransferChunks(context.Context, ...grpc.CallOption)
 	// unhealthy state, permanently stuck in the handler for claiming tokens.
 	go func() {
 		time.Sleep(time.Millisecond * 50)
-		c.i.lifecycler.Shutdown()
+		c.i.stopIncomingRequests() // used to be called from lifecycler, now it must be called *before* stopping lifecyler. (ingester does this on shutdown)
+		err := services.StopAndAwaitTerminated(context.Background(), c.i.lifecycler)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "lifecycler failed", "err", err)
+		}
 	}()
 
 	go func() {

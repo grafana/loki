@@ -12,14 +12,16 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/marshal"
 )
 
 var (
@@ -31,7 +33,6 @@ var (
 		CacheResults:           true,
 		ResultsCacheConfig: queryrange.ResultsCacheConfig{
 			MaxCacheFreshness: 1 * time.Minute,
-			SplitInterval:     4 * time.Hour,
 			CacheConfig: cache.Config{
 				EnableFifoCache: true,
 				Fifocache: cache.FifoCacheConfig{
@@ -75,9 +76,9 @@ var (
 // those tests are mostly for testing the glue between all component and make sure they activate correctly.
 func TestMetricsTripperware(t *testing.T) {
 
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
 	if stopper != nil {
-		defer func() { _ = stopper.Stop() }()
+		defer stopper.Stop()
 	}
 	require.NoError(t, err)
 
@@ -134,14 +135,14 @@ func TestMetricsTripperware(t *testing.T) {
 	lokiCacheResponse, err := lokiCodec.DecodeResponse(ctx, cacheResp, lreq)
 	require.NoError(t, err)
 
-	require.Equal(t, lokiResponse, lokiCacheResponse)
+	require.Equal(t, lokiResponse.(*LokiPromResponse).Response, lokiCacheResponse.(*LokiPromResponse).Response)
 }
 
 func TestLogFilterTripperware(t *testing.T) {
 
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
 	if stopper != nil {
-		defer func() { _ = stopper.Stop() }()
+		defer stopper.Stop()
 	}
 	require.NoError(t, err)
 	rt, err := newfakeRoundTripper()
@@ -186,9 +187,9 @@ func TestLogFilterTripperware(t *testing.T) {
 }
 
 func TestLogNoRegex(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
 	if stopper != nil {
-		defer func() { _ = stopper.Stop() }()
+		defer stopper.Stop()
 	}
 	require.NoError(t, err)
 	rt, err := newfakeRoundTripper()
@@ -220,9 +221,9 @@ func TestLogNoRegex(t *testing.T) {
 }
 
 func TestUnhandledPath(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
 	if stopper != nil {
-		defer func() { _ = stopper.Stop() }()
+		defer stopper.Stop()
 	}
 	require.NoError(t, err)
 	rt, err := newfakeRoundTripper()
@@ -244,9 +245,9 @@ func TestUnhandledPath(t *testing.T) {
 }
 
 func TestRegexpParamsSupport(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
 	if stopper != nil {
-		defer func() { _ = stopper.Stop() }()
+		defer stopper.Stop()
 	}
 	require.NoError(t, err)
 	rt, err := newfakeRoundTripper()
@@ -286,8 +287,79 @@ func TestRegexpParamsSupport(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestEntriesLimitsTripperware(t *testing.T) {
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000}, nil)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+	rt, err := newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
+
+	lreq := &LokiRequest{
+		Query:     `{app="foo"}`, // no regex so it should go to the querier
+		Limit:     10000,
+		StartTs:   testTime.Add(-6 * time.Hour),
+		EndTs:     testTime,
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query_range",
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	require.NoError(t, err)
+
+	req = req.WithContext(ctx)
+	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+	require.NoError(t, err)
+
+	_, err = tpw(rt).RoundTrip(req)
+	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit (10000 > 5000)"), err)
+}
+
+func TestEntriesLimitWithZeroTripperware(t *testing.T) {
+	tpw, stopper, err := NewTripperware(testConfig, util.Logger, fakeLimits{}, nil)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+	rt, err := newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
+
+	lreq := &LokiRequest{
+		Query:     `{app="foo"}`, // no regex so it should go to the querier
+		Limit:     10000,
+		StartTs:   testTime.Add(-6 * time.Hour),
+		EndTs:     testTime,
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query_range",
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	require.NoError(t, err)
+
+	req = req.WithContext(ctx)
+	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+	require.NoError(t, err)
+
+	_, err = tpw(rt).RoundTrip(req)
+	require.NoError(t, err)
+}
+
 type fakeLimits struct {
-	maxQueryParallelism int
+	maxQueryParallelism     int
+	maxEntriesLimitPerQuery int
+	splits                  map[string]time.Duration
+}
+
+func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
+	if f.splits == nil {
+		return 0
+	}
+	return f.splits[key]
 }
 
 func (fakeLimits) MaxQueryLength(string) time.Duration {
@@ -299,6 +371,10 @@ func (f fakeLimits) MaxQueryParallelism(string) int {
 		return 1
 	}
 	return f.maxQueryParallelism
+}
+
+func (f fakeLimits) MaxEntriesLimitPerQuery(string) int {
+	return f.maxEntriesLimitPerQuery
 }
 
 func counter() (*int, http.Handler) {
@@ -328,7 +404,7 @@ func promqlResult(v promql.Value) (*int, http.Handler) {
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteQueryResponseJSON(v, w); err != nil {
+		if err := marshal.WriteQueryResponseJSON(logql.Result{Data: v}, w); err != nil {
 			panic(err)
 		}
 		count++

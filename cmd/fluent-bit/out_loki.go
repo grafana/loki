@@ -9,9 +9,10 @@ import (
 	"github.com/fluent/fluent-bit-go/output"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	_ "github.com/grafana/loki/pkg/build"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
+
+	_ "github.com/grafana/loki/pkg/build"
 )
 
 var (

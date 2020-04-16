@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -123,9 +124,11 @@ func Test_createLine(t *testing.T) {
 		{"json", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": "bazz"}}, jsonFormat, `{"foo":"bar","bar":{"bizz":"bazz"}}`, false},
 		{"json with number", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": 20}}, jsonFormat, `{"foo":"bar","bar":{"bizz":20}}`, false},
 		{"bad json", map[string]interface{}{"foo": make(chan interface{})}, jsonFormat, "", true},
-		{"kv", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": "bazz"}}, kvPairFormat, `bar=map[bizz:bazz] foo=bar`, false},
-		{"kv with number", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": 20}, "decimal": 12.2}, kvPairFormat, `bar=map[bizz:20] decimal=12.2 foo=bar`, false},
-		{"kv with nil", map[string]interface{}{"foo": "bar", "bar": map[string]interface{}{"bizz": 20}, "null": nil}, kvPairFormat, `bar=map[bizz:20] foo=bar null=<nil>`, false},
+		{"kv with space", map[string]interface{}{"foo": "bar", "bar": "foo foo"}, kvPairFormat, `bar="foo foo" foo=bar`, false},
+		{"kv with number", map[string]interface{}{"foo": "bar foo", "decimal": 12.2}, kvPairFormat, `decimal=12.2 foo="bar foo"`, false},
+		{"kv with nil", map[string]interface{}{"foo": "bar", "null": nil}, kvPairFormat, `foo=bar null=null`, false},
+		{"kv with array", map[string]interface{}{"foo": "bar", "array": []string{"foo", "bar"}}, kvPairFormat, `array="[foo bar]" foo=bar`, false},
+		{"kv with map", map[string]interface{}{"foo": "bar", "map": map[string]interface{}{"foo": "bar", "bar ": "foo "}}, kvPairFormat, `foo=bar map="map[bar :foo  foo:bar]"`, false},
 		{"kv empty", map[string]interface{}{}, kvPairFormat, ``, false},
 		{"bad format", nil, format(3), "", true},
 	}
@@ -221,6 +224,8 @@ func Test_toStringMap(t *testing.T) {
 	}{
 		{"already string", map[interface{}]interface{}{"string": "foo", "bar": []byte("buzz")}, map[string]interface{}{"string": "foo", "bar": "buzz"}},
 		{"skip non string", map[interface{}]interface{}{"string": "foo", 1.0: []byte("buzz")}, map[string]interface{}{"string": "foo"}},
+		{"byteslice in array", map[interface{}]interface{}{"string": "foo", "bar": []interface{}{map[interface{}]interface{}{"baz": []byte("quux")}}},
+			map[string]interface{}{"string": "foo", "bar": []interface{}{map[string]interface{}{"baz": "quux"}}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -295,6 +300,67 @@ func Test_labelMapping(t *testing.T) {
 			got := model.LabelSet{}
 			if mapLabels(tt.records, tt.mapping, got); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("mapLabels() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_AutoKubernetesLabels(t *testing.T) {
+	tests := []struct {
+		name    string
+		records map[interface{}]interface{}
+		want    model.LabelSet
+		err     error
+	}{
+		{
+			"records without labels",
+			map[interface{}]interface{}{
+				"kubernetes": map[interface{}]interface{}{
+					"foo": []byte("buzz"),
+				},
+			},
+			model.LabelSet{
+				"foo": "buzz",
+			},
+			nil,
+		},
+		{
+			"records with labels",
+			map[interface{}]interface{}{
+				"kubernetes": map[string]interface{}{
+					"labels": map[string]interface{}{
+						"foo":  "bar",
+						"buzz": "value",
+					},
+				},
+			},
+			model.LabelSet{
+				"foo":  "bar",
+				"buzz": "value",
+			},
+			nil,
+		},
+		{
+			"records without kubernetes labels",
+			map[interface{}]interface{}{
+				"foo":   "bar",
+				"label": "value",
+			},
+			model.LabelSet{},
+			errors.New("kubernetes labels not found, no labels will be added"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := toStringMap(tt.records)
+			lbs := model.LabelSet{}
+			err := autoLabels(m, lbs)
+			if err != nil && err.Error() != tt.err.Error() {
+				t.Errorf("error in autolabels, error = %v", err)
+				return
+			}
+			if !reflect.DeepEqual(lbs, tt.want) {
+				t.Errorf("mapLabels() = %v, want %v", lbs, tt.want)
 			}
 		})
 	}

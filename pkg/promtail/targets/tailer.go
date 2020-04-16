@@ -18,7 +18,7 @@ import (
 type tailer struct {
 	logger    log.Logger
 	handler   api.EntryHandler
-	positions *positions.Positions
+	positions positions.Positions
 
 	path string
 	tail *tail.Tail
@@ -29,7 +29,7 @@ type tailer struct {
 	done chan struct{}
 }
 
-func newTailer(logger log.Logger, handler api.EntryHandler, positions *positions.Positions, path string) (*tailer, error) {
+func newTailer(logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string) (*tailer, error) {
 	// Simple check to make sure the file we are tailing doesn't
 	// have a position already saved which is past the end of the file.
 	fi, err := os.Stat(path)
@@ -147,6 +147,7 @@ func (t *tailer) stop() error {
 	<-t.done
 	filesActive.Add(-1.)
 	// When we stop tailing the file, also un-export metrics related to the file
+	readLines.DeleteLabelValues(t.path)
 	readBytes.DeleteLabelValues(t.path)
 	totalBytes.DeleteLabelValues(t.path)
 	logLengthHistogram.DeleteLabelValues(t.path)

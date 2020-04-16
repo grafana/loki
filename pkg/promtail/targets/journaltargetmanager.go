@@ -5,6 +5,7 @@ package targets
 import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/scrape"
@@ -17,7 +18,7 @@ type JournalTargetManager struct{}
 // on this platform.
 func NewJournalTargetManager(
 	logger log.Logger,
-	positions *positions.Positions,
+	positions positions.Positions,
 	client api.EntryHandler,
 	scrapeConfigs []scrape.Config,
 ) (*JournalTargetManager, error) {

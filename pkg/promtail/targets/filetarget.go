@@ -56,11 +56,13 @@ const (
 // Config describes behavior for Target
 type Config struct {
 	SyncPeriod time.Duration `yaml:"sync_period"`
+	Stdin      bool          `yaml:"stdin"`
 }
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
 	flags.DurationVar(&cfg.SyncPeriod, "target.sync-period", 10*time.Second, "Period to resync directories being watched and files being tailed.")
+	flags.BoolVar(&cfg.Stdin, "stdin", false, "Set to true to pipe logs to promtail.")
 }
 
 // FileTarget describes a particular set of logs.
@@ -68,7 +70,7 @@ type FileTarget struct {
 	logger log.Logger
 
 	handler          api.EntryHandler
-	positions        *positions.Positions
+	positions        positions.Positions
 	labels           model.LabelSet
 	discoveredLabels model.LabelSet
 
@@ -84,7 +86,7 @@ type FileTarget struct {
 }
 
 // NewFileTarget create a new FileTarget.
-func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions *positions.Positions, path string, labels model.LabelSet, discoveredLabels model.LabelSet, targetConfig *Config) (*FileTarget, error) {
+func NewFileTarget(logger log.Logger, handler api.EntryHandler, positions positions.Positions, path string, labels model.LabelSet, discoveredLabels model.LabelSet, targetConfig *Config) (*FileTarget, error) {
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {

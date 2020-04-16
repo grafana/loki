@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var (
@@ -29,16 +31,16 @@ var (
 
 // WorkerConfig is config for a worker.
 type WorkerConfig struct {
-	Address           string
-	Parallelism       int
-	DNSLookupDuration time.Duration
+	Address           string        `yaml:"frontend_address"`
+	Parallelism       int           `yaml:"parallelism"`
+	DNSLookupDuration time.Duration `yaml:"dns_lookup_duration"`
 
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.Address, "querier.frontend-address", "", "Address of query frontend service.")
+	f.StringVar(&cfg.Address, "querier.frontend-address", "", "Address of query frontend service, in host:port format.")
 	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process.")
 	f.DurationVar(&cfg.DNSLookupDuration, "querier.dns-lookup-period", 10*time.Second, "How often to query DNS.")
 
@@ -46,31 +48,21 @@ func (cfg *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 // Worker is the counter-part to the frontend, actually processing requests.
-type Worker interface {
-	Stop()
-}
-
 type worker struct {
 	cfg    WorkerConfig
 	log    log.Logger
 	server *server.Server
 
-	ctx     context.Context
-	cancel  context.CancelFunc
-	watcher naming.Watcher
+	watcher naming.Watcher //nolint:staticcheck //Skipping for now. If you still see this more than likely issue https://github.com/cortexproject/cortex/issues/2015 has not yet been addressed.
 	wg      sync.WaitGroup
 }
 
-type noopWorker struct {
-}
-
-func (noopWorker) Stop() {}
-
-// NewWorker creates a new Worker.
-func NewWorker(cfg WorkerConfig, server *server.Server, log log.Logger) (Worker, error) {
+// NewWorker creates a new worker and returns a service that is wrapping it.
+// If no address is specified, it returns nil service (and no error).
+func NewWorker(cfg WorkerConfig, server *server.Server, log log.Logger) (services.Service, error) {
 	if cfg.Address == "" {
 		level.Info(log).Log("msg", "no address specified, not starting worker")
-		return noopWorker{}, nil
+		return nil, nil
 	}
 
 	resolver, err := naming.NewDNSResolverWithFreq(cfg.DNSLookupDuration)
@@ -83,52 +75,50 @@ func NewWorker(cfg WorkerConfig, server *server.Server, log log.Logger) (Worker,
 		return nil, err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	w := &worker{
-		cfg:    cfg,
-		log:    log,
-		server: server,
-
-		ctx:     ctx,
-		cancel:  cancel,
+		cfg:     cfg,
+		log:     log,
+		server:  server,
 		watcher: watcher,
 	}
-	w.wg.Add(1)
-	go w.watchDNSLoop()
-	return w, nil
+	return services.NewBasicService(nil, w.watchDNSLoop, w.stopping), nil
 }
 
-// Stop the worker.
-func (w *worker) Stop() {
-	w.watcher.Close()
-	w.cancel()
+func (w *worker) stopping(_ error) error {
+	// wait until all per-address workers are done. This is only called after watchDNSLoop exits.
 	w.wg.Wait()
+	return nil
 }
 
 // watchDNSLoop watches for changes in DNS and starts or stops workers.
-func (w *worker) watchDNSLoop() {
-	defer w.wg.Done()
+func (w *worker) watchDNSLoop(servCtx context.Context) error {
+	go func() {
+		// Close the watcher, when this service is asked to stop.
+		// Closing the watcher makes watchDNSLoop exit, since it only iterates on watcher updates, and has no other
+		// way to stop. We cannot close the watcher in `stopping` method, because it is only called *after*
+		// watchDNSLoop exits.
+		<-servCtx.Done()
+		w.watcher.Close()
+	}()
 
 	cancels := map[string]context.CancelFunc{}
-	defer func() {
-		for _, cancel := range cancels {
-			cancel()
-		}
-	}()
 
 	for {
 		updates, err := w.watcher.Next()
 		if err != nil {
-			level.Error(w.log).Log("msg", "error from DNS watcher", "err", err)
-			return
+			// watcher.Next returns error when Close is called, but we call Close when our context is done.
+			// we don't want to report error in that case.
+			if servCtx.Err() != nil {
+				return nil
+			}
+			return errors.Wrapf(err, "error from DNS watcher")
 		}
 
 		for _, update := range updates {
 			switch update.Op {
 			case naming.Add:
 				level.Debug(w.log).Log("msg", "adding connection", "addr", update.Addr)
-				ctx, cancel := context.WithCancel(w.ctx)
+				ctx, cancel := context.WithCancel(servCtx)
 				cancels[update.Addr] = cancel
 				w.runMany(ctx, update.Addr)
 
@@ -139,7 +129,7 @@ func (w *worker) watchDNSLoop() {
 				}
 
 			default:
-				panic("unknown op")
+				return fmt.Errorf("unknown op: %v", update.Op)
 			}
 		}
 	}

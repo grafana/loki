@@ -111,10 +111,15 @@ func (hb *headBlock) append(ts int64, line string) error {
 
 func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
 	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
+	defer func() {
+		inBuf.Reset()
+		serializeBytesBufferPool.Put(inBuf)
+	}()
 	outBuf := &bytes.Buffer{}
 
 	encBuf := make([]byte, binary.MaxVarintLen64)
 	compressedWriter := pool.GetWriter(outBuf)
+	defer pool.PutWriter(compressedWriter)
 	for _, logEntry := range hb.entries {
 		n := binary.PutVarint(encBuf, logEntry.t)
 		inBuf.Write(encBuf[:n])
@@ -132,10 +137,6 @@ func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
 		return nil, errors.Wrap(err, "flushing pending compress buffer")
 	}
 
-	inBuf.Reset()
-	serializeBytesBufferPool.Put(inBuf)
-
-	pool.PutWriter(compressedWriter)
 	return outBuf.Bytes(), nil
 }
 
@@ -144,14 +145,8 @@ type entry struct {
 	s string
 }
 
-// NewMemChunk returns a new in-mem chunk for query.
-func NewMemChunk(enc Encoding) *MemChunk {
-	return NewMemChunkSize(enc, 256*1024, 0)
-}
-
-// NewMemChunkSize returns a new in-mem chunk.
-// Mainly for config push size.
-func NewMemChunkSize(enc Encoding, blockSize, targetSize int) *MemChunk {
+// NewMemChunk returns a new in-mem chunk.
+func NewMemChunk(enc Encoding, blockSize, targetSize int) *MemChunk {
 	c := &MemChunk{
 		blockSize:  blockSize,  // The blockSize in bytes.
 		targetSize: targetSize, // Desired chunk size in compressed bytes
@@ -169,9 +164,11 @@ func NewMemChunkSize(enc Encoding, blockSize, targetSize int) *MemChunk {
 }
 
 // NewByteChunk returns a MemChunk on the passed bytes.
-func NewByteChunk(b []byte) (*MemChunk, error) {
+func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 	bc := &MemChunk{
-		head: &headBlock{}, // Dummy, empty headblock.
+		head:       &headBlock{}, // Dummy, empty headblock.
+		blockSize:  blockSize,
+		targetSize: targetSize,
 	}
 	db := decbuf{b: b}
 
@@ -233,6 +230,9 @@ func NewByteChunk(b []byte) (*MemChunk, error) {
 		}
 
 		bc.blocks = append(bc.blocks, blk)
+
+		// Update the counter used to track the size of cut blocks.
+		bc.cutBlockSize += len(blk.b)
 
 		if db.err() != nil {
 			return nil, errors.Wrap(db.err(), "decoding block meta")
@@ -466,7 +466,7 @@ func (c *MemChunk) Bounds() (fromT, toT time.Time) {
 }
 
 // Iterator implements Chunk.
-func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error) {
+func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, filter logql.LineFilter) (iter.EntryIterator, error) {
 	mint, maxt := mintT.UnixNano(), maxtT.UnixNano()
 	its := make([]iter.EntryIterator, 0, len(c.blocks)+1)
 
@@ -493,14 +493,14 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	return iter.NewReversedIter(iterForward, 0, false)
 }
 
-func (b block) iterator(ctx context.Context, pool ReaderPool, filter logql.Filter) iter.EntryIterator {
+func (b block) iterator(ctx context.Context, pool ReaderPool, filter logql.LineFilter) iter.EntryIterator {
 	if len(b.b) == 0 {
 		return emptyIterator
 	}
 	return newBufferedIterator(ctx, pool, b.b, filter)
 }
 
-func (hb *headBlock) iterator(ctx context.Context, mint, maxt int64, filter logql.Filter) iter.EntryIterator {
+func (hb *headBlock) iterator(ctx context.Context, mint, maxt int64, filter logql.LineFilter) iter.EntryIterator {
 	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return emptyIterator
 	}
@@ -515,7 +515,7 @@ func (hb *headBlock) iterator(ctx context.Context, mint, maxt int64, filter logq
 	entries := make([]entry, 0, len(hb.entries))
 	for _, e := range hb.entries {
 		chunkStats.HeadChunkBytes += int64(len(e.s))
-		if filter == nil || filter([]byte(e.s)) {
+		if filter == nil || filter.Filter([]byte(e.s)) {
 			entries = append(entries, e)
 		}
 	}
@@ -577,10 +577,10 @@ type bufferedIterator struct {
 
 	closed bool
 
-	filter logql.Filter
+	filter logql.LineFilter
 }
 
-func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte, filter logql.Filter) *bufferedIterator {
+func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte, filter logql.LineFilter) *bufferedIterator {
 	chunkStats := stats.GetChunkData(ctx)
 	chunkStats.CompressedBytes += int64(len(b))
 	return &bufferedIterator{
@@ -610,7 +610,7 @@ func (si *bufferedIterator) Next() bool {
 		// we decode always the line length and ts as varint
 		si.stats.DecompressedBytes += int64(len(line)) + 2*binary.MaxVarintLen64
 		si.stats.DecompressedLines++
-		if si.filter != nil && !si.filter(line) {
+		if si.filter != nil && !si.filter.Filter(line) {
 			continue
 		}
 		si.cur.Line = string(line)

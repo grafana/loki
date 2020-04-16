@@ -10,18 +10,20 @@ and how to scrape logs from files.
 * [position_config](#position_config)
 * [scrape_config](#scrape_config)
     * [pipeline_stages](#pipeline_stages)
-        * [regex_stage](#regex_stage)
-        * [json_stage](#json_stage)
-        * [template_stage](#template_stage)
-        * [match_stage](#match_stage)
-        * [timestamp_stage](#timestamp_stage)
-        * [output_stage](#output_stage)
-        * [labels_stage](#labels_stage)
-        * [metrics_stage](#metrics_stage)
-            * [metric_counter](#metric_counter)
-            * [metric_gauge](#metric_gauge)
-            * [metric_histogram](#metric_histogram)
-        * [tenant_stage](#tenant_stage)
+        * [docker](#docker)
+        * [cri](#cri)
+        * [regex](#regex)
+        * [json](#json)
+        * [template](#template)
+        * [match](#match)
+        * [timestamp](#timestamp)
+        * [output](#output)
+        * [labels](#labels)
+        * [metrics](#metrics)
+            * [counter](#counter)
+            * [gauge](#gauge)
+            * [histogram](#histogram)
+        * [tenant](#tenant)
     * [journal_config](#journal_config)
     * [syslog_config](#syslog_config)
     * [relabel_config](#relabel_config)
@@ -30,6 +32,7 @@ and how to scrape logs from files.
     * [kubernetes_sd_config](#kubernetes_sd_config)
 * [target_config](#target_config)
 * [Example Docker Config](#example-docker-config)
+* [Example Static Config](#example-static-config)
 * [Example Journal Config](#example-journal-config)
 * [Example Syslog Config](#example-syslog-config)
 
@@ -65,6 +68,11 @@ Supported contents and default values of `config.yaml`:
 
 # Describes how Promtail connects to multiple instances
 # of Loki, sending logs to each.
+# WARNING: If one of the remote Loki servers fails to respond or responds 
+# with any error which is retriable, this will impact sending logs to any 
+# other configured remote Loki servers.  Sending is done on a single thread!
+# It is generally recommended to run multiple promtail clients in parallel
+# if you want to send to multiple remote Loki instances.
 clients:
   - [<client_config>]
 
@@ -125,6 +133,9 @@ The `server_config` block configures Promtail's behavior as an HTTP server:
 
 # Base path to server all API routes from (e.g., /v1/).
 [http_path_prefix: <string>]
+
+# Target managers check flag for promtail readiness, if set to false the check is ignored
+[health_check_target: <bool> | default = true]
 ```
 
 ## client_config
@@ -135,7 +146,8 @@ Loki:
 ```yaml
 # The URL where Loki is listening, denoted in Loki as http_listen_address and
 # http_listen_port. If Loki is running in microservices mode, this is the HTTP
-# URL for the Distributor.
+# URL for the Distributor. Path to the push API needs to be included. 
+# Example: http://example.com:3100/loki/api/v1/push
 url: <string>
 
 # The tenant ID used by default to push logs to Loki. If omitted or empty
@@ -194,15 +206,18 @@ tls_config:
 
 # Configures how to retry requests to Loki when a request
 # fails.
+# Default backoff schedule: 
+# 0.5s, 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s(4.267m) 
+# For a total time of 511.5s(8.5m) before logs are lost
 backoff_config:
   # Initial backoff time between retries
-  [minbackoff: <duration> | default = 100ms]
+  [min_period: <duration> | default = 500ms]
 
   # Maximum backoff time between retries
-  [maxbackoff: <duration> | default = 10s]
+  [max_period: <duration> | default = 5m]
 
   # Maximum number of retries to do
-  [maxretries: <int> | default = 10]
+  [max_retries: <int> | default = 10]
 
 # Static labels to add to all logs being sent to Loki.
 # Use map like {"foo": "bar"} to add a label foo with
@@ -274,43 +289,90 @@ kubernetes_sd_configs:
 ### pipeline_stages
 
 The [pipeline](./pipelines.md) stages (`pipeline_stages`) is used to transform
-log entries and their labels after discovery. It is simply an array of various
-stages, defined below.
+log entries and their labels after discovery and consists of a list of any of the items listed below.
 
-The purpose of most stages is to extract fields and values into a temporary
-set of key-value pairs that is passed around from stage to stage.
+Stages serve several purposes, more detail can be found [here](./pipelines.md), however generally you extract data with `regex` or `json` stages into a temporary map which can then be use as `labels` or `output` or any of the other stages aside from `docker` and `cri` which are explained in more detail below.
 
 ```yaml
 - [
-    <regex_stage>
-    <json_stage> |
-    <template_stage> |
-    <match_stage> |
-    <timestamp_stage> |
-    <output_stage> |
-    <labels_stage> |
-    <metrics_stage> |
-    <tenant_stage>
+    <docker> |
+    <cri> |
+    <regex> |
+    <json> |
+    <template> |
+    <match> |
+    <timestamp> |
+    <output> |
+    <labels> |
+    <metrics> |
+    <tenant>
   ]
 ```
 
-Example:
+#### docker
+
+The Docker stage parses the contents of logs from Docker containers, and is defined by name with an empty object: 
 
 ```yaml
-pipeline_stages:
-  - regex:
-      expr: "./*"
-  - json:
-      timestamp:
-        source: time
-        format: RFC3339
-      labels:
-        stream:
-          source: json_key_name.json_sub_key_name
-      output:
+docker: {}
+``` 
+
+The docker stage will match and parse log lines of this format:
+
+```nohighlight
+`{"log":"level=info ts=2019-04-30T02:12:41.844179Z caller=filetargetmanager.go:180 msg=\"Adding target\"\n","stream":"stderr","time":"2019-04-30T02:12:41.8443515Z"}`
 ```
 
-#### regex_stage
+Automatically extracting the `time` into the logs timestamp, `stream` into a label, and `log` field into the output, this can be very helpful as docker is wrapping your application log in this way and this will unwrap it for further pipeline processing of just the log content.
+
+The Docker stage is just a convenience wrapper for this definition:
+
+```yaml
+- json:
+    output: log
+    stream: stream
+    timestamp: time
+- labels:
+    stream:
+- timestamp:
+    source: timestamp
+    format: RFC3339Nano
+- output:
+    source: output
+```
+
+
+
+#### cri
+
+The CRI stage parses the contents of logs from CRI containers, and is defined by name with an empty object: 
+
+```yaml
+cri: {}
+``` 
+
+The CRI  stage will match and parse log lines of this format:
+
+```nohighlight
+2019-01-01T01:00:00.000000001Z stderr P some log message
+```
+Automatically extracting the `time` into the logs timestamp, `stream` into a label, and the remaining message into the output, this can be very helpful as CRI is wrapping your application log in this way and this will unwrap it for further pipeline processing of just the log content.
+
+The CRI stage is just a convenience wrapper for this definition:
+
+```yaml
+- regex:
+    expression: "^(?s)(?P<time>\\S+?) (?P<stream>stdout|stderr) (?P<flags>\\S+?) (?P<content>.*)$",
+- labels:
+    stream:
+- timestamp:
+    source: time
+    format: RFC3339Nano
+- output:
+    source: content
+```
+
+#### regex
 
 The Regex stage takes a regular expression and extracts captured named groups to
 be used in further stages.
@@ -324,7 +386,7 @@ regex:
   [source: <string>]
 ```
 
-#### json_stage
+#### json
 
 The JSON stage parses a log line as JSON and takes
 [JMESPath](http://jmespath.org/) expressions to extract data from the JSON to be
@@ -342,7 +404,7 @@ json:
   [source: <string>]
 ```
 
-#### template_stage
+#### template
 
 The template stage uses Go's
 [`text/template`](https://golang.org/pkg/text/template) language to manipulate
@@ -368,7 +430,7 @@ template:
   template: '{{ if eq .Value "WARN" }}{{ Replace .Value "WARN" "OK" -1 }}{{ else }}{{ .Value }}{{ end }}'
 ```
 
-#### match_stage
+#### match
 
 The match stage conditionally executes a set of stages when a log entry matches
 a configurable [LogQL](../../logql.md) stream selector.
@@ -387,18 +449,20 @@ match:
   # matches the labels of the log entries:
   stages:
     - [
-        <regex_stage>
-        <json_stage> |
-        <template_stage> |
-        <match_stage> |
-        <timestamp_stage> |
-        <output_stage> |
-        <labels_stage> |
-        <metrics_stage>
+        <docker> |
+        <cri> |
+        <regex>
+        <json> |
+        <template> |
+        <match> |
+        <timestamp> |
+        <output> |
+        <labels> |
+        <metrics>
       ]
 ```
 
-#### timestamp_stage
+#### timestamp
 
 The timestamp stage parses data from the extracted map and overrides the final
 time value of the log that is stored by Loki. If this stage isn't present,
@@ -420,7 +484,7 @@ timestamp:
   [location: <string>]
 ```
 
-##### output_stage
+##### output
 
 The output stage takes data from the extracted map and sets the contents of the
 log entry that will be stored by Loki.
@@ -431,7 +495,7 @@ output:
   source: <string>
 ```
 
-#### labels_stage
+#### labels
 
 The labels stage takes data from the extracted map and sets additional labels
 on the log entry that will be sent to Loki.
@@ -445,7 +509,7 @@ labels:
   [ <string>: [<string>] ... ]
 ```
 
-#### metrics_stage
+#### metrics
 
 The metrics stage allows for defining metrics from the extracted data.
 
@@ -458,10 +522,10 @@ able to retrieve the metrics configured by this stage.
 # A map where the key is the name of the metric and the value is a specific
 # metric type.
 metrics:
-  [<string>: [ <metric_counter> | <metric_gauge> | <metric_histogram> ] ...]
+  [<string>: [ <counter> | <gauge> | <histogram> ] ...]
 ```
 
-##### metric_counter
+##### counter
 
 Defines a counter metric whose value only goes up.
 
@@ -490,7 +554,7 @@ config:
   action: <string>
 ```
 
-##### metric_gauge
+##### gauge
 
 Defines a gauge metric whose value can go up or down.
 
@@ -518,7 +582,7 @@ config:
   action: <string>
 ```
 
-##### metric_histogram
+##### histogram
 
 Defines a histogram metric whose values are bucketed.
 
@@ -551,7 +615,7 @@ config:
     - <int>
 ```
 
-#### tenant_stage
+#### tenant
 
 The tenant stage is an action stage that sets the tenant ID for the log entry
 picking it from a field in the extracted data map.
@@ -979,13 +1043,22 @@ sync_period: "10s"
 
 ## Example Docker Config
 
+It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver](../../../cmd/docker-driver/README.md) for local Docker installs or Docker Compose.
+
+If running in a Kubernetes environment, you should look at the defined configs which are in [helm](../../../production/helm/promtail/templates/configmap.yaml) and [jsonnet](../../../production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give promtail it's name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
+
+
+## Example Static Config
+
+While promtail may have been named for the prometheus service discovery code, that same code works very well for tailing logs without containers or container environments directly on virtual machines or bare metal.
+
 ```yaml
 server:
   http_listen_port: 9080
   grpc_listen_port: 0
 
 positions:
-  filename: /tmp/positions.yaml
+  filename: /var/log/positions.yaml # This location needs to be writeable by promtail.
 
 client:
   url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
@@ -993,28 +1066,18 @@ client:
 scrape_configs:
  - job_name: system
    pipeline_stages:
-   - docker:
    static_configs:
    - targets:
       - localhost
      labels:
-      job: varlogs
-      host: yourhost
-      __path__: /var/log/*.log
-
- - job_name: someone_service
-   pipeline_stages:
-   - docker:
-   static_configs:
-   - targets:
-      - localhost
-     labels:
-      job: someone_service
-      host: yourhost
-      __path__: /srv/log/someone_service/*.log
+      job: varlogs  # A `job` label is fairly standard in prometheus and useful for linking metrics and logs.
+      host: yourhost # A `host` label will help identify logs from this machine vs others  
+      __path__: /var/log/*.log  # The path matching uses a third party library: https://github.com/bmatcuk/doublestar
 ```
 
 ## Example Journal Config
+
+This example reads entries from a systemd journal:
 
 ```yaml
 server:
@@ -1039,6 +1102,8 @@ scrape_configs:
 ```
 
 ## Example Syslog Config
+
+This example starts Promtail as a syslog receiver and can accept syslog entries in Promtail over TCP:
 
 ```yaml
 server:

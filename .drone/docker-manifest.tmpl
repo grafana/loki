@@ -1,4 +1,4 @@
-image: grafana/{{config.target}}:{{#if build.tag}}{{build.tag}}{{else}}{{build.branch}}-{{substr 0 7 build.commit}}{{/if}}
+image: grafana/{{config.target}}:{{#if build.tag}}{{trimPrefix "v" build.tag}}{{else}}{{build.branch}}-{{substr 0 7 build.commit}}{{/if}}
 tags:
   - latest
   - master
@@ -8,16 +8,16 @@ tags:
 {{/each}}
 {{/if}}
 manifests:
-  - image: grafana/{{config.target}}:{{#if build.tag}}{{build.tag}}{{else}}{{build.branch}}-{{substr 0 7 build.commit}}{{/if}}-amd64
+  - image: grafana/{{config.target}}:{{#if build.tag}}{{trimPrefix "v" build.tag}}{{else}}{{build.branch}}-{{substr 0 7 build.commit}}{{/if}}-amd64
     platform:
       architecture: amd64
       os: linux
-  - image: grafana/{{config.target}}:{{#if build.tag}}{{build.tag}}{{else}}{{build.branch}}-{{substr 0 7 build.commit}}{{/if}}-arm64
+  - image: grafana/{{config.target}}:{{#if build.tag}}{{trimPrefix "v" build.tag}}{{else}}{{build.branch}}-{{substr 0 7 build.commit}}{{/if}}-arm64
     platform:
       architecture: arm64
       os: linux
       variant: v8
-  - image: grafana/{{config.target}}:{{#if build.tag}}{{build.tag}}{{else}}{{build.branch}}-{{substr 0 7 build.commit}}{{/if}}-arm
+  - image: grafana/{{config.target}}:{{#if build.tag}}{{trimPrefix "v" build.tag}}{{else}}{{build.branch}}-{{substr 0 7 build.commit}}{{/if}}-arm
     platform:
       architecture: arm
       os: linux

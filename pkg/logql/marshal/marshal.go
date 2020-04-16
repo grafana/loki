@@ -5,19 +5,21 @@ package marshal
 import (
 	"io"
 
+	"github.com/grafana/loki/pkg/logql"
+
 	"github.com/gorilla/websocket"
+	json "github.com/json-iterator/go"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
-	json "github.com/json-iterator/go"
-	"github.com/prometheus/prometheus/promql"
 )
 
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
 // writes it to the provided io.Writer.
-func WriteQueryResponseJSON(v promql.Value, w io.Writer) error {
+func WriteQueryResponseJSON(v logql.Result, w io.Writer) error {
 
-	value, err := NewResultValue(v)
+	value, err := NewResultValue(v.Data)
 
 	if err != nil {
 		return err
@@ -28,6 +30,7 @@ func WriteQueryResponseJSON(v promql.Value, w io.Writer) error {
 		Data: loghttp.QueryResponseData{
 			ResultType: value.Type(),
 			Result:     value,
+			Statistics: v.Statistics,
 		},
 	}
 

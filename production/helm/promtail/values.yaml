@@ -4,11 +4,20 @@ affinity: {}
 
 annotations: {}
 
-deploymentStrategy: RollingUpdate
+# The update strategy to apply to the DaemonSet
+##
+deploymentStrategy: {}
+#  rollingUpdate:
+#    maxUnavailable: 1
+#  type: RollingUpdate
+
+initContainer:
+  enabled: false
+  fsInotifyMaxUserInstances: 128
 
 image:
   repository: grafana/promtail
-  tag: v1.3.0
+  tag: 1.4.1
   pullPolicy: IfNotPresent
 
 livenessProbe: {}
@@ -92,6 +101,9 @@ volumes:
   hostPath:
     path: /var/log/pods
 
+# Custom volumes together with the default ones
+extraVolumes: []
+
 volumeMounts:
 - name: docker
   mountPath: /var/lib/docker/containers
@@ -99,6 +111,9 @@ volumeMounts:
 - name: pods
   mountPath: /var/log/pods
   readOnly: true
+
+# Custom volumeMounts together with the default ones
+extraVolumeMounts: []
 
 config:
   client:
@@ -123,6 +138,7 @@ config:
 
   server:
     http_listen_port: 3101
+
   positions:
     filename: /run/promtail/positions.yaml
   target_config:
@@ -134,3 +150,29 @@ serviceMonitor:
   interval: ""
   additionalLabels: {}
   # scrapeTimeout: 10s
+
+# Extra env variables to pass to the promtail container
+env: []
+
+# enable and configure if using the syslog scrape config
+syslogService:
+  enabled: false
+  type: ClusterIP
+  port: 1514
+  ## Specify the nodePort value for the LoadBalancer and NodePort service types.
+  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
+  ##
+  # nodePort:
+  ## Provide any additional annotations which may be required. This can be used to
+  ## set the LoadBalancer service type to internal only.
+  ## ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
+  ##
+  annotations: {}
+  labels: {}
+  ## Use loadBalancerIP to request a specific static IP,
+  ## otherwise leave blank
+  ##
+  loadBalancerIP:
+  # loadBalancerSourceRanges: []
+  ## Set the externalTrafficPolicy in the Service to either Cluster or Local
+  # externalTrafficPolicy: Cluster

@@ -2,7 +2,6 @@ package chunk
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -11,19 +10,24 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/weaveworks/common/httpgrpc"
+)
+
+var (
+	ErrMetricNameLabelMissing     = errors.New("metric name label missing")
+	ErrParialDeleteChunkNoOverlap = errors.New("interval for partial deletion has not overlap with chunk interval")
 )
 
 var (
@@ -42,32 +46,29 @@ var (
 
 // StoreConfig specifies config for a ChunkStore
 type StoreConfig struct {
-	ChunkCacheConfig       cache.Config `yaml:"chunk_cache_config,omitempty"`
-	WriteDedupeCacheConfig cache.Config `yaml:"write_dedupe_cache_config,omitempty"`
+	ChunkCacheConfig       cache.Config `yaml:"chunk_cache_config"`
+	WriteDedupeCacheConfig cache.Config `yaml:"write_dedupe_cache_config"`
 
-	MinChunkAge           time.Duration `yaml:"min_chunk_age,omitempty"`
-	CacheLookupsOlderThan time.Duration `yaml:"cache_lookups_older_than,omitempty"`
+	CacheLookupsOlderThan time.Duration `yaml:"cache_lookups_older_than"`
 
 	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
 
-	// Not visible in yaml because the setting shouldn't be common between ingesters and queriers
+	// Not visible in yaml because the setting shouldn't be common between ingesters and queriers.
+	// This exists in case we don't want to cache all the chunks but still want to take advantage of
+	// ingester chunk write deduplication. But for the queriers we need the full value. So when this option
+	// is set, use different caches for ingesters and queriers.
 	chunkCacheStubs bool // don't write the full chunk to cache, just a stub entry
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("", "Cache config for chunks. ", f)
-	f.BoolVar(&cfg.chunkCacheStubs, "store.chunk-cache-stubs", false, "If true, don't write the full chunk to cache, just a stub entry.")
+	cfg.ChunkCacheConfig.RegisterFlagsWithPrefix("store.chunks-cache.", "Cache config for chunks. ", f)
+	f.BoolVar(&cfg.chunkCacheStubs, "store.chunks-cache.cache-stubs", false, "If true, don't write the full chunk to cache, just a stub entry.")
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
 
-	f.DurationVar(&cfg.MinChunkAge, "store.min-chunk-age", 0, "Minimum time between chunk update and being saved to the store.")
 	f.DurationVar(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", 0, "Cache index entries older than this period. 0 to disable.")
 	f.DurationVar(&cfg.MaxLookBackPeriod, "store.max-look-back-period", 0, "Limit how long back data can be queried")
-
-	// Deprecated.
-	flagext.DeprecatedFlag(f, "store.cardinality-cache-size", "DEPRECATED. Use store.index-cache-read.enable-fifocache and store.index-cache-read.fifocache.size instead.")
-	flagext.DeprecatedFlag(f, "store.cardinality-cache-validity", "DEPRECATED. Use store.index-cache-read.enable-fifocache and store.index-cache-read.fifocache.duration instead.")
 }
 
 // store implements Store
@@ -75,14 +76,14 @@ type store struct {
 	cfg StoreConfig
 
 	index  IndexClient
-	chunks ObjectClient
+	chunks Client
 	schema Schema
 	limits StoreLimits
 	*Fetcher
 }
 
-func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks ObjectClient, limits StoreLimits) (Store, error) {
-	fetcher, err := NewChunkFetcher(cfg.ChunkCacheConfig, cfg.chunkCacheStubs, chunks)
+func newStore(cfg StoreConfig, schema Schema, index IndexClient, chunks Client, limits StoreLimits, chunksCache cache.Cache) (Store, error) {
+	fetcher, err := NewChunkFetcher(chunksCache, cfg.chunkCacheStubs, chunks)
 	if err != nil {
 		return nil, err
 	}
@@ -115,6 +116,7 @@ func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 
 // PutOne implements ChunkStore
 func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
+	log, ctx := spanlogger.New(ctx, "ChunkStore.PutOne")
 	chunks := []Chunk{chunk}
 
 	err := c.storage.PutChunks(ctx, chunks)
@@ -122,7 +124,9 @@ func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chun
 		return err
 	}
 
-	c.writeBackCache(ctx, chunks)
+	if cacheErr := c.writeBackCache(ctx, chunks); cacheErr != nil {
+		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
+	}
 
 	writeReqs, err := c.calculateIndexEntries(chunk.UserID, from, through, chunk)
 	if err != nil {
@@ -138,7 +142,7 @@ func (c *store) calculateIndexEntries(userID string, from, through model.Time, c
 
 	metricName := chunk.Metric.Get(labels.MetricName)
 	if metricName == "" {
-		return nil, fmt.Errorf("no MetricNameLabel for chunk")
+		return nil, ErrMetricNameLabelMissing
 	}
 
 	entries, err := c.schema.GetWriteEntries(from, through, userID, metricName, chunk.Metric, chunk.ExternalKey())
@@ -249,6 +253,7 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, userID string, from
 }
 
 func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
+	//nolint:ineffassign,staticcheck //Leaving ctx even though we don't currently use it, we want to make it available for when we might need it and hopefully will ensure us using the correct context at that time
 	log, ctx := spanlogger.New(ctx, "store.validateQueryTimeRange")
 	defer log.Span.Finish()
 
@@ -266,11 +271,6 @@ func (c *store) validateQueryTimeRange(ctx context.Context, userID string, from 
 	if from.After(now) {
 		// time-span start is in future ... regard as legal
 		level.Info(log).Log("msg", "whole timerange in future, yield empty resultset", "through", through, "from", from, "now", now)
-		return true, nil
-	}
-
-	if from.After(now.Add(-c.cfg.MinChunkAge)) {
-		// no data relevant to this query will have arrived at the store yet
 		return true, nil
 	}
 
@@ -436,6 +436,9 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 }
 
 func (c *store) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
+	log, ctx := spanlogger.New(ctx, "store.lookupEntriesByQueries")
+	defer log.Span.Finish()
+
 	var lock sync.Mutex
 	var entries []IndexEntry
 	err := c.index.QueryPages(ctx, queries, func(query IndexQuery, resp ReadBatch) bool {
@@ -488,4 +491,127 @@ func (c *store) convertChunkIDsToChunks(ctx context.Context, userID string, chun
 	}
 
 	return chunkSet, nil
+}
+
+func (c *store) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
+	metricName := metric.Get(model.MetricNameLabel)
+	if metricName == "" {
+		return ErrMetricNameLabelMissing
+	}
+
+	chunkWriteEntries, err := c.schema.GetWriteEntries(from, through, userID, string(metricName), metric, chunkID)
+	if err != nil {
+		return errors.Wrapf(err, "when getting index entries to delete for chunkID=%s", chunkID)
+	}
+
+	return c.deleteChunk(ctx, userID, chunkID, metric, chunkWriteEntries, partiallyDeletedInterval, func(chunk Chunk) error {
+		return c.PutOne(ctx, chunk.From, chunk.Through, chunk)
+	})
+}
+
+func (c *store) deleteChunk(ctx context.Context,
+	userID string,
+	chunkID string,
+	metric labels.Labels,
+	chunkWriteEntries []IndexEntry,
+	partiallyDeletedInterval *model.Interval,
+	putChunkFunc func(chunk Chunk) error) error {
+
+	metricName := metric.Get(model.MetricNameLabel)
+	if metricName == "" {
+		return ErrMetricNameLabelMissing
+	}
+
+	// if chunk is partially deleted, fetch it, slice non-deleted portion and put it to store before deleting original chunk
+	if partiallyDeletedInterval != nil {
+		err := c.reboundChunk(ctx, userID, chunkID, *partiallyDeletedInterval, putChunkFunc)
+		if err != nil {
+			return errors.Wrapf(err, "chunkID=%s", chunkID)
+		}
+	}
+
+	batch := c.index.NewWriteBatch()
+	for i := range chunkWriteEntries {
+		batch.Delete(chunkWriteEntries[i].TableName, chunkWriteEntries[i].HashValue, chunkWriteEntries[i].RangeValue)
+	}
+
+	err := c.index.BatchWrite(ctx, batch)
+	if err != nil {
+		return errors.Wrapf(err, "when deleting index entries for chunkID=%s", chunkID)
+	}
+
+	err = c.chunks.DeleteChunk(ctx, chunkID)
+	if err != nil {
+		if err == ErrStorageObjectNotFound {
+			return nil
+		}
+		return errors.Wrapf(err, "when deleting chunk from storage with chunkID=%s", chunkID)
+	}
+
+	return nil
+}
+
+func (c *store) reboundChunk(ctx context.Context, userID, chunkID string, partiallyDeletedInterval model.Interval, putChunkFunc func(chunk Chunk) error) error {
+	chunk, err := ParseExternalKey(userID, chunkID)
+	if err != nil {
+		return errors.Wrap(err, "when parsing external key")
+	}
+
+	if !intervalsOverlap(model.Interval{Start: chunk.From, End: chunk.Through}, partiallyDeletedInterval) {
+		return ErrParialDeleteChunkNoOverlap
+	}
+
+	chunks, err := c.Fetcher.FetchChunks(ctx, []Chunk{chunk}, []string{chunkID})
+	if err != nil {
+		if err == ErrStorageObjectNotFound {
+			return nil
+		}
+		return errors.Wrap(err, "when fetching chunk from storage for slicing")
+	}
+
+	if len(chunks) != 1 {
+		return fmt.Errorf("expected to get 1 chunk from storage got %d instead", len(chunks))
+	}
+
+	chunk = chunks[0]
+	var newChunks []*Chunk
+	if partiallyDeletedInterval.Start > chunk.From {
+		newChunk, err := chunk.Slice(chunk.From, partiallyDeletedInterval.Start-1)
+		if err != nil && err != ErrSliceNoDataInRange {
+			return errors.Wrapf(err, "when slicing chunk for interval %d - %d", chunk.From, partiallyDeletedInterval.Start-1)
+		}
+
+		if newChunk != nil {
+			newChunks = append(newChunks, newChunk)
+		}
+	}
+
+	if partiallyDeletedInterval.End < chunk.Through {
+		newChunk, err := chunk.Slice(partiallyDeletedInterval.End+1, chunk.Through)
+		if err != nil && err != ErrSliceNoDataInRange {
+			return errors.Wrapf(err, "when slicing chunk for interval %d - %d", partiallyDeletedInterval.End+1, chunk.Through)
+		}
+
+		if newChunk != nil {
+			newChunks = append(newChunks, newChunk)
+		}
+	}
+
+	for _, newChunk := range newChunks {
+		if err := newChunk.Encode(); err != nil {
+			return errors.Wrapf(err, "when encoding new chunk formed after slicing for interval %d - %d", newChunk.From, newChunk.Through)
+		}
+
+		err = putChunkFunc(*newChunk)
+		if err != nil {
+			return errors.Wrapf(err, "when putting new chunk formed after slicing for interval %d - %d", newChunk.From, newChunk.Through)
+		}
+	}
+
+	return nil
+}
+
+func (c *store) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+	// SeriesID is something which is only used in SeriesStore so we need not do anything here
+	return nil
 }

@@ -108,7 +108,7 @@ func (j *jsonStage) Process(labels model.LabelSet, extracted map[string]interfac
 		value, err := getString(extracted[*j.cfg.Source])
 		if err != nil {
 			if Debug {
-				level.Debug(j.logger).Log("msg", "failed to convert source value to string", "source", *j.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*j.cfg.Source]).String())
+				level.Debug(j.logger).Log("msg", "failed to convert source value to string", "source", *j.cfg.Source, "err", err, "type", reflect.TypeOf(extracted[*j.cfg.Source]))
 			}
 			return
 		}

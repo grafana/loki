@@ -9,23 +9,26 @@ import (
 	"strings"
 	"sync"
 
-	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/golang/snappy"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-
 	errs "github.com/weaveworks/common/errors"
+
+	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 )
 
 // Errors that decode can return
 const (
-	ErrInvalidChecksum = errs.Error("invalid chunk checksum")
-	ErrWrongMetadata   = errs.Error("wrong chunk metadata")
-	ErrMetadataLength  = errs.Error("chunk metadata wrong length")
-	ErrDataLength      = errs.Error("chunk data wrong length")
+	ErrInvalidChecksum    = errs.Error("invalid chunk checksum")
+	ErrWrongMetadata      = errs.Error("wrong chunk metadata")
+	ErrMetadataLength     = errs.Error("chunk metadata wrong length")
+	ErrDataLength         = errs.Error("chunk data wrong length")
+	ErrSliceOutOfRange    = errs.Error("chunk can't be sliced out of its data range")
+	ErrSliceNoDataInRange = errs.Error("chunk has no data for given range to slice")
+	ErrSliceChunkOverflow = errs.Error("slicing should not overflow a chunk")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
@@ -326,4 +329,56 @@ func (c *Chunk) Samples(from, through model.Time) ([]model.SamplePair, error) {
 	it := c.Data.NewIterator(nil)
 	interval := metric.Interval{OldestInclusive: from, NewestInclusive: through}
 	return prom_chunk.RangeValues(it, interval)
+}
+
+// Slice builds a new smaller chunk with data only from given time range (inclusive)
+func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
+	// there should be atleast some overlap between chunk interval and slice interval
+	if from > c.Through || through < c.From {
+		return nil, ErrSliceOutOfRange
+	}
+
+	itr := c.Data.NewIterator(nil)
+	if !itr.FindAtOrAfter(from) {
+		return nil, ErrSliceNoDataInRange
+	}
+
+	pc, err := prom_chunk.NewForEncoding(c.Data.Encoding())
+	if err != nil {
+		return nil, err
+	}
+
+	for !itr.Value().Timestamp.After(through) {
+		oc, err := pc.Add(itr.Value())
+		if err != nil {
+			return nil, err
+		}
+
+		if oc != nil {
+			return nil, ErrSliceChunkOverflow
+		}
+		if !itr.Scan() {
+			break
+		}
+	}
+
+	err = itr.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	if pc.Len() == 0 {
+		return nil, ErrSliceNoDataInRange
+	}
+
+	nc := NewChunk(c.UserID, c.Fingerprint, c.Metric, pc, from, through)
+	return &nc, nil
+}
+
+func intervalsOverlap(interval1, interval2 model.Interval) bool {
+	if interval1.Start > interval2.End || interval2.Start > interval1.End {
+		return false
+	}
+
+	return true
 }

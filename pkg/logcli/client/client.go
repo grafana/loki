@@ -11,11 +11,12 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	json "github.com/json-iterator/go"
+	"github.com/prometheus/common/config"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
-	json "github.com/json-iterator/go"
-	"github.com/prometheus/common/config"
 )
 
 const (
@@ -23,6 +24,7 @@ const (
 	queryRangePath  = "/loki/api/v1/query_range"
 	labelsPath      = "/loki/api/v1/labels"
 	labelValuesPath = "/loki/api/v1/label/%s/values"
+	seriesPath      = "/loki/api/v1/series"
 	tailPath        = "/loki/api/v1/tail?query=%s&delay_for=%d&limit=%d&start=%d"
 )
 
@@ -32,6 +34,7 @@ type Client struct {
 	Username  string
 	Password  string
 	Address   string
+	OrgID     string
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -87,6 +90,19 @@ func (c *Client) ListLabelValues(name string, quiet bool) (*loghttp.LabelRespons
 	return &labelResponse, nil
 }
 
+func (c *Client) Series(matchers []string, from, through time.Time, quiet bool) (*loghttp.SeriesResponse, error) {
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", from.UnixNano())
+	params.SetInt("end", through.UnixNano())
+	params.SetStringArray("match", matchers)
+
+	var seriesResponse loghttp.SeriesResponse
+	if err := c.doRequest(params.EncodeWithPath(seriesPath), quiet, &seriesResponse); err != nil {
+		return nil, err
+	}
+	return &seriesResponse, nil
+}
+
 func (c *Client) doQuery(path string, quiet bool) (*loghttp.QueryResponse, error) {
 	var err error
 	var r loghttp.QueryResponse
@@ -110,6 +126,10 @@ func (c *Client) doRequest(path string, quiet bool, out interface{}) error {
 	}
 
 	req.SetBasicAuth(c.Username, c.Password)
+
+	if c.OrgID != "" {
+		req.Header.Set("X-Scope-OrgID", c.OrgID)
+	}
 
 	// Parse the URL to extract the host
 	clientConfig := config.HTTPClientConfig{
@@ -168,6 +188,10 @@ func (c *Client) wsConnect(path string, quiet bool) (*websocket.Conn, error) {
 	}
 
 	h := http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(c.Username+":"+c.Password))}}
+
+	if c.OrgID != "" {
+		h.Set("X-Scope-OrgID", c.OrgID)
+	}
 
 	ws := websocket.Dialer{
 		TLSClientConfig: tlsConfig,

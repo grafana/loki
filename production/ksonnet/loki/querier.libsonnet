@@ -11,7 +11,7 @@
     container.withPorts($.util.defaultPorts) +
     container.withArgsMixin($.util.mapToFlags($.querier_args)) +
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
-    container.mixin.readinessProbe.httpGet.withPort(80) +
+    container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1),
 
@@ -20,7 +20,8 @@
   querier_deployment:
     deployment.new('querier', 3, [$.querier_container]) +
     $.config_hash_mixin +
-    $.util.configVolumeMount('loki', '/etc/loki') +
+    $.util.configVolumeMount('loki', '/etc/loki/config') +
+    $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
     $.util.antiAffinity,
 
   querier_service:

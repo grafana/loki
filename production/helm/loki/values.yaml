@@ -1,7 +1,14 @@
 image:
   repository: grafana/loki
-  tag: v1.3.0
+  tag: 1.4.1
   pullPolicy: IfNotPresent
+
+  ## Optionally specify an array of imagePullSecrets.
+  ## Secrets must be manually created in the namespace.
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+  ##
+  # pullSecrets:
+  #   - myRegistrKeySecretName
 
 ingress:
   enabled: false
@@ -82,7 +89,7 @@ config:
     max_look_back_period: 0
   table_manager:
     retention_deletes_enabled: false
-    retention_period: 0
+    retention_period: 0s
 
 ## Additional Loki container arguments, e.g. log level (debug, info, warn, error)
 extraArgs: {}

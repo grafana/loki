@@ -7,11 +7,11 @@ import (
 	"io"
 
 	"github.com/gorilla/websocket"
+	json "github.com/json-iterator/go"
+
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	json "github.com/json-iterator/go"
-	"github.com/prometheus/prometheus/promql"
 )
 
 // Note that the below methods directly marshal the values passed in.  This is because these objects currently marshal
@@ -20,13 +20,14 @@ import (
 // for loghttp model objects 2) marshal the loghttp model objects
 
 // WriteQueryResponseJSON marshals promql.Value to legacy loghttp JSON and then writes it to the provided io.Writer
-func WriteQueryResponseJSON(v promql.Value, w io.Writer) error {
-	if v.Type() != logql.ValueTypeStreams {
-		return fmt.Errorf("legacy endpoints only support %s result type, current type is %s", logql.ValueTypeStreams, v.Type())
+func WriteQueryResponseJSON(v logql.Result, w io.Writer) error {
+	if v.Data.Type() != logql.ValueTypeStreams {
+		return fmt.Errorf("legacy endpoints only support %s result type, current type is %s", logql.ValueTypeStreams, v.Data.Type())
 	}
 
 	j := map[string]interface{}{
-		"streams": v,
+		"streams": v.Data,
+		"stats":   v.Statistics,
 	}
 
 	return json.NewEncoder(w).Encode(j)

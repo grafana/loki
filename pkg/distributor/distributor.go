@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"net/http"
+	"os"
 	"sync/atomic"
 	"time"
 
@@ -12,7 +13,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
-	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/pkg/errors"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing/opentracing-go"
@@ -76,7 +78,7 @@ type Distributor struct {
 	cfg           Config
 	clientCfg     client.Config
 	ingestersRing ring.ReadRing
-	overrides     *validation.Overrides
+	validator     *Validator
 	pool          *cortex_client.Pool
 
 	// The global rate limiter requires a distributors ring to count
@@ -96,6 +98,11 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 		}
 	}
 
+	validator, err := NewValidator(overrides)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create the configured ingestion rate limit strategy (local or global).
 	var ingestionRateStrategy limiter.RateLimiterStrategy
 	var distributorsRing *ring.Lifecycler
@@ -107,7 +114,17 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 			return nil, err
 		}
 
-		distributorsRing.Start()
+		distributorsRing.AddListener(services.NewListener(nil, nil, nil, nil, func(_ services.State, failure error) {
+			// lifecycler used to do os.Exit(1) on its own failure, but now it just goes into Failed state.
+			// for now we just simulate old behaviour here. When Distributor itself becomes a service, it will enter Failed state as well.
+			level.Error(cortex_util.Logger).Log("msg", "lifecycler failed", "err", err)
+			os.Exit(1)
+		}))
+
+		err = services.StartAndAwaitRunning(context.Background(), distributorsRing)
+		if err != nil {
+			return nil, err
+		}
 
 		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, distributorsRing)
 	} else {
@@ -119,9 +136,13 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 		clientCfg:            clientCfg,
 		ingestersRing:        ingestersRing,
 		distributorsRing:     distributorsRing,
-		overrides:            overrides,
+		validator:            validator,
 		pool:                 cortex_client.NewPool(clientCfg.PoolConfig, ingestersRing, factory, cortex_util.Logger),
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
+	}
+
+	if err := services.StartAndAwaitRunning(context.Background(), d.pool); err != nil {
+		return nil, errors.Wrap(err, "starting client pool")
 	}
 
 	return &d, nil
@@ -129,8 +150,9 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 
 func (d *Distributor) Stop() {
 	if d.distributorsRing != nil {
-		d.distributorsRing.Shutdown()
+		_ = services.StopAndAwaitTerminated(context.Background(), d.distributorsRing)
 	}
+	_ = services.StopAndAwaitTerminated(context.Background(), d.pool)
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
@@ -194,16 +216,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedSamplesCount := 0
 
 	for _, stream := range req.Streams {
-		if err := d.validateLabels(userID, stream.Labels); err != nil {
+		if err := d.validator.ValidateLabels(userID, stream.Labels); err != nil {
 			validationErr = err
 			continue
 		}
 
 		entries := make([]logproto.Entry, 0, len(stream.Entries))
 		for _, entry := range stream.Entries {
-			if err := cortex_validation.ValidateSample(d.overrides, userID, metricName, cortex_client.Sample{
-				TimestampMs: entry.Timestamp.UnixNano() / int64(time.Millisecond),
-			}); err != nil {
+			if err := d.validator.ValidateEntry(userID, entry); err != nil {
 				validationErr = err
 				continue
 			}
@@ -279,16 +299,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-}
-
-func (d *Distributor) validateLabels(userID, labels string) error {
-	ls, err := util.ToClientLabels(labels)
-	if err != nil {
-		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
-	// everything in `ValidateLabels` returns `httpgrpc.Errorf` errors, no sugaring needed
-	return cortex_validation.ValidateLabels(d.overrides, userID, ls)
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.

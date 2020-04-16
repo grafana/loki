@@ -21,6 +21,7 @@ spec:
       - {{ .Release.Namespace | quote }}
   endpoints:
   - port: http-metrics
+    path: /api/v1/metrics/prometheus
     {{- if .Values.serviceMonitor.interval }}
     interval: {{ .Values.serviceMonitor.interval }}
     {{- end }}

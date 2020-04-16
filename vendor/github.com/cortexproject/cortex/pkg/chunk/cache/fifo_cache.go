@@ -5,9 +5,12 @@ import (
 	"flag"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (
@@ -32,6 +35,13 @@ var (
 		Help:      "The total number of evicted entries",
 	}, []string{"cache"})
 
+	cacheEntriesCurrent = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "querier",
+		Subsystem: "cache",
+		Name:      "entries",
+		Help:      "The total number of entries",
+	}, []string{"cache"})
+
 	cacheTotalGets = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "querier",
 		Subsystem: "cache",
@@ -52,12 +62,19 @@ var (
 		Name:      "stale_gets_total",
 		Help:      "The total number of Get calls that had an entry which expired",
 	}, []string{"cache"})
+
+	cacheMemoryBytes = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "querier",
+		Subsystem: "cache",
+		Name:      "memory_bytes",
+		Help:      "The current cache size in bytes",
+	}, []string{"cache"})
 )
 
 // FifoCacheConfig holds config for the FifoCache.
 type FifoCacheConfig struct {
-	Size     int           `yaml:"size,omitempty"`
-	Validity time.Duration `yaml:"validity,omitempty"`
+	Size     int           `yaml:"size"`
+	Validity time.Duration `yaml:"validity"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -81,9 +98,11 @@ type FifoCache struct {
 	entriesAdded    prometheus.Counter
 	entriesAddedNew prometheus.Counter
 	entriesEvicted  prometheus.Counter
+	entriesCurrent  prometheus.Gauge
 	totalGets       prometheus.Counter
 	totalMisses     prometheus.Counter
 	staleGets       prometheus.Counter
+	memoryBytes     prometheus.Gauge
 }
 
 type cacheEntry struct {
@@ -96,7 +115,9 @@ type cacheEntry struct {
 // NewFifoCache returns a new initialised FifoCache of size.
 // TODO(bwplotka): Fix metrics, get them out of globals, separate or allow prefixing.
 func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
-	return &FifoCache{
+	util.WarnExperimentalUse("In-memory (FIFO) cache")
+
+	cache := &FifoCache{
 		size:     cfg.Size,
 		validity: cfg.Validity,
 		entries:  make([]cacheEntry, 0, cfg.Size),
@@ -106,10 +127,15 @@ func NewFifoCache(name string, cfg FifoCacheConfig) *FifoCache {
 		entriesAdded:    cacheEntriesAdded.WithLabelValues(name),
 		entriesAddedNew: cacheEntriesAddedNew.WithLabelValues(name),
 		entriesEvicted:  cacheEntriesEvicted.WithLabelValues(name),
+		entriesCurrent:  cacheEntriesCurrent.WithLabelValues(name),
 		totalGets:       cacheTotalGets.WithLabelValues(name),
 		totalMisses:     cacheTotalMisses.WithLabelValues(name),
 		staleGets:       cacheStaleGets.WithLabelValues(name),
+		memoryBytes:     cacheMemoryBytes.WithLabelValues(name),
 	}
+	// set initial memory allocation
+	cache.memoryBytes.Set(float64(int(unsafe.Sizeof(cacheEntry{})) * cache.size))
+	return cache
 }
 
 // Fetch implements Cache.
@@ -139,8 +165,7 @@ func (c *FifoCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
 }
 
 // Stop implements Cache.
-func (c *FifoCache) Stop() error {
-	return nil
+func (c *FifoCache) Stop() {
 }
 
 // Put stores the value against the key.
@@ -163,6 +188,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 	index, ok := c.index[key]
 	if ok {
 		entry := c.entries[index]
+		deltaSize := sizeOf(value) - sizeOf(entry.value)
 
 		entry.updated = time.Now()
 		entry.value = value
@@ -170,6 +196,11 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 		// Remove this entry from the FIFO linked-list.
 		c.entries[entry.prev].next = entry.next
 		c.entries[entry.next].prev = entry.prev
+
+		// Corner case: updating last element
+		if c.last == index {
+			c.last = entry.prev
+		}
 
 		// Insert it at the beginning
 		entry.next = c.first
@@ -179,6 +210,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 		c.first = index
 
 		c.entries[index] = entry
+		c.memoryBytes.Add(float64(deltaSize))
 		return
 	}
 	c.entriesAddedNew.Inc()
@@ -188,6 +220,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 		c.entriesEvicted.Inc()
 		index = c.last
 		entry := c.entries[index]
+		deltaSize := sizeOf(key) + sizeOf(value) - sizeOf(entry.key) - sizeOf(entry.value)
 
 		c.last = entry.prev
 		c.first = index
@@ -198,6 +231,7 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 		entry.value = value
 		entry.key = key
 		c.entries[index] = entry
+		c.memoryBytes.Add(float64(deltaSize))
 		return
 	}
 
@@ -214,6 +248,9 @@ func (c *FifoCache) put(ctx context.Context, key string, value interface{}) {
 	c.entries[c.last].next = index
 	c.first = index
 	c.index[key] = index
+
+	c.memoryBytes.Add(float64(sizeOf(key) + sizeOf(value)))
+	c.entriesCurrent.Inc()
 }
 
 // Get returns the stored value against the key and when the key was last updated.
@@ -229,7 +266,7 @@ func (c *FifoCache) Get(ctx context.Context, key string) (interface{}, bool) {
 	index, ok := c.index[key]
 	if ok {
 		updated := c.entries[index].updated
-		if c.validity == 0 || time.Now().Sub(updated) < c.validity {
+		if c.validity == 0 || time.Since(updated) < c.validity {
 			return c.entries[index].value, true
 		}
 
@@ -240,4 +277,40 @@ func (c *FifoCache) Get(ctx context.Context, key string) (interface{}, bool) {
 
 	c.totalMisses.Inc()
 	return nil, false
+}
+
+func sizeOf(i interface{}) int {
+	switch v := i.(type) {
+	case string:
+		return len(v)
+	case []int8:
+		return len(v)
+	case []uint8:
+		return len(v)
+	case []int32:
+		return len(v) * 4
+	case []uint32:
+		return len(v) * 4
+	case []float32:
+		return len(v) * 4
+	case []int64:
+		return len(v) * 8
+	case []uint64:
+		return len(v) * 8
+	case []float64:
+		return len(v) * 8
+	// next 2 cases are machine dependent
+	case []int:
+		if l := len(v); l > 0 {
+			return int(unsafe.Sizeof(v[0])) * l
+		}
+		return 0
+	case []uint:
+		if l := len(v); l > 0 {
+			return int(unsafe.Sizeof(v[0])) * l
+		}
+		return 0
+	default:
+		return int(unsafe.Sizeof(i))
+	}
 }

@@ -16,8 +16,9 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const arnPrefix = "arn:"
@@ -55,6 +56,7 @@ func (a dynamoDBStorageClient) setErrorParameters(provisionedErr, errAfter int) 
 	}
 }
 
+//nolint:unused //Leaving this around in the case we need to create a table via mock this is useful.
 func (m *mockDynamoDBClient) createTable(name string) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()

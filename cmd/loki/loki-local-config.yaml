@@ -17,20 +17,20 @@ ingester:
 
 schema_config:
   configs:
-  - from: 2018-04-15
-    store: boltdb
-    object_store: filesystem
-    schema: v9
-    index:
-      prefix: index_
-      period: 168h
+    - from: 2018-04-15
+      store: boltdb
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_
+        period: 168h
 
 storage_config:
   boltdb:
-    directory: /tmp/loki/index
+    directory: /loki/index
 
   filesystem:
-    directory: /tmp/loki/chunks
+    directory: /loki/chunks
 
 limits_config:
   enforce_metric_name: false
@@ -52,5 +52,4 @@ table_manager:
     provisioned_read_throughput: 0
     provisioned_write_throughput: 0
   retention_deletes_enabled: false
-  retention_period: 0
-
+  retention_period: 0s

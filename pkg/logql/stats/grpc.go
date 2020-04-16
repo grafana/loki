@@ -79,7 +79,7 @@ func decodeTrailers(ctx context.Context) Ingester {
 	if !ok {
 		return res
 	}
-	res.TotalReached = len(collector.trailers)
+	res.TotalReached = int32(len(collector.trailers))
 	for _, meta := range collector.trailers {
 		ing := decodeTrailer(meta)
 		res.TotalChunksMatched += ing.TotalChunksMatched
@@ -96,18 +96,29 @@ func decodeTrailers(ctx context.Context) Ingester {
 }
 
 func decodeTrailer(meta *metadata.MD) Ingester {
-	var res Ingester
+	var ingData IngesterData
 	values := meta.Get(ingesterDataKey)
 	if len(values) == 1 {
-		if err := jsoniter.UnmarshalFromString(values[0], &res.IngesterData); err != nil {
+		if err := jsoniter.UnmarshalFromString(values[0], &ingData); err != nil {
 			level.Warn(util.Logger).Log("msg", "could not unmarshal ingester data", "err", err)
 		}
 	}
+	var chunkData ChunkData
 	values = meta.Get(chunkDataKey)
 	if len(values) == 1 {
-		if err := jsoniter.UnmarshalFromString(values[0], &res.ChunkData); err != nil {
+		if err := jsoniter.UnmarshalFromString(values[0], &chunkData); err != nil {
 			level.Warn(util.Logger).Log("msg", "could not unmarshal chunk data", "err", err)
 		}
 	}
-	return res
+	return Ingester{
+		TotalChunksMatched: ingData.TotalChunksMatched,
+		TotalBatches:       ingData.TotalBatches,
+		TotalLinesSent:     ingData.TotalLinesSent,
+		HeadChunkBytes:     chunkData.HeadChunkBytes,
+		HeadChunkLines:     chunkData.HeadChunkLines,
+		DecompressedBytes:  chunkData.DecompressedBytes,
+		DecompressedLines:  chunkData.DecompressedLines,
+		CompressedBytes:    chunkData.CompressedBytes,
+		TotalDuplicates:    chunkData.TotalDuplicates,
+	}
 }

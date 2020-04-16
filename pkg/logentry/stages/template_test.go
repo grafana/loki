@@ -1,11 +1,14 @@
 package stages
 
 import (
+	"bytes"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -42,6 +45,15 @@ var testTemplateLogLine = `
 	"message" : "this is a log line"
 }
 `
+var testTemplateLogLineWithMissingKey = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"component": ["parser","type"],
+	"level" : "WARN",
+	"nested" : {"child":"value"},
+	"message" : "this is a log line"
+}
+`
 
 func TestPipeline_Template(t *testing.T) {
 	pl, err := NewPipeline(util.Logger, loadConfig(testTemplateYaml), nil, prometheus.DefaultRegisterer)
@@ -59,6 +71,26 @@ func TestPipeline_Template(t *testing.T) {
 	extracted := map[string]interface{}{}
 	pl.Process(lbls, extracted, &ts, &entry)
 	assert.Equal(t, expectedLbls, lbls)
+}
+
+func TestPipelineWithMissingKey_Temaplate(t *testing.T) {
+	var buf bytes.Buffer
+	w := log.NewSyncWriter(&buf)
+	logger := log.NewLogfmtLogger(w)
+	pl, err := NewPipeline(logger, loadConfig(testTemplateYaml), nil, prometheus.DefaultRegisterer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	Debug = true
+	ts := time.Now()
+	entry := testTemplateLogLineWithMissingKey
+	extracted := map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	expectedLog := "level=debug msg=\"extracted template could not be converted to a string\" err=\"Can't convert <nil> to string\" type=null"
+	if !(strings.Contains(buf.String(), expectedLog)) {
+		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
+	}
 }
 
 func TestTemplateValidation(t *testing.T) {
@@ -123,6 +155,69 @@ func TestTemplateStage_Process(t *testing.T) {
 			map[string]interface{}{
 				"notmissing": "value",
 				"missing":    "newval",
+			},
+		},
+		"template with multiple keys": {
+			TemplateConfig{
+				Source:   "message",
+				Template: "{{.Value}} in module {{.module}}",
+			},
+			map[string]interface{}{
+				"level":   "warn",
+				"app":     "loki",
+				"message": "warn for app loki",
+				"module":  "test",
+			},
+			map[string]interface{}{
+				"level":   "warn",
+				"app":     "loki",
+				"module":  "test",
+				"message": "warn for app loki in module test",
+			},
+		},
+		"template with multiple keys with missing source": {
+			TemplateConfig{
+				Source:   "missing",
+				Template: "{{ .level }} for app {{ .app | ToUpper }}",
+			},
+			map[string]interface{}{
+				"level": "warn",
+				"app":   "loki",
+			},
+			map[string]interface{}{
+				"level":   "warn",
+				"app":     "loki",
+				"missing": "warn for app LOKI",
+			},
+		},
+		"template with multiple keys with missing key": {
+			TemplateConfig{
+				Source:   "message",
+				Template: "{{.Value}} in module {{.module}}",
+			},
+			map[string]interface{}{
+				"level":   "warn",
+				"app":     "loki",
+				"message": "warn for app loki",
+			},
+			map[string]interface{}{
+				"level":   "warn",
+				"app":     "loki",
+				"message": "warn for app loki in module <no value>",
+			},
+		},
+		"template with multiple keys with nil value in extracted key": {
+			TemplateConfig{
+				Source:   "level",
+				Template: "{{ Replace .Value \"Warning\" \"warn\" 1 }}",
+			},
+			map[string]interface{}{
+				"level":   "Warning",
+				"testval": nil,
+			},
+			map[string]interface{}{
+				"level":   "warn",
+				"testval": nil,
 			},
 		},
 		"ToLower": {

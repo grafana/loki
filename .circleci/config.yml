@@ -1,7 +1,7 @@
 version: 2
 
 .tags: &tags # tags need to be explicitely defined (whitelist)
-  tags: {only: "/.*/"}
+  tags: { only: "/.*/" }
 
 .only-tags: &only-tags
   <<: *tags
@@ -11,7 +11,8 @@ version: 2
   branches: { only: master }
   <<: *tags
 
-.no-master: &no-master # contrary to tags, the branches must be excluded (blacklist)
+.no-master:
+  &no-master # contrary to tags, the branches must be excluded (blacklist)
   branches: { ignore: master }
 
 workflows:
@@ -20,34 +21,33 @@ workflows:
     jobs:
       # publish jobs depend on this as well,
       # thus tags need to be allowed for these
-      - test: {filters: {<<: *tags}}
+      - test: { filters: { <<: *tags } }
 
       - build/promtail-windows:
-          requires: [ test ]
+          requires: [test]
 
       - build/docker-driver:
-          requires: [ test ]
-          filters: {<<: *no-master}
+          requires: [test]
+          filters: { <<: *no-master }
       - publish/docker-driver:
-          requires: [ test ]
+          requires: [test]
           filters: { <<: *tag-or-master }
 
       - publish/binaries:
-          requires: [ test ]
+          requires: [test]
           filters: { <<: *only-tags }
 
       - test-helm:
-          requires: [ test ]
-          filters: {<<: *tags}
+          requires: [test]
+          filters: { <<: *tags }
       - publish-helm:
-          requires: [ test-helm ]
-          filters: {<<: *tag-or-master}
-
+          requires: [test-helm]
+          filters: { <<: *tag-or-master }
 
 # https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
 .defaults: &defaults
   docker:
-    - image: grafana/loki-build-image:0.9.0
+    - image: grafana/loki-build-image:0.9.2
   working_directory: /src/loki
 
 jobs:
@@ -58,6 +58,10 @@ jobs:
       - run:
           name: Unit Tests
           command: make BUILD_IN_CONTAINER=false test
+      - run:
+          name: Upload Codecov
+          command: |
+            bash <(curl -s https://codecov.io/bash)
 
   # Promtail
   build/promtail-windows:
@@ -119,7 +123,7 @@ jobs:
       - run:
           name: Install Helm
           command: |
-            curl -L https://git.io/get_helm.sh | bash
+            curl -L https://git.io/get_helm.sh | bash -s -- -v v2.16.3
             kubectl apply -f tools/helm.yaml
             helm init --service-account helm --wait
       - run:
@@ -142,4 +146,10 @@ jobs:
           fingerprints:
             - "5a:d3:08:5e:f7:53:a0:c4:e9:5d:83:c6:02:6a:d9:bd"
       - checkout
-      - run: make helm-publish
+      - run:
+          name: import GPG key
+          command: echo -e "$GPG_KEY" | gpg --import
+      - run:
+          name: export  GPG key
+          command: gpg --export-secret-key loki-team@googlegroups.com  > ~/.gnupg/secring.gpg
+      - run: PACKAGE_ARGS='--sign --key "Grafana Loki" --keyring ~/.gnupg/secring.gpg' make helm-publish

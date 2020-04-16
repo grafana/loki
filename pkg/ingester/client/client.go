@@ -7,12 +7,13 @@ import (
 
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/weaveworks/common/middleware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 // Config for an ingester client.
@@ -35,9 +36,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func New(cfg Config, addr string) (grpc_health_v1.HealthClient, error) {
 	opts := []grpc.DialOption{
 		grpc.WithInsecure(),
-		grpc.WithDefaultCallOptions(
-			grpc.UseCompressor("gzip"),
-		),
+		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
 	opts = append(opts, cfg.GRPCClientConfig.DialOption(instrumentation())...)
 	conn, err := grpc.Dial(addr, opts...)
@@ -54,6 +53,7 @@ func New(cfg Config, addr string) (grpc_health_v1.HealthClient, error) {
 		PusherClient:   logproto.NewPusherClient(conn),
 		QuerierClient:  logproto.NewQuerierClient(conn),
 		IngesterClient: logproto.NewIngesterClient(conn),
+		HealthClient:   grpc_health_v1.NewHealthClient(conn),
 		Closer:         conn,
 	}, nil
 }

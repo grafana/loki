@@ -15,7 +15,7 @@ type Config struct{}
 
 var (
 	// DefaultEncoding exported for use in unit tests elsewhere
-	DefaultEncoding             = DoubleDelta
+	DefaultEncoding             = Bigchunk
 	alwaysMarshalFullsizeChunks = true
 	bigchunkSizeCapBytes        = 0
 )

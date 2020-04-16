@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func Test_splitQuery(t *testing.T) {
@@ -79,31 +80,32 @@ func Test_splitQuery(t *testing.T) {
 
 func Test_splitByInterval_Do(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
-	split := splitByInterval{
-		next: queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
-			return &LokiResponse{
-				Status:    loghttp.QueryStatusSuccess,
-				Direction: r.(*LokiRequest).Direction,
-				Limit:     r.(*LokiRequest).Limit,
-				Version:   uint32(loghttp.VersionV1),
-				Data: LokiData{
-					ResultType: loghttp.ResultTypeStream,
-					Result: []logproto.Stream{
-						{
-							Labels: `{foo="bar", level="debug"}`,
-							Entries: []logproto.Entry{
+	next := queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
+		return &LokiResponse{
+			Status:    loghttp.QueryStatusSuccess,
+			Direction: r.(*LokiRequest).Direction,
+			Limit:     r.(*LokiRequest).Limit,
+			Version:   uint32(loghttp.VersionV1),
+			Data: LokiData{
+				ResultType: loghttp.ResultTypeStream,
+				Result: []logproto.Stream{
+					{
+						Labels: `{foo="bar", level="debug"}`,
+						Entries: []logproto.Entry{
 
-								{Timestamp: time.Unix(0, r.(*LokiRequest).StartTs.UnixNano()), Line: fmt.Sprintf("%d", r.(*LokiRequest).StartTs.UnixNano())},
-							},
+							{Timestamp: time.Unix(0, r.(*LokiRequest).StartTs.UnixNano()), Line: fmt.Sprintf("%d", r.(*LokiRequest).StartTs.UnixNano())},
 						},
 					},
 				},
-			}, nil
-		}),
-		limits:   fakeLimits{},
-		merger:   lokiCodec,
-		interval: time.Hour,
-	}
+			},
+		}, nil
+	})
+
+	l := WithDefaultLimits(fakeLimits{}, queryrange.Config{SplitQueriesByInterval: time.Hour})
+	split := SplitByIntervalMiddleware(
+		l,
+		lokiCodec,
+	).Wrap(next)
 
 	tests := []struct {
 		name string
@@ -252,40 +254,41 @@ func Test_ExitEarly(t *testing.T) {
 	var callCt int
 	var mtx sync.Mutex
 
-	split := splitByInterval{
-		next: queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
-			time.Sleep(time.Millisecond) // artificial delay to minimize race condition exposure in test
+	next := queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
+		time.Sleep(time.Millisecond) // artificial delay to minimize race condition exposure in test
 
-			mtx.Lock()
-			defer mtx.Unlock()
-			callCt++
+		mtx.Lock()
+		defer mtx.Unlock()
+		callCt++
 
-			return &LokiResponse{
-				Status:    loghttp.QueryStatusSuccess,
-				Direction: r.(*LokiRequest).Direction,
-				Limit:     r.(*LokiRequest).Limit,
-				Version:   uint32(loghttp.VersionV1),
-				Data: LokiData{
-					ResultType: loghttp.ResultTypeStream,
-					Result: []logproto.Stream{
-						{
-							Labels: `{foo="bar", level="debug"}`,
-							Entries: []logproto.Entry{
+		return &LokiResponse{
+			Status:    loghttp.QueryStatusSuccess,
+			Direction: r.(*LokiRequest).Direction,
+			Limit:     r.(*LokiRequest).Limit,
+			Version:   uint32(loghttp.VersionV1),
+			Data: LokiData{
+				ResultType: loghttp.ResultTypeStream,
+				Result: []logproto.Stream{
+					{
+						Labels: `{foo="bar", level="debug"}`,
+						Entries: []logproto.Entry{
 
-								{
-									Timestamp: time.Unix(0, r.(*LokiRequest).StartTs.UnixNano()),
-									Line:      fmt.Sprintf("%d", r.(*LokiRequest).StartTs.UnixNano()),
-								},
+							{
+								Timestamp: time.Unix(0, r.(*LokiRequest).StartTs.UnixNano()),
+								Line:      fmt.Sprintf("%d", r.(*LokiRequest).StartTs.UnixNano()),
 							},
 						},
 					},
 				},
-			}, nil
-		}),
-		limits:   fakeLimits{},
-		merger:   lokiCodec,
-		interval: time.Hour,
-	}
+			},
+		}, nil
+	})
+
+	l := WithDefaultLimits(fakeLimits{}, queryrange.Config{SplitQueriesByInterval: time.Hour})
+	split := SplitByIntervalMiddleware(
+		l,
+		lokiCodec,
+	).Wrap(next)
 
 	req := &LokiRequest{
 		StartTs:   time.Unix(0, 0),
@@ -332,37 +335,38 @@ func Test_ExitEarly(t *testing.T) {
 func Test_DoesntDeadlock(t *testing.T) {
 	n := 10
 
-	split := splitByInterval{
-		next: queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
+	next := queryrange.HandlerFunc(func(_ context.Context, r queryrange.Request) (queryrange.Response, error) {
 
-			return &LokiResponse{
-				Status:    loghttp.QueryStatusSuccess,
-				Direction: r.(*LokiRequest).Direction,
-				Limit:     r.(*LokiRequest).Limit,
-				Version:   uint32(loghttp.VersionV1),
-				Data: LokiData{
-					ResultType: loghttp.ResultTypeStream,
-					Result: []logproto.Stream{
-						{
-							Labels: `{foo="bar", level="debug"}`,
-							Entries: []logproto.Entry{
+		return &LokiResponse{
+			Status:    loghttp.QueryStatusSuccess,
+			Direction: r.(*LokiRequest).Direction,
+			Limit:     r.(*LokiRequest).Limit,
+			Version:   uint32(loghttp.VersionV1),
+			Data: LokiData{
+				ResultType: loghttp.ResultTypeStream,
+				Result: []logproto.Stream{
+					{
+						Labels: `{foo="bar", level="debug"}`,
+						Entries: []logproto.Entry{
 
-								{
-									Timestamp: time.Unix(0, r.(*LokiRequest).StartTs.UnixNano()),
-									Line:      fmt.Sprintf("%d", r.(*LokiRequest).StartTs.UnixNano()),
-								},
+							{
+								Timestamp: time.Unix(0, r.(*LokiRequest).StartTs.UnixNano()),
+								Line:      fmt.Sprintf("%d", r.(*LokiRequest).StartTs.UnixNano()),
 							},
 						},
 					},
 				},
-			}, nil
-		}),
-		limits: fakeLimits{
-			maxQueryParallelism: n,
-		},
-		merger:   lokiCodec,
-		interval: time.Hour,
-	}
+			},
+		}, nil
+	})
+
+	l := WithDefaultLimits(fakeLimits{
+		maxQueryParallelism: n,
+	}, queryrange.Config{SplitQueriesByInterval: time.Hour})
+	split := SplitByIntervalMiddleware(
+		l,
+		lokiCodec,
+	).Wrap(next)
 
 	// split into n requests w/ n/2 limit, ensuring unused responses are cleaned up properly
 	req := &LokiRequest{

@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func testIteratorForward(t *testing.T, iter iter.EntryIterator, from, through int64) {
@@ -46,7 +47,7 @@ func TestIterator(t *testing.T) {
 		new  func() chunkenc.Chunk
 	}{
 		{"dumbChunk", chunkenc.NewDumbChunk},
-		{"gzipChunk", func() chunkenc.Chunk { return chunkenc.NewMemChunk(chunkenc.EncGZIP) }},
+		{"gzipChunk", func() chunkenc.Chunk { return chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 0) }},
 	} {
 		t.Run(chk.name, func(t *testing.T) {
 			chunk := chk.new()

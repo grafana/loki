@@ -10,7 +10,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -148,7 +147,7 @@ func TestFlushMaxAge(t *testing.T) {
 
 	// assert stream is now both batches
 	store.checkData(t, map[string][]*logproto.Stream{
-		userID: []*logproto.Stream{
+		userID: {
 			{Labels: model.LabelSet{"app": "l"}.String(), Entries: append(firstEntries, secondEntries...)},
 		},
 	})
@@ -177,7 +176,7 @@ func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
 
 // nolint
 func defaultIngesterTestConfig(t *testing.T) Config {
-	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, codec.Proto{Factory: ring.ProtoDescFactory})
+	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, ring.GetCodec())
 	require.NoError(t, err)
 
 	cfg := Config{}

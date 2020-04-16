@@ -7,10 +7,11 @@ import (
 	"net"
 	"testing"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/test/bufconn"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const bufSize = 1024 * 1024
@@ -81,7 +82,7 @@ func TestCollectTrailer(t *testing.T) {
 		t.Fatal(err)
 	}
 	res := decodeTrailers(ctx)
-	require.Equal(t, 2, res.TotalReached)
+	require.Equal(t, int32(2), res.TotalReached)
 	require.Equal(t, int64(2), res.TotalChunksMatched)
 	require.Equal(t, int64(4), res.TotalBatches)
 	require.Equal(t, int64(6), res.TotalLinesSent)

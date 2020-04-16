@@ -16,8 +16,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
@@ -31,6 +31,12 @@ const (
 
 	// DistributorRingKey is the key under which we store the distributors ring in the KVStore.
 	DistributorRingKey = "distributor"
+
+	// CompactorRingKey is the key under which we store the compactors ring in the KVStore.
+	CompactorRingKey = "compactor"
+
+	// StoreGatewayRingKey is the key under which we store the store gateways ring in the KVStore.
+	StoreGatewayRingKey = "store-gateway"
 )
 
 // ReadRing represents the read interface to the ring.
@@ -44,6 +50,7 @@ type ReadRing interface {
 	GetAll() (ReplicationSet, error)
 	ReplicationFactor() int
 	IngesterCount() int
+	Subring(key uint32, n int) (ReadRing, error)
 }
 
 // Operation can be Read or Write
@@ -56,20 +63,14 @@ const (
 	Reporting // Special value for inquiring about health
 )
 
-type uint32s []uint32
-
-func (x uint32s) Len() int           { return len(x) }
-func (x uint32s) Less(i, j int) bool { return x[i] < x[j] }
-func (x uint32s) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
-
 // ErrEmptyRing is the error returned when trying to get an element when nothing has been added to hash.
 var ErrEmptyRing = errors.New("empty ring")
 
 // Config for a Ring
 type Config struct {
-	KVStore           kv.Config     `yaml:"kvstore,omitempty"`
-	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout,omitempty"`
-	ReplicationFactor int           `yaml:"replication_factor,omitempty"`
+	KVStore           kv.Config     `yaml:"kvstore"`
+	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout"`
+	ReplicationFactor int           `yaml:"replication_factor"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet with a specified prefix
@@ -87,15 +88,16 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 // Ring holds the information about the members of the consistent hash ring.
 type Ring struct {
+	services.Service
+
 	name     string
 	key      string
 	cfg      Config
 	KVClient kv.Client
-	done     chan struct{}
-	quit     context.CancelFunc
 
-	mtx      sync.RWMutex
-	ringDesc *Desc
+	mtx        sync.RWMutex
+	ringDesc   *Desc
+	ringTokens []TokenDesc
 
 	memberOwnershipDesc *prometheus.Desc
 	numMembersDesc      *prometheus.Desc
@@ -104,12 +106,12 @@ type Ring struct {
 	oldestTimestampDesc *prometheus.Desc
 }
 
-// New creates a new Ring
+// New creates a new Ring. Being a service, Ring needs to be started to do anything.
 func New(cfg Config, name, key string) (*Ring, error) {
 	if cfg.ReplicationFactor <= 0 {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
 	}
-	codec := codec.Proto{Factory: ProtoDescFactory}
+	codec := GetCodec()
 	store, err := kv.NewClient(cfg.KVStore, codec)
 	if err != nil {
 		return nil, err
@@ -120,7 +122,6 @@ func New(cfg Config, name, key string) (*Ring, error) {
 		key:      key,
 		cfg:      cfg,
 		KVClient: store,
-		done:     make(chan struct{}),
 		ringDesc: &Desc{},
 		memberOwnershipDesc: prometheus.NewDesc(
 			"cortex_ring_member_ownership_percent",
@@ -148,20 +149,12 @@ func New(cfg Config, name, key string) (*Ring, error) {
 			[]string{"state", "name"}, nil,
 		),
 	}
-	var ctx context.Context
-	ctx, r.quit = context.WithCancel(context.Background())
-	go r.loop(ctx)
+
+	r.Service = services.NewBasicService(nil, r.loop, nil)
 	return r, nil
 }
 
-// Stop the distributor.
-func (r *Ring) Stop() {
-	r.quit()
-	<-r.done
-}
-
-func (r *Ring) loop(ctx context.Context) {
-	defer close(r.done)
+func (r *Ring) loop(ctx context.Context) error {
 	r.KVClient.WatchKey(ctx, r.key, func(value interface{}) bool {
 		if value == nil {
 			level.Info(util.Logger).Log("msg", "ring doesn't exist in consul yet")
@@ -169,41 +162,22 @@ func (r *Ring) loop(ctx context.Context) {
 		}
 
 		ringDesc := value.(*Desc)
-		ringDesc.Tokens = migrateRing(ringDesc)
+		ringTokens := ringDesc.getTokens()
+
 		r.mtx.Lock()
 		defer r.mtx.Unlock()
 		r.ringDesc = ringDesc
+		r.ringTokens = ringTokens
 		return true
 	})
-
-	r.KVClient.Stop()
-}
-
-// migrateRing will denormalise the ring's tokens if stored in normal form.
-func migrateRing(desc *Desc) []TokenDesc {
-	numTokens := len(desc.Tokens)
-	for _, ing := range desc.Ingesters {
-		numTokens += len(ing.Tokens)
-	}
-	tokens := make([]TokenDesc, len(desc.Tokens), numTokens)
-	copy(tokens, desc.Tokens)
-	for key, ing := range desc.Ingesters {
-		for _, token := range ing.Tokens {
-			tokens = append(tokens, TokenDesc{
-				Token:    token,
-				Ingester: key,
-			})
-		}
-	}
-	sort.Sort(ByToken(tokens))
-	return tokens
+	return nil
 }
 
 // Get returns n (or more) ingesters which form the replicas for the given key.
 func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
-	if r.ringDesc == nil || len(r.ringDesc.Tokens) == 0 {
+	if r.ringDesc == nil || len(r.ringTokens) == 0 {
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
@@ -211,18 +185,25 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		n             = r.cfg.ReplicationFactor
 		ingesters     = buf[:0]
 		distinctHosts = map[string]struct{}{}
+		distinctZones = map[string]struct{}{}
 		start         = r.search(key)
 		iterations    = 0
 	)
-	for i := start; len(distinctHosts) < n && iterations < len(r.ringDesc.Tokens); i++ {
+	for i := start; len(distinctHosts) < n && iterations < len(r.ringTokens); i++ {
 		iterations++
 		// Wrap i around in the ring.
-		i %= len(r.ringDesc.Tokens)
+		i %= len(r.ringTokens)
 
-		// We want n *distinct* ingesters.
-		token := r.ringDesc.Tokens[i]
+		// We want n *distinct* ingesters && distinct zones.
+		token := r.ringTokens[i]
 		if _, ok := distinctHosts[token.Ingester]; ok {
 			continue
+		}
+		if token.Zone != "" { // Ignore if the ingesters don't have a zone set.
+			if _, ok := distinctZones[token.Zone]; ok {
+				continue
+			}
+			distinctZones[token.Zone] = struct{}{}
 		}
 		distinctHosts[token.Ingester] = struct{}{}
 		ingester := r.ringDesc.Ingesters[token.Ingester]
@@ -258,7 +239,7 @@ func (r *Ring) GetAll() (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	if r.ringDesc == nil || len(r.ringDesc.Tokens) == 0 {
+	if r.ringDesc == nil || len(r.ringTokens) == 0 {
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
@@ -284,10 +265,10 @@ func (r *Ring) GetAll() (ReplicationSet, error) {
 }
 
 func (r *Ring) search(key uint32) int {
-	i := sort.Search(len(r.ringDesc.Tokens), func(x int) bool {
-		return r.ringDesc.Tokens[x].Token > key
+	i := sort.Search(len(r.ringTokens), func(x int) bool {
+		return r.ringTokens[x].Token > key
 	})
-	if i >= len(r.ringDesc.Tokens) {
+	if i >= len(r.ringTokens) {
 		i = 0
 	}
 	return i
@@ -301,9 +282,7 @@ func (r *Ring) Describe(ch chan<- *prometheus.Desc) {
 	ch <- r.numTokensDesc
 }
 
-func countTokens(ringDesc *Desc) (map[string]uint32, map[string]uint32) {
-	tokens := ringDesc.Tokens
-
+func countTokens(ringDesc *Desc, tokens []TokenDesc) (map[string]uint32, map[string]uint32) {
 	owned := map[string]uint32{}
 	numTokens := map[string]uint32{}
 	for i, token := range tokens {
@@ -332,7 +311,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	numTokens, ownedRange := countTokens(r.ringDesc)
+	numTokens, ownedRange := countTokens(r.ringDesc, r.ringTokens)
 	for id, totalOwned := range ownedRange {
 		ch <- prometheus.MustNewConstMetric(
 			r.memberOwnershipDesc,
@@ -392,7 +371,72 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(
 		r.totalTokensDesc,
 		prometheus.GaugeValue,
-		float64(len(r.ringDesc.Tokens)),
+		float64(len(r.ringTokens)),
 		r.name,
 	)
+}
+
+// Subring returns a ring of n ingesters from the given ring
+// Subrings are meant only for ingestor lookup and should have their data externalized.
+func (r *Ring) Subring(key uint32, n int) (ReadRing, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	if r.ringDesc == nil || len(r.ringTokens) == 0 || n <= 0 {
+		return nil, ErrEmptyRing
+	}
+
+	var (
+		ingesters     = make(map[string]IngesterDesc, n)
+		distinctHosts = map[string]struct{}{}
+		start         = r.search(key)
+		iterations    = 0
+	)
+
+	// Subring exceeds number of ingesters, set to total ring size
+	if n > len(r.ringDesc.Ingesters) {
+		n = len(r.ringDesc.Ingesters)
+	}
+
+	for i := start; len(distinctHosts) < n && iterations < len(r.ringTokens); i++ {
+		iterations++
+		// Wrap i around in the ring.
+		i %= len(r.ringTokens)
+
+		// We want n *distinct* ingesters.
+		token := r.ringTokens[i]
+		if _, ok := distinctHosts[token.Ingester]; ok {
+			continue
+		}
+		distinctHosts[token.Ingester] = struct{}{}
+		ingester := r.ringDesc.Ingesters[token.Ingester]
+
+		ingesters[token.Ingester] = ingester
+	}
+
+	if n > len(ingesters) {
+		return nil, fmt.Errorf("too few ingesters found")
+	}
+
+	numTokens := 0
+	for _, ing := range ingesters {
+		numTokens += len(ing.Tokens)
+	}
+
+	sub := &Ring{
+		name: "subring",
+		cfg:  r.cfg,
+		ringDesc: &Desc{
+			Ingesters: ingesters,
+		},
+		ringTokens: make([]TokenDesc, 0, numTokens),
+	}
+
+	// add tokens for the ingesters in the subring, they should already be sorted, so no need to re-sort
+	for _, t := range r.ringTokens {
+		if _, ok := ingesters[t.Ingester]; ok {
+			sub.ringTokens = append(sub.ringTokens, t)
+		}
+	}
+
+	return sub, nil
 }

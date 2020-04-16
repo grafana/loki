@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -22,7 +24,6 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/marshal"
 	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -60,7 +61,7 @@ type Querier struct {
 	ring   ring.ReadRing
 	pool   *cortex_client.Pool
 	store  storage.Store
-	engine *logql.Engine
+	engine logql.Engine
 	limits *validation.Overrides
 }
 
@@ -76,14 +77,20 @@ func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, store storage.
 // newQuerier creates a new Querier and allows to pass a custom ingester client factory
 // used for testing purposes
 func newQuerier(cfg Config, clientCfg client.Config, clientFactory cortex_client.Factory, ring ring.ReadRing, store storage.Store, limits *validation.Overrides) (*Querier, error) {
-	return &Querier{
+	querier := Querier{
 		cfg:    cfg,
 		ring:   ring,
 		pool:   cortex_client.NewPool(clientCfg.PoolConfig, ring, clientFactory, util.Logger),
 		store:  store,
-		engine: logql.NewEngine(cfg.Engine),
 		limits: limits,
-	}, nil
+	}
+	querier.engine = logql.NewEngine(cfg.Engine, &querier)
+	err := services.StartAndAwaitRunning(context.Background(), querier.pool)
+	if err != nil {
+		return nil, errors.Wrap(err, "querier pool")
+	}
+
+	return &querier, nil
 }
 
 type responseFromIngesters struct {
@@ -476,12 +483,9 @@ func (q *Querier) seriesForMatchers(
 	groups []string,
 ) ([]logproto.SeriesIdentifier, error) {
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	var results []logproto.SeriesIdentifier
 	for _, group := range groups {
-		iter, err := q.store.LazyQuery(ctx, logql.SelectParams{
+		ids, err := q.store.GetSeries(ctx, logql.SelectParams{
 			QueryRequest: &logproto.QueryRequest{
 				Selector:  group,
 				Limit:     1,
@@ -494,19 +498,10 @@ func (q *Querier) seriesForMatchers(
 			return nil, err
 		}
 
-		for iter.Next() {
-			ls, err := marshal.NewLabelSet(iter.Labels())
-			if err != nil {
-				return nil, err
-			}
+		results = append(results, ids...)
 
-			results = append(results, logproto.SeriesIdentifier{
-				Labels: ls.Map(),
-			})
-		}
 	}
 	return results, nil
-
 }
 
 func (q *Querier) validateQueryRequest(ctx context.Context, req *logproto.QueryRequest) error {

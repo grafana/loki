@@ -7,15 +7,17 @@ import (
 	"reflect"
 
 	"github.com/go-kit/kit/log/level"
-	_ "github.com/grafana/loki/pkg/build"
-	"github.com/grafana/loki/pkg/cfg"
-	"github.com/grafana/loki/pkg/loki"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/tracing"
 
+	_ "github.com/grafana/loki/pkg/build"
+	"github.com/grafana/loki/pkg/cfg"
+	"github.com/grafana/loki/pkg/loki"
+
 	"github.com/cortexproject/cortex/pkg/util"
+
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -48,13 +50,26 @@ func main() {
 	}
 	util.InitLogger(&config.Server)
 
+	// Validate the config once both the config file has been loaded
+	// and CLI flags parsed.
+	err := config.Validate(util.Logger)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "validating config", "err", err.Error())
+		os.Exit(1)
+	}
+
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-	trace := tracing.NewFromEnv(fmt.Sprintf("loki-%s", config.Target))
+	trace, err := tracing.NewFromEnv(fmt.Sprintf("loki-%s", config.Target))
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
+	}
 	defer func() {
-		if err := trace.Close(); err != nil {
-			level.Error(util.Logger).Log("msg", "error closing tracing", "err", err)
-			os.Exit(1)
+		if trace != nil {
+			if err := trace.Close(); err != nil {
+				level.Error(util.Logger).Log("msg", "error closing tracing", "err", err)
+			}
 		}
+
 	}()
 
 	// Start Loki

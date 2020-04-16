@@ -6,8 +6,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 	"github.com/prometheus/common/config"
+
+	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
 
 // Config describes configuration for a HTTP pusher client.
@@ -33,10 +34,10 @@ func (c *Config) RegisterFlags(flags *flag.FlagSet) {
 	flags.Var(&c.URL, "client.url", "URL of log server")
 	flags.DurationVar(&c.BatchWait, "client.batch-wait", 1*time.Second, "Maximum wait period before sending batch.")
 	flags.IntVar(&c.BatchSize, "client.batch-size-bytes", 100*1024, "Maximum batch size to accrue before sending. ")
-
-	flag.IntVar(&c.BackoffConfig.MaxRetries, "client.max-retries", 5, "Maximum number of retires when sending batches.")
-	flag.DurationVar(&c.BackoffConfig.MinBackoff, "client.min-backoff", 100*time.Millisecond, "Initial backoff time between retries.")
-	flag.DurationVar(&c.BackoffConfig.MaxBackoff, "client.max-backoff", 5*time.Second, "Maximum backoff time between retries.")
+	// Default backoff schedule: 0.5s, 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s(4.267m) For a total time of 511.5s(8.5m) before logs are lost
+	flag.IntVar(&c.BackoffConfig.MaxRetries, "client.max-retries", 10, "Maximum number of retires when sending batches.")
+	flag.DurationVar(&c.BackoffConfig.MinBackoff, "client.min-backoff", 500*time.Millisecond, "Initial backoff time between retries.")
+	flag.DurationVar(&c.BackoffConfig.MaxBackoff, "client.max-backoff", 5*time.Minute, "Maximum backoff time between retries.")
 	flag.DurationVar(&c.Timeout, "client.timeout", 10*time.Second, "Maximum time to wait for server to respond to a request")
 	flags.Var(&c.ExternalLabels, "client.external-labels", "list of external labels to add to each log (e.g: --client.external-labels=lb1=v1,lb2=v2)")
 

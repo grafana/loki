@@ -21,6 +21,7 @@ Configuration examples can be found in the [Configuration Examples](examples.md)
 * [schema_config](#schema_config)
   * [period_config](#period_config)
 * [limits_config](#limits_config)
+* [frontend_worker_config](#frontend_worker_config)
 * [table_manager_config](#table_manager_config)
   * [provision_config](#provision_config)
     * [auto_scaling_config](#auto_scaling_config)
@@ -86,6 +87,10 @@ Supported contents and default values of `loki.yaml`:
 
 # Configures limits per-tenant or globally
 [limits_config: <limits_config>]
+
+# The frontend_worker_config configures the worker - running within the Loki
+# querier - picking up and executing queries enqueued by the query-frontend.
+[frontend_worker: <frontend_worker_config>]
 
 # Configures the table manager for retention
 [table_manager: <table_manager_config>]
@@ -238,13 +243,13 @@ The `grpc_client_config` block configures a client connection to a gRPC service.
 # Configures backoff when enbaled.
 backoff_config:
   # Minimum delay when backing off.
-  [minbackoff: <duration> | default = 100ms]
+  [min_period: <duration> | default = 100ms]
 
   # The maximum delay when backing off.
-  [maxbackoff: <duration> | default = 10s]
+  [max_period: <duration> | default = 10s]
 
   # Number of times to backoff and retry before failing.
-  [maxretries: <int> | default = 10]
+  [max_retries: <int> | default = 10]
 ```
 
 ## ingester_config
@@ -339,9 +344,6 @@ ring.
 # conditions with ingesters exiting and updating the ring.
 [min_ready_duration: <duration> | default = 1m]
 
-# Store tokens in a normalised fashion to reduce the number of allocations.
-[normalise_tokens: <boolean> | default = false]
-
 # Name of network interfaces to read addresses from.
 interface_names:
   - [<string> ... | default = ["eth0", "en0"]]
@@ -370,13 +372,13 @@ kvstore:
     [host: <string> | duration = "localhost:8500"]
 
     # The ACL Token used to interact with Consul.
-    [acltoken: <string>]
+    [acl_token: <string>]
 
     # The HTTP timeout when communicating with Consul
-    [httpclienttimeout: <duration> | default = 20s]
+    [http_client_timeout: <duration> | default = 20s]
 
     # Whether or not consistent reads to Consul are enabled.
-    [consistentreads: <boolean> | default = true]
+    [consistent_reads: <boolean> | default = true]
 
   # Configuration for an ETCD v3 client. Only applies if
   # store is "etcd"
@@ -419,21 +421,17 @@ aws:
   [s3forcepathstyle: <boolean> | default = false]
 
   # Configure the DynamoDB connection
-  dynamodbconfig:
+  dynamodb:
     # URL for DynamoDB with escaped Key and Secret encoded. If only region is specified as a
     # host, the proper endpoint will be deduced. Use inmemory:///<bucket-name> to
     # use a mock in-memory implementation.
-    dynamodb: <string>
+    dynamodb_url: <string>
 
     # DynamoDB table management requests per-second limit.
-    [apilimit: <float> | default = 2.0]
+    [api_limit: <float> | default = 2.0]
 
     # DynamoDB rate cap to back off when throttled.
-    [throttlelimit: <float> | default = 10.0]
-
-    # Application Autoscaling endpoint URL with escaped Key and Secret
-    # encoded.
-    [applicationautoscaling: <string>]
+    [throttle_limit: <float> | default = 10.0]
 
     # Metics-based autoscaling configuration.
     metrics:
@@ -441,34 +439,34 @@ aws:
       [url: <string>]
 
       # Queue length above which we will scale up capacity.
-      [targetqueuelen: <int> | default = 100000]
+      [target_queue_length: <int> | default = 100000]
 
       # Scale up capacity by this multiple
-      [scaleupfactor: <float64> | default = 1.3]
+      [scale_up_factor: <float64> | default = 1.3]
 
       # Ignore throttling below this level (rate per second)
-      [minthrottling: <float64> | default = 1]
+      [ignore_throttle_below: <float64> | default = 1]
 
       # Query to fetch ingester queue length
-      [queuelengthquery: <string> | default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))"]
+      [queue_length_query: <string> | default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))"]
 
       # Query to fetch throttle rates per table
-      [throttlequery: <string> | default = "sum(rate(cortex_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m])) by (table) > 0"]
+      [write_throttle_query: <string> | default = "sum(rate(cortex_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m])) by (table) > 0"]
 
       # Quer to fetch write capacity usage per table
-      [usagequery: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m])) by (table) > 0"]
+      [write_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m])) by (table) > 0"]
 
       # Query to fetch read capacity usage per table
-      [readusagequery: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.QueryPages"}[1h])) by (table) > 0"]
+      [read_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.QueryPages"}[1h])) by (table) > 0"]
 
       # Query to fetch read errors per table
-      [readerrorquery: <string> | default = "sum(increase(cortex_dynamo_failures_total{operation="DynamoDB.QueryPages",error="ProvisionedThroughputExceededException"}[1m])) by (table) > 0"]
+      [read_error_query: <string> | default = "sum(increase(cortex_dynamo_failures_total{operation="DynamoDB.QueryPages",error="ProvisionedThroughputExceededException"}[1m])) by (table) > 0"]
 
     # Number of chunks to group together to parallelise fetches (0 to disable)
-    [chunkgangsize: <int> | default = 10]
+    [chunk_gang_size: <int> | default = 10]
 
     # Max number of chunk get operations to start in parallel.
-    [chunkgetmaxparallelism: <int> | default = 32]
+    [chunk_get_max_parallelism: <int> | default = 32]
 
 # Configures storing chunks in Bigtable. Required fields only required
 # when bigtable is defined in config.
@@ -555,7 +553,7 @@ filesystem:
 
 # Cache validity for active index entries. Should be no higher than
 # the chunk_idle_period in the ingester settings.
-[indexcachevalidity: <duration> | default = 5m]
+[index_cache_validity: <duration> | default = 5m]
 
 # The maximum number of chunks to fetch per batch.
 [max_chunk_batch_size: <int> | default = 50]
@@ -575,8 +573,8 @@ the index to a backing cache store.
 [enable_fifocache: <boolean>]
 
 # The default validity of entries for caches unless overridden.
-# "defaul" is correct.
-[defaul_validity: <duration>]
+# NOTE In Loki versions older than 1.4.0 this was "defaul_validity".
+[default_validity: <duration>]
 
 # Configures the background cache when memcached is used.
 background:
@@ -631,6 +629,10 @@ redis:
   [max_idle_conns: <int> | default = 80]
   # Maximum number of active connections in pool.
   [max_active_conns: <int> | default = 0]
+  # Password to use when connecting to redis.
+  [password: <string>]
+  # Enables connecting to redis with TLS.
+  [enable_tls: <boolean> | default = false]
 
 fifocache:
   # Number of entries to cache in-memory.
@@ -690,7 +692,7 @@ for from specific time periods.
 # store and object_store below affect which <storage_config> key is
 # used.
 
-# Which store to use for the index. Either cassandra, bigtable, dynamodb, or
+# Which store to use for the index. Either cassandra, bigtable, aws-dynamo, or
 # boltdb
 store: <string>
 
@@ -698,7 +700,7 @@ store: <string>
 # cassandra. If omitted, defaults to same value as store.
 [object_store: <string>]
 
-# The schema to use. Set to v9 or v10.
+# The schema version to use, current recommended schema is v11.
 schema: <string>
 
 # Configures how the index is updated and stored.
@@ -721,7 +723,7 @@ chunks:
   tags:
     [<string>: <string> ...]
 
-# How many shards will be created. Only used if schema is v10.
+# How many shards will be created. Only used if schema is v10 or greater.
 [row_shards: <int> | default = 16]
 ```
 
@@ -781,6 +783,13 @@ logs in Loki.
 # Maximum number of active streams per user, per ingester. 0 to disable.
 [max_streams_per_user: <int> | default = 10000]
 
+# Maximum line size on ingestion path. Example: 256kb.
+# There is no limit when unset.
+[max_line_size: <string> | default = none ]
+
+# Maximum number of log entries that will be returned for a query. 0 to disable.
+[max_entries_limit: <int> | default = 5000 ]
+
 # Maximum number of active streams per user, across the cluster. 0 to disable.
 # When the global limit is enabled, each ingester is configured with a dynamic
 # local limit based on the replication factor and the current number of healthy
@@ -810,6 +819,62 @@ logs in Loki.
 [per_tenant_override_period: <duration> | default = 10s]
 ```
 
+### `frontend_worker_config`
+
+The `frontend_worker_config` configures the worker - running within the Loki querier - picking up and executing queries enqueued by the query-frontend.
+
+```yaml
+# Address of query frontend service, in host:port format.
+# CLI flag: -querier.frontend-address
+[frontend_address: <string> | default = ""]
+
+# Number of simultaneous queries to process.
+# CLI flag: -querier.worker-parallelism
+[parallelism: <int> | default = 10]
+
+# How often to query DNS.
+# CLI flag: -querier.dns-lookup-period
+[dns_lookup_duration: <duration> | default = 10s]
+
+grpc_client_config:
+  # gRPC client max receive message size (bytes).
+  # CLI flag: -querier.frontend-client.grpc-max-recv-msg-size
+  [max_recv_msg_size: <int> | default = 104857600]
+
+  # gRPC client max send message size (bytes).
+  # CLI flag: -querier.frontend-client.grpc-max-send-msg-size
+  [max_send_msg_size: <int> | default = 16777216]
+
+  # Use compression when sending messages.
+  # CLI flag: -querier.frontend-client.grpc-use-gzip-compression
+  [use_gzip_compression: <boolean> | default = false]
+
+  # Rate limit for gRPC client; 0 means disabled.
+  # CLI flag: -querier.frontend-client.grpc-client-rate-limit
+  [rate_limit: <float> | default = 0]
+
+  # Rate limit burst for gRPC client.
+  # CLI flag: -querier.frontend-client.grpc-client-rate-limit-burst
+  [rate_limit_burst: <int> | default = 0]
+
+  # Enable backoff and retry when we hit ratelimits.
+  # CLI flag: -querier.frontend-client.backoff-on-ratelimits
+  [backoff_on_ratelimits: <boolean> | default = false]
+
+  backoff_config:
+    # Minimum delay when backing off.
+    # CLI flag: -querier.frontend-client.backoff-min-period
+    [min_period: <duration> | default = 100ms]
+
+    # Maximum delay when backing off.
+    # CLI flag: -querier.frontend-client.backoff-max-period
+    [max_period: <duration> | default = 10s]
+
+    # Number of times to backoff and retry before failing.
+    # CLI flag: -querier.frontend-client.backoff-retries
+    [max_retries: <int> | default = 10]
+```
+
 ## table_manager_config
 
 The `table_manager_config` block configures how the table manager operates
@@ -828,7 +893,7 @@ and how to provision tables when DynamoDB is used as the backing store.
 [retention_period: <duration> | default = 0s]
 
 # Period with which the table manager will poll for tables.
-[dynamodb_poll_interval: <duration> | default = 2m]
+[poll_interval: <duration> | default = 2m]
 
 # duration a table will be created before it is needed.
 [creation_grace_period: <duration> | default = 10m]
@@ -847,7 +912,7 @@ The `provision_config` block configures provisioning capacity for DynamoDB.
 ```yaml
 # Enables on-demand throughput provisioning for the storage
 # provider, if supported. Applies only to tables which are not autoscaled.
-[provisioned_throughput_on_demand_mode: <boolean> | default = false]
+[enable_ondemand_throughput_mode: <boolean> | default = false]
 
 # DynamoDB table default write throughput.
 [provisioned_write_throughput: <int> | default = 3000]
@@ -857,7 +922,7 @@ The `provision_config` block configures provisioning capacity for DynamoDB.
 
 # Enables on-demand throughput provisioning for the storage provide,
 # if supported. Applies only to tables which are not autoscaled.
-[inactive_throughput_on_demand_mode: <boolean> | default = false]
+[enable_inactive_throughput_on_demand_mode: <boolean> | default = false]
 
 # DynamoDB table write throughput for inactive tables.
 [inactive_write_throughput: <int> | default = 1]

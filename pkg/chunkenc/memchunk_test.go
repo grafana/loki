@@ -3,6 +3,7 @@ package chunkenc
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"math/rand"
@@ -12,10 +13,13 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/dustin/go-humanize"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/chunkenc/testdata"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/stretchr/testify/require"
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/stats"
 )
 
 var testEncoding = []Encoding{
@@ -28,10 +32,15 @@ var testEncoding = []Encoding{
 	EncSnappy,
 }
 
+var (
+	testBlockSize  = 256 * 1024
+	testTargetSize = 1500 * 1024
+)
+
 func TestBlock(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
-			chk := NewMemChunk(enc)
+			chk := NewMemChunk(enc, testBlockSize, testTargetSize)
 			cases := []struct {
 				ts  int64
 				str string
@@ -124,7 +133,7 @@ func TestBlock(t *testing.T) {
 }
 
 func TestReadFormatV1(t *testing.T) {
-	c := NewMemChunk(EncGZIP)
+	c := NewMemChunk(EncGZIP, testBlockSize, testTargetSize)
 	fillChunk(c)
 	// overrides default v2 format
 	c.format = chunkFormatV1
@@ -134,7 +143,7 @@ func TestReadFormatV1(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r, err := NewByteChunk(b)
+	r, err := NewByteChunk(b, testBlockSize, testTargetSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +170,7 @@ func TestReadFormatV1(t *testing.T) {
 func TestRoundtripV2(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
-			c := NewMemChunk(enc)
+			c := NewMemChunk(enc, testBlockSize, testTargetSize)
 			populated := fillChunk(c)
 
 			assertLines := func(c *MemChunk) {
@@ -191,7 +200,7 @@ func TestRoundtripV2(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			r, err := NewByteChunk(b)
+			r, err := NewByteChunk(b, testBlockSize, testTargetSize)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -201,7 +210,7 @@ func TestRoundtripV2(t *testing.T) {
 			rOut, err := r.Bytes()
 			require.Nil(t, err)
 
-			loaded, err := NewByteChunk(rOut)
+			loaded, err := NewByteChunk(rOut, testBlockSize, testTargetSize)
 			require.Nil(t, err)
 
 			assertLines(loaded)
@@ -214,7 +223,7 @@ func TestRoundtripV2(t *testing.T) {
 func TestSerialization(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
-			chk := NewMemChunk(enc)
+			chk := NewMemChunk(enc, testBlockSize, testTargetSize)
 
 			numSamples := 500000
 
@@ -225,7 +234,7 @@ func TestSerialization(t *testing.T) {
 			byt, err := chk.Bytes()
 			require.NoError(t, err)
 
-			bc, err := NewByteChunk(byt)
+			bc, err := NewByteChunk(byt, testBlockSize, testTargetSize)
 			require.NoError(t, err)
 
 			it, err := bc.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, nil)
@@ -251,7 +260,7 @@ func TestSerialization(t *testing.T) {
 func TestChunkFilling(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
-			chk := NewMemChunk(enc)
+			chk := NewMemChunk(enc, testBlockSize, 0)
 			chk.blockSize = 1024
 
 			// We should be able to append only 10KB of logs.
@@ -288,8 +297,7 @@ func TestChunkFilling(t *testing.T) {
 }
 
 func TestGZIPChunkTargetSize(t *testing.T) {
-	targetSize := 1024 * 1024
-	chk := NewMemChunkSize(EncGZIP, 1024, targetSize)
+	chk := NewMemChunk(EncGZIP, testBlockSize, testTargetSize)
 
 	lineSize := 512
 	entry := &logproto.Entry{
@@ -326,8 +334,8 @@ func TestGZIPChunkTargetSize(t *testing.T) {
 
 	// Even though the seed is static above and results should be deterministic,
 	// we will allow +/- 10% variance
-	minSize := int(float64(targetSize) * 0.9)
-	maxSize := int(float64(targetSize) * 1.1)
+	minSize := int(float64(testTargetSize) * 0.9)
+	maxSize := int(float64(testTargetSize) * 1.1)
 	require.Greater(t, chk.CompressedSize(), minSize)
 	require.Less(t, chk.CompressedSize(), maxSize)
 
@@ -374,7 +382,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			tester(t, NewMemChunk(EncGZIP))
+			tester(t, NewMemChunk(EncGZIP, testBlockSize, testTargetSize))
 		})
 	}
 }
@@ -382,7 +390,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 func TestChunkSize(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
-			c := NewMemChunk(enc)
+			c := NewMemChunk(enc, testBlockSize, testTargetSize)
 			inserted := fillChunk(c)
 			b, err := c.Bytes()
 			if err != nil {
@@ -393,6 +401,75 @@ func TestChunkSize(t *testing.T) {
 		})
 
 	}
+}
+
+func TestChunkStats(t *testing.T) {
+	c := NewMemChunk(EncSnappy, testBlockSize, 0)
+	first := time.Now()
+	entry := &logproto.Entry{
+		Timestamp: first,
+		Line:      `ts=2020-03-16T13:58:33.459Z caller=dedupe.go:112 component=remote level=debug remote_name=3ea44a url=https:/blan.goo.net/api/prom/push msg=QueueManager.updateShardsLoop lowerBound=45.5 desiredShards=56.724401194003136 upperBound=84.5`,
+	}
+	inserted := 0
+	// fill the chunk with known data size.
+	for {
+		if !c.SpaceFor(entry) {
+			break
+		}
+		if err := c.Append(entry); err != nil {
+			t.Fatal(err)
+		}
+		inserted++
+		entry.Timestamp = entry.Timestamp.Add(time.Nanosecond)
+	}
+	expectedSize := (inserted * len(entry.Line)) + (inserted * 2 * binary.MaxVarintLen64)
+	ctx := stats.NewContext(context.Background())
+
+	it, err := c.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, logql.LineFilterFunc(func(line []byte) bool { return false }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for it.Next() {
+
+	}
+	if err := it.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// test on a chunk filling up
+	s := stats.Snapshot(ctx, time.Since(first))
+	require.Equal(t, int64(expectedSize), s.Summary.TotalBytesProcessed)
+	require.Equal(t, int64(inserted), s.Summary.TotalLinesProcessed)
+
+	require.Equal(t, int64(expectedSize), s.Store.DecompressedBytes)
+	require.Equal(t, int64(inserted), s.Store.DecompressedLines)
+
+	b, err := c.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// test on a new chunk.
+	cb, err := NewByteChunk(b, testBlockSize, testTargetSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx = stats.NewContext(context.Background())
+	it, err = cb.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, logql.LineFilterFunc(func(line []byte) bool { return false }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for it.Next() {
+
+	}
+	if err := it.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s = stats.Snapshot(ctx, time.Since(first))
+	require.Equal(t, int64(expectedSize), s.Summary.TotalBytesProcessed)
+	require.Equal(t, int64(inserted), s.Summary.TotalLinesProcessed)
+
+	require.Equal(t, int64(expectedSize), s.Store.DecompressedBytes)
+	require.Equal(t, int64(inserted), s.Store.DecompressedLines)
 }
 
 func TestIteratorClose(t *testing.T) {
@@ -423,7 +500,7 @@ func TestIteratorClose(t *testing.T) {
 					}
 				},
 			} {
-				c := NewMemChunk(enc)
+				c := NewMemChunk(enc, testBlockSize, testTargetSize)
 				inserted := fillChunk(c)
 				iter, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, inserted), logproto.BACKWARD, nil)
 				if err != nil {
@@ -450,7 +527,7 @@ func BenchmarkWrite(b *testing.B) {
 	for _, enc := range testEncoding {
 		b.Run(enc.String(), func(b *testing.B) {
 			for n := 0; n < b.N; n++ {
-				c := NewMemChunk(enc)
+				c := NewMemChunk(enc, testBlockSize, testTargetSize)
 				// adds until full so we trigger cut which serialize using gzip
 				for c.SpaceFor(entry) {
 					_ = c.Append(entry)
@@ -503,9 +580,9 @@ func TestGenerateDataSize(t *testing.T) {
 			bytesRead := uint64(0)
 			for _, c := range chunks {
 				// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
-				iterator, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Now(), logproto.FORWARD, func(line []byte) bool {
+				iterator, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Now(), logproto.FORWARD, logql.LineFilterFunc(func(line []byte) bool {
 					return true // return all
-				})
+				}))
 				if err != nil {
 					panic(err)
 				}

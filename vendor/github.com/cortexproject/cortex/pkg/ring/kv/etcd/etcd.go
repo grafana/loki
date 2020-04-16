@@ -41,6 +41,23 @@ func New(cfg Config, codec codec.Codec) (*Client, error) {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   cfg.Endpoints,
 		DialTimeout: cfg.DialTimeout,
+		// Configure the keepalive to make sure that the client reconnects
+		// to the etcd service endpoint(s) in case the current connection is
+		// dead (ie. the node where etcd is running is dead or a network
+		// partition occurs).
+		//
+		// The settings:
+		// - DialKeepAliveTime: time before the client pings the server to
+		//   see if transport is alive (10s hardcoded)
+		// - DialKeepAliveTimeout: time the client waits for a response for
+		//   the keep-alive probe (set to 2x dial timeout, in order to avoid
+		//   exposing another config option which is likely to be a factor of
+		//   the dial timeout anyway)
+		// - PermitWithoutStream: whether the client should send keepalive pings
+		//   to server without any active streams (enabled)
+		DialKeepAliveTime:    10 * time.Second,
+		DialKeepAliveTimeout: 2 * cfg.DialTimeout,
+		PermitWithoutStream:  true,
 	})
 	if err != nil {
 		return nil, err
@@ -129,13 +146,19 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,
 	})
+
+	// Ensure the context used by the Watch is always cancelled.
+	watchCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+outer:
 	for backoff.Ongoing() {
-		watchChan := c.cli.Watch(ctx, key)
-		for {
-			resp, ok := <-watchChan
-			if !ok {
-				break
+		for resp := range c.cli.Watch(watchCtx, key) {
+			if err := resp.Err(); err != nil {
+				level.Error(util.Logger).Log("msg", "watch error", "key", key, "err", err)
+				continue outer
 			}
+
 			backoff.Reset()
 
 			for _, event := range resp.Events {
@@ -159,13 +182,19 @@ func (c *Client) WatchPrefix(ctx context.Context, key string, f func(string, int
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,
 	})
+
+	// Ensure the context used by the Watch is always cancelled.
+	watchCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+outer:
 	for backoff.Ongoing() {
-		watchChan := c.cli.Watch(ctx, key, clientv3.WithPrefix())
-		for {
-			resp, ok := <-watchChan
-			if !ok {
-				break
+		for resp := range c.cli.Watch(watchCtx, key, clientv3.WithPrefix()) {
+			if err := resp.Err(); err != nil {
+				level.Error(util.Logger).Log("msg", "watch error", "key", key, "err", err)
+				continue outer
 			}
+
 			backoff.Reset()
 
 			for _, event := range resp.Events {
@@ -193,9 +222,4 @@ func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 		return nil, fmt.Errorf("got %d kvs, expected 1", len(resp.Kvs))
 	}
 	return c.codec.Decode(resp.Kvs[0].Value)
-}
-
-// Stop does nothing in etcd client.
-func (c *Client) Stop() {
-	// nothing to do
 }

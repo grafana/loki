@@ -14,11 +14,11 @@ func RegisterFlags(rs ...Registerer) {
 	}
 }
 
-// DefaultValues intiates a set of configs (Registerers) with their defaults.
+// DefaultValues initiates a set of configs (Registerers) with their defaults.
 func DefaultValues(rs ...Registerer) {
 	fs := flag.NewFlagSet("", flag.PanicOnError)
 	for _, r := range rs {
 		r.RegisterFlags(fs)
 	}
-	fs.Parse([]string{})
+	_ = fs.Parse([]string{})
 }

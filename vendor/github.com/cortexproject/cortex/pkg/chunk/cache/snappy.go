@@ -3,9 +3,10 @@ package cache
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/golang/snappy"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type snappyCache struct {
@@ -42,6 +43,6 @@ func (s *snappyCache) Fetch(ctx context.Context, keys []string) ([]string, [][]b
 	return found, ds, missing
 }
 
-func (s *snappyCache) Stop() error {
-	return s.next.Stop()
+func (s *snappyCache) Stop() {
+	s.next.Stop()
 }

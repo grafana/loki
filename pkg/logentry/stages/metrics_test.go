@@ -1,15 +1,18 @@
 package stages
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/pkg/logentry/metric"
 )
@@ -24,6 +27,7 @@ pipeline_stages:
     loki_count:
       type: Counter
       description: uhhhhhhh
+      prefix: my_promtail_custom_
       source: app
       config:
         value: loki
@@ -35,6 +39,12 @@ pipeline_stages:
       config:
         value: bloki
         action: dec
+    total_lines_count:
+      type: Counter
+      description: nothing to see here...
+      config:
+        match_all: true
+        action: inc
     payload_size_bytes:
       type: Histogram
       description: grrrragh
@@ -61,20 +71,31 @@ var testMetricLogLine2 = `
 	"level" : "WARN"
 }
 `
+var testMetricLogLineWithMissingKey = `
+{
+	"time":"2012-11-01T22:08:41+00:00",
+	"payload": 20,
+	"component": ["parser","type"],
+	"level" : "WARN"
+}
+`
 
-const expectedMetrics = `# HELP promtail_custom_bloki_count blerrrgh
+const expectedMetrics = `# HELP my_promtail_custom_loki_count uhhhhhhh
+# TYPE my_promtail_custom_loki_count counter
+my_promtail_custom_loki_count{test="app"} 1
+# HELP promtail_custom_bloki_count blerrrgh
 # TYPE promtail_custom_bloki_count gauge
-promtail_custom_bloki_count -1.0
-# HELP promtail_custom_loki_count uhhhhhhh
-# TYPE promtail_custom_loki_count counter
-promtail_custom_loki_count 1.0
+promtail_custom_bloki_count{test="app"} -1
 # HELP promtail_custom_payload_size_bytes grrrragh
 # TYPE promtail_custom_payload_size_bytes histogram
-promtail_custom_payload_size_bytes_bucket{le="10.0"} 1.0
-promtail_custom_payload_size_bytes_bucket{le="20.0"} 2.0
-promtail_custom_payload_size_bytes_bucket{le="+Inf"} 2.0
-promtail_custom_payload_size_bytes_sum 30.0
-promtail_custom_payload_size_bytes_count 2.0
+promtail_custom_payload_size_bytes_bucket{test="app",le="10"} 1
+promtail_custom_payload_size_bytes_bucket{test="app",le="20"} 2
+promtail_custom_payload_size_bytes_bucket{test="app",le="+Inf"} 2
+promtail_custom_payload_size_bytes_sum{test="app"} 30
+promtail_custom_payload_size_bytes_count{test="app"} 2
+# HELP promtail_custom_total_lines_count nothing to see here...
+# TYPE promtail_custom_total_lines_count counter
+promtail_custom_total_lines_count{test="app"} 2
 `
 
 func TestMetricsPipeline(t *testing.T) {
@@ -84,6 +105,7 @@ func TestMetricsPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	lbls := model.LabelSet{}
+	lbls["test"] = "app"
 	ts := time.Now()
 	extracted := map[string]interface{}{}
 	entry := testMetricLogLine1
@@ -96,6 +118,75 @@ func TestMetricsPipeline(t *testing.T) {
 		t.Fatalf("missmatch metrics: %v", err)
 	}
 }
+
+func TestPipelineWithMissingKey_Metrics(t *testing.T) {
+	var buf bytes.Buffer
+	w := log.NewSyncWriter(&buf)
+	logger := log.NewLogfmtLogger(w)
+	pl, err := NewPipeline(logger, loadConfig(testMetricYaml), nil, prometheus.DefaultRegisterer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	Debug = true
+	ts := time.Now()
+	entry := testMetricLogLineWithMissingKey
+	extracted := map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	expectedLog := "level=debug msg=\"failed to convert extracted value to string, can't perform value comparison\" metric=bloki_count err=\"can't convert <nil> to string\""
+	if !(strings.Contains(buf.String(), expectedLog)) {
+		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
+	}
+}
+
+var testMetricWithDropYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      app: app
+      drop: drop
+- match:
+    selector: '{drop="true"}'
+    action: drop
+- metrics:
+    loki_count:
+      type: Counter
+      source: app
+      description: "should only inc on non dropped labels"
+      config:
+        action: inc
+`
+
+const expectedDropMetrics = `# HELP promtail_custom_loki_count should only inc on non dropped labels
+# TYPE promtail_custom_loki_count counter
+promtail_custom_loki_count 1.0
+`
+
+func TestMetricsWithDropInPipeline(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	pl, err := NewPipeline(util.Logger, loadConfig(testMetricWithDropYaml), nil, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	droppingLabels := model.LabelSet{
+		"drop": "true",
+	}
+
+	ts := time.Now()
+	extracted := map[string]interface{}{}
+	entry := testMetricLogLine1
+	pl.Process(lbls, extracted, &ts, &entry)
+	entry = testMetricLogLine2
+	pl.Process(droppingLabels, extracted, &ts, &entry)
+
+	if err := testutil.GatherAndCompare(registry,
+		strings.NewReader(expectedDropMetrics)); err != nil {
+		t.Fatalf("missmatch metrics: %v", err)
+	}
+}
+
+var metricTestInvalidIdle = "10f"
 
 func Test(t *testing.T) {
 	tests := map[string]struct {
@@ -113,6 +204,15 @@ func Test(t *testing.T) {
 				},
 			},
 			errors.Errorf(ErrMetricsStageInvalidType, "piplne"),
+		},
+		"invalid idle duration": {
+			MetricsConfig{
+				"metric1": MetricConfig{
+					MetricType:   "Counter",
+					IdleDuration: &metricTestInvalidIdle,
+				},
+			},
+			errors.Errorf(ErrInvalidIdleDur, "time: unknown unit f in duration 10f"),
 		},
 		"valid": {
 			MetricsConfig{
@@ -133,12 +233,30 @@ func Test(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			err := validateMetricsConfig(test.config)
-			if (err != nil) && (err.Error() != test.err.Error()) {
+			if ((err != nil) && (err.Error() != test.err.Error())) || (err == nil && test.err != nil) {
 				t.Errorf("Metrics stage validation error, expected error = %v, actual error = %v", test.err, err)
 				return
 			}
 		})
 	}
+}
+
+func TestDefaultIdleDuration(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	metricsConfig := MetricsConfig{
+		"total_keys": MetricConfig{
+			MetricType:  "Counter",
+			Description: "the total keys per doc",
+			Config: metric.CounterConfig{
+				Action: metric.CounterAdd,
+			},
+		},
+	}
+	ms, err := New(util.Logger, nil, StageTypeMetric, metricsConfig, registry)
+	if err != nil {
+		t.Fatalf("failed to create stage with metrics: %v", err)
+	}
+	assert.Equal(t, int64(5*time.Minute.Seconds()), ms.(*metricStage).cfg["total_keys"].maxIdleSec)
 }
 
 var labelFoo = model.LabelSet(map[model.LabelName]model.LabelValue{"foo": "bar", "bar": "foo"})
@@ -262,7 +380,13 @@ func TestMetricStage_Process(t *testing.T) {
 
 func metricNames(cfg MetricsConfig) []string {
 	result := make([]string, 0, len(cfg))
-	for name := range cfg {
+	for name, config := range cfg {
+		customPrefix := ""
+		if config.Prefix != "" {
+			customPrefix = config.Prefix
+		} else {
+			customPrefix = "promtail_custom_"
+		}
 		result = append(result, customPrefix+name)
 	}
 	return result

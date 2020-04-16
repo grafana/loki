@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -18,7 +19,7 @@ type LazyChunk struct {
 }
 
 // Iterator returns an entry iterator.
-func (c *LazyChunk) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error) {
+func (c *LazyChunk) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, filter logql.LineFilter) (iter.EntryIterator, error) {
 	// If the chunk is already loaded, then use that.
 	if c.Chunk.Data != nil {
 		lokiChunk := c.Chunk.Data.(*Facade).LokiChunk()

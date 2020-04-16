@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,8 +12,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
+	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -32,21 +36,22 @@ import (
 
 const maxChunkAgeForTableManager = 12 * time.Hour
 
-type moduleName int
+type moduleName string
 
 // The various modules that make up Loki.
 const (
-	Ring moduleName = iota
-	RuntimeConfig
-	Overrides
-	Server
-	Distributor
-	Ingester
-	Querier
-	QueryFrontend
-	Store
-	TableManager
-	All
+	Ring          moduleName = "ring"
+	RuntimeConfig moduleName = "runtime-config"
+	Overrides     moduleName = "overrides"
+	Server        moduleName = "server"
+	Distributor   moduleName = "distributor"
+	Ingester      moduleName = "ingester"
+	Querier       moduleName = "querier"
+	QueryFrontend moduleName = "query-frontend"
+	Store         moduleName = "store"
+	TableManager  moduleName = "table-manager"
+	MemberlistKV  moduleName = "memberlist-kv"
+	All           moduleName = "all"
 )
 
 func (m *moduleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -59,72 +64,16 @@ func (m *moduleName) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 func (m moduleName) String() string {
-	switch m {
-	case Ring:
-		return "ring"
-	case RuntimeConfig:
-		return "runtime-config"
-	case Overrides:
-		return "overrides"
-	case Server:
-		return "server"
-	case Distributor:
-		return "distributor"
-	case Store:
-		return "store"
-	case Ingester:
-		return "ingester"
-	case Querier:
-		return "querier"
-	case QueryFrontend:
-		return "query-frontend"
-	case TableManager:
-		return "table-manager"
-	case All:
-		return "all"
-	default:
-		panic(fmt.Sprintf("unknown module name: %d", m))
-	}
+	return string(m)
 }
 
 func (m *moduleName) Set(s string) error {
-	switch strings.ToLower(s) {
-	case "ring":
-		*m = Ring
-		return nil
-	case "runtime-config":
-		*m = RuntimeConfig
-		return nil
-	case "overrides":
-		*m = Overrides
-		return nil
-	case "server":
-		*m = Server
-		return nil
-	case "distributor":
-		*m = Distributor
-		return nil
-	case "store":
-		*m = Store
-		return nil
-	case "ingester":
-		*m = Ingester
-		return nil
-	case "querier":
-		*m = Querier
-		return nil
-	case "query-frontend":
-		*m = QueryFrontend
-		return nil
-	case "table-manager":
-		*m = TableManager
-		return nil
-	case "all":
-		*m = All
-		return nil
-	default:
+	l := moduleName(strings.ToLower(s))
+	if _, ok := modules[l]; !ok {
 		return fmt.Errorf("unrecognised module name: %s", s)
 	}
+	*m = l
+	return nil
 }
 
 func (t *Loki) initServer() (err error) {
@@ -134,13 +83,21 @@ func (t *Loki) initServer() (err error) {
 
 func (t *Loki) initRing() (err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.ring, err = ring.New(t.cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
+	if err == nil {
+		err = services.StartAndAwaitRunning(context.Background(), t.ring)
+	}
 	if err != nil {
 		return
 	}
 	prometheus.MustRegister(t.ring)
 	t.server.HTTP.Handle("/ring", t.ring)
 	return
+}
+
+func (t *Loki) stopRing() (err error) {
+	return services.StopAndAwaitTerminated(context.Background(), t.ring)
 }
 
 func (t *Loki) initRuntimeConfig() (err error) {
@@ -153,13 +110,15 @@ func (t *Loki) initRuntimeConfig() (err error) {
 	// make sure to set default limits before we start loading configuration into memory
 	validation.SetDefaultLimitsForYAMLUnmarshalling(t.cfg.LimitsConfig)
 
-	t.runtimeConfig, err = runtimeconfig.NewRuntimeConfigManager(t.cfg.RuntimeConfig)
+	t.runtimeConfig, err = runtimeconfig.NewRuntimeConfigManager(t.cfg.RuntimeConfig, prometheus.DefaultRegisterer)
+	if err == nil {
+		err = services.StartAndAwaitRunning(context.Background(), t.runtimeConfig)
+	}
 	return err
 }
 
 func (t *Loki) stopRuntimeConfig() (err error) {
-	t.runtimeConfig.Stop()
-	return nil
+	return services.StopAndAwaitTerminated(context.Background(), t.runtimeConfig)
 }
 
 func (t *Loki) initOverrides() (err error) {
@@ -168,6 +127,8 @@ func (t *Loki) initOverrides() (err error) {
 }
 
 func (t *Loki) initDistributor() (err error) {
+	t.cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.distributor, err = distributor.New(t.cfg.Distributor, t.cfg.IngesterClient, t.ring, t.overrides)
 	if err != nil {
 		return
@@ -189,15 +150,23 @@ func (t *Loki) stopDistributor() (err error) {
 	return nil
 }
 
-func (t *Loki) initQuerier() (err error) {
+func (t *Loki) initQuerier() error {
 	level.Debug(util.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.cfg.Worker))
-	t.worker, err = frontend.NewWorker(t.cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
+	worker, err := frontend.NewWorker(t.cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
 	if err != nil {
-		return
+		return err
 	}
+	// worker is nil, if no address is defined.
+	if worker != nil {
+		err = services.StartAndAwaitRunning(context.Background(), worker)
+		if err != nil {
+			return err
+		}
+	}
+
 	t.querier, err = querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store, t.overrides)
 	if err != nil {
-		return
+		return err
 	}
 
 	httpMiddleware := middleware.Merge(
@@ -221,11 +190,12 @@ func (t *Loki) initQuerier() (err error) {
 	t.server.HTTP.Handle("/api/prom/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
 	t.server.HTTP.Handle("/api/prom/tail", httpMiddleware.Wrap(http.HandlerFunc(t.querier.TailHandler)))
 	t.server.HTTP.Handle("/api/prom/series", httpMiddleware.Wrap(http.HandlerFunc(t.querier.SeriesHandler)))
-	return
+	return nil
 }
 
 func (t *Loki) initIngester() (err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = &t.cfg.Server.GRPCListenPort
 	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides)
 	if err != nil {
@@ -268,8 +238,8 @@ func (t *Loki) initTableManager() error {
 		t.cfg.TableManager.IndexTables.ReadScale.Enabled ||
 		t.cfg.TableManager.ChunkTables.InactiveReadScale.Enabled ||
 		t.cfg.TableManager.IndexTables.InactiveReadScale.Enabled) &&
-		(t.cfg.StorageConfig.AWSStorageConfig.ApplicationAutoScaling.URL == nil && t.cfg.StorageConfig.AWSStorageConfig.Metrics.URL == "") {
-		level.Error(util.Logger).Log("msg", "WriteScale is enabled but no ApplicationAutoScaling or Metrics URL has been provided")
+		t.cfg.StorageConfig.AWSStorageConfig.Metrics.URL == "" {
+		level.Error(util.Logger).Log("msg", "WriteScale is enabled but no Metrics URL has been provided")
 		os.Exit(1)
 	}
 
@@ -281,18 +251,29 @@ func (t *Loki) initTableManager() error {
 	bucketClient, err := storage.NewBucketClient(t.cfg.StorageConfig.Config)
 	util.CheckFatal("initializing bucket client", err)
 
-	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient)
+	t.tableManager, err = chunk.NewTableManager(t.cfg.TableManager, t.cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, prometheus.DefaultRegisterer)
 	if err != nil {
 		return err
 	}
 
-	t.tableManager.Start()
+	if err := services.StartAndAwaitRunning(context.Background(), t.tableManager); err != nil {
+		return err
+	}
+
+	// Once the execution reaches this point, synchronous table initialization has been
+	// done and the table-manager is ready to serve, so we're just returning a 200.
+	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("Ready")); err != nil {
+			level.Error(util.Logger).Log("msg", "error writing success message", "error", err)
+		}
+	}))
+
 	return nil
 }
 
 func (t *Loki) stopTableManager() error {
-	t.tableManager.Stop()
-	return nil
+	return services.StopAndAwaitTerminated(context.Background(), t.tableManager)
 }
 
 func (t *Loki) initStore() (err error) {
@@ -307,7 +288,7 @@ func (t *Loki) stopStore() error {
 
 func (t *Loki) initQueryFrontend() (err error) {
 	level.Debug(util.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.cfg.Frontend))
-	t.frontend, err = frontend.New(t.cfg.Frontend, util.Logger)
+	t.frontend, err = frontend.New(t.cfg.Frontend, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -315,7 +296,7 @@ func (t *Loki) initQueryFrontend() (err error) {
 		"config", fmt.Sprintf("%+v", t.cfg.QueryRange),
 		"limits", fmt.Sprintf("%+v", t.cfg.LimitsConfig),
 	)
-	tripperware, stopper, err := queryrange.NewTripperware(t.cfg.QueryRange, util.Logger, t.overrides)
+	tripperware, stopper, err := queryrange.NewTripperware(t.cfg.QueryRange, util.Logger, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return err
 	}
@@ -323,7 +304,7 @@ func (t *Loki) initQueryFrontend() (err error) {
 	t.frontend.Wrap(tripperware)
 	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
 
-	frontendHandler := t.httpAuthMiddleware.Wrap(t.frontend.Handler())
+	frontendHandler := queryrange.StatsHTTPMiddleware.Wrap(t.httpAuthMiddleware.Wrap(t.frontend.Handler()))
 	t.server.HTTP.Handle("/loki/api/v1/query_range", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/query", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/label", frontendHandler)
@@ -342,11 +323,22 @@ func (t *Loki) initQueryFrontend() (err error) {
 func (t *Loki) stopQueryFrontend() error {
 	t.frontend.Close()
 	if t.stopper != nil {
-		if err := t.stopper.Stop(); err != nil {
-			level.Error(util.Logger).Log("msg", "error while stopping middleware", "err", err)
-			return err
-		}
+		t.stopper.Stop()
 	}
+	return nil
+}
+
+func (t *Loki) initMemberlistKV() error {
+	t.cfg.MemberlistKV.MetricsRegisterer = prometheus.DefaultRegisterer
+	t.cfg.MemberlistKV.Codecs = []codec.Codec{
+		ring.GetCodec(),
+	}
+	t.memberlistKV = memberlist.NewKVInit(&t.cfg.MemberlistKV)
+	return nil
+}
+
+func (t *Loki) stopMemberlistKV() error {
+	t.memberlistKV.Stop()
 	return nil
 }
 
@@ -425,9 +417,15 @@ var modules = map[moduleName]module{
 		stop: (*Loki).stopRuntimeConfig,
 	},
 
+	MemberlistKV: {
+		init: (*Loki).initMemberlistKV,
+		stop: (*Loki).stopMemberlistKV,
+	},
+
 	Ring: {
-		deps: []moduleName{RuntimeConfig, Server},
+		deps: []moduleName{RuntimeConfig, Server, MemberlistKV},
 		init: (*Loki).initRing,
+		stop: (*Loki).stopRing,
 	},
 
 	Overrides: {
@@ -448,7 +446,7 @@ var modules = map[moduleName]module{
 	},
 
 	Ingester: {
-		deps:     []moduleName{Store, Server},
+		deps:     []moduleName{Store, Server, MemberlistKV},
 		init:     (*Loki).initIngester,
 		stop:     (*Loki).stopIngester,
 		stopping: (*Loki).stoppingIngester,

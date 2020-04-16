@@ -10,6 +10,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/gorilla/websocket"
+
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/loghttp"

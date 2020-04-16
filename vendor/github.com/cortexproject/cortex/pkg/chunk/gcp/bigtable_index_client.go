@@ -14,11 +14,12 @@ import (
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 
+	"github.com/pkg/errors"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -39,8 +40,8 @@ type Config struct {
 	ColumnKey      bool `yaml:"-"`
 	DistributeKeys bool `yaml:"-"`
 
-	TableCacheEnabled    bool
-	TableCacheExpiration time.Duration
+	TableCacheEnabled    bool          `yaml:"table_cache_enabled"`
+	TableCacheExpiration time.Duration `yaml:"table_cache_expiration"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -59,8 +60,6 @@ type storageClientColumnKey struct {
 	schemaCfg chunk.SchemaConfig
 	client    *bigtable.Client
 	keysFn    keysFn
-
-	distributeKeys bool
 }
 
 // storageClientV1 implements chunk.storageClient for GCP.
@@ -166,6 +165,11 @@ func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 	}
 
 	mutation.Set(columnFamily, columnKey, 0, value)
+}
+
+func (b bigtableWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	// ToDo: implement this to support deleting index entries from Bigtable
+	panic("Bigtable does not support Deleting index entries yet")
 }
 
 func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {

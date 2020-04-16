@@ -1,25 +1,32 @@
 # LogQL: Log Query Language
 
-Loki comes with its very own language for querying logs called *LogQL*. LogQL
-can be considered a distributed `grep` with labels for filtering.
+Loki comes with its own PromQL-inspired language for queries called *LogQL*.
+LogQL can be considered a distributed `grep` that aggregates log sources and
+using labels and operators for filtering.
 
-A basic LogQL query consists of two parts: the **log stream selector** and a
+There are two types of LogQL queries: *log queries* which return the contents of
+log lines, and *metric queries* which extend log queries and calculates values
+based on the counts of logs from a log query.
+
+A basic log query consists of two parts: the **log stream selector** and a
 **filter expression**. Due to Loki's design, all LogQL queries are required to
 contain a log stream selector.
 
-The log stream selector will reduce the number of log streams to a manageable
-volume. Depending how many labels you use to filter down the log streams will
-affect the relative performance of the query's execution. The filter expression
-is then used to do a distributed `grep` over the retrieved log streams.
+The log stream selector determines how many log streams (unique sources of log
+content, such as files) will be searched. A more granular log stream selector
+reduces the number of searched streams to a manageable volume. This means that
+the labels passed to the log stream selector will affect the relative
+performance of the query's execution. The filter expression is then used to do a
+distributed `grep` over the aggregated logs from the matching log streams.
 
 ### Log Stream Selector
 
 The log stream selector determines which log streams should be included in your
-query. The stream selector is comprised of one or more key-value pairs, where
-each key is a **log label** and the value is that label's value.
+query results. The stream selector is comprised of one or more key-value pairs,
+where each key is a **log label** and the value is that label's value.
 
-The log stream selector is written by wrapping the key-value pairs in a
-pair of curly braces:
+The log stream selector is written by wrapping the key-value pairs in a pair of
+curly braces:
 
 ```
 {app="mysql",name="mysql-backup"}
@@ -27,7 +34,10 @@ pair of curly braces:
 
 In this example, log streams that have a label of `app` whose value is `mysql`
 _and_ a label of `name` whose value is `mysql-backup` will be included in the
-query results.
+query results. Note that this will match any log stream whose labels _at least_
+contain `mysql-backup` for their name label; if there are multiple streams that
+contain that label, logs from all of the matching streams will be shown in the
+results.
 
 The `=` operator after the label name is a **label matching operator**. The
 following label matching operators are supported:
@@ -74,10 +84,14 @@ When using `|~` and `!~`,
 matching is case-sensitive by default and can be switched to case-insensitive
 prefixing the regex with `(?i)`.
 
-## Counting logs
+## Metric Queries
 
-LogQL also supports functions that wrap a query and allow for counting entries
-per stream.
+LogQL also supports wrapping a log query with functions that allows for counting
+entries per stream.
+
+Metric queries can be used to calculate things such as the rate of error
+messages, or the top N log sources with the most amount of logs over the last 3
+hours.
 
 ### Range Vector aggregation
 
@@ -97,12 +111,20 @@ The currently supported functions for operating over are:
 This example counts all the log lines within the last five minutes for the
 MySQL job.
 
-> `rate( ( {job="mysql"} |= "error" != "timeout)[10s] ) )`
+> `rate({job="mysql"} |= "error" != "timeout" [10s] )`
 
 This example demonstrates that a fully LogQL query can be wrapped in the
 aggregation syntax, including filter expressions. This example gets the
 per-second rate of all non-timeout errors within the last ten seconds for the
 MySQL job.
+
+It should be noted that the range notation `[5m]` can be placed at end of the log stream filter or right after the log stream matcher. For example those two syntaxes below are equivalent.
+
+```logql
+rate({job="mysql"} |= "error" != "timeout" [5m])
+
+rate({job="mysql"}[5m] |= "error" != "timeout")
+```
 
 ### Aggregation operators
 
@@ -151,3 +173,62 @@ by level:
 Get the rate of HTTP GET requests from NGINX logs:
 
 > `avg(rate(({job="nginx"} |= "GET")[10s])) by (region)`
+
+### Binary Operators
+
+#### Arithmetic Binary Operators
+
+Arithmetic binary operators
+The following binary arithmetic operators exist in Loki:
+
+- `+` (addition)
+- `-` (subtraction)
+- `*` (multiplication)
+- `/` (division)
+- `%` (modulo)
+- `^` (power/exponentiation)
+
+Binary arithmetic operators are defined between two literals (scalars), a literal and a vector, and two vectors.
+
+Between two literals, the behavior is obvious: they evaluate to another literal that is the result of the operator applied to both scalar operands (1 + 1 = 2).
+
+Between a vector and a literal, the operator is applied to the value of every data sample in the vector. E.g. if a time series vector is multiplied by 2, the result is another vector in which every sample value of the original vector is multiplied by 2.
+
+Between two vectors, a binary arithmetic operator is applied to each entry in the left-hand side vector and its matching element in the right-hand vector. The result is propagated into the result vector with the grouping labels becoming the output label set. Entries for which no matching entry in the right-hand vector can be found are not part of the result.
+
+##### Examples
+
+Implement a health check with a simple query:
+
+> `1 + 1`
+
+Double the rate of a a log stream's entries:
+
+> `sum(rate({app="foo"})) * 2`
+
+Get proportion of warning logs to error logs for the `foo` app
+
+> `sum(rate({app="foo", level="warn"}[1m])) / sum(rate({app="foo", level="error"}[1m]))`
+
+Operators on the same precedence level are left-associative (queries substituted with numbers here for simplicity). For example, 2 * 3 % 2 is equivalent to (2 * 3) % 2. However, some operators have different priorities: 1 + 2 / 3 will still be 1 + ( 2 / 3 ). These function identically to mathematical conventions.
+
+
+#### Logical/set binary operators
+
+These logical/set binary operators are only defined between two vectors:
+
+- `and` (intersection)
+- `or` (union)
+- `unless` (complement)
+
+`vector1 and vector2` results in a vector consisting of the elements of vector1 for which there are elements in vector2 with exactly matching label sets. Other elements are dropped.
+
+`vector1 or vector2` results in a vector that contains all original elements (label sets + values) of vector1 and additionally all elements of vector2 which do not have matching label sets in vector1.
+
+`vector1 unless vector2` results in a vector consisting of the elements of vector1 for which there are no elements in vector2 with exactly matching label sets. All matching elements in both vectors are dropped.
+
+##### Examples
+
+This contrived query will return the intersection of these queries, effectively `rate({app="bar"})`
+
+> `rate({app=~"foo|bar"}[1m]) and rate({app="bar"}[1m])`

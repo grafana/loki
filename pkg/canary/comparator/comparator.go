@@ -86,12 +86,14 @@ func NewComparator(writer io.Writer, maxWait time.Duration, pruneInterval time.D
 		done:          make(chan struct{}),
 	}
 
-	responseLatency = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "loki_canary",
-		Name:      "response_latency",
-		Help:      "is how long it takes for log lines to be returned from Loki in seconds.",
-		Buckets:   prometheus.ExponentialBuckets(0.5, 2, buckets),
-	})
+	if responseLatency == nil {
+		responseLatency = promauto.NewHistogram(prometheus.HistogramOpts{
+			Namespace: "loki_canary",
+			Name:      "response_latency",
+			Help:      "is how long it takes for log lines to be returned from Loki in seconds.",
+			Buckets:   prometheus.ExponentialBuckets(0.5, 2, buckets),
+		})
+	}
 
 	go c.run()
 

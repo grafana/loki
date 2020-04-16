@@ -3,6 +3,8 @@ package validation
 import (
 	"flag"
 	"time"
+
+	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 const (
@@ -19,16 +21,17 @@ const (
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
 	// Distributor enforced limits.
-	IngestionRateStrategy  string        `yaml:"ingestion_rate_strategy"`
-	IngestionRateMB        float64       `yaml:"ingestion_rate_mb"`
-	IngestionBurstSizeMB   float64       `yaml:"ingestion_burst_size_mb"`
-	MaxLabelNameLength     int           `yaml:"max_label_name_length"`
-	MaxLabelValueLength    int           `yaml:"max_label_value_length"`
-	MaxLabelNamesPerSeries int           `yaml:"max_label_names_per_series"`
-	RejectOldSamples       bool          `yaml:"reject_old_samples"`
-	RejectOldSamplesMaxAge time.Duration `yaml:"reject_old_samples_max_age"`
-	CreationGracePeriod    time.Duration `yaml:"creation_grace_period"`
-	EnforceMetricName      bool          `yaml:"enforce_metric_name"`
+	IngestionRateStrategy  string           `yaml:"ingestion_rate_strategy"`
+	IngestionRateMB        float64          `yaml:"ingestion_rate_mb"`
+	IngestionBurstSizeMB   float64          `yaml:"ingestion_burst_size_mb"`
+	MaxLabelNameLength     int              `yaml:"max_label_name_length"`
+	MaxLabelValueLength    int              `yaml:"max_label_value_length"`
+	MaxLabelNamesPerSeries int              `yaml:"max_label_names_per_series"`
+	RejectOldSamples       bool             `yaml:"reject_old_samples"`
+	RejectOldSamplesMaxAge time.Duration    `yaml:"reject_old_samples_max_age"`
+	CreationGracePeriod    time.Duration    `yaml:"creation_grace_period"`
+	EnforceMetricName      bool             `yaml:"enforce_metric_name"`
+	MaxLineSize            flagext.ByteSize `yaml:"max_line_size"`
 
 	// Ingester enforced limits.
 	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user"`
@@ -41,6 +44,10 @@ type Limits struct {
 	CardinalityLimit           int           `yaml:"cardinality_limit"`
 	MaxStreamsMatchersPerQuery int           `yaml:"max_streams_matchers_per_query"`
 	MaxConcurrentTailRequests  int           `yaml:"max_concurrent_tail_requests"`
+	MaxEntriesLimitPerQuery    int           `yaml:"max_entries_limit_per_query"`
+
+	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
+	QuerySplitDuration time.Duration `yaml:"split_queries_by_interval"`
 
 	// Config for overrides, convenient if it goes here.
 	PerTenantOverrideConfig string        `yaml:"per_tenant_override_config"`
@@ -52,6 +59,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "local", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global).")
 	f.Float64Var(&l.IngestionRateMB, "distributor.ingestion-rate-limit-mb", 4, "Per-user ingestion rate limit in sample size per second. Units in MB.")
 	f.Float64Var(&l.IngestionBurstSizeMB, "distributor.ingestion-burst-size-mb", 6, "Per-user allowed ingestion burst size (in sample size). Units in MB.")
+	f.Var(&l.MaxLineSize, "distributor.max-line-size", "maximum line length allowed, i.e. 100mb. Default (0) means unlimited.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
@@ -59,6 +67,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")
 	f.DurationVar(&l.CreationGracePeriod, "validation.create-grace-period", 10*time.Minute, "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
 	f.BoolVar(&l.EnforceMetricName, "validation.enforce-metric-name", true, "Enforce every sample has a metric name.")
+	f.IntVar(&l.MaxEntriesLimitPerQuery, "validation.max-entries-limit", 5000, "Per-user entries limit per query")
 
 	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 10e3, "Maximum number of active streams per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalStreamsPerUser, "ingester.max-global-streams-per-user", 0, "Maximum number of active streams per user, across the cluster. 0 to disable.")
@@ -214,9 +223,24 @@ func (o *Overrides) MaxStreamsMatchersPerQuery(userID string) int {
 	return o.getOverridesForUser(userID).MaxStreamsMatchersPerQuery
 }
 
+// QuerySplitDuration returns the tenant specific splitby interval applied in the query frontend.
+func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
+	return o.getOverridesForUser(userID).QuerySplitDuration
+}
+
 // MaxConcurrentTailRequests returns the limit to number of concurrent tail requests.
 func (o *Overrides) MaxConcurrentTailRequests(userID string) int {
 	return o.getOverridesForUser(userID).MaxConcurrentTailRequests
+}
+
+// MaxLineSize returns the maximum size in bytes the distributor should allow.
+func (o *Overrides) MaxLineSize(userID string) int {
+	return o.getOverridesForUser(userID).MaxLineSize.Val()
+}
+
+// MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.
+func (o *Overrides) MaxEntriesLimitPerQuery(userID string) int {
+	return o.getOverridesForUser(userID).MaxEntriesLimitPerQuery
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

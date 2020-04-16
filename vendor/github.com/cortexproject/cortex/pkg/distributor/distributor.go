@@ -8,13 +8,16 @@ import (
 	"strings"
 	"time"
 
-	"google.golang.org/grpc/health/grpc_health_v1"
-
 	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/instrument"
+	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -22,13 +25,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	billing "github.com/weaveworks/billing-client"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/common/user"
 )
 
 var (
@@ -95,11 +94,12 @@ var (
 // Distributor is a storage.SampleAppender and a client.Querier which
 // forwards appends and queries to individual ingesters.
 type Distributor struct {
+	services.Service
+
 	cfg           Config
 	ingestersRing ring.ReadRing
 	ingesterPool  *ingester_client.Pool
 	limits        *validation.Overrides
-	billingClient *billing.Client
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances
@@ -110,25 +110,27 @@ type Distributor struct {
 
 	// Per-user rate limiter.
 	ingestionRateLimiter *limiter.RateLimiter
+
+	// Manager for subservices (HA Tracker, distributor ring and client pool)
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
 }
 
 // Config contains the configuration require to
 // create a Distributor
 type Config struct {
-	EnableBilling bool                       `yaml:"enable_billing,omitempty"`
-	BillingConfig billing.Config             `yaml:"billing,omitempty"`
-	PoolConfig    ingester_client.PoolConfig `yaml:"pool,omitempty"`
+	PoolConfig ingester_client.PoolConfig `yaml:"pool"`
 
-	HATrackerConfig HATrackerConfig `yaml:"ha_tracker,omitempty"`
+	HATrackerConfig HATrackerConfig `yaml:"ha_tracker"`
 
 	MaxRecvMsgSize  int           `yaml:"max_recv_msg_size"`
-	RemoteTimeout   time.Duration `yaml:"remote_timeout,omitempty"`
-	ExtraQueryDelay time.Duration `yaml:"extra_queue_delay,omitempty"`
+	RemoteTimeout   time.Duration `yaml:"remote_timeout"`
+	ExtraQueryDelay time.Duration `yaml:"extra_queue_delay"`
 
-	ShardByAllLabels bool `yaml:"shard_by_all_labels,omitempty"`
+	ShardByAllLabels bool `yaml:"shard_by_all_labels"`
 
 	// Distributors ring
-	DistributorRing RingConfig `yaml:"ring,omitempty"`
+	DistributorRing RingConfig `yaml:"ring"`
 
 	// for testing
 	ingesterClientFactory client.Factory `yaml:"-"`
@@ -136,16 +138,13 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.BillingConfig.RegisterFlags(f)
 	cfg.PoolConfig.RegisterFlags(f)
 	cfg.HATrackerConfig.RegisterFlags(f)
 	cfg.DistributorRing.RegisterFlags(f)
 
-	f.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	f.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "remote_write API max receive message size (bytes).")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
-	flagext.DeprecatedFlag(f, "distributor.limiter-reload-period", "DEPRECATED. No more required because the local limiter is reconfigured as soon as the overrides change.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 }
 
@@ -162,15 +161,6 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		}
 	}
 
-	var billingClient *billing.Client
-	if cfg.EnableBilling {
-		var err error
-		billingClient, err = billing.NewClient(cfg.BillingConfig)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
@@ -178,6 +168,9 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	if err != nil {
 		return nil, err
 	}
+
+	subservices := []services.Service(nil)
+	subservices = append(subservices, replicas)
 
 	// Create the configured ingestion rate limit strategy (local or global). In case
 	// it's an internal dependency and can't join the distributors ring, we skip rate
@@ -193,7 +186,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			return nil, err
 		}
 
-		distributorsRing.Start()
+		subservices = append(subservices, distributorsRing)
 
 		ingestionRateStrategy = newGlobalIngestionRateStrategy(limits, distributorsRing)
 	} else {
@@ -204,24 +197,41 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		cfg:                  cfg,
 		ingestersRing:        ingestersRing,
 		ingesterPool:         ingester_client.NewPool(cfg.PoolConfig, ingestersRing, cfg.ingesterClientFactory, util.Logger),
-		billingClient:        billingClient,
 		distributorsRing:     distributorsRing,
 		limits:               limits,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		Replicas:             replicas,
 	}
 
+	subservices = append(subservices, d.ingesterPool)
+	d.subservices, err = services.NewManager(subservices...)
+	if err != nil {
+		return nil, err
+	}
+	d.subservicesWatcher = services.NewFailureWatcher()
+	d.subservicesWatcher.WatchManager(d.subservices)
+
+	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
 	return d, nil
 }
 
-// Stop stops the distributor's maintenance loop.
-func (d *Distributor) Stop() {
-	d.ingesterPool.Stop()
-	d.Replicas.stop()
+func (d *Distributor) starting(ctx context.Context) error {
+	// Only report success if all sub-services start properly
+	return services.StartManagerAndAwaitHealthy(ctx, d.subservices)
+}
 
-	if d.distributorsRing != nil {
-		d.distributorsRing.Shutdown()
+func (d *Distributor) running(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-d.subservicesWatcher.Chan():
+		return errors.Wrap(err, "distributor subservice failed")
 	}
+}
+
+// Called after distributor is asked to stop via StopAsync.
+func (d *Distributor) stopping(_ error) error {
+	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
 }
 
 func (d *Distributor) tokenForLabels(userID string, labels []client.LabelAdapter) (uint32, error) {
@@ -326,7 +336,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	for _, ts := range req.Timeseries {
 		numSamples += len(ts.Samples)
 	}
-	// Count the total samples in, prior to validation or deuplication, for comparison with other metrics.
+	// Count the total samples in, prior to validation or deduplication, for comparison with other metrics.
 	incomingSamples.WithLabelValues(userID).Add(float64(numSamples))
 
 	if d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
@@ -397,16 +407,6 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			continue
 		}
 
-		metricName, _ := extract.MetricNameFromLabelAdapters(ts.Labels)
-		samples := make([]client.Sample, 0, len(ts.Samples))
-		for _, s := range ts.Samples {
-			if err := validation.ValidateSample(d.limits, userID, metricName, s); err != nil {
-				lastPartialErr = err
-				continue
-			}
-			samples = append(samples, s)
-		}
-
 		keys = append(keys, key)
 		validatedTimeseries = append(validatedTimeseries, validatedSeries)
 		validatedSamples += len(ts.Samples)
@@ -431,7 +431,19 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", d.ingestionRateLimiter.Limit(now, userID), numSamples)
 	}
 
-	err = ring.DoBatch(ctx, d.ingestersRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
+	var subRing ring.ReadRing
+	subRing = d.ingestersRing
+
+	// Obtain a subring if required
+	if size := d.limits.SubringSize(userID); size > 0 {
+		h := client.HashAdd32(client.HashNew32(), userID)
+		subRing, err = d.ingestersRing.Subring(h, size)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unable to create subring: %v", err)
+		}
+	}
+
+	err = ring.DoBatch(ctx, subRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
 		timeseries := make([]client.PreallocTimeseries, 0, len(indexes))
 		for _, i := range indexes {
 			timeseries = append(timeseries, validatedTimeseries[i])

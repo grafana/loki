@@ -11,8 +11,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/grafana/loki/pkg/promtail/client/fake"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/promtail/client/fake"
 )
 
 func TestNewMulti(t *testing.T) {

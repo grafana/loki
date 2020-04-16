@@ -7,6 +7,8 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 )
 
 // StoreLimits helps get Limits specific to Queries for Stores
@@ -25,6 +27,12 @@ type Store interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string) ([]string, error)
 	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
+
+	// DeleteChunk deletes a chunks index entry and then deletes the actual chunk from chunk storage.
+	// It takes care of chunks which are deleting partially by creating and inserting a new chunk first and then deleting the original chunk
+	DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error
+	// DeleteSeriesIDs is only relevant for SeriesStore.
+	DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error
 	Stop()
 }
 
@@ -50,15 +58,15 @@ func NewCompositeStore() CompositeStore {
 }
 
 // AddPeriod adds the configuration for a period of time to the CompositeStore
-func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index IndexClient, chunks ObjectClient, limits StoreLimits) error {
+func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) error {
 	schema := cfg.CreateSchema()
 	var store Store
 	var err error
 	switch cfg.Schema {
 	case "v9", "v10", "v11":
-		store, err = newSeriesStore(storeCfg, schema, index, chunks, limits)
+		store, err = newSeriesStore(storeCfg, schema, index, chunks, limits, chunksCache, writeDedupeCache)
 	default:
-		store, err = newStore(storeCfg, schema, index, chunks, limits)
+		store, err = newStore(storeCfg, schema, index, chunks, limits, chunksCache)
 	}
 	if err != nil {
 		return err
@@ -140,6 +148,21 @@ func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, t
 		return nil
 	})
 	return chunkIDs, fetchers, err
+}
+
+// DeleteSeriesIDs deletes series IDs from index in series store
+func (c CompositeStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+	return c.forStores(from, through, func(from, through model.Time, store Store) error {
+		return store.DeleteSeriesIDs(ctx, from, through, userID, metric)
+	})
+}
+
+// DeleteChunk deletes a chunks index entry and then deletes the actual chunk from chunk storage.
+// It takes care of chunks which are deleting partially by creating and inserting a new chunk first and then deleting the original chunk
+func (c CompositeStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
+	return c.forStores(from, through, func(from, through model.Time, store Store) error {
+		return store.DeleteChunk(ctx, from, through, userID, chunkID, metric, partiallyDeletedInterval)
+	})
 }
 
 func (c compositeStore) Stop() {

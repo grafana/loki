@@ -19,6 +19,12 @@ func (b *QueryStringBuilder) SetString(name, value string) {
 	b.values.Set(name, value)
 }
 
+func (b *QueryStringBuilder) SetStringArray(name string, values []string) {
+	for _, v := range values {
+		b.values.Add(name, v)
+	}
+}
+
 func (b *QueryStringBuilder) SetInt(name string, value int64) {
 	b.SetString(name, strconv.FormatInt(value, 10))
 }

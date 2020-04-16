@@ -9,12 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
+
+	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func TestMaxReturnedStreamsErrors(t *testing.T) {
@@ -98,7 +99,7 @@ func TestStreamIterator(t *testing.T) {
 		new  func() chunkenc.Chunk
 	}{
 		{"dumbChunk", chunkenc.NewDumbChunk},
-		{"gzipChunk", func() chunkenc.Chunk { return chunkenc.NewMemChunk(chunkenc.EncGZIP) }},
+		{"gzipChunk", func() chunkenc.Chunk { return chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 0) }},
 	} {
 		t.Run(chk.name, func(t *testing.T) {
 			var s stream

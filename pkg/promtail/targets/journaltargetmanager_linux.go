@@ -5,11 +5,12 @@ package targets
 import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/pkg/logentry/stages"
 	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/positions"
 	"github.com/grafana/loki/pkg/promtail/scrape"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // JournalTargetManager manages a series of JournalTargets.
@@ -21,7 +22,7 @@ type JournalTargetManager struct {
 // NewJournalTargetManager creates a new JournalTargetManager.
 func NewJournalTargetManager(
 	logger log.Logger,
-	positions *positions.Positions,
+	positions positions.Positions,
 	client api.EntryHandler,
 	scrapeConfigs []scrape.Config,
 ) (*JournalTargetManager, error) {

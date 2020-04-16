@@ -3,6 +3,66 @@
 This document describes known failure modes of `promtail` on edge cases and the
 adopted trade-offs.
 
+## Dry running
+
+Promtail can be configured to print log stream entries instead of sending them to Loki.
+This can be used in combination with [piping data](#pipe-data-to-promtail) to debug or troubleshoot promtail log parsing.
+
+In dry run mode, Promtail still support reading from a [positions](configuration.md#position_config) file however no update will be made to the targeted file, this is to ensure you can easily retry the same set of lines.
+
+To start Promtail in dry run mode use the flag `--dry-run` as shown in the example below:
+
+```bash
+cat my.log | promtail --stdin --dry-run --client.url http://127.0.0.1:3100/loki/api/v1/push
+```
+
+## Pipe data to Promtail
+
+Promtail supports piping data for sending logs to Loki (via the flag `--stdin`). This is a very useful way to troubleshooting your configuration.
+Once you have promtail installed you can for instance use the following command to send logs to a local Loki instance:
+
+```bash
+cat my.log | promtail --stdin  --client.url http://127.0.0.1:3100/loki/api/v1/push
+```
+
+You can also add additional labels from command line using:
+
+```bash
+cat my.log | promtail --stdin  --client.url http://127.0.0.1:3100/loki/api/v1/push --client.external-labels=k1=v1,k2=v2
+```
+
+This will add labels `k1` and `k2` with respective values `v1` and `v2`.
+
+In pipe mode Promtail also support file configuration using `--config.file`, however do note that positions config is not used and
+only **the first scrape config is used**.
+
+[`static_configs:`](./configuration) can be used to provide static labels, although the targets property is ignored.
+
+If you don't provide any [`scrape_config:`](./configuration#scrape_config) a default one is used which will automatically adds the following default labels: `{job="stdin",hostname="<detected_hostname>"}`.
+
+For example you could use this config below to parse and add the label `level` on all your piped logs:
+
+```yaml
+clients:
+  - url: http://localhost:3100/loki/api/v1/push
+
+scrape_configs:
+- job_name: system
+  pipeline_stages:
+  - regex:
+      expression: '(level|lvl|severity)=(?P<level>\\w+)'
+  - labels:
+      level:
+  static_configs:
+  - labels:
+      job: my-stdin-logs
+```
+
+```
+cat my.log | promtail --config.file promtail.yaml
+```
+
+
 ## A tailed file is truncated while `promtail` is not running
 
 Given the following order of events:
@@ -42,27 +102,27 @@ batched together before getting pushed to Loki, based on the max batch duration
 In case of any error while sending a log entries batch, `promtail` adopts a
 "retry then discard" strategy:
 
-- `promtail` retries to send log entry to the ingester up to `maxretries` times
+- `promtail` retries to send log entry to the ingester up to `max_retries` times
 - If all retries fail, `promtail` discards the batch of log entries (_which will
   be lost_) and proceeds with the next one
 
-You can configure the `maxretries` and the delay between two retries via the
+You can configure the `max_retries` and the delay between two retries via the
 `backoff_config` in the promtail config file:
 
 ```yaml
 clients:
   - url: INGESTER-URL
     backoff_config:
-      minbackoff: 100ms
-      maxbackoff: 10s
-      maxretries: 10
+      min_period: 100ms
+      max_period: 10s
+      max_retries: 10
 ```
 
 The following table shows an example of the total delay applied by the backoff algorithm
-with `minbackoff: 100ms` and `maxbackoff: 10s`:
+with `min_period: 100ms` and `max_period: 10s`:
 
 | Retry | Min delay | Max delay | Total min delay | Total max delay |
-| ----- | --------- | --------- | --------------- | --------------- |
+|-------|-----------|-----------|-----------------|-----------------|
 | 1     | 100ms     | 200ms     | 100ms           | 200ms           |
 | 2     | 200ms     | 400ms     | 300ms           | 600ms           |
 | 3     | 400ms     | 800ms     | 700ms           | 1.4s            |

@@ -18,11 +18,12 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 
-	"github.com/grafana/loki/pkg/helpers"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (
@@ -233,8 +234,8 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 			return
 		}
 
-		// Only retry 500s and connection-level errors.
-		if status > 0 && status/100 != 5 {
+		// Only retry 429s, 500s and connection-level errors.
+		if status > 0 && status != 429 && status/100 != 5 {
 			break
 		}
 

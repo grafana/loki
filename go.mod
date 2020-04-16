@@ -6,10 +6,11 @@ require (
 	github.com/Microsoft/go-winio v0.4.12 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/bmatcuk/doublestar v1.2.2
+	github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
 	github.com/containerd/containerd v1.3.2 // indirect
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
-	github.com/cortexproject/cortex v0.4.1-0.20200122092731-ab3e8360fe30
+	github.com/cortexproject/cortex v1.0.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/docker/docker v0.7.3-0.20190817195342-4760db040282
@@ -20,6 +21,7 @@ require (
 	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
 	github.com/frankban/quicktest v1.7.2 // indirect
 	github.com/go-kit/kit v0.9.0
+	github.com/go-logfmt/logfmt v0.4.0
 	github.com/gogo/protobuf v1.3.1 // remember to update loki-build-image/Dockerfile too
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/mux v1.7.1
@@ -35,26 +37,27 @@ require (
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
-	github.com/opentracing/opentracing-go v1.1.0
+	github.com/opentracing/opentracing-go v1.1.1-0.20200124165624-2876d2018785
 	github.com/pierrec/lz4 v2.3.1-0.20191115212037-9085dacd1e1e+incompatible
-	github.com/pkg/errors v0.8.1
-	github.com/prometheus/client_golang v1.2.1
-	github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4
-	github.com/prometheus/common v0.7.0
-	github.com/prometheus/prometheus v1.8.2-0.20191126064551-80ba03c67da1
+	github.com/pkg/errors v0.9.1
+	github.com/prometheus/client_golang v1.5.0
+	github.com/prometheus/client_model v0.2.0
+	github.com/prometheus/common v0.9.1
+	github.com/prometheus/prometheus v1.8.2-0.20200213233353-b90be6f32a33
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd
-	github.com/stretchr/testify v1.4.0
+	github.com/stretchr/testify v1.5.1
+	github.com/thanos-io/thanos v0.11.0 // indirect
 	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
+	github.com/uber/jaeger-client-go v2.20.1+incompatible
 	github.com/ugorji/go v1.1.7 // indirect
-	github.com/weaveworks/common v0.0.0-20191103151037-0e7cefadc44f
+	github.com/weaveworks/common v0.0.0-20200310113808-2708ba4e60a4
 	go.etcd.io/etcd v0.0.0-20190815204525-8f85f0dc2607 // indirect
-	golang.org/x/net v0.0.0-20191112182307-2180aed22343
-	golang.org/x/sys v0.0.0-20191218084908-4a24b4065292 // indirect
+	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b
 	google.golang.org/grpc v1.25.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/fsnotify.v1 v1.4.7
-	gopkg.in/yaml.v2 v2.2.5
+	gopkg.in/yaml.v2 v2.2.7
 	k8s.io/klog v1.0.0
 )
 

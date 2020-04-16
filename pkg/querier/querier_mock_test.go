@@ -11,17 +11,18 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	grpc_metadata "google.golang.org/grpc/metadata"
+
+	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/util"
 )
 
 // querierClientMock is a mockable version of QuerierClient, used in querier
@@ -234,6 +235,23 @@ func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, 
 	return args.Get(0).([]string), args.Error(1)
 }
 
+func (s *storeMock) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
+	panic("don't call me please")
+}
+
+func (s *storeMock) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+	panic("don't call me please")
+}
+
+func (s *storeMock) GetSeries(ctx context.Context, req logql.SelectParams) ([]logproto.SeriesIdentifier, error) {
+	args := s.Called(ctx, req)
+	res := args.Get(0)
+	if res == nil {
+		return []logproto.SeriesIdentifier(nil), args.Error(1)
+	}
+	return res.([]logproto.SeriesIdentifier), args.Error(1)
+}
+
 func (s *storeMock) Stop() {
 
 }
@@ -279,6 +297,10 @@ func (r *readRingMock) IngesterCount() int {
 	return len(r.replicationSet.Ingesters)
 }
 
+func (r *readRingMock) Subring(key uint32, n int) (ring.ReadRing, error) {
+	return r, nil
+}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.IngesterDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
@@ -299,15 +321,6 @@ func mockIngesterDesc(addr string, state ring.IngesterState) ring.IngesterDesc {
 // starting at from
 func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 	return iter.NewStreamIterator(mockStream(from, quantity))
-}
-
-func mockStreamIterFromLabelSets(from, quantity int, sets []string) iter.EntryIterator {
-	var streams []*logproto.Stream
-	for _, s := range sets {
-		streams = append(streams, mockStreamWithLabels(from, quantity, s))
-	}
-
-	return iter.NewStreamsIterator(context.Background(), streams, logproto.FORWARD)
 }
 
 // mockStream return a stream with quantity entries, where entries timestamp and

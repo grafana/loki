@@ -36,6 +36,17 @@ var tokens = map[string]int{
 	OpTypeStdvar:        STDVAR,
 	OpTypeBottomK:       BOTTOMK,
 	OpTypeTopK:          TOPK,
+
+	// binops
+	OpTypeOr:     OR,
+	OpTypeAnd:    AND,
+	OpTypeUnless: UNLESS,
+	OpTypeAdd:    ADD,
+	OpTypeSub:    SUB,
+	OpTypeMul:    MUL,
+	OpTypeDiv:    DIV,
+	OpTypeMod:    MOD,
+	OpTypePow:    POW,
 }
 
 type lexer struct {
@@ -50,6 +61,10 @@ func (l *lexer) Lex(lval *exprSymType) int {
 	switch r {
 	case scanner.EOF:
 		return 0
+
+	case scanner.Int, scanner.Float:
+		lval.str = l.TokenText()
+		return NUMBER
 
 	case scanner.String:
 		var err error

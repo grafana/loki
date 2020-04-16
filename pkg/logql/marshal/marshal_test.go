@@ -6,14 +6,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/loghttp"
+	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 // covers responses from /loki/api/v1/query_range and /loki/api/v1/query
@@ -46,7 +47,39 @@ var queryTests = []struct {
 							[ "123456789012345", "super line" ]
 						]
 					}
-				]
+				],
+				"stats" : {
+					"ingester" : {
+						"compressedBytes": 0,
+						"decompressedBytes": 0,
+						"decompressedLines": 0,
+						"headChunkBytes": 0,
+						"headChunkLines": 0,
+						"totalBatches": 0,
+						"totalChunksMatched": 0,
+						"totalDuplicates": 0,
+						"totalLinesSent": 0,
+						"totalReached": 0
+					},
+					"store": {
+						"compressedBytes": 0,
+						"decompressedBytes": 0,
+						"decompressedLines": 0,
+						"headChunkBytes": 0,
+						"headChunkLines": 0,
+						"chunksDownloadTime": 0,
+						"totalChunksRef": 0,
+						"totalChunksDownloaded": 0,
+						"totalDuplicates": 0
+					},
+					"summary": {
+						"bytesProcessedPerSeconds": 0,
+						"execTime": 0,
+						"linesProcessedPerSeconds": 0,
+						"totalBytesProcessed":0,
+						"totalLinesProcessed":0
+					}
+				}
 			}
 		}`,
 	},
@@ -110,7 +143,39 @@ var queryTests = []struct {
 					"3.45"
 				  ]
 				}
-			  ]
+			  ],
+			  "stats" : {
+				"ingester" : {
+					"compressedBytes": 0,
+					"decompressedBytes": 0,
+					"decompressedLines": 0,
+					"headChunkBytes": 0,
+					"headChunkLines": 0,
+					"totalBatches": 0,
+					"totalChunksMatched": 0,
+					"totalDuplicates": 0,
+					"totalLinesSent": 0,
+					"totalReached": 0
+				},
+				"store": {
+					"compressedBytes": 0,
+					"decompressedBytes": 0,
+					"decompressedLines": 0,
+					"headChunkBytes": 0,
+					"headChunkLines": 0,
+					"chunksDownloadTime": 0,
+					"totalChunksRef": 0,
+					"totalChunksDownloaded": 0,
+					"totalDuplicates": 0
+				},
+				"summary": {
+					"bytesProcessedPerSeconds": 0,
+					"execTime": 0,
+					"linesProcessedPerSeconds": 0,
+					"totalBytesProcessed":0,
+					"totalLinesProcessed":0
+				}
+			  }
 			},
 			"status": "success"
 		  }`,
@@ -191,7 +256,39 @@ var queryTests = []struct {
 						]
 					]
 				}
-			  ]
+			  ],
+			  "stats" : {
+				"ingester" : {
+					"compressedBytes": 0,
+					"decompressedBytes": 0,
+					"decompressedLines": 0,
+					"headChunkBytes": 0,
+					"headChunkLines": 0,
+					"totalBatches": 0,
+					"totalChunksMatched": 0,
+					"totalDuplicates": 0,
+					"totalLinesSent": 0,
+					"totalReached": 0
+				},
+				"store": {
+					"compressedBytes": 0,
+					"decompressedBytes": 0,
+					"decompressedLines": 0,
+					"headChunkBytes": 0,
+					"headChunkLines": 0,
+					"chunksDownloadTime": 0,
+					"totalChunksRef": 0,
+					"totalChunksDownloaded": 0,
+					"totalDuplicates": 0
+				},
+				"summary": {
+					"bytesProcessedPerSeconds": 0,
+					"execTime": 0,
+					"linesProcessedPerSeconds": 0,
+					"totalBytesProcessed":0,
+					"totalLinesProcessed":0
+				}
+			  }
 			},
 			"status": "success"
 		  }`,
@@ -266,14 +363,13 @@ var tailTests = []struct {
 func Test_WriteQueryResponseJSON(t *testing.T) {
 	for i, queryTest := range queryTests {
 		var b bytes.Buffer
-		err := WriteQueryResponseJSON(queryTest.actual, &b)
+		err := WriteQueryResponseJSON(logql.Result{Data: queryTest.actual}, &b)
 		require.NoError(t, err)
 
 		testJSONBytesEqual(t, []byte(queryTest.expected), b.Bytes(), "Query Test %d failed", i)
 	}
 }
 
-//
 func Test_WriteLabelResponseJSON(t *testing.T) {
 	for i, labelTest := range labelTests {
 		var b bytes.Buffer

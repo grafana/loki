@@ -19,9 +19,9 @@ type bigtableObjectClient struct {
 	client    *bigtable.Client
 }
 
-// NewBigtableObjectClient makes a new chunk.ObjectClient that stores chunks in
+// NewBigtableObjectClient makes a new chunk.Client that stores chunks in
 // Bigtable.
-func NewBigtableObjectClient(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
+func NewBigtableObjectClient(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.Client, error) {
 	opts := toOptions(cfg.GRPCClientConfig.DialOption(bigtableInstrumentation()))
 	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
 	if err != nil {
@@ -30,7 +30,7 @@ func NewBigtableObjectClient(ctx context.Context, cfg Config, schemaCfg chunk.Sc
 	return newBigtableObjectClient(cfg, schemaCfg, client), nil
 }
 
-func newBigtableObjectClient(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtable.Client) chunk.ObjectClient {
+func newBigtableObjectClient(cfg Config, schemaCfg chunk.SchemaConfig, client *bigtable.Client) chunk.Client {
 	return &bigtableObjectClient{
 		cfg:       cfg,
 		schemaCfg: schemaCfg,
@@ -159,4 +159,9 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 	}
 
 	return output, nil
+}
+
+func (s *bigtableObjectClient) DeleteChunk(ctx context.Context, chunkID string) error {
+	// ToDo: implement this to support deleting chunks from Bigtable
+	return chunk.ErrMethodNotImplemented
 }

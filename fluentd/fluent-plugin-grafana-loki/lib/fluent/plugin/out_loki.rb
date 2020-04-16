@@ -15,9 +15,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+require 'fluent/env'
 require 'fluent/plugin/output'
 require 'net/http'
-require 'uri'
 require 'yajl'
 require 'time'
 
@@ -26,6 +26,8 @@ module Fluent
     # Subclass of Fluent Plugin Output
     class LokiOutput < Fluent::Plugin::Output # rubocop:disable Metrics/ClassLength
       Fluent::Plugin.register_output('loki', self)
+
+      class LogPostError < StandardError; end
 
       helpers :compat_parameters, :record_accessor
 
@@ -70,9 +72,14 @@ module Fluent
         config_set_default :chunk_keys, []
       end
 
-      def configure(conf)
+      def configure(conf) # rubocop:disable Metrics/CyclomaticComplexity
         compat_parameters_convert(conf, :buffer)
         super
+        @uri = URI.parse(@url + '/loki/api/v1/push')
+        unless @uri.is_a?(URI::HTTP) || @uri.is_a?(URI::HTTPS)
+          raise Fluent::ConfigError, 'url parameter must be valid HTTP'
+        end
+
         @record_accessors = {}
         conf.elements.select { |element| element.name == 'label' }.each do |element|
           element.each_pair do |k, v|
@@ -127,30 +134,16 @@ module Fluent
         body = { 'streams' => payload }
 
         # add ingest path to loki url
-        uri = URI.parse(url + '/loki/api/v1/push')
+        res = loki_http_request(body)
 
-        req = Net::HTTP::Post.new(
-          uri.request_uri
-        )
-        req.add_field('Content-Type', 'application/json')
-        req.add_field('X-Scope-OrgID', @tenant) if @tenant
-        req.body = Yajl.dump(body)
-        req.basic_auth(@username, @password) if @username
+        return if res.is_a?(Net::HTTPSuccess)
 
-        opts = ssl_opts(uri)
+        res_summary = "#{res.code} #{res.message} #{res.body}"
+        log.warn "failed to write post to #{@uri} (#{res_summary})"
+        log.debug Yajl.dump(body)
 
-        log.debug "sending #{req.body.length} bytes to loki"
-        res = Net::HTTP.start(uri.hostname, uri.port, **opts) { |http| http.request(req) }
-        unless res&.is_a?(Net::HTTPSuccess)
-          res_summary = if res
-                          "#{res.code} #{res.message} #{res.body}"
-                        else
-                          'res=nil'
-                        end
-          log.warn "failed to #{req.method} #{uri} (#{res_summary})"
-          log.warn Yajl.dump(body)
-
-        end
+        # Only retry 429 and 500s
+        raise(LogPostError, res_summary) if res.is_a?(Net::HTTPTooManyRequests) || res.is_a?(Net::HTTPServerError)
       end
 
       def ssl_opts(uri)
@@ -182,6 +175,22 @@ module Fluent
       end
 
       private
+
+      def loki_http_request(body)
+        req = Net::HTTP::Post.new(
+          @uri.request_uri
+        )
+        req.add_field('Content-Type', 'application/json')
+        req.add_field('X-Scope-OrgID', @tenant) if @tenant
+        req.body = Yajl.dump(body)
+        req.basic_auth(@username, @password) if @username
+
+        opts = ssl_opts(@uri)
+
+        log.debug "sending #{req.body.length} bytes to loki"
+
+        Net::HTTP.start(@uri.host, @uri.port, **opts) { |http| http.request(req) }
+      end
 
       def numeric?(val)
         !Float(val).nil?
@@ -215,7 +224,13 @@ module Fluent
       end
 
       def to_nano(time)
-        time.to_i * (10**9) + time.nsec
+        # time is a Fluent::EventTime object, or an Integer which represents unix timestamp (seconds from Epoch)
+        # https://docs.fluentd.org/plugin-development/api-plugin-output#chunk-each-and-block
+        if time.is_a?(Fluent::EventTime)
+          time.to_i * (10**9) + time.nsec
+        else
+          time.to_i * (10**9)
+        end
       end
 
       def record_to_line(record)

@@ -10,13 +10,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/helpers"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
+
+	"github.com/grafana/loki/pkg/helpers"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 var (
@@ -158,8 +159,8 @@ func (i *Ingester) checkFromIngesterIsInLeavingState(ctx context.Context, fromIn
 	return nil
 }
 
-// StopIncomingRequests implements ring.Lifecycler.
-func (i *Ingester) StopIncomingRequests() {
+// stopIncomingRequests is called when ingester is stopping
+func (i *Ingester) stopIncomingRequests() {
 	i.shutdownMtx.Lock()
 	defer i.shutdownMtx.Unlock()
 

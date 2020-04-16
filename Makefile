@@ -38,7 +38,7 @@ IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,
 # make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
-BUILD_IMAGE_VERSION := 0.9.0
+BUILD_IMAGE_VERSION := 0.9.2
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -219,7 +219,7 @@ cmd/promtail/promtail-debug: $(APP_GO_FILES) pkg/promtail/server/ui/assets_vfsda
 GOX = gox $(GO_FLAGS) -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -parallel=2 -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 dist: clean
-	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm windows/amd64" ./cmd/loki
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
 	CGO_ENABLED=0 $(GOX) -osarch="linux/arm64 linux/arm darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/promtail
@@ -242,7 +242,7 @@ lint:
 ########
 
 test: all
-	GOGC=10 go test $(MOD_FLAG) -p=4 ./...
+	GOGC=10 go test -covermode=atomic -coverprofile=coverage.txt $(MOD_FLAG) -p=4 ./...
 
 #########
 # Clean #
@@ -319,6 +319,7 @@ endif
 
 CHARTS := production/helm/loki production/helm/promtail production/helm/fluent-bit production/helm/loki-stack
 
+helm: PACKAGE_ARGS ?=
 helm:
 	-rm -f production/helm/*/requirements.lock
 	@set -e; \
@@ -326,7 +327,7 @@ helm:
 	for chart in $(CHARTS); do \
 		helm dependency build $$chart; \
 		helm lint $$chart; \
-		helm package $$chart; \
+		helm package $(PACKAGE_ARGS) $$chart; \
 	done
 	rm -f production/helm/*/requirements.lock
 
@@ -349,7 +350,7 @@ helm-publish: helm
 	git config user.name "${CIRCLE_USERNAME}"
 	git checkout gh-pages || (git checkout --orphan gh-pages && git rm -rf . > /dev/null)
 	mkdir -p charts
-	mv *.tgz index.md charts/
+	mv *.tgz *.tgz.prov index.md charts/
 	helm repo index charts/
 	git add charts/
 	git commit -m "[skip ci] Publishing helm charts: ${CIRCLE_SHA1}"

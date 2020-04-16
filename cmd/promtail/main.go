@@ -27,6 +27,7 @@ func init() {
 
 func main() {
 	printVersion := flag.Bool("version", false, "Print this builds version information")
+	dryRun := flag.Bool("dry-run", false, "Start Promtail but print entries instead of sending them to Loki.")
 
 	// Load config, merging config file and CLI flags
 	var config config.Config
@@ -57,18 +58,17 @@ func main() {
 		stages.Debug = true
 	}
 
-	p, err := promtail.New(config)
+	p, err := promtail.New(config, *dryRun)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error creating promtail", "error", err)
 		os.Exit(1)
 	}
 
 	level.Info(util.Logger).Log("msg", "Starting Promtail", "version", version.Info())
+	defer p.Shutdown()
 
 	if err := p.Run(); err != nil {
 		level.Error(util.Logger).Log("msg", "error starting promtail", "error", err)
 		os.Exit(1)
 	}
-
-	p.Shutdown()
 }

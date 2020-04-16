@@ -20,9 +20,11 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
-const statusSuccess = "success"
+// StatusSuccess Prometheus success result.
+const StatusSuccess = "success"
 
 var (
 	matrix            = model.ValMatrix.String()
@@ -71,6 +73,8 @@ type Request interface {
 	GetQuery() string
 	// WithStartEnd clone the current request with different start and end timestamp.
 	WithStartEnd(int64, int64) Request
+	// WithQuery clone the current request with a different query.
+	WithQuery(string) Request
 	proto.Message
 }
 
@@ -97,6 +101,13 @@ func (q *PrometheusRequest) WithStartEnd(start int64, end int64) Request {
 	new := *q
 	new.Start = start
 	new.End = end
+	return &new
+}
+
+// WithQuery clones the current `PrometheusRequest` with a new query.
+func (q *PrometheusRequest) WithQuery(query string) Request {
+	new := *q
+	new.Query = query
 	return &new
 }
 
@@ -127,12 +138,12 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 
 	if len(promResponses) == 0 {
 		return &PrometheusResponse{
-			Status: statusSuccess,
+			Status: StatusSuccess,
 		}, nil
 	}
 
 	return &PrometheusResponse{
-		Status: statusSuccess,
+		Status: StatusSuccess,
 		Data: PrometheusData{
 			ResultType: model.ValMatrix.String(),
 			Result:     matrixMerge(promResponses),
@@ -143,12 +154,12 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Request, error) {
 	var result PrometheusRequest
 	var err error
-	result.Start, err = ParseTime(r.FormValue("start"))
+	result.Start, err = util.ParseTime(r.FormValue("start"))
 	if err != nil {
 		return nil, err
 	}
 
-	result.End, err = ParseTime(r.FormValue("end"))
+	result.End, err = util.ParseTime(r.FormValue("end"))
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +191,7 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 func (prometheusCodec) EncodeRequest(ctx context.Context, r Request) (*http.Request, error) {
 	promReq, ok := r.(*PrometheusRequest)
 	if !ok {
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid request format")
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "invalid request format")
 	}
 	params := url.Values{
 		"start": []string{encodeTime(promReq.Start)},
@@ -242,7 +253,7 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.
 
 	b, err := json.Marshal(a)
 	if err != nil {
-		return nil, err
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error encoding response: %v", err)
 	}
 
 	sp.LogFields(otlog.Int("bytes", len(b)))
@@ -318,19 +329,6 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 	}
 
 	return result
-}
-
-// ParseTime parses the string into an int64, milliseconds since epoch.
-func ParseTime(s string) (int64, error) {
-	if t, err := strconv.ParseFloat(s, 64); err == nil {
-		s, ns := math.Modf(t)
-		tm := time.Unix(int64(s), int64(ns*float64(time.Second)))
-		return tm.UnixNano() / int64(time.Millisecond/time.Nanosecond), nil
-	}
-	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
-		return t.UnixNano() / int64(time.Millisecond/time.Nanosecond), nil
-	}
-	return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid timestamp", s)
 }
 
 func parseDurationMs(s string) (int64, error) {

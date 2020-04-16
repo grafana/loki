@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+
 	"github.com/grafana/loki/pkg/logproto"
 )
 

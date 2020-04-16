@@ -9,8 +9,9 @@ import (
 	"cloud.google.com/go/bigtable"
 	"google.golang.org/grpc/status"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/pkg/errors"
+
+	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 type tableClient struct {

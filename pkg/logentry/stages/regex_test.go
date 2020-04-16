@@ -1,11 +1,14 @@
 package stages
 
 import (
+	"bytes"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -26,6 +29,23 @@ pipeline_stages:
 - regex:
     expression: "^HTTP\\/(?P<protocol_version>[0-9\\.]+)$"
     source:     "protocol"
+`
+var testRegexYamlSourceWithMissingKey = `
+pipeline_stages:
+- json:
+    expressions:
+      time:
+- regex:
+    expression: "^(?P<year>\\d+)"
+    source:     "time"
+`
+
+var testRegexLogLineWithMissingKey = `
+{
+	"app":"loki",
+	"component": ["parser","type"],
+	"level": "WARN"
+}
 `
 
 var testRegexLogLine = `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"`
@@ -93,6 +113,26 @@ func TestPipeline_Regex(t *testing.T) {
 			pl.Process(lbls, extracted, &ts, &entry)
 			assert.Equal(t, testData.expectedExtract, extracted)
 		})
+	}
+}
+
+func TestPipelineWithMissingKey_Regex(t *testing.T) {
+	var buf bytes.Buffer
+	w := log.NewSyncWriter(&buf)
+	logger := log.NewLogfmtLogger(w)
+	pl, err := NewPipeline(logger, loadConfig(testRegexYamlSourceWithMissingKey), nil, prometheus.DefaultRegisterer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbls := model.LabelSet{}
+	Debug = true
+	ts := time.Now()
+	entry := testRegexLogLineWithMissingKey
+	extracted := map[string]interface{}{}
+	pl.Process(lbls, extracted, &ts, &entry)
+	expectedLog := "level=debug component=stage type=regex msg=\"failed to convert source value to string\" source=time err=\"Can't convert <nil> to string\" type=null"
+	if !(strings.Contains(buf.String(), expectedLog)) {
+		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
 	}
 }
 

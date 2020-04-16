@@ -2,6 +2,7 @@
   _config+: {
     namespace: error 'must define namespace',
     cluster: error 'must define cluster',
+    http_listen_port: 80,
 
     replication_factor: 3,
     memcached_replicas: 3,
@@ -47,10 +48,10 @@
 
     client_configs: {
       dynamo: {
-        dynamodbconfig: {} + if $._config.dynamodb_access_key != '' then {
-          dynamodb: 'dynamodb://' + $._config.dynamodb_access_key + ':' + $._config.dynamodb_secret_access_key + '@' + $._config.dynamodb_region,
+        dynamodb: {} + if $._config.dynamodb_access_key != '' then {
+          dynamodb_url: 'dynamodb://' + $._config.dynamodb_access_key + ':' + $._config.dynamodb_secret_access_key + '@' + $._config.dynamodb_region,
         } else {
-          dynamodb: 'dynamodb://' + $._config.dynamodb_region,
+          dynamodb_url: 'dynamodb://' + $._config.dynamodb_region,
         },
       },
       s3: {
@@ -87,7 +88,8 @@
     schema_start_date: '2018-07-11',
 
     commonArgs: {
-      'config.file': '/etc/loki/config.yaml',
+      'config.file': '/etc/loki/config/config.yaml',
+      'limits.per-user-override-config': '/etc/loki/overrides/overrides.yaml',
     },
 
     loki: {
@@ -98,13 +100,14 @@
         grpc_server_max_send_msg_size: $._config.grpc_server_max_msg_size,
         grpc_server_max_concurrent_streams: 1000,
         http_server_write_timeout: '1m',
+        http_listen_port: $._config.http_listen_port,
       },
       frontend: {
         compress_responses: true,
         max_outstanding_per_tenant: 200,
       },
       frontend_worker: {
-        address: 'query-frontend.%s.svc.cluster.local:9095' % $._config.namespace,
+        frontend_address: 'query-frontend.%s.svc.cluster.local:9095' % $._config.namespace,
         // Limit to N/2 worker threads per frontend, as we have two frontends.
         parallelism: $._config.querierConcurrency / 2,
         grpc_client_config: {
@@ -117,7 +120,6 @@
         cache_results: true,
         max_retries: 5,
         results_cache: {
-          cache_split_interval: '30m',
           max_freshness: '10m',
           cache: {
             memcached_client: {
@@ -137,6 +139,11 @@
         reject_old_samples: true,
         reject_old_samples_max_age: '168h',
         max_query_length: '12000h',  // 500 days
+        max_streams_per_user: 0,  // Disabled in favor of the global limit
+        max_global_streams_per_user: 10000,  // 10k
+        ingestion_rate_strategy: 'global',
+        ingestion_rate_mb: 10,
+        ingestion_burst_size_mb: 20,
       },
 
       ingester: {
@@ -152,8 +159,8 @@
               store: 'consul',
               consul: {
                 host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
-                httpclienttimeout: '20s',
-                consistentreads: true,
+                http_client_timeout: '20s',
+                consistent_reads: true,
               },
             },
           },
@@ -161,7 +168,6 @@
           num_tokens: 512,
           heartbeat_period: '5s',
           join_after: '30s',
-          claim_on_rollout: true,
           interface_names: ['eth0'],
         },
       },
@@ -238,7 +244,7 @@
           from: '2018-04-15',
           store: 'bigtable',
           object_store: 'gcs',
-          schema: 'v9',
+          schema: 'v11',
           index: {
             prefix: '%s_index_' % $._config.table_prefix,
             period: '%dh' % $._config.index_period_hours,
@@ -260,6 +266,22 @@
           inactive_write_throughput: 0,
           provisioned_read_throughput: 0,
           provisioned_write_throughput: 0,
+        },
+      },
+
+      distributor: {
+        // Creates a ring between distributors, required by the ingestion rate global limit.
+        ring: {
+          kvstore: {
+            store: 'consul',
+            consul: {
+              host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
+              http_client_timeout: '20s',
+              consistent_reads: false,
+              watch_rate_limit: 1,
+              watch_burst_size: 1,
+            },
+          },
         },
       },
     },

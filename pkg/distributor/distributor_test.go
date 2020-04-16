@@ -26,6 +26,7 @@ import (
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	fe "github.com/grafana/loki/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -43,6 +44,8 @@ func TestDistributor(t *testing.T) {
 
 	for i, tc := range []struct {
 		lines            int
+		maxLineSize      uint64
+		mangleLabels     bool
 		expectedResponse *logproto.PushResponse
 		expectedError    error
 	}{
@@ -54,6 +57,18 @@ func TestDistributor(t *testing.T) {
 			lines:         100,
 			expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (100 bytes) exceeded while adding 100 lines for a total size of 1000 bytes"),
 		},
+		{
+			lines:            100,
+			maxLineSize:      1,
+			expectedResponse: success,
+			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, "max line size (1B) exceeded while adding (10B) size line"),
+		},
+		{
+			lines:            100,
+			mangleLabels:     true,
+			expectedResponse: success,
+			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: parse error at line 1, col 4: literal not terminated"),
+		},
 	} {
 		t.Run(fmt.Sprintf("[%d](samples=%v)", i, tc.lines), func(t *testing.T) {
 			limits := &validation.Limits{}
@@ -61,10 +76,16 @@ func TestDistributor(t *testing.T) {
 			limits.EnforceMetricName = false
 			limits.IngestionRateMB = ingestionRateLimit
 			limits.IngestionBurstSizeMB = ingestionRateLimit
+			limits.MaxLineSize = fe.ByteSize(tc.maxLineSize)
 
 			d := prepare(t, limits, nil)
 
 			request := makeWriteRequest(tc.lines, 10)
+
+			if tc.mangleLabels {
+				request.Streams[0].Labels = `{ab"`
+			}
+
 			response, err := d.Push(ctx, request)
 			assert.Equal(t, tc.expectedResponse, response)
 			assert.Equal(t, tc.expectedError, err)
@@ -273,4 +294,8 @@ func (r mockRing) ReplicationFactor() int {
 
 func (r mockRing) IngesterCount() int {
 	return len(r.ingesters)
+}
+
+func (r mockRing) Subring(key uint32, n int) (ring.ReadRing, error) {
+	return r, nil
 }

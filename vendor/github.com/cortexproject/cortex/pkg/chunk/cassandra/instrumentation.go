@@ -12,7 +12,7 @@ var requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Namespace: "cortex",
 	Name:      "cassandra_request_duration_seconds",
 	Help:      "Time spent doing Cassandra requests.",
-	Buckets:   prometheus.ExponentialBuckets(0.001, 4, 6),
+	Buckets:   prometheus.ExponentialBuckets(0.001, 4, 9),
 }, []string{"operation", "status_code"})
 
 func init() {

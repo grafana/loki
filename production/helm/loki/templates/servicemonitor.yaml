@@ -16,6 +16,7 @@ spec:
     matchLabels:
       app: {{ template "loki.name" . }}
       release: {{ .Release.Name | quote }}
+      variant: headless
   namespaceSelector:
     matchNames:
       - {{ .Release.Namespace | quote }}

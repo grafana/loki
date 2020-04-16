@@ -3,12 +3,13 @@ package marshal
 import (
 	"fmt"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+
+	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 // NewResultValue constructs a ResultValue from a promql.Value
@@ -29,6 +30,16 @@ func NewResultValue(v promql.Value) (loghttp.ResultValue, error) {
 		if err != nil {
 			return nil, err
 		}
+
+	case loghttp.ResultTypeScalar:
+		scalar, ok := v.(promql.Scalar)
+
+		if !ok {
+			return nil, fmt.Errorf("unexpected type %T for scalar", scalar)
+		}
+
+		value = NewScalar(scalar)
+
 	case loghttp.ResultTypeVector:
 		vector, ok := v.(promql.Vector)
 
@@ -93,6 +104,14 @@ func NewEntry(e logproto.Entry) loghttp.Entry {
 		Timestamp: e.Timestamp,
 		Line:      e.Line,
 	}
+}
+
+func NewScalar(s promql.Scalar) loghttp.Scalar {
+	return loghttp.Scalar{
+		Timestamp: model.Time(s.T),
+		Value:     model.SampleValue(s.V),
+	}
+
 }
 
 // NewVector constructs a Vector from a promql.Vector

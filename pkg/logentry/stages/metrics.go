@@ -18,8 +18,6 @@ import (
 	"github.com/grafana/loki/pkg/logentry/metric"
 )
 
-const customPrefix = "promtail_custom_"
-
 const (
 	MetricTypeCounter   = "counter"
 	MetricTypeGauge     = "gauge"
@@ -27,14 +25,19 @@ const (
 
 	ErrEmptyMetricsStageConfig = "empty metric stage configuration"
 	ErrMetricsStageInvalidType = "invalid metric type '%s', metric type must be one of 'counter', 'gauge', or 'histogram'"
+	ErrInvalidIdleDur          = "max_idle_duration could not be parsed as a time.Duration: '%s'"
+	ErrSubSecIdleDur           = "max_idle_duration less than 1s not allowed"
 )
 
 // MetricConfig is a single metrics configuration.
 type MetricConfig struct {
-	MetricType  string      `mapstructure:"type"`
-	Description string      `mapstructure:"description"`
-	Source      *string     `mapstructure:"source"`
-	Config      interface{} `mapstructure:"config"`
+	MetricType   string  `mapstructure:"type"`
+	Description  string  `mapstructure:"description"`
+	Source       *string `mapstructure:"source"`
+	Prefix       string  `mapstructure:"prefix"`
+	IdleDuration *string `mapstructure:"max_idle_duration"`
+	maxIdleSec   int64
+	Config       interface{} `mapstructure:"config"`
 }
 
 // MetricsConfig is a set of configured metrics.
@@ -47,7 +50,7 @@ func validateMetricsConfig(cfg MetricsConfig) error {
 	for name, config := range cfg {
 		//If the source is not defined, default to the metric name
 		if config.Source == nil {
-			cp := config
+			cp := cfg[name]
 			nm := name
 			cp.Source = &nm
 			cfg[name] = cp
@@ -58,6 +61,24 @@ func validateMetricsConfig(cfg MetricsConfig) error {
 			config.MetricType != MetricTypeGauge &&
 			config.MetricType != MetricTypeHistogram {
 			return errors.Errorf(ErrMetricsStageInvalidType, config.MetricType)
+		}
+
+		// Set the idle duration for metrics
+		if config.IdleDuration != nil {
+			d, err := time.ParseDuration(*config.IdleDuration)
+			if err != nil {
+				return errors.Errorf(ErrInvalidIdleDur, err)
+			}
+			if d < 1*time.Second {
+				return errors.New(ErrSubSecIdleDur)
+			}
+			cp := cfg[name]
+			cp.maxIdleSec = int64(d.Seconds())
+			cfg[name] = cp
+		} else {
+			cp := cfg[name]
+			cp.maxIdleSec = int64(5 * time.Minute.Seconds())
+			cfg[name] = cp
 		}
 	}
 	return nil
@@ -78,19 +99,26 @@ func newMetricStage(logger log.Logger, config interface{}, registry prometheus.R
 	for name, cfg := range *cfgs {
 		var collector prometheus.Collector
 
+		customPrefix := ""
+		if cfg.Prefix != "" {
+			customPrefix = cfg.Prefix
+		} else {
+			customPrefix = "promtail_custom_"
+		}
+
 		switch strings.ToLower(cfg.MetricType) {
 		case MetricTypeCounter:
-			collector, err = metric.NewCounters(customPrefix+name, cfg.Description, cfg.Config)
+			collector, err = metric.NewCounters(customPrefix+name, cfg.Description, cfg.Config, cfg.maxIdleSec)
 			if err != nil {
 				return nil, err
 			}
 		case MetricTypeGauge:
-			collector, err = metric.NewGauges(customPrefix+name, cfg.Description, cfg.Config)
+			collector, err = metric.NewGauges(customPrefix+name, cfg.Description, cfg.Config, cfg.maxIdleSec)
 			if err != nil {
 				return nil, err
 			}
 		case MetricTypeHistogram:
-			collector, err = metric.NewHistograms(customPrefix+name, cfg.Description, cfg.Config)
+			collector, err = metric.NewHistograms(customPrefix+name, cfg.Description, cfg.Config, cfg.maxIdleSec)
 			if err != nil {
 				return nil, err
 			}
@@ -116,7 +144,17 @@ type metricStage struct {
 
 // Process implements Stage
 func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+	if _, ok := labels[dropLabel]; ok {
+		return
+	}
 	for name, collector := range m.metrics {
+		// There is a special case for counters where we count even if there is no match in the extracted map.
+		if c, ok := collector.(*metric.Counters); ok {
+			if c != nil && c.Cfg.MatchAll != nil && *c.Cfg.MatchAll {
+				m.recordCounter(name, c, labels, nil)
+				continue
+			}
+		}
 		if v, ok := extracted[*m.cfg[name].Source]; ok {
 			switch vec := collector.(type) {
 			case *metric.Counters:
@@ -126,6 +164,8 @@ func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interf
 			case *metric.Histograms:
 				m.recordHistogram(name, vec, labels, v)
 			}
+		} else {
+			level.Debug(m.logger).Log("msg", "source does not exist", "err", fmt.Sprintf("source: %s, does not exist", *m.cfg[name].Source))
 		}
 	}
 }
@@ -144,7 +184,7 @@ func (m *metricStage) recordCounter(name string, counter *metric.Counters, label
 			if Debug {
 				level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
 					"can't perform value comparison", "metric", name, "err",
-					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v).String()))
+					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v)))
 			}
 			return
 		}
@@ -177,7 +217,7 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 			if Debug {
 				level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
 					"can't perform value comparison", "metric", name, "err",
-					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v).String()))
+					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v)))
 			}
 			return
 		}
@@ -230,7 +270,7 @@ func (m *metricStage) recordHistogram(name string, histogram *metric.Histograms,
 			if Debug {
 				level.Debug(m.logger).Log("msg", "failed to convert extracted value to string, "+
 					"can't perform value comparison", "metric", name, "err",
-					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v).String()))
+					fmt.Sprintf("can't convert %v to string", reflect.TypeOf(v)))
 			}
 			return
 		}

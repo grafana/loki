@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
@@ -24,17 +22,20 @@ var inmemoryStore Client
 // Consul, Etcd, Memberlist or MultiClient. It was extracted from Config to keep
 // single-client config separate from final client-config (with all the wrappers)
 type StoreConfig struct {
-	Consul     consul.Config     `yaml:"consul,omitempty"`
-	Etcd       etcd.Config       `yaml:"etcd,omitempty"`
-	Memberlist memberlist.Config `yaml:"memberlist,omitempty"`
-	Multi      MultiConfig       `yaml:"multi,omitempty"`
+	Consul consul.Config `yaml:"consul"`
+	Etcd   etcd.Config   `yaml:"etcd"`
+	Multi  MultiConfig   `yaml:"multi"`
+
+	// Function that returns memberlist.KV store to use. By using a function, we can delay
+	// initialization of memberlist.KV until it is actually required.
+	MemberlistKV func() (*memberlist.KV, error) `yaml:"-"`
 }
 
 // Config is config for a KVStore currently used by ring and HA tracker,
 // where store can be consul or inmemory.
 type Config struct {
-	Store       string `yaml:"store,omitempty"`
-	Prefix      string `yaml:"prefix,omitempty"`
+	Store       string `yaml:"store"`
+	Prefix      string `yaml:"prefix"`
 	StoreConfig `yaml:",inline"`
 
 	Mock Client `yaml:"-"`
@@ -53,7 +54,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(flagsPrefix, defaultPrefix string, f 
 	cfg.Consul.RegisterFlags(f, flagsPrefix)
 	cfg.Etcd.RegisterFlagsWithPrefix(f, flagsPrefix)
 	cfg.Multi.RegisterFlagsWithPrefix(f, flagsPrefix)
-	cfg.Memberlist.RegisterFlags(f, flagsPrefix)
 
 	if flagsPrefix == "" {
 		flagsPrefix = "ring."
@@ -67,7 +67,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(flagsPrefix, defaultPrefix string, f 
 // It also deals with serialisation by using a Codec and having a instance of
 // the the desired type passed in to methods ala json.Unmarshal.
 type Client interface {
-	// Get a spefic key.  Will use a codec to deserialise key to appropriate type.
+	// Get a specific key.  Will use a codec to deserialise key to appropriate type.
 	Get(ctx context.Context, key string) (interface{}, error)
 
 	// CAS stands for Compare-And-Swap.  Will call provided callback f with the
@@ -84,9 +84,6 @@ type Client interface {
 
 	// WatchPrefix calls f whenever any value stored under prefix changes.
 	WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool)
-
-	// If client needs to do some cleanup, it can do it here.
-	Stop()
 }
 
 // NewClient creates a new Client (consul, etcd or inmemory) based on the config,
@@ -119,8 +116,14 @@ func createClient(name string, prefix string, cfg StoreConfig, codec codec.Codec
 		client = inmemoryStore
 
 	case "memberlist":
-		cfg.Memberlist.MetricsRegisterer = prometheus.DefaultRegisterer
-		client, err = memberlist.NewMemberlistClient(cfg.Memberlist, codec)
+		kv, err := cfg.MemberlistKV()
+		if err != nil {
+			return nil, err
+		}
+		client, err = memberlist.NewClient(kv, codec)
+		if err != nil {
+			return nil, err
+		}
 
 	case "multi":
 		client, err = buildMultiClient(cfg, codec)

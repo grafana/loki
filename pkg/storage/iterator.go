@@ -75,7 +75,7 @@ type batchChunkIterator struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	matchers []*labels.Matcher
-	filter   logql.Filter
+	filter   logql.LineFilter
 	req      *logproto.QueryRequest
 	next     chan *struct {
 		iter iter.EntryIterator
@@ -84,7 +84,7 @@ type batchChunkIterator struct {
 }
 
 // newBatchChunkIterator creates a new batch iterator with the given batchSize.
-func newBatchChunkIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, batchSize int, matchers []*labels.Matcher, filter logql.Filter, req *logproto.QueryRequest) *batchChunkIterator {
+func newBatchChunkIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, batchSize int, matchers []*labels.Matcher, filter logql.LineFilter, req *logproto.QueryRequest) *batchChunkIterator {
 	// __name__ is not something we filter by because it's a constant in loki and only used for upstream compatibility.
 	// Therefore remove it
 	for i := range matchers {
@@ -277,7 +277,7 @@ func (it *batchChunkIterator) Close() error {
 }
 
 // newChunksIterator creates an iterator over a set of lazychunks.
-func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matchers []*labels.Matcher, filter logql.Filter, direction logproto.Direction, from, through time.Time) (iter.EntryIterator, error) {
+func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matchers []*labels.Matcher, filter logql.LineFilter, direction logproto.Direction, from, through time.Time) (iter.EntryIterator, error) {
 	chksBySeries := partitionBySeriesChunks(chunks)
 
 	// Make sure the initial chunks are loaded. This is not one chunk
@@ -310,7 +310,7 @@ func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matche
 	return iter.NewHeapIterator(ctx, iters, direction), nil
 }
 
-func buildIterators(ctx context.Context, chks map[model.Fingerprint][][]*chunkenc.LazyChunk, filter logql.Filter, direction logproto.Direction, from, through time.Time) ([]iter.EntryIterator, error) {
+func buildIterators(ctx context.Context, chks map[model.Fingerprint][][]*chunkenc.LazyChunk, filter logql.LineFilter, direction logproto.Direction, from, through time.Time) ([]iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 	for _, chunks := range chks {
 		iterator, err := buildHeapIterator(ctx, chunks, filter, direction, from, through)
@@ -323,7 +323,7 @@ func buildIterators(ctx context.Context, chks map[model.Fingerprint][][]*chunken
 	return result, nil
 }
 
-func buildHeapIterator(ctx context.Context, chks [][]*chunkenc.LazyChunk, filter logql.Filter, direction logproto.Direction, from, through time.Time) (iter.EntryIterator, error) {
+func buildHeapIterator(ctx context.Context, chks [][]*chunkenc.LazyChunk, filter logql.LineFilter, direction logproto.Direction, from, through time.Time) (iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 
 	// __name__ is only used for upstream compatibility and is hardcoded within loki. Strip it from the return label set.
@@ -368,9 +368,9 @@ func fetchLazyChunks(ctx context.Context, chunks []*chunkenc.LazyChunk) error {
 	start := time.Now()
 	storeStats := stats.GetStoreData(ctx)
 	var totalChunks int64
-	defer func(){
-		storeStats.TimeDownloadingChunks += time.Since(start)
-		storeStats.TotalDownloadedChunks += totalChunks
+	defer func() {
+		storeStats.ChunksDownloadTime += time.Since(start)
+		storeStats.TotalChunksDownloaded += totalChunks
 	}()
 
 	chksByFetcher := map[*chunk.Fetcher][]*chunkenc.LazyChunk{}

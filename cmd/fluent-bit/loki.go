@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -10,10 +11,12 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/promtail/client"
+	"github.com/go-logfmt/logfmt"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/logging"
+
+	"github.com/grafana/loki/pkg/promtail/client"
 )
 
 type loki struct {
@@ -40,7 +43,10 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	level.Debug(l.logger).Log("msg", "processing records", "records", fmt.Sprintf("%+v", records))
 	lbs := model.LabelSet{}
 	if l.cfg.autoKubernetesLabels {
-		lbs = autoLabels(records)
+		err := autoLabels(records, lbs)
+		if err != nil {
+			level.Error(l.logger).Log("msg", err.Error(), "records", fmt.Sprintf("%+v", records))
+		}
 	} else if l.cfg.labelMap != nil {
 		mapLabels(records, l.cfg.labelMap, lbs)
 	} else {
@@ -62,9 +68,28 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 	return l.client.Handle(lbs, ts, line)
 }
 
+// prevent base64-encoding []byte values (default json.Encoder rule) by
+// converting them to strings
+
+func toStringSlice(slice []interface{}) []interface{} {
+	var s []interface{}
+	for _, v := range slice {
+		switch t := v.(type) {
+		case []byte:
+			s = append(s, string(t))
+		case map[interface{}]interface{}:
+			s = append(s, toStringMap(t))
+		case []interface{}:
+			s = append(s, toStringSlice(t))
+		default:
+			s = append(s, t)
+		}
+	}
+	return s
+}
+
 func toStringMap(record map[interface{}]interface{}) map[string]interface{} {
 	m := make(map[string]interface{})
-
 	for k, v := range record {
 		key, ok := k.(string)
 		if !ok {
@@ -72,44 +97,41 @@ func toStringMap(record map[interface{}]interface{}) map[string]interface{} {
 		}
 		switch t := v.(type) {
 		case []byte:
-			// prevent encoding to base64
 			m[key] = string(t)
 		case map[interface{}]interface{}:
 			m[key] = toStringMap(t)
+		case []interface{}:
+			m[key] = toStringSlice(t)
 		default:
 			m[key] = v
 		}
 	}
+
 	return m
 }
 
-func autoLabels(records map[string]interface{}) model.LabelSet {
-	kuberneteslbs := model.LabelSet{}
+func autoLabels(records map[string]interface{}, kuberneteslbs model.LabelSet) error {
+	kube, ok := records["kubernetes"]
+	if !ok {
+		return errors.New("kubernetes labels not found, no labels will be added")
+	}
+
 	replacer := strings.NewReplacer("/", "_", ".", "_", "-", "_")
-	for k, v := range records["kubernetes"].(map[interface{}]interface{}) {
-		switch key := k.(string); key {
+	for k, v := range kube.(map[string]interface{}) {
+		switch k {
 		case "labels":
-			for m, n := range v.(map[interface{}]interface{}) {
-				switch t := n.(type) {
-				case []byte:
-					kuberneteslbs[model.LabelName(replacer.Replace(m.(string)))] = model.LabelValue(string(t))
-				default:
-					kuberneteslbs[model.LabelName(replacer.Replace(m.(string)))] = model.LabelValue(fmt.Sprintf("%v", n))
-				}
+			for m, n := range v.(map[string]interface{}) {
+				kuberneteslbs[model.LabelName(replacer.Replace(m))] = model.LabelValue(fmt.Sprintf("%v", n))
 			}
 		case "docker_id", "pod_id", "annotations":
 			// do nothing
 			continue
 		default:
-			switch t := v.(type) {
-			case []byte:
-				kuberneteslbs[model.LabelName(k.(string))] = model.LabelValue(string(t))
-			default:
-				kuberneteslbs[model.LabelName(k.(string))] = model.LabelValue(fmt.Sprintf("%v", v))
-			}
+			kuberneteslbs[model.LabelName(k)] = model.LabelValue(fmt.Sprintf("%v", v))
 		}
 	}
-	return kuberneteslbs
+
+	return nil
 }
 
 func extractLabels(records map[string]interface{}, keys []string) model.LabelSet {
@@ -185,23 +207,27 @@ func createLine(records map[string]interface{}, f format) (string, error) {
 		}
 		return string(js), nil
 	case kvPairFormat:
-		buff := &bytes.Buffer{}
-		var keys []string
+		buf := &bytes.Buffer{}
+		enc := logfmt.NewEncoder(buf)
+		keys := make([]string, 0, len(records))
 		for k := range records {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			_, err := fmt.Fprintf(buff, "%s=%v ", k, records[k])
+			err := enc.EncodeKeyval(k, records[k])
+			if err == logfmt.ErrUnsupportedValueType {
+				err := enc.EncodeKeyval(k, fmt.Sprintf("%+v", records[k]))
+				if err != nil {
+					return "", nil
+				}
+				continue
+			}
 			if err != nil {
-				return "", err
+				return "", nil
 			}
 		}
-		res := buff.String()
-		if len(records) > 0 {
-			return res[:len(res)-1], nil
-		}
-		return res, nil
+		return buf.String(), nil
 	default:
 		return "", fmt.Errorf("invalid line format: %v", f)
 	}

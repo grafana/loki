@@ -8,11 +8,12 @@ import (
 
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 const bufferSizeForTailResponse = 5
@@ -21,7 +22,7 @@ type tailer struct {
 	id       uint32
 	orgID    string
 	matchers []*labels.Matcher
-	filter   logql.Filter
+	filter   logql.LineFilter
 	expr     logql.Expr
 
 	sendChan chan *logproto.Stream
@@ -138,7 +139,7 @@ func (t *tailer) filterEntriesInStream(stream *logproto.Stream) {
 
 	var filteredEntries []logproto.Entry
 	for _, e := range stream.Entries {
-		if t.filter([]byte(e.Line)) {
+		if t.filter.Filter([]byte(e.Line)) {
 			filteredEntries = append(filteredEntries, e)
 		}
 	}

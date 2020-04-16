@@ -5,9 +5,10 @@ import (
 	"math"
 	"testing"
 
-	"github.com/grafana/loki/pkg/util/validation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 func TestLimiter_maxStreamsPerUser(t *testing.T) {

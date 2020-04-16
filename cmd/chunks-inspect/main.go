@@ -80,7 +80,7 @@ func printFile(filename string, blockDetails, printLines, storeBlocks bool) {
 	}
 	if len(lokiChunk.blocks) > 0 {
 		fmt.Println("Minimum time (from first block):", time.Unix(0, lokiChunk.blocks[0].minT).In(timezone).Format(format))
-		fmt.Println("Maximum time (from last block):", time.Unix(0, lokiChunk.blocks[len(lokiChunk.blocks) - 1].maxT).In(timezone).Format(format))
+		fmt.Println("Maximum time (from last block):", time.Unix(0, lokiChunk.blocks[len(lokiChunk.blocks)-1].maxT).In(timezone).Format(format))
 	}
 
 	if blockDetails {

@@ -73,6 +73,7 @@ type stream struct {
 type chunkDesc struct {
 	chunk   chunkenc.Chunk
 	closed  bool
+	synced  bool
 	flushed time.Time
 
 	lastUpdated time.Time
@@ -96,7 +97,7 @@ func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels, factory 
 // consumeChunk manually adds a chunk to the stream that was received during
 // ingester chunk transfer.
 func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
-	c, err := chunkenc.NewByteChunk(chunk.Data)
+	c, err := chunkenc.NewByteChunk(chunk.Data, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 	if err != nil {
 		return err
 	}
@@ -138,7 +139,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePe
 		}
 
 		chunk := &s.chunks[len(s.chunks)-1]
-		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, lastChunkTimestamp, chunk.chunk, synchronizePeriod, minUtilization) {
+		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, lastChunkTimestamp, chunk, synchronizePeriod, minUtilization) {
 			// If the chunk has no more space call Close to make sure anything in the head block is cut and compressed
 			err := chunk.chunk.Close()
 			if err != nil {
@@ -226,7 +227,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePe
 
 // Returns true, if chunk should be cut before adding new entry. This is done to make ingesters
 // cut the chunk for this stream at the same moment, so that new chunk will contain exactly the same entries.
-func (s *stream) cutChunkForSynchronization(entryTimestamp, prevEntryTimestamp time.Time, chunk chunkenc.Chunk, synchronizePeriod time.Duration, minUtilization float64) bool {
+func (s *stream) cutChunkForSynchronization(entryTimestamp, prevEntryTimestamp time.Time, c *chunkDesc, synchronizePeriod time.Duration, minUtilization float64) bool {
 	if synchronizePeriod <= 0 || prevEntryTimestamp.IsZero() {
 		return false
 	}
@@ -239,10 +240,12 @@ func (s *stream) cutChunkForSynchronization(entryTimestamp, prevEntryTimestamp t
 	// if current entry timestamp has rolled over synchronization period
 	if cts < pts {
 		if minUtilization <= 0 {
+			c.synced = true
 			return true
 		}
 
-		if chunk.Utilization() > minUtilization {
+		if c.chunk.Utilization() > minUtilization {
+			c.synced = true
 			return true
 		}
 	}
@@ -251,7 +254,7 @@ func (s *stream) cutChunkForSynchronization(entryTimestamp, prevEntryTimestamp t
 }
 
 // Returns an iterator.
-func (s *stream) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, filter logql.Filter) (iter.EntryIterator, error) {
+func (s *stream) Iterator(ctx context.Context, from, through time.Time, direction logproto.Direction, filter logql.LineFilter) (iter.EntryIterator, error) {
 	iterators := make([]iter.EntryIterator, 0, len(s.chunks))
 	for _, c := range s.chunks {
 		itr, err := c.chunk.Iterator(ctx, from, through, direction, filter)
