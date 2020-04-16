@@ -20,6 +20,9 @@ RUN addgroup -g 10001 -S loki && \
     mkdir -p /data && \
     chown -R loki:loki /etc/loki /data
 
+# See https://github.com/grafana/loki/issues/1928
+RUN [ ! -e /etc/nsswitch.conf ] && echo 'hosts: files dns' > /etc/nsswitch.conf
+
 USER loki
 EXPOSE 3100
 ENTRYPOINT [ "/usr/bin/loki" ]
