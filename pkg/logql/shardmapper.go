@@ -5,6 +5,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -82,19 +83,21 @@ func badASTMapping(expected string, got Expr) error {
 	return fmt.Errorf("Bad AST mapping: expected one type (%s), but got (%T)", expected, got)
 }
 
-func NewShardMapper(shards int, metrics *ShardingMetrics) (ShardMapper, error) {
+func NewShardMapper(shards int, metrics *ShardingMetrics, log log.Logger) (ShardMapper, error) {
 	if shards < 2 {
 		return ShardMapper{}, fmt.Errorf("Cannot create ShardMapper with <2 shards. Received %d", shards)
 	}
 	return ShardMapper{
 		shards:  shards,
 		metrics: metrics,
+		logger:  log,
 	}, nil
 }
 
 type ShardMapper struct {
 	shards  int
 	metrics *ShardingMetrics
+	logger  log.Logger
 }
 
 func (m ShardMapper) Parse(query string) (Expr, error) {
@@ -104,16 +107,26 @@ func (m ShardMapper) Parse(query string) (Expr, error) {
 	}
 
 	recorder := m.metrics.ShardRecorder()
-	defer recorder.Finish()
 
 	mapped, err := m.Map(parsed, recorder)
 	if err != nil {
+		level.Warn(m.logger).Log("msg", "failed mapping AST", "err", err.Error())
 		m.metrics.parsed.WithLabelValues(FailureKey).Inc()
-	} else if parsed.String() == mapped.String() {
+		return nil, err
+	}
+
+	mappedStr := mapped.String()
+	originalStr := parsed.String()
+	noop := originalStr == mappedStr
+	if noop {
 		m.metrics.parsed.WithLabelValues(NoopKey).Inc()
 	} else {
 		m.metrics.parsed.WithLabelValues(SuccessKey).Inc()
 	}
+
+	recorder.Finish()
+	level.Debug(m.logger).Log("mapped", !noop, "query", mappedStr, "original", originalStr)
+
 	return mapped, err
 }
 

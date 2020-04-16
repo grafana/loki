@@ -38,6 +38,7 @@ func (h DownstreamHandler) Downstream(expr logql.Expr, params logql.Params, shar
 	req := ParamsToLokiRequest(params).WithShards(shards).WithQuery(expr.String())
 
 	return QuerierFunc(func(ctx context.Context) (logql.Result, error) {
+
 		res, err := h.next.Do(ctx, req)
 		if err != nil {
 			return logql.Result{}, err

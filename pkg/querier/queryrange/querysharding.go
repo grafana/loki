@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -88,7 +89,10 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 		return ast.next.Do(ctx, r)
 	}
 
-	ng, err := logql.NewShardedEngine(logql.EngineOpts{}, int(conf.RowShards), DownstreamHandler{ast.next}, ast.metrics)
+	shardedLog, ctx := spanlogger.New(ctx, "shardedEngine")
+	defer shardedLog.Finish()
+
+	ng, err := logql.NewShardedEngine(logql.EngineOpts{}, int(conf.RowShards), DownstreamHandler{ast.next}, ast.metrics, shardedLog)
 
 	if err != nil {
 		level.Warn(ast.logger).Log("err", err.Error(), "msg", "failed to create sharded engine")

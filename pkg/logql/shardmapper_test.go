@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 )
@@ -52,7 +53,7 @@ func TestStringer(t *testing.T) {
 }
 
 func TestMapSampleExpr(t *testing.T) {
-	m, err := NewShardMapper(2, nilMetrics)
+	m, err := NewShardMapper(2, nilMetrics, log.NewNopLogger())
 	require.Nil(t, err)
 
 	for _, tc := range []struct {
@@ -120,7 +121,7 @@ func TestMapSampleExpr(t *testing.T) {
 }
 
 func TestMappingStrings(t *testing.T) {
-	m, err := NewShardMapper(2, nilMetrics)
+	m, err := NewShardMapper(2, nilMetrics, log.NewNopLogger())
 	require.Nil(t, err)
 	for _, tc := range []struct {
 		in  string
@@ -169,7 +170,7 @@ func TestMappingStrings(t *testing.T) {
 }
 
 func TestMapping(t *testing.T) {
-	m, err := NewShardMapper(2, nilMetrics)
+	m, err := NewShardMapper(2, nilMetrics, log.NewNopLogger())
 	require.Nil(t, err)
 
 	for _, tc := range []struct {

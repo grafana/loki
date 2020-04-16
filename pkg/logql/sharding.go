@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -277,11 +278,12 @@ type shardedEngine struct {
 	mapper    ShardMapper
 	evaluator Evaluator
 	metrics   *ShardingMetrics
+	logger    log.Logger
 }
 
-func NewShardedEngine(opts EngineOpts, shards int, downstreamer Downstreamer, metrics *ShardingMetrics) (Engine, error) {
+func NewShardedEngine(opts EngineOpts, shards int, downstreamer Downstreamer, metrics *ShardingMetrics, log log.Logger) (Engine, error) {
 	opts.applyDefault()
-	mapper, err := NewShardMapper(shards, metrics)
+	mapper, err := NewShardMapper(shards, metrics, log)
 	if err != nil {
 		return nil, err
 	}
@@ -291,6 +293,7 @@ func NewShardedEngine(opts EngineOpts, shards int, downstreamer Downstreamer, me
 		mapper:    mapper,
 		evaluator: NewDownstreamEvaluator(downstreamer),
 		metrics:   metrics,
+		logger:    log,
 	}, nil
 
 }
