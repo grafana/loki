@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 
@@ -35,9 +37,13 @@ func ParamsToLokiRequest(params logql.Params) *LokiRequest {
 }
 
 func (h DownstreamHandler) Downstream(expr logql.Expr, params logql.Params, shards logql.Shards) (logql.Query, error) {
-	req := ParamsToLokiRequest(params).WithShards(shards).WithQuery(expr.String())
+	req := ParamsToLokiRequest(params).WithShards(shards).WithQuery(expr.String()).(*LokiRequest)
 
 	return QuerierFunc(func(ctx context.Context) (logql.Result, error) {
+
+		logger, ctx := spanlogger.New(ctx, "DownstreamHandler")
+		defer logger.Finish()
+		level.Debug(logger).Log("shards", req.Shards, "query", req.Query)
 
 		res, err := h.next.Do(ctx, req)
 		if err != nil {
