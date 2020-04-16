@@ -12,6 +12,8 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
+var nilMetrics = NewShardingMetrics(nil)
+
 func TestMappingEquivalence(t *testing.T) {
 	var (
 		shards   = 3
@@ -54,7 +56,7 @@ func TestMappingEquivalence(t *testing.T) {
 
 		opts := EngineOpts{}
 		regular := NewEngine(opts, q)
-		sharded, err := NewShardedEngine(opts, shards, MockDownstreamer{regular})
+		sharded, err := NewShardedEngine(opts, shards, MockDownstreamer{regular}, nilMetrics)
 		require.Nil(t, err)
 
 		t.Run(tc.query, func(t *testing.T) {

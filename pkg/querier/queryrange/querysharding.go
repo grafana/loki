@@ -8,6 +8,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -23,6 +24,7 @@ func NewQueryShardMiddleware(
 	confs queryrange.ShardingConfigs,
 	minShardingLookback time.Duration,
 	metrics *queryrange.InstrumentMiddlewareMetrics,
+	r prometheus.Registerer,
 ) queryrange.Middleware {
 
 	noshards := !hasShards(confs)
@@ -36,8 +38,10 @@ func NewQueryShardMiddleware(
 		return queryrange.PassthroughMiddleware
 	}
 
+	shardingMetrics := logql.NewShardingMetrics(r)
+
 	mapperware := queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
-		return newASTMapperware(confs, next, logger)
+		return newASTMapperware(confs, next, logger, shardingMetrics)
 	})
 
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
@@ -54,19 +58,26 @@ func NewQueryShardMiddleware(
 
 }
 
-func newASTMapperware(confs queryrange.ShardingConfigs, next queryrange.Handler, logger log.Logger) *astMapperware {
+func newASTMapperware(
+	confs queryrange.ShardingConfigs,
+	next queryrange.Handler,
+	logger log.Logger,
+	metrics *logql.ShardingMetrics,
+) *astMapperware {
 
 	return &astMapperware{
-		confs:  confs,
-		logger: log.With(logger, "middleware", "QueryShard.astMapperware"),
-		next:   next,
+		confs:   confs,
+		logger:  log.With(logger, "middleware", "QueryShard.astMapperware"),
+		next:    next,
+		metrics: metrics,
 	}
 }
 
 type astMapperware struct {
-	confs  queryrange.ShardingConfigs
-	logger log.Logger
-	next   queryrange.Handler
+	confs   queryrange.ShardingConfigs
+	logger  log.Logger
+	next    queryrange.Handler
+	metrics *logql.ShardingMetrics
 }
 
 func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
@@ -77,7 +88,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 		return ast.next.Do(ctx, r)
 	}
 
-	ng, err := logql.NewShardedEngine(logql.EngineOpts{}, int(conf.RowShards), DownstreamHandler{ast.next})
+	ng, err := logql.NewShardedEngine(logql.EngineOpts{}, int(conf.RowShards), DownstreamHandler{ast.next}, ast.metrics)
 
 	if err != nil {
 		level.Warn(ast.logger).Log("err", err.Error(), "msg", "failed to create sharded engine")

@@ -274,13 +274,14 @@ func ResultIterator(res Result, params Params) (iter.EntryIterator, error) {
 
 type shardedEngine struct {
 	timeout   time.Duration
-	mapper    ASTMapper
+	mapper    ShardMapper
 	evaluator Evaluator
+	metrics   *ShardingMetrics
 }
 
-func NewShardedEngine(opts EngineOpts, shards int, downstreamer Downstreamer) (Engine, error) {
+func NewShardedEngine(opts EngineOpts, shards int, downstreamer Downstreamer, metrics *ShardingMetrics) (Engine, error) {
 	opts.applyDefault()
-	mapper, err := NewShardMapper(shards)
+	mapper, err := NewShardMapper(shards, metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -289,6 +290,7 @@ func NewShardedEngine(opts EngineOpts, shards int, downstreamer Downstreamer) (E
 		timeout:   opts.Timeout,
 		mapper:    mapper,
 		evaluator: NewDownstreamEvaluator(downstreamer),
+		metrics:   metrics,
 	}, nil
 
 }
@@ -298,14 +300,7 @@ func (ng *shardedEngine) query(p Params) Query {
 		timeout:   ng.timeout,
 		params:    p,
 		evaluator: ng.evaluator,
-		parse: func(query string) (Expr, error) {
-			parsed, err := ParseExpr(query)
-			if err != nil {
-				return nil, err
-			}
-
-			return ng.mapper.Map(parsed)
-		},
+		parse:     ng.mapper.Parse,
 	}
 }
 
