@@ -145,14 +145,8 @@ type entry struct {
 	s string
 }
 
-// NewMemChunk returns a new in-mem chunk for query.
-func NewMemChunk(enc Encoding) *MemChunk {
-	return NewMemChunkSize(enc, 256*1024, 0)
-}
-
-// NewMemChunkSize returns a new in-mem chunk.
-// Mainly for config push size.
-func NewMemChunkSize(enc Encoding, blockSize, targetSize int) *MemChunk {
+// NewMemChunk returns a new in-mem chunk.
+func NewMemChunk(enc Encoding, blockSize, targetSize int) *MemChunk {
 	c := &MemChunk{
 		blockSize:  blockSize,  // The blockSize in bytes.
 		targetSize: targetSize, // Desired chunk size in compressed bytes
@@ -170,9 +164,11 @@ func NewMemChunkSize(enc Encoding, blockSize, targetSize int) *MemChunk {
 }
 
 // NewByteChunk returns a MemChunk on the passed bytes.
-func NewByteChunk(b []byte) (*MemChunk, error) {
+func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 	bc := &MemChunk{
-		head: &headBlock{}, // Dummy, empty headblock.
+		head:       &headBlock{}, // Dummy, empty headblock.
+		blockSize:  blockSize,
+		targetSize: targetSize,
 	}
 	db := decbuf{b: b}
 

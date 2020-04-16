@@ -21,7 +21,7 @@ import (
 )
 
 var defaultFactory = func() chunkenc.Chunk {
-	return chunkenc.NewMemChunkSize(chunkenc.EncGZIP, 512, 0)
+	return chunkenc.NewMemChunk(chunkenc.EncGZIP, 512, 0)
 }
 
 func TestLabelsCollisions(t *testing.T) {

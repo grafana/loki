@@ -134,7 +134,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		quitting:     make(chan struct{}),
 		factory: func() chunkenc.Chunk {
-			return chunkenc.NewMemChunkSize(enc, cfg.BlockSize, cfg.TargetChunkSize)
+			return chunkenc.NewMemChunk(enc, cfg.BlockSize, cfg.TargetChunkSize)
 		},
 	}
 
