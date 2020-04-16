@@ -53,12 +53,13 @@ func NewTripperware(
 
 	instrumentMetrics := queryrange.NewInstrumentMiddlewareMetrics(registerer)
 	retryMetrics := queryrange.NewRetryMiddlewareMetrics(registerer)
+	shardingMetrics := logql.NewShardingMetrics(registerer)
 
-	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, prometheusResponseExtractor, instrumentMetrics, retryMetrics, registerer)
+	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, prometheusResponseExtractor, instrumentMetrics, retryMetrics, shardingMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, instrumentMetrics, retryMetrics, registerer)
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, instrumentMetrics, retryMetrics, shardingMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -136,7 +137,7 @@ func NewLogFilterTripperware(
 	codec queryrange.Codec,
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
-	registerer prometheus.Registerer,
+	shardingMetrics *logql.ShardingMetrics,
 ) (frontend.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
@@ -153,7 +154,7 @@ func NewLogFilterTripperware(
 				schema.Configs,
 				minShardingLookback,
 				instrumentMetrics, // instrumentation is included in the sharding middleware
-				registerer,
+				shardingMetrics,
 			),
 		)
 	}
@@ -181,7 +182,7 @@ func NewMetricTripperware(
 	extractor queryrange.Extractor,
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
-	registerer prometheus.Registerer,
+	shardingMetrics *logql.ShardingMetrics,
 ) (frontend.Tripperware, Stopper, error) {
 	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
@@ -234,7 +235,7 @@ func NewMetricTripperware(
 				schema.Configs,
 				minShardingLookback,
 				instrumentMetrics, // instrumentation is included in the sharding middleware
-				registerer,
+				shardingMetrics,
 			),
 		)
 	}

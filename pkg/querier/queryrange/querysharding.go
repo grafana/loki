@@ -9,7 +9,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -24,8 +23,8 @@ func NewQueryShardMiddleware(
 	logger log.Logger,
 	confs queryrange.ShardingConfigs,
 	minShardingLookback time.Duration,
-	metrics *queryrange.InstrumentMiddlewareMetrics,
-	r prometheus.Registerer,
+	middlewareMetrics *queryrange.InstrumentMiddlewareMetrics,
+	shardingMetrics *logql.ShardingMetrics,
 ) queryrange.Middleware {
 
 	noshards := !hasShards(confs)
@@ -39,8 +38,6 @@ func NewQueryShardMiddleware(
 		return queryrange.PassthroughMiddleware
 	}
 
-	shardingMetrics := logql.NewShardingMetrics(r)
-
 	mapperware := queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
 		return newASTMapperware(confs, next, logger, shardingMetrics)
 	})
@@ -49,11 +46,11 @@ func NewQueryShardMiddleware(
 		return &shardSplitter{
 			MinShardingLookback: minShardingLookback,
 			shardingware: queryrange.MergeMiddlewares(
-				queryrange.InstrumentMiddleware("shardingware", metrics),
+				queryrange.InstrumentMiddleware("shardingware", middlewareMetrics),
 				mapperware,
 			).Wrap(next),
 			now:  time.Now,
-			next: queryrange.InstrumentMiddleware("sharding-bypass", metrics).Wrap(next),
+			next: queryrange.InstrumentMiddleware("sharding-bypass", middlewareMetrics).Wrap(next),
 		}
 	})
 
