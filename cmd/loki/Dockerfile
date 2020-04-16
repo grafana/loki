@@ -15,10 +15,10 @@ RUN apk add --no-cache ca-certificates libcap && \
     setcap cap_net_bind_service=+ep /usr/bin/loki && \
     apk del --no-cache libcap
 
-RUN addgroup -g 1000 -S loki && \
-    adduser -u 1000 -S loki -G loki
-RUN mkdir -p /loki && \
-    chown -R loki:loki /etc/loki /loki
+RUN addgroup -g 10001 -S loki && \
+    adduser -u 10001 -S loki -G loki && \
+    mkdir -p /data && \
+    chown -R loki:loki /etc/loki /data
 
 USER loki
 EXPOSE 3100
