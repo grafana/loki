@@ -97,7 +97,7 @@ func newStream(cfg *Config, fp model.Fingerprint, labels labels.Labels, factory 
 // consumeChunk manually adds a chunk to the stream that was received during
 // ingester chunk transfer.
 func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
-	c, err := chunkenc.NewByteChunk(chunk.Data)
+	c, err := chunkenc.NewByteChunk(chunk.Data, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 	if err != nil {
 		return err
 	}
