@@ -74,6 +74,7 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 	d.mu.Unlock()
 	folder := fmt.Sprintf("/var/log/docker/%s/", logCtx.ContainerID)
 	logCtx.LogPath = filepath.Join(folder, "json.log")
+	level.Info(d.logger).Log("msg", "starting logging driver for container", "id", logCtx.ContainerID, "config", fmt.Sprintf("%+v", logCtx.Config), "file", file, "logpath", logCtx.LogPath)
 
 	noFile, err := parseBoolean(cfgNofile, logCtx, false)
 	if err != nil {
@@ -101,7 +102,6 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 	if err != nil {
 		return errors.Wrap(err, "error creating loki logger")
 	}
-	level.Debug(d.logger).Log("msg", "Start logging", "id", logCtx.ContainerID, "file", file, "logpath", logCtx.LogPath)
 	f, err := fifo.OpenFifo(context.Background(), file, syscall.O_RDONLY, 0700)
 	if err != nil {
 		return errors.Wrapf(err, "error opening logger fifo: %q", file)
