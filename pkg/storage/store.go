@@ -233,7 +233,7 @@ func registerCustomIndexClients(cfg Config, schemaCfg chunk.SchemaConfig) {
 		objectStoreType := ""
 		for _, config := range schemaCfg.Configs {
 			if config.IndexType == local.BoltDBShipperType {
-				boltdbShipperEncounter += 1
+				boltdbShipperEncounter++
 				if boltdbShipperEncounter > boltdbShipperInstances {
 					objectStoreType = config.ObjectType
 					break
@@ -241,7 +241,7 @@ func registerCustomIndexClients(cfg Config, schemaCfg chunk.SchemaConfig) {
 			}
 		}
 
-		boltdbShipperInstances += 1
+		boltdbShipperInstances++
 		objectClient, err := stores.NewObjectClient(objectStoreType, cfg.Config)
 		if err != nil {
 			return nil, err

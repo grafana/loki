@@ -260,26 +260,13 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
-	if i.cfg.QueryStore {
-		start := req.Start
-		end := req.End
-		if i.cfg.QueryStoreMaxLookBackPeriod != 0 {
-			oldestStartTime := time.Now().Add(-i.cfg.QueryStoreMaxLookBackPeriod)
-			if oldestStartTime.After(req.Start) {
-				start = oldestStartTime
-			}
+	if storeReq := buildStoreRequest(i.cfg, req); storeReq != nil {
+		storeItr, err := i.store.LazyQuery(ctx, logql.SelectParams{QueryRequest: storeReq})
+		if err != nil {
+			return err
 		}
 
-		if start.Before(end) {
-			storeRequest := recreateRequestWithTime(req, start, end)
-
-			storeItr, err := i.store.LazyQuery(ctx, logql.SelectParams{QueryRequest: storeRequest})
-			if err != nil {
-				return err
-			}
-
-			itrs = append(itrs, storeItr)
-		}
+		itrs = append(itrs, storeItr)
 	}
 
 	heapItr := iter.NewHeapIterator(ctx, itrs, req.Direction)
@@ -396,8 +383,26 @@ func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRe
 	return &resp, nil
 }
 
-// creates a new QueryRequest with a query range
-func recreateRequestWithTime(req *logproto.QueryRequest, start, end time.Time) *logproto.QueryRequest {
+// buildStoreRequest returns a store request from an ingester request, returns nit if QueryStore is set to false in configuration.
+// The request may be truncated due to QueryStoreMaxLookBackPeriod which limits the range of request to make sure
+// we only query enough to not miss any data and not add too to many duplicates by covering the who time range in query.
+func buildStoreRequest(cfg Config, req *logproto.QueryRequest) *logproto.QueryRequest {
+	if !cfg.QueryStore {
+		return nil
+	}
+	start := req.Start
+	end := req.End
+	if cfg.QueryStoreMaxLookBackPeriod != 0 {
+		oldestStartTime := time.Now().Add(-cfg.QueryStoreMaxLookBackPeriod)
+		if oldestStartTime.After(req.Start) {
+			start = oldestStartTime
+		}
+	}
+
+	if start.After(end) {
+		return nil
+	}
+
 	newRequest := *req
 	newRequest.Start = start
 	newRequest.End = end

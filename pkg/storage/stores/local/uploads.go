@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
-	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
@@ -68,7 +67,7 @@ func (s *Shipper) uploadFile(ctx context.Context, period string) error {
 		return err
 	}
 
-	filePath := path.Join(snapshotPath, fmt.Sprintf("%s.%d", s.uploader, time.Now().Unix()))
+	filePath := path.Join(snapshotPath, fmt.Sprintf("%s.%s", s.uploader, "temp"))
 	f, err := os.Create(filePath)
 	if err != nil {
 		return err

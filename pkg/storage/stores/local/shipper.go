@@ -257,25 +257,6 @@ func (s *Shipper) deleteFileFromCache(period, uploader string, fc *filesCollecti
 	return os.Remove(path.Join(s.cfg.CacheLocation, period, uploader))
 }
 
-func (s *Shipper) getFilesCollection(ctx context.Context, period string, createIfNotExists bool) (*filesCollection, error) {
-	s.downloadedPeriodsMtx.RLock()
-	fc, ok := s.downloadedPeriods[period]
-	s.downloadedPeriodsMtx.RUnlock()
-
-	if !ok && createIfNotExists {
-		s.downloadedPeriodsMtx.Lock()
-		fc, ok = s.downloadedPeriods[period]
-		if ok {
-			s.downloadedPeriodsMtx.Unlock()
-		}
-
-		fc = &filesCollection{files: map[string]downloadedFiles{}}
-		s.downloadedPeriods[period] = fc
-	}
-
-	return fc, nil
-}
-
 func (s *Shipper) forEach(ctx context.Context, period string, callback func(db *bbolt.DB) error) error {
 	s.downloadedPeriodsMtx.RLock()
 	fc, ok := s.downloadedPeriods[period]

@@ -7,7 +7,6 @@ import (
 	"os"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
@@ -91,7 +90,7 @@ func (s *Shipper) downloadFile(ctx context.Context, period string, storageObject
 	filePath := path.Join(folderPath, uploader)
 
 	// download the file temporarily with some other name to allow boltdb client to close the existing file first if it exists
-	tempFilePath := path.Join(folderPath, fmt.Sprintf("%s.%d", uploader, time.Now().Unix()))
+	tempFilePath := path.Join(folderPath, fmt.Sprintf("%s.%s", uploader, "temp"))
 
 	err := s.getFileFromStorage(ctx, storageObject.Key, tempFilePath)
 	if err != nil {

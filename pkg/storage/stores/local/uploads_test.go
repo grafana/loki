@@ -145,7 +145,7 @@ func TestShipper_Uploads(t *testing.T) {
 
 	// add some test records to boltdbFile2 and some more records to boltdbFile1
 	addTestRecordsToBoltDBFile(t, boltdbFile2, 10, 1)
-	addTestRecordsToBoltDBFile(t, boltdbFile1, 10, 11)
+	addTestRecordsToBoltDBFile(t, boltdbFile1, 5, 11)
 
 	// Upload files from boltDBWithShipper
 	err = boltDBWithShipper.shipper.uploadFiles(context.Background())
@@ -153,7 +153,7 @@ func TestShipper_Uploads(t *testing.T) {
 
 	// open boltdbFile1 and boltdbFile2 and verify it has expected records
 	checkExpectedKVsInBoltdbResp(t, readAllKVsFromBoltdbFileAtPath(t, file2PathInStorage), 10, 1)
-	checkExpectedKVsInBoltdbResp(t, readAllKVsFromBoltdbFileAtPath(t, file1PathInStorage), 20, 1)
+	checkExpectedKVsInBoltdbResp(t, readAllKVsFromBoltdbFileAtPath(t, file1PathInStorage), 15, 1)
 
 	// modify boltdbFile2 again
 	addTestRecordsToBoltDBFile(t, boltdbFile2, 10, 11)
