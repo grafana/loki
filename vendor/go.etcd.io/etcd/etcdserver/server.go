@@ -50,6 +50,7 @@ import (
 	"go.etcd.io/etcd/pkg/pbutil"
 	"go.etcd.io/etcd/pkg/runtime"
 	"go.etcd.io/etcd/pkg/schedule"
+	"go.etcd.io/etcd/pkg/traceutil"
 	"go.etcd.io/etcd/pkg/types"
 	"go.etcd.io/etcd/pkg/wait"
 	"go.etcd.io/etcd/raft"
@@ -785,7 +786,7 @@ func (s *EtcdServer) start() {
 		} else {
 			plog.Infof("starting server... [version: %v, cluster version: %v]", version.Version, version.Cluster(s.ClusterVersion().String()))
 		}
-		membership.ClusterVersionMetrics.With(prometheus.Labels{"cluster_version": s.ClusterVersion().String()}).Set(1)
+		membership.ClusterVersionMetrics.With(prometheus.Labels{"cluster_version": version.Cluster(s.ClusterVersion().String())}).Set(1)
 	} else {
 		if lg != nil {
 			lg.Info(
@@ -806,12 +807,13 @@ func (s *EtcdServer) start() {
 
 func (s *EtcdServer) purgeFile() {
 	var dberrc, serrc, werrc <-chan error
+	var dbdonec, sdonec, wdonec <-chan struct{}
 	if s.Cfg.MaxSnapFiles > 0 {
-		dberrc = fileutil.PurgeFile(s.getLogger(), s.Cfg.SnapDir(), "snap.db", s.Cfg.MaxSnapFiles, purgeFileInterval, s.done)
-		serrc = fileutil.PurgeFile(s.getLogger(), s.Cfg.SnapDir(), "snap", s.Cfg.MaxSnapFiles, purgeFileInterval, s.done)
+		dbdonec, dberrc = fileutil.PurgeFileWithDoneNotify(s.getLogger(), s.Cfg.SnapDir(), "snap.db", s.Cfg.MaxSnapFiles, purgeFileInterval, s.stopping)
+		sdonec, serrc = fileutil.PurgeFileWithDoneNotify(s.getLogger(), s.Cfg.SnapDir(), "snap", s.Cfg.MaxSnapFiles, purgeFileInterval, s.stopping)
 	}
 	if s.Cfg.MaxWALFiles > 0 {
-		werrc = fileutil.PurgeFile(s.getLogger(), s.Cfg.WALDir(), "wal", s.Cfg.MaxWALFiles, purgeFileInterval, s.done)
+		wdonec, werrc = fileutil.PurgeFileWithDoneNotify(s.getLogger(), s.Cfg.WALDir(), "wal", s.Cfg.MaxWALFiles, purgeFileInterval, s.stopping)
 	}
 
 	lg := s.getLogger()
@@ -835,6 +837,15 @@ func (s *EtcdServer) purgeFile() {
 			plog.Fatalf("failed to purge wal file %v", e)
 		}
 	case <-s.stopping:
+		if dbdonec != nil {
+			<-dbdonec
+		}
+		if sdonec != nil {
+			<-sdonec
+		}
+		if wdonec != nil {
+			<-wdonec
+		}
 		return
 	}
 }
@@ -1178,7 +1189,7 @@ func (s *EtcdServer) applySnapshot(ep *etcdProgress, apply *apply) {
 			plog.Info("recovering lessor...")
 		}
 
-		s.lessor.Recover(newbe, func() lease.TxnDelete { return s.kv.Write() })
+		s.lessor.Recover(newbe, func() lease.TxnDelete { return s.kv.Write(traceutil.TODO()) })
 
 		if lg != nil {
 			lg.Info("restored lease store")
