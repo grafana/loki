@@ -36,15 +36,15 @@ describe LogStash::Outputs::Loki do
         loki.close
       end
 
-      it 'labels extracted should have only included labels' do 
+      it 'labels extracted should have only included labels' do
         labels = {}
         event_hash = event.to_hash
         expected_labels = {"version" => "1", "host" => "172.0.0.1", "log_file_path" => '/path/to/file.log'}
         expect(loki.handle_labels(event_hash, labels, "")).to eql expected_labels
-      end 
-  end 
+      end
+  end
 
-  context 'validate entries' do 
+  context 'validate entries' do
     let(:timestamp) {LogStash::Timestamp.now}
     let (:simple_loki_config) {{'url' => 'http://localhost:3100', 'include_labels' => ["version", "host", "test"], 'external_labels' => {"test" => "value"}}}
     let (:event) { LogStash::Event.new({'message' => 'hello', '@version' => '1', 'agent' => 'filebeat', 'host' => '172.0.0.1',
@@ -56,7 +56,7 @@ describe LogStash::Outputs::Loki do
       loki.close
     end
 
-    it 'validate expected entries are added to entries stream' do 
+    it 'validate expected entries are added to entries stream' do
       labels = {"version" => "1", "host" => "172.0.0.1"}
       expected_labels = {"version" => "1", "host" => "172.0.0.1", "test" => "value"}
       expected_entry_hash = {
@@ -65,10 +65,10 @@ describe LogStash::Outputs::Loki do
       }
       expected_labels_and_entry_hash = [{"version" => "1", "host" => "172.0.0.1", "test" => "value"}, expected_entry_hash]
       expect(loki.build_entry(labels, event)).to eq(expected_labels_and_entry_hash)
-    end 
-  end  
+    end
+  end
 
-  context 'test http requests' do 
+  context 'test http requests' do
     let (:simple_loki_config) {{'url' => 'http://localhost:3100', 'include_labels' => ["@version", "host", "test"],}}
     let (:event) { LogStash::Event.new({'message' => 'hello', '@version' => '1', 'host' => '172.0.0.1',
                                       '@timestamp' => LogStash::Timestamp.now}) }
@@ -79,7 +79,7 @@ describe LogStash::Outputs::Loki do
       loki.close
     end
 
-    it 'test http requests and raise_error when requests are not successful' do 
+    it 'test http requests and raise_error when requests are not successful' do
       labels = {}
       event_hash = event.to_hash
       lbls = loki.handle_labels(event_hash, labels, "")
@@ -109,5 +109,5 @@ describe LogStash::Outputs::Loki do
       allow(server_error).to receive(:payload).and_return('fake body')
       expect(loki.loki_http_request("fake", batch, 1, 300, 10).class).to eql Net::HTTPServerError
     end
-  end 
+  end
 end

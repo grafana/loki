@@ -1,1 +1,4 @@
 *.gem
+.ruby-version
+.bundle
+logstash

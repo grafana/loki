@@ -60,7 +60,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
 
   public
   def register
-    @uri = URI.parse(@url + '/loki/api/v1/push')
+    @uri = URI.parse(@url)
     unless @uri.is_a?(URI::HTTP) || @uri.is_a?(URI::HTTPS)
       raise LogStash::ConfigurationError, "url parameter must be valid HTTP, currently '#{@url}'"
     end
@@ -258,7 +258,6 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
     @logger.debug("sending #{req.body.length} bytes to loki")
     retry_count = 0
     delay = min_delay
-
     begin
       res = Net::HTTP.start(@uri.host, @uri.port, **opts) { |http| http.request(req) }
     rescue Net::HTTPTooManyRequests, Net::HTTPServerError, Errno::ECONNREFUSED => e

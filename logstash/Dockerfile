@@ -12,7 +12,7 @@ ENV LOGSTASH_PATH="/usr/share/logstash"
 ENV GEM_PATH /usr/share/logstash/vendor/bundle/jruby/2.5.0
 ENV GEM_HOME /usr/share/logstash/vendor/bundle/jruby/2.5.0
 
-RUN gem install bundler -v '< 2'
+RUN gem install bundler:2.1.4
 
 RUN bundle install --path=/usr/share/logstash/vendor/bundle && \
     bundle exec rake vendor && \

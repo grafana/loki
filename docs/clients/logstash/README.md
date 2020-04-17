@@ -6,11 +6,12 @@ instance or [Grafana Cloud](https://grafana.com/oss/loki).
 
 ## Installation
 
-```
+```bash
 $ bin/logstash-plugin install logstash-output-grafana-loki
 ```
 
 ## Usage
+
 In your Logstash configuration, use `output loki`. The configuration values would look like this.
 
 ```
@@ -19,7 +20,7 @@ output {
     [url => "" | default = none | required=true]
 
     [include_labels => array | default = [] | required=true]
-    
+
     [extra_labels => hash | default = {} |  required=false]
 
     [tenant_id => string | default = nil | required=false]
@@ -37,7 +38,7 @@ output {
     [retries => number | default = 10 | required=false]
 
     [username => string | default = nil | required=false]
-    
+
     [password => secret | default = nil | required=false]
 
     [cert => path | default = nil | required=false]
@@ -57,42 +58,54 @@ There is a Docker image `grafana/logstash-output-grafana-loki:master` which cont
 ## Configuration
 
 ### url
-The url of the Loki server to send logs to.  When sending data the publish path (`/api/loki/v1/push`) will automatically be appended.
-By default the url is set to `http://localhost:3100`
+
+The url of the Loki server to send logs to.
+When sending data the push path need to also be provided e.g. `http://localhost:3100/loki/api/v1/push`.
 
 ### tenant_id
+
 Loki is a multi-tenant log storage platform and all requests sent must include a tenant.  For some installations the tenant will be set automatically by an authenticating proxy.  Otherwise you can define a tenant to be passed through.  The tenant can be any string value.
 
 ### include_labels
-Array specifiying the extracted labels. This is a mandatory field. A minimum of 1 label should be provided. 
+
+Array specifiying the extracted labels. This is a mandatory field. A minimum of 1 label should be provided.
 All nested labels are extracted by prefixing the parent key i.e if there is a nested label like `{log => {file => {path => "/path/to/file.log"}}}`, extratced label would be `{log_file_path => /path/to/file.log}`
-    
+
 ### extra_labels
+
 All logs send to Loki will be added with these extra labels
 
-### message_field 
-Message field to use for log lines. 
+### message_field
+
+Message field to use for log lines.
 
 ### batch_wait
+
 Interval in seconds to wait before pushing a batch of records to loki
 
-### batch_size 
+### batch_size
+
 Maximum batch size to accrue before pushing to loki. Defaults to 102400 bytes
 
 ### Backoff config
-#### min_delay 
+
+#### min_delay
+
 Initial backoff time between retries
 
 #### max_delay => 300(5m)
+
 Maximum backoff time between retries
 
 #### retries => 10
+
 Maximum number of retries to do
 
 ### username / password
-Specify a username and password if the Loki server requires authentication.
+
+Specify a username and password if the Loki server requires basic authentication.
 If using the GrafanaLab's hosted Loki, the username needs to be set to your instanceId and the password should be a Grafana.com api key.
 
 ### client certificate verification
-Specify a pair of client certificate and private key with `cert` and `key` if a reverse proxy with client certificate verification is configured in front of Loki. `ca_cert` can also be specified if the server uses custom certificate authority.
 
+Specify a pair of client certificate and private key with `cert` and `key` if a reverse proxy with client certificate verification is configured in front of Loki. `ca_cert` can also be specified if the server uses custom certificate authority.
