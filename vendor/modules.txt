@@ -573,7 +573,7 @@ github.com/weaveworks/promrus
 github.com/xiang90/probing
 # go.etcd.io/bbolt v1.3.3
 go.etcd.io/bbolt
-# go.etcd.io/etcd v0.0.0-20190815204525-8f85f0dc2607
+# go.etcd.io/etcd v0.0.0-20200401174654-e694b7bb0875
 go.etcd.io/etcd/auth
 go.etcd.io/etcd/auth/authpb
 go.etcd.io/etcd/client
@@ -638,6 +638,7 @@ go.etcd.io/etcd/pkg/schedule
 go.etcd.io/etcd/pkg/srv
 go.etcd.io/etcd/pkg/systemd
 go.etcd.io/etcd/pkg/tlsutil
+go.etcd.io/etcd/pkg/traceutil
 go.etcd.io/etcd/pkg/transport
 go.etcd.io/etcd/pkg/types
 go.etcd.io/etcd/pkg/wait
