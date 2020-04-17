@@ -145,41 +145,47 @@ func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)
 }
 
 // CreateSchema returns the schema defined by the PeriodConfig
-func (cfg PeriodConfig) CreateSchema() Schema {
+func (cfg PeriodConfig) CreateSchema() (BaseSchema, error) {
+	buckets, bucketsPeriod := cfg.createBucketsFunc()
 
-	var e entries
-	switch cfg.Schema {
-	case "v1":
-		e = originalEntries{}
-	case "v2":
-		e = originalEntries{}
-	case "v3":
-		e = base64Entries{originalEntries{}}
-	case "v4":
-		e = labelNameInHashKeyEntries{}
-	case "v5":
-		e = v5Entries{}
-	case "v6":
-		e = v6Entries{}
-	case "v9":
-		e = v9Entries{}
-	case "v10":
-		e = v10Entries{
-			rowShards: cfg.RowShards,
-		}
-	case "v11":
-		e = v11Entries{
-			v10Entries: v10Entries{
-				rowShards: cfg.RowShards,
-			},
-		}
-	default:
-		return nil
+	// Ensure the tables period is a multiple of the bucket period
+	if cfg.IndexTables.Period > 0 && cfg.IndexTables.Period%bucketsPeriod != 0 {
+		return nil, errInvalidTablePeriod
 	}
 
-	buckets, _ := cfg.createBucketsFunc()
+	if cfg.ChunkTables.Period > 0 && cfg.ChunkTables.Period%bucketsPeriod != 0 {
+		return nil, errInvalidTablePeriod
+	}
 
-	return schema{buckets, e}
+	switch cfg.Schema {
+	case "v1":
+		return newStoreSchema(buckets, originalEntries{}), nil
+	case "v2":
+		return newStoreSchema(buckets, originalEntries{}), nil
+	case "v3":
+		return newStoreSchema(buckets, base64Entries{originalEntries{}}), nil
+	case "v4":
+		return newStoreSchema(buckets, labelNameInHashKeyEntries{}), nil
+	case "v5":
+		return newStoreSchema(buckets, v5Entries{}), nil
+	case "v6":
+		return newStoreSchema(buckets, v6Entries{}), nil
+	case "v9":
+		return newSeriesStoreSchema(buckets, v9Entries{}), nil
+	case "v10", "v11":
+		if cfg.RowShards == 0 {
+			return nil, fmt.Errorf("Must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
+		}
+
+		v10 := v10Entries{rowShards: cfg.RowShards}
+		if cfg.Schema == "v10" {
+			return newSeriesStoreSchema(buckets, v10), nil
+		}
+
+		return newSeriesStoreSchema(buckets, v11Entries{v10}), nil
+	default:
+		return nil, errInvalidSchemaVersion
+	}
 }
 
 func (cfg PeriodConfig) createBucketsFunc() (schemaBucketsFunc, time.Duration) {
@@ -199,35 +205,8 @@ func (cfg *PeriodConfig) applyDefaults() {
 
 // Validate the period config.
 func (cfg PeriodConfig) validate() error {
-	// Ensure the schema version exists
-	schema := cfg.CreateSchema()
-	if schema == nil {
-		return errInvalidSchemaVersion
-	}
-
-	// Ensure the tables period is a multiple of the bucket period
-	_, bucketsPeriod := cfg.createBucketsFunc()
-
-	if cfg.IndexTables.Period > 0 && cfg.IndexTables.Period%bucketsPeriod != 0 {
-		return errInvalidTablePeriod
-	}
-
-	if cfg.ChunkTables.Period > 0 && cfg.ChunkTables.Period%bucketsPeriod != 0 {
-		return errInvalidTablePeriod
-	}
-
-	switch cfg.Schema {
-	case "v1", "v2", "v3", "v4", "v5", "v6", "v9":
-	case "v10", "v11":
-		if cfg.RowShards == 0 {
-			return fmt.Errorf("Must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
-		}
-	default:
-		// This generally unreachable path protects us from adding schemas and not handling them in this function.
-		return fmt.Errorf("unexpected schema (%s)", cfg.Schema)
-	}
-
-	return nil
+	_, err := cfg.CreateSchema()
+	return err
 }
 
 // Load the yaml file, or build the config from legacy command-line flags

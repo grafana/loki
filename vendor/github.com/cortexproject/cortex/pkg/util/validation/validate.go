@@ -17,6 +17,17 @@ import (
 const (
 	discardReasonLabel = "reason"
 
+	errMetadataMissingMetricName = "metadata missing metric name"
+	errMetadataTooLong           = "metadata '%s' value too long: %.200q metric %.200q"
+
+	typeMetricName = "METRIC_NAME"
+	typeHelp       = "HELP"
+	typeUnit       = "UNIT"
+
+	metricNameTooLong = "metric_name_too_long"
+	helpTooLong       = "help_too_long"
+	unitTooLong       = "unit_too_long"
+
 	errMissingMetricName  = "sample missing metric name"
 	errInvalidMetricName  = "sample invalid metric name: %.200q"
 	errInvalidLabel       = "sample invalid label: %.200q metric %.200q"
@@ -55,9 +66,17 @@ var DiscardedSamples = prometheus.NewCounterVec(
 	},
 	[]string{discardReasonLabel, "user"},
 )
+var DiscardedMetadata = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "cortex_discarded_metadata_total",
+		Help: "The total number of metadata that were discarded.",
+	},
+	[]string{discardReasonLabel, "user"},
+)
 
 func init() {
 	prometheus.MustRegister(DiscardedSamples)
+	prometheus.MustRegister(DiscardedMetadata)
 }
 
 // SampleValidationConfig helps with getting required config to validate sample.
@@ -147,6 +166,45 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []client.LabelA
 		}
 		lastLabelName = l.Name
 	}
+	return nil
+}
+
+// MetadataValidationConfig helps with getting required config to validate metadata.
+type MetadataValidationConfig interface {
+	EnforceMetadataMetricName(userID string) bool
+	MaxMetadataLength(userID string) int
+}
+
+// ValidateMetadata returns an err if a metric metadata is invalid.
+func ValidateMetadata(cfg MetadataValidationConfig, userID string, metadata *client.MetricMetadata) error {
+	if cfg.EnforceMetadataMetricName(userID) && metadata.MetricName == "" {
+		DiscardedMetadata.WithLabelValues(missingMetricName, userID).Inc()
+		return httpgrpc.Errorf(http.StatusBadRequest, errMetadataMissingMetricName)
+	}
+
+	maxMetadataValueLength := cfg.MaxMetadataLength(userID)
+	var reason string
+	var cause string
+	var metadataType string
+	if len(metadata.MetricName) > maxMetadataValueLength {
+		metadataType = typeMetricName
+		reason = metricNameTooLong
+		cause = metadata.MetricName
+	} else if len(metadata.Help) > maxMetadataValueLength {
+		metadataType = typeHelp
+		reason = helpTooLong
+		cause = metadata.Help
+	} else if len(metadata.Unit) > maxMetadataValueLength {
+		metadataType = typeUnit
+		reason = unitTooLong
+		cause = metadata.Unit
+	}
+
+	if reason != "" {
+		DiscardedMetadata.WithLabelValues(reason, userID).Inc()
+		return httpgrpc.Errorf(http.StatusBadRequest, errMetadataTooLong, metadataType, cause, metadata.MetricName)
+	}
+
 	return nil
 }
 

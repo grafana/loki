@@ -2,7 +2,6 @@ package client
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"sync"
@@ -11,7 +10,6 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -20,65 +18,64 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-var clients = promauto.NewGauge(prometheus.GaugeOpts{
-	Namespace: "cortex",
-	Name:      "distributor_ingester_clients",
-	Help:      "The current number of ingester clients.",
-})
+// PoolClient is the interface that should be implemented by a
+// client managed by the pool.
+type PoolClient interface {
+	grpc_health_v1.HealthClient
+	io.Closer
+}
 
-// Factory defines the signature for an ingester client factory.
-type Factory func(addr string) (grpc_health_v1.HealthClient, error)
+// PoolFactory defines the signature for a client factory.
+type PoolFactory func(addr string) (PoolClient, error)
 
 // PoolConfig is config for creating a Pool.
 type PoolConfig struct {
-	ClientCleanupPeriod  time.Duration `yaml:"client_cleanup_period"`
-	HealthCheckIngesters bool          `yaml:"health_check_ingesters"`
-	RemoteTimeout        time.Duration `yaml:"-"`
-}
-
-// RegisterFlags adds the flags required to config this to the given FlagSet.
-func (cfg *PoolConfig) RegisterFlags(f *flag.FlagSet) {
-	f.DurationVar(&cfg.ClientCleanupPeriod, "distributor.client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
-	f.BoolVar(&cfg.HealthCheckIngesters, "distributor.health-check-ingesters", true, "Run a health check on each ingester client during periodic cleanup.")
+	CheckInterval      time.Duration
+	HealthCheckEnabled bool
+	HealthCheckTimeout time.Duration
 }
 
 // Pool holds a cache of grpc_health_v1 clients.
 type Pool struct {
 	services.Service
 
-	cfg     PoolConfig
-	ring    ring.ReadRing
-	factory Factory
-	logger  log.Logger
+	cfg        PoolConfig
+	ring       ring.ReadRing
+	factory    PoolFactory
+	logger     log.Logger
+	clientName string
 
 	sync.RWMutex
-	clients map[string]grpc_health_v1.HealthClient
+	clients map[string]PoolClient
+
+	clientsMetric prometheus.Gauge
 }
 
 // NewPool creates a new Pool.
-func NewPool(cfg PoolConfig, ring ring.ReadRing, factory Factory, logger log.Logger) *Pool {
+func NewPool(clientName string, cfg PoolConfig, ring ring.ReadRing, factory PoolFactory, clientsMetric prometheus.Gauge, logger log.Logger) *Pool {
 	p := &Pool{
-		cfg:     cfg,
-		ring:    ring,
-		factory: factory,
-		logger:  logger,
-
-		clients: map[string]grpc_health_v1.HealthClient{},
+		cfg:           cfg,
+		ring:          ring,
+		factory:       factory,
+		logger:        logger,
+		clientName:    clientName,
+		clients:       map[string]PoolClient{},
+		clientsMetric: clientsMetric,
 	}
 
-	p.Service = services.NewTimerService(cfg.ClientCleanupPeriod, nil, p.iteration, nil)
+	p.Service = services.NewTimerService(cfg.CheckInterval, nil, p.iteration, nil)
 	return p
 }
 
 func (p *Pool) iteration(ctx context.Context) error {
 	p.removeStaleClients()
-	if p.cfg.HealthCheckIngesters {
+	if p.cfg.HealthCheckEnabled {
 		p.cleanUnhealthy()
 	}
 	return nil
 }
 
-func (p *Pool) fromCache(addr string) (grpc_health_v1.HealthClient, bool) {
+func (p *Pool) fromCache(addr string) (PoolClient, bool) {
 	p.RLock()
 	defer p.RUnlock()
 	client, ok := p.clients[addr]
@@ -87,7 +84,7 @@ func (p *Pool) fromCache(addr string) (grpc_health_v1.HealthClient, bool) {
 
 // GetClientFor gets the client for the specified address. If it does not exist it will make a new client
 // at that address
-func (p *Pool) GetClientFor(addr string) (grpc_health_v1.HealthClient, error) {
+func (p *Pool) GetClientFor(addr string) (PoolClient, error) {
 	client, ok := p.fromCache(addr)
 	if ok {
 		return client, nil
@@ -105,7 +102,9 @@ func (p *Pool) GetClientFor(addr string) (grpc_health_v1.HealthClient, error) {
 		return nil, err
 	}
 	p.clients[addr] = client
-	clients.Add(1)
+	if p.clientsMetric != nil {
+		p.clientsMetric.Add(1)
+	}
 	return client, nil
 }
 
@@ -116,13 +115,15 @@ func (p *Pool) RemoveClientFor(addr string) {
 	client, ok := p.clients[addr]
 	if ok {
 		delete(p.clients, addr)
-		clients.Add(-1)
+		if p.clientsMetric != nil {
+			p.clientsMetric.Add(-1)
+		}
 		// Close in the background since this operation may take awhile and we have a mutex
-		go func(addr string, closer io.Closer) {
+		go func(addr string, closer PoolClient) {
 			if err := closer.Close(); err != nil {
-				level.Error(p.logger).Log("msg", "error closing connection to ingester", "ingester", addr, "err", err)
+				level.Error(p.logger).Log("msg", fmt.Sprintf("error closing connection to %s", p.clientName), "addr", addr, "err", err)
 			}
-		}(addr, client.(io.Closer))
+		}(addr, client)
 	}
 }
 
@@ -165,15 +166,15 @@ func (p *Pool) removeStaleClients() {
 	}
 }
 
-// cleanUnhealthy loops through all ingesters and deletes any that fails a healthcheck.
+// cleanUnhealthy loops through all servers and deletes any that fails a healthcheck.
 func (p *Pool) cleanUnhealthy() {
 	for _, addr := range p.RegisteredAddresses() {
 		client, ok := p.fromCache(addr)
 		// not ok means someone removed a client between the start of this loop and now
 		if ok {
-			err := healthCheck(client, p.cfg.RemoteTimeout)
+			err := healthCheck(client, p.cfg.HealthCheckTimeout)
 			if err != nil {
-				level.Warn(util.Logger).Log("msg", "removing ingester failing healthcheck", "addr", addr, "reason", err)
+				level.Warn(util.Logger).Log("msg", fmt.Sprintf("removing %s failing healthcheck", p.clientName), "addr", addr, "reason", err)
 				p.RemoveClientFor(addr)
 			}
 		}
@@ -181,7 +182,7 @@ func (p *Pool) cleanUnhealthy() {
 }
 
 // healthCheck will check if the client is still healthy, returning an error if it is not
-func healthCheck(client grpc_health_v1.HealthClient, timeout time.Duration) error {
+func healthCheck(client PoolClient, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	ctx = user.InjectOrgID(ctx, "0")
@@ -191,7 +192,7 @@ func healthCheck(client grpc_health_v1.HealthClient, timeout time.Duration) erro
 		return err
 	}
 	if resp.Status != grpc_health_v1.HealthCheckResponse_SERVING {
-		return fmt.Errorf("Failing healthcheck status: %s", resp.Status)
+		return fmt.Errorf("failing healthcheck status: %s", resp.Status)
 	}
 	return nil
 }

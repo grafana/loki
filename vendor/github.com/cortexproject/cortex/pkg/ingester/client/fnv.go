@@ -68,3 +68,10 @@ func HashAdd32(h uint32, s string) uint32 {
 	}
 	return h
 }
+
+// HashAddByte32 adds a byte to a fnv32 hash value, returning the updated hash.
+func HashAddByte32(h uint32, b byte) uint32 {
+	h *= prime32
+	h ^= uint32(b)
+	return h
+}

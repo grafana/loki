@@ -9,8 +9,8 @@ import (
 	"time"
 
 	cortex_distributor "github.com/cortexproject/cortex/pkg/distributor"
-	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -65,7 +65,7 @@ type Config struct {
 	DistributorRing cortex_distributor.RingConfig `yaml:"ring,omitempty"`
 
 	// For testing.
-	factory func(addr string) (grpc_health_v1.HealthClient, error) `yaml:"-"`
+	factory ring_client.PoolFactory `yaml:"-"`
 }
 
 // RegisterFlags registers the flags.
@@ -79,7 +79,7 @@ type Distributor struct {
 	clientCfg     client.Config
 	ingestersRing ring.ReadRing
 	validator     *Validator
-	pool          *cortex_client.Pool
+	pool          *ring_client.Pool
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
@@ -93,7 +93,7 @@ type Distributor struct {
 func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overrides *validation.Overrides) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
-		factory = func(addr string) (grpc_health_v1.HealthClient, error) {
+		factory = func(addr string) (ring_client.PoolClient, error) {
 			return client.New(clientCfg, addr)
 		}
 	}
@@ -137,7 +137,7 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 		ingestersRing:        ingestersRing,
 		distributorsRing:     distributorsRing,
 		validator:            validator,
-		pool:                 cortex_client.NewPool(clientCfg.PoolConfig, ingestersRing, factory, cortex_util.Logger),
+		pool:                 cortex_distributor.NewPool(clientCfg.PoolConfig, ingestersRing, factory, cortex_util.Logger),
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 	}
 

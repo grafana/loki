@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"time"
 
@@ -59,19 +60,32 @@ func NewCompositeStore() CompositeStore {
 
 // AddPeriod adds the configuration for a period of time to the CompositeStore
 func (c *CompositeStore) AddPeriod(storeCfg StoreConfig, cfg PeriodConfig, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) error {
-	schema := cfg.CreateSchema()
-	var store Store
-	var err error
-	switch cfg.Schema {
-	case "v9", "v10", "v11":
-		store, err = newSeriesStore(storeCfg, schema, index, chunks, limits, chunksCache, writeDedupeCache)
+	schema, err := cfg.CreateSchema()
+	if err != nil {
+		return err
+	}
+
+	return c.addSchema(storeCfg, schema, cfg.From.Time, index, chunks, limits, chunksCache, writeDedupeCache)
+}
+
+func (c *CompositeStore) addSchema(storeCfg StoreConfig, schema BaseSchema, start model.Time, index IndexClient, chunks Client, limits StoreLimits, chunksCache, writeDedupeCache cache.Cache) error {
+	var (
+		err   error
+		store Store
+	)
+
+	switch s := schema.(type) {
+	case SeriesStoreSchema:
+		store, err = newSeriesStore(storeCfg, s, index, chunks, limits, chunksCache, writeDedupeCache)
+	case StoreSchema:
+		store, err = newStore(storeCfg, s, index, chunks, limits, chunksCache)
 	default:
-		store, err = newStore(storeCfg, schema, index, chunks, limits, chunksCache)
+		err = errors.New("invalid schema type")
 	}
 	if err != nil {
 		return err
 	}
-	c.stores = append(c.stores, compositeStoreEntry{start: model.TimeFromUnixNano(cfg.From.UnixNano()), Store: store})
+	c.stores = append(c.stores, compositeStoreEntry{start: start, Store: store})
 	return nil
 }
 

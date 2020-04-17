@@ -3,6 +3,7 @@ package cassandra
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -68,6 +69,9 @@ func (cfg *Config) Validate() error {
 	if cfg.Password.Value != "" && cfg.PasswordFile != "" {
 		return errors.Errorf("The password and password_file config options are mutually exclusive.")
 	}
+	if cfg.SSL && cfg.HostVerification && len(strings.Split(cfg.Addresses, ",")) != 1 {
+		return errors.Errorf("Host verification is only possible for a single host.")
+	}
 	return nil
 }
 
@@ -118,9 +122,18 @@ func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
 	cluster.DisableInitialHostLookup = cfg.DisableInitialHostLookup
 
 	if cfg.SSL {
-		cluster.SslOpts = &gocql.SslOptions{
-			CaPath:                 cfg.CAPath,
-			EnableHostVerification: cfg.HostVerification,
+		if cfg.HostVerification {
+			cluster.SslOpts = &gocql.SslOptions{
+				CaPath:                 cfg.CAPath,
+				EnableHostVerification: true,
+				Config: &tls.Config{
+					ServerName: strings.Split(cfg.Addresses, ",")[0],
+				},
+			}
+		} else {
+			cluster.SslOpts = &gocql.SslOptions{
+				EnableHostVerification: false,
+			}
 		}
 	}
 	if cfg.Auth {
@@ -210,6 +223,7 @@ func (s *StorageClient) Stop() {
 // atomic writes.  Therefore we just do a bunch of writes in parallel.
 type writeBatch struct {
 	entries []chunk.IndexEntry
+	deletes []chunk.IndexEntry
 }
 
 // NewWriteBatch implement chunk.IndexClient.
@@ -227,8 +241,11 @@ func (b *writeBatch) Add(tableName, hashValue string, rangeValue []byte, value [
 }
 
 func (b *writeBatch) Delete(tableName, hashValue string, rangeValue []byte) {
-	// ToDo: implement this to support deleting index entries from Cassandra
-	panic("Cassandra does not support Deleting index entries yet")
+	b.deletes = append(b.deletes, chunk.IndexEntry{
+		TableName:  tableName,
+		HashValue:  hashValue,
+		RangeValue: rangeValue,
+	})
 }
 
 // BatchWrite implement chunk.IndexClient.
@@ -238,6 +255,14 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	for _, entry := range b.entries {
 		err := s.session.Query(fmt.Sprintf("INSERT INTO %s (hash, range, value) VALUES (?, ?, ?)",
 			entry.TableName), entry.HashValue, entry.RangeValue, entry.Value).WithContext(ctx).Exec()
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+
+	for _, entry := range b.deletes {
+		err := s.session.Query(fmt.Sprintf("DELETE FROM %s WHERE hash = ? and range = ?",
+			entry.TableName), entry.HashValue, entry.RangeValue).WithContext(ctx).Exec()
 		if err != nil {
 			return errors.WithStack(err)
 		}

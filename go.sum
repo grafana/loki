@@ -163,8 +163,8 @@ github.com/coreos/pkg v0.0.0-20160727233714-3ac0863d7acf/go.mod h1:E3G3o1h8I7cfc
 github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f h1:lBNOc5arjvs8E5mO2tbpBpLoyyu8B6e44T7hJy6potg=
 github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f/go.mod h1:E3G3o1h8I7cfcXa63jLwjI0eiQQMgzzUDFVpN/nH/eA=
 github.com/cortexproject/cortex v0.6.1-0.20200228110116-92ab6cbe0995/go.mod h1:3Xa3DjJxtpXqxcMGdk850lcIRb81M0fyY1MQ6udY134=
-github.com/cortexproject/cortex v1.0.0 h1:SbvD/LBbp50bQBq+lMwYoS91I6DUMbRKaYxE6UmSEa0=
-github.com/cortexproject/cortex v1.0.0/go.mod h1:KixgGK5GO7YVo48k37rvHOEQlwpDCqHSPX2Mv2IuJMY=
+github.com/cortexproject/cortex v1.0.1-0.20200416152925-3fe04dcff1d8 h1:A7nGtA5pj10j5bwbLPqf5C+WAhVzFaOt1c/uen6202o=
+github.com/cortexproject/cortex v1.0.1-0.20200416152925-3fe04dcff1d8/go.mod h1:5NXU+UpV8NW6I3teskVmxn45xcq4+IbtSOINfRf+jds=
 github.com/creack/pty v1.1.7/go.mod h1:lj5s0c3V2DBrqTV7llrYr5NG6My20zk30Fl46Y7DoTY=
 github.com/cznic/b v0.0.0-20180115125044-35e9bbe41f07/go.mod h1:URriBxXwVq5ijiJ12C7iIZqlA69nTlI+LgI6/pwftG8=
 github.com/cznic/fileutil v0.0.0-20180108211300-6a051e75936f/go.mod h1:8S58EK26zhXSxzv7NQFpnliaOQsmDUxvoQO3rt154Vg=
@@ -701,7 +701,6 @@ github.com/prometheus/procfs v0.0.8/go.mod h1:7Qr8sr6344vo1JqZ6HhLceV9o3AJ1Ff+Gx
 github.com/prometheus/prometheus v0.0.0-20180315085919-58e2a31db8de/go.mod h1:oAIUtOny2rjMX0OWN5vPR5/q/twIROJvdqnQKDdil/s=
 github.com/prometheus/prometheus v0.0.0-20190818123050-43acd0e2e93f/go.mod h1:rMTlmxGCvukf2KMu3fClMDKLLoJ5hl61MhcJ7xKakf0=
 github.com/prometheus/prometheus v1.8.2-0.20200107122003-4708915ac6ef/go.mod h1:7U90zPoLkWjEIQcy/rweQla82OCTUzxVHE51G3OhJbI=
-github.com/prometheus/prometheus v1.8.2-0.20200110114423-1e64d757f711/go.mod h1:7U90zPoLkWjEIQcy/rweQla82OCTUzxVHE51G3OhJbI=
 github.com/prometheus/prometheus v1.8.2-0.20200213233353-b90be6f32a33 h1:HBYrMJj5iosUjUkAK9L5GO+5eEQXbcrzdjkqY9HV5W4=
 github.com/prometheus/prometheus v1.8.2-0.20200213233353-b90be6f32a33/go.mod h1:fkIPPkuZnkXyopYHmXPxf9rgiPkVgZCN8w9o8+UgBlY=
 github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1 h1:+kGqA4dNN5hn7WwvKdzHl0rdN5AEkbNZd0VjRltAiZg=
@@ -767,9 +766,8 @@ github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81P
 github.com/stretchr/testify v1.5.1 h1:nOGnQDM7FYENwehXlg/kFVnos3rEvtKTjRvOWSzb6H4=
 github.com/stretchr/testify v1.5.1/go.mod h1:5W2xD1RspED5o8YsWQXVCued0rvSQ+mT+I5cxcmMvtA=
 github.com/thanos-io/thanos v0.8.1-0.20200109203923-552ffa4c1a0d/go.mod h1:usT/TxtJQ7DzinTt+G9kinDQmRS5sxwu0unVKZ9vdcw=
-github.com/thanos-io/thanos v0.8.1-0.20200326105947-214ff4480e93/go.mod h1:PeLHoE5XdPZss/3eLvuxDCFXnM6Sd2Kh+saQIRJVtBE=
-github.com/thanos-io/thanos v0.11.0 h1:UkWLa93sihcxCofelRH/NBGQxFyFU73eXIr2a+dwOFM=
-github.com/thanos-io/thanos v0.11.0/go.mod h1:N/Yes7J68KqvmY+xM6J5CJqEvWIvKSR5sqGtmuD6wDc=
+github.com/thanos-io/thanos v0.12.1-0.20200416112106-b391ca115ed8 h1:z7sOhoCEWnrQ2MIew3cJxsaxKT0AQu5pgXA8ZjdrYlk=
+github.com/thanos-io/thanos v0.12.1-0.20200416112106-b391ca115ed8/go.mod h1:+nN9AzmfaIH2e2KJGyRxX0BoUGrRSyZmp+U8ToRxlDc=
 github.com/tidwall/pretty v0.0.0-20180105212114-65a9db5fad51/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=
 github.com/tidwall/pretty v1.0.0/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=
 github.com/tmc/grpc-websocket-proxy v0.0.0-20170815181823-89b8d40f7ca8/go.mod h1:ncp9v5uamzpCO7NfCPTXjqaC+bZgJeR0sMTm6dMHP7U=

@@ -62,7 +62,7 @@ type Config struct {
 	MaxReturnedErrors int `yaml:"max_returned_stream_errors"`
 
 	// For testing, you can override the address and ID of this ingester.
-	ingesterClientFactory func(cfg client.Config, addr string) (grpc_health_v1.HealthClient, error)
+	ingesterClientFactory func(cfg client.Config, addr string) (client.HealthAndIngesterClient, error)
 }
 
 // RegisterFlags registers the flags.
