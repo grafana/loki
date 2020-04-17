@@ -83,7 +83,7 @@ var (
 	}, []string{"reason"})
 	chunkLifespan = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "loki",
-		Name:      "ingester_chunk_lifespan_minutes",
+		Name:      "ingester_chunk_bounds_minutes",
 		Help:      "Distribution of chunk end-start durations.",
 		// 15m to 2h
 		Buckets: prometheus.LinearBuckets(15, 15, 8),
