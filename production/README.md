@@ -47,49 +47,7 @@ There is a [Helm chart](helm) to deploy Loki and Promtail to Kubernetes.
 
 ## Build and run from source
 
-Loki can be run in a single host, no-dependencies mode using the following commands.
-
-You need `go` [v1.10+](https://golang.org/dl/) installed locally.
-
-```bash
-
-$ go get github.com/grafana/loki
-$ cd $GOPATH/src/github.com/grafana/loki # GOPATH is $HOME/go by default.
-
-$ go build ./cmd/loki
-$ ./loki -config.file=./cmd/loki/loki-local-config.yaml
-...
-```
-
-To build Promtail on non-Linux platforms, use the following command:
-
-```bash
-$ go build ./cmd/promtail
-```
-
-On Linux, Promtail requires the systemd headers to be installed for
-Journal support.
-
-With Journal support on Ubuntu, run with the following commands:
-
-```bash
-$ sudo apt install -y libsystemd-dev
-$ go build ./cmd/promtail
-```
-
-With Journal support on CentOS, run with the following commands:
-
-```bash
-$ sudo yum install -y systemd-devel
-$ go build ./cmd/promtail
-```
-
-Otherwise, to build Promtail without Journal support, run `go build`
-with CGO disabled:
-
-```bash
-$ CGO_ENABLED=0 go build ./cmd/promtail
-```
+Frist, see the [build from source](../README.md) section of the root readme.
 
 Once Promtail is built, to run Promtail, use the following command:
 
