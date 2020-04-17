@@ -168,25 +168,19 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 }
 
 // shouldCacheResponse says whether the response should be cached or not.
-func shouldCacheResponse(r Response) bool {
+func (s resultsCache) shouldCacheResponse(r Response) bool {
 	if promResp, ok := r.(*PrometheusResponse); ok {
-		shouldCache := true
-	outer:
 		for _, hv := range promResp.Headers {
-			if hv == nil {
+			if hv.GetName() != cachecontrolHeader {
 				continue
 			}
-			if hv.Name != cachecontrolHeader {
-				continue
-			}
-			for _, v := range hv.Values {
+			for _, v := range hv.GetValues() {
 				if v == noCacheValue {
-					shouldCache = false
-					break outer
+					level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cachecontrolHeader, noCacheValue))
+					return false
 				}
 			}
 		}
-		return shouldCache
 	}
 	return true
 }
@@ -197,8 +191,7 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Ex
 		return nil, nil, err
 	}
 
-	if !shouldCacheResponse(response) {
-		level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cachecontrolHeader, noCacheValue))
+	if !s.shouldCacheResponse(response) {
 		return response, []Extent{}, nil
 	}
 
@@ -238,6 +231,9 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 
 	for _, reqResp := range reqResps {
 		responses = append(responses, reqResp.Response)
+		if !s.shouldCacheResponse(reqResp.Response) {
+			continue
+		}
 		extent, err := toExtent(ctx, reqResp.Request, reqResp.Response)
 		if err != nil {
 			return nil, nil, err

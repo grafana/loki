@@ -12,13 +12,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
+
 	"github.com/go-kit/kit/log/level"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
@@ -141,19 +141,13 @@ func (f *testIngesterFactory) getIngester(joinAfter time.Duration, t *testing.T)
 	cfg.LifecyclerConfig.JoinAfter = joinAfter
 	cfg.LifecyclerConfig.Addr = cfg.LifecyclerConfig.ID
 
-	cfg.ingesterClientFactory = func(cfg client.Config, addr string) (grpc_health_v1.HealthClient, error) {
+	cfg.ingesterClientFactory = func(cfg client.Config, addr string) (client.HealthAndIngesterClient, error) {
 		ingester, ok := f.ingesters[addr]
 		if !ok {
 			return nil, fmt.Errorf("no ingester %s", addr)
 		}
 
-		return struct {
-			logproto.PusherClient
-			logproto.QuerierClient
-			logproto.IngesterClient
-			grpc_health_v1.HealthClient
-			io.Closer
-		}{
+		return client.ClosableHealthAndIngesterClient{
 			PusherClient:   nil,
 			QuerierClient:  nil,
 			IngesterClient: &testIngesterClient{t: f.t, i: ingester},

@@ -22,21 +22,23 @@ const (
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
 	// Distributor enforced limits.
-	IngestionRate          float64             `yaml:"ingestion_rate"`
-	IngestionRateStrategy  string              `yaml:"ingestion_rate_strategy"`
-	IngestionBurstSize     int                 `yaml:"ingestion_burst_size"`
-	AcceptHASamples        bool                `yaml:"accept_ha_samples"`
-	HAClusterLabel         string              `yaml:"ha_cluster_label"`
-	HAReplicaLabel         string              `yaml:"ha_replica_label"`
-	DropLabels             flagext.StringSlice `yaml:"drop_labels"`
-	MaxLabelNameLength     int                 `yaml:"max_label_name_length"`
-	MaxLabelValueLength    int                 `yaml:"max_label_value_length"`
-	MaxLabelNamesPerSeries int                 `yaml:"max_label_names_per_series"`
-	RejectOldSamples       bool                `yaml:"reject_old_samples"`
-	RejectOldSamplesMaxAge time.Duration       `yaml:"reject_old_samples_max_age"`
-	CreationGracePeriod    time.Duration       `yaml:"creation_grace_period"`
-	EnforceMetricName      bool                `yaml:"enforce_metric_name"`
-	SubringSize            int                 `yaml:"user_subring_size"`
+	IngestionRate             float64             `yaml:"ingestion_rate"`
+	IngestionRateStrategy     string              `yaml:"ingestion_rate_strategy"`
+	IngestionBurstSize        int                 `yaml:"ingestion_burst_size"`
+	AcceptHASamples           bool                `yaml:"accept_ha_samples"`
+	HAClusterLabel            string              `yaml:"ha_cluster_label"`
+	HAReplicaLabel            string              `yaml:"ha_replica_label"`
+	DropLabels                flagext.StringSlice `yaml:"drop_labels"`
+	MaxLabelNameLength        int                 `yaml:"max_label_name_length"`
+	MaxLabelValueLength       int                 `yaml:"max_label_value_length"`
+	MaxLabelNamesPerSeries    int                 `yaml:"max_label_names_per_series"`
+	MaxMetadataLength         int                 `yaml:"max_metadata_length"`
+	RejectOldSamples          bool                `yaml:"reject_old_samples"`
+	RejectOldSamplesMaxAge    time.Duration       `yaml:"reject_old_samples_max_age"`
+	CreationGracePeriod       time.Duration       `yaml:"creation_grace_period"`
+	EnforceMetadataMetricName bool                `yaml:"enforce_metadata_metric_name"`
+	EnforceMetricName         bool                `yaml:"enforce_metric_name"`
+	SubringSize               int                 `yaml:"user_subring_size"`
 
 	// Ingester enforced limits.
 	MaxSeriesPerQuery        int `yaml:"max_series_per_query"`
@@ -71,10 +73,12 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
+	f.IntVar(&l.MaxMetadataLength, "validation.max-metadata-length", 1024, "Maximum length accepted for metric metadata. Metadata refers to Metric Name, HELP and UNIT.")
 	f.BoolVar(&l.RejectOldSamples, "validation.reject-old-samples", false, "Reject old samples.")
 	f.DurationVar(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", 14*24*time.Hour, "Maximum accepted sample age before rejecting.")
 	f.DurationVar(&l.CreationGracePeriod, "validation.create-grace-period", 10*time.Minute, "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
 	f.BoolVar(&l.EnforceMetricName, "validation.enforce-metric-name", true, "Enforce every sample has a metric name.")
+	f.BoolVar(&l.EnforceMetadataMetricName, "validation.enforce-metadata-metric-name", true, "Enforce every metadata has a metric name.")
 
 	f.IntVar(&l.MaxSeriesPerQuery, "ingester.max-series-per-query", 100000, "The maximum number of series that a query can return.")
 	f.IntVar(&l.MaxSamplesPerQuery, "ingester.max-samples-per-query", 1000000, "The maximum number of samples that a query can return.")
@@ -204,6 +208,12 @@ func (o *Overrides) MaxLabelNamesPerSeries(userID string) int {
 	return o.getOverridesForUser(userID).MaxLabelNamesPerSeries
 }
 
+// MaxMetadataLength returns maximum length metadata can be. Metadata refers
+// to the Metric Name, HELP and UNIT.
+func (o *Overrides) MaxMetadataLength(userID string) int {
+	return o.getOverridesForUser(userID).MaxMetadataLength
+}
+
 // RejectOldSamples returns true when we should reject samples older than certain
 // age.
 func (o *Overrides) RejectOldSamples(userID string) bool {
@@ -270,6 +280,11 @@ func (o *Overrides) MaxQueryParallelism(userID string) int {
 // EnforceMetricName whether to enforce the presence of a metric name.
 func (o *Overrides) EnforceMetricName(userID string) bool {
 	return o.getOverridesForUser(userID).EnforceMetricName
+}
+
+// EnforceMetadataMetricName whether to enforce the presence of a metric name on metadata.
+func (o *Overrides) EnforceMetadataMetricName(userID string) bool {
+	return o.getOverridesForUser(userID).EnforceMetadataMetricName
 }
 
 // CardinalityLimit returns the maximum number of timeseries allowed in a query.

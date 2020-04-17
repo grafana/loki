@@ -28,17 +28,23 @@ const (
 	StorageEngineTSDB   = "tsdb"
 )
 
-type IndexClientFactoryFunc func() (chunk.IndexClient, error)
-
-var customIndexClients = map[string]IndexClientFactoryFunc{}
-
-func RegisterIndexClient(name string, factory IndexClientFactoryFunc) {
-	customIndexClients[name] = factory
+type indexStoreFactories struct {
+	indexClientFactoryFunc IndexClientFactoryFunc
+	tableClientFactoryFunc TableClientFactoryFunc
 }
 
-// useful for cleaning up state after tests
-func unregisterAllCustomIndexClients() {
-	customIndexClients = map[string]IndexClientFactoryFunc{}
+// IndexClientFactoryFunc defines signature of function which creates chunk.IndexClient for managing index in index store
+type IndexClientFactoryFunc func() (chunk.IndexClient, error)
+
+// TableClientFactoryFunc defines signature of function which creates chunk.TableClient for managing tables in index store
+type TableClientFactoryFunc func() (chunk.TableClient, error)
+
+var customIndexStores = map[string]indexStoreFactories{}
+
+// RegisterIndexStore is used for registering a custom index type.
+// When an index type is registered here with same name as existing types, the registered one takes the precedence.
+func RegisterIndexStore(name string, indexClientFactory IndexClientFactoryFunc, tableClientFactory TableClientFactoryFunc) {
+	customIndexStores[name] = indexStoreFactories{indexClientFactory, tableClientFactory}
 }
 
 // StoreLimits helps get Limits specific to Queries for Stores
@@ -151,8 +157,10 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 
 // NewIndexClient makes a new index client of the desired type.
 func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
-	if factory, ok := customIndexClients[name]; ok {
-		return factory()
+	if indexClientFactory, ok := customIndexStores[name]; ok {
+		if indexClientFactory.indexClientFactoryFunc != nil {
+			return indexClientFactory.indexClientFactoryFunc()
+		}
 	}
 
 	switch name {
@@ -230,6 +238,12 @@ func newChunkClientFromStore(store chunk.ObjectClient, err error) (chunk.Client,
 
 // NewTableClient makes a new table client based on the configuration.
 func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
+	if indexClientFactory, ok := customIndexStores[name]; ok {
+		if indexClientFactory.tableClientFactoryFunc != nil {
+			return indexClientFactory.tableClientFactoryFunc()
+		}
+	}
+
 	switch name {
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
@@ -265,11 +279,17 @@ func NewBucketClient(storageConfig Config) (chunk.BucketClient, error) {
 // NewObjectClient makes a new StorageClient of the desired types.
 func NewObjectClient(name string, cfg Config) (chunk.ObjectClient, error) {
 	switch name {
+	case "aws", "s3":
+		return aws.NewS3ObjectClient(cfg.AWSStorageConfig.S3Config, chunk.DirDelim)
+	case "gcs":
+		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, chunk.DirDelim)
+	case "azure":
+		return azure.NewBlobStorage(&cfg.AzureStorageConfig, chunk.DirDelim)
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
 	case "filesystem":
 		return local.NewFSObjectClient(cfg.FSConfig)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: filesystem", name)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, s3, gcs, azure, filesystem", name)
 	}
 }

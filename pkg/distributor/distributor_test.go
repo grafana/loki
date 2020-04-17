@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -219,7 +220,7 @@ func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client) *Distri
 	distributorConfig.DistributorRing.InstanceID = strconv.Itoa(rand.Int())
 	distributorConfig.DistributorRing.KVStore.Mock = kvStore
 	distributorConfig.DistributorRing.InstanceInterfaceNames = []string{"eth0", "en0", "lo0"}
-	distributorConfig.factory = func(addr string) (grpc_health_v1.HealthClient, error) {
+	distributorConfig.factory = func(addr string) (ring_client.PoolClient, error) {
 		return ingesters[addr], nil
 	}
 
@@ -258,6 +259,10 @@ type mockIngester struct {
 
 func (i *mockIngester) Push(ctx context.Context, in *logproto.PushRequest, opts ...grpc.CallOption) (*logproto.PushResponse, error) {
 	return nil, nil
+}
+
+func (i *mockIngester) Close() error {
+	return nil
 }
 
 // Copied from Cortex; TODO(twilkie) - factor this our and share it.

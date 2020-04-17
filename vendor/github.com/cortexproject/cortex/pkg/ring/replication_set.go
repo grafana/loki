@@ -74,3 +74,14 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(*Ing
 
 	return results, nil
 }
+
+// Includes returns whether the replication set includes the replica with the provided addr.
+func (r ReplicationSet) Includes(addr string) bool {
+	for _, instance := range r.Ingesters {
+		if instance.GetAddr() == addr {
+			return true
+		}
+	}
+
+	return false
+}

@@ -59,6 +59,17 @@ func (c consulMetrics) List(path string, options *consul.QueryOptions) (consul.K
 	return kvps, meta, err
 }
 
+func (c consulMetrics) Delete(key string, options *consul.WriteOptions) (*consul.WriteMeta, error) {
+	var meta *consul.WriteMeta
+	err := instrument.CollectedRequest(options.Context(), "Delete", consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		options = options.WithContext(ctx)
+		var err error
+		meta, err = c.kv.Delete(key, options)
+		return err
+	})
+	return meta, err
+}
+
 func (c consulMetrics) Put(p *consul.KVPair, options *consul.WriteOptions) (*consul.WriteMeta, error) {
 	var result *consul.WriteMeta
 	err := instrument.CollectedRequest(options.Context(), "Put", consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {

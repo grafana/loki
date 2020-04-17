@@ -18,12 +18,12 @@ type DeleteRequestHandler struct {
 }
 
 // NewDeleteRequestHandler creates a DeleteRequestHandler
-func NewDeleteRequestHandler(deleteStore *DeleteStore) (*DeleteRequestHandler, error) {
+func NewDeleteRequestHandler(deleteStore *DeleteStore) *DeleteRequestHandler {
 	deleteMgr := DeleteRequestHandler{
 		deleteStore: deleteStore,
 	}
 
-	return &deleteMgr, nil
+	return &deleteMgr
 }
 
 // AddDeleteRequestHandler handles addition of new delete request
