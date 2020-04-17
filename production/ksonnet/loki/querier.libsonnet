@@ -13,12 +13,13 @@
     container.mixin.readinessProbe.httpGet.withPath('/ready') +
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
-    container.mixin.readinessProbe.withTimeoutSeconds(1),
+    container.mixin.readinessProbe.withTimeoutSeconds(1) +
+    $.util.resourcesRequests('4', '2Gi'),
 
   local deployment = $.apps.v1.deployment,
 
   querier_deployment:
-    deployment.new('querier', 3, [$.querier_container]) +
+    deployment.new('querier', $._config.querier.replicas, [$.querier_container]) +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
