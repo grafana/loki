@@ -44,7 +44,7 @@ func TestFindSetMatches(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		matches := findSetMatches(c.pattern)
+		matches := FindSetMatches(c.pattern)
 		require.Equal(t, c.exp, matches)
 	}
 }
