@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
-	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/local"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -220,7 +219,7 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 
 func registerCustomIndexClients(cfg Config, schemaCfg chunk.SchemaConfig) {
 	boltdbShipperInstances := 0
-	storage.RegisterIndexClient(local.BoltDBShipperType, func() (chunk.IndexClient, error) {
+	storage.RegisterIndexStore(local.BoltDBShipperType, func() (chunk.IndexClient, error) {
 		// since we do not know which object client is being used for the period for which we are creating this index client,
 		// we need to iterate through all the periodic configs to find the right one.
 		// We maintain number of instances that we have already created in boltdbShipperInstances and then count the number of
@@ -242,11 +241,11 @@ func registerCustomIndexClients(cfg Config, schemaCfg chunk.SchemaConfig) {
 		}
 
 		boltdbShipperInstances++
-		objectClient, err := stores.NewObjectClient(objectStoreType, cfg.Config)
+		objectClient, err := storage.NewObjectClient(objectStoreType, cfg.Config)
 		if err != nil {
 			return nil, err
 		}
 
 		return local.NewBoltDBIndexClient(cortex_local.BoltDBConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}, objectClient, cfg.BoltDBShipperConfig)
-	})
+	}, nil)
 }
