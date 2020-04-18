@@ -69,5 +69,3 @@ replace k8s.io/client-go => k8s.io/client-go v0.0.0-20190620085101-78d2af792bab
 replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
 
 replace github.com/Azure/go-autorest => github.com/Azure/go-autorest v13.3.0+incompatible
-
-replace github.com/cortexproject/cortex => github.com/grafana/cortex v0.0.0-20200408151555-2e824a9e4de8

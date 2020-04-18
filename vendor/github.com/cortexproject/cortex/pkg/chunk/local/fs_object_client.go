@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/thanos-io/thanos/pkg/runutil"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
@@ -75,19 +74,10 @@ func (f *FSObjectClient) PutObject(ctx context.Context, objectKey string, object
 		return err
 	}
 
-	defer runutil.CloseWithLogOnErr(pkgUtil.Logger, fl, "fullPath: %s", fullPath)
+	defer fl.Close()
 
 	_, err = io.Copy(fl, object)
-	if err != nil {
-		return err
-	}
-
-	err = fl.Sync()
-	if err != nil {
-		return err
-	}
-
-	return fl.Close()
+	return err
 }
 
 // List only objects from the store non-recursively
