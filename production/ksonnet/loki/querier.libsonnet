@@ -19,7 +19,7 @@
   local deployment = $.apps.v1.deployment,
 
   querier_deployment:
-    deployment.new('querier', $._config.querier.replicas, [$.querier_container]) +
+    deployment.new('querier', 3, [$.querier_container]) +
     $.config_hash_mixin +
     $.util.configVolumeMount('loki', '/etc/loki/config') +
     $.util.configVolumeMount('overrides', '/etc/loki/overrides') +
