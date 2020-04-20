@@ -1,7 +1,6 @@
 package loghttp
 
 import (
-	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"testing"
@@ -139,9 +138,6 @@ func TestHttp_ParseRangeQuery_Step(t *testing.T) {
 }
 
 func Test_interval(t *testing.T) {
-	type args struct {
-		r *http.Request
-	}
 	tests := []struct {
 		name     string
 		reqPath  string
