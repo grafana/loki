@@ -10,13 +10,7 @@
     grpc_server_max_msg_size: 100 << 20,  // 100MB
 
 
-    // The expectation is that if sharding is enabled, we can force more (smaller)
-    // queries on the queriers. However this can't be extended too far because most queries
-    // concern recent (ingester) data, which isn't sharded. Therefore, we must strike a balance
-    // which allows us to process more sharded queries in parallel when requested, but not overload
-    // queriers during normal queries.
     querier: {
-      replicas: if $._config.queryFrontend.sharded_queries_enabled then 6 else 3,
       concurrency: 16,
     },
 
