@@ -14,14 +14,14 @@ RUN make clean && GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make BUILD_IN_CONTAI
 
 FROM alpine:3.9
 
+RUN apk add --no-cache ca-certificates
+
 COPY --from=build /src/loki/cmd/loki/loki /usr/bin/loki
 COPY cmd/loki/loki-local-config.yaml /etc/loki/local-config.yaml
 
-RUN apk add --no-cache ca-certificates
-
 RUN addgroup -g 10001 -S loki && \
-    adduser -u 10001 -S loki -G loki && \
-    mkdir -p /data && \
+    adduser -u 10001 -S loki -G loki
+RUN mkdir -p /data && \
     chown -R loki:loki /etc/loki /data
 
 # See https://github.com/grafana/loki/issues/1928
