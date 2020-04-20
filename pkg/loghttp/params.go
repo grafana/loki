@@ -76,6 +76,26 @@ func step(r *http.Request, start, end time.Time) (time.Duration, error) {
 	return 0, errors.Errorf("cannot parse %q to a valid duration", value)
 }
 
+func interval(r *http.Request) (time.Duration, error) {
+	value := r.Form.Get("interval")
+	if value == "" {
+		return 0, nil
+	}
+	// Allow passing as no unit seconds
+	if d, err := strconv.ParseFloat(value, 64); err == nil {
+		ts := d * float64(time.Second)
+		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
+			return 0, errors.Errorf("cannot parse %q to a valid duration. It overflows int64", value)
+		}
+		return time.Duration(ts), nil
+	}
+	// Or parse as a duration
+	if d, err := model.ParseDuration(value); err == nil {
+		return time.Duration(d), nil
+	}
+	return 0, errors.Errorf("cannot parse %q to a valid duration", value)
+}
+
 // Match extracts and parses multiple matcher groups from a slice of strings
 func Match(xs []string) ([][]*labels.Matcher, error) {
 	if len(xs) == 0 {

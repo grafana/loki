@@ -68,7 +68,7 @@ func (opts *EngineOpts) applyDefault() {
 
 // Engine interface used to construct queries
 type Engine interface {
-	NewRangeQuery(qs string, start, end time.Time, step time.Duration, direction logproto.Direction, limit uint32) Query
+	NewRangeQuery(qs string, start, end time.Time, step, interval time.Duration, direction logproto.Direction, limit uint32) Query
 	NewInstantQuery(qs string, ts time.Time, direction logproto.Direction, limit uint32) Query
 }
 
@@ -144,7 +144,7 @@ func (q *query) Exec(ctx context.Context) (Result, error) {
 // NewRangeQuery creates a new LogQL range query.
 func (ng *engine) NewRangeQuery(
 	qs string,
-	start, end time.Time, step time.Duration,
+	start, end time.Time, step time.Duration, interval time.Duration,
 	direction logproto.Direction, limit uint32) Query {
 	return &query{
 		LiteralParams: LiteralParams{
@@ -152,6 +152,7 @@ func (ng *engine) NewRangeQuery(
 			start:     start,
 			end:       end,
 			step:      step,
+			interval:  interval,
 			direction: direction,
 			limit:     limit,
 		},
@@ -170,6 +171,7 @@ func (ng *engine) NewInstantQuery(
 			start:     ts,
 			end:       ts,
 			step:      0,
+			interval:  0,
 			direction: direction,
 			limit:     limit,
 		},
@@ -199,7 +201,7 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 			return nil, err
 		}
 		defer helpers.LogError("closing iterator", iter.Close)
-		streams, err := readStreams(iter, q.limit)
+		streams, err := readStreams(iter, q.limit, q.direction, q.interval)
 		return streams, err
 	}
 
@@ -297,19 +299,33 @@ func PopulateMatrixFromScalar(data promql.Scalar, params LiteralParams) promql.M
 	return promql.Matrix{series}
 }
 
-func readStreams(i iter.EntryIterator, size uint32) (Streams, error) {
+func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration) (Streams, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
-	for ; respSize < size && i.Next(); respSize++ {
+	// lastEntry should be a really old time so that the first comparison is always true, we use a negative
+	// value here because many unit tests start at time.Unix(0,0)
+	lastEntry := time.Unix(-100, 0)
+	for respSize < size && i.Next() {
 		labels, entry := i.Labels(), i.Entry()
-		stream, ok := streams[labels]
-		if !ok {
-			stream = &logproto.Stream{
-				Labels: labels,
+		forwardShouldOutput := dir == logproto.FORWARD &&
+			(i.Entry().Timestamp.Equal(lastEntry.Add(interval)) || i.Entry().Timestamp.After(lastEntry.Add(interval)))
+		backwardShouldOutput := dir == logproto.BACKWARD &&
+			(i.Entry().Timestamp.Equal(lastEntry.Add(-interval)) || i.Entry().Timestamp.Before(lastEntry.Add(-interval)))
+		// If step == 0 output every line.
+		// If lastEntry.Unix < 0 this is the first pass through the loop and we should output the line.
+		// Then check to see if the entry is equal to, or past a forward or reverse step
+		if interval == 0 || lastEntry.Unix() < 0 || forwardShouldOutput || backwardShouldOutput {
+			stream, ok := streams[labels]
+			if !ok {
+				stream = &logproto.Stream{
+					Labels: labels,
+				}
+				streams[labels] = stream
 			}
-			streams[labels] = stream
+			stream.Entries = append(stream.Entries, entry)
+			lastEntry = i.Entry().Timestamp
+			respSize++
 		}
-		stream.Entries = append(stream.Entries, entry)
 	}
 
 	result := make([]*logproto.Stream, 0, len(streams))
