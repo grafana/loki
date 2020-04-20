@@ -8,14 +8,12 @@ RUN make clean && (if [ "${TOUCH_PROTOS}" ]; then make touch-protos; fi) && make
 
 FROM alpine:3.9
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates libcap
 
 COPY --from=build /src/loki/cmd/loki/loki /usr/bin/loki
 COPY cmd/loki/loki-local-config.yaml /etc/loki/local-config.yaml
 
-RUN apk add --no-cache libcap && \
-    setcap cap_net_bind_service=+ep /usr/bin/loki && \
-    apk del --no-cache libcap
+RUN setcap cap_net_bind_service=+ep /usr/bin/loki
 
 RUN addgroup -g 10001 -S loki && \
     adduser -u 10001 -S loki -G loki
