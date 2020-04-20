@@ -755,8 +755,14 @@ func (b dynamoDBWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 }
 
 func (b dynamoDBWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
-	// ToDo: implement this to support deleting index entries from DynamoDB
-	panic("DynamoDB does not support Deleting index entries yet")
+	b[tableName] = append(b[tableName], &dynamodb.WriteRequest{
+		DeleteRequest: &dynamodb.DeleteRequest{
+			Key: map[string]*dynamodb.AttributeValue{
+				hashKey:  {S: aws.String(hashValue)},
+				rangeKey: {B: rangeValue},
+			},
+		},
+	})
 }
 
 // Fill 'b' with WriteRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.

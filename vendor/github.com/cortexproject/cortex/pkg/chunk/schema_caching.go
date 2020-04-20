@@ -8,13 +8,13 @@ import (
 )
 
 type schemaCaching struct {
-	Schema
+	SeriesStoreSchema
 
 	cacheOlderThan time.Duration
 }
 
 func (s *schemaCaching) GetReadQueriesForMetric(from, through model.Time, userID string, metricName string) ([]IndexQuery, error) {
-	queries, err := s.Schema.GetReadQueriesForMetric(from, through, userID, metricName)
+	queries, err := s.SeriesStoreSchema.GetReadQueriesForMetric(from, through, userID, metricName)
 	if err != nil {
 		return nil, err
 	}
@@ -22,7 +22,7 @@ func (s *schemaCaching) GetReadQueriesForMetric(from, through model.Time, userID
 }
 
 func (s *schemaCaching) GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName string, labelName string) ([]IndexQuery, error) {
-	queries, err := s.Schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
+	queries, err := s.SeriesStoreSchema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +30,7 @@ func (s *schemaCaching) GetReadQueriesForMetricLabel(from, through model.Time, u
 }
 
 func (s *schemaCaching) GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName string, labelName string, labelValue string) ([]IndexQuery, error) {
-	queries, err := s.Schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, labelName, labelValue)
+	queries, err := s.SeriesStoreSchema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, labelName, labelValue)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func (s *schemaCaching) GetReadQueriesForMetricLabelValue(from, through model.Ti
 
 // If the query resulted in series IDs, use this method to find chunks.
 func (s *schemaCaching) GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
-	queries, err := s.Schema.GetChunksForSeries(from, through, userID, seriesID)
+	queries, err := s.SeriesStoreSchema.GetChunksForSeries(from, through, userID, seriesID)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (s *schemaCaching) GetChunksForSeries(from, through model.Time, userID stri
 }
 
 func (s *schemaCaching) GetLabelNamesForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
-	queries, err := s.Schema.GetLabelNamesForSeries(from, through, userID, seriesID)
+	queries, err := s.SeriesStoreSchema.GetLabelNamesForSeries(from, through, userID, seriesID)
 	if err != nil {
 		return nil, err
 	}

@@ -8,16 +8,16 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
-type tableClient struct {
+type TableClient struct {
 	directory string
 }
 
 // NewTableClient returns a new TableClient.
 func NewTableClient(directory string) (chunk.TableClient, error) {
-	return &tableClient{directory: directory}, nil
+	return &TableClient{directory: directory}, nil
 }
 
-func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
+func (c *TableClient) ListTables(ctx context.Context) ([]string, error) {
 	boltDbFiles := []string{}
 	err := filepath.Walk(c.directory, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -35,20 +35,20 @@ func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
 	return boltDbFiles, nil
 }
 
-func (c *tableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) error {
+func (c *TableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) error {
 	return nil
 }
 
-func (c *tableClient) DeleteTable(ctx context.Context, name string) error {
+func (c *TableClient) DeleteTable(ctx context.Context, name string) error {
 	return os.Remove(filepath.Join(c.directory, name))
 }
 
-func (c *tableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, isActive bool, err error) {
+func (c *TableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, isActive bool, err error) {
 	return chunk.TableDesc{
 		Name: name,
 	}, true, nil
 }
 
-func (c *tableClient) UpdateTable(ctx context.Context, current, expected chunk.TableDesc) error {
+func (c *TableClient) UpdateTable(ctx context.Context, current, expected chunk.TableDesc) error {
 	return nil
 }

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -14,9 +13,11 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
 
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -59,7 +60,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type Querier struct {
 	cfg    Config
 	ring   ring.ReadRing
-	pool   *cortex_client.Pool
+	pool   *ring_client.Pool
 	store  storage.Store
 	engine logql.Engine
 	limits *validation.Overrides
@@ -67,7 +68,7 @@ type Querier struct {
 
 // New makes a new Querier.
 func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, store storage.Store, limits *validation.Overrides) (*Querier, error) {
-	factory := func(addr string) (grpc_health_v1.HealthClient, error) {
+	factory := func(addr string) (ring_client.PoolClient, error) {
 		return client.New(clientCfg, addr)
 	}
 
@@ -76,11 +77,11 @@ func New(cfg Config, clientCfg client.Config, ring ring.ReadRing, store storage.
 
 // newQuerier creates a new Querier and allows to pass a custom ingester client factory
 // used for testing purposes
-func newQuerier(cfg Config, clientCfg client.Config, clientFactory cortex_client.Factory, ring ring.ReadRing, store storage.Store, limits *validation.Overrides) (*Querier, error) {
+func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.PoolFactory, ring ring.ReadRing, store storage.Store, limits *validation.Overrides) (*Querier, error) {
 	querier := Querier{
 		cfg:    cfg,
 		ring:   ring,
-		pool:   cortex_client.NewPool(clientCfg.PoolConfig, ring, clientFactory, util.Logger),
+		pool:   distributor.NewPool(clientCfg.PoolConfig, ring, clientFactory, util.Logger),
 		store:  store,
 		limits: limits,
 	}

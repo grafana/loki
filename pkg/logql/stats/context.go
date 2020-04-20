@@ -138,9 +138,8 @@ func GetStoreData(ctx context.Context) *StoreData {
 
 // Snapshot compute query statistics from a context using the total exec time.
 func Snapshot(ctx context.Context, execTime time.Duration) Result {
-	var res Result
 	// ingester data is decoded from grpc trailers.
-	res.Ingester = decodeTrailers(ctx)
+	res := decodeTrailers(ctx)
 	// collect data from store.
 	s, ok := ctx.Value(storeKey).(*StoreData)
 	if ok {

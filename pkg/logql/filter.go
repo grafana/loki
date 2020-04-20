@@ -116,21 +116,33 @@ func (r regexpFilter) Filter(line []byte) bool {
 	return r.Match(line)
 }
 
-type containsFilter []byte
+type containsFilter struct {
+	match           []byte
+	caseInsensitive bool
+}
 
 func (l containsFilter) Filter(line []byte) bool {
-	return bytes.Contains(line, l)
+	if l.caseInsensitive {
+		line = bytes.ToLower(line)
+	}
+	return bytes.Contains(line, l.match)
 }
 
 func (l containsFilter) String() string {
-	return string(l)
+	return string(l.match)
 }
 
-func newContainsFilter(match string) LineFilter {
-	if match == "" {
+func newContainsFilter(match []byte, caseInsensitive bool) LineFilter {
+	if len(match) == 0 {
 		return TrueFilter
 	}
-	return containsFilter(match)
+	if caseInsensitive {
+		match = bytes.ToLower(match)
+	}
+	return containsFilter{
+		match:           match,
+		caseInsensitive: caseInsensitive,
+	}
 }
 
 // newFilter creates a new line filter from a match string and type.
@@ -141,9 +153,9 @@ func newFilter(match string, mt labels.MatchType) (LineFilter, error) {
 	case labels.MatchNotRegexp:
 		return parseRegexpFilter(match, false)
 	case labels.MatchEqual:
-		return newContainsFilter(match), nil
+		return newContainsFilter([]byte(match), false), nil
 	case labels.MatchNotEqual:
-		return newNotFilter(newContainsFilter(match)), nil
+		return newNotFilter(newContainsFilter([]byte(match), false)), nil
 	default:
 		return nil, fmt.Errorf("unknown matcher: %v", match)
 	}
@@ -181,7 +193,7 @@ func simplify(reg *syntax.Regexp) (LineFilter, bool) {
 		clearCapture(reg)
 		return simplify(reg)
 	case syntax.OpLiteral:
-		return containsFilter(string(reg.Rune)), true
+		return newContainsFilter([]byte(string((reg.Rune))), isCaseInsensitive(reg)), true
 	case syntax.OpStar:
 		if reg.Sub[0].Op == syntax.OpAnyCharNotNL {
 			return TrueFilter, true
@@ -190,6 +202,10 @@ func simplify(reg *syntax.Regexp) (LineFilter, bool) {
 		return TrueFilter, true
 	}
 	return nil, false
+}
+
+func isCaseInsensitive(reg *syntax.Regexp) bool {
+	return (reg.Flags & syntax.FoldCase) != 0
 }
 
 // clearCapture removes capture operation as they are not used for filtering.
@@ -267,8 +283,7 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (LineFilter, bool) {
 
 	// if we have only a concat with literals.
 	if baseLiteral != nil {
-		return containsFilter(baseLiteral), true
-
+		return newContainsFilter(baseLiteral, isCaseInsensitive(reg)), true
 	}
 
 	return nil, false
@@ -282,14 +297,14 @@ func simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr LineFilter
 	for _, alt := range reg.Sub {
 		switch alt.Op {
 		case syntax.OpEmptyMatch:
-			curr = chainOrFilter(curr, containsFilter(literal))
+			curr = chainOrFilter(curr, newContainsFilter(literal, isCaseInsensitive(reg)))
 		case syntax.OpLiteral:
 			// concat the root literal with the alternate one.
 			altBytes := []byte(string(alt.Rune))
 			altLiteral := make([]byte, 0, len(literal)+len(altBytes))
 			altLiteral = append(altLiteral, literal...)
 			altLiteral = append(altLiteral, altBytes...)
-			curr = chainOrFilter(curr, containsFilter(altLiteral))
+			curr = chainOrFilter(curr, newContainsFilter(altLiteral, isCaseInsensitive(reg)))
 		case syntax.OpConcat:
 			f, ok := simplifyConcat(alt, literal)
 			if !ok {
@@ -300,7 +315,7 @@ func simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr LineFilter
 			if alt.Sub[0].Op != syntax.OpAnyCharNotNL {
 				return nil, false
 			}
-			curr = chainOrFilter(curr, containsFilter(literal))
+			curr = chainOrFilter(curr, newContainsFilter(literal, isCaseInsensitive(reg)))
 		default:
 			return nil, false
 		}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -31,6 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	loki_storage "github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/stores/local"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -197,6 +200,14 @@ func (t *Loki) initIngester() (err error) {
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
 	t.cfg.Ingester.LifecyclerConfig.ListenPort = &t.cfg.Server.GRPCListenPort
+
+	// We want ingester to also query the store when using boltdb-shipper
+	if activeIndexType(t.cfg.SchemaConfig) == local.BoltDBShipperType {
+		t.cfg.Ingester.QueryStore = true
+		// When using shipper, limit max look back for query to MaxChunkAge + upload interval by shipper + 15 mins to query only data whose index is not pushed yet
+		t.cfg.Ingester.QueryStoreMaxLookBackPeriod = t.cfg.Ingester.MaxChunkAge + local.ShipperFileUploadInterval + (15 * time.Minute)
+	}
+
 	t.ingester, err = ingester.New(t.cfg.Ingester, t.cfg.IngesterClient, t.store, t.overrides)
 	if err != nil {
 		return
@@ -243,7 +254,7 @@ func (t *Loki) initTableManager() error {
 		os.Exit(1)
 	}
 
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.cfg.StorageConfig.Config)
+	tableClient, err := loki_storage.NewTableClient(lastConfig.IndexType, t.cfg.StorageConfig)
 	if err != nil {
 		return err
 	}
@@ -277,6 +288,20 @@ func (t *Loki) stopTableManager() error {
 }
 
 func (t *Loki) initStore() (err error) {
+	if activeIndexType(t.cfg.SchemaConfig) == local.BoltDBShipperType {
+		t.cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.cfg.Ingester.LifecyclerConfig.ID
+		switch t.cfg.Target {
+		case Ingester:
+			// We do not want ingester to unnecessarily keep downloading files
+			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = local.ShipperModeWriteOnly
+		case Querier:
+			// We do not want query to do any updates to index
+			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = local.ShipperModeReadOnly
+		default:
+			t.cfg.StorageConfig.BoltDBShipperConfig.Mode = local.ShipperModeReadWrite
+		}
+	}
+
 	t.store, err = loki_storage.NewStore(t.cfg.StorageConfig, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig, t.overrides)
 	return
 }
@@ -479,4 +504,17 @@ var modules = map[moduleName]module{
 	All: {
 		deps: []moduleName{Querier, Ingester, Distributor, TableManager},
 	},
+}
+
+// activeIndexType type returns index type which would be applicable to logs that would be pushed starting now
+// Note: Another periodic config can be applicable in future which can change index type
+func activeIndexType(cfg chunk.SchemaConfig) string {
+	now := model.Now()
+	i := sort.Search(len(cfg.Configs), func(i int) bool {
+		return cfg.Configs[i].From.Time > now
+	})
+	if i > 0 {
+		i--
+	}
+	return cfg.Configs[i].IndexType
 }

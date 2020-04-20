@@ -98,7 +98,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.StringVar(&cfg.Addr, prefix+"lifecycler.addr", "", "IP address to advertise in consul.")
 	f.IntVar(&cfg.Port, prefix+"lifecycler.port", 0, "port to advertise in consul (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.ID, prefix+"lifecycler.ID", hostname, "ID to register into consul.")
-	f.StringVar(&cfg.Zone, prefix+"availability-zone", "", "The availability zone of the host, this instance is running on. Default is the lifecycler ID.")
+	f.StringVar(&cfg.Zone, prefix+"availability-zone", "", "The availability zone of the host, this instance is running on. Default is an empty string, which disables zone awareness for writes.")
 }
 
 // Lifecycler is responsible for managing the lifecycle of entries in the ring.
@@ -139,18 +139,11 @@ type Lifecycler struct {
 
 // NewLifecycler creates new Lifecycler. It must be started via StartAsync.
 func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringName, ringKey string, flushOnShutdown bool) (*Lifecycler, error) {
-	addr := cfg.Addr
-	if addr == "" {
-		var err error
-		addr, err = util.GetFirstAddressOf(cfg.InfNames)
-		if err != nil {
-			return nil, err
-		}
+	addr, err := GetInstanceAddr(cfg.Addr, cfg.InfNames)
+	if err != nil {
+		return nil, err
 	}
-	port := cfg.Port
-	if port == 0 {
-		port = *cfg.ListenPort
-	}
+	port := GetInstancePort(cfg.Port, *cfg.ListenPort)
 	codec := GetCodec()
 	store, err := kv.NewClient(cfg.RingConfig.KVStore, codec)
 	if err != nil {
@@ -160,10 +153,6 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 	zone := cfg.Zone
 	if zone != "" {
 		util.WarnExperimentalUse("Zone aware replication")
-	}
-
-	if zone == "" {
-		zone = cfg.ID
 	}
 
 	// We do allow a nil FlushTransferer, but to keep the ring logic easier we assume
@@ -667,6 +656,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 			ingesterDesc.Timestamp = time.Now().Unix()
 			ingesterDesc.State = i.GetState()
 			ingesterDesc.Addr = i.Addr
+			ingesterDesc.Zone = i.Zone
 			ringDesc.Ingesters[i.ID] = ingesterDesc
 		}
 

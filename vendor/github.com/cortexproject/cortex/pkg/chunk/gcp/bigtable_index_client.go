@@ -51,7 +51,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.TableCacheEnabled, "bigtable.table-cache.enabled", true, "If enabled, once a tables info is fetched, it is cached.")
 	f.DurationVar(&cfg.TableCacheExpiration, "bigtable.table-cache.expiration", 30*time.Minute, "Duration to cache tables before checking again.")
 
-	cfg.GRPCClientConfig.RegisterFlags("bigtable", f)
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("bigtable", f)
 }
 
 // storageClientColumnKey implements chunk.storageClient for GCP.
@@ -151,6 +151,18 @@ type bigtableWriteBatch struct {
 }
 
 func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
+	b.addMutation(tableName, hashValue, rangeValue, func(mutation *bigtable.Mutation, columnKey string) {
+		mutation.Set(columnFamily, columnKey, 0, value)
+	})
+}
+
+func (b bigtableWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
+	b.addMutation(tableName, hashValue, rangeValue, func(mutation *bigtable.Mutation, columnKey string) {
+		mutation.DeleteCellsInColumn(columnFamily, columnKey)
+	})
+}
+
+func (b bigtableWriteBatch) addMutation(tableName, hashValue string, rangeValue []byte, callback func(mutation *bigtable.Mutation, columnKey string)) {
 	rows, ok := b.tables[tableName]
 	if !ok {
 		rows = map[string]*bigtable.Mutation{}
@@ -164,12 +176,7 @@ func (b bigtableWriteBatch) Add(tableName, hashValue string, rangeValue []byte, 
 		rows[rowKey] = mutation
 	}
 
-	mutation.Set(columnFamily, columnKey, 0, value)
-}
-
-func (b bigtableWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
-	// ToDo: implement this to support deleting index entries from Bigtable
-	panic("Bigtable does not support Deleting index entries yet")
+	callback(mutation, columnKey)
 }
 
 func (s *storageClientColumnKey) BatchWrite(ctx context.Context, batch chunk.WriteBatch) error {

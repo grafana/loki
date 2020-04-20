@@ -66,7 +66,7 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 		l = builder.Labels()
 	}
 	from, through := model.TimeFromUnixNano(stream.Entries[0].Timestamp.UnixNano()), model.TimeFromUnixNano(stream.Entries[0].Timestamp.UnixNano())
-	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP)
+	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 0)
 	for _, e := range stream.Entries {
 		if e.Timestamp.UnixNano() < from.UnixNano() {
 			from = model.TimeFromUnixNano(e.Timestamp.UnixNano())
@@ -77,7 +77,7 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 		_ = chk.Append(&e)
 	}
 	chk.Close()
-	c := chunk.NewChunk("fake", client.Fingerprint(l), l, chunkenc.NewFacade(chk), from, through)
+	c := chunk.NewChunk("fake", client.Fingerprint(l), l, chunkenc.NewFacade(chk, 0, 0), from, through)
 	// force the checksum creation
 	if err := c.Encode(); err != nil {
 		panic(err)

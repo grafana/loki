@@ -22,8 +22,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -62,7 +66,10 @@ type Config struct {
 	MaxReturnedErrors int `yaml:"max_returned_stream_errors"`
 
 	// For testing, you can override the address and ID of this ingester.
-	ingesterClientFactory func(cfg client.Config, addr string) (grpc_health_v1.HealthClient, error)
+	ingesterClientFactory func(cfg client.Config, addr string) (client.HealthAndIngesterClient, error)
+
+	QueryStore                  bool          `yaml:"-"`
+	QueryStoreMaxLookBackPeriod time.Duration `yaml:"-"`
 }
 
 // RegisterFlags registers the flags.
@@ -113,6 +120,7 @@ type Ingester struct {
 // ChunkStore is the interface we need to store chunks.
 type ChunkStore interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
+	LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error)
 }
 
 // New makes a new Ingester.
@@ -134,7 +142,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		quitting:     make(chan struct{}),
 		factory: func() chunkenc.Chunk {
-			return chunkenc.NewMemChunkSize(enc, cfg.BlockSize, cfg.TargetChunkSize)
+			return chunkenc.NewMemChunk(enc, cfg.BlockSize, cfg.TargetChunkSize)
 		},
 	}
 
@@ -241,13 +249,35 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 
 // Query the ingests for log streams matching a set of matchers.
 func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
-	instanceID, err := user.ExtractOrgID(queryServer.Context())
+	// initialize stats collection for ingester queries and set grpc trailer with stats.
+	ctx := stats.NewContext(queryServer.Context())
+	defer stats.SendAsTrailer(ctx, queryServer)
+
+	instanceID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return err
 	}
 
 	instance := i.getOrCreateInstance(instanceID)
-	return instance.Query(req, queryServer)
+	itrs, err := instance.Query(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if storeReq := buildStoreRequest(i.cfg, req); storeReq != nil {
+		storeItr, err := i.store.LazyQuery(ctx, logql.SelectParams{QueryRequest: storeReq})
+		if err != nil {
+			return err
+		}
+
+		itrs = append(itrs, storeItr)
+	}
+
+	heapItr := iter.NewHeapIterator(ctx, itrs, req.Direction)
+
+	defer helpers.LogError("closing iterator", heapItr.Close)
+
+	return sendBatches(queryServer.Context(), heapItr, queryServer, req.Limit)
 }
 
 // Label returns the set of labels for the stream this ingester knows about.
@@ -355,4 +385,31 @@ func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRe
 	}
 
 	return &resp, nil
+}
+
+// buildStoreRequest returns a store request from an ingester request, returns nit if QueryStore is set to false in configuration.
+// The request may be truncated due to QueryStoreMaxLookBackPeriod which limits the range of request to make sure
+// we only query enough to not miss any data and not add too to many duplicates by covering the who time range in query.
+func buildStoreRequest(cfg Config, req *logproto.QueryRequest) *logproto.QueryRequest {
+	if !cfg.QueryStore {
+		return nil
+	}
+	start := req.Start
+	end := req.End
+	if cfg.QueryStoreMaxLookBackPeriod != 0 {
+		oldestStartTime := time.Now().Add(-cfg.QueryStoreMaxLookBackPeriod)
+		if oldestStartTime.After(req.Start) {
+			start = oldestStartTime
+		}
+	}
+
+	if start.After(end) {
+		return nil
+	}
+
+	newRequest := *req
+	newRequest.Start = start
+	newRequest.End = end
+
+	return &newRequest
 }

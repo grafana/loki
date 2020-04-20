@@ -2,13 +2,13 @@
 
 This is a Go implementation of [services model](https://github.com/google/guava/wiki/ServiceExplained) from [Google Guava](https://github.com/google/guava) library.
 
-It provides `Service` interface (with implementation in `BasicService` type) and `Manager` for managing group of services at once. 
+It provides `Service` interface (with implementation in `BasicService` type) and `Manager` for managing group of services at once.
 
 Main benefits of this model are:
 
 - Services have well-defined explicit states. Services are not supposed to start any work until they are started, and they are supposed to enter Running state only if they have successfully done all initialization in Starting state.
 - States are observable by clients. Client can not only see the state, but also wait for Running or Terminated state.
-- If more observability is needed, clients can register state listeners. 
+- If more observability is needed, clients can register state listeners.
 - Service startup and shutdown is done asynchronously. This allows for nice parallelization of startup or shutdown of multiple services.
 - Services that depend on each other can simply wait for other service to be in correct state before using it.
 
@@ -31,17 +31,17 @@ Once service is in `Terminated` or `Failed` state, it cannot be restarted, these
 Full state diagram:
 
 ```text
-   ┌────────────────────────────────────────────────────────────────────┐      
-   │                                                                    │      
-   │                                                                    ▼      
+   ┌────────────────────────────────────────────────────────────────────┐
+   │                                                                    │
+   │                                                                    ▼
 ┌─────┐      ┌──────────┐      ┌─────────┐     ┌──────────┐      ┌────────────┐
 │ New │─────▶│ Starting │─────▶│ Running │────▶│ Stopping │───┬─▶│ Terminated │
 └─────┘      └──────────┘      └─────────┘     └──────────┘   │  └────────────┘
-                   │                                          │                
-                   │                                          │                
-                   │                                          │   ┌────────┐   
-                   └──────────────────────────────────────────┴──▶│ Failed │   
-                                                                  └────────┘   
+                   │                                          │
+                   │                                          │
+                   │                                          │   ┌────────┐
+                   └──────────────────────────────────────────┴──▶│ Failed │
+                                                                  └────────┘
 ```
 
 API and states and semantics are implemented to correspond to [Service class](https://guava.dev/releases/snapshot/api/docs/com/google/common/util/concurrent/Service.html) in Guava library.

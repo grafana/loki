@@ -40,7 +40,7 @@ func labelNamesFromChunks(chunks []Chunk) []string {
 	var result UniqueStrings
 	for _, c := range chunks {
 		for _, l := range c.Metric {
-			result.Add(string(l.Name))
+			result.Add(l.Name)
 		}
 	}
 	return result.Strings()

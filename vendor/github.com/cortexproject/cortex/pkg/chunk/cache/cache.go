@@ -68,8 +68,9 @@ func New(cfg Config) (Cache, error) {
 			cfg.Fifocache.Validity = cfg.DefaultValidity
 		}
 
-		cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache)
-		caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache))
+		if cache := NewFifoCache(cfg.Prefix+"fifocache", cfg.Fifocache); cache != nil {
+			caches = append(caches, Instrument(cfg.Prefix+"fifocache", cache))
+		}
 	}
 
 	if (cfg.MemcacheClient.Host != "" || cfg.MemcacheClient.Addresses != "") && cfg.Redis.Endpoint != "" {

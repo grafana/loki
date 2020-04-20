@@ -44,7 +44,7 @@ func (cfg *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process.")
 	f.DurationVar(&cfg.DNSLookupDuration, "querier.dns-lookup-period", 10*time.Second, "How often to query DNS.")
 
-	cfg.GRPCClientConfig.RegisterFlags("querier.frontend-client", f)
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
 }
 
 // Worker is the counter-part to the frontend, actually processing requests.
