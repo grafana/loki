@@ -51,6 +51,7 @@ require (
 	github.com/uber/jaeger-client-go v2.20.1+incompatible
 	github.com/ugorji/go v1.1.7 // indirect
 	github.com/weaveworks/common v0.0.0-20200310113808-2708ba4e60a4
+	go.etcd.io/bbolt v1.3.3
 	go.etcd.io/etcd v0.0.0-20200401174654-e694b7bb0875 // indirect
 	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b
 	google.golang.org/grpc v1.25.1

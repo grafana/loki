@@ -186,18 +186,14 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 	return s.labels
 }
 
-func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
-	// initialize stats collection for ingester queries and set grpc trailer with stats.
-	ctx := stats.NewContext(queryServer.Context())
-	defer stats.SendAsTrailer(ctx, queryServer)
-
+func (i *instance) Query(ctx context.Context, req *logproto.QueryRequest) ([]iter.EntryIterator, error) {
 	expr, err := (logql.SelectParams{QueryRequest: req}).LogSelector()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	filter, err := expr.Filter()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	ingStats := stats.GetIngesterData(ctx)
@@ -215,13 +211,10 @@ func (i *instance) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		},
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	iter := iter.NewHeapIterator(ctx, iters, req.Direction)
-	defer helpers.LogError("closing iterator", iter.Close)
-
-	return sendBatches(ctx, iter, queryServer, req.Limit)
+	return iters, nil
 }
 
 func (i *instance) Label(_ context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
