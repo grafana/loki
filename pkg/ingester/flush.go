@@ -83,10 +83,10 @@ var (
 	}, []string{"reason"})
 	chunkLifespan = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "loki",
-		Name:      "ingester_chunk_bounds_minutes",
+		Name:      "ingester_chunk_bounds_hours",
 		Help:      "Distribution of chunk end-start durations.",
-		// 15m to 2h
-		Buckets: prometheus.LinearBuckets(15, 15, 8),
+		// 1h -> 8hr
+		Buckets: prometheus.LinearBuckets(1, 1, 8),
 	})
 )
 
@@ -362,7 +362,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		countPerTenant.Inc()
 		firstTime, lastTime := cs[i].chunk.Bounds()
 		chunkAge.Observe(time.Since(firstTime).Seconds())
-		chunkLifespan.Observe(lastTime.Sub(firstTime).Minutes())
+		chunkLifespan.Observe(lastTime.Sub(firstTime).Hours())
 	}
 
 	return nil
