@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 )
@@ -52,7 +53,7 @@ func TestStringer(t *testing.T) {
 }
 
 func TestMapSampleExpr(t *testing.T) {
-	m, err := NewShardMapper(2)
+	m, err := NewShardMapper(2, nilMetrics, log.NewNopLogger())
 	require.Nil(t, err)
 
 	for _, tc := range []struct {
@@ -113,19 +114,23 @@ func TestMapSampleExpr(t *testing.T) {
 		},
 	} {
 		t.Run(tc.in.String(), func(t *testing.T) {
-			require.Equal(t, tc.out, m.mapSampleExpr(tc.in))
+			require.Equal(t, tc.out, m.mapSampleExpr(tc.in, nilMetrics.ShardRecorder()))
 		})
 
 	}
 }
 
 func TestMappingStrings(t *testing.T) {
-	m, err := NewShardMapper(2)
+	m, err := NewShardMapper(2, nilMetrics, log.NewNopLogger())
 	require.Nil(t, err)
 	for _, tc := range []struct {
 		in  string
 		out string
 	}{
+		{
+			in:  `{foo="bar"}`,
+			out: `downstream<{foo="bar"}, shard=0_of_2> ++ downstream<{foo="bar"}, shard=1_of_2>`,
+		},
 		{
 			in:  `sum(rate({foo="bar"}[1m]))`,
 			out: `sum(downstream<sum(rate(({foo="bar"})[1m])), shard=0_of_2> ++ downstream<sum(rate(({foo="bar"})[1m])), shard=1_of_2>)`,
@@ -155,7 +160,7 @@ func TestMappingStrings(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
 			require.Nil(t, err)
 
-			mapped, err := m.Map(ast)
+			mapped, err := m.Map(ast, nilMetrics.ShardRecorder())
 			require.Nil(t, err)
 
 			require.Equal(t, tc.out, mapped.String())
@@ -165,7 +170,7 @@ func TestMappingStrings(t *testing.T) {
 }
 
 func TestMapping(t *testing.T) {
-	m, err := NewShardMapper(2)
+	m, err := NewShardMapper(2, nilMetrics, log.NewNopLogger())
 	require.Nil(t, err)
 
 	for _, tc := range []struct {
@@ -934,7 +939,7 @@ func TestMapping(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
 			require.Equal(t, tc.err, err)
 
-			mapped, err := m.Map(ast)
+			mapped, err := m.Map(ast, nilMetrics.ShardRecorder())
 
 			require.Equal(t, tc.err, err)
 			require.Equal(t, tc.expr.String(), mapped.String())

@@ -8,6 +8,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_local "github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
@@ -71,8 +72,9 @@ func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
 	return storage.NewTableClient(name, cfg.Config)
 }
 
-// decodeReq sanitizes an incoming request, rounds bounds, and appends the __name__ matcher
-func decodeReq(req logql.SelectParams) ([]*labels.Matcher, logql.LineFilter, model.Time, model.Time, error) {
+// DecodeReq sanitizes an incoming request, rounds bounds, appends the __name__ matcher,
+// and adds the "__cortex_shard__" label if this is a sharded query.
+func DecodeReq(req logql.SelectParams) ([]*labels.Matcher, logql.LineFilter, model.Time, model.Time, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, nil, 0, 0, err
@@ -89,6 +91,29 @@ func decodeReq(req logql.SelectParams) ([]*labels.Matcher, logql.LineFilter, mod
 		return nil, nil, 0, 0, err
 	}
 	matchers = append(matchers, nameLabelMatcher)
+
+	if shards := req.GetShards(); shards != nil {
+		parsed, err := logql.ParseShards(shards)
+		if err != nil {
+			return nil, nil, 0, 0, err
+		}
+		for _, s := range parsed {
+			shardMatcher, err := labels.NewMatcher(
+				labels.MatchEqual,
+				astmapper.ShardLabel,
+				s.String(),
+			)
+			if err != nil {
+				return nil, nil, 0, 0, err
+			}
+			matchers = append(matchers, shardMatcher)
+
+			// TODO(owen-d): passing more than one shard will require
+			// a refactor to cortex to support it. We're leaving this codepath in
+			// preparation of that but will not pass more than one until it's supported.
+			break // nolint:staticcheck
+		}
+	}
 
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
 	return matchers, filter, from, through, nil
@@ -125,7 +150,7 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 }
 
 func (s *store) GetSeries(ctx context.Context, req logql.SelectParams) ([]logproto.SeriesIdentifier, error) {
-	matchers, _, from, through, err := decodeReq(req)
+	matchers, _, from, through, err := DecodeReq(req)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +217,7 @@ func (s *store) GetSeries(ctx context.Context, req logql.SelectParams) ([]logpro
 // LazyQuery returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
 // for that request.
 func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error) {
-	matchers, filter, from, through, err := decodeReq(req)
+	matchers, filter, from, through, err := DecodeReq(req)
 	if err != nil {
 		return nil, err
 	}

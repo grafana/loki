@@ -118,9 +118,25 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	eng := logql.NewEngine(conf.Querier.Engine, querier)
 	var query logql.Query
 	if q.isInstant() {
-		query = eng.NewInstantQuery(q.QueryString, q.Start, q.resultsDirection(), uint32(q.Limit))
+		query = eng.NewInstantQuery(logql.NewLiteralParams(
+			q.QueryString,
+			q.Start,
+			q.Start,
+			0,
+			q.resultsDirection(),
+			uint32(q.Limit),
+			nil,
+		))
 	} else {
-		query = eng.NewRangeQuery(q.QueryString, q.Start, q.End, q.Step, q.resultsDirection(), uint32(q.Limit))
+		query = eng.NewRangeQuery(logql.NewLiteralParams(
+			q.QueryString,
+			q.Start,
+			q.End,
+			q.Step,
+			q.resultsDirection(),
+			uint32(q.Limit),
+			nil,
+		))
 	}
 
 	// execute the query

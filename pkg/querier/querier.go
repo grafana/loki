@@ -85,6 +85,7 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.P
 		store:  store,
 		limits: limits,
 	}
+
 	querier.engine = logql.NewEngine(cfg.Engine, &querier)
 	err := services.StartAndAwaitRunning(context.Background(), querier.pool)
 	if err != nil {

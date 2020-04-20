@@ -321,7 +321,14 @@ func (t *Loki) initQueryFrontend() (err error) {
 		"config", fmt.Sprintf("%+v", t.cfg.QueryRange),
 		"limits", fmt.Sprintf("%+v", t.cfg.LimitsConfig),
 	)
-	tripperware, stopper, err := queryrange.NewTripperware(t.cfg.QueryRange, util.Logger, t.overrides, prometheus.DefaultRegisterer)
+	tripperware, stopper, err := queryrange.NewTripperware(
+		t.cfg.QueryRange,
+		util.Logger,
+		t.overrides,
+		t.cfg.SchemaConfig,
+		t.cfg.Querier.IngesterMaxQueryLookback,
+		prometheus.DefaultRegisterer,
+	)
 	if err != nil {
 		return err
 	}

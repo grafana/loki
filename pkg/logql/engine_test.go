@@ -325,7 +325,13 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 			t.Parallel()
 
 			eng := NewEngine(EngineOpts{}, newQuerierRecorder(test.streams, test.params))
-			q := eng.NewInstantQuery(test.qs, test.ts, test.direction, test.limit)
+			q := eng.NewInstantQuery(LiteralParams{
+				qs:        test.qs,
+				start:     test.ts,
+				end:       test.ts,
+				direction: test.direction,
+				limit:     test.limit,
+			})
 			res, err := q.Exec(context.Background())
 			if err != nil {
 				t.Fatal(err)
@@ -1076,7 +1082,14 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 
 			eng := NewEngine(EngineOpts{}, newQuerierRecorder(test.streams, test.params))
 
-			q := eng.NewRangeQuery(test.qs, test.start, test.end, test.step, test.direction, test.limit)
+			q := eng.NewRangeQuery(LiteralParams{
+				qs:        test.qs,
+				start:     test.start,
+				end:       test.end,
+				step:      test.step,
+				direction: test.direction,
+				limit:     test.limit,
+			})
 			res, err := q.Exec(context.Background())
 			if err != nil {
 				t.Fatal(err)
@@ -1092,7 +1105,14 @@ func TestEngine_Stats(t *testing.T) {
 		st.DecompressedBytes++
 		return iter.NoopIterator, nil
 	}))
-	q := eng.NewInstantQuery(`{foo="bar"}`, time.Now(), logproto.BACKWARD, 1000)
+
+	q := eng.NewInstantQuery(LiteralParams{
+		qs:        `{foo="bar"}`,
+		start:     time.Now(),
+		end:       time.Now(),
+		direction: logproto.BACKWARD,
+		limit:     1000,
+	})
 	r, err := q.Exec(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, int64(1), r.Statistics.Store.DecompressedBytes)
@@ -1148,7 +1168,14 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 			{`bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, logproto.FORWARD},
 			{`bottomk(3,rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app)`, logproto.FORWARD},
 		} {
-			q := eng.NewRangeQuery(test.qs, start, end, 60*time.Second, test.direction, 1000)
+			q := eng.NewRangeQuery(LiteralParams{
+				qs:        test.qs,
+				start:     start,
+				end:       end,
+				step:      60 * time.Second,
+				direction: test.direction,
+				limit:     1000,
+			})
 			res, err := q.Exec(context.Background())
 			if err != nil {
 				b.Fatal(err)

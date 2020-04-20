@@ -44,6 +44,10 @@ func direction(r *http.Request) (logproto.Direction, error) {
 	return parseDirection(r.Form.Get("direction"), logproto.BACKWARD)
 }
 
+func shards(r *http.Request) []string {
+	return r.Form["shards"]
+}
+
 func bounds(r *http.Request) (time.Time, time.Time, error) {
 	now := time.Now()
 	start, err := parseTimestamp(r.Form.Get("start"), now.Add(-defaultSince))

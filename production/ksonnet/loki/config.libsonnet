@@ -7,8 +7,32 @@
     replication_factor: 3,
     memcached_replicas: 3,
 
-    querierConcurrency: 16,
     grpc_server_max_msg_size: 100 << 20,  // 100MB
+
+
+    // The expectation is that if sharding is enabled, we can force more (smaller)
+    // queries on the queriers. However this can't be extended too far because most queries
+    // concern recent (ingester) data, which isn't sharded. Therefore, we must strike a balance
+    // which allows us to process more sharded queries in parallel when requested, but not overload
+    // queriers during normal queries.
+    querier: {
+      replicas: if $._config.queryFrontend.sharded_queries_enabled then 6 else 3,
+      concurrency: 16,
+    },
+
+    queryFrontend: {
+      replicas: 2,
+      shard_factor: 16,  // v10 schema shard factor
+      sharded_queries_enabled: false,
+      // Queries can technically be sharded an arbitrary number of times. Thus query_split_factor is used
+      // as a coefficient to multiply the frontend tenant queues by. The idea is that this
+      // yields a bit of headroom so tenant queues aren't underprovisioned. Therefore the split factor
+      // should represent the highest reasonable split factor for a query. If too low, a long query
+      // (i.e. 30d) with a high split factor (i.e. 5) would result in
+      // (day_splits * shard_factor * split_factor) or 30 * 16 * 5 = 2400 sharded queries, which may be
+      // more than the max queue size and thus would always error.
+      query_split_factor:: 3,
+    },
 
     // Default to GCS and Bigtable for chunk and index store
     storage_backend: 'bigtable,gcs',
@@ -104,12 +128,19 @@
       },
       frontend: {
         compress_responses: true,
+      } + if $._config.queryFrontend.sharded_queries_enabled then {
+        // In process tenant queues on frontends. We divide by the number of frontends;
+        // 2 in this case in order to apply the global limit in aggregate.
+        // This is basically base * shard_factor * query_split_factor / num_frontends where
+        max_outstanding_per_tenant: std.floor(200 * $._config.queryFrontend.shard_factor * $._config.queryFrontend.query_split_factor / $._config.queryFrontend.replicas),
+      }
+      else {
         max_outstanding_per_tenant: 200,
       },
       frontend_worker: {
         frontend_address: 'query-frontend.%s.svc.cluster.local:9095' % $._config.namespace,
         // Limit to N/2 worker threads per frontend, as we have two frontends.
-        parallelism: $._config.querierConcurrency / 2,
+        parallelism: std.floor($._config.querier.concurrency / $._config.queryFrontend.replicas),
         grpc_client_config: {
           max_send_msg_size: $._config.grpc_server_max_msg_size,
         },
@@ -131,11 +162,19 @@
               max_idle_conns: 16,
             },
           },
-        },
+        } +
+        if $._config.queryFrontend.sharded_queries_enabled then {
+          parallelise_shardable_queries: 'true',
+        }
+        else {},
+      },
+      querier: {
+        query_ingesters_within: '2h', // twice the max-chunk age (1h default) for safety buffer
       },
       limits_config: {
         enforce_metric_name: false,
-        max_query_parallelism: 32,
+        // align middleware parallelism with shard factor to optimize one-legged sharded queries.
+        max_query_parallelism: $._config.queryFrontend.shard_factor,
         reject_old_samples: true,
         reject_old_samples_max_age: '168h',
         max_query_length: '12000h',  // 500 days

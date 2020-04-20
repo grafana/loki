@@ -1,12 +1,15 @@
 package queryrange
 
 import (
+	"errors"
 	"flag"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
@@ -36,22 +39,31 @@ type Stopper interface {
 }
 
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
-func NewTripperware(cfg Config, log log.Logger, limits Limits, registerer prometheus.Registerer) (frontend.Tripperware, Stopper, error) {
+func NewTripperware(
+	cfg Config,
+	log log.Logger,
+	limits Limits,
+	schema chunk.SchemaConfig,
+	minShardingLookback time.Duration,
+	registerer prometheus.Registerer,
+) (frontend.Tripperware, Stopper, error) {
 	// Ensure that QuerySplitDuration uses configuration defaults.
 	// This avoids divide by zero errors when determining cache keys where user specific overrides don't exist.
 	limits = WithDefaultLimits(limits, cfg.Config)
 
 	instrumentMetrics := queryrange.NewInstrumentMiddlewareMetrics(registerer)
 	retryMetrics := queryrange.NewRetryMiddlewareMetrics(registerer)
+	shardingMetrics := logql.NewShardingMetrics(registerer)
 
-	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, lokiCodec, prometheusResponseExtractor, instrumentMetrics, retryMetrics)
+	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, prometheusResponseExtractor, instrumentMetrics, retryMetrics, shardingMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, lokiCodec, instrumentMetrics, retryMetrics)
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, schema, minShardingLookback, lokiCodec, instrumentMetrics, retryMetrics, shardingMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
+
 	return func(next http.RoundTripper) http.RoundTripper {
 		metricRT := metricsTripperware(next)
 		logFilterRT := logFilterTripperware(next)
@@ -120,14 +132,33 @@ func NewLogFilterTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
+	schema chunk.SchemaConfig,
+	minShardingLookback time.Duration,
 	codec queryrange.Codec,
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
+	shardingMetrics *logql.ShardingMetrics,
 ) (frontend.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec))
 	}
+
+	if cfg.ShardedQueries {
+		if minShardingLookback == 0 {
+			return nil, errors.New("a non-zero value is required for querier.query-ingesters-within when -querier.parallelise-shardable-queries is enabled")
+		}
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			NewQueryShardMiddleware(
+				log,
+				schema.Configs,
+				minShardingLookback,
+				instrumentMetrics, // instrumentation is included in the sharding middleware
+				shardingMetrics,
+			),
+		)
+	}
+
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
 	}
@@ -145,10 +176,13 @@ func NewMetricTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
+	schema chunk.SchemaConfig,
+	minShardingLookback time.Duration,
 	codec queryrange.Codec,
 	extractor queryrange.Extractor,
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
+	shardingMetrics *logql.ShardingMetrics,
 ) (frontend.Tripperware, Stopper, error) {
 	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
@@ -188,6 +222,21 @@ func NewMetricTripperware(
 			queryRangeMiddleware,
 			queryrange.InstrumentMiddleware("results_cache", instrumentMetrics),
 			queryCacheMiddleware,
+		)
+	}
+
+	if cfg.ShardedQueries {
+		if minShardingLookback == 0 {
+			return nil, nil, errors.New("a non-zero value is required for querier.query-ingesters-within when -querier.parallelise-shardable-queries is enabled")
+		}
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			NewQueryShardMiddleware(
+				log,
+				schema.Configs,
+				minShardingLookback,
+				instrumentMetrics, // instrumentation is included in the sharding middleware
+				shardingMetrics,
+			),
 		)
 	}
 
