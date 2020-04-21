@@ -70,10 +70,11 @@ expr:
     ;
 
 metricExpr:
-      rangeAggregationExpr                         { $$ = $1 }
-    | vectorAggregationExpr                        { $$ = $1 }
-    | binOpExpr                                    { $$ = $1 }
-    | literalExpr                                  { $$ = $1 }
+      rangeAggregationExpr                          { $$ = $1 }
+    | vectorAggregationExpr                         { $$ = $1 }
+    | binOpExpr                                     { $$ = $1 }
+    | literalExpr                                   { $$ = $1 }
+    | OPEN_PARENTHESIS metricExpr CLOSE_PARENTHESIS { $$ = $2 }
     ;
 
 logExpr:
