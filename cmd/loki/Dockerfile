@@ -11,7 +11,7 @@ RUN apk add --update --no-cache ca-certificates libcap \
     && rm -rf /var/cache/apk/*
 
 COPY --from=build /src/loki/cmd/loki/loki /usr/bin/loki
-COPY cmd/loki/loki-local-config.yaml /etc/loki/local-config.yaml
+COPY cmd/loki/loki-docker-config.yaml /etc/loki/local-config.yaml
 
 RUN setcap cap_net_bind_service=+ep /usr/bin/loki
 
