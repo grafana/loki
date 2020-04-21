@@ -17,8 +17,8 @@ RUN setcap cap_net_bind_service=+ep /usr/bin/loki
 
 RUN addgroup -g 10001 -S loki && \
     adduser -u 10001 -S loki -G loki
-RUN mkdir -p /data && \
-    chown -R loki:loki /etc/loki /data
+RUN mkdir -p /loki && \
+    chown -R loki:loki /etc/loki /loki
 
 # See https://github.com/grafana/loki/issues/1928
 RUN [ ! -e /etc/nsswitch.conf ] && echo 'hosts: files dns' > /etc/nsswitch.conf
