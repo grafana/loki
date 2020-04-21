@@ -234,9 +234,9 @@ func TestParse(t *testing.T) {
 		{
 			in: `min({ foo !~ "bar" }[5m])`,
 			err: ParseError{
-				msg:  "syntax error: unexpected {",
-				line: 1,
-				col:  5,
+				msg:  "syntax error: unexpected DURATION",
+				line: 0,
+				col:  21,
 			},
 		},
 		{
@@ -274,9 +274,9 @@ func TestParse(t *testing.T) {
 		{
 			in: `stddev({ foo !~ "bar" })`,
 			err: ParseError{
-				msg:  "syntax error: unexpected {",
+				msg:  "syntax error: unexpected )",
 				line: 1,
-				col:  8,
+				col:  24,
 			},
 		},
 		{
@@ -777,6 +777,70 @@ func TestParse(t *testing.T) {
 						nil,
 					),
 				),
+			),
+		},
+		{
+			in: `sum by (job) (
+					count_over_time({namespace="tns"} |= "level=error"[5m])
+				/
+					count_over_time({namespace="tns"}[5m])
+				)`,
+			exp: mustNewVectorAggregationExpr(
+				mustNewBinOpExpr(OpTypeDiv,
+					newRangeAggregationExpr(
+						&logRange{
+							left: &filterExpr{
+								left: &matchersExpr{
+									matchers: []*labels.Matcher{
+										mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
+									},
+								},
+								match: "level=error",
+								ty:    labels.MatchEqual,
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime),
+					newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
+		},
+		{
+			in: `sum by (job) (
+					count_over_time({namespace="tns"} |= "level=error"[5m])
+				/
+					count_over_time({namespace="tns"}[5m])
+				) * 100`,
+			exp: mustNewBinOpExpr(OpTypeMul, mustNewVectorAggregationExpr(
+				mustNewBinOpExpr(OpTypeDiv,
+					newRangeAggregationExpr(
+						&logRange{
+							left: &filterExpr{
+								left: &matchersExpr{
+									matchers: []*labels.Matcher{
+										mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
+									},
+								},
+								match: "level=error",
+								ty:    labels.MatchEqual,
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime),
+					newRangeAggregationExpr(
+						&logRange{
+							left: &matchersExpr{
+								matchers: []*labels.Matcher{
+									mustNewMatcher(labels.MatchEqual, "namespace", "tns"),
+								},
+							},
+							interval: 5 * time.Minute,
+						}, OpTypeCountOverTime)), OpTypeSum, &grouping{groups: []string{"job"}}, nil),
+				mustNewLiteralExpr("100", false),
 			),
 		},
 		{
