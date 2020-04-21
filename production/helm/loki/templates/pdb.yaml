@@ -14,4 +14,4 @@ spec:
     matchLabels:
       app: {{ template "loki.name" . }}
 {{ toYaml .Values.podDisruptionBudget | indent 2 }}
-{{- end -}}
+{{- end }}
