@@ -156,12 +156,10 @@
               max_idle_conns: 16,
             },
           },
-        } +
-        if $._config.queryFrontend.sharded_queries_enabled then {
-          parallelise_shardable_queries: 'true',
-        }
-        else {},
-      },
+        },
+      } + if $._config.queryFrontend.sharded_queries_enabled then {
+        parallelise_shardable_queries: 'true',
+      } else {},
       querier: {
         query_ingesters_within: '2h', // twice the max-chunk age (1h default) for safety buffer
       },
