@@ -51,7 +51,7 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/src/loki' phase.
-DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
+DONT_FIND := -name logback -prune -o -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # These are all the application files, they are included in the various binary rules as dependencies
 # to make sure binaries are rebuilt if any source files change.
