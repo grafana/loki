@@ -168,9 +168,10 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 	})
 }
 
-// List only objects from the store non-recursively
-func (a *S3ObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, error) {
+// List objects and common-prefixes i.e synthetic directories from the store non-recursively
+func (a *S3ObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
+	var commonPrefixes []chunk.StorageCommonPrefix
 
 	for i := range a.bucketNames {
 		err := instrument.CollectedRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
@@ -193,6 +194,10 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 					})
 				}
 
+				for _, commonPrefix := range output.CommonPrefixes {
+					commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(commonPrefix.String()))
+				}
+
 				if !*output.IsTruncated {
 					// No more results to fetch
 					break
@@ -205,9 +210,9 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 		})
 
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
-	return storageObjects, nil
+	return storageObjects, commonPrefixes, nil
 }

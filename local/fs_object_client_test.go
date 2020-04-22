@@ -1,6 +1,7 @@
 package local
 
 import (
+	"bytes"
 	"context"
 	"io/ioutil"
 	"os"
@@ -10,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFsObjectClient_DeleteChunksBefore(t *testing.T) {
+func TestFSObjectClient_DeleteChunksBefore(t *testing.T) {
 	deleteFilesOlderThan := 10 * time.Minute
 
 	fsChunksDir, err := ioutil.TempDir(os.TempDir(), "fs-chunks")
@@ -55,4 +56,62 @@ func TestFsObjectClient_DeleteChunksBefore(t *testing.T) {
 	// Verifying whether older file got deleted
 	files, _ = ioutil.ReadDir(".")
 	require.Equal(t, 1, len(files), "Number of files should be 1 after enforcing retention")
+}
+
+func TestFSObjectClient_List(t *testing.T) {
+	fsObjectsDir, err := ioutil.TempDir(os.TempDir(), "fs-objects")
+	require.NoError(t, err)
+
+	bucketClient, err := NewFSObjectClient(FSConfig{
+		Directory: fsObjectsDir,
+	})
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, os.RemoveAll(fsObjectsDir))
+	}()
+
+	foldersWithFiles := make(map[string][]string)
+	foldersWithFiles["folder1/"] = []string{"file1", "file2"}
+	foldersWithFiles["folder2/"] = []string{"file3", "file4", "file5"}
+
+	for folder, files := range foldersWithFiles {
+		for _, filename := range files {
+			err := bucketClient.PutObject(context.Background(), folder+filename, bytes.NewReader([]byte(filename)))
+			require.NoError(t, err)
+		}
+	}
+
+	files := []string{"outer-file1", "outer-file2"}
+
+	for _, fl := range files {
+		err := bucketClient.PutObject(context.Background(), fl, bytes.NewReader([]byte(fl)))
+		require.NoError(t, err)
+	}
+
+	storageObjects, commonPrefixes, err := bucketClient.List(context.Background(), "")
+	require.NoError(t, err)
+
+	require.Len(t, storageObjects, len(files))
+	for i := range storageObjects {
+		require.Equal(t, storageObjects[i].Key, files[i])
+	}
+
+	require.Len(t, commonPrefixes, len(foldersWithFiles))
+	for _, commonPrefix := range commonPrefixes {
+		_, ok := foldersWithFiles[string(commonPrefix)]
+		require.True(t, ok)
+	}
+
+	for folder, files := range foldersWithFiles {
+		storageObjects, commonPrefixes, err := bucketClient.List(context.Background(), folder)
+		require.NoError(t, err)
+
+		require.Len(t, storageObjects, len(files))
+		for i := range storageObjects {
+			require.Equal(t, storageObjects[i].Key, folder+files[i])
+		}
+
+		require.Len(t, commonPrefixes, 0)
+	}
 }
