@@ -160,11 +160,8 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 
 		return ConcatEvaluator(xs)
 
-	case *vectorAggregationExpr, *binOpExpr:
-		return ev.defaultEvaluator.StepEvaluator(ctx, nextEv, e, params)
-
 	default:
-		return nil, EvaluatorUnsupportedType(expr, ev)
+		return ev.defaultEvaluator.StepEvaluator(ctx, nextEv, e, params)
 	}
 }
 
@@ -267,7 +264,7 @@ func ResultStepEvaluator(res Result, params Params) (StepEvaluator, error) {
 func ResultIterator(res Result, params Params) (iter.EntryIterator, error) {
 	streams, ok := res.Data.(Streams)
 	if !ok {
-		return nil, fmt.Errorf("Unexpected type (%s) for ResultIterator; expected %s", res.Data.Type(), ValueTypeStreams)
+		return nil, fmt.Errorf("unexpected type (%s) for ResultIterator; expected %s", res.Data.Type(), ValueTypeStreams)
 	}
 	return iter.NewStreamsIterator(context.Background(), streams, params.Direction()), nil
 
