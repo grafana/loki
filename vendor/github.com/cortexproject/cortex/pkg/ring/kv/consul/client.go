@@ -92,6 +92,22 @@ func NewClient(cfg Config, codec codec.Codec) (*Client, error) {
 	return c, nil
 }
 
+// Put is mostly here for testing.
+func (c *Client) Put(ctx context.Context, key string, value interface{}) error {
+	bytes, err := c.codec.Encode(value)
+	if err != nil {
+		return err
+	}
+
+	return instrument.CollectedRequest(ctx, "Put", consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		_, err := c.kv.Put(&consul.KVPair{
+			Key:   key,
+			Value: bytes,
+		}, nil)
+		return err
+	})
+}
+
 // CAS atomically modifies a value in a callback.
 // If value doesn't exist you'll get nil as an argument to your callback.
 func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
