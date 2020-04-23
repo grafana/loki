@@ -110,7 +110,7 @@ func (m ShardMapper) Parse(query string) (Expr, error) {
 
 	mapped, err := m.Map(parsed, recorder)
 	if err != nil {
-		level.Warn(m.logger).Log("msg", "failed mapping AST", "err", err.Error())
+		level.Warn(m.logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", query)
 		m.metrics.parsed.WithLabelValues(FailureKey).Inc()
 		return nil, err
 	}
