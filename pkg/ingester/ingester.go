@@ -298,7 +298,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 	heapItr := iter.NewHeapIterator(ctx, itrs, req.Direction)
 
-	defer helpers.LogError("closing iterator", heapItr.Close)
+	defer helpers.LogErrorWithContext(ctx, "closing iterator", heapItr.Close)
 
 	return sendBatches(queryServer.Context(), heapItr, queryServer, req.Limit)
 }

@@ -94,7 +94,7 @@ func (t *tailer) loop() {
 			if err != nil {
 				// Don't log any error due to tail client closing the connection
 				if !util.IsConnCanceled(err) {
-					level.Error(cortex_util.Logger).Log("msg", "Error writing to tail client", "err", err)
+					level.Error(cortex_util.WithContext(t.conn.Context(), cortex_util.Logger)).Log("msg", "Error writing to tail client", "err", err)
 				}
 				t.close()
 				return

@@ -109,7 +109,7 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 	return nil
 }
 
-func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePeriod time.Duration, minUtilization float64) error {
+func (s *stream) Push(ctx context.Context, entries []logproto.Entry, synchronizePeriod time.Duration, minUtilization float64) error {
 	var lastChunkTimestamp time.Time
 	if len(s.chunks) == 0 {
 		s.chunks = append(s.chunks, chunkDesc{
@@ -145,7 +145,7 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry, synchronizePe
 			if err != nil {
 				// This should be an unlikely situation, returning an error up the stack doesn't help much here
 				// so instead log this to help debug the issue if it ever arises.
-				level.Error(util.Logger).Log("msg", "failed to Close chunk", "err", err)
+				level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "failed to Close chunk", "err", err)
 			}
 			chunk.closed = true
 
