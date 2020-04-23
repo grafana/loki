@@ -211,7 +211,7 @@ func (t *Loki) initModuleServices(target moduleName) (map[moduleName]services.Se
 // Run starts Loki running, and blocks until a Loki stops.
 func (t *Loki) Run() error {
 	// get all services, create service manager and tell it to start
-	servs := []services.Service(nil)
+	var servs []services.Service
 	for _, s := range t.serviceMap {
 		servs = append(servs, s)
 	}
@@ -306,6 +306,7 @@ func (t *Loki) readyHandler(sm *services.Manager) http.HandlerFunc {
 		if t.ingester != nil {
 			if err := t.ingester.CheckReady(r.Context()); err != nil {
 				http.Error(w, "Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
+				return
 			}
 		}
 
