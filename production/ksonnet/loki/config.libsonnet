@@ -257,18 +257,6 @@
         retention_deletes_enabled: false,
         poll_interval: '10m',
         creation_grace_period: '3h',
-        index_tables_provisioning: {
-          inactive_read_throughput: 0,
-          inactive_write_throughput: 0,
-          provisioned_read_throughput: 0,
-          provisioned_write_throughput: 0,
-        },
-        chunk_tables_provisioning: {
-          inactive_read_throughput: 0,
-          inactive_write_throughput: 0,
-          provisioned_read_throughput: 0,
-          provisioned_write_throughput: 0,
-        },
       },
 
       distributor: {
