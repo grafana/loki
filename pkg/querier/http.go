@@ -59,7 +59,7 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		request.Limit,
 		request.Shards,
 	)
-	query := q.engine.NewRangeQuery(params)
+	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		writeError(err, w)
@@ -98,7 +98,7 @@ func (q *Querier) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
 		request.Limit,
 		nil,
 	)
-	query := q.engine.NewInstantQuery(params)
+	query := q.engine.Query(params)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		writeError(err, w)
@@ -154,7 +154,7 @@ func (q *Querier) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		request.Limit,
 		request.Shards,
 	)
-	query := q.engine.NewRangeQuery(params)
+	query := q.engine.Query(params)
 
 	result, err := query.Exec(ctx)
 	if err != nil {

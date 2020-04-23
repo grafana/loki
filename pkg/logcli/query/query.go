@@ -117,8 +117,9 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 
 	eng := logql.NewEngine(conf.Querier.Engine, querier)
 	var query logql.Query
+
 	if q.isInstant() {
-		query = eng.NewInstantQuery(logql.NewLiteralParams(
+		query = eng.Query(logql.NewLiteralParams(
 			q.QueryString,
 			q.Start,
 			q.Start,
@@ -128,7 +129,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			nil,
 		))
 	} else {
-		query = eng.NewRangeQuery(logql.NewLiteralParams(
+		query = eng.Query(logql.NewLiteralParams(
 			q.QueryString,
 			q.Start,
 			q.End,

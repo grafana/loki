@@ -73,24 +73,28 @@ func (opts *EngineOpts) applyDefault() {
 	}
 }
 
-// Engine interface used to construct queries
-type Engine interface {
-	NewRangeQuery(Params) Query
-	NewInstantQuery(Params) Query
-}
-
-// engine is the LogQL engine.
-type engine struct {
+// Engine is the LogQL engine.
+type Engine struct {
 	timeout   time.Duration
 	evaluator Evaluator
 }
 
-// NewEngine creates a new LogQL engine.
-func NewEngine(opts EngineOpts, q Querier) Engine {
+// NewEngine creates a new LogQL Engine.
+func NewEngine(opts EngineOpts, q Querier) *Engine {
 	opts.applyDefault()
-	return &engine{
+	return &Engine{
 		timeout:   opts.Timeout,
 		evaluator: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
+	}
+}
+
+// Query creates a new LogQL query. Instant/Range type is derived from the parameters.
+func (ng *Engine) Query(params Params) Query {
+	return &query{
+		timeout:   ng.timeout,
+		params:    params,
+		evaluator: ng.evaluator,
+		parse:     ParseExpr,
 	}
 }
 
@@ -165,26 +169,6 @@ func (q *query) Eval(ctx context.Context) (promql.Value, error) {
 		return streams, err
 	default:
 		return nil, errors.New("Unexpected type (%T): cannot evaluate")
-	}
-}
-
-// NewRangeQuery creates a new LogQL range query.
-func (ng *engine) NewRangeQuery(params Params) Query {
-	return &query{
-		timeout:   ng.timeout,
-		params:    params,
-		evaluator: ng.evaluator,
-		parse:     ParseExpr,
-	}
-}
-
-// NewInstantQuery creates a new LogQL instant query.
-func (ng *engine) NewInstantQuery(params Params) Query {
-	return &query{
-		timeout:   ng.timeout,
-		params:    params,
-		evaluator: ng.evaluator,
-		parse:     ParseExpr,
 	}
 }
 

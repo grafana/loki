@@ -20,7 +20,7 @@ import (
 
 var testSize = int64(300)
 
-func TestEngine_NewInstantQuery(t *testing.T) {
+func TestEngine_InstantQuery(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		qs        string
@@ -325,7 +325,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 			t.Parallel()
 
 			eng := NewEngine(EngineOpts{}, newQuerierRecorder(test.streams, test.params))
-			q := eng.NewInstantQuery(LiteralParams{
+			q := eng.Query(LiteralParams{
 				qs:        test.qs,
 				start:     test.ts,
 				end:       test.ts,
@@ -341,7 +341,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 	}
 }
 
-func TestEngine_NewRangeQuery(t *testing.T) {
+func TestEngine_RangeQuery(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		qs        string
@@ -1082,7 +1082,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 
 			eng := NewEngine(EngineOpts{}, newQuerierRecorder(test.streams, test.params))
 
-			q := eng.NewRangeQuery(LiteralParams{
+			q := eng.Query(LiteralParams{
 				qs:        test.qs,
 				start:     test.start,
 				end:       test.end,
@@ -1106,7 +1106,7 @@ func TestEngine_Stats(t *testing.T) {
 		return iter.NoopIterator, nil
 	}))
 
-	q := eng.NewInstantQuery(LiteralParams{
+	q := eng.Query(LiteralParams{
 		qs:        `{foo="bar"}`,
 		start:     time.Now(),
 		end:       time.Now(),
@@ -1168,7 +1168,7 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 			{`bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, logproto.FORWARD},
 			{`bottomk(3,rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app)`, logproto.FORWARD},
 		} {
-			q := eng.NewRangeQuery(LiteralParams{
+			q := eng.Query(LiteralParams{
 				qs:        test.qs,
 				start:     start,
 				end:       end,

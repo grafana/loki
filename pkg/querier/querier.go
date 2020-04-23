@@ -62,7 +62,7 @@ type Querier struct {
 	ring   ring.ReadRing
 	pool   *ring_client.Pool
 	store  storage.Store
-	engine logql.Engine
+	engine *logql.Engine
 	limits *validation.Overrides
 }
 

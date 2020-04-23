@@ -8,6 +8,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -270,44 +271,44 @@ func ResultIterator(res Result, params Params) (iter.EntryIterator, error) {
 
 }
 
-type shardedEngine struct {
+type ShardedEngine struct {
 	timeout   time.Duration
-	mapper    ShardMapper
 	evaluator Evaluator
 	metrics   *ShardingMetrics
-	logger    log.Logger
 }
 
-func NewShardedEngine(opts EngineOpts, shards int, downstreamer Downstreamer, metrics *ShardingMetrics, log log.Logger) (Engine, error) {
+func NewShardedEngine(opts EngineOpts, downstreamer Downstreamer, metrics *ShardingMetrics) *ShardedEngine {
 	opts.applyDefault()
-	mapper, err := NewShardMapper(shards, metrics, log)
-	if err != nil {
-		return nil, err
-	}
-
-	return &shardedEngine{
+	return &ShardedEngine{
 		timeout:   opts.Timeout,
-		mapper:    mapper,
 		evaluator: NewDownstreamEvaluator(downstreamer),
 		metrics:   metrics,
-		logger:    log,
-	}, nil
+	}
 
 }
 
-func (ng *shardedEngine) query(p Params) Query {
+func (ng *ShardedEngine) Query(p Params, shards int, logger log.Logger) Query {
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
+
 	return &query{
 		timeout:   ng.timeout,
 		params:    p,
 		evaluator: ng.evaluator,
-		parse:     ng.mapper.Parse,
+		parse: func(query string) (Expr, error) {
+			mapper, err := NewShardMapper(shards, ng.metrics)
+			if err != nil {
+				return nil, err
+			}
+			noop, parsed, err := mapper.Parse(query)
+			if err != nil {
+				level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", query)
+				return nil, err
+			}
+
+			level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())
+			return parsed, nil
+		},
 	}
-}
-
-func (ng *shardedEngine) NewRangeQuery(p Params) Query {
-	return ng.query(p)
-}
-
-func (ng *shardedEngine) NewInstantQuery(p Params) Query {
-	return ng.query(p)
 }

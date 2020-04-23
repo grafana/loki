@@ -64,18 +64,18 @@ func newASTMapperware(
 ) *astMapperware {
 
 	return &astMapperware{
-		confs:   confs,
-		logger:  log.With(logger, "middleware", "QueryShard.astMapperware"),
-		next:    next,
-		metrics: metrics,
+		confs:  confs,
+		logger: log.With(logger, "middleware", "QueryShard.astMapperware"),
+		next:   next,
+		ng:     logql.NewShardedEngine(logql.EngineOpts{}, DownstreamHandler{next}, metrics),
 	}
 }
 
 type astMapperware struct {
-	confs   queryrange.ShardingConfigs
-	logger  log.Logger
-	next    queryrange.Handler
-	metrics *logql.ShardingMetrics
+	confs  queryrange.ShardingConfigs
+	logger log.Logger
+	next   queryrange.Handler
+	ng     *logql.ShardedEngine
 }
 
 func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
@@ -89,19 +89,12 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrange.Request) (queryra
 	shardedLog, ctx := spanlogger.New(ctx, "shardedEngine")
 	defer shardedLog.Finish()
 
-	ng, err := logql.NewShardedEngine(logql.EngineOpts{}, int(conf.RowShards), DownstreamHandler{ast.next}, ast.metrics, shardedLog)
-
-	if err != nil {
-		level.Warn(ast.logger).Log("err", err.Error(), "msg", "failed to create sharded engine")
-		return ast.next.Do(ctx, r)
-	}
-
 	req, ok := r.(*LokiRequest)
 	if !ok {
 		return nil, fmt.Errorf("expected *LokiRequest, got (%T)", r)
 	}
 	params := paramsFromRequest(req)
-	query := ng.NewRangeQuery(params)
+	query := ast.ng.Query(params, int(conf.RowShards), shardedLog)
 
 	res, err := query.Exec(ctx)
 	if err != nil {

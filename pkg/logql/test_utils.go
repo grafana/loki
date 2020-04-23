@@ -98,7 +98,7 @@ outer:
 }
 
 type MockDownstreamer struct {
-	Engine
+	*Engine
 }
 
 func (d MockDownstreamer) Downstream(expr Expr, p Params, shards Shards) (Query, error) {
@@ -111,7 +111,7 @@ func (d MockDownstreamer) Downstream(expr Expr, p Params, shards Shards) (Query,
 		p.Limit(),
 		shards.Encode(),
 	)
-	return d.NewRangeQuery(params), nil
+	return d.Query(params), nil
 }
 
 // create nStreams of nEntries with labelNames each where each label value

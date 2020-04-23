@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/go-kit/kit/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 )
@@ -53,7 +52,7 @@ func TestStringer(t *testing.T) {
 }
 
 func TestMapSampleExpr(t *testing.T) {
-	m, err := NewShardMapper(2, nilMetrics, log.NewNopLogger())
+	m, err := NewShardMapper(2, nilMetrics)
 	require.Nil(t, err)
 
 	for _, tc := range []struct {
@@ -114,14 +113,14 @@ func TestMapSampleExpr(t *testing.T) {
 		},
 	} {
 		t.Run(tc.in.String(), func(t *testing.T) {
-			require.Equal(t, tc.out, m.mapSampleExpr(tc.in, nilMetrics.ShardRecorder()))
+			require.Equal(t, tc.out, m.mapSampleExpr(tc.in, nilMetrics.shardRecorder()))
 		})
 
 	}
 }
 
 func TestMappingStrings(t *testing.T) {
-	m, err := NewShardMapper(2, nilMetrics, log.NewNopLogger())
+	m, err := NewShardMapper(2, nilMetrics)
 	require.Nil(t, err)
 	for _, tc := range []struct {
 		in  string
@@ -160,7 +159,7 @@ func TestMappingStrings(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
 			require.Nil(t, err)
 
-			mapped, err := m.Map(ast, nilMetrics.ShardRecorder())
+			mapped, err := m.Map(ast, nilMetrics.shardRecorder())
 			require.Nil(t, err)
 
 			require.Equal(t, tc.out, mapped.String())
@@ -170,7 +169,7 @@ func TestMappingStrings(t *testing.T) {
 }
 
 func TestMapping(t *testing.T) {
-	m, err := NewShardMapper(2, nilMetrics, log.NewNopLogger())
+	m, err := NewShardMapper(2, nilMetrics)
 	require.Nil(t, err)
 
 	for _, tc := range []struct {
@@ -939,7 +938,7 @@ func TestMapping(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
 			require.Equal(t, tc.err, err)
 
-			mapped, err := m.Map(ast, nilMetrics.ShardRecorder())
+			mapped, err := m.Map(ast, nilMetrics.shardRecorder())
 
 			require.Equal(t, tc.err, err)
 			require.Equal(t, tc.expr.String(), mapped.String())
