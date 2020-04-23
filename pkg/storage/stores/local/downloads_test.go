@@ -18,7 +18,7 @@ import (
 func queryTestBoltdb(t *testing.T, boltdbIndexClient *BoltdbIndexClientWithShipper, query chunk.IndexQuery) map[string]string {
 	resp := map[string]string{}
 
-	require.NoError(t, boltdbIndexClient.query(context.Background(), query, func(batch chunk.ReadBatch) (shouldContinue bool) {
+	require.NoError(t, boltdbIndexClient.query(context.Background(), query, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
 		itr := batch.Iterator()
 		for itr.Next() {
 			resp[string(itr.RangeValue())] = string(itr.Value())

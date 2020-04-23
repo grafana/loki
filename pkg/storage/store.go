@@ -8,6 +8,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	cortex_local "github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
@@ -51,7 +52,7 @@ type store struct {
 func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits storage.StoreLimits) (Store, error) {
 	registerCustomIndexClients(cfg, schemaCfg)
 
-	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg, limits)
+	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg, limits, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
