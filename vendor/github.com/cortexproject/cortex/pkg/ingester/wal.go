@@ -35,6 +35,8 @@ type WALConfig struct {
 	Recover            bool          `yaml:"recover_from_wal"`
 	Dir                string        `yaml:"wal_dir"`
 	CheckpointDuration time.Duration `yaml:"checkpoint_duration"`
+	// We always checkpoint during shutdown. This option exists for the tests.
+	checkpointDuringShutdown bool
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -44,6 +46,7 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.WALEnabled, "ingester.wal-enabled", false, "Enable writing of ingested data into WAL.")
 	f.BoolVar(&cfg.CheckpointEnabled, "ingester.checkpoint-enabled", true, "Enable checkpointing of in-memory chunks. It should always be true when using normally. Set it to false iff you are doing some small tests as there is no mechanism to delete the old WAL yet if checkpoint is disabled.")
 	f.DurationVar(&cfg.CheckpointDuration, "ingester.checkpoint-duration", 30*time.Minute, "Interval at which checkpoints should be created.")
+	cfg.checkpointDuringShutdown = true
 }
 
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.
@@ -69,11 +72,13 @@ type walWrapper struct {
 	checkpointMtx sync.Mutex
 
 	// Checkpoint metrics.
-	checkpointDeleteFail    prometheus.Counter
-	checkpointDeleteTotal   prometheus.Counter
-	checkpointCreationFail  prometheus.Counter
-	checkpointCreationTotal prometheus.Counter
-	checkpointDuration      prometheus.Summary
+	checkpointDeleteFail       prometheus.Counter
+	checkpointDeleteTotal      prometheus.Counter
+	checkpointCreationFail     prometheus.Counter
+	checkpointCreationTotal    prometheus.Counter
+	checkpointDuration         prometheus.Summary
+	checkpointLoggedBytesTotal prometheus.Counter
+	walLoggedBytesTotal        prometheus.Counter
 }
 
 // newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.
@@ -121,6 +126,14 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 		Help:       "Time taken to create a checkpoint.",
 		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 	})
+	w.checkpointLoggedBytesTotal = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_checkpoint_logged_bytes_total",
+		Help: "Total number of bytes written to disk for checkpointing.",
+	})
+	w.walLoggedBytesTotal = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_wal_logged_bytes_total",
+		Help: "Total number of bytes written to disk for WAL records.",
+	})
 
 	w.wait.Add(1)
 	go w.run()
@@ -145,6 +158,7 @@ func (w *walWrapper) Log(record *Record) error {
 		if err != nil {
 			return err
 		}
+		w.walLoggedBytesTotal.Add(float64(len(buf)))
 		return w.wal.Log(buf)
 	}
 }
@@ -172,9 +186,11 @@ func (w *walWrapper) run() {
 			level.Info(util.Logger).Log("msg", "checkpoint done", "time", elapsed.String())
 			w.checkpointDuration.Observe(elapsed.Seconds())
 		case <-w.quit:
-			level.Info(util.Logger).Log("msg", "creating checkpoint before shutdown")
-			if err := w.performCheckpoint(true); err != nil {
-				level.Error(util.Logger).Log("msg", "error checkpointing series during shutdown", "err", err)
+			if w.cfg.checkpointDuringShutdown {
+				level.Info(util.Logger).Log("msg", "creating checkpoint before shutdown")
+				if err := w.performCheckpoint(true); err != nil {
+					level.Error(util.Logger).Log("msg", "error checkpointing series during shutdown", "err", err)
+				}
 			}
 			return
 		}
@@ -396,7 +412,11 @@ func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Finge
 		return wireChunks, err
 	}
 
-	return wireChunks, cp.Log(buf)
+	err = cp.Log(buf)
+	if err == nil {
+		w.checkpointLoggedBytesTotal.Add(float64(len(buf)))
+	}
+	return wireChunks, err
 }
 
 type walRecoveryParameters struct {

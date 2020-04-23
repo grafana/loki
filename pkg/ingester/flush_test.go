@@ -192,7 +192,7 @@ func defaultIngesterTestConfig(t *testing.T) Config {
 	cfg.ConcurrentFlushes = 1
 	cfg.LifecyclerConfig.RingConfig.KVStore.Mock = kvClient
 	cfg.LifecyclerConfig.NumTokens = 1
-	cfg.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
+	cfg.LifecyclerConfig.ListenPort = 0
 	cfg.LifecyclerConfig.Addr = "localhost"
 	cfg.LifecyclerConfig.ID = "localhost"
 	cfg.LifecyclerConfig.FinalSleep = 0

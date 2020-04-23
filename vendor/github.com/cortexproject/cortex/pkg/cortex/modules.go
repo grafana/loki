@@ -224,8 +224,23 @@ func (t *Cortex) initStoreQueryable(cfg *Config) (services.Service, error) {
 		return nil, nil
 	}
 
-	if cfg.Storage.Engine == storage.StorageEngineTSDB {
+	if cfg.Storage.Engine == storage.StorageEngineTSDB && !cfg.TSDB.StoreGatewayEnabled {
 		storeQueryable, err := querier.NewBlockQueryable(cfg.TSDB, cfg.Server.LogLevel, prometheus.DefaultRegisterer)
+		if err != nil {
+			return nil, err
+		}
+		t.storeQueryable = storeQueryable
+		return storeQueryable, nil
+	}
+
+	if cfg.Storage.Engine == storage.StorageEngineTSDB && cfg.TSDB.StoreGatewayEnabled {
+		// When running in single binary, if the blocks sharding is disabled and no custom
+		// store-gateway address has been configured, we can set it to the running process.
+		if cfg.Target == All && !cfg.StoreGateway.ShardingEnabled && cfg.Querier.StoreGatewayAddresses == "" {
+			cfg.Querier.StoreGatewayAddresses = fmt.Sprintf("127.0.0.1:%d", cfg.Server.GRPCListenPort)
+		}
+
+		storeQueryable, err := querier.NewBlocksStoreQueryableFromConfig(cfg.Querier, cfg.StoreGateway, cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
 		if err != nil {
 			return nil, err
 		}
@@ -239,7 +254,7 @@ func (t *Cortex) initStoreQueryable(cfg *Config) (services.Service, error) {
 func (t *Cortex) initIngester(cfg *Config) (serv services.Service, err error) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
-	cfg.Ingester.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
+	cfg.Ingester.LifecyclerConfig.ListenPort = cfg.Server.GRPCListenPort
 	cfg.Ingester.TSDBEnabled = cfg.Storage.Engine == storage.StorageEngineTSDB
 	cfg.Ingester.TSDBConfig = cfg.TSDB
 	cfg.Ingester.ShardByAllLabels = cfg.Distributor.ShardByAllLabels
@@ -278,7 +293,7 @@ func (t *Cortex) initStore(cfg *Config) (serv services.Service, err error) {
 		return
 	}
 
-	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides)
+	t.store, err = storage.NewStore(cfg.Storage, cfg.ChunkStore, cfg.Schema, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -497,7 +512,7 @@ func (t *Cortex) initDataPurger(cfg *Config) (services.Service, error) {
 		return nil, err
 	}
 
-	t.dataPurger, err = purger.NewDataPurger(cfg.DataPurgerConfig, t.deletesStore, t.store, storageClient)
+	t.dataPurger, err = purger.NewDataPurger(cfg.DataPurgerConfig, t.deletesStore, t.store, storageClient, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

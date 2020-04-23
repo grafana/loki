@@ -10,7 +10,7 @@ require (
 	github.com/containerd/containerd v1.3.2 // indirect
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
 	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
-	github.com/cortexproject/cortex v1.0.1-0.20200416152925-3fe04dcff1d8
+	github.com/cortexproject/cortex v1.0.1-0.20200423101820-36496a074bc4
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/docker/docker v0.7.3-0.20190817195342-4760db040282

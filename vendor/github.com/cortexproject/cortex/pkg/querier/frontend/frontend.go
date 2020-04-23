@@ -163,7 +163,16 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 	queryResponseTime := time.Since(startTime)
 
 	if f.cfg.LogQueriesLongerThan > 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
-		level.Info(f.log).Log("msg", "slow query", "org_id", userID, "url", fmt.Sprintf("http://%s", r.Host+r.RequestURI), "time_taken", queryResponseTime.String())
+		logMessage := []interface{}{"msg", "slow query",
+			"org_id", userID,
+			"url", fmt.Sprintf("http://%s", r.Host+r.RequestURI),
+			"time_taken", queryResponseTime.String(),
+		}
+		pf := r.PostForm.Encode()
+		if pf != "" {
+			logMessage = append(logMessage, "body", pf)
+		}
+		level.Info(f.log).Log(logMessage...)
 	}
 
 	if err != nil {
@@ -176,7 +185,11 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 		hs[h] = vs
 	}
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+
+	if _, err = io.Copy(w, resp.Body); err != nil {
+		server.WriteError(w, err)
+		return
+	}
 }
 
 func writeError(w http.ResponseWriter, err error) {

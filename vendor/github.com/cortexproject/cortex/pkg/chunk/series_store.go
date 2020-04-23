@@ -61,6 +61,11 @@ var (
 		// For 100k series for 7 week, could be 1.2m - 10*(8^(7-1)) = 2.6m.
 		Buckets: prometheus.ExponentialBuckets(10, 8, 7),
 	})
+	dedupedChunksTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "chunk_store_deduped_chunks_total",
+		Help:      "Count of chunks which were not stored because they have already been stored by another replica.",
+	})
 )
 
 // seriesStore implements Store
@@ -414,6 +419,7 @@ func (c *seriesStore) PutOne(ctx context.Context, from, through model.Time, chun
 	// If this chunk is in cache it must already be in the database so we don't need to write it again
 	found, _, _ := c.cache.Fetch(ctx, []string{chunk.ExternalKey()})
 	if len(found) > 0 {
+		dedupedChunksTotal.Inc()
 		return nil
 	}
 

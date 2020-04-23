@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
@@ -48,6 +49,9 @@ type Config struct {
 	// However, we need to use active query tracker, otherwise we cannot limit Max Concurrent queries in the PromQL
 	// engine.
 	ActiveQueryTrackerDir string `yaml:"active_query_tracker_dir"`
+
+	// Blocks storage only.
+	StoreGatewayAddresses string `yaml:"store_gateway_addresses"`
 }
 
 var (
@@ -70,6 +74,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
 	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should only be queried from storage and not just ingesters. 0 means all queries are sent to store.")
 	f.StringVar(&cfg.ActiveQueryTrackerDir, "querier.active-query-tracker-dir", "./active-query-tracker", "Active query tracker monitors active queries, and writes them to the file in given directory. If Cortex discovers any queries in this log during startup, it will log them to the log file. Setting to empty value disables active query tracker, which also disables -querier.max-concurrent option.")
+	f.StringVar(&cfg.StoreGatewayAddresses, "experimental.querier.store-gateway-addresses", "", "Comma separated list of store-gateway addresses in DNS Service Discovery format. This option should be set when using the experimental blocks storage and the store-gateway sharding is disabled (when enabled, the store-gateway instances form a ring and addresses are picked from the ring).")
 }
 
 // Validate the config
@@ -85,6 +90,14 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
+func (cfg *Config) GetStoreGatewayAddresses() []string {
+	if cfg.StoreGatewayAddresses == "" {
+		return nil
+	}
+
+	return strings.Split(cfg.StoreGatewayAddresses, ",")
+}
+
 func getChunksIteratorFunction(cfg Config) chunkIteratorFunc {
 	if cfg.BatchIterators {
 		return batch.NewChunkMergeIterator
@@ -94,6 +107,7 @@ func getChunksIteratorFunction(cfg Config) chunkIteratorFunc {
 	return mergeChunks
 }
 
+// NewChunkStoreQueryable returns the storage.Queryable implementation against the chunks store.
 func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storage.Queryable {
 	return newChunkStoreQueryable(chunkStore, getChunksIteratorFunction(cfg))
 }

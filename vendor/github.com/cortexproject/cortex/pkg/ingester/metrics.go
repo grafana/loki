@@ -45,8 +45,6 @@ type ingesterMetrics struct {
 	chunkUtilization              prometheus.Histogram
 	chunkLength                   prometheus.Histogram
 	chunkSize                     prometheus.Histogram
-	chunksPerUser                 *prometheus.CounterVec
-	chunkSizePerUser              *prometheus.CounterVec
 	chunkAge                      prometheus.Histogram
 	memoryChunks                  prometheus.Gauge
 	flushReasons                  *prometheus.CounterVec
@@ -153,14 +151,6 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Help:    "Distribution of stored chunk sizes (when stored).",
 			Buckets: prometheus.ExponentialBuckets(500, 2, 5), // biggest bucket is 500*2^(5-1) = 8000
 		}),
-		chunksPerUser: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_chunks_stored_total",
-			Help: "Total stored chunks per user.",
-		}, []string{"user"}),
-		chunkSizePerUser: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_chunk_stored_bytes_total",
-			Help: "Total bytes stored in chunks per user.",
-		}, []string{"user"}),
 		chunkAge: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name: "cortex_ingester_chunk_age_seconds",
 			Help: "Distribution of chunk ages (when stored).",

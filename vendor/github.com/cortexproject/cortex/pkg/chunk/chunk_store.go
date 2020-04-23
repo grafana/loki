@@ -441,8 +441,8 @@ func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thro
 	} else if matcher.Type == labels.MatchEqual {
 		labelName = matcher.Name
 		queries, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, matcher.Value)
-	} else if matcher.Type == labels.MatchRegexp && len(findSetMatches(matcher.Value)) > 0 {
-		set := findSetMatches(matcher.Value)
+	} else if matcher.Type == labels.MatchRegexp && len(FindSetMatches(matcher.Value)) > 0 {
+		set := FindSetMatches(matcher.Value)
 		for _, v := range set {
 			var qs []IndexQuery
 			qs, err = c.schema.GetReadQueriesForMetricLabelValue(from, through, userID, metricName, matcher.Name, v)

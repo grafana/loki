@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/common/route"
@@ -177,7 +179,7 @@ func (a *API) RegisterIngester(i *ingester.Ingester, pushConfig distributor.Conf
 // match the Prometheus API but mirror it closely enough to justify their routing under the Prometheus
 // component/
 func (a *API) RegisterPurger(store *purger.DeleteStore) {
-	deleteRequestHandler := purger.NewDeleteRequestHandler(store)
+	deleteRequestHandler := purger.NewDeleteRequestHandler(store, prometheus.DefaultRegisterer)
 
 	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler), true, "PUT", "POST")
 	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler), true, "GET")
