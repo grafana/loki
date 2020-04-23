@@ -692,12 +692,13 @@ for from specific time periods.
 # store and object_store below affect which <storage_config> key is
 # used.
 
-# Which store to use for the index. Either cassandra, bigtable, aws-dynamo, or
-# boltdb
+# Which store to use for the index. Either aws, gcp, bigtable, bigtable-hashed,
+# cassandra, or boltdb.
 store: <string>
 
-# Which store to use for the chunks. Either gcs, s3, inmemory, filesystem,
-# cassandra. If omitted, defaults to same value as store.
+# Which store to use for the chunks. Either aws, aws-dynamo, azure, gcp,
+# bigtable, gcs, cassandra, or filesystem. If omitted, defaults to the same
+# value as store.
 [object_store: <string>]
 
 # The schema version to use, current recommended schema is v11.
