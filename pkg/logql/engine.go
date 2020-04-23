@@ -26,6 +26,7 @@ var (
 		Help:      "LogQL query timings",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"query_type"})
+	lastEntryMinTime = time.Unix(-100, 0)
 )
 
 // ValueTypeStreams promql.ValueType for log streams
@@ -304,7 +305,7 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 	respSize := uint32(0)
 	// lastEntry should be a really old time so that the first comparison is always true, we use a negative
 	// value here because many unit tests start at time.Unix(0,0)
-	lastEntry := time.Unix(-100, 0)
+	lastEntry := lastEntryMinTime
 	for respSize < size && i.Next() {
 		labels, entry := i.Labels(), i.Entry()
 		forwardShouldOutput := dir == logproto.FORWARD &&
