@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -154,6 +155,12 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 			New: func() interface{} {
 				return &Record{}
 			},
+		}
+	}
+
+	if cfg.WALConfig.WALEnabled || cfg.WALConfig.Recover {
+		if err := os.MkdirAll(cfg.WALConfig.Dir, os.ModePerm); err != nil {
+			return nil, err
 		}
 	}
 

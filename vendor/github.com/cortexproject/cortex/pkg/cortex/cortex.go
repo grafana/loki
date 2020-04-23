@@ -92,7 +92,7 @@ type Config struct {
 	Encoding         encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 	TSDB             tsdb.Config              `yaml:"tsdb"`
 	Compactor        compactor.Config         `yaml:"compactor"`
-	StoreGateway     storegateway.Config      `yaml:"store_gateway" doc:"hidden"` // this component is not yet finished.
+	StoreGateway     storegateway.Config      `yaml:"store_gateway"`
 	DataPurgerConfig purger.Config            `yaml:"purger"`
 
 	Ruler         ruler.Config                               `yaml:"ruler"`
