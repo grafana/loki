@@ -62,18 +62,7 @@ func step(r *http.Request, start, end time.Time) (time.Duration, error) {
 	if value == "" {
 		return time.Duration(defaultQueryRangeStep(start, end)) * time.Second, nil
 	}
-
-	if d, err := strconv.ParseFloat(value, 64); err == nil {
-		ts := d * float64(time.Second)
-		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
-			return 0, errors.Errorf("cannot parse %q to a valid duration. It overflows int64", value)
-		}
-		return time.Duration(ts), nil
-	}
-	if d, err := model.ParseDuration(value); err == nil {
-		return time.Duration(d), nil
-	}
-	return 0, errors.Errorf("cannot parse %q to a valid duration", value)
+	return parseSecondsOrDuration(value)
 }
 
 func interval(r *http.Request) (time.Duration, error) {
@@ -81,19 +70,7 @@ func interval(r *http.Request) (time.Duration, error) {
 	if value == "" {
 		return 0, nil
 	}
-	// Allow passing as no unit seconds
-	if d, err := strconv.ParseFloat(value, 64); err == nil {
-		ts := d * float64(time.Second)
-		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
-			return 0, errors.Errorf("cannot parse %q to a valid duration. It overflows int64", value)
-		}
-		return time.Duration(ts), nil
-	}
-	// Or parse as a duration
-	if d, err := model.ParseDuration(value); err == nil {
-		return time.Duration(d), nil
-	}
-	return 0, errors.Errorf("cannot parse %q to a valid duration", value)
+	return parseSecondsOrDuration(value)
 }
 
 // Match extracts and parses multiple matcher groups from a slice of strings
@@ -179,4 +156,18 @@ func parseDirection(value string, def logproto.Direction) (logproto.Direction, e
 		return logproto.FORWARD, fmt.Errorf("invalid direction '%s'", value)
 	}
 	return logproto.Direction(d), nil
+}
+
+func parseSecondsOrDuration(value string) (time.Duration, error) {
+	if d, err := strconv.ParseFloat(value, 64); err == nil {
+		ts := d * float64(time.Second)
+		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
+			return 0, errors.Errorf("cannot parse %q to a valid duration. It overflows int64", value)
+		}
+		return time.Duration(ts), nil
+	}
+	if d, err := model.ParseDuration(value); err == nil {
+		return time.Duration(d), nil
+	}
+	return 0, errors.Errorf("cannot parse %q to a valid duration", value)
 }
