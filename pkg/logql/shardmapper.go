@@ -48,31 +48,31 @@ func NewShardingMetrics(registerer prometheus.Registerer) *ShardingMetrics {
 	}
 }
 
-// ShardRecorder constructs a recorder using the underlying metrics.
-func (m *ShardingMetrics) ShardRecorder() *ShardRecorder {
-	return &ShardRecorder{
+// shardRecorder constructs a recorder using the underlying metrics.
+func (m *ShardingMetrics) ShardRecorder() *shardRecorder {
+	return &shardRecorder{
 		ShardingMetrics: m,
 	}
 }
 
-// ShardRecorder wraps a vector & histogram, providing an easy way to increment sharding counts.
+// shardRecorder wraps a vector & histogram, providing an easy way to increment sharding counts.
 // and unify them into histogram entries.
 // NOT SAFE FOR CONCURRENT USE! We avoid introducing mutex locking here
 // because AST mapping is single threaded.
-type ShardRecorder struct {
+type shardRecorder struct {
 	done  bool
 	total int
 	*ShardingMetrics
 }
 
 // Add increments both the shard count and tracks it for the eventual histogram entry.
-func (r *ShardRecorder) Add(x int, key string) {
+func (r *shardRecorder) Add(x int, key string) {
 	r.total += x
 	r.shards.WithLabelValues(key).Add(float64(x))
 }
 
 // Finish idemptotently records a histogram entry with the total shard factor.
-func (r *ShardRecorder) Finish() {
+func (r *shardRecorder) Finish() {
 	if !r.done {
 		r.done = true
 		r.shardFactor.Observe(float64(r.total))
@@ -130,7 +130,7 @@ func (m ShardMapper) Parse(query string) (Expr, error) {
 	return mapped, err
 }
 
-func (m ShardMapper) Map(expr Expr, r *ShardRecorder) (Expr, error) {
+func (m ShardMapper) Map(expr Expr, r *shardRecorder) (Expr, error) {
 	switch e := expr.(type) {
 	case *literalExpr:
 		return e, nil
@@ -165,7 +165,7 @@ func (m ShardMapper) Map(expr Expr, r *ShardRecorder) (Expr, error) {
 	}
 }
 
-func (m ShardMapper) mapLogSelectorExpr(expr LogSelectorExpr, r *ShardRecorder) LogSelectorExpr {
+func (m ShardMapper) mapLogSelectorExpr(expr LogSelectorExpr, r *shardRecorder) LogSelectorExpr {
 	var head *ConcatLogSelectorExpr
 	for i := m.shards - 1; i >= 0; i-- {
 		head = &ConcatLogSelectorExpr{
@@ -184,7 +184,7 @@ func (m ShardMapper) mapLogSelectorExpr(expr LogSelectorExpr, r *ShardRecorder) 
 	return head
 }
 
-func (m ShardMapper) mapSampleExpr(expr SampleExpr, r *ShardRecorder) SampleExpr {
+func (m ShardMapper) mapSampleExpr(expr SampleExpr, r *shardRecorder) SampleExpr {
 	var head *ConcatSampleExpr
 	for i := m.shards - 1; i >= 0; i-- {
 		head = &ConcatSampleExpr{
@@ -205,7 +205,7 @@ func (m ShardMapper) mapSampleExpr(expr SampleExpr, r *ShardRecorder) SampleExpr
 
 // technically, std{dev,var} are also parallelizable if there is no cross-shard merging
 // in descendent nodes in the AST. This optimization is currently avoided for simplicity.
-func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *ShardRecorder) (SampleExpr, error) {
+func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *shardRecorder) (SampleExpr, error) {
 
 	// if this AST contains unshardable operations, don't shard this at this level,
 	// but attempt to shard a child node.
@@ -282,7 +282,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *vectorAggregationExpr, r *Sh
 	}
 }
 
-func (m ShardMapper) mapRangeAggregationExpr(expr *rangeAggregationExpr, r *ShardRecorder) SampleExpr {
+func (m ShardMapper) mapRangeAggregationExpr(expr *rangeAggregationExpr, r *shardRecorder) SampleExpr {
 	switch expr.operation {
 	case OpTypeCountOverTime, OpTypeRate:
 		// count_over_time(x) -> count_over_time(x, shard=1) ++ count_over_time(x, shard=2)...
