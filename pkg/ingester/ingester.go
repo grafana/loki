@@ -103,9 +103,9 @@ type Ingester struct {
 
 	store ChunkStore
 
-	loopDone     sync.WaitGroup
-	loopQuit     chan struct{}
-	trailersQuit chan struct{}
+	loopDone    sync.WaitGroup
+	loopQuit    chan struct{}
+	tailersQuit chan struct{}
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
@@ -139,7 +139,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		store:        store,
 		loopQuit:     make(chan struct{}),
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		trailersQuit: make(chan struct{}),
+		tailersQuit:  make(chan struct{}),
 		factory: func() chunkenc.Chunk {
 			return chunkenc.NewMemChunk(enc, cfg.BlockSize, cfg.TargetChunkSize)
 		},
@@ -195,8 +195,8 @@ func (i *Ingester) running(ctx context.Context) error {
 		serviceError = fmt.Errorf("lifecycler failed: %w", err)
 	}
 
-	// close trailers before stopping our loop
-	close(i.trailersQuit)
+	// close tailers before stopping our loop
+	close(i.tailersQuit)
 	for _, instance := range i.getInstances() {
 		instance.closeTailers()
 	}
@@ -367,7 +367,7 @@ func (i *Ingester) getInstances() []*instance {
 // Tail logs matching given query
 func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
 	select {
-	case <-i.trailersQuit:
+	case <-i.tailersQuit:
 		return errors.New("Ingester is stopping")
 	default:
 	}
