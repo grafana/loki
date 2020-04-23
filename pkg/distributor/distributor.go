@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"net/http"
-	"os"
 	"sync/atomic"
 	"time"
 
@@ -16,7 +15,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/pkg/errors"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -34,7 +32,6 @@ const (
 	metricName = "logs"
 )
 
-var readinessProbeSuccess = []byte("Ready")
 var (
 	ingesterAppends = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
@@ -75,6 +72,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Distributor coordinates replicates and distribution of log streams.
 type Distributor struct {
+	services.Service
+
 	cfg           Config
 	clientCfg     client.Config
 	ingestersRing ring.ReadRing
@@ -84,6 +83,9 @@ type Distributor struct {
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
 	distributorsRing *ring.Lifecycler
+
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
 
 	// Per-user rate limiter.
 	ingestionRateLimiter *limiter.RateLimiter
@@ -107,6 +109,8 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 	var ingestionRateStrategy limiter.RateLimiterStrategy
 	var distributorsRing *ring.Lifecycler
 
+	var servs []services.Service
+
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		var err error
 		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, false)
@@ -114,18 +118,7 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 			return nil, err
 		}
 
-		distributorsRing.AddListener(services.NewListener(nil, nil, nil, nil, func(_ services.State, failure error) {
-			// lifecycler used to do os.Exit(1) on its own failure, but now it just goes into Failed state.
-			// for now we just simulate old behaviour here. When Distributor itself becomes a service, it will enter Failed state as well.
-			level.Error(cortex_util.Logger).Log("msg", "lifecycler failed", "err", err)
-			os.Exit(1)
-		}))
-
-		err = services.StartAndAwaitRunning(context.Background(), distributorsRing)
-		if err != nil {
-			return nil, err
-		}
-
+		servs = append(servs, distributorsRing)
 		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, distributorsRing)
 	} else {
 		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
@@ -141,18 +134,33 @@ func New(cfg Config, clientCfg client.Config, ingestersRing ring.ReadRing, overr
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 	}
 
-	if err := services.StartAndAwaitRunning(context.Background(), d.pool); err != nil {
-		return nil, errors.Wrap(err, "starting client pool")
+	servs = append(servs, d.pool)
+	d.subservices, err = services.NewManager(servs...)
+	if err != nil {
+		return nil, errors.Wrap(err, "services manager")
 	}
+	d.subservicesWatcher = services.NewFailureWatcher()
+	d.subservicesWatcher.WatchManager(d.subservices)
+	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
 
 	return &d, nil
 }
 
-func (d *Distributor) Stop() {
-	if d.distributorsRing != nil {
-		_ = services.StopAndAwaitTerminated(context.Background(), d.distributorsRing)
+func (d *Distributor) starting(ctx context.Context) error {
+	return services.StartManagerAndAwaitHealthy(ctx, d.subservices)
+}
+
+func (d *Distributor) running(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-d.subservicesWatcher.Chan():
+		return errors.Wrap(err, "distributor subservice failed")
 	}
-	_ = services.StopAndAwaitTerminated(context.Background(), d.pool)
+}
+
+func (d *Distributor) stopping(_ error) error {
+	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
@@ -170,21 +178,6 @@ type pushTracker struct {
 	samplesFailed  int32
 	done           chan struct{}
 	err            chan error
-}
-
-// ReadinessHandler is used to indicate to k8s when the distributor is ready.
-// Returns 200 when the distributor is ready, 500 otherwise.
-func (d *Distributor) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	_, err := d.ingestersRing.GetAll()
-	if err != nil {
-		http.Error(w, "Not ready: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(readinessProbeSuccess); err != nil {
-		level.Error(cortex_util.Logger).Log("msg", "error writing success message", "error", err)
-	}
 }
 
 // Push a set of streams.
