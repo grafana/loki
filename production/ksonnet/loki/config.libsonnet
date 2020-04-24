@@ -105,6 +105,7 @@
       frontend: {
         compress_responses: true,
         max_outstanding_per_tenant: 200,
+        log_queries_longer_than: '5s',
       },
       frontend_worker: {
         frontend_address: 'query-frontend.%s.svc.cluster.local:9095' % $._config.namespace,
