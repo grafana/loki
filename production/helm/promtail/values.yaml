@@ -118,7 +118,7 @@ extraVolumeMounts: []
 # Add extra Commandline args while starting up promtail.
 # more info : https://github.com/grafana/loki/pull/1530
 
-extraCommandlineArgs:[]
+extraCommandlineArgs: []
 # example:
 # extraCommandlineArgs:
 #   - -client.external-labels=hostname=$(HOSTNAME)
