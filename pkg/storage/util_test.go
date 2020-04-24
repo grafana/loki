@@ -49,6 +49,15 @@ func assertStream(t *testing.T, expected, actual []*logproto.Stream) {
 func newLazyChunk(stream logproto.Stream) *chunkenc.LazyChunk {
 	return &chunkenc.LazyChunk{
 		Fetcher: nil,
+		IsValid: true,
+		Chunk:   newChunk(stream),
+	}
+}
+
+func newLazyInvalidChunk(stream logproto.Stream) *chunkenc.LazyChunk {
+	return &chunkenc.LazyChunk{
+		Fetcher: nil,
+		IsValid: false,
 		Chunk:   newChunk(stream),
 	}
 }
@@ -119,6 +128,7 @@ func newMockChunkStore(streams []*logproto.Stream) *mockChunkStore {
 	}
 	return &mockChunkStore{chunks: chunks, client: &mockChunkStoreClient{chunks: chunks}}
 }
+
 func (m *mockChunkStore) Put(ctx context.Context, chunks []chunk.Chunk) error { return nil }
 func (m *mockChunkStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
 	return nil
