@@ -40,22 +40,33 @@ var (
 
 type hasChunksForIntervalFunc func(userID, seriesID string, from, through model.Time) (bool, error)
 
-// Schema interface defines methods to calculate the hash and range keys needed
+// Schema interfaces define methods to calculate the hash and range keys needed
 // to write or read chunks from the external index.
-type Schema interface {
-	// When doing a write, use this method to return the list of entries you should write to.
-	GetWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
 
-	// Should only be used with the seriesStore. TODO: Make seriesStore implement a different interface altogether.
-	// returns cache key string and []IndexEntry per bucket, matched in order
-	GetCacheKeysAndLabelWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]string, [][]IndexEntry, error)
-	GetChunkWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
-
+// BasicSchema has operation shared between StoreSchema and SeriesStoreSchema
+type BaseSchema interface {
 	// When doing a read, use these methods to return the list of entries you should query
 	GetReadQueriesForMetric(from, through model.Time, userID string, metricName string) ([]IndexQuery, error)
 	GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName string, labelName string) ([]IndexQuery, error)
 	GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName string, labelName string, labelValue string) ([]IndexQuery, error)
 	FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery
+}
+
+// StoreSchema is a schema used by store
+type StoreSchema interface {
+	BaseSchema
+
+	// When doing a write, use this method to return the list of entries you should write to.
+	GetWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
+}
+
+// SeriesStoreSchema is a schema used by seriesStore
+type SeriesStoreSchema interface {
+	BaseSchema
+
+	// returns cache key string and []IndexEntry per bucket, matched in order
+	GetCacheKeysAndLabelWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]string, [][]IndexEntry, error)
+	GetChunkWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
 
 	// If the query resulted in series IDs, use this method to find chunks.
 	GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error)
@@ -102,13 +113,39 @@ type IndexEntry struct {
 
 type schemaBucketsFunc func(from, through model.Time, userID string) []Bucket
 
-// schema implements Schema given a bucketing function and and set of range key callbacks
-type schema struct {
+// baseSchema implements BaseSchema given a bucketing function and and set of range key callbacks
+type baseSchema struct {
 	buckets schemaBucketsFunc
-	entries entries
+	entries baseEntries
 }
 
-func (s schema) GetWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
+// storeSchema implements StoreSchema given a bucketing function and and set of range key callbacks
+type storeSchema struct {
+	baseSchema
+	entries storeEntries
+}
+
+// seriesStoreSchema implements SeriesStoreSchema given a bucketing function and and set of range key callbacks
+type seriesStoreSchema struct {
+	baseSchema
+	entries seriesStoreEntries
+}
+
+func newStoreSchema(buckets schemaBucketsFunc, entries storeEntries) storeSchema {
+	return storeSchema{
+		baseSchema: baseSchema{buckets: buckets, entries: entries},
+		entries:    entries,
+	}
+}
+
+func newSeriesStoreSchema(buckets schemaBucketsFunc, entries seriesStoreEntries) seriesStoreSchema {
+	return seriesStoreSchema{
+		baseSchema: baseSchema{buckets: buckets, entries: entries},
+		entries:    entries,
+	}
+}
+
+func (s storeSchema) GetWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
 	var result []IndexEntry
 
 	for _, bucket := range s.buckets(from, through, userID) {
@@ -122,7 +159,7 @@ func (s schema) GetWriteEntries(from, through model.Time, userID string, metricN
 }
 
 // returns cache key string and []IndexEntry per bucket, matched in order
-func (s schema) GetCacheKeysAndLabelWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]string, [][]IndexEntry, error) {
+func (s seriesStoreSchema) GetCacheKeysAndLabelWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]string, [][]IndexEntry, error) {
 	var keys []string
 	var indexEntries [][]IndexEntry
 
@@ -148,7 +185,7 @@ func (s schema) GetCacheKeysAndLabelWriteEntries(from, through model.Time, userI
 	return keys, indexEntries, nil
 }
 
-func (s schema) GetChunkWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
+func (s seriesStoreSchema) GetChunkWriteEntries(from, through model.Time, userID string, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
 	var result []IndexEntry
 
 	for _, bucket := range s.buckets(from, through, userID) {
@@ -162,7 +199,7 @@ func (s schema) GetChunkWriteEntries(from, through model.Time, userID string, me
 
 }
 
-func (s schema) GetReadQueriesForMetric(from, through model.Time, userID string, metricName string) ([]IndexQuery, error) {
+func (s baseSchema) GetReadQueriesForMetric(from, through model.Time, userID string, metricName string) ([]IndexQuery, error) {
 	var result []IndexQuery
 
 	buckets := s.buckets(from, through, userID)
@@ -176,7 +213,7 @@ func (s schema) GetReadQueriesForMetric(from, through model.Time, userID string,
 	return result, nil
 }
 
-func (s schema) GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName string, labelName string) ([]IndexQuery, error) {
+func (s baseSchema) GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName string, labelName string) ([]IndexQuery, error) {
 	var result []IndexQuery
 
 	buckets := s.buckets(from, through, userID)
@@ -190,7 +227,7 @@ func (s schema) GetReadQueriesForMetricLabel(from, through model.Time, userID st
 	return result, nil
 }
 
-func (s schema) GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName string, labelName string, labelValue string) ([]IndexQuery, error) {
+func (s baseSchema) GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName string, labelName string, labelValue string) ([]IndexQuery, error) {
 	var result []IndexQuery
 
 	buckets := s.buckets(from, through, userID)
@@ -204,7 +241,7 @@ func (s schema) GetReadQueriesForMetricLabelValue(from, through model.Time, user
 	return result, nil
 }
 
-func (s schema) GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
+func (s seriesStoreSchema) GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
 	var result []IndexQuery
 
 	buckets := s.buckets(from, through, userID)
@@ -222,7 +259,7 @@ func (s schema) GetChunksForSeries(from, through model.Time, userID string, seri
 // Since SeriesIDs are created per bucket, it makes sure that we don't include series entries which are in use by verifying using hasChunksForIntervalFunc i.e
 // It checks first and last buckets covered by the time interval to see if a SeriesID still has chunks in the store,
 // if yes then it doesn't include IndexEntry's for that bucket for deletion.
-func (s schema) GetSeriesDeleteEntries(from, through model.Time, userID string, metric labels.Labels, hasChunksForIntervalFunc hasChunksForIntervalFunc) ([]IndexEntry, error) {
+func (s seriesStoreSchema) GetSeriesDeleteEntries(from, through model.Time, userID string, metric labels.Labels, hasChunksForIntervalFunc hasChunksForIntervalFunc) ([]IndexEntry, error) {
 	metricName := metric.Get(model.MetricNameLabel)
 	if metricName == "" {
 		return nil, ErrMetricNameLabelMissing
@@ -290,7 +327,7 @@ func (s schema) GetSeriesDeleteEntries(from, through model.Time, userID string, 
 	return result, nil
 }
 
-func (s schema) GetLabelNamesForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
+func (s seriesStoreSchema) GetLabelNamesForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error) {
 	var result []IndexQuery
 
 	buckets := s.buckets(from, through, userID)
@@ -304,21 +341,33 @@ func (s schema) GetLabelNamesForSeries(from, through model.Time, userID string, 
 	return result, nil
 }
 
-func (s schema) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+func (s baseSchema) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
 	return s.entries.FilterReadQueries(queries, shard)
 }
 
-type entries interface {
-	GetWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
-	GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
-	GetChunkWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
-
+type baseEntries interface {
 	GetReadMetricQueries(bucket Bucket, metricName string) ([]IndexQuery, error)
 	GetReadMetricLabelQueries(bucket Bucket, metricName string, labelName string) ([]IndexQuery, error)
 	GetReadMetricLabelValueQueries(bucket Bucket, metricName string, labelName string, labelValue string) ([]IndexQuery, error)
+	FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery
+}
+
+// used by storeSchema
+type storeEntries interface {
+	baseEntries
+
+	GetWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
+}
+
+// used by seriesStoreSchema
+type seriesStoreEntries interface {
+	baseEntries
+
+	GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
+	GetChunkWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
+
 	GetChunksForSeries(bucket Bucket, seriesID []byte) ([]IndexQuery, error)
 	GetLabelNamesForSeries(bucket Bucket, seriesID []byte) ([]IndexQuery, error)
-	FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery
 }
 
 // original entries:
@@ -344,13 +393,6 @@ func (originalEntries) GetWriteEntries(bucket Bucket, metricName string, labels 
 		})
 	}
 	return result, nil
-}
-
-func (originalEntries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	return nil, ErrNotSupported
-}
-func (originalEntries) GetChunkWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	return nil, ErrNotSupported
 }
 
 func (originalEntries) GetReadMetricQueries(bucket Bucket, metricName string) ([]IndexQuery, error) {
@@ -386,14 +428,6 @@ func (originalEntries) GetReadMetricLabelValueQueries(bucket Bucket, metricName 
 	}, nil
 }
 
-func (originalEntries) GetChunksForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
-	return nil, ErrNotSupported
-}
-
-func (originalEntries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
-	return nil, ErrNotSupported
-}
-
 func (originalEntries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
 	return queries
 }
@@ -421,13 +455,6 @@ func (base64Entries) GetWriteEntries(bucket Bucket, metricName string, labels la
 		})
 	}
 	return result, nil
-}
-
-func (base64Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	return nil, ErrNotSupported
-}
-func (base64Entries) GetChunkWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	return nil, ErrNotSupported
 }
 
 func (base64Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName string, labelName string, labelValue string) ([]IndexQuery, error) {
@@ -473,13 +500,6 @@ func (labelNameInHashKeyEntries) GetWriteEntries(bucket Bucket, metricName strin
 	return entries, nil
 }
 
-func (labelNameInHashKeyEntries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	return nil, ErrNotSupported
-}
-func (labelNameInHashKeyEntries) GetChunkWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	return nil, ErrNotSupported
-}
-
 func (labelNameInHashKeyEntries) GetReadMetricQueries(bucket Bucket, metricName string) ([]IndexQuery, error) {
 	return []IndexQuery{
 		{
@@ -507,14 +527,6 @@ func (labelNameInHashKeyEntries) GetReadMetricLabelValueQueries(bucket Bucket, m
 			RangeValuePrefix: rangeValuePrefix(nil, encodedBytes),
 		},
 	}, nil
-}
-
-func (labelNameInHashKeyEntries) GetChunksForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
-	return nil, ErrNotSupported
-}
-
-func (labelNameInHashKeyEntries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
-	return nil, ErrNotSupported
 }
 
 func (labelNameInHashKeyEntries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
@@ -553,13 +565,6 @@ func (v5Entries) GetWriteEntries(bucket Bucket, metricName string, labels labels
 	return entries, nil
 }
 
-func (v5Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	return nil, ErrNotSupported
-}
-func (v5Entries) GetChunkWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	return nil, ErrNotSupported
-}
-
 func (v5Entries) GetReadMetricQueries(bucket Bucket, metricName string) ([]IndexQuery, error) {
 	return []IndexQuery{
 		{
@@ -585,14 +590,6 @@ func (v5Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName string
 			HashValue: fmt.Sprintf("%s:%s:%s", bucket.hashKey, metricName, labelName),
 		},
 	}, nil
-}
-
-func (v5Entries) GetChunksForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
-	return nil, ErrNotSupported
-}
-
-func (v5Entries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
-	return nil, ErrNotSupported
 }
 
 func (v5Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
@@ -630,13 +627,6 @@ func (v6Entries) GetWriteEntries(bucket Bucket, metricName string, labels labels
 	return entries, nil
 }
 
-func (v6Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	return nil, ErrNotSupported
-}
-func (v6Entries) GetChunkWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	return nil, ErrNotSupported
-}
-
 func (v6Entries) GetReadMetricQueries(bucket Bucket, metricName string) ([]IndexQuery, error) {
 	encodedFromBytes := encodeTime(bucket.from)
 	return []IndexQuery{
@@ -671,24 +661,12 @@ func (v6Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName string
 	}, nil
 }
 
-func (v6Entries) GetChunksForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
-	return nil, ErrNotSupported
-}
-
-func (v6Entries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
-	return nil, ErrNotSupported
-}
-
 func (v6Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
 	return queries
 }
 
 // v9Entries adds a layer of indirection between labels -> series -> chunks.
 type v9Entries struct{}
-
-func (v9Entries) GetWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	return nil, ErrNotSupported
-}
 
 func (v9Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
 	seriesID := labelsSeriesID(labels)
@@ -788,10 +766,6 @@ func (v9Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardA
 // v10Entries builds on v9 by sharding index rows to reduce their size.
 type v10Entries struct {
 	rowShards uint32
-}
-
-func (v10Entries) GetWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
-	return nil, ErrNotSupported
 }
 
 func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {

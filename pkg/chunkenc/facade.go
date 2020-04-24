@@ -24,14 +24,18 @@ func init() {
 
 // Facade for compatibility with cortex chunk type, so we can use its chunk store.
 type Facade struct {
-	c Chunk
+	c          Chunk
+	blockSize  int
+	targetSize int
 	encoding.Chunk
 }
 
 // NewFacade makes a new Facade.
-func NewFacade(c Chunk) encoding.Chunk {
+func NewFacade(c Chunk, blockSize, targetSize int) encoding.Chunk {
 	return &Facade{
-		c: c,
+		c:          c,
+		blockSize:  blockSize,
+		targetSize: targetSize,
 	}
 }
 
@@ -51,7 +55,7 @@ func (f Facade) Marshal(w io.Writer) error {
 // UnmarshalFromBuf implements encoding.Chunk.
 func (f *Facade) UnmarshalFromBuf(buf []byte) error {
 	var err error
-	f.c, err = NewByteChunk(buf)
+	f.c, err = NewByteChunk(buf, f.blockSize, f.targetSize)
 	return err
 }
 

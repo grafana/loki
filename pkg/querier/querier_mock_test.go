@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/ring"
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -70,10 +71,14 @@ func (c *querierClientMock) Context() context.Context {
 	return context.Background()
 }
 
+func (c *querierClientMock) Close() error {
+	return nil
+}
+
 // newIngesterClientMockFactory creates a factory function always returning
 // the input querierClientMock
-func newIngesterClientMockFactory(c *querierClientMock) cortex_client.Factory {
-	return func(addr string) (grpc_health_v1.HealthClient, error) {
+func newIngesterClientMockFactory(c *querierClientMock) ring_client.PoolFactory {
+	return func(addr string) (ring_client.PoolClient, error) {
 		return c, nil
 	}
 }
@@ -81,7 +86,7 @@ func newIngesterClientMockFactory(c *querierClientMock) cortex_client.Factory {
 // mockIngesterClientConfig returns an ingester client config suitable for testing
 func mockIngesterClientConfig() client.Config {
 	return client.Config{
-		PoolConfig: cortex_client.PoolConfig{
+		PoolConfig: distributor.PoolConfig{
 			ClientCleanupPeriod:  1 * time.Minute,
 			HealthCheckIngesters: false,
 			RemoteTimeout:        1 * time.Second,
@@ -243,6 +248,15 @@ func (s *storeMock) DeleteSeriesIDs(ctx context.Context, from, through model.Tim
 	panic("don't call me please")
 }
 
+func (s *storeMock) GetSeries(ctx context.Context, req logql.SelectParams) ([]logproto.SeriesIdentifier, error) {
+	args := s.Called(ctx, req)
+	res := args.Get(0)
+	if res == nil {
+		return []logproto.SeriesIdentifier(nil), args.Error(1)
+	}
+	return res.([]logproto.SeriesIdentifier), args.Error(1)
+}
+
 func (s *storeMock) Stop() {
 
 }
@@ -312,15 +326,6 @@ func mockIngesterDesc(addr string, state ring.IngesterState) ring.IngesterDesc {
 // starting at from
 func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 	return iter.NewStreamIterator(mockStream(from, quantity))
-}
-
-func mockStreamIterFromLabelSets(from, quantity int, sets []string) iter.EntryIterator {
-	var streams []*logproto.Stream
-	for _, s := range sets {
-		streams = append(streams, mockStreamWithLabels(from, quantity, s))
-	}
-
-	return iter.NewStreamsIterator(context.Background(), streams, logproto.FORWARD)
 }
 
 // mockStream return a stream with quantity entries, where entries timestamp and

@@ -31,20 +31,20 @@ var (
 
 // WorkerConfig is config for a worker.
 type WorkerConfig struct {
-	Address           string
-	Parallelism       int
-	DNSLookupDuration time.Duration
+	Address           string        `yaml:"frontend_address"`
+	Parallelism       int           `yaml:"parallelism"`
+	DNSLookupDuration time.Duration `yaml:"dns_lookup_duration"`
 
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.Address, "querier.frontend-address", "", "Address of query frontend service.")
+	f.StringVar(&cfg.Address, "querier.frontend-address", "", "Address of query frontend service, in host:port format.")
 	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process.")
 	f.DurationVar(&cfg.DNSLookupDuration, "querier.dns-lookup-period", 10*time.Second, "How often to query DNS.")
 
-	cfg.GRPCClientConfig.RegisterFlags("querier.frontend-client", f)
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
 }
 
 // Worker is the counter-part to the frontend, actually processing requests.

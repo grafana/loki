@@ -49,6 +49,15 @@ func assertStream(t *testing.T, expected, actual []*logproto.Stream) {
 func newLazyChunk(stream logproto.Stream) *chunkenc.LazyChunk {
 	return &chunkenc.LazyChunk{
 		Fetcher: nil,
+		IsValid: true,
+		Chunk:   newChunk(stream),
+	}
+}
+
+func newLazyInvalidChunk(stream logproto.Stream) *chunkenc.LazyChunk {
+	return &chunkenc.LazyChunk{
+		Fetcher: nil,
+		IsValid: false,
 		Chunk:   newChunk(stream),
 	}
 }
@@ -65,7 +74,7 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 		l = builder.Labels()
 	}
 	from, through := model.TimeFromUnixNano(stream.Entries[0].Timestamp.UnixNano()), model.TimeFromUnixNano(stream.Entries[0].Timestamp.UnixNano())
-	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP)
+	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP, 256*1024, 0)
 	for _, e := range stream.Entries {
 		if e.Timestamp.UnixNano() < from.UnixNano() {
 			from = model.TimeFromUnixNano(e.Timestamp.UnixNano())
@@ -76,7 +85,7 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 		_ = chk.Append(&e)
 	}
 	chk.Close()
-	c := chunk.NewChunk("fake", client.Fingerprint(l), l, chunkenc.NewFacade(chk), from, through)
+	c := chunk.NewChunk("fake", client.Fingerprint(l), l, chunkenc.NewFacade(chk, 0, 0), from, through)
 	// force the checksum creation
 	if err := c.Encode(); err != nil {
 		panic(err)
@@ -119,6 +128,7 @@ func newMockChunkStore(streams []*logproto.Stream) *mockChunkStore {
 	}
 	return &mockChunkStore{chunks: chunks, client: &mockChunkStoreClient{chunks: chunks}}
 }
+
 func (m *mockChunkStore) Put(ctx context.Context, chunks []chunk.Chunk) error { return nil }
 func (m *mockChunkStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
 	return nil
@@ -152,7 +162,13 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 		}
 		refs = append(refs, r)
 	}
-	f, err := chunk.NewChunkFetcher(cache.Config{}, false, m.client)
+
+	cache, err := cache.New(cache.Config{Prefix: "chunks"})
+	if err != nil {
+		panic(err)
+	}
+
+	f, err := chunk.NewChunkFetcher(cache, false, m.client)
 	if err != nil {
 		panic(err)
 	}

@@ -37,7 +37,7 @@ func NewDesc() *Desc {
 
 // AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
 // any other tokens are removed.
-func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState) {
+func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state IngesterState) IngesterDesc {
 	if d.Ingesters == nil {
 		d.Ingesters = map[string]IngesterDesc{}
 	}
@@ -47,9 +47,11 @@ func (d *Desc) AddIngester(id, addr string, tokens []uint32, state IngesterState
 		Timestamp: time.Now().Unix(),
 		State:     state,
 		Tokens:    tokens,
+		Zone:      zone,
 	}
 
 	d.Ingesters[id] = ingester
+	return ingester
 }
 
 // RemoveIngester removes the given ingester and all its tokens.
@@ -124,13 +126,19 @@ func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) b
 
 	switch op {
 	case Write:
-		healthy = (i.State == ACTIVE)
+		healthy = i.State == ACTIVE
 
 	case Read:
 		healthy = (i.State == ACTIVE) || (i.State == LEAVING) || (i.State == PENDING)
 
 	case Reporting:
 		healthy = true
+
+	case BlocksSync:
+		healthy = (i.State == JOINING) || (i.State == ACTIVE) || (i.State == LEAVING)
+
+	case BlocksRead:
+		healthy = i.State == ACTIVE
 	}
 
 	return healthy && time.Since(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
@@ -377,9 +385,10 @@ func (d *Desc) RemoveTombstones(limit time.Time) {
 type TokenDesc struct {
 	Token    uint32
 	Ingester string
+	Zone     string
 }
 
-// Returns sorted list of tokens with ingester names.
+// getTokens returns sorted list of tokens with ingester IDs, owned by each ingester in the ring.
 func (d *Desc) getTokens() []TokenDesc {
 	numTokens := 0
 	for _, ing := range d.Ingesters {
@@ -388,10 +397,34 @@ func (d *Desc) getTokens() []TokenDesc {
 	tokens := make([]TokenDesc, 0, numTokens)
 	for key, ing := range d.Ingesters {
 		for _, token := range ing.Tokens {
-			tokens = append(tokens, TokenDesc{Token: token, Ingester: key})
+			tokens = append(tokens, TokenDesc{Token: token, Ingester: key, Zone: ing.GetZone()})
 		}
 	}
 
 	sort.Sort(ByToken(tokens))
 	return tokens
+}
+
+// TokenDescs holds a sorted list of TokenDesc.
+type TokenDescs []TokenDesc
+
+func (t TokenDescs) Equals(other TokenDescs) bool {
+	if len(t) != len(other) {
+		return false
+	}
+
+	for i := 0; i < len(t); i++ {
+		if (t[i].Token != other[i].Token) || (t[i].Ingester != other[i].Ingester) || (t[i].Zone != other[i].Zone) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func GetOrCreateRingDesc(d interface{}) *Desc {
+	if d == nil {
+		return NewDesc()
+	}
+	return d.(*Desc)
 }

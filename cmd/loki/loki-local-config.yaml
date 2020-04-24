@@ -27,10 +27,10 @@ schema_config:
 
 storage_config:
   boltdb:
-    directory: /loki/index
+    directory: /tmp/loki/index
 
   filesystem:
-    directory: /loki/chunks
+    directory: /tmp/loki/chunks
 
 limits_config:
   enforce_metric_name: false
@@ -38,18 +38,8 @@ limits_config:
   reject_old_samples_max_age: 168h
 
 chunk_store_config:
-  max_look_back_period: 0
+  max_look_back_period: 0s
 
 table_manager:
-  chunk_tables_provisioning:
-    inactive_read_throughput: 0
-    inactive_write_throughput: 0
-    provisioned_read_throughput: 0
-    provisioned_write_throughput: 0
-  index_tables_provisioning:
-    inactive_read_throughput: 0
-    inactive_write_throughput: 0
-    provisioned_read_throughput: 0
-    provisioned_write_throughput: 0
   retention_deletes_enabled: false
   retention_period: 0s

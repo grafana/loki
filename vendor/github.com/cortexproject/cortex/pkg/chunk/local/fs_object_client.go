@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/thanos-io/thanos/pkg/runutil"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
@@ -74,41 +75,55 @@ func (f *FSObjectClient) PutObject(ctx context.Context, objectKey string, object
 		return err
 	}
 
-	defer fl.Close()
+	defer runutil.CloseWithLogOnErr(pkgUtil.Logger, fl, "fullPath: %s", fullPath)
 
 	_, err = io.Copy(fl, object)
-	return err
+	if err != nil {
+		return err
+	}
+
+	err = fl.Sync()
+	if err != nil {
+		return err
+	}
+
+	return fl.Close()
 }
 
-// List only objects from the store non-recursively
-func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, error) {
+// List objects and common-prefixes i.e directories from the store non-recursively
+func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
+	var commonPrefixes []chunk.StorageCommonPrefix
+
 	folderPath := filepath.Join(f.cfg.Directory, prefix)
 
 	_, err := os.Stat(folderPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return storageObjects, nil
+			return storageObjects, commonPrefixes, nil
 		}
-		return nil, err
+		return nil, nil, err
 	}
 
 	filesInfo, err := ioutil.ReadDir(folderPath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for _, fileInfo := range filesInfo {
+		nameWithPrefix := filepath.Join(prefix, fileInfo.Name())
+
 		if fileInfo.IsDir() {
+			commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(nameWithPrefix+chunk.DirDelim))
 			continue
 		}
 		storageObjects = append(storageObjects, chunk.StorageObject{
-			Key:        filepath.Join(prefix, fileInfo.Name()),
+			Key:        nameWithPrefix,
 			ModifiedAt: fileInfo.ModTime(),
 		})
 	}
 
-	return storageObjects, nil
+	return storageObjects, commonPrefixes, nil
 }
 
 func (f *FSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {

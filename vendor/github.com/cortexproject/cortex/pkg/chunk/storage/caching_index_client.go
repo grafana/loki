@@ -63,6 +63,7 @@ func newCachingIndexClient(client chunk.IndexClient, c cache.Cache, validity tim
 
 func (s *cachingIndexClient) Stop() {
 	s.cache.Stop()
+	s.IndexClient.Stop()
 }
 
 func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {

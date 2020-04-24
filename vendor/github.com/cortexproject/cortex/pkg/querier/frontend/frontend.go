@@ -40,7 +40,7 @@ var (
 type Config struct {
 	MaxOutstandingPerTenant int           `yaml:"max_outstanding_per_tenant"`
 	CompressResponses       bool          `yaml:"compress_responses"`
-	DownstreamURL           string        `yaml:"downstream"`
+	DownstreamURL           string        `yaml:"downstream_url"`
 	LogQueriesLongerThan    time.Duration `yaml:"log_queries_longer_than"`
 }
 
@@ -163,7 +163,16 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 	queryResponseTime := time.Since(startTime)
 
 	if f.cfg.LogQueriesLongerThan > 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
-		level.Info(f.log).Log("msg", "slow query", "org_id", userID, "url", fmt.Sprintf("http://%s", r.Host+r.RequestURI), "time_taken", queryResponseTime.String())
+		logMessage := []interface{}{"msg", "slow query",
+			"org_id", userID,
+			"url", fmt.Sprintf("http://%s", r.Host+r.RequestURI),
+			"time_taken", queryResponseTime.String(),
+		}
+		pf := r.PostForm.Encode()
+		if pf != "" {
+			logMessage = append(logMessage, "body", pf)
+		}
+		level.Info(f.log).Log(logMessage...)
 	}
 
 	if err != nil {
@@ -176,7 +185,11 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 		hs[h] = vs
 	}
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+
+	if _, err = io.Copy(w, resp.Body); err != nil {
+		server.WriteError(w, err)
+		return
+	}
 }
 
 func writeError(w http.ResponseWriter, err error) {
@@ -359,13 +372,17 @@ FindQueue:
 		return nil, err
 	}
 
-	i, n := 0, rand.Intn(len(f.queues))
-	for userID, queue := range f.queues {
-		if i < n {
-			i++
+	keys := make([]string, 0, len(f.queues))
+	for k := range f.queues {
+		keys = append(keys, k)
+	}
+	rand.Shuffle(len(keys), func(i, j int) { keys[i], keys[j] = keys[j], keys[i] })
+
+	for _, userID := range keys {
+		queue, ok := f.queues[userID]
+		if !ok {
 			continue
 		}
-
 		/*
 		  We want to dequeue the next unexpired request from the chosen tenant queue.
 		  The chance of choosing a particular tenant for dequeueing is (1/active_tenants).

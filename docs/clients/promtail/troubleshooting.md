@@ -13,22 +13,22 @@ In dry run mode, Promtail still support reading from a [positions](configuration
 To start Promtail in dry run mode use the flag `--dry-run` as shown in the example below:
 
 ```bash
-cat my.log | promtail --dry-run --client.url http://127.0.0.1:3100/loki/api/v1/push
+cat my.log | promtail --stdin --dry-run --client.url http://127.0.0.1:3100/loki/api/v1/push
 ```
 
 ## Pipe data to Promtail
 
-Promtail supports piping data for sending logs to Loki. This is a very useful way to troubleshooting your configuration.
+Promtail supports piping data for sending logs to Loki (via the flag `--stdin`). This is a very useful way to troubleshooting your configuration.
 Once you have promtail installed you can for instance use the following command to send logs to a local Loki instance:
 
 ```bash
-cat my.log | promtail --client.url http://127.0.0.1:3100/loki/api/v1/push
+cat my.log | promtail --stdin  --client.url http://127.0.0.1:3100/loki/api/v1/push
 ```
 
 You can also add additional labels from command line using:
 
 ```bash
-cat my.log | promtail --client.url http://127.0.0.1:3100/loki/api/v1/push --client.external-labels=k1=v1,k2=v2
+cat my.log | promtail --stdin  --client.url http://127.0.0.1:3100/loki/api/v1/push --client.external-labels=k1=v1,k2=v2
 ```
 
 This will add labels `k1` and `k2` with respective values `v1` and `v2`.
@@ -102,27 +102,27 @@ batched together before getting pushed to Loki, based on the max batch duration
 In case of any error while sending a log entries batch, `promtail` adopts a
 "retry then discard" strategy:
 
-- `promtail` retries to send log entry to the ingester up to `maxretries` times
+- `promtail` retries to send log entry to the ingester up to `max_retries` times
 - If all retries fail, `promtail` discards the batch of log entries (_which will
   be lost_) and proceeds with the next one
 
-You can configure the `maxretries` and the delay between two retries via the
+You can configure the `max_retries` and the delay between two retries via the
 `backoff_config` in the promtail config file:
 
 ```yaml
 clients:
   - url: INGESTER-URL
     backoff_config:
-      minbackoff: 100ms
-      maxbackoff: 10s
-      maxretries: 10
+      min_period: 100ms
+      max_period: 10s
+      max_retries: 10
 ```
 
 The following table shows an example of the total delay applied by the backoff algorithm
-with `minbackoff: 100ms` and `maxbackoff: 10s`:
+with `min_period: 100ms` and `max_period: 10s`:
 
 | Retry | Min delay | Max delay | Total min delay | Total max delay |
-| ----- | --------- | --------- | --------------- | --------------- |
+|-------|-----------|-----------|-----------------|-----------------|
 | 1     | 100ms     | 200ms     | 100ms           | 200ms           |
 | 2     | 200ms     | 400ms     | 300ms           | 600ms           |
 | 3     | 400ms     | 800ms     | 700ms           | 1.4s            |

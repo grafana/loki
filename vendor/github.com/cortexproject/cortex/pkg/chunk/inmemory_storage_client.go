@@ -374,7 +374,7 @@ func (m *MockStorage) DeleteObject(ctx context.Context, objectKey string) error 
 	return nil
 }
 
-func (m *MockStorage) List(ctx context.Context, prefix string) ([]StorageObject, error) {
+func (m *MockStorage) List(ctx context.Context, prefix string) ([]StorageObject, []StorageCommonPrefix, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -384,7 +384,7 @@ func (m *MockStorage) List(ctx context.Context, prefix string) ([]StorageObject,
 		storageObjects = append(storageObjects, StorageObject{Key: key})
 	}
 
-	return storageObjects, nil
+	return storageObjects, []StorageCommonPrefix{}, nil
 }
 
 type mockWriteBatch struct {

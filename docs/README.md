@@ -45,6 +45,7 @@ simplifies the operation and significantly lowers the cost of Loki.
     4. [Storage](operations/storage/README.md)
         1. [Table Manager](operations/storage/table-manager.md)
         2. [Retention](operations/storage/retention.md)
+        3. [BoltDB Shipper](operations/storage/boltdb-shipper.md)
     5. [Multi-tenancy](operations/multi-tenancy.md)
     6. [Loki Canary](operations/loki-canary.md)
 8. [HTTP API](api.md)

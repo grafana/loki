@@ -2,7 +2,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 {
-  dashboards+: {
+  grafanaDashboards+: {
     'promtail.json':
       g.dashboard('Loki / Promtail')
       .addTemplate('cluster', 'kube_pod_container_info{image=~".*promtail.*"}', 'cluster')

@@ -82,16 +82,16 @@ func TestCollectTrailer(t *testing.T) {
 		t.Fatal(err)
 	}
 	res := decodeTrailers(ctx)
-	require.Equal(t, int32(2), res.TotalReached)
-	require.Equal(t, int64(2), res.TotalChunksMatched)
-	require.Equal(t, int64(4), res.TotalBatches)
-	require.Equal(t, int64(6), res.TotalLinesSent)
-	require.Equal(t, int64(2), res.HeadChunkBytes)
-	require.Equal(t, int64(2), res.HeadChunkLines)
-	require.Equal(t, int64(2), res.DecompressedBytes)
-	require.Equal(t, int64(2), res.DecompressedLines)
-	require.Equal(t, int64(2), res.CompressedBytes)
-	require.Equal(t, int64(2), res.TotalDuplicates)
+	require.Equal(t, int32(2), res.Ingester.TotalReached)
+	require.Equal(t, int64(2), res.Ingester.TotalChunksMatched)
+	require.Equal(t, int64(4), res.Ingester.TotalBatches)
+	require.Equal(t, int64(6), res.Ingester.TotalLinesSent)
+	require.Equal(t, int64(2), res.Ingester.HeadChunkBytes)
+	require.Equal(t, int64(2), res.Ingester.HeadChunkLines)
+	require.Equal(t, int64(2), res.Ingester.DecompressedBytes)
+	require.Equal(t, int64(2), res.Ingester.DecompressedLines)
+	require.Equal(t, int64(2), res.Ingester.CompressedBytes)
+	require.Equal(t, int64(2), res.Ingester.TotalDuplicates)
 }
 
 type ingesterFn func(*logproto.QueryRequest, logproto.Querier_QueryServer) error

@@ -3,6 +3,7 @@ package cassandra
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -14,27 +15,28 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
+	pkgutil "github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // Config for a StorageClient
 type Config struct {
-	Addresses                string              `yaml:"addresses,omitempty"`
-	Port                     int                 `yaml:"port,omitempty"`
-	Keyspace                 string              `yaml:"keyspace,omitempty"`
-	Consistency              string              `yaml:"consistency,omitempty"`
-	ReplicationFactor        int                 `yaml:"replication_factor,omitempty"`
-	DisableInitialHostLookup bool                `yaml:"disable_initial_host_lookup,omitempty"`
-	SSL                      bool                `yaml:"SSL,omitempty"`
-	HostVerification         bool                `yaml:"host_verification,omitempty"`
-	CAPath                   string              `yaml:"CA_path,omitempty"`
-	Auth                     bool                `yaml:"auth,omitempty"`
-	Username                 string              `yaml:"username,omitempty"`
-	Password                 flagext.Secret      `yaml:"password,omitempty"`
-	PasswordFile             string              `yaml:"password_file,omitempty"`
+	Addresses                string              `yaml:"addresses"`
+	Port                     int                 `yaml:"port"`
+	Keyspace                 string              `yaml:"keyspace"`
+	Consistency              string              `yaml:"consistency"`
+	ReplicationFactor        int                 `yaml:"replication_factor"`
+	DisableInitialHostLookup bool                `yaml:"disable_initial_host_lookup"`
+	SSL                      bool                `yaml:"SSL"`
+	HostVerification         bool                `yaml:"host_verification"`
+	CAPath                   string              `yaml:"CA_path"`
+	Auth                     bool                `yaml:"auth"`
+	Username                 string              `yaml:"username"`
+	Password                 flagext.Secret      `yaml:"password"`
+	PasswordFile             string              `yaml:"password_file"`
 	CustomAuthenticators     flagext.StringSlice `yaml:"custom_authenticators"`
-	Timeout                  time.Duration       `yaml:"timeout,omitempty"`
-	ConnectTimeout           time.Duration       `yaml:"connect_timeout,omitempty"`
+	Timeout                  time.Duration       `yaml:"timeout"`
+	ConnectTimeout           time.Duration       `yaml:"connect_timeout"`
 	Retries                  int                 `yaml:"max_retries"`
 	MaxBackoff               time.Duration       `yaml:"retry_max_backoff"`
 	MinBackoff               time.Duration       `yaml:"retry_min_backoff"`
@@ -66,6 +68,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) Validate() error {
 	if cfg.Password.Value != "" && cfg.PasswordFile != "" {
 		return errors.Errorf("The password and password_file config options are mutually exclusive.")
+	}
+	if cfg.SSL && cfg.HostVerification && len(strings.Split(cfg.Addresses, ",")) != 1 {
+		return errors.Errorf("Host verification is only possible for a single host.")
 	}
 	return nil
 }
@@ -117,9 +122,18 @@ func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
 	cluster.DisableInitialHostLookup = cfg.DisableInitialHostLookup
 
 	if cfg.SSL {
-		cluster.SslOpts = &gocql.SslOptions{
-			CaPath:                 cfg.CAPath,
-			EnableHostVerification: cfg.HostVerification,
+		if cfg.HostVerification {
+			cluster.SslOpts = &gocql.SslOptions{
+				CaPath:                 cfg.CAPath,
+				EnableHostVerification: true,
+				Config: &tls.Config{
+					ServerName: strings.Split(cfg.Addresses, ",")[0],
+				},
+			}
+		} else {
+			cluster.SslOpts = &gocql.SslOptions{
+				EnableHostVerification: false,
+			}
 		}
 	}
 	if cfg.Auth {
@@ -185,6 +199,8 @@ type StorageClient struct {
 
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig) (*StorageClient, error) {
+	pkgutil.WarnExperimentalUse("Cassandra Backend")
+
 	session, err := cfg.session()
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -207,6 +223,7 @@ func (s *StorageClient) Stop() {
 // atomic writes.  Therefore we just do a bunch of writes in parallel.
 type writeBatch struct {
 	entries []chunk.IndexEntry
+	deletes []chunk.IndexEntry
 }
 
 // NewWriteBatch implement chunk.IndexClient.
@@ -224,8 +241,11 @@ func (b *writeBatch) Add(tableName, hashValue string, rangeValue []byte, value [
 }
 
 func (b *writeBatch) Delete(tableName, hashValue string, rangeValue []byte) {
-	// ToDo: implement this to support deleting index entries from Cassandra
-	panic("Cassandra does not support Deleting index entries yet")
+	b.deletes = append(b.deletes, chunk.IndexEntry{
+		TableName:  tableName,
+		HashValue:  hashValue,
+		RangeValue: rangeValue,
+	})
 }
 
 // BatchWrite implement chunk.IndexClient.
@@ -240,6 +260,14 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 		}
 	}
 
+	for _, entry := range b.deletes {
+		err := s.session.Query(fmt.Sprintf("DELETE FROM %s WHERE hash = ? and range = ?",
+			entry.TableName), entry.HashValue, entry.RangeValue).WithContext(ctx).Exec()
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+
 	return nil
 }
 
@@ -248,7 +276,7 @@ func (s *StorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQue
 	return util.DoParallelQueries(ctx, s.query, queries, callback)
 }
 
-func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
+func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callback util.Callback) error {
 	var q *gocql.Query
 
 	switch {
@@ -285,7 +313,7 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 		if err := scanner.Scan(&b.rangeValue, &b.value); err != nil {
 			return errors.WithStack(err)
 		}
-		if !callback(b) {
+		if !callback(query, b) {
 			return nil
 		}
 	}

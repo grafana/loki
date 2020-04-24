@@ -34,6 +34,7 @@ message WriteRequest {
     RULE = 1;
   }
   SourceEnum Source = 2;
+  repeated MetricMetadata metadata = 3 [(gogoproto.nullable) = true];
 }
 
 message WriteResponse {}
@@ -140,6 +141,24 @@ message Sample {
 
 message LabelMatchers {
   repeated LabelMatcher matchers = 1;
+}
+
+message MetricMetadata {
+  enum MetricType {
+    UNKNOWN        = 0;
+    COUNTER        = 1;
+    GAUGE          = 2;
+    HISTOGRAM      = 3;
+    GAUGEHISTOGRAM = 4;
+    SUMMARY        = 5;
+    INFO           = 6;
+    STATESET       = 7;
+  }
+
+  MetricType type = 1;
+  string metric_name = 2;
+  string help = 4;
+  string unit = 5;
 }
 
 message Metric {

@@ -216,7 +216,7 @@ accepts the following query parameters in the URL:
 - `query`: The [LogQL](./logql.md) query to perform
 - `limit`: The max number of entries to return
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
-- `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
+- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 
@@ -366,7 +366,7 @@ $ curl -G -s  "http://localhost:3100/loki/api/v1/query_range" --data-urlencode '
 accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
-- `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
+- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 
 In microservices mode, `/loki/api/v1/labels` is exposed by the querier.
 
@@ -403,7 +403,7 @@ label within a given time span. It accepts the following query parameters in
 the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
-- `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
+- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 
 In microservices mode, `/loki/api/v1/label/<name>/values` is exposed by the querier.
 
@@ -578,7 +578,7 @@ support the following values:
 - `query`: The [LogQL](./logql.md) query to perform
 - `limit`: The max number of entries to return
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
-- `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
+- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
 - `regexp`: a regex to filter the returned results
 
@@ -644,7 +644,7 @@ $ curl -G -s  "http://localhost:3100/api/prom/query" --data-urlencode '{foo="bar
 accepts the following query parameters in the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
-- `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
+- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 
 In microservices mode, `/api/prom/label` is exposed by the querier.
 
@@ -681,7 +681,7 @@ label within a given time span. It accepts the following query parameters in
 the URL:
 
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
-- `end`: The start time for the query as a nanosecond Unix epoch. Defaults to now.
+- `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 
 In microservices mode, `/api/prom/label/<name>/values` is exposed by the querier.
 

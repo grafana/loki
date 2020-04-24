@@ -14,6 +14,7 @@ import (
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
@@ -36,7 +37,7 @@ type PeriodConfig struct {
 	ObjectType  string              `yaml:"object_store"` // type of object client to use; if omitted, defaults to store.
 	Schema      string              `yaml:"schema"`
 	IndexTables PeriodicTableConfig `yaml:"index"`
-	ChunkTables PeriodicTableConfig `yaml:"chunks,omitempty"`
+	ChunkTables PeriodicTableConfig `yaml:"chunks"`
 	RowShards   uint32              `yaml:"row_shards"`
 }
 
@@ -86,6 +87,7 @@ func (cfg *SchemaConfig) loadFromFile() error {
 		cfg.fileName = cfg.legacyFileName
 
 		if cfg.legacyFileName != "" {
+			flagext.DeprecatedFlagsUsed.Inc()
 			level.Warn(util.Logger).Log("msg", "running with DEPRECATED flag -config-yaml, use -schema-config-file instead")
 		}
 	}
@@ -107,7 +109,9 @@ func (cfg *SchemaConfig) loadFromFile() error {
 // Validate the schema config and returns an error if the validation
 // doesn't pass
 func (cfg *SchemaConfig) Validate() error {
-	for _, periodCfg := range cfg.Configs {
+	for i := range cfg.Configs {
+		periodCfg := &cfg.Configs[i]
+		periodCfg.applyDefaults()
 		if err := periodCfg.validate(); err != nil {
 			return err
 		}
@@ -141,45 +145,47 @@ func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)
 }
 
 // CreateSchema returns the schema defined by the PeriodConfig
-func (cfg PeriodConfig) CreateSchema() Schema {
-	rowShards := defaultRowShards(cfg.Schema)
-	if cfg.RowShards > 0 {
-		rowShards = cfg.RowShards
+func (cfg PeriodConfig) CreateSchema() (BaseSchema, error) {
+	buckets, bucketsPeriod := cfg.createBucketsFunc()
+
+	// Ensure the tables period is a multiple of the bucket period
+	if cfg.IndexTables.Period > 0 && cfg.IndexTables.Period%bucketsPeriod != 0 {
+		return nil, errInvalidTablePeriod
 	}
 
-	var e entries
+	if cfg.ChunkTables.Period > 0 && cfg.ChunkTables.Period%bucketsPeriod != 0 {
+		return nil, errInvalidTablePeriod
+	}
+
 	switch cfg.Schema {
 	case "v1":
-		e = originalEntries{}
+		return newStoreSchema(buckets, originalEntries{}), nil
 	case "v2":
-		e = originalEntries{}
+		return newStoreSchema(buckets, originalEntries{}), nil
 	case "v3":
-		e = base64Entries{originalEntries{}}
+		return newStoreSchema(buckets, base64Entries{originalEntries{}}), nil
 	case "v4":
-		e = labelNameInHashKeyEntries{}
+		return newStoreSchema(buckets, labelNameInHashKeyEntries{}), nil
 	case "v5":
-		e = v5Entries{}
+		return newStoreSchema(buckets, v5Entries{}), nil
 	case "v6":
-		e = v6Entries{}
+		return newStoreSchema(buckets, v6Entries{}), nil
 	case "v9":
-		e = v9Entries{}
-	case "v10":
-		e = v10Entries{
-			rowShards: rowShards,
+		return newSeriesStoreSchema(buckets, v9Entries{}), nil
+	case "v10", "v11":
+		if cfg.RowShards == 0 {
+			return nil, fmt.Errorf("Must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}
-	case "v11":
-		e = v11Entries{
-			v10Entries: v10Entries{
-				rowShards: rowShards,
-			},
+
+		v10 := v10Entries{rowShards: cfg.RowShards}
+		if cfg.Schema == "v10" {
+			return newSeriesStoreSchema(buckets, v10), nil
 		}
+
+		return newSeriesStoreSchema(buckets, v11Entries{v10}), nil
 	default:
-		return nil
+		return nil, errInvalidSchemaVersion
 	}
-
-	buckets, _ := cfg.createBucketsFunc()
-
-	return schema{buckets, e}
 }
 
 func (cfg PeriodConfig) createBucketsFunc() (schemaBucketsFunc, time.Duration) {
@@ -191,26 +197,16 @@ func (cfg PeriodConfig) createBucketsFunc() (schemaBucketsFunc, time.Duration) {
 	}
 }
 
-// validate the period config
+func (cfg *PeriodConfig) applyDefaults() {
+	if cfg.RowShards == 0 {
+		cfg.RowShards = defaultRowShards(cfg.Schema)
+	}
+}
+
+// Validate the period config.
 func (cfg PeriodConfig) validate() error {
-	// Ensure the schema version exists
-	schema := cfg.CreateSchema()
-	if schema == nil {
-		return errInvalidSchemaVersion
-	}
-
-	// Ensure the tables period is a multiple of the bucket period
-	_, bucketsPeriod := cfg.createBucketsFunc()
-
-	if cfg.IndexTables.Period > 0 && cfg.IndexTables.Period%bucketsPeriod != 0 {
-		return errInvalidTablePeriod
-	}
-
-	if cfg.ChunkTables.Period > 0 && cfg.ChunkTables.Period%bucketsPeriod != 0 {
-		return errInvalidTablePeriod
-	}
-
-	return nil
+	_, err := cfg.CreateSchema()
+	return err
 }
 
 // Load the yaml file, or build the config from legacy command-line flags
@@ -330,13 +326,13 @@ func (cfg PeriodicTableConfig) MarshalYAML() (interface{}, error) {
 
 // AutoScalingConfig for DynamoDB tables.
 type AutoScalingConfig struct {
-	Enabled     bool    `yaml:"enabled,omitempty"`
-	RoleARN     string  `yaml:"role_arn,omitempty"`
-	MinCapacity int64   `yaml:"min_capacity,omitempty"`
-	MaxCapacity int64   `yaml:"max_capacity,omitempty"`
-	OutCooldown int64   `yaml:"out_cooldown,omitempty"`
-	InCooldown  int64   `yaml:"in_cooldown,omitempty"`
-	TargetValue float64 `yaml:"target,omitempty"`
+	Enabled     bool    `yaml:"enabled"`
+	RoleARN     string  `yaml:"role_arn"`
+	MinCapacity int64   `yaml:"min_capacity"`
+	MaxCapacity int64   `yaml:"max_capacity"`
+	OutCooldown int64   `yaml:"out_cooldown"`
+	InCooldown  int64   `yaml:"in_cooldown"`
+	TargetValue float64 `yaml:"target"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.

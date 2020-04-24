@@ -11,6 +11,9 @@ metadata:
 data:
   fluent-bit.conf: |-
     [SERVICE]
+        HTTP_Server    On
+        HTTP_Listen    0.0.0.0
+        HTTP_PORT      {{ .Values.config.port }}
         Flush          1
         Daemon         Off
         Log_Level      {{ .Values.config.loglevel }}

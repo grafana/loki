@@ -7,10 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/logql"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -41,6 +44,7 @@ func TestChunkFlushingIdle(t *testing.T) {
 	cfg.RetainPeriod = 500 * time.Millisecond
 
 	store, ing := newTestStore(t, cfg)
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	testData := pushTestSamples(t, ing)
 
 	// wait beyond idle time so samples flush
@@ -51,7 +55,7 @@ func TestChunkFlushingIdle(t *testing.T) {
 func TestChunkFlushingShutdown(t *testing.T) {
 	store, ing := newTestStore(t, defaultIngesterTestConfig(t))
 	testData := pushTestSamples(t, ing)
-	ing.Shutdown()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 	store.checkData(t, testData)
 }
 
@@ -88,7 +92,7 @@ func TestFlushingCollidingLabels(t *testing.T) {
 	require.NoError(t, err)
 
 	// force flush
-	ing.Shutdown()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 
 	// verify that we get all the data back
 	store.checkData(t, map[string][]*logproto.Stream{userID: req.Streams})
@@ -152,6 +156,7 @@ func TestFlushMaxAge(t *testing.T) {
 		},
 	})
 
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 }
 
 type testStore struct {
@@ -170,6 +175,7 @@ func newTestStore(t require.TestingT, cfg Config) (*testStore, *Ingester) {
 
 	ing, err := New(cfg, client.Config{}, store, limits)
 	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
 	return store, ing
 }
@@ -186,7 +192,7 @@ func defaultIngesterTestConfig(t *testing.T) Config {
 	cfg.ConcurrentFlushes = 1
 	cfg.LifecyclerConfig.RingConfig.KVStore.Mock = kvClient
 	cfg.LifecyclerConfig.NumTokens = 1
-	cfg.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
+	cfg.LifecyclerConfig.ListenPort = 0
 	cfg.LifecyclerConfig.Addr = "localhost"
 	cfg.LifecyclerConfig.ID = "localhost"
 	cfg.LifecyclerConfig.FinalSleep = 0
@@ -223,7 +229,7 @@ func (s *testStore) IsLocal() bool {
 	return false
 }
 
-func (s *testStore) LazyQuery(ctx context.Context, req *logproto.QueryRequest) (iter.EntryIterator, error) {
+func (s *testStore) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.EntryIterator, error) {
 	return nil, nil
 }
 
