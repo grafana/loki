@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/segmentio/fasthash/fnv1a"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -43,6 +44,7 @@ type userState struct {
 
 	seriesInMetric []metricCounterShard
 
+	// Series metrics.
 	memSeries             prometheus.Gauge
 	memSeriesCreatedTotal prometheus.Counter
 	memSeriesRemovedTotal prometheus.Counter
@@ -169,7 +171,7 @@ func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, erro
 
 // NOTE: memory for `labels` is unsafe; anything retained beyond the
 // life of this function must be copied
-func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labels []client.LabelAdapter, record *Record) (*userState, model.Fingerprint, *memorySeries, error) {
+func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labels []client.LabelAdapter, record *WALRecord) (*userState, model.Fingerprint, *memorySeries, error) {
 	state := us.getOrCreate(userID)
 	// WARNING: `err` may have a reference to unsafe memory in `labels`
 	fp, series, err := state.getSeries(labels, record)
@@ -178,7 +180,7 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labe
 
 // NOTE: memory for `metric` is unsafe; anything retained beyond the
 // life of this function must be copied
-func (u *userState) getSeries(metric labelPairs, record *Record) (model.Fingerprint, *memorySeries, error) {
+func (u *userState) getSeries(metric labelPairs, record *WALRecord) (model.Fingerprint, *memorySeries, error) {
 	rawFP := client.FastFingerprint(metric)
 	u.fpLocker.Lock(rawFP)
 	fp := u.mapper.mapFP(rawFP, metric)
@@ -201,7 +203,7 @@ func (u *userState) getSeries(metric labelPairs, record *Record) (model.Fingerpr
 	return fp, series, nil
 }
 
-func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric labelPairs, record *Record, recovery bool) (*memorySeries, error) {
+func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric labelPairs, record *WALRecord, recovery bool) (*memorySeries, error) {
 	// There's theoretically a relatively harmless race here if multiple
 	// goroutines get the length of the series map at the same time, then
 	// all proceed to add a new series. This is likely not worth addressing,
@@ -232,9 +234,13 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 	u.memSeries.Inc()
 
 	if record != nil {
-		record.Labels = append(record.Labels, Labels{
-			Fingerprint: uint64(fp),
-			Labels:      metric,
+		lbls := make(labels.Labels, 0, len(metric))
+		for _, m := range metric {
+			lbls = append(lbls, labels.Label(m))
+		}
+		record.Series = append(record.Series, tsdb_record.RefSeries{
+			Ref:    uint64(fp),
+			Labels: lbls,
 		})
 	}
 

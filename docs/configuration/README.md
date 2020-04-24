@@ -539,6 +539,66 @@ cassandra:
   # Initial connection timeout during initial dial to server.
   [connect_timeout: <duration> | default = 600ms]
 
+swift:
+  # Openstack authentication URL.
+  # CLI flag: -ruler.storage.swift.auth-url
+  [auth_url: <string> | default = ""]
+
+  # Openstack username for the api.
+  # CLI flag: -ruler.storage.swift.username
+  [username: <string> | default = ""]
+
+  # Openstack user's domain name.
+  # CLI flag: -ruler.storage.swift.user-domain-name
+  [user_domain_name: <string> | default = ""]
+
+  # Openstack user's domain id.
+  # CLI flag: -ruler.storage.swift.user-domain-id
+  [user_domain_id: <string> | default = ""]
+
+  # Openstack userid for the api.
+  # CLI flag: -ruler.storage.swift.user-id
+  [user_id: <string> | default = ""]
+
+  # Openstack api key.
+  # CLI flag: -ruler.storage.swift.password
+  [password: <string> | default = ""]
+
+  # Openstack user's domain id.
+  # CLI flag: -ruler.storage.swift.domain-id
+  [domain_id: <string> | default = ""]
+
+  # Openstack user's domain name.
+  # CLI flag: -ruler.storage.swift.domain-name
+  [domain_name: <string> | default = ""]
+
+  # Openstack project id (v2,v3 auth only).
+  # CLI flag: -ruler.storage.swift.project-id
+  [project_id: <string> | default = ""]
+
+  # Openstack project name (v2,v3 auth only).
+  # CLI flag: -ruler.storage.swift.project-name
+  [project_name: <string> | default = ""]
+
+  # Id of the project's domain (v3 auth only), only needed if it differs the
+  # from user domain.
+  # CLI flag: -ruler.storage.swift.project-domain-id
+  [project_domain_id: <string> | default = ""]
+
+  # Name of the project's domain (v3 auth only), only needed if it differs
+  # from the user domain.
+  # CLI flag: -ruler.storage.swift.project-domain-name
+  [project_domain_name: <string> | default = ""]
+
+  # Openstack Region to use eg LON, ORD - default is use first region (v2,v3
+  # auth only)
+  # CLI flag: -ruler.storage.swift.region-name
+  [region_name: <string> | default = ""]
+
+  # Name of the Swift container to put chunks in.
+  # CLI flag: -ruler.storage.swift.container-name
+  [container_name: <string> | default = "cortex"]
+
 # Configures storing index in BoltDB. Required fields only
 # required when boltdb is present in config.
 boltdb:
@@ -697,7 +757,7 @@ for from specific time periods.
 store: <string>
 
 # Which store to use for the chunks. Either aws, aws-dynamo, azure, gcp,
-# bigtable, gcs, cassandra, or filesystem. If omitted, defaults to the same
+# bigtable, gcs, cassandra, swift or filesystem. If omitted, defaults to the same
 # value as store.
 [object_store: <string>]
 

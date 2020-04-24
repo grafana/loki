@@ -20,8 +20,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/tsdb/encoding"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
+	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -52,15 +54,34 @@ func (cfg *WALConfig) RegisterFlags(f *flag.FlagSet) {
 // WAL interface allows us to have a no-op WAL when the WAL is disabled.
 type WAL interface {
 	// Log marshalls the records and writes it into the WAL.
-	Log(*Record) error
+	Log(*WALRecord) error
 	// Stop stops all the WAL operations.
 	Stop()
 }
 
+// RecordType represents the type of the WAL/Checkpoint record.
+type RecordType byte
+
+const (
+	// Currently we also support the old records without a type header.
+	// For that, we assume the record type does not cross 7 as the proto unmarshalling
+	// will produce an error if the first byte is less than 7 (thus we know its not the old record).
+	// The old record will be removed in the future releases, hence the record type should not cross
+	// '7' till then.
+
+	// WALRecordSeries is the type for the WAL record on Prometheus TSDB record for series.
+	WALRecordSeries RecordType = 1
+	// WALRecordSamples is the type for the WAL record based on Prometheus TSDB record for samples.
+	WALRecordSamples RecordType = 2
+
+	// CheckpointRecord is the type for the Checkpoint record based on protos.
+	CheckpointRecord RecordType = 3
+)
+
 type noopWAL struct{}
 
-func (noopWAL) Log(*Record) error { return nil }
-func (noopWAL) Stop()             {}
+func (noopWAL) Log(*WALRecord) error { return nil }
+func (noopWAL) Stop()                {}
 
 type walWrapper struct {
 	cfg  WALConfig
@@ -70,8 +91,9 @@ type walWrapper struct {
 	wal           *wal.WAL
 	getUserStates func() map[string]*userState
 	checkpointMtx sync.Mutex
+	bytesPool     sync.Pool
 
-	// Checkpoint metrics.
+	// Metrics.
 	checkpointDeleteFail       prometheus.Counter
 	checkpointDeleteTotal      prometheus.Counter
 	checkpointCreationFail     prometheus.Counter
@@ -79,6 +101,7 @@ type walWrapper struct {
 	checkpointDuration         prometheus.Summary
 	checkpointLoggedBytesTotal prometheus.Counter
 	walLoggedBytesTotal        prometheus.Counter
+	walRecordsLogged           prometheus.Counter
 }
 
 // newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.
@@ -93,7 +116,7 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 	if registerer != nil {
 		walRegistry = prometheus.WrapRegistererWith(prometheus.Labels{"kind": "wal"}, registerer)
 	}
-	tsdbWAL, err := wal.NewSize(util.Logger, walRegistry, cfg.Dir, wal.DefaultSegmentSize/4, true)
+	tsdbWAL, err := wal.NewSize(util.Logger, walRegistry, cfg.Dir, wal.DefaultSegmentSize/4, false)
 	if err != nil {
 		return nil, err
 	}
@@ -103,6 +126,11 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 		quit:          make(chan struct{}),
 		wal:           tsdbWAL,
 		getUserStates: userStatesFunc,
+		bytesPool: sync.Pool{
+			New: func() interface{} {
+				return make([]byte, 0, 512)
+			},
+		},
 	}
 
 	w.checkpointDeleteFail = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
@@ -126,6 +154,10 @@ func newWAL(cfg WALConfig, userStatesFunc func() map[string]*userState, register
 		Help:       "Time taken to create a checkpoint.",
 		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 	})
+	w.walRecordsLogged = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ingester_wal_records_logged_total",
+		Help: "Total number of WAL records logged.",
+	})
 	w.checkpointLoggedBytesTotal = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ingester_checkpoint_logged_bytes_total",
 		Help: "Total number of bytes written to disk for checkpointing.",
@@ -146,20 +178,37 @@ func (w *walWrapper) Stop() {
 	w.wal.Close()
 }
 
-func (w *walWrapper) Log(record *Record) error {
+func (w *walWrapper) Log(record *WALRecord) error {
+	if record == nil {
+		return nil
+	}
 	select {
 	case <-w.quit:
 		return nil
 	default:
-		if record == nil {
-			return nil
+		buf := w.bytesPool.Get().([]byte)[:0]
+		defer func() {
+			w.bytesPool.Put(buf) // nolint:staticcheck
+		}()
+
+		if len(record.Series) > 0 {
+			buf = record.encodeSeries(buf)
+			if err := w.wal.Log(buf); err != nil {
+				return err
+			}
+			w.walRecordsLogged.Inc()
+			w.walLoggedBytesTotal.Add(float64(len(buf)))
+			buf = buf[:0]
 		}
-		buf, err := proto.Marshal(record)
-		if err != nil {
-			return err
+		if len(record.Samples) > 0 {
+			buf = record.encodeSamples(buf)
+			if err := w.wal.Log(buf); err != nil {
+				return err
+			}
+			w.walRecordsLogged.Inc()
+			w.walLoggedBytesTotal.Add(float64(len(buf)))
 		}
-		w.walLoggedBytesTotal.Add(float64(len(buf)))
-		return w.wal.Log(buf)
+		return nil
 	}
 }
 
@@ -256,7 +305,7 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 	if err := os.MkdirAll(checkpointDirTemp, 0777); err != nil {
 		return errors.Wrap(err, "create checkpoint dir")
 	}
-	checkpoint, err := wal.New(nil, nil, checkpointDirTemp, true)
+	checkpoint, err := wal.New(nil, nil, checkpointDirTemp, false)
 	if err != nil {
 		return errors.Wrap(err, "open checkpoint")
 	}
@@ -283,10 +332,11 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 	}
 
 	var wireChunkBuf []client.Chunk
+	b := make([]byte, 0, 1024)
 	for userID, state := range us {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
-			wireChunkBuf, err = w.checkpointSeries(checkpoint, userID, pair.fp, pair.series, wireChunkBuf)
+			wireChunkBuf, b, err = w.checkpointSeries(checkpoint, userID, pair.fp, pair.series, wireChunkBuf, b)
 			state.fpLocker.Unlock(pair.fp)
 			if err != nil {
 				return err
@@ -395,28 +445,28 @@ func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 }
 
 // checkpointSeries write the chunks of the series to the checkpoint.
-func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Fingerprint, series *memorySeries, wireChunks []client.Chunk) ([]client.Chunk, error) {
+func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Fingerprint, series *memorySeries, wireChunks []client.Chunk, b []byte) ([]client.Chunk, []byte, error) {
 	var err error
 	wireChunks, err = toWireChunks(series.chunkDescs, wireChunks[:0])
 	if err != nil {
-		return wireChunks, err
+		return wireChunks, b, err
 	}
 
-	buf, err := proto.Marshal(&Series{
+	b, err = encodeWithTypeHeader(&Series{
 		UserId:      userID,
 		Fingerprint: uint64(fp),
 		Labels:      client.FromLabelsToLabelAdapters(series.metric),
 		Chunks:      wireChunks,
-	})
+	}, CheckpointRecord, b)
 	if err != nil {
-		return wireChunks, err
+		return wireChunks, b, err
 	}
 
-	err = cp.Log(buf)
+	err = cp.Log(b)
 	if err == nil {
-		w.checkpointLoggedBytesTotal.Add(float64(len(buf)))
+		w.checkpointLoggedBytesTotal.Add(float64(len(b)))
 	}
-	return wireChunks, err
+	return wireChunks, b, err
 }
 
 type walRecoveryParameters struct {
@@ -583,12 +633,15 @@ func processCheckpoint(name string, userStates *userStates, params walRecoveryPa
 Loop:
 	for reader.Next() {
 		s := seriesPool.Get().(*Series)
-		if err := proto.Unmarshal(reader.Record(), s); err != nil {
+		m, err := decodeCheckpointRecord(reader.Record(), s)
+		if err != nil {
 			// We don't return here in order to close/drain all the channels and
 			// make sure all goroutines exit.
 			capturedErr = err
 			break Loop
 		}
+		s = m.(*Series)
+
 		// The yoloString from the unmarshal of LabelAdapter gets corrupted
 		// when travelling through the channel. Hence making a copy of that.
 		// This extra alloc during the read path is fine as it's only 1 time
@@ -688,7 +741,7 @@ func processCheckpointRecord(
 }
 
 type samplesWithUserID struct {
-	samples []Sample
+	samples []tsdb_record.RefSample
 	userID  string
 }
 
@@ -755,6 +808,8 @@ func processWAL(startSegment int, userStates *userStates, params walRecoveryPara
 	var (
 		capturedErr error
 		record      = &Record{}
+		walRecord   = &WALRecord{}
+		lp          labelPairs
 	)
 Loop:
 	for reader.Next() {
@@ -765,23 +820,52 @@ Loop:
 			break Loop
 		default:
 		}
-		if err := proto.Unmarshal(reader.Record(), record); err != nil {
+
+		record.Samples = record.Samples[:0]
+		record.Labels = record.Labels[:0]
+		// Only one of 'record' or 'walRecord' will have the data.
+		if err := decodeWALRecord(reader.Record(), record, walRecord); err != nil {
 			// We don't return here in order to close/drain all the channels and
 			// make sure all goroutines exit.
 			capturedErr = err
 			break Loop
 		}
 
-		if len(record.Labels) > 0 {
-			state := userStates.getOrCreate(record.UserId)
-			// Create the series from labels which do not exist.
-			for _, labels := range record.Labels {
-				_, ok := state.fpToSeries.get(model.Fingerprint(labels.Fingerprint))
+		if len(record.Labels) > 0 || len(walRecord.Series) > 0 {
+
+			var userID string
+			if len(walRecord.Series) > 0 {
+				userID = walRecord.UserID
+			} else {
+				userID = record.UserId
+			}
+
+			state := userStates.getOrCreate(userID)
+
+			createSeries := func(fingerprint model.Fingerprint, lbls labelPairs) error {
+				_, ok := state.fpToSeries.get(fingerprint)
 				if ok {
-					continue
+					return nil
 				}
-				_, err := state.createSeriesWithFingerprint(model.Fingerprint(labels.Fingerprint), labels.Labels, nil, true)
-				if err != nil {
+				_, err := state.createSeriesWithFingerprint(fingerprint, lbls, nil, true)
+				return err
+			}
+
+			for _, labels := range record.Labels {
+				if err := createSeries(model.Fingerprint(labels.Fingerprint), labels.Labels); err != nil {
+					// We don't return here in order to close/drain all the channels and
+					// make sure all goroutines exit.
+					capturedErr = err
+					break Loop
+				}
+			}
+
+			for _, s := range walRecord.Series {
+				lp = lp[:0]
+				for _, l := range s.Labels {
+					lp = append(lp, client.LabelAdapter(l))
+				}
+				if err := createSeries(model.Fingerprint(s.Ref), lp); err != nil {
 					// We don't return here in order to close/drain all the channels and
 					// make sure all goroutines exit.
 					capturedErr = err
@@ -794,39 +878,70 @@ Loop:
 		// With O(300 * #cores) in-flight sample batches, large scrapes could otherwise
 		// cause thousands of very large in flight buffers occupying large amounts
 		// of unused memory.
-		for len(record.Samples) > 0 {
+		for len(record.Samples) > 0 || len(walRecord.Samples) > 0 {
 			m := 5000
-			if len(record.Samples) < m {
-				m = len(record.Samples)
+			var userID string
+			if len(record.Samples) > 0 {
+				userID = record.UserId
+				if len(record.Samples) < m {
+					m = len(record.Samples)
+				}
 			}
+			if len(walRecord.Samples) > 0 {
+				userID = walRecord.UserID
+				if len(walRecord.Samples) < m {
+					m = len(walRecord.Samples)
+				}
+			}
+
 			for i := 0; i < params.numWorkers; i++ {
 				if len(shards[i].samples) == 0 {
 					// It is possible that the previous iteration did not put
 					// anything in this shard. In that case no need to get a new buffer.
-					shards[i].userID = record.UserId
+					shards[i].userID = userID
 					continue
 				}
 				select {
 				case buf := <-outputs[i]:
 					buf.samples = buf.samples[:0]
-					buf.userID = record.UserId
+					buf.userID = userID
 					shards[i] = buf
 				default:
 					shards[i] = &samplesWithUserID{
-						userID: record.UserId,
+						userID: userID,
 					}
 				}
 			}
-			for _, sam := range record.Samples[:m] {
-				mod := sam.Fingerprint % uint64(params.numWorkers)
-				shards[mod].samples = append(shards[mod].samples, sam)
+
+			if len(record.Samples) > 0 {
+				for _, sam := range record.Samples[:m] {
+					mod := sam.Fingerprint % uint64(params.numWorkers)
+					shards[mod].samples = append(shards[mod].samples, tsdb_record.RefSample{
+						Ref: sam.Fingerprint,
+						T:   int64(sam.Timestamp),
+						V:   sam.Value,
+					})
+				}
 			}
+			if len(walRecord.Samples) > 0 {
+				for _, sam := range walRecord.Samples[:m] {
+					mod := sam.Ref % uint64(params.numWorkers)
+					shards[mod].samples = append(shards[mod].samples, sam)
+				}
+			}
+
 			for i := 0; i < params.numWorkers; i++ {
 				if len(shards[i].samples) > 0 {
 					inputs[i] <- shards[i]
 				}
 			}
-			record.Samples = record.Samples[m:]
+
+			if len(record.Samples) > 0 {
+				record.Samples = record.Samples[m:]
+			}
+			if len(walRecord.Samples) > 0 {
+				walRecord.Samples = walRecord.Samples[m:]
+			}
 		}
 	}
 
@@ -868,21 +983,20 @@ func processWALSamples(userStates *userStates, stateCache map[string]*userState,
 		}
 		sc := seriesCache[samples.userID]
 		for i := range samples.samples {
-			series, ok := sc[samples.samples[i].Fingerprint]
+			series, ok := sc[samples.samples[i].Ref]
 			if !ok {
-				series, ok = state.fpToSeries.get(model.Fingerprint(samples.samples[i].Fingerprint))
+				series, ok = state.fpToSeries.get(model.Fingerprint(samples.samples[i].Ref))
 				if !ok {
 					// This should ideally not happen.
 					// If the series was not created in recovering checkpoint or
 					// from the labels of any records previous to this, there
 					// is no way to get the labels for this fingerprint.
-					level.Warn(util.Logger).Log("msg", "series not found for sample during wal recovery", "userid", samples.userID, "fingerprint", model.Fingerprint(samples.samples[i].Fingerprint).String())
+					level.Warn(util.Logger).Log("msg", "series not found for sample during wal recovery", "userid", samples.userID, "fingerprint", model.Fingerprint(samples.samples[i].Ref).String())
 					continue
 				}
 			}
-
-			sp.Timestamp = model.Time(samples.samples[i].Timestamp)
-			sp.Value = model.SampleValue(samples.samples[i].Value)
+			sp.Timestamp = model.Time(samples.samples[i].T)
+			sp.Value = model.SampleValue(samples.samples[i].V)
 			// There can be many out of order samples because of checkpoint and WAL overlap.
 			// Checking this beforehand avoids the allocation of lots of error messages.
 			if sp.Timestamp.After(series.lastTime) {
@@ -955,4 +1069,110 @@ func SegmentRange(dir string) (int, int, error) {
 		return -1, -1, nil
 	}
 	return first, last, nil
+}
+
+func decodeCheckpointRecord(rec []byte, m proto.Message) (_ proto.Message, err error) {
+	switch RecordType(rec[0]) {
+	case CheckpointRecord:
+		if err := proto.Unmarshal(rec[1:], m); err != nil {
+			return m, err
+		}
+	default:
+		// The legacy proto record will have it's first byte >7.
+		// Hence it does not match any of the existing record types.
+		err := proto.Unmarshal(rec, m)
+		if err != nil {
+			return m, err
+		}
+	}
+
+	return m, err
+}
+
+func encodeWithTypeHeader(m proto.Message, typ RecordType, b []byte) ([]byte, error) {
+	buf, err := proto.Marshal(m)
+	if err != nil {
+		return b, err
+	}
+
+	b = append(b[:0], byte(typ))
+	b = append(b, buf...)
+	return b, nil
+}
+
+// WALRecord is a struct combining the series and samples record.
+type WALRecord struct {
+	UserID  string
+	Series  []tsdb_record.RefSeries
+	Samples []tsdb_record.RefSample
+}
+
+func (record *WALRecord) encodeSeries(b []byte) []byte {
+	buf := encoding.Encbuf{B: b}
+	buf.PutByte(byte(WALRecordSeries))
+	buf.PutUvarintStr(record.UserID)
+
+	var enc tsdb_record.Encoder
+	// The 'encoded' already has the type header and userID here, hence re-using
+	// the remaining part of the slice (i.e. encoded[len(encoded):])) to encode the series.
+	encoded := buf.Get()
+	encoded = append(encoded, enc.Series(record.Series, encoded[len(encoded):])...)
+
+	return encoded
+}
+
+func (record *WALRecord) encodeSamples(b []byte) []byte {
+	buf := encoding.Encbuf{B: b}
+	buf.PutByte(byte(WALRecordSamples))
+	buf.PutUvarintStr(record.UserID)
+
+	var enc tsdb_record.Encoder
+	// The 'encoded' already has the type header and userID here, hence re-using
+	// the remaining part of the slice (i.e. encoded[len(encoded):]))to encode the samples.
+	encoded := buf.Get()
+	encoded = append(encoded, enc.Samples(record.Samples, encoded[len(encoded):])...)
+
+	return encoded
+}
+
+func decodeWALRecord(b []byte, rec *Record, walRec *WALRecord) (err error) {
+	var (
+		userID   string
+		dec      tsdb_record.Decoder
+		rseries  []tsdb_record.RefSeries
+		rsamples []tsdb_record.RefSample
+
+		decbuf = encoding.Decbuf{B: b}
+		t      = RecordType(decbuf.Byte())
+	)
+
+	walRec.Series = walRec.Series[:0]
+	walRec.Samples = walRec.Samples[:0]
+	switch t {
+	case WALRecordSamples:
+		userID = decbuf.UvarintStr()
+		rsamples, err = dec.Samples(decbuf.B, walRec.Samples)
+	case WALRecordSeries:
+		userID = decbuf.UvarintStr()
+		rseries, err = dec.Series(decbuf.B, walRec.Series)
+	default:
+		// The legacy proto record will have it's first byte >7.
+		// Hence it does not match any of the existing record types.
+		err = proto.Unmarshal(b, rec)
+		return err
+	}
+
+	// We reach here only if its a record with type header.
+	if decbuf.Err() != nil {
+		return decbuf.Err()
+	}
+
+	if err == nil {
+		// There was no error decoding the records with type headers.
+		walRec.UserID = userID
+		walRec.Samples = rsamples
+		walRec.Series = rseries
+	}
+
+	return err
 }

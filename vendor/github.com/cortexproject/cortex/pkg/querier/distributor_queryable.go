@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
 
@@ -24,6 +25,7 @@ type Distributor interface {
 	LabelValuesForLabelName(context.Context, model.LabelName) ([]string, error)
 	LabelNames(context.Context) ([]string, error)
 	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error)
+	MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error)
 }
 
 func newDistributorQueryable(distributor Distributor, streaming bool, iteratorFn chunkIteratorFunc) storage.Queryable {
