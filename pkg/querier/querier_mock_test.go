@@ -171,6 +171,10 @@ func (c *tailClientMock) CloseSend() error {
 	return nil
 }
 
+func (c *tailClientMock) Context() context.Context {
+	return context.Background()
+}
+
 func (c *tailClientMock) SendMsg(m interface{}) error {
 	return nil
 }
