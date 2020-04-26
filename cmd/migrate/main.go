@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"log"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	gokit "github.com/go-kit/kit/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
 
@@ -68,12 +70,25 @@ func main() {
 	sourceConfig.LimitsConfig.CardinalityLimit = 1e9
 	sourceConfig.LimitsConfig.MaxQueryLength = 0
 	limits, err := validation.NewOverrides(sourceConfig.LimitsConfig, nil)
+	lg := gokit.NewLogfmtLogger(gokit.NewSyncWriter(os.Stdout))
+	err = sourceConfig.Validate(lg)
+	if err != nil {
+		log.Println("Failed to validate source store config:", err)
+		os.Exit(1)
+	}
+	err = destConfig.Validate(lg)
+	if err != nil {
+		log.Println("Failed to validate dest store config:", err)
+		os.Exit(1)
+	}
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	s, err := storage.NewStore(sourceConfig.StorageConfig, sourceConfig.ChunkStoreConfig, sourceConfig.SchemaConfig, limits)
 	if err != nil {
 		log.Println("Failed to create source store:", err)
 		os.Exit(1)
 	}
 
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	d, err := storage.NewStore(destConfig.StorageConfig, destConfig.ChunkStoreConfig, destConfig.SchemaConfig, limits)
 	if err != nil {
 		log.Println("Failed to create destination store:", err)
@@ -368,4 +383,11 @@ func mustParse(t string) time.Time {
 	}
 
 	return ret
+}
+
+type logger struct{}
+
+func (l *logger) Log(keyvals ...interface{}) error {
+	log.Println(keyvals)
+	return nil
 }
