@@ -37,12 +37,12 @@ func FromContext(ctx context.Context) *SpanLogger {
 	sp := opentracing.SpanFromContext(ctx)
 	if sp == nil {
 		return &SpanLogger{
-			Logger: util.Logger,
+			Logger: util.WithContext(ctx, util.Logger),
 			Span:   defaultNoopSpan,
 		}
 	}
 	return &SpanLogger{
-		Logger: util.Logger,
+		Logger: util.WithContext(ctx, util.Logger),
 		Span:   sp,
 	}
 }

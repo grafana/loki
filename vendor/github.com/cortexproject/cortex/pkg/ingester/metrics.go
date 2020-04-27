@@ -18,20 +18,25 @@ const (
 )
 
 type ingesterMetrics struct {
-	flushQueueLength      prometheus.Gauge
-	ingestedSamples       prometheus.Counter
-	ingestedSamplesFail   prometheus.Counter
-	queries               prometheus.Counter
-	queriedSamples        prometheus.Histogram
-	queriedSeries         prometheus.Histogram
-	queriedChunks         prometheus.Histogram
-	memSeries             prometheus.Gauge
-	memUsers              prometheus.Gauge
-	memSeriesCreatedTotal *prometheus.CounterVec
-	memSeriesRemovedTotal *prometheus.CounterVec
-	createdChunks         prometheus.Counter
-	walReplayDuration     prometheus.Gauge
-	walCorruptionsTotal   prometheus.Counter
+	flushQueueLength        prometheus.Gauge
+	ingestedSamples         prometheus.Counter
+	ingestedMetadata        prometheus.Counter
+	ingestedSamplesFail     prometheus.Counter
+	ingestedMetadataFail    prometheus.Counter
+	queries                 prometheus.Counter
+	queriedSamples          prometheus.Histogram
+	queriedSeries           prometheus.Histogram
+	queriedChunks           prometheus.Histogram
+	memSeries               prometheus.Gauge
+	memMetadata             prometheus.Gauge
+	memUsers                prometheus.Gauge
+	memSeriesCreatedTotal   *prometheus.CounterVec
+	memMetadataCreatedTotal *prometheus.CounterVec
+	memSeriesRemovedTotal   *prometheus.CounterVec
+	memMetadataRemovedTotal *prometheus.CounterVec
+	createdChunks           prometheus.Counter
+	walReplayDuration       prometheus.Gauge
+	walCorruptionsTotal     prometheus.Counter
 
 	// Chunks / blocks transfer.
 	sentChunks     prometheus.Counter
@@ -62,9 +67,17 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Name: "cortex_ingester_ingested_samples_total",
 			Help: "The total number of samples ingested.",
 		}),
+		ingestedMetadata: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_ingested_metadata_total",
+			Help: "The total number of metadata ingested.",
+		}),
 		ingestedSamplesFail: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ingested_samples_failures_total",
 			Help: "The total number of samples that errored on ingestion.",
+		}),
+		ingestedMetadataFail: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_ingested_metadata_failures_total",
+			Help: "The total number of metadata that errored on ingestion.",
 		}),
 		queries: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_queries_total",
@@ -92,6 +105,10 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Name: "cortex_ingester_memory_series",
 			Help: "The current number of series in memory.",
 		}),
+		memMetadata: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ingester_memory_metadata",
+			Help: "The current number of metadata in memory.",
+		}),
 		memUsers: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_ingester_memory_users",
 			Help: "The current number of users in memory.",
@@ -108,6 +125,14 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Name: "cortex_ingester_wal_corruptions_total",
 			Help: "Total number of WAL corruptions encountered.",
 		}),
+		memMetadataCreatedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_memory_metadata_created_total",
+			Help: "The total number of metadata that were created per user",
+		}, []string{"user"}),
+		memMetadataRemovedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_memory_metadata_removed_total",
+			Help: "The total number of metadata that were removed per user.",
+		}, []string{"user"}),
 
 		// Chunks / blocks transfer.
 		sentChunks: promauto.With(r).NewCounter(prometheus.CounterOpts{

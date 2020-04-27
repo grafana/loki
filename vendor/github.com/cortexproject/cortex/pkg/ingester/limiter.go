@@ -8,8 +8,10 @@ import (
 )
 
 const (
-	errMaxSeriesPerMetricLimitExceeded = "per-metric series limit (local: %d global: %d actual local: %d) exceeded"
-	errMaxSeriesPerUserLimitExceeded   = "per-user series limit (local: %d global: %d actual local: %d) exceeded"
+	errMaxSeriesPerMetricLimitExceeded   = "per-metric series limit (local: %d global: %d actual local: %d) exceeded"
+	errMaxSeriesPerUserLimitExceeded     = "per-user series limit (local: %d global: %d actual local: %d) exceeded"
+	errMaxMetadataPerMetricLimitExceeded = "per-metric metadata limit (local: %d global: %d actual local: %d) exceeded"
+	errMaxMetadataPerUserLimitExceeded   = "per-user metric metadata limit (local: %d global %d actual local: %d) exceeded"
 )
 
 // RingCount is the interface exposed by a ring implementation which allows
@@ -51,6 +53,21 @@ func (l *Limiter) AssertMaxSeriesPerMetric(userID string, series int) error {
 	return fmt.Errorf(errMaxSeriesPerMetricLimitExceeded, localLimit, globalLimit, actualLimit)
 }
 
+// AssertMaxMetadataPerMetric limit has not been reached compared to the current
+// number of metadata per metric in input and returns an error if so.
+func (l *Limiter) AssertMaxMetadataPerMetric(userID string, metadata int) error {
+	actualLimit := l.maxMetadataPerMetric(userID)
+
+	if metadata < actualLimit {
+		return nil
+	}
+
+	localLimit := l.limits.MaxLocalMetadataPerMetric(userID)
+	globalLimit := l.limits.MaxGlobalMetadataPerMetric(userID)
+
+	return fmt.Errorf(errMaxMetadataPerMetricLimitExceeded, localLimit, globalLimit, actualLimit)
+}
+
 // AssertMaxSeriesPerUser limit has not been reached compared to the current
 // number of series in input and returns an error if so.
 func (l *Limiter) AssertMaxSeriesPerUser(userID string, series int) error {
@@ -63,6 +80,21 @@ func (l *Limiter) AssertMaxSeriesPerUser(userID string, series int) error {
 	globalLimit := l.limits.MaxGlobalSeriesPerUser(userID)
 
 	return fmt.Errorf(errMaxSeriesPerUserLimitExceeded, localLimit, globalLimit, actualLimit)
+}
+
+// AssertMaxMetricsWithMetadataPerUser limit has not been reached compared to the current
+// number of metrics with metadata in input and returns an error if so.
+func (l *Limiter) AssertMaxMetricsWithMetadataPerUser(userID string, metrics int) error {
+	actualLimit := l.maxMetadataPerUser(userID)
+
+	if metrics < actualLimit {
+		return nil
+	}
+
+	localLimit := l.limits.MaxLocalMetricsWithMetadataPerUser(userID)
+	globalLimit := l.limits.MaxGlobalMetricsWithMetadataPerUser(userID)
+
+	return fmt.Errorf(errMaxMetadataPerUserLimitExceeded, localLimit, globalLimit, actualLimit)
 }
 
 // MaxSeriesPerQuery returns the maximum number of series a query is allowed to hit.
@@ -78,12 +110,12 @@ func (l *Limiter) maxSeriesPerMetric(userID string) int {
 		if l.shardByAllLabels {
 			// We can assume that series are evenly distributed across ingesters
 			// so we do convert the global limit into a local limit
-			localLimit = l.minNonZero(localLimit, l.convertGlobalToLocalLimit(globalLimit))
+			localLimit = minNonZero(localLimit, l.convertGlobalToLocalLimit(globalLimit))
 		} else {
 			// Given a metric is always pushed to the same set of ingesters (based on
 			// the replication factor), we can configure the per-ingester local limit
 			// equal to the global limit.
-			localLimit = l.minNonZero(localLimit, globalLimit)
+			localLimit = minNonZero(localLimit, globalLimit)
 		}
 	}
 
@@ -96,17 +128,52 @@ func (l *Limiter) maxSeriesPerMetric(userID string) int {
 	return localLimit
 }
 
+func (l *Limiter) maxMetadataPerMetric(userID string) int {
+	localLimit := l.limits.MaxLocalMetadataPerMetric(userID)
+	globalLimit := l.limits.MaxGlobalMetadataPerMetric(userID)
+
+	if globalLimit > 0 {
+		if l.shardByAllLabels {
+			localLimit = minNonZero(localLimit, l.convertGlobalToLocalLimit(globalLimit))
+		} else {
+			localLimit = minNonZero(localLimit, globalLimit)
+		}
+	}
+
+	if localLimit == 0 {
+		localLimit = math.MaxInt32
+	}
+
+	return localLimit
+}
+
 func (l *Limiter) maxSeriesPerUser(userID string) int {
-	localLimit := l.limits.MaxLocalSeriesPerUser(userID)
+	return l.maxByLocalAndGlobal(
+		userID,
+		l.limits.MaxLocalSeriesPerUser,
+		l.limits.MaxGlobalSeriesPerUser,
+	)
+}
+
+func (l *Limiter) maxMetadataPerUser(userID string) int {
+	return l.maxByLocalAndGlobal(
+		userID,
+		l.limits.MaxLocalMetricsWithMetadataPerUser,
+		l.limits.MaxGlobalMetricsWithMetadataPerUser,
+	)
+}
+
+func (l *Limiter) maxByLocalAndGlobal(userID string, localLimitFn, globalLimitFn func(string) int) int {
+	localLimit := localLimitFn(userID)
 
 	// The global limit is supported only when shard-by-all-labels is enabled,
-	// otherwise we wouldn't get an even split of series across ingesters and
+	// otherwise we wouldn't get an even split of series/metadata across ingesters and
 	// can't take a "local decision" without any centralized coordination.
 	if l.shardByAllLabels {
-		// We can assume that series are evenly distributed across ingesters
+		// We can assume that series/metadata are evenly distributed across ingesters
 		// so we do convert the global limit into a local limit
-		globalLimit := l.limits.MaxGlobalSeriesPerUser(userID)
-		localLimit = l.minNonZero(localLimit, l.convertGlobalToLocalLimit(globalLimit))
+		globalLimit := globalLimitFn(userID)
+		localLimit = minNonZero(localLimit, l.convertGlobalToLocalLimit(globalLimit))
 	}
 
 	// If both the local and global limits are disabled, we just
@@ -138,7 +205,7 @@ func (l *Limiter) convertGlobalToLocalLimit(globalLimit int) int {
 	return 0
 }
 
-func (l *Limiter) minNonZero(first, second int) int {
+func minNonZero(first, second int) int {
 	if first == 0 || (second != 0 && first > second) {
 		return second
 	}

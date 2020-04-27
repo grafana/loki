@@ -138,7 +138,7 @@ github.com/coreos/go-systemd/sdjournal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
 github.com/coreos/pkg/dlopen
-# github.com/cortexproject/cortex v1.0.1-0.20200423101820-36496a074bc4
+# github.com/cortexproject/cortex v1.0.1-0.20200424135841-64fb9ad94a38
 github.com/cortexproject/cortex/pkg/alertmanager
 github.com/cortexproject/cortex/pkg/alertmanager/alerts
 github.com/cortexproject/cortex/pkg/alertmanager/alerts/configdb
@@ -153,6 +153,7 @@ github.com/cortexproject/cortex/pkg/chunk/encoding
 github.com/cortexproject/cortex/pkg/chunk/gcp
 github.com/cortexproject/cortex/pkg/chunk/local
 github.com/cortexproject/cortex/pkg/chunk/objectclient
+github.com/cortexproject/cortex/pkg/chunk/openstack
 github.com/cortexproject/cortex/pkg/chunk/purger
 github.com/cortexproject/cortex/pkg/chunk/storage
 github.com/cortexproject/cortex/pkg/chunk/testutils
@@ -393,6 +394,9 @@ github.com/gophercloud/gophercloud/openstack/compute/v2/servers
 github.com/gophercloud/gophercloud/openstack/identity/v2/tenants
 github.com/gophercloud/gophercloud/openstack/identity/v2/tokens
 github.com/gophercloud/gophercloud/openstack/identity/v3/tokens
+github.com/gophercloud/gophercloud/openstack/objectstorage/v1/accounts
+github.com/gophercloud/gophercloud/openstack/objectstorage/v1/containers
+github.com/gophercloud/gophercloud/openstack/objectstorage/v1/objects
 github.com/gophercloud/gophercloud/openstack/utils
 github.com/gophercloud/gophercloud/pagination
 # github.com/gorilla/mux v1.7.1
@@ -519,6 +523,8 @@ github.com/modern-go/reflect2
 github.com/morikuni/aec
 # github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 github.com/mwitkow/go-conntrack
+# github.com/ncw/swift v1.0.50
+github.com/ncw/swift
 # github.com/oklog/run v1.0.0
 github.com/oklog/run
 # github.com/oklog/ulid v1.3.1
@@ -712,6 +718,7 @@ github.com/thanos-io/thanos/pkg/objstore/azure
 github.com/thanos-io/thanos/pkg/objstore/filesystem
 github.com/thanos-io/thanos/pkg/objstore/gcs
 github.com/thanos-io/thanos/pkg/objstore/s3
+github.com/thanos-io/thanos/pkg/objstore/swift
 github.com/thanos-io/thanos/pkg/pool
 github.com/thanos-io/thanos/pkg/runutil
 github.com/thanos-io/thanos/pkg/shipper

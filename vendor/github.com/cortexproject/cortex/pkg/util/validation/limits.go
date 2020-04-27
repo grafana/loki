@@ -41,6 +41,7 @@ type Limits struct {
 	SubringSize               int                 `yaml:"user_subring_size"`
 
 	// Ingester enforced limits.
+	// Series
 	MaxSeriesPerQuery        int `yaml:"max_series_per_query"`
 	MaxSamplesPerQuery       int `yaml:"max_samples_per_query"`
 	MaxLocalSeriesPerUser    int `yaml:"max_series_per_user"`
@@ -48,6 +49,11 @@ type Limits struct {
 	MaxGlobalSeriesPerUser   int `yaml:"max_global_series_per_user"`
 	MaxGlobalSeriesPerMetric int `yaml:"max_global_series_per_metric"`
 	MinChunkLength           int `yaml:"min_chunk_length"`
+	// Metadata
+	MaxLocalMetricsWithMetadataPerUser  int `yaml:"max_metadata_per_user"`
+	MaxLocalMetadataPerMetric           int `yaml:"max_metadata_per_metric"`
+	MaxGlobalMetricsWithMetadataPerUser int `yaml:"max_global_metadata_per_user"`
+	MaxGlobalMetadataPerMetric          int `yaml:"max_global_metadata_per_metric"`
 
 	// Querier enforced limits.
 	MaxChunksPerQuery   int           `yaml:"max_chunks_per_query"`
@@ -87,6 +93,11 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxGlobalSeriesPerUser, "ingester.max-global-series-per-user", 0, "The maximum number of active series per user, across the cluster. 0 to disable. Supported only if -distributor.shard-by-all-labels is true.")
 	f.IntVar(&l.MaxGlobalSeriesPerMetric, "ingester.max-global-series-per-metric", 0, "The maximum number of active series per metric name, across the cluster. 0 to disable.")
 	f.IntVar(&l.MinChunkLength, "ingester.min-chunk-length", 0, "Minimum number of samples in an idle chunk to flush it to the store. Use with care, if chunks are less than this size they will be discarded.")
+
+	f.IntVar(&l.MaxLocalMetricsWithMetadataPerUser, "ingester.max-metadata-per-user", 8000, "The maximum number of active metrics with metadata per user, per ingester. 0 to disable.")
+	f.IntVar(&l.MaxLocalMetadataPerMetric, "ingester.max-metadata-per-metric", 10, "The maximum number of metadata per metric, per ingester. 0 to disable.")
+	f.IntVar(&l.MaxGlobalMetricsWithMetadataPerUser, "ingester.max-global-metadata-per-user", 0, "The maximum number of active metrics with metadata per user, across the cluster. 0 to disable. Supported only if -distributor.shard-by-all-labels is true.")
+	f.IntVar(&l.MaxGlobalMetadataPerMetric, "ingester.max-global-metadata-per-metric", 0, "The maximum number of metadata per metric, across the cluster. 0 to disable.")
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
 	f.DurationVar(&l.MaxQueryLength, "store.max-query-length", 0, "Limit to length of chunk store queries, 0 to disable.")
@@ -295,6 +306,26 @@ func (o *Overrides) CardinalityLimit(userID string) int {
 // MinChunkLength returns the minimum size of chunk that will be saved by ingesters
 func (o *Overrides) MinChunkLength(userID string) int {
 	return o.getOverridesForUser(userID).MinChunkLength
+}
+
+// MaxLocalMetricsWithMetadataPerUser returns the maximum number of metrics with metadata a user is allowed to store in a single ingester.
+func (o *Overrides) MaxLocalMetricsWithMetadataPerUser(userID string) int {
+	return o.getOverridesForUser(userID).MaxLocalMetricsWithMetadataPerUser
+}
+
+// MaxLocalMetadataPerMetric returns the maximum number of metadata allowed per metric in a single ingester.
+func (o *Overrides) MaxLocalMetadataPerMetric(userID string) int {
+	return o.getOverridesForUser(userID).MaxLocalMetadataPerMetric
+}
+
+// MaxGlobalMetricsWithMetadataPerUser returns the maximum number of metrics with metadata a user is allowed to store across the cluster.
+func (o *Overrides) MaxGlobalMetricsWithMetadataPerUser(userID string) int {
+	return o.getOverridesForUser(userID).MaxGlobalMetricsWithMetadataPerUser
+}
+
+// MaxGlobalMetadataPerMetric returns the maximum number of metadata allowed per metric across the cluster.
+func (o *Overrides) MaxGlobalMetadataPerMetric(userID string) int {
+	return o.getOverridesForUser(userID).MaxGlobalMetadataPerMetric
 }
 
 // SubringSize returns the size of the subring for a given user.

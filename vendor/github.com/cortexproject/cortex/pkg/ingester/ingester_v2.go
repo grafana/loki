@@ -92,12 +92,13 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	}
 
 	i := &Ingester{
-		cfg:          cfg,
-		clientConfig: clientConfig,
-		metrics:      newIngesterMetrics(registerer, false),
-		limits:       limits,
-		chunkStore:   nil,
-		wal:          &noopWAL{},
+		cfg:           cfg,
+		clientConfig:  clientConfig,
+		metrics:       newIngesterMetrics(registerer, false),
+		limits:        limits,
+		chunkStore:    nil,
+		usersMetadata: map[string]*userMetricsMetadata{},
+		wal:           &noopWAL{},
 		TSDBState: TSDBState{
 			dbs:         make(map[string]*userTSDB),
 			bucket:      bucketClient,
@@ -201,8 +202,14 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	refCachePurgeTicker := time.NewTicker(5 * time.Minute)
 	defer refCachePurgeTicker.Stop()
 
+	// Similarly to the above, this is a hardcoded value.
+	metadataPurgeTicker := time.NewTicker(metadataPurgePeriod)
+	defer metadataPurgeTicker.Stop()
+
 	for {
 		select {
+		case <-metadataPurgeTicker.C:
+			i.purgeUserMetricsMetadata()
 		case <-rateUpdateTicker.C:
 			i.userStatesMtx.RLock()
 			for _, db := range i.TSDBState.dbs {
@@ -260,6 +267,10 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	i.TSDBState.inflightWriteReqs.Add(1)
 	i.userStatesMtx.RUnlock()
 	defer i.TSDBState.inflightWriteReqs.Done()
+
+	// Given metadata is a best-effort approach, and we don't halt on errors
+	// process it before samples. Otherwise, we risk returning an error before ingestion.
+	i.pushMetadata(ctx, userID, req.GetMetadata())
 
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
@@ -363,6 +374,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	if firstPartialErr != nil {
 		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(firstPartialErr, userID).Error())
 	}
+
 	return &client.WriteResponse{}, nil
 }
 
