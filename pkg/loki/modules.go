@@ -266,7 +266,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	t.store, err = loki_storage.NewStore(t.cfg.StorageConfig, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig, t.overrides)
+	t.store, err = loki_storage.NewStore(t.cfg.StorageConfig, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig, t.overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
