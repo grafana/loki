@@ -201,7 +201,7 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer helpers.LogErrorWithContext("closing iterator", iter.Close)
+		defer helpers.LogErrorWithContext(ctx, "closing iterator", iter.Close)
 		streams, err := readStreams(iter, q.limit, q.direction, q.interval)
 		return streams, err
 	}
