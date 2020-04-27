@@ -37,6 +37,7 @@ type LiteralParams struct {
 	qs         string
 	start, end time.Time
 	step       time.Duration
+	interval   time.Duration
 	direction  logproto.Direction
 	limit      uint32
 }
