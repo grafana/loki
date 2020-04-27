@@ -72,6 +72,10 @@ func (f Facade) Utilization() float64 {
 	return f.c.Utilization()
 }
 
+func (f Facade) Size() int {
+	return f.c.UncompressedSize()
+}
+
 // LokiChunk returns the chunkenc.Chunk.
 func (f Facade) LokiChunk() Chunk {
 	return f.c
