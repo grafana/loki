@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -15,6 +18,28 @@ import (
 )
 
 const tombstonesReloadDuration = 5 * time.Minute
+
+type tombstonesLoaderMetrics struct {
+	cacheGenLoadFailures       prometheus.Counter
+	deleteRequestsLoadFailures prometheus.Counter
+}
+
+func newtombstonesLoaderMetrics(r prometheus.Registerer) *tombstonesLoaderMetrics {
+	m := tombstonesLoaderMetrics{}
+
+	m.cacheGenLoadFailures = promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "tombstones_loader_cache_gen_load_failures_total",
+		Help:      "Total number of failures while loading cache generation number using tombstones loader",
+	})
+	m.deleteRequestsLoadFailures = promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "tombstones_loader_cache_delete_requests_load_failures_total",
+		Help:      "Total number of failures while loading delete requests using tombstones loader",
+	})
+
+	return &m
+}
 
 // TombstonesSet holds all the pending delete requests for a user
 type TombstonesSet struct {
@@ -28,15 +53,21 @@ type TombstonesLoader struct {
 	tombstones    map[string]*TombstonesSet
 	tombstonesMtx sync.RWMutex
 
+	cacheGenNumbers    map[string]*cacheGenNumbers
+	cacheGenNumbersMtx sync.RWMutex
+
 	deleteStore *DeleteStore
+	metrics     *tombstonesLoaderMetrics
 	quit        chan struct{}
 }
 
 // NewTombstonesLoader creates a TombstonesLoader
-func NewTombstonesLoader(deleteStore *DeleteStore) *TombstonesLoader {
+func NewTombstonesLoader(deleteStore *DeleteStore, registerer prometheus.Registerer) *TombstonesLoader {
 	tl := TombstonesLoader{
-		tombstones:  map[string]*TombstonesSet{},
-		deleteStore: deleteStore,
+		tombstones:      map[string]*TombstonesSet{},
+		cacheGenNumbers: map[string]*cacheGenNumbers{},
+		deleteStore:     deleteStore,
+		metrics:         newtombstonesLoaderMetrics(registerer),
 	}
 	go tl.loop()
 
@@ -49,6 +80,10 @@ func (tl *TombstonesLoader) Stop() {
 }
 
 func (tl *TombstonesLoader) loop() {
+	if tl.deleteStore == nil {
+		return
+	}
+
 	tombstonesReloadTimer := time.NewTicker(tombstonesReloadDuration)
 	for {
 		select {
@@ -64,22 +99,42 @@ func (tl *TombstonesLoader) loop() {
 }
 
 func (tl *TombstonesLoader) reloadTombstones() error {
-	// check for updates in loaded gen numbers
-	tl.tombstonesMtx.Lock()
+	updatedGenNumbers := make(map[string]*cacheGenNumbers)
+	tl.cacheGenNumbersMtx.RLock()
 
-	userIDs := make([]string, 0, len(tl.tombstones))
-	for userID := range tl.tombstones {
-		userIDs = append(userIDs, userID)
+	// check for updates in loaded gen numbers
+	for userID, oldGenNumbers := range tl.cacheGenNumbers {
+		newGenNumbers, err := tl.deleteStore.getCacheGenerationNumbers(context.Background(), userID)
+		if err != nil {
+			return err
+		}
+
+		if *oldGenNumbers != *newGenNumbers {
+			updatedGenNumbers[userID] = newGenNumbers
+		}
 	}
 
-	tl.tombstonesMtx.Unlock()
+	tl.cacheGenNumbersMtx.RUnlock()
+
+	// in frontend we load only cache gen numbers so short circuit here if there are no loaded deleted requests
+	// first call to GetPendingTombstones would avoid doing this.
+	tl.tombstonesMtx.RLock()
+	if len(tl.tombstones) == 0 {
+		tl.tombstonesMtx.RUnlock()
+		return nil
+	}
+	tl.tombstonesMtx.RUnlock()
 
 	// for all the updated gen numbers, reload delete requests
-	for _, userID := range userIDs {
+	for userID, genNumbers := range updatedGenNumbers {
 		err := tl.loadPendingTombstones(userID)
 		if err != nil {
 			return err
 		}
+
+		tl.cacheGenNumbersMtx.Lock()
+		tl.cacheGenNumbers[userID] = genNumbers
+		tl.cacheGenNumbersMtx.Unlock()
 	}
 
 	return nil
@@ -150,7 +205,8 @@ func (tl *TombstonesLoader) loadPendingTombstones(userID string) error {
 
 	pendingDeleteRequests, err := tl.deleteStore.GetPendingDeleteRequestsForUser(context.Background(), userID)
 	if err != nil {
-		return err
+		tl.metrics.deleteRequestsLoadFailures.Inc()
+		return errors.Wrap(err, "error loading delete requests")
 	}
 
 	tombstoneSet := TombstonesSet{tombstones: pendingDeleteRequests, oldestTombstoneStart: model.Now()}
@@ -161,7 +217,8 @@ func (tl *TombstonesLoader) loadPendingTombstones(userID string) error {
 			tombstoneSet.tombstones[i].Matchers[j], err = promql.ParseMetricSelector(selector)
 
 			if err != nil {
-				return err
+				tl.metrics.deleteRequestsLoadFailures.Inc()
+				return errors.Wrapf(err, "error parsing metric selector")
 			}
 		}
 
@@ -179,6 +236,48 @@ func (tl *TombstonesLoader) loadPendingTombstones(userID string) error {
 	tl.tombstones[userID] = &tombstoneSet
 
 	return nil
+}
+
+// GetStoreCacheGenNumber returns store cache gen number for a user
+func (tl *TombstonesLoader) GetStoreCacheGenNumber(userID string) string {
+	return tl.getCacheGenNumbers(userID).store
+
+}
+
+// GetResultsCacheGenNumber returns results cache gen number for a user
+func (tl *TombstonesLoader) GetResultsCacheGenNumber(userID string) string {
+	return tl.getCacheGenNumbers(userID).results
+}
+
+func (tl *TombstonesLoader) getCacheGenNumbers(userID string) *cacheGenNumbers {
+	tl.cacheGenNumbersMtx.RLock()
+	if genNumbers, isOK := tl.cacheGenNumbers[userID]; isOK {
+		tl.cacheGenNumbersMtx.RUnlock()
+		return genNumbers
+	}
+
+	tl.cacheGenNumbersMtx.RUnlock()
+
+	if tl.deleteStore == nil {
+		tl.cacheGenNumbersMtx.Lock()
+		defer tl.cacheGenNumbersMtx.Unlock()
+
+		tl.cacheGenNumbers[userID] = &cacheGenNumbers{}
+		return tl.cacheGenNumbers[userID]
+	}
+
+	genNumbers, err := tl.deleteStore.getCacheGenerationNumbers(context.Background(), userID)
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error loading cache generation numbers", "err", err)
+		tl.metrics.cacheGenLoadFailures.Inc()
+		return &cacheGenNumbers{}
+	}
+
+	tl.cacheGenNumbersMtx.Lock()
+	defer tl.cacheGenNumbersMtx.Unlock()
+
+	tl.cacheGenNumbers[userID] = genNumbers
+	return genNumbers
 }
 
 // GetDeletedIntervals returns non-overlapping, sorted  deleted intervals.

@@ -97,7 +97,7 @@ func TestTombstonesLoader(t *testing.T) {
 			deleteStore, err := setupTestDeleteStore()
 			require.NoError(t, err)
 
-			tombstonesLoader := NewTombstonesLoader(deleteStore)
+			tombstonesLoader := NewTombstonesLoader(deleteStore, nil)
 
 			// add delete requests
 			for _, interval := range tc.deleteRequestIntervals {

@@ -96,7 +96,7 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg Schema
 	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig)
 	require.NoError(t, err)
 
-	store := NewCompositeStore()
+	store := NewCompositeStore(nil)
 	err = store.addSchema(storeCfg, schema, schemaCfg.Configs[0].From.Time, storage, storage, overrides, chunksCache, writeDedupeCache)
 	require.NoError(t, err)
 	return store

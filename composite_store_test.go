@@ -52,8 +52,8 @@ func TestCompositeStore(t *testing.T) {
 		from, through model.Time
 		store         Store
 	}
-	collect := func(results *[]result) func(from, through model.Time, store Store) error {
-		return func(from, through model.Time, store Store) error {
+	collect := func(results *[]result) func(_ context.Context, from, through model.Time, store Store) error {
+		return func(_ context.Context, from, through model.Time, store Store) error {
 			*results = append(*results, result{from, through, store})
 			return nil
 		}
@@ -182,7 +182,7 @@ func TestCompositeStore(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			have := []result{}
-			err := tc.cs.forStores(model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through), collect(&have))
+			err := tc.cs.forStores(context.Background(), userID, model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through), collect(&have))
 			require.NoError(t, err)
 			if !reflect.DeepEqual(tc.want, have) {
 				t.Fatalf("wrong stores - %s", test.Diff(tc.want, have))

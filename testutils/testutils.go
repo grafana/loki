@@ -135,7 +135,7 @@ func SetupTestChunkStore() (chunk.Store, error) {
 	var storeCfg chunk.StoreConfig
 	flagext.DefaultValues(&storeCfg)
 
-	store := chunk.NewCompositeStore()
+	store := chunk.NewCompositeStore(nil)
 	err = store.AddPeriod(storeCfg, schemaCfg.Configs[0], storage, storage, overrides, cache.NewNoopCache(), cache.NewNoopCache())
 	if err != nil {
 		return nil, err
