@@ -43,6 +43,7 @@ type Query struct {
 	Limit           int
 	Forward         bool
 	Step            time.Duration
+	Interval        time.Duration
 	Quiet           bool
 	NoLabels        bool
 	IgnoreLabelsKey []string
@@ -70,7 +71,7 @@ func (q *Query) DoQuery(c *client.Client, out output.LogOutput, statistics bool)
 	if q.isInstant() {
 		resp, err = c.Query(q.QueryString, q.Limit, q.Start, d, q.Quiet)
 	} else {
-		resp, err = c.QueryRange(q.QueryString, q.Limit, q.Start, q.End, d, q.Step, q.Quiet)
+		resp, err = c.QueryRange(q.QueryString, q.Limit, q.Start, q.End, d, q.Step, q.Interval, q.Quiet)
 	}
 
 	if err != nil {
@@ -121,7 +122,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	if q.isInstant() {
 		query = eng.NewInstantQuery(q.QueryString, q.Start, q.resultsDirection(), uint32(q.Limit))
 	} else {
-		query = eng.NewRangeQuery(q.QueryString, q.Start, q.End, q.Step, q.resultsDirection(), uint32(q.Limit))
+		query = eng.NewRangeQuery(q.QueryString, q.Start, q.End, q.Step, q.Interval, q.resultsDirection(), uint32(q.Limit))
 	}
 
 	// execute the query
