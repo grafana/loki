@@ -14,8 +14,8 @@ type BoltdbIndexClientWithShipper struct {
 	shipper *Shipper
 }
 
-// NewBoltDBIndexClient creates a new IndexClient that used BoltDB.
-func NewBoltDBIndexClient(cfg local.BoltDBConfig, archiveStoreClient chunk.ObjectClient, archiverCfg ShipperConfig) (chunk.IndexClient, error) {
+// NewBoltDBIndexClientWithShipper creates a new IndexClient that used BoltDB.
+func NewBoltDBIndexClientWithShipper(cfg local.BoltDBConfig, archiveStoreClient chunk.ObjectClient, archiverCfg ShipperConfig) (chunk.IndexClient, error) {
 	boltDBIndexClient, err := local.NewBoltDBIndexClient(cfg)
 	if err != nil {
 		return nil, err
@@ -43,7 +43,7 @@ func (b *BoltdbIndexClientWithShipper) QueryPages(ctx context.Context, queries [
 	return chunk_util.DoParallelQueries(ctx, b.query, queries, callback)
 }
 
-func (b *BoltdbIndexClientWithShipper) query(ctx context.Context, query chunk.IndexQuery, callback func(chunk.ReadBatch) (shouldContinue bool)) error {
+func (b *BoltdbIndexClientWithShipper) query(ctx context.Context, query chunk.IndexQuery, callback chunk_util.Callback) error {
 	db, err := b.GetDB(query.TableName, local.DBOperationRead)
 	if err != nil && err != local.ErrUnexistentBoltDB {
 		return err

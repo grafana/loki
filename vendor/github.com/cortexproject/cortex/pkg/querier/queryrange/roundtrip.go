@@ -26,6 +26,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -68,6 +69,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
 
+// Validate validates the config.
 func (cfg *Config) Validate(log log.Logger) error {
 	// SplitQueriesByDay is deprecated use SplitQueriesByInterval.
 	if cfg.SplitQueriesByDay {
@@ -130,6 +132,13 @@ func NewTripperware(
 	minShardingLookback time.Duration,
 	registerer prometheus.Registerer,
 ) (frontend.Tripperware, cache.Cache, error) {
+	// Per tenant query metrics.
+	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "query_frontend_queries_total",
+		Help:      "Total queries sent per tenant.",
+	}, []string{"op", "user"})
+
 	// Metric used to keep track of each middleware execution duration.
 	metrics := NewInstrumentMiddlewareMetrics(registerer)
 
@@ -181,7 +190,20 @@ func NewTripperware(
 		if len(queryRangeMiddleware) > 0 {
 			queryrange := NewRoundTripper(next, codec, queryRangeMiddleware...)
 			return frontend.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
-				if !strings.HasSuffix(r.URL.Path, "/query_range") {
+				isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
+				op := "query"
+				if isQueryRange {
+					op = "query_range"
+				}
+
+				user, err := user.ExtractOrgID(r.Context())
+				// This should never happen anyways because we have auth middleware before this.
+				if err != nil {
+					return nil, err
+				}
+				queriesPerTenant.WithLabelValues(op, user).Inc()
+
+				if !isQueryRange {
 					return next.RoundTrip(r)
 				}
 				return queryrange.RoundTrip(r)

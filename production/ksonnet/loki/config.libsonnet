@@ -105,6 +105,7 @@
       frontend: {
         compress_responses: true,
         max_outstanding_per_tenant: 200,
+        log_queries_longer_than: '5s',
       },
       frontend_worker: {
         frontend_address: 'query-frontend.%s.svc.cluster.local:9095' % $._config.namespace,
@@ -255,18 +256,8 @@
       table_manager: {
         retention_period: 0,
         retention_deletes_enabled: false,
-        index_tables_provisioning: {
-          inactive_read_throughput: 0,
-          inactive_write_throughput: 0,
-          provisioned_read_throughput: 0,
-          provisioned_write_throughput: 0,
-        },
-        chunk_tables_provisioning: {
-          inactive_read_throughput: 0,
-          inactive_write_throughput: 0,
-          provisioned_read_throughput: 0,
-          provisioned_write_throughput: 0,
-        },
+        poll_interval: '10m',
+        creation_grace_period: '3h',
       },
 
       distributor: {

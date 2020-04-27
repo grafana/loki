@@ -65,7 +65,7 @@ type ReadBatchIterator interface {
 type ObjectClient interface {
 	PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error)
-	List(ctx context.Context, prefix string) ([]StorageObject, error)
+	List(ctx context.Context, prefix string) ([]StorageObject, []StorageCommonPrefix, error)
 	DeleteObject(ctx context.Context, objectKey string) error
 	Stop()
 }
@@ -75,3 +75,7 @@ type StorageObject struct {
 	Key        string
 	ModifiedAt time.Time
 }
+
+// StorageCommonPrefix represents a common prefix aka a synthetic directory in Object Store.
+// It is guaranteed to always end with DirDelim
+type StorageCommonPrefix string

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/user"
@@ -64,6 +65,7 @@ func getStore() (lstore.Store, error) {
 			},
 		},
 		&validation.Overrides{},
+		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
 		return nil, err

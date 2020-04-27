@@ -38,5 +38,5 @@ func NewPool(cfg PoolConfig, ring ring.ReadRing, factory ring_client.PoolFactory
 		HealthCheckTimeout: cfg.RemoteTimeout,
 	}
 
-	return ring_client.NewPool("ingester", poolCfg, ring, factory, clients, logger)
+	return ring_client.NewPool("ingester", poolCfg, ring_client.NewRingServiceDiscovery(ring), factory, clients, logger)
 }

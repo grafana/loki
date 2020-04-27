@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
@@ -18,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
+	"github.com/cortexproject/cortex/pkg/chunk/openstack"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -64,6 +66,7 @@ type Config struct {
 	CassandraStorageConfig cassandra.Config        `yaml:"cassandra"`
 	BoltDBConfig           local.BoltDBConfig      `yaml:"boltdb"`
 	FSConfig               local.FSConfig          `yaml:"filesystem"`
+	Swift                  openstack.SwiftConfig   `yaml:"swift"`
 
 	IndexCacheValidity time.Duration `yaml:"index_cache_validity"`
 
@@ -82,6 +85,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
 	cfg.DeleteStoreConfig.RegisterFlags(f)
+	cfg.Swift.RegisterFlags(f)
 
 	f.StringVar(&cfg.Engine, "store.engine", "chunks", "The storage engine to use: chunks or tsdb. Be aware tsdb is experimental and shouldn't be used in production.")
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
@@ -96,11 +100,16 @@ func (cfg *Config) Validate() error {
 	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Cassandra Storage config")
 	}
+	if err := cfg.Swift.Validate(); err != nil {
+		return errors.Wrap(err, "invalid Swift Storage config")
+	}
 	return nil
 }
 
 // NewStore makes the storage clients based on the configuration.
-func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits StoreLimits) (chunk.Store, error) {
+func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits StoreLimits, reg prometheus.Registerer) (chunk.Store, error) {
+	chunkMetrics := newChunkClientMetrics(reg)
+
 	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig)
 	if err != nil {
 		return nil, err
@@ -145,6 +154,8 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 		if err != nil {
 			return nil, errors.Wrap(err, "error creating object client")
 		}
+
+		chunks = newMetricsChunkClient(chunks, chunkMetrics)
 
 		err = stores.AddPeriod(storeCfg, s, index, chunks, limits, chunksCache, writeDedupeCache)
 		if err != nil {
@@ -216,6 +227,8 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig) (chun
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case "gcs":
 		return newChunkClientFromStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, chunk.DirDelim))
+	case "swift":
+		return newChunkClientFromStore(openstack.NewSwiftObjectClient(cfg.Swift, chunk.DirDelim))
 	case "cassandra":
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg)
 	case "filesystem":
@@ -285,6 +298,8 @@ func NewObjectClient(name string, cfg Config) (chunk.ObjectClient, error) {
 		return gcp.NewGCSObjectClient(context.Background(), cfg.GCSConfig, chunk.DirDelim)
 	case "azure":
 		return azure.NewBlobStorage(&cfg.AzureStorageConfig, chunk.DirDelim)
+	case "swift":
+		return openstack.NewSwiftObjectClient(cfg.Swift, chunk.DirDelim)
 	case "inmemory":
 		return chunk.NewMockStorage(), nil
 	case "filesystem":

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/codes"
@@ -31,6 +33,13 @@ import (
 const (
 	// Number of timeseries to return in each batch of a QueryStream.
 	queryStreamBatchSize = 128
+
+	// Discarded Metadata metric labels.
+	perUserMetadataLimit   = "per_user_metadata_limit"
+	perMetricMetadataLimit = "per_metric_metadata_limit"
+
+	// Period at which to attempt purging metadata from memory.
+	metadataPurgePeriod = 5 * time.Minute
 )
 
 var (
@@ -57,6 +66,9 @@ type Config struct {
 	ConcurrentFlushes int           `yaml:"concurrent_flushes"`
 	SpreadFlushes     bool          `yaml:"spread_flushes"`
 
+	// Config for metadata purging.
+	MetadataRetainPeriod time.Duration `yaml:"metadata_retain_period"`
+
 	RateUpdatePeriod time.Duration `yaml:"rate_update_period"`
 
 	// Use tsdb block storage
@@ -77,15 +89,19 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.WALConfig.RegisterFlags(f)
 
 	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 10, "Number of times to try and transfer chunks before falling back to flushing. Negative value or zero disables hand-over.")
+
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.retain-period", 5*time.Minute, "Period chunks will remain in memory after flushing.")
-	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 1*time.Minute, "Timeout for individual flush operations.")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", 5*time.Minute, "Maximum chunk idle time before flushing.")
 	f.DurationVar(&cfg.MaxStaleChunkIdle, "ingester.max-stale-chunk-idle", 2*time.Minute, "Maximum chunk idle time for chunks terminating in stale markers before flushing. 0 disables it and a stale series is not flushed until the max-chunk-idle timeout is reached.")
+	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 1*time.Minute, "Timeout for individual flush operations.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age before flushing.")
 	f.DurationVar(&cfg.ChunkAgeJitter, "ingester.chunk-age-jitter", 0, "Range of time to subtract from -ingester.max-chunk-age to spread out flushes")
-	f.BoolVar(&cfg.SpreadFlushes, "ingester.spread-flushes", true, "If true, spread series flushes across the whole period of -ingester.max-chunk-age.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 50, "Number of concurrent goroutines flushing to dynamodb.")
+	f.BoolVar(&cfg.SpreadFlushes, "ingester.spread-flushes", true, "If true, spread series flushes across the whole period of -ingester.max-chunk-age.")
+
+	f.DurationVar(&cfg.MetadataRetainPeriod, "ingester.metadata-retain-period", 10*time.Minute, "Period at which metadata we have not seen will remain in memory before being deleted.")
+
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
 }
 
@@ -108,6 +124,10 @@ type Ingester struct {
 	userStatesMtx sync.RWMutex // protects userStates and stopped
 	userStates    *userStates
 	stopped       bool // protected by userStatesMtx
+
+	// For storing metadata ingested.
+	usersMetadataMtx sync.RWMutex
+	usersMetadata    map[string]*userMetricsMetadata
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
@@ -152,8 +172,14 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 		recordPool = sync.Pool{
 			New: func() interface{} {
-				return &Record{}
+				return &WALRecord{}
 			},
+		}
+	}
+
+	if cfg.WALConfig.WALEnabled || cfg.WALConfig.Recover {
+		if err := os.MkdirAll(cfg.WALConfig.Dir, os.ModePerm); err != nil {
+			return nil, err
 		}
 	}
 
@@ -161,10 +187,12 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		cfg:          cfg,
 		clientConfig: clientConfig,
 		metrics:      newIngesterMetrics(registerer, true),
-		limits:       limits,
-		chunkStore:   chunkStore,
-		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		registerer:   registerer,
+
+		limits:        limits,
+		chunkStore:    chunkStore,
+		flushQueues:   make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		usersMetadata: map[string]*userMetricsMetadata{},
+		registerer:    registerer,
 	}
 
 	var err error
@@ -277,8 +305,14 @@ func (i *Ingester) loop(ctx context.Context) error {
 	rateUpdateTicker := time.NewTicker(i.cfg.RateUpdatePeriod)
 	defer rateUpdateTicker.Stop()
 
+	metadataPurgeTicker := time.NewTicker(metadataPurgePeriod)
+	defer metadataPurgeTicker.Stop()
+
 	for {
 		select {
+		case <-metadataPurgeTicker.C:
+			i.purgeUserMetricsMetadata()
+
 		case <-flushTicker.C:
 			i.sweepUsers(false)
 
@@ -359,24 +393,23 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 		return nil, fmt.Errorf("no user id")
 	}
 
+	// Given metadata is a best-effort approach, and we don't halt on errors
+	// process it before samples. Otherwise, we risk returning an error before ingestion.
+	i.pushMetadata(ctx, userID, req.GetMetadata())
+
 	var firstPartialErr *validationError
-	var record *Record
+	var record *WALRecord
 	if i.cfg.WALConfig.WALEnabled {
-		record = recordPool.Get().(*Record)
-		record.UserId = userID
+		record = recordPool.Get().(*WALRecord)
+		record.UserID = userID
 		// Assuming there is not much churn in most cases, there is no use
 		// keeping the record.Labels slice hanging around.
-		record.Labels = nil
+		record.Series = nil
 		if cap(record.Samples) < len(req.Timeseries) {
-			record.Samples = make([]Sample, 0, len(req.Timeseries))
+			record.Samples = make([]tsdb_record.RefSample, 0, len(req.Timeseries))
 		} else {
 			record.Samples = record.Samples[:0]
 		}
-	}
-
-	if len(req.Metadata) > 0 {
-		logger := util.WithContext(ctx, util.Logger)
-		level.Debug(logger).Log("msg", "metadata received in the ingester", "count", len(req.Metadata))
 	}
 
 	for _, ts := range req.Timeseries {
@@ -418,7 +451,7 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 
 // NOTE: memory for `labels` is unsafe; anything retained beyond the
 // life of this function must be copied
-func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum, record *Record) error {
+func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs, timestamp model.Time, value model.SampleValue, source client.WriteRequest_SourceEnum, record *WALRecord) error {
 	labels.removeBlanks()
 
 	var (
@@ -474,10 +507,10 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 	}
 
 	if record != nil {
-		record.Samples = append(record.Samples, Sample{
-			Fingerprint: uint64(fp),
-			Timestamp:   uint64(timestamp),
-			Value:       float64(value),
+		record.Samples = append(record.Samples, tsdb_record.RefSample{
+			Ref: uint64(fp),
+			T:   int64(timestamp),
+			V:   float64(value),
 		})
 	}
 
@@ -493,6 +526,92 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 	}
 
 	return err
+}
+
+func (i *Ingester) pushMetadata(ctx context.Context, userID string, metadata []*client.MetricMetadata) {
+	var firstMetadataErr error
+	for _, metadata := range metadata {
+		err := i.appendMetadata(userID, metadata)
+		if err == nil {
+			i.metrics.ingestedMetadata.Inc()
+			continue
+		}
+
+		i.metrics.ingestedMetadataFail.Inc()
+		if firstMetadataErr == nil {
+			firstMetadataErr = err
+		}
+	}
+
+	// If we have any error with regard to metadata we just log and no-op.
+	// We consider metadata a best effort approach, errors here should not stop processing.
+	if firstMetadataErr != nil {
+		logger := util.WithContext(ctx, util.Logger)
+		level.Warn(logger).Log("msg", "failed to ingest some metadata", "err", firstMetadataErr)
+	}
+}
+
+func (i *Ingester) appendMetadata(userID string, m *client.MetricMetadata) error {
+	i.userStatesMtx.RLock()
+	if i.stopped {
+		i.userStatesMtx.RUnlock()
+		return fmt.Errorf("ingester stopping")
+	}
+	i.userStatesMtx.RUnlock()
+
+	userMetadata := i.getOrCreateUserMetadata(userID)
+
+	return userMetadata.add(m.GetMetricName(), m)
+}
+
+func (i *Ingester) getOrCreateUserMetadata(userID string) *userMetricsMetadata {
+	userMetadata := i.getUserMetadata(userID)
+	if userMetadata != nil {
+		return userMetadata
+	}
+
+	i.usersMetadataMtx.Lock()
+	defer i.usersMetadataMtx.Unlock()
+
+	// Ensure it was not created between switching locks.
+	userMetadata, ok := i.usersMetadata[userID]
+	if !ok {
+		userMetadata = newMetadataMap(i.limiter, i.metrics, userID)
+		i.usersMetadata[userID] = userMetadata
+	}
+	return userMetadata
+}
+
+func (i *Ingester) getUserMetadata(userID string) *userMetricsMetadata {
+	i.usersMetadataMtx.RLock()
+	defer i.usersMetadataMtx.RUnlock()
+	return i.usersMetadata[userID]
+}
+
+func (i *Ingester) getUsersWithMetadata() []string {
+	i.usersMetadataMtx.RLock()
+	defer i.usersMetadataMtx.RUnlock()
+
+	userIDs := make([]string, 0, len(i.usersMetadata))
+	for userID := range i.usersMetadata {
+		userIDs = append(userIDs, userID)
+	}
+
+	return userIDs
+}
+
+func (i *Ingester) purgeUserMetricsMetadata() {
+	deadline := time.Now().Add(-i.cfg.MetadataRetainPeriod)
+
+	for _, userID := range i.getUsersWithMetadata() {
+		metadata := i.getUserMetadata(userID)
+		if metadata == nil {
+			continue
+		}
+
+		// Remove all metadata that we no longer need to retain.
+		metadata.purge(deadline)
+	}
 }
 
 // Query implements service.IngesterServer
@@ -737,6 +856,29 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 	}
 
 	return result, nil
+}
+
+// MetricsMetadata returns all the metric metadata of a user.
+func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetadataRequest) (*client.MetricsMetadataResponse, error) {
+	i.userStatesMtx.RLock()
+	if err := i.checkRunningOrStopping(); err != nil {
+		i.userStatesMtx.RUnlock()
+		return nil, err
+	}
+	i.userStatesMtx.RUnlock()
+
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("no user id")
+	}
+
+	userMetadata := i.getUserMetadata(userID)
+
+	if userMetadata == nil {
+		return &client.MetricsMetadataResponse{}, nil
+	}
+
+	return &client.MetricsMetadataResponse{Metadata: userMetadata.toClientMetadata()}, nil
 }
 
 // UserStats returns ingestion statistics for the current user.

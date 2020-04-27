@@ -92,7 +92,7 @@ type Config struct {
 	Encoding         encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
 	TSDB             tsdb.Config              `yaml:"tsdb"`
 	Compactor        compactor.Config         `yaml:"compactor"`
-	StoreGateway     storegateway.Config      `yaml:"store_gateway" doc:"hidden"` // this component is not yet finished.
+	StoreGateway     storegateway.Config      `yaml:"store_gateway"`
 	DataPurgerConfig purger.Config            `yaml:"purger"`
 
 	Ruler         ruler.Config                               `yaml:"ruler"`
@@ -155,6 +155,9 @@ func (c *Config) Validate(log log.Logger) error {
 	}
 	if err := c.Storage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid storage config")
+	}
+	if err := c.Ruler.Validate(); err != nil {
+		return errors.Wrap(err, "invalid ruler config")
 	}
 	if err := c.TSDB.Validate(); err != nil {
 		return errors.Wrap(err, "invalid TSDB config")

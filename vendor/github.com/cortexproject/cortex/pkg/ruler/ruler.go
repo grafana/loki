@@ -93,6 +93,14 @@ type Config struct {
 	EnableAPI bool `yaml:"enable_api"`
 }
 
+// Validate config and returns error on failure
+func (cfg *Config) Validate() error {
+	if err := cfg.StoreConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid storage config")
+	}
+	return nil
+}
+
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.StoreConfig.RegisterFlags(f)
