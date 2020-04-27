@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -557,7 +556,7 @@ func buildTestStreams(labels string, tr timeRange) logproto.Stream {
 	for from := tr.from; from.Before(tr.to); from = from.Add(time.Second) {
 		stream.Entries = append(stream.Entries, logproto.Entry{
 			Timestamp: from,
-			Line:      fmt.Sprintf("%s", from),
+			Line:      from.String(),
 		})
 	}
 
