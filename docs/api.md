@@ -229,7 +229,7 @@ Use the `step` parameter when making metric queries to Loki, or queries which re
 
 Use the `interval` parameter when making log queries to Loki, or queries which return a stream response. It is evaluated by returning a log entry at `start`, then the next entry will be returned an entry with timestampe >= `start + interval`, and again at `start + interval + interval` and so on until `end` is reached.  It does not fill missing entries.
 
-**Note about the experimental nature of interval** This flag may be removed in the future in favor of a LogQL expression to perform similar behavior.
+**Note about the experimental nature of interval** This flag may be removed in the future, if so it will likely be in favor of a LogQL expression to perform similar behavior, however that is uncertain at this time.  [Issue 1779](https://github.com/grafana/loki/issues/1779) was created to track the discussion, if you are using `interval` please go add your use case and thoughts to that issue.
 
 
 

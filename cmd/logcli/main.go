@@ -230,7 +230,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 		cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 		cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
 		cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").DurationVar(&q.Step)
-		cmd.Flag("interval", "Query interval, for log queries. Return entries at the specified interval, ignoring those between.").DurationVar(&q.Interval)
+		cmd.Flag("interval", "Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This parameter is experimental, please see Issue 1779**").DurationVar(&q.Interval)
 	}
 
 	cmd.Flag("forward", "Scan forwards through logs.").Default("false").BoolVar(&q.Forward)
