@@ -201,7 +201,7 @@ func (ng *engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer helpers.LogError("closing iterator", iter.Close)
+		defer helpers.LogErrorWithContext(ctx, "closing iterator", iter.Close)
 		streams, err := readStreams(iter, q.limit, q.direction, q.interval)
 		return streams, err
 	}
@@ -219,7 +219,7 @@ func (ng *engine) evalSample(ctx context.Context, expr SampleExpr, q *query) (pr
 	if err != nil {
 		return nil, err
 	}
-	defer helpers.LogError("closing SampleExpr", stepEvaluator.Close)
+	defer helpers.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
 	seriesIndex := map[uint64]*promql.Series{}
 

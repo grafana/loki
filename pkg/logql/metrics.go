@@ -63,9 +63,10 @@ var (
 )
 
 func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Result) {
+	logger := util.WithContext(ctx, util.Logger)
 	queryType, err := QueryType(p.Query())
 	if err != nil {
-		level.Warn(util.Logger).Log("msg", "error parsing query type", "err", err)
+		level.Warn(logger).Log("msg", "error parsing query type", "err", err)
 	}
 	rt := string(GetRangeType(p))
 
@@ -77,10 +78,7 @@ func RecordMetrics(ctx context.Context, p Params, status string, stats stats.Res
 	}
 
 	// we also log queries, useful for troubleshooting slow queries.
-	level.Info(
-		// ensure we have traceID & orgId
-		util.WithContext(ctx, util.Logger),
-	).Log(
+	level.Info(logger).Log(
 		"latency", latencyType, // this can be used to filter log lines.
 		"query", p.Query(),
 		"query_type", queryType,

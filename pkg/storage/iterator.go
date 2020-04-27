@@ -127,7 +127,7 @@ func newBatchChunkIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, ba
 				}
 				err = next.Close()
 				if err != nil {
-					level.Error(util.Logger).Log("msg", "Failed to close the pre-fetched iterator when pre-fetching was canceled", "err", err)
+					level.Error(util.WithContext(ctx, util.Logger)).Log("msg", "Failed to close the pre-fetched iterator when pre-fetching was canceled", "err", err)
 				}
 				return
 			case res.next <- &struct {
