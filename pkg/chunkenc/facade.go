@@ -72,6 +72,14 @@ func (f Facade) Utilization() float64 {
 	return f.c.Utilization()
 }
 
+// Size implements encoding.Chunk.
+func (f Facade) Size() int {
+	if f.c == nil {
+		return 0
+	}
+	return f.c.Size()
+}
+
 // LokiChunk returns the chunkenc.Chunk.
 func (f Facade) LokiChunk() Chunk {
 	return f.c
