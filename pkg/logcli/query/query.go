@@ -12,6 +12,7 @@ import (
 
 	"github.com/fatih/color"
 	json "github.com/json-iterator/go"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/user"
 
@@ -148,7 +149,7 @@ func localStore(conf loki.Config) (logql.Querier, error) {
 	if err != nil {
 		return nil, err
 	}
-	s, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits)
+	s, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

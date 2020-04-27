@@ -14,8 +14,8 @@ type BoltdbIndexClientWithShipper struct {
 	shipper *Shipper
 }
 
-// NewBoltDBIndexClient creates a new IndexClient that used BoltDB.
-func NewBoltDBIndexClient(cfg local.BoltDBConfig, archiveStoreClient chunk.ObjectClient, archiverCfg ShipperConfig) (chunk.IndexClient, error) {
+// NewBoltDBIndexClientWithShipper creates a new IndexClient that used BoltDB.
+func NewBoltDBIndexClientWithShipper(cfg local.BoltDBConfig, archiveStoreClient chunk.ObjectClient, archiverCfg ShipperConfig) (chunk.IndexClient, error) {
 	boltDBIndexClient, err := local.NewBoltDBIndexClient(cfg)
 	if err != nil {
 		return nil, err
