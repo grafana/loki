@@ -1,13 +1,16 @@
 package server
 
 import (
+	"flag"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path"
 	"sort"
 	"strings"
+	"syscall"
 	"text/template"
 
 	logutil "github.com/cortexproject/cortex/pkg/util"
@@ -25,8 +28,13 @@ var (
 	readinessProbeSuccess = []byte("Ready")
 )
 
+type Server interface {
+	Shutdown()
+	Run() error
+}
+
 // Server embed weaveworks server with static file and templating capability
-type Server struct {
+type server struct {
 	*serverww.Server
 	tms               *targets.TargetManagers
 	externalURL       *url.URL
@@ -38,10 +46,20 @@ type Config struct {
 	serverww.Config   `yaml:",inline"`
 	ExternalURL       string `yaml:"external_url"`
 	HealthCheckTarget *bool  `yaml:"health_check_target"`
+	Disable           bool   `yaml:"disable"`
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.Config.RegisterFlags(f)
+	f.BoolVar(&cfg.Disable, "server.disable", false, "Disable the http and grpc server.")
 }
 
 // New makes a new Server
-func New(cfg Config, tms *targets.TargetManagers) (*Server, error) {
+func New(cfg Config, tms *targets.TargetManagers) (Server, error) {
+	if cfg.Disable {
+		return NoopServer, nil
+	}
 	wws, err := serverww.New(cfg.Config)
 	if err != nil {
 		return nil, err
@@ -58,7 +76,7 @@ func New(cfg Config, tms *targets.TargetManagers) (*Server, error) {
 		healthCheckTargetFlag = *cfg.HealthCheckTarget
 	}
 
-	serv := &Server{
+	serv := &server{
 		Server:            wws,
 		tms:               tms,
 		externalURL:       externalURL,
@@ -75,7 +93,7 @@ func New(cfg Config, tms *targets.TargetManagers) (*Server, error) {
 }
 
 // serviceDiscovery serves the service discovery page.
-func (s *Server) serviceDiscovery(rw http.ResponseWriter, req *http.Request) {
+func (s *server) serviceDiscovery(rw http.ResponseWriter, req *http.Request) {
 	var index []string
 	allTarget := s.tms.AllTargets()
 	for job := range allTarget {
@@ -143,7 +161,7 @@ func (s *Server) serviceDiscovery(rw http.ResponseWriter, req *http.Request) {
 }
 
 // targets serves the targets page.
-func (s *Server) targets(rw http.ResponseWriter, req *http.Request) {
+func (s *server) targets(rw http.ResponseWriter, req *http.Request) {
 	executeTemplate(req.Context(), rw, templateOptions{
 		Data: struct {
 			TargetPools map[string][]targets.Target
@@ -176,7 +194,7 @@ func (s *Server) targets(rw http.ResponseWriter, req *http.Request) {
 }
 
 // ready serves the ready endpoint
-func (s *Server) ready(rw http.ResponseWriter, _ *http.Request) {
+func (s *server) ready(rw http.ResponseWriter, _ *http.Request) {
 	if s.healthCheckTarget && !s.tms.Ready() {
 		http.Error(rw, readinessProbeFailure, http.StatusInternalServerError)
 		return
@@ -213,3 +231,16 @@ func computeExternalURL(u string, port int) (*url.URL, error) {
 
 	return eu, nil
 }
+
+var NoopServer Server = noopServer{}
+
+type noopServer struct{}
+
+func (noopServer) Run() error {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	sig := <-sigs
+	level.Info(logutil.Logger).Log("msg", "received shutdown signal", "sig", sig)
+	return nil
+}
+func (noopServer) Shutdown() {}
