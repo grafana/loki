@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 
@@ -119,7 +120,11 @@ func (c *Client) doQuery(path string, quiet bool) (*loghttp.QueryResponse, error
 }
 
 func (c *Client) doRequest(path string, quiet bool, out interface{}) error {
-	us := c.Address + path
+
+	us, err := buildURL(c.Address, path)
+	if err != nil {
+		return err
+	}
 	if !quiet {
 		log.Print(us)
 	}
@@ -175,7 +180,10 @@ func (c *Client) LiveTailQueryConn(queryStr string, delayFor int, limit int, fro
 }
 
 func (c *Client) wsConnect(path string, quiet bool) (*websocket.Conn, error) {
-	us := c.Address + path
+	us, err := buildURL(c.Address, path)
+	if err != nil {
+		return nil, err
+	}
 
 	tlsConfig, err := config.NewTLSConfig(&c.TLSConfig)
 	if err != nil {
@@ -212,4 +220,14 @@ func (c *Client) wsConnect(path string, quiet bool) (*websocket.Conn, error) {
 	}
 
 	return conn, nil
+}
+
+// buildURL concats a url `http://foo/bar` with a path `/buzz`.
+func buildURL(u, p string) (string, error) {
+	url, err := url.Parse(u)
+	if err != nil {
+		return "", err
+	}
+	url.Path = path.Join(url.Path, p)
+	return url.String(), nil
 }
