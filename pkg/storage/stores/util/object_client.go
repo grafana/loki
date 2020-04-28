@@ -31,6 +31,10 @@ func (p PrefixedObjectClient) List(ctx context.Context, prefix string) ([]chunk.
 		objects[i].Key = strings.TrimPrefix(objects[i].Key, p.prefix)
 	}
 
+	for i := range commonPrefixes {
+		commonPrefixes[i] = chunk.StorageCommonPrefix(strings.TrimPrefix(string(commonPrefixes[i]), p.prefix))
+	}
+
 	return objects, commonPrefixes, nil
 }
 
