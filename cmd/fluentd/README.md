@@ -1,6 +1,8 @@
-# fluent-plugin-grafana-loki
+# FluentD output plugin
 
-[Fluentd](https://fluentd.org/) output plugin to ship logs to a Loki server. See [docs/client/fluentd/README.md](../../docs/clients/fluentd/README.md) for detailed information.
+[Fluentd](https://fluentd.org/) is a data collector for unified logging layer, it can be configured with the Loki output plugin, provided in this folder, to ship logs to Loki.
+
+See [docs/client/fluentd/README.md](../../docs/clients/fluentd/README.md) for detailed information.
 
 ## Development
 
