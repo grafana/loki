@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"github.com/grafana/loki/pkg/util/validation"
 	"net/http"
 	"sync"
 	"time"
@@ -129,13 +130,8 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 	var appendErr error
 	for _, s := range req.Streams {
-		labels, err := util.ToClientLabels(s.Labels)
-		if err != nil {
-			appendErr = err
-			continue
-		}
 
-		stream, err := i.getOrCreateStream(labels)
+		stream, err := i.getOrCreateStream(s)
 		if err != nil {
 			appendErr = err
 			continue
@@ -153,7 +149,11 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr
 }
 
-func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, error) {
+func (i *instance) getOrCreateStream(pushReqStream *logproto.Stream) (*stream, error) {
+	labels, err := util.ToClientLabels(pushReqStream.Labels)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
 	rawFp := client.FastFingerprint(labels)
 	fp := i.mapper.mapFP(rawFp, labels)
 
@@ -162,8 +162,14 @@ func (i *instance) getOrCreateStream(labels []client.LabelAdapter) (*stream, err
 		return stream, nil
 	}
 
-	err := i.limiter.AssertMaxStreamsPerUser(i.instanceID, len(i.streams))
+	err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, len(i.streams))
 	if err != nil {
+		validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
+		bytes := 0
+		for _, e := range pushReqStream.Entries {
+			bytes += len(e.Line)
+		}
+		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
 	}
 
