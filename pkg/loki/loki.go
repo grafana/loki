@@ -126,6 +126,7 @@ func New(cfg Config) (*Loki, error) {
 	}
 
 	loki.setupAuthMiddleware()
+	storage.RegisterCustomIndexClients(cfg.StorageConfig)
 
 	serviceMap, err := loki.initModuleServices(cfg.Target)
 	if err != nil {

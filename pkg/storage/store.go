@@ -50,8 +50,6 @@ type store struct {
 
 // NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits storage.StoreLimits, registerer prometheus.Registerer) (Store, error) {
-	registerCustomIndexClients(cfg)
-
 	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg, limits, registerer)
 	if err != nil {
 		return nil, err
@@ -60,16 +58,6 @@ func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConf
 		Store: s,
 		cfg:   cfg,
 	}, nil
-}
-
-// NewTableClient creates a TableClient for managing tables for index/chunk store.
-// ToDo: Add support in Cortex for registering custom table client like index client.
-func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
-	if name == local.BoltDBShipperType {
-		name = "boltdb"
-		cfg.FSConfig = cortex_local.FSConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}
-	}
-	return storage.NewTableClient(name, cfg.Config)
 }
 
 // decodeReq sanitizes an incoming request, rounds bounds, and appends the __name__ matcher
@@ -218,7 +206,7 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 	return filtered
 }
 
-func registerCustomIndexClients(cfg Config) {
+func RegisterCustomIndexClients(cfg Config) {
 	// BoltDB Shipper is supposed to be run as a singleton.
 	// This could also be done in NewBoltDBIndexClientWithShipper factory method but we are doing it here because that method is used
 	// in tests for creating multiple instances of it at a time.
@@ -236,5 +224,12 @@ func registerCustomIndexClients(cfg Config) {
 
 		boltDBIndexClientWithShipper, err = local.NewBoltDBIndexClientWithShipper(cortex_local.BoltDBConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}, objectClient, cfg.BoltDBShipperConfig)
 		return boltDBIndexClientWithShipper, err
-	}, nil)
+	}, func() (client chunk.TableClient, e error) {
+		objectClient, err := storage.NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg.Config)
+		if err != nil {
+			return nil, err
+		}
+
+		return local.NewBoltDBShipperTableClient(objectClient), nil
+	})
 }

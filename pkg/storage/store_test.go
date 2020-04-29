@@ -453,12 +453,16 @@ func TestStore_MultipleBoltDBShippersInConfig(t *testing.T) {
 	firstStoreDate := parseDate("2019-01-01")
 	secondStoreDate := parseDate("2019-01-02")
 
-	store, err := NewStore(Config{
+	config := Config{
 		Config: storage.Config{
 			FSConfig: cortex_local.FSConfig{Directory: path.Join(tempDir, "chunks")},
 		},
 		BoltDBShipperConfig: boltdbShipperConfig,
-	}, chunk.StoreConfig{}, chunk.SchemaConfig{
+	}
+
+	RegisterCustomIndexClients(config)
+
+	store, err := NewStore(config, chunk.StoreConfig{}, chunk.SchemaConfig{
 		Configs: []chunk.PeriodConfig{
 			{
 				From:       chunk.DayTime{Time: timeToModelTime(firstStoreDate)},
