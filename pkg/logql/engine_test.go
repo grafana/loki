@@ -1007,6 +1007,58 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			},
 		},
 		{
+			`avg by (app) (
+				sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) +
+				sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) /
+				sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
+			) * 2
+		`,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, logproto.FORWARD, 100,
+			[][]*logproto.Stream{
+				{
+					newStream(testSize, factor(5, identity), `{app="foo"}`),
+					newStream(testSize, factor(5, identity), `{app="bar"}`),
+				},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(180, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.Labels{{Name: "app", Value: "bar"}},
+					Points: []promql.Point{{T: 60 * 1000, V: 2.4}, {T: 90 * 1000, V: 2.4}, {T: 120 * 1000, V: 2.4}, {T: 150 * 1000, V: 2.4}, {T: 180 * 1000, V: 2.4}},
+				},
+				promql.Series{
+					Metric: labels.Labels{{Name: "app", Value: "foo"}},
+					Points: []promql.Point{{T: 60 * 1000, V: 2.4}, {T: 90 * 1000, V: 2.4}, {T: 120 * 1000, V: 2.4}, {T: 150 * 1000, V: 2.4}, {T: 180 * 1000, V: 2.4}},
+				},
+			},
+		},
+		{
+			` sum (
+					sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) +
+					sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) /
+					sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
+			) + 1
+		`,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, logproto.FORWARD, 100,
+			[][]*logproto.Stream{
+				{
+					newStream(testSize, factor(5, identity), `{app="foo"}`),
+					newStream(testSize, factor(5, identity), `{app="bar"}`),
+				},
+			},
+			[]SelectParams{
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(180, 0), Limit: 0, Selector: `{app=~"foo|bar"}|~".+bar"`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.Labels{},
+					Points: []promql.Point{{T: 60 * 1000, V: 3.4}, {T: 90 * 1000, V: 3.4}, {T: 120 * 1000, V: 3.4}, {T: 150 * 1000, V: 3.4}, {T: 180 * 1000, V: 3.4}},
+				},
+			},
+		},
+		{
 			`1+1--1`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]*logproto.Stream{},

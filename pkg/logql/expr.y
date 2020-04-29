@@ -20,6 +20,7 @@ import (
   RangeOp                 string
   Selector                []*labels.Matcher
   VectorAggregationExpr   SampleExpr
+  MetricExpr              SampleExpr
   VectorOp                string
   BinOpExpr               SampleExpr
   binOp                   string
@@ -35,6 +36,7 @@ import (
 %type <Grouping>              grouping
 %type <Labels>                labels
 %type <LogExpr>               logExpr
+%type <MetricExpr>            metricExpr
 %type <LogRangeExpr>          logRangeExpr
 %type <Matcher>               matcher
 %type <Matchers>              matchers
@@ -64,11 +66,15 @@ root: expr { exprlex.(*lexer).expr = $1 };
 
 expr:
       logExpr                                      { $$ = $1 }
-    | rangeAggregationExpr                         { $$ = $1 }
-    | vectorAggregationExpr                        { $$ = $1 }
-    | binOpExpr                                    { $$ = $1 }
-    | literalExpr                                  { $$ = $1 }
-    | OPEN_PARENTHESIS expr CLOSE_PARENTHESIS      { $$ = $2 }
+    | metricExpr                                   { $$ = $1 }
+    ;
+
+metricExpr:
+      rangeAggregationExpr                          { $$ = $1 }
+    | vectorAggregationExpr                         { $$ = $1 }
+    | binOpExpr                                     { $$ = $1 }
+    | literalExpr                                   { $$ = $1 }
+    | OPEN_PARENTHESIS metricExpr CLOSE_PARENTHESIS { $$ = $2 }
     ;
 
 logExpr:
@@ -91,17 +97,12 @@ rangeAggregationExpr: rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS { 
 
 vectorAggregationExpr:
     // Aggregations with 1 argument.
-      vectorOp OPEN_PARENTHESIS rangeAggregationExpr CLOSE_PARENTHESIS                               { $$ = mustNewVectorAggregationExpr($3, $1, nil, nil) }
-    | vectorOp OPEN_PARENTHESIS vectorAggregationExpr CLOSE_PARENTHESIS                              { $$ = mustNewVectorAggregationExpr($3, $1, nil, nil) }
-    | vectorOp grouping OPEN_PARENTHESIS rangeAggregationExpr CLOSE_PARENTHESIS                      { $$ = mustNewVectorAggregationExpr($4, $1, $2, nil,) }
-    | vectorOp grouping OPEN_PARENTHESIS vectorAggregationExpr CLOSE_PARENTHESIS                     { $$ = mustNewVectorAggregationExpr($4, $1, $2, nil,) }
-    | vectorOp OPEN_PARENTHESIS rangeAggregationExpr CLOSE_PARENTHESIS grouping                      { $$ = mustNewVectorAggregationExpr($3, $1, $5, nil) }
-    | vectorOp OPEN_PARENTHESIS vectorAggregationExpr CLOSE_PARENTHESIS grouping                     { $$ = mustNewVectorAggregationExpr($3, $1, $5, nil) }
+      vectorOp OPEN_PARENTHESIS metricExpr CLOSE_PARENTHESIS                               { $$ = mustNewVectorAggregationExpr($3, $1, nil, nil) }
+    | vectorOp grouping OPEN_PARENTHESIS metricExpr CLOSE_PARENTHESIS                      { $$ = mustNewVectorAggregationExpr($4, $1, $2, nil,) }
+    | vectorOp OPEN_PARENTHESIS metricExpr CLOSE_PARENTHESIS grouping                      { $$ = mustNewVectorAggregationExpr($3, $1, $5, nil) }
     // Aggregations with 2 arguments.
-    | vectorOp OPEN_PARENTHESIS NUMBER COMMA vectorAggregationExpr CLOSE_PARENTHESIS                 { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
-    | vectorOp OPEN_PARENTHESIS NUMBER COMMA vectorAggregationExpr CLOSE_PARENTHESIS grouping        { $$ = mustNewVectorAggregationExpr($5, $1, $7, &$3) }
-    | vectorOp OPEN_PARENTHESIS NUMBER COMMA rangeAggregationExpr CLOSE_PARENTHESIS                  { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
-    | vectorOp OPEN_PARENTHESIS NUMBER COMMA rangeAggregationExpr CLOSE_PARENTHESIS grouping         { $$ = mustNewVectorAggregationExpr($5, $1, $7, &$3) }
+    | vectorOp OPEN_PARENTHESIS NUMBER COMMA metricExpr CLOSE_PARENTHESIS                 { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
+    | vectorOp OPEN_PARENTHESIS NUMBER COMMA metricExpr CLOSE_PARENTHESIS grouping        { $$ = mustNewVectorAggregationExpr($5, $1, $7, &$3) }
     ;
 
 filter:
@@ -144,11 +145,13 @@ binOpExpr:
          | expr DIV expr       { $$ = mustNewBinOpExpr("/", $1, $3) }
          | expr MOD expr       { $$ = mustNewBinOpExpr("%", $1, $3) }
          | expr POW expr       { $$ = mustNewBinOpExpr("^", $1, $3) }
+         ;
 
 literalExpr:
            NUMBER         { $$ = mustNewLiteralExpr( $1, false ) }
            | ADD NUMBER   { $$ = mustNewLiteralExpr( $2, false ) }
            | SUB NUMBER   { $$ = mustNewLiteralExpr( $2, true ) }
+           ;
 
 vectorOp:
         SUM     { $$ = OpTypeSum }
@@ -165,6 +168,7 @@ vectorOp:
 rangeOp:
       COUNT_OVER_TIME { $$ = OpTypeCountOverTime }
     | RATE            { $$ = OpTypeRate }
+    ;
 
 
 labels:

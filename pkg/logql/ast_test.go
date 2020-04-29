@@ -64,6 +64,11 @@ func Test_SampleExpr_String(t *testing.T) {
 		sum by (cluster) (count_over_time({job="postgres"}[5m]))
 		`,
 		`sum by (cluster) (count_over_time({job="mysql"}[5m])) / min(count_over_time({job="mysql"}[5m])) `,
+		`sum by (job) (
+			count_over_time({namespace="tns"} |= "level=error"[5m])
+		/
+			count_over_time({namespace="tns"}[5m])
+		)`,
 	} {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseExpr(tc)
