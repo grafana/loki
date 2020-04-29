@@ -10,8 +10,6 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 
-	"github.com/grafana/loki/pkg/util"
-
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 
@@ -124,15 +122,12 @@ func TestSyncPeriod(t *testing.T) {
 		result = append(result, logproto.Entry{Timestamp: tt, Line: fmt.Sprintf("hello %d", i)})
 		tt = tt.Add(time.Duration(1 + rand.Int63n(randomStep.Nanoseconds())))
 	}
-
-	err = inst.Push(context.Background(), &logproto.PushRequest{Streams: []*logproto.Stream{{Labels: lbls, Entries: result}}})
+	pr := &logproto.PushRequest{Streams: []*logproto.Stream{{Labels: lbls, Entries: result}}}
+	err = inst.Push(context.Background(), pr)
 	require.NoError(t, err)
 
-	// let's verify results.
-	ls, err := util.ToClientLabels(lbls)
-	require.NoError(t, err)
-
-	s, err := inst.getOrCreateStream(ls)
+	// let's verify results
+	s, err := inst.getOrCreateStream(pr.Streams[0])
 	require.NoError(t, err)
 
 	// make sure each chunk spans max 'sync period' time
