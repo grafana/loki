@@ -10,7 +10,8 @@ const (
 	RateLimited = "rate_limited"
 	// LineTooLong is a reason for discarding too long log lines.
 	LineTooLong = "line_too_long"
-	// StreamLimit is a reason for discarding lines when we can't create any new streams
+	// StreamLimit is a reason for discarding lines when we can't create a new stream
+	// because the limit of active streams has been reached.
 	StreamLimit = "stream_limit"
 )
 

@@ -37,7 +37,7 @@ func NewLimiter(limits *validation.Overrides, ring RingCount, replicationFactor 
 // AssertMaxStreamsPerUser ensures limit has not been reached compared to the current
 // number of streams in input and returns an error if so.
 func (l *Limiter) AssertMaxStreamsPerUser(userID string, streams int) error {
-	//Start by setting the local limit either from override or default
+	// Start by setting the local limit either from override or default
 	localLimit := l.limits.MaxLocalStreamsPerUser(userID)
 
 	// We can assume that streams are evenly distributed across ingesters
@@ -45,7 +45,7 @@ func (l *Limiter) AssertMaxStreamsPerUser(userID string, streams int) error {
 	globalLimit := l.limits.MaxGlobalStreamsPerUser(userID)
 	adjustedGlobalLimit := l.convertGlobalToLocalLimit(globalLimit)
 
-	// Set the calculated limit to the lessor of the local limit or the new adjusted global limit
+	// Set the calculated limit to the lesser of the local limit or the new calculated global limit
 	calculatedLimit := l.minNonZero(localLimit, adjustedGlobalLimit)
 
 	// If both the local and global limits are disabled, we just
