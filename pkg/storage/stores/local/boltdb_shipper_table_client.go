@@ -60,7 +60,9 @@ func (b *boltDBShipperTableClient) DeleteTable(ctx context.Context, name string)
 }
 
 func (b *boltDBShipperTableClient) DescribeTable(ctx context.Context, name string) (desc chunk.TableDesc, isActive bool, err error) {
-	return
+	return chunk.TableDesc{
+		Name: name,
+	}, true, nil
 }
 
 func (b *boltDBShipperTableClient) UpdateTable(ctx context.Context, current, expected chunk.TableDesc) error {
