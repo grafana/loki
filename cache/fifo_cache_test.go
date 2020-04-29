@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -27,7 +28,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	}{
 		{
 			name: "test-memory-eviction",
-			cfg:  FifoCacheConfig{MaxSizeBytes: cnt * sizeOf(itemTemplate), Validity: 1 * time.Minute},
+			cfg:  FifoCacheConfig{MaxSizeBytes: strconv.FormatInt(int64(cnt*sizeOf(itemTemplate)), 10), Validity: 1 * time.Minute},
 		},
 		{
 			name: "test-items-eviction",
@@ -175,7 +176,7 @@ func TestFifoCacheExpiry(t *testing.T) {
 	}{
 		{
 			name: "test-memory-expiry",
-			cfg:  FifoCacheConfig{MaxSizeBytes: memorySz, Validity: 5 * time.Millisecond},
+			cfg:  FifoCacheConfig{MaxSizeBytes: strconv.FormatInt(int64(memorySz), 10), Validity: 5 * time.Millisecond},
 		},
 		{
 			name: "test-items-expiry",
@@ -235,4 +236,42 @@ func genBytes(n uint8) []byte {
 		arr[i] = byte(i)
 	}
 	return arr
+}
+
+func TestBytesParsing(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected uint64
+	}{
+		{input: "", expected: 0},
+		{input: "123", expected: 123},
+		{input: "1234567890", expected: 1234567890},
+		{input: "25k", expected: 25000},
+		{input: "25K", expected: 25000},
+		{input: "25kb", expected: 25000},
+		{input: "25kB", expected: 25000},
+		{input: "25Kb", expected: 25000},
+		{input: "25KB", expected: 25000},
+		{input: "25kib", expected: 25600},
+		{input: "25KiB", expected: 25600},
+		{input: "25m", expected: 25000000},
+		{input: "25M", expected: 25000000},
+		{input: "25mB", expected: 25000000},
+		{input: "25MB", expected: 25000000},
+		{input: "2.5MB", expected: 2500000},
+		{input: "25MiB", expected: 26214400},
+		{input: "25mib", expected: 26214400},
+		{input: "2.5mib", expected: 2621440},
+		{input: "25g", expected: 25000000000},
+		{input: "25G", expected: 25000000000},
+		{input: "25gB", expected: 25000000000},
+		{input: "25Gb", expected: 25000000000},
+		{input: "25GiB", expected: 26843545600},
+		{input: "25gib", expected: 26843545600},
+	}
+	for _, test := range tests {
+		output, err := parsebytes(test.input)
+		assert.Nil(t, err)
+		assert.Equal(t, test.expected, output)
+	}
 }

@@ -71,6 +71,16 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "Limit how long back data can be queried")
 }
 
+func (cfg *StoreConfig) Validate() error {
+	if err := cfg.ChunkCacheConfig.Validate(); err != nil {
+		return err
+	}
+	if err := cfg.WriteDedupeCacheConfig.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
 type baseStore struct {
 	cfg StoreConfig
 

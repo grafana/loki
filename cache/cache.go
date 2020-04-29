@@ -55,6 +55,10 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	cfg.Prefix = prefix
 }
 
+func (cfg *Config) Validate() error {
+	return cfg.Fifocache.Validate()
+}
+
 // New creates a new Cache using Config.
 func New(cfg Config) (Cache, error) {
 	if cfg.Cache != nil {
