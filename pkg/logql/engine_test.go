@@ -1013,7 +1013,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 				sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
 			) * 2
 		`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]*logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="foo"}`),
@@ -1041,7 +1041,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 					sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
 			) + 1
 		`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]*logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="foo"}`),
