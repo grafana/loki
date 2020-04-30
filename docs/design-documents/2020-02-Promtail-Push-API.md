@@ -87,7 +87,7 @@ and is essentially just code duplication.
 The
 [logproto.Pusher](https://github.com/grafana/loki/blob/f7ee1c753c76ef63338d53cfba782188a165144d/pkg/logproto/logproto.proto#L8-L10)
 service could be exposed through Promtail. This would enable clients stubs to be
-generated for lanuages that have gRPC support, and, for HTTP1 support, a
+generated for languages that have gRPC support, and, for HTTP1 support, a
 [gRPC Gateway](https://github.com/grpc-ecosystem/grpc-gateway) would be embedded
 in Promtail itself.
 
