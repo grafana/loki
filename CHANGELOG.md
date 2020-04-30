@@ -209,7 +209,7 @@ There are many other important fixes and improvements to Loki, way too many to c
 * [1671](https://github.com/grafana/loki/pull/1671) **shokada**: Update tanka.md so that promtail.yml is the correct format
 * [1648](https://github.com/grafana/loki/pull/1648) **ShotaKitazawa**: loki-canary: fix indent of DaemonSet manifest written in .md file
 * [1642](https://github.com/grafana/loki/pull/1642) **slim-bean**: Improve systemd field docs
-* [1641](https://github.com/grafana/loki/pull/1641) **pastatopf**: Correcte syntax of rate example
+* [1641](https://github.com/grafana/loki/pull/1641) **pastatopf**: Correct syntax of rate example
 * [1634](https://github.com/grafana/loki/pull/1634) **takanabe**: Unite docs for fluentd plugin
 * [1619](https://github.com/grafana/loki/pull/1619) **shaikatz**: PeriodConfig documentation fix dynamodb -> aws-dynamo
 * [1611](https://github.com/grafana/loki/pull/1611) **owen-d**: loki frontend docs additions
