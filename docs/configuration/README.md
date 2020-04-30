@@ -282,7 +282,7 @@ The `ingester_config` block configures Ingesters.
 # How long chunks should sit in-memory with no updates before
 # being flushed if they don't hit the max block size. This means
 # that half-empty chunks will still be flushed after a certain
-# period as long as they receieve no further activity.
+# period as long as they receive no further activity.
 [chunk_idle_period: <duration> | default = 30m]
 
 # The targeted _uncompressed_ size in bytes of a chunk block
