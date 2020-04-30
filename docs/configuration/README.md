@@ -433,7 +433,7 @@ aws:
     # DynamoDB rate cap to back off when throttled.
     [throttle_limit: <float> | default = 10.0]
 
-    # Metics-based autoscaling configuration.
+    # Metrics-based autoscaling configuration.
     metrics:
       # Use metrics-based autoscaling via this Prometheus query URL.
       [url: <string>]
