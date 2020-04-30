@@ -155,7 +155,7 @@ func Test_CreateTable_BoltdbRW(t *testing.T) {
 		HashValue: fmt.Sprintf("hash%s", "test"),
 	}
 	var have []chunk.IndexEntry
-	err = indexClient.query(context.Background(), entry, func(read chunk.ReadBatch) bool {
+	err = indexClient.query(context.Background(), entry, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
 		iter := read.Iterator()
 		for iter.Next() {
 			have = append(have, chunk.IndexEntry{
