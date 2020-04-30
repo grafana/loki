@@ -1,6 +1,8 @@
 package local
 
 import (
+	"context"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -8,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
+
+	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 var (
@@ -113,4 +117,56 @@ func TestBoltDB_GetDB(t *testing.T) {
 
 	_, err = boltdbIndexClient.GetDB(testDb1, DBOperationRead)
 	require.NoError(t, err)
+}
+
+func Test_CreateTable_BoltdbRW(t *testing.T) {
+	tableName := "test"
+	dirname, err := ioutil.TempDir(os.TempDir(), "boltdb")
+	require.NoError(t, err)
+
+	indexClient, err := NewBoltDBIndexClient(BoltDBConfig{
+		Directory: dirname,
+	})
+	require.NoError(t, err)
+
+	tableClient, err := NewTableClient(dirname)
+	require.NoError(t, err)
+
+	err = tableClient.CreateTable(context.Background(), chunk.TableDesc{
+		Name: tableName,
+	})
+	require.NoError(t, err)
+
+	batch := indexClient.NewWriteBatch()
+	batch.Add(tableName, fmt.Sprintf("hash%s", "test"), []byte(fmt.Sprintf("range%s", "value")), nil)
+
+	err = indexClient.BatchWrite(context.Background(), batch)
+	require.NoError(t, err)
+
+	// try to create the same file which is already existing
+	err = tableClient.CreateTable(context.Background(), chunk.TableDesc{
+		Name: tableName,
+	})
+	require.NoError(t, err)
+
+	// make sure file content is not modified
+	entry := chunk.IndexQuery{
+		TableName: tableName,
+		HashValue: fmt.Sprintf("hash%s", "test"),
+	}
+	var have []chunk.IndexEntry
+	err = indexClient.query(context.Background(), entry, func(read chunk.ReadBatch) bool {
+		iter := read.Iterator()
+		for iter.Next() {
+			have = append(have, chunk.IndexEntry{
+				RangeValue: iter.RangeValue(),
+			})
+		}
+		return true
+	})
+	require.NoError(t, err)
+	require.Equal(t, []chunk.IndexEntry{
+		{RangeValue: []byte(fmt.Sprintf("range%s", "value"))},
+	}, have)
+
 }

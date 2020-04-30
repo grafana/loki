@@ -36,7 +36,12 @@ func (c *TableClient) ListTables(ctx context.Context) ([]string, error) {
 }
 
 func (c *TableClient) CreateTable(ctx context.Context, desc chunk.TableDesc) error {
-	return nil
+	file, err := os.OpenFile(filepath.Join(c.directory, desc.Name), os.O_CREATE|os.O_RDONLY, 0666)
+	if err != nil {
+		return err
+	}
+
+	return file.Close()
 }
 
 func (c *TableClient) DeleteTable(ctx context.Context, name string) error {
