@@ -2,11 +2,12 @@ package distributor
 
 import (
 	"errors"
-	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/weaveworks/common/httpgrpc"
 	"net/http"
 	"strings"
 	"time"
+
+	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
