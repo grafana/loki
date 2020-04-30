@@ -7,9 +7,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
-
-	"github.com/grafana/loki/pkg/util/validation"
-
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -29,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 const queryBatchSize = 128
