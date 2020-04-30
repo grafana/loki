@@ -209,7 +209,7 @@ There are many other important fixes and improvements to Loki, way too many to c
 * [1671](https://github.com/grafana/loki/pull/1671) **shokada**: Update tanka.md so that promtail.yml is the correct format
 * [1648](https://github.com/grafana/loki/pull/1648) **ShotaKitazawa**: loki-canary: fix indent of DaemonSet manifest written in .md file
 * [1642](https://github.com/grafana/loki/pull/1642) **slim-bean**: Improve systemd field docs
-* [1641](https://github.com/grafana/loki/pull/1641) **pastatopf**: Correcte syntax of rate example
+* [1641](https://github.com/grafana/loki/pull/1641) **pastatopf**: Correct syntax of rate example
 * [1634](https://github.com/grafana/loki/pull/1634) **takanabe**: Unite docs for fluentd plugin
 * [1619](https://github.com/grafana/loki/pull/1619) **shaikatz**: PeriodConfig documentation fix dynamodb -> aws-dynamo
 * [1611](https://github.com/grafana/loki/pull/1611) **owen-d**: loki frontend docs additions
@@ -223,7 +223,7 @@ There are many other important fixes and improvements to Loki, way too many to c
 #### Logcli
 * [1808](https://github.com/grafana/loki/pull/1808) **slim-bean**: logcli: log the full stats and send to stderr instead of stdout
 * [1682](https://github.com/grafana/loki/pull/1682) **adityacs**: BugFix: Fix logcli --quiet parameter parsing issue
-* [1644](https://github.com/grafana/loki/pull/1644) **cyriltovena**: This improves the log ouput for statistics in the logcli.
+* [1644](https://github.com/grafana/loki/pull/1644) **cyriltovena**: This improves the log output for statistics in the logcli.
 * [1638](https://github.com/grafana/loki/pull/1638) **owen-d**: adds query stats and org id options in logcli
 * [1573](https://github.com/grafana/loki/pull/1573) **cyriltovena**: Improve logql query statistics collection.
 
@@ -739,7 +739,7 @@ A **huge** thanks to the **36 contributors** who submitted **148 PR's** since 0.
 * **Build** [1121](https://github.com/grafana/loki/pull/1121) **pracucci**: Publish loki-canary binaries on release
 * **Build** [1054](https://github.com/grafana/loki/pull/1054) **pstibrany**: Fix dep check warnings by running dep ensure
 * **Build/release** [1018](https://github.com/grafana/loki/pull/1018) **slim-bean**: updating the image version for loki-canary and adding the version increment to the release_prepare script
-* **Build/CI** [997](https://github.com/grafana/loki/pull/997) **slim-bean**: full cirlce
+* **Build/CI** [997](https://github.com/grafana/loki/pull/997) **slim-bean**: full circle
 * **Build/CI** [996](https://github.com/grafana/loki/pull/996) **rfratto**: ci/drone: fix deploy command by escaping double quotes in JSON body
 * **Build/CI** [995](https://github.com/grafana/loki/pull/995) **slim-bean**: use the loki-build-image for calling circle
 * **Build/CI** [994](https://github.com/grafana/loki/pull/994) **slim-bean**: Also need bash for the deploy step from drone

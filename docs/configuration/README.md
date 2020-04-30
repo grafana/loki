@@ -240,7 +240,7 @@ The `grpc_client_config` block configures a client connection to a gRPC service.
 # Enable backoff and retry when a rate limit is hit.
 [backoff_on_ratelimits: <bool> | default = false]
 
-# Configures backoff when enbaled.
+# Configures backoff when enabled.
 backoff_config:
   # Minimum delay when backing off.
   [min_period: <duration> | default = 100ms]
@@ -282,7 +282,7 @@ The `ingester_config` block configures Ingesters.
 # How long chunks should sit in-memory with no updates before
 # being flushed if they don't hit the max block size. This means
 # that half-empty chunks will still be flushed after a certain
-# period as long as they receieve no further activity.
+# period as long as they receive no further activity.
 [chunk_idle_period: <duration> | default = 30m]
 
 # The targeted _uncompressed_ size in bytes of a chunk block
@@ -388,7 +388,7 @@ kvstore:
       - <string>
 
     # The Dial timeout for the ETCD connection.
-    [dial_tmeout: <duration> | default = 10s]
+    [dial_timeout: <duration> | default = 10s]
 
     # The maximum number of retries to do for failed ops to ETCD.
     [max_retries: <int> | default = 10]
@@ -433,7 +433,7 @@ aws:
     # DynamoDB rate cap to back off when throttled.
     [throttle_limit: <float> | default = 10.0]
 
-    # Metics-based autoscaling configuration.
+    # Metrics-based autoscaling configuration.
     metrics:
       # Use metrics-based autoscaling via this Prometheus query URL.
       [url: <string>]
@@ -453,7 +453,7 @@ aws:
       # Query to fetch throttle rates per table
       [write_throttle_query: <string> | default = "sum(rate(cortex_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m])) by (table) > 0"]
 
-      # Quer to fetch write capacity usage per table
+      # Query to fetch write capacity usage per table
       [write_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m])) by (table) > 0"]
 
       # Query to fetch read capacity usage per table

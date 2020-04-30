@@ -7,7 +7,7 @@
 
       // Rate limit Bigtable Admin calls.  Google seem to limit to ~100QPS,
       // and given 2yrs worth of tables (~100) a sync will table 20s.  This
-      // allows you to run upto 20 independant Cortex clusters on the same
+      // allows you to run upto 20 independent Cortex clusters on the same
       // Google project before running into issues.
       'bigtable.grpc-client-rate-limit': 5.0,
       'bigtable.grpc-client-rate-limit-burst': 5,

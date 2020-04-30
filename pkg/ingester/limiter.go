@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	errMaxStreamsPerUserLimitExceeded = "per-user streams limit (local: %d global: %d actual local: %d) exceeded"
+	errMaxStreamsPerUserLimitExceeded = "tenant '%v' per-user streams limit exceeded, streams: %d exceeds calculated limit: %d (local limit: %d, global limit: %d, global/ingesters: %d)"
 )
 
 // RingCount is the interface exposed by a ring implementation which allows
@@ -37,32 +37,28 @@ func NewLimiter(limits *validation.Overrides, ring RingCount, replicationFactor 
 // AssertMaxStreamsPerUser ensures limit has not been reached compared to the current
 // number of streams in input and returns an error if so.
 func (l *Limiter) AssertMaxStreamsPerUser(userID string, streams int) error {
-	actualLimit := l.maxStreamsPerUser(userID)
-	if streams < actualLimit {
-		return nil
-	}
-
-	localLimit := l.limits.MaxLocalStreamsPerUser(userID)
-	globalLimit := l.limits.MaxGlobalStreamsPerUser(userID)
-
-	return fmt.Errorf(errMaxStreamsPerUserLimitExceeded, localLimit, globalLimit, actualLimit)
-}
-
-func (l *Limiter) maxStreamsPerUser(userID string) int {
+	// Start by setting the local limit either from override or default
 	localLimit := l.limits.MaxLocalStreamsPerUser(userID)
 
 	// We can assume that streams are evenly distributed across ingesters
 	// so we do convert the global limit into a local limit
 	globalLimit := l.limits.MaxGlobalStreamsPerUser(userID)
-	localLimit = l.minNonZero(localLimit, l.convertGlobalToLocalLimit(globalLimit))
+	adjustedGlobalLimit := l.convertGlobalToLocalLimit(globalLimit)
+
+	// Set the calculated limit to the lesser of the local limit or the new calculated global limit
+	calculatedLimit := l.minNonZero(localLimit, adjustedGlobalLimit)
 
 	// If both the local and global limits are disabled, we just
 	// use the largest int value
-	if localLimit == 0 {
-		localLimit = math.MaxInt32
+	if calculatedLimit == 0 {
+		calculatedLimit = math.MaxInt32
 	}
 
-	return localLimit
+	if streams < calculatedLimit {
+		return nil
+	}
+
+	return fmt.Errorf(errMaxStreamsPerUserLimitExceeded, userID, streams, calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit)
 }
 
 func (l *Limiter) convertGlobalToLocalLimit(globalLimit int) int {

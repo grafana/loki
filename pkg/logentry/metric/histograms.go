@@ -73,7 +73,7 @@ func (h *expiringHistogram) Observe(val float64) {
 	h.lastModSec = time.Now().Unix()
 }
 
-// HasExpired implements Expireable
+// HasExpired implements Expirable
 func (h *expiringHistogram) HasExpired(currentTimeSec int64, maxAgeSec int64) bool {
 	return currentTimeSec-h.lastModSec >= maxAgeSec
 }

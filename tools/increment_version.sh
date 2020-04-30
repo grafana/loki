@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#  This script was soruced here: https://github.com/fmahnke/shell-semver and had the following license:
+#  This script was sourced here: https://github.com/fmahnke/shell-semver and had the following license:
 
 #  The MIT License (MIT)
 #

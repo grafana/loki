@@ -70,7 +70,7 @@ func GetRangeType(q Params) QueryRangeType {
 
 // Evaluator is an interface for iterating over data at different nodes in the AST
 type Evaluator interface {
-	// StepEvaluator returns a StepEvaluator for a given SampleExpr. It's explicitly passed another StepEvaluator// in order to enable arbitrary compuation of embedded expressions. This allows more modular & extensible
+	// StepEvaluator returns a StepEvaluator for a given SampleExpr. It's explicitly passed another StepEvaluator// in order to enable arbitrary computation of embedded expressions. This allows more modular & extensible
 	// StepEvaluator implementations which can be composed.
 	StepEvaluator(ctx context.Context, nextEvaluator Evaluator, expr SampleExpr, p Params) (StepEvaluator, error)
 	// Iterator returns the iter.EntryIterator for a given LogSelectorExpr
@@ -358,7 +358,7 @@ func rangeAggEvaluator(
 	}, vecIter.Close)
 }
 
-// binOpExpr explicly does not handle when both legs are literals as
+// binOpExpr explicitly does not handle when both legs are literals as
 // it makes the type system simpler and these are reduced in mustNewBinOpExpr
 func binOpStepEvaluator(
 	ctx context.Context,

@@ -10,8 +10,8 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-// Expireable allows checking if something has exceeded the provided maxAge based on the provided currentTime
-type Expireable interface {
+// Expirable allows checking if something has exceeded the provided maxAge based on the provided currentTime
+type Expirable interface {
 	HasExpired(currentTimeSec int64, maxAgeSec int64) bool
 }
 
@@ -58,12 +58,12 @@ func (c *metricVec) With(labels model.LabelSet) prometheus.Metric {
 	return metric
 }
 
-// prune will remove all metrics which implement the Expireable interface and have expired
+// prune will remove all metrics which implement the Expirable interface and have expired
 // it does not take out a lock on the metrics map so whoever calls this function should do so.
 func (c *metricVec) prune() {
 	currentTimeSec := time.Now().Unix()
 	for fp, m := range c.metrics {
-		if em, ok := m.(Expireable); ok {
+		if em, ok := m.(Expirable); ok {
 			if em.HasExpired(currentTimeSec, c.maxAgeSec) {
 				delete(c.metrics, fp)
 			}

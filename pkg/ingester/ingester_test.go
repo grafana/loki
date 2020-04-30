@@ -336,7 +336,7 @@ func TestIngester_buildStoreRequest(t *testing.T) {
 			require.Equal(t, tc.expectedStoreQueryRequest.End, storeRequest.End)
 
 			if storeRequest.Start.Sub(tc.expectedStoreQueryRequest.Start) > time.Second {
-				t.Fatalf("expected upto 1s difference in expected and acutal store request end time but got %d", storeRequest.End.Sub(tc.expectedStoreQueryRequest.End))
+				t.Fatalf("expected upto 1s difference in expected and actual store request end time but got %d", storeRequest.End.Sub(tc.expectedStoreQueryRequest.End))
 			}
 		})
 	}

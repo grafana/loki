@@ -69,7 +69,7 @@ Supported contents and default values of `config.yaml`:
 # Describes how Promtail connects to multiple instances
 # of Loki, sending logs to each.
 # WARNING: If one of the remote Loki servers fails to respond or responds
-# with any error which is retriable, this will impact sending logs to any
+# with any error which is retryable, this will impact sending logs to any
 # other configured remote Loki servers.  Sending is done on a single thread!
 # It is generally recommended to run multiple promtail clients in parallel
 # if you want to send to multiple remote Loki instances.
@@ -258,7 +258,7 @@ of targets using a specified discovery method:
 # Name to identify this scrape config in the Promtail UI.
 job_name: <string>
 
-# Describes how to parse log lines. Suported values [cri docker raw]
+# Describes how to parse log lines. Supported values [cri docker raw]
 [entry_parser: <string> | default = "docker"]
 
 # Describes how to transform logs from targets.
@@ -446,7 +446,7 @@ match:
   # Names the pipeline. When defined, creates an additional label in
   # the pipeline_duration_seconds histogram, where the value is
   # concatenated with job_name using an underscore.
-  [pipieline_name: <string>]
+  [pipeline_name: <string>]
 
   # Nested set of pipeline stages only if the selector
   # matches the labels of the log entries:
@@ -551,7 +551,7 @@ config:
 
   # Must be either "inc" or "add" (case insensitive). If
   # inc is chosen, the metric value will increase by 1 for each
-  # log line receieved that passed the filter. If add is chosen,
+  # log line received that passed the filter. If add is chosen,
   # the extracted value most be convertible to a positive float
   # and its value will be added to the metric.
   action: <string>
@@ -608,7 +608,7 @@ config:
 
   # Must be either "inc" or "add" (case insensitive). If
   # inc is chosen, the metric value will increase by 1 for each
-  # log line receieved that passed the filter. If add is chosen,
+  # log line received that passed the filter. If add is chosen,
   # the extracted value most be convertible to a positive float
   # and its value will be added to the metric.
   action: <string>

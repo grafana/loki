@@ -1,6 +1,6 @@
 version: 2
 
-.tags: &tags # tags need to be explicitely defined (whitelist)
+.tags: &tags # tags need to be explicitly defined (whitelist)
   tags: { only: "/.*/" }
 
 .only-tags: &only-tags
