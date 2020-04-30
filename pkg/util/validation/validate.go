@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -10,7 +11,7 @@ const (
 	// RateLimited is one of the values for the reason to discard samples.
 	// Declared here to avoid duplication in ingester and distributor.
 	RateLimited       = "rate_limited"
-	RateLimitErrorMsg = "Ingestion rate limit exceeded (limit: %d bytes/sec) while attempting to ingest '%d' lines totaling '%d' bytes, reduce log volume or contact your Loki administrator to see if the limit can be increased"
+	rateLimitErrorMsg = "Ingestion rate limit exceeded (limit: %d bytes/sec) while attempting to ingest '%d' lines totaling '%d' bytes, reduce log volume or contact your Loki administrator to see if the limit can be increased"
 	// LineTooLong is a reason for discarding too long log lines.
 	LineTooLong         = "line_too_long"
 	LineTooLongErrorMsg = "Max entry size '%d' bytes exceeded for stream '%s' while adding an entry with length '%d' bytes"
@@ -28,8 +29,9 @@ const (
 	MaxLabelNamesPerSeries         = "max_label_names_per_series"
 	MaxLabelNamesPerSeriesErrorMsg = "entry for stream '%s' has %d label names; limit %d"
 	// LabelNameTooLong is a reason for discarding a log line which has a label name too long
-	LabelNameTooLong         = "label_name_too_long"
-	LabelNameTooLongErrorMsg = "stream '%s' has label name too long: '%s'"
+	LabelNameTooLong = "label_name_too_long"
+	LabelNameTooLongErrd
+	rorMsg = "stream '%s' has label name too long: '%s'"
 	// LabelValueTooLong is a reason for discarding a log line which has a lable value too long
 	LabelValueTooLong         = "label_value_too_long"
 	LabelValueTooLongErrorMsg = "stream '%s' has label value too long: '%s'"
@@ -37,6 +39,10 @@ const (
 	DuplicateLabelNames         = "duplicate_label_names"
 	DuplicateLabelNamesErrorMsg = "stream '%s' has duplicate label name: '%s'"
 )
+
+func RateLimitedErrorMsg(limit, lines, bytes int) string {
+	return fmt.Sprintf(rateLimitErrorMsg, limit, lines, bytes)
+}
 
 // DiscardedBytes is a metric of the total discarded bytes, by reason.
 var DiscardedBytes = prometheus.NewCounterVec(
