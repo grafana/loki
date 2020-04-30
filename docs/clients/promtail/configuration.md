@@ -446,7 +446,7 @@ match:
   # Names the pipeline. When defined, creates an additional label in
   # the pipeline_duration_seconds histogram, where the value is
   # concatenated with job_name using an underscore.
-  [pipieline_name: <string>]
+  [pipeline_name: <string>]
 
   # Nested set of pipeline stages only if the selector
   # matches the labels of the log entries:
