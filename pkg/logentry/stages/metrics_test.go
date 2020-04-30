@@ -200,10 +200,10 @@ func Test(t *testing.T) {
 		"invalid metric type": {
 			MetricsConfig{
 				"metric1": MetricConfig{
-					MetricType: "Piplne",
+					MetricType: "Pipe_line",
 				},
 			},
-			errors.Errorf(ErrMetricsStageInvalidType, "piplne"),
+			errors.Errorf(ErrMetricsStageInvalidType, "pipe_line"),
 		},
 		"invalid idle duration": {
 			MetricsConfig{
