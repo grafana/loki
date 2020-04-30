@@ -258,7 +258,7 @@ of targets using a specified discovery method:
 # Name to identify this scrape config in the Promtail UI.
 job_name: <string>
 
-# Describes how to parse log lines. Suported values [cri docker raw]
+# Describes how to parse log lines. Supported values [cri docker raw]
 [entry_parser: <string> | default = "docker"]
 
 # Describes how to transform logs from targets.
