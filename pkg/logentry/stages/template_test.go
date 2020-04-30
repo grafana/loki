@@ -27,12 +27,12 @@ pipeline_stages:
     source: level
     template: '{{ if eq .Value "WARN" }}{{ Replace .Value "WARN" "OK" -1 }}{{ else }}{{ .Value }}{{ end }}'
 - template:
-    source: notexist
+    source: nonexistent
     template: "TEST"
 - labels:
     app: ''
     level: ''
-    type: notexist
+    type: nonexistent
 `
 
 var testTemplateLogLine = `
