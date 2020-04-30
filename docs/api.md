@@ -483,7 +483,7 @@ Response (streamed):
 ## `POST /loki/api/v1/push`
 
 `/loki/api/v1/push` is the endpoint used to send log entries to Loki. The default
-behavior is for the POST body to be a snappy-compressed protobuf messsage:
+behavior is for the POST body to be a snappy-compressed protobuf message:
 
 - [Protobuf definition](/pkg/logproto/logproto.proto)
 - [Go client library](/pkg/promtail/client/client.go)
@@ -721,7 +721,7 @@ $ curl -G -s  "http://localhost:3100/api/prom/label/foo/values" | jq
 > instead.
 
 `/api/prom/push` is the endpoint used to send log entries to Loki. The default
-behavior is for the POST body to be a snappy-compressed protobuf messsage:
+behavior is for the POST body to be a snappy-compressed protobuf message:
 
 - [Protobuf definition](/pkg/logproto/logproto.proto)
 - [Go client library](/pkg/promtail/client/client.go)
