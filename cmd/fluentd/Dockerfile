@@ -26,7 +26,7 @@ COPY cmd/fluentd/docker/conf/ /fluentd/etc/loki/
 ENV FLUENTD_CONF="/fluentd/etc/loki/fluentd.conf"
 ENV FLUENTD_OPT=""
 
-ENV LOKI_URL "https://logs-us-west1.grafana.net"
+ENV LOKI_URL "https://logs-prod-us-central1.grafana.net"
 
 # See https://packages.debian.org/stretch/amd64/libjemalloc1/filelist
 ENV LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libjemalloc.so.2"
