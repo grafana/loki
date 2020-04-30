@@ -21,4 +21,4 @@ markComment: >
 
 # Comment to post when closing a stale issue. Leave as
 # false to disable.
-closeCommnent: false
+closeComment: false
