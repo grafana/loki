@@ -24,7 +24,7 @@ The current team members are:
 - David Kaltschmidt             [davkal](https://github.com/davkal)
 - Edward Welch                  [slim-bean](https://github.com/slim-bean)
 - Goutham Veeramachaneni        [gouthamve](https://github.com/gouthamve)
-- Joe Elliott                   [joe-elliot](https://github.com/joe-elliot)
+- Joe Elliott                   [joe-elliott](https://github.com/joe-elliott)
 - Owen Diehl                    [owen-d](https://github.com/owen-d)
 - Robert Fratto                 [rfratto](https://github.com/rfratto)
 - Sandeep Sukhani               [sandeepsukhani](https://github.com/sandeepsukhani)
