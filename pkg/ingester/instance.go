@@ -2,11 +2,13 @@ package ingester
 
 import (
 	"context"
-	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/util/validation"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/go-kit/kit/log/level"
+
+	"github.com/grafana/loki/pkg/util/validation"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
