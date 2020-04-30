@@ -97,7 +97,7 @@ local fluentd() = pipeline('fluentd-amd64') + arch_image('amd64', 'latest,master
     },
   ] + [
     // publish for tag or master
-    docker('amd64', 'fluent-bit') {
+    docker('amd64', 'fluentd') {
       depends_on: ['image-tag'],
       when: condition('include').tagMaster,
       settings+: {
