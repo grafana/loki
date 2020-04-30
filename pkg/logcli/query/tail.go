@@ -33,7 +33,7 @@ func (q *Query) TailQuery(delayFor int, c *client.Client, out output.LogOutput) 
 		os.Exit(0)
 	}()
 
-	tailReponse := new(loghttp.TailResponse)
+	tailResponse := new(loghttp.TailResponse)
 
 	if len(q.IgnoreLabelsKey) > 0 {
 		log.Println("Ignoring labels key:", color.RedString(strings.Join(q.IgnoreLabelsKey, ",")))
@@ -44,14 +44,14 @@ func (q *Query) TailQuery(delayFor int, c *client.Client, out output.LogOutput) 
 	}
 
 	for {
-		err := conn.ReadJSON(tailReponse)
+		err := conn.ReadJSON(tailResponse)
 		if err != nil {
 			log.Println("Error reading stream:", err)
 			return
 		}
 
 		labels := loghttp.LabelSet{}
-		for _, stream := range tailReponse.Streams {
+		for _, stream := range tailResponse.Streams {
 			if !q.NoLabels {
 
 				if len(q.IgnoreLabelsKey) > 0 || len(q.ShowLabelsKey) > 0 {
@@ -79,9 +79,9 @@ func (q *Query) TailQuery(delayFor int, c *client.Client, out output.LogOutput) 
 			}
 
 		}
-		if len(tailReponse.DroppedStreams) != 0 {
+		if len(tailResponse.DroppedStreams) != 0 {
 			log.Println("Server dropped following entries due to slow client")
-			for _, d := range tailReponse.DroppedStreams {
+			for _, d := range tailResponse.DroppedStreams {
 				log.Println(d.Timestamp, d.Labels)
 			}
 		}
