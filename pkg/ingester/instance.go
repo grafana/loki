@@ -172,7 +172,7 @@ func (i *instance) getOrCreateStream(pushReqStream *logproto.Stream) (*stream, e
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
 		level.Warn(cutil.Logger).Log("message", "could not create new stream for tenant", "error", err)
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg())
 	}
 
 	sortedLabels := i.index.Add(labels, fp)

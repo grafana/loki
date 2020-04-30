@@ -39,14 +39,14 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				}
 			},
 			logproto.Entry{Timestamp: testTime.Add(-time.Hour * 5), Line: "test"},
-			httpgrpc.Errorf(http.StatusBadRequest, validation.GreaterThanMaxSampleAgeErrorMsg, testStreamLabels, testTime.Add(-time.Hour*5)),
+			httpgrpc.Errorf(http.StatusBadRequest, validation.GreaterThanMaxSampleAgeErrorMsg(testStreamLabels, testTime.Add(-time.Hour*5))),
 		},
 		{
 			"test too new",
 			"test",
 			nil,
 			logproto.Entry{Timestamp: testTime.Add(time.Hour * 5), Line: "test"},
-			httpgrpc.Errorf(http.StatusBadRequest, validation.TooFarInFutureErrorMsg, testStreamLabels, testTime.Add(time.Hour*5)),
+			httpgrpc.Errorf(http.StatusBadRequest, validation.TooFarInFutureErrorMsg(testStreamLabels, testTime.Add(time.Hour*5))),
 		},
 		{
 			"line too long",
@@ -57,7 +57,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				}
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901"},
-			httpgrpc.Errorf(http.StatusBadRequest, validation.LineTooLongErrorMsg, 10, testStreamLabels, 11),
+			httpgrpc.Errorf(http.StatusBadRequest, validation.LineTooLongErrorMsg(10, 11, testStreamLabels)),
 		},
 	}
 	for _, tt := range tests {
@@ -97,7 +97,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 				return &validation.Limits{MaxLabelNamesPerSeries: 2}
 			},
 			"{foo=\"bar\",food=\"bars\",fed=\"bears\"}",
-			httpgrpc.Errorf(http.StatusBadRequest, validation.MaxLabelNamesPerSeriesErrorMsg, "{fed=\"bears\", foo=\"bar\", food=\"bars\"}", 3, 2),
+			httpgrpc.Errorf(http.StatusBadRequest, validation.MaxLabelNamesPerSeriesErrorMsg("{fed=\"bears\", foo=\"bar\", food=\"bars\"}", 3, 2)),
 		},
 		{
 			"label name too long",
@@ -109,10 +109,10 @@ func TestValidator_ValidateLabels(t *testing.T) {
 				}
 			},
 			"{fooooo=\"bar\"}",
-			httpgrpc.Errorf(http.StatusBadRequest, validation.LabelNameTooLongErrorMsg, "{fooooo=\"bar\"}", "fooooo"),
+			httpgrpc.Errorf(http.StatusBadRequest, validation.LabelNameTooLongErrorMsg("{fooooo=\"bar\"}", "fooooo")),
 		},
 		{
-			"label name too long",
+			"label value too long",
 			"test",
 			func(userID string) *validation.Limits {
 				return &validation.Limits{
@@ -122,7 +122,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 				}
 			},
 			"{foo=\"barrrrrr\"}",
-			httpgrpc.Errorf(http.StatusBadRequest, validation.LabelValueTooLongErrorMsg, "{foo=\"barrrrrr\"}", "barrrrrr"),
+			httpgrpc.Errorf(http.StatusBadRequest, validation.LabelValueTooLongErrorMsg("{foo=\"barrrrrr\"}", "barrrrrr")),
 		},
 		{
 			"duplicate label",
@@ -135,7 +135,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 				}
 			},
 			"{foo=\"bar\", foo=\"barf\"}",
-			httpgrpc.Errorf(http.StatusBadRequest, validation.DuplicateLabelNamesErrorMsg, "{foo=\"bar\", foo=\"barf\"}", "foo"),
+			httpgrpc.Errorf(http.StatusBadRequest, validation.DuplicateLabelNamesErrorMsg("{foo=\"bar\", foo=\"barf\"}", "foo")),
 		},
 	}
 	for _, tt := range tests {
