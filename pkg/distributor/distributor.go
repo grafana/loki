@@ -28,10 +28,6 @@ import (
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
-const (
-	metricName = "logs"
-)
-
 var (
 	ingesterAppends = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
