@@ -85,7 +85,7 @@ func (v Validator) ValidateLabels(userID string, stream *logproto.Stream) error 
 	for _, l := range ls {
 		var errTemplate string
 		var reason string
-		var cause interface{}
+		var cause string
 		if len(l.Name) > maxLabelNameLength {
 			reason = validation.LabelNameTooLong
 			errTemplate = validation.LabelNameTooLongErrorMsg
