@@ -223,7 +223,7 @@ There are many other important fixes and improvements to Loki, way too many to c
 #### Logcli
 * [1808](https://github.com/grafana/loki/pull/1808) **slim-bean**: logcli: log the full stats and send to stderr instead of stdout
 * [1682](https://github.com/grafana/loki/pull/1682) **adityacs**: BugFix: Fix logcli --quiet parameter parsing issue
-* [1644](https://github.com/grafana/loki/pull/1644) **cyriltovena**: This improves the log ouput for statistics in the logcli.
+* [1644](https://github.com/grafana/loki/pull/1644) **cyriltovena**: This improves the log output for statistics in the logcli.
 * [1638](https://github.com/grafana/loki/pull/1638) **owen-d**: adds query stats and org id options in logcli
 * [1573](https://github.com/grafana/loki/pull/1573) **cyriltovena**: Improve logql query statistics collection.
 
