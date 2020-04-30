@@ -1,14 +1,16 @@
 package distributor
 
 import (
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util/validation"
-	"github.com/stretchr/testify/assert"
-	"github.com/weaveworks/common/httpgrpc"
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/stretchr/testify/assert"
+	"github.com/weaveworks/common/httpgrpc"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var testStreamLabels = "FIXME"
