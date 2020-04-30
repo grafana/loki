@@ -130,7 +130,7 @@ func (g *expiringGauge) SetToCurrentTime() {
 	g.lastModSec = time.Now().Unix()
 }
 
-// HasExpired implements Expireable
+// HasExpired implements Expirable
 func (g *expiringGauge) HasExpired(currentTimeSec int64, maxAgeSec int64) bool {
 	return currentTimeSec-g.lastModSec >= maxAgeSec
 }
