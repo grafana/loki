@@ -358,7 +358,7 @@ func rangeAggEvaluator(
 	}, vecIter.Close)
 }
 
-// binOpExpr explicly does not handle when both legs are literals as
+// binOpExpr explicitly does not handle when both legs are literals as
 // it makes the type system simpler and these are reduced in mustNewBinOpExpr
 func binOpStepEvaluator(
 	ctx context.Context,
