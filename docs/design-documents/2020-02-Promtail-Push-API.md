@@ -101,7 +101,7 @@ Loki uses. There are some concerns with this approach:
 3. Log lines will be double-encoded thanks to the reverse proxy.
 4. A small overhead of using a reverse proxy in-process will be introduced.
 5. This breaks our normal pattern of writing our own shim functions; may add
-   some cognative overhead of having to deal with the gRPC gateway as an outlier
+   some cognitive overhead of having to deal with the gRPC gateway as an outlier
    in the code.
 
 ### Option 3: Plaintext Payload
