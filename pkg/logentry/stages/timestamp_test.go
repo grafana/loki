@@ -87,7 +87,7 @@ func TestPipelineWithMissingKey_Timestamp(t *testing.T) {
 func TestTimestampValidation(t *testing.T) {
 	tests := map[string]struct {
 		config *TimestampConfig
-		// Note the error text validation is a little loosey as it only validates with strings.HasPrefix
+		// Note the error text validation is a little loose as it only validates with strings.HasPrefix
 		// this is to work around different errors related to timezone loading on different systems
 		err          error
 		testString   string

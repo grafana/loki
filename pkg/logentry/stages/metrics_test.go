@@ -115,7 +115,7 @@ func TestMetricsPipeline(t *testing.T) {
 
 	if err := testutil.GatherAndCompare(registry,
 		strings.NewReader(expectedMetrics)); err != nil {
-		t.Fatalf("missmatch metrics: %v", err)
+		t.Fatalf("mismatch metrics: %v", err)
 	}
 }
 
@@ -182,7 +182,7 @@ func TestMetricsWithDropInPipeline(t *testing.T) {
 
 	if err := testutil.GatherAndCompare(registry,
 		strings.NewReader(expectedDropMetrics)); err != nil {
-		t.Fatalf("missmatch metrics: %v", err)
+		t.Fatalf("mismatch metrics: %v", err)
 	}
 }
 
@@ -200,10 +200,10 @@ func Test(t *testing.T) {
 		"invalid metric type": {
 			MetricsConfig{
 				"metric1": MetricConfig{
-					MetricType: "Piplne",
+					MetricType: "Pipe_line",
 				},
 			},
-			errors.Errorf(ErrMetricsStageInvalidType, "piplne"),
+			errors.Errorf(ErrMetricsStageInvalidType, "pipe_line"),
 		},
 		"invalid idle duration": {
 			MetricsConfig{
@@ -374,7 +374,7 @@ func TestMetricStage_Process(t *testing.T) {
 	names := metricNames(metricsConfig)
 	if err := testutil.GatherAndCompare(registry,
 		strings.NewReader(goldenMetrics), names...); err != nil {
-		t.Fatalf("missmatch metrics: %v", err)
+		t.Fatalf("mismatch metrics: %v", err)
 	}
 }
 

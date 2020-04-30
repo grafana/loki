@@ -302,7 +302,7 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 		delete(instance.streams, stream.fp)
 		instance.index.Delete(stream.labels, stream.fp)
 		instance.streamsRemovedTotal.Inc()
-		memoryStreams.Dec()
+		memoryStreams.WithLabelValues(instance.instanceID).Dec()
 	}
 }
 

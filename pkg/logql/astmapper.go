@@ -20,7 +20,7 @@ func badASTMapping(expected string, got Expr) error {
 	return fmt.Errorf("Bad AST mapping: expected one type (%s), but got (%T)", expected, got)
 }
 
-// MapperUnsuportedType is a helper for signaling that an evaluator does not support an Expr type
+// MapperUnsupportedType is a helper for signaling that an evaluator does not support an Expr type
 func MapperUnsupportedType(expr Expr, m ASTMapper) error {
 	return errors.Errorf("unexpected expr type (%T) for ASTMapper type (%T) ", expr, m)
 }

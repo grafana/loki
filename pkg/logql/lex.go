@@ -76,7 +76,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		return STRING
 	}
 
-	// scaning duration tokens
+	// scanning duration tokens
 	if l.TokenText() == "[" {
 		d := ""
 		for r := l.Next(); r != scanner.EOF; r = l.Next() {

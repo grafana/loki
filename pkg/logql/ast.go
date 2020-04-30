@@ -403,7 +403,7 @@ func mustNewBinOpExpr(op string, lhs, rhs Expr) SampleExpr {
 	}
 }
 
-// Reduces a binary operation expression. A binop is reducable if both of its legs are literal expressions.
+// Reduces a binary operation expression. A binop is reducible if both of its legs are literal expressions.
 // This is because literals need match all labels, which is currently difficult to encode into StepEvaluators.
 // Therefore, we ensure a binop can be reduced/simplified, maintaining the invariant that it does not have two literal legs.
 func reduceBinOp(op string, left, right *literalExpr) *literalExpr {

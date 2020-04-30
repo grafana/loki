@@ -52,6 +52,7 @@ Started Guide](https://github.com/grafana/loki/tree/v1.4.1/docs/getting-started/
 Commonly used sections (from the latest release v1.4.1):
 
 - [API documentation](https://github.com/grafana/loki/tree/v1.4.1/docs/api.md) for alternative ways of getting logs into Loki.
+- [Labels](https://github.com/grafana/loki/blob/master/docs/getting-started/labels.md)
 - [Operations](https://github.com/grafana/loki/tree/v1.4.1/docs/operations) for important aspects of running Loki.
 - [Promtail](https://github.com/grafana/loki/tree/v1.4.1/docs/clients/promtail) is an agent which can tail your log files and push them to Loki.
 - [Pipelines](https://github.com/grafana/loki/tree/v1.4.1/docs/clients/promtail/pipelines.md) for detailed log processing pipeline documentation

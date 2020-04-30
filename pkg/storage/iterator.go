@@ -166,7 +166,7 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 	// the first chunk of the batch
 	headChunk := it.chunks.Peek()
 
-	// pop the next batch of chunks and append/preprend previous overlapping chunks
+	// pop the next batch of chunks and append/prepend previous overlapping chunks
 	// so we can merge/de-dupe overlapping entries.
 	batch := make([]*chunkenc.LazyChunk, 0, it.batchSize+len(it.lastOverlapping))
 	if it.req.Direction == logproto.FORWARD {

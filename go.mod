@@ -38,7 +38,7 @@ require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 	github.com/opentracing/opentracing-go v1.1.1-0.20200124165624-2876d2018785
-	github.com/pierrec/lz4 v2.3.1-0.20191115212037-9085dacd1e1e+incompatible
+	github.com/pierrec/lz4 v2.5.3-0.20200429092203-e876bbd321b3+incompatible
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.5.0
 	github.com/prometheus/client_model v0.2.0
