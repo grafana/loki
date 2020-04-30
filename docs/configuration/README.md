@@ -388,7 +388,7 @@ kvstore:
       - <string>
 
     # The Dial timeout for the ETCD connection.
-    [dial_tmeout: <duration> | default = 10s]
+    [dial_timeout: <duration> | default = 10s]
 
     # The maximum number of retries to do for failed ops to ETCD.
     [max_retries: <int> | default = 10]
