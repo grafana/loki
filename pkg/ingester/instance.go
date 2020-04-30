@@ -277,7 +277,7 @@ func (i *instance) Series(_ context.Context, req *logproto.SeriesRequest) (*logp
 }
 
 // forMatchingStreams will execute a function for each stream that satisfies a set of requirements (time range, matchers, etc).
-// It uses a function in order to enable generic stream acces without accidentally leaking streams under the mutex.
+// It uses a function in order to enable generic stream access without accidentally leaking streams under the mutex.
 func (i *instance) forMatchingStreams(
 	matchers []*labels.Matcher,
 	fn func(*stream) error,
