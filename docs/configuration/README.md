@@ -453,7 +453,7 @@ aws:
       # Query to fetch throttle rates per table
       [write_throttle_query: <string> | default = "sum(rate(cortex_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m])) by (table) > 0"]
 
-      # Quer to fetch write capacity usage per table
+      # Query to fetch write capacity usage per table
       [write_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation="DynamoDB.BatchWriteItem"}[15m])) by (table) > 0"]
 
       # Query to fetch read capacity usage per table
