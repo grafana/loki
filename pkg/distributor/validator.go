@@ -2,16 +2,14 @@ package distributor
 
 import (
 	"errors"
-	"net/http"
-	"time"
-
 	cortex_client "github.com/cortexproject/cortex/pkg/ingester/client"
-	cortex_validation "github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/weaveworks/common/httpgrpc"
+	"net/http"
+	"strings"
+	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -27,11 +25,17 @@ func NewValidator(l Limits) (*Validator, error) {
 }
 
 // ValidateEntry returns an error if the entry is invalid
-func (v Validator) ValidateEntry(userID string, entry logproto.Entry) error {
-	if err := cortex_validation.ValidateSample(v, userID, metricName, cortex_client.Sample{
-		TimestampMs: entry.Timestamp.UnixNano() / int64(time.Millisecond),
-	}); err != nil {
-		return err
+func (v Validator) ValidateEntry(userID string, labels string, entry logproto.Entry) error {
+	if v.RejectOldSamples(userID) && entry.Timestamp.UnixNano() < time.Now().Add(-v.RejectOldSamplesMaxAge(userID)).UnixNano() {
+		validation.DiscardedSamples.WithLabelValues(validation.GreaterThanMaxSampleAge, userID).Inc()
+		validation.DiscardedBytes.WithLabelValues(validation.GreaterThanMaxSampleAge, userID).Add(float64(len(entry.Line)))
+		return httpgrpc.Errorf(http.StatusBadRequest, validation.GreaterThanMaxSampleAgeErrorMsg, labels, entry.Timestamp)
+	}
+
+	if entry.Timestamp.UnixNano() > time.Now().Add(v.CreationGracePeriod(userID)).UnixNano() {
+		validation.DiscardedSamples.WithLabelValues(validation.TooFarInFuture, userID).Inc()
+		validation.DiscardedBytes.WithLabelValues(validation.TooFarInFuture, userID).Add(float64(len(entry.Line)))
+		return httpgrpc.Errorf(http.StatusBadRequest, validation.TooFarInFutureErrorMsg, labels, entry.Timestamp)
 	}
 
 	if maxSize := v.MaxLineSize(userID); maxSize != 0 && len(entry.Line) > maxSize {
@@ -40,11 +44,13 @@ func (v Validator) ValidateEntry(userID string, entry logproto.Entry) error {
 		// but the upstream cortex_validation pkg uses it, so we keep this
 		// for parity.
 		validation.DiscardedSamples.WithLabelValues(validation.LineTooLong, userID).Inc()
+		validation.DiscardedBytes.WithLabelValues(validation.LineTooLong, userID).Add(float64(len(entry.Line)))
 		return httpgrpc.Errorf(
 			http.StatusBadRequest,
-			"max line size (%s) exceeded while adding (%s) size line",
-			flagext.ByteSize(uint64(maxSize)).String(),
-			flagext.ByteSize(uint64(len(entry.Line))).String(),
+			validation.LineTooLongErrorMsg,
+			maxSize,
+			labels,
+			len(entry.Line),
 		)
 	}
 
@@ -52,8 +58,8 @@ func (v Validator) ValidateEntry(userID string, entry logproto.Entry) error {
 }
 
 // Validate labels returns an error if the labels are invalid
-func (v Validator) ValidateLabels(userID string, labels string) error {
-	ls, err := util.ToClientLabels(labels)
+func (v Validator) ValidateLabels(userID string, stream *logproto.Stream) error {
+	ls, err := util.ToClientLabels(stream.Labels)
 	if err != nil {
 		// I wish we didn't return httpgrpc errors here as it seems
 		// an orthogonal concept (we need not use ValidateLabels in this context)
@@ -61,5 +67,48 @@ func (v Validator) ValidateLabels(userID string, labels string) error {
 		// for parity.
 		return httpgrpc.Errorf(http.StatusBadRequest, "error parsing labels: %v", err)
 	}
-	return cortex_validation.ValidateLabels(v, userID, ls)
+
+	numLabelNames := len(ls)
+	if numLabelNames > v.MaxLabelNamesPerSeries(userID) {
+		validation.DiscardedSamples.WithLabelValues(validation.MaxLabelNamesPerSeries, userID).Inc()
+		bytes := 0
+		for _, e := range stream.Entries {
+			bytes += len(e.Line)
+		}
+		validation.DiscardedBytes.WithLabelValues(validation.MaxLabelNamesPerSeries, userID).Add(float64(bytes))
+		return httpgrpc.Errorf(http.StatusBadRequest, validation.MaxLabelNamesPerSeriesErrorMsg, cortex_client.FromLabelAdaptersToMetric(ls).String(), numLabelNames, v.MaxLabelNamesPerSeries(userID))
+	}
+
+	maxLabelNameLength := v.MaxLabelNameLength(userID)
+	maxLabelValueLength := v.MaxLabelValueLength(userID)
+	lastLabelName := ""
+	for _, l := range ls {
+		var errTemplate string
+		var reason string
+		var cause interface{}
+		if len(l.Name) > maxLabelNameLength {
+			reason = validation.LabelNameTooLong
+			errTemplate = validation.LabelNameTooLongErrorMsg
+			cause = l.Name
+		} else if len(l.Value) > maxLabelValueLength {
+			reason = validation.LabelValueTooLong
+			errTemplate = validation.LabelValueTooLongErrorMsg
+			cause = l.Value
+		} else if cmp := strings.Compare(lastLabelName, l.Name); cmp == 0 {
+			reason = validation.DuplicateLabelNames
+			errTemplate = validation.DuplicateLabelNamesErrorMsg
+			cause = l.Name
+		}
+		if errTemplate != "" {
+			validation.DiscardedSamples.WithLabelValues(reason, userID).Inc()
+			bytes := 0
+			for _, e := range stream.Entries {
+				bytes += len(e.Line)
+			}
+			validation.DiscardedBytes.WithLabelValues(reason, userID).Add(float64(bytes))
+			return httpgrpc.Errorf(http.StatusBadRequest, errTemplate, stream.Labels, cause)
+		}
+		lastLabelName = l.Name
+	}
+	return nil
 }

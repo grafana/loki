@@ -209,14 +209,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedSamplesCount := 0
 
 	for _, stream := range req.Streams {
-		if err := d.validator.ValidateLabels(userID, stream.Labels); err != nil {
+		if err := d.validator.ValidateLabels(userID, stream); err != nil {
 			validationErr = err
 			continue
 		}
 
 		entries := make([]logproto.Entry, 0, len(stream.Entries))
 		for _, entry := range stream.Entries {
-			if err := d.validator.ValidateEntry(userID, entry); err != nil {
+			if err := d.validator.ValidateEntry(userID, stream.Labels, entry); err != nil {
 				validationErr = err
 				continue
 			}
@@ -241,11 +241,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	now := time.Now()
 	if !d.ingestionRateLimiter.AllowN(now, userID, validatedSamplesSize) {
-		// Return a 4xx here to have the client discard the data and not retry. If a client
-		// is sending too much data consistently we will unlikely ever catch up otherwise.
+		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamplesSize))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%d bytes) exceeded while adding %d lines for a total size of %d bytes", int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitErrorMsg, int(d.ingestionRateLimiter.Limit(now, userID)), validatedSamplesCount, validatedSamplesSize)
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck

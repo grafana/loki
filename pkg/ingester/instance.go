@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/util/validation"
 	"net/http"
 	"sync"
@@ -170,7 +171,8 @@ func (i *instance) getOrCreateStream(pushReqStream *logproto.Stream) (*stream, e
 			bytes += len(e.Line)
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
+		level.Warn(cutil.Logger).Log("message", "could not create new stream for tenant", "error", err)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg)
 	}
 
 	sortedLabels := i.index.Add(labels, fp)
