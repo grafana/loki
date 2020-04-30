@@ -18,7 +18,7 @@ import (
 
 const positionFileMode = 0600
 
-// Config describes where to get postition information from.
+// Config describes where to get position information from.
 type Config struct {
 	SyncPeriod        time.Duration `yaml:"sync_period"`
 	PositionsFile     string        `yaml:"filename"`
