@@ -76,7 +76,7 @@ func LineTooLongErrorMsg(maxLength, entryLength int, stream string) string {
 
 // StreamLimitErrorMsg returns an error string for requests refused for exceeding active stream limits
 func StreamLimitErrorMsg() string {
-	return fmt.Sprintf(streamLimitErrorMsg)
+	return fmt.Sprint(streamLimitErrorMsg)
 }
 
 // GreaterThanMaxSampleAgeErrorMsg returns an error string for a line with a timestamp too old
