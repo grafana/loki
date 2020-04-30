@@ -739,7 +739,7 @@ A **huge** thanks to the **36 contributors** who submitted **148 PR's** since 0.
 * **Build** [1121](https://github.com/grafana/loki/pull/1121) **pracucci**: Publish loki-canary binaries on release
 * **Build** [1054](https://github.com/grafana/loki/pull/1054) **pstibrany**: Fix dep check warnings by running dep ensure
 * **Build/release** [1018](https://github.com/grafana/loki/pull/1018) **slim-bean**: updating the image version for loki-canary and adding the version increment to the release_prepare script
-* **Build/CI** [997](https://github.com/grafana/loki/pull/997) **slim-bean**: full cirlce
+* **Build/CI** [997](https://github.com/grafana/loki/pull/997) **slim-bean**: full circle
 * **Build/CI** [996](https://github.com/grafana/loki/pull/996) **rfratto**: ci/drone: fix deploy command by escaping double quotes in JSON body
 * **Build/CI** [995](https://github.com/grafana/loki/pull/995) **slim-bean**: use the loki-build-image for calling circle
 * **Build/CI** [994](https://github.com/grafana/loki/pull/994) **slim-bean**: Also need bash for the deploy step from drone
