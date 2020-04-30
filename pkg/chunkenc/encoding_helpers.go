@@ -6,7 +6,7 @@ import (
 	"hash/crc32"
 )
 
-// enbuf is a helper type to populate a byte slice with various types.
+// encbuf is a helper type to populate a byte slice with various types.
 type encbuf struct {
 	b []byte
 	c [binary.MaxVarintLen64]byte
