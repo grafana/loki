@@ -240,7 +240,7 @@ The `grpc_client_config` block configures a client connection to a gRPC service.
 # Enable backoff and retry when a rate limit is hit.
 [backoff_on_ratelimits: <bool> | default = false]
 
-# Configures backoff when enbaled.
+# Configures backoff when enabled.
 backoff_config:
   # Minimum delay when backing off.
   [min_period: <duration> | default = 100ms]
