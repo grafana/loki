@@ -5,15 +5,17 @@ import (
 	io "io"
 	time "time"
 	"unsafe"
-
-	"github.com/gogo/protobuf/types"
 )
 
+// Stream contains a unique labels set as a string and a set of entries for it.
+// We are not using the proto generated version but this custom one so that we
+// can improve serialization see benchmark.
 type Stream struct {
 	Labels  string  `protobuf:"bytes,1,opt,name=labels,proto3" json:"labels"`
 	Entries []Entry `protobuf:"bytes,2,rep,name=entries,proto3,customtype=EntryAdapter" json:"entries"`
 }
 
+// Entry is a log entry with a timestamp.
 type Entry struct {
 	Timestamp time.Time `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
 	Line      string    `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
@@ -72,8 +74,8 @@ func (m *Entry) MarshalTo(dAtA []byte) (int, error) {
 	_ = l
 	dAtA[i] = 0xa
 	i++
-	i = encodeVarintLogproto(dAtA, i, uint64(types.SizeOfStdTime(m.Timestamp)))
-	n5, err := types.StdTimeMarshalTo(m.Timestamp, dAtA[i:])
+	i = encodeVarintLogproto(dAtA, i, uint64(SizeOfStdTime(m.Timestamp)))
+	n5, err := StdTimeMarshalTo(m.Timestamp, dAtA[i:])
 	if err != nil {
 		return 0, err
 	}
@@ -146,7 +148,7 @@ func (m *Stream) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Labels = string(dAtA[iNdEx:postIndex])
+			m.Labels = yoloString(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
@@ -265,7 +267,7 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := types.StdTimeUnmarshal(&m.Timestamp, dAtA[iNdEx:postIndex]); err != nil {
+			if err := StdTimeUnmarshal(&m.Timestamp, dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -299,7 +301,7 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Line = string(dAtA[iNdEx:postIndex])
+			m.Line = yoloString(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -351,7 +353,7 @@ func (m *Entry) Size() (n int) {
 	}
 	var l int
 	_ = l
-	l = types.SizeOfStdTime(m.Timestamp)
+	l = SizeOfStdTime(m.Timestamp)
 	n += 1 + l + sovLogproto(uint64(l))
 	l = len(m.Line)
 	if l > 0 {
