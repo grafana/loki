@@ -1,21 +1,22 @@
 version: '3'
 services:
+  # Receive forwarded logs and send to /fluentd/logs/data.log and loki
   fluentd:
-    build: ../
+    build:
+      context: ../../..
+      dockerfile: cmd/fluentd/Dockerfile
     image: fluentd:loki
-    command:
-      - "fluentd"
-      - "-v"
-      - "-p"
-      - "/fluentd/plugins"
-      - "-c"
-      - "/fluentd/etc/fluentd.conf"
     volumes:
-      - ./conf:/fluentd/etc
-      - /var/log:/var/log
-      - ../lib/fluent/plugin:/fluentd/plugins
+    - ./fluentd.conf:/fluentd/etc/fluent.conf
     environment:
-      LOKI_USERNAME: "${LOKI_USERNAME}"
-      LOKI_PASSWORD: ${LOKI_PASSWORD}
-      FLUENT_CONF: /fluentd/etc/fluentd.conf
-      FLUENT_UID: '0'
+      - LOKI_URL
+  # Read /var/log/syslog and send it to fluentd
+  fluentbit:
+    image: fluent/fluent-bit:1.0
+    command: "/fluent-bit/bin/fluent-bit -c /srv/fluent-bit.conf"
+    user: root
+    volumes:
+    - ./fluent-bit.conf:/srv/fluent-bit.conf
+    - /var/log/syslog:/var/log/syslog:ro
+    depends_on:
+    - fluentd

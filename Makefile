@@ -432,8 +432,7 @@ fluentd-push:
 
 fluentd-test: LOKI_URL ?= http://localhost:3100/loki/api/
 fluentd-test:
-	docker run -v /var/log:/var/log -e LOG_PATH="/var/log/*.log" -e LOKI_URL="$(LOKI_URL)" \
-	 $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
+	LOKI_URL="$(LOKI_URL)" docker-compose -f cmd/fluentd/docker/docker-compose.yml up --build #$(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
 
 ########################
 # Bigtable Backup Tool #

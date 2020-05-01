@@ -15,6 +15,62 @@ To create the gem: `gem build fluent-plugin-grafana-loki.gemspec`
 Useful additions:
   `gem install rubocop`
 
+## Testing
+
+Start Loki using:
+```
+docker run -it -p 3100:3100 grafana/loki:latest
+```
+
+Verify that Loki accept and stores logs:
+```
+curl -H "Content-Type: application/json" -XPOST -s "http://localhost:3100/loki/api/v1/push" --data-raw "{\"streams\": [{\"stream\": {\"env\": \"test\"}, \"values\": [[\"$(date +%s)000000000\", \"fizzbuzz\"]]}]}"
+curl "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query={env="test"}' --data-urlencode 'step=300' | jq .data.result
+```
+The expected output is:
+```
+[
+  {
+    "stream": {
+      "env": "test"
+    },
+    "values": [
+      [
+        "1588337198000000000",
+        "fizzbuzz"
+      ]
+    ]
+  }
+]
+```
+
+Start FluentBit + FluentD using:
+```
+LOKI_URL=http://{{ IP }}:3100 make fluentd-test
+```
+
+Verify that syslogs are being feeded into Loki:
+```
+curl "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query={env="dev"}' --data-urlencode 'step=300' | jq .data.result
+```
+The expected output is:
+```
+[
+  {
+    "stream": {
+      "env": "dev"
+    },
+    "values": [
+      [
+        "1588336950379591919",
+        "log=\"May  1 14:42:30 ibuprofen avahi-daemon[859]: New relevant interface vethb503225.IPv6 for mDNS.\""
+      ],
+      ...
+    ]
+  }
+]
+```
+
 ## Copyright
 
 * Copyright(c) 2018- Grafana Labs
