@@ -551,10 +551,10 @@ steps:
   depends_on:
   - image-tag
 
-- name: publish-fluent-bit-image
+- name: publish-fluentd-image
   image: plugins/docker
   settings:
-    dockerfile: cmd/fluent-bit/Dockerfile
+    dockerfile: cmd/fluentd/Dockerfile
     password:
       from_secret: docker_password
     repo: grafana/fluent-plugin-loki
