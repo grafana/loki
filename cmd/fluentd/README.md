@@ -24,15 +24,15 @@ docker run -it -p 3100:3100 grafana/loki:latest
 
 Verify that Loki accept and stores logs:
 ```
-curl -H "Content-Type: application/json" -XPOST -s "http://localhost:3100/loki/api/v1/push" --data-raw "{\"streams\": [{\"stream\": {\"env\": \"test\"}, \"values\": [[\"$(date +%s)000000000\", \"fizzbuzz\"]]}]}"
-curl "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query={env="test"}' --data-urlencode 'step=300' | jq .data.result
+curl -H "Content-Type: application/json" -XPOST -s "http://localhost:3100/loki/api/v1/push" --data-raw "{\"streams\": [{\"stream\": {\"job\": \"test\"}, \"values\": [[\"$(date +%s)000000000\", \"fizzbuzz\"]]}]}"
+curl "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query={job="test"}' --data-urlencode 'step=300' | jq .data.result
 ```
 The expected output is:
 ```
 [
   {
     "stream": {
-      "env": "test"
+      "job": "test"
     },
     "values": [
       [
@@ -51,14 +51,14 @@ LOKI_URL=http://{{ IP }}:3100 make fluentd-test
 
 Verify that syslogs are being feeded into Loki:
 ```
-curl "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query={env="dev"}' --data-urlencode 'step=300' | jq .data.result
+curl "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query={job="fluentd"}' --data-urlencode 'step=300' | jq .data.result
 ```
 The expected output is:
 ```
 [
   {
     "stream": {
-      "env": "dev"
+      "job": "fluentd"
     },
     "values": [
       [
