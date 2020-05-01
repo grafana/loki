@@ -21,12 +21,12 @@ import (
 )
 
 const (
-	queryPath       = "/loki/api/v1/query?query=%s&limit=%d&time=%d&direction=%s"
+	queryPath       = "/loki/api/v1/query"
 	queryRangePath  = "/loki/api/v1/query_range"
 	labelsPath      = "/loki/api/v1/labels"
 	labelValuesPath = "/loki/api/v1/label/%s/values"
 	seriesPath      = "/loki/api/v1/series"
-	tailPath        = "/loki/api/v1/tail?query=%s&delay_for=%d&limit=%d&start=%d"
+	tailPath        = "/loki/api/v1/tail"
 )
 
 // Client contains fields necessary to query a Loki instance
@@ -42,14 +42,13 @@ type Client struct {
 // excluding interfacer b/c it suggests taking the interface promql.Node instead of logproto.Direction b/c it happens to have a String() method
 // nolint:interfacer
 func (c *Client) Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
-	path := fmt.Sprintf(queryPath,
-		url.QueryEscape(queryStr), // query
-		limit,                     // limit
-		time.UnixNano(),           // start
-		direction.String(),        // direction
-	)
+	qsb := util.NewQueryStringBuilder()
+	qsb.SetString("query", queryStr)
+	qsb.SetInt("limit", int64(limit))
+	qsb.SetInt("start", time.UnixNano())
+	qsb.SetString("direction", direction.String())
 
-	return c.doQuery(path, quiet)
+	return c.doQuery(queryPath, qsb.Encode(), quiet)
 }
 
 // QueryRange uses the /api/v1/query_range endpoint to execute a range query
@@ -73,13 +72,13 @@ func (c *Client) QueryRange(queryStr string, limit int, from, through time.Time,
 		params.SetInt("interval", int64(interval.Seconds()))
 	}
 
-	return c.doQuery(params.EncodeWithPath(queryRangePath), quiet)
+	return c.doQuery(queryRangePath, params.Encode(), quiet)
 }
 
 // ListLabelNames uses the /api/v1/label endpoint to list label names
 func (c *Client) ListLabelNames(quiet bool) (*loghttp.LabelResponse, error) {
 	var labelResponse loghttp.LabelResponse
-	if err := c.doRequest(labelsPath, quiet, &labelResponse); err != nil {
+	if err := c.doRequest(labelsPath, "", quiet, &labelResponse); err != nil {
 		return nil, err
 	}
 	return &labelResponse, nil
@@ -89,7 +88,7 @@ func (c *Client) ListLabelNames(quiet bool) (*loghttp.LabelResponse, error) {
 func (c *Client) ListLabelValues(name string, quiet bool) (*loghttp.LabelResponse, error) {
 	path := fmt.Sprintf(labelValuesPath, url.PathEscape(name))
 	var labelResponse loghttp.LabelResponse
-	if err := c.doRequest(path, quiet, &labelResponse); err != nil {
+	if err := c.doRequest(path, "", quiet, &labelResponse); err != nil {
 		return nil, err
 	}
 	return &labelResponse, nil
@@ -102,26 +101,26 @@ func (c *Client) Series(matchers []string, from, through time.Time, quiet bool) 
 	params.SetStringArray("match", matchers)
 
 	var seriesResponse loghttp.SeriesResponse
-	if err := c.doRequest(params.EncodeWithPath(seriesPath), quiet, &seriesResponse); err != nil {
+	if err := c.doRequest(seriesPath, params.Encode(), quiet, &seriesResponse); err != nil {
 		return nil, err
 	}
 	return &seriesResponse, nil
 }
 
-func (c *Client) doQuery(path string, quiet bool) (*loghttp.QueryResponse, error) {
+func (c *Client) doQuery(path string, query string, quiet bool) (*loghttp.QueryResponse, error) {
 	var err error
 	var r loghttp.QueryResponse
 
-	if err = c.doRequest(path, quiet, &r); err != nil {
+	if err = c.doRequest(path, query, quiet, &r); err != nil {
 		return nil, err
 	}
 
 	return &r, nil
 }
 
-func (c *Client) doRequest(path string, quiet bool, out interface{}) error {
+func (c *Client) doRequest(path, query string, quiet bool, out interface{}) error {
 
-	us, err := buildURL(c.Address, path)
+	us, err := buildURL(c.Address, path, query)
 	if err != nil {
 		return err
 	}
@@ -170,17 +169,17 @@ func (c *Client) doRequest(path string, quiet bool, out interface{}) error {
 
 // LiveTailQueryConn uses /api/prom/tail to set up a websocket connection and returns it
 func (c *Client) LiveTailQueryConn(queryStr string, delayFor int, limit int, from int64, quiet bool) (*websocket.Conn, error) {
-	path := fmt.Sprintf(tailPath,
-		url.QueryEscape(queryStr), // query
-		delayFor,                  // delay_for
-		limit,                     // limit
-		from,                      // start
-	)
-	return c.wsConnect(path, quiet)
+	qsb := util.NewQueryStringBuilder()
+	qsb.SetString("query", queryStr)
+	qsb.SetInt("delay_for", int64(delayFor))
+	qsb.SetInt("limit", int64(limit))
+	qsb.SetInt("from", from)
+
+	return c.wsConnect(tailPath, qsb.Encode(), quiet)
 }
 
-func (c *Client) wsConnect(path string, quiet bool) (*websocket.Conn, error) {
-	us, err := buildURL(c.Address, path)
+func (c *Client) wsConnect(path, query string, quiet bool) (*websocket.Conn, error) {
+	us, err := buildURL(c.Address, path, query)
 	if err != nil {
 		return nil, err
 	}
@@ -223,11 +222,12 @@ func (c *Client) wsConnect(path string, quiet bool) (*websocket.Conn, error) {
 }
 
 // buildURL concats a url `http://foo/bar` with a path `/buzz`.
-func buildURL(u, p string) (string, error) {
+func buildURL(u, p, q string) (string, error) {
 	url, err := url.Parse(u)
 	if err != nil {
 		return "", err
 	}
 	url.Path = path.Join(url.Path, p)
+	url.RawQuery = q
 	return url.String(), nil
 }
