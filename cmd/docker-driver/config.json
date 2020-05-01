@@ -16,5 +16,16 @@
 			"value": "info",
 			"settable": ["value"]
 		}
+	],
+    "mounts": [
+        {
+            "name": "data",
+            "description": "Optional external pipelines files",
+            "source": "",
+            "destination": "/data",
+            "type": "none",
+            "options": ["bind", "ro"],
+			"settable": ["source"]
+        }
 	]
 }
