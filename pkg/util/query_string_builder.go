@@ -46,16 +46,3 @@ func (b *QueryStringBuilder) SetFloat32(name string, value float32) {
 func (b *QueryStringBuilder) Encode() string {
 	return b.values.Encode()
 }
-
-// Encode returns the URL-encoded query string, prefixing it with the
-// input URL path.
-func (b *QueryStringBuilder) EncodeWithPath(path string) string {
-	queryString := b.Encode()
-	if path == "" {
-		return queryString
-	} else if queryString == "" {
-		return path
-	}
-
-	return path + "?" + queryString
-}
