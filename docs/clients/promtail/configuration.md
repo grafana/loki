@@ -799,7 +799,8 @@ configuration.
 
 ```yaml
 # Configures the discovery to look on the current machine. Must be either
-# localhost or the hostname of the current computer.
+# localhost or the hostname of the current computer. This is not a mandatory config
+# and this can skipped.
 targets:
   - localhost
 
@@ -1073,6 +1074,31 @@ scrape_configs:
    - targets:
       - localhost
      labels:
+      job: varlogs  # A `job` label is fairly standard in prometheus and useful for linking metrics and logs.
+      host: yourhost # A `host` label will help identify logs from this machine vs others
+      __path__: /var/log/*.log  # The path matching uses a third party library: https://github.com/bmatcuk/doublestar
+```
+
+## Example Static Config without targets
+
+While promtail may have been named for the prometheus service discovery code, that same code works very well for tailing logs without containers or container environments directly on virtual machines or bare metal.
+
+```yaml
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /var/log/positions.yaml # This location needs to be writeable by promtail.
+
+client:
+  url: http://ip_or_hostname_where_Loki_run:3100/loki/api/v1/push
+
+scrape_configs:
+ - job_name: system
+   pipeline_stages:
+   static_configs:
+   - labels:
       job: varlogs  # A `job` label is fairly standard in prometheus and useful for linking metrics and logs.
       host: yourhost # A `host` label will help identify logs from this machine vs others
       __path__: /var/log/*.log  # The path matching uses a third party library: https://github.com/bmatcuk/doublestar
