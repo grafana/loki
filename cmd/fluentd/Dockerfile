@@ -10,7 +10,7 @@ WORKDIR /src/loki
 RUN make BUILD_IN_CONTAINER=false fluentd-plugin
 
 FROM fluent/fluentd:v1.9.2-debian-1.0
-ENV LOKI_URL "https://logs-us-west1.grafana.net"
+ENV LOKI_URL "https://logs-prod-us-central1.grafana.net"
 
 COPY --from=build /src/loki/cmd/fluentd/lib/fluent/plugin/out_loki.rb /fluentd/plugins/out_loki.rb
 
