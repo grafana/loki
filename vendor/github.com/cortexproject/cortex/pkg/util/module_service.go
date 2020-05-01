@@ -72,6 +72,27 @@ func (w *moduleService) run(serviceContext context.Context) error {
 }
 
 func (w *moduleService) stop(_ error) error {
+	var err error
+	if w.service.State() == services.Running {
+		// Only wait for other modules, if underlying service is still running.
+		w.waitForModulesToStop()
+
+		level.Debug(Logger).Log("msg", "stopping", "module", w.name)
+
+		err = services.StopAndAwaitTerminated(context.Background(), w.service)
+	} else {
+		err = w.service.FailureCase()
+	}
+
+	if err != nil && err != ErrStopProcess {
+		level.Warn(Logger).Log("msg", "module failed with error", "module", w.name, "err", err)
+	} else {
+		level.Info(Logger).Log("msg", "module stopped", "module", w.name)
+	}
+	return err
+}
+
+func (w *moduleService) waitForModulesToStop() {
 	// wait until all stopDeps have stopped
 	stopDeps := w.stopDeps(w.name)
 	for _, s := range stopDeps {
@@ -83,14 +104,4 @@ func (w *moduleService) stop(_ error) error {
 		// fails. But we don't care *how* service stops, as long as it is done.
 		_ = s.AwaitTerminated(context.Background())
 	}
-
-	level.Debug(Logger).Log("msg", "stopping", "module", w.name)
-
-	err := services.StopAndAwaitTerminated(context.Background(), w.service)
-	if err != nil && err != ErrStopProcess {
-		level.Warn(Logger).Log("msg", "error stopping module", "module", w.name, "err", err)
-	} else {
-		level.Info(Logger).Log("msg", "module stopped", "module", w.name)
-	}
-	return err
 }

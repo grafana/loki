@@ -36,6 +36,10 @@ func (d *LeaveOnStoppingDelegate) OnRingInstanceStopping(lifecycler *BasicLifecy
 	d.next.OnRingInstanceStopping(lifecycler)
 }
 
+func (d *LeaveOnStoppingDelegate) OnRingInstanceHeartbeat(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *IngesterDesc) {
+	d.next.OnRingInstanceHeartbeat(lifecycler, ringDesc, instanceDesc)
+}
+
 type TokensPersistencyDelegate struct {
 	next       BasicLifecyclerDelegate
 	logger     log.Logger
@@ -95,4 +99,49 @@ func (d *TokensPersistencyDelegate) OnRingInstanceTokens(lifecycler *BasicLifecy
 
 func (d *TokensPersistencyDelegate) OnRingInstanceStopping(lifecycler *BasicLifecycler) {
 	d.next.OnRingInstanceStopping(lifecycler)
+}
+
+func (d *TokensPersistencyDelegate) OnRingInstanceHeartbeat(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *IngesterDesc) {
+	d.next.OnRingInstanceHeartbeat(lifecycler, ringDesc, instanceDesc)
+}
+
+// AutoForgetDelegate automatically remove an instance from the ring if the last
+// heartbeat is older than a configured period.
+type AutoForgetDelegate struct {
+	next         BasicLifecyclerDelegate
+	logger       log.Logger
+	forgetPeriod time.Duration
+}
+
+func NewAutoForgetDelegate(forgetPeriod time.Duration, next BasicLifecyclerDelegate, logger log.Logger) *AutoForgetDelegate {
+	return &AutoForgetDelegate{
+		next:         next,
+		logger:       logger,
+		forgetPeriod: forgetPeriod,
+	}
+}
+
+func (d *AutoForgetDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens) {
+	return d.next.OnRingInstanceRegister(lifecycler, ringDesc, instanceExists, instanceID, instanceDesc)
+}
+
+func (d *AutoForgetDelegate) OnRingInstanceTokens(lifecycler *BasicLifecycler, tokens Tokens) {
+	d.next.OnRingInstanceTokens(lifecycler, tokens)
+}
+
+func (d *AutoForgetDelegate) OnRingInstanceStopping(lifecycler *BasicLifecycler) {
+	d.next.OnRingInstanceStopping(lifecycler)
+}
+
+func (d *AutoForgetDelegate) OnRingInstanceHeartbeat(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *IngesterDesc) {
+	for id, instance := range ringDesc.Ingesters {
+		lastHeartbeat := time.Unix(instance.GetTimestamp(), 0)
+
+		if time.Since(lastHeartbeat) > d.forgetPeriod {
+			level.Warn(d.logger).Log("msg", "auto-forgetting instance from the ring because it is unhealthy for a long time", "instance", id, "last_heartbeat", lastHeartbeat.String(), "forget_period", d.forgetPeriod)
+			ringDesc.RemoveIngester(id)
+		}
+	}
+
+	d.next.OnRingInstanceHeartbeat(lifecycler, ringDesc, instanceDesc)
 }

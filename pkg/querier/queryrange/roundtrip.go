@@ -43,7 +43,7 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, registerer promet
 	instrumentMetrics := queryrange.NewInstrumentMiddlewareMetrics(registerer)
 	retryMetrics := queryrange.NewRetryMiddlewareMetrics(registerer)
 
-	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, lokiCodec, prometheusResponseExtractor, instrumentMetrics, retryMetrics)
+	metricsTripperware, cache, err := NewMetricTripperware(cfg, log, limits, lokiCodec, PrometheusExtractor{}, instrumentMetrics, retryMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -205,6 +205,7 @@ func NewMetricTripperware(
 			limits,
 			codec,
 			extractor,
+			nil,
 		)
 		if err != nil {
 			return nil, nil, err

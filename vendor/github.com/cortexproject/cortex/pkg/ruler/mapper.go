@@ -2,6 +2,8 @@ package ruler
 
 import (
 	"crypto/md5"
+	"net/url"
+	"path/filepath"
 	"sort"
 
 	"github.com/go-kit/kit/log"
@@ -33,8 +35,8 @@ func (m *mapper) MapRules(user string, ruleConfigs map[string][]legacy_rulefmt.R
 	anyUpdated := false
 	filenames := []string{}
 
-	// user rule files will be stored as `/<path>/<userid>/filename`
-	path := m.Path + "/" + user + "/"
+	// user rule files will be stored as `/<path>/<userid>/<encoded filename>`
+	path := filepath.Join(m.Path, user)
 	err := m.FS.MkdirAll(path, 0777)
 	if err != nil {
 		return false, nil, err
@@ -42,7 +44,9 @@ func (m *mapper) MapRules(user string, ruleConfigs map[string][]legacy_rulefmt.R
 
 	// write all rule configs to disk
 	for filename, groups := range ruleConfigs {
-		fullFileName := path + filename
+		// Store the encoded file name to better handle `/` characters
+		encodedFileName := url.PathEscape(filename)
+		fullFileName := filepath.Join(path, encodedFileName)
 
 		fileUpdated, err := m.writeRuleGroupsIfNewer(groups, fullFileName)
 		if err != nil {
@@ -59,8 +63,16 @@ func (m *mapper) MapRules(user string, ruleConfigs map[string][]legacy_rulefmt.R
 	}
 
 	for _, existingFile := range existingFiles {
-		fullFileName := path + existingFile.Name()
-		ruleGroups := ruleConfigs[existingFile.Name()]
+		fullFileName := filepath.Join(path, existingFile.Name())
+
+		// Ensure the namespace is decoded from a url path encoding to see if it is still required
+		decodedNamespace, err := url.PathUnescape(existingFile.Name())
+		if err != nil {
+			level.Warn(m.logger).Log("msg", "unable to remove rule file on disk", "file", fullFileName, "err", err)
+			continue
+		}
+
+		ruleGroups := ruleConfigs[string(decodedNamespace)]
 
 		if ruleGroups == nil {
 			err = m.FS.Remove(fullFileName)

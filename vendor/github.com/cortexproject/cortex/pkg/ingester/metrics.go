@@ -174,7 +174,7 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_ingester_chunk_size_bytes",
 			Help:    "Distribution of stored chunk sizes (when stored).",
-			Buckets: prometheus.ExponentialBuckets(500, 2, 5), // biggest bucket is 500*2^(5-1) = 8000
+			Buckets: prometheus.ExponentialBuckets(500, 2, 7), // biggest bucket is 500*2^(7-1) = 32000
 		}),
 		chunkAge: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name: "cortex_ingester_chunk_age_seconds",

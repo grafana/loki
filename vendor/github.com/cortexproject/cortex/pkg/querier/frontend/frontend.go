@@ -111,6 +111,11 @@ func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (*Fronten
 		}
 
 		f.roundTripper = RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(r.Context())
+			if tracer != nil && span != nil {
+				carrier := opentracing.HTTPHeadersCarrier(r.Header)
+				tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier)
+			}
 			r.URL.Scheme = u.Scheme
 			r.URL.Host = u.Host
 			r.URL.Path = path.Join(u.Path, r.URL.Path)

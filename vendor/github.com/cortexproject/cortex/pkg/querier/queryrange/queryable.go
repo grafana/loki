@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -19,18 +20,27 @@ const (
 type ShardedQueryable struct {
 	Req     Request
 	Handler Handler
+
+	sharededQuerier *ShardedQuerier
 }
 
 // Querier implements Queryable
 func (q *ShardedQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-	return &ShardedQuerier{ctx, q.Req, q.Handler}, nil
+	q.sharededQuerier = &ShardedQuerier{Ctx: ctx, Req: q.Req, Handler: q.Handler, ResponseHeaders: map[string][]string{}}
+	return q.sharededQuerier, nil
+}
+
+func (q *ShardedQueryable) getResponseHeaders() map[string][]string {
+	return q.sharededQuerier.ResponseHeaders
 }
 
 // ShardedQuerier is a an implementor of the Querier interface.
 type ShardedQuerier struct {
-	Ctx     context.Context
-	Req     Request
-	Handler Handler
+	Ctx                context.Context
+	Req                Request
+	Handler            Handler
+	ResponseHeaders    map[string][]string
+	ResponseHeadersMtx sync.Mutex
 }
 
 func (q *ShardedQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
@@ -89,6 +99,7 @@ func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesSet,
 				return
 			}
 			samplesCh <- streams
+			q.setResponseHeaders(resp.(*PrometheusResponse).Headers)
 		}(query)
 	}
 
@@ -104,6 +115,19 @@ func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) (storage.SeriesSet,
 	}
 
 	return NewSeriesSet(samples), nil, err
+}
+
+func (q *ShardedQuerier) setResponseHeaders(headers []*PrometheusResponseHeader) {
+	q.ResponseHeadersMtx.Lock()
+	defer q.ResponseHeadersMtx.Unlock()
+
+	for _, header := range headers {
+		if _, ok := q.ResponseHeaders[header.Name]; !ok {
+			q.ResponseHeaders[header.Name] = header.Values
+		} else {
+			q.ResponseHeaders[header.Name] = append(q.ResponseHeaders[header.Name], header.Values...)
+		}
+	}
 }
 
 // LabelValues returns all potential values for a label name.

@@ -289,7 +289,7 @@ func (r mockRing) Get(key uint32, op ring.Operation, buf []ring.IngesterDesc) (r
 	return result, nil
 }
 
-func (r mockRing) GetAll() (ring.ReplicationSet, error) {
+func (r mockRing) GetAll(op ring.Operation) (ring.ReplicationSet, error) {
 	return ring.ReplicationSet{
 		Ingesters: r.ingesters,
 		MaxErrors: 1,

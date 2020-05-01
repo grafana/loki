@@ -156,6 +156,9 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Storage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid storage config")
 	}
+	if err := c.ChunkStore.Validate(); err != nil {
+		return errors.Wrap(err, "invalid chunk store config")
+	}
 	if err := c.Ruler.Validate(); err != nil {
 		return errors.Wrap(err, "invalid ruler config")
 	}
@@ -187,20 +190,21 @@ type Cortex struct {
 	// set during initialization
 	serviceMap map[ModuleName]services.Service
 
-	api           *api.API
-	server        *server.Server
-	ring          *ring.Ring
-	overrides     *validation.Overrides
-	distributor   *distributor.Distributor
-	ingester      *ingester.Ingester
-	flusher       *flusher.Flusher
-	store         chunk.Store
-	deletesStore  *purger.DeleteStore
-	frontend      *frontend.Frontend
-	tableManager  *chunk.TableManager
-	cache         cache.Cache
-	runtimeConfig *runtimeconfig.Manager
-	dataPurger    *purger.DataPurger
+	api              *api.API
+	server           *server.Server
+	ring             *ring.Ring
+	overrides        *validation.Overrides
+	distributor      *distributor.Distributor
+	ingester         *ingester.Ingester
+	flusher          *flusher.Flusher
+	store            chunk.Store
+	deletesStore     *purger.DeleteStore
+	frontend         *frontend.Frontend
+	tableManager     *chunk.TableManager
+	cache            cache.Cache
+	runtimeConfig    *runtimeconfig.Manager
+	dataPurger       *purger.DataPurger
+	tombstonesLoader *purger.TombstonesLoader
 
 	ruler        *ruler.Ruler
 	configAPI    *configAPI.API

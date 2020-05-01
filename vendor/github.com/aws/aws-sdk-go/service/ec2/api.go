@@ -971,6 +971,9 @@ func (c *EC2) AssociateAddressRequest(input *AssociateAddressInput) (req *reques
 // an Elastic IP address with an instance or network interface that has an existing
 // Elastic IP address.
 //
+// You cannot associate an Elastic IP address with an interface in a different
+// network border group.
+//
 // This is an idempotent operation. If you perform the operation more than once,
 // Amazon EC2 doesn't return an error, and you may be charged for each time
 // the Elastic IP address is remapped to the same instance. For more information,
@@ -11763,8 +11766,10 @@ func (c *EC2) DescribeAccountAttributesRequest(input *DescribeAccountAttributesI
 //
 //    * default-vpc: The ID of the default VPC for your account, or none.
 //
-//    * max-instances: The maximum number of On-Demand Instances that you can
-//    run.
+//    * max-instances: This attribute is no longer supported. The returned value
+//    does not reflect your actual vCPU limit for running On-Demand Instances.
+//    For more information, see On-Demand Instance Limits (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-on-demand-instances.html#ec2-on-demand-instances-limits)
+//    in the Amazon Elastic Compute Cloud User Guide.
 //
 //    * vpc-max-security-groups-per-interface: The maximum number of security
 //    groups that you can assign to a network interface.
@@ -14307,7 +14312,7 @@ func (c *EC2) DescribeFleetsRequest(input *DescribeFleetsInput) (req *request.Re
 
 // DescribeFleets API operation for Amazon Elastic Compute Cloud.
 //
-// Describes the specified EC2 Fleets or all your EC2 Fleets.
+// Describes the specified EC2 Fleets or all of your EC2 Fleets.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -28695,9 +28700,10 @@ func (c *EC2) ModifyEbsDefaultKmsKeyIdRequest(input *ModifyEbsDefaultKmsKeyIdInp
 // for your account in this Region.
 //
 // AWS creates a unique AWS managed CMK in each Region for use with encryption
-// by default. If you change the default CMK to a customer managed CMK, it is
-// used instead of the AWS managed CMK. To reset the default CMK to the AWS
-// managed CMK for EBS, use ResetEbsDefaultKmsKeyId.
+// by default. If you change the default CMK to a symmetric customer managed
+// CMK, it is used instead of the AWS managed CMK. To reset the default CMK
+// to the AWS managed CMK for EBS, use ResetEbsDefaultKmsKeyId. Amazon EBS does
+// not support asymmetric CMKs.
 //
 // If you delete or disable the customer managed CMK that you specified for
 // use with encryption by default, your instances will fail to launch.
@@ -40585,6 +40591,96 @@ func (s *CapacityReservation) SetTotalInstanceCount(v int64) *CapacityReservatio
 	return s
 }
 
+// Describes the strategy for using unused Capacity Reservations for fulfilling
+// On-Demand capacity.
+//
+// This strategy can only be used if the EC2 Fleet is of type instant.
+//
+// For more information about Capacity Reservations, see On-Demand Capacity
+// Reservations (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-capacity-reservations.html)
+// in the Amazon Elastic Compute Cloud User Guide. For examples of using Capacity
+// Reservations in an EC2 Fleet, see EC2 Fleet Example Configurations (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-fleet-examples.html)
+// in the Amazon Elastic Compute Cloud User Guide.
+type CapacityReservationOptions struct {
+	_ struct{} `type:"structure"`
+
+	// Indicates whether to use unused Capacity Reservations for fulfilling On-Demand
+	// capacity.
+	//
+	// If you specify use-capacity-reservations-first, the fleet uses unused Capacity
+	// Reservations to fulfill On-Demand capacity up to the target On-Demand capacity.
+	// If multiple instance pools have unused Capacity Reservations, the On-Demand
+	// allocation strategy (lowest-price or prioritized) is applied. If the number
+	// of unused Capacity Reservations is less than the On-Demand target capacity,
+	// the remaining On-Demand target capacity is launched according to the On-Demand
+	// allocation strategy (lowest-price or prioritized).
+	//
+	// If you do not specify a value, the fleet fulfils the On-Demand capacity according
+	// to the chosen On-Demand allocation strategy.
+	UsageStrategy *string `locationName:"usageStrategy" type:"string" enum:"FleetCapacityReservationUsageStrategy"`
+}
+
+// String returns the string representation
+func (s CapacityReservationOptions) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s CapacityReservationOptions) GoString() string {
+	return s.String()
+}
+
+// SetUsageStrategy sets the UsageStrategy field's value.
+func (s *CapacityReservationOptions) SetUsageStrategy(v string) *CapacityReservationOptions {
+	s.UsageStrategy = &v
+	return s
+}
+
+// Describes the strategy for using unused Capacity Reservations for fulfilling
+// On-Demand capacity.
+//
+// This strategy can only be used if the EC2 Fleet is of type instant.
+//
+// For more information about Capacity Reservations, see On-Demand Capacity
+// Reservations (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-capacity-reservations.html)
+// in the Amazon Elastic Compute Cloud User Guide. For examples of using Capacity
+// Reservations in an EC2 Fleet, see EC2 Fleet Example Configurations (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-fleet-examples.html)
+// in the Amazon Elastic Compute Cloud User Guide.
+type CapacityReservationOptionsRequest struct {
+	_ struct{} `type:"structure"`
+
+	// Indicates whether to use unused Capacity Reservations for fulfilling On-Demand
+	// capacity.
+	//
+	// If you specify use-capacity-reservations-first, the fleet uses unused Capacity
+	// Reservations to fulfill On-Demand capacity up to the target On-Demand capacity.
+	// If multiple instance pools have unused Capacity Reservations, the On-Demand
+	// allocation strategy (lowest-price or prioritized) is applied. If the number
+	// of unused Capacity Reservations is less than the On-Demand target capacity,
+	// the remaining On-Demand target capacity is launched according to the On-Demand
+	// allocation strategy (lowest-price or prioritized).
+	//
+	// If you do not specify a value, the fleet fulfils the On-Demand capacity according
+	// to the chosen On-Demand allocation strategy.
+	UsageStrategy *string `type:"string" enum:"FleetCapacityReservationUsageStrategy"`
+}
+
+// String returns the string representation
+func (s CapacityReservationOptionsRequest) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s CapacityReservationOptionsRequest) GoString() string {
+	return s.String()
+}
+
+// SetUsageStrategy sets the UsageStrategy field's value.
+func (s *CapacityReservationOptionsRequest) SetUsageStrategy(v string) *CapacityReservationOptionsRequest {
+	s.UsageStrategy = &v
+	return s
+}
+
 // Describes an instance's Capacity Reservation targeting option. You can specify
 // only one parameter at a time. If you specify CapacityReservationPreference
 // and CapacityReservationTarget, the request fails.
@@ -42300,11 +42396,11 @@ type CopyImageInput struct {
 	// in the Amazon Elastic Compute Cloud User Guide.
 	Encrypted *bool `locationName:"encrypted" type:"boolean"`
 
-	// An identifier for the AWS Key Management Service (AWS KMS) customer master
-	// key (CMK) to use when creating the encrypted volume. This parameter is only
-	// required if you want to use a non-default CMK; if this parameter is not specified,
-	// the default CMK for EBS is used. If a KmsKeyId is specified, the Encrypted
-	// flag must also be set.
+	// An identifier for the symmetric AWS Key Management Service (AWS KMS) customer
+	// master key (CMK) to use when creating the encrypted volume. This parameter
+	// is only required if you want to use a non-default CMK; if this parameter
+	// is not specified, the default CMK for EBS is used. If a KmsKeyId is specified,
+	// the Encrypted flag must also be set.
 	//
 	// To specify a CMK, use its key ID, Amazon Resource Name (ARN), alias name,
 	// or alias ARN. When using an alias name, prefix it with "alias/". For example:
@@ -42323,6 +42419,8 @@ type CopyImageInput struct {
 	//
 	// The specified CMK must exist in the Region that the snapshot is being copied
 	// to.
+	//
+	// Amazon EBS does not support asymmetric CMKs.
 	KmsKeyId *string `locationName:"kmsKeyId" type:"string"`
 
 	// The name of the new AMI in the destination Region.
@@ -43704,12 +43802,12 @@ type CreateFleetError struct {
 	ErrorCode *string `locationName:"errorCode" type:"string"`
 
 	// The error message that describes why the instance could not be launched.
-	// For more information about error messages, see ee Error Codes (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/errors-overview.html.html).
+	// For more information about error messages, see Error Codes (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/errors-overview.html.html).
 	ErrorMessage *string `locationName:"errorMessage" type:"string"`
 
 	// The launch templates and overrides that were used for launching the instances.
-	// Any parameters that you specify in the Overrides override the same parameters
-	// in the launch template.
+	// The values that you specify in the Overrides replace the values in the launch
+	// template.
 	LaunchTemplateAndOverrides *LaunchTemplateAndOverridesResponse `locationName:"launchTemplateAndOverrides" type:"structure"`
 
 	// Indicates if the instance that could not be launched was a Spot Instance
@@ -43754,8 +43852,8 @@ func (s *CreateFleetError) SetLifecycle(v string) *CreateFleetError {
 type CreateFleetInput struct {
 	_ struct{} `type:"structure"`
 
-	// Unique, case-sensitive identifier you provide to ensure the idempotency of
-	// the request. For more information, see Ensuring Idempotency (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/Run_Instance_Idempotency.html).
+	// Unique, case-sensitive identifier that you provide to ensure the idempotency
+	// of the request. For more information, see Ensuring Idempotency (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/Run_Instance_Idempotency.html).
 	ClientToken *string `type:"string"`
 
 	// Checks whether you have the required permissions for the action, without
@@ -43948,15 +44046,15 @@ type CreateFleetInstance struct {
 	InstanceType *string `locationName:"instanceType" type:"string" enum:"InstanceType"`
 
 	// The launch templates and overrides that were used for launching the instances.
-	// Any parameters that you specify in the Overrides override the same parameters
-	// in the launch template.
+	// The values that you specify in the Overrides replace the values in the launch
+	// template.
 	LaunchTemplateAndOverrides *LaunchTemplateAndOverridesResponse `locationName:"launchTemplateAndOverrides" type:"structure"`
 
 	// Indicates if the instance that was launched is a Spot Instance or On-Demand
 	// Instance.
 	Lifecycle *string `locationName:"lifecycle" type:"string" enum:"InstanceLifecycle"`
 
-	// The value is Windows for Windows instances; otherwise blank.
+	// The value is Windows for Windows instances. Otherwise, the value is blank.
 	Platform *string `locationName:"platform" type:"string" enum:"PlatformValues"`
 }
 
@@ -44716,6 +44814,9 @@ type CreateKeyPairOutput struct {
 
 	// The name of the key pair.
 	KeyName *string `locationName:"keyName" type:"string"`
+
+	// The ID of the key pair.
+	KeyPairId *string `locationName:"keyPairId" type:"string"`
 }
 
 // String returns the string representation
@@ -44743,6 +44844,12 @@ func (s *CreateKeyPairOutput) SetKeyMaterial(v string) *CreateKeyPairOutput {
 // SetKeyName sets the KeyName field's value.
 func (s *CreateKeyPairOutput) SetKeyName(v string) *CreateKeyPairOutput {
 	s.KeyName = &v
+	return s
+}
+
+// SetKeyPairId sets the KeyPairId field's value.
+func (s *CreateKeyPairOutput) SetKeyPairId(v string) *CreateKeyPairOutput {
+	s.KeyPairId = &v
 	return s
 }
 
@@ -53338,6 +53445,8 @@ type DescribeAddressesInput struct {
 	//    * instance-id - The ID of the instance the address is associated with,
 	//    if any.
 	//
+	//    * network-border-group - The location from where the IP address is advertised.
+	//
 	//    * network-interface-id - [EC2-VPC] The ID of the network interface that
 	//    the address is associated with, if any.
 	//
@@ -55340,6 +55449,8 @@ type DescribeExportTasksInput struct {
 
 	// The export task IDs.
 	ExportTaskIds []*string `locationName:"exportTaskId" locationNameList:"ExportTaskId" type:"list"`
+
+	Filters []*Filter `locationName:"Filter" locationNameList:"Filter" type:"list"`
 }
 
 // String returns the string representation
@@ -55355,6 +55466,12 @@ func (s DescribeExportTasksInput) GoString() string {
 // SetExportTaskIds sets the ExportTaskIds field's value.
 func (s *DescribeExportTasksInput) SetExportTaskIds(v []*string) *DescribeExportTasksInput {
 	s.ExportTaskIds = v
+	return s
+}
+
+// SetFilters sets the Filters field's value.
+func (s *DescribeExportTasksInput) SetFilters(v []*Filter) *DescribeExportTasksInput {
+	s.Filters = v
 	return s
 }
 
@@ -55606,12 +55723,12 @@ type DescribeFleetError struct {
 	ErrorCode *string `locationName:"errorCode" type:"string"`
 
 	// The error message that describes why the instance could not be launched.
-	// For more information about error messages, see ee Error Codes (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/errors-overview.html.html).
+	// For more information about error messages, see Error Codes (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/errors-overview.html.html).
 	ErrorMessage *string `locationName:"errorMessage" type:"string"`
 
 	// The launch templates and overrides that were used for launching the instances.
-	// Any parameters that you specify in the Overrides override the same parameters
-	// in the launch template.
+	// The values that you specify in the Overrides replace the values in the launch
+	// template.
 	LaunchTemplateAndOverrides *LaunchTemplateAndOverridesResponse `locationName:"launchTemplateAndOverrides" type:"structure"`
 
 	// Indicates if the instance that could not be launched was a Spot Instance
@@ -56021,15 +56138,15 @@ type DescribeFleetsInstances struct {
 	InstanceType *string `locationName:"instanceType" type:"string" enum:"InstanceType"`
 
 	// The launch templates and overrides that were used for launching the instances.
-	// Any parameters that you specify in the Overrides override the same parameters
-	// in the launch template.
+	// The values that you specify in the Overrides replace the values in the launch
+	// template.
 	LaunchTemplateAndOverrides *LaunchTemplateAndOverridesResponse `locationName:"launchTemplateAndOverrides" type:"structure"`
 
 	// Indicates if the instance that was launched is a Spot Instance or On-Demand
 	// Instance.
 	Lifecycle *string `locationName:"lifecycle" type:"string" enum:"InstanceLifecycle"`
 
-	// The value is Windows for Windows instances; otherwise blank.
+	// The value is Windows for Windows instances. Otherwise, the value is blank.
 	Platform *string `locationName:"platform" type:"string" enum:"PlatformValues"`
 }
 
@@ -58389,8 +58506,9 @@ type DescribeInstancesInput struct {
 	//    * hypervisor - The hypervisor type of the instance (ovm | xen).
 	//
 	//    * iam-instance-profile.arn - The instance profile associated with the
-	//    instance. Specified as an ARN. image-id - The ID of the image used to
-	//    launch the instance.
+	//    instance. Specified as an ARN.
+	//
+	//    * image-id - The ID of the image used to launch the instance.
 	//
 	//    * instance-id - The ID of the instance.
 	//
@@ -58830,6 +58948,9 @@ type DescribeKeyPairsInput struct {
 	//
 	// Default: Describes all your key pairs.
 	KeyNames []*string `locationName:"KeyName" locationNameList:"KeyName" type:"list"`
+
+	// The IDs of the key pairs.
+	KeyPairIds []*string `locationName:"KeyPairId" locationNameList:"KeyPairId" type:"list"`
 }
 
 // String returns the string representation
@@ -58857,6 +58978,12 @@ func (s *DescribeKeyPairsInput) SetFilters(v []*Filter) *DescribeKeyPairsInput {
 // SetKeyNames sets the KeyNames field's value.
 func (s *DescribeKeyPairsInput) SetKeyNames(v []*string) *DescribeKeyPairsInput {
 	s.KeyNames = v
+	return s
+}
+
+// SetKeyPairIds sets the KeyPairIds field's value.
+func (s *DescribeKeyPairsInput) SetKeyPairIds(v []*string) *DescribeKeyPairsInput {
+	s.KeyPairIds = v
 	return s
 }
 
@@ -60577,7 +60704,8 @@ type DescribeNetworkInterfacesInput struct {
 
 	// The maximum number of items to return for this request. The request returns
 	// a token that you can specify in a subsequent call to get the next set of
-	// results.
+	// results. You cannot specify this parameter and the network interface IDs
+	// parameter in the same request.
 	MaxResults *int64 `min:"5" type:"integer"`
 
 	// One or more network interface IDs.
@@ -60695,6 +60823,9 @@ type DescribePlacementGroupsInput struct {
 	//    * strategy - The strategy of the placement group (cluster | spread | partition).
 	Filters []*Filter `locationName:"Filter" locationNameList:"Filter" type:"list"`
 
+	// The IDs of the placement groups.
+	GroupIds []*string `locationName:"GroupId" locationNameList:"GroupId" type:"list"`
+
 	// The names of the placement groups.
 	//
 	// Default: Describes all your placement groups, or only those otherwise specified.
@@ -60720,6 +60851,12 @@ func (s *DescribePlacementGroupsInput) SetDryRun(v bool) *DescribePlacementGroup
 // SetFilters sets the Filters field's value.
 func (s *DescribePlacementGroupsInput) SetFilters(v []*Filter) *DescribePlacementGroupsInput {
 	s.Filters = v
+	return s
+}
+
+// SetGroupIds sets the GroupIds field's value.
+func (s *DescribePlacementGroupsInput) SetGroupIds(v []*string) *DescribePlacementGroupsInput {
+	s.GroupIds = v
 	return s
 }
 
@@ -68934,7 +69071,7 @@ type DiskInfo struct {
 	// The number of disks with this configuration.
 	Count *int64 `locationName:"count" type:"integer"`
 
-	// The size of the disk in GiB.
+	// The size of the disk in GB.
 	SizeInGB *int64 `locationName:"sizeInGB" type:"long"`
 
 	// The type of disk.
@@ -69103,8 +69240,9 @@ type EbsBlockDevice struct {
 	// size.
 	VolumeSize *int64 `locationName:"volumeSize" type:"integer"`
 
-	// The volume type. If you set the type to io1, you must also specify the IOPS
-	// that the volume supports.
+	// The volume type. If you set the type to io1, you must also specify the Iops
+	// parameter. If you set the type to gp2, st1, sc1, or standard, you must omit
+	// the Iops parameter.
 	//
 	// Default: gp2
 	VolumeType *string `locationName:"volumeType" type:"string" enum:"VolumeType"`
@@ -69395,7 +69533,10 @@ func (s *ElasticGpuHealth) SetStatus(v string) *ElasticGpuHealth {
 type ElasticGpuSpecification struct {
 	_ struct{} `type:"structure"`
 
-	// The type of Elastic Graphics accelerator.
+	// The type of Elastic Graphics accelerator. For more information about the
+	// values to specify for Type, see Elastic Graphics Basics (https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/elastic-graphics.html#elastic-graphics-basics),
+	// specifically the Elastic Graphics accelerator column, in the Amazon Elastic
+	// Compute Cloud User Guide for Windows Instances.
 	//
 	// Type is a required field
 	Type *string `type:"string" required:"true"`
@@ -69475,6 +69616,9 @@ type ElasticGpus struct {
 
 	// The ID of the instance to which the Elastic Graphics accelerator is attached.
 	InstanceId *string `locationName:"instanceId" type:"string"`
+
+	// The tags assigned to the Elastic Graphics accelerator.
+	Tags []*Tag `locationName:"tagSet" locationNameList:"item" type:"list"`
 }
 
 // String returns the string representation
@@ -69523,12 +69667,23 @@ func (s *ElasticGpus) SetInstanceId(v string) *ElasticGpus {
 	return s
 }
 
+// SetTags sets the Tags field's value.
+func (s *ElasticGpus) SetTags(v []*Tag) *ElasticGpus {
+	s.Tags = v
+	return s
+}
+
 // Describes an elastic inference accelerator.
 type ElasticInferenceAccelerator struct {
 	_ struct{} `type:"structure"`
 
-	// The type of elastic inference accelerator. The possible values are eia1.small,
-	// eia1.medium, and eia1.large.
+	// The number of elastic inference accelerators to attach to the instance.
+	//
+	// Default: 1
+	Count *int64 `min:"1" type:"integer"`
+
+	// The type of elastic inference accelerator. The possible values are eia1.medium,
+	// eia1.large, and eia1.xlarge.
 	//
 	// Type is a required field
 	Type *string `type:"string" required:"true"`
@@ -69547,6 +69702,9 @@ func (s ElasticInferenceAccelerator) GoString() string {
 // Validate inspects the fields of the type to determine if they are valid.
 func (s *ElasticInferenceAccelerator) Validate() error {
 	invalidParams := request.ErrInvalidParams{Context: "ElasticInferenceAccelerator"}
+	if s.Count != nil && *s.Count < 1 {
+		invalidParams.Add(request.NewErrParamMinValue("Count", 1))
+	}
 	if s.Type == nil {
 		invalidParams.Add(request.NewErrParamRequired("Type"))
 	}
@@ -69555,6 +69713,12 @@ func (s *ElasticInferenceAccelerator) Validate() error {
 		return invalidParams
 	}
 	return nil
+}
+
+// SetCount sets the Count field's value.
+func (s *ElasticInferenceAccelerator) SetCount(v int64) *ElasticInferenceAccelerator {
+	s.Count = &v
+	return s
 }
 
 // SetType sets the Type field's value.
@@ -70894,6 +71058,8 @@ type ExportTask struct {
 
 	// The status message related to the export task.
 	StatusMessage *string `locationName:"statusMessage" type:"string"`
+
+	Tags []*Tag `locationName:"tagSet" locationNameList:"item" type:"list"`
 }
 
 // String returns the string representation
@@ -70939,6 +71105,12 @@ func (s *ExportTask) SetState(v string) *ExportTask {
 // SetStatusMessage sets the StatusMessage field's value.
 func (s *ExportTask) SetStatusMessage(v string) *ExportTask {
 	s.StatusMessage = &v
+	return s
+}
+
+// SetTags sets the Tags field's value.
+func (s *ExportTask) SetTags(v []*Tag) *ExportTask {
+	s.Tags = v
 	return s
 }
 
@@ -71353,8 +71525,8 @@ type FleetData struct {
 	// is pending_termination while instances are terminating.
 	ActivityStatus *string `locationName:"activityStatus" type:"string" enum:"FleetActivityStatus"`
 
-	// Unique, case-sensitive identifier you provide to ensure the idempotency of
-	// the request. For more information, see Ensuring Idempotency (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/Run_Instance_Idempotency.html).
+	// Unique, case-sensitive identifier that you provide to ensure the idempotency
+	// of the request. For more information, see Ensuring Idempotency (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/Run_Instance_Idempotency.html).
 	//
 	// Constraints: Maximum 64 ASCII characters
 	ClientToken *string `locationName:"clientToken" type:"string"`
@@ -71417,11 +71589,11 @@ type FleetData struct {
 	// The type of request. Indicates whether the EC2 Fleet only requests the target
 	// capacity, or also attempts to maintain it. If you request a certain target
 	// capacity, EC2 Fleet only places the required requests; it does not attempt
-	// to replenish instances if capacity is diminished, and does not submit requests
-	// in alternative capacity pools if capacity is unavailable. To maintain a certain
-	// target capacity, EC2 Fleet places the required requests to meet this target
-	// capacity. It also automatically replenishes any interrupted Spot Instances.
-	// Default: maintain.
+	// to replenish instances if capacity is diminished, and it does not submit
+	// requests in alternative capacity pools if capacity is unavailable. To maintain
+	// a certain target capacity, EC2 Fleet places the required requests to meet
+	// this target capacity. It also automatically replenishes any interrupted Spot
+	// Instances. Default: maintain.
 	Type *string `locationName:"type" type:"string" enum:"FleetType"`
 
 	// The start date and time of the request, in UTC format (for example, YYYY-MM-DDTHH:MM:SSZ).
@@ -75487,11 +75659,11 @@ type ImportImageInput struct {
 	// Valid values: xen
 	Hypervisor *string `type:"string"`
 
-	// An identifier for the AWS Key Management Service (AWS KMS) customer master
-	// key (CMK) to use when creating the encrypted AMI. This parameter is only
-	// required if you want to use a non-default CMK; if this parameter is not specified,
-	// the default CMK for EBS is used. If a KmsKeyId is specified, the Encrypted
-	// flag must also be set.
+	// An identifier for the symmetric AWS Key Management Service (AWS KMS) customer
+	// master key (CMK) to use when creating the encrypted AMI. This parameter is
+	// only required if you want to use a non-default CMK; if this parameter is
+	// not specified, the default CMK for EBS is used. If a KmsKeyId is specified,
+	// the Encrypted flag must also be set.
 	//
 	// The CMK identifier may be provided in any of the following formats:
 	//
@@ -75514,6 +75686,8 @@ type ImportImageInput struct {
 	// will eventually report failure.
 	//
 	// The specified CMK must exist in the Region that the AMI is being copied to.
+	//
+	// Amazon EBS does not support asymmetric CMKs.
 	KmsKeyId *string `type:"string"`
 
 	// The ARNs of the license configurations.
@@ -75653,7 +75827,7 @@ func (s *ImportImageLicenseConfigurationRequest) SetLicenseConfigurationArn(v st
 	return s
 }
 
-// The response information of license configurations.
+// The response information for license configurations.
 type ImportImageLicenseConfigurationResponse struct {
 	_ struct{} `type:"structure"`
 
@@ -75698,8 +75872,8 @@ type ImportImageOutput struct {
 	// The task ID of the import image task.
 	ImportTaskId *string `locationName:"importTaskId" type:"string"`
 
-	// The identifier for the AWS Key Management Service (AWS KMS) customer master
-	// key (CMK) that was used to create the encrypted AMI.
+	// The identifier for the symmetric AWS Key Management Service (AWS KMS) customer
+	// master key (CMK) that was used to create the encrypted AMI.
 	KmsKeyId *string `locationName:"kmsKeyId" type:"string"`
 
 	// The ARNs of the license configurations.
@@ -75848,7 +76022,8 @@ type ImportImageTask struct {
 	// key (CMK) that was used to create the encrypted image.
 	KmsKeyId *string `locationName:"kmsKeyId" type:"string"`
 
-	// The ARNs of the license configurations associated to the import image task.
+	// The ARNs of the license configurations that are associated with the import
+	// image task.
 	LicenseSpecifications []*ImportImageLicenseConfigurationResponse `locationName:"licenseSpecifications" locationNameList:"item" type:"list"`
 
 	// The license type of the virtual machine.
@@ -75868,6 +76043,9 @@ type ImportImageTask struct {
 
 	// A descriptive status message for the import image task.
 	StatusMessage *string `locationName:"statusMessage" type:"string"`
+
+	// Any tags applied to the import image task.
+	Tags []*Tag `locationName:"tagSet" locationNameList:"item" type:"list"`
 }
 
 // String returns the string representation
@@ -75961,6 +76139,12 @@ func (s *ImportImageTask) SetStatus(v string) *ImportImageTask {
 // SetStatusMessage sets the StatusMessage field's value.
 func (s *ImportImageTask) SetStatusMessage(v string) *ImportImageTask {
 	s.StatusMessage = &v
+	return s
+}
+
+// SetTags sets the Tags field's value.
+func (s *ImportImageTask) SetTags(v []*Tag) *ImportImageTask {
+	s.Tags = v
 	return s
 }
 
@@ -76447,10 +76631,10 @@ type ImportSnapshotInput struct {
 	// in the Amazon Elastic Compute Cloud User Guide.
 	Encrypted *bool `type:"boolean"`
 
-	// An identifier for the AWS Key Management Service (AWS KMS) customer master
-	// key (CMK) to use when creating the encrypted snapshot. This parameter is
-	// only required if you want to use a non-default CMK; if this parameter is
-	// not specified, the default CMK for EBS is used. If a KmsKeyId is specified,
+	// An identifier for the symmetric AWS Key Management Service (AWS KMS) customer
+	// master key (CMK) to use when creating the encrypted snapshot. This parameter
+	// is only required if you want to use a non-default CMK; if this parameter
+	// is not specified, the default CMK for EBS is used. If a KmsKeyId is specified,
 	// the Encrypted flag must also be set.
 	//
 	// The CMK identifier may be provided in any of the following formats:
@@ -76475,6 +76659,8 @@ type ImportSnapshotInput struct {
 	//
 	// The specified CMK must exist in the Region that the snapshot is being copied
 	// to.
+	//
+	// Amazon EBS does not support asymmetric CMKs.
 	KmsKeyId *string `type:"string"`
 
 	// The name of the role to use when not using the default role, 'vmimport'.
@@ -76592,6 +76778,9 @@ type ImportSnapshotTask struct {
 
 	// Describes an import snapshot task.
 	SnapshotTaskDetail *SnapshotTaskDetail `locationName:"snapshotTaskDetail" type:"structure"`
+
+	// Any tags applied to the import snapshot task.
+	Tags []*Tag `locationName:"tagSet" locationNameList:"item" type:"list"`
 }
 
 // String returns the string representation
@@ -76619,6 +76808,12 @@ func (s *ImportSnapshotTask) SetImportTaskId(v string) *ImportSnapshotTask {
 // SetSnapshotTaskDetail sets the SnapshotTaskDetail field's value.
 func (s *ImportSnapshotTask) SetSnapshotTaskDetail(v *SnapshotTaskDetail) *ImportSnapshotTask {
 	s.SnapshotTaskDetail = v
+	return s
+}
+
+// SetTags sets the Tags field's value.
+func (s *ImportSnapshotTask) SetTags(v []*Tag) *ImportSnapshotTask {
+	s.Tags = v
 	return s
 }
 
@@ -78738,7 +78933,7 @@ type InstanceStorageInfo struct {
 	// Array describing the disks that are available for the instance type.
 	Disks []*DiskInfo `locationName:"disks" locationNameList:"item" type:"list"`
 
-	// The total size of the disks, in GiB.
+	// The total size of the disks, in GB.
 	TotalSizeInGB *int64 `locationName:"totalSizeInGB" type:"long"`
 }
 
@@ -78826,8 +79021,8 @@ type InstanceTypeInfo struct {
 	// Describes the processor.
 	ProcessorInfo *ProcessorInfo `locationName:"processorInfo" type:"structure"`
 
-	// Indicates the supported root devices.
-	SupportedRootDevices []*string `locationName:"supportedRootDevices" locationNameList:"item" type:"list"`
+	// Indicates the supported root device types.
+	SupportedRootDeviceTypes []*string `locationName:"supportedRootDeviceTypes" locationNameList:"item" type:"list"`
 
 	// Indicates whether the instance type is offered for spot or On-Demand.
 	SupportedUsageClasses []*string `locationName:"supportedUsageClasses" locationNameList:"item" type:"list"`
@@ -78960,9 +79155,9 @@ func (s *InstanceTypeInfo) SetProcessorInfo(v *ProcessorInfo) *InstanceTypeInfo 
 	return s
 }
 
-// SetSupportedRootDevices sets the SupportedRootDevices field's value.
-func (s *InstanceTypeInfo) SetSupportedRootDevices(v []*string) *InstanceTypeInfo {
-	s.SupportedRootDevices = v
+// SetSupportedRootDeviceTypes sets the SupportedRootDeviceTypes field's value.
+func (s *InstanceTypeInfo) SetSupportedRootDeviceTypes(v []*string) *InstanceTypeInfo {
+	s.SupportedRootDeviceTypes = v
 	return s
 }
 
@@ -79246,7 +79441,7 @@ type IpRange struct {
 	// range.
 	//
 	// Constraints: Up to 255 characters in length. Allowed characters are a-z,
-	// A-Z, 0-9, spaces, and ._-:/()#,@[]+=;{}!$*
+	// A-Z, 0-9, spaces, and ._-:/()#,@[]+=&;{}!$*
 	Description *string `locationName:"description" type:"string"`
 }
 
@@ -79308,7 +79503,7 @@ type Ipv6Range struct {
 	// range.
 	//
 	// Constraints: Up to 255 characters in length. Allowed characters are a-z,
-	// A-Z, 0-9, spaces, and ._-:/()#,@[]+=;{}!$*
+	// A-Z, 0-9, spaces, and ._-:/()#,@[]+=&;{}!$*
 	Description *string `locationName:"description" type:"string"`
 }
 
@@ -79346,6 +79541,12 @@ type KeyPairInfo struct {
 
 	// The name of the key pair.
 	KeyName *string `locationName:"keyName" type:"string"`
+
+	// The ID of the key pair.
+	KeyPairId *string `locationName:"keyPairId" type:"string"`
+
+	// Any tags applied to the key pair.
+	Tags []*Tag `locationName:"tagSet" locationNameList:"item" type:"list"`
 }
 
 // String returns the string representation
@@ -79367,6 +79568,18 @@ func (s *KeyPairInfo) SetKeyFingerprint(v string) *KeyPairInfo {
 // SetKeyName sets the KeyName field's value.
 func (s *KeyPairInfo) SetKeyName(v string) *KeyPairInfo {
 	s.KeyName = &v
+	return s
+}
+
+// SetKeyPairId sets the KeyPairId field's value.
+func (s *KeyPairInfo) SetKeyPairId(v string) *KeyPairInfo {
+	s.KeyPairId = &v
+	return s
+}
+
+// SetTags sets the Tags field's value.
+func (s *KeyPairInfo) SetTags(v []*Tag) *KeyPairInfo {
+	s.Tags = v
 	return s
 }
 
@@ -80121,7 +80334,8 @@ type LaunchTemplateEbsBlockDeviceRequest struct {
 	// it is not used in requests to create gp2, st1, sc1, or standard volumes.
 	Iops *int64 `type:"integer"`
 
-	// The ARN of the AWS Key Management Service (AWS KMS) CMK used for encryption.
+	// The ARN of the symmetric AWS Key Management Service (AWS KMS) CMK used for
+	// encryption.
 	KmsKeyId *string `type:"string"`
 
 	// The ID of the snapshot.
@@ -80193,6 +80407,11 @@ func (s *LaunchTemplateEbsBlockDeviceRequest) SetVolumeType(v string) *LaunchTem
 type LaunchTemplateElasticInferenceAccelerator struct {
 	_ struct{} `type:"structure"`
 
+	// The number of elastic inference accelerators to attach to the instance.
+	//
+	// Default: 1
+	Count *int64 `min:"1" type:"integer"`
+
 	// The type of elastic inference accelerator. The possible values are eia1.medium,
 	// eia1.large, and eia1.xlarge.
 	//
@@ -80213,6 +80432,9 @@ func (s LaunchTemplateElasticInferenceAccelerator) GoString() string {
 // Validate inspects the fields of the type to determine if they are valid.
 func (s *LaunchTemplateElasticInferenceAccelerator) Validate() error {
 	invalidParams := request.ErrInvalidParams{Context: "LaunchTemplateElasticInferenceAccelerator"}
+	if s.Count != nil && *s.Count < 1 {
+		invalidParams.Add(request.NewErrParamMinValue("Count", 1))
+	}
 	if s.Type == nil {
 		invalidParams.Add(request.NewErrParamRequired("Type"))
 	}
@@ -80221,6 +80443,12 @@ func (s *LaunchTemplateElasticInferenceAccelerator) Validate() error {
 		return invalidParams
 	}
 	return nil
+}
+
+// SetCount sets the Count field's value.
+func (s *LaunchTemplateElasticInferenceAccelerator) SetCount(v int64) *LaunchTemplateElasticInferenceAccelerator {
+	s.Count = &v
+	return s
 }
 
 // SetType sets the Type field's value.
@@ -80232,6 +80460,11 @@ func (s *LaunchTemplateElasticInferenceAccelerator) SetType(v string) *LaunchTem
 // Describes an elastic inference accelerator.
 type LaunchTemplateElasticInferenceAcceleratorResponse struct {
 	_ struct{} `type:"structure"`
+
+	// The number of elastic inference accelerators to attach to the instance.
+	//
+	// Default: 1
+	Count *int64 `locationName:"count" type:"integer"`
 
 	// The type of elastic inference accelerator. The possible values are eia1.medium,
 	// eia1.large, and eia1.xlarge.
@@ -80246,6 +80479,12 @@ func (s LaunchTemplateElasticInferenceAcceleratorResponse) String() string {
 // GoString returns the string representation
 func (s LaunchTemplateElasticInferenceAcceleratorResponse) GoString() string {
 	return s.String()
+}
+
+// SetCount sets the Count field's value.
+func (s *LaunchTemplateElasticInferenceAcceleratorResponse) SetCount(v int64) *LaunchTemplateElasticInferenceAcceleratorResponse {
+	s.Count = &v
+	return s
 }
 
 // SetType sets the Type field's value.
@@ -82372,6 +82611,8 @@ type ModifyEbsDefaultKmsKeyIdInput struct {
 	// AWS authenticates the CMK asynchronously. Therefore, if you specify an ID,
 	// alias, or ARN that is not valid, the action can appear to complete, but eventually
 	// fails.
+	//
+	// Amazon EBS does not support asymmetric CMKs.
 	//
 	// KmsKeyId is a required field
 	KmsKeyId *string `type:"string" required:"true"`
@@ -84877,6 +85118,8 @@ type ModifyTransitGatewayVpcAttachmentInput struct {
 	DryRun *bool `type:"boolean"`
 
 	// The new VPC attachment options.
+	//
+	// You cannot modify the IPv6 options.
 	Options *ModifyTransitGatewayVpcAttachmentRequestOptions `type:"structure"`
 
 	// The IDs of one or more subnets to remove.
@@ -87704,6 +87947,10 @@ type OnDemandOptions struct {
 	// Fleet defaults to lowest-price.
 	AllocationStrategy *string `locationName:"allocationStrategy" type:"string" enum:"FleetOnDemandAllocationStrategy"`
 
+	// The strategy for using unused Capacity Reservations for fulfilling On-Demand
+	// capacity. Supported only for fleets of type instant.
+	CapacityReservationOptions *CapacityReservationOptions `locationName:"capacityReservationOptions" type:"structure"`
+
 	// The maximum amount per hour for On-Demand Instances that you're willing to
 	// pay.
 	MaxTotalPrice *string `locationName:"maxTotalPrice" type:"string"`
@@ -87713,11 +87960,11 @@ type OnDemandOptions struct {
 	MinTargetCapacity *int64 `locationName:"minTargetCapacity" type:"integer"`
 
 	// Indicates that the fleet launches all On-Demand Instances into a single Availability
-	// Zone.
+	// Zone. Supported only for fleets of type instant.
 	SingleAvailabilityZone *bool `locationName:"singleAvailabilityZone" type:"boolean"`
 
 	// Indicates that the fleet uses a single instance type to launch all On-Demand
-	// Instances in the fleet.
+	// Instances in the fleet. Supported only for fleets of type instant.
 	SingleInstanceType *bool `locationName:"singleInstanceType" type:"boolean"`
 }
 
@@ -87734,6 +87981,12 @@ func (s OnDemandOptions) GoString() string {
 // SetAllocationStrategy sets the AllocationStrategy field's value.
 func (s *OnDemandOptions) SetAllocationStrategy(v string) *OnDemandOptions {
 	s.AllocationStrategy = &v
+	return s
+}
+
+// SetCapacityReservationOptions sets the CapacityReservationOptions field's value.
+func (s *OnDemandOptions) SetCapacityReservationOptions(v *CapacityReservationOptions) *OnDemandOptions {
+	s.CapacityReservationOptions = v
 	return s
 }
 
@@ -87773,6 +88026,10 @@ type OnDemandOptionsRequest struct {
 	// Fleet defaults to lowest-price.
 	AllocationStrategy *string `type:"string" enum:"FleetOnDemandAllocationStrategy"`
 
+	// The strategy for using unused Capacity Reservations for fulfilling On-Demand
+	// capacity. Supported only for fleets of type instant.
+	CapacityReservationOptions *CapacityReservationOptionsRequest `type:"structure"`
+
 	// The maximum amount per hour for On-Demand Instances that you're willing to
 	// pay.
 	MaxTotalPrice *string `type:"string"`
@@ -87782,11 +88039,11 @@ type OnDemandOptionsRequest struct {
 	MinTargetCapacity *int64 `type:"integer"`
 
 	// Indicates that the fleet launches all On-Demand Instances into a single Availability
-	// Zone.
+	// Zone. Supported only for fleets of type instant.
 	SingleAvailabilityZone *bool `type:"boolean"`
 
 	// Indicates that the fleet uses a single instance type to launch all On-Demand
-	// Instances in the fleet.
+	// Instances in the fleet. Supported only for fleets of type instant.
 	SingleInstanceType *bool `type:"boolean"`
 }
 
@@ -87803,6 +88060,12 @@ func (s OnDemandOptionsRequest) GoString() string {
 // SetAllocationStrategy sets the AllocationStrategy field's value.
 func (s *OnDemandOptionsRequest) SetAllocationStrategy(v string) *OnDemandOptionsRequest {
 	s.AllocationStrategy = &v
+	return s
+}
+
+// SetCapacityReservationOptions sets the CapacityReservationOptions field's value.
+func (s *OnDemandOptionsRequest) SetCapacityReservationOptions(v *CapacityReservationOptionsRequest) *OnDemandOptionsRequest {
+	s.CapacityReservationOptions = v
 	return s
 }
 
@@ -88438,6 +88701,9 @@ func (s *Placement) SetTenancy(v string) *Placement {
 type PlacementGroup struct {
 	_ struct{} `type:"structure"`
 
+	// The ID of the placement group.
+	GroupId *string `locationName:"groupId" type:"string"`
+
 	// The name of the placement group.
 	GroupName *string `locationName:"groupName" type:"string"`
 
@@ -88449,6 +88715,9 @@ type PlacementGroup struct {
 
 	// The placement strategy.
 	Strategy *string `locationName:"strategy" type:"string" enum:"PlacementStrategy"`
+
+	// Any tags applied to the placement group.
+	Tags []*Tag `locationName:"tagSet" locationNameList:"item" type:"list"`
 }
 
 // String returns the string representation
@@ -88459,6 +88728,12 @@ func (s PlacementGroup) String() string {
 // GoString returns the string representation
 func (s PlacementGroup) GoString() string {
 	return s.String()
+}
+
+// SetGroupId sets the GroupId field's value.
+func (s *PlacementGroup) SetGroupId(v string) *PlacementGroup {
+	s.GroupId = &v
+	return s
 }
 
 // SetGroupName sets the GroupName field's value.
@@ -88482,6 +88757,12 @@ func (s *PlacementGroup) SetState(v string) *PlacementGroup {
 // SetStrategy sets the Strategy field's value.
 func (s *PlacementGroup) SetStrategy(v string) *PlacementGroup {
 	s.Strategy = &v
+	return s
+}
+
+// SetTags sets the Tags field's value.
+func (s *PlacementGroup) SetTags(v []*Tag) *PlacementGroup {
+	s.Tags = v
 	return s
 }
 
@@ -88513,7 +88794,7 @@ func (s *PlacementGroupInfo) SetSupportedStrategies(v []*string) *PlacementGroup
 type PlacementResponse struct {
 	_ struct{} `type:"structure"`
 
-	// The name of the placement group the instance is in.
+	// The name of the placement group that the instance is in.
 	GroupName *string `locationName:"groupName" type:"string"`
 }
 
@@ -98966,7 +99247,7 @@ type SpotOptions struct {
 	// strategy.
 	//
 	// If the allocation strategy is diversified, EC2 Fleet launches instances from
-	// all the Spot Instance pools that you specify.
+	// all of the Spot Instance pools that you specify.
 	//
 	// If the allocation strategy is capacity-optimized, EC2 Fleet launches instances
 	// from Spot Instance pools with optimal capacity for the number of instances
@@ -98990,11 +99271,11 @@ type SpotOptions struct {
 	MinTargetCapacity *int64 `locationName:"minTargetCapacity" type:"integer"`
 
 	// Indicates that the fleet launches all Spot Instances into a single Availability
-	// Zone.
+	// Zone. Supported only for fleets of type instant.
 	SingleAvailabilityZone *bool `locationName:"singleAvailabilityZone" type:"boolean"`
 
 	// Indicates that the fleet uses a single instance type to launch all Spot Instances
-	// in the fleet.
+	// in the fleet. Supported only for fleets of type instant.
 	SingleInstanceType *bool `locationName:"singleInstanceType" type:"boolean"`
 }
 
@@ -99062,7 +99343,7 @@ type SpotOptionsRequest struct {
 	// strategy.
 	//
 	// If the allocation strategy is diversified, EC2 Fleet launches instances from
-	// all the Spot Instance pools that you specify.
+	// all of the Spot Instance pools that you specify.
 	//
 	// If the allocation strategy is capacity-optimized, EC2 Fleet launches instances
 	// from Spot Instance pools with optimal capacity for the number of instances
@@ -99086,11 +99367,11 @@ type SpotOptionsRequest struct {
 	MinTargetCapacity *int64 `type:"integer"`
 
 	// Indicates that the fleet launches all Spot Instances into a single Availability
-	// Zone.
+	// Zone. Supported only for fleets of type instant.
 	SingleAvailabilityZone *bool `type:"boolean"`
 
 	// Indicates that the fleet uses a single instance type to launch all Spot Instances
-	// in the fleet.
+	// in the fleet. Supported only for fleets of type instant.
 	SingleInstanceType *bool `type:"boolean"`
 }
 
@@ -100114,9 +100395,10 @@ type TagSpecification struct {
 
 	// The type of resource to tag. Currently, the resource types that support tagging
 	// on creation are: capacity-reservation | client-vpn-endpoint | dedicated-host
-	// | fleet | fpga-image | instance | launch-template | snapshot | traffic-mirror-filter
-	// | traffic-mirror-session | traffic-mirror-target | transit-gateway | transit-gateway-attachment
-	// | transit-gateway-route-table | volume.
+	// | fleet | fpga-image | instance | key-pair | launch-template | placement-group
+	// | snapshot | traffic-mirror-filter | traffic-mirror-session | traffic-mirror-target
+	// | transit-gateway | transit-gateway-attachment | transit-gateway-route-table
+	// | volume.
 	//
 	// To tag a resource after it has been created, see CreateTags (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateTags.html).
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
@@ -100154,13 +100436,13 @@ func (s *TagSpecification) SetTags(v []*Tag) *TagSpecification {
 // later.
 //
 // You can use the On-Demand Instance MaxTotalPrice parameter, the Spot Instance
-// MaxTotalPrice, or both to ensure your fleet cost does not exceed your budget.
-// If you set a maximum price per hour for the On-Demand Instances and Spot
-// Instances in your request, EC2 Fleet will launch instances until it reaches
-// the maximum amount you're willing to pay. When the maximum amount you're
-// willing to pay is reached, the fleet stops launching instances even if it
-// hasn’t met the target capacity. The MaxTotalPrice parameters are located
-// in and
+// MaxTotalPrice, or both to ensure that your fleet cost does not exceed your
+// budget. If you set a maximum price per hour for the On-Demand Instances and
+// Spot Instances in your request, EC2 Fleet will launch instances until it
+// reaches the maximum amount that you're willing to pay. When the maximum amount
+// you're willing to pay is reached, the fleet stops launching instances even
+// if it hasn’t met the target capacity. The MaxTotalPrice parameters are
+// located in and
 type TargetCapacitySpecification struct {
 	_ struct{} `type:"structure"`
 
@@ -100223,9 +100505,9 @@ func (s *TargetCapacitySpecification) SetTotalTargetCapacity(v int64) *TargetCap
 // MaxTotalPrice parameter, or both parameters to ensure that your fleet cost
 // does not exceed your budget. If you set a maximum price per hour for the
 // On-Demand Instances and Spot Instances in your request, EC2 Fleet will launch
-// instances until it reaches the maximum amount you're willing to pay. When
-// the maximum amount you're willing to pay is reached, the fleet stops launching
-// instances even if it hasn’t met the target capacity. The MaxTotalPrice
+// instances until it reaches the maximum amount that you're willing to pay.
+// When the maximum amount you're willing to pay is reached, the fleet stops
+// launching instances even if it hasn’t met the target capacity. The MaxTotalPrice
 // parameters are located in and .
 type TargetCapacitySpecificationRequest struct {
 	_ struct{} `type:"structure"`
@@ -106481,6 +106763,11 @@ const (
 )
 
 const (
+	// FleetCapacityReservationUsageStrategyUseCapacityReservationsFirst is a FleetCapacityReservationUsageStrategy enum value
+	FleetCapacityReservationUsageStrategyUseCapacityReservationsFirst = "use-capacity-reservations-first"
+)
+
+const (
 	// FleetEventTypeInstanceChange is a FleetEventType enum value
 	FleetEventTypeInstanceChange = "instance-change"
 
@@ -108126,6 +108413,9 @@ const (
 	// ResourceTypeInternetGateway is a ResourceType enum value
 	ResourceTypeInternetGateway = "internet-gateway"
 
+	// ResourceTypeKeyPair is a ResourceType enum value
+	ResourceTypeKeyPair = "key-pair"
+
 	// ResourceTypeLaunchTemplate is a ResourceType enum value
 	ResourceTypeLaunchTemplate = "launch-template"
 
@@ -108137,6 +108427,9 @@ const (
 
 	// ResourceTypeNetworkInterface is a ResourceType enum value
 	ResourceTypeNetworkInterface = "network-interface"
+
+	// ResourceTypePlacementGroup is a ResourceType enum value
+	ResourceTypePlacementGroup = "placement-group"
 
 	// ResourceTypeReservedInstances is a ResourceType enum value
 	ResourceTypeReservedInstances = "reserved-instances"

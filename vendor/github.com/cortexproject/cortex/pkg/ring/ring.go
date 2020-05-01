@@ -44,7 +44,7 @@ type ReadRing interface {
 	// buf is a slice to be overwritten for the return value
 	// to avoid memory allocation; can be nil.
 	Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet, error)
-	GetAll() (ReplicationSet, error)
+	GetAll(op Operation) (ReplicationSet, error)
 	ReplicationFactor() int
 	IngesterCount() int
 	Subring(key uint32, n int) (ReadRing, error)
@@ -248,7 +248,7 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 }
 
 // GetAll returns all available ingesters in the ring.
-func (r *Ring) GetAll() (ReplicationSet, error) {
+func (r *Ring) GetAll(op Operation) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
@@ -267,7 +267,7 @@ func (r *Ring) GetAll() (ReplicationSet, error) {
 
 	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	for _, ingester := range r.ringDesc.Ingesters {
-		if r.IsHealthy(&ingester, Read) {
+		if r.IsHealthy(&ingester, op) {
 			ingesters = append(ingesters, ingester)
 		}
 	}
@@ -280,37 +280,6 @@ func (r *Ring) GetAll() (ReplicationSet, error) {
 		Ingesters: ingesters,
 		MaxErrors: len(ingesters) - numRequired,
 	}, nil
-}
-
-// GetAllTokens returns all ring tokens of healthy instances for the given operation.
-func (r *Ring) GetAllTokens(op Operation) TokenDescs {
-	r.mtx.RLock()
-	defer r.mtx.RUnlock()
-
-	all := make([]TokenDesc, 0, len(r.ringTokens))
-	cache := map[string]bool{}
-
-	for _, token := range r.ringTokens {
-		healthy, ok := cache[token.Ingester]
-		if !ok {
-			if instance, exists := r.ringDesc.Ingesters[token.Ingester]; exists {
-				healthy = r.IsHealthy(&instance, op)
-			} else {
-				// Shouldn't never happen unless a bug but in case we consider it unhealthy.
-				healthy = false
-			}
-
-			cache[token.Ingester] = healthy
-		}
-
-		if healthy {
-			// Given ringTokens is sorted and we iterate it in order, we can simply
-			// append to the result while keeping ordering.
-			all = append(all, token)
-		}
-	}
-
-	return all
 }
 
 func (r *Ring) search(key uint32) int {

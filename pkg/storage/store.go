@@ -50,7 +50,7 @@ type store struct {
 
 // NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg Config, storeCfg chunk.StoreConfig, schemaCfg chunk.SchemaConfig, limits storage.StoreLimits, registerer prometheus.Registerer) (Store, error) {
-	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg, limits, registerer)
+	s, err := storage.NewStore(cfg.Config, storeCfg, schemaCfg, limits, registerer, nil)
 	if err != nil {
 		return nil, err
 	}

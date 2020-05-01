@@ -62,7 +62,7 @@ github.com/armon/go-metrics
 github.com/armon/go-metrics/prometheus
 # github.com/asaskevich/govalidator v0.0.0-20190424111038-f61b66f89f4a
 github.com/asaskevich/govalidator
-# github.com/aws/aws-sdk-go v1.25.48
+# github.com/aws/aws-sdk-go v1.27.0
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
 github.com/aws/aws-sdk-go/aws/awserr
@@ -119,7 +119,7 @@ github.com/bmatcuk/doublestar
 github.com/bradfitz/gomemcache/memcache
 # github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
 github.com/c2h5oh/datasize
-# github.com/cenkalti/backoff v1.0.0
+# github.com/cenkalti/backoff v2.2.1+incompatible
 github.com/cenkalti/backoff
 # github.com/cespare/xxhash v1.1.0
 github.com/cespare/xxhash
@@ -131,14 +131,14 @@ github.com/containerd/containerd/errdefs
 github.com/containerd/fifo
 # github.com/coreos/go-semver v0.3.0
 github.com/coreos/go-semver/semver
-# github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
+# github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 github.com/coreos/go-systemd/activation
+github.com/coreos/go-systemd/internal/dlopen
 github.com/coreos/go-systemd/journal
 github.com/coreos/go-systemd/sdjournal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
-github.com/coreos/pkg/dlopen
-# github.com/cortexproject/cortex v1.0.1-0.20200424135841-64fb9ad94a38
+# github.com/cortexproject/cortex v1.0.1-0.20200430170006-3462eb63f324
 github.com/cortexproject/cortex/pkg/alertmanager
 github.com/cortexproject/cortex/pkg/alertmanager/alerts
 github.com/cortexproject/cortex/pkg/alertmanager/alerts/configdb
@@ -282,10 +282,10 @@ github.com/fsnotify/fsnotify
 # github.com/fsouza/fake-gcs-server v1.7.0
 github.com/fsouza/fake-gcs-server/fakestorage
 github.com/fsouza/fake-gcs-server/internal/backend
-# github.com/go-kit/kit v0.9.0
+# github.com/go-kit/kit v0.10.0
 github.com/go-kit/kit/log
 github.com/go-kit/kit/log/level
-# github.com/go-logfmt/logfmt v0.4.0
+# github.com/go-logfmt/logfmt v0.5.0
 github.com/go-logfmt/logfmt
 # github.com/go-openapi/analysis v0.19.4
 github.com/go-openapi/analysis
@@ -343,7 +343,7 @@ github.com/golang-migrate/migrate/v4/source/file
 # github.com/golang/groupcache v0.0.0-20191027212112-611e8accdfc9
 github.com/golang/groupcache/lru
 github.com/golang/groupcache/singleflight
-# github.com/golang/protobuf v1.3.2
+# github.com/golang/protobuf v1.3.3
 github.com/golang/protobuf/descriptor
 github.com/golang/protobuf/jsonpb
 github.com/golang/protobuf/proto
@@ -399,7 +399,7 @@ github.com/gophercloud/gophercloud/openstack/objectstorage/v1/containers
 github.com/gophercloud/gophercloud/openstack/objectstorage/v1/objects
 github.com/gophercloud/gophercloud/openstack/utils
 github.com/gophercloud/gophercloud/pagination
-# github.com/gorilla/mux v1.7.1
+# github.com/gorilla/mux v1.7.3
 github.com/gorilla/mux
 # github.com/gorilla/websocket v1.4.0
 github.com/gorilla/websocket
@@ -475,8 +475,6 @@ github.com/klauspost/compress/flate
 github.com/klauspost/compress/gzip
 # github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
-# github.com/kr/logfmt v0.0.0-20140226030751-b84e30acd515
-github.com/kr/logfmt
 # github.com/lann/builder v0.0.0-20150808151131-f22ce00fd939
 github.com/lann/builder
 # github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0
@@ -607,7 +605,9 @@ github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg
 github.com/prometheus/common/model
 github.com/prometheus/common/route
 github.com/prometheus/common/version
-# github.com/prometheus/procfs v0.0.8
+# github.com/prometheus/node_exporter v1.0.0-rc.0.0.20200428091818-01054558c289
+github.com/prometheus/node_exporter/https
+# github.com/prometheus/procfs v0.0.11
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
@@ -756,7 +756,7 @@ github.com/uber/jaeger-lib/metrics
 github.com/uber/jaeger-lib/metrics/prometheus
 # github.com/ugorji/go/codec v1.1.7
 github.com/ugorji/go/codec
-# github.com/weaveworks/common v0.0.0-20200310113808-2708ba4e60a4
+# github.com/weaveworks/common v0.0.0-20200429090833-ac38719f57dd
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/errors
 github.com/weaveworks/common/grpc
@@ -879,11 +879,13 @@ go.opencensus.io/trace
 go.opencensus.io/trace/internal
 go.opencensus.io/trace/propagation
 go.opencensus.io/trace/tracestate
-# go.uber.org/atomic v1.5.0
+# go.uber.org/atomic v1.5.1
 go.uber.org/atomic
-# go.uber.org/multierr v1.1.0
+# go.uber.org/multierr v1.4.0
 go.uber.org/multierr
-# go.uber.org/zap v1.10.0
+# go.uber.org/tools v0.0.0-20190618225709-2cfd321de3ee
+go.uber.org/tools/update-license
+# go.uber.org/zap v1.13.0
 go.uber.org/zap
 go.uber.org/zap/buffer
 go.uber.org/zap/internal/bufferpool
@@ -901,7 +903,7 @@ golang.org/x/crypto/ssh/terminal
 # golang.org/x/exp v0.0.0-20191030013958-a1ab85dbe136
 golang.org/x/exp/apidiff
 golang.org/x/exp/cmd/apidiff
-# golang.org/x/lint v0.0.0-20190930215403-16217165b5de
+# golang.org/x/lint v0.0.0-20200130185559-910be7a94367
 golang.org/x/lint
 golang.org/x/lint/golint
 # golang.org/x/mod v0.2.0
@@ -934,7 +936,7 @@ golang.org/x/oauth2/jws
 golang.org/x/oauth2/jwt
 # golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
 golang.org/x/sync/errgroup
-# golang.org/x/sys v0.0.0-20200122134326-e047566fdf82
+# golang.org/x/sys v0.0.0-20200217220822-9197077df867
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
@@ -1007,8 +1009,9 @@ google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/status
 google.golang.org/genproto/googleapis/type/expr
 google.golang.org/genproto/protobuf/field_mask
-# google.golang.org/grpc v1.25.1
+# google.golang.org/grpc v1.26.0
 google.golang.org/grpc
+google.golang.org/grpc/attributes
 google.golang.org/grpc/backoff
 google.golang.org/grpc/balancer
 google.golang.org/grpc/balancer/base
@@ -1072,7 +1075,7 @@ gopkg.in/inf.v0
 gopkg.in/ini.v1
 # gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 gopkg.in/tomb.v1
-# gopkg.in/yaml.v2 v2.2.7
+# gopkg.in/yaml.v2 v2.2.8
 gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.0-20191120175047-4206685974f2
 gopkg.in/yaml.v3
