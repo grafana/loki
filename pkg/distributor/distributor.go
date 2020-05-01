@@ -161,7 +161,7 @@ func (d *Distributor) stopping(_ error) error {
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 type streamTracker struct {
-	stream      *logproto.Stream
+	stream      logproto.Stream
 	minSuccess  int
 	maxFailures int
 	succeeded   int32
@@ -329,7 +329,7 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Ingester
 	}
 
 	req := &logproto.PushRequest{
-		Streams: make([]*logproto.Stream, len(streams)),
+		Streams: make([]logproto.Stream, len(streams)),
 	}
 	for i, s := range streams {
 		req.Streams[i] = s.stream

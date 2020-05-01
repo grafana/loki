@@ -36,8 +36,8 @@ func TestTailer(t *testing.T) {
 				actual := flattenStreamsFromResponses(responses)
 
 				assert.Equal(t, []logproto.Stream{
-					*mockStream(1, 1),
-					*mockStream(2, 1),
+					mockStream(1, 1),
+					mockStream(2, 1),
 				}, actual)
 			},
 		},
@@ -53,7 +53,7 @@ func TestTailer(t *testing.T) {
 				actual := flattenStreamsFromResponses(responses)
 
 				assert.Equal(t, []logproto.Stream{
-					*mockStream(1, 1),
+					mockStream(1, 1),
 				}, actual)
 			},
 		},
@@ -69,9 +69,9 @@ func TestTailer(t *testing.T) {
 				actual := flattenStreamsFromResponses(responses)
 
 				assert.Equal(t, []logproto.Stream{
-					*mockStream(1, 1),
-					*mockStream(2, 1),
-					*mockStream(3, 1),
+					mockStream(1, 1),
+					mockStream(2, 1),
+					mockStream(3, 1),
 				}, actual)
 			},
 		},

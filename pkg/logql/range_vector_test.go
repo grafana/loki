@@ -32,11 +32,11 @@ var labelBar, _ = promql.ParseMetric("{app=\"bar\"}")
 
 func newEntryIterator() iter.EntryIterator {
 	return iter.NewHeapIterator(context.Background(), []iter.EntryIterator{
-		iter.NewStreamIterator(&logproto.Stream{
+		iter.NewStreamIterator(logproto.Stream{
 			Labels:  labelFoo.String(),
 			Entries: entries,
 		}),
-		iter.NewStreamIterator(&logproto.Stream{
+		iter.NewStreamIterator(logproto.Stream{
 			Labels:  labelBar.String(),
 			Entries: entries,
 		}),

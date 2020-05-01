@@ -21,7 +21,7 @@ var queryTests = []struct {
 }{
 	{
 		logql.Streams{
-			&logproto.Stream{
+			logproto.Stream{
 				Entries: []logproto.Entry{
 					{
 						Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),

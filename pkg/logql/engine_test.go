@@ -30,34 +30,34 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 
 		// an array of streams per SelectParams will be returned by the querier.
 		// This is to cover logql that requires multiple queries.
-		streams [][]*logproto.Stream
+		streams [][]logproto.Stream
 		params  []SelectParams
 
 		expected promql.Value
 	}{
 		{
 			`{app="foo"}`, time.Unix(30, 0), logproto.FORWARD, 10,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectParams{
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="foo"}`}},
 			},
-			Streams([]*logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
+			Streams([]logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
 		},
 		{
 			`{app="bar"} |= "foo" |~ ".+bar"`, time.Unix(30, 0), logproto.BACKWARD, 30,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, identity, `{app="bar"}`)},
 			},
 			[]SelectParams{
 				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="bar"}|="foo"|~".+bar"`}},
 			},
-			Streams([]*logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
+			Streams([]logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
 		},
 		{
 			`rate({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), logproto.BACKWARD, 10,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectParams{
@@ -67,7 +67,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`rate({app="foo"}[30s])`, time.Unix(60, 0), logproto.FORWARD, 10,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				// 30s range the lower bound of the range is not inclusive only 15 samples will make it 60 included
 				{newStream(testSize, offset(46, identity), `{app="foo"}`)},
 			},
@@ -78,7 +78,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`count_over_time({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), logproto.BACKWARD, 10,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 60 = 6 total
 			},
 			[]SelectParams{
@@ -88,7 +88,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`count_over_time(({app="foo"} |~".+bar")[5m])`, time.Unix(5*60, 0), logproto.BACKWARD, 10,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 300 = 30 total
 			},
 			[]SelectParams{
@@ -98,7 +98,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(10, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -110,7 +110,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`min(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(10, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -122,7 +122,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`max by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -135,7 +135,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`max(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -147,7 +147,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`sum(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(5, identity), `{app="foo"}`), newStream(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -159,7 +159,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (app)`, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(10, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -172,7 +172,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`count(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without (app)`, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(10, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -184,7 +184,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`stdvar without (app) (count_over_time(({app=~"foo|bar"} |~".+bar")[1m])) `, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -196,7 +196,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`stddev(count_over_time(({app=~"foo|bar"} |~".+bar")[1m])) `, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(2, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -208,7 +208,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`rate(({app=~"foo|bar"} |~".+bar")[1m])`, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, offset(46, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -221,7 +221,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`topk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, offset(46, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -234,7 +234,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, offset(46, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -246,7 +246,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m])) by (app)`, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, offset(46, identity), `{app="bar"}`),
 					newStream(testSize, factor(5, identity), `{app="fuzz"}`), newStream(testSize, identity, `{app="buzz"}`)},
 			},
@@ -262,7 +262,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, offset(46, identity), `{app="bar"}`),
 					newStream(testSize, factor(5, identity), `{app="fuzz"}`), newStream(testSize, identity, `{app="buzz"}`)},
 			},
@@ -276,7 +276,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`bottomk(3,rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app)`, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, offset(46, identity), `{app="bar"}`),
 					newStream(testSize, factor(5, identity), `{app="fuzz"}`), newStream(testSize, identity, `{app="buzz"}`)},
 			},
@@ -291,7 +291,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		},
 		{
 			`bottomk(3,rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app) + 1`, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, offset(46, identity), `{app="bar"}`),
 					newStream(testSize, factor(5, identity), `{app="fuzz"}`), newStream(testSize, identity, `{app="buzz"}`)},
 			},
@@ -307,7 +307,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 		{
 			// healthcheck
 			`1+1`, time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{},
+			[][]logproto.Stream{},
 			[]SelectParams{},
 			promql.Scalar{T: 60 * 1000, V: 2},
 		},
@@ -315,7 +315,7 @@ func TestEngine_NewInstantQuery(t *testing.T) {
 			// single literal
 			`2`,
 			time.Unix(60, 0), logproto.FORWARD, 100,
-			[][]*logproto.Stream{},
+			[][]logproto.Stream{},
 			[]SelectParams{},
 			promql.Scalar{T: 60 * 1000, V: 2},
 		},
@@ -348,64 +348,64 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 
 		// an array of streams per SelectParams will be returned by the querier.
 		// This is to cover logql that requires multiple queries.
-		streams [][]*logproto.Stream
+		streams [][]logproto.Stream
 		params  []SelectParams
 
 		expected promql.Value
 	}{
 		{
 			`{app="foo"}`, time.Unix(0, 0), time.Unix(30, 0), time.Second, 0, logproto.FORWARD, 10,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectParams{
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="foo"}`}},
 			},
-			Streams([]*logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
+			Streams([]logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
 		},
 		{
 			`{app="food"}`, time.Unix(0, 0), time.Unix(30, 0), 0, 2 * time.Second, logproto.FORWARD, 10,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, identity, `{app="food"}`)},
 			},
 			[]SelectParams{
 				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="food"}`}},
 			},
-			Streams([]*logproto.Stream{newIntervalStream(10, 2*time.Second, identity, `{app="food"}`)}),
+			Streams([]logproto.Stream{newIntervalStream(10, 2*time.Second, identity, `{app="food"}`)}),
 		},
 		{
 			`{app="fed"}`, time.Unix(0, 0), time.Unix(30, 0), 0, 2 * time.Second, logproto.BACKWARD, 10,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newBackwardStream(testSize, identity, `{app="fed"}`)},
 			},
 			[]SelectParams{
 				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="fed"}`}},
 			},
-			Streams([]*logproto.Stream{newBackwardIntervalStream(testSize, 10, 2*time.Second, identity, `{app="fed"}`)}),
+			Streams([]logproto.Stream{newBackwardIntervalStream(testSize, 10, 2*time.Second, identity, `{app="fed"}`)}),
 		},
 		{
 			`{app="bar"} |= "foo" |~ ".+bar"`, time.Unix(0, 0), time.Unix(30, 0), time.Second, 0, logproto.BACKWARD, 30,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, identity, `{app="bar"}`)},
 			},
 			[]SelectParams{
 				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="bar"}|="foo"|~".+bar"`}},
 			},
-			Streams([]*logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
+			Streams([]logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
 		},
 		{
 			`{app="barf"} |= "foo" |~ ".+bar"`, time.Unix(0, 0), time.Unix(30, 0), 0, 3 * time.Second, logproto.BACKWARD, 30,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newBackwardStream(testSize, identity, `{app="barf"}`)},
 			},
 			[]SelectParams{
 				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="barf"}|="foo"|~".+bar"`}},
 			},
-			Streams([]*logproto.Stream{newBackwardIntervalStream(testSize, 30, 3*time.Second, identity, `{app="barf"}`)}),
+			Streams([]logproto.Stream{newBackwardIntervalStream(testSize, 30, 3*time.Second, identity, `{app="barf"}`)}),
 		},
 		{
 			`rate({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.BACKWARD, 10,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectParams{
@@ -420,7 +420,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`rate({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(2, identity), `{app="foo"}`)},
 			},
 			[]SelectParams{
@@ -435,7 +435,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`count_over_time({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), time.Unix(120, 0), 30 * time.Second, 0, logproto.BACKWARD, 10,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 60 = 6 total
 			},
 			[]SelectParams{
@@ -450,7 +450,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`count_over_time(({app="foo"} |~".+bar")[5m])`, time.Unix(5*60, 0), time.Unix(5*120, 0), 30 * time.Second, 0, logproto.BACKWARD, 10,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 300 = 30 total
 			},
 			[]SelectParams{
@@ -477,7 +477,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(10, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -492,7 +492,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`min(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(10, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -507,7 +507,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`max by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -526,7 +526,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`max(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -541,7 +541,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`sum(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(5, identity), `{app="foo"}`), newStream(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -556,7 +556,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -575,7 +575,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`count(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without (app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(10, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -590,7 +590,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`stdvar without (app) (count_over_time(({app=~"foo|bar"} |~".+bar")[1m])) `, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -605,7 +605,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`stddev(count_over_time(({app=~"foo|bar"} |~".+bar")[1m])) `, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(2, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -620,7 +620,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`rate(({app=~"foo|bar"} |~".+bar")[1m])`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -639,7 +639,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`topk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(5, identity), `{app="bar"}`), newStream(testSize, factor(15, identity), `{app="boo"}`)},
 			},
 			[]SelectParams{
@@ -658,7 +658,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectParams{
@@ -673,7 +673,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m])) by (app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(15, identity), `{app="fuzz"}`),
 					newStream(testSize, factor(5, identity), `{app="fuzz"}`), newStream(testSize, identity, `{app="buzz"}`)},
 			},
@@ -697,7 +697,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{newStream(testSize, factor(10, identity), `{app="foo"}`), newStream(testSize, factor(20, identity), `{app="bar"}`),
 					newStream(testSize, factor(5, identity), `{app="fuzz"}`), newStream(testSize, identity, `{app="buzz"}`)},
 			},
@@ -717,7 +717,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		},
 		{
 			`bottomk(3,rate(({app=~"foo|bar|fuzz|buzz"} |~".+bar")[1m])) without (app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(10, identity), `{app="foo"}`),
 					newStream(testSize, factor(20, identity), `{app="bar"}`),
@@ -747,7 +747,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		{
 			`rate({app="foo"}[1m]) or rate({app="bar"}[1m])`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="foo"}`),
 				},
@@ -776,7 +776,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			rate({app="bar"}[1m])
 			`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="foo"}`),
 					newStream(testSize, factor(5, identity), `{app="bar"}`),
@@ -802,7 +802,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		rate({app="bar"}[1m])
 		`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="foo"}`),
 					newStream(testSize, factor(5, identity), `{app="bar"}`),
@@ -828,7 +828,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		rate({app="bar"}[1m])
 		`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="foo"}`),
 					newStream(testSize, factor(5, identity), `{app="bar"}`),
@@ -854,7 +854,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		rate({app="bar"}[1m])
 		`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="foo"}`),
 					newStream(testSize, factor(5, identity), `{app="bar"}`),
@@ -880,7 +880,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		count_over_time({app="bar"}[1m])
 		`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="foo"}`),
 					newStream(testSize, factor(5, identity), `{app="bar"}`),
@@ -906,7 +906,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		count_over_time({app="bar"}[1m])
 		`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="foo"}`),
 					newStream(testSize, factor(5, identity), `{app="bar"}`),
@@ -932,7 +932,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		count_over_time({app="bar"}[1m])
 		`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="foo"}`),
 					newStream(testSize, factor(5, identity), `{app="bar"}`),
@@ -958,7 +958,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		count_over_time({app="bar"}[1m])
 		`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="foo"}`),
 					newStream(testSize, factor(5, identity), `{app="bar"}`),
@@ -986,7 +986,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
 		`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="foo"}`),
 					newStream(testSize, factor(5, identity), `{app="bar"}`),
@@ -1014,7 +1014,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			) * 2
 		`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="foo"}`),
 					newStream(testSize, factor(5, identity), `{app="bar"}`),
@@ -1042,7 +1042,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 			) + 1
 		`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="foo"}`),
 					newStream(testSize, factor(5, identity), `{app="bar"}`),
@@ -1061,7 +1061,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		{
 			`1+1--1`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{},
+			[][]logproto.Stream{},
 			[]SelectParams{},
 			promql.Matrix{
 				promql.Series{
@@ -1072,7 +1072,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		{
 			`rate({app="bar"}[1m]) - 1`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="bar"}`),
 				},
@@ -1090,7 +1090,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		{
 			`1 - rate({app="bar"}[1m])`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="bar"}`),
 				},
@@ -1108,7 +1108,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		{
 			`rate({app="bar"}[1m]) - 1 / 2`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="bar"}`),
 				},
@@ -1126,7 +1126,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		{
 			`count_over_time({app="bar"}[1m]) ^ count_over_time({app="bar"}[1m])`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{
+			[][]logproto.Stream{
 				{
 					newStream(testSize, factor(5, identity), `{app="bar"}`),
 				},
@@ -1144,7 +1144,7 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 		{
 			`2`,
 			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-			[][]*logproto.Stream{},
+			[][]logproto.Stream{},
 			[]SelectParams{},
 			promql.Matrix{
 				promql.Series{
@@ -1266,11 +1266,11 @@ func getLocalQuerier(size int64) Querier {
 }
 
 type querierRecorder struct {
-	source map[string][]*logproto.Stream
+	source map[string][]logproto.Stream
 }
 
-func newQuerierRecorder(streams [][]*logproto.Stream, params []SelectParams) *querierRecorder {
-	source := map[string][]*logproto.Stream{}
+func newQuerierRecorder(streams [][]logproto.Stream, params []SelectParams) *querierRecorder {
+	source := map[string][]logproto.Stream{}
 	for i, p := range params {
 		source[paramsID(p)] = streams[i]
 	}
@@ -1302,18 +1302,18 @@ func paramsID(p SelectParams) string {
 
 type generator func(i int64) logproto.Entry
 
-func newStream(n int64, f generator, labels string) *logproto.Stream {
+func newStream(n int64, f generator, labels string) logproto.Stream {
 	entries := []logproto.Entry{}
 	for i := int64(0); i < n; i++ {
 		entries = append(entries, f(i))
 	}
-	return &logproto.Stream{
+	return logproto.Stream{
 		Entries: entries,
 		Labels:  labels,
 	}
 }
 
-func newIntervalStream(n int64, step time.Duration, f generator, labels string) *logproto.Stream {
+func newIntervalStream(n int64, step time.Duration, f generator, labels string) logproto.Stream {
 	entries := []logproto.Entry{}
 	lastEntry := int64(-100) // Start with a really small value (negative) so we always output the first item
 	for i := int64(0); int64(len(entries)) < n; i++ {
@@ -1322,24 +1322,24 @@ func newIntervalStream(n int64, step time.Duration, f generator, labels string) 
 			lastEntry = i
 		}
 	}
-	return &logproto.Stream{
+	return logproto.Stream{
 		Entries: entries,
 		Labels:  labels,
 	}
 }
 
-func newBackwardStream(n int64, f generator, labels string) *logproto.Stream {
+func newBackwardStream(n int64, f generator, labels string) logproto.Stream {
 	entries := []logproto.Entry{}
 	for i := n - 1; i > 0; i-- {
 		entries = append(entries, f(i))
 	}
-	return &logproto.Stream{
+	return logproto.Stream{
 		Entries: entries,
 		Labels:  labels,
 	}
 }
 
-func newBackwardIntervalStream(n, expectedResults int64, step time.Duration, f generator, labels string) *logproto.Stream {
+func newBackwardIntervalStream(n, expectedResults int64, step time.Duration, f generator, labels string) logproto.Stream {
 	entries := []logproto.Entry{}
 	lastEntry := int64(100000) //Start with some really big value so that we always output the first item
 	for i := n - 1; int64(len(entries)) < expectedResults; i-- {
@@ -1348,7 +1348,7 @@ func newBackwardIntervalStream(n, expectedResults int64, step time.Duration, f g
 			lastEntry = i
 		}
 	}
-	return &logproto.Stream{
+	return logproto.Stream{
 		Entries: entries,
 		Labels:  labels,
 	}

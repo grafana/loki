@@ -24,7 +24,7 @@ service Ingester {
 }
 
 message PushRequest {
-  repeated Stream streams = 1 [(gogoproto.jsontag) = "streams"];
+  repeated StreamAdapter streams = 1 [(gogoproto.jsontag) = "streams", (gogoproto.customtype) = "Stream"];
 }
 
 message PushResponse {
@@ -45,7 +45,7 @@ enum Direction {
 }
 
 message QueryResponse {
-  repeated Stream streams = 1;
+  repeated StreamAdapter streams = 1 [(gogoproto.customtype) = "Stream", (gogoproto.nullable) = true];
 }
 
 message LabelRequest {
@@ -59,12 +59,12 @@ message LabelResponse {
   repeated string values = 1;
 }
 
-message Stream {
+message StreamAdapter {
   string labels = 1 [(gogoproto.jsontag) = "labels"];
-  repeated Entry entries = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "entries"];
+  repeated EntryAdapter entries = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "entries"];
 }
 
-message Entry {
+message EntryAdapter {
   google.protobuf.Timestamp timestamp = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false, (gogoproto.jsontag) = "ts"];
   string line = 2 [(gogoproto.jsontag) = "line"];
 }
@@ -78,7 +78,7 @@ message TailRequest {
 }
 
 message TailResponse {
-  Stream stream = 1;
+  StreamAdapter stream = 1 [(gogoproto.customtype) = "Stream"];
   repeated DroppedStream droppedStreams = 2;
 }
 

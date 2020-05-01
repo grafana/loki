@@ -2,12 +2,11 @@ package ingester
 
 import (
 	"context"
-	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/loki/pkg/util/validation"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -27,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 const queryBatchSize = 128
@@ -150,7 +150,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr
 }
 
-func (i *instance) getOrCreateStream(pushReqStream *logproto.Stream) (*stream, error) {
+func (i *instance) getOrCreateStream(pushReqStream logproto.Stream) (*stream, error) {
 	labels, err := util.ToClientLabels(pushReqStream.Labels)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())

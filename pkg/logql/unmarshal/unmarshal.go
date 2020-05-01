@@ -27,7 +27,7 @@ func DecodePushRequest(b io.Reader, r *logproto.PushRequest) error {
 // NewPushRequest constructs a logproto.PushRequest from a PushRequest
 func NewPushRequest(r loghttp.PushRequest) logproto.PushRequest {
 	ret := logproto.PushRequest{
-		Streams: make([]*logproto.Stream, len(r.Streams)),
+		Streams: make([]logproto.Stream, len(r.Streams)),
 	}
 
 	for i, s := range r.Streams {
@@ -38,8 +38,8 @@ func NewPushRequest(r loghttp.PushRequest) logproto.PushRequest {
 }
 
 // NewStream constructs a logproto.Stream from a Stream
-func NewStream(s *loghttp.Stream) *logproto.Stream {
-	ret := &logproto.Stream{
+func NewStream(s *loghttp.Stream) logproto.Stream {
+	ret := logproto.Stream{
 		Entries: make([]logproto.Entry, len(s.Entries)),
 		Labels:  s.Labels.String(),
 	}

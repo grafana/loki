@@ -235,7 +235,7 @@ func prepare(t *testing.T, limits *validation.Limits, kvStore kv.Client) *Distri
 
 func makeWriteRequest(lines int, size int) *logproto.PushRequest {
 	req := logproto.PushRequest{
-		Streams: []*logproto.Stream{
+		Streams: []logproto.Stream{
 			{
 				Labels: `{foo="bar"}`,
 			},

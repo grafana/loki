@@ -334,11 +334,11 @@ func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 
 // mockStream return a stream with quantity entries, where entries timestamp and
 // line string are constructed as sequential numbers starting at from
-func mockStream(from int, quantity int) *logproto.Stream {
+func mockStream(from int, quantity int) logproto.Stream {
 	return mockStreamWithLabels(from, quantity, `{type="test"}`)
 }
 
-func mockStreamWithLabels(from int, quantity int, labels string) *logproto.Stream {
+func mockStreamWithLabels(from int, quantity int, labels string) logproto.Stream {
 	entries := make([]logproto.Entry, 0, quantity)
 
 	for i := from; i < from+quantity; i++ {
@@ -348,7 +348,7 @@ func mockStreamWithLabels(from int, quantity int, labels string) *logproto.Strea
 		})
 	}
 
-	return &logproto.Stream{
+	return logproto.Stream{
 		Entries: entries,
 		Labels:  labels,
 	}

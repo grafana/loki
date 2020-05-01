@@ -80,7 +80,7 @@ func NewStreams(s logql.Streams) (loghttp.Streams, error) {
 }
 
 // NewStream constructs a Stream from a logproto.Stream
-func NewStream(s *logproto.Stream) (loghttp.Stream, error) {
+func NewStream(s logproto.Stream) (loghttp.Stream, error) {
 	labels, err := NewLabelSet(s.Labels)
 	if err != nil {
 		return loghttp.Stream{}, err
