@@ -24,7 +24,7 @@ The community provides packages of Loki for openSUSE Linux. To install:
 
 ### Prerequisites
 
-- Go 1.14 or later
+- Go 1.13 or later
 - Make
 - Docker (for updating protobuf files and yacc files)
 
