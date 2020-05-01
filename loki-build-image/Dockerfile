@@ -17,10 +17,10 @@ RUN apk add --no-cache docker-cli
 # TODO this should be fixed to download and extract the specific release binary from github as we do for golangci and helm above
 # however we need a commit which hasn't been released yet: https://github.com/drone/drone-cli/commit/1fad337d74ca0ecf420993d9d2d7229a1c99f054
 # Read the comment below regarding GO111MODULE=on and why it is necessary
-FROM golang:1.13.4 as drone
+FROM golang:1.14.2 as drone
 RUN GO111MODULE=on go get github.com/drone/drone-cli/drone@1fad337d74ca0ecf420993d9d2d7229a1c99f054
 
-FROM golang:1.13.4-stretch
+FROM golang:1.14.2-stretch
 RUN apt-get update && \
     apt-get install -qy \
     musl gnupg \
