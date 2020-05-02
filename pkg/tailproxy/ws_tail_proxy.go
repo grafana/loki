@@ -15,18 +15,6 @@ import (
 	"sync"
 )
 
-type WsTailProxy struct {
-	downstreamURL string
-	log           log.Logger
-}
-
-func New(cfg frontend.Config, log log.Logger) *WsTailProxy {
-	return &WsTailProxy{
-		downstreamURL: cfg.DownstreamURL,
-		log:           log,
-	}
-}
-
 type closer struct {
 	sync.Mutex
 	closed bool
@@ -55,6 +43,19 @@ func (c *closer) isClosed() bool {
 	c.Lock()
 	defer c.Unlock()
 	return c.closed
+}
+
+
+type WsTailProxy struct {
+	downstreamURL string
+	log           log.Logger
+}
+
+func New(cfg frontend.Config, log log.Logger) *WsTailProxy {
+	return &WsTailProxy{
+		downstreamURL: cfg.DownstreamURL,
+		log:           log,
+	}
 }
 
 func (tp WsTailProxy) Handle(w http.ResponseWriter, r *http.Request) {
