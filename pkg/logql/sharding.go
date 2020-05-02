@@ -124,6 +124,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 	params Params,
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
+
 	case DownstreamSampleExpr:
 		// downstream to a querier
 		var shards []astmapper.ShardAnnotation
@@ -142,21 +143,50 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		return ResultStepEvaluator(res, params)
 
 	case *ConcatSampleExpr:
-		// ensure they all impl the same (SampleExpr, LogSelectorExpr) & concat
-		var xs []StepEvaluator
+		type result struct {
+			stepper StepEvaluator
+			err     error
+		}
+		ctx, cancel := context.WithCancel(ctx)
 		cur := e
+		ch := make(chan result)
+		done := make(chan struct{})
+		count := 0
 
 		for cur != nil {
-			eval, err := ev.StepEvaluator(ctx, nextEv, cur.SampleExpr, params)
-			if err != nil {
-				// Close previously opened StepEvaluators
-				for _, x := range xs {
-					x.Close()
+			go func(expr SampleExpr) {
+				eval, err := ev.StepEvaluator(ctx, nextEv, expr, params)
+				select {
+				case <-done:
+				case ch <- result{eval, err}:
 				}
-				return nil, err
-			}
-			xs = append(xs, eval)
+			}(cur.SampleExpr)
 			cur = cur.next
+			count++
+		}
+
+		xs := make([]StepEvaluator, 0, count)
+		cleanup := func() {
+			cancel()           // cancel ctx
+			done <- struct{}{} // send done signal to awaiting goroutines
+			// Close previously opened StepEvaluators
+			for _, x := range xs {
+				x.Close() // close unused StepEvaluators
+			}
+		}
+
+		for i := 0; i < count; i++ {
+			select {
+			case <-ctx.Done():
+				defer cleanup()
+				return nil, ctx.Err()
+			case res := <-ch:
+				if res.err != nil {
+					defer cleanup()
+					return nil, res.err
+				}
+				xs = append(xs, res.stepper)
+			}
 		}
 
 		return ConcatEvaluator(xs)
@@ -191,21 +221,54 @@ func (ev *DownstreamEvaluator) Iterator(
 		return ResultIterator(res, params)
 
 	case *ConcatLogSelectorExpr:
-		var iters []iter.EntryIterator
-		cur := e
-		for cur != nil {
-			iterator, err := ev.Iterator(ctx, cur.LogSelectorExpr, params)
-			if err != nil {
-				// Close previously opened StepEvaluators
-				for _, x := range iters {
-					x.Close()
-				}
-				return nil, err
-			}
-			iters = append(iters, iterator)
-			cur = cur.next
+		type result struct {
+			iterator iter.EntryIterator
+			err      error
 		}
-		return iter.NewHeapIterator(ctx, iters, params.Direction()), nil
+		ctx, cancel := context.WithCancel(ctx)
+		cur := e
+		ch := make(chan result)
+		done := make(chan struct{})
+		count := 0
+
+		for cur != nil {
+			go func(expr LogSelectorExpr) {
+				iterator, err := ev.Iterator(ctx, expr, params)
+				select {
+				case <-done:
+				case ch <- result{iterator, err}:
+				}
+			}(cur.LogSelectorExpr)
+			cur = cur.next
+			count++
+		}
+
+		xs := make([]iter.EntryIterator, 0, count)
+
+		cleanup := func() {
+			cancel()           // cancel ctx
+			done <- struct{}{} // send done signal to awaiting goroutines
+			// Close previously opened Iterators
+			for _, x := range xs {
+				x.Close() // close unused Iterators
+			}
+		}
+
+		for i := 0; i < count; i++ {
+			select {
+			case <-ctx.Done():
+				defer cleanup()
+				return nil, ctx.Err()
+			case res := <-ch:
+				if res.err != nil {
+					defer cleanup()
+					return nil, res.err
+				}
+				xs = append(xs, res.iterator)
+			}
+		}
+
+		return iter.NewHeapIterator(ctx, xs, params.Direction()), nil
 
 	default:
 		return nil, EvaluatorUnsupportedType(expr, ev)
