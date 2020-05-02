@@ -278,13 +278,174 @@ func TestInsert(t *testing.T) {
 	}))
 }
 
+func TestReversableEntryIteratorImpls(t *testing.T) {
+	// typecheck that these satisfy ReversableIterator
+	checks := []EntryIterator{
+		&streamIterator{},
+		&nonOverlappingIterator{},
+		&reversableIterator{},
+	}
+
+	for _, check := range checks {
+		t.Run(fmt.Sprintf("%T", check), func(t *testing.T) {
+			// Uncomment below for access to unsatiscactory implementation.
+			// _ = check.(ReversableIterator)
+			_, ok := check.(ReversableIterator)
+			require.Equal(t, true, ok)
+		})
+	}
+}
+
+func TestReversableEntryIterator(t *testing.T) {
+	oddStream := func() *logproto.Stream {
+		return &logproto.Stream{
+			Labels: `{foo="bar"}`,
+			Entries: []logproto.Entry{
+				{
+					Timestamp: time.Unix(0, 0),
+					Line:      "0",
+				},
+				{
+					Timestamp: time.Unix(1, 0),
+					Line:      "1",
+				},
+				{
+					Timestamp: time.Unix(2, 0),
+					Line:      "2",
+				},
+			},
+		}
+	}
+
+	backwardsOddStream := func() *logproto.Stream {
+		return &logproto.Stream{
+			Labels: `{foo="bar"}`,
+			Entries: []logproto.Entry{
+				{
+					Timestamp: time.Unix(2, 0),
+					Line:      "2",
+				},
+				{
+					Timestamp: time.Unix(1, 0),
+					Line:      "1",
+				},
+
+				{
+					Timestamp: time.Unix(0, 0),
+					Line:      "0",
+				},
+			},
+		}
+	}
+
+	evenStream := func() *logproto.Stream {
+		stream := oddStream()
+		stream.Entries = append(stream.Entries, logproto.Entry{
+			Timestamp: time.Unix(3, 0),
+			Line:      "3",
+		})
+		return stream
+	}
+
+	backwardsEvenStream := func() *logproto.Stream {
+		stream := backwardsOddStream()
+		stream.Entries = append([]logproto.Entry{
+			{
+				Timestamp: time.Unix(3, 0),
+				Line:      "3",
+			},
+		}, stream.Entries...)
+		return stream
+	}
+
+	for _, f := range []struct {
+		name string
+		fn   func(stream *logproto.Stream) EntryIterator
+	}{
+		{
+			name: "streamIterator",
+			fn: func(stream *logproto.Stream) EntryIterator {
+				return NewStreamIterator(stream)
+			},
+		},
+		{
+			name: "reversedIterator",
+			fn: func(stream *logproto.Stream) EntryIterator {
+				iter := NewReversedIter(NewStreamIterator(stream), 0, false)
+				iter.(ReversableIterator).Reverse()
+				return iter
+			},
+		},
+	} {
+		for _, pair := range []struct {
+			name     string
+			in       func() *logproto.Stream
+			reversed func() *logproto.Stream
+		}{
+			{
+				name:     "evenStream",
+				in:       evenStream,
+				reversed: backwardsEvenStream,
+			},
+			{
+				name:     "oddStream",
+				in:       oddStream,
+				reversed: backwardsOddStream,
+			},
+		} {
+			t.Run(fmt.Sprintf("%s-%s", f.name, pair.name), func(t *testing.T) {
+				// test constructor doesn't alter iter
+				equalIters(t, NewStreamIterator(pair.in()), f.fn(pair.in()))
+				// test reverse
+				rev := f.fn(pair.in())
+				rev.(ReversableIterator).Reverse()
+				equalIters(t, NewStreamIterator(pair.reversed()), rev)
+				// double reverse should noop
+				noop := f.fn(pair.in())
+				noop.(ReversableIterator).Reverse()
+				noop.(ReversableIterator).Reverse()
+				equalIters(t, NewStreamIterator(pair.in()), noop)
+			})
+		}
+	}
+}
+
+func TestReversableNonOverlappingIter(t *testing.T) {
+	first := func() EntryIterator { return mkStreamIterator(identity, `{foo="bar"}`) }
+	second := func() EntryIterator { return mkStreamIterator(offset(testSize, identity), `{foo="bar"}`) }
+
+	combined := func() EntryIterator {
+		var combined []logproto.Entry
+		for i := int64(0); i < testSize*2; i++ {
+			combined = append(combined, identity(i))
+		}
+		return NewStreamIterator(&logproto.Stream{
+			Entries: combined,
+			Labels:  `{foo="bar"}`,
+		})
+	}
+
+	overlapping := NewNonOverlappingIterator([]EntryIterator{first(), second()}, `{foo="bar"}`)
+	equalIters(t, combined(), overlapping)
+
+	// test reverse
+	rev := NewNonOverlappingIterator([]EntryIterator{first(), second()}, `{foo="bar"}`)
+	rev.(ReversableIterator).Reverse()
+	equalIters(t, NewReversedIter(combined(), 0, false), rev)
+
+	// test double reverse == identity
+	dbl := NewNonOverlappingIterator([]EntryIterator{first(), second()}, `{foo="bar"}`)
+	dbl.(ReversableIterator).Reverse()
+	dbl.(ReversableIterator).Reverse()
+	equalIters(t, combined(), dbl)
+}
+
 func TestReverseEntryIterator(t *testing.T) {
 	itr1 := mkStreamIterator(inverse(offset(testSize, identity)), defaultLabels)
 	itr2 := mkStreamIterator(inverse(offset(testSize, identity)), "{foobar: \"bazbar\"}")
 
 	heapIterator := NewHeapIterator(context.Background(), []EntryIterator{itr1, itr2}, logproto.BACKWARD)
-	reversedIter, err := NewReversedIter(heapIterator, testSize, false)
-	require.NoError(t, err)
+	reversedIter := NewReversedIter(heapIterator, testSize, false)
 
 	for i := int64((testSize / 2) + 1); i <= testSize; i++ {
 		assert.Equal(t, true, reversedIter.Next())
@@ -305,8 +466,7 @@ func TestReverseEntryIteratorUnlimited(t *testing.T) {
 	itr2 := mkStreamIterator(offset(testSize, identity), "{foobar: \"bazbar\"}")
 
 	heapIterator := NewHeapIterator(context.Background(), []EntryIterator{itr1, itr2}, logproto.BACKWARD)
-	reversedIter, err := NewReversedIter(heapIterator, 0, false)
-	require.NoError(t, err)
+	reversedIter := NewReversedIter(heapIterator, 0, false)
 
 	var ct int
 	expected := 2 * testSize
@@ -507,4 +667,13 @@ func Test_DuplicateCount(t *testing.T) {
 			require.Equal(t, test.expectedDuplicates, stats.GetChunkData(ctx).TotalDuplicates)
 		})
 	}
+}
+
+func equalIters(t *testing.T, a, b EntryIterator) {
+	for a.Next() {
+		require.Equal(t, true, b.Next())
+		require.Equal(t, a.Labels(), b.Labels())
+		require.Equal(t, a.Entry(), b.Entry())
+	}
+	require.Equal(t, b.Next(), false)
 }

@@ -489,11 +489,15 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		time.Unix(0, maxt),
 	)
 
+	if err := iterForward.Error(); err != nil {
+		return nil, err
+	}
+
 	if direction == logproto.FORWARD {
 		return iterForward, nil
 	}
 
-	return iter.NewReversedIter(iterForward, 0, false)
+	return iter.NewReversedIter(iterForward, 0, false), nil
 }
 
 func (b block) iterator(ctx context.Context, pool ReaderPool, filter logql.LineFilter) iter.EntryIterator {

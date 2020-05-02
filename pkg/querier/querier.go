@@ -308,10 +308,11 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer,
 		return nil, err
 	}
 
-	reversedIterator, err := iter.NewReversedIter(histIterators, req.Limit, true)
-	if err != nil {
+	if err := histIterators.Error(); err != nil {
 		return nil, err
 	}
+
+	reversedIterator := iter.NewReversedIter(histIterators, req.Limit, true)
 
 	return newTailer(
 		time.Duration(req.DelayFor)*time.Second,

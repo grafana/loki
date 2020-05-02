@@ -21,6 +21,13 @@ type EntryIterator interface {
 	Close() error
 }
 
+// ReversableIterator is an opt-in optimization for iterators that can be reversed efficiently
+// Contract: There are no correctness guarantees when reversing a partially consumed iter (don't do this).
+type ReversableIterator interface {
+	EntryIterator
+	Reverse()
+}
+
 type noOpIterator struct{}
 
 var NoopIterator = noOpIterator{}
@@ -33,9 +40,10 @@ func (noOpIterator) Close() error          { return nil }
 
 // streamIterator iterates over entries in a stream.
 type streamIterator struct {
-	i       int
-	entries []logproto.Entry
-	labels  string
+	i         int
+	entries   []logproto.Entry
+	labels    string
+	direction logproto.Direction
 }
 
 // NewStreamIterator iterates over entries in a stream.
@@ -48,8 +56,25 @@ func NewStreamIterator(stream *logproto.Stream) EntryIterator {
 }
 
 func (i *streamIterator) Next() bool {
-	i.i++
-	return i.i < len(i.entries)
+	if i.direction == logproto.FORWARD {
+		i.i++
+		return i.i < len(i.entries)
+	}
+
+	i.i--
+	return i.i >= 0
+}
+
+func (i *streamIterator) Reverse() {
+	if i.direction == logproto.FORWARD {
+		i.direction = logproto.BACKWARD
+		i.i = len(i.entries)
+		return
+	}
+
+	i.direction = logproto.FORWARD
+	i.i = -1
+
 }
 
 func (i *streamIterator) Error() error {
@@ -456,6 +481,18 @@ func (i *nonOverlappingIterator) Entry() logproto.Entry {
 	return i.curr.Entry()
 }
 
+func (i *nonOverlappingIterator) Reverse() {
+	for a, b := 0, len(i.iterators)-1; a <= b; a, b = a+1, b-1 {
+		aIter, bIter := i.iterators[a], i.iterators[b]
+		i.iterators[b] = NewReversedIter(aIter, 0, false)
+
+		// Don't double-reverse the middle iter.
+		if a != b {
+			i.iterators[a] = NewReversedIter(bIter, 0, false)
+		}
+	}
+}
+
 func (i *nonOverlappingIterator) Labels() string {
 	if i.labels != "" {
 		return i.labels
@@ -519,7 +556,7 @@ type entryWithLabels struct {
 	labels string
 }
 
-type reverseIterator struct {
+type reversableIterator struct {
 	iter              EntryIterator
 	cur               entryWithLabels
 	entriesWithLabels []entryWithLabels
@@ -531,25 +568,34 @@ type reverseIterator struct {
 // NewReversedIter returns an iterator which loads all or up to N entries
 // of an existing iterator, and then iterates over them backward.
 // Preload entries when they are being queried with a timeout.
-func NewReversedIter(it EntryIterator, limit uint32, preload bool) (EntryIterator, error) {
-	iter, err := &reverseIterator{
+func NewReversedIter(it EntryIterator, limit uint32, preload bool) EntryIterator {
+	// First see if there is an optimized variant
+	if reversed, ok := it.(ReversableIterator); ok {
+		reversed.Reverse()
+		return reversed
+	}
+
+	iter := &reversableIterator{
 		iter:              it,
 		entriesWithLabels: make([]entryWithLabels, 0, 1024),
 		limit:             limit,
-	}, it.Error()
-
-	if err != nil {
-		return nil, err
 	}
 
 	if preload {
 		iter.load()
 	}
 
-	return iter, nil
+	return iter
 }
 
-func (i *reverseIterator) load() {
+func (i *reversableIterator) Reverse() {
+	i.load()
+	for a, b := 0, len(i.entriesWithLabels)-1; a < b; a, b = a+1, b-1 {
+		i.entriesWithLabels[a], i.entriesWithLabels[b] = i.entriesWithLabels[b], i.entriesWithLabels[a]
+	}
+}
+
+func (i *reversableIterator) load() {
 	if !i.loaded {
 		i.loaded = true
 		for count := uint32(0); (i.limit == 0 || count < i.limit) && i.iter.Next(); count++ {
@@ -559,7 +605,7 @@ func (i *reverseIterator) load() {
 	}
 }
 
-func (i *reverseIterator) Next() bool {
+func (i *reversableIterator) Next() bool {
 	i.load()
 	if len(i.entriesWithLabels) == 0 {
 		i.entriesWithLabels = nil
@@ -569,17 +615,22 @@ func (i *reverseIterator) Next() bool {
 	return true
 }
 
-func (i *reverseIterator) Entry() logproto.Entry {
+func (i *reversableIterator) Entry() logproto.Entry {
 	return i.cur.entry
 }
 
-func (i *reverseIterator) Labels() string {
+func (i *reversableIterator) Labels() string {
 	return i.cur.labels
 }
 
-func (i *reverseIterator) Error() error { return nil }
+func (i *reversableIterator) Error() error {
+	if i.loaded {
+		return nil
+	}
+	return i.iter.Error()
+}
 
-func (i *reverseIterator) Close() error {
+func (i *reversableIterator) Close() error {
 	if !i.loaded {
 		return i.iter.Close()
 	}
