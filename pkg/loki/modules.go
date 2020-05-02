@@ -2,6 +2,7 @@ package loki
 
 import (
 	"fmt"
+	"github.com/grafana/loki/pkg/tailproxy"
 	"net/http"
 	"os"
 	"sort"
@@ -296,6 +297,13 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
 
 	frontendHandler := queryrange.StatsHTTPMiddleware.Wrap(t.httpAuthMiddleware.Wrap(t.frontend.Handler()))
+
+	httpMiddleware := middleware.Merge(
+		t.httpAuthMiddleware,
+		queryrange.StatsHTTPMiddleware,
+	)
+	tp := tailproxy.New(t.cfg.Frontend, util.Logger)
+	wsHandler := httpMiddleware.Wrap(http.HandlerFunc(tp.Handle))
 	t.server.HTTP.Handle("/loki/api/v1/query_range", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/query", frontendHandler)
 	t.server.HTTP.Handle("/loki/api/v1/label", frontendHandler)
@@ -306,6 +314,8 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.server.HTTP.Handle("/api/prom/label", frontendHandler)
 	t.server.HTTP.Handle("/api/prom/label/{name}/values", frontendHandler)
 	t.server.HTTP.Handle("/api/prom/series", frontendHandler)
+	t.server.HTTP.Handle("/loki/api/v1/tail", wsHandler)
+	t.server.HTTP.Handle("/api/prom/tail", wsHandler)
 	// fallback route
 	t.server.HTTP.PathPrefix("/").Handler(frontendHandler)
 
