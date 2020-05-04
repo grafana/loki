@@ -461,20 +461,20 @@ func TestReverseEntryIterator(t *testing.T) {
 	assert.NoError(t, reversedIter.Close())
 }
 
-func TestReverseEntryIteratorUnlimited(t *testing.T) {
-	itr1 := mkStreamIterator(offset(testSize, identity), defaultLabels)
-	itr2 := mkStreamIterator(offset(testSize, identity), "{foobar: \"bazbar\"}")
+func TestReverseEntryIteratorHeapIter(t *testing.T) {
+	itr1 := mkStreamIterator(identity, `{foo="bar"}`)
+	itr2 := mkStreamIterator(identity, `{foo="baz"}`)
 
-	heapIterator := NewHeapIterator(context.Background(), []EntryIterator{itr1, itr2}, logproto.BACKWARD)
+	heapIterator := NewHeapIterator(context.Background(), []EntryIterator{itr1, itr2}, logproto.FORWARD)
 	reversedIter := NewReversedIter(heapIterator, 0, false)
 
 	var ct int
-	expected := 2 * testSize
 
 	for reversedIter.Next() {
+		require.Equal(t, fmt.Sprintf("%d", (20-ct-1)/2), reversedIter.Entry().Line)
 		ct++
 	}
-	require.Equal(t, expected, ct)
+	require.Equal(t, false, reversedIter.Next())
 }
 
 func Test_PeekingIterator(t *testing.T) {

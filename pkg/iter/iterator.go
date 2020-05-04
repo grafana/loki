@@ -176,7 +176,7 @@ type heapIterator struct {
 }
 
 // NewHeapIterator returns a new iterator which uses a heap to merge together
-// entries for multiple interators.
+// entries for multiple interators. They must all be sorted in the same direction prior to construction.
 func NewHeapIterator(ctx context.Context, is []EntryIterator, direction logproto.Direction) HeapIterator {
 	result := &heapIterator{is: is, stats: stats.GetChunkData(ctx)}
 	switch direction {
