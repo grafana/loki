@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	pkg_util "github.com/cortexproject/cortex/pkg/util"
@@ -88,12 +90,13 @@ type Shipper struct {
 	uploadedFilesMtime    map[string]time.Time
 	uploadedFilesMtimeMtx sync.RWMutex
 
-	done chan struct{}
-	wait sync.WaitGroup
+	done    chan struct{}
+	wait    sync.WaitGroup
+	metrics *boltDBShipperMetrics
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
-func NewShipper(cfg ShipperConfig, storageClient chunk.ObjectClient, boltDBGetter BoltDBGetter) (*Shipper, error) {
+func NewShipper(cfg ShipperConfig, storageClient chunk.ObjectClient, boltDBGetter BoltDBGetter, registerer prometheus.Registerer) (*Shipper, error) {
 	err := chunk_util.EnsureDirectory(cfg.CacheLocation)
 	if err != nil {
 		return nil, err
@@ -106,12 +109,15 @@ func NewShipper(cfg ShipperConfig, storageClient chunk.ObjectClient, boltDBGette
 		storageClient:      util.NewPrefixedObjectClient(storageClient, storageKeyPrefix),
 		done:               make(chan struct{}),
 		uploadedFilesMtime: map[string]time.Time{},
+		metrics:            newBoltDBShipperMetrics(registerer),
 	}
 
 	shipper.uploader, err = shipper.getUploaderName()
 	if err != nil {
 		return nil, err
 	}
+
+	level.Info(pkg_util.Logger).Log("msg", fmt.Sprintf("starting boltdb shipper in %d mode", cfg.Mode))
 
 	shipper.wait.Add(1)
 	go shipper.loop()
@@ -171,6 +177,7 @@ func (s *Shipper) loop() {
 		case <-uploadFilesTicker.C:
 			err := s.uploadFiles(context.Background())
 			if err != nil {
+				s.metrics.filesUploadFailures.Inc()
 				level.Error(pkg_util.Logger).Log("msg", "error pushing archivable files to store", "err", err)
 			}
 		case <-cacheCleanupTicker.C:
@@ -192,6 +199,7 @@ func (s *Shipper) Stop() {
 	// Push all boltdb files to storage before returning
 	err := s.uploadFiles(context.Background())
 	if err != nil {
+		s.metrics.filesUploadFailures.Inc()
 		level.Error(pkg_util.Logger).Log("msg", "error pushing archivable files to store", "err", err)
 	}
 
@@ -235,6 +243,7 @@ func (s *Shipper) syncLocalWithStorage(ctx context.Context) error {
 
 	for period := range s.downloadedPeriods {
 		if err := s.syncFilesForPeriod(ctx, period, s.downloadedPeriods[period]); err != nil {
+			s.metrics.filesDownloadFailures.Inc()
 			return err
 		}
 	}
@@ -275,6 +284,7 @@ func (s *Shipper) forEach(ctx context.Context, period string, callback func(db *
 			s.downloadedPeriodsMtx.Unlock()
 
 			if err := s.downloadFilesForPeriod(ctx, period, fc); err != nil {
+				s.metrics.filesDownloadFailures.Inc()
 				return err
 			}
 		}

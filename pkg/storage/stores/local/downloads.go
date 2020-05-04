@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/local"
@@ -160,6 +161,9 @@ func (s *Shipper) downloadFilesForPeriod(ctx context.Context, period string, fc 
 	fc.Lock()
 	defer fc.Unlock()
 
+	startTime := time.Now()
+	totalFilesSize := int64(0)
+
 	objects, _, err := s.storageClient.List(ctx, period+"/")
 	if err != nil {
 		return err
@@ -192,8 +196,19 @@ func (s *Shipper) downloadFilesForPeriod(ctx context.Context, period string, fc 
 			return err
 		}
 
+		stat, err := os.Stat(filePath)
+		if err != nil {
+			return err
+		}
+
+		totalFilesSize += stat.Size()
+
 		fc.files[uploader] = df
 	}
+
+	duration := time.Since(startTime).Seconds()
+	s.metrics.initialFilesDownloadDurationSeconds.WithLabelValues(period).Set(duration)
+	s.metrics.initialFilesDownloadSizeBytes.WithLabelValues(period).Set(float64(totalFilesSize))
 
 	return nil
 }
