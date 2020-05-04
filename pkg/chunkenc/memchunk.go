@@ -497,7 +497,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		return iterForward, nil
 	}
 
-	return iter.NewReversedIter(iterForward, 0, false), nil
+	return iter.NewReversedIter(iterForward), nil
 }
 
 func (b block) iterator(ctx context.Context, pool ReaderPool, filter logql.LineFilter) iter.EntryIterator {

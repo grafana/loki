@@ -371,7 +371,7 @@ func TestReversableEntryIterator(t *testing.T) {
 		{
 			name: "reversedIterator",
 			fn: func(stream *logproto.Stream) EntryIterator {
-				iter := NewReversedIter(NewStreamIterator(stream), 0, false)
+				iter := NewReversedIter(NewStreamIterator(stream))
 				iter.(ReversableIterator).Reverse()
 				return iter
 			},
@@ -431,7 +431,7 @@ func TestReversableNonOverlappingIter(t *testing.T) {
 	// test reverse
 	rev := NewNonOverlappingIterator([]EntryIterator{first(), second()}, `{foo="bar"}`)
 	rev.(ReversableIterator).Reverse()
-	equalIters(t, NewReversedIter(combined(), 0, false), rev)
+	equalIters(t, NewReversedIter(combined()), rev)
 
 	// test double reverse == identity
 	dbl := NewNonOverlappingIterator([]EntryIterator{first(), second()}, `{foo="bar"}`)
@@ -445,7 +445,8 @@ func TestReverseEntryIterator(t *testing.T) {
 	itr2 := mkStreamIterator(inverse(offset(testSize, identity)), "{foobar: \"bazbar\"}")
 
 	heapIterator := NewHeapIterator(context.Background(), []EntryIterator{itr1, itr2}, logproto.BACKWARD)
-	reversedIter := NewReversedIter(heapIterator, testSize, false)
+	limited := NewLimitedIterator(testSize, heapIterator)
+	reversedIter := NewReversedIter(limited)
 
 	for i := int64((testSize / 2) + 1); i <= testSize; i++ {
 		assert.Equal(t, true, reversedIter.Next())
@@ -466,7 +467,7 @@ func TestReverseEntryIteratorHeapIter(t *testing.T) {
 	itr2 := mkStreamIterator(identity, `{foo="baz"}`)
 
 	heapIterator := NewHeapIterator(context.Background(), []EntryIterator{itr1, itr2}, logproto.FORWARD)
-	reversedIter := NewReversedIter(heapIterator, 0, false)
+	reversedIter := NewReversedIter(heapIterator)
 
 	var ct int
 

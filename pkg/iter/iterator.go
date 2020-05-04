@@ -484,11 +484,11 @@ func (i *nonOverlappingIterator) Entry() logproto.Entry {
 func (i *nonOverlappingIterator) Reverse() {
 	for a, b := 0, len(i.iterators)-1; a <= b; a, b = a+1, b-1 {
 		aIter, bIter := i.iterators[a], i.iterators[b]
-		i.iterators[b] = NewReversedIter(aIter, 0, false)
+		i.iterators[b] = NewReversedIter(aIter)
 
 		// Don't double-reverse the middle iter.
 		if a != b {
-			i.iterators[a] = NewReversedIter(bIter, 0, false)
+			i.iterators[a] = NewReversedIter(bIter)
 		}
 	}
 }
@@ -562,13 +562,12 @@ type reversableIterator struct {
 	entriesWithLabels []entryWithLabels
 
 	loaded bool
-	limit  uint32
 }
 
 // NewReversedIter returns an iterator which loads all or up to N entries
 // of an existing iterator, and then iterates over them backward.
 // Preload entries when they are being queried with a timeout.
-func NewReversedIter(it EntryIterator, limit uint32, preload bool) EntryIterator {
+func NewReversedIter(it EntryIterator) EntryIterator {
 	// First see if there is an optimized variant
 	if reversed, ok := it.(ReversableIterator); ok {
 		reversed.Reverse()
@@ -578,11 +577,6 @@ func NewReversedIter(it EntryIterator, limit uint32, preload bool) EntryIterator
 	iter := &reversableIterator{
 		iter:              it,
 		entriesWithLabels: make([]entryWithLabels, 0, 1024),
-		limit:             limit,
-	}
-
-	if preload {
-		iter.load()
 	}
 
 	return iter
@@ -598,7 +592,7 @@ func (i *reversableIterator) Reverse() {
 func (i *reversableIterator) load() {
 	if !i.loaded {
 		i.loaded = true
-		for count := uint32(0); (i.limit == 0 || count < i.limit) && i.iter.Next(); count++ {
+		for i.iter.Next() {
 			i.entriesWithLabels = append(i.entriesWithLabels, entryWithLabels{i.iter.Entry(), i.iter.Labels()})
 		}
 		i.iter.Close()
@@ -751,3 +745,66 @@ func (it *peekingEntryIterator) Error() error {
 func (it *peekingEntryIterator) Close() error {
 	return it.iter.Close()
 }
+
+type limitedIterator struct {
+	ct    int
+	limit int
+	EntryIterator
+}
+
+func NewLimitedIterator(limit uint32, iter EntryIterator) EntryIterator {
+	return &limitedIterator{
+		ct:            0,
+		limit:         int(limit),
+		EntryIterator: iter,
+	}
+}
+
+func (i *limitedIterator) Next() bool {
+	i.ct++
+	if i.ct > i.limit {
+		return false
+	}
+	return i.EntryIterator.Next()
+}
+
+func (i *limitedIterator) Error() error {
+	if i.ct > i.limit {
+		return fmt.Errorf("limit exceeded: %d", i.limit)
+	}
+	return nil
+}
+
+type prefetchedIter struct {
+	i  int
+	xs []entryWithLabels
+}
+
+func NewPrefetchedIterator(iter EntryIterator) EntryIterator {
+	prefetched := &prefetchedIter{i: -1}
+	for iter.Next() {
+		prefetched.xs = append(prefetched.xs, entryWithLabels{
+			entry:  iter.Entry(),
+			labels: iter.Labels(),
+		})
+	}
+	iter.Close()
+	return prefetched
+}
+
+func (i *prefetchedIter) Next() bool {
+	i.i++
+	return i.i < len(i.xs)
+}
+
+func (i *prefetchedIter) Entry() logproto.Entry {
+	return i.xs[i.i].entry
+}
+
+func (i *prefetchedIter) Labels() string {
+	return i.xs[i.i].labels
+}
+
+func (i *prefetchedIter) Error() error { return nil }
+
+func (i *prefetchedIter) Close() error { return nil }
