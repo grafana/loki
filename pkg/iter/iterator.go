@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/grafana/loki/pkg/helpers"
@@ -580,6 +581,80 @@ func (i *reverseIterator) Labels() string {
 func (i *reverseIterator) Error() error { return nil }
 
 func (i *reverseIterator) Close() error {
+	if !i.loaded {
+		return i.iter.Close()
+	}
+	return nil
+}
+
+var entryPool = sync.Pool{
+	New: func() interface{} {
+		return &entries{
+			a: make([]logproto.Entry, 0, 1024),
+		}
+	},
+}
+
+type entries struct {
+	a []logproto.Entry
+}
+
+type reverseEntryIterator struct {
+	iter    EntryIterator
+	cur     logproto.Entry
+	entries *entries
+
+	loaded bool
+}
+
+// NewEntryReversedIter returns an iterator which loads all or up to N entries
+// of an existing iterator, and then iterates over them backward.
+// Preload entries when they are being queried with a timeout.
+func NewEntryReversedIter(it EntryIterator) (EntryIterator, error) {
+	iter, err := &reverseEntryIterator{
+		iter:    it,
+		entries: entryPool.Get().(*entries),
+	}, it.Error()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return iter, nil
+}
+
+func (i *reverseEntryIterator) load() {
+	if !i.loaded {
+		i.loaded = true
+		for i.iter.Next() {
+			i.entries.a = append(i.entries.a, i.iter.Entry())
+		}
+		i.iter.Close()
+	}
+}
+
+func (i *reverseEntryIterator) Next() bool {
+	i.load()
+	if len(i.entries.a) == 0 {
+		entryPool.Put(i.entries)
+		i.entries = nil
+		return false
+	}
+	i.cur, i.entries.a = i.entries.a[len(i.entries.a)-1], i.entries.a[:len(i.entries.a)-1]
+	return true
+}
+
+func (i *reverseEntryIterator) Entry() logproto.Entry {
+	return i.cur
+}
+
+func (i *reverseEntryIterator) Labels() string {
+	return ""
+}
+
+func (i *reverseEntryIterator) Error() error { return nil }
+
+func (i *reverseEntryIterator) Close() error {
 	if !i.loaded {
 		return i.iter.Close()
 	}
