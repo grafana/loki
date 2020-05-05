@@ -25,8 +25,8 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 1,
-  "id": 37,
-  "iteration": 1583182892855,
+  "id": 1599,
+  "iteration": 1588693295990,
   "links": [
     {
       "icon": "dashboard",
@@ -103,6 +103,12 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -192,6 +198,12 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -279,6 +291,12 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -368,6 +386,12 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -384,7 +408,7 @@
         "current": false,
         "max": false,
         "min": false,
-        "show": true,
+        "show": false,
         "total": false,
         "values": false
       },
@@ -415,7 +439,7 @@
       "timeShift": null,
       "title": "Lines Per Tenant (top 10)",
       "tooltip": {
-        "shared": true,
+        "shared": false,
         "sort": 0,
         "value_type": "individual"
       },
@@ -456,6 +480,12 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -469,9 +499,11 @@
       "legend": {
         "avg": false,
         "current": false,
+        "hideEmpty": true,
+        "hideZero": true,
         "max": false,
         "min": false,
-        "show": true,
+        "show": false,
         "total": false,
         "values": false
       },
@@ -502,7 +534,7 @@
       "timeShift": null,
       "title": "MBs Per Tenant (Top 10)",
       "tooltip": {
-        "shared": true,
+        "shared": false,
         "sort": 0,
         "value_type": "individual"
       },
@@ -543,6 +575,12 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -630,6 +668,12 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -729,6 +773,12 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -828,6 +878,12 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
       "fill": 0,
       "fillGradient": 0,
       "gridPos": {
@@ -865,7 +921,8 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\", status_code=~\"success|200\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"}[5m])) by (route)",
+          "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\", status_code!~\"5[0-9]{2}\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"}[5m])) by (route)",
+          "interval": "",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
@@ -918,6 +975,12 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -976,7 +1039,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Ingester Latency",
+      "title": "Ingester Latency Write",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1019,6 +1082,12 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
       "fill": 0,
       "fillGradient": 0,
       "gridPos": {
@@ -1056,7 +1125,8 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", status_code=~\"success|200\", route=\"/logproto.Pusher/Push\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", route=\"/logproto.Pusher/Push\"}[5m])) by (route)",
+          "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", status_code!~\"5[0-9]{2}\", route=\"/logproto.Pusher/Push\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", route=\"/logproto.Pusher/Push\"}[5m])) by (route)",
+          "interval": "",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
@@ -1065,7 +1135,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Ingester Success Rate",
+      "title": "Ingester Success Rate Write",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1109,6 +1179,12 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -1210,6 +1286,12 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -1309,6 +1391,12 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
       "fill": 0,
       "fillGradient": 0,
       "gridPos": {
@@ -1346,7 +1434,8 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\", status_code=~\"success|200\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"}[5m])) by (route)",
+          "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\", status_code!~\"5[0-9]{2}\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"}[5m])) by (route)",
+          "interval": "",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
@@ -1400,6 +1489,12 @@
       "dashes": false,
       "datasource": "$datasource",
       "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -1456,7 +1551,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Ingester Latency",
+      "title": "Ingester Latency Read",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1499,6 +1594,12 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
       "fill": 0,
       "fillGradient": 0,
       "gridPos": {
@@ -1536,7 +1637,8 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", status_code=~\"success|200\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label\"}[5m])) by (route)",
+          "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", status_code!~\"5[0-9]{2}\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label\"}[5m])) by (route)",
+          "interval": "",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
@@ -1545,7 +1647,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Ingester Success Rate",
+      "title": "Ingester Success Rate Read",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1592,6 +1694,200 @@
         "x": 0,
         "y": 26
       },
+      "id": 110,
+      "panels": [
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": "$datasource",
+          "fill": 1,
+          "fillGradient": 0,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 27
+          },
+          "hiddenSeries": false,
+          "id": 112,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": false,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "nullPointMode": "null",
+          "options": {
+            "dataLinks": []
+          },
+          "percentage": false,
+          "pointradius": 2,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "topk(10,sum by (tenant, reason) (rate(loki_discarded_samples_total{cluster=\"$cluster\",namespace=\"$namespace\"}[1m])))",
+              "interval": "",
+              "legendFormat": "{{ tenant }} - {{ reason }}",
+              "refId": "A"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "Discarded Lines",
+          "tooltip": {
+            "shared": false,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "columns": [],
+          "datasource": "$datasource",
+          "fontSize": "100%",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 27
+          },
+          "id": 113,
+          "pageSize": null,
+          "showHeader": true,
+          "sort": {
+            "col": 3,
+            "desc": true
+          },
+          "styles": [
+            {
+              "alias": "Time",
+              "align": "auto",
+              "dateFormat": "YYYY-MM-DD HH:mm:ss",
+              "pattern": "Time",
+              "type": "hidden"
+            },
+            {
+              "alias": "",
+              "align": "auto",
+              "colorMode": null,
+              "colors": [
+                "rgba(245, 54, 54, 0.9)",
+                "rgba(237, 129, 40, 0.89)",
+                "rgba(50, 172, 45, 0.97)"
+              ],
+              "dateFormat": "YYYY-MM-DD HH:mm:ss",
+              "decimals": 2,
+              "mappingType": 1,
+              "pattern": "tenant",
+              "thresholds": [],
+              "type": "string",
+              "unit": "short"
+            },
+            {
+              "alias": "",
+              "align": "auto",
+              "colorMode": null,
+              "colors": [
+                "rgba(245, 54, 54, 0.9)",
+                "rgba(237, 129, 40, 0.89)",
+                "rgba(50, 172, 45, 0.97)"
+              ],
+              "dateFormat": "YYYY-MM-DD HH:mm:ss",
+              "decimals": 2,
+              "mappingType": 1,
+              "pattern": "reason",
+              "thresholds": [],
+              "type": "number",
+              "unit": "short"
+            },
+            {
+              "alias": "",
+              "align": "right",
+              "colorMode": null,
+              "colors": [
+                "rgba(245, 54, 54, 0.9)",
+                "rgba(237, 129, 40, 0.89)",
+                "rgba(50, 172, 45, 0.97)"
+              ],
+              "decimals": 2,
+              "pattern": "/.*/",
+              "thresholds": [],
+              "type": "number",
+              "unit": "short"
+            }
+          ],
+          "targets": [
+            {
+              "expr": "topk(10, sum by (tenant, reason) (sum_over_time(increase(loki_discarded_samples_total{cluster=\"$cluster\",namespace=\"$namespace\"}[1m])[$__range:1m])))",
+              "format": "table",
+              "instant": true,
+              "interval": "",
+              "legendFormat": "{{ tenant }} - {{ reason }}",
+              "refId": "A"
+            }
+          ],
+          "timeFrom": null,
+          "timeShift": null,
+          "title": "Discarded Lines Per Interval",
+          "transform": "table",
+          "type": "table"
+        }
+      ],
+      "title": "Limits",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "datasource": null,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
       "id": 23,
       "panels": [
         {
@@ -1606,8 +1902,9 @@
             "h": 7,
             "w": 6,
             "x": 0,
-            "y": 2
+            "y": 28
           },
+          "hiddenSeries": false,
           "id": 26,
           "legend": {
             "avg": false,
@@ -1693,8 +1990,9 @@
             "h": 7,
             "w": 6,
             "x": 6,
-            "y": 2
+            "y": 28
           },
+          "hiddenSeries": false,
           "id": 27,
           "legend": {
             "avg": false,
@@ -1776,15 +2074,16 @@
           "bars": true,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "$logmetrics",
+          "datasource": "$logs",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
-            "h": 3,
+            "h": 4,
             "w": 12,
             "x": 12,
-            "y": 2
+            "y": 28
           },
+          "hiddenSeries": false,
           "id": 31,
           "legend": {
             "avg": false,
@@ -1807,30 +2106,16 @@
           "renderer": "flot",
           "seriesOverrides": [
             {
-              "alias": "warn",
-              "color": "#FF9830"
-            },
-            {
-              "alias": "error",
-              "color": "#F2495C"
-            },
-            {
-              "alias": "info",
-              "color": "#73BF69"
-            },
-            {
-              "alias": "debug",
-              "color": "#5794F2"
+              "alias": "{}",
+              "color": "#C4162A"
             }
           ],
           "spaceLength": 10,
-          "stack": true,
+          "stack": false,
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\", level!~\"debug|info\"}[5m])) by (level)",
-              "intervalFactor": 3,
-              "legendFormat": "{{level}}",
+              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"} |~ \"(?i)level=error\"[1m]))",
               "refId": "A"
             }
           ],
@@ -1881,16 +2166,18 @@
             "h": 18,
             "w": 12,
             "x": 12,
-            "y": 5
+            "y": 32
           },
           "id": 29,
           "options": {
+            "showLabels": false,
             "showTime": false,
-            "sortOrder": "Descending"
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
           },
           "targets": [
             {
-              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\", level!~\"info|debug\"}",
+              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"} |~ \"(?i)level=error\"",
               "refId": "A"
             }
           ],
@@ -1911,8 +2198,9 @@
             "h": 7,
             "w": 6,
             "x": 0,
-            "y": 9
+            "y": 35
           },
+          "hiddenSeries": false,
           "id": 33,
           "legend": {
             "avg": false,
@@ -1939,7 +2227,8 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\", status_code=~\"success|200\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"}[5m])) by (route)",
+              "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\", status_code!~\"5[0-9]{2}\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/distributor\"}[5m])) by (route)",
+              "interval": "",
               "intervalFactor": 1,
               "legendFormat": "{{route}}",
               "refId": "A"
@@ -1998,8 +2287,9 @@
             "h": 7,
             "w": 6,
             "x": 6,
-            "y": 9
+            "y": 35
           },
+          "hiddenSeries": false,
           "id": 32,
           "legend": {
             "avg": false,
@@ -2085,8 +2375,9 @@
             "h": 7,
             "w": 6,
             "x": 0,
-            "y": 16
+            "y": 42
           },
+          "hiddenSeries": false,
           "id": 34,
           "legend": {
             "avg": false,
@@ -2172,8 +2463,9 @@
             "h": 7,
             "w": 6,
             "x": 6,
-            "y": 16
+            "y": 42
           },
+          "hiddenSeries": false,
           "id": 35,
           "legend": {
             "avg": false,
@@ -2258,7 +2550,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 28
       },
       "id": 19,
       "panels": [
@@ -2274,8 +2566,9 @@
             "h": 7,
             "w": 6,
             "x": 0,
-            "y": 3
+            "y": 29
           },
+          "hiddenSeries": false,
           "id": 36,
           "legend": {
             "avg": false,
@@ -2361,8 +2654,9 @@
             "h": 7,
             "w": 6,
             "x": 6,
-            "y": 3
+            "y": 29
           },
+          "hiddenSeries": false,
           "id": 37,
           "legend": {
             "avg": false,
@@ -2444,15 +2738,16 @@
           "bars": true,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "$logmetrics",
+          "datasource": "$logs",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
             "h": 3,
             "w": 12,
             "x": 12,
-            "y": 3
+            "y": 29
           },
+          "hiddenSeries": false,
           "id": 38,
           "legend": {
             "avg": false,
@@ -2475,30 +2770,16 @@
           "renderer": "flot",
           "seriesOverrides": [
             {
-              "alias": "warn",
-              "color": "#FF9830"
-            },
-            {
-              "alias": "error",
+              "alias": "{}",
               "color": "#F2495C"
-            },
-            {
-              "alias": "info",
-              "color": "#73BF69"
-            },
-            {
-              "alias": "debug",
-              "color": "#5794F2"
             }
           ],
           "spaceLength": 10,
-          "stack": true,
+          "stack": false,
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", level!~\"debug|info\"}[5m])) by (level)",
-              "intervalFactor": 3,
-              "legendFormat": "{{level}}",
+              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"} |~ \"(?i)level=error\"[1m]))",
               "refId": "A"
             }
           ],
@@ -2549,16 +2830,18 @@
             "h": 18,
             "w": 12,
             "x": 12,
-            "y": 6
+            "y": 32
           },
           "id": 39,
           "options": {
+            "showLabels": false,
             "showTime": false,
-            "sortOrder": "Descending"
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
           },
           "targets": [
             {
-              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", level!~\"info|debug\"}",
+              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"} |~ \"(?i)level=error\"",
               "refId": "A"
             }
           ],
@@ -2579,8 +2862,9 @@
             "h": 7,
             "w": 6,
             "x": 0,
-            "y": 10
+            "y": 36
           },
+          "hiddenSeries": false,
           "id": 67,
           "legend": {
             "avg": false,
@@ -2607,7 +2891,8 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", status_code=~\"success|200\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"}[5m])) by (route)",
+              "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\", status_code!~\"5[0-9]{2}\"}[1m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/ingester\"}[1m])) by (route)",
+              "interval": "",
               "intervalFactor": 1,
               "legendFormat": "{{route}}",
               "refId": "A"
@@ -2665,7 +2950,553 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 29
+      },
+      "id": 104,
+      "panels": [
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": "$datasource",
+          "fill": 1,
+          "fillGradient": 0,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 30
+          },
+          "hiddenSeries": false,
+          "id": 106,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "hideEmpty": true,
+            "hideZero": true,
+            "max": false,
+            "min": false,
+            "show": false,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "nullPointMode": "null",
+          "options": {
+            "dataLinks": []
+          },
+          "percentage": false,
+          "pointradius": 2,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "topk(10,sum by (tenant) (loki_ingester_memory_streams{cluster=\"$cluster\",job=\"$namespace/ingester\"}))",
+              "interval": "",
+              "legendFormat": "{{ tenant }}",
+              "refId": "A"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "Active Streams",
+          "tooltip": {
+            "shared": false,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": "$datasource",
+          "fill": 1,
+          "fillGradient": 0,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 30
+          },
+          "hiddenSeries": false,
+          "id": 108,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "hideEmpty": true,
+            "hideZero": true,
+            "max": false,
+            "min": false,
+            "show": false,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "nullPointMode": "null",
+          "options": {
+            "dataLinks": []
+          },
+          "percentage": false,
+          "pointradius": 2,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "topk(10, sum by (tenant) (rate(loki_ingester_streams_created_total{cluster=\"$cluster\",job=\"$namespace/ingester\"}[1m]) > 0))",
+              "interval": "",
+              "legendFormat": "{{ tenant }}",
+              "refId": "A"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "Streams Created/Sec",
+          "tooltip": {
+            "shared": false,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        }
+      ],
+      "title": "Streams",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "datasource": null,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "id": 94,
+      "panels": [
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": "ops-cortex",
+          "fill": 1,
+          "fillGradient": 0,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 31
+          },
+          "hiddenSeries": false,
+          "id": 102,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "nullPointMode": "null",
+          "options": {
+            "dataLinks": []
+          },
+          "percentage": false,
+          "pointradius": 2,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [
+            {
+              "alias": "De-Dupe Ratio",
+              "yaxis": 2
+            }
+          ],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\"}[1m]))",
+              "interval": "",
+              "legendFormat": "Chunks",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(increase(cortex_chunk_store_deduped_chunks_total{cluster=\"$cluster\", job=\"$namespace/ingester\"}[1m]))/sum(increase(loki_ingester_chunks_flushed_total{cluster=\"$cluster\", job=\"$namespace/ingester\"}[1m])) < 1",
+              "interval": "",
+              "legendFormat": "De-Dupe Ratio",
+              "refId": "B"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "Chunks Flushed/Sec",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "cards": {
+            "cardPadding": null,
+            "cardRound": null
+          },
+          "color": {
+            "cardColor": "#b4ff00",
+            "colorScale": "sqrt",
+            "colorScheme": "interpolateSpectral",
+            "exponent": 0.5,
+            "mode": "spectrum"
+          },
+          "dataFormat": "tsbuckets",
+          "datasource": "ops-cortex",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 31
+          },
+          "heatmap": {},
+          "hideZeroBuckets": false,
+          "highlightCards": true,
+          "id": 100,
+          "legend": {
+            "show": true
+          },
+          "reverseYBuckets": false,
+          "targets": [
+            {
+              "expr": "sum(rate(loki_ingester_chunk_size_bytes_bucket{cluster=\"$cluster\",job=\"$namespace/ingester\"}[1m])) by (le)",
+              "format": "heatmap",
+              "instant": false,
+              "interval": "",
+              "legendFormat": "{{ le }}",
+              "refId": "A"
+            }
+          ],
+          "timeFrom": null,
+          "timeShift": null,
+          "title": "Chunk Size Bytes",
+          "tooltip": {
+            "show": true,
+            "showHistogram": false
+          },
+          "type": "heatmap",
+          "xAxis": {
+            "show": true
+          },
+          "xBucketNumber": null,
+          "xBucketSize": null,
+          "yAxis": {
+            "decimals": 0,
+            "format": "bytes",
+            "logBase": 1,
+            "max": null,
+            "min": null,
+            "show": true,
+            "splitFactor": null
+          },
+          "yBucketBound": "auto",
+          "yBucketNumber": null,
+          "yBucketSize": null
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": "ops-cortex",
+          "fill": 7,
+          "fillGradient": 0,
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 39
+          },
+          "hiddenSeries": false,
+          "id": 96,
+          "legend": {
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "nullPointMode": "null",
+          "options": {
+            "dataLinks": []
+          },
+          "percentage": false,
+          "pointradius": 2,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "spaceLength": 10,
+          "stack": true,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\",reason=\"full\"}[1m]))/sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\"}[1m]))",
+              "interval": "",
+              "legendFormat": "full",
+              "refId": "B"
+            },
+            {
+              "expr": "sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\",reason=\"synced\"}[1m]))/sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\"}[1m]))",
+              "interval": "",
+              "legendFormat": "synced",
+              "refId": "D"
+            },
+            {
+              "expr": "sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\",reason=\"idle\"}[1m]))/sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\"}[1m]))",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "idle",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\",reason=\"max_age\"}[1m]))/sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=\"$namespace/ingester\"}[1m]))",
+              "interval": "",
+              "legendFormat": "max_age",
+              "refId": "C"
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeRegions": [],
+          "timeShift": null,
+          "title": "Chunk Flush Reason",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "percentunit",
+              "label": null,
+              "logBase": 1,
+              "max": "1",
+              "min": "0",
+              "show": true
+            },
+            {
+              "format": "short",
+              "label": null,
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
+          ],
+          "yaxis": {
+            "align": false,
+            "alignLevel": null
+          }
+        },
+        {
+          "cards": {
+            "cardPadding": null,
+            "cardRound": null
+          },
+          "color": {
+            "cardColor": "#b4ff00",
+            "colorScale": "sqrt",
+            "colorScheme": "interpolateSpectral",
+            "exponent": 0.5,
+            "max": null,
+            "min": null,
+            "mode": "spectrum"
+          },
+          "dataFormat": "tsbuckets",
+          "datasource": "ops-cortex",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 39
+          },
+          "heatmap": {},
+          "hideZeroBuckets": true,
+          "highlightCards": true,
+          "id": 98,
+          "legend": {
+            "show": true
+          },
+          "reverseYBuckets": false,
+          "targets": [
+            {
+              "expr": "sum by (le) (rate(loki_ingester_chunk_utilization_bucket{cluster=\"$cluster\", job=\"$namespace/ingester\"}[1m]))",
+              "format": "heatmap",
+              "instant": false,
+              "interval": "",
+              "legendFormat": "{{ le }}",
+              "refId": "A"
+            }
+          ],
+          "timeFrom": null,
+          "timeShift": null,
+          "title": "Chunk Utilization",
+          "tooltip": {
+            "show": true,
+            "showHistogram": false
+          },
+          "type": "heatmap",
+          "xAxis": {
+            "show": true
+          },
+          "xBucketNumber": null,
+          "xBucketSize": null,
+          "yAxis": {
+            "decimals": 0,
+            "format": "percentunit",
+            "logBase": 1,
+            "max": null,
+            "min": null,
+            "show": true,
+            "splitFactor": null
+          },
+          "yBucketBound": "auto",
+          "yBucketNumber": null,
+          "yBucketSize": null
+        }
+      ],
+      "title": "Chunks",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "datasource": null,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 31
       },
       "id": 64,
       "panels": [
@@ -2681,8 +3512,9 @@
             "h": 7,
             "w": 6,
             "x": 0,
-            "y": 4
+            "y": 32
           },
+          "hiddenSeries": false,
           "id": 68,
           "legend": {
             "avg": false,
@@ -2768,8 +3600,9 @@
             "h": 7,
             "w": 6,
             "x": 6,
-            "y": 4
+            "y": 32
           },
+          "hiddenSeries": false,
           "id": 69,
           "legend": {
             "avg": false,
@@ -2851,15 +3684,16 @@
           "bars": true,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "$logmetrics",
+          "datasource": "$logs",
           "fill": 1,
           "fillGradient": 0,
           "gridPos": {
             "h": 3,
             "w": 12,
             "x": 12,
-            "y": 4
+            "y": 32
           },
+          "hiddenSeries": false,
           "id": 65,
           "legend": {
             "avg": false,
@@ -2882,30 +3716,16 @@
           "renderer": "flot",
           "seriesOverrides": [
             {
-              "alias": "warn",
-              "color": "#FF9830"
-            },
-            {
-              "alias": "error",
+              "alias": "{}",
               "color": "#F2495C"
-            },
-            {
-              "alias": "info",
-              "color": "#73BF69"
-            },
-            {
-              "alias": "debug",
-              "color": "#5794F2"
             }
           ],
           "spaceLength": 10,
-          "stack": true,
+          "stack": false,
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\", level!~\"debug|info\"}[5m])) by (level)",
-              "intervalFactor": 3,
-              "legendFormat": "{{level}}",
+              "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"} |~ \"(?i)level=error\"[1m]))",
               "refId": "A"
             }
           ],
@@ -2956,16 +3776,18 @@
             "h": 18,
             "w": 12,
             "x": 12,
-            "y": 7
+            "y": 35
           },
           "id": 66,
           "options": {
+            "showLabels": false,
             "showTime": false,
-            "sortOrder": "Descending"
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
           },
           "targets": [
             {
-              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\", level!~\"info|debug\"}",
+              "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"} |~ \"(?i)level=error\"",
               "refId": "A"
             }
           ],
@@ -2986,8 +3808,9 @@
             "h": 7,
             "w": 6,
             "x": 0,
-            "y": 11
+            "y": 39
           },
+          "hiddenSeries": false,
           "id": 70,
           "legend": {
             "avg": false,
@@ -3014,7 +3837,8 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\", status_code=~\"success|200\"}[5m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"}[5m])) by (route)",
+              "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\", status_code!~\"5[0-9]{2}\"}[1m])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=\"$namespace/querier\"}[1m])) by (route)",
+              "interval": "",
               "intervalFactor": 1,
               "legendFormat": "{{route}}",
               "refId": "A"
@@ -3072,7 +3896,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 29
+        "y": 32
       },
       "id": 52,
       "panels": [
@@ -3088,8 +3912,9 @@
             "h": 8,
             "w": 24,
             "x": 0,
-            "y": 22
+            "y": 30
           },
+          "hiddenSeries": false,
           "id": 53,
           "interval": "",
           "legend": {
@@ -3190,8 +4015,9 @@
             "h": 8,
             "w": 24,
             "x": 0,
-            "y": 30
+            "y": 38
           },
+          "hiddenSeries": false,
           "id": 54,
           "interval": "",
           "legend": {
@@ -3279,7 +4105,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 30
+        "y": 33
       },
       "id": 57,
       "panels": [
@@ -3297,6 +4123,7 @@
             "x": 0,
             "y": 31
           },
+          "hiddenSeries": false,
           "id": 55,
           "interval": "",
           "legend": {
@@ -3399,6 +4226,7 @@
             "x": 0,
             "y": 39
           },
+          "hiddenSeries": false,
           "id": 58,
           "interval": "",
           "legend": {
@@ -3486,7 +4314,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 31
+        "y": 34
       },
       "id": 43,
       "panels": [
@@ -3502,8 +4330,9 @@
             "h": 7,
             "w": 6,
             "x": 0,
-            "y": 5
+            "y": 9
           },
+          "hiddenSeries": false,
           "id": 41,
           "interval": "",
           "legend": {
@@ -3598,8 +4427,9 @@
             "h": 7,
             "w": 6,
             "x": 6,
-            "y": 5
+            "y": 9
           },
+          "hiddenSeries": false,
           "id": 46,
           "interval": "",
           "legend": {
@@ -3628,16 +4458,21 @@
           "targets": [
             {
               "expr": "histogram_quantile(.99, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/ReadRows\"}[5m])) by (operation, le))",
+              "interval": "",
               "intervalFactor": 1,
-              "legendFormat": ".9",
+              "legendFormat": "99%",
               "refId": "A"
             },
             {
               "expr": "histogram_quantile(.9, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/ReadRows\"}[5m])) by (operation, le))",
+              "interval": "",
+              "legendFormat": "90%",
               "refId": "B"
             },
             {
               "expr": "histogram_quantile(.5, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.v2.Bigtable/ReadRows\"}[5m])) by (operation, le))",
+              "interval": "",
+              "legendFormat": "50%",
               "refId": "C"
             }
           ],
@@ -3694,8 +4529,9 @@
             "h": 7,
             "w": 6,
             "x": 12,
-            "y": 5
+            "y": 9
           },
+          "hiddenSeries": false,
           "id": 44,
           "interval": "",
           "legend": {
@@ -3724,16 +4560,21 @@
           "targets": [
             {
               "expr": "histogram_quantile(.99, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/GetTable\"}[5m])) by (operation, le))",
+              "interval": "",
               "intervalFactor": 1,
-              "legendFormat": ".9",
+              "legendFormat": "99%",
               "refId": "A"
             },
             {
               "expr": "histogram_quantile(.9, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/GetTable\"}[5m])) by (operation, le))",
+              "interval": "",
+              "legendFormat": "90%",
               "refId": "B"
             },
             {
               "expr": "histogram_quantile(.5, sum(rate(cortex_bigtable_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", operation=\"/google.bigtable.admin.v2.BigtableTableAdmin/GetTable\"}[5m])) by (operation, le))",
+              "interval": "",
+              "legendFormat": "50%",
               "refId": "C"
             }
           ],
@@ -3790,8 +4631,9 @@
             "h": 7,
             "w": 6,
             "x": 18,
-            "y": 5
+            "y": 9
           },
+          "hiddenSeries": false,
           "id": 45,
           "interval": "",
           "legend": {
@@ -3886,8 +4728,9 @@
             "h": 7,
             "w": 6,
             "x": 0,
-            "y": 12
+            "y": 16
           },
+          "hiddenSeries": false,
           "id": 47,
           "interval": "",
           "legend": {
@@ -3974,8 +4817,9 @@
             "h": 7,
             "w": 6,
             "x": 6,
-            "y": 12
+            "y": 16
           },
+          "hiddenSeries": false,
           "id": 50,
           "interval": "",
           "legend": {
@@ -4062,8 +4906,9 @@
             "h": 7,
             "w": 6,
             "x": 12,
-            "y": 12
+            "y": 16
           },
+          "hiddenSeries": false,
           "id": 48,
           "interval": "",
           "legend": {
@@ -4150,8 +4995,9 @@
             "h": 7,
             "w": 6,
             "x": 18,
-            "y": 12
+            "y": 16
           },
+          "hiddenSeries": false,
           "id": 49,
           "interval": "",
           "legend": {
@@ -4237,7 +5083,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 32
+        "y": 35
       },
       "id": 60,
       "panels": [
@@ -4253,8 +5099,9 @@
             "h": 8,
             "w": 24,
             "x": 0,
-            "y": 8
+            "y": 33
           },
+          "hiddenSeries": false,
           "id": 61,
           "interval": "",
           "legend": {
@@ -4355,8 +5202,9 @@
             "h": 8,
             "w": 24,
             "x": 0,
-            "y": 16
+            "y": 41
           },
+          "hiddenSeries": false,
           "id": 62,
           "interval": "",
           "legend": {
@@ -4444,7 +5292,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 33
+        "y": 36
       },
       "id": 76,
       "panels": [
@@ -5087,7 +5935,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 34
+        "y": 37
       },
       "id": 78,
       "panels": [
@@ -5294,7 +6142,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 35
+        "y": 38
       },
       "id": 90,
       "panels": [
@@ -5495,13 +6343,18 @@
       "type": "row"
     }
   ],
-  "refresh": false,
+  "refresh": "30s",
   "schemaVersion": 22,
   "style": "dark",
   "tags": [],
   "templating": {
     "list": [
       {
+        "current": {
+          "selected": false,
+          "text": "ops-cortex",
+          "value": "ops-cortex"
+        },
         "hide": 0,
         "includeAll": false,
         "label": null,
@@ -5515,6 +6368,11 @@
         "type": "datasource"
       },
       {
+        "current": {
+          "selected": false,
+          "text": "Grafana Logging",
+          "value": "Grafana Logging"
+        },
         "hide": 0,
         "includeAll": false,
         "label": null,
@@ -5522,19 +6380,7 @@
         "name": "logs",
         "options": [],
         "query": "loki",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "type": "datasource"
-      },
-      {
-        "hide": 0,
-        "includeAll": false,
-        "label": null,
-        "multi": false,
-        "name": "logmetrics",
-        "options": [],
-        "query": "prometheus",
+        "queryValue": "",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -5542,15 +6388,19 @@
       },
       {
         "allValue": null,
+        "current": {
+          "text": "us-central1",
+          "value": "us-central1"
+        },
         "datasource": "$datasource",
         "definition": "label_values(kube_pod_container_info{image=~\".*loki.*\"}, cluster)",
         "hide": 0,
         "includeAll": false,
+        "index": -1,
         "label": null,
         "multi": false,
         "name": "cluster",
-        "options": [
-        ],
+        "options": [],
         "query": "label_values(kube_pod_container_info{image=~\".*loki.*\"}, cluster)",
         "refresh": 1,
         "regex": "",
@@ -5564,30 +6414,19 @@
       },
       {
         "allValue": null,
+        "current": {
+          "text": "loki-prod",
+          "value": "loki-prod"
+        },
         "datasource": "$datasource",
         "definition": "label_values(kube_pod_container_info{image=~\".*loki.*\", cluster=\"$cluster\"}, namespace)",
         "hide": 0,
         "includeAll": false,
+        "index": -1,
         "label": null,
         "multi": false,
         "name": "namespace",
-        "options": [
-          {
-            "selected": true,
-            "text": "tempo-dev",
-            "value": "tempo-dev"
-          },
-          {
-            "selected": false,
-            "text": "cortex-ops",
-            "value": "cortex-ops"
-          },
-          {
-            "selected": false,
-            "text": "default",
-            "value": "default"
-          }
-        ],
+        "options": [],
         "query": "label_values(kube_pod_container_info{image=~\".*loki.*\", cluster=\"$cluster\"}, namespace)",
         "refresh": 1,
         "regex": "",
@@ -5607,7 +6446,6 @@
   },
   "timepicker": {
     "refresh_intervals": [
-      "5s",
       "10s",
       "30s",
       "1m",
@@ -5621,6 +6459,9 @@
   },
   "timezone": "",
   "title": "Loki Operational",
-  "uid": "f6fe30815b172c9da7e810c15ddfe607",
-  "version": 1
+  "uid": "f6fe30815b172c9da7e813c15ddfe607",
+  "variables": {
+    "list": []
+  },
+  "version": 21
 }
